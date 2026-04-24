@@ -2,6 +2,9 @@ import type { Context, Next } from "hono";
 import { auth } from "./better-auth";
 import { validateApiKeyAndGetUser } from "./api-key-service";
 import { config } from "../config";
+import { db } from "../db";
+import { user } from "../db/schema";
+import { eq } from "drizzle-orm";
 
 /** Extract token from Authorization header or ?token= query param */
 function extractToken(c: Context): string | undefined {
@@ -36,6 +39,42 @@ export async function sessionAuth(c: Context, next: Next) {
 }
 
 /**
+ * Find or create the system user for legacy global API key fallback.
+ */
+async function ensureSystemUser(): Promise<{ id: string; email: string; name: string } | null> {
+  // Look for existing system user
+  const rows = await db.select().from(user).where(eq(user.email, "system@rcs.local")).limit(1);
+  if (rows.length > 0) {
+    return { id: rows[0].id, email: rows[0].email, name: rows[0].name };
+  }
+
+  // Try to find any user
+  const anyUser = await db.select().from(user).limit(1);
+  if (anyUser.length > 0) {
+    return { id: anyUser[0].id, email: anyUser[0].email, name: anyUser[0].name };
+  }
+
+  // No users at all — auto-create system user
+  try {
+    const result = await auth.api.signUpEmail({
+      email: "system@rcs.local",
+      password: "system",
+      name: "System",
+    });
+    if (result.user) {
+      // Auto-generate a per-user API key for future use
+      const { createApiKey } = await import("./api-key-service");
+      await createApiKey(result.user.id, "legacy-auto");
+      return { id: result.user.id, email: result.user.email, name: result.user.name };
+    }
+  } catch {
+    // signUpEmail may fail if user was created concurrently
+  }
+
+  return null;
+}
+
+/**
  * API Key auth for ACP agent routes.
  * Two-level validation:
  * 1. Per-user API Key (SQLite) → resolves to a specific user
@@ -50,12 +89,12 @@ export async function apiKeyAuth(c: Context, next: Next) {
   // 1. Try per-user API Key (SQLite)
   const result = await validateApiKeyAndGetUser(token);
   if (result) {
-    const user = await auth.api.getUser({ userId: result.userId });
-    if (user) {
+    const userResult = await auth.api.getUser({ userId: result.userId });
+    if (userResult) {
       c.set("user", {
-        id: user.user.id,
-        email: user.user.email,
-        name: user.user.name,
+        id: userResult.user.id,
+        email: userResult.user.email,
+        name: userResult.user.name,
       });
       await next();
       return;
@@ -64,33 +103,9 @@ export async function apiKeyAuth(c: Context, next: Next) {
 
   // 2. Fallback: legacy global API Key (RCS_API_KEYS env var)
   if (config.apiKeys.length > 0 && config.apiKeys.includes(token)) {
-    // Auto-create a system user for the legacy key if no users exist yet
-    const userList = await auth.api.listUsers();
-    let systemUser;
-    if (userList.users.length === 0) {
-      // No users yet — create a system user and generate an API key
-      const signUpResult = await auth.api.signUpEmail({
-        email: "system@rcs.local",
-        password: "system",
-        name: "System",
-      });
-      if (signUpResult.user) {
-        systemUser = signUpResult.user;
-        // Import dynamically to avoid circular deps
-        const { createApiKey } = await import("./api-key-service");
-        await createApiKey(systemUser.id, "legacy-auto");
-      }
-    }
-
-    // Use the first user as the owner for legacy global keys
-    const users = systemUser ? { users: [systemUser] } : await auth.api.listUsers();
-    const fallbackUser = users.users[0];
-    if (fallbackUser) {
-      c.set("user", {
-        id: fallbackUser.id,
-        email: fallbackUser.email,
-        name: fallbackUser.name,
-      });
+    const systemUser = await ensureSystemUser();
+    if (systemUser) {
+      c.set("user", systemUser);
       await next();
       return;
     }
