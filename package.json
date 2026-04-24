@@ -26,7 +26,6 @@
         "@radix-ui/react-use-controllable-state": "^1.2.2",
         "ai": "^6.0.168",
         "better-auth": "^1.6.8",
-        "better-sqlite3": "^12.9.0",
         "browser-image-compression": "^2.0.2",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -48,7 +47,6 @@
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
-        "@types/better-sqlite3": "^7.6.13",
         "@types/qrcode": "^1.5.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",

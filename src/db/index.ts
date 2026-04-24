@@ -1,5 +1,5 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "./schema";
 import { mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
@@ -15,8 +15,8 @@ if (!existsSync(dir)) {
 const sqlite = new Database(DB_PATH);
 
 // Enable WAL mode for better concurrent read performance
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
+sqlite.exec("PRAGMA journal_mode = WAL");
+sqlite.exec("PRAGMA foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
 
