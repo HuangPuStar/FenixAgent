@@ -1,14 +1,23 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
-import { Navbar } from "./components/Navbar";
+import { useState, useEffect, useCallback, lazy, Suspense, useMemo } from "react";
+import { AppShell, type SidebarItem } from "./components/shell";
 import { IdentityPanel } from "./components/IdentityPanel";
 import { TokenManagerDialog } from "./components/TokenManagerDialog";
 import { ThemeProvider } from "./lib/theme";
 import { getUuid, setUuid, apiBind, setActiveApiToken } from "./api/client";
 import { ACPDirectView } from "./components/ACPDirectView";
 import { useTokens } from "./hooks/useTokens";
+import {
+  LayoutDashboard,
+  MessageSquare,
+  Monitor,
+  KeyRound,
+  UserPlus,
+} from "lucide-react";
 
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
 const SessionDetail = lazy(() => import("./pages/SessionDetail").then((m) => ({ default: m.SessionDetail })));
+
+type ViewId = "dashboard" | "session";
 
 export default function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -28,12 +37,9 @@ export default function App() {
 
   // Simple hash-based router
   const parseRoute = useCallback(() => {
-    // Ensure UUID exists
     getUuid();
 
     const path = window.location.pathname;
-
-    // Check for UUID import from QR scan (?uuid=xxx)
     const params = new URLSearchParams(window.location.search);
     const importUuid = params.get("uuid");
     if (importUuid) {
@@ -43,7 +49,6 @@ export default function App() {
       window.history.replaceState(null, "", url);
     }
 
-    // Check for ACP direct connection (?acp=1)
     const acpParam = params.get("acp");
     if (acpParam === "1") {
       const stored = sessionStorage.getItem("acp_connection");
@@ -105,26 +110,72 @@ export default function App() {
     setAcpDirect(null);
   }, []);
 
+  const activeView: ViewId = currentSessionId || acpDirect ? "session" : "dashboard";
+
+  const navItems: SidebarItem[] = useMemo(() => [
+    {
+      id: "dashboard",
+      label: "Dashboard",
+      icon: <LayoutDashboard className="h-4 w-4" />,
+      active: activeView === "dashboard",
+      onClick: navigateToDashboard,
+    },
+    ...(currentSessionId ? [{
+      id: "session",
+      label: "Session",
+      icon: <MessageSquare className="h-4 w-4" />,
+      active: true,
+      badge: "ACP",
+      onClick: () => {},
+    }] : []),
+  ], [activeView, currentSessionId, navigateToDashboard]);
+
+  const footerItems: SidebarItem[] = useMemo(() => [
+    {
+      id: "tokens",
+      label: activeLabel || "No Token",
+      icon: <KeyRound className="h-4 w-4" />,
+      onClick: () => setTokenDialogOpen(true),
+    },
+    {
+      id: "identity",
+      label: "Identity",
+      icon: <UserPlus className="h-4 w-4" />,
+      onClick: () => setIdentityOpen(true),
+    },
+  ], [activeLabel]);
+
+  const pageTitle = useMemo(() => {
+    if (acpDirect) return "ACP Direct";
+    if (currentSessionId) return "Session";
+    return "Dashboard";
+  }, [acpDirect, currentSessionId]);
+
   return (
     <ThemeProvider defaultTheme="system">
-      <div className="flex h-screen flex-col bg-surface-0 text-text-primary">
-        <Navbar
-          onIdentityClick={() => setIdentityOpen(true)}
-          onTokenClick={() => setTokenDialogOpen(true)}
-          activeTokenLabel={currentSessionId ? undefined : activeLabel}
-          sessionTitle={currentSessionId || (acpDirect ? "ACP" : undefined)}
-          onBack={(currentSessionId || acpDirect) ? navigateToDashboard : undefined}
-        />
-
-        <Suspense fallback={<div className="flex flex-1 items-center justify-center text-text-muted">Loading...</div>}>
+      <AppShell
+        activeView={activeView}
+        navItems={navItems}
+        footerItems={footerItems}
+        title={pageTitle}
+        topBarRight={
+          activeLabel && !currentSessionId && !acpDirect ? (
+            <span className="flex items-center gap-1 rounded-md bg-brand/10 px-2 py-1 text-xs font-medium text-brand">
+              <KeyRound className="h-3 w-3" />
+              {activeLabel}
+            </span>
+          ) : undefined
+        }
+      >
+        <Suspense fallback={
+          <div className="flex h-full items-center justify-center text-text-muted">Loading...</div>
+        }>
           {acpDirect ? (
             <ACPDirectView url={acpDirect.url} token={acpDirect.token} onBack={navigateToDashboard} />
           ) : currentSessionId ? (
             <SessionDetail key={currentSessionId} sessionId={currentSessionId} />
           ) : (
-            <div className="flex-1 overflow-y-auto">
-              <Dashboard onNavigateSession={navigateToSession} />
-            </div>
+            <Dashboard onNavigateSession={navigateToSession} />
           )}
         </Suspense>
 
@@ -140,7 +191,7 @@ export default function App() {
           onRemove={removeToken}
           onUpdate={updateToken}
         />
-      </div>
+      </AppShell>
     </ThemeProvider>
   );
 }

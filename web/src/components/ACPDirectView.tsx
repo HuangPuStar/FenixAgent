@@ -41,7 +41,7 @@ export function ACPDirectView({ url, token, onBack }: ACPDirectViewProps) {
   }, [url, token]);
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
       {error && connectionState === "error" && (
         <div className="px-4 py-2 bg-status-error/10 text-status-error text-sm border-b">
           {error}
@@ -70,7 +70,7 @@ export function ACPDirectView({ url, token, onBack }: ACPDirectViewProps) {
             <p className="text-text-muted text-sm mb-3">{error}</p>
             <button
               onClick={onBack}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors"
+              className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors"
             >
               Back to Dashboard
             </button>

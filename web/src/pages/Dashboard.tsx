@@ -45,27 +45,48 @@ export function Dashboard({ onNavigateSession }: DashboardProps) {
   }, [onNavigateSession]);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="sr-only">Dashboard</h1>
-      {/* Environments */}
-      <section className="mb-10">
-        <h2 className="mb-4 font-display text-lg font-semibold text-text-primary">Environments</h2>
-        <EnvironmentList environments={environments} onSelectEnvironment={handleSelectEnvironment} />
-      </section>
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-5xl px-6 py-6">
+        <h1 className="sr-only">Dashboard</h1>
 
-      {/* Sessions */}
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold text-text-primary">Sessions</h2>
-          <button
-            onClick={() => setDialogOpen(true)}
-            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-light transition-colors"
-          >
-            + New Session
-          </button>
+        {/* Stats overview */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-lg border border-border bg-surface-1 px-4 py-3">
+            <div className="text-xs font-medium text-text-muted">Environments</div>
+            <div className="mt-1 text-2xl font-semibold text-text-primary">{environments.length}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface-1 px-4 py-3">
+            <div className="text-xs font-medium text-text-muted">Sessions</div>
+            <div className="mt-1 text-2xl font-semibold text-text-primary">{sessions.length}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface-1 px-4 py-3">
+            <div className="text-xs font-medium text-text-muted">Active</div>
+            <div className="mt-1 text-2xl font-semibold text-status-running">
+              {sessions.filter((s) => s.status === "active" || s.status === "running").length}
+            </div>
+          </div>
         </div>
-        <SessionList sessions={sessions} onSelect={handleSelectSession} />
-      </section>
+
+        {/* Environments */}
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold text-text-primary">Environments</h2>
+          <EnvironmentList environments={environments} onSelectEnvironment={handleSelectEnvironment} />
+        </section>
+
+        {/* Sessions */}
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-lg font-semibold text-text-primary">Sessions</h2>
+            <button
+              onClick={() => setDialogOpen(true)}
+              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-light transition-colors"
+            >
+              + New Session
+            </button>
+          </div>
+          <SessionList sessions={sessions} onSelect={handleSelectSession} />
+        </section>
+      </div>
 
       <NewSessionDialog
         open={dialogOpen}

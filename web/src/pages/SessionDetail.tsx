@@ -219,7 +219,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <div className="text-center">
           <p className="text-status-error">{error}</p>
           <a href="/code/" className="mt-4 inline-block text-brand hover:underline">
@@ -232,7 +232,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
 
   if (!session) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <div className="text-text-muted">Loading session...</div>
       </div>
     );
@@ -295,6 +295,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
               </div>
             )}
           </div>
+
         </div>
 
         {/* Chat messages — unified ChatView */}
