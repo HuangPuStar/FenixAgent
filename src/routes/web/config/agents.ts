@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { sessionAuth } from "../../../auth/middleware";
-import { getSection, setSection, setTopLevelField, getConfig } from "../../../services/config";
+import { getSection, setSection, setTopLevelField, getConfig, replaceSection } from "../../../services/config";
 
 const BUILT_IN_AGENTS = new Set(["build", "plan", "general", "explore", "title", "summary", "compaction"]);
 
@@ -86,7 +86,7 @@ async function handleDelete(name: string) {
   const agents = (await getSection<Record<string, Record<string, unknown>>>("agent")) ?? {};
   if (!agents[name]) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
   delete agents[name];
-  await setSection("agent", agents);
+  await replaceSection("agent", agents);
   return { success: true };
 }
 

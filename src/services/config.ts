@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const CONFIG_PATH = join(homedir(), ".config", "opencode", "config.json");
+export const CONFIG_PATH = join(homedir(), ".config", "opencode", "opencode.json");
 const LOCK_TIMEOUT_MS = 5000;
 
 // Promise 互斥锁：防止并发写入
@@ -38,9 +38,7 @@ function deepMerge(target: unknown, source: unknown): unknown {
 export async function getConfig(): Promise<Record<string, unknown>> {
   if (!existsSync(CONFIG_PATH)) return {};
   const raw = await readFile(CONFIG_PATH, "utf-8");
-  // strip-json-comments: 移除单行 // 和多行 /* */ 注释
-  const cleaned = raw.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  return JSON.parse(cleaned);
+  return JSON.parse(raw);
 }
 
 export async function getSection<T = unknown>(section: string): Promise<T | undefined> {
@@ -54,6 +52,19 @@ export async function setSection(section: string, data: unknown): Promise<void> 
     const config = await getConfig();
     config[section] = deepMerge(config[section] ?? {}, data);
     // 确保目录存在
+    const dir = join(CONFIG_PATH, "..");
+    if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  } finally {
+    release();
+  }
+}
+
+export async function replaceSection(section: string, data: unknown): Promise<void> {
+  const release = await acquireWriteLock();
+  try {
+    const config = await getConfig();
+    config[section] = data;
     const dir = join(CONFIG_PATH, "..");
     if (!existsSync(dir)) await mkdir(dir, { recursive: true });
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");

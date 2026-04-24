@@ -1,11 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
-import { Hono } from "hono";
 
 // Mutable provider store for mocking
 let _providerStore: Record<string, unknown> = {};
 
-// Must mock modules BEFORE importing the route
-// Paths are relative to this test file at src/__tests__/
 mock.module("../auth/middleware", () => ({
   sessionAuth: async (c: any, next: any) => {
     c.set("user", { id: "test-user", email: "test@test.com", name: "Test" });
@@ -16,12 +13,12 @@ mock.module("../auth/middleware", () => ({
 mock.module("../services/config", () => ({
   getSection: async (_section: string) => _section === "provider" ? _providerStore : undefined,
   setSection: async (_section: string, data: unknown) => { _providerStore = data as Record<string, unknown>; },
+  replaceSection: async (_section: string, data: unknown) => { _providerStore = data as Record<string, unknown>; },
   deleteSection: async () => false,
   setTopLevelField: async () => {},
   getConfig: async () => ({ provider: _providerStore }),
 }));
 
-// Import AFTER mocks
 const providersRoute = (await import("../routes/web/config/providers")).default;
 
 describe("Providers Config Route", () => {
@@ -30,10 +27,7 @@ describe("Providers Config Route", () => {
   });
 
   afterEach(() => {
-    // Clean up any env vars set during tests
-    for (const key of Object.keys(process.env)) {
-      if (key.startsWith("RCS_SECRET_")) delete process.env[key];
-    }
+    // nothing to clean up — apiKey is stored in config data, not env
   });
 
   test("list action — 空配置", async () => {
@@ -47,10 +41,22 @@ describe("Providers Config Route", () => {
     expect(json.data.providers).toEqual([]);
   });
 
-  test("list action — 有配置", async () => {
+  test("list action — 有配置（嵌套结构）", async () => {
     _providerStore = {
-      anthropic: { apiKey: "sk-ant-1234567890", baseURL: "https://api.anthropic.com" },
-      openai: { apiKey: "sk-open-abcdef", baseURL: "https://api.openai.com" },
+      "bailian-token-plan": {
+        npm: "@ai-sdk/openai-compatible",
+        name: "ali",
+        options: { apiKey: "sk-ant-1234567890", baseURL: "https://api.anthropic.com" },
+        models: {
+          "qwen3.6-plus": { name: "Qwen3.6 Plus" },
+          "glm-5": { name: "GLM-5" },
+        },
+      },
+      openai: {
+        npm: "@ai-sdk/openai",
+        name: "OpenAI",
+        options: { apiKey: "sk-open-abcdef", baseURL: "https://api.openai.com" },
+      },
     };
     const res = await providersRoute.request(new Request("http://localhost/config/providers", {
       method: "POST",
@@ -60,22 +66,45 @@ describe("Providers Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.providers).toHaveLength(2);
-    expect(json.data.providers[0].name).toBe("anthropic");
-    expect(json.data.providers[0].configured).toBe(true);
-    expect(json.data.providers[0].keyHint).toBe("***7890");
+    expect(json.data.providers[0]).toMatchObject({
+      id: "bailian-token-plan",
+      name: "ali",
+      npm: "@ai-sdk/openai-compatible",
+      configured: true,
+      keyHint: "***7890",
+      modelCount: 2,
+    });
+    expect(json.data.providers[1]).toMatchObject({
+      id: "openai",
+      name: "OpenAI",
+      npm: "@ai-sdk/openai",
+      configured: true,
+      modelCount: 0,
+    });
   });
 
   test("get action — 存在", async () => {
-    _providerStore = { anthropic: { apiKey: "sk-ant-1234", baseURL: "https://api.anthropic.com" } };
+    _providerStore = {
+      "bailian-token-plan": {
+        npm: "@ai-sdk/openai-compatible",
+        name: "ali",
+        options: { apiKey: "sk-ant-1234", baseURL: "https://api.anthropic.com" },
+        models: { "qwen3.6-plus": { name: "Qwen3.6 Plus", limit: { context: 1000000 } } },
+      },
+    };
     const res = await providersRoute.request(new Request("http://localhost/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get", name: "anthropic" }),
+      body: JSON.stringify({ action: "get", name: "bailian-token-plan" }),
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.data.name).toBe("anthropic");
+    expect(json.data.id).toBe("bailian-token-plan");
+    expect(json.data.name).toBe("ali");
+    expect(json.data.npm).toBe("@ai-sdk/openai-compatible");
     expect(json.data.keyHint).toBe("***1234");
+    expect(json.data.models).toHaveLength(1);
+    expect(json.data.models[0].id).toBe("qwen3.6-plus");
   });
 
   test("get action — 不存在", async () => {
@@ -89,31 +118,48 @@ describe("Providers Config Route", () => {
     expect(json.error.code).toBe("NOT_FOUND");
   });
 
-  test("set action — 创建新 provider", async () => {
+  test("set action — 创建新 provider（构造嵌套结构）", async () => {
     const res = await providersRoute.request(new Request("http://localhost/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "set", name: "ollama", data: { apiKey: "sk-test", baseURL: "http://localhost:11434" } }),
+      body: JSON.stringify({
+        action: "set",
+        name: "ollama",
+        data: { apiKey: "sk-test", baseURL: "http://localhost:11434", npm: "@ai-sdk/openai-compatible", name: "Ollama" },
+      }),
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.data.name).toBe("ollama");
-    // API Key should be stored as env reference
-    expect(_providerStore.ollama.apiKey).toBe("{env:RCS_SECRET_OLLAMA}");
-    // The env var should be set
-    expect(process.env.RCS_SECRET_OLLAMA).toBe("sk-test");
+    expect(json.data.id).toBe("ollama");
+    // 嵌套结构验证：apiKey 直接明文存储
+    const provider = _providerStore.ollama as Record<string, unknown>;
+    expect(provider.npm).toBe("@ai-sdk/openai-compatible");
+    expect(provider.name).toBe("Ollama");
+    expect((provider.options as Record<string, unknown>).apiKey).toBe("sk-test");
+    expect((provider.options as Record<string, unknown>).baseURL).toBe("http://localhost:11434");
   });
 
-  test("set action — 更新已有 provider", async () => {
-    _providerStore = { anthropic: { apiKey: "old", baseURL: "https://api.anthropic.com" } };
+  test("set action — 更新已有 provider 保留 models", async () => {
+    _providerStore = {
+      "bailian-token-plan": {
+        npm: "@ai-sdk/openai-compatible",
+        name: "ali",
+        options: { apiKey: "old", baseURL: "https://api.anthropic.com" },
+        models: { "qwen3.6-plus": { name: "Qwen3.6 Plus" } },
+      },
+    };
     const res = await providersRoute.request(new Request("http://localhost/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "set", name: "anthropic", data: { baseURL: "https://new.api.com" } }),
+      body: JSON.stringify({ action: "set", name: "bailian-token-plan", data: { baseURL: "https://new.api.com" } }),
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(_providerStore.anthropic).toBeDefined();
+    const provider = _providerStore["bailian-token-plan"] as Record<string, unknown>;
+    expect(provider).toBeDefined();
+    // models 应被保留
+    expect(provider.models).toBeDefined();
+    expect((provider.options as Record<string, unknown>).baseURL).toBe("https://new.api.com");
   });
 
   test("set action — 缺少 name 返回 VALIDATION_ERROR", async () => {
@@ -128,7 +174,10 @@ describe("Providers Config Route", () => {
   });
 
   test("delete action — 存在", async () => {
-    _providerStore = { anthropic: { apiKey: "x" }, openai: { apiKey: "y" } };
+    _providerStore = {
+      anthropic: { npm: "@ai-sdk/anthropic", options: { apiKey: "x" } },
+      openai: { npm: "@ai-sdk/openai", options: { apiKey: "y" } },
+    };
     const res = await providersRoute.request(new Request("http://localhost/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -153,7 +202,7 @@ describe("Providers Config Route", () => {
 
   test("test action — 连接成功", async () => {
     _providerStore = {
-      anthropic: { apiKey: "test-key", baseURL: "https://api.example.com" },
+      anthropic: { npm: "@ai-sdk/anthropic", options: { apiKey: "test-key", baseURL: "https://api.example.com" } },
     };
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () => ({
@@ -175,7 +224,7 @@ describe("Providers Config Route", () => {
 
   test("test action — 连接失败", async () => {
     _providerStore = {
-      anthropic: { apiKey: "bad-key", baseURL: "https://api.example.com" },
+      anthropic: { npm: "@ai-sdk/anthropic", options: { apiKey: "bad-key", baseURL: "https://api.example.com" } },
     };
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () => { throw new Error("Network error"); };
@@ -212,5 +261,147 @@ describe("Providers Config Route", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  // === Model CRUD ===
+
+  test("add_model — 向已有 provider 添加模型", async () => {
+    _providerStore = {
+      openai: {
+        npm: "@ai-sdk/openai",
+        options: { apiKey: "sk-test" },
+        models: { "gpt-4o": { name: "GPT-4o" } },
+      },
+    };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "add_model",
+        name: "openai",
+        data: { modelId: "gpt-4o-mini", name: "GPT-4o Mini", limit: { context: 128000, output: 16384 }, cost: { input: 0.15, output: 0.6 } },
+      }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.modelId).toBe("gpt-4o-mini");
+    const models = (_providerStore.openai as any).models;
+    expect(models["gpt-4o-mini"]).toBeDefined();
+    expect(models["gpt-4o-mini"].name).toBe("GPT-4o Mini");
+    expect(models["gpt-4o-mini"].limit.context).toBe(128000);
+  });
+
+  test("add_model — 缺少 modelId 返回错误", async () => {
+    _providerStore = { openai: { npm: "@ai-sdk/openai", options: {} } };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add_model", name: "openai", data: { name: "test" } }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  test("add_model — 重复模型返回错误", async () => {
+    _providerStore = {
+      openai: { npm: "@ai-sdk/openai", options: {}, models: { "gpt-4o": { name: "GPT-4o" } } },
+    };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add_model", name: "openai", data: { modelId: "gpt-4o" } }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  test("update_model — 更新已有模型", async () => {
+    _providerStore = {
+      openai: { npm: "@ai-sdk/openai", options: {}, models: { "gpt-4o": { name: "GPT-4o", limit: { context: 128000 } } } },
+    };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "update_model",
+        name: "openai",
+        modelId: "gpt-4o",
+        data: { name: "GPT-4o Updated", cost: { input: 2.5, output: 10 } },
+      }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    const models = (_providerStore.openai as any).models;
+    expect(models["gpt-4o"].name).toBe("GPT-4o Updated");
+    expect(models["gpt-4o"].cost.input).toBe(2.5);
+    expect(models["gpt-4o"].limit.context).toBe(128000);
+  });
+
+  test("update_model — 深度合并保留未更新的嵌套字段", async () => {
+    _providerStore = {
+      openai: {
+        npm: "@ai-sdk/openai",
+        options: {},
+        models: { "gpt-4o": { name: "GPT-4o", limit: { context: 128000, output: 4096 }, cost: { input: 2.5, output: 10 } } },
+      },
+    };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "update_model",
+        name: "openai",
+        modelId: "gpt-4o",
+        data: { limit: { context: 200000 } },
+      }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    const model = (_providerStore.openai as any).models["gpt-4o"];
+    expect(model.limit.context).toBe(200000);
+    expect(model.limit.output).toBe(4096);
+    expect(model.cost.input).toBe(2.5);
+  });
+
+  test("update_model — 模型不存在", async () => {
+    _providerStore = { openai: { npm: "@ai-sdk/openai", options: {} } };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "update_model", name: "openai", modelId: "nonexistent", data: {} }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("NOT_FOUND");
+  });
+
+  test("remove_model — 删除已有模型", async () => {
+    _providerStore = {
+      openai: { npm: "@ai-sdk/openai", options: {}, models: { "gpt-4o": { name: "GPT-4o" }, "gpt-3.5": { name: "GPT-3.5" } } },
+    };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "remove_model", name: "openai", modelId: "gpt-3.5" }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    const models = (_providerStore.openai as any).models;
+    expect("gpt-3.5" in models).toBe(false);
+    expect("gpt-4o" in models).toBe(true);
+  });
+
+  test("remove_model — 模型不存在", async () => {
+    _providerStore = { openai: { npm: "@ai-sdk/openai", options: {} } };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "remove_model", name: "openai", modelId: "ghost" }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("NOT_FOUND");
   });
 });

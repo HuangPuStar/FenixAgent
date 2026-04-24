@@ -13,6 +13,7 @@ mock.module("../auth/middleware", () => ({
 mock.module("../services/config", () => ({
   getSection: async (section: string) => section === "agent" ? _agentStore : undefined,
   setSection: async (_section: string, data: unknown) => { _agentStore = data as Record<string, unknown>; },
+  replaceSection: async (_section: string, data: unknown) => { _agentStore = data as Record<string, unknown>; },
   setTopLevelField: async (field: string, value: unknown) => { _topLevelFields[field] = value; },
   getConfig: async () => ({ ..._topLevelFields, agent: _agentStore }),
 }));

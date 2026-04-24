@@ -5,13 +5,13 @@ import { getConfig, setTopLevelField } from "../../../services/config";
 const app = new Hono();
 
 /** 可用模型缓存：{ models, updatedAt } */
-let cachedAvailable: { models: Array<{ id: string; provider: string; label: string }>; updatedAt: number } | null = null;
+let cachedAvailable: { models: Array<{ id: string; provider: string; fullId: string; label: string; contextLimit: number | null; outputLimit: number | null }>; updatedAt: number } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
 
 function ok(data: unknown) { return { success: true as const, data }; }
 function err(code: string, message: string) { return { success: false as const, error: { code, message } }; }
 
-type ModelEntry = { id: string; provider: string; label: string };
+type ModelEntry = { id: string; provider: string; fullId: string; label: string; contextLimit: number | null; outputLimit: number | null };
 
 async function buildAvailableList(): Promise<ModelEntry[]> {
   const config = await getConfig();
@@ -21,10 +21,14 @@ async function buildAvailableList(): Promise<ModelEntry[]> {
     const providerModels = providerCfg.models as Record<string, Record<string, unknown>> | undefined;
     if (!providerModels) continue;
     for (const [modelId, modelCfg] of Object.entries(providerModels)) {
+      const limit = modelCfg?.limit as { context?: number; output?: number } | undefined;
       models.push({
         id: modelId,
         provider: providerName,
+        fullId: `${providerName}/${modelId}`,
         label: (modelCfg?.name as string) ?? modelId,
+        contextLimit: limit?.context ?? null,
+        outputLimit: limit?.output ?? null,
       });
     }
   }
