@@ -16,6 +16,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
     apiListAgents,
     apiGetAgent,
@@ -26,20 +27,7 @@ import {
     apiGetModels,
 } from "../api/client";
 import type { AgentInfo } from "../types/config";
-
-const AVAILABLE_TOOLS = [
-    "Read",
-    "Write",
-    "Edit",
-    "Bash",
-    "Glob",
-    "Grep",
-    "WebSearch",
-    "WebFetch",
-    "Agent",
-    "TaskCreate",
-    "TaskUpdate",
-];
+import { PermissionTab } from "../components/PermissionTab";
 
 export function isValidAgentNameInput(name: string): boolean {
     return (
@@ -69,9 +57,16 @@ export function AgentsPage() {
     const [formModel, setFormModel] = useState("");
     const [formMode, setFormMode] = useState("primary");
     const [formSteps, setFormSteps] = useState("50");
-    const [formTools, setFormTools] = useState<string[]>([]);
     const [formPrompt, setFormPrompt] = useState("");
     const [formSaving, setFormSaving] = useState(false);
+    const [formDescription, setFormDescription] = useState("");
+    const [formVariant, setFormVariant] = useState("");
+    const [formTemperature, setFormTemperature] = useState("");
+    const [formTopP, setFormTopP] = useState("");
+    const [formColor, setFormColor] = useState("");
+    const [formHidden, setFormHidden] = useState(false);
+    const [formDisable, setFormDisable] = useState(false);
+    const [formPermission, setFormPermission] = useState<Record<string, unknown> | null>(null);
 
     const loadAgents = useCallback(async () => {
         setLoading(true);
@@ -134,8 +129,15 @@ export function AgentsPage() {
         setFormModel(modelOptions[0] || "");
         setFormMode("primary");
         setFormSteps("50");
-        setFormTools([...AVAILABLE_TOOLS]);
         setFormPrompt("");
+        setFormDescription("");
+        setFormVariant("");
+        setFormTemperature("");
+        setFormTopP("");
+        setFormColor("");
+        setFormHidden(false);
+        setFormDisable(false);
+        setFormPermission(null);
         setDialogOpen(true);
     };
 
@@ -145,14 +147,34 @@ export function AgentsPage() {
         setFormModel(agent.model || "");
         setFormMode(agent.mode || "primary");
         setFormPrompt("");
+        setFormDescription("");
+        setFormVariant("");
+        setFormTemperature("");
+        setFormTopP("");
+        setFormColor("");
+        setFormHidden(false);
+        setFormDisable(false);
+        setFormPermission(null);
         try {
             const detail = await apiGetAgent(agent.name);
             setFormSteps(String(detail.steps ?? 50));
-            setFormTools(detail.tools ? Object.keys(detail.tools as Record<string, unknown>) : []);
             setFormPrompt(detail.prompt || "");
+            setFormDescription(detail.description || "");
+            setFormVariant(detail.variant || "");
+            setFormTemperature(detail.temperature !== null && detail.temperature !== undefined ? String(detail.temperature) : "");
+            setFormTopP(detail.top_p !== null && detail.top_p !== undefined ? String(detail.top_p) : "");
+            setFormColor(detail.color || "");
+            setFormHidden(detail.hidden ?? false);
+            setFormDisable(detail.disable ?? false);
+            setFormPermission(
+              detail.permission
+                ? (typeof detail.permission === "string"
+                  ? (detail.permission as unknown as Record<string, unknown>)
+                  : (detail.permission as Record<string, unknown>))
+                : null
+            );
         } catch {
             setFormSteps("50");
-            setFormTools([]);
         }
         setDialogOpen(true);
     };
@@ -167,14 +189,35 @@ export function AgentsPage() {
             toast.error("最大轮数须在 1-200 之间");
             return;
         }
+        if (formTemperature !== "") {
+            const t = parseFloat(formTemperature);
+            if (isNaN(t) || t < 0 || t > 2) {
+                toast.error("温度须在 0-2 之间");
+                return;
+            }
+        }
+        if (formTopP !== "") {
+            const p = parseFloat(formTopP);
+            if (isNaN(p) || p < 0 || p > 1) {
+                toast.error("Top P 须在 0-1 之间");
+                return;
+            }
+        }
         setFormSaving(true);
         try {
             const data: Record<string, unknown> = {
                 model: formModel || undefined,
                 mode: formMode,
                 steps: parseInt(formSteps),
-                tools: Object.fromEntries(formTools.map((t) => [t, true])),
                 prompt: formPrompt || undefined,
+                description: formDescription || undefined,
+                variant: formVariant || undefined,
+                temperature: formTemperature !== "" ? parseFloat(formTemperature) : undefined,
+                top_p: formTopP !== "" ? parseFloat(formTopP) : undefined,
+                color: formColor || undefined,
+                hidden: formHidden,
+                disable: formDisable,
+                permission: formPermission ?? undefined,
             };
             if (editingAgent) {
                 await apiSetAgent(name, data);
@@ -306,91 +349,156 @@ export function AgentsPage() {
                 title={editingAgent ? "编辑代理" : "新建代理"}
                 onSubmit={handleSave}
                 loading={formSaving}>
-                <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                    <div>
-                        <Label>名称</Label>
-                        <Input
-                            value={formName}
-                            onChange={(e) => setFormName(e.target.value)}
-                            disabled={!!editingAgent}
-                            placeholder="例如 my-agent"
-                        />
-                    </div>
-                    <div>
-                        <Label>模型</Label>
-                        <Select value={formModel} onValueChange={setFormModel}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="选择模型" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {modelOptions.map((m) => (
-                                    <SelectItem key={m} value={m}>
-                                        {m}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div>
-                        <Label>模式</Label>
-                        <Select value={formMode} onValueChange={setFormMode}>
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="primary">primary</SelectItem>
-                                <SelectItem value="subagent">
-                                    subagent
-                                </SelectItem>
-                                <SelectItem value="all">all</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div>
-                        <Label>步数 (1-200)</Label>
-                        <Input
-                            type="number"
-                            value={formSteps}
-                            onChange={(e) => setFormSteps(e.target.value)}
-                            min={1}
-                            max={200}
-                        />
-                    </div>
-                    <div>
-                        <Label>工具</Label>
-                        <div className="flex flex-wrap gap-2 mt-1">
-                            {AVAILABLE_TOOLS.map((tool) => (
-                                <label
-                                    key={tool}
-                                    className="flex items-center gap-1 text-sm">
+                <Tabs defaultValue="basic" className="w-full">
+                    <TabsList>
+                        <TabsTrigger value="basic">基础配置</TabsTrigger>
+                        <TabsTrigger value="permission">权限配置</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="basic">
+                        <div className="space-y-4 max-h-[55vh] overflow-y-auto pt-2">
+                            <div>
+                                <Label>名称</Label>
+                                <Input
+                                    value={formName}
+                                    onChange={(e) => setFormName(e.target.value)}
+                                    disabled={!!editingAgent}
+                                    placeholder="例如 my-agent"
+                                />
+                            </div>
+                            <div>
+                                <Label>模型</Label>
+                                <Select value={formModel} onValueChange={setFormModel}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="选择模型" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {modelOptions.map((m) => (
+                                            <SelectItem key={m} value={m}>
+                                                {m}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>模式</Label>
+                                <Select value={formMode} onValueChange={setFormMode}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="primary">primary</SelectItem>
+                                        <SelectItem value="subagent">subagent</SelectItem>
+                                        <SelectItem value="all">all</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>步数 (1-200)</Label>
+                                <Input
+                                    type="number"
+                                    value={formSteps}
+                                    onChange={(e) => setFormSteps(e.target.value)}
+                                    min={1}
+                                    max={200}
+                                />
+                            </div>
+                            <div>
+                                <Label>提示词 (Prompt)</Label>
+                                <Textarea
+                                    value={formPrompt}
+                                    onChange={(e) => setFormPrompt(e.target.value)}
+                                    rows={4}
+                                    placeholder="可选，自定义 Agent 提示词"
+                                />
+                            </div>
+                            <div>
+                                <Label>描述</Label>
+                                <Input
+                                    value={formDescription}
+                                    onChange={(e) => setFormDescription(e.target.value)}
+                                    placeholder="可选，Agent 的简短描述"
+                                />
+                            </div>
+                            <div>
+                                <Label>Variant</Label>
+                                <Input
+                                    value={formVariant}
+                                    onChange={(e) => setFormVariant(e.target.value)}
+                                    placeholder="可选，例如 thinking"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label>温度 (0-2)</Label>
+                                    <Input
+                                        type="number"
+                                        value={formTemperature}
+                                        onChange={(e) => setFormTemperature(e.target.value)}
+                                        min={0}
+                                        max={2}
+                                        step={0.1}
+                                        placeholder="可选"
+                                    />
+                                </div>
+                                <div>
+                                    <Label>Top P (0-1)</Label>
+                                    <Input
+                                        type="number"
+                                        value={formTopP}
+                                        onChange={(e) => setFormTopP(e.target.value)}
+                                        min={0}
+                                        max={1}
+                                        step={0.1}
+                                        placeholder="可选"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <Label>颜色</Label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        type="color"
+                                        value={formColor || "#000000"}
+                                        onChange={(e) => setFormColor(e.target.value)}
+                                        className="w-12 h-9 p-1 cursor-pointer"
+                                    />
+                                    <Input
+                                        value={formColor}
+                                        onChange={(e) => setFormColor(e.target.value)}
+                                        placeholder="hex (#RRGGBB) 或预设色名"
+                                        className="flex-1"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-6">
+                                <label className="flex items-center gap-2 text-sm">
                                     <input
                                         type="checkbox"
-                                        checked={formTools.includes(tool)}
-                                        onChange={(e) => {
-                                            setFormTools((prev) =>
-                                                e.target.checked
-                                                    ? [...prev, tool]
-                                                    : prev.filter(
-                                                          (t) => t !== tool,
-                                                      ),
-                                            );
-                                        }}
+                                        checked={formHidden}
+                                        onChange={(e) => setFormHidden(e.target.checked)}
                                     />
-                                    {tool}
+                                    隐藏
                                 </label>
-                            ))}
+                                <label className="flex items-center gap-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={formDisable}
+                                        onChange={(e) => setFormDisable(e.target.checked)}
+                                    />
+                                    禁用
+                                </label>
+                            </div>
                         </div>
-                    </div>
-                    <div>
-                        <Label>提示词 (Prompt)</Label>
-                        <Textarea
-                            value={formPrompt}
-                            onChange={(e) => setFormPrompt(e.target.value)}
-                            rows={4}
-                            placeholder="可选，自定义 Agent 提示词"
+                    </TabsContent>
+                    <TabsContent value="permission">
+                        <PermissionTab
+                            agentName={formName}
+                            permission={formPermission}
+                            onPermissionChange={setFormPermission}
                         />
-                    </div>
-                </div>
+                    </TabsContent>
+                </Tabs>
             </FormDialog>
             <ConfirmDialog
                 open={confirmOpen}

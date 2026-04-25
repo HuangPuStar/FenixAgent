@@ -52,22 +52,25 @@ async function handleGet() {
     current: {
       model: (config.model as string) ?? null,
       small_model: (config.small_model as string) ?? null,
+      permission: (config.permission as unknown) ?? null,
     },
     available,
   });
 }
 
-async function handleSet(data: { model?: string; small_model?: string }) {
-  if (!data.model && !data.small_model) {
-    return err("VALIDATION_ERROR", "At least one of 'model' or 'small_model' is required");
+async function handleSet(data: { model?: string; small_model?: string; permission?: unknown }) {
+  if (!data.model && !data.small_model && data.permission === undefined) {
+    return err("VALIDATION_ERROR", "At least one of 'model', 'small_model', or 'permission' is required");
   }
   if (data.model) await setTopLevelField("model", data.model);
   if (data.small_model) await setTopLevelField("small_model", data.small_model);
+  if (data.permission !== undefined) await setTopLevelField("permission", data.permission);
   // 读回确认
   const config = await getConfig();
   return ok({
     model: (config.model as string | null) ?? null,
     small_model: (config.small_model as string | null) ?? null,
+    permission: (config.permission as unknown) ?? null,
   });
 }
 
@@ -77,7 +80,7 @@ async function handleRefresh() {
 }
 
 app.post("/config/models", sessionAuth, async (c) => {
-  const body = await c.req.json<{ action: string; data?: { model?: string; small_model?: string } }>().catch((): { action: string; data?: { model?: string; small_model?: string } } => ({ action: "" }));
+  const body = await c.req.json<{ action: string; data?: { model?: string; small_model?: string; permission?: unknown } }>().catch((): { action: string; data?: { model?: string; small_model?: string; permission?: unknown } } => ({ action: "" }));
   try {
     switch (body.action) {
       case "get": return c.json(await handleGet());

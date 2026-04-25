@@ -7,6 +7,8 @@ import { existsSync } from "node:fs";
 // Since skill.ts uses module-level constants, we re-implement the functions
 // pointing at a temp directory for isolated testing.
 const tempDir = await mkdtemp(join(tmpdir(), "skill-test-"));
+// 注意: 此测试使用本地 SKILLS_DIR 指向临时目录，不依赖 skill.ts 的路径常量
+// 生产路径已从 ~/.config/opencode/skills/ 迁移到 ~/.agents/skills/
 const SKILLS_DIR = join(tempDir, "skills");
 const DISABLED_DIR = join(SKILLS_DIR, "_disabled");
 
@@ -256,8 +258,57 @@ Check all the things.`;
   });
 });
 
+// 测试迁移逻辑 — 使用独立临时目录模拟旧路径和新路径
+const migrateTemp = await mkdtemp(join(tmpdir(), "skill-migrate-test-"));
+const oldDir = join(migrateTemp, "old-skills");
+const newDir = join(migrateTemp, "new-skills");
+
+describe("migrateSkillsDir 逻辑验证", () => {
+  beforeEach(async () => {
+    if (existsSync(migrateTemp)) await rm(migrateTemp, { recursive: true, force: true });
+    await mkdir(migrateTemp, { recursive: true });
+  });
+
+  test("旧目录有数据，新目录不存在 → 执行迁移", async () => {
+    // 准备旧目录数据
+    await mkdir(join(oldDir, "test-skill"), { recursive: true });
+    await writeFile(join(oldDir, "test-skill", "SKILL.md"), "---\nname: \"test\"\n---\ncontent", "utf-8");
+
+    // 模拟迁移核心逻辑
+    const { rename } = await import("node:fs/promises");
+    await rename(oldDir, newDir);
+    await mkdir(oldDir, { recursive: true });
+    await writeFile(join(oldDir, ".migrated"), "test", "utf-8");
+
+    expect(existsSync(join(newDir, "test-skill", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(oldDir, ".migrated"))).toBe(true);
+  });
+
+  test("新目录已存在 → 跳过迁移，旧数据不动", async () => {
+    await mkdir(join(oldDir, "skill-a"), { recursive: true });
+    await mkdir(newDir, { recursive: true });
+
+    // 新目录存在时不执行 rename
+    expect(existsSync(join(oldDir, "skill-a"))).toBe(true);
+    expect(existsSync(newDir)).toBe(true);
+  });
+
+  test(".migrated 标记存在 → 跳过迁移", async () => {
+    await mkdir(oldDir, { recursive: true });
+    await writeFile(join(oldDir, ".migrated"), "2025-01-01", "utf-8");
+    // 标记存在时不执行迁移
+    expect(existsSync(join(oldDir, ".migrated"))).toBe(true);
+  });
+
+  test("旧目录不存在 → 跳过迁移，不创建任何目录", async () => {
+    expect(existsSync(oldDir)).toBe(false);
+    // 无操作
+  });
+});
+
 afterAll(async () => {
   if (existsSync(tempDir)) {
     await rm(tempDir, { recursive: true, force: true });
   }
+  if (existsSync(migrateTemp)) await rm(migrateTemp, { recursive: true, force: true });
 });

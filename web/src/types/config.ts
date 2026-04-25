@@ -1,5 +1,38 @@
 // === opencode 标准类型 ===
 
+// === Permission 类型定义 ===
+
+/** 开关型工具的三态值 */
+export type PermissionAction = "ask" | "allow" | "deny";
+
+/** 规则型工具的值：全局策略字符串 或 pattern→action 映射 */
+export type RuleBasedPermission = PermissionAction | Record<string, PermissionAction>;
+
+/** 完整的 PermissionConfig 对象模式 */
+export interface PermissionObjectConfig {
+    // 规则型工具（支持通配符匹配）
+    read?: RuleBasedPermission;
+    edit?: RuleBasedPermission;
+    glob?: RuleBasedPermission;
+    grep?: RuleBasedPermission;
+    list?: RuleBasedPermission;
+    bash?: RuleBasedPermission;
+    task?: RuleBasedPermission;
+    external_directory?: RuleBasedPermission;
+    lsp?: RuleBasedPermission;
+    skill?: RuleBasedPermission;
+    // 开关型工具（仅支持三态字符串）
+    todowrite?: PermissionAction;
+    question?: PermissionAction;
+    webfetch?: PermissionAction;
+    websearch?: PermissionAction;
+    codesearch?: PermissionAction;
+    doom_loop?: PermissionAction;
+}
+
+/** PermissionConfig: 字符串模式（全局策略）或对象模式（按工具配置） */
+export type PermissionConfig = PermissionAction | PermissionObjectConfig;
+
 export interface OpenCodeModel {
     name?: string;
     modalities?: {
@@ -34,7 +67,7 @@ export interface OpenCodeAgent {
     mode?: "primary" | "subagent" | "all";
     prompt?: string;
     tools?: string[];
-    permission?: Record<string, unknown>;
+    permission?: PermissionConfig;
 }
 
 export interface OpenCodeConfig {
@@ -95,6 +128,7 @@ export interface ModelConfig {
     current: {
         model: string | null;
         small_model: string | null;
+        permission: PermissionConfig | null;
     };
     available: ModelEntry[];
 }
@@ -106,6 +140,8 @@ export interface AgentInfo {
     builtIn: boolean;
     model: string | null;
     mode: string | null;
+    description: string | null;
+    color: string | null;
 }
 
 export interface AgentDetail {
@@ -116,7 +152,14 @@ export interface AgentDetail {
     tools: Record<string, boolean> | null;
     steps: number | null;
     mode: string | null;
-    permission: unknown;
+    permission: PermissionConfig | null;
+    variant: string | null;
+    temperature: number | null;
+    top_p: number | null;
+    disable: boolean;
+    hidden: boolean;
+    color: string | null;
+    description: string | null;
 }
 
 // --- Skills ---

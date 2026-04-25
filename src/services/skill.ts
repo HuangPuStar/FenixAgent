@@ -1,9 +1,10 @@
-import { readdir, readFile, writeFile, mkdir, rename, rm } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, rename, rm, cp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const SKILLS_DIR = join(homedir(), ".config", "opencode", "skills");
+export const OLD_SKILLS_DIR = join(homedir(), ".config", "opencode", "skills");
+export const SKILLS_DIR = join(homedir(), ".agents", "skills");
 const DISABLED_DIR = join(SKILLS_DIR, "_disabled");
 
 export interface SkillMeta {
@@ -32,6 +33,37 @@ async function ensureDisabledDir(): Promise<void> {
   if (!existsSync(DISABLED_DIR)) {
     await mkdir(DISABLED_DIR, { recursive: true });
   }
+}
+
+export async function migrateSkillsDir(): Promise<void> {
+  const MIGRATED_MARKER = join(OLD_SKILLS_DIR, ".migrated");
+
+  // 新目录已存在 → 跳过迁移（可能是全新安装或已迁移完成）
+  if (existsSync(SKILLS_DIR)) return;
+  // 旧目录不存在 → 跳过迁移（全新安装，无旧数据），但确保新目录存在
+  if (!existsSync(OLD_SKILLS_DIR)) {
+    await mkdir(SKILLS_DIR, { recursive: true });
+    return;
+  }
+  // 已有 .migrated 标记 → 跳过（历史迁移完成，新目录被手动删除的场景）
+  if (existsSync(MIGRATED_MARKER)) return;
+
+  await mkdir(join(homedir(), ".agents"), { recursive: true });
+
+  try {
+    // 尝试原子 rename（同文件系统下生效）
+    await rename(OLD_SKILLS_DIR, SKILLS_DIR);
+  } catch {
+    // 跨文件系统时回退到 copy + delete
+    await cp(OLD_SKILLS_DIR, SKILLS_DIR, { recursive: true });
+    await rm(OLD_SKILLS_DIR, { recursive: true, force: true });
+  }
+
+  // 在旧路径创建 .migrated 标记文件，防止重复迁移
+  await mkdir(OLD_SKILLS_DIR, { recursive: true });
+  await writeFile(MIGRATED_MARKER, new Date().toISOString(), "utf-8");
+
+  console.log("[RCS] Skills directory migrated:", OLD_SKILLS_DIR, "→", SKILLS_DIR);
 }
 
 function parseFrontmatter(raw: string): { metadata: Record<string, string>; content: string } {

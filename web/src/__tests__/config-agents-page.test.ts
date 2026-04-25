@@ -40,3 +40,40 @@ describe("isValidStepsInput", () => {
     expect(isValidStepsInput("abc")).toBe(false);
   });
 });
+
+describe("isValidAgentNameInput — Task 5 回归", () => {
+  test("带连字符的合法名称", () => {
+    expect(isValidAgentNameInput("my-custom-agent")).toBe(true);
+  });
+
+  test("纯数字名称", () => {
+    expect(isValidAgentNameInput("123")).toBe(true);
+  });
+
+  test("64 字符名称仍合法", () => {
+    expect(isValidAgentNameInput("a".repeat(64))).toBe(true);
+  });
+
+  test("65 字符名称不合法", () => {
+    expect(isValidAgentNameInput("a".repeat(65))).toBe(false);
+  });
+});
+
+describe("isValidStepsInput — Task 5 回归", () => {
+  test("边界值 1", () => {
+    expect(isValidStepsInput("1")).toBe(true);
+  });
+
+  test("边界值 200", () => {
+    expect(isValidStepsInput("200")).toBe(true);
+  });
+
+  test("负数", () => {
+    expect(isValidStepsInput("-1")).toBe(false);
+  });
+
+  test("小数被 parseInt 截断为整数", () => {
+    // parseInt("1.5") = 1, 所以 isValidStepsInput("1.5") = true
+    expect(isValidStepsInput("1.5")).toBe(true);
+  });
+});

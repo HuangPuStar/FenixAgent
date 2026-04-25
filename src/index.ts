@@ -16,8 +16,11 @@ import webSessions from "./routes/web/sessions";
 import webEnvironments from "./routes/web/environments";
 import webApiKeys from "./routes/web/api-keys";
 import webConfig from "./routes/web/config";
+import { migrateSkillsDir } from "./services/skill";
 
 console.log("[RCS] Database initialized (SQLite + better-auth)");
+
+await migrateSkillsDir();
 
 const app = new Hono();
 

@@ -29,7 +29,7 @@ describe("Models Config Route", () => {
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.data.current).toEqual({ model: null, small_model: null });
+    expect(json.data.current).toEqual({ model: null, small_model: null, permission: null });
     expect(json.data.available).toEqual([]);
   });
 
@@ -168,5 +168,97 @@ describe("Models Config Route", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  // ── Permission 透传测试 ──
+
+  test("get action — 无 permission 返回 null", async () => {
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get" }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.current.permission).toBe(null);
+  });
+
+  test("get action — permission 为对象时透传", async () => {
+    _configStore = {
+      permission: { bash: "allow", read: { "*.env": "deny" } },
+    };
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get" }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.current.permission).toEqual({ bash: "allow", read: { "*.env": "deny" } });
+  });
+
+  test("get action — permission 为字符串时透传", async () => {
+    _configStore = {
+      permission: "ask",
+    };
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get" }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.current.permission).toBe("ask");
+  });
+
+  test("set action — 单独设置 permission 对象", async () => {
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set", data: { permission: { bash: "deny" } } }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.permission).toEqual({ bash: "deny" });
+    expect(_configStore.permission).toEqual({ bash: "deny" });
+  });
+
+  test("set action — 单独设置 permission 字符串", async () => {
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set", data: { permission: "allow" } }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.permission).toBe("allow");
+    expect(_configStore.permission).toBe("allow");
+  });
+
+  test("set action — 同时设置 model 和 permission", async () => {
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set", data: { model: "gpt-4o", permission: { edit: "deny" } } }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.model).toBe("gpt-4o");
+    expect(json.data.permission).toEqual({ edit: "deny" });
+    expect(_configStore.model).toBe("gpt-4o");
+    expect(_configStore.permission).toEqual({ edit: "deny" });
+  });
+
+  test("set action — permission 为 null 时清除", async () => {
+    _configStore.permission = { bash: "allow" };
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set", data: { permission: null } }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.permission).toBe(null);
+    expect(_configStore.permission).toBe(null);
   });
 });
