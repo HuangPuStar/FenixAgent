@@ -298,6 +298,17 @@ export function storeMarkAcpAgentOnline(id: string): boolean {
   return true;
 }
 
+/** Delete an environment and its associated sessions */
+export function storeDeleteEnvironment(id: string): boolean {
+  // Delete associated sessions first
+  for (const [sid, s] of sessions) {
+    if (s.environmentId === id) {
+      sessions.delete(sid);
+    }
+  }
+  return environments.delete(id);
+}
+
 // ---------- Reset (for tests) ----------
 
 export function storeReset() {

@@ -3,6 +3,7 @@ import { apiKeyAuth } from "../../auth/middleware";
 import {
   storeCreateEnvironment,
   storeCreateSession,
+  storeDeleteEnvironment,
   storeFindEnvironmentByMachineName,
   storeGetEnvironment,
   storeUpdateEnvironment,
@@ -85,7 +86,7 @@ app.delete("/bridge/:id", apiKeyAuth, async (c) => {
   if (!env || env.userId !== user.id) {
     return c.json({ error: { type: "not_found", message: "Environment not found" } }, 404);
   }
-  storeUpdateEnvironment(envId, { status: "deregistered" });
+  storeDeleteEnvironment(envId);
   return c.json({ status: "ok" }, 200);
 });
 

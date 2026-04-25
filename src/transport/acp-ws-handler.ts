@@ -5,11 +5,9 @@ import type { SessionEvent } from "./event-bus";
 import {
   storeCreateEnvironment,
   storeCreateSession,
-  storeFindEnvironmentByMachineName,
+  storeDeleteEnvironment,
   storeGetEnvironment,
   storeListSessionsByEnvironment,
-  storeMarkAcpAgentOffline,
-  storeMarkAcpAgentOnline,
   storeUpdateEnvironment,
 } from "../store";
 import { config } from "../config";
@@ -92,27 +90,15 @@ function handleRegister(wsId: string, msg: Record<string, unknown>): void {
   const acpLinkVersion = (msg.acp_link_version as string) || null;
   const maxSessions = typeof msg.max_sessions === "number" ? msg.max_sessions : 1;
 
-  // Reuse existing offline record if available (same machineName + userId)
-  let record = storeFindEnvironmentByMachineName(agentName, entry.userId);
-  if (record && record.status === "offline") {
-    // Reuse existing record — update status and capabilities
-    storeUpdateEnvironment(record.id, {
-      status: "active",
-      capabilities: capabilities || record.capabilities || undefined,
-      maxSessions,
-    });
-    log(`[ACP-WS] Reusing offline agent: agentId=${record.id} name=${agentName}`);
-  } else {
-    // Create new EnvironmentRecord
-    record = storeCreateEnvironment({
-      secret: `ws_${wsId}`,
-      userId: entry.userId,
-      machineName: agentName,
-      workerType: "acp",
-      maxSessions,
-      capabilities: capabilities || undefined,
-    });
-  }
+  // Create new EnvironmentRecord
+  const record = storeCreateEnvironment({
+    secret: `ws_${wsId}`,
+    userId: entry.userId,
+    machineName: agentName,
+    workerType: "acp",
+    maxSessions,
+    capabilities: capabilities || undefined,
+  });
 
   // Auto-create session if none exists for this environment
   const existing = storeListSessionsByEnvironment(record.id);
@@ -174,7 +160,7 @@ function handleIdentify(wsId: string, msg: Record<string, unknown>): void {
   }
 
   // Update status to active
-  storeMarkAcpAgentOnline(agentId);
+  storeUpdateEnvironment(agentId, { status: "active", lastPollAt: new Date() });
 
   entry.agentId = record.id;
   entry.capabilities = record.capabilities || null;
@@ -268,9 +254,9 @@ export function handleAcpWsClose(ws: WSContext, wsId: string, code?: number, rea
     clearInterval(entry.keepalive);
   }
 
-  // Mark agent as offline (don't delete record — allow reconnect)
+  // Delete agent record and associated sessions
   if (entry.agentId) {
-    storeMarkAcpAgentOffline(entry.agentId);
+    storeDeleteEnvironment(entry.agentId);
 
     // Notify all relay connections that this agent is gone
     const bus = getAcpEventBus(entry.agentId);
@@ -317,7 +303,7 @@ export function closeAllAcpConnections(): void {
         entry.ws.close(1001, "server_shutdown");
       }
       if (entry.agentId) {
-        storeMarkAcpAgentOffline(entry.agentId);
+        storeDeleteEnvironment(entry.agentId);
       }
     } catch {
       // ignore errors during shutdown
