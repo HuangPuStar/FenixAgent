@@ -6,7 +6,7 @@
 
 - **文件名**: `opencode.json`（支持 JSON/JSONC 注释）
 - **Schema**: `https://opencode.ai/config.json`
-- **用途**: 定义 AI 编码代理的 provider、model、agent、MCP、权限等全部行为
+- **用途**: 定义 AI 编码Agent的 provider、model、agent、MCP、权限等全部行为
 
 ## 2. 配置文件层级与合并
 
@@ -468,6 +468,7 @@ OpenCode 的 skill 是 `SKILL.md` 文件，发现路径有四层：
 ```
 
 **规则：**
+
 - 启用：skill 文件夹在 `skills/` 根目录下 → OpenCode 正常发现
 - 禁用：skill 文件夹移入 `skills/_disabled/` → OpenCode 忽略
 - `SKILL.md` 命名规范：OpenCode 按目录名识别 skill，文件名固定为 `SKILL.md`

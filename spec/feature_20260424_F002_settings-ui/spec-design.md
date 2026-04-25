@@ -24,7 +24,7 @@ App.tsx (路由层)
   ├── Sidebar（新增 4 个平铺入口）
   │     ├── 服务商 /providers
   │     ├── 模型   /models
-  │     ├── 代理   /agents
+  │     ├── Agent   /agents
   │     └── 技能   /skills
   │
   ├── 共享组件层 (web/components/config/)
@@ -66,7 +66,7 @@ API 密钥 (KeyRound)             → (state: showApiKeys)
 ─────────────── Separator
 服务商 (Cloud)                  → /code/providers
 模型 (Cpu)                      → /code/models
-代理 (Bot)                       → /code/agents
+Agent (Bot)                       → /code/agents
 技能 (Wrench)                    → /code/skills
 ─────────────── Separator
 退出 (LogOut)
@@ -163,9 +163,9 @@ apiDeleteProvider(name) → void
 - 顶部"刷新"按钮调用 `{ action: "refresh" }` 更新可用模型列表
 - 不需要新建/编辑/删除弹窗，不需要批量操作
 
-### 代理（Agents）页面
+### Agent（Agents）页面
 
-![代理页面](./images/05-wireframe.png)
+![Agent页面](./images/05-wireframe.png)
 
 **页面结构：** 单页 DataTable + FormDialog 弹窗
 

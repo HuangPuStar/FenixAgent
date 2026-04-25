@@ -18,6 +18,7 @@
 确保构建和测试工具链在当前开发环境中可用，避免后续 Task 因环境问题阻塞。
 
 **执行步骤:**
+
 - [ ] 验证 bun 可用
   - 运行: `bun --version`
   - 预期: 输出 bun 版本号
@@ -26,6 +27,7 @@
   - 预期: 构建成功，无错误
 
 **检查步骤:**
+
 - [ ] 前端构建无错误
   - `cd /Users/konghayao/code/pazhou/remote-control-server && bun run build:web 2>&1 | tail -5`
   - 预期: 输出包含 "built in" 且无 error
@@ -42,11 +44,13 @@
 **修改原因:** 当前项目未安装 sonner（Toast 通知库）和 react-markdown（Markdown 渲染库），也没有配置模块的 TypeScript 类型定义。App.tsx 中未挂载 Toaster 全局组件。
 
 **涉及文件:**
+
 - 修改: `package.json`（添加 sonner、react-markdown 依赖）
 - 修改: `web/src/App.tsx`（添加 Toaster 全局组件）
 - 新建: `web/src/types/config.ts`（配置模块类型定义）
 
 **执行步骤:**
+
 - [ ] 安装 sonner 和 react-markdown 依赖
   - 位置: 项目根目录
   - 运行: `cd /Users/konghayao/code/pazhou/remote-control-server && bun add sonner react-markdown`
@@ -56,14 +60,17 @@
   - 位置: `web/src/App.tsx` 文件顶部导入区域（~L1-L12）
   - 新增导入: `import { Toaster } from "sonner";`
   - 位置: `web/src/App.tsx` 的 `<ThemeProvider>` 包裹内（~L126），在 `<AppShell>` 之后、`</ThemeProvider>` 之前追加:
+
     ```tsx
     <Toaster richColors position="top-right" />
     ```
+
   - 原因: Toaster 需要挂载在 App 根节点，所有页面才能调用 `toast()` 函数
 
 - [ ] 创建配置模块类型定义文件
   - 新建文件: `web/src/types/config.ts`
   - 内容：定义 4 个模块的 TypeScript 接口，与后端 API 响应结构对齐
+
     ```typescript
     // === Providers ===
     export interface ProviderInfo {
@@ -137,6 +144,7 @@
       error?: { code: string; message: string };
     }
     ```
+
   - 原因: 为 Task 2 的 API Client 和 Task 6-9 的页面提供类型安全保障
 
 - [ ] 为类型定义编写单元测试
@@ -149,6 +157,7 @@
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] sonner 和 react-markdown 已安装
   - `cd /Users/konghayao/code/pazhou/remote-control-server && ls node_modules/sonner/package.json node_modules/react-markdown/package.json`
   - 预期: 两个文件均存在
@@ -171,13 +180,16 @@
 **修改原因:** 当前 `web/src/api/client.ts` 只有 Session、Environment、Control、API Keys 相关函数，无配置模块函数。
 
 **涉及文件:**
+
 - 修改: `web/src/api/client.ts`
 
 **执行步骤:**
+
 - [ ] 在 client.ts 末尾新增配置模块 API 函数
   - 位置: `web/src/api/client.ts`（~L104，在 `apiUpdateApiKeyLabel` 函数之后）
   - 添加导入类型: `import type { ProviderInfo, ProviderDetail, ModelConfig, ModelEntry, AgentInfo, AgentDetail, SkillInfo, SkillDetail, ApiResponse } from "../types/config";`
   - 新增通用配置请求函数:
+
     ```typescript
     // --- Config ---
 
@@ -193,7 +205,9 @@
       return res.data as T;
     }
     ```
+
   - 新增 Providers 模块函数（5 个）:
+
     ```typescript
     export function apiListProviders() {
       return apiConfigAction<{ providers: ProviderInfo[] }>("providers", "list").then(d => d.providers);
@@ -211,7 +225,9 @@
       return apiConfigAction<null>("providers", "delete", { name });
     }
     ```
+
   - 新增 Models 模块函数（3 个）:
+
     ```typescript
     export function apiGetModels() {
       return apiConfigAction<ModelConfig>("models", "get");
@@ -223,7 +239,9 @@
       return apiConfigAction<{ count: number }>("models", "refresh");
     }
     ```
+
   - 新增 Agents 模块函数（6 个）:
+
     ```typescript
     export function apiListAgents() {
       return apiConfigAction<{ default_agent: string | null; agents: AgentInfo[] }>("agents", "list");
@@ -244,7 +262,9 @@
       return apiConfigAction<{ default_agent: string }>("agents", "set_default", { name });
     }
     ```
+
   - 新增 Skills 模块函数（6 个）:
+
     ```typescript
     export function apiListSkills() {
       return apiConfigAction<{ skills: SkillInfo[] }>("skills", "list").then(d => d.skills);
@@ -281,6 +301,7 @@
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] client.ts 包含所有配置函数
   - `grep -c "export function api" /Users/konghayao/code/pazhou/remote-control-server/web/src/api/client.ts`
   - 预期: 输出 ≥ 20（原有函数 + 新增 20 个配置函数）
@@ -297,13 +318,16 @@
 **修改原因:** 当前项目无 DataTable 组件。需要基于 shadcn/ui 的 Table 组件构建一个灵活的泛型数据表格。
 
 **涉及文件:**
+
 - 新建: `web/components/config/DataTable.tsx`
 - 新建: `web/components/config/index.ts`
 
 **执行步骤:**
+
 - [ ] 创建 DataTable 泛型组件
   - 新建文件: `web/components/config/DataTable.tsx`
   - 核心接口设计:
+
     ```typescript
     export interface Column<T> {
       key: string;                    // 数据字段名
@@ -325,6 +349,7 @@
       pageSize?: number;              // 每页行数，默认 10
     }
     ```
+
   - 实现要点:
     - 使用 `useState` 管理搜索词、排序列/方向、筛选条件、当前页码、已选行集合
     - 搜索: 遍历所有 `filterable` 列的值进行不区分大小写的子串匹配
@@ -333,6 +358,7 @@
     - 行选择: 通过 Checkbox（`web/components/ui/input.tsx` type=checkbox）切换，维护 `Set<number>`（行索引）或 `Set<string>`（按 key 字段），通过 `onSelectionChange` 回调传出
     - 空状态: 数据为空时渲染居中文字 `emptyMessage`（默认 "暂无数据"）
   - UI 布局:
+
     ```
     ┌─ 搜索框 (Input) ─────────────────────────────┐
     ├─ Table Header ────────────────────────────────┤
@@ -341,6 +367,7 @@
     ├─ 分页: < 1 2 3 >  第1-10条，共25条 ──────────┤
     └───────────────────────────────────────────────┘
     ```
+
   - 样式: 使用 Tailwind CSS，表格使用 `w-full text-sm`，表头使用 `text-left font-medium text-muted-foreground`，行使用 `border-b hover:bg-muted/50`
 
 - [ ] 创建 config 组件索引文件
@@ -351,12 +378,14 @@
   - 测试文件: `web/src/__tests__/config-datatable.test.ts`
   - 由于是 React 组件，使用 bun:test + 手动渲染验证逻辑（测试 hooks 辅助函数的纯逻辑）
   - 提取排序/筛选/分页的纯逻辑为独立函数并测试:
+
     ```typescript
     // 在 DataTable.tsx 中导出用于测试的纯函数
     export function filterData<T>(data: T[], columns: Column<T>[], search: string): T[]
     export function sortData<T>(data: T[], key: string, dir: "asc" | "desc"): T[]
     export function paginateData<T>(data: T[], page: number, size: number): { items: T[]; total: number }
     ```
+
   - 测试场景:
     - filterData: 搜索 "test" → 过滤出 name 包含 "test" 的行
     - filterData: 搜索为空 → 返回全部数据
@@ -368,6 +397,7 @@
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] DataTable 组件文件存在
   - `test -f /Users/konghayao/code/pazhou/remote-control-server/web/components/config/DataTable.tsx && echo "OK"`
   - 预期: 输出 OK
@@ -387,6 +417,7 @@
 **修改原因:** 当前项目无这些共享组件，需要基于 shadcn/ui 组件构建。
 
 **涉及文件:**
+
 - 新建: `web/components/config/ConfirmDialog.tsx`
 - 新建: `web/components/config/FormDialog.tsx`
 - 新建: `web/components/config/BatchActionBar.tsx`
@@ -395,9 +426,11 @@
 - 修改: `web/components/config/index.ts`（添加新组件导出）
 
 **执行步骤:**
+
 - [ ] 创建 ConfirmDialog 组件
   - 新建文件: `web/components/config/ConfirmDialog.tsx`
   - 接口:
+
     ```typescript
     interface ConfirmDialogProps {
       open: boolean;
@@ -411,12 +444,14 @@
       loading?: boolean;
     }
     ```
+
   - 实现: 基于 `Dialog` + `DialogContent` + `DialogHeader` + `DialogTitle` + `DialogDescription` + `DialogFooter`（来自 `@/components/ui/dialog`）
   - 确认按钮使用 `variant="destructive"` 时显示红色警告样式
 
 - [ ] 创建 FormDialog 组件
   - 新建文件: `web/components/config/FormDialog.tsx`
   - 接口:
+
     ```typescript
     interface FormDialogProps {
       open: boolean;
@@ -429,11 +464,13 @@
       width?: string;             // 默认 "sm:max-w-lg"
     }
     ```
+
   - 实现: 基于 `Dialog` + `DialogContent`，包裹 `<form onSubmit>` 结构，底部包含取消和提交按钮
 
 - [ ] 创建 BatchActionBar 组件
   - 新建文件: `web/components/config/BatchActionBar.tsx`
   - 接口:
+
     ```typescript
     interface BatchActionBarProps {
       selectedCount: number;
@@ -446,17 +483,20 @@
       onClear: () => void;
     }
     ```
+
   - 实现: 固定在底部的浮动条（`fixed bottom-4 left-1/2 -translate-x-1/2`），基于 `Card` 组件，左侧显示 "已选择 N 项" + `Badge`，右侧排列操作 `Button`
 
 - [ ] 创建 StatusBadge 组件
   - 新建文件: `web/components/config/StatusBadge.tsx`
   - 接口:
+
     ```typescript
     interface StatusBadgeProps {
       status: string;
       colorMap?: Record<string, "default" | "secondary" | "destructive" | "outline">;
     }
     ```
+
   - 实现: 基于 `Badge` 组件，内置默认颜色映射:
     - "configured" / "enabled" / "已配置" / "已启用" → green: `bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300`
     - "unconfigured" / "disabled" / "未配置" / "已禁用" → gray: `variant="secondary"`
@@ -466,6 +506,7 @@
 - [ ] 创建 EmptyState 组件
   - 新建文件: `web/components/config/EmptyState.tsx`
   - 接口:
+
     ```typescript
     interface EmptyStateProps {
       icon?: React.ReactNode;
@@ -477,11 +518,13 @@
       };
     }
     ```
+
   - 实现: 居中的 `Card` 容器，包含图标、标题文字、描述文字和操作按钮
 
 - [ ] 更新 config 组件索引文件
   - 位置: `web/components/config/index.ts`
   - 追加导出:
+
     ```typescript
     export { ConfirmDialog } from "./ConfirmDialog";
     export { FormDialog } from "./FormDialog";
@@ -493,9 +536,11 @@
 - [ ] 为辅助组件的纯逻辑编写单元测试
   - 测试文件: `web/src/__tests__/config-helpers.test.ts`
   - 提取 StatusBadge 的颜色映射逻辑为导出函数 `getBadgeVariant`:
+
     ```typescript
     export function getBadgeVariant(status: string): string
     ```
+
   - 测试场景:
     - getBadgeVariant("configured") → "green"
     - getBadgeVariant("disabled") → "secondary"
@@ -505,6 +550,7 @@
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] 5 个辅助组件文件存在
   - `ls /Users/konghayao/code/pazhou/remote-control-server/web/components/config/ | grep -E "Confirm|Form|Batch|Status|Empty"`
   - 预期: 输出 5 个文件名
@@ -520,16 +566,19 @@
 ### Task 5: Sidebar 改造与路由
 
 **背景:**
-本 Task 改造 Sidebar 导航和路由系统，为 4 个配置模块页面添加入口。在现有 Sidebar 的 API Keys 入口下方、退出按钮上方新增 4 个平铺入口（服务商、模型、代理、技能），使用 Separator 分隔。在 App.tsx 中扩展 ViewId 类型和路由匹配逻辑，4 个新页面使用 React.lazy 懒加载。
+本 Task 改造 Sidebar 导航和路由系统，为 4 个配置模块页面添加入口。在现有 Sidebar 的 API Keys 入口下方、退出按钮上方新增 4 个平铺入口（服务商、模型、Agent、技能），使用 Separator 分隔。在 App.tsx 中扩展 ViewId 类型和路由匹配逻辑，4 个新页面使用 React.lazy 懒加载。
 **修改原因:** 当前 ViewId 类型仅包含 dashboard/session/apikeys/login，Sidebar 仅有 Dashboard/Session/API Keys/Logout 入口，无配置模块入口。
 
 **涉及文件:**
+
 - 修改: `web/src/App.tsx`
 
 **执行步骤:**
+
 - [ ] 扩展 ViewId 类型
   - 位置: `web/src/App.tsx`（~L17）
   - 将 `type ViewId = "dashboard" | "session" | "apikeys" | "login";` 改为:
+
     ```typescript
     type ViewId = "dashboard" | "session" | "apikeys" | "login" | "providers" | "models" | "agents" | "skills";
     ```
@@ -538,6 +587,7 @@
   - 位置: `web/src/App.tsx`（~L8-L12 导入区域）
   - 追加导入: `Cloud, Cpu, Bot, Wrench` 四个图标
   - 修改后导入:
+
     ```typescript
     import {
       LayoutDashboard,
@@ -554,6 +604,7 @@
 - [ ] 新增 4 个页面懒加载导入
   - 位置: `web/src/App.tsx`（~L14-L15，在现有 lazy 导入之后）
   - 追加:
+
     ```typescript
     const ProvidersPage = lazy(() => import("./pages/ProvidersPage").then((m) => ({ default: m.ProvidersPage })));
     const ModelsPage = lazy(() => import("./pages/ModelsPage").then((m) => ({ default: m.ModelsPage })));
@@ -564,10 +615,13 @@
 - [ ] 新增配置页面路由状态
   - 位置: `web/src/App.tsx` App 函数内（~L21，在现有 useState 声明区域之后）
   - 新增状态:
+
     ```typescript
     const [configView, setConfigView] = useState<string | null>(null);
     ```
+
   - 新增导航回调:
+
     ```typescript
     const navigateToConfig = useCallback((view: string) => {
       window.history.pushState(null, "", `/code/${view}`);
@@ -580,6 +634,7 @@
 - [ ] 修改 parseRoute 匹配配置页面路由
   - 位置: `web/src/App.tsx` parseRoute 回调（~L26-L33）
   - 修改匹配逻辑，在现有 session 路由匹配之后追加配置路由检测:
+
     ```typescript
     const parseRoute = useCallback(() => {
       const path = window.location.pathname;
@@ -604,12 +659,15 @@
 - [ ] 修改 activeView 计算逻辑
   - 位置: `web/src/App.tsx`（~L81-L83）
   - 将:
+
     ```typescript
     const activeView: ViewId =
       showApiKeys ? "apikeys" :
       currentSessionId ? "session" : "dashboard";
     ```
+
     改为:
+
     ```typescript
     const activeView: ViewId =
       showApiKeys ? "apikeys" :
@@ -620,6 +678,7 @@
 - [ ] 修改 navItems 构造，添加配置模块入口
   - 位置: `web/src/App.tsx`（~L85-L101 navItems useMemo）
   - 在 navItems 数组中追加 Separator 和 4 个配置入口:
+
     ```typescript
     const navItems: SidebarItem[] = useMemo(() => [
       {
@@ -643,6 +702,7 @@
 - [ ] 修改 footerItems 构造，添加配置模块入口
   - 位置: `web/src/App.tsx`（~L103-L117 footerItems useMemo）
   - 在 footerItems 数组中，API Keys 和 Logout 之间插入 4 个配置入口:
+
     ```typescript
     const footerItems: SidebarItem[] = useMemo(() => [
       {
@@ -669,7 +729,7 @@
       },
       {
         id: "agents",
-        label: "代理",
+        label: "Agent",
         icon: <Bot className="h-4 w-4" />,
         active: activeView === "agents",
         onClick: () => navigateToConfig("agents"),
@@ -693,11 +753,12 @@
 - [ ] 修改 pageTitle 计算逻辑
   - 位置: `web/src/App.tsx`（~L119-L123 pageTitle useMemo）
   - 追加配置页面的标题映射:
+
     ```typescript
     const pageTitle = useMemo(() => {
       if (showApiKeys) return "API 密钥";
       if (configView) {
-        const titles: Record<string, string> = { providers: "服务商", models: "模型", agents: "代理", skills: "技能" };
+        const titles: Record<string, string> = { providers: "服务商", models: "模型", agents: "Agent", skills: "技能" };
         return titles[configView] || "配置";
       }
       if (currentSessionId) return "会话";
@@ -708,6 +769,7 @@
 - [ ] 修改渲染区域，添加配置页面路由分发
   - 位置: `web/src/App.tsx` Suspense 内部（~L136-L143）
   - 在现有条件渲染中追加配置页面分支:
+
     ```tsx
     {showApiKeys ? (
       <ApiKeyManager onBack={navigateToDashboard} />
@@ -735,6 +797,7 @@
 - [ ] 为路由逻辑编写单元测试
   - 测试文件: `web/src/__tests__/config-routing.test.ts`
   - 提取路由解析函数为独立导出函数用于测试:
+
     ```typescript
     // 在 App.tsx 中导出用于测试
     export function parseConfigView(pathname: string): string | null {
@@ -743,6 +806,7 @@
       return configViews.includes(segment) ? segment : null;
     }
     ```
+
   - 测试场景:
     - parseConfigView("/code/providers") → "providers"
     - parseConfigView("/code/models") → "models"
@@ -754,6 +818,7 @@
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] App.tsx 包含 4 个新图标导入
   - `grep -c "Cloud\|Cpu\|Bot\|Wrench" /Users/konghayao/code/pazhou/remote-control-server/web/src/App.tsx`
   - 预期: ≥ 4
@@ -771,6 +836,7 @@
 ### Task [5 验收]: 基础设施层验收
 
 **前置条件:**
+
 - 所有 Task 1-5 的执行步骤已完成
 - 后端服务运行中: `cd /Users/konghayao/code/pazhou/remote-control-server && bun run dev`
 

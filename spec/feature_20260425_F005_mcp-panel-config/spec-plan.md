@@ -18,6 +18,7 @@
 确保构建和测试工具链在当前开发环境中可用，避免后续 Task 因环境问题阻塞。
 
 **执行步骤:**
+
 - [ ] 验证 Bun 运行时可用
   - `bun --version`
   - 预期: 输出版本号（v1.x+）
@@ -29,6 +30,7 @@
   - 预期: 测试通过，无错误
 
 **检查步骤:**
+
 - [ ] 验证 Bun 可用
   - `bun --version`
   - 预期: 输出版本号
@@ -44,13 +46,16 @@
 当前 `config.ts` 缺少 MCP 相关类型定义，无法支撑后端路由和前端页面的开发。本 Task 在 `config.ts` 中添加 McpLocalConfig、McpRemoteConfig、McpServerConfig 等联合类型，并扩展 OpenCodeConfig 增加 `mcp` 字段，为 Task 2（后端路由）和 Task 3（前端 API 客户端）提供类型基础。
 
 **涉及文件:**
+
 - 修改: `web/src/types/config.ts`
 - 新建: `web/src/__tests__/config-mcp-types.test.ts`
 
 **执行步骤:**
+
 - [ ] 在 `web/src/types/config.ts` 中 `OpenCodeAgent` 接口之后、`OpenCodeConfig` 接口之前，插入 MCP 相关类型定义 — 对齐 opencode.ai config.json schema
   - 位置: `web/src/types/config.ts` (~L71, `OpenCodeAgent` 接定义之后)
   - 插入以下类型：
+
   ```typescript
   // === MCP 类型定义 ===
 
@@ -93,6 +98,7 @@
 - [ ] 在 `web/src/types/config.ts` 的 `// === API 响应类型 ===` 区域中，Skills 相关类型之后、`// === Generic API Response ===` 之前，插入 MCP 前端展示类型 — 供前端列表页和编辑对话框使用
   - 位置: `web/src/types/config.ts` (~L182, `SkillDetail` 接口之后，`// === Generic API Response ===` 之前)
   - 插入以下类型：
+
   ```typescript
   // --- MCP ---
 
@@ -128,6 +134,7 @@
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] 验证 MCP 类型定义已导出
   - `grep -c "export.*McpLocalConfig\|export.*McpRemoteConfig\|export.*McpServerConfig\|export.*McpOAuthConfig\|export.*McpServerInfo\|export.*McpServerDetail" web/src/types/config.ts`
   - 预期: 输出 6（6 个 export 声明）
@@ -149,6 +156,7 @@
 本 Task 实现后端 MCP 配置 API，为前端 MCP 管理页面提供数据支撑。当前 `src/routes/web/config/` 下已有 agents/skills/models/providers 四个路由模块，但缺少 MCP 路由。MCP 配置存储在 opencode.json 的 `mcp` 字段中（`Record<string, McpServerConfig>`），需要通过 `getSection`/`replaceSection` 等 config service 方法进行读写。本 Task 的输出被 Task 3（前端 API 客户端）和 Task 4（MCP 页面组件）依赖。
 
 **涉及文件:**
+
 - 新建: `src/routes/web/config/mcp.ts`
 - 修改: `src/routes/web/config/index.ts`
 - 新建: `src/__tests__/config-mcp.test.ts`
@@ -164,6 +172,7 @@
     4. 创建 Hono 实例并注册路由
     5. `export default app`
   - 关键伪代码：
+
   ```typescript
   import { Hono } from "hono";
   import { sessionAuth } from "../../../auth/middleware";
@@ -355,6 +364,7 @@
 
   export default app;
   ```
+
   - 原因: 遵循 agents.ts 的代码结构（内部类型 + 校验函数 + handler 函数 + Hono 路由注册），保持一致性
 
 - [ ] 在 `src/routes/web/config/index.ts` 中注册 MCP 路由 — 使 `/config/mcp` 路径可被访问
@@ -393,6 +403,7 @@
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] 验证 MCP 路由文件已创建且导出 Hono 实例
   - `grep -c "export default app" src/routes/web/config/mcp.ts`
   - 预期: 输出 1
@@ -420,6 +431,7 @@
 当前 `api/client.ts` 中 `apiConfigAction` 的 `module` 参数仅支持 `'providers' | 'models' | 'agents' | 'skills'` 四个模块，缺少 MCP 模块。本 Task 扩展 `apiConfigAction` 支持 `'mcp'` 模块，并新增 7 个 MCP API 函数（list/get/create/update/delete/enable/disable），为 Task 4（MCP 页面组件）提供数据访问层。本 Task 依赖 Task 1（McpServerInfo/McpServerDetail 类型定义）和 Task 2（后端 MCP 路由）的输出。
 
 **涉及文件:**
+
 - 修改: `web/src/api/client.ts`
 - 新建: `web/src/__tests__/config-mcp-api-client.test.ts`
 
@@ -440,6 +452,7 @@
 - [ ] 在 `web/src/api/client.ts` 文件末尾（Skills 区域之后）添加 MCP API 函数区域
   - 位置: `web/src/api/client.ts` 第 231 行之后（`apiDisableSkill` 函数之后，文件末尾）
   - 插入以下代码块：
+
   ```typescript
   // --- MCP ---
 
@@ -465,6 +478,7 @@
     return apiConfigAction<{ name: string; enabled: boolean }>("mcp", "disable", { name });
   }
   ```
+
   - 函数设计说明：
     - `apiListMcpServers`: 调用 `list` action，通过 `.then(d => d.servers)` 展开返回 `McpServerInfo[]`（与 `apiListProviders`/`apiListSkills` 模式一致）
     - `apiGetMcpServer`: 调用 `get` action，传入 `{ name }`，返回 `McpServerDetail`（与 `apiGetSkill` 模式一致）
@@ -494,6 +508,7 @@
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] 验证 MCP 类型已导入到 client.ts
   - `grep "McpServerInfo\|McpServerDetail\|McpServerConfig" web/src/api/client.ts`
   - 预期: 在 import 语句中匹配到 3 个 MCP 类型
@@ -521,6 +536,7 @@
 本 Task 实现 MCP 配置管理的前端页面 `McpPage.tsx`，为用户提供 MCP 服务器的可视化 CRUD 操作界面。当前 Settings UI 已有 SkillsPage/AgentsPage 等配置页面，MCP 页面需保持一致的 UI 风格（DataTable + FormDialog + ConfirmDialog + BatchActionBar + StatusBadge 组合）。本 Task 依赖 Task 1（MCP 类型定义）、Task 2（后端路由）、Task 3（前端 API 客户端）的输出，其输出被 Task 5（路由集成）依赖。
 
 **涉及文件:**
+
 - 新建: `web/src/pages/McpPage.tsx`
 - 新建: `web/src/__tests__/config-mcp-page.test.ts`
 
@@ -529,6 +545,7 @@
 - [ ] 新建 `web/src/pages/McpPage.tsx` 文件骨架 — 参照 SkillsPage 结构，建立导入和导出的纯工具函数
   - 位置: `web/src/pages/McpPage.tsx`（新建文件）
   - 顶部导入区域：
+
     ```typescript
     import { useState, useCallback, useEffect } from "react";
     import { toast } from "sonner";
@@ -550,11 +567,13 @@
     } from "../api/client";
     import type { McpServerInfo, McpServerConfig, McpLocalConfig, McpRemoteConfig } from "../types/config";
     ```
+
   - 原因: 保持与 SkillsPage/AgentsPage 一致的导入结构
 
 - [ ] 导出纯工具函数 `validateMcpForm` — 供表单提交前校验使用，同时供单元测试直接 import 测试
   - 位置: `web/src/pages/McpPage.tsx` 紧接 import 之后，组件函数之前
   - 函数签名和实现：
+
     ```typescript
     /** 键值对列表项类型 */
     export type KeyValueEntry = { key: string; value: string };
@@ -583,11 +602,13 @@
       return null;
     }
     ```
+
   - 原因: 表单校验逻辑抽离为纯函数，便于单元测试覆盖
 
 - [ ] 导出纯工具函数 `parseCommandString` 和 `commandToString` — 处理命令字符串数组与用户输入的转换
   - 位置: `web/src/pages/McpPage.tsx` 紧接 `validateMcpForm` 之后
   - 函数实现：
+
     ```typescript
     /** 将用户输入的命令字符串按空格拆分为字符串数组（支持引号包裹的参数） */
     export function parseCommandString(input: string): string[] {
@@ -607,11 +628,13 @@
         .join(" ");
     }
     ```
+
   - 原因: local 类型的 `command` 字段是 `string[]`，需要双向转换供用户在 Input 中编辑
 
 - [ ] 导出纯工具函数 `buildMcpSummary` — 从 McpServerConfig 提取列表展示用的摘要文本
   - 位置: `web/src/pages/McpPage.tsx` 紧接 `commandToString` 之后
   - 函数实现：
+
     ```typescript
     /** 从 MCP 配置中构建列表摘要文本 */
     export function buildMcpSummary(config: McpServerConfig): string {
@@ -629,11 +652,13 @@
       return "";
     }
     ```
+
   - 原因: DataTable 的 summary 列需要展示服务器简要描述，local 显示 command[0]，remote 显示 url
 
 - [ ] 导出纯工具函数 `buildMcpPayload` — 从表单 state 构建 API 提交用的 McpServerConfig 对象
   - 位置: `web/src/pages/McpPage.tsx` 紧接 `buildMcpSummary` 之后
   - 函数实现：
+
     ```typescript
     /** 将表单数据组装为 McpServerConfig 对象 */
     export function buildMcpPayload(
@@ -684,11 +709,13 @@
       };
     }
     ```
+
   - 原因: 将分散的表单字段组装为完整的 McpServerConfig 联合类型对象，供 API 提交使用
 
 - [ ] 实现 `McpPage` 组件的 state 声明 — 声明列表数据、对话框、表单字段、批量操作等全部 state
   - 位置: `web/src/pages/McpPage.tsx` `export function McpPage()` 函数体内，紧接函数开头
   - state 声明列表（共 17 个 state）：
+
     ```typescript
     export function McpPage() {
       // --- 列表数据 ---
@@ -722,11 +749,13 @@
       const [formOauthScope, setFormOauthScope] = useState("");
       const [formOauthRedirectUri, setFormOauthRedirectUri] = useState("");
     ```
+
   - 原因: 表单字段需覆盖 local（command + environment + timeout）和 remote（url + headers + oauth 四字段 + timeout）两种模式的全部输入
 
 - [ ] 实现 `loadServers` 数据加载函数和 `useEffect` — 页面挂载时加载 MCP 服务器列表
   - 位置: `web/src/pages/McpPage.tsx` state 声明之后
   - 实现逻辑（参照 SkillsPage 的 `loadSkills` 模式）：
+
     ```typescript
       const loadServers = useCallback(async () => {
         setLoading(true);
@@ -742,11 +771,13 @@
 
       useEffect(() => { loadServers(); }, [loadServers]);
     ```
+
   - 原因: 页面加载时获取服务器列表，失败时显示 toast 错误提示
 
 - [ ] 定义 DataTable 列配置 `columns` — 声明名称、类型、状态、简要描述、超时 5 列
   - 位置: `web/src/pages/McpPage.tsx` `useEffect` 之后
   - 列定义：
+
     ```typescript
       const columns: Column<McpServerInfo>[] = [
         { key: "name", header: "名称", sortable: true, filterable: true },
@@ -772,11 +803,13 @@
         },
       ];
     ```
+
   - 原因: StatusBadge 组件用于类型和状态的彩色标签展示，timeout 列展示配置的超时时间或默认值
 
 - [ ] 实现 `handleOpenCreate` 函数 — 重置全部表单字段并打开新建对话框
   - 位置: `web/src/pages/McpPage.tsx` 列定义之后
   - 实现逻辑：
+
     ```typescript
       const handleOpenCreate = () => {
         setEditingServer(null);
@@ -794,11 +827,13 @@
         setDialogOpen(true);
       };
     ```
+
   - 原因: 新建时所有字段重置为空，type 默认为 "local"
 
 - [ ] 实现 `handleOpenEdit` 函数 — 调用 `apiGetMcpServer` 获取详情后填充表单字段并打开编辑对话框
   - 位置: `web/src/pages/McpPage.tsx` `handleOpenCreate` 之后
   - 实现逻辑：
+
     ```typescript
       const handleOpenEdit = async (server: McpServerInfo) => {
         setEditingServer(server);
@@ -850,11 +885,13 @@
         setDialogOpen(true);
       };
     ```
+
   - 原因: 编辑时需根据 config.type 区分 local/remote，分别填充对应字段，`Record<string, string>` 转为 `KeyValueEntry[]`
 
 - [ ] 实现 `handleSave` 函数 — 校验表单后调用 `apiCreateMcpServer` 或 `apiUpdateMcpServer` 提交数据
   - 位置: `web/src/pages/McpPage.tsx` `handleOpenEdit` 之后
   - 实现逻辑：
+
     ```typescript
       const handleSave = async () => {
         const err = validateMcpForm(formName, formType, formCommand, formUrl);
@@ -882,11 +919,13 @@
         }
       };
     ```
+
   - 原因: 新建/编辑共用一个保存函数，通过 `editingServer` 是否为 null 区分调用 create 还是 update
 
 - [ ] 实现 `handleToggle`、`confirmDelete`、`handleBatchAction`、`confirmBatchAction` 函数 — 处理启用/禁用、删除、批量操作
   - 位置: `web/src/pages/McpPage.tsx` `handleSave` 之后
   - 实现逻辑（参照 SkillsPage 的同名函数模式）：
+
     ```typescript
       const handleToggle = async (server: McpServerInfo) => {
         try {
@@ -940,11 +979,13 @@
         }
       };
     ```
+
   - 原因: 与 SkillsPage 保持完全一致的启用/禁用/删除/批量操作模式，仅替换 API 调用和 toast 文案
 
 - [ ] 实现 loading 骨架屏 JSX — 页面加载中时展示骨架占位（参照 SkillsPage 的 loading 模式）
   - 位置: `web/src/pages/McpPage.tsx` 事件处理函数之后，return 的第一个分支
   - 实现：
+
     ```typescript
       if (loading) {
         return (
@@ -963,11 +1004,13 @@
         );
       }
     ```
+
   - 原因: 保持与 SkillsPage/AgentsPage 一致的加载骨架屏样式
 
 - [ ] 实现主渲染 JSX — 包含页面标题、DataTable、BatchActionBar、FormDialog、ConfirmDialog
   - 位置: `web/src/pages/McpPage.tsx` loading 骨架屏之后，作为最终 return
   - DataTable 的 actions 回调（每行操作按钮）：
+
     ```typescript
     actions={(row) => (
       <div className="flex gap-2">
@@ -980,7 +1023,9 @@
       </div>
     )}
     ```
+
   - BatchActionBar 配置（参照 SkillsPage）：
+
     ```typescript
     {selected.length > 0 && (
       <BatchActionBar
@@ -994,13 +1039,17 @@
       />
     )}
     ```
+
   - ConfirmDialog（单个删除）：
+
     ```typescript
     <ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen}
       title="确认删除" description={`此操作不可逆。确定要删除 MCP 服务器 "${deleteTarget}" 吗？`}
       variant="destructive" onConfirm={confirmDelete} />
     ```
+
   - ConfirmDialog（批量操作）：
+
     ```typescript
     <ConfirmDialog open={batchConfirmOpen} onOpenChange={setBatchConfirmOpen}
       title={`批量${batchAction === "delete" ? "删除" : batchAction === "enable" ? "启用" : "禁用"}确认`}
@@ -1008,18 +1057,22 @@
       variant={batchAction === "delete" ? "destructive" : "default"}
       onConfirm={confirmBatchAction} />
     ```
+
   - 原因: DataTable/FormDialog/ConfirmDialog/BatchActionBar 的组合使用与 SkillsPage 完全一致
 
 - [ ] 实现 FormDialog 表单内容 JSX — 根据 `formType` 动态切换 local/remote 表单字段
   - 位置: `web/src/pages/McpPage.tsx` 主渲染 JSX 内，在 ConfirmDialog 之前
   - FormDialog 包裹：
+
     ```typescript
     <FormDialog open={dialogOpen} onOpenChange={setDialogOpen}
       title={editingServer ? "编辑 MCP 服务器" : "新建 MCP 服务器"}
       onSubmit={handleSave} loading={formSaving} width="sm:max-w-2xl">
       <div className="space-y-4">
     ```
+
   - 通用字段（名称 + 类型选择 + 超时）：
+
     ```typescript
         <div>
           <Label>名称</Label>
@@ -1038,7 +1091,9 @@
           </Select>
         </div>
     ```
+
   - Local 类型字段（命令 + 环境变量键值对列表），使用条件渲染 `{formType === "local" && (...)}`：
+
     ```typescript
         {formType === "local" && (
           <>
@@ -1079,7 +1134,9 @@
           </>
         )}
     ```
+
   - Remote 类型字段（URL + 请求头键值对列表 + OAuth 四字段），使用条件渲染 `{formType === "remote" && (...)}`：
+
     ```typescript
         {formType === "remote" && (
           <>
@@ -1147,7 +1204,9 @@
           </>
         )}
     ```
+
   - 超时字段（两种类型共用，放在条件渲染之后）：
+
     ```typescript
         <div>
           <Label>超时时间（毫秒，留空使用默认值）</Label>
@@ -1158,6 +1217,7 @@
       </div>
     </FormDialog>
     ```
+
   - 键值对列表编辑器的实现思路说明：每行包含两个 Input（key/value）和一个删除 Button，底部有"添加"按钮。通过 `map` 遍历 `KeyValueEntry[]` 数组渲染行，修改时通过索引替换对应元素，删除时通过 `filter` 移除对应索引项。编辑模式下名称和类型字段置为 disabled，防止修改已有服务器的标识。
   - 原因: local 和 remote 表单字段差异大，使用条件渲染动态切换；键值对编辑器复用于 environment 和 headers
 
@@ -1183,12 +1243,13 @@
     - `buildMcpSummary` remote 配置: `buildMcpSummary({ type: "remote", url: "https://x.com" })` → `"https://x.com"`
     - `buildMcpSummary` 禁用变体: `buildMcpSummary({ enabled: false })` → `"已禁用"`
     - `buildMcpPayload` local 完整: `buildMcpPayload("local", "npx srv", "", [{ key: "K", value: "V" }], [], "", "", "", "", "5000")` → 对象 type 为 "local"，command 为 `["npx", "srv"]`，environment 为 `{ K: "V" }`，timeout 为 5000
-    - `buildMcpPayload` remote 带 OAuth: `buildMcpPayload("remote", "", "https://x.com", [], [{ key: "Auth", value: "Bearer t" }], "id1", "sec1", "read", "https://cb", "")` → 对象 type 为 "remote"，url 为 "https://x.com"，headers 为 `{ Auth: "Bearer t" }`，oauth 包含四个字段
+    - `buildMcpPayload` remote 带 OAuth: `buildMcpPayload("remote", "", "https://x.com", [], [{ key: "Auth", value: "Bearer t" }], "id1", "sec1", "read", "https://cb", "")` → 对象 type 为 "remote"，url 为 "<https://x.com"，headers> 为 `{ Auth: "Bearer t" }`，oauth 包含四个字段
     - `buildMcpPayload` 过滤空键值对: 传入含空 key 的 environment 条目 → environment 为 undefined（被过滤掉）
   - 运行命令: `cd /Users/konghayao/code/pazhou/remote-control-server && bun test web/src/__tests__/config-mcp-page.test.ts`
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] 验证 McpPage.tsx 文件已创建且导出 McpPage 组件
   - `grep -c "export function McpPage" web/src/pages/McpPage.tsx`
   - 预期: 输出 1
@@ -1228,6 +1289,7 @@
 Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应用路由系统。当前 App.tsx 的 `configViews` 数组仅包含 `["models", "agents", "skills"]`，`ViewId` 类型缺少 `"mcp"`，侧栏 footer 没有 MCP 入口，主渲染区域也没有对应的路由分支。本 Task 将 MCP 页面集成到 App.tsx 的路由体系中，使用户可通过侧栏导航访问 MCP 配置页面。本 Task 依赖 Task 4（McpPage 组件导出）的输出。
 
 **涉及文件:**
+
 - 修改: `web/src/App.tsx`
 - 新建: `web/src/__tests__/config-mcp-routing.test.ts`
 
@@ -1238,6 +1300,7 @@ Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应
   - 当前导入列表末尾为 `Wrench,`
   - 在 `Wrench` 之后添加: `Plug,`
   - 替换后的完整导入:
+
     ```typescript
     import {
       LayoutDashboard,
@@ -1250,14 +1313,17 @@ Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应
       Plug,
     } from "lucide-react";
     ```
+
   - 原因: 侧栏 MCP 入口需要图标，`Plug` 语义契合 MCP（Model Context Protocol）的"插件/连接"概念
 
 - [ ] 在 `web/src/App.tsx` 的 lazy import 区域添加 McpPage 的懒加载导入
   - 位置: `web/src/App.tsx` 第 22 行（`SkillsPage` 的 lazy import 之后）
   - 在 SkillsPage 的 lazy import 之后插入:
+
     ```typescript
     const McpPage = lazy(() => import("./pages/McpPage").then((m) => ({ default: m.McpPage })));
     ```
+
   - 原因: 与 ModelsPage/AgentsPage/SkillsPage 保持一致的 lazy import 模式，实现路由级代码分割
 
 - [ ] 在 `parseConfigView` 函数中将 `"mcp"` 加入 `configViews` 数组
@@ -1281,6 +1347,7 @@ Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应
 - [ ] 在 `footerItems` useMemo 中添加 MCP 侧栏入口 — 插入到 skills 和 logout 之间
   - 位置: `web/src/App.tsx` 第 145 行（skills 对象的 `},` 之后，logout 对象之前）
   - 在 skills 的 `},` 之后插入:
+
     ```typescript
     {
       id: "mcp",
@@ -1290,21 +1357,24 @@ Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应
       onClick: () => navigateToConfig("mcp"),
     },
     ```
+
   - 原因: MCP 入口位于 skills 下方、logout 上方，与 models/agents/skills 保持一致的侧栏排列顺序
 
 - [ ] 在 `pageTitle` useMemo 的 `titles` 对象中添加 mcp 的中文标题
   - 位置: `web/src/App.tsx` 第 157 行
-  - 当前: `const titles: Record<string, string> = { models: "模型", agents: "代理", skills: "技能" };`
-  - 替换为: `const titles: Record<string, string> = { models: "模型", agents: "代理", skills: "技能", mcp: "MCP" };`
+  - 当前: `const titles: Record<string, string> = { models: "模型", agents: "Agent", skills: "技能" };`
+  - 替换为: `const titles: Record<string, string> = { models: "模型", agents: "Agent", skills: "技能", mcp: "MCP" };`
   - 原因: 使页面顶部标题栏在 MCP 页面时显示 "MCP"（MCP 作为行业术语不翻译为中文）
 
 - [ ] 在主渲染区域的 Suspense 内添加 `configView === "mcp"` 路由分支
   - 位置: `web/src/App.tsx` 第 199 行（`configView === "skills"` 分支的 `)` 之后，`currentSessionId` 分支之前）
   - 在 `) : configView === "skills" ? (\n            <SkillsPage />\n          )` 之后插入:
+
     ```typescript
           ) : configView === "mcp" ? (
             <McpPage />
     ```
+
   - 原因: 当 `configView` 为 `"mcp"` 时渲染 McpPage 组件，位于 skills 分支之后、session 分支之前
 
 - [ ] 为 MCP 路由集成编写单元测试 — 验证 parseConfigView 正确识别 mcp 路径
@@ -1319,6 +1389,7 @@ Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] 验证 Plug 图标已导入
   - `grep "Plug" web/src/App.tsx`
   - 预期: 匹配到 `Plug` 在 lucide-react 导入列表中
@@ -1358,6 +1429,7 @@ Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应
 ### Task 6: MCP 面板配置 验收
 
 **前置条件:**
+
 - 启动命令: `cd /Users/konghayao/code/pazhou/remote-control-server && bun run src/index.ts`
 - 测试数据准备: 确保 `~/.config/opencode/opencode.json` 存在（不存在则创建空对象 `{}`）
 - 前端开发服务器: `cd /Users/konghayao/code/pazhou/remote-control-server/web && bunx vite`（浏览器访问 `http://localhost:5173`）
@@ -1385,7 +1457,7 @@ Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应
    - 失败排查: 检查 Task 2 的 validateMcpConfig 对 remote 类型的校验
 
 5. 验证列表返回两个服务器且类型和摘要正确
-   - `curl -s -b <session-cookie> http://localhost:3001/web/config/mcp -H 'Content-Type: application/json' -d '{"action":"list"}' | jq '.data.servers[] | {name, type, summary, enabled}'
+   - `curl -s -b <session-cookie> <http://localhost:3001/web/config/mcp> -H 'Content-Type: application/json' -d '{"action":"list"}' | jq '.data.servers[] | {name, type, summary, enabled}'
    - 预期: 返回两个服务器，test-local 的 type 为 "local"、summary 为 "npx"，test-remote 的 type 为 "remote"、summary 为 URL
    - 失败排查: 检查 Task 2 的 toServerInfo 函数
 
@@ -1425,7 +1497,7 @@ Task 4 已完成 McpPage.tsx 页面组件的开发，但该页面尚未接入应
 
 12. 验证前端新建 remote 类型 MCP 服务器完整流程
     - 点击"新建 MCP 服务器"按钮，选择 Remote 类型
-    - 填写名称 "ui-remote-test"，URL "https://example.com/mcp"，添加请求头 Auth=Bearer t，填写 OAuth Client ID "test-id"
+    - 填写名称 "ui-remote-test"，URL "<https://example.com/mcp"，添加请求头> Auth=Bearer t，填写 OAuth Client ID "test-id"
     - 点击保存
     - 预期: 对话框关闭，列表中出现 "ui-remote-test"，类型为 remote，简要描述显示 URL，状态为已启用
     - 失败排查: 检查 Task 4 的 FormDialog remote 条件渲染和 buildMcpPayload

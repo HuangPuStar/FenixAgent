@@ -291,7 +291,7 @@ ConfigService 写入 opencode.json
     "variant": "thinking",
     "temperature": 0.7,
     "disable": false,
-    "description": "规划代理，用于分析任务并制定计划"
+    "description": "规划Agent，用于分析任务并制定计划"
   }
 }
 ```

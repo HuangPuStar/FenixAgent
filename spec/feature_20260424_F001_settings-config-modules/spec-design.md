@@ -9,7 +9,7 @@ RCS（remote-control-server）目前提供 Dashboard、Session、API Keys 三个
 ## 目标
 
 - 提供统一的 RESTful API 管理全局 OpenCode 配置（`~/.config/opencode/config.json`）
-- 第一批覆盖 4 个模块：Providers（AI 服务商）、Models（模型选择）、Agents（代理配置）、Skills（技能管理）
+- 第一批覆盖 4 个模块：Providers（AI 服务商）、Models（模型选择）、Agents（Agent配置）、Skills（技能管理）
 - 仅暴露 API 层，UI 组件由后续 feature 实现
 - 与 OpenCode CLI 行为一致：用户在 CLI 和 Web UI 之间切换无状态冲突
 
@@ -17,7 +17,7 @@ RCS（remote-control-server）目前提供 Dashboard、Session、API Keys 三个
 
 ### 架构总览
 
-RCS 作为 opencode.json 的 HTTP 代理层，直接读写文件系统。
+RCS 作为 opencode.json 的 HTTP Agent层，直接读写文件系统。
 
 ![架构总览](./images/01-architecture.png)
 

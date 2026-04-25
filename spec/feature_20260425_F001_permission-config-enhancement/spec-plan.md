@@ -51,6 +51,7 @@
 [上下游影响] — 本 Task 是所有后续 Task 的基础：Task 2-6 的 Skills API 依赖新路径。`config-skills.test.ts` 通过 `mock.module` 隔离路径，无需修改。只有 `skill-service.test.ts` 内部重建了路径常量，需同步更新。
 
 **涉及文件:**
+
 - 修改: `src/services/skill.ts`
 - 修改: `src/index.ts`
 - 修改: `src/__tests__/skill-service.test.ts`
@@ -60,10 +61,12 @@
 - [x] 在 `skill.ts` 中添加旧路径常量并修改 `SKILLS_DIR` 为新路径
   - 位置: `src/services/skill.ts` 顶部常量区（~L6-L7）
   - 将 `export const SKILLS_DIR = join(homedir(), ".config", "opencode", "skills");` 改为:
+
     ```typescript
     export const OLD_SKILLS_DIR = join(homedir(), ".config", "opencode", "skills");
     export const SKILLS_DIR = join(homedir(), ".agents", "skills");
     ```
+
   - `DISABLED_DIR` 保持 `join(SKILLS_DIR, "_disabled")` 不变（它已依赖 SKILLS_DIR，自动指向新路径 `~/.agents/skills/_disabled/`）
   - 原因: OLD_SKILLS_DIR 供迁移函数引用，SKILLS_DIR 是所有业务函数使用的新路径
 
@@ -72,6 +75,7 @@
   - 需额外导入 `writeFile`（已导入）、`copyFile` 和 `cp`（从 `node:fs/promises`）
   - 在文件顶部 import 行（L1）追加 `cp` 导入: `import { readdir, readFile, writeFile, mkdir, rename, rm, cp } from "node:fs/promises";`
   - 新增导出函数:
+
     ```typescript
     export async function migrateSkillsDir(): Promise<void> {
       const MIGRATED_MARKER = join(OLD_SKILLS_DIR, ".migrated");
@@ -102,6 +106,7 @@
       console.log("[RCS] Skills directory migrated:", OLD_SKILLS_DIR, "→", SKILLS_DIR);
     }
     ```
+
   - 原因: 实现幂等、安全的目录迁移逻辑，`rename` 优先保证原子性，`cp` 回退处理跨文件系统场景，`.migrated` 标记防止重复执行
 
 - [x] 在 `index.ts` 中调用 `migrateSkillsDir()`
@@ -109,9 +114,11 @@
   - 添加 import: `import { migrateSkillsDir } from "./services/skill";`
   - 在 import 区域末尾（~L18 后）添加该 import 语句
   - 在 L20 后插入调用:
+
     ```typescript
     await migrateSkillsDir();
     ```
+
   - 原因: RCS 启动时、Hono 应用创建前执行迁移，确保后续所有 Skills API 使用新路径
 
 - [x] 更新 `skill-service.test.ts` 的路径注释和常量命名
@@ -119,16 +126,19 @@
   - 该测试文件内部自建了 `SKILLS_DIR` 和 `DISABLED_DIR` 常量指向 temp 目录（与 `skill.ts` 源码的路径完全解耦），所有测试函数也是本地重实现而非导入源码
   - 经代码确认，测试中 `const SKILLS_DIR = join(tempDir, "skills")` 指向临时目录，不依赖 `skill.ts` 的路径常量，因此测试逻辑无需修改
   - 在测试文件顶部（~L9）添加注释说明:
+
     ```typescript
     // 注意: 此测试使用本地 SKILLS_DIR 指向临时目录，不依赖 skill.ts 的路径常量
     // 生产路径已从 ~/.config/opencode/skills/ 迁移到 ~/.agents/skills/
     ```
+
   - 原因: 保持测试独立性，添加注释防止后续维护者误认为测试未更新
 
 - [x] 在 `skill-service.test.ts` 中为 `migrateSkillsDir()` 添加单元测试
   - 位置: `src/__tests__/skill-service.test.ts`，在现有 `describe("SkillService", ...)` 之后、`afterAll` 之前（~L257 后）新增 `describe("migrateSkillsDir", ...)` 块
   - 由于 `migrateSkillsDir()` 使用模块级的 `homedir()` 和 `existsSync`，测试需要直接在临时目录中模拟迁移场景
   - 在文件中添加迁移测试的实现（在现有 `afterAll` 之前）:
+
     ```typescript
     import { join } from "node:path";
     // 测试迁移逻辑 — 使用独立临时目录模拟旧路径和新路径
@@ -178,13 +188,16 @@
       });
     });
     ```
+
   - 将现有 `afterAll` 中的清理逻辑扩展，增加 `migrateTemp` 的清理:
+
     ```typescript
     afterAll(async () => {
       if (existsSync(tempDir)) await rm(tempDir, { recursive: true, force: true });
       if (existsSync(migrateTemp)) await rm(migrateTemp, { recursive: true, force: true });
     });
     ```
+
   - 运行命令: `bun test src/__tests__/skill-service.test.ts`
   - 预期: 所有测试通过（原有 12 个 + 新增 4 个迁移测试）
 
@@ -220,6 +233,7 @@
 [上下游影响] — 本 Task 输出的 PermissionConfig 类型和转换逻辑被 Task 3（Models API permission 透传）复用。Task 4（前端类型定义）依赖本 Task 的 API 响应格式。Task 5（Agent 编辑弹窗）和 Task 6（Permission Tab）依赖本 Task 的 set/create 接受新字段。本 Task 无前置 Task 依赖（与 Task 1 并行）。
 
 **涉及文件:**
+
 - 修改: `src/routes/web/config/agents.ts`
 - 修改: `src/__tests__/config-agents.test.ts`
 
@@ -228,6 +242,7 @@
 - [x] 在 `agents.ts` 中定义 PermissionConfig 相关类型和常量
   - 位置: `src/routes/web/config/agents.ts`，在 `BUILT_IN_AGENTS` 常量声明之后（~L5 后），`isValidAgentName` 函数之前插入
   - 新增以下类型定义和常量:
+
     ```typescript
     // ── Permission 类型定义 ──
     /** 开关型工具的三态值 */
@@ -268,11 +283,13 @@
       "variant", "temperature", "top_p", "disable", "hidden", "color", "description",
     ]);
     ```
+
   - 原因: 集中定义类型，供 handleGet/handleSet/handleCreate 和后续 Task 3 复用；AGENT_SETTABLE_FIELDS 白名单防止客户端注入非法字段
 
 - [x] 在 `agents.ts` 中新增 `toolsToPermission()` 转换函数
   - 位置: `src/routes/web/config/agents.ts`，在 `isValidSteps` 函数之后（~L19 后），`validateAgentData` 函数之前插入
   - 新增函数:
+
     ```typescript
     /** 将旧 tools 格式转换为 permission 格式 */
     function toolsToPermission(tools: Record<string, boolean>): PermissionObjectConfig {
@@ -283,11 +300,13 @@
       return result as PermissionObjectConfig;
     }
     ```
+
   - 原因: 实现 tools→permission 的自动兼容转换，true→"allow", false→"deny"
 
 - [x] 扩展 `validateAgentData()` 添加新字段校验逻辑
   - 位置: `src/routes/web/config/agents.ts`，`validateAgentData` 函数体（~L21-L25）
   - 将现有函数替换为:
+
     ```typescript
     function validateAgentData(data: Record<string, unknown>): string | null {
       if (data.mode !== undefined && !isValidMode(data.mode as string)) return "INVALID_MODE";
@@ -309,11 +328,13 @@
       return null;
     }
     ```
+
   - 原因: temperature 范围 0-2、top_p 范围 0-1、color 仅接受 hex(#RRGGBB)或预设主题色名
 
 - [x] 修改 `handleGet()` 实现 tools→permission 自动转换并返回新字段
   - 位置: `src/routes/web/config/agents.ts`，`handleGet` 函数体（~L40-L57）
   - 将函数体替换为:
+
     ```typescript
     async function handleGet(name: string) {
       const agents = (await getSection<Record<string, Record<string, unknown>>>("agent")) ?? {};
@@ -349,11 +370,13 @@
       };
     }
     ```
+
   - 原因: 读取时自动将旧 tools 格式转换为 permission，确保前端和 API 消费者始终拿到统一的 permission 格式；返回所有新增字段，缺失时用 null/boolean 默认值填充
 
 - [x] 修改 `handleList()` 在列表项中新增 `description` 和 `color` 字段
   - 位置: `src/routes/web/config/agents.ts`，`handleList` 函数体（~L27-L38）
   - 将 `const list = Object.entries(agents).map(...)` 中的对象替换为:
+
     ```typescript
     const list = Object.entries(agents).map(([name, cfg]) => ({
       name,
@@ -364,11 +387,13 @@
       color: cfg.color ?? null,
     }));
     ```
+
   - 原因: Task 4 的 `AgentInfo` 类型新增了 `description` 和 `color` 字段，前端 Agent 列表页需要展示这两个字段。`handleList` 必须同步返回这些字段，否则 TypeScript 类型编译会报错（前端声明的类型要求这些字段但 API 响应中不存在）
 
 - [x] 修改 `handleSet()` 加入字段白名单过滤、tools 清除、permission 写入
   - 位置: `src/routes/web/config/agents.ts`，`handleSet` 函数体（~L59-L67）
   - 将函数体替换为:
+
     ```typescript
     async function handleSet(name: string, data: Record<string, unknown>) {
       const agents = (await getSection<Record<string, Record<string, unknown>>>("agent")) ?? {};
@@ -391,11 +416,13 @@
       return { success: true, data: { name, ...filtered } };
     }
     ```
+
   - 原因: 白名单过滤防止非法字段注入；写入时清除 tools 确保配置文件始终使用 permission 格式，与 OpenCode 官方 Schema 对齐
 
 - [x] 修改 `handleCreate()` 加入字段白名单过滤、清除 tools
   - 位置: `src/routes/web/config/agents.ts`，`handleCreate` 函数体（~L69-L80）
   - 将函数体替换为:
+
     ```typescript
     async function handleCreate(name: string, data: Record<string, unknown>) {
       if (!isValidAgentName(name)) {
@@ -419,6 +446,7 @@
       return { success: true, data: { name } };
     }
     ```
+
   - 原因: create 和 set 使用相同的白名单过滤策略，确保新建 agent 也不会写入非法字段
 
 - [x] 为本 Task 所有变更编写单元测试
@@ -486,6 +514,7 @@
 [上下游影响] — 本 Task 依赖 Task 2 中定义的 `PermissionConfig` 类型概念（但类型定义在 `agents.ts` 内部，Models API 不直接 import，改用 `unknown` 透传）。Task 4（前端类型定义）需要同步更新 `config.ts` 中 Models 相关的类型声明以包含 `permission`。本 Task 改动范围小且独立，仅涉及两个文件。
 
 **涉及文件:**
+
 - 修改: `src/routes/web/config/models.ts`
 - 修改: `src/__tests__/config-models.test.ts`
 
@@ -494,6 +523,7 @@
 - [x] 在 `handleGet()` 返回值中新增 `permission` 字段
   - 位置: `src/routes/web/config/models.ts`，`handleGet` 函数体（L48-L58）
   - 将 `handleGet` 函数替换为:
+
     ```typescript
     async function handleGet() {
       const config = await getConfig();
@@ -508,11 +538,13 @@
       });
     }
     ```
+
   - 原因: 直接读取 opencode.json 的顶层 `permission` 字段，原样透传给前端/调用方。使用 `as unknown` 避免类型断言为具体结构（permission 可以是字符串或对象），保持透传语义。无 `permission` 时返回 `null`。
 
 - [x] 在 `handleSet()` 中支持 `permission` 参数的写入
   - 位置: `src/routes/web/config/models.ts`，`handleSet` 函数体（L60-L72）
   - 将 `handleSet` 函数签名和函数体替换为:
+
     ```typescript
     async function handleSet(data: { model?: string; small_model?: string; permission?: unknown }) {
       if (!data.model && !data.small_model && data.permission === undefined) {
@@ -530,14 +562,17 @@
       });
     }
     ```
+
   - 原因: 新增 `permission` 参数，通过 `setTopLevelField("permission", ...)` 写入 opencode.json 顶层。验证逻辑从"必须有 model 或 small_model"放宽为"至少有一个字段"以支持单独设置 permission。读回确认的返回值同步新增 `permission` 字段。`permission` 的值不做结构校验，完全透传——由 OpenCode 运行时负责验证。
 
 - [x] 在路由处理函数的请求体类型中添加 `permission` 字段
   - 位置: `src/routes/web/config/models.ts`，`app.post` 回调中的 `c.req.json<...>` 泛型参数（L80）
   - 将 L80 的 `body` 类型声明更新为:
+
     ```typescript
     const body = await c.req.json<{ action: string; data?: { model?: string; small_model?: string; permission?: unknown } }>().catch((): { action: string; data?: { model?: string; small_model?: string; permission?: unknown } } => ({ action: "" }));
     ```
+
   - 原因: 让路由层的 TypeScript 类型与 `handleSet` 参数类型对齐，允许 `permission` 字段从请求体传入
 
 - [x] 为 Models API permission 透传编写单元测试
@@ -551,6 +586,7 @@
     - **set — 同时设置 model 和 permission**: 请求 `set` 且 `data: { model: "gpt-4o", permission: { edit: "deny" } }`，验证 `_configStore.model` 为 `"gpt-4o"` 且 `_configStore.permission` 深度等于 `{ edit: "deny" }`
     - **set — 仅 permission 为 null 时合法**: 请求 `set` 且 `data: { permission: null }`，验证 `_configStore.permission` 为 `null`（用于清除 permission）
   - 在现有测试文件最后一个测试（"未知 action 返回 VALIDATION_ERROR"）之后、`describe` 闭包结束之前追加:
+
     ```typescript
     // ── Permission 透传测试 ──
 
@@ -644,6 +680,7 @@
       expect(_configStore.permission).toBe(null);
     });
     ```
+
   - 注意: 原有测试"set action — 空数据返回 VALIDATION_ERROR"的验证逻辑已自动兼容——空 `{}` 三个字段都未提供，仍然命中 `VALIDATION_ERROR`
   - 运行命令: `cd /Users/konghayao/code/pazhou/remote-control-server && bun test src/__tests__/config-models.test.ts`
   - 预期: 所有测试通过（原有 8 个 + 新增 7 个 permission 透传测试）
@@ -676,6 +713,7 @@
 [上下游影响] — 本 Task 是 Task 5（Agent 编辑弹窗 Tab 化）和 Task 6（Permission Tab 实现）的前置依赖——两者均需要使用本 Task 定义的 PermissionConfig 类型和新字段类型来渲染 UI 和组装请求。本 Task 依赖 Task 2 和 Task 3 的后端 API 响应格式已确定。API 客户端 `client.ts` 已包含 `apiListSkills` 函数，无需新增，仅需确认其存在。
 
 **涉及文件:**
+
 - 修改: `web/src/types/config.ts`
 - 修改: `web/src/__tests__/config-types.test.ts`
 
@@ -684,6 +722,7 @@
 - [x] 在 `config.ts` 中新增 PermissionConfig 相关类型定义
   - 位置: `web/src/types/config.ts`，在 `OpenCodeModel` 接口声明之前（L1），在文件最顶部 `// === opencode 标准类型 ===` 注释之后插入新的类型定义块
   - 在 `// === opencode 标准类型 ===` 注释行之后、`export interface OpenCodeModel {` 之前（L2 后）插入:
+
     ```typescript
     // === Permission 类型定义 ===
 
@@ -719,19 +758,23 @@
     export type PermissionConfig = PermissionAction | PermissionObjectConfig;
 
     ```
+
   - 原因: 集中定义 PermissionConfig 类型体系，与设计文档中 opencode.ai 官方 Schema 对齐。导出类型供 Task 5/6 的 UI 组件引用，实现类型安全的权限编辑。
 
 - [x] 更新 `OpenCodeAgent` 接口中 `permission` 字段的类型
   - 位置: `web/src/types/config.ts`，`OpenCodeAgent` 接口（L31-L38）
   - 将 `permission?: Record<string, unknown>;` 替换为:
+
     ```typescript
     permission?: PermissionConfig;
     ```
+
   - 原因: `OpenCodeAgent` 对应 opencode.json 中 agent 配置节的类型，`permission` 字段应使用结构化类型而非宽泛的 `Record<string, unknown>`
 
 - [x] 更新 `AgentInfo` 接口，新增 description 和 color 字段
   - 位置: `web/src/types/config.ts`，`AgentInfo` 接口（L104-L109）
   - 将 `AgentInfo` 接口替换为:
+
     ```typescript
     export interface AgentInfo {
       name: string;
@@ -742,11 +785,13 @@
       color: string | null;
     }
     ```
+
   - 原因: Agent 列表页需要展示 description 和 color 字段以提供更好的视觉区分。后端 Task 2 的 handleList 将同步返回这些字段。
 
 - [x] 更新 `AgentDetail` 接口，替换 permission 类型并添加所有新字段
   - 位置: `web/src/types/config.ts`，`AgentDetail` 接口（L111-L120）
   - 将 `AgentDetail` 接口替换为:
+
     ```typescript
     export interface AgentDetail {
       name: string;
@@ -766,11 +811,13 @@
       description: string | null;
     }
     ```
+
   - 原因: 与后端 Task 2 的 handleGet 返回格式精确对齐。`tools` 字段保留为 `Record<string, boolean> | null` 以兼容旧数据的读取显示（后端在 handleGet 中已从配置文件读取 tools 但不再返回给前端；但前端保留该字段可避免类型不匹配导致的运行时错误）。`permission` 使用 `PermissionConfig | null` 提供结构化类型安全。新增字段使用 `null` 默认值（除 `disable` 和 `hidden` 使用 `boolean` 默认值 `false`），与后端一致。
 
 - [x] 更新 `ModelConfig` 接口，添加顶层 permission 字段
   - 位置: `web/src/types/config.ts`，`ModelConfig` 接口（L94-L100）
   - 将 `ModelConfig` 接口替换为:
+
     ```typescript
     export interface ModelConfig {
       current: {
@@ -781,11 +828,13 @@
       available: ModelEntry[];
     }
     ```
+
   - 原因: 与后端 Task 3 的 Models API handleGet 返回格式对齐，新增 `permission` 字段透传 opencode.json 顶层权限配置
 
 - [x] 为本 Task 所有类型变更编写编译验证测试
   - 测试文件: `web/src/__tests__/config-types.test.ts`
   - 在现有测试之后（L16 后）追加新的测试:
+
     ```typescript
     import type { PermissionAction, RuleBasedPermission, PermissionObjectConfig, PermissionConfig, AgentInfo, AgentDetail, ModelConfig } from "../types/config";
 
@@ -847,7 +896,7 @@
         disable: false,
         hidden: true,
         color: "#FF5500",
-        description: "测试代理",
+        description: "测试Agent",
       };
       expect(detail.variant).toBe("thinking");
       expect(detail.temperature).toBe(0.7);
@@ -855,7 +904,7 @@
       expect(detail.disable).toBe(false);
       expect(detail.hidden).toBe(true);
       expect(detail.color).toBe("#FF5500");
-      expect(detail.description).toBe("测试代理");
+      expect(detail.description).toBe("测试Agent");
     });
 
     test("AgentDetail 新字段可为 null（除 disable 和 hidden）", () => {
@@ -891,10 +940,10 @@
         builtIn: true,
         model: "claude-sonnet-4-6",
         mode: "primary",
-        description: "构建代理",
+        description: "构建Agent",
         color: "primary",
       };
-      expect(info.description).toBe("构建代理");
+      expect(info.description).toBe("构建Agent");
       expect(info.color).toBe("primary");
     });
 
@@ -949,6 +998,7 @@
       expect(config.current.permission).toBe("ask");
     });
     ```
+
   - 注意: 上述新测试代码中已包含独立的 `import type` 语句，与文件顶部原有的 import 互不冲突，无需修改文件顶部
   - 运行命令: `cd /Users/konghayao/code/pazhou/remote-control-server && bun test web/src/__tests__/config-types.test.ts`
   - 预期: 所有测试通过（原有 2 个 + 新增约 14 个类型验证测试）
@@ -993,6 +1043,7 @@
 [上下游影响] — 本 Task 依赖 Task 2（后端 Agents API 已支持新字段和 permission）和 Task 4（前端类型定义已包含 PermissionConfig、AgentDetail 新字段）。本 Task 完成后，Task 6（Permission Tab）将在本 Task 预留的 Tab 2 占位符中填入 PermissionTab 组件。本 Task 删除 `AVAILABLE_TOOLS` 常量和 `formTools` 后，现有工具 Checkbox 区域从 DOM 中完全移除，不影响 Task 6。
 
 **涉及文件:**
+
 - 修改: `web/src/pages/AgentsPage.tsx`
 - 修改: `web/src/__tests__/config-agents-page.test.ts`
 
@@ -1002,6 +1053,7 @@
   - Target: `AVAILABLE_TOOLS` 常量（L30-L42）
   - Location: `web/src/pages/AgentsPage.tsx`，L30-L42
   - Content: 删除以下代码:
+
     ```typescript
     const AVAILABLE_TOOLS = [
         "Read",
@@ -1017,6 +1069,7 @@
         "TaskUpdate",
     ];
     ```
+
   - Rationale: 旧的工具 Checkbox 列表常量被 Task 6 的 Permission Tab 完全取代，本 Task 先删除旧代码，清理干净后再添加 Tab 结构
 
 - [x] 删除 `formTools` 状态变量
@@ -1029,6 +1082,7 @@
   - Target: 新增 7 个状态变量
   - Location: `web/src/pages/AgentsPage.tsx`，在 `const [formSaving, setFormSaving] = useState(false);`（L74）之后
   - Content: 插入以下代码:
+
     ```typescript
     const [formDescription, setFormDescription] = useState("");
     const [formVariant, setFormVariant] = useState("");
@@ -1038,21 +1092,25 @@
     const [formHidden, setFormHidden] = useState(false);
     const [formDisable, setFormDisable] = useState(false);
     ```
+
   - Rationale: 7 个新字段对应 AgentDetail 中的 variant/temperature/top_p/color/hidden/disable/description。temperature 和 topP 使用字符串状态（与 formSteps 一致），保存时 parse 为数字。color 使用字符串接受 hex 值或预设色名。hidden/disable 使用布尔默认值 false
 
 - [x] 在文件顶部 import 区域新增 Tabs 组件导入
   - Target: 添加 Tabs 组件导入
   - Location: `web/src/pages/AgentsPage.tsx`，在 `import { Label } from "@/components/ui/label";`（L18）之后
   - Content: 插入以下导入:
+
     ```typescript
     import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
     ```
+
   - Rationale: 使用 shadcn/ui Tabs 组件实现弹窗的 Tab 结构，组件位于 `web/components/ui/tabs.tsx`，导出 Tabs, TabsList, TabsTrigger, TabsContent 四个组件
 
 - [x] 更新 `handleOpenCreate()` 函数，移除 formTools 相关逻辑，初始化新字段状态
   - Target: `handleOpenCreate` 函数体（L131-L140）
   - Location: `web/src/pages/AgentsPage.tsx`，`handleOpenCreate` 函数
   - Content: 将函数体替换为:
+
     ```typescript
     const handleOpenCreate = () => {
         setEditingAgent(null);
@@ -1071,12 +1129,14 @@
         setDialogOpen(true);
     };
     ```
+
   - Rationale: 删除 `setFormTools([...AVAILABLE_TOOLS])` 行，新增 7 个新字段的默认值初始化。新建时所有新字段为空/false
 
 - [x] 更新 `handleOpenEdit()` 函数，移除 formTools 相关逻辑，加载新字段
   - Target: `handleOpenEdit` 函数体（L142-L158）
   - Location: `web/src/pages/AgentsPage.tsx`，`handleOpenEdit` 函数
   - Content: 将函数体替换为:
+
     ```typescript
     const handleOpenEdit = async (agent: AgentInfo) => {
         setEditingAgent(agent);
@@ -1108,12 +1168,14 @@
         setDialogOpen(true);
     };
     ```
+
   - Rationale: 删除 `setFormTools(detail.tools ? Object.keys(detail.tools as Record<string, unknown>) : [])` 行。从 AgentDetail 响应中读取 7 个新字段。temperature/top_p 使用 `!== null && !== undefined` 判断后转为字符串（区分"未设置"和"0"）。boolean 字段使用 `?? false` 兜底
 
 - [x] 更新 `handleSave()` 函数，移除 tools 字段，添加新字段到请求数据
   - Target: `handleSave` 函数体（L160-L195）
   - Location: `web/src/pages/AgentsPage.tsx`，`handleSave` 函数
   - Content: 将函数体替换为:
+
     ```typescript
     const handleSave = async () => {
         const name = formName.trim();
@@ -1156,10 +1218,10 @@
             };
             if (editingAgent) {
                 await apiSetAgent(name, data);
-                toast.success("代理已更新");
+                toast.success("Agent已更新");
             } else {
                 await apiCreateAgent(name, data);
-                toast.success("代理已创建");
+                toast.success("Agent已创建");
             }
             setDialogOpen(false);
             loadAgents();
@@ -1172,12 +1234,14 @@
         }
     };
     ```
+
   - Rationale: 删除 `tools: Object.fromEntries(formTools.map((t) => [t, true]))` 行，不再发送 tools 字段。新增 temperature/top_p 的前端校验（空字符串表示未设置，非空时校验范围）。所有新字段写入 data 对象，空字符串转为 undefined（不写入配置），hidden/disable 始终写入布尔值
 
 - [x] 将 FormDialog 内部表单区域从单页改为 Tabs 结构
   - Target: FormDialog 内部的 `<div className="space-y-4 max-h-[60vh] overflow-y-auto">` 区域（L309-L393）
   - Location: `web/src/pages/AgentsPage.tsx`，FormDialog 组件的 children（L309-L393）
   - Content: 将 L309-L393 整个 `<div className="space-y-4 ...">` 替换为:
+
     ```tsx
     <Tabs defaultValue="basic" className="w-full">
         <TabsList>
@@ -1328,12 +1392,14 @@
         </TabsContent>
     </Tabs>
     ```
+
   - Rationale: 使用 shadcn/ui Tabs 组件包裹表单，Tab 1 "基础配置" 包含原有字段 + 7 个新字段，Tab 2 "权限配置" 放置占位符文本。删除旧的工具 Checkbox 区域（原 L360-L382）。新字段布局: temperature 和 topP 使用 grid 并排显示，颜色使用 color picker + 文本输入双控件，hidden/disable 使用 Checkbox 并排显示。Tab 1 内容区高度限制为 `max-h-[55vh]`（比原来 60vh 略小，为 Tabs 导航留出空间）
 
 - [x] 更新 `config-agents-page.test.ts` 测试文件，添加新字段的校验函数测试
   - Target: 测试文件 `web/src/__tests__/config-agents-page.test.ts`
   - Location: 在文件末尾（L42 之后）追加新的测试
   - Content: 在现有 `describe("isValidStepsInput", ...)` 块之后追加:
+
     ```typescript
     describe("isValidAgentNameInput — Task 5 回归", () => {
       test("带连字符的合法名称", () => {
@@ -1371,6 +1437,7 @@
       });
     });
     ```
+
   - Rationale: 现有测试仅覆盖基本场景。新增回归测试确保 Tab 化改造未破坏已有的校验函数行为。本 Task 不涉及组件渲染测试（弹窗 Tab 结构由手动验证），因为项目使用 Bun test 而非 React Testing Library，不适合测试 JSX 渲染结果
 
 - [x] 确认 TypeScript 编译无错误
@@ -1421,6 +1488,7 @@
 [上下游影响] — 本 Task 依赖 Task 2（后端 Agents API 的 permission 读写）、Task 4（前端 PermissionConfig 类型定义）、Task 5（Agent 编辑弹窗 Tab 化改造、占位符预留）。本 Task 是整个 feature 的最后一个 Task，完成后 Agent 编辑弹窗具备完整的权限配置能力。PermissionTab 作为独立组件，接收 `agentName` 和 `permission` props，通过 `onPermissionChange` 回调向上层传递变更，不直接调用保存 API——保存由 AgentsPage 的 `handleSave` 统一处理。
 
 **涉及文件:**
+
 - 新建: `web/src/components/PermissionTab.tsx`
 - 修改: `web/src/pages/AgentsPage.tsx`（替换占位符为 PermissionTab 组件）
 - 修改: `web/src/__tests__/config-types.test.ts`（新增 PermissionTab 相关的类型验证测试）
@@ -1431,6 +1499,7 @@
   - Target: 新文件 `web/src/components/PermissionTab.tsx`
   - Location: `web/src/components/PermissionTab.tsx`（新建）
   - Content: 创建文件，包含以下内容:
+
     ```typescript
     import { useState, useEffect, useCallback } from "react";
     import { Label } from "@/components/ui/label";
@@ -1497,12 +1566,14 @@
       // ... 组件实现在后续步骤中
     }
     ```
+
   - Rationale: 文件头部集中定义常量和类型，确保工具列表与设计文档精确对齐。`TOGGLE_TOOLS` 对应开关型工具（6 个），`RULE_TOOLS` 对应规则型工具（9 个）。`PERMISSION_OPTIONS` 包含空字符串表示"未设置"，`RULE_ACTION_OPTIONS` 仅包含三态值。Props 接口使用 `Record<string, unknown>` 保持与 AgentsPage 的 `permission` 状态类型一致
 
 - [x] 在 `PermissionTab.tsx` 中实现组件内部状态声明和 permission 解析逻辑
   - Target: `PermissionTab` 函数体内的状态和初始化逻辑
   - Location: `web/src/components/PermissionTab.tsx`，`PermissionTab` 函数体内
   - Content: 在 `PermissionTab` 函数体内插入状态声明和解析函数:
+
     ```typescript
     // ── 状态 ──
     const [globalStrategy, setGlobalStrategy] = useState<ToggleValue>("");
@@ -1610,12 +1681,14 @@
       return () => { cancelled = true; };
     }, [agentName]);
     ```
+
   - Rationale: `useEffect` 监听 `permission` prop 变化，将后端返回的 `PermissionConfig` 解析为组件内部结构化状态。字符串模式映射到 `globalStrategy`，对象模式按工具类型分别解析。规则型工具值支持纯字符串（全局策略）和对象（通配符规则映射）两种格式。Skill 权限特殊处理：区分 skill 精确名称（放入 `skillValues`）和通配符模式（放入 `skillPerm.rules`）。skill 列表在组件挂载时自动从 API 加载
 
 - [x] 在 `PermissionTab.tsx` 中实现 permission 组装逻辑（UI 状态 → PermissionConfig 对象）
   - Target: `buildPermission` 回调函数
   - Location: `web/src/components/PermissionTab.tsx`，在 skill 加载 `useEffect` 之后插入
   - Content: 插入 `buildPermission` 回调函数和触发 `onPermissionChange` 的 `useEffect`:
+
     ```typescript
     // ── 将 UI 状态组装为 PermissionConfig 对象 ──
     const buildPermission = useCallback((): Record<string, unknown> | null => {
@@ -1673,12 +1746,14 @@
       }
     }, [buildPermission, onPermissionChange]);
     ```
+
   - Rationale: `buildPermission` 遵循设计文档的数据组装规则："未设置"的字段不写入。全局策略模式时返回纯字符串（通过 `__global` 临时标记再转换）。规则型工具：有规则时存为对象，否则存为字符串。Skill 权限合并精确名称和通配符模式为一个对象。组装结果为 null 表示所有字段都未设置。使用 `useCallback` 避免不必要的重建，`useEffect` 在依赖变化时自动通知父组件
 
 - [x] 在 `PermissionTab.tsx` 中实现事件处理函数
   - Target: 工具值变更、规则增删、展开/折叠的事件处理函数
   - Location: `web/src/components/PermissionTab.tsx`，在 `buildPermission` 的 `useEffect` 之后、`return` 之前插入
   - Content: 插入以下事件处理函数:
+
     ```typescript
     // ── 开关型工具变更 ──
     const handleToggleChange = (tool: string, value: string) => {
@@ -1786,12 +1861,14 @@
       }));
     };
     ```
+
   - Rationale: 所有事件处理函数均为纯状态更新，不涉及副作用。规则型工具的展开/折叠使用 Set 追踪。添加规则时自动展开对应工具区域。所有变更通过 `buildPermission` → `useEffect` → `onPermissionChange` 链路自动同步到父组件
 
 - [x] 在 `PermissionTab.tsx` 中实现渲染 JSX（全局策略 + 工具权限 + Skill 权限）
   - Target: 组件的 `return` JSX
   - Location: `web/src/components/PermissionTab.tsx`，在事件处理函数之后插入 `return` 语句
   - Content: 插入以下 JSX:
+
     ```tsx
     return (
       <div className="space-y-6 max-h-[55vh] overflow-y-auto pt-2">
@@ -2024,39 +2101,47 @@
       </div>
     );
     ```
-  - Rationale: JSX 结构严格遵循设计文档的 UI 规范——分为全局策略、工具权限（开关型 + 规则型）、Skill 权限三大区域。规则型工具使用 `Collapsible` 组件实现展开/折叠，展开后显示通配符规则编辑器。Skill 列表从 API 实时加载。Select 组件使用 `__unset__` 作为空值代理（Radix Select 不支持空字符串作为 value）。规则型工具的规则编辑区域使用缩进 + 左边框视觉分组
+
+  - Rationale: JSX 结构严格遵循设计文档的 UI 规范——分为全局策略、工具权限（开关型 + 规则型）、Skill 权限三大区域。规则型工具使用 `Collapsible` 组件实现展开/折叠，展开后显示通配符规则编辑器。Skill 列表从 API 实时加载。Select 组件使用 `__unset__` 作为空值Agent（Radix Select 不支持空字符串作为 value）。规则型工具的规则编辑区域使用缩进 + 左边框视觉分组
 
 - [x] 修改 `AgentsPage.tsx`，添加 `formPermission` 状态变量
   - Target: 新增 `formPermission` 状态
   - Location: `web/src/pages/AgentsPage.tsx`，在 `const [formSaving, setFormSaving] = useState(false);`（L74）之后
   - Content: 插入:
+
     ```typescript
     const [formPermission, setFormPermission] = useState<Record<string, unknown> | null>(null);
     ```
+
   - Rationale: `formPermission` 保存 PermissionTab 通过 `onPermissionChange` 回调传递的 permission 对象，在 `handleSave` 中写入 API 请求
 
 - [x] 修改 `AgentsPage.tsx`，在 import 区域添加 PermissionTab 和相关类型导入
   - Target: 添加 PermissionTab 组件导入和类型导入
   - Location: `web/src/pages/AgentsPage.tsx`，在现有 import 语句之后
   - Content: 在 `import type { AgentInfo } from "../types/config";`（L28）之后插入:
+
     ```typescript
     import { PermissionTab } from "../components/PermissionTab";
     ```
+
   - Rationale: 导入 PermissionTab 组件，替换 Tab 2 占位符
 
 - [x] 修改 `AgentsPage.tsx` 的 `handleOpenCreate` 函数，初始化 formPermission
   - Target: `handleOpenCreate` 函数体
   - Location: `web/src/pages/AgentsPage.tsx`，`handleOpenCreate` 函数内
   - Content: 在 `setFormPrompt("");` 之后、`setDialogOpen(true);` 之前插入:
+
     ```typescript
     setFormPermission(null);
     ```
+
   - Rationale: 新建 Agent 时 permission 为 null（不写入配置，使用 OpenCode 默认值）
 
 - [x] 修改 `AgentsPage.tsx` 的 `handleOpenEdit` 函数，从 AgentDetail 加载 permission
   - Target: `handleOpenEdit` 函数体内的 try 块
   - Location: `web/src/pages/AgentsPage.tsx`，`handleOpenEdit` 的 try 块内
   - Content: 在 `setFormPrompt(detail.prompt || "");` 之后插入:
+
     ```typescript
     setFormPermission(
       detail.permission
@@ -2066,21 +2151,25 @@
         : null
     );
     ```
+
   - Rationale: 从 `AgentDetail.permission` 加载权限配置。字符串类型的全局策略通过 `as unknown as Record<string, unknown>` 转换为 PermissionTab 接受的类型。PermissionTab 的解析逻辑会正确处理字符串和对象两种格式
 
 - [x] 修改 `AgentsPage.tsx` 的 `handleSave` 函数，将 permission 写入请求数据
   - Target: `handleSave` 函数体内的 data 对象构建
   - Location: `web/src/pages/AgentsPage.tsx`，`handleSave` 函数内，`const data: Record<string, unknown> = { ... }` 块
   - Content: 在 data 对象的 `disable: formDisable,` 之后插入:
+
     ```typescript
     permission: formPermission ?? undefined,
     ```
+
   - Rationale: `formPermission` 为 null 时不写入（undefined 在 JSON.stringify 中被忽略），有值时写入完整的 permission 对象
 
 - [x] 修改 `AgentsPage.tsx`，替换 Tab 2 占位符为 PermissionTab 组件
   - Target: Tab 2 的 TabsContent 内部占位符
   - Location: `web/src/pages/AgentsPage.tsx`，FormDialog 内 Tabs 结构中 `TabsContent value="permission"` 区域
   - Content: 在 Task 5 完成后，Tab 2 的内容应为占位符 `<div className="py-8 text-center text-muted-foreground">权限配置（由 Permission Tab 组件实现）</div>`。将该占位符替换为:
+
     ```tsx
     <PermissionTab
       agentName={formName}
@@ -2088,12 +2177,14 @@
       onPermissionChange={setFormPermission}
     />
     ```
+
   - Rationale: PermissionTab 接收 `agentName`（用于 skill 列表加载）、当前 `permission` 值、变更回调。用户编辑权限后，PermissionTab 通过 `onPermissionChange` 自动更新 `formPermission` 状态，最终由 `handleSave` 统一提交
 
 - [x] 在 `config-types.test.ts` 中添加 PermissionTab 端到端数据流验证测试
   - Target: 测试文件 `web/src/__tests__/config-types.test.ts`
   - Location: 在 Task 4 已追加的测试之后、文件末尾追加新的测试
   - Content: 追加以下测试代码（仅测试 PermissionTab 特有的数据组装/解析场景，基础类型验证已在 Task 4 覆盖）:
+
     ```typescript
     import type { PermissionObjectConfig, PermissionConfig } from "../types/config";
 
@@ -2122,6 +2213,7 @@
       expect(typeof perm).toBe("object");
     });
     ```
+
   - Rationale: 基础类型验证（PermissionAction/RuleBasedPermission/PermissionConfig 字符串和对象模式）已在 Task 4 中覆盖。本步骤仅补充 PermissionTab 特有的全字段覆盖和混合模式数据流验证，避免与 Task 4 测试重复
   - 运行命令: `cd /Users/konghayao/code/pazhou/remote-control-server && bun test web/src/__tests__/config-types.test.ts`
   - 预期: 所有测试通过（Task 4 新增 14 个 + 本 Task 新增 2 个，共 18 个）
@@ -2177,6 +2269,7 @@
 ### Task 7: permission-config-enhancement 验收
 
 **前置条件:**
+
 - 启动命令: `cd /Users/konghayao/code/pazhou/remote-control-server && bun run dev`
 - 确保 `~/.config/opencode/opencode.json` 存在且包含 agent 配置
 

@@ -18,6 +18,7 @@
 按文件逐个列出需替换的英文文本：
 
 #### 1. `web/src/App.tsx`
+
 | 原文 | 中文 |
 |------|------|
 | `label: "Dashboard"` | `label: "仪表盘"` |
@@ -29,6 +30,7 @@
 | `"Dashboard"`（pageTitle） | `"仪表盘"` |
 
 #### 2. `web/src/pages/Dashboard.tsx`
+
 | 原文 | 中文 |
 |------|------|
 | `"Agents"`（统计卡片标题） | `"Agent"` |
@@ -38,6 +40,7 @@
 | `"Sessions"`（区域标题） | `"会话"` |
 
 #### 3. `web/src/pages/LoginPage.tsx`
+
 | 原文 | 中文 |
 |------|------|
 | `"Create Account"` | `"创建账户"` |
@@ -56,6 +59,7 @@
 | `"Unknown error"` | `"未知错误"` |
 
 #### 4. `web/src/pages/ApiKeyManager.tsx`
+
 | 原文 | 中文 |
 |------|------|
 | `"Loading..."` | `"加载中..."` |
@@ -80,6 +84,7 @@
 | `"Cancel"` | `"取消"` |
 
 #### 5. `web/src/components/shell/Sidebar.tsx`
+
 | 原文 | 中文 |
 |------|------|
 | `"Collapse"` | `"收起"` |
@@ -87,6 +92,7 @@
 | `"Collapse sidebar"`（title） | `"收起侧栏"` |
 
 #### 6. `web/src/components/EnvironmentList.tsx`
+
 | 原文 | 中文 |
 |------|------|
 | `"No active environments"` | `"暂无活跃环境"` |
@@ -94,6 +100,7 @@
 | `"Claude Code"` | `"Claude Code"`（保留） |
 
 #### 7. `web/src/components/SessionList.tsx`
+
 | 原文 | 中文 |
 |------|------|
 | `"No sessions yet"` | `"暂无会话"` |
@@ -101,6 +108,7 @@
 ### 不需修改的文件
 
 以下文件已完成汉化，无需改动：
+
 - `web/src/pages/ModelsPage.tsx` — 已使用中文
 - `web/src/pages/AgentsPage.tsx` — 已使用中文
 - `web/src/pages/SkillsPage.tsx` — 已使用中文
@@ -133,5 +141,5 @@
 
 - [ ] 所有 `web/src/` 下 .tsx 文件的界面可见文本均为中文（专有名词除外）
 - [ ] 登录页、Dashboard、API Key 管理页、侧栏、环境列表、会话列表均已汉化
-- [ ] 已汉化的页面（模型、代理、技能、权限）不受影响
+- [ ] 已汉化的页面（模型、Agent、技能、权限）不受影响
 - [ ] 无新增依赖

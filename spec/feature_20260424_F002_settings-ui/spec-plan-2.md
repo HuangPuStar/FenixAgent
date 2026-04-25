@@ -18,11 +18,13 @@
 spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前置计划的产出已就绪。
 
 **执行步骤:**
+
 - [ ] 确认共享组件已就绪
   - 运行: `ls /Users/konghayao/code/pazhou/remote-control-server/web/components/config/index.ts`
   - 预期: 文件存在
 
 **检查步骤:**
+
 - [ ] API Client 包含配置函数
   - `grep "apiListProviders" /Users/konghayao/code/pazhou/remote-control-server/web/src/api/client.ts`
   - 预期: 匹配到函数定义
@@ -37,13 +39,16 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 **上下游影响:** 本页面被 Task 5 的路由引用，依赖 Task 2 的 API Client 函数和 Task 3-4 的共享组件。
 
 **涉及文件:**
+
 - 新建: `web/src/pages/ProvidersPage.tsx`
 
 **执行步骤:**
+
 - [ ] 创建 ProvidersPage 组件
   - 新建文件: `web/src/pages/ProvidersPage.tsx`
   - 导出命名导出: `export function ProvidersPage()`
   - 整体结构:
+
     ```typescript
     import { useState, useCallback, useEffect } from "react";
     import { toast } from "sonner";
@@ -64,6 +69,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 实现页面状态管理
   - 位置: ProvidersPage 函数内
   - 状态:
+
     ```typescript
     const [providers, setProviders] = useState<ProviderInfo[]>([]);
     const [loading, setLoading] = useState(true);
@@ -86,6 +92,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 实现数据加载
   - 位置: ProvidersPage 函数内
   - `useEffect` 初始化加载:
+
     ```typescript
     const loadProviders = useCallback(async () => {
       setLoading(true);
@@ -105,6 +112,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 实现 DataTable 列配置
   - 位置: ProvidersPage 函数内，loadProviders 之后
   - 列定义:
+
     ```typescript
     const columns: Column<ProviderInfo>[] = [
       { key: "name", header: "名称", sortable: true, filterable: true },
@@ -124,6 +132,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
   - 位置: ProvidersPage JSX 返回值内
   - 新建按钮: `<Button onClick={handleOpenCreate}>新建服务商</Button>`
   - handleOpenCreate:
+
     ```typescript
     const handleOpenCreate = () => {
       setEditingProvider(null);
@@ -131,7 +140,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       setDialogOpen(true);
     };
     ```
+
   - handleOpenEdit:
+
     ```typescript
     const handleOpenEdit = (provider: ProviderInfo) => {
       setEditingProvider(provider);
@@ -139,7 +150,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       setDialogOpen(true);
     };
     ```
+
   - handleSave:
+
     ```typescript
     const handleSave = async () => {
       if (!formName.trim()) { toast.error("名称不能为空"); return; }
@@ -163,7 +176,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       }
     };
     ```
+
   - 表单弹窗 JSX:
+
     ```tsx
     <FormDialog
       open={dialogOpen}
@@ -208,6 +223,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 实现测试连接流程
   - 位置: ProvidersPage 函数内
   - handleTest:
+
     ```typescript
     const handleTest = async (name: string) => {
       setTesting(name);
@@ -221,7 +237,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       }
     };
     ```
+
   - 测试结果 Dialog JSX:
+
     ```tsx
     <Dialog open={!!testResult} onOpenChange={() => setTestResult(null)}>
       <DialogContent>
@@ -240,6 +258,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现删除和批量删除
   - handleDelete:
+
     ```typescript
     const handleDelete = (name: string) => { setDeleteTarget(name); setConfirmOpen(true); };
     const confirmDelete = async () => {
@@ -254,7 +273,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       }
     };
     ```
+
   - 批量删除:
+
     ```typescript
     const handleBatchDelete = () => { setBatchConfirmOpen(true); };
     const confirmBatchDelete = async () => {
@@ -273,6 +294,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 组装页面 JSX
   - 位置: ProvidersPage 函数 return 语句
   - 结构:
+
     ```tsx
     return (
       <div className="p-6 space-y-4">
@@ -317,6 +339,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 为 ProvidersPage 编写单元测试
   - 测试文件: `web/src/__tests__/config-providers-page.test.ts`
   - 提取纯逻辑函数用于测试:
+
     ```typescript
     // 在 ProvidersPage.tsx 中导出用于测试的纯函数
     export function validateProviderForm(name: string, isEdit: boolean): string | null {
@@ -332,17 +355,19 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       return data;
     }
     ```
+
   - 测试场景:
     - validateProviderForm("", false) → "名称不能为空"
     - validateProviderForm("openai", false) → null
     - validateProviderForm("a".repeat(65), false) → "名称长度须在 1-64 字符之间"
     - buildProviderPayload("key123", "", "") → { apiKey: "key123" }
-    - buildProviderPayload("", "http://api.test.com", "5000") → { baseURL: "http://api.test.com", timeout: 5000 }
+    - buildProviderPayload("", "<http://api.test.com>", "5000") → { baseURL: "<http://api.test.com>", timeout: 5000 }
     - buildProviderPayload("", "", "") → {}
   - 运行命令: `cd /Users/konghayao/code/pazhou/remote-control-server && bun test web/src/__tests__/config-providers-page.test.ts`
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] ProvidersPage 文件存在
   - `test -f /Users/konghayao/code/pazhou/remote-control-server/web/src/pages/ProvidersPage.tsx && echo "OK"`
   - 预期: 输出 OK
@@ -363,13 +388,16 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 **上下游影响:** 依赖 Task 2 的 API Client（apiGetModels、apiSetModels、apiRefreshModels）和 Task 3-4 的共享组件。
 
 **涉及文件:**
+
 - 新建: `web/src/pages/ModelsPage.tsx`
 
 **执行步骤:**
+
 - [ ] 创建 ModelsPage 组件
   - 新建文件: `web/src/pages/ModelsPage.tsx`
   - 导出: `export function ModelsPage()`
   - 导入:
+
     ```typescript
     import { useState, useCallback, useEffect, useMemo } from "react";
     import { toast } from "sonner";
@@ -384,6 +412,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现页面状态管理
   - 状态:
+
     ```typescript
     const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
     const [loading, setLoading] = useState(true);
@@ -393,6 +422,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现数据加载
   - `useEffect` 加载:
+
     ```typescript
     const loadModels = useCallback(async () => {
       setLoading(true);
@@ -410,6 +440,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现模型切换即时保存
   - handleModelChange:
+
     ```typescript
     const handleModelChange = async (field: "model" | "small_model", value: string) => {
       setSavingField(field);
@@ -427,6 +458,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现刷新可用模型
   - handleRefresh:
+
     ```typescript
     const handleRefresh = async () => {
       setRefreshing(true);
@@ -445,22 +477,27 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 实现 Select 选项列表（含手动输入支持）
   - 位置: ModelsPage 函数内
   - 构建下拉选项:
+
     ```typescript
     const modelOptions = useMemo(() => {
       if (!modelConfig) return [];
       return modelConfig.available.map((m) => ({ value: m.id, label: `${m.label} (${m.provider})` }));
     }, [modelConfig]);
     ```
+
   - 手动输入状态:
+
     ```typescript
     const [customModel, setCustomModel] = useState("");
     const [customSmallModel, setCustomSmallModel] = useState("");
     ```
+
   - 手动输入逻辑: 每个 Select 下方追加一个 Input（placeholder="或手动输入模型 ID"），当 Input 值非空时，优先使用 Input 值调用 handleModelChange
   - 原因: spec-design.md 要求 Select "选项来自 available 列表 + 允许手动输入"
 
 - [ ] 组装页面 JSX
   - 结构:
+
     ```tsx
     return (
       <div className="p-6 space-y-6">
@@ -529,7 +566,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       </div>
     );
     ```
+
   - DataTable 列配置:
+
     ```typescript
     const columns: Column<ModelEntry>[] = [
       { key: "id", header: "模型 ID", sortable: true },
@@ -553,6 +592,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 为 ModelsPage 编写单元测试
   - 测试文件: `web/src/__tests__/config-models-page.test.ts`
   - 提取纯逻辑:
+
     ```typescript
     // ModelsPage.tsx 中导出
     export function getModelUsageStatus(modelId: string, currentModel: string | null, smallModel: string | null): string[] {
@@ -562,6 +602,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       return badges;
     }
     ```
+
   - 测试场景:
     - getModelUsageStatus("gpt-4", "gpt-4", "gpt-3.5") → ["主模型"]
     - getModelUsageStatus("gpt-3.5", "gpt-4", "gpt-3.5") → ["轻量模型"]
@@ -571,6 +612,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] ModelsPage 文件存在
   - `test -f /Users/konghayao/code/pazhou/remote-control-server/web/src/pages/ModelsPage.tsx && echo "OK"`
   - 预期: 输出 OK
@@ -583,7 +625,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 ---
 
-### Task 8: 代理（Agents）页面
+### Task 8: Agent（Agents）页面
 
 **背景:**
 实现 Agents 配置管理页面，提供完整 CRUD 交互：列表展示（含搜索、排序、筛选）、新建/编辑弹窗（含模型选择、模式选择、工具多选、Prompt 编辑）、设为默认、批量删除。内置 Agent 的删除按钮在 UI 层隐藏，提供双重保护。
@@ -591,13 +633,16 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 **上下游影响:** 依赖 Task 2 的 API Client 和 Task 3-4 的共享组件。Agent 编辑弹窗的"模型"下拉选项来自 Models API 的 available 列表。
 
 **涉及文件:**
+
 - 新建: `web/src/pages/AgentsPage.tsx`
 
 **执行步骤:**
+
 - [ ] 创建 AgentsPage 组件
   - 新建文件: `web/src/pages/AgentsPage.tsx`
   - 导出: `export function AgentsPage()`
   - 导入:
+
     ```typescript
     import { useState, useCallback, useEffect, useMemo } from "react";
     import { toast } from "sonner";
@@ -620,6 +665,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现页面状态管理
   - 状态:
+
     ```typescript
     const [agents, setAgents] = useState<AgentInfo[]>([]);
     const [defaultAgent, setDefaultAgent] = useState<string | null>(null);
@@ -640,7 +686,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
     const [formPrompt, setFormPrompt] = useState("");
     const [formSaving, setFormSaving] = useState(false);
     ```
+
   - 可用工具列表常量:
+
     ```typescript
     const AVAILABLE_TOOLS = [
       "Read", "Write", "Edit", "Bash", "Glob", "Grep",
@@ -650,6 +698,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现数据加载
   - 加载 agents 和 models:
+
     ```typescript
     const loadAgents = useCallback(async () => {
       setLoading(true);
@@ -658,7 +707,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
         setAgents(data.agents);
         setDefaultAgent(data.default_agent);
       } catch (e) {
-        toast.error("加载代理列表失败: " + (e instanceof Error ? e.message : "未知错误"));
+        toast.error("加载Agent列表失败: " + (e instanceof Error ? e.message : "未知错误"));
       } finally {
         setLoading(false);
       }
@@ -676,6 +725,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现 DataTable 列配置
   - 列定义:
+
     ```typescript
     const columns: Column<AgentInfo>[] = [
       { key: "name", header: "名称", sortable: true, filterable: true },
@@ -703,6 +753,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现新建/编辑弹窗
   - handleOpenCreate:
+
     ```typescript
     const handleOpenCreate = () => {
       setEditingAgent(null);
@@ -711,7 +762,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       setDialogOpen(true);
     };
     ```
+
   - handleOpenEdit:
+
     ```typescript
     const handleOpenEdit = async (agent: AgentInfo) => {
       setEditingAgent(agent);
@@ -729,7 +782,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       setDialogOpen(true);
     };
     ```
+
   - handleSave:
+
     ```typescript
     const handleSave = async () => {
       const name = formName.trim();
@@ -754,10 +809,10 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
         };
         if (editingAgent) {
           await apiSetAgent(name, data);
-          toast.success("代理已更新");
+          toast.success("Agent已更新");
         } else {
           await apiCreateAgent(name, data);
-          toast.success("代理已创建");
+          toast.success("Agent已创建");
         }
         setDialogOpen(false);
         loadAgents();
@@ -771,9 +826,10 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现弹窗 JSX（含工具 Checkbox 多选组）
   - 表单 JSX:
+
     ```tsx
     <FormDialog open={dialogOpen} onOpenChange={setDialogOpen}
-      title={editingAgent ? "编辑代理" : "新建代理"} onSubmit={handleSave} loading={formSaving}>
+      title={editingAgent ? "编辑Agent" : "新建Agent"} onSubmit={handleSave} loading={formSaving}>
       <div className="space-y-4 max-h-[60vh] overflow-y-auto">
         <div>
           <Label>名称</Label>
@@ -830,24 +886,27 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现设为默认、删除和批量删除
   - handleSetDefault:
+
     ```typescript
     const handleSetDefault = async (name: string) => {
       try {
         await apiSetDefaultAgent(name);
         setDefaultAgent(name);
-        toast.success(`已将 "${name}" 设为默认代理`);
+        toast.success(`已将 "${name}" 设为默认Agent`);
       } catch (e) {
         toast.error("设置失败: " + (e instanceof Error ? e.message : "未知错误"));
       }
     };
     ```
+
   - 删除: 仅允许删除自定义 Agent（内置 Agent 在操作列不显示删除按钮）
+
     ```typescript
     const confirmBatchDelete = async () => {
       const customAgents = selected.filter((a) => !a.builtIn);
       try {
         await Promise.all(customAgents.map((a) => apiDeleteAgent(a.name)));
-        toast.success(`已删除 ${customAgents.length} 个代理`);
+        toast.success(`已删除 ${customAgents.length} 个Agent`);
         setBatchConfirmOpen(false);
         setSelected([]);
         loadAgents();
@@ -859,6 +918,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 组装页面 JSX
   - 操作列渲染函数:
+
     ```tsx
     actions={(row) => (
       <div className="flex gap-2">
@@ -876,6 +936,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 为 AgentsPage 编写单元测试
   - 测试文件: `web/src/__tests__/config-agents-page.test.ts`
   - 提取纯逻辑:
+
     ```typescript
     // AgentsPage.tsx 中导出
     export function isValidAgentNameInput(name: string): boolean {
@@ -887,6 +948,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       return !isNaN(n) && n >= 1 && n <= 200;
     }
     ```
+
   - 测试场景:
     - isValidAgentNameInput("my-agent") → true
     - isValidAgentNameInput("MY-AGENT") → false
@@ -901,6 +963,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] AgentsPage 文件存在
   - `test -f /Users/konghayao/code/pazhou/remote-control-server/web/src/pages/AgentsPage.tsx && echo "OK"`
   - 预期: 输出 OK
@@ -921,13 +984,16 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 **上下游影响:** 依赖 Task 2 的 API Client 和 Task 3-4 的共享组件。使用 react-markdown（Task 1 安装）进行 Markdown 渲染。
 
 **涉及文件:**
+
 - 新建: `web/src/pages/SkillsPage.tsx`
 
 **执行步骤:**
+
 - [ ] 创建 SkillsPage 组件
   - 新建文件: `web/src/pages/SkillsPage.tsx`
   - 导出: `export function SkillsPage()`
   - 导入:
+
     ```typescript
     import { useState, useCallback, useEffect } from "react";
     import { toast } from "sonner";
@@ -948,6 +1014,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现页面状态管理
   - 状态:
+
     ```typescript
     const [skills, setSkills] = useState<SkillInfo[]>([]);
     const [loading, setLoading] = useState(true);
@@ -969,6 +1036,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现数据加载
   - 加载:
+
     ```typescript
     const loadSkills = useCallback(async () => {
       setLoading(true);
@@ -986,6 +1054,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现 DataTable 列配置
   - 列定义:
+
     ```typescript
     const columns: Column<SkillInfo>[] = [
       { key: "name", header: "名称", sortable: true, filterable: true },
@@ -1001,6 +1070,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现新建/编辑弹窗（含 Markdown 编辑器）
   - handleOpenCreate:
+
     ```typescript
     const handleOpenCreate = () => {
       setEditingSkill(null);
@@ -1009,7 +1079,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       setDialogOpen(true);
     };
     ```
+
   - handleOpenEdit:
+
     ```typescript
     const handleOpenEdit = async (skill: SkillInfo) => {
       setEditingSkill(skill);
@@ -1025,7 +1097,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       setDialogOpen(true);
     };
     ```
+
   - handleSave:
+
     ```typescript
     const handleSave = async () => {
       if (!formName.trim()) { toast.error("名称不能为空"); return; }
@@ -1050,7 +1124,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       }
     };
     ```
+
   - 弹窗 JSX（含 Markdown 编辑器左右分栏）:
+
     ```tsx
     <FormDialog open={dialogOpen} onOpenChange={setDialogOpen}
       title={editingSkill ? "编辑技能" : "新建技能"} onSubmit={handleSave}
@@ -1101,6 +1177,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现启用/禁用切换（即时操作，不需确认）
   - handleToggle:
+
     ```typescript
     const handleToggle = async (skill: SkillInfo) => {
       try {
@@ -1120,6 +1197,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 实现删除和批量操作
   - 单个删除:
+
     ```typescript
     const confirmDelete = async () => {
       if (!deleteTarget) return;
@@ -1133,7 +1211,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       }
     };
     ```
+
   - 批量操作:
+
     ```typescript
     const handleBatchAction = (action: "enable" | "disable" | "delete") => {
       setBatchAction(action);
@@ -1162,6 +1242,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 
 - [ ] 组装页面 JSX
   - 操作列:
+
     ```tsx
     actions={(row) => (
       <div className="flex gap-2">
@@ -1173,7 +1254,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       </div>
     )}
     ```
+
   - 批量操作栏:
+
     ```tsx
     {selected.length > 0 && (
       <BatchActionBar
@@ -1187,7 +1270,9 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       />
     )}
     ```
+
   - 确认弹窗:
+
     ```tsx
     <ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen}
       title="确认删除" description={`此操作不可逆。确定要删除技能 "${deleteTarget}" 吗？`}
@@ -1202,6 +1287,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 - [ ] 为 SkillsPage 编写单元测试
   - 测试文件: `web/src/__tests__/config-skills-page.test.ts`
   - 提取纯逻辑:
+
     ```typescript
     // SkillsPage.tsx 中导出
     export function validateSkillForm(name: string, content: string): string | null {
@@ -1216,6 +1302,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
       return Object.keys(metadata).length > 0 ? metadata : undefined;
     }
     ```
+
   - 测试场景:
     - validateSkillForm("", "content") → "名称不能为空"
     - validateSkillForm("my-skill", "") → "内容不能为空"
@@ -1227,6 +1314,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
   - 预期: 所有测试通过
 
 **检查步骤:**
+
 - [ ] SkillsPage 文件存在
   - `test -f /Users/konghayao/code/pazhou/remote-control-server/web/src/pages/SkillsPage.tsx && echo "OK"`
   - 预期: 输出 OK
@@ -1245,6 +1333,7 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
 ### Task [总体验收]: Settings UI 全功能验收
 
 **前置条件:**
+
 - 启动后端服务: `cd /Users/konghayao/code/pazhou/remote-control-server && bun run dev`
 - 启动前端开发服务器: `cd /Users/konghayao/code/pazhou/remote-control-server && bun run dev:web`
 - 访问 `http://localhost:5173/code/`
@@ -1262,12 +1351,12 @@ spec-plan-1.md 的 Task 0 已完成完整环境验证，本文件仅需确认前
    - 失败排查: 检查 Task 5 的懒加载导入与 Task 6-9 的页面文件名是否匹配
 
 3. 验证 Sidebar 正确显示 7 个平铺入口
-   - 浏览器访问 `/code/`，检查 Sidebar 显示：仪表盘、会话、API 密钥、服务商、模型、代理、技能、退出
+   - 浏览器访问 `/code/`，检查 Sidebar 显示：仪表盘、会话、API 密钥、服务商、模型、Agent、技能、退出
    - 预期: 7 个入口均可见，图标和中文标签正确
    - 失败排查: 检查 Task 5 的 footerItems 配置
 
 4. 验证 4 个模块页面懒加载生效
-   - 点击 Sidebar 的服务商/模型/代理/技能入口，观察页面加载
+   - 点击 Sidebar 的服务商/模型/Agent/技能入口，观察页面加载
    - 预期: 页面正常渲染，URL 变为 `/code/providers`、`/code/models`、`/code/agents`、`/code/skills`
    - 浏览器 DevTools Network 面板确认各页面 JS 为独立 chunk
    - 失败排查: 检查 Task 5 的 lazy 导入和 Task 6-9 的导出

@@ -101,14 +101,13 @@ volumes:
 
 ## ACP 兼容的 remote-control
 
-
 ```sh
 ACP_RCS_URL=http://localhost:3000 ACP_RCS_TOKEN=test-my-key acp-link ccb-bun -- --acp
 ```
 
-## 反向代理配置
+## 反向Agent配置
 
-使用 Nginx 或 Caddy 反向代理时，需要支持 WebSocket 升级：
+使用 Nginx 或 Caddy 反向Agent时，需要支持 WebSocket 升级：
 
 ```nginx
 server {
