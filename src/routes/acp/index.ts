@@ -3,6 +3,10 @@ import { upgradeWebSocket } from "hono/bun";
 import { sessionAuth } from "../../auth/middleware";
 import { validateApiKeyAndGetUser } from "../../auth/api-key-service";
 import { auth } from "../../auth/better-auth";
+import { config } from "../../config";
+import { db } from "../../db";
+import { user } from "../../db/schema";
+import { eq } from "drizzle-orm";
 import {
   handleAcpWsOpen,
   handleAcpWsMessage,
@@ -36,6 +40,39 @@ function toAcpAgentResponse(env: NonNullable<ReturnType<typeof storeGetEnvironme
   };
 }
 
+/**
+ * Find or create the system user for legacy global API key fallback.
+ * Mirrors the logic in auth/middleware.ts ensureSystemUser.
+ */
+async function ensureSystemUser(): Promise<{ id: string; email: string; name: string } | null> {
+  const rows = await db.select().from(user).where(eq(user.email, "system@rcs.local")).limit(1);
+  if (rows.length > 0) {
+    return { id: rows[0].id, email: rows[0].email, name: rows[0].name };
+  }
+
+  const anyUser = await db.select().from(user).limit(1);
+  if (anyUser.length > 0) {
+    return { id: anyUser[0].id, email: anyUser[0].email, name: anyUser[0].name };
+  }
+
+  try {
+    const result = await auth.api.signUpEmail({
+      email: "system@rcs.local",
+      password: "system",
+      name: "System",
+    });
+    if (result.user) {
+      const { createApiKey } = await import("../../auth/api-key-service");
+      await createApiKey(result.user.id, "legacy-auto");
+      return { id: result.user.id, email: result.user.email, name: result.user.name };
+    }
+  } catch {
+    // signUpEmail may fail if user was created concurrently
+  }
+
+  return null;
+}
+
 /** GET /acp/agents — List current user's ACP agents */
 app.get("/agents", sessionAuth, async (c) => {
   const user = c.get("user")!;
@@ -61,8 +98,26 @@ app.get(
       };
     }
 
+    let userId: string | undefined;
+
+    // 1. Try per-user API Key (SQLite)
     const keyInfo = await validateApiKeyAndGetUser(token);
-    if (!keyInfo) {
+    if (keyInfo) {
+      const [userRow] = await db.select().from(user).where(eq(user.id, keyInfo.userId)).limit(1);
+      if (userRow) {
+        userId = userRow.id;
+      }
+    }
+
+    // 2. Fallback: legacy global API Key (RCS_API_KEYS env var)
+    if (!userId && config.apiKeys.length > 0 && config.apiKeys.includes(token)) {
+      const systemUser = await ensureSystemUser();
+      if (systemUser) {
+        userId = systemUser.id;
+      }
+    }
+
+    if (!userId) {
       log("[ACP-WS] Upgrade rejected: invalid API key");
       return {
         onOpen(_evt: any, ws: any) {
@@ -70,19 +125,6 @@ app.get(
         },
       };
     }
-
-    // Look up user
-    const userInfo = await auth.api.getUser({ userId: keyInfo.userId });
-    if (!userInfo) {
-      log("[ACP-WS] Upgrade rejected: user not found");
-      return {
-        onOpen(_evt: any, ws: any) {
-          ws.close(4003, "unauthorized");
-        },
-      };
-    }
-
-    const userId = userInfo.user.id;
 
     // Generate unique wsId for this connection
     const { v4: uuid } = await import("uuid");

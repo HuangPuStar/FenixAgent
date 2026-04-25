@@ -10,7 +10,6 @@ import {
   MessageSquare,
   KeyRound,
   LogOut,
-  Cloud,
   Cpu,
   Bot,
   Wrench,
@@ -18,18 +17,17 @@ import {
 
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
 const SessionDetail = lazy(() => import("./pages/SessionDetail").then((m) => ({ default: m.SessionDetail })));
-const ProvidersPage = lazy(() => import("./pages/ProvidersPage").then((m) => ({ default: m.ProvidersPage })));
 const ModelsPage = lazy(() => import("./pages/ModelsPage").then((m) => ({ default: m.ModelsPage })));
 const AgentsPage = lazy(() => import("./pages/AgentsPage").then((m) => ({ default: m.AgentsPage })));
 const SkillsPage = lazy(() => import("./pages/SkillsPage").then((m) => ({ default: m.SkillsPage })));
 
 export function parseConfigView(pathname: string): string | null {
-  const configViews = ["providers", "models", "agents", "skills"];
+  const configViews = ["models", "agents", "skills"];
   const segment = pathname.replace(/^\/code\/?/, "").split("/")[0];
   return configViews.includes(segment) ? segment : null;
 }
 
-type ViewId = "dashboard" | "session" | "apikeys" | "login" | "providers" | "models" | "agents" | "skills";
+type ViewId = "dashboard" | "session" | "apikeys" | "login" | "models" | "agents" | "skills";
 
 export default function App() {
   const { data: session, isPending } = useSession();
@@ -40,7 +38,7 @@ export default function App() {
   // Simple hash-based router
   const parseRoute = useCallback(() => {
     const path = window.location.pathname;
-    const configViews = ["providers", "models", "agents", "skills"];
+    const configViews = ["models", "agents", "skills"];
     const segment = path.replace(/^\/code\/?/, "").split("/")[0];
     if (configViews.includes(segment)) {
       setConfigView(segment);
@@ -125,13 +123,6 @@ export default function App() {
       onClick: navigateToApiKeys,
     },
     {
-      id: "providers",
-      label: "服务商",
-      icon: <Cloud className="h-4 w-4" />,
-      active: activeView === "providers",
-      onClick: () => navigateToConfig("providers"),
-    },
-    {
       id: "models",
       label: "模型",
       icon: <Cpu className="h-4 w-4" />,
@@ -163,7 +154,7 @@ export default function App() {
   const pageTitle = useMemo(() => {
     if (showApiKeys) return "API Keys";
     if (configView) {
-      const titles: Record<string, string> = { providers: "服务商", models: "模型", agents: "代理", skills: "技能" };
+      const titles: Record<string, string> = { models: "模型", agents: "代理", skills: "技能" };
       return titles[configView] || "配置";
     }
     if (currentSessionId) return "Session";
@@ -201,8 +192,6 @@ export default function App() {
         }>
           {showApiKeys ? (
             <ApiKeyManager onBack={navigateToDashboard} />
-          ) : configView === "providers" ? (
-            <ProvidersPage />
           ) : configView === "models" ? (
             <ModelsPage />
           ) : configView === "agents" ? (

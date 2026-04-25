@@ -129,6 +129,12 @@ export function storeListEnvironmentsByUserId(userId: string): EnvironmentRecord
   return [...environments.values()].filter((e) => e.userId === userId);
 }
 
+export function storeListActiveEnvironmentsByUsername(username: string): EnvironmentRecord[] {
+  return [...environments.values()].filter(
+    (e) => e.status === "active" && e.username === username,
+  );
+}
+
 // ---------- Session ----------
 
 export function storeCreateSession(req: {
@@ -184,6 +190,91 @@ export function storeListSessionsByUserId(userId: string): SessionRecord[] {
 
 export function storeDeleteSession(id: string): boolean {
   return sessions.delete(id);
+}
+
+// ---------- Session Ownership (UUID-based) ----------
+
+const sessionOwners = new Map<string, Set<string>>();
+
+export function storeBindSession(sessionId: string, uuid: string): void {
+  if (!sessionOwners.has(sessionId)) {
+    sessionOwners.set(sessionId, new Set());
+  }
+  sessionOwners.get(sessionId)!.add(uuid);
+}
+
+export function storeIsSessionOwner(sessionId: string, uuid: string): boolean {
+  return sessionOwners.get(sessionId)?.has(uuid) ?? false;
+}
+
+export function storeGetSessionOwners(sessionId: string): Set<string> | undefined {
+  return sessionOwners.get(sessionId);
+}
+
+export function storeListSessionsByOwnerUuid(uuid: string): SessionRecord[] {
+  const ownedIds = new Set<string>();
+  for (const [sid, owners] of sessionOwners) {
+    if (owners.has(uuid)) ownedIds.add(sid);
+  }
+  return [...sessions.values()].filter((s) => ownedIds.has(s.id));
+}
+
+export function storeListSessionsByUsername(username: string): SessionRecord[] {
+  return [...sessions.values()].filter((s) => s.username === username);
+}
+
+// ---------- Work Items ----------
+
+export interface WorkItemRecord {
+  id: string;
+  environmentId: string;
+  sessionId: string;
+  secret: string;
+  state: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const workItems = new Map<string, WorkItemRecord>();
+
+export function storeCreateWorkItem(req: {
+  environmentId: string;
+  sessionId: string;
+  secret: string;
+}): WorkItemRecord {
+  const id = `work_${uuid().replace(/-/g, "")}`;
+  const now = new Date();
+  const record: WorkItemRecord = {
+    id,
+    environmentId: req.environmentId,
+    sessionId: req.sessionId,
+    secret: req.secret,
+    state: "pending",
+    createdAt: now,
+    updatedAt: now,
+  };
+  workItems.set(id, record);
+  return record;
+}
+
+export function storeGetWorkItem(id: string): WorkItemRecord | undefined {
+  return workItems.get(id);
+}
+
+export function storeGetPendingWorkItem(environmentId: string): WorkItemRecord | undefined {
+  for (const item of workItems.values()) {
+    if (item.environmentId === environmentId && item.state === "pending") {
+      return item;
+    }
+  }
+  return undefined;
+}
+
+export function storeUpdateWorkItem(id: string, patch: Partial<Pick<WorkItemRecord, "state">>): boolean {
+  const item = workItems.get(id);
+  if (!item) return false;
+  Object.assign(item, patch, { updatedAt: new Date() });
+  return true;
 }
 
 // ---------- ACP Agent (reuses EnvironmentRecord with workerType="acp") ----------

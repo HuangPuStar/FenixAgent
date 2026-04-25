@@ -89,12 +89,12 @@ export async function apiKeyAuth(c: Context, next: Next) {
   // 1. Try per-user API Key (SQLite)
   const result = await validateApiKeyAndGetUser(token);
   if (result) {
-    const userResult = await auth.api.getUser({ userId: result.userId });
-    if (userResult) {
+    const [userRow] = await db.select().from(user).where(eq(user.id, result.userId)).limit(1);
+    if (userRow) {
       c.set("user", {
-        id: userResult.user.id,
-        email: userResult.user.email,
-        name: userResult.user.name,
+        id: userRow.id,
+        email: userRow.email,
+        name: userRow.name,
       });
       await next();
       return;
@@ -112,4 +112,22 @@ export async function apiKeyAuth(c: Context, next: Next) {
   }
 
   return c.json({ error: { type: "unauthorized", message: "Invalid API key" } }, 401);
+}
+
+/** Extract UUID from ?uuid= query param */
+export function getUuidFromRequest(c: Context): string | undefined {
+  return c.req.query("uuid");
+}
+
+/**
+ * UUID-based auth for Web UI control routes.
+ * Extracts ?uuid= query param and sets it in context for ownership checks.
+ */
+export async function uuidAuth(c: Context, next: Next) {
+  const uuid = getUuidFromRequest(c);
+  if (!uuid) {
+    return c.json({ error: { type: "unauthorized", message: "Missing uuid" } }, 401);
+  }
+  c.set("uuid", uuid);
+  await next();
 }

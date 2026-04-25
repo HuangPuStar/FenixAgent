@@ -55,7 +55,7 @@ export function AppShell({
         </header>
 
         {/* Content area */}
-        <main className="flex-1 overflow-hidden">
+        <main className="flex flex-1 flex-col overflow-hidden">
           {children}
         </main>
       </div>

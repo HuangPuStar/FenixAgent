@@ -2,8 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { parseConfigView } from "../App";
 
 describe("parseConfigView", () => {
-  test("/code/providers → providers", () => {
-    expect(parseConfigView("/code/providers")).toBe("providers");
+  test("/code/providers → null (已移除)", () => {
+    expect(parseConfigView("/code/providers")).toBeNull();
   });
 
   test("/code/models → models", () => {

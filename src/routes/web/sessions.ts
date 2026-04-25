@@ -1,9 +1,11 @@
 import { Hono } from "hono";
-import { sessionAuth } from "../../auth/middleware";
+import { sessionAuth, uuidAuth, getUuidFromRequest } from "../../auth/middleware";
 import {
   storeGetSession,
   storeListSessionsByUserId,
 } from "../../store";
+import { getEventBus } from "../../transport/event-bus";
+import { resolveExistingWebSessionId, resolveOwnedWebSessionId } from "../../services/session";
 
 const app = new Hono();
 
@@ -58,6 +60,45 @@ app.get("/sessions/:id", sessionAuth, async (c) => {
     return c.json({ error: { type: "forbidden", message: "Not your session" } }, 403);
   }
   return c.json(toSessionResponse(session), 200);
+});
+
+/** GET /web/sessions/:id/history — Session event history
+ *  Supports both sessionAuth (cookie) and uuidAuth (?uuid=) */
+app.get("/sessions/:id/history", async (c, next) => {
+  // Try sessionAuth first, fall back to uuidAuth
+  const uuid = getUuidFromRequest(c);
+  if (uuid) {
+    return uuidAuth(c, next);
+  }
+  return sessionAuth(c, next);
+}, async (c) => {
+  const sessionId = c.req.param("id")!;
+
+  // Resolve via uuid ownership or session ownership
+  let resolvedId: string | null = null;
+  const uuid = c.get("uuid");
+  const user = c.get("user");
+
+  if (uuid) {
+    resolvedId = resolveOwnedWebSessionId(sessionId, uuid);
+  } else if (user) {
+    const session = storeGetSession(sessionId);
+    if (session && (!session.userId || session.userId === user.id)) {
+      resolvedId = sessionId;
+    }
+  }
+
+  if (!resolvedId) {
+    resolvedId = resolveExistingWebSessionId(sessionId);
+  }
+
+  if (!resolvedId) {
+    return c.json({ error: { type: "not_found", message: "Session not found" } }, 404);
+  }
+
+  const bus = getEventBus(resolvedId);
+  const events = bus.getEventsSince(0);
+  return c.json({ events }, 200);
 });
 
 export default app;

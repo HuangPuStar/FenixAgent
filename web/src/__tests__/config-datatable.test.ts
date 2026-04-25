@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { filterData, sortData, paginateData, type Column } from "../../components/config/DataTable";
+import { filterData, sortData, paginateData, buildInitialExpandedState, type Column } from "../../components/config/DataTable";
 
 interface Row { name: string; age: number }
 
@@ -100,5 +100,32 @@ describe("DataTable TanStack integration helpers", () => {
   test("filterData with non-filterable column ignores that column", () => {
     const result = filterData(data, columns, "30");
     expect(result).toHaveLength(0);
+  });
+});
+
+describe("buildInitialExpandedState", () => {
+  test("returns all row IDs expanded with rowKey", () => {
+    const rows = [
+      { id: "key1", name: "a" },
+      { id: "key2", name: "b" },
+      { id: "key3", name: "c" },
+    ];
+    const result = buildInitialExpandedState(rows, (row) => row.id);
+    expect(result).toEqual({ key1: true, key2: true, key3: true });
+  });
+
+  test("uses index as key when no rowKey provided", () => {
+    const rows = [
+      { name: "a" },
+      { name: "b" },
+      { name: "c" },
+    ];
+    const result = buildInitialExpandedState(rows);
+    expect(result).toEqual({ "0": true, "1": true, "2": true });
+  });
+
+  test("returns empty object for empty data", () => {
+    const result = buildInitialExpandedState([]);
+    expect(result).toEqual({});
   });
 });

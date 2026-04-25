@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { validateProviderForm, buildProviderPayload } from "../pages/ProvidersPage";
+import { validateProviderForm, buildProviderPayload } from "../pages/ModelsPage";
 
 // NPM_OPTIONS is module-scoped; verify via the exported buildProviderPayload behavior
 // and validateProviderForm which are the public API

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import {
   useReactTable,
@@ -45,6 +45,7 @@ export interface DataTableProps<T> {
   actions?: (row: T) => React.ReactNode;
   expandableRow?: (row: T) => React.ReactNode;
   rowKey?: RowKeyGetter<T>;
+  defaultExpandAll?: boolean;
   emptyMessage?: string;
   pageSize?: number;
 }
@@ -81,6 +82,15 @@ export function sortData<T>(data: T[], key: string, dir: "asc" | "desc"): T[] {
 export function paginateData<T>(data: T[], page: number, size: number): { items: T[]; total: number } {
   const start = (page - 1) * size;
   return { items: data.slice(start, start + size), total: data.length };
+}
+
+export function buildInitialExpandedState<T>(data: T[], rowKey?: RowKeyGetter<T>): ExpandedState {
+  const initial: ExpandedState = {};
+  data.forEach((row, index) => {
+    const rowId = rowKey ? rowKey(row) : String(index);
+    initial[rowId] = true;
+  });
+  return initial;
 }
 
 function buildColumnDefs<T>(
@@ -159,11 +169,27 @@ export function DataTable<T>({
   rowKey,
   emptyMessage = "暂无数据",
   pageSize = 10,
+  defaultExpandAll,
 }: DataTableProps<T>) {
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [expanded, setExpanded] = useState<ExpandedState>({});
+  const [expanded, setExpanded] = useState<ExpandedState>(() => {
+    if (!defaultExpandAll) return {};
+    return buildInitialExpandedState(data, rowKey);
+  });
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!defaultExpandAll) return;
+    setExpanded((prev) => {
+      const next: ExpandedState = {};
+      data.forEach((row, index) => {
+        const rowId = rowKey ? rowKey(row) : String(index);
+        next[rowId] = prev[rowId] !== undefined ? prev[rowId] : true;
+      });
+      return next;
+    });
+  }, [data, rowKey, defaultExpandAll]);
 
   const globalFilterFn = useMemo(() => {
     return (row: { original: T }, _columnId: string, filterValue: string) => {

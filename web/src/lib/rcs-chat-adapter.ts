@@ -3,11 +3,9 @@ import { v4 as uuidv4 } from "uuid";
 import {
   apiFetchSession,
   apiFetchSessionHistory,
-  apiBind,
   apiSendEvent,
   apiSendControl,
   apiInterrupt,
-  getUuid,
 } from "../api/client";
 import type { SessionEvent, EventPayload } from "../types";
 import type {
@@ -122,15 +120,13 @@ export class RCSChatAdapter {
     this.onPermissionRequest = options?.onPermissionRequest;
   }
 
-  /** 初始化：绑定会话、加载历史、连接 SSE */
+  /** 初始化：加载历史、连接 SSE */
   async init(): Promise<void> {
     try {
-      await apiBind(this.sessionId);
+      await this.loadHistory();
     } catch {
-      // may already be bound
+      // history may not be available yet (e.g. session just created)
     }
-
-    await this.loadHistory();
     this.connectSSE();
   }
 
