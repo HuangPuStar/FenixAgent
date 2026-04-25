@@ -4,7 +4,6 @@ import {
   storeCreateEnvironment,
   storeCreateSession,
   storeDeleteEnvironment,
-  storeFindEnvironmentByMachineName,
   storeGetEnvironment,
   storeUpdateEnvironment,
   storeListSessionsByEnvironment,
@@ -29,30 +28,17 @@ app.post("/bridge", apiKeyAuth, async (c) => {
 
   const workerType = body.worker_type || body.metadata?.worker_type || "acp";
 
-  // Reuse existing offline record if available (same machineName + userId)
-  let record = body.machine_name
-    ? storeFindEnvironmentByMachineName(body.machine_name, user.id)
-    : undefined;
-
-  if (record && record.status === "offline") {
-    storeUpdateEnvironment(record.id, {
-      status: "active",
-      capabilities: body.capabilities || record.capabilities || undefined,
-      maxSessions: body.max_sessions ?? record.maxSessions,
-    });
-  } else {
-    record = storeCreateEnvironment({
-      secret: `rest_${Date.now()}`,
-      userId: user.id,
-      machineName: body.machine_name,
-      directory: body.directory,
-      branch: body.branch,
-      gitRepoUrl: body.git_repo_url,
-      maxSessions: body.max_sessions,
-      workerType,
-      capabilities: body.capabilities,
-    });
-  }
+  const record = storeCreateEnvironment({
+    secret: `rest_${Date.now()}`,
+    userId: user.id,
+    machineName: body.machine_name,
+    directory: body.directory,
+    branch: body.branch,
+    gitRepoUrl: body.git_repo_url,
+    maxSessions: body.max_sessions,
+    workerType,
+    capabilities: body.capabilities,
+  });
 
   let sessionId: string | undefined;
   if (workerType === "acp") {
