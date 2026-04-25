@@ -19,14 +19,6 @@
   --color-brand-light: #337ECC;
   --color-brand-subtle: oklch(0.55 0.18 250 / 0.10);
 
-  /* Sidebar — deep blue palette */
-  --color-sidebar-bg: #1a1f2e;
-  --color-sidebar-hover: #263445;
-  --color-sidebar-active: #0d1321;
-  --color-sidebar-text: #bfcbd9;
-  --color-sidebar-text-active: #409EFF;
-  --color-sidebar-border: #1f2d3d;
-
   /* Surfaces — cool neutral blue-tinted grays */
   --color-surface-0: #f0f2f5;
   --color-surface-1: #ffffff;
@@ -98,9 +90,6 @@
   /* Radius */
   --radius: 0.375rem;
 
-  /* Sidebar dimensions */
-  --sidebar-width: 220px;
-  --sidebar-collapsed-width: 56px;
   --navbar-height: 48px;
 }
 
@@ -108,11 +97,6 @@
    Dark mode — SaaS dark palette
    ============================================================ */
 .dark {
-  --color-sidebar-bg: #0d1321;
-  --color-sidebar-hover: #1a1f2e;
-  --color-sidebar-active: #000000;
-  --color-sidebar-border: #1a1f2e;
-
   --color-surface-0: #141414;
   --color-surface-1: #1d1e1f;
   --color-surface-2: #262727;
@@ -255,13 +239,6 @@
 }
 .chat-typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
 .chat-typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-
-/* ============================================================
-   Sidebar transition
-   ============================================================ */
-.sidebar-transition {
-  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-}
 
 /* ============================================================
    Reduced motion

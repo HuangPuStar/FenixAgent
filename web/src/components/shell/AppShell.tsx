@@ -1,64 +1,72 @@
-import { useState, useCallback, type ReactNode } from "react";
-import { Sidebar, type SidebarItem } from "./Sidebar";
+import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
+
+export interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  active?: boolean;
+  onClick: () => void;
+}
 
 interface AppShellProps {
-  /** Current active view id */
-  activeView: string;
-  /** Sidebar navigation items (auto-generated from props) */
-  navItems: SidebarItem[];
-  /** Footer action items */
-  footerItems?: SidebarItem[];
-  /** Top bar content (right side) */
-  topBarRight?: ReactNode;
-  /** Top bar title override */
-  title?: string;
-  /** Main content */
+  navItems: NavItem[];
+  userEmail: string;
+  onLogout: () => void;
   children: ReactNode;
 }
 
-export function AppShell({
-  activeView,
-  navItems,
-  footerItems,
-  topBarRight,
-  title,
-  children,
-}: AppShellProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  const toggleCollapse = useCallback(() => setCollapsed((c) => !c), []);
-
+export function AppShell({ navItems, userEmail, onLogout, children }: AppShellProps) {
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-surface-0">
-      {/* Sidebar */}
-      <Sidebar
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapse}
-        items={navItems}
-        footerItems={footerItems}
-      />
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-surface-0">
+      {/* First row: brand + user account */}
+      <header className="flex h-12 items-center justify-between border-b border-border bg-surface-1 px-4 flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="flex-shrink-0">
+            <path
+              d="M10 1L12.2 7.8L19 10L12.2 12.2L10 19L7.8 12.2L1 10L7.8 7.8L10 1Z"
+              fill="#409EFF"
+            />
+          </svg>
+          <span className="text-sm font-semibold text-text-primary">AI Panel</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-muted truncate max-w-[200px]">{userEmail}</span>
+          <Button variant="ghost" size="sm" onClick={onLogout} title="退出登录">
+            <LogOut className="h-4 w-4" />
+          </Button>
+          <ThemeToggle />
+        </div>
+      </header>
 
-      {/* Main area */}
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        {/* Top navbar */}
-        <header className="flex h-12 items-center justify-between border-b border-border bg-surface-1 px-4 flex-shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            {title && (
-              <h1 className="text-sm font-semibold text-text-primary truncate">{title}</h1>
+      {/* Second row: navigation tabs */}
+      <nav className="flex h-10 items-center gap-1 border-b border-border bg-surface-1 px-4 flex-shrink-0 overflow-x-auto">
+        {navItems.map((item) => (
+          <Button
+            key={item.id}
+            variant="ghost"
+            size="sm"
+            onClick={item.onClick}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-normal whitespace-nowrap",
+              item.active
+                ? "bg-brand/10 text-brand"
+                : "text-text-secondary hover:bg-surface-2 hover:text-text-primary",
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            {topBarRight}
-            <ThemeToggle />
-          </div>
-        </header>
+          >
+            <span className="flex-shrink-0">{item.icon}</span>
+            <span>{item.label}</span>
+          </Button>
+        ))}
+      </nav>
 
-        {/* Content area */}
-        <main className="flex flex-1 flex-col overflow-hidden">
-          {children}
-        </main>
-      </div>
+      {/* Content area */}
+      <main className="flex flex-1 flex-col overflow-hidden">
+        {children}
+      </main>
     </div>
   );
 }

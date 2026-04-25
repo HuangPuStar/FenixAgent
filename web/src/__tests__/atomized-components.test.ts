@@ -19,7 +19,7 @@ const buttonFiles = [
   "components/chat/ToolCallGroup.tsx",
   "components/chat/MessageBubble.tsx",
   "components/config/StatusBadge.tsx",
-  "src/components/shell/Sidebar.tsx",
+  "src/components/shell/AppShell.tsx",
 ];
 
 // Files that should use ScrollArea instead of overflow-y-auto
@@ -28,7 +28,6 @@ const scrollAreaFiles = [
   "components/chat/PlanView.tsx",
   "components/chat/SessionSidebar.tsx",
   "components/chat/CommandMenu.tsx",
-  "src/components/shell/Sidebar.tsx",
 ];
 
 function readComponent(relPath: string): string {

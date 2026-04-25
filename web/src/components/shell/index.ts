@@ -1,3 +1,2 @@
 export { AppShell } from "./AppShell";
-export { Sidebar } from "./Sidebar";
-export type { SidebarItem } from "./Sidebar";
+export type { NavItem } from "./AppShell";
