@@ -25,6 +25,9 @@ export default defineConfig({
           if (id.includes("node_modules/shiki") || id.includes("node_modules/@shikijs")) {
             return "shiki";
           }
+          if (id.includes("node_modules/mermaid")) {
+            return "mermaid";
+          }
           if (id.includes("node_modules/motion") || id.includes("node_modules/framer-motion")) {
             return "motion";
           }
