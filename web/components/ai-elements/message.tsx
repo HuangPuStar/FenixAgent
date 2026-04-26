@@ -357,6 +357,25 @@ export const MessageResponse = memo(
                     </div>
                 }>
                 <LazyStreamdown
+                    allowedTags={{
+                        iframe: ["src", "width", "height", "title", "sandbox", "loading"],
+                    }}
+                    components={{
+                        iframe: ({ src, width, height, title, ...rest }: Record<string, unknown>) => (
+                            <iframe
+                                src={src as string}
+                                width={(width as string) || "100%"}
+                                height={(height as string) || "400"}
+                                title={title as string}
+                                sandbox="allow-scripts allow-same-origin allow-popups"
+                                loading="lazy"
+                                style={{ border: "1px solid #e5e7eb", borderRadius: 8 }}
+                                {...Object.fromEntries(
+                                    Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)),
+                                )}
+                            />
+                        ),
+                    }}
                     className={cn(
                         "size-full break-words [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
                         className,
