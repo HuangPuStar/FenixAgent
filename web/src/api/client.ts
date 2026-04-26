@@ -1,4 +1,4 @@
-import type { Session, Environment, ControlResponse, SessionEvent } from "../types";
+import type { Session, Environment, EnvironmentDetail, CreateEnvironmentRequest, UpdateEnvironmentRequest, ControlResponse, SessionEvent } from "../types";
 import type { ProviderInfo, ProviderDetail, ModelConfig, AgentInfo, AgentDetail, SkillInfo, SkillDetail, McpServerInfo, McpServerDetail, McpServerConfig, McpToolInfo, McpInspectResult, ApiResponse } from "../types/config";
 
 
@@ -42,6 +42,22 @@ export function apiFetchSessions() {
 
 export function apiFetchEnvironments() {
   return api<Environment[]>("GET", "/web/environments");
+}
+
+export function apiGetEnvironment(id: string) {
+  return api<EnvironmentDetail>("GET", `/web/environments/${id}`);
+}
+
+export function apiCreateEnvironment(data: CreateEnvironmentRequest) {
+  return api<EnvironmentDetail>("POST", "/web/environments", data);
+}
+
+export function apiUpdateEnvironment(id: string, data: UpdateEnvironmentRequest) {
+  return api<EnvironmentDetail>("PUT", `/web/environments/${id}`, data);
+}
+
+export function apiDeleteEnvironment(id: string) {
+  return api<{ ok: boolean }>("DELETE", `/web/environments/${id}`);
 }
 
 // --- Control ---
@@ -264,4 +280,83 @@ export function apiInspectMcpServer(name: string) {
 }
 export function apiListMcpTools(name: string) {
   return apiConfigAction<{ name: string; tools: McpToolInfo[] }>("mcp", "list_tools", { name });
+}
+
+// --- Tasks ---
+
+export interface TaskInfo {
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  cron: string;
+  timezone: string;
+  enabled: boolean;
+  url: string;
+  method: string;
+  headers: Record<string, string> | null;
+  body: string | null;
+  timeout: number;
+  retryEnabled: boolean;
+  retryCount: number;
+  retryInterval: number;
+  lastRunAt: number | null;
+  nextRunAt: number | null;
+  lastStatus: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExecutionLogInfo {
+  id: string;
+  taskId: string;
+  status: string;
+  statusCode: number | null;
+  responseBody: string | null;
+  error: string | null;
+  duration: number | null;
+  attempt: number;
+  triggeredBy: string;
+  createdAt: number;
+}
+
+export interface PaginatedLogs {
+  total: number;
+  items: ExecutionLogInfo[];
+}
+
+export function apiListTasks() {
+  return api<{ success: true; data: TaskInfo[] }>("GET", "/web/tasks").then((r) => r.data);
+}
+
+export function apiCreateTask(data: Partial<TaskInfo>) {
+  return api<{ success: true; data: TaskInfo }>("POST", "/web/tasks", data).then((r) => r.data);
+}
+
+export function apiGetTask(id: string) {
+  return api<{ success: true; data: TaskInfo }>("GET", `/web/tasks/${id}`).then((r) => r.data);
+}
+
+export function apiUpdateTask(id: string, data: Partial<TaskInfo>) {
+  return api<{ success: true; data: TaskInfo }>("PUT", `/web/tasks/${id}`, data).then((r) => r.data);
+}
+
+export function apiDeleteTask(id: string) {
+  return api<void>("DELETE", `/web/tasks/${id}`);
+}
+
+export function apiToggleTask(id: string) {
+  return api<{ success: true; data: { id: string; enabled: boolean } }>("POST", `/web/tasks/${id}/toggle`).then((r) => r.data);
+}
+
+export function apiTriggerTask(id: string) {
+  return api<{ success: true; data: ExecutionLogInfo }>("POST", `/web/tasks/${id}/trigger`).then((r) => r.data);
+}
+
+export function apiListTaskLogs(id: string, page: number, pageSize: number) {
+  return api<{ success: true; data: PaginatedLogs }>("GET", `/web/tasks/${id}/logs?page=${page}&pageSize=${pageSize}`).then((r) => r.data);
+}
+
+export function apiClearTaskLogs(id: string) {
+  return api<void>("DELETE", `/web/tasks/${id}/logs`);
 }

@@ -19,6 +19,7 @@ sqlite.exec("PRAGMA journal_mode = WAL");
 sqlite.exec("PRAGMA foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
+export { sqlite };
 
 // Run table creation on startup
 export function initDb() {
@@ -94,6 +95,70 @@ export function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_mcp_tool_server ON mcp_tool(server_name);
     CREATE INDEX IF NOT EXISTS idx_mcp_tool_server_tool ON mcp_tool(server_name, tool_name);
+
+    CREATE TABLE IF NOT EXISTS environment (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      workspace_path TEXT NOT NULL,
+      agent_name TEXT,
+      status TEXT NOT NULL DEFAULT 'idle',
+      machine_name TEXT,
+      branch TEXT,
+      git_repo_url TEXT,
+      max_sessions INTEGER NOT NULL DEFAULT 1,
+      worker_type TEXT NOT NULL DEFAULT 'acp',
+      capabilities TEXT,
+      secret TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      last_poll_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_environment_user_id ON environment(user_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_environment_secret ON environment(secret);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_environment_name ON environment(name);
+
+    CREATE TABLE IF NOT EXISTS scheduled_task (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT,
+      cron TEXT NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      url TEXT NOT NULL,
+      method TEXT NOT NULL DEFAULT 'GET',
+      headers TEXT,
+      body TEXT,
+      timeout INTEGER NOT NULL DEFAULT 30000,
+      retry_enabled INTEGER NOT NULL DEFAULT 0,
+      retry_count INTEGER NOT NULL DEFAULT 3,
+      retry_interval INTEGER NOT NULL DEFAULT 60,
+      last_run_at INTEGER,
+      next_run_at INTEGER,
+      last_status TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS task_execution_log (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES scheduled_task(id) ON DELETE CASCADE,
+      status TEXT NOT NULL,
+      status_code INTEGER,
+      response_body TEXT,
+      error TEXT,
+      duration INTEGER,
+      attempt INTEGER NOT NULL DEFAULT 1,
+      triggered_by TEXT NOT NULL DEFAULT 'cron',
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scheduled_task_user_id ON scheduled_task(user_id);
+    CREATE INDEX IF NOT EXISTS idx_task_execution_log_task_id ON task_execution_log(task_id);
+    CREATE INDEX IF NOT EXISTS idx_task_execution_log_created_at ON task_execution_log(created_at);
   `);
 }
 

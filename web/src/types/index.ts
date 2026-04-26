@@ -1,12 +1,36 @@
 export interface Environment {
   id: string;
-  machine_name?: string;
-  directory?: string;
+  name: string;
+  description: string | null;
+  workspace_path: string;
+  agent_name: string | null;
   status: string;
-  branch?: string;
-  worker_type?: string;
-  channel_group_id?: string | null;
-  capabilities?: Record<string, unknown> | null;
+  machine_name: string | null;
+  branch: string | null;
+  last_poll_at: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface EnvironmentDetail extends Environment {
+  secret: string;
+  capabilities: Record<string, unknown> | null;
+  worker_type: string;
+  max_sessions: number;
+}
+
+export interface CreateEnvironmentRequest {
+  name: string;
+  description?: string;
+  workspacePath: string;
+  agentName?: string;
+}
+
+export interface UpdateEnvironmentRequest {
+  name?: string;
+  description?: string;
+  workspacePath?: string;
+  agentName?: string;
 }
 
 export interface Session {

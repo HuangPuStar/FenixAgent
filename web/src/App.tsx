@@ -18,6 +18,7 @@ import {
     Bot,
     Wrench,
     Plug,
+    Clock,
     KeyRound,
 } from "lucide-react";
 
@@ -39,9 +40,12 @@ const SkillsPage = lazy(() =>
 const McpPage = lazy(() =>
     import("./pages/McpPage").then((m) => ({ default: m.McpPage })),
 );
+const TasksPage = lazy(() =>
+    import("./pages/TasksPage").then((m) => ({ default: m.TasksPage })),
+);
 
 export function parseConfigView(pathname: string): string | null {
-    const configViews = ["models", "agents", "skills", "mcp"];
+    const configViews = ["models", "agents", "skills", "mcp", "tasks"];
     const segment = pathname.replace(/^\/code\/?/, "").split("/")[0];
     return configViews.includes(segment) ? segment : null;
 }
@@ -54,7 +58,8 @@ type ViewId =
     | "models"
     | "agents"
     | "skills"
-    | "mcp";
+    | "mcp"
+    | "tasks";
 
 export default function App() {
     const { data: session, isPending } = useSession();
@@ -66,7 +71,7 @@ export default function App() {
 
     const parseRoute = useCallback(() => {
         const path = window.location.pathname;
-        const configViews = ["models", "agents", "skills", "mcp"];
+        const configViews = ["models", "agents", "skills", "mcp", "tasks"];
         const segment = path.replace(/^\/code\/?/, "").split("/")[0];
         if (configViews.includes(segment)) {
             setConfigView(segment);
@@ -171,6 +176,13 @@ export default function App() {
                 onClick: () => navigateToConfig("mcp"),
             },
             {
+                id: "tasks",
+                label: "定时任务",
+                icon: <Clock className="h-4 w-4" />,
+                active: activeView === "tasks",
+                onClick: () => navigateToConfig("tasks"),
+            },
+            {
                 id: "apikeys",
                 label: "API Key",
                 icon: <KeyRound className="h-4 w-4" />,
@@ -219,13 +231,15 @@ export default function App() {
                         <SkillsPage />
                     ) : configView === "mcp" ? (
                         <McpPage />
+                    ) : configView === "tasks" ? (
+                        <TasksPage />
                     ) : currentSessionId ? (
                         <SessionDetail
                             key={currentSessionId}
                             sessionId={currentSessionId}
                         />
                     ) : (
-                        <Dashboard onNavigateSession={navigateToSession} />
+                        <Dashboard />
                     )}
                 </Suspense>
             </AppShell>

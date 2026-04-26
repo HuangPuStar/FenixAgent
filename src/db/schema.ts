@@ -72,3 +72,67 @@ export const mcpTool = sqliteTable("mcp_tool", {
   inputSchema: text("input_schema"),
   inspectedAt: integer("inspected_at", { mode: "timestamp" }).notNull(),
 });
+
+// 定时任务表
+export const scheduledTask = sqliteTable("scheduled_task", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  cron: text("cron").notNull(),
+  timezone: text("timezone").notNull().default("UTC"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  url: text("url").notNull(),
+  method: text("method").notNull().default("GET"),
+  headers: text("headers"),
+  body: text("body"),
+  timeout: integer("timeout").notNull().default(30000),
+  retryEnabled: integer("retry_enabled", { mode: "boolean" }).notNull().default(false),
+  retryCount: integer("retry_count").notNull().default(3),
+  retryInterval: integer("retry_interval").notNull().default(60),
+  lastRunAt: integer("last_run_at", { mode: "timestamp" }),
+  nextRunAt: integer("next_run_at", { mode: "timestamp" }),
+  lastStatus: text("last_status"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+// 任务执行日志表
+export const taskExecutionLog = sqliteTable("task_execution_log", {
+  id: text("id").primaryKey(),
+  taskId: text("task_id")
+    .notNull()
+    .references(() => scheduledTask.id, { onDelete: "cascade" }),
+  status: text("status").notNull(),
+  statusCode: integer("status_code"),
+  responseBody: text("response_body"),
+  error: text("error"),
+  duration: integer("duration"),
+  attempt: integer("attempt").notNull().default(1),
+  triggeredBy: text("triggered_by").notNull().default("cron"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// Environment 持久化表
+export const environment = sqliteTable("environment", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  workspacePath: text("workspace_path").notNull(),
+  agentName: text("agent_name"),
+  status: text("status").notNull().default("idle"),
+  machineName: text("machine_name"),
+  branch: text("branch"),
+  gitRepoUrl: text("git_repo_url"),
+  maxSessions: integer("max_sessions").notNull().default(1),
+  workerType: text("worker_type").notNull().default("acp"),
+  capabilities: text("capabilities"),
+  secret: text("secret").notNull(),
+  userId: text("user_id").notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  lastPollAt: integer("last_poll_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});

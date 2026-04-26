@@ -100,3 +100,34 @@ export interface ErrorResponse {
     message: string;
   };
 }
+
+// --- Environment Registration (Web UI) ---
+
+export interface RegisterEnvironmentWebRequest {
+  name: string;
+  description?: string;
+  workspacePath: string;
+  agentName?: string;
+}
+
+export interface UpdateEnvironmentWebRequest {
+  name?: string;
+  description?: string;
+  workspacePath?: string;
+  agentName?: string;
+}
+
+export interface EnvironmentWebResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  workspace_path: string;
+  agent_name: string | null;
+  status: string;
+  machine_name: string | null;
+  branch: string | null;
+  secret?: string;
+  last_poll_at: number | null;
+  created_at: number;
+  updated_at: number;
+}

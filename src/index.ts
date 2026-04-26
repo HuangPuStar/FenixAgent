@@ -17,12 +17,15 @@ import webEnvironments from "./routes/web/environments";
 import webApiKeys from "./routes/web/api-keys";
 import webConfig from "./routes/web/config";
 import webInstances from "./routes/web/instances";
+import webTasks from "./routes/web/tasks";
 import { stopAllInstances } from "./services/instance";
 import { migrateSkillsDir } from "./services/skill";
+import { startScheduler, stopScheduler } from "./services/scheduler";
 
 console.log("[RCS] Database initialized (SQLite + better-auth)");
 
 await migrateSkillsDir();
+await startScheduler();
 
 const app = new Hono();
 
@@ -73,6 +76,7 @@ app.route("/web", webEnvironments);
 app.route("/web", webApiKeys);
 app.route("/web", webConfig);
 app.route("/web", webInstances);
+app.route("/web", webTasks);
 
 // ACP protocol routes
 console.log("[RCS] ACP support enabled");
@@ -103,6 +107,7 @@ async function gracefulShutdown(signal: string) {
   closeAllAcpConnections();
   closeAllRelayConnections();
   stopAllInstances();
+  stopScheduler();
   process.exit(0);
 }
 
