@@ -1,8 +1,11 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import * as net from "node:net";
+import { existsSync } from "node:fs";
 import { createApiKey } from "../auth/api-key-service";
 import { getBaseUrl } from "../config";
+import { log } from "../logger";
+import { storeGetEnvironment, storeCreateSession, storeListSessionsByEnvironment } from "../store";
 
 export interface SpawnedInstance {
   id: string;
@@ -14,6 +17,8 @@ export interface SpawnedInstance {
   error: string | null;
   apiKey: string;
   createdAt: Date;
+  environmentId?: string;
+  sessionId?: string;
 }
 
 const PORT_MIN = 8888;
@@ -107,6 +112,12 @@ export function listInstances(userId: string): SpawnedInstance[] {
   return Array.from(instances.values()).filter(i => i.userId === userId);
 }
 
+export function findRunningInstanceByEnvironment(environmentId: string): SpawnedInstance | undefined {
+  return Array.from(instances.values()).find(
+    (i) => i.environmentId === environmentId && i.status !== "stopped" && i.status !== "error",
+  );
+}
+
 export function getInstance(id: string): SpawnedInstance | undefined {
   return instances.get(id);
 }
@@ -134,5 +145,101 @@ export function stopAllInstances(): void {
     if (inst.pid && inst.status !== "stopped") {
       try { process.kill(inst.pid, "SIGTERM"); } catch {}
     }
+  }
+}
+
+export async function spawnInstanceFromEnvironment(userId: string, environmentId: string): Promise<SpawnedInstance> {
+  const env = storeGetEnvironment(environmentId);
+  if (!env) throw new Error("Environment not found");
+  if (env.userId !== userId) throw new Error("Not your environment");
+  // Check if a running instance already exists for this environment
+  const hasRunningInstance = Array.from(instances.values()).some(
+    (i) => i.environmentId === environmentId && i.status !== "stopped" && i.status !== "error",
+  );
+  if (hasRunningInstance) throw new Error("Environment already has a running instance");
+
+  // Eagerly create session so the frontend can navigate to it immediately
+  let sessionId: string;
+  const existing = storeListSessionsByEnvironment(environmentId);
+  if (existing.length > 0) {
+    sessionId = existing[0].id;
+  } else {
+    const session = storeCreateSession({
+      environmentId,
+      title: env.agentName || env.name,
+      source: "acp",
+      userId,
+    });
+    sessionId = session.id;
+  }
+
+  const cwd = env.workspacePath || env.directory;
+  if (!cwd || !existsSync(cwd)) throw new Error(`Workspace directory does not exist: ${cwd}`);
+
+  // Allocate port
+  const port = allocatePort();
+  if (!port) throw new Error("No available port");
+  allocatingPorts.add(port);
+  try {
+    const available = await probePort(port);
+    if (!available) throw new Error(`Port ${port} is in use`);
+
+    const id = `inst_${randomBytes(8).toString("hex")}`;
+    const command = `ACP_RCS_TOKEN=${env.secret} acp-link --group "${env.secret}" --port ${port} opencode -- acp`;
+    const instance: SpawnedInstance = {
+      id, userId, port, pid: null,
+      status: "starting", command, error: null, apiKey: env.secret,
+      createdAt: new Date(),
+      environmentId,
+      sessionId,
+    };
+    instances.set(id, instance);
+
+    // Spawn acp-link as standalone local proxy (no RCS upstream URL).
+    // Pass ACP_RCS_TOKEN so acp-link uses it as its local WS auth token.
+    // The relay handler connects with this token to trigger agent spawning.
+    const proc = spawn("acp-link", [
+      "--group", env.secret,
+      "--port", String(port),
+      "opencode", "--", "acp",
+    ], {
+      env: { ...process.env, ACP_RCS_TOKEN: env.secret },
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    instance.pid = proc.pid ?? null;
+
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString().trim();
+      log(`[instance:${id}] stdout: ${text}`);
+      // Capture the auth token that acp-link generates for its local WS
+      const match = text.match(/Token:\s*([a-f0-9]{64})/);
+      if (match) {
+        instance.apiKey = match[1];
+        log(`[instance:${id}] Captured local WS token`);
+      }
+    });
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      log(`[instance:${id}] stderr: ${chunk.toString().trim()}`);
+    });
+    instance.status = "running";
+
+    proc.on("close", (code) => {
+      instance.status = "stopped";
+      if (code !== 0 && code !== null) {
+        instance.error = `Process exited with code ${code}`;
+      }
+      allocatingPorts.delete(port);
+    });
+    proc.on("error", (err) => {
+      instance.status = "error";
+      instance.error = err.message;
+      allocatingPorts.delete(port);
+    });
+
+    return instance;
+  } catch (err) {
+    allocatingPorts.delete(port);
+    throw err;
   }
 }

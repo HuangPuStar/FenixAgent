@@ -533,6 +533,15 @@ export function ChatInterface({ client, agentId }: ChatInterfaceProps) {
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       // Auto-clear after 5 seconds
       errorTimerRef.current = setTimeout(() => setErrorMessage(null), 5000);
+      // Retry createSession if agent not ready yet
+      if (msg.includes("not connected") || msg.includes("Not connected")) {
+        console.log("[ChatInterface] Agent not ready, retrying createSession in 2s...");
+        setTimeout(() => {
+          if (client.getState() === "connected") {
+            client.createSession(undefined, permissionMode);
+          }
+        }, 2000);
+      }
     });
 
     // Restore last session or create a new one
