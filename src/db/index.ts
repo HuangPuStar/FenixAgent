@@ -4,7 +4,10 @@ import * as schema from "./schema";
 import { mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 
-const DB_PATH = process.env.RCS_DB_PATH || "./data/rcs.db";
+const isTest =
+  process.env.NODE_ENV === "test" ||
+  (typeof Bun !== "undefined" && !!Bun.env.BUN_TEST);
+const DB_PATH = process.env.RCS_DB_PATH || (isTest ? ":memory:" : "./data/rcs.db");
 
 // Ensure data directory exists
 const dir = dirname(DB_PATH);
