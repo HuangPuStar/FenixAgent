@@ -60,13 +60,18 @@ describe("InstanceService", () => {
   // Since the module uses module-level Map/Set, we use a workaround:
   // create instances and stop them between tests.
   const createdInstanceIds: string[] = [];
+  let originalCwd = process.cwd();
+  let testCwd: string | null = null;
 
   beforeEach(() => {
-    const localBinDir = join(process.cwd(), "node_modules", ".bin");
+    originalCwd = process.cwd();
+    testCwd = mkdtempSync(join(tmpdir(), "instance-service-cwd-"));
+    const localBinDir = join(testCwd, "node_modules", ".bin");
     const localAcpLink = join(localBinDir, "acp-link");
     mkdirSync(localBinDir, { recursive: true });
     writeFileSync(localAcpLink, "#!/bin/sh\nexit 0\n");
     chmodSync(localAcpLink, 0o755);
+    process.chdir(testCwd);
     setInstanceSpawnForTesting(mockSpawn as unknown as typeof import("node:child_process").spawn);
   });
 
@@ -77,11 +82,16 @@ describe("InstanceService", () => {
     }
     createdInstanceIds.length = 0;
     setInstanceSpawnForTesting(null);
+    process.chdir(originalCwd);
+    if (testCwd) {
+      rmSync(testCwd, { recursive: true, force: true });
+      testCwd = null;
+    }
   });
 
   test("spawnInstance fails early when acp-link is unavailable", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "instance-service-no-acp-link-"));
-    const originalCwd = process.cwd();
+    const cwdBeforeSwitch = process.cwd();
     try {
       mkdirSync(join(tempDir, "node_modules", ".bin"), { recursive: true });
       process.chdir(tempDir);
@@ -90,14 +100,14 @@ describe("InstanceService", () => {
         "Required executable not found: acp-link",
       );
     } finally {
-      process.chdir(originalCwd);
+      process.chdir(cwdBeforeSwitch);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
   test("spawnInstance uses project-local acp-link binary", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "instance-service-local-acp-link-"));
-    const originalCwd = process.cwd();
+    const cwdBeforeSwitch = process.cwd();
     try {
       const localBinDir = join(tempDir, "node_modules", ".bin");
       const localAcpLink = join(localBinDir, "acp-link");
@@ -115,7 +125,7 @@ describe("InstanceService", () => {
       expect(lastCall).toBeDefined();
       expect(realpathSync(lastCall![0])).toBe(realpathSync(localAcpLink));
     } finally {
-      process.chdir(originalCwd);
+      process.chdir(cwdBeforeSwitch);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
