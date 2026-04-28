@@ -1,29 +1,42 @@
-import { eq, and, desc, sql } from "drizzle-orm";
-import { db } from "../db";
-import { scheduledTask, taskExecutionLog } from "../db/schema";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
+import { db } from "../db";
+import { environment, scheduledTask, taskExecutionLog } from "../db/schema";
+import {
+  type AgentTaskRunResult,
+  type RunAgentTaskInput,
+  runAgentTask,
+} from "./agent-task-runner";
 
 function generateTaskId(): string {
   return `task_${randomBytes(12).toString("hex")}`;
 }
+
 function generateLogId(): string {
   return `log_${randomBytes(12).toString("hex")}`;
+}
+
+function toUnixTimestamp(value: Date | null | undefined): number | null {
+  return value ? Math.floor(value.getTime() / 1000) : null;
+}
+
+function truncateSummary(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  return value.length > 2000 ? value.slice(0, 2000) : value;
 }
 
 export interface CreateTaskInput {
   name: string;
   description?: string;
   cron: string;
-  timezone?: string;
-  url: string;
-  method?: string;
-  headers?: Record<string, string> | null;
-  body?: string | null;
-  timeout?: number;
-  retryEnabled?: boolean;
-  retryCount?: number;
-  retryInterval?: number;
+  timezone?: string | null;
+  environmentId: string;
+  task: string;
+  timeoutMinutes?: number;
 }
+
 export type UpdateTaskInput = Partial<CreateTaskInput> & { enabled?: boolean };
 type ServiceErrorCode = "VALIDATION_ERROR" | "NOT_FOUND";
 type ServiceError = { code: ServiceErrorCode; message: string };
@@ -36,16 +49,12 @@ interface TaskResponse {
   name: string;
   description: string | null;
   cron: string;
-  timezone: string;
+  timezone: string | null;
   enabled: boolean;
-  url: string;
-  method: string;
-  headers: Record<string, string> | null;
-  body: string | null;
-  timeout: number;
-  retryEnabled: boolean;
-  retryCount: number;
-  retryInterval: number;
+  environmentId: string;
+  environmentName: string | null;
+  task: string;
+  timeoutMinutes: number;
   lastRunAt: number | null;
   nextRunAt: number | null;
   lastStatus: string | null;
@@ -57,53 +66,36 @@ interface TaskExecutionLogResponse {
   id: string;
   taskId: string;
   status: string;
-  statusCode: number | null;
-  responseBody: string | null;
   error: string | null;
   duration: number | null;
-  attempt: number;
   triggeredBy: string;
+  workspacePath: string | null;
+  workspaceName: string | null;
+  environmentId: string | null;
+  environmentName: string | null;
+  taskSnapshot: string | null;
+  skipReason: string | null;
+  resultSummary: string | null;
   createdAt: number;
 }
 
-const SENSITIVE_HEADER_KEYS = new Set(["authorization", "cookie", "set-cookie", "x-api-key", "proxy-authorization"]);
+type OwnedEnvironment = {
+  id: string;
+  name: string;
+  workspacePath: string;
+  agentName: string | null;
+};
 
-function maskHeaders(headers: Record<string, string> | null): Record<string, string> | null {
-  if (!headers) return null;
-  const masked: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headers)) {
-    if (SENSITIVE_HEADER_KEYS.has(key.toLowerCase())) {
-      masked[key] = value.length > 4 ? `***${value.slice(-4)}` : "***";
-    } else {
-      masked[key] = value;
-    }
+type RunAgentTaskFn = (input: RunAgentTaskInput) => Promise<AgentTaskRunResult>;
+
+let runAgentTaskImpl: RunAgentTaskFn = runAgentTask;
+
+function normalizeTimezone(timezone: string | null | undefined): string | null {
+  if (timezone === undefined || timezone === null) {
+    return null;
   }
-  return masked;
-}
-
-function sanitizeTask(row: any): TaskResponse {
-  const parsedHeaders = row.headers ? JSON.parse(row.headers) : null;
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description ?? null,
-    cron: row.cron,
-    timezone: row.timezone,
-    enabled: row.enabled,
-    url: row.url,
-    method: row.method,
-    headers: maskHeaders(parsedHeaders),
-    body: row.body ?? null,
-    timeout: row.timeout,
-    retryEnabled: row.retryEnabled,
-    retryCount: row.retryCount,
-    retryInterval: row.retryInterval,
-    lastRunAt: row.lastRunAt ? Math.floor(row.lastRunAt.getTime() / 1000) : null,
-    nextRunAt: row.nextRunAt ? Math.floor(row.nextRunAt.getTime() / 1000) : null,
-    lastStatus: row.lastStatus ?? null,
-    createdAt: Math.floor(row.createdAt.getTime() / 1000),
-    updatedAt: Math.floor(row.updatedAt.getTime() / 1000),
-  };
+  const trimmed = timezone.trim();
+  return trimmed.length === 0 ? null : trimmed;
 }
 
 function validateCron(cron: string): string | null {
@@ -116,31 +108,112 @@ function validateCron(cron: string): string | null {
   return null;
 }
 
-const VALID_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+function validateTimeoutMinutes(timeoutMinutes: number | undefined): string | null {
+  if (timeoutMinutes === undefined) {
+    return null;
+  }
+  if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1 || timeoutMinutes > 180) {
+    return "超时时间必须在 1-180 分钟之间";
+  }
+  return null;
+}
+
 function validateTaskInput(data: CreateTaskInput, isUpdate = false): string | null {
   if (!isUpdate && (!data.name || data.name.trim().length === 0)) return "任务名称不能为空";
+  if (data.name !== undefined && data.name.trim().length === 0) return "任务名称不能为空";
   if (data.name && data.name.length > 128) return "任务名称不能超过 128 字符";
-  if (!isUpdate && (!data.url || data.url.trim().length === 0)) return "URL 不能为空";
-  if (data.url && !/^https?:\/\//.test(data.url)) return "URL 必须以 http:// 或 https:// 开头";
+  if (!isUpdate && (!data.environmentId || data.environmentId.trim().length === 0)) return "Environment 不能为空";
+  if (data.environmentId !== undefined && data.environmentId.trim().length === 0) return "Environment 不能为空";
+  if (!isUpdate && (!data.task || data.task.trim().length === 0)) return "任务内容不能为空";
+  if (data.task !== undefined && data.task.trim().length === 0) return "任务内容不能为空";
+  if (data.task && (data.task.length < 1 || data.task.length > 10000)) return "任务内容长度必须在 1-10000 字符之间";
   if (!isUpdate && (!data.cron || data.cron.trim().length === 0)) return "cron 表达式不能为空";
   if (data.cron) {
     const cronErr = validateCron(data.cron);
     if (cronErr) return cronErr;
   }
-  if (data.method && !VALID_METHODS.includes(data.method.toUpperCase())) return "HTTP 方法必须为 GET/POST/PUT/DELETE/PATCH";
-  if (data.timeout !== undefined && (data.timeout < 1000 || data.timeout > 300000)) return "超时必须在 1000-300000ms 之间";
-  if (data.retryCount !== undefined && (data.retryCount < 0 || data.retryCount > 10)) return "重试次数必须在 0-10 之间";
-  if (data.retryInterval !== undefined && (data.retryInterval < 10 || data.retryInterval > 3600)) return "重试间隔必须在 10-3600s 之间";
+  const timeoutError = validateTimeoutMinutes(data.timeoutMinutes);
+  if (timeoutError) {
+    return timeoutError;
+  }
   return null;
+}
+
+async function getOwnedEnvironment(userId: string, environmentId: string): Promise<OwnedEnvironment | null> {
+  const [row] = await db.select({
+    id: environment.id,
+    name: environment.name,
+    workspacePath: environment.workspacePath,
+    agentName: environment.agentName,
+  }).from(environment).where(and(eq(environment.id, environmentId), eq(environment.userId, userId)));
+
+  return row ?? null;
+}
+
+async function loadEnvironmentMap(environmentIds: string[]): Promise<Map<string, string>> {
+  if (environmentIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db.select({
+    id: environment.id,
+    name: environment.name,
+  }).from(environment).where(inArray(environment.id, Array.from(new Set(environmentIds))));
+
+  return new Map(rows.map((row) => [row.id, row.name]));
+}
+
+function sanitizeTask(row: typeof scheduledTask.$inferSelect, environmentName: string | null): TaskResponse {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? null,
+    cron: row.cron,
+    timezone: row.timezone ?? null,
+    enabled: row.enabled,
+    environmentId: row.environmentId,
+    environmentName,
+    task: row.task,
+    timeoutMinutes: row.timeoutMinutes,
+    lastRunAt: toUnixTimestamp(row.lastRunAt),
+    nextRunAt: toUnixTimestamp(row.nextRunAt),
+    lastStatus: row.lastStatus ?? null,
+    createdAt: Math.floor(row.createdAt.getTime() / 1000),
+    updatedAt: Math.floor(row.updatedAt.getTime() / 1000),
+  };
+}
+
+function sanitizeExecutionLog(row: typeof taskExecutionLog.$inferSelect): TaskExecutionLogResponse {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    status: row.status,
+    error: row.error ?? null,
+    duration: row.duration ?? null,
+    triggeredBy: row.triggeredBy,
+    workspacePath: row.workspacePath ?? null,
+    workspaceName: row.workspaceName ?? null,
+    environmentId: row.environmentId ?? null,
+    environmentName: row.environmentName ?? null,
+    taskSnapshot: row.taskSnapshot ?? null,
+    skipReason: row.skipReason ?? null,
+    resultSummary: row.resultSummary ?? null,
+    createdAt: Math.floor(row.createdAt.getTime() / 1000),
+  };
 }
 
 export async function createTask(userId: string, data: CreateTaskInput): Promise<ServiceResult<TaskResponse>> {
   const validationError = validateTaskInput(data);
   if (validationError) return { success: false, error: { code: "VALIDATION_ERROR", message: validationError } };
 
+  const ownedEnvironment = await getOwnedEnvironment(userId, data.environmentId);
+  if (!ownedEnvironment) {
+    return { success: false, error: { code: "VALIDATION_ERROR", message: "Environment 不存在或无权访问" } };
+  }
+
   const id = generateTaskId();
   const now = new Date();
-  const headersJson = data.headers ? JSON.stringify(data.headers) : null;
+  const timezone = normalizeTimezone(data.timezone);
 
   await db.insert(scheduledTask).values({
     id,
@@ -148,16 +221,11 @@ export async function createTask(userId: string, data: CreateTaskInput): Promise
     name: data.name.trim(),
     description: data.description?.trim() ?? null,
     cron: data.cron.trim(),
-    timezone: data.timezone ?? "UTC",
+    timezone,
     enabled: true,
-    url: data.url.trim(),
-    method: (data.method ?? "GET").toUpperCase(),
-    headers: headersJson,
-    body: data.body ?? null,
-    timeout: data.timeout ?? 30000,
-    retryEnabled: data.retryEnabled ?? false,
-    retryCount: data.retryCount ?? 3,
-    retryInterval: data.retryInterval ?? 60,
+    environmentId: ownedEnvironment.id,
+    task: data.task.trim(),
+    timeoutMinutes: data.timeoutMinutes ?? 30,
     lastRunAt: null,
     nextRunAt: null,
     lastStatus: null,
@@ -166,21 +234,27 @@ export async function createTask(userId: string, data: CreateTaskInput): Promise
   });
 
   const [row] = await db.select().from(scheduledTask).where(eq(scheduledTask.id, id));
-  return { success: true, data: sanitizeTask(row) };
+  return { success: true, data: sanitizeTask(row, ownedEnvironment.name) };
 }
 
 export async function listTasks(userId: string): Promise<ServiceSuccess<TaskResponse[]>> {
   const rows = await db.select().from(scheduledTask)
     .where(eq(scheduledTask.userId, userId))
     .orderBy(desc(scheduledTask.createdAt));
-  return { success: true, data: rows.map(sanitizeTask) };
+  const environmentMap = await loadEnvironmentMap(rows.map((row) => row.environmentId));
+  return {
+    success: true,
+    data: rows.map((row) => sanitizeTask(row, environmentMap.get(row.environmentId) ?? null)),
+  };
 }
 
 export async function getTask(userId: string, taskId: string): Promise<ServiceResult<TaskResponse>> {
   const [row] = await db.select().from(scheduledTask)
     .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
   if (!row) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
-  return { success: true, data: sanitizeTask(row) };
+
+  const ownedEnvironment = await getOwnedEnvironment(userId, row.environmentId);
+  return { success: true, data: sanitizeTask(row, ownedEnvironment?.name ?? null) };
 }
 
 export async function updateTask(userId: string, taskId: string, data: UpdateTaskInput): Promise<ServiceResult<TaskResponse>> {
@@ -191,30 +265,32 @@ export async function updateTask(userId: string, taskId: string, data: UpdateTas
   const validationError = validateTaskInput(data as CreateTaskInput, true);
   if (validationError) return { success: false, error: { code: "VALIDATION_ERROR", message: validationError } };
 
-  const updates: Record<string, any> = { updatedAt: new Date() };
+  const targetEnvironmentId = data.environmentId ?? existing.environmentId;
+  const ownedEnvironment = await getOwnedEnvironment(userId, targetEnvironmentId);
+  if (!ownedEnvironment) {
+    return { success: false, error: { code: "VALIDATION_ERROR", message: "Environment 不存在或无权访问" } };
+  }
+
+  const updates: Partial<typeof scheduledTask.$inferInsert> = { updatedAt: new Date() };
   if (data.name !== undefined) updates.name = data.name.trim();
   if (data.description !== undefined) updates.description = data.description?.trim() ?? null;
   if (data.cron !== undefined) updates.cron = data.cron.trim();
-  if (data.timezone !== undefined) updates.timezone = data.timezone;
-  if (data.url !== undefined) updates.url = data.url.trim();
-  if (data.method !== undefined) updates.method = data.method.toUpperCase();
-  if (data.headers !== undefined) updates.headers = data.headers ? JSON.stringify(data.headers) : null;
-  if (data.body !== undefined) updates.body = data.body ?? null;
-  if (data.timeout !== undefined) updates.timeout = data.timeout;
-  if (data.retryEnabled !== undefined) updates.retryEnabled = data.retryEnabled;
-  if (data.retryCount !== undefined) updates.retryCount = data.retryCount;
-  if (data.retryInterval !== undefined) updates.retryInterval = data.retryInterval;
+  if (data.timezone !== undefined) updates.timezone = normalizeTimezone(data.timezone);
+  if (data.environmentId !== undefined) updates.environmentId = ownedEnvironment.id;
+  if (data.task !== undefined) updates.task = data.task.trim();
+  if (data.timeoutMinutes !== undefined) updates.timeoutMinutes = data.timeoutMinutes;
+  if (data.enabled !== undefined) updates.enabled = data.enabled;
 
   await db.update(scheduledTask).set(updates).where(eq(scheduledTask.id, taskId));
 
   const [row] = await db.select().from(scheduledTask).where(eq(scheduledTask.id, taskId));
-  return { success: true, data: sanitizeTask(row) };
+  return { success: true, data: sanitizeTask(row, ownedEnvironment.name) };
 }
 
 export async function deleteTask(userId: string, taskId: string): Promise<ServiceResult<undefined>> {
   const result = db.delete(scheduledTask)
     .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)))
-    .run() as any;
+    .run() as unknown as { changes: number };
   if (result.changes === 0) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   return { success: true, data: undefined };
 }
@@ -232,81 +308,90 @@ export async function toggleTask(userId: string, taskId: string): Promise<Servic
   return { success: true, data: { id: taskId, enabled: newEnabled } };
 }
 
+export async function executeTaskById(
+  taskId: string,
+  triggeredBy: "cron" | "manual",
+): Promise<ServiceResult<TaskExecutionLogResponse>> {
+  const task = await getTaskById(taskId);
+  if (!task) {
+    return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
+  }
+
+  const ownedEnvironment = await getOwnedEnvironment(task.userId, task.environmentId);
+  if (!ownedEnvironment) {
+    return { success: false, error: { code: "VALIDATION_ERROR", message: "Environment 不存在或无权访问" } };
+  }
+
+  const logId = generateLogId();
+  const now = new Date();
+
+  try {
+    const result = await runAgentTaskImpl({
+      userId: task.userId,
+      environmentId: task.environmentId,
+      taskId: task.id,
+      taskText: task.task,
+      timeoutMinutes: task.timeoutMinutes,
+      logId,
+    });
+
+    await db.insert(taskExecutionLog).values({
+      id: logId,
+      taskId: task.id,
+      status: result.status,
+      error: result.error,
+      duration: result.duration,
+      triggeredBy,
+      workspacePath: result.workspacePath,
+      workspaceName: result.workspaceName,
+      environmentId: task.environmentId,
+      environmentName: ownedEnvironment.name,
+      taskSnapshot: task.task,
+      skipReason: null,
+      resultSummary: truncateSummary(result.resultSummary),
+      createdAt: now,
+    });
+
+    await db.update(scheduledTask)
+      .set({ lastRunAt: now, lastStatus: result.status, updatedAt: now })
+      .where(eq(scheduledTask.id, task.id));
+
+    const [logRow] = await db.select().from(taskExecutionLog).where(eq(taskExecutionLog.id, logId));
+    return { success: true, data: sanitizeExecutionLog(logRow) };
+  } catch (error: any) {
+    const message = error?.message ?? String(error);
+
+    await db.insert(taskExecutionLog).values({
+      id: logId,
+      taskId: task.id,
+      status: "failed",
+      error: message,
+      duration: null,
+      triggeredBy,
+      workspacePath: null,
+      workspaceName: null,
+      environmentId: task.environmentId,
+      environmentName: ownedEnvironment.name,
+      taskSnapshot: task.task,
+      skipReason: null,
+      resultSummary: truncateSummary(message),
+      createdAt: now,
+    });
+
+    await db.update(scheduledTask)
+      .set({ lastRunAt: now, lastStatus: "failed", updatedAt: now })
+      .where(eq(scheduledTask.id, task.id));
+
+    const [logRow] = await db.select().from(taskExecutionLog).where(eq(taskExecutionLog.id, logId));
+    return { success: true, data: sanitizeExecutionLog(logRow) };
+  }
+}
+
 export async function triggerTask(userId: string, taskId: string): Promise<ServiceResult<TaskExecutionLogResponse>> {
   const [task] = await db.select().from(scheduledTask)
     .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
   if (!task) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
-
-  const logId = generateLogId();
-  const startTime = Date.now();
-  let status = "success";
-  let statusCode: number | null = null;
-  let responseBody: string | null = null;
-  let errorMsg: string | null = null;
-
-  try {
-    const headers: Record<string, string> = task.headers ? JSON.parse(task.headers) : {};
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), task.timeout);
-
-    const fetchOptions: RequestInit = {
-      method: task.method,
-      headers,
-      signal: controller.signal,
-    };
-    if (task.body && ["POST", "PUT", "PATCH"].includes(task.method)) {
-      fetchOptions.body = task.body;
-    }
-
-    const response = await fetch(task.url, fetchOptions);
-    clearTimeout(timeoutId);
-    statusCode = response.status;
-    const text = await response.text();
-    responseBody = text.length > 4096 ? text.slice(0, 4096) : text;
-    if (!response.ok) {
-      status = "failed";
-      errorMsg = `HTTP ${response.status}`;
-    }
-  } catch (err: any) {
-    status = "failed";
-    errorMsg = err.message ?? String(err);
-  }
-
-  const duration = Date.now() - startTime;
-  const now = new Date();
-
-  await db.insert(taskExecutionLog).values({
-    id: logId,
-    taskId: task.id,
-    status,
-    statusCode,
-    responseBody,
-    error: errorMsg,
-    duration,
-    attempt: 1,
-    triggeredBy: "manual",
-    createdAt: now,
-  });
-
-  await db.update(scheduledTask)
-    .set({ lastRunAt: now, lastStatus: status, updatedAt: now })
-    .where(eq(scheduledTask.id, task.id));
-
-  return {
-    success: true,
-    data: {
-      id: logId,
-      taskId: task.id,
-      status,
-      statusCode,
-      responseBody,
-      error: errorMsg,
-      duration,
-      attempt: 1,
-      triggeredBy: "manual",
-      createdAt: Math.floor(now.getTime() / 1000),
-    },
-  };
+  return executeTaskById(taskId, "manual");
 }
 
 export async function listExecutionLogs(
@@ -328,18 +413,7 @@ export async function listExecutionLogs(
     success: true,
     data: {
       total,
-      items: rows.map((r) => ({
-        id: r.id,
-        taskId: r.taskId,
-        status: r.status,
-        statusCode: r.statusCode,
-        responseBody: r.responseBody,
-        error: r.error,
-        duration: r.duration,
-        attempt: r.attempt,
-        triggeredBy: r.triggeredBy,
-        createdAt: Math.floor(r.createdAt.getTime() / 1000),
-      })),
+      items: rows.map(sanitizeExecutionLog),
     },
   };
 }
@@ -356,13 +430,17 @@ export async function getTaskById(taskId: string) {
 
 export async function createExecutionLog(params: {
   taskId: string;
-  status: string;
-  statusCode?: number | null;
-  responseBody?: string | null;
+  status: "success" | "failed" | "timeout" | "skipped";
   error?: string | null;
   duration?: number | null;
-  attempt?: number;
-  triggeredBy?: string;
+  triggeredBy?: "cron" | "manual";
+  workspacePath?: string | null;
+  workspaceName?: string | null;
+  environmentId?: string | null;
+  environmentName?: string | null;
+  taskSnapshot?: string | null;
+  skipReason?: string | null;
+  resultSummary?: string | null;
 }) {
   const logId = generateLogId();
   const now = new Date();
@@ -370,13 +448,21 @@ export async function createExecutionLog(params: {
     id: logId,
     taskId: params.taskId,
     status: params.status,
-    statusCode: params.statusCode ?? null,
-    responseBody: params.responseBody ? (params.responseBody.length > 4096 ? params.responseBody.slice(0, 4096) : params.responseBody) : null,
     error: params.error ?? null,
     duration: params.duration ?? null,
-    attempt: params.attempt ?? 1,
     triggeredBy: params.triggeredBy ?? "cron",
+    workspacePath: params.workspacePath ?? null,
+    workspaceName: params.workspaceName ?? null,
+    environmentId: params.environmentId ?? null,
+    environmentName: params.environmentName ?? null,
+    taskSnapshot: params.taskSnapshot ?? null,
+    skipReason: params.skipReason ?? null,
+    resultSummary: truncateSummary(params.resultSummary),
     createdAt: now,
   });
   return logId;
+}
+
+export function setRunAgentTaskForTesting(fn: RunAgentTaskFn | null): void {
+  runAgentTaskImpl = fn ?? runAgentTask;
 }

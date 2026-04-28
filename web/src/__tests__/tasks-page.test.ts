@@ -1,98 +1,49 @@
-import { describe, it, expect } from "bun:test";
-import { join } from "node:path";
+import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const webRoot = join(import.meta.dirname, "..");
 
 describe("TasksPage", () => {
-  describe("validateTaskForm logic", () => {
-    it("should reject empty name", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("任务名称不能为空");
-    });
-
-    it("should reject non-http url", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("URL 必须以 http:// 或 https:// 开头");
-    });
-
-    it("should reject empty cron", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("cron 表达式不能为空");
-    });
-
-    it("should reject non-5-field cron", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("cron 表达式必须为 5 字段");
-    });
+  it("contains environment/task/task timeout state and environment loading", () => {
+    const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
+    expect(src).toContain("apiFetchEnvironments");
+    expect(src).toContain("environmentId");
+    expect(src).toContain("timeoutMinutes");
+    expect(src).toContain("LOCAL_TIMEZONE_SENTINEL");
   });
 
-  describe("format helpers", () => {
-    it("formatTimestamp should handle null", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain('if (!ts) return "—"');
-    });
-
-    it("formatDuration should handle ms < 1000", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("ms < 1000");
-    });
-
-    it("formatDuration should handle ms >= 1000", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("ms / 1000");
-    });
+  it("removes legacy HTTP form labels", () => {
+    const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
+    expect(src).not.toContain(["UR", "L *"].join(""));
+    expect(src).not.toContain(["请求", "头"].join(""));
+    expect(src).not.toContain(["请求体 ", "(JSON)"].join(""));
+    expect(src).not.toContain(["启用自动", "重试"].join(""));
+    expect(src).not.toContain(["form", "Method"].join(""));
+    expect(src).not.toContain(["form", "Headers"].join(""));
+    expect(src).not.toContain(["form", "Retry"].join(""));
   });
 
-  describe("CRON_PRESETS", () => {
-    it("should have 5 presets", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      const matches = src.match(/label:.*value:.*\*/g);
-      expect(matches).not.toBeNull();
-      expect(matches!.length).toBeGreaterThanOrEqual(5);
-    });
-
-    it("should contain standard cron expressions", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("*/5 * * * *");
-      expect(src).toContain("0 * * * *");
-    });
+  it("contains workspace browsing UI in logs dialog", () => {
+    const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
+    expect(src).toContain("workspacePath");
+    expect(src).toContain("resultSummary");
+    expect(src).toContain("查看目录");
+    expect(src).toContain("apiListFiles");
   });
+});
 
-  describe("TasksPage component", () => {
-    it("should export TasksPage function", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("export function TasksPage");
-    });
-
-    it("should use DataTable, FormDialog, StatusBadge, ConfirmDialog", () => {
-      const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-      expect(src).toContain("DataTable");
-      expect(src).toContain("FormDialog");
-      expect(src).toContain("StatusBadge");
-      expect(src).toContain("ConfirmDialog");
-    });
-  });
-
-  describe("client.ts tasks API", () => {
-    it("should export all tasks API functions", () => {
-      const src = readFileSync(join(webRoot, "api/client.ts"), "utf-8");
-      expect(src).toContain("export function apiListTasks");
-      expect(src).toContain("export function apiCreateTask");
-      expect(src).toContain("export function apiGetTask");
-      expect(src).toContain("export function apiUpdateTask");
-      expect(src).toContain("export function apiDeleteTask");
-      expect(src).toContain("export function apiToggleTask");
-      expect(src).toContain("export function apiTriggerTask");
-      expect(src).toContain("export function apiListTaskLogs");
-      expect(src).toContain("export function apiClearTaskLogs");
-    });
-
-    it("should export TaskInfo, ExecutionLogInfo, PaginatedLogs types", () => {
-      const src = readFileSync(join(webRoot, "api/client.ts"), "utf-8");
-      expect(src).toContain("export interface TaskInfo");
-      expect(src).toContain("export interface ExecutionLogInfo");
-      expect(src).toContain("export interface PaginatedLogs");
-    });
+describe("client.ts tasks API", () => {
+  it("exports task and execution log types with new fields", () => {
+    const src = readFileSync(join(webRoot, "api/client.ts"), "utf-8");
+    expect(src).toContain("export interface TaskInfo");
+    expect(src).toContain("environmentId");
+    expect(src).toContain("environmentName");
+    expect(src).toContain("task");
+    expect(src).toContain("timeoutMinutes");
+    expect(src).toContain("export interface ExecutionLogInfo");
+    expect(src).toContain("workspacePath");
+    expect(src).toContain("taskSnapshot");
+    expect(src).toContain("resultSummary");
   });
 });

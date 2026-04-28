@@ -30,10 +30,6 @@ mock.module("node:net", () => ({
   })),
 }));
 
-mock.module("node:child_process", () => ({
-  spawn: mockSpawn,
-}));
-
 mock.module("../config", () => ({
   getBaseUrl: () => "http://localhost:3000",
 }));
@@ -56,6 +52,7 @@ const {
   getInstance,
   stopInstance,
   stopAllInstances,
+  setInstanceSpawnForTesting,
 } = await import("../services/instance");
 
 describe("InstanceService", () => {
@@ -70,6 +67,7 @@ describe("InstanceService", () => {
     mkdirSync(localBinDir, { recursive: true });
     writeFileSync(localAcpLink, "#!/bin/sh\nexit 0\n");
     chmodSync(localAcpLink, 0o755);
+    setInstanceSpawnForTesting(mockSpawn as typeof import("node:child_process").spawn);
   });
 
   afterEach(async () => {
@@ -78,6 +76,7 @@ describe("InstanceService", () => {
       try { stopInstance(id, "test-user"); } catch {}
     }
     createdInstanceIds.length = 0;
+    setInstanceSpawnForTesting(null);
   });
 
   test("spawnInstance fails early when acp-link is unavailable", async () => {

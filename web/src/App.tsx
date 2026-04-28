@@ -194,7 +194,7 @@ export default function App() {
             },
             {
                 id: "channels",
-                label: "通道",
+                label: "消息渠道",
                 icon: <MessageSquare className="h-4 w-4" />,
                 active: activeView === "channels",
                 onClick: () => navigateToConfig("channels"),

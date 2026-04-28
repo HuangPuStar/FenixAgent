@@ -69,8 +69,8 @@ export function ChannelsPage() {
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">通道管理</h2>
-        <Button onClick={() => setDialogOpen(true)}>新建通道</Button>
+        <h2 className="text-lg font-semibold">消息渠道</h2>
+        <Button onClick={() => setDialogOpen(true)}>新建消息渠道</Button>
       </div>
 
       <section>
@@ -78,7 +78,7 @@ export function ChannelsPage() {
           columns={columns}
           data={channels}
           searchable
-          searchPlaceholder="搜索通道..."
+          searchPlaceholder="搜索消息渠道..."
           emptyMessage="暂无数据"
           actions={() => (
             <div className="flex gap-2">
@@ -96,7 +96,7 @@ export function ChannelsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>新建通道</DialogTitle>
+            <DialogTitle>新建消息渠道</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             {providers.map((provider) => (

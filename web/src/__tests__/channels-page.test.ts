@@ -7,8 +7,9 @@ const webRoot = join(import.meta.dirname, "..");
 describe("ChannelsPage", () => {
   test("page source contains required Chinese copy", () => {
     const src = readFileSync(join(webRoot, "pages/ChannelsPage.tsx"), "utf-8");
-    expect(src).toContain("通道管理");
-    expect(src).toContain("新建通道");
+    expect(src).toContain("消息渠道");
+    expect(src).toContain("新建消息渠道");
+    expect(src).toContain("搜索消息渠道...");
     expect(src).toContain("暂不支持");
   });
 

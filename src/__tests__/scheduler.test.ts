@@ -1,170 +1,183 @@
-import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
-import { db } from "../db";
-import { user, scheduledTask } from "../db/schema";
+import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { eq } from "drizzle-orm";
+import { db } from "../db";
+import { environment, scheduledTask, taskExecutionLog, user } from "../db/schema";
 
-// Mock node-schedule
 const mockCancel = mock(() => {});
 const mockNextInvocation = mock(() => ({ toJSDate: mock(() => new Date(Date.now() + 60000)) }));
-const mockScheduleJob = mock(() => ({
+const mockScheduleJob = mock((_config: unknown, handler: () => void) => ({
   cancel: mockCancel,
   nextInvocation: mockNextInvocation,
+  __handler: handler,
 }));
+const mockRunAgentTask = mock();
 
 mock.module("node-schedule", () => ({
   default: { scheduleJob: mockScheduleJob },
 }));
 
-// Mock logger
 mock.module("../logger", () => ({
   log: mock(() => {}),
   error: mock(() => {}),
 }));
 
-// Restore mocks after all tests to prevent pollution
-afterAll(() => mock.restore());
+const scheduler = await import("../services/scheduler");
+const { setRunAgentTaskForTesting } = await import("../services/task");
 
-// Ensure test user exists
+mock.restore();
+
+const TEST_USER_ID = "user_scheduler_test";
+const TEST_ENV_ID = "env_scheduler_test";
+
 function ensureUser() {
-  const existing = db.select().from(user).where(eq(user.email, "scheduler-test@rcs.local")).limit(1).all();
-  if (existing.length > 0) return existing[0].id;
-  const id = "user_scheduler_test";
+  const existing = db.select().from(user).where(eq(user.id, TEST_USER_ID)).limit(1).all();
+  if (existing.length > 0) return;
   const now = new Date();
-  try {
-    db.insert(user).values({
-      id, name: "Scheduler Test", email: "scheduler-test@rcs.local",
-      emailVerified: false, createdAt: now, updatedAt: now,
-    }).run();
-  } catch {}
-  return id;
+  db.insert(user).values({
+    id: TEST_USER_ID,
+    name: "Scheduler Test",
+    email: "scheduler-test@rcs.local",
+    emailVerified: false,
+    createdAt: now,
+    updatedAt: now,
+  }).run();
 }
 
-const testUserId = ensureUser();
+function ensureEnvironment() {
+  const existing = db.select().from(environment).where(eq(environment.id, TEST_ENV_ID)).limit(1).all();
+  if (existing.length > 0) return;
+  const now = new Date();
+  db.insert(environment).values({
+    id: TEST_ENV_ID,
+    name: "scheduler-env",
+    description: null,
+    workspacePath: "/tmp/scheduler-env",
+    agentName: "scheduler-agent",
+    status: "idle",
+    machineName: null,
+    branch: null,
+    gitRepoUrl: null,
+    maxSessions: 1,
+    workerType: "acp",
+    capabilities: null,
+    secret: "scheduler-secret",
+    userId: TEST_USER_ID,
+    lastPollAt: null,
+    createdAt: now,
+    updatedAt: now,
+  }).run();
+}
 
-// Dynamic import for fresh module
-const scheduler = await import("../services/scheduler");
+function insertTask(id: string, enabled: boolean, timezone: string | null, cron = "* * * * *") {
+  const now = new Date();
+  try {
+    db.insert(scheduledTask).values({
+      id,
+      userId: TEST_USER_ID,
+      name: id,
+      description: null,
+      cron,
+      timezone,
+      enabled,
+      environmentId: TEST_ENV_ID,
+      task: "echo hi",
+      timeoutMinutes: 30,
+      lastRunAt: null,
+      nextRunAt: null,
+      lastStatus: null,
+      createdAt: now,
+      updatedAt: now,
+    }).run();
+  } catch {}
+}
+
+function cleanupRows() {
+  try { db.delete(taskExecutionLog).run(); } catch {}
+  try { db.delete(scheduledTask).where(eq(scheduledTask.userId, TEST_USER_ID)).run(); } catch {}
+}
+
+ensureUser();
+ensureEnvironment();
 
 describe("Scheduler", () => {
-  const enabledTask = {
-    id: "task_abc",
-    cron: "*/5 * * * *",
-    timezone: "UTC",
-    enabled: true,
-  };
+  beforeEach(() => {
+    scheduler.stopScheduler();
+    cleanupRows();
+    mockScheduleJob.mockClear();
+    mockCancel.mockClear();
+    mockRunAgentTask.mockReset();
+    setRunAgentTaskForTesting(mockRunAgentTask);
+  });
 
-  const disabledTask = {
-    id: "task_def",
-    cron: "*/5 * * * *",
-    timezone: "UTC",
-    enabled: false,
-  };
-
-  // Cleanup between tests
-  const cleanup = () => scheduler.stopScheduler();
+  afterAll(() => {
+    scheduler.stopScheduler();
+    cleanupRows();
+    setRunAgentTaskForTesting(null);
+    try { db.delete(environment).where(eq(environment.id, TEST_ENV_ID)).run(); } catch {}
+    try { db.delete(user).where(eq(user.id, TEST_USER_ID)).run(); } catch {}
+  });
 
   describe("scheduleTask", () => {
-    it("should register a cron job for enabled task", () => {
-      cleanup();
-      scheduler.scheduleTask(enabledTask);
+    it("registers a cron job for enabled task", () => {
+      scheduler.scheduleTask({ id: "task_abc", cron: "*/5 * * * *", timezone: "UTC", enabled: true });
       expect(mockScheduleJob).toHaveBeenCalled();
-      cleanup();
     });
 
-    it("should skip disabled task", () => {
-      cleanup();
+    it("omits tz when timezone is null", () => {
+      scheduler.scheduleTask({ id: "task_local", cron: "*/5 * * * *", timezone: null, enabled: true });
+      expect(mockScheduleJob).toHaveBeenCalledWith({ rule: "*/5 * * * *" }, expect.any(Function));
+    });
+
+    it("skips disabled task", () => {
       const before = mockScheduleJob.mock.calls.length;
-      scheduler.scheduleTask(disabledTask);
+      scheduler.scheduleTask({ id: "task_disabled", cron: "*/5 * * * *", timezone: "UTC", enabled: false });
       expect(mockScheduleJob.mock.calls.length).toBe(before);
-      cleanup();
-    });
-
-    it("should be idempotent — re-scheduling same task replaces old job", () => {
-      cleanup();
-      scheduler.scheduleTask(enabledTask);
-      const count1 = mockScheduleJob.mock.calls.length;
-      scheduler.scheduleTask(enabledTask);
-      expect(mockScheduleJob.mock.calls.length).toBeGreaterThan(count1);
-      cleanup();
-    });
-  });
-
-  describe("unscheduleTask", () => {
-    it("should cancel a scheduled task without error", () => {
-      cleanup();
-      scheduler.scheduleTask(enabledTask);
-      scheduler.unscheduleTask(enabledTask.id);
-      expect(mockCancel).toHaveBeenCalled();
-      cleanup();
-    });
-
-    it("should handle non-existent task gracefully", () => {
-      cleanup();
-      expect(() => scheduler.unscheduleTask("task_nonexistent")).not.toThrow();
-      cleanup();
-    });
-  });
-
-  describe("rescheduleTask", () => {
-    it("should call scheduleJob with updated cron", () => {
-      cleanup();
-      scheduler.scheduleTask(enabledTask);
-      mockScheduleJob.mock.calls.length = 0;
-      scheduler.rescheduleTask({ ...enabledTask, cron: "0 * * * *" });
-      expect(mockScheduleJob.mock.calls.length).toBe(1);
-      cleanup();
     });
   });
 
   describe("startScheduler", () => {
-    beforeEach(() => {
-      // Insert test tasks into real db
-      const now = new Date();
-      try {
-        db.insert(scheduledTask).values({
-          id: "task_s1", userId: testUserId, name: "Test 1", cron: "* * * * *",
-          url: "http://localhost", enabled: true, createdAt: now, updatedAt: now,
-        }).run();
-      } catch {}
-      try {
-        db.insert(scheduledTask).values({
-          id: "task_s2", userId: testUserId, name: "Test 2", cron: "*/10 * * * *",
-          url: "http://localhost", enabled: true, createdAt: now, updatedAt: now,
-        }).run();
-      } catch {}
-    });
-
-    it("should schedule all enabled tasks from db", async () => {
-      cleanup();
-      await scheduler.startScheduler();
-      expect(mockScheduleJob.mock.calls.length).toBeGreaterThanOrEqual(2);
-      cleanup();
-    });
-
-    it("should handle no tasks without error", async () => {
-      cleanup();
-      // Delete our test tasks temporarily
-      try { db.delete(scheduledTask).where(eq(scheduledTask.id, "task_s1")).run(); } catch {}
-      try { db.delete(scheduledTask).where(eq(scheduledTask.id, "task_s2")).run(); } catch {}
+    it("schedules only enabled tasks from db", async () => {
+      insertTask("task_s1", true, "UTC", "1 * * * *");
+      insertTask("task_s2", false, "UTC", "2 * * * *");
 
       await scheduler.startScheduler();
-      expect(true).toBe(true); // No error = pass
-      cleanup();
-    });
 
-    afterAll(() => {
-      // Clean up test tasks
-      try { db.delete(scheduledTask).where(eq(scheduledTask.id, "task_s1")).run(); } catch {}
-      try { db.delete(scheduledTask).where(eq(scheduledTask.id, "task_s2")).run(); } catch {}
+      const scheduledRules = mockScheduleJob.mock.calls.map(([config]) => (config as { rule: string }).rule);
+      expect(scheduledRules).toContain("1 * * * *");
+      expect(scheduledRules).not.toContain("2 * * * *");
     });
   });
 
-  describe("stopScheduler", () => {
-    it("should stop without error even with active jobs", () => {
-      cleanup();
-      scheduler.scheduleTask(enabledTask);
-      scheduler.scheduleTask({ ...enabledTask, id: "task_2" });
-      expect(() => scheduler.stopScheduler()).not.toThrow();
-      cleanup();
+  describe("concurrent execution", () => {
+    it("writes skipped log when the same task triggers twice", async () => {
+      insertTask("task_skip", true, "UTC");
+
+      let resolveExecution: (() => void) | null = null;
+      mockRunAgentTask.mockImplementation(() => new Promise((resolve) => {
+        resolveExecution = () => resolve({
+          status: "success",
+          workspacePath: "/tmp/scheduler-env/.scheduled-runs/task_skip/log_1",
+          workspaceName: "20260427-130000-log_1",
+          resultSummary: "done",
+          error: null,
+          duration: 123,
+        });
+      }));
+
+      scheduler.scheduleTask({ id: "task_skip", cron: "* * * * *", timezone: "UTC", enabled: true });
+      const handler = (mockScheduleJob.mock.results.at(-1)?.value as { __handler: () => void }).__handler;
+
+      handler();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      handler();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const logs = db.select().from(taskExecutionLog).where(eq(taskExecutionLog.taskId, "task_skip")).all();
+      expect(logs.some((row) => row.status === "skipped" && row.skipReason === "previous_run_still_active")).toBe(true);
+
+      expect(resolveExecution).toBeDefined();
+      resolveExecution!();
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
   });
 });

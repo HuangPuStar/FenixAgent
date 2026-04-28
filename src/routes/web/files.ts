@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { sessionAuth } from "../../auth/middleware";
-import { storeGetSession, storeGetEnvironment, storeListEnvironmentsByUserId } from "../../store";
-import { resolve, join, relative } from "node:path";
-import { stat, readdir, readFile, writeFile, unlink, mkdir, open } from "node:fs/promises";
 import { createReadStream } from "node:fs";
+import { mkdir, open, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { join, relative, resolve } from "node:path";
+import { sessionAuth } from "../../auth/middleware";
+import { storeGetEnvironment, storeGetSession, storeListEnvironmentsByUserId } from "../../store";
 
 const TEXT_EXTENSIONS = new Set([
   ".txt", ".md", ".json", ".yaml", ".yml", ".ts", ".js", ".tsx", ".jsx",
@@ -11,7 +11,6 @@ const TEXT_EXTENSIONS = new Set([
   ".sh", ".bash", ".zsh", ".sql", ".env",
 ]);
 
-/** Map file extension to MIME type for preview mode */
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
   ".htm": "text/html",
@@ -48,69 +47,133 @@ const MIME_TYPES: Record<string, string> = {
   ".wav": "audio/wav",
 };
 
-/**
- * Resolve file path within the workspace.
- * First tries session-based lookup; if session lost (e.g. server restart),
- * falls back to the user's first environment from the database.
- */
-async function resolveUserPath(sessionId: string, relativePath: string, userId?: string): Promise<{ userDir: string; resolved: string } | null> {
+type ResolvedWorkspacePath = {
+  workspaceDir: string;
+  userDir: string;
+  resolved: string;
+  displayPath: string;
+};
+
+function isUserPath(path: string): boolean {
+  return path === "" || path === "user" || path.startsWith("user/");
+}
+
+function normalizeUserRoutePath(path: string): string {
+  const normalized = path.trim();
+  if (!normalized) {
+    return "user";
+  }
+  if (normalized === "user" || normalized.startsWith("user/")) {
+    return normalized;
+  }
+  if (normalized.startsWith(".")) {
+    return normalized;
+  }
+  return `user/${normalized}`;
+}
+
+async function resolveWorkspacePath(
+  sessionId: string,
+  relativePath: string,
+  userId?: string,
+): Promise<ResolvedWorkspacePath | null> {
   const session = storeGetSession(sessionId);
   let envId = session?.environmentId;
 
-  // Fallback: session lost after restart — find environment from DB by userId
   if (!envId && userId) {
-    const envs = storeListEnvironmentsByUserId(userId);
-    if (envs.length > 0) {
-      envId = envs[0].id;
+    const environments = storeListEnvironmentsByUserId(userId);
+    if (environments.length > 0) {
+      envId = environments[0].id;
     }
   }
 
-  if (!envId) return null;
+  if (!envId) {
+    return null;
+  }
+
   const env = storeGetEnvironment(envId);
-  if (!env) return null;
-  const userDir = join(env.workspacePath, "user");
+  if (!env) {
+    return null;
+  }
+
+  const workspaceDir = env.workspacePath;
+  const userDir = join(workspaceDir, "user");
   await mkdir(userDir, { recursive: true });
 
-  const resolved = resolve(userDir, relativePath);
-  if (!resolved.startsWith(userDir + "/") && resolved !== userDir) return null;
-  return { userDir, resolved };
+  const normalizedInput = relativePath.trim();
+  const userScoped = isUserPath(normalizedInput);
+  const baseDir = userScoped ? userDir : workspaceDir;
+
+  let cleanPath = normalizedInput;
+  if (userScoped) {
+    if (cleanPath.startsWith("user/")) {
+      cleanPath = cleanPath.slice(5);
+    } else if (cleanPath === "user") {
+      cleanPath = "";
+    }
+  }
+
+  const resolved = resolve(baseDir, cleanPath);
+  if (!resolved.startsWith(`${baseDir}/`) && resolved !== baseDir) {
+    return null;
+  }
+
+  const relativeToBase = relative(baseDir, resolved);
+  const displayPath = userScoped
+    ? (relativeToBase ? `user/${relativeToBase}` : "user")
+    : (relativeToBase || ".");
+
+  return { workspaceDir, userDir, resolved, displayPath };
 }
 
 async function isTextFile(filePath: string): Promise<boolean> {
   try {
-    const buf = Buffer.alloc(8192);
-    const fd = await open(filePath, "r");
-    const { bytesRead } = await fd.read(buf, 0, 8192, 0);
-    await fd.close();
-    const slice = buf.subarray(0, bytesRead);
-    return !slice.includes(0);
+    const buffer = Buffer.alloc(8192);
+    const file = await open(filePath, "r");
+    const { bytesRead } = await file.read(buffer, 0, 8192, 0);
+    await file.close();
+    return !buffer.subarray(0, bytesRead).includes(0);
   } catch {
     return false;
   }
 }
 
+function shouldHideWorkspaceEntry(entryPath: string, userDir: string): boolean {
+  const inUserDir = entryPath.startsWith(`${userDir}/`) || entryPath === userDir;
+  if (inUserDir) {
+    return false;
+  }
+
+  return entryPath.endsWith("/.opencode") || entryPath.endsWith("/.opencode/");
+}
+
 const app = new Hono();
 
-// GET /:sessionId/user — list directory
 app.get("/:sessionId/user", sessionAuth, async (c) => {
   const user = c.get("user")!;
   const sessionId = c.req.param("sessionId")!;
   const queryPath = c.req.query("path") || "";
-  const result = await resolveUserPath(sessionId, queryPath, user.id);
+  const result = await resolveWorkspacePath(sessionId, queryPath, user.id);
   if (!result) return c.json({ error: { type: "not_found", message: "Session or environment not found" } }, 404);
 
-  const { userDir, resolved } = result;
+  const { userDir, workspaceDir, resolved } = result;
   const info = await stat(resolved);
   if (!info.isDirectory()) return c.json({ error: { type: "validation_error", message: "Not a directory" } }, 400);
 
   const entries = await readdir(resolved, { withFileTypes: true });
-  const items = await Promise.all(entries.map(async (entry) => {
+  const visibleEntries = entries.filter((entry) => !shouldHideWorkspaceEntry(join(resolved, entry.name), userDir));
+  const items = await Promise.all(visibleEntries.map(async (entry) => {
     const entryPath = join(resolved, entry.name);
     const statInfo = await stat(entryPath);
-    const relPath = relative(userDir, entryPath);
+    const inUserDir = entryPath.startsWith(`${userDir}/`) || entryPath === userDir;
+    const relPath = relative(inUserDir ? userDir : workspaceDir, entryPath);
+    const path = inUserDir
+      ? (entry.isDirectory() ? `user/${relPath}/` : `user/${relPath}`)
+      : (entry.isDirectory() ? `${relPath}/` : relPath);
+
     return {
       name: entry.name,
-      path: entry.isDirectory() ? `${relPath}/` : relPath,
+      path,
       type: entry.isDirectory() ? "dir" : "file",
       size: entry.isFile() ? statInfo.size : 0,
       modifiedAt: statInfo.mtimeMs,
@@ -119,26 +182,28 @@ app.get("/:sessionId/user", sessionAuth, async (c) => {
   return c.json({ entries: items });
 });
 
-// GET /:sessionId/user/* — read file (?preview=true returns raw content for iframe)
 app.get("/:sessionId/user/:filePath{.+}", sessionAuth, async (c) => {
   const user = c.get("user")!;
   const sessionId = c.req.param("sessionId")!;
-  const filePath = c.req.param("filePath")!;
+  const filePath = normalizeUserRoutePath(c.req.param("filePath")!);
   const preview = c.req.query("preview") === "true";
 
-  const result = await resolveUserPath(sessionId, filePath, user.id);
+  const result = await resolveWorkspacePath(sessionId, filePath, user.id);
   if (!result) return c.json({ error: { type: "not_found", message: "Session or environment not found" } }, 404);
 
-  const { resolved } = result;
+  const { resolved, displayPath } = result;
   let info;
-  try { info = await stat(resolved); } catch { return c.json({ error: { type: "not_found", message: "File not found" } }, 404); }
+  try {
+    info = await stat(resolved);
+  } catch {
+    return c.json({ error: { type: "not_found", message: "File not found" } }, 404);
+  }
   if (info.isDirectory()) return c.json({ error: { type: "validation_error", message: "Path is a directory, use list endpoint" } }, 400);
 
   const lastDot = filePath.lastIndexOf(".");
   const lastSlash = filePath.lastIndexOf("/");
   const ext = lastDot > lastSlash ? filePath.substring(lastDot) : "";
 
-  // Preview mode: return raw file content with correct MIME type for iframe embedding
   if (preview) {
     const mimeType = MIME_TYPES[ext] || "application/octet-stream";
     c.header("Content-Type", mimeType);
@@ -146,28 +211,29 @@ app.get("/:sessionId/user/:filePath{.+}", sessionAuth, async (c) => {
     return c.body(createReadStream(resolved) as any);
   }
 
-  const isText = TEXT_EXTENSIONS.has(ext) || (!ext && await isTextFile(resolved));
+  const textFile = TEXT_EXTENSIONS.has(ext) || (!ext && await isTextFile(resolved));
+  const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
 
-  if (isText) {
+  if (textFile) {
     const content = await readFile(resolved, "utf-8");
-    const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
-    const relPath = filePath;
-    return c.json({ name: fileName, path: relPath, content, size: info.size, encoding: "utf-8" });
-  } else {
-    const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
-    c.header("Content-Disposition", `attachment; filename="${fileName}"`);
-    c.header("Content-Type", "application/octet-stream");
-    return c.body(createReadStream(resolved) as any);
+    return c.json({ name: fileName, path: displayPath, content, size: info.size, encoding: "utf-8" });
   }
+
+  c.header("Content-Disposition", `attachment; filename="${fileName}"`);
+  c.header("Content-Type", "application/octet-stream");
+  return c.body(createReadStream(resolved) as any);
 });
 
-// POST /:sessionId/user/* — upload files
 app.post("/:sessionId/user/:dirPath{.*}", sessionAuth, async (c) => {
   const user = c.get("user")!;
   const sessionId = c.req.param("sessionId")!;
-  const dirPath = c.req.param("dirPath") || "";
+  const dirPath = normalizeUserRoutePath(c.req.param("dirPath") || "");
 
-  const result = await resolveUserPath(sessionId, dirPath, user.id);
+  if (!isUserPath(dirPath)) {
+    return c.json({ error: { type: "validation_error", message: "Only user/ paths are writable" } }, 400);
+  }
+
+  const result = await resolveWorkspacePath(sessionId, dirPath, user.id);
   if (!result) return c.json({ error: { type: "not_found", message: "Session or environment not found" } }, 404);
 
   const { resolved } = result;
@@ -185,16 +251,19 @@ app.post("/:sessionId/user/:dirPath{.*}", sessionAuth, async (c) => {
     }
     const destPath = join(resolved, file.name);
     await writeFile(destPath, buffer);
-    uploaded.push({ name: file.name, path: `${dirPath ? dirPath + "/" : ""}${file.name}`, size: buffer.length });
+    uploaded.push({ name: file.name, path: `user/${dirPath ? `${dirPath.replace(/^user\/?/, "")}/` : ""}${file.name}`.replace("user//", "user/"), size: buffer.length });
   }
   return c.json({ files: uploaded });
 });
 
-// PUT /:sessionId/user/* — write file content
 app.put("/:sessionId/user/:filePath{.+}", sessionAuth, async (c) => {
   const user = c.get("user")!;
   const sessionId = c.req.param("sessionId")!;
-  const filePath = c.req.param("filePath")!;
+  const filePath = normalizeUserRoutePath(c.req.param("filePath")!);
+
+  if (!isUserPath(filePath)) {
+    return c.json({ error: { type: "validation_error", message: "Only user/ paths are writable" } }, 400);
+  }
 
   const body = await c.req.json();
   if (typeof body.content !== "string") return c.json({ error: { type: "validation_error", message: "content field required" } }, 400);
@@ -203,29 +272,37 @@ app.put("/:sessionId/user/:filePath{.+}", sessionAuth, async (c) => {
     return c.json({ error: { type: "validation_error", message: "Content exceeds 100MB limit" } }, 413);
   }
 
-  const result = await resolveUserPath(sessionId, filePath, user.id);
+  const result = await resolveWorkspacePath(sessionId, filePath, user.id);
   if (!result) return c.json({ error: { type: "not_found", message: "Session or environment not found" } }, 404);
 
   const { resolved } = result;
   await mkdir(resolve(resolved, ".."), { recursive: true });
-  const content = body.content;
-  await writeFile(resolved, content, "utf-8");
+  await writeFile(resolved, body.content, "utf-8");
+
   const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
-  return c.json({ name: fileName, path: filePath, size: Buffer.byteLength(content) });
+  const normalizedPath = filePath.startsWith("user/") ? filePath : `user/${filePath}`;
+  return c.json({ name: fileName, path: normalizedPath, size: Buffer.byteLength(body.content) });
 });
 
-// DELETE /:sessionId/user/* — delete file
 app.delete("/:sessionId/user/:filePath{.+}", sessionAuth, async (c) => {
   const user = c.get("user")!;
   const sessionId = c.req.param("sessionId")!;
-  const filePath = c.req.param("filePath")!;
+  const filePath = normalizeUserRoutePath(c.req.param("filePath")!);
 
-  const result = await resolveUserPath(sessionId, filePath, user.id);
+  if (!isUserPath(filePath)) {
+    return c.json({ error: { type: "validation_error", message: "Only user/ paths are writable" } }, 400);
+  }
+
+  const result = await resolveWorkspacePath(sessionId, filePath, user.id);
   if (!result) return c.json({ error: { type: "not_found", message: "Session or environment not found" } }, 404);
 
   const { resolved } = result;
   let info;
-  try { info = await stat(resolved); } catch { return c.json({ error: { type: "not_found", message: "File not found" } }, 404); }
+  try {
+    info = await stat(resolved);
+  } catch {
+    return c.json({ error: { type: "not_found", message: "File not found" } }, 404);
+  }
   if (info.isDirectory()) return c.json({ error: { type: "validation_error", message: "Cannot delete directories" } }, 400);
 
   await unlink(resolved);

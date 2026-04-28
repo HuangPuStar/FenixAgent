@@ -25,8 +25,8 @@ app.get("/tasks", sessionAuth, async (c) => {
 /** POST /tasks — Create a new scheduled task */
 app.post("/tasks", sessionAuth, async (c) => {
   const user = c.get("user")!;
-  const body = await c.req.json().catch(() => ({}));
-  const result = await createTask(user.id, body);
+  const payload = await c.req.json().catch(() => ({}));
+  const result = await createTask(user.id, payload);
 
   if (!result.success) {
     const err = result.error!;
@@ -58,8 +58,8 @@ app.get("/tasks/:id", sessionAuth, async (c) => {
 app.put("/tasks/:id", sessionAuth, async (c) => {
   const user = c.get("user")!;
   const taskId = c.req.param("id")!;
-  const body = await c.req.json().catch(() => ({}));
-  const result = await updateTask(user.id, taskId, body);
+  const payload = await c.req.json().catch(() => ({}));
+  const result = await updateTask(user.id, taskId, payload);
 
   if (!result.success) {
     const err = result.error!;

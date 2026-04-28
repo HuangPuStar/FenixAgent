@@ -28,6 +28,7 @@ const PORT_MAX = 8999;
 
 const instances = new Map<string, SpawnedInstance>();
 const allocatingPorts = new Set<number>();
+let spawnImpl: typeof spawn = spawn;
 
 function isExecutable(filePath: string): boolean {
   try {
@@ -98,7 +99,7 @@ export async function spawnInstance(userId: string): Promise<SpawnedInstance> {
     instances.set(id, instance);
 
     // 4. Spawn child process
-    const proc = spawn(acpLinkPath, [
+    const proc = spawnImpl(acpLinkPath, [
       "--group", apiKey,
       "--port", String(port),
       "opencode", "--", "acp",
@@ -228,7 +229,7 @@ export async function spawnInstanceFromEnvironment(userId: string, environmentId
     // Spawn acp-link as standalone local proxy (no RCS upstream URL).
     // Pass ACP_RCS_TOKEN so acp-link uses it as its local WS auth token.
     // The relay handler connects with this token to trigger agent spawning.
-    const proc = spawn(acpLinkPath, [
+    const proc = spawnImpl(acpLinkPath, [
       "--group", env.secret,
       "--port", String(port),
       "opencode", "--", "acp",
@@ -272,4 +273,8 @@ export async function spawnInstanceFromEnvironment(userId: string, environmentId
     allocatingPorts.delete(port);
     throw err;
   }
+}
+
+export function setInstanceSpawnForTesting(fn: typeof spawn | null): void {
+  spawnImpl = fn ?? spawn;
 }

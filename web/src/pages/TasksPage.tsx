@@ -1,23 +1,31 @@
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { DataTable, type Column } from "@/components/config/DataTable";
 import { FormDialog } from "@/components/config/FormDialog";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { StatusBadge } from "@/components/config/StatusBadge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  apiListTasks, apiCreateTask, apiGetTask, apiUpdateTask,
-  apiDeleteTask, apiToggleTask, apiTriggerTask,
-  apiListTaskLogs, apiClearTaskLogs,
+  apiClearTaskLogs,
+  apiCreateTask,
+  apiDeleteTask,
+  apiFetchEnvironments,
+  apiListFiles,
+  apiListTaskLogs,
+  apiListTasks,
+  apiToggleTask,
+  apiTriggerTask,
+  apiUpdateTask,
 } from "../api/client";
-import type { TaskInfo, ExecutionLogInfo } from "../api/client";
+import type { ExecutionLogInfo, TaskInfo } from "../api/client";
+import type { Environment, FileInfo } from "../types";
 
 const CRON_PRESETS = [
   { label: "每 5 分钟", value: "*/5 * * * *" },
@@ -27,24 +35,35 @@ const CRON_PRESETS = [
   { label: "每月 1 号", value: "0 0 1 * *" },
 ];
 
-type KeyValueEntry = { key: string; value: string };
-
-function validateTaskForm(name: string, url: string, cron: string): string | null {
+function validateTaskForm(
+  name: string,
+  environmentId: string,
+  task: string,
+  cron: string,
+  timeoutMinutes: string,
+): string | null {
   if (!name.trim()) return "任务名称不能为空";
-  if (name.length > 128) return "任务名称不能超过 128 字符";
-  if (!url.trim()) return "URL 不能为空";
-  if (!/^https?:\/\//.test(url)) return "URL 必须以 http:// 或 https:// 开头";
+  if (!environmentId) return "请选择 Environment";
+  if (!task.trim()) return "任务内容不能为空";
   if (!cron.trim()) return "cron 表达式不能为空";
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return "cron 表达式必须为 5 字段（分 时 日 月 周）";
+
+  const timeoutValue = Number(timeoutMinutes);
+  if (!Number.isInteger(timeoutValue) || timeoutValue < 1 || timeoutValue > 180) {
+    return "timeoutMinutes 必须在 1-180 之间";
+  }
   return null;
 }
 
 function formatTimestamp(ts: number | null): string {
   if (!ts) return "—";
   return new Date(ts * 1000).toLocaleString("zh-CN", {
-    month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
 }
 
@@ -54,53 +73,73 @@ function formatDuration(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function formatLastResult(task: TaskInfo): string {
+  if (!task.lastStatus) return "—";
+  if (task.lastStatus === "skipped") return "已跳过";
+  if (task.lastStatus === "timeout") return "超时";
+  if (task.lastStatus === "failed") return "失败";
+  return "成功";
+}
+
+function toWorkspaceRelativePath(environment: Environment, workspacePath: string): string {
+  const prefix = environment.workspace_path.replace(/\/$/, "");
+  if (!workspacePath.startsWith(prefix)) {
+    return workspacePath.replace(/^\//, "");
+  }
+  return workspacePath.slice(prefix.length).replace(/^\/+/, "");
+}
+
 export function TasksPage() {
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
+  const [environments, setEnvironments] = useState<Environment[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskInfo | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TaskInfo | null>(null);
 
-  const [logsTaskId, setLogsTaskId] = useState<string | null>(null);
+  const [logsTask, setLogsTask] = useState<TaskInfo | null>(null);
   const [logs, setLogs] = useState<ExecutionLogInfo[]>([]);
   const [logsTotal, setLogsTotal] = useState(0);
   const [logsPage, setLogsPage] = useState(1);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [clearLogsConfirmOpen, setClearLogsConfirmOpen] = useState(false);
-  const [responseDialogOpen, setResponseDialogOpen] = useState(false);
-  const [selectedResponse, setSelectedResponse] = useState<string | null>(null);
+  const [workspaceEntries, setWorkspaceEntries] = useState<FileInfo[]>([]);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceTitle, setWorkspaceTitle] = useState<string | null>(null);
 
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formCron, setFormCron] = useState("*/5 * * * *");
-  const [formTimezone, setFormTimezone] = useState("UTC");
-  const [formUrl, setFormUrl] = useState("");
-  const [formMethod, setFormMethod] = useState("GET");
-  const [formHeaders, setFormHeaders] = useState<KeyValueEntry[]>([{ key: "", value: "" }]);
-  const [formBody, setFormBody] = useState("");
-  const [formTimeout, setFormTimeout] = useState("30000");
-  const [formRetryEnabled, setFormRetryEnabled] = useState(false);
-  const [formRetryCount, setFormRetryCount] = useState("3");
-  const [formRetryInterval, setFormRetryInterval] = useState("60");
+  const [formEnvironmentId, setFormEnvironmentId] = useState("");
+  const [formTask, setFormTask] = useState("");
+  const [formTimeoutMinutes, setFormTimeoutMinutes] = useState("30");
+  const [formEnabled, setFormEnabled] = useState(true);
   const [formSaving, setFormSaving] = useState(false);
   const [triggeringTaskId, setTriggeringTaskId] = useState<string | null>(null);
+  const totalLogPages = Math.max(1, Math.ceil(logsTotal / 20));
 
-  const loadTasks = useCallback(async () => {
+  const loadTasksAndEnvironments = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiListTasks();
-      setTasks(data);
-    } catch (e) {
-      toast.error("加载任务列表失败: " + (e instanceof Error ? e.message : "未知错误"));
+      const [taskData, environmentData] = await Promise.all([
+        apiListTasks(),
+        apiFetchEnvironments(),
+      ]);
+      setTasks(taskData);
+      setEnvironments(environmentData);
+    } catch (error) {
+      toast.error(`加载任务页面失败: ${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadTasks(); }, [loadTasks]);
+  useEffect(() => {
+    loadTasksAndEnvironments();
+  }, [loadTasksAndEnvironments]);
 
   const loadLogs = useCallback(async (taskId: string, page = 1) => {
     setLogsLoading(true);
@@ -109,74 +148,60 @@ export function TasksPage() {
       setLogs(data.items);
       setLogsTotal(data.total);
       setLogsPage(page);
-    } catch (e) {
-      toast.error("加载执行历史失败: " + (e instanceof Error ? e.message : "未知错误"));
+    } catch (error) {
+      toast.error(`加载执行历史失败: ${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
       setLogsLoading(false);
     }
   }, []);
 
-  const handleOpenCreate = () => {
-    setEditingTask(null);
+  const resetForm = useCallback(() => {
     setFormName("");
     setFormDescription("");
     setFormCron("*/5 * * * *");
-    setFormTimezone("UTC");
-    setFormUrl("");
-    setFormMethod("GET");
-    setFormHeaders([{ key: "", value: "" }]);
-    setFormBody("");
-    setFormTimeout("30000");
-    setFormRetryEnabled(false);
-    setFormRetryCount("3");
-    setFormRetryInterval("60");
+    setFormEnvironmentId(environments[0]?.id ?? "");
+    setFormTask("");
+    setFormTimeoutMinutes("30");
+    setFormEnabled(true);
+  }, [environments]);
+
+  const handleOpenCreate = () => {
+    setEditingTask(null);
+    resetForm();
     setDialogOpen(true);
   };
 
-  const handleOpenEdit = async (task: TaskInfo) => {
+  const handleOpenEdit = (task: TaskInfo) => {
     setEditingTask(task);
     setFormName(task.name);
     setFormDescription(task.description ?? "");
     setFormCron(task.cron);
-    setFormTimezone(task.timezone);
-    setFormUrl(task.url);
-    setFormMethod(task.method);
-    setFormHeaders(
-      task.headers && Object.keys(task.headers).length > 0
-        ? Object.entries(task.headers).map(([key, value]) => ({ key, value }))
-        : [{ key: "", value: "" }]
-    );
-    setFormBody(task.body ?? "");
-    setFormTimeout(String(task.timeout));
-    setFormRetryEnabled(task.retryEnabled);
-    setFormRetryCount(String(task.retryCount));
-    setFormRetryInterval(String(task.retryInterval));
+    setFormEnvironmentId(task.environmentId);
+    setFormTask(task.task);
+    setFormTimeoutMinutes(String(task.timeoutMinutes));
+    setFormEnabled(task.enabled);
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    const err = validateTaskForm(formName, formUrl, formCron);
-    if (err) { toast.error(err); return; }
+    const error = validateTaskForm(formName, formEnvironmentId, formTask, formCron, formTimeoutMinutes);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+
     setFormSaving(true);
     try {
-      const headersObj: Record<string, string> | null =
-        formHeaders.filter((h) => h.key.trim()).length > 0
-          ? Object.fromEntries(formHeaders.filter((h) => h.key.trim()).map((h) => [h.key, h.value]))
-          : null;
-      const payload: Partial<TaskInfo> = {
-        name: formName,
-        description: formDescription || null,
-        cron: formCron,
-        timezone: formTimezone,
-        url: formUrl,
-        method: formMethod,
-        headers: headersObj,
-        body: ["POST", "PUT", "PATCH"].includes(formMethod) && formBody.trim() ? formBody.trim() : null,
-        timeout: parseInt(formTimeout, 10) || 30000,
-        retryEnabled: formRetryEnabled,
-        retryCount: parseInt(formRetryCount, 10) || 3,
-        retryInterval: parseInt(formRetryInterval, 10) || 60,
+      const payload = {
+        name: formName.trim(),
+        description: formDescription.trim() || undefined,
+        cron: formCron.trim(),
+        environmentId: formEnvironmentId,
+        task: formTask.trim(),
+        timeoutMinutes: Number(formTimeoutMinutes),
+        enabled: formEnabled,
       };
+
       if (editingTask) {
         await apiUpdateTask(editingTask.id, payload);
         toast.success("任务已更新");
@@ -184,10 +209,11 @@ export function TasksPage() {
         await apiCreateTask(payload);
         toast.success("任务已创建");
       }
+
       setDialogOpen(false);
-      loadTasks();
-    } catch (e) {
-      toast.error("保存失败: " + (e instanceof Error ? e.message : "未知错误"));
+      await loadTasksAndEnvironments();
+    } catch (saveError) {
+      toast.error(`保存失败: ${saveError instanceof Error ? saveError.message : "未知错误"}`);
     } finally {
       setFormSaving(false);
     }
@@ -197,9 +223,9 @@ export function TasksPage() {
     try {
       await apiToggleTask(task.id);
       toast.success(task.enabled ? `已禁用 "${task.name}"` : `已启用 "${task.name}"`);
-      loadTasks();
-    } catch (e) {
-      toast.error("操作失败: " + (e instanceof Error ? e.message : "未知错误"));
+      await loadTasksAndEnvironments();
+    } catch (error) {
+      toast.error(`操作失败: ${error instanceof Error ? error.message : "未知错误"}`);
     }
   };
 
@@ -207,110 +233,119 @@ export function TasksPage() {
     setTriggeringTaskId(task.id);
     try {
       const result = await apiTriggerTask(task.id);
-      toast.success(`任务已触发，状态: ${result.status}，耗时: ${formatDuration(result.duration)}`);
-      loadTasks();
-    } catch (e) {
-      toast.error("触发失败: " + (e instanceof Error ? e.message : "未知错误"));
+      toast.success(`已触发，状态: ${result.status}，耗时: ${formatDuration(result.duration)}，目录: ${result.workspaceName ?? "—"}`);
+      await loadTasksAndEnvironments();
+    } catch (error) {
+      toast.error(`触发失败: ${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
       setTriggeringTaskId(null);
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    try {
-      await apiDeleteTask(deleteTarget);
-      toast.success("任务已删除");
-      setConfirmOpen(false);
-      loadTasks();
-    } catch (e) {
-      toast.error("删除失败: " + (e instanceof Error ? e.message : "未知错误"));
-    }
-  };
-
   const handleViewLogs = (task: TaskInfo) => {
-    setLogsTaskId(task.id);
+    setLogsTask(task);
     setLogsDialogOpen(true);
+    setWorkspaceEntries([]);
+    setWorkspaceTitle(null);
     loadLogs(task.id, 1);
   };
 
-  const confirmClearLogs = async () => {
-    if (!logsTaskId) return;
+  const handleBrowseWorkspace = async (log: ExecutionLogInfo) => {
+    if (!log.workspacePath || !log.environmentId) {
+      toast.error("当前日志没有可查看的 workspacePath");
+      return;
+    }
+
+    const environment = environments.find((item) => item.id === log.environmentId);
+    if (!environment?.session_id) {
+      toast.error("找不到对应的 Environment 会话");
+      return;
+    }
+
+    setWorkspaceLoading(true);
     try {
-      await apiClearTaskLogs(logsTaskId);
+      const relativePath = toWorkspaceRelativePath(environment, log.workspacePath);
+      const result = await apiListFiles(environment.session_id, relativePath);
+      setWorkspaceEntries(result.entries);
+      setWorkspaceTitle(relativePath);
+    } catch (error) {
+      toast.error(`查看目录失败: ${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await apiDeleteTask(deleteTarget.id);
+      toast.success("任务已删除");
+      setConfirmOpen(false);
+      setDeleteTarget(null);
+      await loadTasksAndEnvironments();
+    } catch (error) {
+      toast.error(`删除失败: ${error instanceof Error ? error.message : "未知错误"}`);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    if (!logsTask) return;
+    try {
+      await apiClearTaskLogs(logsTask.id);
       toast.success("执行历史已清空");
       setClearLogsConfirmOpen(false);
-      loadLogs(logsTaskId, 1);
-    } catch (e) {
-      toast.error("清空失败: " + (e instanceof Error ? e.message : "未知错误"));
+      await loadLogs(logsTask.id, 1);
+    } catch (error) {
+      toast.error(`清空失败: ${error instanceof Error ? error.message : "未知错误"}`);
     }
   };
 
   const columns: Column<TaskInfo>[] = [
-    {
-      key: "name",
-      header: "名称",
-      sortable: true,
-      filterable: true,
-    },
+    { key: "name", header: "名称", sortable: true, filterable: true },
     {
       key: "cron",
       header: "Cron 表达式",
-      render: (row) => (
-        <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{row.cron}</code>
-      ),
+      render: (row) => <code className="rounded bg-muted px-2 py-1 text-xs">{row.cron}</code>,
     },
     {
-      key: "method",
-      header: "请求",
-      render: (row) => (
-        <span className="text-xs">
-          <span className="font-semibold text-blue-600">{row.method}</span>{" "}
-          <span className="text-muted-foreground truncate max-w-[200px] inline-block align-bottom" title={row.url}>
-            {row.url.replace(/^https?:\/\//, "").split("/")[0]}
-          </span>
-        </span>
-      ),
+      key: "environmentName",
+      header: "Environment",
+      filterable: true,
+      render: (row) => row.environmentName ?? row.environmentId,
     },
     {
       key: "enabled",
       header: "状态",
-      filterable: true,
       render: (row) => <StatusBadge status={row.enabled ? "enabled" : "disabled"} />,
     },
     {
       key: "lastRunAt",
       header: "上次执行",
-      sortable: true,
-      render: (row) => (
-        <div className="text-xs">
-          {formatTimestamp(row.lastRunAt)}
-          {row.lastStatus && (
-            <StatusBadge
-              status={row.lastStatus === "success" ? "enabled" : row.lastStatus === "failed" ? "disabled" : row.lastStatus}
-            />
-          )}
-        </div>
-      ),
+      render: (row) => <span className="text-xs">{formatTimestamp(row.lastRunAt)}</span>,
     },
     {
       key: "nextRunAt",
       header: "下次执行",
       render: (row) => <span className="text-xs">{formatTimestamp(row.nextRunAt)}</span>,
     },
+    {
+      key: "lastStatus",
+      header: "最近结果",
+      render: (row) => <span className="text-xs">{formatLastResult(row)}</span>,
+    },
   ];
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="space-y-4 p-6">
         <div className="flex items-center justify-between">
           <Skeleton className="h-7 w-32" />
           <Skeleton className="h-9 w-24" />
         </div>
         <div className="rounded-md border">
           <Skeleton className="h-10 w-full rounded-t-md" />
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full rounded-none border-t" />
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-12 w-full rounded-none border-t" />
           ))}
         </div>
       </div>
@@ -318,33 +353,47 @@ export function TasksPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-4">
+    <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">定时任务管理</h2>
+        <div>
+          <h1 className="text-2xl font-semibold">定时任务</h1>
+          <p className="text-sm text-muted-foreground">绑定 Environment，定时执行 Agent 任务。</p>
+        </div>
         <Button onClick={handleOpenCreate}>新建任务</Button>
       </div>
-      <DataTable<TaskInfo>
+
+      <DataTable
         columns={columns}
         data={tasks}
         searchable
-        searchPlaceholder="搜索任务..."
+        searchPlaceholder="搜索任务名称或 Environment"
         rowKey={(row) => row.id}
+        emptyMessage="暂无定时任务"
         actions={(row) => (
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline"
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => handleOpenEdit(row)}>编辑</Button>
+            <Button size="sm" variant="outline" onClick={() => handleViewLogs(row)}>日志</Button>
+            <Button
+              size="sm"
+              variant="outline"
               disabled={triggeringTaskId === row.id}
-              onClick={() => handleTrigger(row)}>
-              {triggeringTaskId === row.id ? "触发中..." : "手动触发"}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => handleViewLogs(row)}>
-              执行历史
+              onClick={() => handleTrigger(row)}
+            >
+              立即执行
             </Button>
             <Button size="sm" variant="outline" onClick={() => handleToggle(row)}>
               {row.enabled ? "禁用" : "启用"}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleOpenEdit(row)}>编辑</Button>
-            <Button size="sm" variant="destructive"
-              onClick={() => { setDeleteTarget(row.id); setConfirmOpen(true); }}>删除</Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setDeleteTarget(row);
+                setConfirmOpen(true);
+              }}
+            >
+              删除
+            </Button>
           </div>
         )}
       />
@@ -352,255 +401,242 @@ export function TasksPage() {
       <FormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        title={editingTask ? "编辑定时任务" : "新建定时任务"}
+        title={editingTask ? "编辑任务" : "新建任务"}
         onSubmit={handleSave}
         loading={formSaving}
-        width="sm:max-w-2xl">
-        <div className="space-y-4">
-          <div>
-            <Label>名称 *</Label>
-            <Input value={formName} onChange={(e) => setFormName(e.target.value)}
-              placeholder="例如：每日健康检查" />
-          </div>
-          <div>
-            <Label>描述</Label>
-            <Input value={formDescription} onChange={(e) => setFormDescription(e.target.value)}
-              placeholder="可选的任务描述" />
+        width="sm:max-w-2xl"
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="task-name">名称</Label>
+            <Input id="task-name" value={formName} onChange={(event) => setFormName(event.target.value)} />
           </div>
 
-          <div className="border-t pt-4">
-            <h3 className="text-sm font-medium mb-2">调度配置</h3>
-            <div className="space-y-2">
-              <div>
-                <Label>Cron 表达式 *</Label>
-                <Input value={formCron} onChange={(e) => setFormCron(e.target.value)}
-                  placeholder="*/5 * * * *" className="font-mono" />
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {CRON_PRESETS.map((preset) => (
-                    <button key={preset.value} type="button"
-                      className="text-xs px-2 py-0.5 rounded border hover:bg-muted"
-                      onClick={() => setFormCron(preset.value)}>
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label>时区</Label>
-                <Select value={formTimezone} onValueChange={setFormTimezone}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="UTC">UTC</SelectItem>
-                    <SelectItem value="Asia/Shanghai">Asia/Shanghai (CST)</SelectItem>
-                    <SelectItem value="America/New_York">America/New_York (EST)</SelectItem>
-                    <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
-                    <SelectItem value="Asia/Tokyo">Asia/Tokyo (JST)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+          <div className="grid gap-2">
+            <Label htmlFor="task-description">描述</Label>
+            <Input id="task-description" value={formDescription} onChange={(event) => setFormDescription(event.target.value)} />
           </div>
 
-          <div className="border-t pt-4">
-            <h3 className="text-sm font-medium mb-2">HTTP 配置</h3>
-            <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <Label>方法</Label>
-                  <Select value={formMethod} onValueChange={setFormMethod}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="GET">GET</SelectItem>
-                      <SelectItem value="POST">POST</SelectItem>
-                      <SelectItem value="PUT">PUT</SelectItem>
-                      <SelectItem value="DELETE">DELETE</SelectItem>
-                      <SelectItem value="PATCH">PATCH</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="col-span-2">
-                  <Label>URL *</Label>
-                  <Input value={formUrl} onChange={(e) => setFormUrl(e.target.value)}
-                    placeholder="https://api.example.com/health" />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label>请求头</Label>
-                  <Button type="button" size="sm" variant="outline"
-                    onClick={() => setFormHeaders([...formHeaders, { key: "", value: "" }])}>
-                    添加
-                  </Button>
-                </div>
-                {formHeaders.map((entry, idx) => (
-                  <div key={idx} className="flex gap-2 mb-2 items-center">
-                    <Input placeholder="Header Name" value={entry.key}
-                      onChange={(e) => {
-                        const next = [...formHeaders];
-                        next[idx] = { ...next[idx], key: e.target.value };
-                        setFormHeaders(next);
-                      }} className="flex-1" />
-                    <Input placeholder="Header Value" value={entry.value}
-                      onChange={(e) => {
-                        const next = [...formHeaders];
-                        next[idx] = { ...next[idx], value: e.target.value };
-                        setFormHeaders(next);
-                      }} className="flex-1" />
-                    <Button type="button" size="sm" variant="ghost"
-                      onClick={() => setFormHeaders(formHeaders.filter((_, i) => i !== idx))}>
-                      删除
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              {["POST", "PUT", "PATCH"].includes(formMethod) && (
-                <div>
-                  <Label>请求体 (JSON)</Label>
-                  <textarea
-                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-                    value={formBody}
-                    onChange={(e) => setFormBody(e.target.value)}
-                    placeholder='{"key": "value"}' />
-                </div>
-              )}
-              <div>
-                <Label>超时时间 (ms)</Label>
-                <Input type="number" value={formTimeout}
-                  onChange={(e) => setFormTimeout(e.target.value)}
-                  placeholder="30000" min={1000} max={300000} />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t pt-4">
-            <h3 className="text-sm font-medium mb-2">重试配置</h3>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Switch checked={formRetryEnabled}
-                  onCheckedChange={setFormRetryEnabled} />
-                <Label>启用自动重试</Label>
-              </div>
-              {formRetryEnabled && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>重试次数</Label>
-                    <Input type="number" value={formRetryCount}
-                      onChange={(e) => setFormRetryCount(e.target.value)}
-                      placeholder="3" min={1} max={10} />
-                  </div>
-                  <div>
-                    <Label>重试间隔 (秒)</Label>
-                    <Input type="number" value={formRetryInterval}
-                      onChange={(e) => setFormRetryInterval(e.target.value)}
-                      placeholder="60" min={10} max={3600} />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </FormDialog>
-
-      <ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen}
-        title="确认删除" description="此操作不可逆。确定要删除这个定时任务吗？所有执行历史也将被删除。"
-        variant="destructive" onConfirm={confirmDelete} />
-
-      <FormDialog open={logsDialogOpen} onOpenChange={setLogsDialogOpen}
-        title="执行历史" onSubmit={() => {}} width="sm:max-w-3xl">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">共 {logsTotal} 条记录</span>
+          <div className="grid gap-2">
+            <Label>Cron 表达式</Label>
             <div className="flex gap-2">
-              <Button size="sm" variant="destructive"
-                onClick={() => setClearLogsConfirmOpen(true)}
-                disabled={logsTotal === 0}>
-                清空历史
-              </Button>
+              <Input value={formCron} onChange={(event) => setFormCron(event.target.value)} />
+              <Select value={formCron} onValueChange={setFormCron}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="快捷选择" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CRON_PRESETS.map((preset) => (
+                    <SelectItem key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          {logsLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : logs.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4 text-center">暂无执行记录</div>
-          ) : (
-            <div className="rounded-md border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-3 py-2 text-left">时间</th>
-                    <th className="px-3 py-2 text-left">状态</th>
-                    <th className="px-3 py-2 text-left">状态码</th>
-                    <th className="px-3 py-2 text-left">耗时</th>
-                    <th className="px-3 py-2 text-left">触发方式</th>
-                    <th className="px-3 py-2 text-left">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((log) => (
-                    <tr key={log.id} className="border-b last:border-0 hover:bg-muted/20">
-                      <td className="px-3 py-2 text-xs">{formatTimestamp(log.createdAt)}</td>
-                      <td className="px-3 py-2">
-                        <StatusBadge
-                          status={log.status === "success" ? "enabled" : log.status === "failed" ? "disabled" : log.status}
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-xs font-mono">{log.statusCode ?? "—"}</td>
-                      <td className="px-3 py-2 text-xs">{formatDuration(log.duration)}</td>
-                      <td className="px-3 py-2 text-xs">{log.triggeredBy}</td>
-                      <td className="px-3 py-2">
-                        {log.responseBody && (
-                          <Button size="sm" variant="outline"
-                            onClick={() => { setSelectedResponse(log.responseBody); setResponseDialogOpen(true); }}>
-                            查看响应
-                          </Button>
-                        )}
-                        {log.error && (
-                          <span className="text-xs text-destructive" title={log.error}>错误</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {logsTotal > 20 && (
-            <div className="flex items-center justify-between">
-              <Button size="sm" variant="outline"
-                disabled={logsPage <= 1}
-                onClick={() => logsTaskId && loadLogs(logsTaskId, logsPage - 1)}>
-                上一页
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                第 {logsPage} 页，共 {Math.ceil(logsTotal / 20)} 页
-              </span>
-              <Button size="sm" variant="outline"
-                disabled={logsPage >= Math.ceil(logsTotal / 20)}
-                onClick={() => logsTaskId && loadLogs(logsTaskId, logsPage + 1)}>
-                下一页
-              </Button>
+
+          <div className="grid gap-2">
+            <Label>Environment</Label>
+            <Select value={formEnvironmentId} onValueChange={setFormEnvironmentId}>
+              <SelectTrigger>
+                <SelectValue placeholder="选择 Environment" />
+              </SelectTrigger>
+              <SelectContent>
+                {environments.map((environment) => (
+                  <SelectItem key={environment.id} value={environment.id}>
+                    {environment.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>任务内容</Label>
+            <Textarea
+              value={formTask}
+              onChange={(event) => setFormTask(event.target.value)}
+              rows={8}
+              placeholder="例如：输出当前目录文件清单到 report.md"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label>超时时间（分钟）</Label>
+            <Input
+              type="number"
+              min={1}
+              max={180}
+              value={formTimeoutMinutes}
+              onChange={(event) => setFormTimeoutMinutes(event.target.value)}
+            />
+          </div>
+
+          {editingTask && (
+            <div className="flex items-center justify-between rounded-md border px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">启用状态</p>
+                <p className="text-xs text-muted-foreground">关闭后不会继续调度，但仍可手动执行。</p>
+              </div>
+              <Switch checked={formEnabled} onCheckedChange={setFormEnabled} />
             </div>
           )}
         </div>
       </FormDialog>
 
-      <FormDialog open={responseDialogOpen} onOpenChange={setResponseDialogOpen}
-        title="响应体" onSubmit={() => {}} width="sm:max-w-2xl">
-        <pre className="text-xs bg-muted p-4 rounded overflow-auto max-h-[400px] whitespace-pre-wrap break-all">
-          {(() => {
-            try { return selectedResponse ? JSON.stringify(JSON.parse(selectedResponse), null, 2) : "无内容"; }
-            catch { return selectedResponse ?? "无内容"; }
-          })()}
-        </pre>
-      </FormDialog>
+      <Dialog open={logsDialogOpen} onOpenChange={setLogsDialogOpen}>
+        <DialogContent className="flex max-h-[90vh] w-[min(96vw,1100px)] flex-col overflow-hidden p-0 sm:max-w-5xl">
+          <DialogHeader className="shrink-0 border-b px-6 py-4">
+            <DialogTitle>
+              执行历史
+              {logsTask ? ` · ${logsTask.name}` : ""}
+            </DialogTitle>
+          </DialogHeader>
 
-      <ConfirmDialog open={clearLogsConfirmOpen} onOpenChange={setClearLogsConfirmOpen}
-        title="确认清空" description="此操作不可逆。确定要清空所有执行历史吗？"
-        variant="destructive" onConfirm={confirmClearLogs} />
+          <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">共 {logsTotal} 条记录</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  第 {logsPage} 页 / 共 {totalLogPages} 页
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!logsTask || logsPage <= 1}
+                  onClick={() => logsTask && loadLogs(logsTask.id, logsPage - 1)}
+                >
+                  上一页
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!logsTask || logs.length < 20}
+                  onClick={() => logsTask && loadLogs(logsTask.id, logsPage + 1)}
+                >
+                  下一页
+                </Button>
+                <Button size="sm" variant="outline" disabled={!logsTask} onClick={() => setClearLogsConfirmOpen(true)}>
+                  清空日志
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]">
+              <div className="flex min-h-0 flex-col rounded-md border">
+                <div className="shrink-0 border-b px-4 py-3">
+                  <h3 className="font-medium">执行记录</h3>
+                  <p className="text-xs text-muted-foreground">记录过多时可在此区域内滚动查看</p>
+                </div>
+                <div className="min-h-0 overflow-y-auto p-4">
+                  {logsLoading ? (
+                    <div className="space-y-2">
+                      {Array.from({ length: 3 }).map((_, index) => (
+                        <Skeleton key={index} className="h-20 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {logs.map((log) => (
+                        <div key={log.id} className="rounded-md border p-4">
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <StatusBadge
+                                status={
+                                  log.status === "success"
+                                    ? "enabled"
+                                    : log.status === "failed" || log.status === "timeout"
+                                      ? "disabled"
+                                      : "custom"
+                                }
+                              />
+                              <span className="text-sm text-muted-foreground">
+                                {formatTimestamp(log.createdAt)} · {log.triggeredBy} · {formatDuration(log.duration)}
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!log.workspacePath || !log.environmentId}
+                              onClick={() => handleBrowseWorkspace(log)}
+                            >
+                              查看目录
+                            </Button>
+                          </div>
+
+                          <div className="grid gap-2 text-sm">
+                            <div><span className="font-medium">workspacePath:</span> {log.workspacePath ?? "—"}</div>
+                            <div><span className="font-medium">workspaceName:</span> {log.workspaceName ?? "—"}</div>
+                            <div><span className="font-medium">resultSummary:</span> {log.resultSummary ?? "—"}</div>
+                            <div><span className="font-medium">skipReason:</span> {log.skipReason ?? "—"}</div>
+                            <div><span className="font-medium">error:</span> {log.error ?? "—"}</div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {!logsLoading && logs.length === 0 && (
+                        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                          暂无执行历史
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex min-h-0 flex-col rounded-md border">
+                <div className="shrink-0 border-b px-4 py-3">
+                  <h3 className="font-medium">运行目录</h3>
+                  <p className="text-xs text-muted-foreground">{workspaceTitle ?? "点击上方“查看目录”加载内容"}</p>
+                </div>
+
+                <div className="min-h-0 overflow-y-auto p-4">
+                  {workspaceLoading ? (
+                    <Skeleton className="h-24 w-full" />
+                  ) : workspaceEntries.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">暂无目录内容</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {workspaceEntries.map((entry) => (
+                        <div key={entry.path} className="flex items-start justify-between gap-3 rounded border px-3 py-2 text-sm">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium">{entry.name}</div>
+                            <div className="break-all text-xs text-muted-foreground" title={entry.path}>
+                              {entry.path}
+                            </div>
+                          </div>
+                          <div className="shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground">
+                            {entry.type} · {entry.size} B
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="删除任务"
+        description={`确认删除任务「${deleteTarget?.name ?? ""}」？`}
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={clearLogsConfirmOpen}
+        onOpenChange={setClearLogsConfirmOpen}
+        title="清空日志"
+        description="确认清空当前任务的执行历史？"
+        variant="destructive"
+        onConfirm={handleClearLogs}
+      />
     </div>
   );
 }

@@ -1,26 +1,62 @@
+import { eq } from "drizzle-orm";
 import schedule from "node-schedule";
 import { db } from "../db";
 import { scheduledTask } from "../db/schema";
-import { eq } from "drizzle-orm";
-import { getTaskById, createExecutionLog } from "./task";
-import { log, error } from "../logger";
+import { error, log } from "../logger";
+import { createExecutionLog, executeTaskById, getTaskById } from "./task";
 
 interface ScheduledJob {
   taskId: string;
   job: schedule.Job;
 }
 
-/** 正在执行中的任务集合（用于并发控制） */
 const runningTasks = new Set<string>();
-
-/** 内存中所有活跃的 cron Job */
 const activeJobs = new Map<string, ScheduledJob>();
 
-async function executeTask(taskId: string, triggeredBy: string = "cron", attempt: number = 1): Promise<void> {
+function toInvocationDate(invocation: unknown): Date | null {
+  if (!invocation) {
+    return null;
+  }
+  if (invocation instanceof Date) {
+    return invocation;
+  }
+  if (typeof invocation === "object" && invocation !== null) {
+    const maybeToDate = (invocation as { toDate?: () => Date; toJSDate?: () => Date });
+    if (typeof maybeToDate.toDate === "function") {
+      return maybeToDate.toDate();
+    }
+    if (typeof maybeToDate.toJSDate === "function") {
+      return maybeToDate.toJSDate();
+    }
+  }
+  return null;
+}
+
+async function executeTask(taskId: string): Promise<void> {
   if (runningTasks.has(taskId)) {
-    log(`[Scheduler] Task ${taskId} is already running, skipping`);
+    const task = await getTaskById(taskId);
+    if (!task) {
+      log(`[Scheduler] Task ${taskId} not found while skipping concurrent run`);
+      return;
+    }
+
+    await createExecutionLog({
+      taskId,
+      status: "skipped",
+      triggeredBy: "cron",
+      environmentId: task.environmentId,
+      taskSnapshot: task.task,
+      skipReason: "previous_run_still_active",
+    });
+
+    await db.update(scheduledTask)
+      .set({ lastStatus: "skipped", updatedAt: new Date() })
+      .where(eq(scheduledTask.id, taskId));
+
+    log(`[Scheduler] Task ${taskId} is already running, skipped`);
     return;
   }
+
   runningTasks.add(taskId);
 
   try {
@@ -34,74 +70,7 @@ async function executeTask(taskId: string, triggeredBy: string = "cron", attempt
       return;
     }
 
-    const startTime = Date.now();
-    let status = "success";
-    let statusCode: number | null = null;
-    let responseBody: string | null = null;
-    let errorMsg: string | null = null;
-
-    try {
-      const headers: Record<string, string> = task.headers ? JSON.parse(task.headers) : {};
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), task.timeout);
-
-      const fetchOptions: RequestInit = {
-        method: task.method,
-        headers,
-        signal: controller.signal,
-      };
-      if (task.body && ["POST", "PUT", "PATCH"].includes(task.method)) {
-        fetchOptions.body = task.body;
-      }
-
-      const response = await fetch(task.url, fetchOptions);
-      clearTimeout(timeoutId);
-      statusCode = response.status;
-      const text = await response.text();
-      responseBody = text.length > 4096 ? text.slice(0, 4096) : text;
-      if (!response.ok) {
-        status = "failed";
-        errorMsg = `HTTP ${response.status}`;
-      }
-    } catch (err: any) {
-      status = "failed";
-      errorMsg = err.message ?? String(err);
-    }
-
-    const duration = Date.now() - startTime;
-    const now = new Date();
-
-    await createExecutionLog({
-      taskId: task.id,
-      status,
-      statusCode,
-      responseBody,
-      error: errorMsg,
-      duration,
-      attempt,
-      triggeredBy,
-    });
-
-    const job = activeJobs.get(taskId);
-    const nextInvocation = job?.job?.nextInvocation();
-    const nextRunAt = nextInvocation ?? null;
-
-    await db.update(scheduledTask)
-      .set({ lastRunAt: now, lastStatus: status, nextRunAt, updatedAt: now })
-      .where(eq(scheduledTask.id, task.id));
-
-    if (
-      status === "failed" &&
-      task.retryEnabled &&
-      attempt < task.retryCount
-    ) {
-      const retryAttempt = attempt + 1;
-      const retryDelayMs = task.retryInterval * 1000;
-      log(`[Scheduler] Task ${taskId} failed (attempt ${attempt}/${task.retryCount}), retrying in ${task.retryInterval}s`);
-      setTimeout(() => {
-        executeTask(taskId, "retry", retryAttempt);
-      }, retryDelayMs);
-    }
+    await executeTaskById(taskId, "cron");
   } catch (err) {
     error(`[Scheduler] Unexpected error executing task ${taskId}:`, err);
   } finally {
@@ -119,31 +88,32 @@ export function scheduleTask(task: { id: string; cron: string; timezone?: string
     return;
   }
 
-  const job = schedule.scheduleJob(
-    { rule: task.cron, tz: task.timezone ?? "UTC" },
-    () => {
-      log(`[Scheduler] Cron triggered for task ${task.id}`);
-      executeTask(task.id).catch((err) => {
-        error(`[Scheduler] Error in cron execution for task ${task.id}:`, err);
-      });
-    }
-  );
+  const handler = () => {
+    log(`[Scheduler] Cron triggered for task ${task.id}`);
+    executeTask(task.id).catch((err) => {
+      error(`[Scheduler] Error in cron execution for task ${task.id}:`, err);
+    });
+  };
 
-  if (job) {
-    activeJobs.set(task.id, { taskId: task.id, job });
-    const nextInvocation = job.nextInvocation();
-    if (nextInvocation) {
-      const nextRunAt = nextInvocation instanceof Date ? nextInvocation : new Date(nextInvocation);
-      db.update(scheduledTask)
-        .set({ nextRunAt, updatedAt: new Date() })
-        .where(eq(scheduledTask.id, task.id))
-        .then(() => {})
-        .catch(() => {});
-    }
-    log(`[Scheduler] Scheduled task ${task.id} with cron "${task.cron}" (tz: ${task.timezone ?? "UTC"})`);
-  } else {
+  const job = task.timezone
+    ? schedule.scheduleJob({ rule: task.cron, tz: task.timezone }, handler)
+    : schedule.scheduleJob({ rule: task.cron }, handler);
+
+  if (!job) {
     error(`[Scheduler] Invalid cron expression "${task.cron}" for task ${task.id}, job not created`);
+    return;
   }
+
+  activeJobs.set(task.id, { taskId: task.id, job });
+  const nextRunAt = toInvocationDate(job.nextInvocation());
+
+  db.update(scheduledTask)
+    .set({ nextRunAt, updatedAt: new Date() })
+    .where(eq(scheduledTask.id, task.id))
+    .then(() => {})
+    .catch(() => {});
+
+  log(`[Scheduler] Scheduled task ${task.id} with cron "${task.cron}" (tz: ${task.timezone ?? "server-local"})`);
 }
 
 export function unscheduleTask(taskId: string): void {
@@ -169,7 +139,7 @@ export async function startScheduler(): Promise<void> {
     for (const task of tasks) {
       scheduleTask(task);
     }
-    log(`[Scheduler] Scheduler started successfully`);
+    log("[Scheduler] Scheduler started successfully");
   } catch (err) {
     error("[Scheduler] Failed to start scheduler:", err);
   }

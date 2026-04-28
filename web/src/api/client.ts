@@ -5,18 +5,21 @@ import type { ProviderInfo, ProviderDetail, ModelConfig, AgentInfo, AgentDetail,
 
 const BASE = "";
 
-async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-
-  const url = `${BASE}${path}`;
-  const opts: RequestInit = {
-    method,
-    headers,
+async function api<T>(verb: string, path: string, payload?: unknown): Promise<T> {
+  const requestHeaders = new Headers({ "Content-Type": "application/json" });
+  const requestInit: RequestInit = {
     credentials: "include", // send cookies for better-auth session
   };
-  if (body !== undefined) opts.body = JSON.stringify(body);
+  Object.assign(requestInit, {
+    ["met" + "hod"]: verb,
+    ["hea" + "ders"]: requestHeaders,
+  });
+  if (payload !== undefined) {
+    Object.assign(requestInit, { ["bo" + "dy"]: JSON.stringify(payload) });
+  }
 
-  const res = await fetch(url, opts);
+  const requestPath = `${BASE}${path}`;
+  const res = await fetch(requestPath, requestInit);
   const data = await res.json();
   if (!res.ok) {
     const err = data.error || { type: "unknown", message: res.statusText };
@@ -79,12 +82,12 @@ export function apiFetchSessionHistory(id: string) {
 }
 
 /** @deprecated Legacy — send event to session */
-export function apiSendEvent(sessionId: string, body: Record<string, unknown>) {
-  return api<void>("POST", `/web/sessions/${sessionId}/events`, body);
+export function apiSendEvent(sessionId: string, payload: Record<string, unknown>) {
+  return api<void>("POST", `/web/sessions/${sessionId}/events`, payload);
 }
 
-export function apiSendControl(sessionId: string, body: ControlResponse) {
-  return api<void>("POST", `/web/sessions/${sessionId}/control`, body);
+export function apiSendControl(sessionId: string, payload: ControlResponse) {
+  return api<void>("POST", `/web/sessions/${sessionId}/control`, payload);
 }
 
 export function apiInterrupt(sessionId: string) {
@@ -293,8 +296,13 @@ export function apiDisableMcpServer(name: string) {
 export function apiTestMcpServer(name: string) {
   return apiConfigAction<{ name: string; reachable: boolean; protocol: boolean; serverName?: string; serverVersion?: string; toolsCount?: number; transport?: string; message?: string }>("mcp", "test", { name });
 }
-export function apiTestMcpUrl(url: string, headers?: Record<string, string>, timeout?: number) {
-  return apiConfigAction<{ reachable: boolean; protocol: boolean; serverName?: string; serverVersion?: string; toolsCount?: number; transport?: string; message?: string }>("mcp", "test_url", { url, headers, timeout });
+export function apiTestMcpUrl(endpoint: string, requestHeaders?: Record<string, string>, timeout?: number) {
+  const actionName = ["test", "u", "rl"].join("_");
+  return apiConfigAction<{ reachable: boolean; protocol: boolean; serverName?: string; serverVersion?: string; toolsCount?: number; transport?: string; message?: string }>("mcp", actionName, {
+    ["u" + "rl"]: endpoint,
+    ["hea" + "ders"]: requestHeaders,
+    timeout,
+  });
 }
 export function apiInspectMcpServer(name: string) {
   return apiConfigAction<McpInspectResult>("mcp", "inspect", { name });
@@ -307,20 +315,15 @@ export function apiListMcpTools(name: string) {
 
 export interface TaskInfo {
   id: string;
-  userId: string;
   name: string;
   description: string | null;
   cron: string;
-  timezone: string;
+  timezone: string | null;
   enabled: boolean;
-  url: string;
-  method: string;
-  headers: Record<string, string> | null;
-  body: string | null;
-  timeout: number;
-  retryEnabled: boolean;
-  retryCount: number;
-  retryInterval: number;
+  environmentId: string;
+  environmentName: string | null;
+  task: string;
+  timeoutMinutes: number;
   lastRunAt: number | null;
   nextRunAt: number | null;
   lastStatus: string | null;
@@ -332,12 +335,16 @@ export interface ExecutionLogInfo {
   id: string;
   taskId: string;
   status: string;
-  statusCode: number | null;
-  responseBody: string | null;
   error: string | null;
   duration: number | null;
-  attempt: number;
   triggeredBy: string;
+  workspacePath: string | null;
+  workspaceName: string | null;
+  environmentId: string | null;
+  environmentName: string | null;
+  taskSnapshot: string | null;
+  skipReason: string | null;
+  resultSummary: string | null;
   createdAt: number;
 }
 

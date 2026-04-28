@@ -1,37 +1,69 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { user, scheduledTask, taskExecutionLog } from "../db/schema";
-import { eq, and } from "drizzle-orm";
-import {
+import { environment, scheduledTask, taskExecutionLog, user } from "../db/schema";
+
+const mockRunAgentTask = mock();
+
+const {
   createTask,
   listTasks,
   getTask,
   updateTask,
   deleteTask,
   toggleTask,
+  triggerTask,
   listExecutionLogs,
   clearExecutionLogs,
   getTaskById,
   createExecutionLog,
-} from "../services/task";
+  executeTaskById,
+  setRunAgentTaskForTesting,
+} = await import("../services/task");
 
 const USER_A = "user_task_a";
 const USER_B = "user_task_b";
+const ENV_A = "env_task_a";
+const ENV_B = "env_task_b";
 
 function ensureUser(id: string, name: string, email: string) {
   const existing = db.select().from(user).where(eq(user.id, id)).limit(1).all();
   if (existing.length > 0) return;
   const now = new Date();
-  try {
-    db.insert(user).values({
-      id, name, email, emailVerified: false, createdAt: now, updatedAt: now,
-    }).run();
-  } catch {}
+  db.insert(user).values({
+    id,
+    name,
+    email,
+    emailVerified: false,
+    createdAt: now,
+    updatedAt: now,
+  }).run();
 }
 
-// Ensure test users exist
-ensureUser(USER_A, "Alice Task", "alice-task@test.com");
-ensureUser(USER_B, "Bob Task", "bob-task@test.com");
+function ensureEnvironment(id: string, userId: string, name: string, workspacePath: string) {
+  const existing = db.select().from(environment).where(eq(environment.id, id)).limit(1).all();
+  if (existing.length > 0) return;
+  const now = new Date();
+  db.insert(environment).values({
+    id,
+    name,
+    description: null,
+    workspacePath,
+    agentName: `${name}-agent`,
+    status: "idle",
+    machineName: null,
+    branch: null,
+    gitRepoUrl: null,
+    maxSessions: 1,
+    workerType: "acp",
+    capabilities: null,
+    secret: `${id}-secret`,
+    userId,
+    lastPollAt: null,
+    createdAt: now,
+    updatedAt: now,
+  }).run();
+}
 
 function cleanupTasks() {
   try { db.delete(taskExecutionLog).run(); } catch {}
@@ -39,47 +71,69 @@ function cleanupTasks() {
   try { db.delete(scheduledTask).where(eq(scheduledTask.userId, USER_B)).run(); } catch {}
 }
 
+ensureUser(USER_A, "Alice Task", "alice-task@test.com");
+ensureUser(USER_B, "Bob Task", "bob-task@test.com");
+ensureEnvironment(ENV_A, USER_A, "env-a", "/tmp/env-a");
+ensureEnvironment(ENV_B, USER_B, "env-b", "/tmp/env-b");
+
 beforeEach(() => {
   cleanupTasks();
+  mockRunAgentTask.mockReset();
+  setRunAgentTaskForTesting(mockRunAgentTask);
 });
 
 afterEach(() => {
   cleanupTasks();
+  setRunAgentTaskForTesting(null);
 });
 
-function getValidInput() {
+afterAll(() => {
+  setRunAgentTaskForTesting(null);
+  try { db.delete(taskExecutionLog).run(); } catch {}
+  try { db.delete(scheduledTask).run(); } catch {}
+  try { db.delete(environment).where(and(eq(environment.id, ENV_A), eq(environment.userId, USER_A))).run(); } catch {}
+  try { db.delete(environment).where(and(eq(environment.id, ENV_B), eq(environment.userId, USER_B))).run(); } catch {}
+  try { db.delete(user).where(eq(user.id, USER_A)).run(); } catch {}
+  try { db.delete(user).where(eq(user.id, USER_B)).run(); } catch {}
+});
+
+function getValidInput(overrides: Record<string, unknown> = {}) {
   return {
     name: "Test Task",
     cron: "*/5 * * * *",
-    url: "https://httpbin.org/get",
-    method: "GET" as const,
+    timezone: "",
+    environmentId: ENV_A,
+    task: "echo hello",
+    timeoutMinutes: 30,
+    ...overrides,
   };
 }
 
 describe("Task Service", () => {
   describe("createTask", () => {
-    it("should create a task successfully", async () => {
+    it("creates an agent task and normalizes empty timezone", async () => {
       const result = await createTask(USER_A, getValidInput());
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.id).toMatch(/^task_/);
-        expect(result.data.name).toBe("Test Task");
-        expect(result.data.cron).toBe("*/5 * * * *");
-        expect(result.data.enabled).toBe(true);
-        expect(result.data.method).toBe("GET");
-      }
+      if (!result.success) return;
+
+      expect(result.data.id).toMatch(/^task_/);
+      expect(result.data.environmentId).toBe(ENV_A);
+      expect(result.data.environmentName).toBe("env-a");
+      expect(result.data.task).toBe("echo hello");
+      expect(result.data.timeoutMinutes).toBe(30);
+      expect(result.data.timezone).toBeNull();
     });
 
-    it("should reject invalid cron expression", async () => {
-      const result = await createTask(USER_A, { ...getValidInput(), cron: "abc" });
+    it("rejects invalid cron expression", async () => {
+      const result = await createTask(USER_A, getValidInput({ cron: "abc" }));
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe("VALIDATION_ERROR");
       }
     });
 
-    it("should reject 6-field cron expression", async () => {
-      const result = await createTask(USER_A, { ...getValidInput(), cron: "0 */5 * * * *" });
+    it("rejects non-owned environment", async () => {
+      const result = await createTask(USER_A, getValidInput({ environmentId: ENV_B }));
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe("VALIDATION_ERROR");
@@ -87,240 +141,184 @@ describe("Task Service", () => {
     });
   });
 
-  describe("listTasks", () => {
-    it("should list tasks for the user", async () => {
-      await createTask(USER_A, { ...getValidInput(), name: "Task A1" });
-      await createTask(USER_A, { ...getValidInput(), name: "Task A2" });
-      await createTask(USER_B, { ...getValidInput(), name: "Task B1" });
+  describe("listTasks/getTask/updateTask", () => {
+    it("lists tasks with environment names", async () => {
+      await createTask(USER_A, getValidInput({ name: "Task A1" }));
+      await createTask(USER_A, getValidInput({ name: "Task A2", task: "echo world" }));
+      await createTask(USER_B, getValidInput({ name: "Task B1", environmentId: ENV_B, task: "echo bob" }));
 
       const result = await listTasks(USER_A);
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.length).toBe(2);
-        expect(result.data.every((t) => t.name.startsWith("Task A"))).toBe(true);
-      }
+      expect(result.data.length).toBe(2);
+      expect(result.data.every((task) => task.environmentName === "env-a")).toBe(true);
     });
-  });
 
-  describe("getTask", () => {
-    it("should get a task by id", async () => {
+    it("returns task detail by id", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
+
       const result = await getTask(USER_A, created.data.id);
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.name).toBe("Test Task");
-      }
+      if (!result.success) return;
+      expect(result.data.environmentName).toBe("env-a");
+      expect(result.data.task).toBe("echo hello");
     });
 
-    it("should return NOT_FOUND for non-existent task", async () => {
-      const result = await getTask(USER_A, "task_nonexistent");
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("NOT_FOUND");
-      }
-    });
-
-    it("should return NOT_FOUND for other user's task", async () => {
+    it("updates timeoutMinutes and enabled fields", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
-      const result = await getTask(USER_B, created.data.id);
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("NOT_FOUND");
-      }
-    });
-  });
 
-  describe("updateTask", () => {
-    it("should update task name", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
-      const result = await updateTask(USER_A, created.data.id, { name: "Updated Task" });
+      const result = await updateTask(USER_A, created.data.id, {
+        timeoutMinutes: 45,
+        enabled: false,
+        task: "echo updated",
+      });
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.name).toBe("Updated Task");
-      }
+      if (!result.success) return;
+      expect(result.data.timeoutMinutes).toBe(45);
+      expect(result.data.enabled).toBe(false);
+      expect(result.data.task).toBe("echo updated");
     });
 
-    it("should reject invalid url", async () => {
+    it("rejects update when environment is not owned", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
-      const result = await updateTask(USER_A, created.data.id, { url: "ftp://invalid" });
+
+      const result = await updateTask(USER_A, created.data.id, { environmentId: ENV_B });
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe("VALIDATION_ERROR");
       }
     });
-
-    it("should return NOT_FOUND for non-existent task", async () => {
-      const result = await updateTask(USER_A, "task_nonexistent", { name: "X" });
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("NOT_FOUND");
-      }
-    });
   });
 
-  describe("deleteTask", () => {
-    it("should delete a task", async () => {
+  describe("deleteTask/toggleTask", () => {
+    it("deletes a task", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
       const result = await deleteTask(USER_A, created.data.id);
       expect(result.success).toBe(true);
 
-      const get = await getTask(USER_A, created.data.id);
-      expect(get.success).toBe(false);
+      const task = await getTask(USER_A, created.data.id);
+      expect(task.success).toBe(false);
     });
 
-    it("should cascade delete execution logs", async () => {
+    it("toggles enabled state", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
-      await createExecutionLog({ taskId: created.data.id, status: "success" });
-      await createExecutionLog({ taskId: created.data.id, status: "failed" });
 
-      await deleteTask(USER_A, created.data.id);
+      const disabled = await toggleTask(USER_A, created.data.id);
+      expect(disabled.success).toBe(true);
+      if (disabled.success) {
+        expect(disabled.data.enabled).toBe(false);
+      }
+
+      const enabled = await toggleTask(USER_A, created.data.id);
+      expect(enabled.success).toBe(true);
+      if (enabled.success) {
+        expect(enabled.data.enabled).toBe(true);
+      }
+    });
+  });
+
+  describe("execution flow", () => {
+    it("triggerTask writes workspace and summary fields on success", async () => {
+      const created = await createTask(USER_A, getValidInput());
+      if (!created.success) return;
+
+      mockRunAgentTask.mockResolvedValue({
+        status: "success",
+        workspacePath: "/tmp/env-a/.scheduled-runs/task-1/log-1",
+        workspaceName: "20260427-120000-log-1",
+        resultSummary: "run summary",
+        error: null,
+        duration: 321,
+      });
+
+      const result = await triggerTask(USER_A, created.data.id);
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+
+      expect(result.data.status).toBe("success");
+      expect(result.data.workspacePath).toContain(".scheduled-runs");
+      expect(result.data.resultSummary).toBe("run summary");
+      expect(result.data.environmentId).toBe(ENV_A);
+      expect(result.data.environmentName).toBe("env-a");
+
+      const task = await getTaskById(created.data.id);
+      expect(task?.lastStatus).toBe("success");
+    });
+
+    it("executeTaskById maps timeout status from runner", async () => {
+      const created = await createTask(USER_A, getValidInput());
+      if (!created.success) return;
+
+      mockRunAgentTask.mockResolvedValue({
+        status: "timeout",
+        workspacePath: "/tmp/env-a/.scheduled-runs/task-2/log-2",
+        workspaceName: "20260427-120500-log-2",
+        resultSummary: "timeout summary",
+        error: "Task execution timed out",
+        duration: 1800000,
+      });
+
+      const result = await executeTaskById(created.data.id, "manual");
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+
+      expect(result.data.status).toBe("timeout");
+      expect(result.data.error).toBe("Task execution timed out");
+      expect(result.data.resultSummary).toBe("timeout summary");
+    });
+
+    it("createExecutionLog and listExecutionLogs expose workspace metadata", async () => {
+      const created = await createTask(USER_A, getValidInput());
+      if (!created.success) return;
+
+      await createExecutionLog({
+        taskId: created.data.id,
+        status: "skipped",
+        triggeredBy: "cron",
+        workspacePath: "/tmp/env-a/.scheduled-runs/task/log",
+        workspaceName: "task-log",
+        environmentId: ENV_A,
+        environmentName: "env-a",
+        taskSnapshot: "echo hello",
+        skipReason: "previous_run_still_active",
+        resultSummary: "skip summary",
+      });
 
       const logs = await listExecutionLogs(created.data.id);
-      if (logs.success) {
-        expect(logs.data.total).toBe(0);
-      }
+      expect(logs.success).toBe(true);
+      expect(logs.data.total).toBe(1);
+      expect(logs.data.items[0].workspacePath).toContain(".scheduled-runs");
+      expect(logs.data.items[0].skipReason).toBe("previous_run_still_active");
+      expect(logs.data.items[0].resultSummary).toBe("skip summary");
     });
   });
 
-  describe("toggleTask", () => {
-    it("should toggle from enabled to disabled", async () => {
+  describe("clearExecutionLogs/getTaskById", () => {
+    it("clears all logs for a task", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
-      const result = await toggleTask(USER_A, created.data.id);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.enabled).toBe(false);
-      }
-    });
 
-    it("should toggle from disabled to enabled", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
-      await toggleTask(USER_A, created.data.id);
-      const result = await toggleTask(USER_A, created.data.id);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.enabled).toBe(true);
-      }
-    });
-
-    it("should return NOT_FOUND for non-existent task", async () => {
-      const result = await toggleTask(USER_A, "task_nonexistent");
-      expect(result.success).toBe(false);
-    });
-  });
-
-  describe("listExecutionLogs", () => {
-    it("should return paginated logs", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
-      for (let i = 0; i < 25; i++) {
-        await createExecutionLog({ taskId: created.data.id, status: "success" });
-      }
-
-      const page1 = await listExecutionLogs(created.data.id, 1, 20);
-      if (page1.success) {
-        expect(page1.data.total).toBe(25);
-        expect(page1.data.items.length).toBe(20);
-      }
-
-      const page2 = await listExecutionLogs(created.data.id, 2, 20);
-      if (page2.success) {
-        expect(page2.data.items.length).toBe(5);
-      }
-    });
-  });
-
-  describe("clearExecutionLogs", () => {
-    it("should clear all logs for a task", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
-      await createExecutionLog({ taskId: created.data.id, status: "success" });
-      await createExecutionLog({ taskId: created.data.id, status: "success" });
-      await createExecutionLog({ taskId: created.data.id, status: "success" });
+      await createExecutionLog({ taskId: created.data.id, status: "success", resultSummary: "one" });
+      await createExecutionLog({ taskId: created.data.id, status: "failed", resultSummary: "two" });
 
       await clearExecutionLogs(created.data.id);
 
       const logs = await listExecutionLogs(created.data.id);
-      if (logs.success) {
-        expect(logs.data.total).toBe(0);
-      }
-    });
-  });
-
-  describe("createExecutionLog", () => {
-    it("should create a log entry", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
-      const logId = await createExecutionLog({
-        taskId: created.data.id,
-        status: "success",
-        statusCode: 200,
-        duration: 150,
-      });
-      expect(logId).toMatch(/^log_/);
-
-      const logs = await listExecutionLogs(created.data.id);
-      if (logs.success) {
-        expect(logs.data.total).toBe(1);
-        expect(logs.data.items[0].status).toBe("success");
-        expect(logs.data.items[0].statusCode).toBe(200);
-        expect(logs.data.items[0].duration).toBe(150);
-      }
+      expect(logs.data.total).toBe(0);
     });
 
-    it("should truncate responseBody to 4096 characters", async () => {
+    it("returns task by id without ownership filter", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
-      const longBody = "x".repeat(5000);
-      await createExecutionLog({
-        taskId: created.data.id,
-        status: "success",
-        responseBody: longBody,
-      });
 
-      const logs = await listExecutionLogs(created.data.id);
-      if (logs.success) {
-        expect(logs.data.items[0].responseBody!.length).toBe(4096);
-      }
-    });
-  });
-
-  describe("getTaskById", () => {
-    it("should return task without userId check", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
       const task = await getTaskById(created.data.id);
       expect(task).toBeTruthy();
-      expect(task!.id).toBe(created.data.id);
-    });
-
-    it("should return null for non-existent task", async () => {
-      const task = await getTaskById("task_nonexistent");
-      expect(task).toBeNull();
-    });
-  });
-
-  describe("sanitizeTask header masking", () => {
-    it("should mask sensitive headers", async () => {
-      const created = await createTask(USER_A, {
-        ...getValidInput(),
-        headers: {
-          Authorization: "Bearer secret1234",
-          "Content-Type": "application/json",
-        },
-      });
-      expect(created.success).toBe(true);
-      if (created.success) {
-        expect(created.data.headers!["Authorization"]).toBe("***1234");
-        expect(created.data.headers!["Content-Type"]).toBe("application/json");
-      }
+      expect(task?.id).toBe(created.data.id);
+      expect(task?.environmentId).toBe(ENV_A);
     });
   });
 });
