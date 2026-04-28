@@ -21,7 +21,7 @@ import { Hono } from "hono";
 import { db } from "../db";
 import { user as userTable } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { storeReset, storeCreateSession, storeCreateEnvironment } from "../store";
+import { storeReset, storeCreateSession, storeCreateEnvironment, storeDeleteEnvironment } from "../store";
 
 // Ensure test user exists in DB
 function ensureUser() {
@@ -41,7 +41,8 @@ let workspaceDir: string;
 
 describe("Files Route", () => {
   let app: Hono;
-  const sessionId = "session_test123";
+  let sessionId: string;
+  let envId: string;
 
   beforeEach(async () => {
     workspaceDir = await mkdtemp(join(tmpdir(), "rcs-files-test-"));
@@ -50,13 +51,14 @@ describe("Files Route", () => {
     storeReset();
 
     // Create real environment and session with test workspace
-    storeCreateEnvironment({
-      secret: "test-secret",
+    const env = storeCreateEnvironment({
       userId: "test-user",
       workspacePath: workspaceDir,
       status: "active",
     });
-    storeCreateSession({ environmentId: "env_test", idPrefix: "session_" });
+    envId = env.id;
+    const session = storeCreateSession({ environmentId: env.id });
+    sessionId = session.id;
 
     // Dynamically import to get fresh module each time
     const mod = await import("../routes/web/files");
@@ -85,8 +87,14 @@ describe("Files Route", () => {
   });
 
   test("GET /:sessionId/user — 404 for invalid session without environment", async () => {
-    // Use a session ID that doesn't exist in the store and won't have a fallback environment
-    storeReset(); // Clear the environment we created
+    // Delete the specific environment and clear sessions so no fallback is available
+    storeDeleteEnvironment(envId);
+    storeReset();
+    // Also delete any other environments for this user to prevent fallback
+    const { storeListEnvironmentsByUserId } = await import("../store");
+    for (const env of storeListEnvironmentsByUserId("test-user")) {
+      storeDeleteEnvironment(env.id);
+    }
     const res = await app.request(`/web/sessions/invalid-session/user`, {
       headers: { "Content-Type": "application/json" },
     });

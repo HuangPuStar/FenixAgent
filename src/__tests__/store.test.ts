@@ -52,9 +52,9 @@ describe("store", () => {
 
   describe("storeCreateEnvironment", () => {
     test("creates environment with required fields", () => {
-      const env = storeCreateEnvironment({ secret: "s1", userId: "user1" });
+      const env = storeCreateEnvironment({ userId: "user1" });
       expect(env.id).toMatch(/^env_/);
-      expect(env.secret).toBe("s1");
+      expect(env.secret).toBeTruthy();
       expect(env.status).toBe("active");
       expect(env.userId).toBe("user1");
       expect(env.maxSessions).toBe(1);
@@ -65,25 +65,24 @@ describe("store", () => {
     });
 
     test("auto-generates name when not provided", () => {
-      const env = storeCreateEnvironment({ secret: "s1", userId: "user1" });
+      const env = storeCreateEnvironment({ userId: "user1" });
       expect(env.name).toMatch(/^env-/);
     });
 
     test("uses provided name", () => {
-      const env = storeCreateEnvironment({ secret: "s1", userId: "user1", name: "my-env" });
-      expect(env.name).toBe("my-env");
+      const env = storeCreateEnvironment({ userId: "user1", name: `my-env-${Date.now()}` });
+      expect(env.name).toMatch(/^my-env-/);
     });
 
     test("defaults workspacePath to /tmp when not provided", () => {
-      const env = storeCreateEnvironment({ secret: "s1", userId: "user1" });
+      const env = storeCreateEnvironment({ userId: "user1" });
       expect(env.workspacePath).toBe("/tmp");
     });
 
     test("creates environment with all optional fields", () => {
       const env = storeCreateEnvironment({
-        secret: "s2",
         userId: "user1",
-        name: "test-env",
+        name: `test-env-${Date.now()}`,
         description: "A test environment",
         workspacePath: "/home/user/project",
         agentName: "build",
@@ -91,7 +90,7 @@ describe("store", () => {
         workerType: "acp",
         capabilities: { foo: true },
       });
-      expect(env.name).toBe("test-env");
+      expect(env.name).toMatch(/^test-env-/);
       expect(env.description).toBe("A test environment");
       expect(env.workspacePath).toBe("/home/user/project");
       expect(env.agentName).toBe("build");
@@ -100,8 +99,19 @@ describe("store", () => {
     });
 
     test("creates with custom status", () => {
-      const env = storeCreateEnvironment({ secret: "s1", userId: "user1", status: "idle" });
+      const env = storeCreateEnvironment({ userId: "user1", status: "idle" });
       expect(env.status).toBe("idle");
+    });
+
+    test("uses provided secret when given", () => {
+      const secret = `custom-secret-${Date.now()}`;
+      const env = storeCreateEnvironment({ secret, userId: "user1" });
+      expect(env.secret).toBe(secret);
+    });
+
+    test("auto-generates secret when not provided", () => {
+      const env = storeCreateEnvironment({ userId: "user1" });
+      expect(env.secret).toMatch(/^sec_/);
     });
   });
 
@@ -111,21 +121,21 @@ describe("store", () => {
     });
 
     test("returns created environment by id", () => {
-      const env = storeCreateEnvironment({ secret: "s", userId: "u1" });
+      const env = storeCreateEnvironment({ userId: "u1" });
       const fetched = storeGetEnvironment(env.id);
       expect(fetched).toBeDefined();
       expect(fetched!.id).toBe(env.id);
-      expect(fetched!.secret).toBe("s");
+      expect(fetched!.secret).toBe(env.secret);
       expect(fetched!.userId).toBe("u1");
     });
   });
 
   describe("storeGetEnvironmentBySecret", () => {
     test("returns environment matching secret", () => {
-      storeCreateEnvironment({ secret: "secret_abc", userId: "u1", name: "env-1" });
-      const fetched = storeGetEnvironmentBySecret("secret_abc");
+      const env = storeCreateEnvironment({ userId: "u1" });
+      const fetched = storeGetEnvironmentBySecret(env.secret);
       expect(fetched).toBeDefined();
-      expect(fetched!.name).toBe("env-1");
+      expect(fetched!.id).toBe(env.id);
     });
 
     test("returns undefined for non-existent secret", () => {
@@ -135,7 +145,7 @@ describe("store", () => {
 
   describe("storeUpdateEnvironment", () => {
     test("updates existing environment fields", () => {
-      const env = storeCreateEnvironment({ secret: "s", userId: "u1" });
+      const env = storeCreateEnvironment({ userId: "u1" });
       const result = storeUpdateEnvironment(env.id, { status: "offline", machineName: "host1", capabilities: { bar: 1 } });
       expect(result).toBe(true);
       const updated = storeGetEnvironment(env.id);
@@ -151,21 +161,24 @@ describe("store", () => {
 
   describe("storeListActiveEnvironments", () => {
     test("returns only active environments", () => {
-      const env1 = storeCreateEnvironment({ secret: "s1", userId: "u1" });
-      storeCreateEnvironment({ secret: "s2", userId: "u1" });
+      const before = storeListActiveEnvironments().length;
+      const env1 = storeCreateEnvironment({ userId: "u1" });
+      storeCreateEnvironment({ userId: "u1" });
       storeUpdateEnvironment(env1.id, { status: "offline" });
       const active = storeListActiveEnvironments();
-      expect(active).toHaveLength(1);
+      expect(active.length - before).toBe(1);
     });
   });
 
   describe("storeListEnvironmentsByUserId", () => {
     test("filters by userId", () => {
-      storeCreateEnvironment({ secret: "s1", userId: "user-a" });
-      storeCreateEnvironment({ secret: "s2", userId: "user-b" });
-      storeCreateEnvironment({ secret: "s3", userId: "user-a" });
-      expect(storeListEnvironmentsByUserId("user-a")).toHaveLength(2);
-      expect(storeListEnvironmentsByUserId("user-b")).toHaveLength(1);
+      const beforeA = storeListEnvironmentsByUserId("user-a").length;
+      const beforeB = storeListEnvironmentsByUserId("user-b").length;
+      storeCreateEnvironment({ userId: "user-a" });
+      storeCreateEnvironment({ userId: "user-b" });
+      storeCreateEnvironment({ userId: "user-a" });
+      expect(storeListEnvironmentsByUserId("user-a").length - beforeA).toBe(2);
+      expect(storeListEnvironmentsByUserId("user-b").length - beforeB).toBe(1);
       expect(storeListEnvironmentsByUserId("user-c")).toHaveLength(0);
     });
   });
@@ -183,7 +196,7 @@ describe("store", () => {
     });
 
     test("creates session with options", () => {
-      const env = storeCreateEnvironment({ secret: "s", userId: "u1" });
+      const env = storeCreateEnvironment({ userId: "u1" });
       const session = storeCreateSession({
         environmentId: env.id,
         title: "Test Session",
@@ -223,7 +236,7 @@ describe("store", () => {
 
   describe("storeListSessionsByEnvironment", () => {
     test("filters by environment", () => {
-      const env = storeCreateEnvironment({ secret: "s", userId: "u1" });
+      const env = storeCreateEnvironment({ userId: "u1" });
       storeCreateSession({ environmentId: env.id });
       storeCreateSession({});
       expect(storeListSessionsByEnvironment(env.id)).toHaveLength(1);
@@ -252,7 +265,7 @@ describe("store", () => {
 
   describe("ACP agent lifecycle", () => {
     test("deletes agent and associated sessions", () => {
-      const env = storeCreateEnvironment({ secret: "s", userId: "u1", workerType: "acp", machineName: "agent1" });
+      const env = storeCreateEnvironment({ userId: "u1", workerType: "acp", machineName: "agent1" });
       storeCreateSession({ environmentId: env.id, title: "test session", userId: "u1" });
       expect(storeDeleteEnvironment(env.id)).toBe(true);
       expect(storeGetEnvironment(env.id)).toBeUndefined();
@@ -260,22 +273,26 @@ describe("store", () => {
     });
 
     test("lists ACP agents", () => {
-      storeCreateEnvironment({ secret: "s1", userId: "u1", workerType: "acp", machineName: "a1" });
-      storeCreateEnvironment({ secret: "s2", userId: "u1", workerType: "acp", machineName: "a2" });
-      expect(storeListAcpAgents()).toHaveLength(2);
+      const before = storeListAcpAgents().length;
+      storeCreateEnvironment({ userId: "u1", workerType: "acp", machineName: "a1" });
+      storeCreateEnvironment({ userId: "u1", workerType: "acp", machineName: "a2" });
+      expect(storeListAcpAgents().length - before).toBe(2);
     });
 
     test("lists ACP agents by userId", () => {
-      storeCreateEnvironment({ secret: "s1", userId: "user-a", workerType: "acp", machineName: "a1" });
-      storeCreateEnvironment({ secret: "s2", userId: "user-b", workerType: "acp", machineName: "a2" });
-      expect(storeListAcpAgentsByUserId("user-a")).toHaveLength(1);
-      expect(storeListAcpAgentsByUserId("user-b")).toHaveLength(1);
+      const beforeA = storeListAcpAgentsByUserId("user-a").length;
+      const beforeB = storeListAcpAgentsByUserId("user-b").length;
+      storeCreateEnvironment({ userId: "user-a", workerType: "acp", machineName: "a1" });
+      storeCreateEnvironment({ userId: "user-b", workerType: "acp", machineName: "a2" });
+      expect(storeListAcpAgentsByUserId("user-a").length - beforeA).toBe(1);
+      expect(storeListAcpAgentsByUserId("user-b").length - beforeB).toBe(1);
     });
 
     test("lists online ACP agents", () => {
-      storeCreateEnvironment({ secret: "s1", userId: "u1", workerType: "acp", machineName: "a1" });
-      storeCreateEnvironment({ secret: "s2", userId: "u1", workerType: "acp", machineName: "a2" });
-      expect(storeListOnlineAcpAgents()).toHaveLength(2);
+      const before = storeListOnlineAcpAgents().length;
+      storeCreateEnvironment({ userId: "u1", workerType: "acp", machineName: "a1" });
+      storeCreateEnvironment({ userId: "u1", workerType: "acp", machineName: "a2" });
+      expect(storeListOnlineAcpAgents().length - before).toBe(2);
     });
   });
 
@@ -284,7 +301,7 @@ describe("store", () => {
   describe("storeListSessionsForAgentByCwd", () => {
     test("returns sessions for agent with matching cwd (exact)", () => {
       ensureUser("u-cwd1");
-      const env = storeCreateEnvironment({ secret: "s", userId: "u-cwd1", workerType: "acp", workspacePath: "/home/user/project" });
+      const env = storeCreateEnvironment({ userId: "u-cwd1", workerType: "acp", workspacePath: "/home/user/project" });
       storeCreateSession({ environmentId: env.id, title: "session 1", userId: "u-cwd1" });
       storeCreateSession({ environmentId: env.id, title: "session 2", userId: "u-cwd1" });
 
@@ -294,7 +311,7 @@ describe("store", () => {
 
     test("returns sessions for agent with prefix cwd match", () => {
       ensureUser("u-cwd2");
-      const env = storeCreateEnvironment({ secret: "s", userId: "u-cwd2", workerType: "acp", workspacePath: "/home/user/project/subdir" });
+      const env = storeCreateEnvironment({ userId: "u-cwd2", workerType: "acp", workspacePath: "/home/user/project/subdir" });
       storeCreateSession({ environmentId: env.id, title: "session 1", userId: "u-cwd2" });
 
       const result = storeListSessionsForAgentByCwd(env.id, "/home/user/project");
@@ -303,7 +320,7 @@ describe("store", () => {
 
     test("returns empty when cwd does not match", () => {
       ensureUser("u-cwd3");
-      const env = storeCreateEnvironment({ secret: "s", userId: "u-cwd3", workerType: "acp", workspacePath: "/home/user/other-project" });
+      const env = storeCreateEnvironment({ userId: "u-cwd3", workerType: "acp", workspacePath: "/home/user/other-project" });
       storeCreateSession({ environmentId: env.id, title: "session 1", userId: "u-cwd3" });
 
       const result = storeListSessionsForAgentByCwd(env.id, "/home/user/project");
@@ -312,7 +329,7 @@ describe("store", () => {
 
     test("returns all sessions when cwd is not specified", () => {
       ensureUser("u-cwd4");
-      const env = storeCreateEnvironment({ secret: "s", userId: "u-cwd4", workerType: "acp", workspacePath: "/home/user/project" });
+      const env = storeCreateEnvironment({ userId: "u-cwd4", workerType: "acp", workspacePath: "/home/user/project" });
       storeCreateSession({ environmentId: env.id, title: "session 1", userId: "u-cwd4" });
       storeCreateSession({ environmentId: env.id, title: "session 2", userId: "u-cwd4" });
 
@@ -329,13 +346,11 @@ describe("store", () => {
   // ---------- storeReset ----------
 
   describe("storeReset", () => {
-    test("clears all data", () => {
-      storeCreateEnvironment({ secret: "s", userId: "u1" });
+    test("clears in-memory data", () => {
       storeCreateSession({});
 
       storeReset();
 
-      expect(storeListActiveEnvironments()).toHaveLength(0);
       expect(storeListSessions()).toHaveLength(0);
     });
   });

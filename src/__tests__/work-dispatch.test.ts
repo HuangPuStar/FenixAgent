@@ -42,7 +42,7 @@ describe("Work Dispatch", () => {
       const now = new Date();
       db.insert(user).values({ id: "u1", name: "u1", email: "u1@test.com", emailVerified: false, createdAt: now, updatedAt: now }).run();
     }
-    const env = storeCreateEnvironment({ secret: "s", userId: "u1" });
+    const env = storeCreateEnvironment({ userId: "u1" });
     envId = env.id;
     const session = storeCreateSession({ environmentId: envId });
     sessionId = session.id;
@@ -62,7 +62,7 @@ describe("Work Dispatch", () => {
     });
 
     test("throws for inactive environment", async () => {
-      const inactiveEnv = storeCreateEnvironment({ secret: "s2", userId: "u1" });
+      const inactiveEnv = storeCreateEnvironment({ userId: "u1" });
       // Manually set status to deregistered
       const { storeUpdateEnvironment } = await import("../store");
       storeUpdateEnvironment(inactiveEnv.id, { status: "deregistered" });
@@ -98,7 +98,7 @@ describe("Work Dispatch", () => {
     });
 
     test("does not return work for different environment", async () => {
-      const env2 = storeCreateEnvironment({ secret: "s2", userId: "u1" });
+      const env2 = storeCreateEnvironment({ userId: "u1" });
       await createWorkItem(envId, sessionId);
       const result = await pollWork(env2.id, 0.1);
       expect(result).toBeNull();
@@ -157,7 +157,7 @@ describe("Work Dispatch", () => {
     });
 
     test("returns empty for environment with no sessions", async () => {
-      const emptyEnv = storeCreateEnvironment({ secret: "s_empty", userId: "u1" });
+      const emptyEnv = storeCreateEnvironment({ userId: "u1" });
       const workIds = await reconnectWorkForEnvironment(emptyEnv.id);
       expect(workIds).toHaveLength(0);
     });

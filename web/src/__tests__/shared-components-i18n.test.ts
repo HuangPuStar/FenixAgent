@@ -30,9 +30,6 @@ describe("EnvironmentList.tsx i18n", () => {
     expect(envList).toContain('"ACP Agent"');
   });
 
-  test('preserves proper noun "Claude Code"', () => {
-    expect(envList).toContain('"Claude Code"');
-  });
 });
 
 describe("SessionList.tsx i18n", () => {

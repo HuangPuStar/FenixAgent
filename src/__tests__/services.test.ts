@@ -88,7 +88,7 @@ describe("Session Service", () => {
     });
 
     test("creates a session with all options", () => {
-      const env = storeCreateEnvironment({ secret: "s", userId: "u1" });
+      const env = storeCreateEnvironment({ userId: "u1" });
       const resp = createSession({
         environment_id: env.id,
         title: "My Session",
@@ -197,7 +197,7 @@ describe("Session Service", () => {
 
   describe("listSessionsByEnvironment", () => {
     test("filters by environment", () => {
-      const env = storeCreateEnvironment({ secret: "s", userId: "u1" });
+      const env = storeCreateEnvironment({ userId: "u1" });
       createSession({ environment_id: env.id });
       createSession({});
       expect(listSessionsByEnvironment(env.id)).toHaveLength(1);
@@ -266,19 +266,21 @@ describe("Environment Service", () => {
 
   describe("listActiveEnvironments", () => {
     test("returns active environments", () => {
+      const before = listActiveEnvironments().length;
       registerEnvironment({});
       registerEnvironment({});
-      expect(listActiveEnvironments()).toHaveLength(2);
+      expect(listActiveEnvironments().length - before).toBe(2);
     });
   });
 
   describe("listActiveEnvironmentsResponse", () => {
     test("returns response format", () => {
-      registerEnvironment({ machine_name: "mac1" });
+      const result = registerEnvironment({ machine_name: "mac1" });
       const envs = listActiveEnvironmentsResponse();
-      expect(envs).toHaveLength(1);
-      expect(envs[0].machine_name).toBe("mac1");
-      expect(envs[0].last_poll_at).toBeGreaterThan(0);
+      const found = envs.find(e => e.id === result.environment_id);
+      expect(found).toBeDefined();
+      expect(found!.machine_name).toBe("mac1");
+      expect(found!.last_poll_at).toBeGreaterThan(0);
     });
   });
 
@@ -287,9 +289,10 @@ describe("Environment Service", () => {
       // Create users alice and bob so the lookup by name works
       ensureUser("alice");
       ensureUser("bob");
+      const beforeAlice = listActiveEnvironmentsByUsername("alice").length;
       registerEnvironment({ username: "alice", userId: "alice" });
       registerEnvironment({ username: "bob", userId: "bob" });
-      expect(listActiveEnvironmentsByUsername("alice")).toHaveLength(1);
+      expect(listActiveEnvironmentsByUsername("alice").length - beforeAlice).toBe(1);
     });
   });
 
