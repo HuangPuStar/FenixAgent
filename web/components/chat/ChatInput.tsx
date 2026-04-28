@@ -41,7 +41,7 @@ export function ChatInput({
   isLoading = false,
   onInterrupt,
   disabled = false,
-  placeholder = "给 Claude 发送消息…",
+  placeholder = "给智能体发送消息…",
   supportsImages = false,
   commands,
   sessionId,

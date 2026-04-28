@@ -1,5 +1,5 @@
 /* Font imports must precede @import "tailwindcss" per CSS spec */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+/* @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"); */
 
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
@@ -9,246 +9,272 @@
    金风AI中台 style applied to React + Tailwind
    ============================================================ */
 @theme {
-  /* Fonts — Inter (clean sans-serif) + JetBrains Mono */
-  --font-sans: "Inter", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
-  --font-display: "Inter", "Helvetica Neue", Helvetica, "PingFang SC", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+    /* Fonts — Inter (clean sans-serif) + JetBrains Mono */
+    --font-sans:
+        "Inter", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+        "Microsoft YaHei", Arial, sans-serif;
+    --font-display:
+        "Inter", "Helvetica Neue", Helvetica, "PingFang SC", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
 
-  /* Brand — SaaS primary blue */
-  --color-brand: #409EFF;
-  --color-brand-light: #337ECC;
-  --color-brand-subtle: oklch(0.55 0.18 250 / 0.10);
+    /* Brand — SaaS primary blue */
+    --color-brand: #409eff;
+    --color-brand-light: #337ecc;
+    --color-brand-subtle: oklch(0.55 0.18 250 / 0.1);
 
-  /* Surfaces — cool neutral blue-tinted grays */
-  --color-surface-0: #f0f2f5;
-  --color-surface-1: #ffffff;
-  --color-surface-2: #f5f7fa;
-  --color-surface-3: #e4e7ed;
+    /* Surfaces — cool neutral blue-tinted grays */
+    --color-surface-0: #f0f2f5;
+    --color-surface-1: #ffffff;
+    --color-surface-2: #f5f7fa;
+    --color-surface-3: #e4e7ed;
 
-  /* Text — dark neutrals */
-  --color-text-primary: #303133;
-  --color-text-secondary: #606266;
-  --color-text-muted: #909399;
+    /* Text — dark neutrals */
+    --color-text-primary: #303133;
+    --color-text-secondary: #606266;
+    --color-text-muted: #909399;
 
-  /* Inverted — for user message bubbles */
-  --color-bg-inverted: #409EFF;
-  --color-text-inverted: #ffffff;
+    /* Inverted — for user message bubbles */
+    --color-bg-inverted: #409eff;
+    --color-text-inverted: #ffffff;
 
-  /* User bubble */
-  --color-user-bubble: #409EFF;
-  --color-user-bubble-border: #337ECC;
+    /* User bubble */
+    --color-user-bubble: #409eff;
+    --color-user-bubble-border: #337ecc;
 
-  /* Warning */
-  --color-warning-bg: oklch(0.96 0.04 85);
-  --color-warning-border: oklch(0.75 0.14 75);
-  --color-warning-text: oklch(0.40 0.08 60);
+    /* Warning */
+    --color-warning-bg: oklch(0.96 0.04 85);
+    --color-warning-border: oklch(0.75 0.14 75);
+    --color-warning-text: oklch(0.4 0.08 60);
 
-  /* Status — SaaS semantic */
-  --color-status-active: #30B08F;
-  --color-status-running: #409EFF;
-  --color-status-idle: #7C3AED;
-  --color-status-error: #C03639;
-  --color-status-warning: #E6A23C;
+    /* Status — SaaS semantic */
+    --color-status-active: #30b08f;
+    --color-status-running: #409eff;
+    --color-status-idle: #7c3aed;
+    --color-status-error: #c03639;
+    --color-status-warning: #e6a23c;
 
-  /* Accent colors from DESIGN.md */
-  --color-accent-tiffany: #4AB7BD;
-  --color-accent-pink: #E65D6E;
-  --color-accent-green: #30B08F;
-  --color-accent-yellow: #FEC171;
-  --color-accent-red: #C03639;
+    /* Accent colors from DESIGN.md */
+    --color-accent-tiffany: #4ab7bd;
+    --color-accent-pink: #e65d6e;
+    --color-accent-green: #30b08f;
+    --color-accent-yellow: #fec171;
+    --color-accent-red: #c03639;
 
-  /* Tool card */
-  --color-tool-card: #f5f7fa;
+    /* Tool card */
+    --color-tool-card: #f5f7fa;
 
-  /* shadcn/ui tokens — SaaS cool gray */
-  --color-background: #ffffff;
-  --color-foreground: #303133;
-  --color-card: #ffffff;
-  --color-card-foreground: #303133;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #303133;
-  --color-primary: #409EFF;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f0f2f5;
-  --color-secondary-foreground: #303133;
-  --color-muted: #f0f2f5;
-  --color-muted-foreground: #909399;
-  --color-accent: #f0f2f5;
-  --color-accent-foreground: #303133;
-  --color-destructive: #C03639;
+    /* shadcn/ui tokens — SaaS cool gray */
+    --color-background: #ffffff;
+    --color-foreground: #303133;
+    --color-card: #ffffff;
+    --color-card-foreground: #303133;
+    --color-popover: #ffffff;
+    --color-popover-foreground: #303133;
+    --color-primary: #409eff;
+    --color-primary-foreground: #ffffff;
+    --color-secondary: #f0f2f5;
+    --color-secondary-foreground: #303133;
+    --color-muted: #f0f2f5;
+    --color-muted-foreground: #909399;
+    --color-accent: #f0f2f5;
+    --color-accent-foreground: #303133;
+    --color-destructive: #c03639;
 
-  /* Border / Input / Ring */
-  --color-border: #dcdfe6;
-  --color-border-light: #e4e7ed;
-  --color-input: #dcdfe6;
-  --color-ring: #409EFF;
+    /* Border / Input / Ring */
+    --color-border: #dcdfe6;
+    --color-border-light: #e4e7ed;
+    --color-input: #dcdfe6;
+    --color-ring: #409eff;
 
-  /* Default utility values */
-  --default-border-color: var(--color-border);
-  --default-ring-color: var(--color-ring);
+    /* Default utility values */
+    --default-border-color: var(--color-border);
+    --default-ring-color: var(--color-ring);
 
-  /* Radius */
-  --radius: 0.375rem;
+    /* Radius */
+    --radius: 0.375rem;
 
-  --navbar-height: 48px;
+    --navbar-height: 48px;
 }
 
 /* ============================================================
    Dark mode — SaaS dark palette
    ============================================================ */
 .dark {
-  --color-surface-0: #141414;
-  --color-surface-1: #1d1e1f;
-  --color-surface-2: #262727;
-  --color-surface-3: #4c4c4d;
+    --color-surface-0: #141414;
+    --color-surface-1: #1d1e1f;
+    --color-surface-2: #262727;
+    --color-surface-3: #4c4c4d;
 
-  --color-text-primary: #e5eaf3;
-  --color-text-secondary: #a3a6ad;
-  --color-text-muted: #636569;
+    --color-text-primary: #e5eaf3;
+    --color-text-secondary: #a3a6ad;
+    --color-text-muted: #636569;
 
-  --color-bg-inverted: #409EFF;
-  --color-text-inverted: #ffffff;
-  --color-user-bubble: #409EFF;
-  --color-user-bubble-border: #337ECC;
+    --color-bg-inverted: #409eff;
+    --color-text-inverted: #ffffff;
+    --color-user-bubble: #409eff;
+    --color-user-bubble-border: #337ecc;
 
-  --color-border: #4c4c4d;
-  --color-border-light: #424243;
-  --color-tool-card: #1d1e1f;
+    --color-border: #4c4c4d;
+    --color-border-light: #424243;
+    --color-tool-card: #1d1e1f;
 
-  --color-warning-bg: oklch(0.22 0.03 75);
-  --color-warning-border: oklch(0.62 0.12 75);
-  --color-warning-text: oklch(0.82 0.08 85);
+    --color-warning-bg: oklch(0.22 0.03 75);
+    --color-warning-border: oklch(0.62 0.12 75);
+    --color-warning-text: oklch(0.82 0.08 85);
 
-  --color-background: #141414;
-  --color-foreground: #e5eaf3;
-  --color-card: #1d1e1f;
-  --color-card-foreground: #e5eaf3;
-  --color-popover: #1d1e1f;
-  --color-popover-foreground: #e5eaf3;
-  --color-primary: #409EFF;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #262727;
-  --color-secondary-foreground: #e5eaf3;
-  --color-muted: #262727;
-  --color-muted-foreground: #636569;
-  --color-accent: #262727;
-  --color-accent-foreground: #e5eaf3;
-  --color-destructive: #F56C6C;
+    --color-background: #141414;
+    --color-foreground: #e5eaf3;
+    --color-card: #1d1e1f;
+    --color-card-foreground: #e5eaf3;
+    --color-popover: #1d1e1f;
+    --color-popover-foreground: #e5eaf3;
+    --color-primary: #409eff;
+    --color-primary-foreground: #ffffff;
+    --color-secondary: #262727;
+    --color-secondary-foreground: #e5eaf3;
+    --color-muted: #262727;
+    --color-muted-foreground: #636569;
+    --color-accent: #262727;
+    --color-accent-foreground: #e5eaf3;
+    --color-destructive: #f56c6c;
 }
 
 /* ============================================================
    Base styles
    ============================================================ */
 @layer base {
-  html,
-  body {
-    background-color: var(--color-surface-0);
-    color: var(--color-text-primary);
-    font-family: var(--font-sans);
-    font-size: 14px;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-  }
-  *,
-  ::before,
-  ::after {
-    border-color: var(--color-border);
-  }
+    html,
+    body {
+        background-color: var(--color-surface-0);
+        color: var(--color-text-primary);
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+    }
+    *,
+    ::before,
+    ::after {
+        border-color: var(--color-border);
+    }
 }
 
 /* ============================================================
    Custom scrollbar
    ============================================================ */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+    width: 6px;
+    height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-surface-3);
-  border-radius: 3px;
+    background: var(--color-surface-3);
+    border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
+    background: var(--color-text-muted);
 }
 
 /* ============================================================
    Animations
    ============================================================ */
 .glimmer-text {
-  color: var(--color-text-secondary);
-  animation: glimmer-pulse 2s ease-in-out infinite;
+    color: var(--color-text-secondary);
+    animation: glimmer-pulse 2s ease-in-out infinite;
 }
 
 @keyframes glimmer-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+    50% {
+        opacity: 1;
+    }
 }
 
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(24px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes typing-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
-  30% { transform: translateY(-5px); opacity: 1; }
+    0%,
+    60%,
+    100% {
+        transform: translateY(0);
+        opacity: 0.5;
+    }
+    30% {
+        transform: translateY(-5px);
+        opacity: 1;
+    }
 }
 
 /* Chat input — brand blue focus ring */
 .chat-input-focus:focus-within {
-  box-shadow: 0 0 0 2px oklch(0.55 0.18 250 / 0.25);
+    box-shadow: 0 0 0 2px oklch(0.55 0.18 250 / 0.25);
 }
 
 /* Markdown content in message bubbles */
 .message-content pre {
-  background-color: var(--color-surface-2);
-  border-radius: 0.375rem;
-  padding: 0.75rem;
-  overflow-x: auto;
-  font-size: 0.8125rem;
-  line-height: 1.5;
+    background-color: var(--color-surface-2);
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    overflow-x: auto;
+    font-size: 0.8125rem;
+    line-height: 1.5;
 }
 
 .message-content code {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
 }
 
 .message-content :not(pre) > code {
-  background-color: var(--color-surface-2);
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.25rem;
+    background-color: var(--color-surface-2);
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
 }
 
 /* Typing indicator dots */
 .chat-typing-indicator {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  height: 20px;
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    height: 20px;
 }
 .chat-typing-indicator span {
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: var(--color-brand);
-  animation: typing-bounce 1.2s ease-in-out infinite;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--color-brand);
+    animation: typing-bounce 1.2s ease-in-out infinite;
 }
-.chat-typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-.chat-typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+.chat-typing-indicator span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+.chat-typing-indicator span:nth-child(3) {
+    animation-delay: 0.4s;
+}
 
 /* ============================================================
    Reduced motion
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  ::before,
-  ::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+    *,
+    ::before,
+    ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }

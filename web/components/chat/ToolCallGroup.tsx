@@ -18,20 +18,6 @@ export function ToolCallGroup({ entries, onPermissionRespond }: ToolCallGroupPro
 
   if (entries.length === 0) return null;
 
-  // 单个工具调用 — 默认折叠，不展开内容详情
-  if (entries.length === 1) {
-    return (
-      <div className="pl-10">
-        <SingleToolCard
-          tool={entries[0].toolCall}
-          compact
-          onPermissionRespond={onPermissionRespond}
-        />
-      </div>
-    );
-  }
-
-  // 多个工具调用 — 折叠组
   const summary = buildSummary(entries);
 
   return (

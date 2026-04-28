@@ -10,7 +10,7 @@ describe("TasksPage", () => {
     expect(src).toContain("apiFetchEnvironments");
     expect(src).toContain("environmentId");
     expect(src).toContain("timeoutMinutes");
-    expect(src).toContain("LOCAL_TIMEZONE_SENTINEL");
+    expect(src).toContain("formEnvironmentId");
   });
 
   it("removes legacy HTTP form labels", () => {

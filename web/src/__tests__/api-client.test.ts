@@ -66,7 +66,8 @@ describe("api functions", () => {
     await client.apiBind("sess-1");
     expect(fetchMock.lastOpts.method).toBe("POST");
     expect(fetchMock.lastOpts.body).toBe(JSON.stringify({ sessionId: "sess-1" }));
-    expect(fetchMock.lastOpts.headers).toEqual({ "Content-Type": "application/json" });
+    expect(fetchMock.lastOpts.headers).toBeInstanceOf(Headers);
+    expect((fetchMock.lastOpts.headers as Headers).get("Content-Type")).toBe("application/json");
   });
 
   test("throws error on non-ok response", async () => {

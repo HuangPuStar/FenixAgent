@@ -54,15 +54,16 @@ describe("Web Environments CRUD API", () => {
   });
 
   test("POST /web/environments — registers successfully", async () => {
+    const envName = `test-env-${Date.now()}`;
     const res = await testApp.request("/web/environments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "test-env", workspacePath: "/tmp/test-crud-ws" }),
+      body: JSON.stringify({ name: envName, workspacePath: "/tmp/test-crud-ws" }),
     });
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.id).toBeDefined();
-    expect(body.name).toBe("test-env");
+    expect(body.name).toBe(envName);
     expect(body.secret).toMatch(/^env_secret_/);
     expect(body.workspace_path).toBe("/tmp/test-crud-ws");
   });
@@ -101,23 +102,28 @@ describe("Web Environments CRUD API", () => {
   });
 
   test("GET /web/environments — lists environments without secret", async () => {
-    storeCreateEnvironment({ name: "env-1", secret: "s1", workspacePath: "/tmp/ws1", userId: "test-user-1", status: "idle" });
+    const resBefore = await testApp.request("/web/environments");
+    const before = (await resBefore.json()).length;
+
+    const envName = `env-list-${Date.now()}`;
+    storeCreateEnvironment({ name: envName, workspacePath: "/tmp/ws1", userId: "test-user-1", status: "idle" });
 
     const res = await testApp.request("/web/environments");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toHaveLength(1);
-    expect(body[0].name).toBe("env-1");
-    expect(body[0].secret).toBeUndefined();
+    expect(body.length - before).toBe(1);
+    const added = body.find((e: any) => e.name === envName);
+    expect(added).toBeDefined();
+    expect(added.secret).toBeUndefined();
   });
 
   test("GET /web/environments/:id — returns detail with secret", async () => {
-    const env = storeCreateEnvironment({ name: "env-detail", secret: "secret_xyz", workspacePath: "/tmp/ws", userId: "test-user-1", status: "idle" });
+    const env = storeCreateEnvironment({ name: `env-detail-${Date.now()}`, workspacePath: "/tmp/ws", userId: "test-user-1", status: "idle" });
 
     const res = await testApp.request(`/web/environments/${env.id}`);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.secret).toBe("secret_xyz");
+    expect(body.secret).toBe(env.secret);
   });
 
   test("GET /web/environments/:id — returns 404 for non-existent", async () => {
@@ -126,7 +132,7 @@ describe("Web Environments CRUD API", () => {
   });
 
   test("PUT /web/environments/:id — updates description", async () => {
-    const env = storeCreateEnvironment({ name: "env-put", secret: "s", workspacePath: "/tmp/ws", userId: "test-user-1", status: "idle" });
+    const env = storeCreateEnvironment({ name: `env-put-${Date.now()}`, workspacePath: "/tmp/ws", userId: "test-user-1", status: "idle" });
 
     const res = await testApp.request(`/web/environments/${env.id}`, {
       method: "PUT",
@@ -139,7 +145,7 @@ describe("Web Environments CRUD API", () => {
   });
 
   test("DELETE /web/environments/:id — deletes environment", async () => {
-    const env = storeCreateEnvironment({ name: "env-del", secret: "s", workspacePath: "/tmp/ws", userId: "test-user-1", status: "idle" });
+    const env = storeCreateEnvironment({ name: `env-del-${Date.now()}`, workspacePath: "/tmp/ws", userId: "test-user-1", status: "idle" });
 
     const res = await testApp.request(`/web/environments/${env.id}`, { method: "DELETE" });
     expect(res.status).toBe(200);

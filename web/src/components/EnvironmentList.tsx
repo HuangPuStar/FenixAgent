@@ -44,7 +44,7 @@ export function EnvironmentList({ environments, instances, onSelectEnvironment, 
     <div className="space-y-1">
       {environments.map((env) => {
         const isAcp = env.worker_type === "acp";
-        const typeLabel = isAcp ? "ACP Agent" : "Claude Code";
+        const typeLabel = isAcp ? "ACP Agent" : "智能体";
         const typeColor = isAcp ? "bg-brand/10 text-brand" : "bg-status-running/10 text-status-running";
 
         return (

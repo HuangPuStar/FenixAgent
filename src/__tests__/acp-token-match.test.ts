@@ -38,14 +38,13 @@ describe("ACP Token Match", () => {
 
   test("environment.secret can be looked up by secret", () => {
     const env = storeCreateEnvironment({
-      name: "test-env",
-      secret: "env_secret_abc123",
+      name: `test-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
       status: "idle",
     });
 
-    const found = storeGetEnvironmentBySecret("env_secret_abc123");
+    const found = storeGetEnvironmentBySecret(env.secret);
     expect(found).toBeDefined();
     expect(found!.id).toBe(env.id);
     expect(found!.userId).toBe("u-acp-test");
@@ -57,8 +56,7 @@ describe("ACP Token Match", () => {
 
   test("persistent environment disconnect updates status to idle", () => {
     const env = storeCreateEnvironment({
-      name: "persistent-env",
-      secret: "env_secret_persistent",
+      name: `persistent-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
       status: "active",
@@ -74,7 +72,6 @@ describe("ACP Token Match", () => {
 
   test("temporary environment disconnect deletes record", () => {
     const env = storeCreateEnvironment({
-      secret: "ws_temp_123",
       userId: "u-acp-test",
       status: "active",
     });
@@ -86,8 +83,7 @@ describe("ACP Token Match", () => {
   test("disconnect monitor ACP agent timeout updates status to idle", () => {
     const past = new Date(Date.now() - 600_000); // 10 minutes ago
     const env = storeCreateEnvironment({
-      name: "timeout-env",
-      secret: "env_secret_timeout",
+      name: `timeout-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
       status: "active",

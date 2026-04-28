@@ -77,7 +77,7 @@ export function storeCreateEnvironment(req: {
   description?: string;
   workspacePath?: string;
   agentName?: string;
-  secret: string;
+  secret?: string;
   userId: string;
   status?: string;
   machineName?: string;
@@ -94,13 +94,14 @@ export function storeCreateEnvironment(req: {
   const name = req.name || `env-${id.slice(4, 12)}`;
   const workspacePath = req.workspacePath || req.directory || "/tmp";
   const status = req.status || "active";
+  const secret = req.secret || `sec_${uuid().replace(/-/g, "")}`;
   db.insert(environment).values({
     id,
     name,
     description: req.description ?? null,
     workspacePath,
     agentName: req.agentName ?? null,
-    secret: req.secret,
+    secret,
     machineName: req.machineName ?? null,
     branch: req.branch ?? null,
     gitRepoUrl: req.gitRepoUrl ?? null,
@@ -115,7 +116,7 @@ export function storeCreateEnvironment(req: {
   }).run();
   return {
     id, name, description: req.description ?? null, workspacePath,
-    agentName: req.agentName ?? null, secret: req.secret,
+    agentName: req.agentName ?? null, secret,
     machineName: req.machineName ?? null, directory: req.directory ?? null,
     branch: req.branch ?? null, gitRepoUrl: req.gitRepoUrl ?? null,
     maxSessions: req.maxSessions ?? 1, workerType: req.workerType ?? "acp",
