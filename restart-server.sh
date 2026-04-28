@@ -15,5 +15,4 @@ bun run build:web
 
 echo ""
 echo "Starting server..."
-bun run dev &
-echo "Server started (PID $!)"
+bun run dev
