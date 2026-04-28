@@ -24,6 +24,7 @@ export function ACPMain({ client, agentId, initialCwd, readonly }: ACPMainProps)
   const [cwd, setCwd] = useState<string | undefined>(initialCwd?.replace(/\/+$/, ""));
   const [cwdReady, setCwdReady] = useState(!agentId || !!initialCwd);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
+  const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
   const chatRef = useRef<ChatInterfaceHandle>(null);
   const bootstrappedRef = useRef(false);
   const bootstrapRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,6 +112,7 @@ export function ACPMain({ client, agentId, initialCwd, readonly }: ACPMainProps)
         })[0];
 
         if (latest) {
+          setInitialActiveSessionId(latest.sessionId);
           await handleSelectSession(latest);
           return;
         }
@@ -178,7 +180,13 @@ export function ACPMain({ client, agentId, initialCwd, readonly }: ACPMainProps)
         {/* 会话列表 */}
         {!sidebarCollapsed && (
           <ScrollArea className="flex-1">
-            <SidebarSessionList client={client} cwd={cwd} cwdReady={cwdReady} onSelectSession={handleSelectSession} />
+            <SidebarSessionList
+              client={client}
+              cwd={cwd}
+              cwdReady={cwdReady}
+              initialActiveSessionId={initialActiveSessionId}
+              onSelectSession={handleSelectSession}
+            />
           </ScrollArea>
         )}
       </div>}
@@ -199,16 +207,24 @@ function SidebarSessionList({
   client,
   cwd,
   cwdReady,
+  initialActiveSessionId,
   onSelectSession,
 }: {
   client: ACPClient;
   cwd?: string;
   cwdReady: boolean;
+  initialActiveSessionId: string | null;
   onSelectSession: (session: AgentSessionInfo) => void;
 }) {
   const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activeId && initialActiveSessionId) {
+      setActiveId(initialActiveSessionId);
+    }
+  }, [activeId, initialActiveSessionId]);
 
   const loadSessions = useCallback(async () => {
     if (!cwdReady) {
