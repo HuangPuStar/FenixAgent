@@ -45,3 +45,4 @@ data
 !.codex/prompts/**
 
 user
+!bun.lock
