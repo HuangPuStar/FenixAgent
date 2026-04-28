@@ -117,7 +117,7 @@ export default function App() {
     }, [parseRoute]);
 
     const navigateToSession = useCallback((sessionId: string) => {
-        window.history.pushState(null, "", `/code/${sessionId}`);
+        window.history.pushState(null, "", `/code/${sessionId}/`);
         setCurrentSessionId(sessionId);
     }, []);
 

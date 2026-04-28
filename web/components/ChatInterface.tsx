@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import imageCompression from "browser-image-compression";
 import type { ACPClient } from "../src/acp/client";
 import type { SessionUpdate, PermissionRequestPayload, PermissionOption, ContentBlock, ImageContent } from "../src/acp/types";
@@ -155,7 +155,11 @@ function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
 // ChatInterface Component
 // =============================================================================
 
-export function ChatInterface({ client, agentId, cwd, readonly }: ChatInterfaceProps) {
+export interface ChatInterfaceHandle {
+  newSession: () => void;
+}
+
+export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface({ client, agentId, cwd, readonly }, ref) {
   // Flat list of entries (like Zed's entries: Vec<AgentThreadEntry>)
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -603,6 +607,8 @@ export function ChatInterface({ client, agentId, cwd, readonly }: ChatInterfaceP
     client.createSession(cwd, permissionMode);
   }, [client, isLoading, resetThreadState, permissionMode, cwd]);
 
+  useImperativeHandle(ref, () => ({ newSession: handleNewSession }), [handleNewSession]);
+
   // Cancel handler - matches Zed's cancel() logic in acp_thread.rs
   // 1. Mark all pending/running/waiting_for_confirmation tool calls as canceled
   // 2. Send cancel notification to agent
@@ -890,4 +896,4 @@ export function ChatInterface({ client, agentId, cwd, readonly }: ChatInterfaceP
       )}
     </div>
   );
-}
+});

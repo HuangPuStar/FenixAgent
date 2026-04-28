@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
-import { ChatInterface } from "./ChatInterface";
+import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { cn } from "../src/lib/utils";
 import { MessageSquare, Plus, PanelLeftClose, PanelLeft } from "lucide-react";
 import { Button } from "./ui/button";
@@ -21,6 +21,7 @@ interface ACPMainProps {
 export function ACPMain({ client, agentId, readonly }: ACPMainProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cwd, setCwd] = useState<string | undefined>();
+  const chatRef = useRef<ChatInterfaceHandle>(null);
 
   useEffect(() => {
     if (!agentId) return;
@@ -63,9 +64,7 @@ export function ACPMain({ client, agentId, readonly }: ACPMainProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => {
-                  // ChatInterface handles new session internally
-                }}
+                onClick={() => chatRef.current?.newSession()}
                 className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
                 title="新会话"
               >
@@ -97,7 +96,7 @@ export function ACPMain({ client, agentId, readonly }: ACPMainProps) {
 
       {/* 聊天区域 */}
       <div className="flex-1 flex flex-col min-w-0">
-        <ChatInterface client={client} agentId={agentId} cwd={cwd} readonly={readonly} />
+        <ChatInterface ref={chatRef} client={client} agentId={agentId} cwd={cwd} readonly={readonly} />
       </div>
     </div>
   );
