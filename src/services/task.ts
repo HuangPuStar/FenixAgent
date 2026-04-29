@@ -288,10 +288,12 @@ export async function updateTask(userId: string, taskId: string, data: UpdateTas
 }
 
 export async function deleteTask(userId: string, taskId: string): Promise<ServiceResult<undefined>> {
-  const result = db.delete(scheduledTask)
-    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)))
-    .run() as unknown as { changes: number };
-  if (result.changes === 0) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
+  const [existing] = await db.select({ id: scheduledTask.id }).from(scheduledTask)
+    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
+  if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
+
+  await db.delete(scheduledTask)
+    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
   return { success: true, data: undefined };
 }
 
@@ -419,7 +421,7 @@ export async function listExecutionLogs(
 }
 
 export async function clearExecutionLogs(taskId: string): Promise<ServiceSuccess<undefined>> {
-  db.delete(taskExecutionLog).where(eq(taskExecutionLog.taskId, taskId)).run();
+  await db.delete(taskExecutionLog).where(eq(taskExecutionLog.taskId, taskId));
   return { success: true, data: undefined };
 }
 

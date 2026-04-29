@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const CONFIG_PATH = join(homedir(), ".config", "opencode", "opencode.json");
+const CONFIG_DIR = join(homedir(), ".config", "opencode");
 const LOCK_TIMEOUT_MS = 5000;
 
 // Promise 互斥锁：防止并发写入
@@ -18,6 +19,10 @@ function acquireWriteLock(): Promise<() => void> {
     clearTimeout(timer);
     return release!;
   });
+}
+
+async function ensureConfigDir(): Promise<void> {
+  if (!existsSync(CONFIG_DIR)) await mkdir(CONFIG_DIR, { recursive: true });
 }
 
 function deepMerge(target: unknown, source: unknown): unknown {
@@ -51,9 +56,7 @@ export async function setSection(section: string, data: unknown): Promise<void> 
   try {
     const config = await getConfig();
     config[section] = deepMerge(config[section] ?? {}, data);
-    // 确保目录存在
-    const dir = join(CONFIG_PATH, "..");
-    if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+    await ensureConfigDir();
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
   } finally {
     release();
@@ -65,8 +68,7 @@ export async function replaceSection(section: string, data: unknown): Promise<vo
   try {
     const config = await getConfig();
     config[section] = data;
-    const dir = join(CONFIG_PATH, "..");
-    if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+    await ensureConfigDir();
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
   } finally {
     release();
@@ -83,8 +85,7 @@ export async function modifySection<T>(
     const current = config[section] as T | undefined;
     const modified = modifier(current);
     config[section] = modified;
-    const dir = join(CONFIG_PATH, "..");
-    if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+    await ensureConfigDir();
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
     return modified;
   } finally {
@@ -110,8 +111,7 @@ export async function setTopLevelField(field: string, value: unknown): Promise<v
   try {
     const config = await getConfig();
     config[field] = value;
-    const dir = join(CONFIG_PATH, "..");
-    if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+    await ensureConfigDir();
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
   } finally {
     release();

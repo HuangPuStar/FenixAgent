@@ -507,6 +507,8 @@ export function storeGetUserByToken(token: string): { username: string } | undef
 
 export function storeReset() {
   sessions.clear();
+  sessionOwners.clear();
+  workItems.clear();
   sessionWorkers.clear();
   tokens.clear();
 }

@@ -354,4 +354,108 @@ describe("store", () => {
       expect(storeListSessions()).toHaveLength(0);
     });
   });
+
+  // ---------- Session Ownership ----------
+
+  describe("storeBindSession / storeIsSessionOwner", () => {
+    test("binds user to session and checks ownership", () => {
+      const { storeBindSession, storeIsSessionOwner } = require("../store");
+      const s = storeCreateSession({});
+      storeBindSession(s.id, "uuid-1");
+      expect(storeIsSessionOwner(s.id, "uuid-1")).toBe(true);
+      expect(storeIsSessionOwner(s.id, "uuid-2")).toBe(false);
+    });
+
+    test("supports multiple owners", () => {
+      const { storeBindSession, storeGetSessionOwners } = require("../store");
+      const s = storeCreateSession({});
+      storeBindSession(s.id, "uuid-1");
+      storeBindSession(s.id, "uuid-2");
+      const owners = storeGetSessionOwners(s.id);
+      expect(owners).toBeDefined();
+      expect(owners!.size).toBe(2);
+    });
+  });
+
+  // ---------- Work Items ----------
+
+  describe("Work Items", () => {
+    test("create and get work item", () => {
+      const { storeCreateWorkItem, storeGetWorkItem } = require("../store");
+      const env = storeCreateEnvironment({ userId: "u1" });
+      const session = storeCreateSession({ environmentId: env.id });
+      const item = storeCreateWorkItem({
+        environmentId: env.id,
+        sessionId: session.id,
+        secret: "test-secret",
+      });
+      expect(item.id).toMatch(/^work_/);
+      expect(item.state).toBe("pending");
+
+      const fetched = storeGetWorkItem(item.id);
+      expect(fetched).toBeDefined();
+      expect(fetched!.environmentId).toBe(env.id);
+    });
+
+    test("get pending work item by environment", () => {
+      const { storeCreateWorkItem, storeGetPendingWorkItem } = require("../store");
+      const env = storeCreateEnvironment({ userId: "u1" });
+      const session = storeCreateSession({ environmentId: env.id });
+      storeCreateWorkItem({ environmentId: env.id, sessionId: session.id, secret: "s1" });
+
+      const pending = storeGetPendingWorkItem(env.id);
+      expect(pending).toBeDefined();
+      expect(pending!.state).toBe("pending");
+    });
+
+    test("update work item state", () => {
+      const { storeCreateWorkItem, storeUpdateWorkItem, storeGetWorkItem } = require("../store");
+      const env = storeCreateEnvironment({ userId: "u1" });
+      const session = storeCreateSession({ environmentId: env.id });
+      const item = storeCreateWorkItem({ environmentId: env.id, sessionId: session.id, secret: "s1" });
+
+      storeUpdateWorkItem(item.id, { state: "completed" });
+      const updated = storeGetWorkItem(item.id);
+      expect(updated!.state).toBe("completed");
+    });
+  });
+
+  // ---------- Session Workers ----------
+
+  describe("Session Workers", () => {
+    test("upsert and get session worker", () => {
+      const { storeUpsertSessionWorker, storeGetSessionWorker } = require("../store");
+      const worker = storeUpsertSessionWorker("session-1", { workerStatus: "running" });
+      expect(worker.sessionId).toBe("session-1");
+      expect(worker.workerStatus).toBe("running");
+
+      const fetched = storeGetSessionWorker("session-1");
+      expect(fetched).toBeDefined();
+      expect(fetched!.workerStatus).toBe("running");
+    });
+
+    test("upsert updates existing worker", () => {
+      const { storeUpsertSessionWorker, storeGetSessionWorker } = require("../store");
+      storeUpsertSessionWorker("session-1", { workerStatus: "running" });
+      storeUpsertSessionWorker("session-1", { workerStatus: "idle" });
+      const fetched = storeGetSessionWorker("session-1");
+      expect(fetched!.workerStatus).toBe("idle");
+    });
+  });
+
+  // ---------- storeListAllEnvironments ----------
+
+  describe("storeListAllEnvironments", () => {
+    test("returns all environments regardless of status", () => {
+      const { storeListAllEnvironments } = require("../store");
+      const before = storeListAllEnvironments().length;
+      const env1 = storeCreateEnvironment({ userId: "u1", status: "active" });
+      storeCreateEnvironment({ userId: "u1", status: "active" });
+      // Deregister one
+      const { storeUpdateEnvironment } = require("../store");
+      storeUpdateEnvironment(env1.id, { status: "deregistered" });
+      const all = storeListAllEnvironments();
+      expect(all.length - before).toBe(2);
+    });
+  });
 });
