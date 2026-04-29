@@ -1,16 +1,12 @@
 FROM oven/bun:1-alpine AS base
 WORKDIR /app
 
-FROM base AS deps
+# Build server.js (frontend is built on host beforehand with `bun run build:web`)
+FROM base AS build
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
-
-FROM deps AS build
 COPY tsconfig.json ./
 COPY src ./src
-COPY web ./web
-COPY components.json ./
-RUN bun run build:web
 RUN bun build src/index.ts --outfile=dist/server.js --target=bun
 
 # Install opencode in a separate stage, then copy only the binary
@@ -34,13 +30,16 @@ ENV OPENCODE_DISABLE_AUTOUPDATE=1
 ENV OPENCODE_DISABLE_TELEMETRY=1
 
 # Copy the musl variant of opencode binary (Alpine uses musl, not glibc)
-COPY --from=opencode-build /root/.bun/install/global/node_modules/opencode-linux-arm64-musl/bin/opencode /usr/local/bin/opencode
+RUN --mount=type=bind,from=opencode-build,target=/tmp/opencode-build \
+    cp "$(find /tmp/opencode-build/root/.bun/install/global/node_modules/ \
+      -path '*/opencode-linux-*-musl/bin/opencode' | head -1)" \
+      /usr/local/bin/opencode
 
 RUN bun install -g acp-link \
     && rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/web/dist ./web/dist
+COPY web/dist ./web/dist
 
 RUN mkdir -p /app/data /root/.config/opencode /root/.agents/skills /root/.local/share/opencode /workspaces
 COPY .agent/skills/ /root/.agents/skills/

@@ -46,3 +46,5 @@ data
 
 user
 !bun.lock
+*.tar
+*.tar.gz
