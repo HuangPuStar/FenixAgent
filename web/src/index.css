@@ -9,17 +9,17 @@
    Bright Tech style applied to React + Tailwind
    ============================================================ */
 @theme {
-    /* Fonts — Geist Sans (display) + DM Sans (body) + JetBrains Mono (code) */
+    /* Fonts — system-native stacks, no external CDN */
     --font-sans:
-        "DM Sans", "Outfit", "Helvetica Neue", Helvetica, "PingFang SC",
-        "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+        system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica,
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
     --font-display:
-        "Geist Sans", "Plus Jakarta Sans", "Helvetica Neue", Helvetica,
+        system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica,
         "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
     --font-body:
-        "DM Sans", "Outfit", "Helvetica Neue", Helvetica, "PingFang SC",
-        "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
-    --font-mono: "JetBrains Mono", "Fira Code", monospace;
+        system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica,
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
 
     /* Brand — Nexus Indigo */
     --color-brand: #6366F1;
