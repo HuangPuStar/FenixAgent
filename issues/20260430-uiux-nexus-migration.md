@@ -114,11 +114,11 @@
 **现状**: `web/src/pages/Dashboard.tsx` — 简单的环境/会话列表
 **目标**: 5 列 KPI 指标卡片条
 
-- [ ] KPI 卡片组件: 图标 + 趋势标签 + 大数字 + 标签 + sparkline SVG 背景
-- [ ] 5 张卡片: 智能体数、会话数、模型数、可用率(%)、定时任务数
-- [ ] 数字入场动画 (easeOut counter)
-- [ ] hover 提升 + 阴影效果
-- [ ] glow blob 装饰 (右上角模糊圆形)
+- [x] KPI 卡片组件: 图标 + 趋势标签 + 大数字 + 标签 + sparkline SVG 背景
+- [x] 5 张卡片: 智能体数、会话数、模型数、可用率(%)、定时任务数
+- [x] 数字入场动画 (easeOut counter)
+- [x] hover 提升 + 阴影效果
+- [x] glow blob 装饰 (右上角模糊圆形)
 
 **影响文件**: `web/src/pages/Dashboard.tsx`, 可抽 `KPICard.tsx` 组件
 

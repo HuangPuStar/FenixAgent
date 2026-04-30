@@ -94,41 +94,6 @@ function useCountUp(target: number, duration = 800, enabled = true) {
 }
 
 /* ========================================================================== *
- *  Sparkline — 迷你折线 SVG 组件
- * ========================================================================== */
-
-interface SparklineProps {
-  color: string;
-  points: number[];    // 0-1 normalized values
-  height?: number;
-}
-
-function Sparkline({ color, points, height = 28 }: SparklineProps) {
-  if (points.length < 2) return null;
-  const w = 200;
-  const h = height;
-  const pad = 2;
-  const stepX = (w - pad * 2) / (points.length - 1);
-  const range = Math.max(...points) - Math.min(...points) || 1;
-  const y = (i: number) =>
-    pad + (1 - (points[i] - Math.min(...points)) / range) * (h - pad * 2);
-  const d = points
-    .map((_, i) => `${i === 0 ? "M" : "L"}${pad + i * stepX},${y(i)}`)
-    .join(" ");
-
-  return (
-    <svg
-      className="kpi-sparkline"
-      viewBox={`0 0 ${w} ${h}`}
-      preserveAspectRatio="none"
-      aria-hidden="true"
-    >
-      <path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/* ========================================================================== *
  *  RingChart — 环形进度指示器
  * ========================================================================== */
 
@@ -204,39 +169,45 @@ interface AnimatedKpiCardProps {
   icon: LucideIcon;
   label: string;
   value: number;
+  suffix?: string;
   trend: string;
-  accentColor: string;   // hex color like "#6366F1"
-  accentBg: string;       // bg class
-  sparklinePoints: number[];
+  accentColor: string;
+  accentBg: string;
+  sparkPath: string;
 }
 
 function AnimatedKpiCard({
-  icon: Icon, label, value, trend, accentColor, accentBg, sparklinePoints,
+  icon: Icon, label, value, suffix, trend, accentColor, accentBg, sparkPath,
 }: AnimatedKpiCardProps) {
   const display = useCountUp(value, 900);
 
   return (
     <div className="dashboard-kpi-card group">
-      {/* glow background */}
+      {/* glow blob — top-right blurred circle */}
       <div className="dashboard-kpi-glow" style={{ background: accentColor }} />
       <div className="relative z-10 flex flex-col h-full">
-        <div className="flex items-center justify-between mb-2">
+        <div className="dashboard-kpi-header">
           <div className={cn("dashboard-kpi-icon", accentBg)} style={{ color: accentColor }}>
             <Icon className="h-[18px] w-[18px]" />
           </div>
-          <span className="text-[11px] font-medium text-status-active">{trend}</span>
+          <span className="dashboard-kpi-trend">{trend}</span>
         </div>
-        <div
-          className="dashboard-kpi-value"
-          style={{ color: accentColor }}
-        >
-          {display}
+        <div className="dashboard-kpi-value" style={{ color: accentColor }}>
+          {display}{suffix ?? ""}
         </div>
-        <div className="text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+        <div className="dashboard-kpi-label">
           {label}
         </div>
       </div>
-      <Sparkline color={accentColor} points={sparklinePoints} />
+      {/* sparkline SVG decoration */}
+      <svg
+        className="kpi-sparkline"
+        viewBox="0 0 200 30"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path d={sparkPath} fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" />
+      </svg>
     </div>
   );
 }
@@ -498,32 +469,33 @@ export function Dashboard() {
           <AnimatedKpiCard
             icon={Bot} label="智能体" value={stats.environments.length}
             trend={`${activeEnvs.length} 活跃`}
-            accentColor="#6366F1" accentBg="bg-indigo-50 dark:bg-indigo-950"
-            sparklinePoints={sparkAgents}
+            accentColor="#6366F1" accentBg="dashboard-kpi-icon-brand"
+            sparkPath="M0,22 C20,22 30,18 50,18 C70,18 80,14 100,14 C120,14 130,8 150,8 C170,8 180,12 200,10"
           />
           <AnimatedKpiCard
             icon={MessageSquare} label="会话" value={stats.sessions.length}
             trend={`${activeSessions.length} 进行中`}
-            accentColor="#30b08f" accentBg="bg-emerald-50 dark:bg-emerald-950"
-            sparklinePoints={sparkSessions}
+            accentColor="#22D3EE" accentBg="dashboard-kpi-icon-cyan"
+            sparkPath="M0,16 C30,16 45,12 60,12 C75,12 90,18 105,18 C120,18 135,10 150,10 C165,10 185,14 200,8"
           />
           <AnimatedKpiCard
             icon={Cpu} label="模型" value={modelCount}
             trend="已配置"
-            accentColor="#7c3aed" accentBg="bg-violet-50 dark:bg-violet-950"
-            sparklinePoints={sparkModels}
+            accentColor="#818CF8" accentBg="dashboard-kpi-icon-purple"
+            sparkPath="M0,10 C20,10 35,14 50,14 C65,14 80,8 95,8 C110,8 130,12 150,12 C170,12 185,6 200,8"
           />
           <AnimatedKpiCard
-            icon={Layers} label="可用率" value={healthPct}
-            trend={`${enabledConfigItems}/${totalConfigItems}`}
-            accentColor="#e65d6e" accentBg="bg-pink-50 dark:bg-pink-950"
-            sparklinePoints={sparkHealth}
+            icon={ShieldCheck} label="可用率" value={healthPct}
+            suffix="%"
+            trend="健康"
+            accentColor="#10B981" accentBg="dashboard-kpi-icon-green"
+            sparkPath="M0,6 C25,6 40,4 60,4 C80,4 95,8 115,8 C135,8 155,4 175,4 C190,4 200,6 200,6"
           />
           <AnimatedKpiCard
             icon={Clock} label="定时任务" value={stats.tasks.length}
             trend={`${enabledTasks.length} 启用`}
-            accentColor="#e6a23c" accentBg="bg-amber-50 dark:bg-amber-950"
-            sparklinePoints={sparkTasks}
+            accentColor="#F59E0B" accentBg="dashboard-kpi-icon-amber"
+            sparkPath="M0,20 C30,20 50,16 70,16 C90,16 110,14 130,14 C150,14 165,10 185,10 C195,10 200,12 200,12"
           />
         </div>
 
