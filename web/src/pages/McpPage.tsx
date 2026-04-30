@@ -222,7 +222,7 @@ export function McpPage() {
       render: (row) => {
         const count = row.toolsCount ?? 0;
         return count > 0 ? (
-          <span className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">{count} 个工具</span>
+          <span className="text-xs bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">{count} 个工具</span>
         ) : (
           <span className="text-xs text-muted-foreground">未检测</span>
         );
@@ -487,7 +487,7 @@ export function McpPage() {
                 <tbody>
                   {tools.map((tool) => (
                     <tr key={tool.id} className="border-b last:border-0 hover:bg-muted/20">
-                      <td className="px-2 py-1 font-mono text-xs text-blue-700 whitespace-nowrap">{tool.toolName}</td>
+                      <td className="px-2 py-1 font-mono text-xs text-indigo-700 whitespace-nowrap">{tool.toolName}</td>
                       <td className="px-2 py-1 text-xs max-w-xs truncate" title={tool.description ?? undefined}>{tool.description || "—"}</td>
                       <td className="px-2 py-1">
                         {tool.inputSchema ? (

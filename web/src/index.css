@@ -5,8 +5,8 @@
 @plugin "@tailwindcss/typography";
 
 /* ============================================================
-   Theme — SaaS Deep Blue Palette (adapted from DESIGN.md)
-   金风AI中台 style applied to React + Tailwind
+   Theme — Nexus Indigo Palette
+   Bright Tech style applied to React + Tailwind
    ============================================================ */
 @theme {
     /* Fonts — Inter (clean sans-serif) + JetBrains Mono */
@@ -17,74 +17,91 @@
         "Inter", "Helvetica Neue", Helvetica, "PingFang SC", Arial, sans-serif;
     --font-mono: "JetBrains Mono", monospace;
 
-    /* Brand — SaaS primary blue */
-    --color-brand: #409eff;
-    --color-brand-light: #337ecc;
-    --color-brand-subtle: oklch(0.55 0.18 250 / 0.1);
+    /* Brand — Nexus Indigo */
+    --color-brand: #6366F1;
+    --color-brand-light: #818CF8;
+    --color-brand-subtle: rgba(99, 102, 241, 0.08);
+    --color-brand-glow: rgba(99, 102, 241, 0.15);
 
-    /* Surfaces — cool neutral blue-tinted grays */
-    --color-surface-0: #f0f2f5;
-    --color-surface-1: #ffffff;
-    --color-surface-2: #f5f7fa;
-    --color-surface-3: #e4e7ed;
+    /* Cyan accent */
+    --color-cyan: #22D3EE;
+    --color-cyan-subtle: rgba(34, 211, 238, 0.10);
 
-    /* Text — dark neutrals */
-    --color-text-primary: #303133;
-    --color-text-secondary: #606266;
-    --color-text-muted: #909399;
+    /* Surfaces — bright & clean */
+    --color-surface-0: #F8FAFC;
+    --color-surface-1: #FFFFFF;
+    --color-surface-2: #F1F5F9;
+    --color-surface-3: #E2E8F0;
+    --color-surface-hover: #EEF2FF;
+    --color-surface-elevated: #FFFFFF;
+    --color-surface-overlay: #F1F5F9;
+
+    /* Text — slate neutrals */
+    --color-text-bright: #0F172A;
+    --color-text-primary: #334155;
+    --color-text-secondary: #64748B;
+    --color-text-muted: #94A3B8;
+    --color-text-dim: #94A3B8;
 
     /* Inverted — for user message bubbles */
-    --color-bg-inverted: #409eff;
+    --color-bg-inverted: #6366F1;
     --color-text-inverted: #ffffff;
 
     /* User bubble */
-    --color-user-bubble: #409eff;
-    --color-user-bubble-border: #337ecc;
+    --color-user-bubble: #6366F1;
+    --color-user-bubble-border: #818CF8;
 
     /* Warning */
-    --color-warning-bg: oklch(0.96 0.04 85);
-    --color-warning-border: oklch(0.75 0.14 75);
-    --color-warning-text: oklch(0.4 0.08 60);
+    --color-warning-bg: #FEF3C7;
+    --color-warning-border: #F59E0B;
+    --color-warning-text: #92400E;
 
-    /* Status — SaaS semantic */
-    --color-status-active: #30b08f;
-    --color-status-running: #409eff;
-    --color-status-idle: #7c3aed;
-    --color-status-error: #c03639;
-    --color-status-warning: #e6a23c;
+    /* Status — semantic */
+    --color-status-active: #10B981;
+    --color-status-running: #10B981;
+    --color-status-idle: #6366F1;
+    --color-status-error: #EF4444;
+    --color-status-warning: #F59E0B;
 
-    /* Accent colors from DESIGN.md */
-    --color-accent-tiffany: #4ab7bd;
-    --color-accent-pink: #e65d6e;
-    --color-accent-green: #30b08f;
-    --color-accent-yellow: #fec171;
-    --color-accent-red: #c03639;
+    /* Accent colors */
+    --color-accent-tiffany: #22D3EE;
+    --color-accent-pink: #F472B6;
+    --color-accent-green: #10B981;
+    --color-accent-yellow: #F59E0B;
+    --color-accent-red: #EF4444;
 
     /* Tool card */
-    --color-tool-card: #f5f7fa;
+    --color-tool-card: #F1F5F9;
 
-    /* shadcn/ui tokens — SaaS cool gray */
-    --color-background: #ffffff;
-    --color-foreground: #303133;
-    --color-card: #ffffff;
-    --color-card-foreground: #303133;
-    --color-popover: #ffffff;
-    --color-popover-foreground: #303133;
-    --color-primary: #409eff;
+    /* shadcn/ui tokens — Nexus Indigo */
+    --color-background: #FFFFFF;
+    --color-foreground: #0F172A;
+    --color-card: #FFFFFF;
+    --color-card-foreground: #0F172A;
+    --color-popover: #FFFFFF;
+    --color-popover-foreground: #0F172A;
+    --color-primary: #6366F1;
     --color-primary-foreground: #ffffff;
-    --color-secondary: #f0f2f5;
-    --color-secondary-foreground: #303133;
-    --color-muted: #f0f2f5;
-    --color-muted-foreground: #909399;
-    --color-accent: #f0f2f5;
-    --color-accent-foreground: #303133;
-    --color-destructive: #c03639;
+    --color-secondary: #F1F5F9;
+    --color-secondary-foreground: #334155;
+    --color-muted: #F1F5F9;
+    --color-muted-foreground: #94A3B8;
+    --color-accent: #F1F5F9;
+    --color-accent-foreground: #334155;
+    --color-destructive: #EF4444;
 
     /* Border / Input / Ring */
-    --color-border: #dcdfe6;
-    --color-border-light: #e4e7ed;
-    --color-input: #dcdfe6;
-    --color-ring: #409eff;
+    --color-border: rgba(0, 0, 0, 0.10);
+    --color-border-light: rgba(0, 0, 0, 0.06);
+    --color-border-active: rgba(99, 102, 241, 0.35);
+    --color-border-subtle: rgba(0, 0, 0, 0.06);
+    --color-border-default: rgba(0, 0, 0, 0.10);
+    --color-input: rgba(0, 0, 0, 0.10);
+    --color-ring: #6366F1;
+
+    /* Shadows */
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-elevated: 0 4px 16px rgba(99, 102, 241, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
 
     /* Default utility values */
     --default-border-color: var(--color-border);
@@ -97,46 +114,74 @@
 }
 
 /* ============================================================
-   Dark mode — SaaS dark palette
+   Dark mode — Nexus Indigo dark palette
    ============================================================ */
 .dark {
-    --color-surface-0: #141414;
-    --color-surface-1: #1d1e1f;
-    --color-surface-2: #262727;
-    --color-surface-3: #4c4c4d;
+    --color-brand: #818CF8;
+    --color-brand-light: #A5B4FC;
+    --color-brand-subtle: rgba(129, 140, 248, 0.10);
+    --color-brand-glow: rgba(129, 140, 248, 0.18);
 
-    --color-text-primary: #e5eaf3;
-    --color-text-secondary: #a3a6ad;
-    --color-text-muted: #636569;
+    --color-cyan: #22D3EE;
+    --color-cyan-subtle: rgba(34, 211, 238, 0.10);
 
-    --color-bg-inverted: #409eff;
+    --color-surface-0: #0F172A;
+    --color-surface-1: #1E293B;
+    --color-surface-2: #334155;
+    --color-surface-3: #475569;
+    --color-surface-hover: #312E81;
+    --color-surface-elevated: #1E293B;
+    --color-surface-overlay: #334155;
+
+    --color-text-bright: #F1F5F9;
+    --color-text-primary: #E2E8F0;
+    --color-text-secondary: #94A3B8;
+    --color-text-muted: #64748B;
+    --color-text-dim: #475569;
+
+    --color-bg-inverted: #6366F1;
     --color-text-inverted: #ffffff;
-    --color-user-bubble: #409eff;
-    --color-user-bubble-border: #337ecc;
+    --color-user-bubble: #6366F1;
+    --color-user-bubble-border: #818CF8;
 
-    --color-border: #4c4c4d;
-    --color-border-light: #424243;
-    --color-tool-card: #1d1e1f;
+    --color-border: rgba(148, 163, 184, 0.15);
+    --color-border-light: rgba(148, 163, 184, 0.08);
+    --color-border-active: rgba(129, 140, 248, 0.40);
+    --color-border-subtle: rgba(148, 163, 184, 0.08);
+    --color-border-default: rgba(148, 163, 184, 0.15);
+    --color-tool-card: #1E293B;
 
-    --color-warning-bg: oklch(0.22 0.03 75);
-    --color-warning-border: oklch(0.62 0.12 75);
-    --color-warning-text: oklch(0.82 0.08 85);
+    --color-warning-bg: rgba(245, 158, 11, 0.12);
+    --color-warning-border: #F59E0B;
+    --color-warning-text: #FCD34D;
 
-    --color-background: #141414;
-    --color-foreground: #e5eaf3;
-    --color-card: #1d1e1f;
-    --color-card-foreground: #e5eaf3;
-    --color-popover: #1d1e1f;
-    --color-popover-foreground: #e5eaf3;
-    --color-primary: #409eff;
+    --color-status-active: #10B981;
+    --color-status-running: #10B981;
+    --color-status-idle: #818CF8;
+    --color-status-error: #EF4444;
+    --color-status-warning: #F59E0B;
+
+    --color-background: #0F172A;
+    --color-foreground: #F1F5F9;
+    --color-card: #1E293B;
+    --color-card-foreground: #F1F5F9;
+    --color-popover: #1E293B;
+    --color-popover-foreground: #F1F5F9;
+    --color-primary: #6366F1;
     --color-primary-foreground: #ffffff;
-    --color-secondary: #262727;
-    --color-secondary-foreground: #e5eaf3;
-    --color-muted: #262727;
-    --color-muted-foreground: #636569;
-    --color-accent: #262727;
-    --color-accent-foreground: #e5eaf3;
-    --color-destructive: #f56c6c;
+    --color-secondary: #334155;
+    --color-secondary-foreground: #E2E8F0;
+    --color-muted: #334155;
+    --color-muted-foreground: #64748B;
+    --color-accent: #334155;
+    --color-accent-foreground: #E2E8F0;
+    --color-destructive: #EF4444;
+
+    --color-input: rgba(148, 163, 184, 0.15);
+    --color-ring: #818CF8;
+
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.20), 0 1px 2px rgba(0, 0, 0, 0.12);
+    --shadow-elevated: 0 4px 16px rgba(99, 102, 241, 0.12), 0 1px 4px rgba(0, 0, 0, 0.10);
 }
 
 /* ============================================================
@@ -219,9 +264,9 @@
     }
 }
 
-/* Chat input — brand blue focus ring */
+/* Chat input — brand indigo focus ring */
 .chat-input-focus:focus-within {
-    box-shadow: 0 0 0 2px oklch(0.55 0.18 250 / 0.25);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
 }
 
 /* Markdown content in message bubbles */
@@ -285,8 +330,8 @@
 
 .dashboard-page {
     background:
-        radial-gradient(ellipse 80% 60% at 50% -20%, oklch(0.55 0.18 250 / 0.04), transparent),
-        radial-gradient(ellipse 50% 40% at 80% 80%, oklch(0.7 0.18 150 / 0.03), transparent);
+        radial-gradient(ellipse 80% 60% at 50% -20%, rgba(99, 102, 241, 0.04), transparent),
+        radial-gradient(ellipse 50% 40% at 80% 80%, rgba(34, 211, 238, 0.03), transparent);
 }
 
 /* --- KPI 卡片 --- */

@@ -205,7 +205,7 @@ interface AnimatedKpiCardProps {
   label: string;
   value: number;
   trend: string;
-  accentColor: string;   // hex or tailwind class like "#409EFF"
+  accentColor: string;   // hex color like "#6366F1"
   accentBg: string;       // bg class
   sparklinePoints: number[];
 }
@@ -256,7 +256,7 @@ interface TopoNode {
 function statusColor(s: TopoNode["status"]) {
   switch (s) {
     case "active": return "#30b08f";
-    case "idle": return "#409eff";
+    case "idle": return "#6366F1";
     case "error": return "#c03639";
     case "offline": return "#909399";
   }
@@ -301,14 +301,14 @@ function AgentTopology({ agents }: { agents: TopoNode[] }) {
       {/* Hub */}
       <rect
         x={hubX - 48} y={hubY - 14} width={96} height={30} rx={8}
-        fill="var(--color-surface-1)" stroke="#409eff" strokeWidth="2"
+        fill="var(--color-surface-1)" stroke="#6366F1" strokeWidth="2"
         filter="url(#topoShadow)"
       />
       <text x={hubX} y={hubY + 6} textAnchor="middle" fill="var(--color-text-primary)" fontFamily="Inter, sans-serif" fontSize="13" fontWeight="700">
         RCS Hub
       </text>
       {/* Hub pulse ring */}
-      <circle cx={hubX} cy={hubY + 1} r="4" fill="#409eff">
+      <circle cx={hubX} cy={hubY + 1} r="4" fill="#6366F1">
         <animate attributeName="r" values="4;12;4" dur="2s" repeatCount="indefinite" />
         <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite" />
       </circle>
@@ -498,7 +498,7 @@ export function Dashboard() {
           <AnimatedKpiCard
             icon={Bot} label="智能体" value={stats.environments.length}
             trend={`${activeEnvs.length} 活跃`}
-            accentColor="#409eff" accentBg="bg-blue-50 dark:bg-blue-950"
+            accentColor="#6366F1" accentBg="bg-indigo-50 dark:bg-indigo-950"
             sparklinePoints={sparkAgents}
           />
           <AnimatedKpiCard
@@ -543,7 +543,7 @@ export function Dashboard() {
             <div className="flex flex-wrap justify-center gap-4 flex-1 items-center">
               <RingChart
                 pct={activeEnvs.length > 0 ? Math.round((activeEnvs.length / Math.max(stats.environments.length, 1)) * 100) : 0}
-                color="#409eff" trackColor="var(--color-surface-2)"
+                color="#6366F1" trackColor="var(--color-surface-2)"
                 label="智能体在线" sub={`${activeEnvs.length}/${stats.environments.length}`}
                 icon={Server}
               />

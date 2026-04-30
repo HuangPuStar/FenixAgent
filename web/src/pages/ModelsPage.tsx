@@ -194,7 +194,7 @@ function ModelSubrow({ providerId, models, onModelChange }: { providerId: string
                 <td className="px-2 py-1">{limit.context ? Number(limit.context).toLocaleString() : "—"}</td>
                 <td className="px-2 py-1">{limit.output ? Number(limit.output).toLocaleString() : "—"}</td>
                 <td className="px-2 py-1 text-xs">
-                  {modalities.input && <span className="text-blue-600">入:{modalities.input.join(",")}</span>}
+                  {modalities.input && <span className="text-indigo-600">入:{modalities.input.join(",")}</span>}
                   {modalities.input && modalities.output && " / "}
                   {modalities.output && <span className="text-green-600">出:{modalities.output.join(",")}</span>}
                   {!modalities.input && !modalities.output && "—"}
