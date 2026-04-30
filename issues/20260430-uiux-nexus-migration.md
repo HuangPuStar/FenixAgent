@@ -274,8 +274,8 @@
 **现状**: 各配置页 (ModelsPage, AgentsPage 等) 各自标题
 **目标**: 统一的页头 + 操作按钮
 
-- [ ] 标题: `font-display, 20px, 600`
-- [ ] 操作区: Import 按钮 (secondary) + 新增按钮 (primary)
+- [x] 标题: `font-display, 20px, 600`
+- [x] 操作区: Import 按钮 (secondary) + 新增按钮 (primary)
 
 **影响文件**: 各配置页 `*Page.tsx`
 
@@ -285,9 +285,9 @@
 **现状**: 各配置页有各自的 tab 系统
 **目标**: 统一 tab 样式 + 搜索/筛选工具栏
 
-- [ ] Tabs: 圆角分组, active 态白色背景 + 阴影 (非品牌色填充)
-- [ ] 搜索框: 带图标 + focus ring
-- [ ] 筛选/排序按钮
+- [x] Tabs: 圆角分组, active 态白色背景 + 阴影 (非品牌色填充)
+- [x] 搜索框: 带图标 + focus ring
+- [x] 筛选/排序按钮
 
 **影响文件**: 各配置页
 
@@ -297,10 +297,10 @@
 **现状**: `web/src/components/config/DataTable.tsx` — 已有但样式需更新
 **目标**: 对齐设计稿的表格交互
 
-- [ ] 行 hover: 左侧 3px 品牌色指示条
-- [ ] 操作按钮: hover 时显示 (`opacity: 0 → 1`)
-- [ ] 展开行: chevron 旋转 + 展开详情区
-- [ ] 状态指示器: 脉冲动画 (active) / 静态 (idle) / 呼吸告警 (error)
+- [x] 行 hover: 左侧 3px 品牌色指示条
+- [x] 操作按钮: hover 时显示 (`opacity: 0 → 1`)
+- [x] 展开行: chevron 旋转 + 展开详情区
+- [x] 状态指示器: 脉冲动画 (active) / 静态 (idle) / 呼吸告警 (error)
 
 **影响文件**: `web/src/components/config/DataTable.tsx`
 

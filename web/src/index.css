@@ -232,6 +232,47 @@
 }
 
 /* ============================================================
+   Data Table enhancements
+   ============================================================ */
+
+/* Row hover: left accent bar */
+.table-row-hover:hover td:first-child::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--color-brand);
+}
+
+/* Action buttons: show on row hover */
+.table-row-hover .row-action {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.table-row-hover:hover .row-action {
+    opacity: 1;
+}
+
+/* Status pulse animation */
+.status-pulse {
+    position: relative;
+}
+.status-pulse::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    animation: status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes status-ping {
+    0% { transform: scale(1); opacity: 0.5; }
+    75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+/* ============================================================
    Animations
    ============================================================ */
 .glimmer-text {

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronRight, ChevronDown, Search } from "lucide-react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -299,7 +299,7 @@ export function DataTable<T>({
                 return (
                   <Collapsible key={rowId} open={isExpanded} onOpenChange={() => row.toggleExpanded()} asChild>
                     <>
-                      <TableRow className="border-b hover:bg-muted/50">
+                      <TableRow className="group border-b hover:bg-surface-hover transition-colors relative table-row-hover">
                         {row.getVisibleCells().map((cell) => {
                           if (cell.column.id === "expand" && expandableRow) {
                             return (
