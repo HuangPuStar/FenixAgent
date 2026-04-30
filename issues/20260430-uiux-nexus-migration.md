@@ -98,11 +98,11 @@
 **现状**: 单列 flex 布局 (header + content)
 **目标**: `Sidebar | Main(Sidebar + Topbar + Content)`
 
-- [ ] 重构 `AppShell.tsx` 为左右两栏布局
-- [ ] 左侧: `<Sidebar />`
-- [ ] 右侧: `<Topbar />` + `<Content />`
-- [ ] 全局高度 `100vh`, `overflow: hidden`
-- [ ] 内容区 `overflow-y: auto`, padding `24px`
+- [x] 重构 `AppShell.tsx` 为左右两栏布局
+- [x] 左侧: `<Sidebar />`
+- [x] 右侧: `<Topbar />` + `<Content />`
+- [x] 全局高度 `100vh`, `overflow: hidden`
+- [x] 内容区 `overflow-y: auto`, padding `24px`
 
 **影响文件**: `web/src/components/shell/AppShell.tsx`
 
