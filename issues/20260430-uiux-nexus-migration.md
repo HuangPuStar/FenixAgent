@@ -53,9 +53,9 @@
 ---
 
 ### TODO-1.3 布局常量
-- [ ] 定义: `--sidebar-width: 240px`, `--sidebar-collapsed: 60px`, `--topbar-height: 56px`
-- [ ] 定义: `--radius: 8px`, `--radius-lg: 12px`
-- [ ] 统一 scrollbar 样式 (6px 宽，圆角，半透明)
+- [x] 定义: `--sidebar-width: 240px`, `--sidebar-collapsed: 60px`, `--topbar-height: 56px`
+- [x] 定义: `--radius: 8px`, `--radius-lg: 12px`
+- [x] 统一 scrollbar 样式 (6px 宽，圆角，半透明)
 
 **影响文件**: `web/src/index.css`
 

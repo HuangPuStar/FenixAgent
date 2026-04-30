@@ -112,9 +112,14 @@
     --default-ring-color: var(--color-ring);
 
     /* Radius */
-    --radius: 0.375rem;
+    --radius: 0.5rem;
+    --radius-lg: 0.75rem;
 
+    /* Layout */
     --navbar-height: 48px;
+    --sidebar-width: 240px;
+    --sidebar-collapsed: 60px;
+    --topbar-height: 56px;
 }
 
 /* ============================================================
