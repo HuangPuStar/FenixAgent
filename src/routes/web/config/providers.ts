@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { sessionAuth } from "../../../auth/middleware";
-import { getSection, setSection, replaceSection } from "../../../services/config";
+import { getSection, replaceSection } from "../../../services/config";
 
 type ProviderConfig = {
   npm?: string;
@@ -102,7 +102,7 @@ async function handleSet(name: string, data: Record<string, unknown>) {
   }
 
   provider[name] = updated;
-  await setSection("provider", provider);
+  await replaceSection("provider", provider);
   return ok({ id: name, keyHint: toKeyHint(updated.options?.apiKey as string | undefined) });
 }
 
@@ -163,7 +163,7 @@ async function handleAddModel(providerName: string, data: Record<string, unknown
   if (cfg.models[modelId]) return err("VALIDATION_ERROR", `Model '${modelId}' already exists`);
 
   cfg.models[modelId] = buildModelData(data);
-  await setSection("provider", provider);
+  await replaceSection("provider", provider);
   return ok({ modelId });
 }
 
@@ -186,7 +186,7 @@ async function handleUpdateModel(providerName: string, modelId: string, data: Re
     }
   }
   cfg.models[modelId] = merged;
-  await setSection("provider", provider);
+  await replaceSection("provider", provider);
   return ok({ modelId });
 }
 

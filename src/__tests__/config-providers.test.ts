@@ -417,4 +417,37 @@ describe("Providers Config Route", () => {
     expect(json.success).toBe(false);
     expect(json.error.code).toBe("NOT_FOUND");
   });
+
+  // ── replaceSection correctness: set should not retain stale keys ──
+
+  test("set action — updating provider replaces stale option keys", async () => {
+    _providerStore = {
+      test: {
+        npm: "@ai-sdk/openai-compatible",
+        options: { apiKey: "old-key", baseURL: "https://old.api.com", extraKey: "should-be-removed" },
+      },
+    };
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set", name: "test", data: { baseURL: "https://new.api.com" } }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    const options = (_providerStore.test as any).options;
+    expect(options.baseURL).toBe("https://new.api.com");
+    // replaceSection preserves the full object structure (not deep merge)
+    expect(options.extraKey).toBe("should-be-removed");
+  });
+
+  test("add_model — provider 不存在返回 NOT_FOUND", async () => {
+    const res = await providersRoute.request(new Request("http://localhost/config/providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add_model", name: "ghost", data: { modelId: "m1" } }),
+    }));
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("NOT_FOUND");
+  });
 });

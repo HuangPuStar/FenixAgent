@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { sessionAuth } from "../../../auth/middleware";
 import {
   listSkills,
@@ -21,12 +22,12 @@ function errorResponse(code: string, message: string, data?: unknown) {
   return { success: false, error: { code, message }, ...(data !== undefined ? { data } : {}) };
 }
 
-async function handleList(c: any) {
+async function handleList(c: Context) {
   const skills = await listSkills();
   return c.json(successResponse({ skills }));
 }
 
-async function handleGet(c: any, body: { name?: string }) {
+async function handleGet(c: Context, body: { name?: string }) {
   if (!body.name) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
   }
@@ -37,7 +38,7 @@ async function handleGet(c: any, body: { name?: string }) {
   return c.json(successResponse(skill));
 }
 
-async function handleSet(c: any, body: { name?: string; data?: { description: string; content: string; metadata?: Record<string, string> } }) {
+async function handleSet(c: Context, body: { name?: string; data?: { description: string; content: string; metadata?: Record<string, string> } }) {
   if (!body.name) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
   }
@@ -48,7 +49,7 @@ async function handleSet(c: any, body: { name?: string; data?: { description: st
   return c.json(successResponse({ name: result.name, enabled: result.enabled }));
 }
 
-async function handleDelete(c: any, body: { name?: string }) {
+async function handleDelete(c: Context, body: { name?: string }) {
   if (!body.name) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
   }
@@ -59,7 +60,7 @@ async function handleDelete(c: any, body: { name?: string }) {
   return c.json(successResponse(null));
 }
 
-async function handleEnable(c: any, body: { name?: string }) {
+async function handleEnable(c: Context, body: { name?: string }) {
   if (!body.name) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
   }
@@ -70,7 +71,7 @@ async function handleEnable(c: any, body: { name?: string }) {
   return c.json(successResponse({ name: body.name, enabled: true }));
 }
 
-async function handleDisable(c: any, body: { name?: string }) {
+async function handleDisable(c: Context, body: { name?: string }) {
   if (!body.name) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
   }
@@ -86,7 +87,7 @@ interface UploadManifestEntry {
   relativePath: string;
 }
 
-async function handleUpload(c: any) {
+async function handleUpload(c: Context) {
   const formData = await c.req.formData().catch(() => null);
   if (!formData) {
     return c.json(errorResponse("VALIDATION_ERROR", "上传表单解析失败"), 400);

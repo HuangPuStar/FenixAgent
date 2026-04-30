@@ -65,6 +65,8 @@ async function handleSet(data: { model?: string; small_model?: string; permissio
   if (data.model) await setTopLevelField("model", data.model);
   if (data.small_model) await setTopLevelField("small_model", data.small_model);
   if (data.permission !== undefined) await setTopLevelField("permission", data.permission);
+  // Invalidate cache so next get reflects the changes
+  cachedAvailable = null;
   // 读回确认
   const config = await getConfig();
   return ok({

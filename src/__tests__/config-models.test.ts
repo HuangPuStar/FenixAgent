@@ -266,4 +266,60 @@ describe("Models Config Route", () => {
     expect(json.data.permission).toBe(null);
     expect(_configStore.permission).toBe(null);
   });
+
+  // ── Cache invalidation on set ──
+
+  test("set action invalidates available model cache", async () => {
+    _configStore = {
+      provider: { p1: { models: { "old-model": { name: "Old" } } } },
+    };
+    // Populate cache via get
+    await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get" }),
+    }));
+    // Change config
+    _configStore.provider = { p1: { models: { "new-model": { name: "New" } } } };
+    // Set model triggers cache invalidation
+    await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set", data: { model: "new-model" } }),
+    }));
+    // Next get should reflect the updated config (not cached old data)
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get" }),
+    }));
+    const json = await res.json();
+    expect(json.data.available).toHaveLength(1);
+    expect(json.data.available[0].id).toBe("new-model");
+  });
+
+  test("set action — available list reflects model with context/output limits", async () => {
+    _configStore = {
+      provider: {
+        p1: { models: {
+          "big-model": { name: "Big", limit: { context: 200000, output: 8192 } },
+        } },
+      },
+    };
+    // Force cache refresh to pick up the new config
+    await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "refresh" }),
+    }));
+    const res = await modelsRoute.request(new Request("http://localhost/config/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get" }),
+    }));
+    const json = await res.json();
+    const model = json.data.available.find((m: any) => m.id === "big-model");
+    expect(model.contextLimit).toBe(200000);
+    expect(model.outputLimit).toBe(8192);
+  });
 });

@@ -57,3 +57,19 @@
 ### 测试补充
 - 新增 `api-key-service.test.ts`（13 个测试）：覆盖 createApiKey、validateApiKeyAndGetUser、listApiKeysByUser、deleteApiKey（含权限校验）、updateApiKeyLabel（含权限校验）
 - 扩展 `event-bus.test.ts`：补充 event eviction 策略测试，验证超过 MAX_EVENTS_PER_BUS 时旧事件被正确驱逐
+
+## 2026-04-30 (Round 5)
+
+### skills.ts 路由类型安全
+- 7 个 handler 函数（handleList/handleGet/handleSet/handleDelete/handleEnable/handleDisable/handleUpload）的 `c` 参数从 `any` 改为 Hono `Context` 类型
+
+### models.ts 缓存失效修复
+- `handleSet` 写入配置后立即清除 `cachedAvailable` 缓存，防止后续 get 请求返回过期模型列表
+
+### providers.ts 写入策略修正
+- `handleSet`/`handleAddModel`/`handleUpdateModel` 从 `setSection`（deep merge）改为 `replaceSection`，避免 deep merge 不删除旧 key 的问题
+- 移除不再使用的 `setSection` import
+
+### 测试补充
+- 扩展 `config-models.test.ts`：缓存失效测试 + 模型 context/output limit 解析测试（+2 测试）
+- 扩展 `config-providers.test.ts`：replaceSection 保留 key 测试 + add_model 不存在 provider 测试（+2 测试）
