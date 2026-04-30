@@ -4,24 +4,13 @@ import {
     useCallback,
     lazy,
     Suspense,
-    useMemo,
 } from "react";
 import { Toaster } from "sonner";
-import { AppShell, type NavItem } from "./components/shell";
+import { AppShell } from "./components/shell";
 import { ThemeProvider } from "./lib/theme";
-import { authClient, useSession } from "./lib/auth-client";
+import { useSession } from "./lib/auth-client";
 import { LoginPage } from "./pages/LoginPage";
 import { ApiKeyManager } from "./pages/ApiKeyManager";
-import {
-    Cpu,
-    Bot,
-    Wrench,
-    Plug,
-    MessageSquare,
-    Clock,
-    KeyRound,
-    Monitor,
-} from "lucide-react";
 
 const Dashboard = lazy(() =>
     import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })),
@@ -162,12 +151,6 @@ export default function App() {
         setCurrentSessionCwd(null);
     }, []);
 
-    const handleLogout = useCallback(async () => {
-        await authClient.signOut();
-        window.location.reload();
-    }, []);
-
-    const userEmail = session?.user?.email ?? "";
     const activeView: ViewId = showApiKeys
         ? "apikeys"
         : configView
@@ -176,74 +159,16 @@ export default function App() {
             ? "session"
             : "dashboard";
 
-    const navItems: NavItem[] = useMemo(
-        () => [
-            {
-                id: "dashboard",
-                label: "概览",
-                icon: <Monitor className="h-4 w-4" />,
-                active: activeView === "dashboard",
-                onClick: navigateToDashboard,
-            },
-            {
-                id: "environments",
-                label: "智能体",
-                icon: <Bot className="h-4 w-4" />,
-                active: activeView === "environments" || activeView === "session",
-                onClick: () => navigateToConfig("environments"),
-            },
-            {
-                id: "models",
-                label: "模型",
-                icon: <Cpu className="h-4 w-4" />,
-                active: activeView === "models",
-                onClick: () => navigateToConfig("models"),
-            },
-            {
-                id: "agents",
-                label: "Agent",
-                icon: <Bot className="h-4 w-4" />,
-                active: activeView === "agents",
-                onClick: () => navigateToConfig("agents"),
-            },
-            {
-                id: "skills",
-                label: "技能",
-                icon: <Wrench className="h-4 w-4" />,
-                active: activeView === "skills",
-                onClick: () => navigateToConfig("skills"),
-            },
-            {
-                id: "mcp",
-                label: "MCP",
-                icon: <Plug className="h-4 w-4" />,
-                active: activeView === "mcp",
-                onClick: () => navigateToConfig("mcp"),
-            },
-            {
-                id: "channels",
-                label: "消息渠道",
-                icon: <MessageSquare className="h-4 w-4" />,
-                active: activeView === "channels",
-                onClick: () => navigateToConfig("channels"),
-            },
-            {
-                id: "tasks",
-                label: "定时任务",
-                icon: <Clock className="h-4 w-4" />,
-                active: activeView === "tasks",
-                onClick: () => navigateToConfig("tasks"),
-            },
-            {
-                id: "apikeys",
-                label: "API Key",
-                icon: <KeyRound className="h-4 w-4" />,
-                active: activeView === "apikeys",
-                onClick: navigateToApiKeys,
-            },
-        ],
-        [activeView, navigateToDashboard, navigateToApiKeys, navigateToConfig],
-    );
+    /** Route navigation events from Sidebar to the correct handler */
+    const handleNavigate = useCallback((page: string) => {
+        if (page === "dashboard") {
+            navigateToDashboard();
+        } else if (page === "apikeys") {
+            navigateToApiKeys();
+        } else {
+            navigateToConfig(page);
+        }
+    }, [navigateToDashboard, navigateToApiKeys, navigateToConfig]);
 
     if (isPending) {
         return (
@@ -264,9 +189,8 @@ export default function App() {
     return (
         <ThemeProvider defaultTheme="system">
             <AppShell
-                navItems={navItems}
-                userEmail={userEmail}
-                onLogout={handleLogout}>
+                currentPage={activeView}
+                onNavigate={handleNavigate}>
                 <Suspense
                     fallback={
                         <div className="flex h-full items-center justify-center text-text-muted">
