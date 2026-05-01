@@ -532,3 +532,122 @@
         box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3), 0 0 0 8px rgba(16, 185, 129, 0.1);
     }
 }
+
+/* ============================================================
+   Config DataTable — row hover indicator + actions
+   ============================================================ */
+
+/* Status badge pulse for active/enabled state */
+.status-badge-active {
+    position: relative;
+}
+
+.status-badge-active::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--color-status-active);
+    opacity: 0;
+    animation: status-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+    0%, 100% {
+        opacity: 0;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.15;
+        transform: scale(1.05);
+    }
+}
+
+/* ============================================================
+   Session Detail — header, stats, chat panel (Phase 5)
+   ============================================================ */
+
+/* --- Session Header --- */
+.session-header {
+    background:
+        radial-gradient(ellipse 60% 50% at 50% -10%, rgba(99, 102, 241, 0.03), transparent),
+        var(--color-surface-1);
+}
+
+.session-header-back:hover {
+    color: var(--color-brand);
+}
+
+/* Status dot pulse */
+@keyframes pulse-subtle {
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    }
+    50% {
+        opacity: 0.8;
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0);
+    }
+}
+
+.animate-pulse-subtle {
+    animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* --- Session Stats Row --- */
+.session-stat-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.session-stat-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-card);
+}
+
+/* Stat icon color variants */
+.session-stat-icon.stat-brand {
+    background: var(--color-brand-subtle);
+    color: var(--color-brand-light);
+}
+
+.session-stat-icon.stat-green {
+    background: rgba(52, 211, 153, 0.12);
+    color: #10B981;
+}
+
+.session-stat-icon.stat-cyan {
+    background: rgba(34, 211, 238, 0.12);
+    color: #22D3EE;
+}
+
+.session-stat-icon.stat-amber {
+    background: rgba(251, 191, 36, 0.12);
+    color: #F59E0B;
+}
+
+/* --- Message Bubble Enter Animation --- */
+@keyframes messageBubbleEnter {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message-bubble-enter {
+    animation: messageBubbleEnter 0.3s ease-out forwards;
+}
+
+/* --- User Bubble — refined corners (12px top, 4px bottom-right) --- */
+.bg-user-bubble {
+    border-radius: 12px 12px 4px 12px;
+}
+
+/* --- Assistant bubble background — subtle card style --- */
+.assistant-bubble-bg {
+    background: var(--color-surface-2);
+    border-radius: 12px 12px 12px 4px;
+}

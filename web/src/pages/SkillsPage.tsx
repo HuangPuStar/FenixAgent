@@ -307,7 +307,7 @@ export function SkillsPage() {
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">技能管理</h2>
+        <h2 className="text-xl font-semibold text-text-bright">技能管理</h2>
         <Button onClick={handleOpenCreate}>新建技能</Button>
       </div>
       <DataTable<SkillInfo>

@@ -53,7 +53,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
                 )}
                 {/* 文本内容 — 品牌色淡底 + 折叠 */}
                 {entry.content && (
-                    <div className="relative rounded-2xl rounded-br-md bg-user-bubble border border-user-bubble-border overflow-hidden">
+	                <div className="relative rounded-xl rounded-br bg-user-bubble border border-user-bubble-border overflow-hidden message-bubble-enter">
                         <div
                             ref={contentRef}
                             className={cn(
@@ -105,7 +105,7 @@ export function AssistantBubble({
     sessionId,
 }: AssistantBubbleProps) {
     return (
-        <div className="flex gap-4 items-start">
+        <div className="flex gap-4 items-start message-bubble-enter">
             {/* Agent avatar */}
             <div className="w-8 h-8 rounded-lg bg-brand/8 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <svg

@@ -324,7 +324,7 @@ export function AgentsPage() {
     return (
         <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Agent管理</h2>
+                <h2 className="text-xl font-semibold text-text-bright">Agent管理</h2>
                 <Button onClick={handleOpenCreate}>新建Agent</Button>
             </div>
             <DataTable<AgentInfo>

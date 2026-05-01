@@ -454,7 +454,7 @@ export function McpPage() {
   return (
     <div className="h-full overflow-y-auto p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">MCP 服务器管理</h2>
+        <h2 className="text-xl font-semibold text-text-bright">MCP 服务器管理</h2>
         <Button onClick={handleOpenCreate}>新建 MCP 服务器</Button>
       </div>
       <DataTable<McpServerInfo>

@@ -254,7 +254,7 @@ export function ChatInput({
         )}
       <div className={cn(
         "rounded-xl border border-border bg-surface-2 overflow-hidden",
-        "focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(217,119,87,0.15)] transition-all",
+        "focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.15)] transition-all",
       )}>
         {/* 图片预览 */}
         {images.length > 0 && (

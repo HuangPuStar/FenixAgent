@@ -356,7 +356,7 @@ export function TasksPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">定时任务</h1>
+          <h1 className="text-xl font-semibold text-text-bright">定时任务</h1>
           <p className="text-sm text-muted-foreground">绑定 Environment，定时执行 Agent 任务。</p>
         </div>
         <Button onClick={handleOpenCreate}>新建任务</Button>

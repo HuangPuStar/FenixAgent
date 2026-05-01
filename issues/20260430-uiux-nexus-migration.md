@@ -224,12 +224,12 @@
 **现状**: 已有 `ChatInterface` 组件
 **目标**: 对齐设计稿的消息样式
 
-- [ ] 消息气泡: user 品牌色背景 + 白字 / assistant 灰色背景 + 深字
-- [ ] 圆角: 12px，底部角收窄 (4px)
-- [ ] 消息入场动画: `fade-up 0.3s`
-- [ ] 输入框: 品牌色 focus ring (`box-shadow: 0 0 0 3px var(--brand-glow)`)
-- [ ] 发送按钮: 品牌色圆角按钮
-- [ ] Typing indicator: 三点弹跳动画
+- [x] 消息气泡: user 品牌色背景 + 白字 / assistant 灰色背景 + 深字
+- [x] 圆角: 12px，底部角收窄 (4px)
+- [x] 消息入场动画: `fade-up 0.3s`
+- [x] 输入框: 品牌色 focus ring (`box-shadow: 0 0 0 3px var(--brand-glow)`)
+- [x] 发送按钮: 品牌色圆角按钮
+- [x] Typing indicator: 三点弹跳动画
 
 **影响文件**: ACP 相关 chat 组件
 

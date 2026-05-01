@@ -52,6 +52,7 @@ const labelMap: Record<string, string> = {
 export function StatusBadge({ status }: StatusBadgeProps) {
     const variant = getBadgeVariant(status);
     const badgeVariant = variantMap[variant] || "outline";
+    const isActive = status === "enabled" || status === "configured";
     return (
         <Badge
             variant={badgeVariant}
@@ -60,6 +61,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
                     "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
                 variant === "blue" &&
                     "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+                isActive && "status-badge-active",
             )}>
             {labelMap[status] || status}
         </Badge>

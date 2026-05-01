@@ -491,7 +491,7 @@ export function ModelsPage() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">模型管理</h2>
+        <h2 className="text-xl font-semibold text-text-bright">模型管理</h2>
         <div className="flex items-center gap-2">
           <ModelConfigDialog
             currentModel={modelConfig?.current.model ?? null}

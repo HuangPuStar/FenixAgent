@@ -252,15 +252,103 @@ export function EnvironmentsPage({ onNavigateToSession }: EnvironmentsPageProps)
   const isOnline = (env: Environment) =>
     env.instance_status === "running" || env.instance_status === "starting";
 
+  /** Map environment status to card display status */
+  type CardStatus = "running" | "idle" | "warning" | "error";
+
+  const getCardStatus = (env: Environment): CardStatus => {
+    if (env.instance_status === "error") return "error";
+    if (env.instance_status === "running" || env.instance_status === "starting") return "running";
+    if (env.instance_status === "idle") return "idle";
+    // If has instances but status is ambiguous, show warning
+    if (env.instance_id && env.instance_status !== "running" && env.instance_status !== "starting") return "warning";
+    // Offline / no instance
+    return "idle";
+  };
+
+  const STATUS_STYLES: Record<CardStatus, {
+    iconBg: string;
+    pill: string;
+    bar: string;
+    label: string;
+  }> = {
+    running: {
+      iconBg: "bg-emerald-500/12 text-emerald-600",
+      pill: "bg-emerald-500/12 text-emerald-600",
+      bar: "bg-emerald-500",
+      label: "运行中",
+    },
+    idle: {
+      iconBg: "bg-indigo-500/10 text-indigo-500",
+      pill: "bg-indigo-500/10 text-indigo-500",
+      bar: "bg-indigo-500",
+      label: "空闲",
+    },
+    warning: {
+      iconBg: "bg-amber-500/12 text-amber-600",
+      pill: "bg-amber-500/12 text-amber-600",
+      bar: "bg-amber-500",
+      label: "警告",
+    },
+    error: {
+      iconBg: "bg-red-500/12 text-red-600",
+      pill: "bg-red-500/12 text-red-600",
+      bar: "bg-red-500",
+      label: "错误",
+    },
+  };
+
+  /** Format a timestamp to relative time string */
+  const formatRelativeTime = (ts: number | null | undefined): string => {
+    if (!ts) return "未活跃";
+    const diff = Date.now() - ts;
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return `${seconds} 秒前活跃`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} 分钟前活跃`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} 小时前活跃`;
+    const days = Math.floor(hours / 24);
+    return `${days} 天前活跃`;
+  };
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-6">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-lg font-semibold text-text-primary">智能体</h1>
-          <Button onClick={openCreateDialog} size="sm">
-            <Plus className="mr-1 h-4 w-4" />
-            创建智能体
-          </Button>
+          <div className="flex items-center gap-3">
+            {/* View Toggle */}
+            <div className="flex gap-0.5 rounded-lg border border-border-subtle bg-surface-0 p-0.5">
+              <button
+                type="button"
+                className={`flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium transition-all ${
+                  viewMode === "table"
+                    ? "bg-surface-1 text-text-bright shadow-xs"
+                    : "text-text-dim hover:text-text-primary"
+                }`}
+                onClick={() => setViewMode("table")}
+                title="列表视图"
+              >
+                <List className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className={`flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium transition-all ${
+                  viewMode === "card"
+                    ? "bg-surface-1 text-text-bright shadow-xs"
+                    : "text-text-dim hover:text-text-primary"
+                }`}
+                onClick={() => setViewMode("card")}
+                title="卡片视图"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <Button onClick={openCreateDialog} size="sm">
+              <Plus className="mr-1 h-4 w-4" />
+              创建智能体
+            </Button>
+          </div>
         </div>
 
         {envs.length === 0 ? (

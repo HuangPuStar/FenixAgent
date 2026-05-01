@@ -152,7 +152,11 @@ function buildColumnDefs<T>(
     defs.push({
       id: "actions",
       header: "操作",
-      cell: ({ row }) => actions(row.original),
+      cell: ({ row }) => (
+        <div className="table-row-actions opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          {actions(row.original)}
+        </div>
+      ),
     });
   }
 
@@ -252,14 +256,17 @@ export function DataTable<T>({
   return (
     <div className="space-y-3">
       {searchable && (
-        <Input
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          placeholder={searchPlaceholder || "搜索..."}
-          className="max-w-sm"
-        />
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder={searchPlaceholder || "搜索..."}
+            className="pl-9 focus-visible:border-brand focus-visible:ring-brand/25"
+          />
+        </div>
       )}
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-hidden">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -306,7 +313,9 @@ export function DataTable<T>({
                               <TableCell key={cell.id} className="w-10 px-2 py-2">
                                 <CollapsibleTrigger asChild>
                                   <button className="p-0.5 rounded hover:bg-muted">
-                                    {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                    <span className={`inline-flex transition-transform duration-200 ${isExpanded ? "rotate-0" : "-rotate-0"}`}>
+                                      {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                    </span>
                                   </button>
                                 </CollapsibleTrigger>
                               </TableCell>
@@ -323,7 +332,7 @@ export function DataTable<T>({
                         <TableRow className="border-b">
                           <TableCell colSpan={colSpan} className="p-0">
                             <CollapsibleContent>
-                              <div className="px-6 py-3 bg-muted/30">
+                              <div className="px-6 py-3 bg-surface-2/50 border-t border-border-light">
                                 {expandableRow(row.original)}
                               </div>
                             </CollapsibleContent>

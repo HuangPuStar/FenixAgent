@@ -69,7 +69,7 @@ export function ChannelsPage() {
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">消息渠道</h2>
+        <h2 className="text-xl font-semibold text-text-bright">消息渠道</h2>
         <Button onClick={() => setDialogOpen(true)}>新建消息渠道</Button>
       </div>
 
