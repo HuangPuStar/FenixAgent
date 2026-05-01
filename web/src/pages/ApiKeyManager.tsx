@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetchApiKeys, apiCreateApiKey, apiDeleteApiKey, apiUpdateApiKeyLabel } from "../api/client";
+import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 
 interface ApiKeyInfo {
   id: string;
@@ -22,6 +23,7 @@ export function ApiKeyManager({ onBack }: ApiKeyManagerProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
     try {
@@ -204,7 +206,7 @@ export function ApiKeyManager({ onBack }: ApiKeyManagerProps) {
                       编辑
                     </button>
                     <button
-                      onClick={() => handleDelete(key.id)}
+                      onClick={() => setDeleteTarget(key.id)}
                       className="text-xs text-status-error hover:underline"
                     >
                       删除
@@ -216,6 +218,15 @@ export function ApiKeyManager({ onBack }: ApiKeyManagerProps) {
           ))}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="确认删除"
+        description="确定要删除此 API Key 吗？使用该 Key 的 Agent 将无法继续连接。此操作不可撤销。"
+        variant="destructive"
+        onConfirm={() => { if (deleteTarget) handleDelete(deleteTarget); }}
+      />
     </div>
   );
 }
