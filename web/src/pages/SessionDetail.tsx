@@ -386,9 +386,9 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
           </div>
         </div>
 
-        {/* Chat + Context Panel row */}
-        <div className="flex flex-1 min-h-0 relative">
-          <div className="flex flex-1 flex-col min-w-0">
+        {/* Chat + Context Panel row — responsive: flex-col on small screens */}
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 relative">
+          <div className="flex flex-1 flex-col min-w-0 min-h-0">
             {/* Chat messages — unified ChatView */}
             <ChatView
               entries={entries}

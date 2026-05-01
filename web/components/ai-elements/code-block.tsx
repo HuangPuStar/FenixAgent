@@ -33,8 +33,6 @@ export const CodeBlock = ({
   children,
   ...props
 }: CodeBlockProps) => {
-  const lines = code.split("\n");
-
   return (
     <CodeBlockContext.Provider value={{ code }}>
       <div

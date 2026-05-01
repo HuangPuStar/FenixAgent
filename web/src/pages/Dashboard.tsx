@@ -465,7 +465,7 @@ export function Dashboard() {
         {/* ================================================================ *
          *  SECTION 2 — KPI 卡片条 (5 列)
          * ================================================================ */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 stagger-animate">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 stagger-animate">
           <AnimatedKpiCard
             icon={Bot} label="智能体" value={stats.environments.length}
             trend={`${activeEnvs.length} 活跃`}
