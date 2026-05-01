@@ -86,3 +86,13 @@
 - 新建 `config-mcp-network.test.ts`：mock inspectRemoteMcpServer 和 db，覆盖 test/test_url/inspect/list_tools 4 个 action（+16 测试）
 - 扩展 `config-providers.test.ts`：handleTest 不存在 provider + 并发 set 不丢数据（+2 测试）
 - 更新 config-mcp.test.ts 和 config-providers.test.ts 的 mock：补充 modifySection 实现
+
+## 2026-05-01 (Round 7) — UX Design Review
+
+### index.css 组件类迁移
+- index.css 从 1214 行精简至 273 行，所有自定义组件 CSS 类（dashboard-*、session-*、cp-* 等）迁移至 TSX 内联 Tailwind，删除大量无引用死代码。保留 @theme 变量、.dark 模式、滚动条、5 个 keyframes、reduced-motion。
+
+### UX 修复
+- App.tsx 初始加载添加品牌 spinner（替代纯文字"加载中..."），Suspense fallback 同步改进
+- ApiKeyManager 复制按钮添加"已复制!"绿色反馈状态，创建框改为绿色成功样式（替代黄色警告样式）
+- SessionDetail 加载失败页添加"重试"按钮（通过 retryKey 触发 useEffect 重新加载），中文化返回链接
