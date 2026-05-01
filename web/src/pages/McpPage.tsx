@@ -15,7 +15,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import {
   apiListMcpServers, apiGetMcpServer, apiCreateMcpServer,
   apiUpdateMcpServer, apiDeleteMcpServer, apiEnableMcpServer, apiDisableMcpServer,
-  apiTestMcpServer, apiTestMcpUrl, apiInspectMcpServer, apiListMcpTools,
+  apiTestMcpUrl, apiInspectMcpServer, apiListMcpTools,
 } from "../api/client";
 import type { McpServerInfo, McpServerConfig, McpLocalConfig, McpRemoteConfig, McpToolInfo } from "../types/config";
 
@@ -72,7 +72,6 @@ export function buildMcpSummary(config: McpServerConfig): string {
     if (config.type === "remote") return (config as McpRemoteConfig).url ?? "";
   }
   return "已禁用";
-  return "";
 }
 
 /** 将表单数据组装为 McpServerConfig 对象 */
@@ -420,16 +419,6 @@ export function McpPage() {
     }
   };
 
-  const loadToolsIfNeeded = async (serverName: string) => {
-    if (toolsCache[serverName]) return;
-    try {
-      const result = await apiListMcpTools(serverName);
-      setToolsCache((prev) => ({ ...prev, [serverName]: result.tools }));
-    } catch {
-      // 静默失败，展开区域会显示空
-    }
-  };
-
   const handleTestFormUrl = async () => {
     if (!formUrl.trim()) return;
     setTestingUrl(true);
@@ -472,7 +461,7 @@ export function McpPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-4">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-text-bright">MCP 服务器</h2>
@@ -488,6 +477,7 @@ export function McpPage() {
         selectable
         onSelectionChange={setSelected}
         rowKey={(row) => row.name}
+        emptyMessage={'暂无 MCP 服务器，点击「新建服务器」添加'}
         expandableRow={(row) => {
           const tools = toolsCache[row.name];
           if (!tools || tools.length === 0) {
