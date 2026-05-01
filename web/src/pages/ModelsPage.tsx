@@ -51,6 +51,16 @@ export function buildProviderPayload(apiKey: string, baseURL: string, npm: strin
   return data;
 }
 
+function ModalityBadge({ type, items }: { type: "input" | "output"; items: string[] }) {
+  if (!items || items.length === 0) return null;
+  const isInput = type === "input";
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium ${isInput ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"}`}>
+      {isInput ? "入" : "出"} {items.join(", ")}
+    </span>
+  );
+}
+
 function ModelSubrow({ providerId, models, onModelChange }: { providerId: string; models: ProviderModel[]; onModelChange: (action: "delete" | "save", providerId: string, modelId?: string) => void }) {
   const [editingModel, setEditingModel] = useState<ProviderModel | null>(null);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
@@ -172,48 +182,60 @@ function ModelSubrow({ providerId, models, onModelChange }: { providerId: string
 
   return (
     <div className="space-y-2">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-muted/30">
-            <th className="px-2 py-1 text-left text-muted-foreground">模型 ID</th>
-            <th className="px-2 py-1 text-left text-muted-foreground">名称</th>
-            <th className="px-2 py-1 text-left text-muted-foreground">上下文</th>
-            <th className="px-2 py-1 text-left text-muted-foreground">输出</th>
-            <th className="px-2 py-1 text-left text-muted-foreground">模态</th>
-            <th className="px-2 py-1 text-left text-muted-foreground">操作</th>
-          </tr>
-        </thead>
-        <tbody>
+      {models.length === 0 ? (
+        <div className="py-6 text-center text-muted-foreground text-sm">
+          暂无模型，点击下方按钮添加
+        </div>
+      ) : (
+        <div className="grid gap-2">
           {models.map((m) => {
             const limit = (m.limit as Record<string, unknown>) ?? {};
             const modalities = (m.modalities as { input?: string[]; output?: string[] }) ?? {};
+            const cost = (m.cost as Record<string, unknown>) ?? {};
+            const hasInputMods = modalities.input && modalities.input.length > 0 && !(modalities.input.length === 1 && modalities.input[0] === "text");
+            const hasOutputMods = modalities.output && modalities.output.length > 0 && !(modalities.output.length === 1 && modalities.output[0] === "text");
             return (
-              <tr key={m.id} className="border-b last:border-0 hover:bg-muted/20">
-                <td className="px-2 py-1 font-mono text-xs">{m.id}</td>
-                <td className="px-2 py-1">{m.name}</td>
-                <td className="px-2 py-1">{limit.context ? Number(limit.context).toLocaleString() : "—"}</td>
-                <td className="px-2 py-1">{limit.output ? Number(limit.output).toLocaleString() : "—"}</td>
-                <td className="px-2 py-1 text-xs">
-                  {modalities.input && <span className="text-indigo-600">入:{modalities.input.join(",")}</span>}
-                  {modalities.input && modalities.output && " / "}
-                  {modalities.output && <span className="text-green-600">出:{modalities.output.join(",")}</span>}
-                  {!modalities.input && !modalities.output && "—"}
-                </td>
-                <td className="px-2 py-1">
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => openEditModel(m)}>编辑</Button>
-                    <Button size="sm" variant="destructive" className="h-6 text-xs px-2" onClick={() => setDeleteConfirm({ providerId, modelId: m.id })}>删除</Button>
+              <div key={m.id} className="group flex items-center gap-3 rounded-lg border border-border-light bg-surface-1 px-3 py-2.5 transition-colors hover:border-border-active hover:shadow-sm">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-medium text-text-bright truncate">{m.id}</span>
+                    {m.name && m.name !== m.id && (
+                      <span className="text-xs text-text-secondary truncate">{m.name}</span>
+                    )}
+                    {(hasInputMods || hasOutputMods) && (
+                      <div className="flex gap-1 ml-1">
+                        {hasInputMods && <ModalityBadge type="input" items={modalities.input!} />}
+                        {hasOutputMods && <ModalityBadge type="output" items={modalities.output!} />}
+                      </div>
+                    )}
                   </div>
-                </td>
-              </tr>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
+                    {limit.context ? (
+                      <span>上下文 {Number(limit.context).toLocaleString()}</span>
+                    ) : null}
+                    {limit.output ? (
+                      <span>输出 {Number(limit.output).toLocaleString()}</span>
+                    ) : null}
+                    {cost.input || cost.output ? (
+                      <span className="text-amber-600 dark:text-amber-400">${cost.input || 0}/${cost.output || 0}</span>
+                    ) : null}
+                    {!limit.context && !limit.output && (
+                      <span>无限制信息</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button size="xs" variant="outline" onClick={() => openEditModel(m)}>编辑</Button>
+                  <Button size="xs" variant="destructive" onClick={() => setDeleteConfirm({ providerId, modelId: m.id })}>删除</Button>
+                </div>
+              </div>
             );
           })}
-          {models.length === 0 && (
-            <tr><td colSpan={6} className="px-2 py-3 text-center text-muted-foreground">暂无模型</td></tr>
-          )}
-        </tbody>
-      </table>
-      <Button size="sm" variant="outline" onClick={openNewModel} className="text-xs">+ 新增模型</Button>
+        </div>
+      )}
+      <Button size="sm" variant="outline" onClick={openNewModel} className="w-full border-dashed text-text-secondary hover:text-text-primary hover:border-brand">
+        + 添加模型
+      </Button>
 
       <FormDialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}
         title={isNewModel ? "新增模型" : `编辑模型 — ${mfId}`} onSubmit={handleModelSave} loading={modelSaving}>
@@ -232,39 +254,53 @@ function ModelSubrow({ providerId, models, onModelChange }: { providerId: string
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium">上下文限制 (tokens)</label>
+              <label className="text-sm font-medium text-text-primary">上下文限制</label>
               <Input type="number" value={mfContext} onChange={(e) => setMfContext(e.target.value)}
-                placeholder="例如 128000" className="mt-1" />
-              <p className="text-xs text-muted-foreground mt-1">模型单次对话最大 token 数</p>
+                placeholder="128000" className="mt-1 font-mono text-sm" />
+              <p className="text-xs text-text-muted mt-1">tokens，对话上下文窗口大小</p>
             </div>
             <div>
-              <label className="text-sm font-medium">输出限制 (tokens)</label>
+              <label className="text-sm font-medium text-text-primary">输出限制</label>
               <Input type="number" value={mfOutput} onChange={(e) => setMfOutput(e.target.value)}
-                placeholder="例如 16384" className="mt-1" />
-              <p className="text-xs text-muted-foreground mt-1">单次回复最大 token 数</p>
+                placeholder="16384" className="mt-1 font-mono text-sm" />
+              <p className="text-xs text-text-muted mt-1">tokens，单次回复最大长度</p>
             </div>
           </div>
           <div>
             <label className="text-sm font-medium">输入模态</label>
-            <div className="flex gap-3 mt-1">
+            <div className="flex flex-wrap gap-1.5 mt-1">
               {INPUT_MODALITY_OPTIONS.map((m) => (
-                <label key={m} className="flex items-center gap-1 text-sm">
-                  <input type="checkbox" checked={mfInputModalities.includes(m)}
-                    onChange={() => toggleModality(mfInputModalities, m, setMfInputModalities)} />
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleModality(mfInputModalities, m, setMfInputModalities)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${
+                    mfInputModalities.includes(m)
+                      ? "bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700"
+                      : "bg-surface-2 text-text-secondary border-border-light hover:border-border hover:text-text-primary"
+                  }`}
+                >
                   {m}
-                </label>
+                </button>
               ))}
             </div>
           </div>
           <div>
             <label className="text-sm font-medium">输出模态</label>
-            <div className="flex gap-3 mt-1">
+            <div className="flex flex-wrap gap-1.5 mt-1">
               {OUTPUT_MODALITY_OPTIONS.map((m) => (
-                <label key={m} className="flex items-center gap-1 text-sm">
-                  <input type="checkbox" checked={mfOutputModalities.includes(m)}
-                    onChange={() => toggleModality(mfOutputModalities, m, setMfOutputModalities)} />
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleModality(mfOutputModalities, m, setMfOutputModalities)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${
+                    mfOutputModalities.includes(m)
+                      ? "bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700"
+                      : "bg-surface-2 text-text-secondary border-border-light hover:border-border hover:text-text-primary"
+                  }`}
+                >
                   {m}
-                </label>
+                </button>
               ))}
             </div>
           </div>
@@ -360,21 +396,46 @@ export function ModelsPage() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const columns: Column<ProviderInfo>[] = [
-    { key: "id", header: "ID", sortable: true, filterable: true },
-    { key: "name", header: "名称", sortable: true },
+    { key: "id", header: "ID", sortable: true, filterable: true, render: (row) => (
+      <div className="flex flex-col">
+        <span className="font-mono text-sm text-text-bright">{row.id}</span>
+        {row.name && row.name !== row.id && (
+          <span className="text-xs text-text-muted">{row.name}</span>
+        )}
+      </div>
+    )},
     { key: "npm", header: "协议", render: (row) => {
       const opt = NPM_OPTIONS.find((o) => o.npm === row.npm);
-      return opt ? opt.label : (row.npm || "—");
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-secondary">
+          {opt ? opt.label : (row.npm || "—")}
+        </span>
+      );
     }},
-    { key: "keyHint", header: "API Key", render: (row) => row.keyHint || "—" },
-    { key: "baseURL", header: "Base URL" },
+    { key: "keyHint", header: "API Key", render: (row) => (
+      row.keyHint ? (
+        <span className="font-mono text-xs text-text-muted bg-surface-2 px-2 py-0.5 rounded">
+          ***{row.keyHint}
+        </span>
+      ) : (
+        <span className="text-text-muted">—</span>
+      )
+    )},
     {
       key: "configured",
       header: "状态",
       filterable: true,
       render: (row) => <StatusBadge status={row.configured ? "configured" : "unconfigured"} />,
     },
-    { key: "modelCount", header: "模型数", sortable: true },
+    { key: "modelCount", header: "模型", sortable: true, render: (row) => (
+      <span className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-xs font-medium ${
+        row.modelCount > 0
+          ? "bg-brand-subtle text-brand dark:text-brand-light"
+          : "bg-surface-2 text-text-muted"
+      }`}>
+        {row.modelCount}
+      </span>
+    )},
   ];
 
   const handleOpenCreate = () => {
@@ -493,7 +554,10 @@ export function ModelsPage() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-text-bright">模型管理</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-text-bright">服务商与模型</h2>
+          <p className="text-sm text-text-muted mt-0.5">管理 AI 服务商及其可用模型</p>
+        </div>
         <div className="flex items-center gap-2">
           <ModelConfigDialog
             currentModel={modelConfig?.current.model ?? null}
@@ -511,7 +575,6 @@ export function ModelsPage() {
         selectable
         onSelectionChange={setSelected}
         rowKey={(row) => row.id}
-        defaultExpandAll
         expandableRow={(row) => (
           <ModelSubrow
             providerId={row.id}
@@ -525,12 +588,12 @@ export function ModelsPage() {
           />
         )}
         actions={(row) => (
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => handleTest(row.id)} disabled={testing === row.id}>
-              {testing === row.id ? "测试中..." : "测试连接"}
+          <div className="flex gap-1.5">
+            <Button size="xs" variant="outline" onClick={() => handleTest(row.id)} disabled={testing === row.id}>
+              {testing === row.id ? "检测中..." : "测试"}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleOpenEdit(row)}>编辑</Button>
-            <Button size="sm" variant="destructive" onClick={() => handleDelete(row.id)}>删除</Button>
+            <Button size="xs" variant="outline" onClick={() => handleOpenEdit(row)}>编辑</Button>
+            <Button size="xs" variant="destructive" onClick={() => handleDelete(row.id)}>删除</Button>
           </div>
         )}
       />
@@ -541,18 +604,23 @@ export function ModelsPage() {
       <FormDialog open={dialogOpen} onOpenChange={setDialogOpen}
         title={editingProvider ? "编辑服务商" : "新建服务商"} onSubmit={handleSave} loading={formSaving}>
         <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium">ID（标识符）</label>
-            <Input value={formName} onChange={(e) => setFormName(e.target.value)}
-              disabled={!!editingProvider} placeholder="例如 bailian-token-plan" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-text-primary">ID（标识符）</label>
+              <Input value={formName} onChange={(e) => setFormName(e.target.value)}
+                disabled={!!editingProvider} placeholder="bailian-token-plan" className="mt-1 font-mono text-sm" />
+              {editingProvider && (
+                <p className="text-xs text-text-muted mt-1">ID 创建后不可修改</p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-text-primary">显示名称</label>
+              <Input value={formDisplayName} onChange={(e) => setFormDisplayName(e.target.value)}
+                placeholder="例如 阿里百炼" className="mt-1" />
+            </div>
           </div>
           <div>
-            <label className="text-sm font-medium">显示名称</label>
-            <Input value={formDisplayName} onChange={(e) => setFormDisplayName(e.target.value)}
-              placeholder="例如 阿里百炼" />
-          </div>
-          <div>
-            <label className="text-sm font-medium">协议</label>
+            <label className="text-sm font-medium text-text-primary">协议</label>
             <Select value={formNpm} onValueChange={setFormNpm}>
               <SelectTrigger className="mt-1">
                 <SelectValue />
@@ -563,19 +631,19 @@ export function ModelsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground mt-1">实际包名: {NPM_OPTIONS.find((o) => o.id === formNpm)?.npm ?? ""}</p>
+            <p className="text-xs text-text-muted mt-1">
+              SDK 包: <code className="font-mono bg-surface-2 px-1 rounded">{NPM_OPTIONS.find((o) => o.id === formNpm)?.npm ?? ""}</code>
+            </p>
           </div>
           <div>
-            <label className="text-sm font-medium">API Key</label>
-            <div className="relative">
-              <Input type="password" value={formApiKey} onChange={(e) => setFormApiKey(e.target.value)}
-                placeholder={editingProvider ? "留空表示不修改" : "输入 API Key"} />
-            </div>
+            <label className="text-sm font-medium text-text-primary">API Key</label>
+            <Input type="password" value={formApiKey} onChange={(e) => setFormApiKey(e.target.value)}
+              placeholder={editingProvider ? "留空表示不修改" : "输入 API Key"} className="mt-1" />
           </div>
           <div>
-            <label className="text-sm font-medium">Base URL</label>
+            <label className="text-sm font-medium text-text-primary">Base URL</label>
             <Input value={formBaseURL} onChange={(e) => setFormBaseURL(e.target.value)}
-              placeholder="可选，默认使用服务商 URL" />
+              placeholder="可选，默认使用服务商 URL" className="mt-1" />
           </div>
         </div>
       </FormDialog>
@@ -601,22 +669,26 @@ export function ModelsPage() {
           </DialogHeader>
           {testResult && !("error" in testResult) && (
             testResult.warning ? (
-              <div className="text-sm py-2 px-3 rounded bg-yellow-50 text-yellow-800 border border-yellow-200">
+              <div className="text-sm py-2.5 px-3 rounded-lg bg-warning-bg text-warning-text border border-warning-border">
                 {testResult.warning}
               </div>
             ) : null
           )}
           {testResult && !("error" in testResult) && testResult.models.length > 0 && (
-            <div className="max-h-64 overflow-y-auto space-y-1">
+            <div className="max-h-72 overflow-y-auto space-y-1">
               {(testResult as { name: string; models: string[] }).models.map((m) => {
                 const added = addedModelIds.has(m);
                 return (
-                  <div key={m} className="flex items-center justify-between text-sm py-1.5 px-2 rounded bg-muted">
-                    <span className="font-mono text-xs">{m}</span>
+                  <div key={m} className={`flex items-center justify-between text-sm py-2 px-3 rounded-lg border transition-colors ${
+                    added
+                      ? "bg-surface-2 border-border-light"
+                      : "bg-surface-1 border-border-light hover:border-brand/30"
+                  }`}>
+                    <span className="font-mono text-xs text-text-primary">{m}</span>
                     {added ? (
-                      <span className="text-xs text-muted-foreground">已添加</span>
+                      <span className="text-xs text-status-active font-medium">已添加</span>
                     ) : (
-                      <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => handleAddFromTest(m)}>
+                      <Button size="xs" variant="outline" onClick={() => handleAddFromTest(m)}>
                         添加
                       </Button>
                     )}

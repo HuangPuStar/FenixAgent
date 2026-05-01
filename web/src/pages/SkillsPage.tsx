@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type ChangeEvent } from "react";
+import { useState, useCallback, useEffect, useRef, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { DataTable, type Column } from "@/components/config/DataTable";
 import { FormDialog } from "@/components/config/FormDialog";
@@ -66,9 +66,35 @@ export function getInvalidUploadSkillNames(items: UploadSkillSummary[]): string[
   return items.filter((item) => !item.hasSkillMd).map((item) => item.skillName);
 }
 
+function UploadItemCard({ item }: { item: UploadSkillSummary }) {
+  return (
+    <div className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors ${
+      item.hasSkillMd
+        ? "border-border-light bg-surface-1 hover:border-border"
+        : "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20"
+    }`}>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-sm font-medium text-text-bright truncate">{item.skillName}</span>
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-surface-2 text-text-muted">
+            {item.fileCount} 文件
+          </span>
+        </div>
+      </div>
+      {!item.hasSkillMd && (
+        <span className="text-xs text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">缺少 SKILL.md</span>
+      )}
+      {item.hasSkillMd && (
+        <span className="text-xs text-status-active font-medium">可导入</span>
+      )}
+    </div>
+  );
+}
+
 const directoryInputProps = { webkitdirectory: "", directory: "" } as Record<string, string>;
 
 export function SkillsPage() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -116,13 +142,15 @@ export function SkillsPage() {
   }, []);
 
   const columns: Column<SkillInfo>[] = [
-    { key: "name", header: "名称", sortable: true, filterable: true },
+    { key: "name", header: "名称", sortable: true, filterable: true, render: (row) => (
+      <span className="font-mono text-sm text-text-bright">{row.name}</span>
+    )},
     {
       key: "description",
       header: "描述",
       render: (row) => (
-        <span className="block max-w-[200px] truncate" title={row.description}>
-          {row.description || "—"}
+        <span className="block max-w-[280px] truncate text-text-secondary text-sm" title={row.description}>
+          {row.description || <span className="text-text-muted">无描述</span>}
         </span>
       ),
     },
@@ -307,7 +335,10 @@ export function SkillsPage() {
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-text-bright">技能管理</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-text-bright">技能管理</h2>
+          <p className="text-sm text-text-muted mt-0.5">管理 AI Agent 可用的技能模板</p>
+        </div>
         <Button onClick={handleOpenCreate}>新建技能</Button>
       </div>
       <DataTable<SkillInfo>
@@ -318,14 +349,14 @@ export function SkillsPage() {
         selectable
         onSelectionChange={setSelected}
         actions={(row) => (
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => handleToggle(row)}>
+          <div className="flex gap-1.5">
+            <Button size="xs" variant="outline" onClick={() => handleToggle(row)}>
               {row.enabled ? "禁用" : "启用"}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleOpenEdit(row)}>
+            <Button size="xs" variant="outline" onClick={() => handleOpenEdit(row)}>
               编辑
             </Button>
-            <Button size="sm" variant="destructive" onClick={() => { setDeleteTarget(row.name); setConfirmOpen(true); }}>
+            <Button size="xs" variant="destructive" onClick={() => { setDeleteTarget(row.name); setConfirmOpen(true); }}>
               删除
             </Button>
           </div>
@@ -361,77 +392,94 @@ export function SkillsPage() {
               <TabsTrigger value="text">创建技能</TabsTrigger>
             </TabsList>
             <TabsContent value="upload" className="space-y-4">
-              <div className="rounded-lg border border-dashed bg-muted/20 p-4">
-                <p className="text-sm font-medium">选择包含多个 skill 目录的文件夹内容</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  每个一级目录会被识别为一个 skill，目录内必须包含 `SKILL.md`。
-                </p>
-                <input
-                  type="file"
-                  multiple
-                  onChange={handleUploadSelection}
-                  className="mt-4 block w-full text-sm"
-                  {...directoryInputProps}
-                />
-              </div>
-              {uploadError && <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{uploadError}</div>}
-              {uploadItems.length > 0 && (
-                <div className="rounded-lg border">
-                  <div className="border-b px-4 py-3 text-sm font-medium">待导入目录</div>
-                  <div className="space-y-2 px-4 py-3 text-sm">
-                    {getUploadItemSummaries(uploadItems).map((summary) => (
-                      <div key={summary}>{summary}</div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={handleUploadSelection}
+                className="hidden"
+                {...directoryInputProps}
+              />
+              {uploadItems.length === 0 ? (
+                <div
+                  className="rounded-xl border-2 border-dashed border-border-light bg-surface-2/30 p-8 text-center cursor-pointer transition-colors hover:border-brand/40 hover:bg-brand-subtle/30"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-surface-2">
+                    <svg className="h-6 w-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-text-primary">点击选择包含技能的文件夹</p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    每个子目录将被识别为一个 skill，目录内需包含 SKILL.md
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-text-primary">
+                      已选择 {uploadItems.length} 个目录
+                    </span>
+                    <Button type="button" variant="ghost" size="xs" onClick={() => { setUploadItems([]); setUploadError(null); }}>
+                      重新选择
+                    </Button>
+                  </div>
+                  <div className="grid gap-2 max-h-48 overflow-y-auto">
+                    {uploadItems.map((item) => (
+                      <UploadItemCard key={item.skillName} item={item} />
                     ))}
                   </div>
                 </div>
               )}
-              {!uploadError && getInvalidUploadSkillNames(uploadItems).length > 0 && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  以下目录不会导入，因为缺少 `SKILL.md`：{getInvalidUploadSkillNames(uploadItems).join("、")}
+              {uploadError && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+                  {uploadError}
                 </div>
               )}
               {conflicts.length > 0 && (
-                <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <div className="font-medium">检测到同名技能冲突</div>
+                <div className="space-y-3 rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm">
+                  <div className="font-medium text-warning-text">检测到同名技能冲突</div>
                   <div className="space-y-1">
                     {conflicts.map((conflict) => (
-                      <div key={conflict.name}>
-                        {conflict.name} · {conflict.enabled ? "已启用" : "已禁用"}
+                      <div key={conflict.name} className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-text-primary">{conflict.name}</span>
+                        <StatusBadge status={conflict.enabled ? "enabled" : "disabled"} />
                       </div>
                     ))}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" onClick={() => handleUploadSubmit("ignore")} disabled={uploadPending}>
-                      忽略
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button type="button" variant="outline" size="sm" onClick={() => handleUploadSubmit("ignore")} disabled={uploadPending}>
+                      跳过冲突项
                     </Button>
-                    <Button type="button" variant="destructive" onClick={() => setOverwriteConfirmOpen(true)} disabled={uploadPending}>
-                      覆盖
+                    <Button type="button" variant="destructive" size="sm" onClick={() => setOverwriteConfirmOpen(true)} disabled={uploadPending}>
+                      覆盖已有技能
                     </Button>
                   </div>
-                  {conflictStrategy && <div className="text-xs text-amber-700">上次尝试策略：{conflictStrategy}</div>}
                 </div>
               )}
             </TabsContent>
             <TabsContent value="text" className="space-y-4">
               <div>
-                <label className="text-sm font-medium">技能名称</label>
-                <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="技能名称" />
+                <label className="text-sm font-medium text-text-primary">技能名称</label>
+                <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="my-skill" className="mt-1 font-mono text-sm" />
               </div>
               <div>
-                <label className="text-sm font-medium">描述</label>
+                <label className="text-sm font-medium text-text-primary">描述</label>
                 <Textarea
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
-                  className="mt-2 min-h-[96px] text-sm"
-                  placeholder="可选"
+                  className="mt-1 min-h-[80px] text-sm"
+                  placeholder="可选，简要描述技能用途"
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">内容</label>
+                <label className="text-sm font-medium text-text-primary">内容</label>
+                <p className="text-xs text-text-muted mb-1.5">Markdown 格式的技能指令</p>
                 <Textarea
                   value={formContent}
                   onChange={(e) => setFormContent(e.target.value)}
-                  className="mt-2 min-h-[320px] font-mono text-sm"
+                  className="min-h-[300px] font-mono text-sm"
                   placeholder="输入 Markdown 内容..."
                 />
               </div>
@@ -440,24 +488,25 @@ export function SkillsPage() {
         ) : (
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">技能名称</label>
-              <Input value={formName} onChange={(e) => setFormName(e.target.value)} disabled placeholder="技能名称" />
+              <label className="text-sm font-medium text-text-primary">技能名称</label>
+              <Input value={formName} onChange={(e) => setFormName(e.target.value)} disabled className="mt-1 font-mono text-sm text-text-muted" />
             </div>
             <div>
-              <label className="text-sm font-medium">描述</label>
+              <label className="text-sm font-medium text-text-primary">描述</label>
               <Textarea
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
-                className="mt-2 min-h-[96px] text-sm"
-                placeholder="可选"
+                className="mt-1 min-h-[80px] text-sm"
+                placeholder="可选，简要描述技能用途"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-muted-foreground">内容</label>
+              <label className="text-sm font-medium text-text-primary">内容</label>
+              <p className="text-xs text-text-muted mb-1.5">Markdown 格式的技能指令</p>
               <Textarea
                 value={formContent}
                 onChange={(e) => setFormContent(e.target.value)}
-                className="mt-2 min-h-[320px] font-mono text-sm"
+                className="min-h-[300px] font-mono text-sm"
                 placeholder="输入 Markdown 内容..."
               />
             </div>
