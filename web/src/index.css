@@ -272,6 +272,34 @@
     75%, 100% { transform: scale(2); opacity: 0; }
 }
 
+/* Status indicator dot variants */
+.status-dot-active {
+    background: var(--color-status-active);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    animation: status-active-pulse 2s ease-in-out infinite;
+}
+@keyframes status-active-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+    50% { box-shadow: 0 0 6px 2px rgba(16, 185, 129, 0.15); }
+}
+
+.status-dot-idle {
+    background: var(--color-status-idle);
+}
+
+.status-dot-error {
+    background: var(--color-status-error);
+    animation: status-error-breathe 2s ease-in-out infinite;
+}
+@keyframes status-error-breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-dot-warning {
+    background: var(--color-status-warning);
+}
+
 /* ============================================================
    Animations
    ============================================================ */
@@ -298,6 +326,51 @@
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+/* --- Entry animations (Phase 7) --- */
+@keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slide-in-right {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes message-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Utility animation classes */
+.animate-fade-up { animation: fade-up 0.3s ease both; }
+.animate-fade-in { animation: fade-in 0.3s ease both; }
+.animate-slide-right { animation: slide-in-right 0.3s ease both; }
+.animate-message-enter { animation: message-enter 0.3s ease both; }
+
+/* Stagger delay */
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 50ms; }
+.stagger > *:nth-child(3) { animation-delay: 100ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 200ms; }
+.stagger > *:nth-child(6) { animation-delay: 250ms; }
+.stagger > *:nth-child(7) { animation-delay: 300ms; }
+.stagger > *:nth-child(8) { animation-delay: 350ms; }
+
+/* Reduced motion — entry animations */
+@media (prefers-reduced-motion: reduce) {
+    .animate-fade-up, .animate-fade-in, .animate-slide-right, .animate-message-enter {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
     }
 }
 

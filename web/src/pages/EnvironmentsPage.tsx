@@ -361,7 +361,8 @@ export function EnvironmentsPage({ onNavigateToSession }: EnvironmentsPageProps)
             <span className="text-sm font-medium">创建第一个智能体</span>
             <span className="mt-1 text-xs opacity-60">配置工作目录和 Agent 类型，即可开始对话</span>
           </button>
-        ) : (
+        ) : viewMode === "table" ? (
+          /* ===== TABLE VIEW (original card list) ===== */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {envs.map((env) => {
               const online = isOnline(env);
@@ -369,74 +370,68 @@ export function EnvironmentsPage({ onNavigateToSession }: EnvironmentsPageProps)
               return (
                 <div
                   key={env.id}
-                  className="group flex flex-col rounded-xl border border-border bg-surface-1 p-0 transition-all duration-200 hover:shadow-elevated hover:-translate-y-0.5 hover:border-border-default overflow-hidden"
+                  className="group flex flex-col rounded-xl border border-border bg-surface-1 p-4 transition-shadow hover:shadow-md"
                 >
-                  {/* Header: icon + name + status pill */}
-                  <div className="flex items-start justify-between p-4 pb-0">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${online ? "bg-emerald-500/10 text-emerald-600" : "bg-brand/10 text-brand"}`}>
-                        <Bot className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-text-bright">{env.name}</div>
-                        {env.agent_name && (
-                          <div className="font-mono text-[11px] text-text-dim">{env.agent_name}</div>
-                        )}
-                      </div>
+                  {/* Header: name + status dot */}
+                  <div className="mb-3 flex items-start justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${online ? "bg-green-500" : "bg-gray-400"}`} />
+                      <span className="truncate text-sm font-medium text-text-primary">{env.name}</span>
+                      {env.auto_start && (
+                        <span className="rounded bg-brand/10 px-1 py-0.5 text-[10px] font-medium text-brand">自启</span>
+                      )}
+                      {env.instances_count !== undefined && env.instances_count > 1 && (
+                        <span className="rounded bg-emerald-500/10 px-1 py-0.5 text-[10px] font-medium text-emerald-600">
+                          实例 x{env.instances_count}
+                        </span>
+                      )}
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${online ? "bg-emerald-500/12 text-emerald-600" : "bg-gray-400/12 text-gray-500"}`}>
-                      {online ? "运行中" : "离线"}
-                    </span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEditDialog(env)} title="编辑">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleViewSecret(env.id)} title="查看 Secret">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      </Button>
+                      {env.instance_id && online && (
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-brand hover:text-brand/80" disabled={refreshingEnvId === env.id} onClick={() => handleRefresh(env)} title="重启实例">
+                          <RotateCw className={`h-3.5 w-3.5 ${refreshingEnvId === env.id ? "animate-spin" : ""}`} />
+                        </Button>
+                      )}
+                      {env.instance_id && online && (
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                          onClick={() => {
+                            const instances = instancesMap[env.id] ?? [];
+                            const active = instances.find(i => i.status === "running" || i.status === "starting");
+                            const targetId = active ? active.id : env.instance_id!;
+                            setStopTarget({ instanceId: targetId, envName: env.name });
+                            setStopConfirmOpen(true);
+                          }} title="停止实例">
+                          <Power className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                        onClick={() => { setDeleteTarget(env.id); setConfirmOpen(true); }} title="删除">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
 
-                  {/* Info + tags */}
-                  <div className="px-4 pt-3 pb-2 flex-1 space-y-1">
-                    {env.auto_start && (
-                      <span className="mr-1 rounded bg-brand/10 px-1 py-0.5 text-[10px] font-medium text-brand">自启</span>
-                    )}
-                    {env.instances_count !== undefined && env.instances_count > 1 && (
-                      <span className="mr-1 rounded bg-emerald-500/10 px-1 py-0.5 text-[10px] font-medium text-emerald-600">
-                        实例 x{env.instances_count}
-                      </span>
-                    )}
+                  {/* Info */}
+                  <div className="mb-4 flex-1 space-y-1">
                     <div className="flex items-center gap-1.5 text-xs text-text-muted">
                       <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                       <span className="truncate">{env.workspace_path}</span>
                     </div>
+                    {env.agent_name && (
+                      <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                        <Bot className="h-3 w-3 shrink-0" />
+                        <span>{env.agent_name}</span>
+                      </div>
+                    )}
                     {env.description && (
                       <p className="text-xs text-text-muted line-clamp-2">{env.description}</p>
                     )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 px-4 pb-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEditDialog(env)} title="编辑">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleViewSecret(env.id)} title="查看 Secret">
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    </Button>
-                    {env.instance_id && online && (
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-brand hover:text-brand/80" disabled={refreshingEnvId === env.id} onClick={() => handleRefresh(env)} title="重启实例">
-                        <RotateCw className={`h-3.5 w-3.5 ${refreshingEnvId === env.id ? "animate-spin" : ""}`} />
-                      </Button>
-                    )}
-                    {env.instance_id && online && (
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
-                        onClick={() => {
-                          const instances = instancesMap[env.id] ?? [];
-                          const active = instances.find(i => i.status === "running" || i.status === "starting");
-                          const targetId = active ? active.id : env.instance_id!;
-                          setStopTarget({ instanceId: targetId, envName: env.name });
-                          setStopConfirmOpen(true);
-                        }} title="停止实例">
-                        <Power className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
-                      onClick={() => { setDeleteTarget(env.id); setConfirmOpen(true); }} title="删除">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
                   </div>
 
                   {/* Enter button — Split Button for multi-instance */}
@@ -446,70 +441,144 @@ export function EnvironmentsPage({ onNavigateToSession }: EnvironmentsPageProps)
 
                     if (!online) {
                       return (
-                        <Button
-                          className="w-full"
-                          size="sm"
-                          disabled={entering}
-                          onClick={() => handleEnterAgent(env)}
-                        >
-                          {entering ? (
-                            <>
-                              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                              启动中...
-                            </>
-                          ) : "启动并进入"}
+                        <Button className="w-full" size="sm" disabled={entering} onClick={() => handleEnterAgent(env)}>
+                          {entering ? (<><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />启动中...</>) : "启动并进入"}
                         </Button>
                       );
                     }
 
                     return (
                       <div className="flex w-full">
-                        <Button
-                          className="flex-1 rounded-r-none"
-                          size="sm"
-                          disabled={entering}
-                          onClick={() => handleEnterAgent(env)}
-                        >
-                          {entering ? (
-                            <>
-                              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                              启动中...
-                            </>
-                          ) : "进入对话"}
+                        <Button className="flex-1 rounded-r-none" size="sm" disabled={entering} onClick={() => handleEnterAgent(env)}>
+                          {entering ? (<><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />启动中...</>) : "进入对话"}
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
-                              className="rounded-l-none border-l-0 px-2"
-                              size="sm"
-                              disabled={entering}
-                            >
+                            <Button className="rounded-l-none border-l-0 px-2" size="sm" disabled={entering}>
                               <ChevronDown className="h-3.5 w-3.5" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
                             {activeInstances.map((inst) => (
-                              <DropdownMenuItem
-                                key={inst.id}
-                                onClick={() => handleEnterInstance(env, inst.instance_number)}
-                              >
-                                <span className={`inline-block h-2 w-2 rounded-full mr-2 ${
-                                  inst.status === "running" ? "bg-green-500" : "bg-yellow-500"
-                                }`} />
+                              <DropdownMenuItem key={inst.id} onClick={() => handleEnterInstance(env, inst.instance_number)}>
+                                <span className={`inline-block h-2 w-2 rounded-full mr-2 ${inst.status === "running" ? "bg-green-500" : "bg-yellow-500"}`} />
                                 <span>实例 {inst.instance_number}</span>
                                 <span className="ml-auto text-xs text-muted-foreground">{inst.status}</span>
                               </DropdownMenuItem>
                             ))}
                             {activeInstances.length > 0 && <DropdownMenuSeparator />}
                             <DropdownMenuItem onClick={() => handleSpawnNewInstance(env)}>
-                              <Plus className="h-3.5 w-3.5 mr-1" />
-                              <span>新建实例</span>
+                              <Plus className="h-3.5 w-3.5 mr-1" /><span>新建实例</span>
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
                     );
                   })()}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* ===== CARD VIEW (detail cards with stats + footer) ===== */
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+            {envs.map((env) => {
+              const status = getCardStatus(env);
+              const statusColors = STATUS_STYLES[status];
+              const instances = instancesMap[env.id] ?? [];
+              const instanceCount = env.instances_count ?? instances.length;
+              const entering = enteringEnvId === env.id;
+              const online = isOnline(env);
+
+              return (
+                <div
+                  key={env.id}
+                  className="group relative flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface-1 transition-all duration-200 hover:border-border-default hover:shadow-elevated hover:-translate-y-0.5"
+                >
+                  {/* Left accent bar */}
+                  <div className={`absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl ${statusColors.bar}`} />
+
+                  {/* Top: icon + name/model + status pill */}
+                  <div className="flex items-center justify-between p-4 pb-0 pl-5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${statusColors.iconBg}`}>
+                        <Bot className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-text-bright">{env.name}</div>
+                        <div className="truncate font-mono text-[11px] text-text-dim">
+                          {env.agent_name || env.workspace_path.split("/").pop() || "--"}
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColors.pill}`}>
+                      {statusColors.label}
+                    </span>
+                  </div>
+
+                  {/* Body: 2-col stats grid */}
+                  <div className="px-4 pt-3 pb-2 pl-5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-surface-0 p-2 text-center">
+                        <div className="font-mono text-base font-bold text-text-bright">{instanceCount}</div>
+                        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-text-dim">会话</div>
+                      </div>
+                      <div className="rounded-lg bg-surface-0 p-2 text-center">
+                        <div className="font-mono text-base font-bold text-text-bright">
+                          {online ? (env.instances_count ?? 1) : 0}
+                        </div>
+                        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-text-dim">实例</div>
+                      </div>
+                    </div>
+                    {/* Description */}
+                    {env.description && (
+                      <p className="mt-2 line-clamp-2 text-[11px] text-text-dim">{env.description}</p>
+                    )}
+                  </div>
+
+                  {/* Footer: time + action buttons */}
+                  <div className="mt-auto flex items-center justify-between border-t border-border-subtle px-4 py-2.5 pl-5">
+                    <span className="text-[11px] text-text-dim">
+                      {formatRelativeTime(env.updated_at)}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {/* Hover actions */}
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mr-1">
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => openEditDialog(env)} title="编辑">
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        {status === "error" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-600"
+                            disabled={refreshingEnvId === env.id}
+                            onClick={() => handleRefresh(env)}
+                            title="重试"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${refreshingEnvId === env.id ? "animate-spin" : ""}`} />
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Primary action */}
+                      {entering ? (
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => handleEnterAgent(env)}
+                          title={online ? "进入对话" : "启动并进入"}
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })}
