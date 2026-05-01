@@ -119,3 +119,7 @@
 - EnvironmentsPage 加载状态从纯文字改为品牌 spinner + 上下文提示"加载智能体列表..."。全前端 loading 风格统一。
 - 新增 environments-page-ux.test.ts（7 测试）：验证无 alert、toast 错误、formError 内联验证、secretCopied 复制反馈、品牌 spinner。
 - 扩展 login-i18n.test.ts（+4 测试）：验证密码切换（Eye/EyeOff）、showPassword 动态 type、placeholder 字符要求。测试 390→401 pass。
+
+### Round 7.7 — 删除确认一致性 + 最终扫描
+- ApiKeyManager 删除按钮添加 ConfirmDialog 确认框（此前是唯一没有确认的删除操作）。确认框说明影响："使用该 Key 的 Agent 将无法继续连接"。
+- 最终一致性扫描：全前端零 alert()、零 confirm()、所有删除操作均有 ConfirmDialog 确认。401 pass / 0 fail。
