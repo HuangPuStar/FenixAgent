@@ -26,6 +26,8 @@ export function ContextPanel({
 }: ContextPanelProps) {
   const stats = useMemo(() => computeStats(entries), [entries]);
 
+  const displayAgentName = useMemo(() => simplifyDisplayName(agentName), [agentName]);
+
   return (
     <>
       {/* Toggle button — always visible */}
@@ -52,7 +54,7 @@ export function ContextPanel({
         {/* Agent Info */}
         <div className="context-section">
           <div className="context-section-title">智能体信息</div>
-          <ContextInfoRow label="智能体" value={agentName || "默认"} />
+          <ContextInfoRow label="智能体" value={displayAgentName} />
           <ContextInfoRow label="模型" value={modelName || "未知"} />
           {duration && <ContextInfoRow label="时长" value={duration} />}
         </div>
@@ -332,6 +334,15 @@ function computeStats(entries: ThreadEntry[]) {
     estimatedInputTokens,
     estimatedOutputTokens,
   };
+}
+
+function simplifyDisplayName(name?: string): string {
+  if (!name) return "默认";
+  // env_xxx → 取前 12 字符 + …
+  if (name.startsWith("env_")) return name.length > 16 ? name.slice(0, 16) + "…" : name;
+  // 其他名称超过 20 字符也截断
+  if (name.length > 20) return name.slice(0, 18) + "…";
+  return name;
 }
 
 function simplifyToolName(title: string): string {
