@@ -109,3 +109,8 @@
 - LoginPage 添加密码可见性切换按钮（Eye/EyeOff 图标），placeholder 改为"至少 8 个字符"。错误提示添加红色背景圆角框更醒目。
 - IdentityPanel 扫码失败 alert() 替换为 toast.error。至此全前端零 alert()。
 - 修复 3 个 i18n 测试文件（app/dashboard/shared-components），导航项检查改为 Sidebar.tsx。前端测试从 390 pass / 10 fail 修复为 390 pass / 0 fail。
+
+### Round 7.5 — 模型引导/聊天提示/ACP 空状态
+- ModelsPage 上下文和输出限制字段添加说明文字（"模型单次对话/回复最大 token 数"）。
+- ChatInput 底部提示扩展："粘贴图片或输入 @ 引用文件"。SessionDetail ChatView 空状态描述同步扩展。
+- ACPMain 加载中文字替换为品牌 spinner。空会话列表添加"点击上方 + 创建新会话"引导文字。
