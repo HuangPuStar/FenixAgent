@@ -434,6 +434,9 @@ export function TasksPage() {
                 </SelectContent>
               </Select>
             </div>
+            <p className="text-xs text-muted-foreground">
+              格式：分 时 日 月 周（例如：0 9 * * * = 每天早 9 点，*/5 * * * * = 每 5 分钟）
+            </p>
           </div>
 
           <div className="grid gap-2">
@@ -458,7 +461,7 @@ export function TasksPage() {
               value={formTask}
               onChange={(event) => setFormTask(event.target.value)}
               rows={8}
-              placeholder="例如：输出当前目录文件清单到 report.md"
+              placeholder="例如：检查 /workspace 目录下的所有 .ts 文件，找出未使用的 imports 并输出到 report.md。支持自然语言描述复杂任务。"
             />
           </div>
 
@@ -477,7 +480,7 @@ export function TasksPage() {
             <div className="flex items-center justify-between rounded-md border px-3 py-2">
               <div>
                 <p className="text-sm font-medium">启用状态</p>
-                <p className="text-xs text-muted-foreground">关闭后不会继续调度，但仍可手动执行。</p>
+                <p className="text-xs text-muted-foreground">关闭后定时任务将暂停，但仍可通过"立即执行"手动运行。</p>
               </div>
               <Switch checked={formEnabled} onCheckedChange={setFormEnabled} />
             </div>

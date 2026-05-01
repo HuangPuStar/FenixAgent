@@ -547,6 +547,11 @@ export function McpPage() {
           </div>
           <div>
             <Label>类型</Label>
+            <p className="text-xs text-muted-foreground mb-1">
+              {formType === "local"
+                ? "Local: 在本地通过命令行启动 MCP 服务器"
+                : "Remote: 通过 URL 连接到远程 MCP 服务器"}
+            </p>
             <Select value={formType} onValueChange={(v) => setFormType(v as "local" | "remote")}
               disabled={!!editingServer}>
               <SelectTrigger><SelectValue /></SelectTrigger>

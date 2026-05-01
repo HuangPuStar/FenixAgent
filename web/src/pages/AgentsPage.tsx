@@ -456,6 +456,9 @@ export function AgentsPage() {
                                     min={1}
                                     max={200}
                                 />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Agent 最大思考步骤数。建议：简单任务 10-30，复杂任务 50-100
+                                </p>
                             </div>
                         </div>
                         <div>
@@ -541,7 +544,7 @@ export function AgentsPage() {
                             </div>
                         </div>
                         <div className="flex items-center gap-6">
-                            <label className="flex items-center gap-2 text-sm">
+                            <label className="flex items-center gap-2 text-sm" title="不在 Agent 列表中显示，但仍可通过 API 调用">
                                 <input
                                     type="checkbox"
                                     checked={formHidden}
@@ -551,7 +554,7 @@ export function AgentsPage() {
                                 />
                                 隐藏
                             </label>
-                            <label className="flex items-center gap-2 text-sm">
+                            <label className="flex items-center gap-2 text-sm" title="Agent 完全不可用，无法在界面或 API 中使用">
                                 <input
                                     type="checkbox"
                                     checked={formDisable}
