@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import QrScanner from "qr-scanner";
 import { getUuid, setUuid } from "../api/client";
 import { cn } from "../lib/utils";
+import { toast } from "sonner";
 import { Scan } from "lucide-react";
 import { useTheme } from "../lib/theme";
 import {
@@ -145,7 +146,7 @@ export function IdentityPanel({ open, onClose }: IdentityPanelProps) {
         });
         handleScannedData(result.data);
       } catch {
-        alert("No QR code found in image");
+        toast.error("未找到二维码，请尝试更清晰的图片");
       }
     };
     input.click();

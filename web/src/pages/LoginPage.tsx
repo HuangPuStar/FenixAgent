@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { authClient } from "../lib/auth-client";
+import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -12,6 +14,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,19 +98,29 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <label className="block text-sm font-medium text-text-secondary mb-1">
               密码
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              minLength={8}
-              className="w-full rounded-md border border-border bg-surface-0 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="至少 8 个字符"
+                required
+                minLength={8}
+                className="w-full rounded-md border border-border bg-surface-0 px-3 py-2 pr-10 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
-            <p className="text-sm text-status-error">{error}</p>
+            <p className="text-sm text-status-error bg-status-error/10 px-3 py-2 rounded-md">{error}</p>
           )}
 
           <button
