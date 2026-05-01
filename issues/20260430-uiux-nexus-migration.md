@@ -309,44 +309,44 @@
 ## Phase 7: 组件库 & 动画系统
 
 ### TODO-7.1 按钮层级
-- [ ] `btn-primary`: 品牌色填充 + 白字
-- [ ] `btn-secondary`: 白底 + 边框
-- [ ] `btn-ghost`: 透明底
-- [ ] `btn-danger`: 红色填充
-- [ ] `btn-danger-ghost`: 红色文字
-- [ ] `active` 态缩放 `scale(0.98)`
+- [x] `btn-primary`: 品牌色填充 + 白字
+- [x] `btn-secondary`: 白底 + 边框
+- [x] `btn-ghost`: 透明底
+- [x] `btn-danger`: 红色填充
+- [x] `btn-danger-ghost`: 红色文字
+- [x] `active` 态缩放 `scale(0.98)`
 
 **影响文件**: `web/components/ui/button.tsx` (shadcn)，或 Tailwind 配置
 
 ---
 
 ### TODO-7.2 输入框样式
-- [ ] 统一 focus ring: `border-color: var(--brand)` + `box-shadow: 0 0 0 3px var(--brand-glow)`
-- [ ] placeholder 色 `--text-dim`
+- [x] 统一 focus ring: `border-color: var(--brand)` + `box-shadow: 0 0 0 3px var(--brand-glow)`
+- [x] placeholder 色 `--text-dim`
 
 **影响文件**: `web/components/ui/input.tsx`, Tailwind config
 
 ---
 
 ### TODO-7.3 状态指示器组件
-- [ ] 脉冲点 (active): `glow-breathe` 动画 + `pulse-ring` 扩散
-- [ ] 静态点 (idle): 无动画
-- [ ] 告警点 (error): `glow-alert` 动画
-- [ ] 警告点 (warning): 静态琥珀色
+- [x] 脉冲点 (active): `glow-breathe` 动画 + `pulse-ring` 扩散
+- [x] 静态点 (idle): 无动画
+- [x] 告警点 (error): `glow-alert` 动画
+- [x] 警告点 (warning): 静态琥珀色
 
 **影响文件**: 各 `StatusBadge` 组件, 可抽 `StatusDot.tsx`
 
 ---
 
 ### TODO-7.4 入场动画系统
-- [ ] `fade-up`: 从下渐入 (页面元素)
-- [ ] `fade-in`: 简单渐显
-- [ ] `slide-in-right`: 右侧滑入
-- [ ] `slide-in-bottom`: 底部滑入
-- [ ] `message-enter`: 消息气泡入场 (translateY 8px)
-- [ ] `timeline-enter`: 时间线从左滑入
-- [ ] Stagger 延迟: 子元素依次 50ms 递增
-- [ ] `prefers-reduced-motion` 降级
+- [x] `fade-up`: 从下渐入 (页面元素)
+- [x] `fade-in`: 简单渐显
+- [x] `slide-in-right`: 右侧滑入
+- [x] `slide-in-bottom`: 底部滑入
+- [x] `message-enter`: 消息气泡入场 (translateY 8px)
+- [x] `timeline-enter`: 时间线从左滑入
+- [x] Stagger 延迟: 子元素依次 50ms 递增
+- [x] `prefers-reduced-motion` 降级
 
 **影响文件**: `web/src/index.css` (Tailwind 层)
 
