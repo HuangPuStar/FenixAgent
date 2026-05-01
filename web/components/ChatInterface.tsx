@@ -6,6 +6,7 @@ import type { ThreadEntry, ToolCallStatus, ToolCallData, UserMessageImage, UserM
 import { ChatView } from "./chat/ChatView";
 import { ChatInput } from "./chat/ChatInput";
 import { PermissionPanel } from "./chat/PermissionPanel";
+import { ContextPanel } from "./ContextPanel";
 import { ModelSelectorPopover } from "./model-selector";
 import { useCommands } from "../src/hooks/useCommands";
 
@@ -174,6 +175,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const permissionModeRef = useRef(permissionMode);
   // Reference: Zed's supports_images() checks prompt_capabilities.image
   const [supportsImages, setSupportsImages] = useState(false);
+  const [contextPanelOpen, setContextPanelOpen] = useState(true);
   const { commands: availableCommands } = useCommands(client);
 
   useEffect(() => {
@@ -799,85 +801,96 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   }, [isLoading, sessionReady, client]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Chat messages — unified ChatView */}
-      <ChatView
-        entries={entries}
-        isLoading={isLoading && !sessionReady ? false : isLoading}
-        onPermissionRespond={(requestId, optionId, optionKind) => {
-          handlePermissionResponse(requestId, optionId, optionKind as PermissionOption["kind"] | null);
-        }}
-        emptyTitle={sessionReady ? "开始对话" : undefined}
-        emptyDescription={sessionReady ? "输入消息开始与 ACP agent 聊天" : undefined}
-        sessionId={rcsSessionId ?? activeSessionId ?? undefined}
-      />
-
-      {/* Permission panel — fixed above input */}
-      <PermissionPanel
-        requests={pendingPermissions}
-        onRespond={handlePermissionPanelRespond}
-      />
-
-      {/* Error banner */}
-      {errorMessage && (
-        <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
-          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
-            <span>{errorMessage}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setErrorMessage(null)}
-              className="ml-2 h-6 w-6 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 flex-shrink-0"
-            >
-              {"\u00D7"}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Model selector + New thread + ChatInput */}
-      {!readonly && (
-      <div className="flex-shrink-0">
-        <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 pb-1 flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            <PermissionModeSelector mode={permissionMode} onModeChange={(m: string) => { setPermissionMode(m); localStorage.setItem("acp_permission_mode", m); }} />
-            <ModelSelectorPopover client={client} />
-          </div>
-          {entries.length > 0 && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-text-muted hover:text-brand font-display gap-1"
-                  onClick={handleNewSession}
-                >
-                  <Plus className="h-3 w-3" />
-                  新会话
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>New Thread</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-        <ChatInput
-          onSubmit={handleChatInputSubmit}
-          isLoading={isLoading}
-          onInterrupt={handleCancel}
-          disabled={!sessionReady}
-          placeholder={sessionReady ? "给智能体发送消息…" : "等待会话..."}
-          supportsImages={supportsImages}
-          commands={availableCommands.length > 0 ? availableCommands : undefined}
-          sessionId={rcsSessionId ?? activeSessionId}
+    <div className="flex h-full">
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Chat messages — unified ChatView */}
+        <ChatView
+          entries={entries}
+          isLoading={isLoading && !sessionReady ? false : isLoading}
+          onPermissionRespond={(requestId, optionId, optionKind) => {
+            handlePermissionResponse(requestId, optionId, optionKind as PermissionOption["kind"] | null);
+          }}
+          emptyTitle={sessionReady ? "开始对话" : undefined}
+          emptyDescription={sessionReady ? "输入消息开始与 ACP agent 聊天" : undefined}
+          sessionId={rcsSessionId ?? activeSessionId ?? undefined}
         />
-      </div>
-      )}
-      {readonly && (
-      <div className="flex-shrink-0">
-        <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 py-3 text-center">
-          <span className="text-xs text-text-muted">只读模式 — 无法发送消息</span>
+
+        {/* Permission panel — fixed above input */}
+        <PermissionPanel
+          requests={pendingPermissions}
+          onRespond={handlePermissionPanelRespond}
+        />
+
+        {/* Error banner */}
+        {errorMessage && (
+          <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
+            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
+              <span>{errorMessage}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setErrorMessage(null)}
+                className="ml-2 h-6 w-6 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 flex-shrink-0"
+              >
+                {"\u00D7"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Model selector + New thread + ChatInput */}
+        {!readonly && (
+        <div className="flex-shrink-0">
+          <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 pb-1 flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <PermissionModeSelector mode={permissionMode} onModeChange={(m: string) => { setPermissionMode(m); localStorage.setItem("acp_permission_mode", m); }} />
+              <ModelSelectorPopover client={client} />
+            </div>
+            {entries.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-text-muted hover:text-brand font-display gap-1"
+                    onClick={handleNewSession}
+                  >
+                    <Plus className="h-3 w-3" />
+                    新会话
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>New Thread</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+          <ChatInput
+            onSubmit={handleChatInputSubmit}
+            isLoading={isLoading}
+            onInterrupt={handleCancel}
+            disabled={!sessionReady}
+            placeholder={sessionReady ? "给智能体发送消息…" : "等待会话..."}
+            supportsImages={supportsImages}
+            commands={availableCommands.length > 0 ? availableCommands : undefined}
+            sessionId={rcsSessionId ?? activeSessionId}
+          />
         </div>
+        )}
+        {readonly && (
+        <div className="flex-shrink-0">
+          <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 py-3 text-center">
+            <span className="text-xs text-text-muted">只读模式 — 无法发送消息</span>
+          </div>
+        </div>
+        )}
       </div>
+
+      {/* Context Panel */}
+      {!readonly && (
+        <ContextPanel
+          entries={entries}
+          collapsed={!contextPanelOpen}
+          onToggle={() => setContextPanelOpen(!contextPanelOpen)}
+        />
       )}
     </div>
   );

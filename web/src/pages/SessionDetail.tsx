@@ -10,7 +10,7 @@ import { ArrowLeft, Info, Cpu, Hash, Wrench, Clock } from "lucide-react";
 import { RCSChatAdapter } from "../lib/rcs-chat-adapter";
 import type { ThreadEntry, PendingPermission } from "../lib/types";
 import { TaskPanel } from "../components/TaskPanel";
-import { ContextPanel } from "../components/ContextPanel";
+import { ContextPanel } from "../../components/ContextPanel";
 import {
   PermissionPromptView,
   AskUserPanelView,
