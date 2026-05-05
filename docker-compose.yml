@@ -14,6 +14,7 @@ services:
             RCS_API_KEYS: 8198625e-f6e0-4402-a278-b1910408c160
             # RCS server database path inside the container.
             RCS_DB_PATH: /app/data/rcs.db
+            ACPX_G_URL: http://localhost:8848
             OPENCODE_DISABLE_AUTOUPDATE: "1"
             OPENCODE_DISABLE_TELEMETRY: "1"
         volumes:

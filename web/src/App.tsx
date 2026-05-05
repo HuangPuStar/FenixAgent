@@ -39,9 +39,12 @@ const TasksPage = lazy(() =>
 const ChannelsPage = lazy(() =>
     import("./pages/ChannelsPage").then((m) => ({ default: m.ChannelsPage })),
 );
+const WorkflowPage = lazy(() =>
+    import("./pages/WorkflowPage").then((m) => ({ default: m.WorkflowPage })),
+);
 
 export function parseConfigView(pathname: string): string | null {
-    const configViews = ["models", "agents", "skills", "mcp", "tasks", "channels", "environments"];
+    const configViews = ["models", "agents", "skills", "mcp", "tasks", "channels", "workflow", "environments"];
     const segment = pathname.replace(/^\/ctrl\/?/, "").split("/")[0];
     return configViews.includes(segment) ? segment : null;
 }
@@ -57,6 +60,7 @@ type ViewId =
     | "mcp"
     | "tasks"
     | "channels"
+    | "workflow"
     | "environments";
 
 export default function App() {
@@ -71,7 +75,7 @@ export default function App() {
     const parseRoute = useCallback(() => {
         const path = window.location.pathname;
         const params = new URLSearchParams(window.location.search);
-        const configViews = ["models", "agents", "skills", "mcp", "tasks", "channels", "environments"];
+        const configViews = ["models", "agents", "skills", "mcp", "tasks", "channels", "workflow", "environments"];
         const segment = path.replace(/^\/ctrl\/?/, "").split("/")[0];
         if (configViews.includes(segment)) {
             setConfigView(segment);
@@ -213,6 +217,8 @@ export default function App() {
                         <TasksPage />
                     ) : configView === "channels" ? (
                         <ChannelsPage />
+                    ) : configView === "workflow" ? (
+                        <WorkflowPage />
                     ) : configView === "environments" ? (
                         <EnvironmentsPage onNavigateToSession={navigateToSession} />
                     ) : currentSessionId ? (

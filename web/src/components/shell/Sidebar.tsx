@@ -8,6 +8,7 @@ import {
   Clock,
   Radio,
   KeyRound,
+  Workflow,
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
@@ -44,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "控制台",
     items: [
       { id: "dashboard", label: "概览", icon: Monitor },
+      { id: "workflow", label: "智能体编排", icon: Workflow },
       { id: "environments", label: "智能体", icon: Bot },
       { id: "models", label: "模型", icon: Cpu },
       { id: "session", label: "会话", icon: MessageSquare },

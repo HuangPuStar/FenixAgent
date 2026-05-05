@@ -7,9 +7,9 @@ import { Topbar } from "./Topbar";
 /* ------------------------------------------------------------------ */
 
 interface AppShellProps {
-  currentPage: string;
-  onNavigate: (page: string) => void;
-  children: ReactNode;
+    currentPage: string;
+    onNavigate: (page: string) => void;
+    children: ReactNode;
 }
 
 /* ------------------------------------------------------------------ */
@@ -17,43 +17,42 @@ interface AppShellProps {
 /* ------------------------------------------------------------------ */
 
 export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
-  const [collapsed, setCollapsed] = useState(false);
+    const [collapsed, setCollapsed] = useState(false);
 
-  // Auto-collapse sidebar on screens narrower than 768px (md breakpoint)
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
-      setCollapsed(e.matches);
-    };
-    handler(mq);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
+    // Auto-collapse sidebar on screens narrower than 768px (md breakpoint)
+    useEffect(() => {
+        const mq = window.matchMedia("(max-width: 767px)");
+        const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+            setCollapsed(e.matches);
+        };
+        handler(mq);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
 
-  return (
-    <div className="flex h-screen w-screen overflow-hidden bg-surface-0">
-      {/* ---- Left sidebar ---- */}
-      <Sidebar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((v) => !v)}
-        currentPage={currentPage}
-        onNavigate={onNavigate}
-      />
+    return (
+        <div className="flex h-screen w-screen overflow-hidden bg-surface-0">
+            {/* ---- Left sidebar ---- */}
+            <Sidebar
+                collapsed={collapsed}
+                onToggle={() => setCollapsed((v) => !v)}
+                currentPage={currentPage}
+                onNavigate={onNavigate}
+            />
 
-      {/* ---- Right: Topbar + Content ---- */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar currentPage={currentPage} />
+            {/* ---- Right: Topbar + Content ---- */}
+            <div className="flex flex-1 flex-col overflow-hidden">
+                <Topbar currentPage={currentPage} />
 
-        <main
-          className={
-            currentPage === "session"
-              ? "flex flex-1 flex-col overflow-hidden"
-              : "flex-1 overflow-y-auto p-4 sm:p-6"
-          }
-        >
-          {children}
-        </main>
-      </div>
-    </div>
-  );
+                <main
+                    className={
+                        currentPage === "session"
+                            ? "flex flex-1 flex-col overflow-hidden"
+                            : "flex-1 overflow-y-auto"
+                    }>
+                    {children}
+                </main>
+            </div>
+        </div>
+    );
 }

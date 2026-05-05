@@ -1,4 +1,1 @@
-export DATABASE_URL="sqlite://data/acpx-g.db?mode=rwc"
-export PORT=8848
-export RUST_LOG=info
-acpx-g --workflow-dir ./workflow
+DATABASE_URL="sqlite://data/acpx-g.db?mode=rwc" PORT=8848 RUST_LOG=info acpx-g --workflow-dir ./workflow

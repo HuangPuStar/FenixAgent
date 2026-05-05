@@ -48,13 +48,13 @@ RUN --mount=type=bind,from=opencode-build,target=/tmp/opencode-build \
       -path '*/opencode-linux-*/bin/opencode' ! -path '*-musl*' | head -1)" \
       /usr/local/bin/opencode
 
-RUN bun install -g acp-link \
+RUN bun install -g acp-link acpx peri-cli \
     && rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/web/dist ./web/dist
 
-RUN mkdir -p /app/data /root/.config/opencode /root/.agents/skills /root/.local/share/opencode /workspaces
+RUN mkdir -p /app/data /root/.config/opencode /root/.agents/skills /root/.local/share/opencode /workspaces /app/workflow
 COPY .agent/skills/ /root/.agents/skills/
 
 VOLUME ["/app/data", "/root/.config/opencode", "/root/.agents/skills", "/root/.local/share/opencode", "/workspaces"]
@@ -64,4 +64,9 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD bun -e "fetch('http://127.0.0.1:3000/health').then((r) => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
-CMD ["bun", "dist/server.js"]
+  
+RUN peri-cli install acpx-g && peri-cli add-env
+
+COPY prod-start.sh ./
+
+CMD ["sh", "prod-start.sh"]

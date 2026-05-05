@@ -21,6 +21,8 @@ export const config = {
   disconnectTimeout: parseInt(process.env.RCS_DISCONNECT_TIMEOUT || "120"),
   /** JWT expiration time in seconds for worker tokens. Default 3600s (1 hour). */
   jwtExpiresIn: parseInt(process.env.RCS_JWT_EXPIRES_IN || "3600"),
+  /** acpx-g workflow engine URL for reverse proxy. */
+  acpxGUrl: process.env.ACPX_G_URL || "http://localhost:8848",
 } as const;
 
 export function getBaseUrl(): string {
