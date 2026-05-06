@@ -1,5 +1,6 @@
 services:
     rcs:
+        # image: rcs:latest
         build:
             context: .
             dockerfile: Dockerfile
