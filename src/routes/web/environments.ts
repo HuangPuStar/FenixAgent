@@ -16,7 +16,7 @@ import {
     listInstancesByEnvironment,
     getRunningInstancesByEnvironment,
 } from "../../services/instance";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 
@@ -114,7 +114,8 @@ app.get("/environments", sessionAuth, async (c) => {
 app.post("/environments", sessionAuth, async (c) => {
     const user = c.get("user")!;
     const body = await c.req.json();
-    const { name, description, workspacePath, agentName, autoStart } = body;
+    const { name, description, agentName, autoStart } = body;
+    let { workspacePath } = body;
 
     if (!name || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name)) {
         return c.json(
@@ -166,6 +167,7 @@ app.post("/environments", sessionAuth, async (c) => {
 
     try {
         mkdirSync(workspacePath, { recursive: true });
+        workspacePath = realpathSync(workspacePath);
     } catch (err: any) {
         return c.json(
             {
@@ -274,7 +276,7 @@ app.put("/environments/:id", sessionAuth, async (c) => {
             );
         }
         mkdirSync(body.workspacePath, { recursive: true });
-        patch.workspacePath = body.workspacePath;
+        patch.workspacePath = realpathSync(body.workspacePath);
     }
     if (body.agentName !== undefined) {
         if (body.agentName) {
