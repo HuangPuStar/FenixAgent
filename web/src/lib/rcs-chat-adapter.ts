@@ -96,6 +96,77 @@ function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
   return -1;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function normalizeToolName(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function normalizeRcsToolCall(
+  title: string,
+  rawInput?: Record<string, unknown>,
+): { title: string; rawInput: Record<string, unknown>; wrappedByRcs: boolean } {
+  const input = rawInput ?? {};
+  if (title !== "rcs") {
+    return { title, rawInput: input, wrappedByRcs: false };
+  }
+
+  const nestedTitle = normalizeToolName(input.tool_name)
+    ?? normalizeToolName(input.name)
+    ?? normalizeToolName(input.tool);
+  if (!nestedTitle) {
+    return { title, rawInput: input, wrappedByRcs: false };
+  }
+
+  const nestedInput = asRecord(input.tool_input)
+    ?? asRecord(input.input)
+    ?? asRecord(input.arguments)
+    ?? asRecord(input.args)
+    ?? input;
+
+  return {
+    title: nestedTitle,
+    rawInput: nestedInput,
+    wrappedByRcs: true,
+  };
+}
+
+function findToolCallBySignature(
+  entries: ThreadEntry[],
+  title: string,
+  rawInput: Record<string, unknown>,
+): number {
+  const signature = `${title}::${stableStringify(rawInput)}`;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry?.type !== "tool_call") continue;
+    const currentSignature = `${entry.toolCall.title}::${stableStringify(entry.toolCall.rawInput ?? {})}`;
+    if (currentSignature === signature) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 export class RCSChatAdapter {
   private sessionId: string;
   private setEntries: React.Dispatch<SetStateAction<ThreadEntry[]>>;
@@ -103,6 +174,7 @@ export class RCSChatAdapter {
   private onStatusChange?: (status: string) => void;
   private onError?: (error: string) => void;
   private onPermissionRequest?: (permission: PendingPermission) => void;
+  private toolCallAliases = new Map<string, string>();
 
   constructor(
     sessionId: string,
@@ -135,6 +207,7 @@ export class RCSChatAdapter {
     const { events } = await apiFetchSessionHistory(this.sessionId);
     if (!events || events.length === 0) return;
 
+    this.toolCallAliases.clear();
     const historyEntries: ThreadEntry[] = [];
     let currentAssistant: AssistantMessageEntry | null = null;
 
@@ -168,13 +241,18 @@ export class RCSChatAdapter {
         if (msg && typeof msg === "object" && Array.isArray(msg.content)) {
           for (const block of msg.content as Array<Record<string, unknown>>) {
             if (block.type === "tool_use") {
+              const toolCallId = (block.id as string) || `hist-tool-${historyEntries.length}`;
+              const normalized = normalizeRcsToolCall(
+                (block.name as string) || "tool",
+                (block.input as Record<string, unknown>) || {},
+              );
               toolParts.push({
                 type: "tool_call",
                 toolCall: {
-                  id: (block.id as string) || `hist-tool-${historyEntries.length}`,
-                  title: (block.name as string) || "tool",
+                  id: toolCallId,
+                  title: normalized.title,
                   status: "complete",
-                  rawInput: (block.input as Record<string, unknown>) || {},
+                  rawInput: normalized.rawInput,
                 },
               });
             }
@@ -196,20 +274,38 @@ export class RCSChatAdapter {
         }
       } else if (event.type === "tool_use") {
         const p = payload as Record<string, unknown>;
+        const toolCallId = (p.tool_call_id as string) || `hist-tool-${historyEntries.length}`;
+        const normalized = normalizeRcsToolCall(
+          (p.tool_name as string) || "tool",
+          (p.tool_input as Record<string, unknown>) || {},
+        );
+        const duplicateIndex = findToolCallBySignature(
+          historyEntries,
+          normalized.title,
+          normalized.rawInput,
+        );
+        if (duplicateIndex >= 0 && normalized.wrappedByRcs) {
+          const duplicateEntry = historyEntries[duplicateIndex];
+          if (duplicateEntry?.type === "tool_call") {
+            this.toolCallAliases.set(toolCallId, duplicateEntry.toolCall.id);
+          }
+          continue;
+        }
         const tc: ToolCallEntry = {
           type: "tool_call",
           toolCall: {
-            id: (p.tool_call_id as string) || `hist-tool-${historyEntries.length}`,
-            title: (p.tool_name as string) || "tool",
+            id: toolCallId,
+            title: normalized.title,
             status: "complete",
-            rawInput: (p.tool_input as Record<string, unknown>) || {},
+            rawInput: normalized.rawInput,
           },
         };
         historyEntries.push(tc);
       } else if (event.type === "tool_result") {
         const p = payload as Record<string, unknown>;
         // Find last tool call and update with output
-        const idx = findToolCallIndex(historyEntries, (p.tool_call_id as string) || "");
+        const rawCallId = (p.tool_call_id as string) || "";
+        const idx = findToolCallIndex(historyEntries, this.toolCallAliases.get(rawCallId) ?? rawCallId);
         if (idx >= 0) {
           const entry = historyEntries[idx] as ToolCallEntry;
           historyEntries[idx] = {
@@ -291,13 +387,23 @@ export class RCSChatAdapter {
           const toolBlocks = (msg.content as Array<Record<string, unknown>>).filter((b) => b.type === "tool_use");
           for (const block of toolBlocks) {
             const toolCallId = (block.id as string) || `call-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+            const normalized = normalizeRcsToolCall(
+              (block.name as string) || "tool",
+              (block.input as Record<string, unknown>) || {},
+            );
             const toolData: ToolCallData = {
               id: toolCallId,
-              title: (block.name as string) || "tool",
+              title: normalized.title,
               status: "running",
-              rawInput: (block.input as Record<string, unknown>) || {},
+              rawInput: normalized.rawInput,
             };
-            this.setEntries((prev) => [...prev, { type: "tool_call", toolCall: toolData }]);
+            this.setEntries((prev) => {
+              const existingIndex = findToolCallBySignature(prev, normalized.title, normalized.rawInput);
+              if (existingIndex >= 0) {
+                return prev;
+              }
+              return [...prev, { type: "tool_call", toolCall: toolData }];
+            });
           }
         }
         break;
@@ -307,20 +413,53 @@ export class RCSChatAdapter {
       case "tool_use": {
         const p = payload as Record<string, unknown>;
         const toolCallId = (p.tool_call_id as string) || `call-${Date.now()}`;
+        const normalized = normalizeRcsToolCall(
+          (p.tool_name as string) || "tool",
+          (p.tool_input as Record<string, unknown>) || {},
+        );
         const toolData: ToolCallData = {
           id: toolCallId,
-          title: (p.tool_name as string) || "tool",
+          title: normalized.title,
           status: "running",
-          rawInput: (p.tool_input as Record<string, unknown>) || {},
+          rawInput: normalized.rawInput,
         };
-        this.setEntries((prev) => [...prev, { type: "tool_call", toolCall: toolData }]);
+        this.setEntries((prev) => {
+          const aliasId = this.toolCallAliases.get(toolCallId) ?? toolCallId;
+          const existingIndex = findToolCallIndex(prev, aliasId);
+          if (existingIndex >= 0) {
+            return prev.map((entry, index) =>
+              index === existingIndex && entry.type === "tool_call"
+                ? {
+                  type: "tool_call",
+                  toolCall: {
+                    ...entry.toolCall,
+                    status: "running",
+                    rawInput: normalized.rawInput,
+                  },
+                }
+                : entry,
+            );
+          }
+
+          const duplicateIndex = findToolCallBySignature(prev, normalized.title, normalized.rawInput);
+          if (duplicateIndex >= 0 && normalized.wrappedByRcs) {
+            const duplicateEntry = prev[duplicateIndex];
+            if (duplicateEntry?.type === "tool_call") {
+              this.toolCallAliases.set(toolCallId, duplicateEntry.toolCall.id);
+            }
+            return prev;
+          }
+
+          return [...prev, { type: "tool_call", toolCall: toolData }];
+        });
         break;
       }
 
       // ---- 工具结果 ----
       case "tool_result": {
         const p = payload as Record<string, unknown>;
-        const callId = (p.tool_call_id as string) || "";
+        const rawCallId = (p.tool_call_id as string) || "";
+        const callId = this.toolCallAliases.get(rawCallId) ?? rawCallId;
         this.setEntries((prev) => {
           const idx = findToolCallIndex(prev, callId);
           if (idx < 0) return prev;
