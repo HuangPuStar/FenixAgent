@@ -10,6 +10,8 @@ import type {
   KnowledgeSearchResult,
 } from "./types";
 
+const RESOURCE_STATUS_READY: KnowledgeResourceStatus = "ready";
+
 type SupportedHeadersInit = Headers | Record<string, string> | string[][];
 
 function buildHeaders(
@@ -255,7 +257,7 @@ export class OpenVikingKnowledgeProvider implements KnowledgeProvider {
       sourceName: String(item.name ?? item.sourceName ?? inferTitleFromUri(String(item.uri ?? "resource"))),
       sourceType: item.isDir ? "directory" : "resource",
       source: typeof item.uri === "string" ? item.uri : null,
-      status: "ready",
+      status: RESOURCE_STATUS_READY,
       lastError: null,
     })).filter((item) => item.remoteId.length > 0);
   }

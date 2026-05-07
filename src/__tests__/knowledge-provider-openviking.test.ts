@@ -22,8 +22,8 @@ describe("OpenVikingKnowledgeProvider", () => {
   });
 
   test("createKnowledgeBase stays local and leaves remoteId empty until first resource", async () => {
-    const fetchSpy = mock(async () => new Response()) as unknown as typeof fetch;
-    globalThis.fetch = fetchSpy;
+    const fetchSpy = mock(async () => new Response());
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
     const provider = new OpenVikingKnowledgeProvider();
     const result = await provider.createKnowledgeBase({
       userId: "kb-user-1",
@@ -59,8 +59,8 @@ describe("OpenVikingKnowledgeProvider", () => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    }) as unknown as typeof fetch;
-    globalThis.fetch = fetchSpy;
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const provider = new OpenVikingKnowledgeProvider();
     const result = await provider.addResource({
@@ -76,7 +76,7 @@ describe("OpenVikingKnowledgeProvider", () => {
     expect(result.knowledgeBaseRemoteId).toBe("viking://resources/kb/kb-user-1/project-docs/");
     expect(result.status).toBe("ready");
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    const addResourceCall = fetchSpy.mock.calls[1] as [string, RequestInit];
+    const addResourceCall = fetchSpy.mock.calls[1] as unknown as [string, RequestInit];
     expect(addResourceCall[0]).toBe("http://openviking.test/api/v1/resources");
     expect((addResourceCall[1].headers as Headers).get("X-API-Key")).toBe("test-key");
     expect((addResourceCall[1].headers as Headers).get("X-OpenViking-Account")).toBe("acct-user-1");
@@ -152,8 +152,8 @@ describe("OpenVikingKnowledgeProvider", () => {
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
-    })) as unknown as typeof fetch;
-    globalThis.fetch = fetchSpy;
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const provider = new OpenVikingKnowledgeProvider();
     const result = await provider.readResource({
@@ -168,7 +168,7 @@ describe("OpenVikingKnowledgeProvider", () => {
       content: "# Guide",
       source: "viking://resources/kb/kb-user-1/docs-a/guide.md",
     });
-    const readCall = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const readCall = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(readCall[0]).toContain("/api/v1/content/read?uri=");
     expect((readCall[1].headers as Headers).get("X-OpenViking-User")).toBe("kb-user-1");
   });

@@ -14,7 +14,7 @@ function getBearerToken(headerValue: string | undefined): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function createKnowledgeMcpServer(environment: { agentName: string | null; userId: string; secret: string }) {
+function createKnowledgeMcpServer(environment: { agentName: string | null; userId: string | null; secret: string }) {
   const server = new McpServer({
     name: "kb-mcp",
     version: "1.0.0",
@@ -38,7 +38,7 @@ function createKnowledgeMcpServer(environment: { agentName: string | null; userI
       agentName: environment.agentName,
       query,
       topK: topK ?? 5,
-      userId: environment.userId,
+      userId: environment.userId ?? undefined,
     });
     return {
       content: [{ type: "text", text: JSON.stringify({ results }) }],
@@ -58,11 +58,11 @@ function createKnowledgeMcpServer(environment: { agentName: string | null; userI
     const result = await readKnowledgeResourceForAgent({
       agentName: environment.agentName,
       resourceId,
-      userId: environment.userId,
+      userId: environment.userId ?? undefined,
     });
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
-      structuredContent: result,
+      structuredContent: result as unknown as Record<string, unknown>,
     };
   });
 
