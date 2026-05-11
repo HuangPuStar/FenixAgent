@@ -32,11 +32,13 @@ ENV OPENCODE_DISABLE_TELEMETRY=1
 # Install Python 3 and common tools (Debian/glibc base, use TUNA mirror)
 RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
     sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null; \
-    apt-get update \
-    && apt-get install -y --no-install-recommends \
+    apt-get update 
+
+RUN apt-get install -y --no-install-recommends \
        python3 python3-pip python3-venv \
-       curl git \
-    && rm -rf /var/lib/apt/lists/*
+       curl git ripgrep 
+
+RUN rm -rf /var/lib/apt/lists/*
 
 RUN bun install -g opencode-ai@latest --registry=https://registry.npmmirror.com
 RUN bun install -g acp-link --registry=https://registry.npmmirror.com
