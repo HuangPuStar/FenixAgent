@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { sessionAuth } from "../../../auth/middleware";
+import { storeGetEnvironment } from "../../../store";
 import {
   listSkills,
   getSkill,
@@ -9,6 +10,11 @@ import {
   enableSkill,
   disableSkill,
   importSkillDirectories,
+  importWorkspaceSkillDirectories,
+  listSkillSources,
+  getWorkspaceSkill,
+  setWorkspaceSkill,
+  deleteWorkspaceSkill,
   type ImportConflictStrategy,
 } from "../../../services/skill";
 
@@ -27,9 +33,22 @@ async function handleList(c: Context) {
   return c.json(successResponse({ skills }));
 }
 
-async function handleGet(c: Context, body: { name?: string }) {
+async function handleWorkspaceList(c: Context) {
+  const user = c.get("user")!;
+  const sources = await listSkillSources(user.id);
+  return c.json(successResponse({ sources }));
+}
+
+async function handleGet(c: Context, body: { name?: string; source?: string; workspaceId?: string }) {
   if (!body.name) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
+  }
+  if (body.source === "workspace" && body.workspaceId) {
+    const env = storeGetEnvironment(body.workspaceId);
+    if (!env) return c.json(errorResponse("NOT_FOUND", "Workspace not found"), 404);
+    const skill = await getWorkspaceSkill(env.workspacePath, body.name);
+    if (!skill) return c.json(errorResponse("NOT_FOUND", `Skill '${body.name}' not found`), 404);
+    return c.json(successResponse(skill));
   }
   const skill = await getSkill(body.name);
   if (!skill) {
@@ -38,20 +57,33 @@ async function handleGet(c: Context, body: { name?: string }) {
   return c.json(successResponse(skill));
 }
 
-async function handleSet(c: Context, body: { name?: string; data?: { description: string; content: string; metadata?: Record<string, string> } }) {
+async function handleSet(c: Context, body: { name?: string; data?: { description: string; content: string; metadata?: Record<string, string> }; source?: string; workspaceId?: string }) {
   if (!body.name) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
   }
   if (!body.data || !body.data.description || !body.data.content) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing required fields: data.description, data.content"), 400);
   }
+  if (body.source === "workspace" && body.workspaceId) {
+    const env = storeGetEnvironment(body.workspaceId);
+    if (!env) return c.json(errorResponse("NOT_FOUND", "Workspace not found"), 404);
+    const result = await setWorkspaceSkill(env.workspacePath, body.name, body.data);
+    return c.json(successResponse({ name: result.name, enabled: result.enabled }));
+  }
   const result = await setSkill(body.name, body.data);
   return c.json(successResponse({ name: result.name, enabled: result.enabled }));
 }
 
-async function handleDelete(c: Context, body: { name?: string }) {
+async function handleDelete(c: Context, body: { name?: string; source?: string; workspaceId?: string }) {
   if (!body.name) {
     return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
+  }
+  if (body.source === "workspace" && body.workspaceId) {
+    const env = storeGetEnvironment(body.workspaceId);
+    if (!env) return c.json(errorResponse("NOT_FOUND", "Workspace not found"), 404);
+    const deleted = await deleteWorkspaceSkill(env.workspacePath, body.name);
+    if (!deleted) return c.json(errorResponse("NOT_FOUND", `Skill '${body.name}' not found`), 404);
+    return c.json(successResponse(null));
   }
   const deleted = await deleteSkill(body.name);
   if (!deleted) {
@@ -123,6 +155,11 @@ async function handleUpload(c: Context) {
     return c.json(errorResponse("VALIDATION_ERROR", "上传文件与 manifest 数量不一致"), 400);
   }
 
+  // Workspace upload support
+  const sourceValue = formData.get("source");
+  const workspaceIdValue = formData.get("workspaceId");
+  const isWorkspaceUpload = sourceValue === "workspace" && typeof workspaceIdValue === "string" && workspaceIdValue;
+
   try {
     const uploadFiles = await Promise.all(
       manifest.map(async (entry, index) => ({
@@ -131,6 +168,22 @@ async function handleUpload(c: Context) {
         content: await files[index].text(),
       })),
     );
+
+    if (isWorkspaceUpload) {
+      const env = storeGetEnvironment(workspaceIdValue);
+      if (!env) return c.json(errorResponse("NOT_FOUND", "Workspace not found"), 404);
+      const result = await importWorkspaceSkillDirectories(env.workspacePath, uploadFiles, conflictStrategy);
+      if (result.conflicts.length > 0) {
+        return c.json(
+          errorResponse("SKILL_CONFLICT", "检测到同名技能冲突", {
+            conflicts: result.conflicts,
+            allowedStrategies: ["ignore", "overwrite"],
+          }),
+          409,
+        );
+      }
+      return c.json(successResponse(result));
+    }
 
     const result = await importSkillDirectories(uploadFiles, conflictStrategy);
     if (result.conflicts.length > 0) {
@@ -151,13 +204,14 @@ async function handleUpload(c: Context) {
   }
 }
 
-type SkillBody = { action: string; name?: string; data?: { description: string; content: string; metadata?: Record<string, string> } };
+type SkillBody = { action: string; name?: string; data?: { description: string; content: string; metadata?: Record<string, string> }; source?: string; workspaceId?: string };
 
 app.post("/config/skills", sessionAuth, async (c) => {
   const body = await c.req.json<SkillBody>().catch((): SkillBody => ({ action: "" }));
   const { action } = body;
 
   switch (action) {
+    case "workspace_list": return handleWorkspaceList(c);
     case "list": return handleList(c);
     case "get": return handleGet(c, body);
     case "set": return handleSet(c, body);

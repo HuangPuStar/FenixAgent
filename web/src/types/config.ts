@@ -219,6 +219,17 @@ export interface SkillInfo {
     path: string;
 }
 
+export type SkillSourceStatus = "online" | "offline" | "timeout";
+
+export interface SkillSourceInfo {
+    type: "global" | "workspace";
+    id?: string;
+    name: string;
+    path: string;
+    status: SkillSourceStatus;
+    skills: SkillInfo[];
+}
+
 export interface SkillDetail {
     name: string;
     description: string;

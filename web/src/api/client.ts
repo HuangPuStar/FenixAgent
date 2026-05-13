@@ -372,14 +372,17 @@ export function apiSetDefaultAgent(name: string) {
 export function apiListSkills() {
   return apiConfigAction<{ skills: SkillInfo[] }>("skills", "list").then(d => d.skills);
 }
-export function apiGetSkill(name: string) {
-  return apiConfigAction<SkillDetail>("skills", "get", { name });
+export function apiListSkillSources() {
+  return apiConfigAction<{ sources: SkillSourceInfo[] }>("skills", "workspace_list").then(d => d.sources);
 }
-export function apiSetSkill(name: string, data: { description: string; content: string; metadata?: Record<string, string> }) {
-  return apiConfigAction<{ name: string; enabled: boolean }>("skills", "set", { name, data });
+export function apiGetSkill(name: string, source?: string, workspaceId?: string) {
+  return apiConfigAction<SkillDetail>("skills", "get", { name, source, workspaceId });
 }
-export function apiDeleteSkill(name: string) {
-  return apiConfigAction<null>("skills", "delete", { name });
+export function apiSetSkill(name: string, data: { description: string; content: string; metadata?: Record<string, string> }, source?: string, workspaceId?: string) {
+  return apiConfigAction<{ name: string; enabled: boolean }>("skills", "set", { name, data, source, workspaceId });
+}
+export function apiDeleteSkill(name: string, source?: string, workspaceId?: string) {
+  return apiConfigAction<null>("skills", "delete", { name, source, workspaceId });
 }
 export function apiEnableSkill(name: string) {
   return apiConfigAction<{ name: string; enabled: boolean }>("skills", "enable", { name });
@@ -388,7 +391,9 @@ export function apiDisableSkill(name: string) {
   return apiConfigAction<{ name: string; enabled: boolean }>("skills", "disable", { name });
 }
 
-export async function apiUploadSkills(formData: FormData) {
+export async function apiUploadSkills(formData: FormData, source?: string, workspaceId?: string) {
+  if (source) formData.append("source", source);
+  if (workspaceId) formData.append("workspaceId", workspaceId);
   const res = await fetch("/web/config/skills/upload", {
     method: "POST",
     credentials: "include",
