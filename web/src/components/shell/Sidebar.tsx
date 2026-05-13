@@ -104,7 +104,7 @@ export function Sidebar({
             "shadow-[0_2px_8px_rgba(99,102,241,0.25)]",
           ].join(" ")}
         >
-          R
+          X
         </div>
 
         {/* Text */}
@@ -116,7 +116,7 @@ export function Sidebar({
             collapsed ? "opacity-0" : "opacity-100",
           ].join(" ")}
         >
-          RCS
+          XAgent
         </span>
 
         {/* Toggle button */}
