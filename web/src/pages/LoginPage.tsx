@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { authClient } from "../lib/auth-client";
 import { Eye, EyeOff } from "lucide-react";
-import { Eye, EyeOff } from "lucide-react";
 
 interface LoginPageProps {
   onLogin: () => void;
