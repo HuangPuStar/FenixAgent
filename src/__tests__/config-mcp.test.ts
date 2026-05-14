@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 
-let _mcpStore: Record<string, any> = {};
+// In-memory mock for MCP servers
+let _mcpStore: Record<string, { type: string; config: Record<string, unknown>; enabled: boolean }> = {};
 
 mock.module("../auth/better-auth", () => ({
   auth: {
@@ -14,13 +15,46 @@ mock.module("../auth/better-auth", () => ({
   },
 }));
 
-mock.module("../services/config", () => ({
-  getSection: async (section: string) => section === "mcp" ? _mcpStore : undefined,
-  replaceSection: async (_section: string, data: unknown) => { _mcpStore = data as Record<string, unknown>; },
-  modifySection: async (_section: string, modifier: (current: any) => any) => {
-    const current = _section === "mcp" ? _mcpStore : undefined;
-    _mcpStore = modifier(current);
+mock.module("../services/config-pg", () => ({
+  listMcpServers: async (_userId: string) => {
+    return Object.entries(_mcpStore).map(([name, row]) => ({ name, ...row }));
   },
+  getMcpServer: async (_userId: string, name: string) => {
+    const row = _mcpStore[name];
+    return row ? { name, ...row } : null;
+  },
+  createMcpServer: async (_userId: string, name: string, type: string, config: Record<string, unknown>) => {
+    _mcpStore[name] = { type, config, enabled: true };
+  },
+  updateMcpServer: async (_userId: string, name: string, config: Record<string, unknown>) => {
+    if (!_mcpStore[name]) return;
+    _mcpStore[name].config = config;
+  },
+  deleteMcpServer: async (_userId: string, name: string) => {
+    if (!(name in _mcpStore)) return false;
+    delete _mcpStore[name];
+    return true;
+  },
+  setMcpServerEnabled: async (_userId: string, name: string, enabled: boolean) => {
+    if (!_mcpStore[name]) return false;
+    _mcpStore[name].enabled = enabled;
+    return true;
+  },
+}));
+
+// db mock for toolsCount
+const _mockDbState: { tools: any[] } = { tools: [] };
+mock.module("../db", () => ({
+  db: {
+    select: () => ({ from: () => ({ where: async () => _mockDbState.tools }) }),
+    delete: () => ({ where: async () => {} }),
+  },
+}));
+mock.module("../db/schema", () => ({
+  mcpTool: { id: "id", serverName: "server_name" },
+}));
+mock.module("drizzle-orm", () => ({
+  eq: (_col: string, _val: string) => ({ col: _col, val: _val }),
 }));
 
 const mcpRoute = (await import("../routes/web/config/mcp")).default;
@@ -28,10 +62,11 @@ const mcpRoute = (await import("../routes/web/config/mcp")).default;
 describe("MCP Config Route", () => {
   beforeEach(() => {
     _mcpStore = {
-      "my-local": { type: "local", command: ["npx", "mcp-server"], environment: { KEY: "VALUE" }, timeout: 5000 },
-      "another-local": { type: "local", command: ["node", "server.js"] },
-      "my-remote": { type: "remote", url: "https://example.com/mcp", headers: { Auth: "Bearer t" } },
+      "my-local": { type: "local", config: { type: "local", command: ["npx", "mcp-server"], environment: { KEY: "VALUE" }, timeout: 5000 }, enabled: true },
+      "another-local": { type: "local", config: { type: "local", command: ["node", "server.js"] }, enabled: true },
+      "my-remote": { type: "remote", config: { type: "remote", url: "https://example.com/mcp", headers: { Auth: "Bearer t" } }, enabled: true },
     };
+    _mockDbState.tools = [];
   });
 
   test("handleList 空配置", async () => {
@@ -103,7 +138,7 @@ describe("MCP Config Route", () => {
     expect(json.success).toBe(true);
     expect(json.data.name).toBe("new-server");
     expect(_mcpStore["new-server"]).toBeDefined();
-    expect(_mcpStore["new-server"].command).toEqual(["npx", "mcp-server"]);
+    expect(_mcpStore["new-server"].config.command).toEqual(["npx", "mcp-server"]);
   });
 
   test("handleCreate 正常创建 remote 服务器", async () => {
@@ -119,7 +154,7 @@ describe("MCP Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.name).toBe("remote-srv");
-    expect(_mcpStore["remote-srv"].url).toBe("https://example.com/mcp");
+    expect(_mcpStore["remote-srv"].config.url).toBe("https://example.com/mcp");
   });
 
   test("handleCreate 重名", async () => {
@@ -211,8 +246,8 @@ describe("MCP Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.name).toBe("my-local");
-    expect(_mcpStore["my-local"].command).toEqual(["npx", "updated-server"]);
-    expect(_mcpStore["my-local"].timeout).toBe(10000);
+    expect(_mcpStore["my-local"].config.command).toEqual(["npx", "updated-server"]);
+    expect(_mcpStore["my-local"].config.timeout).toBe(10000);
   });
 
   test("handleUpdate 不存在的服务器", async () => {
@@ -253,7 +288,6 @@ describe("MCP Config Route", () => {
   });
 
   test("handleEnable 正常启用", async () => {
-    // 先禁用
     _mcpStore["my-local"].enabled = false;
     const res = await mcpRoute.handle(new Request("http://localhost/web/config/mcp", {
       method: "POST",
@@ -267,7 +301,7 @@ describe("MCP Config Route", () => {
   });
 
   test("handleEnable 禁用变体（无原始配置）", async () => {
-    _mcpStore["lost-server"] = { enabled: false };
+    _mcpStore["lost-server"] = { type: "disabled", config: { enabled: false }, enabled: false };
     const res = await mcpRoute.handle(new Request("http://localhost/web/config/mcp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -314,7 +348,6 @@ describe("MCP Config Route", () => {
   });
 
   describe("isValidMcpName 边界", () => {
-    // 通过 route 间接测试名称校验
     test("空字符串 → 失败", async () => {
       const res = await mcpRoute.handle(new Request("http://localhost/web/config/mcp", {
         method: "POST",

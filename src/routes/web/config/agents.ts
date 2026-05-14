@@ -1,6 +1,6 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../../plugins/auth";
-import { getSection, setTopLevelField, getConfig, modifySection } from "../../../services/config";
+import * as configPg from "../../../services/config-pg";
 import {
   InvalidKnowledgeBindingError,
   listAgentKnowledgeBindings,
@@ -164,32 +164,53 @@ function validateKnowledgeConfig(value: unknown): string | null {
   return null;
 }
 
-async function handleList() {
-  const agents = (await getSection<Record<string, AgentConfig>>("agent")) ?? {};
-  const config = await getConfig();
-  const defaultAgent = config.default_agent as string | undefined;
-  const list = await Promise.all(Object.entries(agents).map(async ([name, cfg]) => ({
-    name,
-    builtIn: BUILT_IN_AGENTS.has(name),
-    model: cfg.model ?? null,
-    mode: cfg.mode ?? null,
-    description: cfg.description ?? null,
-    color: cfg.color ?? null,
-    knowledgeBaseCount: (await listAgentKnowledgeBindings(name)).length,
-  })));
-  return { success: true, data: { default_agent: defaultAgent ?? null, agents: list } };
+/** 将 PG 行数据映射为前端兼容的 agent 字段 */
+function pgRowToAgentFields(row: typeof configPg extends { listAgentConfigs: (userId: string) => Promise<(infer T)[]> } ? T : never) {
+  // tools → permission 兼容转换：PG 中不再有 tools，但保留接口
+  let permission = (row as any).permission ?? null;
+  return {
+    name: (row as any).name,
+    model: (row as any).model ?? null,
+    mode: (row as any).mode ?? null,
+    description: (row as any).description ?? null,
+    color: (row as any).color ?? null,
+    disable: (row as any).disable ?? false,
+    hidden: (row as any).hidden ?? false,
+    steps: (row as any).steps ?? null,
+    variant: (row as any).variant ?? null,
+    temperature: (row as any).temperature ?? null,
+    top_p: (row as any).topP ?? null,
+    prompt: (row as any).prompt ?? null,
+    permission,
+    knowledge: (row as any).knowledge ?? null,
+  };
 }
 
-async function handleGet(name: string) {
-  const agents = (await getSection<Record<string, AgentConfig>>("agent")) ?? {};
-  const agent = agents[name];
+async function handleList(userId: string) {
+  const agents = await configPg.listAgentConfigs(userId);
+  const uc = await configPg.getUserConfig(userId);
+  const defaultAgent = uc.defaultAgent ?? null;
+  const list = await Promise.all(agents.map(async (a) => ({
+    name: a.name,
+    builtIn: BUILT_IN_AGENTS.has(a.name),
+    model: a.model ?? null,
+    mode: a.mode ?? null,
+    description: a.description ?? null,
+    color: a.color ?? null,
+    knowledgeBaseCount: (await listAgentKnowledgeBindings(a.name)).length,
+  })));
+  return { success: true, data: { default_agent: defaultAgent, agents: list } };
+}
+
+async function handleGet(userId: string, name: string) {
+  const agent = await configPg.getAgentConfig(userId, name);
   if (!agent) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
 
-  // tools → permission 兼容转换：有 tools 无 permission 时自动转换
   let permission = agent.permission ?? null;
-  if (agent.tools && !agent.permission) {
-    const tools = typeof agent.tools === "object" && agent.tools !== null ? agent.tools as Record<string, boolean> : {};
-    permission = toolsToPermission(tools);
+  // tools→permission 兼容：旧数据可能只有 tools 没有 permission
+  const tools = (agent as Record<string, unknown>).tools;
+  if (permission == null && tools && typeof tools === "object" && !Array.isArray(tools)) {
+    permission = toolsToPermission(tools as Record<string, boolean>);
   }
 
   return {
@@ -204,7 +225,7 @@ async function handleGet(name: string) {
       permission,
       variant: agent.variant ?? null,
       temperature: agent.temperature ?? null,
-      top_p: agent.top_p ?? null,
+      top_p: agent.topP ?? null,
       disable: agent.disable ?? false,
       hidden: agent.hidden ?? false,
       color: agent.color ?? null,
@@ -218,7 +239,7 @@ async function handleSet(userId: string, name: string, data: Record<string, unkn
   const validation = validateAgentData(data);
   if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
 
-  // 白名单过滤：只写入允许的字段
+  // 白名单过滤
   const filtered: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     if (AGENT_SETTABLE_FIELDS.has(key)) {
@@ -226,31 +247,25 @@ async function handleSet(userId: string, name: string, data: Record<string, unkn
     }
   }
 
-  let notFound = false;
-  await modifySection<Record<string, AgentConfig>>("agent", (agents) => {
-    const current = agents ?? {};
-    if (!current[name]) {
-      notFound = true;
-      return current;
-    }
-    const agent = { ...current[name] };
-    // 写入时清除 tools 字段，始终用 permission
-    delete agent.tools;
-    // 逐字段合并：permission 为 null 时删除 key（清除权限），其余正常覆盖
-    for (const [key, value] of Object.entries(filtered)) {
-      if (key === "permission" && value == null) {
-        delete agent.permission;
-      } else if (key === "knowledge" && value == null) {
-        delete agent.knowledge;
-      } else {
-        agent[key] = value;
-      }
-    }
-    current[name] = agent;
-    return current;
-  });
+  // 检查 agent 是否存在
+  const existing = await configPg.getAgentConfig(userId, name);
+  if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
 
-  if (notFound) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
+  // 清除 null 值字段，映射 snake_case → camelCase
+  const updateData: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filtered)) {
+    if (key === "permission" && value == null) {
+      updateData[key] = null;
+    } else if (key === "knowledge" && value == null) {
+      updateData[key] = null;
+    } else if (key === "top_p") {
+      updateData["topP"] = value;
+    } else {
+      updateData[key] = value;
+    }
+  }
+
+  await configPg.updateAgentConfig(userId, name, updateData);
   await syncAgentKnowledgeBindings(userId, name, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
   return { success: true, data: { name, ...filtered } };
 }
@@ -269,46 +284,40 @@ async function handleCreate(userId: string, name: string, data: Record<string, u
       filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
     }
   }
-  // null permission 不写入配置文件（undefined 同理），避免产生 "permission": null
   if (filtered.permission == null) delete filtered.permission;
 
-  let alreadyExists = false;
-  await modifySection<Record<string, AgentConfig>>("agent", (agents) => {
-    const current = agents ?? {};
-    if (current[name]) {
-      alreadyExists = true;
-      return current;
+  // 映射 snake_case → camelCase for PG storage
+  const pgData: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filtered)) {
+    if (key === "top_p") {
+      pgData["topP"] = value;
+    } else {
+      pgData[key] = value;
     }
-    current[name] = filtered;
-    return current;
-  });
-  if (alreadyExists) return { success: false, error: { code: "ALREADY_EXISTS", message: `Agent '${name}' already exists` } };
+  }
+
+  // 检查是否已存在
+  const existing = await configPg.getAgentConfig(userId, name);
+  if (existing) return { success: false, error: { code: "ALREADY_EXISTS", message: `Agent '${name}' already exists` } };
+
+  await configPg.createAgentConfig(userId, name, pgData);
   await syncAgentKnowledgeBindings(userId, name, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
   return { success: true, data: { name } };
 }
 
-async function handleDelete(name: string) {
+async function handleDelete(userId: string, name: string) {
   if (BUILT_IN_AGENTS.has(name)) {
     return { success: false, error: { code: "FORBIDDEN", message: `Cannot delete built-in agent '${name}'` } };
   }
-  let notFound = false;
-  await modifySection<Record<string, Record<string, unknown>>>("agent", (agents) => {
-    const current = agents ?? {};
-    if (!current[name]) {
-      notFound = true;
-      return current;
-    }
-    delete current[name];
-    return current;
-  });
-  if (notFound) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
+  const deleted = await configPg.deleteAgentConfig(userId, name);
+  if (!deleted) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
   return { success: true };
 }
 
-async function handleSetDefault(name: string) {
-  const agents = (await getSection<Record<string, AgentConfig>>("agent")) ?? {};
-  if (!agents[name]) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
-  await setTopLevelField("default_agent", name);
+async function handleSetDefault(userId: string, name: string) {
+  const agent = await configPg.getAgentConfig(userId, name);
+  if (!agent) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
+  await configPg.setUserConfig(userId, { defaultAgent: name });
   return { success: true, data: { default_agent: name } };
 }
 
@@ -321,12 +330,12 @@ app.post("/config/agents", async ({ store, body, error }) => {
   const { action, name, data } = { action: b.action ?? "", name: b.name, data: b.data as Record<string, unknown> | undefined };
   try {
     switch (action) {
-      case "list": return await handleList();
-      case "get": return await handleGet(name!);
+      case "list": return await handleList(user.id);
+      case "get": return await handleGet(user.id, name!);
       case "set": return await handleSet(user.id, name!, data!);
       case "create": return await handleCreate(user.id, name!, data!);
-      case "delete": return await handleDelete(name!);
-      case "set_default": return await handleSetDefault(name!);
+      case "delete": return await handleDelete(user.id, name!);
+      case "set_default": return await handleSetDefault(user.id, name!);
       default: return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: `Unknown action '${action}'` } });
     }
   } catch (error_) {

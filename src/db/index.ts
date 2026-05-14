@@ -263,4 +263,106 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_agent_session_env ON agent_session(environment_id);
   `);
+
+  // F002: 配置存储迁移 (fs → pg) — 新增 6 张表
+
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS provider (
+      id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      name VARCHAR NOT NULL,
+      display_name VARCHAR,
+      npm VARCHAR,
+      base_url TEXT,
+      api_key TEXT,
+      extra_options JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_user_name ON provider(user_id, name);
+  `);
+
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS model (
+      id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      provider_id UUID NOT NULL REFERENCES provider(id) ON DELETE CASCADE,
+      model_id VARCHAR NOT NULL,
+      display_name VARCHAR,
+      modalities JSONB,
+      limit_config JSONB,
+      cost JSONB,
+      options JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_model_provider_model ON model(provider_id, model_id);
+  `);
+
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS agent_config (
+      id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      name VARCHAR NOT NULL,
+      model VARCHAR,
+      prompt TEXT,
+      steps INTEGER,
+      mode VARCHAR(20),
+      permission JSONB,
+      variant VARCHAR,
+      temperature NUMERIC,
+      top_p NUMERIC,
+      disable BOOLEAN NOT NULL DEFAULT FALSE,
+      hidden BOOLEAN NOT NULL DEFAULT FALSE,
+      color VARCHAR,
+      description TEXT,
+      knowledge JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_config_user_name ON agent_config(user_id, name);
+  `);
+
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS mcp_server (
+      id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      name VARCHAR NOT NULL,
+      type VARCHAR(10) NOT NULL,
+      config JSONB NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_server_user_name ON mcp_server(user_id, name);
+  `);
+
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS skill (
+      id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      environment_id UUID REFERENCES environment(id) ON DELETE CASCADE,
+      name VARCHAR NOT NULL,
+      description TEXT,
+      content_path TEXT,
+      metadata JSONB,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_global ON skill(user_id, name);
+    CREATE INDEX IF NOT EXISTS idx_skill_workspace ON skill(user_id, environment_id, name);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_global_unique ON skill(user_id, name) WHERE environment_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_workspace_unique ON skill(user_id, environment_id, name) WHERE environment_id IS NOT NULL;
+  `);
+
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS user_config (
+      user_id TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+      default_agent VARCHAR,
+      current_model VARCHAR,
+      small_model VARCHAR,
+      permission JSONB,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
 }

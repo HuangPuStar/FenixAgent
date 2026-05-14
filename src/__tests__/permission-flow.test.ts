@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 
+// In-memory mock for agent configs and user config
 let _agentStore: Record<string, any> = {};
-let _topLevelFields: Record<string, any> = {};
+let _userConfig: { defaultAgent: string | null; currentModel: string | null; smallModel: string | null; permission: unknown } = { defaultAgent: null, currentModel: null, smallModel: null, permission: null };
 
 mock.module("../auth/better-auth", () => ({
   auth: {
@@ -15,16 +16,45 @@ mock.module("../auth/better-auth", () => ({
   },
 }));
 
-mock.module("../services/config", () => ({
-  getSection: async (section: string) => section === "agent" ? _agentStore : undefined,
-  setSection: async (_section: string, data: unknown) => { _agentStore = data as Record<string, unknown>; },
-  replaceSection: async (_section: string, data: unknown) => { _agentStore = data as Record<string, unknown>; },
-  modifySection: async (_section: string, modifier: (current: any) => any) => {
-    const current = _section === "agent" ? _agentStore : undefined;
-    _agentStore = modifier(current);
+mock.module("../services/config-pg", () => ({
+  listAgentConfigs: async (_userId: string) => {
+    return Object.entries(_agentStore).map(([name, cfg]) => ({ name, ...cfg }));
   },
-  setTopLevelField: async (field: string, value: unknown) => { _topLevelFields[field] = value; },
-  getConfig: async () => ({ ..._topLevelFields, agent: _agentStore }),
+  getAgentConfig: async (_userId: string, name: string) => {
+    const cfg = _agentStore[name];
+    return cfg ? { name, ...cfg } : null;
+  },
+  createAgentConfig: async (_userId: string, name: string, data: Record<string, unknown>) => {
+    _agentStore[name] = { ...data };
+  },
+  updateAgentConfig: async (_userId: string, name: string, data: Record<string, unknown>) => {
+    if (!_agentStore[name]) return;
+    const existing = { ..._agentStore[name] };
+    for (const [key, value] of Object.entries(data)) {
+      if (value === null) {
+        delete existing[key];
+      } else {
+        existing[key] = value;
+      }
+    }
+    delete existing.tools;
+    _agentStore[name] = existing;
+  },
+  deleteAgentConfig: async () => [],
+  getUserConfig: async (_userId: string) => ({ ..._userConfig }),
+  setUserConfig: async (_userId: string, patch: any) => {
+    if (patch.defaultAgent !== undefined) _userConfig.defaultAgent = patch.defaultAgent;
+    if (patch.currentModel !== undefined) _userConfig.currentModel = patch.currentModel;
+    if (patch.smallModel !== undefined) _userConfig.smallModel = patch.smallModel;
+    if (patch.permission !== undefined) _userConfig.permission = patch.permission;
+  },
+}));
+
+mock.module("../services/agent-knowledge", () => ({
+  InvalidKnowledgeBindingError: class InvalidKnowledgeBindingError extends Error {},
+  syncAgentKnowledgeBindings: async () => {},
+  listAgentKnowledgeBindings: async () => [],
+  resolveAgentKnowledgePolicy: () => ({ searchFirst: true, maxResults: 5, defaultNamespaces: [] }),
 }));
 
 const agentsRoute = (await import("../routes/web/config/agents")).default;
@@ -37,7 +67,7 @@ describe("Permission 更新流程验证", () => {
         permission: { bash: "allow", task: "deny", skill: { "find-skills": "allow" } },
       },
     };
-    _topLevelFields = {};
+    _userConfig = { defaultAgent: null, currentModel: null, smallModel: null, permission: null };
   });
 
   test("更新嵌套 permission（含 skill 规则）", async () => {

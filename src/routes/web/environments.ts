@@ -10,7 +10,7 @@ import {
     storeCreateSession,
 } from "../../store";
 import type { EnvironmentRecord } from "../../store";
-import { getSection } from "../../services/config";
+import * as configPg from "../../services/config-pg";
 import {
     spawnInstanceFromEnvironment,
     listInstancesByEnvironment,
@@ -141,9 +141,8 @@ app.post("/environments", async ({ store, body, error }) => {
     }
 
     if (agentName) {
-        const agents =
-            (await getSection<Record<string, unknown>>("agent")) ?? {};
-        if (!(agentName in agents)) {
+        const agent = await configPg.getAgentConfig(user.id, agentName);
+        if (!agent) {
             return error(400, {
                 error: {
                     type: "VALIDATION_ERROR",
@@ -243,9 +242,8 @@ app.put("/environments/:id", async ({ store, params, body, error }) => {
     }
     if (b.agentName !== undefined) {
         if (b.agentName) {
-            const agents =
-                (await getSection<Record<string, unknown>>("agent")) ?? {};
-            if (!(b.agentName in agents)) {
+            const agent = await configPg.getAgentConfig(user.id, b.agentName);
+            if (!agent) {
                 return error(400, {
                     error: { type: "VALIDATION_ERROR", message: `Agent '${b.agentName}' 不存在` },
                 });

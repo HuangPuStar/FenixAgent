@@ -36,7 +36,7 @@ mock.module("../auth/better-auth", () => ({
 // Mock skill service to use temp directories
 mock.module("../services/skill", () => ({
   SKILLS_DIR: skillsDir,
-  listSkills: async () => {
+  listSkills: async (_userId: string) => {
     const { readdir, readFile } = await import("node:fs/promises");
     const skills: any[] = [];
     if (existsSync(skillsDir)) {
@@ -75,7 +75,7 @@ mock.module("../services/skill", () => ({
     }
     return skills;
   },
-  getSkill: async (name: string) => {
+  getSkill: async (_userId: string, name: string) => {
     const { readFile } = await import("node:fs/promises");
     const enabledPath = join(skillsDir, name, "SKILL.md");
     const disabledPath = join(disabledDir, name, "SKILL.md");
@@ -94,7 +94,7 @@ mock.module("../services/skill", () => ({
     }
     return { name, description: metadata.description ?? "", content, enabled: filePath === enabledPath, path: filePath, metadata };
   },
-  setSkill: async (name: string, data: { description: string; content: string; metadata?: Record<string, string> }) => {
+  setSkill: async (_userId: string, name: string, data: { description: string; content: string; metadata?: Record<string, string> }) => {
     // Delete old
     const enabledDir = join(skillsDir, name);
     const disabledDirPath = join(disabledDir, name);
@@ -106,7 +106,7 @@ mock.module("../services/skill", () => ({
     await createSkill(skillsDir, name, data.description, data.content, data.metadata);
     return { name, enabled: true, description: data.description, path: join(skillDir, "SKILL.md") };
   },
-  deleteSkill: async (name: string) => {
+  deleteSkill: async (_userId: string, name: string) => {
     const enabledDir = join(skillsDir, name);
     const disabledDirPath = join(disabledDir, name);
     let deleted = false;
@@ -114,7 +114,7 @@ mock.module("../services/skill", () => ({
     if (existsSync(disabledDirPath)) { await rm(disabledDirPath, { recursive: true, force: true }); deleted = true; }
     return deleted;
   },
-  enableSkill: async (name: string) => {
+  enableSkill: async (_userId: string, name: string) => {
     const { rename } = await import("node:fs/promises");
     const from = join(disabledDir, name);
     const to = join(skillsDir, name);
@@ -122,7 +122,7 @@ mock.module("../services/skill", () => ({
     await rename(from, to);
     return true;
   },
-  disableSkill: async (name: string) => {
+  disableSkill: async (_userId: string, name: string) => {
     const { rename } = await import("node:fs/promises");
     const from = join(skillsDir, name);
     const to = join(disabledDir, name);
@@ -131,11 +131,11 @@ mock.module("../services/skill", () => ({
     await rename(from, to);
     return true;
   },
-  importSkillDirectories: async () => {
+  importSkillDirectories: async (_userId: string) => {
     if (importError) throw importError;
     return importResult;
   },
-  importWorkspaceSkillDirectories: async () => {
+  importWorkspaceSkillDirectories: async (_userId: string) => {
     if (importError) throw importError;
     return importResult;
   },

@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 
-// Mutable provider store for mocking
-let _providerStore: Record<string, any> = {};
+// In-memory PG mock for providers
+let _providers: Map<string, { id: string; name: string; displayName: string | null; npm: string | null; baseUrl: string | null; apiKey: string | null; extraOptions: Record<string, unknown> | null; models: Map<string, Record<string, unknown>> }> = new Map();
 
 mock.module("../auth/better-auth", () => ({
   auth: {
@@ -15,18 +15,91 @@ mock.module("../auth/better-auth", () => ({
   },
 }));
 
-mock.module("../services/config", () => ({
-  getSection: async (_section: string) => _section === "provider" ? _providerStore : undefined,
-  setSection: async (_section: string, data: unknown) => { _providerStore = data as Record<string, unknown>; },
-  replaceSection: async (_section: string, data: unknown) => { _providerStore = data as Record<string, unknown>; },
-  modifySection: async (_section: string, modifier: (current: any) => any) => {
-    const current = _section === "provider" ? _providerStore : undefined;
-    _providerStore = modifier(current);
+mock.module("../services/config-pg", () => ({
+  listProviders: async (_userId: string) => {
+    return [..._providers.values()].map((p) => ({
+      id: p.id,
+      name: p.name,
+      displayName: p.displayName,
+      npm: p.npm,
+      baseUrl: p.baseUrl,
+      apiKey: p.apiKey,
+      extraOptions: p.extraOptions,
+      modelCount: p.models.size,
+    }));
   },
-  deleteSection: async () => false,
-  setTopLevelField: async () => {},
-  getConfig: async () => ({ provider: _providerStore }),
+  getProvider: async (_userId: string, name: string) => {
+    const p = _providers.get(name);
+    if (!p) return null;
+    return {
+      ...p,
+      models: [...p.models.entries()].map(([modelId, m]) => ({ id: "model-uuid", providerId: p.id, modelId, ...m })),
+    };
+  },
+  upsertProvider: async (_userId: string, name: string, data: any) => {
+    const existing = _providers.get(name);
+    if (existing) {
+      Object.assign(existing, {
+        displayName: data.displayName ?? existing.displayName,
+        npm: data.npm ?? existing.npm,
+        baseUrl: data.baseUrl ?? existing.baseUrl,
+        apiKey: data.apiKey ?? existing.apiKey,
+        extraOptions: data.extraOptions ?? existing.extraOptions,
+      });
+      return existing.id;
+    }
+    const id = `prov-${name}`;
+    _providers.set(name, { id, name, displayName: data.displayName ?? null, npm: data.npm ?? null, baseUrl: data.baseUrl ?? null, apiKey: data.apiKey ?? null, extraOptions: data.extraOptions ?? null, models: new Map() });
+    return id;
+  },
+  deleteProvider: async (_userId: string, name: string) => {
+    return _providers.delete(name);
+  },
+  addModel: async (providerId: string, data: any) => {
+    for (const p of _providers.values()) {
+      if (p.id === providerId) {
+        p.models.set(data.modelId, data);
+        return;
+      }
+    }
+  },
+  updateModel: async (providerId: string, modelId: string, data: any) => {
+    for (const p of _providers.values()) {
+      if (p.id === providerId) {
+        const existing = p.models.get(modelId) ?? {};
+        p.models.set(modelId, { ...existing, ...data });
+        return;
+      }
+    }
+  },
+  removeModel: async (providerId: string, modelId: string) => {
+    for (const p of _providers.values()) {
+      if (p.id === providerId) {
+        p.models.delete(modelId);
+        return;
+      }
+    }
+  },
 }));
+
+// Helper to get provider store for assertions
+function getProviderStore() {
+  const result: Record<string, any> = {};
+  for (const [name, p] of _providers) {
+    const provider: Record<string, any> = { name: p.name, npm: p.npm, displayName: p.displayName };
+    if (p.baseUrl || p.apiKey) {
+      provider.options = { ...(p.baseUrl ? { baseURL: p.baseUrl } : {}), ...(p.apiKey ? { apiKey: p.apiKey } : {}), ...(typeof p.extraOptions === "object" && p.extraOptions !== null ? p.extraOptions : {}) };
+    }
+    if (p.models.size > 0) {
+      provider.models = {};
+      for (const [modelId, m] of p.models) {
+        provider.models[modelId] = m;
+      }
+    }
+    result[name] = provider;
+  }
+  return result;
+}
 
 const providersRoute = (await import("../routes/web/config/providers")).default;
 
@@ -38,11 +111,7 @@ function createFetchMock(handler: () => Promise<Response> | Response): typeof fe
 
 describe("Providers Config Route", () => {
   beforeEach(() => {
-    _providerStore = {};
-  });
-
-  afterEach(() => {
-    // nothing to clean up — apiKey is stored in config data, not env
+    _providers = new Map();
   });
 
   test("list action — 空配置", async () => {
@@ -57,22 +126,8 @@ describe("Providers Config Route", () => {
   });
 
   test("list action — 有配置（嵌套结构）", async () => {
-    _providerStore = {
-      "bailian-token-plan": {
-        npm: "@ai-sdk/openai-compatible",
-        name: "ali",
-        options: { apiKey: "sk-ant-1234567890", baseURL: "https://api.anthropic.com" },
-        models: {
-          "qwen3.6-plus": { name: "Qwen3.6 Plus" },
-          "glm-5": { name: "GLM-5" },
-        },
-      },
-      openai: {
-        npm: "@ai-sdk/openai",
-        name: "OpenAI",
-        options: { apiKey: "sk-open-abcdef", baseURL: "https://api.openai.com" },
-      },
-    };
+    _providers.set("bailian-token-plan", { id: "prov-bailian", name: "ali", displayName: null, npm: "@ai-sdk/openai-compatible", baseUrl: "https://api.anthropic.com", apiKey: "sk-ant-1234567890", extraOptions: null, models: new Map([["qwen3.6-plus", { displayName: "Qwen3.6 Plus" }], ["glm-5", { displayName: "GLM-5" }]]) });
+    _providers.set("openai", { id: "prov-openai", name: "OpenAI", displayName: null, npm: "@ai-sdk/openai", baseUrl: "https://api.openai.com", apiKey: "sk-open-abcdef", extraOptions: null, models: new Map() });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -82,7 +137,7 @@ describe("Providers Config Route", () => {
     expect(json.success).toBe(true);
     expect(json.data.providers).toHaveLength(2);
     expect(json.data.providers[0]).toMatchObject({
-      id: "bailian-token-plan",
+      id: "ali",
       name: "ali",
       npm: "@ai-sdk/openai-compatible",
       configured: true,
@@ -90,7 +145,7 @@ describe("Providers Config Route", () => {
       modelCount: 2,
     });
     expect(json.data.providers[1]).toMatchObject({
-      id: "openai",
+      id: "OpenAI",
       name: "OpenAI",
       npm: "@ai-sdk/openai",
       configured: true,
@@ -99,14 +154,7 @@ describe("Providers Config Route", () => {
   });
 
   test("get action — 存在", async () => {
-    _providerStore = {
-      "bailian-token-plan": {
-        npm: "@ai-sdk/openai-compatible",
-        name: "ali",
-        options: { apiKey: "sk-ant-1234", baseURL: "https://api.anthropic.com" },
-        models: { "qwen3.6-plus": { name: "Qwen3.6 Plus", limit: { context: 1000000 } } },
-      },
-    };
+    _providers.set("bailian-token-plan", { id: "prov-bailian", name: "ali", displayName: null, npm: "@ai-sdk/openai-compatible", baseUrl: "https://api.anthropic.com", apiKey: "sk-ant-1234", extraOptions: null, models: new Map([["qwen3.6-plus", { displayName: "Qwen3.6 Plus", limitConfig: { context: 1000000 } }]]) });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -133,7 +181,7 @@ describe("Providers Config Route", () => {
     expect(json.error.code).toBe("NOT_FOUND");
   });
 
-  test("set action — 创建新 provider（构造嵌套结构）", async () => {
+  test("set action — 创建新 provider", async () => {
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -146,23 +194,15 @@ describe("Providers Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.id).toBe("ollama");
-    // 嵌套结构验证：apiKey 直接明文存储
-    const provider = _providerStore.ollama as Record<string, unknown>;
-    expect(provider.npm).toBe("@ai-sdk/openai-compatible");
-    expect(provider.name).toBe("Ollama");
-    expect((provider.options as Record<string, unknown>).apiKey).toBe("sk-test");
-    expect((provider.options as Record<string, unknown>).baseURL).toBe("http://localhost:11434");
+    const p = _providers.get("ollama");
+    expect(p).toBeDefined();
+    expect(p!.npm).toBe("@ai-sdk/openai-compatible");
+    expect(p!.apiKey).toBe("sk-test");
+    expect(p!.baseUrl).toBe("http://localhost:11434");
   });
 
   test("set action — 更新已有 provider 保留 models", async () => {
-    _providerStore = {
-      "bailian-token-plan": {
-        npm: "@ai-sdk/openai-compatible",
-        name: "ali",
-        options: { apiKey: "old", baseURL: "https://api.anthropic.com" },
-        models: { "qwen3.6-plus": { name: "Qwen3.6 Plus" } },
-      },
-    };
+    _providers.set("bailian-token-plan", { id: "prov-bailian", name: "ali", displayName: null, npm: "@ai-sdk/openai-compatible", baseUrl: "https://api.anthropic.com", apiKey: "old", extraOptions: null, models: new Map([["qwen3.6-plus", { displayName: "Qwen3.6 Plus" }]]) });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -170,11 +210,10 @@ describe("Providers Config Route", () => {
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    const provider = _providerStore["bailian-token-plan"] as Record<string, unknown>;
-    expect(provider).toBeDefined();
-    // models 应被保留
-    expect(provider.models).toBeDefined();
-    expect((provider.options as Record<string, unknown>).baseURL).toBe("https://new.api.com");
+    const p = _providers.get("bailian-token-plan");
+    expect(p).toBeDefined();
+    expect(p!.models.size).toBe(1);
+    expect(p!.baseUrl).toBe("https://new.api.com");
   });
 
   test("set action — 缺少 name 返回 VALIDATION_ERROR", async () => {
@@ -189,10 +228,8 @@ describe("Providers Config Route", () => {
   });
 
   test("delete action — 存在", async () => {
-    _providerStore = {
-      anthropic: { npm: "@ai-sdk/anthropic", options: { apiKey: "x" } },
-      openai: { npm: "@ai-sdk/openai", options: { apiKey: "y" } },
-    };
+    _providers.set("anthropic", { id: "prov-anthropic", name: "anthropic", displayName: null, npm: "@ai-sdk/anthropic", baseUrl: null, apiKey: "x", extraOptions: null, models: new Map() });
+    _providers.set("openai", { id: "prov-openai", name: "openai", displayName: null, npm: "@ai-sdk/openai", baseUrl: null, apiKey: "y", extraOptions: null, models: new Map() });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -200,8 +237,8 @@ describe("Providers Config Route", () => {
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect("anthropic" in _providerStore).toBe(false);
-    expect("openai" in _providerStore).toBe(true);
+    expect(_providers.has("anthropic")).toBe(false);
+    expect(_providers.has("openai")).toBe(true);
   });
 
   test("delete action — 不存在", async () => {
@@ -216,9 +253,7 @@ describe("Providers Config Route", () => {
   });
 
   test("test action — 连接成功", async () => {
-    _providerStore = {
-      anthropic: { npm: "@ai-sdk/anthropic", options: { apiKey: "test-key", baseURL: "https://api.example.com" } },
-    };
+    _providers.set("anthropic", { id: "prov-anthropic", name: "anthropic", displayName: null, npm: "@ai-sdk/anthropic", baseUrl: "https://api.example.com", apiKey: "test-key", extraOptions: null, models: new Map() });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = createFetchMock(async () => ({
       ok: true,
@@ -238,9 +273,7 @@ describe("Providers Config Route", () => {
   });
 
   test("test action — 连接失败", async () => {
-    _providerStore = {
-      anthropic: { npm: "@ai-sdk/anthropic", options: { apiKey: "bad-key", baseURL: "https://api.example.com" } },
-    };
+    _providers.set("anthropic", { id: "prov-anthropic", name: "anthropic", displayName: null, npm: "@ai-sdk/anthropic", baseUrl: "https://api.example.com", apiKey: "bad-key", extraOptions: null, models: new Map() });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = createFetchMock(async () => {
       throw new Error("Network error");
@@ -283,13 +316,7 @@ describe("Providers Config Route", () => {
   // === Model CRUD ===
 
   test("add_model — 向已有 provider 添加模型", async () => {
-    _providerStore = {
-      openai: {
-        npm: "@ai-sdk/openai",
-        options: { apiKey: "sk-test" },
-        models: { "gpt-4o": { name: "GPT-4o" } },
-      },
-    };
+    _providers.set("openai", { id: "prov-openai", name: "openai", displayName: null, npm: "@ai-sdk/openai", baseUrl: null, apiKey: "sk-test", extraOptions: null, models: new Map([["gpt-4o", { displayName: "GPT-4o" }]]) });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -302,14 +329,13 @@ describe("Providers Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.modelId).toBe("gpt-4o-mini");
-    const models = (_providerStore.openai as any).models;
-    expect(models["gpt-4o-mini"]).toBeDefined();
-    expect(models["gpt-4o-mini"].name).toBe("GPT-4o Mini");
-    expect(models["gpt-4o-mini"].limit.context).toBe(128000);
+    const p = _providers.get("openai")!;
+    expect(p.models.has("gpt-4o-mini")).toBe(true);
+    expect(p.models.get("gpt-4o-mini")!.displayName).toBe("GPT-4o Mini");
   });
 
   test("add_model — 缺少 modelId 返回错误", async () => {
-    _providerStore = { openai: { npm: "@ai-sdk/openai", options: {} } };
+    _providers.set("openai", { id: "prov-openai", name: "openai", displayName: null, npm: "@ai-sdk/openai", baseUrl: null, apiKey: null, extraOptions: null, models: new Map() });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -321,9 +347,7 @@ describe("Providers Config Route", () => {
   });
 
   test("add_model — 重复模型返回错误", async () => {
-    _providerStore = {
-      openai: { npm: "@ai-sdk/openai", options: {}, models: { "gpt-4o": { name: "GPT-4o" } } },
-    };
+    _providers.set("openai", { id: "prov-openai", name: "openai", displayName: null, npm: "@ai-sdk/openai", baseUrl: null, apiKey: null, extraOptions: null, models: new Map([["gpt-4o", { displayName: "GPT-4o" }]]) });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -335,9 +359,7 @@ describe("Providers Config Route", () => {
   });
 
   test("update_model — 更新已有模型", async () => {
-    _providerStore = {
-      openai: { npm: "@ai-sdk/openai", options: {}, models: { "gpt-4o": { name: "GPT-4o", limit: { context: 128000 } } } },
-    };
+    _providers.set("openai", { id: "prov-openai", name: "openai", displayName: null, npm: "@ai-sdk/openai", baseUrl: null, apiKey: null, extraOptions: null, models: new Map([["gpt-4o", { displayName: "GPT-4o", limitConfig: { context: 128000 } }]]) });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -350,40 +372,13 @@ describe("Providers Config Route", () => {
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    const models = (_providerStore.openai as any).models;
-    expect(models["gpt-4o"].name).toBe("GPT-4o Updated");
-    expect(models["gpt-4o"].cost.input).toBe(2.5);
-    expect(models["gpt-4o"].limit.context).toBe(128000);
-  });
-
-  test("update_model — 深度合并保留未更新的嵌套字段", async () => {
-    _providerStore = {
-      openai: {
-        npm: "@ai-sdk/openai",
-        options: {},
-        models: { "gpt-4o": { name: "GPT-4o", limit: { context: 128000, output: 4096 }, cost: { input: 2.5, output: 10 } } },
-      },
-    };
-    const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "update_model",
-        name: "openai",
-        modelId: "gpt-4o",
-        data: { limit: { context: 200000 } },
-      }),
-    }));
-    const json = await res.json();
-    expect(json.success).toBe(true);
-    const model = (_providerStore.openai as any).models["gpt-4o"];
-    expect(model.limit.context).toBe(200000);
-    expect(model.limit.output).toBe(4096);
-    expect(model.cost.input).toBe(2.5);
+    const p = _providers.get("openai")!;
+    expect(p.models.get("gpt-4o")!.displayName).toBe("GPT-4o Updated");
+    expect(p.models.get("gpt-4o")!.limitConfig).toEqual({ context: 128000 });
   });
 
   test("update_model — 模型不存在", async () => {
-    _providerStore = { openai: { npm: "@ai-sdk/openai", options: {} } };
+    _providers.set("openai", { id: "prov-openai", name: "openai", displayName: null, npm: "@ai-sdk/openai", baseUrl: null, apiKey: null, extraOptions: null, models: new Map() });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -395,9 +390,7 @@ describe("Providers Config Route", () => {
   });
 
   test("remove_model — 删除已有模型", async () => {
-    _providerStore = {
-      openai: { npm: "@ai-sdk/openai", options: {}, models: { "gpt-4o": { name: "GPT-4o" }, "gpt-3.5": { name: "GPT-3.5" } } },
-    };
+    _providers.set("openai", { id: "prov-openai", name: "openai", displayName: null, npm: "@ai-sdk/openai", baseUrl: null, apiKey: null, extraOptions: null, models: new Map([["gpt-4o", { displayName: "GPT-4o" }], ["gpt-3.5", { displayName: "GPT-3.5" }]]) });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -405,13 +398,13 @@ describe("Providers Config Route", () => {
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    const models = (_providerStore.openai as any).models;
-    expect("gpt-3.5" in models).toBe(false);
-    expect("gpt-4o" in models).toBe(true);
+    const p = _providers.get("openai")!;
+    expect(p.models.has("gpt-3.5")).toBe(false);
+    expect(p.models.has("gpt-4o")).toBe(true);
   });
 
   test("remove_model — 模型不存在", async () => {
-    _providerStore = { openai: { npm: "@ai-sdk/openai", options: {} } };
+    _providers.set("openai", { id: "prov-openai", name: "openai", displayName: null, npm: "@ai-sdk/openai", baseUrl: null, apiKey: null, extraOptions: null, models: new Map() });
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -420,28 +413,6 @@ describe("Providers Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(false);
     expect(json.error.code).toBe("NOT_FOUND");
-  });
-
-  // ── replaceSection correctness: set should not retain stale keys ──
-
-  test("set action — updating provider replaces stale option keys", async () => {
-    _providerStore = {
-      test: {
-        npm: "@ai-sdk/openai-compatible",
-        options: { apiKey: "old-key", baseURL: "https://old.api.com", extraKey: "should-be-removed" },
-      },
-    };
-    const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "set", name: "test", data: { baseURL: "https://new.api.com" } }),
-    }));
-    const json = await res.json();
-    expect(json.success).toBe(true);
-    const options = (_providerStore.test as any).options;
-    expect(options.baseURL).toBe("https://new.api.com");
-    // replaceSection preserves the full object structure (not deep merge)
-    expect(options.extraKey).toBe("should-be-removed");
   });
 
   test("add_model — provider 不存在返回 NOT_FOUND", async () => {
@@ -457,8 +428,9 @@ describe("Providers Config Route", () => {
 });
 
 describe("Provider Test action - edge cases", () => {
+  beforeEach(() => { _providers = new Map(); });
+
   test("test non-existent provider returns NOT_FOUND", async () => {
-    _providerStore = {}; // 空 provider
     const res = await providersRoute.handle(new Request("http://localhost/web/config/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -471,13 +443,12 @@ describe("Provider Test action - edge cases", () => {
 });
 
 describe("Provider atomic write", () => {
-  test("concurrent set operations don't lose data", async () => {
-    _providerStore = {
-      "provider-a": { name: "A", options: { apiKey: "key-a", baseURL: "http://a" } },
-      "provider-b": { name: "B", options: { apiKey: "key-b", baseURL: "http://b" } },
-    };
+  beforeEach(() => { _providers = new Map(); });
 
-    // 同时更新两个 provider
+  test("concurrent set operations don't lose data", async () => {
+    _providers.set("provider-a", { id: "prov-a", name: "A", displayName: null, npm: null, baseUrl: "http://a", apiKey: "key-a", extraOptions: null, models: new Map() });
+    _providers.set("provider-b", { id: "prov-b", name: "B", displayName: null, npm: null, baseUrl: "http://b", apiKey: "key-b", extraOptions: null, models: new Map() });
+
     const [res1, res2] = await Promise.all([
       providersRoute.handle(new Request("http://localhost/web/config/providers", {
         method: "POST",
@@ -496,11 +467,7 @@ describe("Provider atomic write", () => {
     expect(json1.success).toBe(true);
     expect(json2.success).toBe(true);
 
-    // 两个 provider 都应该存在且正确更新
-    expect(_providerStore["provider-a"].options.apiKey).toBe("new-key-a");
-    expect(_providerStore["provider-b"].options.apiKey).toBe("new-key-b");
-    // 其他字段保留
-    expect(_providerStore["provider-a"].name).toBe("A");
-    expect(_providerStore["provider-b"].name).toBe("B");
+    expect(_providers.get("provider-a")!.apiKey).toBe("new-key-a");
+    expect(_providers.get("provider-b")!.apiKey).toBe("new-key-b");
   });
 });

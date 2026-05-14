@@ -1,12 +1,12 @@
-import { readdir, readFile, writeFile, mkdir, rename, rm, cp, mkdtemp } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, rm, cp, mkdtemp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import * as configPg from "./config-pg";
 
 export const OLD_SKILLS_DIR = join(homedir(), ".config", "opencode", "skills");
 export const SKILLS_DIR = join(homedir(), ".agents", "skills");
-const DISABLED_DIR = join(SKILLS_DIR, "_disabled");
 
 export interface SkillMeta {
   name: string;
@@ -63,43 +63,26 @@ export interface SkillSourceInfo {
   skills: SkillInfo[];
 }
 
-interface SkillDirSnapshot {
-  name: string;
-  enabledBackupPath: string | null;
-  disabledBackupPath: string | null;
-}
-
-async function ensureDisabledDir(): Promise<void> {
-  if (!existsSync(DISABLED_DIR)) {
-    await mkdir(DISABLED_DIR, { recursive: true });
-  }
-}
-
 export async function migrateSkillsDir(): Promise<void> {
   const MIGRATED_MARKER = join(OLD_SKILLS_DIR, ".migrated");
 
-  // 新目录已存在 → 跳过迁移（可能是全新安装或已迁移完成）
   if (existsSync(SKILLS_DIR)) return;
-  // 旧目录不存在 → 跳过迁移（全新安装，无旧数据），但确保新目录存在
   if (!existsSync(OLD_SKILLS_DIR)) {
     await mkdir(SKILLS_DIR, { recursive: true });
     return;
   }
-  // 已有 .migrated 标记 → 跳过（历史迁移完成，新目录被手动删除的场景）
   if (existsSync(MIGRATED_MARKER)) return;
 
   await mkdir(join(homedir(), ".agents"), { recursive: true });
 
   try {
-    // 尝试原子 rename（同文件系统下生效）
+    const { rename } = await import("node:fs/promises");
     await rename(OLD_SKILLS_DIR, SKILLS_DIR);
   } catch {
-    // 跨文件系统时回退到 copy + delete
     await cp(OLD_SKILLS_DIR, SKILLS_DIR, { recursive: true });
     await rm(OLD_SKILLS_DIR, { recursive: true, force: true });
   }
 
-  // 在旧路径创建 .migrated 标记文件，防止重复迁移
   await mkdir(OLD_SKILLS_DIR, { recursive: true });
   await writeFile(MIGRATED_MARKER, new Date().toISOString(), "utf-8");
 
@@ -167,99 +150,89 @@ function groupUploadFiles(files: UploadSkillFile[]): Map<string, UploadSkillFile
   return grouped;
 }
 
-async function snapshotSkillDir(name: string, backupRoot: string): Promise<SkillDirSnapshot> {
-  const enabledDir = join(SKILLS_DIR, name);
-  const disabledDir = join(DISABLED_DIR, name);
-  const enabledBackupPath = existsSync(enabledDir) ? join(backupRoot, "enabled", name) : null;
-  const disabledBackupPath = existsSync(disabledDir) ? join(backupRoot, "disabled", name) : null;
+// ────────────────────────────────────────────
+// 全局 Skill 函数（PG 元数据 + 文件系统内容）
+// ────────────────────────────────────────────
 
-  if (enabledBackupPath) {
-    await mkdir(dirname(enabledBackupPath), { recursive: true });
-    await cp(enabledDir, enabledBackupPath, { recursive: true });
-  }
-  if (disabledBackupPath) {
-    await mkdir(dirname(disabledBackupPath), { recursive: true });
-    await cp(disabledDir, disabledBackupPath, { recursive: true });
-  }
-
-  return { name, enabledBackupPath, disabledBackupPath };
+function skillContentPath(name: string): string {
+  return join(SKILLS_DIR, name, "SKILL.md");
 }
 
-async function restoreSkillDir(snapshot: SkillDirSnapshot): Promise<void> {
-  const enabledDir = join(SKILLS_DIR, snapshot.name);
-  const disabledDir = join(DISABLED_DIR, snapshot.name);
+export async function listSkills(userId: string): Promise<SkillInfo[]> {
+  const rows = await configPg.listSkills(userId);
+  return rows.map((r) => ({
+    name: r.name,
+    enabled: r.enabled,
+    description: r.description ?? "",
+    path: r.contentPath ?? skillContentPath(r.name),
+  }));
+}
 
-  await rm(enabledDir, { recursive: true, force: true });
-  await rm(disabledDir, { recursive: true, force: true });
+export async function getSkill(userId: string, name: string): Promise<SkillDetail | null> {
+  const meta = await configPg.getSkill(userId, name);
+  if (!meta) return null;
 
-  if (snapshot.enabledBackupPath && existsSync(snapshot.enabledBackupPath)) {
-    await mkdir(dirname(enabledDir), { recursive: true });
-    await cp(snapshot.enabledBackupPath, enabledDir, { recursive: true });
+  const contentPath = meta.contentPath ?? skillContentPath(name);
+  let content = "";
+  let fileMetadata: Record<string, string> = {};
+  if (existsSync(contentPath)) {
+    const raw = await readFile(contentPath, "utf-8");
+    const parsed = parseFrontmatter(raw);
+    content = parsed.content;
+    fileMetadata = parsed.metadata;
   }
-  if (snapshot.disabledBackupPath && existsSync(snapshot.disabledBackupPath)) {
-    await ensureDisabledDir();
-    await cp(snapshot.disabledBackupPath, disabledDir, { recursive: true });
-  }
-}
 
-async function writeImportedSkill(name: string, files: UploadSkillFile[]): Promise<void> {
-  const skillDir = join(SKILLS_DIR, name);
-  await mkdir(skillDir, { recursive: true });
-
-  for (const file of files) {
-    const targetPath = join(skillDir, normalizeUploadPath(file.relativePath));
-    await mkdir(dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, file.content, "utf-8");
-  }
-}
-
-async function readImportedSkillInfo(name: string): Promise<SkillInfo> {
-  const mdPath = join(SKILLS_DIR, name, "SKILL.md");
-  const raw = await readFile(mdPath, "utf-8");
-  const { metadata } = parseFrontmatter(raw);
-  return { name, enabled: true, description: metadata.description ?? "", path: mdPath };
-}
-
-async function listSkillsFromDir(baseDir: string, enabled = true): Promise<SkillInfo[]> {
-  const skills: SkillInfo[] = [];
-  if (!existsSync(baseDir)) return skills;
-  for (const entry of await readdir(baseDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.startsWith("_")) continue;
-    const mdPath = join(baseDir, entry.name, "SKILL.md");
-    if (!existsSync(mdPath)) continue;
-    const raw = await readFile(mdPath, "utf-8");
-    const { metadata } = parseFrontmatter(raw);
-    skills.push({ name: entry.name, enabled, description: metadata.description ?? "", path: mdPath });
-  }
-  return skills;
-}
-
-export async function listSkills(): Promise<SkillInfo[]> {
-  return [
-    ...await listSkillsFromDir(SKILLS_DIR, true),
-    ...await listSkillsFromDir(DISABLED_DIR, false),
-  ];
-}
-
-export async function getSkill(name: string): Promise<SkillDetail | null> {
-  // 在 skills/ 中查找
-  const enabledPath = join(SKILLS_DIR, name, "SKILL.md");
-  const disabledPath = join(DISABLED_DIR, name, "SKILL.md");
-  const filePath = existsSync(enabledPath) ? enabledPath : existsSync(disabledPath) ? disabledPath : null;
-  if (!filePath) return null;
-  const raw = await readFile(filePath, "utf-8");
-  const { metadata, content } = parseFrontmatter(raw);
   return {
     name,
-    description: metadata.description ?? "",
+    description: meta.description ?? fileMetadata.description ?? "",
     content,
-    enabled: filePath === enabledPath,
-    path: filePath,
-    metadata: Object.fromEntries(Object.entries(metadata).filter(([k]) => k !== "name" && k !== "description")),
+    enabled: meta.enabled,
+    path: contentPath,
+    metadata: Object.fromEntries(
+      Object.entries(fileMetadata).filter(([k]) => k !== "name" && k !== "description"),
+    ),
   };
 }
 
+export async function setSkill(
+  userId: string,
+  name: string,
+  data: { description: string; content: string; metadata?: Record<string, string> },
+): Promise<SkillInfo> {
+  const contentPath = skillContentPath(name);
+  const skillDir = join(SKILLS_DIR, name);
+  await mkdir(skillDir, { recursive: true });
+  const mdContent = buildSkillMd(name, data.description, data.content, data.metadata);
+  await writeFile(contentPath, mdContent, "utf-8");
+
+  await configPg.upsertSkill(userId, name, {
+    description: data.description,
+    contentPath,
+    metadata: data.metadata,
+    enabled: true,
+  });
+
+  return { name, enabled: true, description: data.description, path: contentPath };
+}
+
+export async function deleteSkill(userId: string, name: string): Promise<boolean> {
+  const skillDir = join(SKILLS_DIR, name);
+  if (existsSync(skillDir)) {
+    await rm(skillDir, { recursive: true, force: true });
+  }
+  return configPg.deleteSkill(userId, name);
+}
+
+export async function enableSkill(userId: string, name: string): Promise<boolean> {
+  return configPg.enableSkill(userId, name);
+}
+
+export async function disableSkill(userId: string, name: string): Promise<boolean> {
+  return configPg.disableSkill(userId, name);
+}
+
 export async function importSkillDirectories(
+  userId: string,
   files: UploadSkillFile[],
   strategy?: ImportConflictStrategy,
 ): Promise<ImportSkillsResult> {
@@ -278,12 +251,9 @@ export async function importSkillDirectories(
       throw createSkillValidationError(`Skill "${name}" 缺少 SKILL.md`);
     }
 
-    const enabledPath = join(SKILLS_DIR, name, "SKILL.md");
-    const disabledPath = join(DISABLED_DIR, name, "SKILL.md");
-    if (existsSync(enabledPath)) {
-      conflicts.push({ name, enabled: true, path: enabledPath });
-    } else if (existsSync(disabledPath)) {
-      conflicts.push({ name, enabled: false, path: disabledPath });
+    const existing = await configPg.getSkill(userId, name);
+    if (existing) {
+      conflicts.push({ name, enabled: existing.enabled, path: existing.contentPath ?? skillContentPath(name) });
     }
   }
 
@@ -300,7 +270,7 @@ export async function importSkillDirectories(
   }
 
   const backupRoot = await mkdtemp(join(tmpdir(), "rcs-skill-import-"));
-  const snapshots = new Map<string, SkillDirSnapshot>();
+  const snapshots = new Map<string, string | null>();
   const attemptedNames: string[] = [];
   const writtenNames: string[] = [];
 
@@ -308,30 +278,56 @@ export async function importSkillDirectories(
     if (strategy === "overwrite") {
       for (const [name] of pendingEntries) {
         if (!conflictNames.has(name)) continue;
-        const snapshot = await snapshotSkillDir(name, backupRoot);
-        snapshots.set(name, snapshot);
-        await deleteSkillInternal(name);
+        const skillDir = join(SKILLS_DIR, name);
+        if (existsSync(skillDir)) {
+          const backupPath = join(backupRoot, name);
+          await mkdir(backupRoot, { recursive: true });
+          await cp(skillDir, backupPath, { recursive: true });
+          snapshots.set(name, backupPath);
+          await rm(skillDir, { recursive: true, force: true });
+        } else {
+          snapshots.set(name, null);
+        }
+        await configPg.deleteSkill(userId, name);
       }
     }
 
     for (const [name, skillFiles] of pendingEntries) {
       attemptedNames.push(name);
-      await writeImportedSkill(name, skillFiles);
+      const skillDir = join(SKILLS_DIR, name);
+      await mkdir(skillDir, { recursive: true });
+      for (const file of skillFiles) {
+        const targetPath = join(skillDir, normalizeUploadPath(file.relativePath));
+        await mkdir(dirname(targetPath), { recursive: true });
+        await writeFile(targetPath, file.content, "utf-8");
+      }
       writtenNames.push(name);
     }
 
-    const imported = [];
+    const imported: SkillInfo[] = [];
     for (const name of writtenNames) {
-      imported.push(await readImportedSkillInfo(name));
+      const mdPath = skillContentPath(name);
+      const raw = await readFile(mdPath, "utf-8");
+      const { metadata } = parseFrontmatter(raw);
+      await configPg.upsertSkill(userId, name, {
+        description: metadata.description ?? "",
+        contentPath: mdPath,
+        enabled: true,
+      });
+      imported.push({ name, enabled: true, description: metadata.description ?? "", path: mdPath });
     }
 
     return { imported, skipped, conflicts: [] };
   } catch (error) {
     for (const name of attemptedNames) {
-      await deleteSkillInternal(name);
+      const skillDir = join(SKILLS_DIR, name);
+      if (existsSync(skillDir)) await rm(skillDir, { recursive: true, force: true });
+      await configPg.deleteSkill(userId, name).catch(() => {});
     }
-    for (const snapshot of snapshots.values()) {
-      await restoreSkillDir(snapshot);
+    for (const [name, backupPath] of snapshots) {
+      if (backupPath && existsSync(backupPath)) {
+        await cp(backupPath, join(SKILLS_DIR, name), { recursive: true });
+      }
     }
     throw error;
   } finally {
@@ -339,54 +335,28 @@ export async function importSkillDirectories(
   }
 }
 
-export async function setSkill(name: string, data: { description: string; content: string; metadata?: Record<string, string> }): Promise<SkillInfo> {
-  // 先删除旧位置（禁用目录中也检查）
-  await deleteSkillInternal(name);
-  // 写入 skills/name/SKILL.md
-  const skillDir = join(SKILLS_DIR, name);
-  await mkdir(skillDir, { recursive: true });
-  const mdContent = buildSkillMd(name, data.description, data.content, data.metadata);
-  await writeFile(join(skillDir, "SKILL.md"), mdContent, "utf-8");
-  return { name, enabled: true, description: data.description, path: join(skillDir, "SKILL.md") };
-}
-
-export async function deleteSkill(name: string): Promise<boolean> {
-  return deleteSkillInternal(name);
-}
-
-/** 内部删除实现，也供 setSkill 复用 */
-async function deleteSkillInternal(name: string): Promise<boolean> {
-  const enabledDir = join(SKILLS_DIR, name);
-  const disabledDirPath = join(DISABLED_DIR, name);
-  let deleted = false;
-  if (existsSync(enabledDir)) { await rm(enabledDir, { recursive: true, force: true }); deleted = true; }
-  if (existsSync(disabledDirPath)) { await rm(disabledDirPath, { recursive: true, force: true }); deleted = true; }
-  return deleted;
-}
-
-export async function enableSkill(name: string): Promise<boolean> {
-  const from = join(DISABLED_DIR, name);
-  const to = join(SKILLS_DIR, name);
-  if (!existsSync(from)) return false;
-  await rename(from, to);
-  return true;
-}
-
-export async function disableSkill(name: string): Promise<boolean> {
-  await ensureDisabledDir();
-  const from = join(SKILLS_DIR, name);
-  const to = join(DISABLED_DIR, name);
-  if (!existsSync(from)) return false;
-  await rename(from, to);
-  return true;
-}
-
-// --- Workspace Skill Functions ---
+// ────────────────────────────────────────────
+// Workspace Skill 函数（仍使用文件系统）
+// ────────────────────────────────────────────
 
 const WORKSPACE_SCAN_TIMEOUT_MS = 2000;
 
 function getWorkspaceSkillDir(workspacePath: string): string {
   return join(workspacePath, ".agents", "skills");
+}
+
+async function listSkillsFromDir(baseDir: string, enabled = true): Promise<SkillInfo[]> {
+  const skills: SkillInfo[] = [];
+  if (!existsSync(baseDir)) return skills;
+  for (const entry of await readdir(baseDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith("_")) continue;
+    const mdPath = join(baseDir, entry.name, "SKILL.md");
+    if (!existsSync(mdPath)) continue;
+    const raw = await readFile(mdPath, "utf-8");
+    const { metadata } = parseFrontmatter(raw);
+    skills.push({ name: entry.name, enabled, description: metadata.description ?? "", path: mdPath });
+  }
+  return skills;
 }
 
 export async function listWorkspaceSkills(workspacePath: string): Promise<SkillInfo[]> {
@@ -398,7 +368,7 @@ export async function listSkillSources(userId: string): Promise<SkillSourceInfo[
   const { storeListEnvironmentsByUserId } = await import("../store");
   const environments = await storeListEnvironmentsByUserId(userId);
 
-  const globalSkills = await listSkills();
+  const globalSkills = await listSkills(userId);
   const sources: SkillSourceInfo[] = [{
     type: "global",
     name: "全局技能",

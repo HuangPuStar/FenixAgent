@@ -1,11 +1,11 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../../plugins/auth";
-import { getConfig, setTopLevelField } from "../../../services/config";
+import * as configPg from "../../../services/config-pg";
 
 const app = new Elysia({ name: "web-config-models", prefix: "/web" })
   .use(authGuardPlugin);
 
-/** 可用模型缓存：{ models, updatedAt } */
+/** 可用模型缓存 */
 let cachedAvailable: { models: Array<{ id: string; provider: string; fullId: string; label: string; contextLimit: number | null; outputLimit: number | null }>; updatedAt: number } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
 
@@ -14,20 +14,19 @@ function err(code: string, message: string) { return { success: false as const, 
 
 type ModelEntry = { id: string; provider: string; fullId: string; label: string; contextLimit: number | null; outputLimit: number | null };
 
-async function buildAvailableList(): Promise<ModelEntry[]> {
-  const config = await getConfig();
-  const providers = (config.provider as Record<string, Record<string, unknown>>) ?? {};
+async function buildAvailableList(userId: string): Promise<ModelEntry[]> {
+  const providers = await configPg.listProviders(userId);
   const models: ModelEntry[] = [];
-  for (const [providerName, providerCfg] of Object.entries(providers)) {
-    const providerModels = providerCfg.models as Record<string, Record<string, unknown>> | undefined;
-    if (!providerModels) continue;
-    for (const [modelId, modelCfg] of Object.entries(providerModels)) {
-      const limit = modelCfg?.limit as { context?: number; output?: number } | undefined;
+  for (const p of providers) {
+    const pDetail = await configPg.getProvider(userId, p.name);
+    if (!pDetail?.models) continue;
+    for (const m of pDetail.models) {
+      const limit = (m.limitConfig as { context?: number; output?: number } | undefined) ?? undefined;
       models.push({
-        id: modelId,
-        provider: providerName,
-        fullId: `${providerName}/${modelId}`,
-        label: (modelCfg?.name as string) ?? modelId,
+        id: m.modelId,
+        provider: p.name,
+        fullId: `${p.name}/${m.modelId}`,
+        label: m.displayName ?? m.modelId,
         contextLimit: limit?.context ?? null,
         outputLimit: limit?.output ?? null,
       });
@@ -36,44 +35,44 @@ async function buildAvailableList(): Promise<ModelEntry[]> {
   return models;
 }
 
-async function getAvailable(forceRefresh = false): Promise<ModelEntry[]> {
+async function getAvailable(userId: string, forceRefresh = false): Promise<ModelEntry[]> {
   const now = Date.now();
   if (!forceRefresh && cachedAvailable && (now - cachedAvailable.updatedAt) < CACHE_TTL_MS) {
     return cachedAvailable.models;
   }
-  const models = await buildAvailableList();
+  const models = await buildAvailableList(userId);
   cachedAvailable = { models, updatedAt: now };
   return models;
 }
 
-async function handleGet() {
-  const config = await getConfig();
-  const available = await getAvailable();
+async function handleGet(userId: string) {
+  const uc = await configPg.getUserConfig(userId);
+  const available = await getAvailable(userId);
   return ok({
     current: {
-      model: (config.model as string) ?? null,
-      small_model: (config.small_model as string) ?? null,
-      permission: (config.permission as unknown) ?? null,
+      model: uc.currentModel ?? null,
+      small_model: uc.smallModel ?? null,
+      permission: uc.permission ?? null,
     },
     available,
   });
 }
 
-async function handleSet(data: { model?: string; small_model?: string; permission?: unknown }) {
+async function handleSet(userId: string, data: { model?: string; small_model?: string; permission?: unknown }) {
   if (!data.model && !data.small_model && data.permission === undefined) {
     return err("VALIDATION_ERROR", "At least one of 'model', 'small_model', or 'permission' is required");
   }
-  if (data.model) await setTopLevelField("model", data.model);
-  if (data.small_model) await setTopLevelField("small_model", data.small_model);
-  if (data.permission !== undefined) await setTopLevelField("permission", data.permission);
-  // Invalidate cache so next get reflects the changes
+  await configPg.setUserConfig(userId, {
+    currentModel: data.model,
+    smallModel: data.small_model,
+    permission: data.permission,
+  });
   cachedAvailable = null;
-  // 读回确认
-  const config = await getConfig();
+  const uc = await configPg.getUserConfig(userId);
   return ok({
-    model: (config.model as string | null) ?? null,
-    small_model: (config.small_model as string | null) ?? null,
-    permission: (config.permission as unknown) ?? null,
+    model: uc.currentModel ?? null,
+    small_model: uc.smallModel ?? null,
+    permission: uc.permission ?? null,
   });
 }
 
@@ -81,19 +80,20 @@ export function invalidateAvailableCache() {
   cachedAvailable = null;
 }
 
-async function handleRefresh() {
-  const available = await getAvailable(true);
+async function handleRefresh(userId: string) {
+  const available = await getAvailable(userId, true);
   return ok({ count: available.length });
 }
 
-app.post("/config/models", async ({ body, error }) => {
+app.post("/config/models", async ({ store, body, error }) => {
+  const user = store.user!;
   const b = (body as any) ?? {};
   const payload = { action: b.action ?? "", data: b.data as { model?: string; small_model?: string; permission?: unknown } | undefined };
   try {
     switch (payload.action) {
-      case "get": return await handleGet();
-      case "set": return await handleSet(payload.data ?? {});
-      case "refresh": return await handleRefresh();
+      case "get": return await handleGet(user.id);
+      case "set": return await handleSet(user.id, payload.data ?? {});
+      case "refresh": return await handleRefresh(user.id);
       default: return error(400, err("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
     }
   } catch (e: unknown) {

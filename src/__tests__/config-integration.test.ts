@@ -1,6 +1,6 @@
 import { describe, test, expect, mock } from "bun:test";
 
-// Mock auth — bypass session check for all config routes
+// Mock auth
 mock.module("../auth/better-auth", () => ({
   auth: {
     api: {
@@ -13,18 +13,34 @@ mock.module("../auth/better-auth", () => ({
   },
 }));
 
-// Mock config service
-mock.module("../services/config", () => ({
-  getConfig: async () => ({}),
-  getSection: async () => undefined,
-  setSection: async () => {},
-  replaceSection: async () => {},
-  modifySection: async (_section: string, fn: (data: any) => any) => {
-    const result = fn({});
-    return result;
-  },
-  deleteSection: async () => false,
-  setTopLevelField: async () => {},
+// Mock config-pg service
+mock.module("../services/config-pg", () => ({
+  listProviders: async () => [],
+  getProvider: async () => null,
+  upsertProvider: async () => "prov-id",
+  deleteProvider: async () => true,
+  addModel: async () => {},
+  updateModel: async () => {},
+  removeModel: async () => {},
+  getUserConfig: async () => ({ defaultAgent: null, currentModel: null, smallModel: null, permission: null }),
+  setUserConfig: async () => {},
+  listAgentConfigs: async () => [],
+  getAgentConfig: async () => null,
+  createAgentConfig: async () => {},
+  updateAgentConfig: async () => {},
+  deleteAgentConfig: async () => [],
+  listMcpServers: async () => [],
+  getMcpServer: async () => null,
+  createMcpServer: async () => {},
+  updateMcpServer: async () => {},
+  deleteMcpServer: async () => [],
+  setMcpServerEnabled: async () => [],
+  listSkills: async () => [],
+  getSkill: async () => null,
+  upsertSkill: async () => "skill-id",
+  deleteSkill: async () => true,
+  enableSkill: async () => true,
+  disableSkill: async () => true,
 }));
 
 // Mock skill service
@@ -32,7 +48,7 @@ mock.module("../services/skill", () => ({
   SKILLS_DIR: "/tmp/test-skills",
   listSkills: async () => [],
   getSkill: async () => null,
-  setSkill: async (_name: string, data: any) => ({ name: _name, enabled: true, description: data.description }),
+  setSkill: async (_userId: string, _name: string, data: any) => ({ name: _name, enabled: true, description: data.description, path: "/tmp/test-skills/" + _name + "/SKILL.md" }),
   deleteSkill: async () => true,
   enableSkill: async () => true,
   disableSkill: async () => true,
@@ -40,7 +56,7 @@ mock.module("../services/skill", () => ({
   importSkillDirectories: async () => ({ imported: [], skipped: [], conflicts: [] }),
   importWorkspaceSkillDirectories: async () => ({ imported: [], skipped: [], conflicts: [] }),
   getWorkspaceSkill: async () => null,
-  setWorkspaceSkill: async (_ws: string, _name: string, data: any) => ({ name: _name, enabled: true, description: data.description }),
+  setWorkspaceSkill: async (_ws: string, _name: string, data: any) => ({ name: _name, enabled: true, description: data.description, path: "/tmp/test/" + _name + "/SKILL.md" }),
   deleteWorkspaceSkill: async () => true,
   listWorkspaceSkills: async () => [],
 }));

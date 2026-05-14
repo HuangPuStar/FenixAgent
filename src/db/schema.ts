@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, boolean, timestamp, jsonb, integer, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, boolean, timestamp, jsonb, integer, numeric, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 // better-auth tables — primary keys stay as text (better-auth generates IDs internally)
 export const user = pgTable("user", {
@@ -251,3 +251,117 @@ export const agentSession = pgTable("agent_session", {
 }, (table) => ({
   envIdx: index("idx_agent_session_env").on(table.environmentId),
 }));
+
+// ——————————————————————————
+// F002: 配置存储迁移 (fs → pg)
+// ——————————————————————————
+
+// AI 服务商
+export const provider = pgTable("provider", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: varchar("name").notNull(),
+  displayName: varchar("display_name"),
+  npm: varchar("npm"),
+  baseUrl: text("base_url"),
+  apiKey: text("api_key"),
+  extraOptions: jsonb("extra_options"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userNameIdx: uniqueIndex("idx_provider_user_name").on(table.userId, table.name),
+}));
+
+// AI 模型（原 provider.models 子对象）
+export const model = pgTable("model", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  providerId: uuid("provider_id")
+    .notNull()
+    .references(() => provider.id, { onDelete: "cascade" }),
+  modelId: varchar("model_id").notNull(),
+  displayName: varchar("display_name"),
+  modalities: jsonb("modalities"),
+  limitConfig: jsonb("limit_config"),
+  cost: jsonb("cost"),
+  options: jsonb("options"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  providerModelIdx: uniqueIndex("idx_model_provider_model").on(table.providerId, table.modelId),
+}));
+
+// Agent 配置
+export const agentConfig = pgTable("agent_config", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: varchar("name").notNull(),
+  model: varchar("model"),
+  prompt: text("prompt"),
+  steps: integer("steps"),
+  mode: varchar("mode", { length: 20 }),
+  permission: jsonb("permission"),
+  variant: varchar("variant"),
+  temperature: numeric("temperature"),
+  topP: numeric("top_p"),
+  disable: boolean("disable").notNull().default(false),
+  hidden: boolean("hidden").notNull().default(false),
+  color: varchar("color"),
+  description: text("description"),
+  knowledge: jsonb("knowledge"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userNameIdx: uniqueIndex("idx_agent_config_user_name").on(table.userId, table.name),
+}));
+
+// MCP 服务器
+export const mcpServer = pgTable("mcp_server", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: varchar("name").notNull(),
+  type: varchar("type", { length: 10 }).notNull(),
+  config: jsonb("config").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userNameIdx: uniqueIndex("idx_mcp_server_user_name").on(table.userId, table.name),
+}));
+
+// 技能元数据（内容保留在文件系统 content_path）
+export const skill = pgTable("skill", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  environmentId: uuid("environment_id")
+    .references(() => environment.id, { onDelete: "cascade" }),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  contentPath: text("content_path"),
+  metadata: jsonb("metadata"),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  globalIdx: index("idx_skill_global").on(table.userId, table.name),
+  workspaceIdx: index("idx_skill_workspace").on(table.userId, table.environmentId, table.name),
+}));
+
+// 用户偏好（单行）
+export const userConfig = pgTable("user_config", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  defaultAgent: varchar("default_agent"),
+  currentModel: varchar("current_model"),
+  smallModel: varchar("small_model"),
+  permission: jsonb("permission"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

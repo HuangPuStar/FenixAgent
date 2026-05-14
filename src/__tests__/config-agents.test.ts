@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 
+// In-memory mock for agent configs and user config
 let _agentStore: Record<string, any> = {};
-let _topLevelFields: Record<string, any> = {};
+let _userConfig: { defaultAgent: string | null; currentModel: string | null; smallModel: string | null; permission: unknown } = { defaultAgent: null, currentModel: null, smallModel: null, permission: null };
 let _agentKnowledgeBindings: Record<string, { knowledgeBaseId: string; priority: number; enabled: boolean }[]> = {};
 
 mock.module("../auth/better-auth", () => ({
@@ -16,16 +17,42 @@ mock.module("../auth/better-auth", () => ({
   },
 }));
 
-mock.module("../services/config", () => ({
-  getSection: async (section: string) => section === "agent" ? _agentStore : undefined,
-  setSection: async (_section: string, data: unknown) => { _agentStore = data as Record<string, unknown>; },
-  replaceSection: async (_section: string, data: unknown) => { _agentStore = data as Record<string, unknown>; },
-  modifySection: async (_section: string, modifier: (current: any) => any) => {
-    const current = _section === "agent" ? _agentStore : undefined;
-    _agentStore = modifier(current);
+mock.module("../services/config-pg", () => ({
+  listAgentConfigs: async (_userId: string) => {
+    return Object.entries(_agentStore).map(([name, cfg]) => ({ name, ...cfg }));
   },
-  setTopLevelField: async (field: string, value: unknown) => { _topLevelFields[field] = value; },
-  getConfig: async () => ({ ..._topLevelFields, agent: _agentStore }),
+  getAgentConfig: async (_userId: string, name: string) => {
+    const cfg = _agentStore[name];
+    return cfg ? { name, ...cfg } : null;
+  },
+  createAgentConfig: async (_userId: string, name: string, data: Record<string, unknown>) => {
+    _agentStore[name] = { ...data };
+  },
+  updateAgentConfig: async (_userId: string, name: string, data: Record<string, unknown>) => {
+    if (!_agentStore[name]) return;
+    const existing = { ..._agentStore[name] };
+    for (const [key, value] of Object.entries(data)) {
+      if (value === null) {
+        delete existing[key];
+      } else {
+        existing[key] = value;
+      }
+    }
+    delete existing.tools;
+    _agentStore[name] = existing;
+  },
+  deleteAgentConfig: async (_userId: string, name: string) => {
+    if (!(name in _agentStore)) return false;
+    delete _agentStore[name];
+    return true;
+  },
+  getUserConfig: async (_userId: string) => ({ ..._userConfig }),
+  setUserConfig: async (_userId: string, patch: any) => {
+    if (patch.defaultAgent !== undefined) _userConfig.defaultAgent = patch.defaultAgent;
+    if (patch.currentModel !== undefined) _userConfig.currentModel = patch.currentModel;
+    if (patch.smallModel !== undefined) _userConfig.smallModel = patch.smallModel;
+    if (patch.permission !== undefined) _userConfig.permission = patch.permission;
+  },
 }));
 
 mock.module("../services/agent-knowledge", () => ({
@@ -76,7 +103,7 @@ describe("Agents Config Route", () => {
       plan: { model: "claude-opus-4-7", prompt: "Plan tasks", steps: 30 },
       "code-reviewer": { model: "gpt-4o", prompt: "Review code" },
     };
-    _topLevelFields = { default_agent: "build" };
+    _userConfig = { defaultAgent: "build", currentModel: null, smallModel: null, permission: null };
     _agentKnowledgeBindings = {};
   });
 
@@ -129,7 +156,6 @@ describe("Agents Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(_agentStore.build.steps).toBe(100);
-    // Original fields preserved
     expect(_agentStore.build.model).toBe("claude-sonnet-4-6");
   });
 
@@ -250,7 +276,7 @@ describe("Agents Config Route", () => {
     }));
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(_topLevelFields.default_agent).toBe("plan");
+    expect(_userConfig.defaultAgent).toBe("plan");
   });
 
   test("set_default 不存在 agent", async () => {
@@ -263,8 +289,6 @@ describe("Agents Config Route", () => {
     expect(json.success).toBe(false);
     expect(json.error.code).toBe("NOT_FOUND");
   });
-
-  // ── Task 2: Permission 类型定义与 Agents API 兼容转换 测试 ──
 
   describe("handleList — description 和 color 字段", () => {
     test("handleList 返回 description 和 color", async () => {
@@ -351,7 +375,7 @@ describe("Agents Config Route", () => {
         model: "gpt-4o",
         variant: "thinking",
         temperature: 0.7,
-        top_p: 0.9,
+        topP: 0.9,
         disable: true,
         hidden: true,
         color: "#FF5500",
@@ -379,7 +403,7 @@ describe("Agents Config Route", () => {
   });
 
   describe("handleSet — 白名单过滤和新字段", () => {
-    test("handleSet 写入 permission 并清除 tools", async () => {
+    test("handleSet 写入 permission", async () => {
       _agentStore["set-agent"] = { model: "gpt-4o", tools: { bash: true } };
       const res = await agentsRoute.handle(new Request("http://localhost/web/config/agents", {
         method: "POST",
