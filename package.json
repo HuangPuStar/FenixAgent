@@ -3,7 +3,9 @@
     "version": "0.1.0",
     "private": true,
     "type": "module",
-    "workspaces": ["packages/*"],
+    "workspaces": [
+        "packages/*"
+    ],
     "scripts": {
         "postinstall": "bunx peri-cli install acpx-g && bunx peri-cli add-env",
         "dev": "bun run src/index.ts",
@@ -39,7 +41,7 @@
         "@radix-ui/react-use-controllable-state": "^1.2.2",
         "@tailwindcss/typography": "^0.5.19",
         "@tanstack/react-table": "^8.21.3",
-        "acp-link": "^1.1.0",
+        "acp-link": "workspace: *",
         "ai": "^6.0.168",
         "better-auth": "^1.6.8",
         "browser-image-compression": "^2.0.2",

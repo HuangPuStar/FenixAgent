@@ -1,13 +1,13 @@
-import { EventEmitter } from "./emitter";
-import type { WSTransport } from "./transport";
-import type { ACPProtocol } from "./protocol";
+import { EventEmitter } from "./emitter.js";
+import type { WSTransport } from "./transport.js";
+import type { ACPProtocol } from "./protocol.js";
 import type {
   AgentCapabilities,
   PromptCapabilities,
   SessionModelState,
   AvailableCommand,
   ConnectionState,
-} from "./types";
+} from "../types.js";
 
 export interface StateEvents {
   connectionStateChange: { state: ConnectionState; error?: string };

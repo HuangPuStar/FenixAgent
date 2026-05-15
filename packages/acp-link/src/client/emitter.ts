@@ -26,7 +26,8 @@ export class EventEmitter<Events extends Record<string, any>> {
     const set = this.handlers.get(event as string);
     if (set) {
       for (const handler of set) {
-        handler(...args);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (handler as any)(...args);
       }
     }
   }

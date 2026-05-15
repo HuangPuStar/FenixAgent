@@ -7,6 +7,14 @@ import { createNodeWebSocket } from '@hono/node-ws'
 import type { WSContext } from 'hono/ws'
 import type { WebSocket as RawWebSocket } from 'ws'
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from './ws-message.js'
+import type {
+  AgentCapabilities,
+  PromptCapabilities,
+  SessionModelState,
+  PermissionResponsePayload,
+  ContentBlock,
+  ProxyMessage,
+} from './types.js'
 
 export { MAX_CLIENT_WS_PAYLOAD_BYTES } from './ws-message.js'
 
@@ -26,44 +34,6 @@ interface PendingPermission {
       | { outcome: 'selected'; optionId: string },
   ) => void
   timeout: ReturnType<typeof setTimeout>
-}
-
-// PromptCapabilities from ACP protocol
-// Reference: Zed's prompt_capabilities to check image support
-interface PromptCapabilities {
-  audio?: boolean
-  embeddedContext?: boolean
-  image?: boolean
-}
-
-// SessionModelState from ACP protocol
-// Reference: Zed's AgentModelSelector reads from state.available_models
-interface SessionModelState {
-  availableModels: Array<{
-    modelId: string
-    name: string
-    description?: string | null
-  }>
-  currentModelId: string
-}
-
-// AgentCapabilities from ACP protocol
-// Reference: Zed's AcpConnection.agent_capabilities
-// Matches SDK's AgentCapabilities exactly
-interface AgentCapabilities {
-  _meta?: Record<string, unknown> | null
-  loadSession?: boolean
-  mcpCapabilities?: {
-    _meta?: Record<string, unknown> | null
-    clientServers?: boolean
-  }
-  promptCapabilities?: PromptCapabilities
-  sessionCapabilities?: {
-    _meta?: Record<string, unknown> | null
-    fork?: Record<string, unknown> | null
-    list?: Record<string, unknown> | null
-    resume?: Record<string, unknown> | null
-  }
 }
 
 // Track connected clients and their agent connections
@@ -577,34 +547,6 @@ async function handleSetSessionModel(
   }
 }
 
-// ContentBlock type matching @agentclientprotocol/sdk
-interface ContentBlock {
-  type: string
-  text?: string
-  data?: string
-  mimeType?: string
-  uri?: string
-  name?: string
-}
-
-type PermissionResponsePayload = {
-  requestId: string
-  outcome: { outcome: 'cancelled' } | { outcome: 'selected'; optionId: string }
-}
-
-type ProxyMessage =
-  | { type: 'connect' }
-  | { type: 'disconnect' }
-  | { type: 'new_session'; payload: { cwd?: string; permissionMode?: string } }
-  | { type: 'prompt'; payload: { content: ContentBlock[] } }
-  | { type: 'permission_response'; payload: PermissionResponsePayload }
-  | { type: 'cancel' }
-  | { type: 'set_session_model'; payload: { modelId: string } }
-  | { type: 'list_sessions'; payload: { cwd?: string; cursor?: string } }
-  | { type: 'load_session'; payload: { sessionId: string; cwd?: string } }
-  | { type: 'resume_session'; payload: { sessionId: string; cwd?: string } }
-  | { type: 'ping' }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -746,6 +688,9 @@ function decodeClientMessage(message: Record<string, unknown>): ProxyMessage {
         },
       }
     }
+    case 'browser_tool_result':
+      // Browser tool results pass through decoding but are no-ops on the server
+      return message as unknown as ProxyMessage
     default:
       throw new Error(`Unknown message type: ${message.type}`)
   }
@@ -767,7 +712,7 @@ async function dispatchClientMessage(
       handleDisconnect(ws)
       break
     case 'new_session':
-      await handleNewSession(ws, data.payload)
+      await handleNewSession(ws, data.payload ?? {})
       break
     case 'prompt':
       await handlePrompt(ws, data.payload)
@@ -782,7 +727,7 @@ async function dispatchClientMessage(
       await handleSetSessionModel(ws, data.payload)
       break
     case 'list_sessions':
-      await handleListSessions(ws, data.payload)
+      await handleListSessions(ws, data.payload ?? {})
       break
     case 'load_session':
       await handleLoadSession(ws, data.payload)
@@ -792,6 +737,9 @@ async function dispatchClientMessage(
       break
     case 'ping':
       send(ws, 'pong')
+      break
+    case 'browser_tool_result':
+      // No-op: browser tool results are only meaningful in relay mode
       break
   }
 }

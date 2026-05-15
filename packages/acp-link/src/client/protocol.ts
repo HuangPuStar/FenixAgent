@@ -1,4 +1,4 @@
-import { EventEmitter } from "./emitter";
+import { EventEmitter } from "./emitter.js";
 import type {
   ProxyResponse,
   ProxyStatusMessage,
@@ -11,7 +11,7 @@ import type {
   PermissionRequestPayload,
   BrowserToolParams,
   SessionUpdate,
-} from "./types";
+} from "../types.js";
 
 export interface ProtocolEvents {
   status: ProxyStatusMessage["payload"];

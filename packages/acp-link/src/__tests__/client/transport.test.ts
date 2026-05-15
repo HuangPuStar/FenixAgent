@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { EventEmitter } from "../../acp/emitter";
-import { WSTransport } from "../../acp/transport";
-import type { TransportEvents } from "../../acp/transport";
+import { EventEmitter } from "../../client/emitter.js";
+import { WSTransport } from "../../client/transport.js";
+import type { TransportEvents } from "../../client/transport.js";
 
 // WSTransport 需要真实 WebSocket 环境，这里测试状态机和重连逻辑
 // 通过构造假的 CloseEvent 来模拟

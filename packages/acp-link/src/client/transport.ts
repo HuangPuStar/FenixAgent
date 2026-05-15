@@ -1,4 +1,4 @@
-import { EventEmitter } from "./emitter";
+import { EventEmitter } from "./emitter.js";
 
 export type TransportState = "connecting" | "connected" | "disconnected" | "error";
 

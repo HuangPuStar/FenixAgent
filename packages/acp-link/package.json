@@ -6,6 +6,16 @@
     "type": "module",
     "main": "./dist/server.js",
     "types": "./dist/server.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/server.js",
+            "types": "./dist/server.d.ts"
+        },
+        "./client": {
+            "import": "./dist/client/index.js",
+            "types": "./dist/client/index.d.ts"
+        }
+    },
     "bin": {
         "acp-link": "dist/cli/bin.js"
     },

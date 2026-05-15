@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { ACPPending } from "../../acp/pending";
+import { ACPPending } from "../../client/pending.js";
 
 // ACPPending request/response 关联测试
 describe("ACPPending", () => {

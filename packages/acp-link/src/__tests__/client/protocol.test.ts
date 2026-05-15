@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { ACPProtocol } from "../../acp/protocol";
+import { ACPProtocol } from "../../client/protocol.js";
 
 // ACPProtocol 无状态解析测试
 describe("ACPProtocol", () => {

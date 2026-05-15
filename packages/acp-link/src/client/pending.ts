@@ -4,7 +4,8 @@
  * 同一 requestType 同时只能有一个 pending（隐式关联）。
  * 支持超时、重连后续传、永久断开时 reject all。
  */
-interface PendingEntry<any> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface PendingEntry<T = any> {
   requestType: string;
   responseType: string;
   sendFn: (request: any) => void;
@@ -12,6 +13,7 @@ interface PendingEntry<any> {
   resolve: (value: any) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  promise: Promise<T>;
 }
 
 export class ACPPending {
