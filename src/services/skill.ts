@@ -365,8 +365,8 @@ export async function listWorkspaceSkills(workspacePath: string): Promise<SkillI
 }
 
 export async function listSkillSources(userId: string): Promise<SkillSourceInfo[]> {
-  const { storeListEnvironmentsByUserId } = await import("../store");
-  const environments = await storeListEnvironmentsByUserId(userId);
+  const { environmentRepo } = await import("../repositories");
+  const environments = await environmentRepo.listByUserId(userId);
 
   const globalSkills = await listSkills(userId);
   const sources: SkillSourceInfo[] = [{

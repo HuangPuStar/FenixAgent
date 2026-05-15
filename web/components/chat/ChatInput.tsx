@@ -7,8 +7,7 @@ import type { AvailableCommand } from "../../src/acp/types";
 import type { FileInfo } from "../../src/types";
 import { CommandMenu } from "./CommandMenu";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
-import { apiUploadFile } from "../../src/api/client";
-// apiUploadFile is retained as a utility wrapper in client.ts
+import { fetchUpload } from "../../src/api/client";
 import imageCompression from "browser-image-compression";
 
 // 图片压缩配置
@@ -170,7 +169,11 @@ export function ChatInput({
     // 非图片：上传到 user/ 文件夹并添加为附件引用
     if (otherFiles.length > 0) {
       try {
-        await apiUploadFile(sessionId, "user", otherFiles);
+        const formData = new FormData();
+        for (const file of otherFiles) {
+          formData.append("files", file);
+        }
+        await fetchUpload(`/web/sessions/${sessionId}/user/user`, formData);
         const newAttachments: FileAttachment[] = otherFiles.map((f) => ({
           name: f.name,
           path: `user/${f.name}`,

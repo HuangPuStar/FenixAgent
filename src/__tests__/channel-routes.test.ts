@@ -40,11 +40,19 @@ mock.module("../services/channel-binding", () => ({
       : undefined,
 }));
 
-mock.module("../store", () => ({
-  storeGetEnvironment: (id: string) =>
-    id === "env_001"
-      ? { id: "env_001", name: "test-agent", workerType: "acp", status: "active" }
-      : undefined,
+mock.module("../repositories", () => ({
+  environmentRepo: {
+    getById: async (id: string) =>
+      id === "env_001"
+        ? { id: "env_001", name: "test-agent", workerType: "acp", status: "active" }
+        : undefined,
+  },
+  sessionRepo: {},
+  sessionWorkerRepo: {},
+  shareLinkRepo: {},
+  tokenRepo: {},
+  workItemRepo: {},
+  resetAllRepos: () => {},
 }));
 
 const { default: Elysia } = await import("elysia");

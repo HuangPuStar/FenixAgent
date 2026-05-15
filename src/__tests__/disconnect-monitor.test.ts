@@ -18,14 +18,10 @@ mock.module("../config", () => ({
 }));
 
 import {
-  storeReset,
-  storeCreateEnvironment,
-  storeUpdateEnvironment,
-  storeCreateSession,
-  storeUpdateSession,
-  storeGetEnvironment,
-  storeGetSession,
-} from "../store";
+  resetAllRepos,
+  environmentRepo,
+  sessionRepo,
+} from "../repositories";
 import { db } from "../db";
 import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -53,38 +49,38 @@ async function ensureUser(userId: string) {
 describe("Disconnect Monitor Logic", () => {
   beforeEach(async () => {
     await ensureUser("u1");
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }
   });
 
   test("environment times out when lastPollAt is too old", async () => {
-    const env = await storeCreateEnvironment({ userId: "u1", workerType: "legacy" });
+    const env = await environmentRepo.create({ userId: "u1", workerType: "legacy" });
     const timeoutMs = 300 * 1000; // 5 minutes
 
     // Simulate lastPollAt being 6 minutes ago
     const oldDate = new Date(Date.now() - timeoutMs - 60000);
-    await storeUpdateEnvironment(env.id, { lastPollAt: oldDate });
+    await environmentRepo.update(env.id, { lastPollAt: oldDate });
 
     await runDisconnectMonitorSweep();
 
-    const updated = await storeGetEnvironment(env.id);
+    const updated = await environmentRepo.getById(env.id);
     expect(updated?.status).toBe("disconnected");
   });
 
   test("environment stays active when lastPollAt is recent", async () => {
-    const env = await storeCreateEnvironment({ userId: "u1", workerType: "legacy" });
+    const env = await environmentRepo.create({ userId: "u1", workerType: "legacy" });
     await runDisconnectMonitorSweep();
 
-    const updated = await storeGetEnvironment(env.id);
+    const updated = await environmentRepo.getById(env.id);
     expect(updated?.status).toBe("active");
   });
 
   test("session becomes inactive when updatedAt is too old", async () => {
-    const session = await storeCreateSession({});
-    await storeUpdateSession(session.id, { status: "running" });
-    const rec = await storeGetSession(session.id);
+    const session = await sessionRepo.create({});
+    await sessionRepo.update(session.id, { status: "running" });
+    const rec = await sessionRepo.getById(session.id);
     expect(rec).toBeTruthy();
     if (!rec) return;
 
@@ -92,24 +88,24 @@ describe("Disconnect Monitor Logic", () => {
 
     await runDisconnectMonitorSweep();
 
-    const updated = await storeGetSession(session.id);
+    const updated = await sessionRepo.getById(session.id);
     expect(updated?.status).toBe("inactive");
   });
 
   test("session stays running when recently updated", async () => {
-    const session = await storeCreateSession({});
-    await storeUpdateSession(session.id, { status: "running" });
+    const session = await sessionRepo.create({});
+    await sessionRepo.update(session.id, { status: "running" });
 
     await runDisconnectMonitorSweep();
 
-    const updated = await storeGetSession(session.id);
+    const updated = await sessionRepo.getById(session.id);
     expect(updated?.status).toBe("running");
   });
 
   test("session timeout publishes an inactive session_status event", async () => {
-    const session = await storeCreateSession({});
-    await storeUpdateSession(session.id, { status: "idle" });
-    const rec = await storeGetSession(session.id);
+    const session = await sessionRepo.create({});
+    await sessionRepo.update(session.id, { status: "idle" });
+    const rec = await sessionRepo.getById(session.id);
     expect(rec).toBeTruthy();
     if (!rec) return;
     rec.updatedAt = new Date(Date.now() - 300 * 1000 * 2 - 60000);

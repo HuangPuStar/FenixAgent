@@ -18,7 +18,7 @@ mock.module("../config", () => ({
 }));
 
 import Elysia from "elysia";
-import { storeReset } from "../store";
+import { resetAllRepos } from "../repositories";
 import { removeEventBus, getAllEventBuses, getEventBus } from "../transport/event-bus";
 import { createSSEWriter, createSSEStream } from "../transport/sse-writer";
 
@@ -73,7 +73,7 @@ describe("SSE Writer", () => {
 
   describe("createSSEStream", () => {
     beforeEach(() => {
-      storeReset();
+      resetAllRepos();
       for (const [key] of getAllEventBuses()) {
         removeEventBus(key);
       }

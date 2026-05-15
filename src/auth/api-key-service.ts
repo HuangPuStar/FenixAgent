@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../db";
 import { apiKey } from "../db/schema";
 import { createHash, randomBytes } from "node:crypto";
+import { config } from "../config";
 
 const KEY_PREFIX = "rcs_";
 
@@ -125,4 +126,15 @@ export async function updateApiKeyLabel(userId: string, keyId: string, label: st
 
   await db.update(apiKey).set({ label }).where(and(eq(apiKey.id, keyId), eq(apiKey.userId, userId)));
   return true;
+}
+
+/** Validate a legacy global API key (RCS_API_KEYS env var) */
+export function validateLegacyApiKey(token: string | undefined): boolean {
+  if (!token || config.apiKeys.length === 0) return false;
+  return config.apiKeys.includes(token);
+}
+
+/** Hash an API key with SHA-256 */
+export function hashApiKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
 }

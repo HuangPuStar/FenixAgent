@@ -11,10 +11,7 @@ import {
 } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { authGuardPlugin } from "../../plugins/auth";
-import {
-    storeGetEnvironment,
-    storeGetSession,
-} from "../../store";
+import { environmentRepo, sessionRepo } from "../../repositories";
 import { resolveExistingSessionId } from "../../services/session";
 import {
     FileListResponseSchema,
@@ -65,11 +62,11 @@ async function resolveWorkspacePath(
     sessionId: string,
     relativePath: string,
 ): Promise<ResolvedWorkspacePath | null> {
-    const internalId = resolveExistingSessionId(sessionId);
-    const session = internalId ? storeGetSession(internalId) : undefined;
+    const internalId = await resolveExistingSessionId(sessionId);
+    const session = internalId ? await sessionRepo.getById(internalId) : undefined;
     const envId = session?.environmentId;
     if (!envId) return null;
-    const env = await storeGetEnvironment(envId);
+    const env = await environmentRepo.getById(envId);
     if (!env) return null;
 
     const workspaceDir = env.workspacePath;

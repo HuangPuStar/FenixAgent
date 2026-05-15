@@ -9,6 +9,7 @@ import {
   type AgentKnowledgeConfig,
   type AgentKnowledgePolicy,
 } from "../../../services/agent-knowledge";
+import { configSuccess, configError, configValidationError, configNotFound, isValidResourceName } from "../../../services/config-utils";
 
 const BUILT_IN_AGENTS = new Set(["build", "plan", "general", "explore", "title", "summary", "compaction"]);
 
@@ -48,11 +49,7 @@ const AGENT_SETTABLE_FIELDS = new Set([
   "knowledge",
 ]);
 
-function isValidAgentName(name: string): boolean {
-  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name)
-      && name.length >= 1 && name.length <= 64
-      && !name.includes("--");
-}
+const isValidAgentName = isValidResourceName;
 
 function isValidMode(mode: string): boolean {
   return ["primary", "subagent", "all"].includes(mode);
@@ -199,12 +196,12 @@ async function handleList(userId: string) {
     color: a.color ?? null,
     knowledgeBaseCount: (await listAgentKnowledgeBindings(a.name)).length,
   })));
-  return { success: true, data: { default_agent: defaultAgent, agents: list } };
+  return configSuccess({ default_agent: defaultAgent, agents: list });
 }
 
 async function handleGet(userId: string, name: string) {
   const agent = await configPg.getAgentConfig(userId, name);
-  if (!agent) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
+  if (!agent) return configNotFound(`Agent '${name}' not found`);
 
   let permission = agent.permission ?? null;
   // tools→permission 兼容：旧数据可能只有 tools 没有 permission
@@ -213,31 +210,28 @@ async function handleGet(userId: string, name: string) {
     permission = toolsToPermission(tools as Record<string, boolean>);
   }
 
-  return {
-    success: true,
-    data: {
-      name,
-      builtIn: BUILT_IN_AGENTS.has(name),
-      model: agent.model ?? null,
-      prompt: agent.prompt ?? null,
-      steps: agent.steps ?? null,
-      mode: agent.mode ?? null,
-      permission,
-      variant: agent.variant ?? null,
-      temperature: agent.temperature ?? null,
-      top_p: agent.topP ?? null,
-      disable: agent.disable ?? false,
-      hidden: agent.hidden ?? false,
-      color: agent.color ?? null,
-      description: agent.description ?? null,
-      knowledge: normalizeKnowledgeConfig(agent.knowledge ?? null),
-    },
-  };
+  return configSuccess({
+    name,
+    builtIn: BUILT_IN_AGENTS.has(name),
+    model: agent.model ?? null,
+    prompt: agent.prompt ?? null,
+    steps: agent.steps ?? null,
+    mode: agent.mode ?? null,
+    permission,
+    variant: agent.variant ?? null,
+    temperature: agent.temperature ?? null,
+    top_p: agent.topP ?? null,
+    disable: agent.disable ?? false,
+    hidden: agent.hidden ?? false,
+    color: agent.color ?? null,
+    description: agent.description ?? null,
+    knowledge: normalizeKnowledgeConfig(agent.knowledge ?? null),
+  });
 }
 
 async function handleSet(userId: string, name: string, data: Record<string, unknown>) {
   const validation = validateAgentData(data);
-  if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
+  if (validation) return configValidationError(validation);
 
   // 白名单过滤
   const filtered: Record<string, unknown> = {};
@@ -249,7 +243,7 @@ async function handleSet(userId: string, name: string, data: Record<string, unkn
 
   // 检查 agent 是否存在
   const existing = await configPg.getAgentConfig(userId, name);
-  if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
+  if (!existing) return configNotFound(`Agent '${name}' not found`);
 
   // 清除 null 值字段，映射 snake_case → camelCase
   const updateData: Record<string, unknown> = {};
@@ -267,15 +261,15 @@ async function handleSet(userId: string, name: string, data: Record<string, unkn
 
   await configPg.updateAgentConfig(userId, name, updateData);
   await syncAgentKnowledgeBindings(userId, name, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
-  return { success: true, data: { name, ...filtered } };
+  return configSuccess({ name, ...filtered });
 }
 
 async function handleCreate(userId: string, name: string, data: Record<string, unknown>) {
   if (!isValidAgentName(name)) {
-    return { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid agent name: must be 1-64 lowercase alphanumeric chars with single hyphens" } };
+    return configValidationError("Invalid agent name: must be 1-64 lowercase alphanumeric chars with single hyphens");
   }
   const validation = validateAgentData(data);
-  if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
+  if (validation) return configValidationError(validation);
 
   // 白名单过滤
   const filtered: Record<string, unknown> = {};
@@ -298,27 +292,27 @@ async function handleCreate(userId: string, name: string, data: Record<string, u
 
   // 检查是否已存在
   const existing = await configPg.getAgentConfig(userId, name);
-  if (existing) return { success: false, error: { code: "ALREADY_EXISTS", message: `Agent '${name}' already exists` } };
+  if (existing) return configError("ALREADY_EXISTS", `Agent '${name}' already exists`);
 
   await configPg.createAgentConfig(userId, name, pgData);
   await syncAgentKnowledgeBindings(userId, name, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
-  return { success: true, data: { name } };
+  return configSuccess({ name });
 }
 
 async function handleDelete(userId: string, name: string) {
   if (BUILT_IN_AGENTS.has(name)) {
-    return { success: false, error: { code: "FORBIDDEN", message: `Cannot delete built-in agent '${name}'` } };
+    return configError("FORBIDDEN", `Cannot delete built-in agent '${name}'`);
   }
   const deleted = await configPg.deleteAgentConfig(userId, name);
-  if (!deleted) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
-  return { success: true };
+  if (!deleted) return configNotFound(`Agent '${name}' not found`);
+  return configSuccess(null);
 }
 
 async function handleSetDefault(userId: string, name: string) {
   const agent = await configPg.getAgentConfig(userId, name);
-  if (!agent) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
+  if (!agent) return configNotFound(`Agent '${name}' not found`);
   await configPg.setUserConfig(userId, { defaultAgent: name });
-  return { success: true, data: { default_agent: name } };
+  return configSuccess({ default_agent: name });
 }
 
 import { ConfigBodySchema } from "../../../schemas/config.schema";
@@ -341,7 +335,7 @@ app.post("/config/agents", async ({ store, body, error }) => {
       case "create": return await handleCreate(user.id, name!, data!);
       case "delete": return await handleDelete(user.id, name!);
       case "set_default": return await handleSetDefault(user.id, name!);
-      default: return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: `Unknown action '${action}'` } });
+      default: return error(400, configValidationError(`Unknown action '${action}'`));
     }
   } catch (error_) {
     if (
@@ -349,7 +343,7 @@ app.post("/config/agents", async ({ store, body, error }) => {
       || (typeof error_ === "object" && error_ !== null && "code" in error_ && (error_ as { code?: string }).code === "INVALID_KNOWLEDGE_BINDINGS")
     ) {
       const message = error_ instanceof Error ? error_.message : "知识库绑定无效";
-      return error(400, { success: false, error: { code: "INVALID_KNOWLEDGE_BINDINGS", message } });
+      return error(400, configError("INVALID_KNOWLEDGE_BINDINGS", message));
     }
     throw error_;
   }

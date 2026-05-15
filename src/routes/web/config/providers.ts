@@ -3,6 +3,7 @@ import { authGuardPlugin } from "../../../plugins/auth";
 import * as configPg from "../../../services/config-pg";
 import { invalidateAvailableCache } from "./models";
 import { ConfigBodySchema } from "../../../schemas/config.schema";
+import { configSuccess, configError, toKeyHint, resolveApiKey } from "../../../services/config-utils";
 
 type ProviderBody = { action: string; name?: string; modelId?: string; data?: Record<string, unknown> };
 
@@ -11,23 +12,6 @@ const app = new Elysia({ name: "web-config-providers", prefix: "/web" })
   .model({
     "config-body": ConfigBodySchema,
   });
-
-/** 从 apiKey 字段生成 keyHint：取尾 4 位，前缀 *** */
-function toKeyHint(apiKey: string | undefined | null): string | null {
-  const realKey = resolveApiKey(apiKey);
-  if (!realKey || realKey.length < 4) return null;
-  return "***" + realKey.slice(-4);
-}
-
-/** 解析 apiKey：明文直接返回，{env:XXX} 引用尝试环境变量 */
-function resolveApiKey(raw: string | undefined | null): string | null {
-  if (!raw) return null;
-  const envMatch = raw.match(/^\{env:(.+)\}$/);
-  return envMatch ? (process.env[envMatch[1]] ?? null) : raw;
-}
-
-function ok(data: unknown) { return { success: true as const, data }; }
-function err(code: string, message: string) { return { success: false as const, error: { code, message } }; }
 
 async function handleList(userId: string) {
   const providers = await configPg.listProviders(userId);
@@ -40,12 +24,12 @@ async function handleList(userId: string) {
     baseURL: p.baseUrl ?? null,
     modelCount: p.modelCount,
   }));
-  return ok({ providers: list });
+  return configSuccess({ providers: list });
 }
 
 async function handleGet(userId: string, name: string) {
   const p = await configPg.getProvider(userId, name);
-  if (!p) return err("NOT_FOUND", `Provider '${name}' not found`);
+  if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
 
   const models = (p.models ?? []).map((m) => ({
     id: m.modelId,
@@ -55,7 +39,7 @@ async function handleGet(userId: string, name: string) {
     cost: m.cost ?? null,
   }));
 
-  return ok({
+  return configSuccess({
     id: name,
     name: p.name,
     npm: p.npm ?? null,
@@ -71,7 +55,7 @@ async function handleGet(userId: string, name: string) {
 }
 
 async function handleSet(userId: string, name: string, data: Record<string, unknown>) {
-  if (!name || typeof name !== "string") return err("VALIDATION_ERROR", "Provider name is required");
+  if (!name || typeof name !== "string") return configError("VALIDATION_ERROR", "Provider name is required");
 
   // 读取现有 provider 以保留 models
   const existing = await configPg.getProvider(userId, name);
@@ -123,12 +107,12 @@ async function handleSet(userId: string, name: string, data: Record<string, unkn
   }
 
   invalidateAvailableCache();
-  return ok({ id: name, keyHint: toKeyHint(apiKey ?? existing?.apiKey) });
+  return configSuccess({ id: name, keyHint: toKeyHint(apiKey ?? existing?.apiKey) });
 }
 
 async function handleTest(userId: string, name: string) {
   const p = await configPg.getProvider(userId, name);
-  if (!p) return err("NOT_FOUND", `Provider '${name}' not found`);
+  if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
 
   const apiKey = resolveApiKey(p.apiKey) ?? "";
   let baseURL = p.baseUrl ?? "https://api.anthropic.com";
@@ -146,67 +130,67 @@ async function handleTest(userId: string, name: string) {
       if (res.status === 401 || res.status === 403) {
         let detail = "";
         try { const body = await res.text(); detail = body.slice(0, 200); } catch {}
-        return err("CONFIG_READ_ERROR", `认证失败 (HTTP ${res.status})${detail ? ": " + detail : ""}`);
+        return configError("CONFIG_READ_ERROR", `认证失败 (HTTP ${res.status})${detail ? ": " + detail : ""}`);
       }
-      return ok({ models: [], warning: `API 可达，但模型列表接口返回 HTTP ${res.status}` });
+      return configSuccess({ models: [], warning: `API 可达，但模型列表接口返回 HTTP ${res.status}` });
     }
     const json = await res.json() as { data?: Array<{ id: string }> };
     const models = (json.data ?? []).map((m) => m.id);
-    return ok({ models });
+    return configSuccess({ models });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Connection failed";
-    return err("CONFIG_READ_ERROR", `Test failed: ${message}`);
+    return configError("CONFIG_READ_ERROR", `Test failed: ${message}`);
   }
 }
 
 async function handleDelete(userId: string, name: string) {
   const deleted = await configPg.deleteProvider(userId, name);
-  if (!deleted) return err("NOT_FOUND", `Provider '${name}' not found`);
+  if (!deleted) return configError("NOT_FOUND", `Provider '${name}' not found`);
   invalidateAvailableCache();
-  return ok(null);
+  return configSuccess(null);
 }
 
 async function handleAddModel(userId: string, providerName: string, data: Record<string, unknown>) {
   const modelId = data.modelId as string;
-  if (!modelId) return err("VALIDATION_ERROR", "modelId is required");
+  if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
 
   const p = await configPg.getProvider(userId, providerName);
-  if (!p) return err("NOT_FOUND", `Provider '${providerName}' not found`);
+  if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
-  if (existingModel) return err("VALIDATION_ERROR", `Model '${modelId}' already exists`);
+  if (existingModel) return configError("VALIDATION_ERROR", `Model '${modelId}' already exists`);
 
   await configPg.addModel(p.id, { modelId, ...buildModelData(data) });
   invalidateAvailableCache();
-  return ok({ modelId });
+  return configSuccess({ modelId });
 }
 
 async function handleUpdateModel(userId: string, providerName: string, modelId: string, data: Record<string, unknown>) {
-  if (!modelId) return err("VALIDATION_ERROR", "modelId is required");
+  if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
 
   const p = await configPg.getProvider(userId, providerName);
-  if (!p) return err("NOT_FOUND", `Provider '${providerName}' not found`);
+  if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
-  if (!existingModel) return err("NOT_FOUND", `Model '${modelId}' not found`);
+  if (!existingModel) return configError("NOT_FOUND", `Model '${modelId}' not found`);
 
   await configPg.updateModel(p.id, modelId, buildModelData(data));
   invalidateAvailableCache();
-  return ok({ modelId });
+  return configSuccess({ modelId });
 }
 
 async function handleRemoveModel(userId: string, providerName: string, modelId: string) {
-  if (!modelId) return err("VALIDATION_ERROR", "modelId is required");
+  if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
 
   const p = await configPg.getProvider(userId, providerName);
-  if (!p) return err("NOT_FOUND", `Provider '${providerName}' not found`);
+  if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
-  if (!existingModel) return err("NOT_FOUND", `Model '${modelId}' not found`);
+  if (!existingModel) return configError("NOT_FOUND", `Model '${modelId}' not found`);
 
   await configPg.removeModel(p.id, modelId);
   invalidateAvailableCache();
-  return ok(null);
+  return configSuccess(null);
 }
 
 function buildModelData(data: Record<string, unknown>): { displayName?: string; modalities?: unknown; limitConfig?: unknown; cost?: unknown; options?: unknown } {
@@ -233,11 +217,11 @@ app.post("/config/providers", async ({ store, body, error }) => {
       case "add_model": return await handleAddModel(user.id, payload.name!, payload.data!);
       case "update_model": return await handleUpdateModel(user.id, payload.name!, payload.modelId!, payload.data!);
       case "remove_model": return await handleRemoveModel(user.id, payload.name!, payload.modelId!);
-      default: return error(400, err("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
+      default: return error(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
     }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Unknown error";
-    return error(500, err("CONFIG_READ_ERROR", message));
+    return error(500, configError("CONFIG_READ_ERROR", message));
   }
 }, { sessionAuth: true, body: "config-body" });
 

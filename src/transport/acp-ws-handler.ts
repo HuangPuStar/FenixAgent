@@ -2,14 +2,8 @@ import type { WsConnection } from "./ws-types";
 import { v4 as uuid } from "uuid";
 import { getAcpEventBus } from "./event-bus";
 import type { SessionEvent } from "./event-bus";
-import {
-  storeCreateEnvironment,
-  storeCreateSession,
-  storeDeleteEnvironment,
-  storeGetEnvironment,
-  storeListSessionsByEnvironment,
-  storeUpdateEnvironment,
-} from "../store";
+import { environmentRepo, sessionRepo } from "../repositories";
+import { deleteEnvironment } from "../services/environment";
 import { config } from "../config";
 import { log, error as logError } from "../logger";
 
@@ -47,7 +41,7 @@ export function handleAcpWsOpen(ws: WsConnection, wsId: string, userId: string, 
 
   // If bound to a persistent environment, mark it active immediately (fire-and-forget)
   if (boundEnvId) {
-    storeUpdateEnvironment(boundEnvId, { status: "active", lastPollAt: new Date() }).catch(() => {});
+    environmentRepo.update(boundEnvId, { status: "active", lastPollAt: new Date() }).catch(() => {});
   }
 
   const keepalive = setInterval(() => {
@@ -122,7 +116,7 @@ async function handleRegister(wsId: string, msg: Record<string, unknown>): Promi
 
   // If already bound to a persistent environment via environment.secret
   if (entry.boundEnvId) {
-    await storeUpdateEnvironment(entry.boundEnvId, {
+    await environmentRepo.update(entry.boundEnvId, {
       status: "active",
       lastPollAt: new Date(),
       capabilities: capabilities || null,
@@ -133,10 +127,10 @@ async function handleRegister(wsId: string, msg: Record<string, unknown>): Promi
     entry.capabilities = capabilities || null;
 
     // Auto-create session if none exists
-    const existing = storeListSessionsByEnvironment(entry.boundEnvId);
+    const existing = await sessionRepo.listByEnvironment(entry.boundEnvId);
     if (existing.length === 0) {
-      const env = await storeGetEnvironment(entry.boundEnvId);
-      await storeCreateSession({
+      const env = await environmentRepo.getById(entry.boundEnvId);
+      await sessionRepo.create({
         environmentId: entry.boundEnvId,
         title: agentName || "ACP Agent",
         source: "acp",
@@ -154,7 +148,7 @@ async function handleRegister(wsId: string, msg: Record<string, unknown>): Promi
   }
 
   // Create new EnvironmentRecord (temporary, not bound to persistent env)
-  const record = await storeCreateEnvironment({
+  const record = await environmentRepo.create({
     secret: `ws_${wsId}`,
     userId: entry.userId,
     machineName: agentName,
@@ -165,9 +159,9 @@ async function handleRegister(wsId: string, msg: Record<string, unknown>): Promi
   });
 
   // Auto-create session if none exists for this environment
-  const existing = storeListSessionsByEnvironment(record.id);
+  const existing = await sessionRepo.listByEnvironment(record.id);
   if (existing.length === 0) {
-    await storeCreateSession({
+    await sessionRepo.create({
       environmentId: record.id,
       title: agentName || "ACP Agent",
       source: "acp",
@@ -216,7 +210,7 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
 
   // If already bound via environment.secret, use the bound ID directly
   if (entry.boundEnvId) {
-    await storeUpdateEnvironment(entry.boundEnvId, { status: "active", lastPollAt: new Date() });
+    await environmentRepo.update(entry.boundEnvId, { status: "active", lastPollAt: new Date() });
 
     const bus = getAcpEventBus(entry.boundEnvId);
     const unsub = bus.subscribe((event: SessionEvent) => {
@@ -241,7 +235,7 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
   }
 
   // Look up the environment record
-  const record = await storeGetEnvironment(agentId);
+  const record = await environmentRepo.getById(agentId);
   if (!record || record.workerType !== "acp") {
     sendToWs(entry.ws, { type: "error", message: "Agent not found" });
     return;
@@ -254,7 +248,7 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
   }
 
   // Update status to active
-  await storeUpdateEnvironment(agentId, { status: "active", lastPollAt: new Date() });
+  await environmentRepo.update(agentId, { status: "active", lastPollAt: new Date() });
 
   entry.agentId = record.id;
   entry.capabilities = record.capabilities || null;
@@ -295,7 +289,7 @@ export function handleAcpWsMessage(ws: WsConnection, wsId: string, data: string)
     // Handle keepalive (fire-and-forget update)
     if (msg.type === "keep_alive") {
       if (entry.agentId) {
-        storeUpdateEnvironment(entry.agentId, { lastPollAt: new Date() }).catch(() => {});
+        environmentRepo.update(entry.agentId, { lastPollAt: new Date() }).catch(() => {});
       }
       continue;
     }
@@ -323,7 +317,7 @@ export function handleAcpWsMessage(ws: WsConnection, wsId: string, data: string)
     }
 
     // Update agent activity (fire-and-forget)
-    storeUpdateEnvironment(entry.agentId, { lastPollAt: new Date() }).catch(() => {});
+    environmentRepo.update(entry.agentId, { lastPollAt: new Date() }).catch(() => {});
 
     // Pass-through: publish to per-agent EventBus as inbound
     const bus = getAcpEventBus(entry.agentId);
@@ -356,10 +350,10 @@ export function handleAcpWsClose(ws: WsConnection, wsId: string, code?: number, 
   if (entry.agentId) {
     if (entry.boundEnvId) {
       // Persistent environment: update status to idle, don't delete (fire-and-forget)
-      storeUpdateEnvironment(entry.agentId, { status: "idle" }).catch(() => {});
+      environmentRepo.update(entry.agentId, { status: "idle" }).catch(() => {});
     } else {
       // Temporary environment: delete record and associated sessions (fire-and-forget)
-      storeDeleteEnvironment(entry.agentId).catch(() => {});
+      deleteEnvironment(entry.agentId).catch(() => {});
     }
 
     // Notify all relay connections that this agent is gone
@@ -408,9 +402,9 @@ export function closeAllAcpConnections(): void {
       }
       if (entry.agentId) {
         if (entry.boundEnvId) {
-          storeUpdateEnvironment(entry.agentId, { status: "idle" }).catch(() => {});
+          environmentRepo.update(entry.agentId, { status: "idle" }).catch(() => {});
         } else {
-          storeDeleteEnvironment(entry.agentId).catch(() => {});
+          deleteEnvironment(entry.agentId).catch(() => {});
         }
       }
     } catch {

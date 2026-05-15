@@ -19,7 +19,7 @@ import Elysia from "elysia";
 import { db } from "../db";
 import { user as userTable } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { storeReset } from "../store";
+import { resetAllRepos } from "../repositories";
 import { authGuardPlugin } from "../plugins/auth";
 import { generateWorkerJwt } from "../auth/jwt";
 
@@ -54,7 +54,7 @@ describe("Auth Middleware", () => {
   let app: any;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     app = createTestApp();
   });
 

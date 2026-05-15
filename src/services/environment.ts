@@ -1,15 +1,7 @@
 import { randomBytes } from "node:crypto";
-import {
-  storeCreateEnvironment,
-  storeCreateSession,
-  storeGetEnvironment,
-  storeUpdateEnvironment,
-  storeListActiveEnvironments,
-  storeListActiveEnvironmentsByUsername,
-  storeListSessionsByEnvironment,
-} from "../store";
+import { environmentRepo, sessionRepo } from "../repositories";
 import type { RegisterEnvironmentRequest, EnvironmentResponse } from "../types/api";
-import type { EnvironmentRecord } from "../store";
+import type { EnvironmentRecord } from "../repositories";
 
 function toResponse(row: EnvironmentRecord): EnvironmentResponse {
   return {
@@ -28,7 +20,7 @@ function toResponse(row: EnvironmentRecord): EnvironmentResponse {
 export async function registerEnvironment(req: RegisterEnvironmentRequest & { metadata?: { worker_type?: string }; username?: string; userId?: string }) {
   const secret = `env_${randomBytes(24).toString("hex")}`;
   const workerType = req.worker_type || req.metadata?.worker_type;
-  const record = await storeCreateEnvironment({
+  const record = await environmentRepo.create({
     secret,
     userId: req.userId || "system",
     machineName: req.machine_name,
@@ -44,11 +36,11 @@ export async function registerEnvironment(req: RegisterEnvironmentRequest & { me
   let sessionId: string | undefined;
   // ACP agents: reuse existing session or create one
   if (workerType === "acp") {
-    const existing = storeListSessionsByEnvironment(record.id);
+    const existing = await sessionRepo.listByEnvironment(record.id);
     if (existing.length > 0) {
       sessionId = existing[0].id;
     } else {
-      const session = await storeCreateSession({
+      const session = await sessionRepo.create({
         environmentId: record.id,
         title: req.machine_name || "ACP Agent",
         source: "acp",
@@ -61,31 +53,37 @@ export async function registerEnvironment(req: RegisterEnvironmentRequest & { me
 }
 
 export async function deregisterEnvironment(envId: string) {
-  await storeUpdateEnvironment(envId, { status: "deregistered" });
+  await environmentRepo.update(envId, { status: "deregistered" });
 }
 
 export async function getEnvironment(envId: string) {
-  return storeGetEnvironment(envId);
+  return environmentRepo.getById(envId);
 }
 
 export async function updatePollTime(envId: string) {
-  await storeUpdateEnvironment(envId, { lastPollAt: new Date() });
+  await environmentRepo.update(envId, { lastPollAt: new Date() });
 }
 
 export async function listActiveEnvironments() {
-  return storeListActiveEnvironments();
+  return environmentRepo.listActive();
 }
 
 export async function listActiveEnvironmentsResponse(): Promise<EnvironmentResponse[]> {
-  const envs = await storeListActiveEnvironments();
+  const envs = await environmentRepo.listActive();
   return envs.map(toResponse);
 }
 
 export async function listActiveEnvironmentsByUsername(username: string): Promise<EnvironmentResponse[]> {
-  const envs = await storeListActiveEnvironmentsByUsername(username);
+  const envs = await environmentRepo.listActiveByUsername(username);
   return envs.map(toResponse);
 }
 
 export async function reconnectEnvironment(envId: string) {
-  await storeUpdateEnvironment(envId, { status: "active" });
+  await environmentRepo.update(envId, { status: "active" });
+}
+
+/** Delete environment with cascade: dissociate sessions, then delete */
+export async function deleteEnvironment(envId: string): Promise<boolean> {
+  await sessionRepo.dissociateFromEnvironment(envId);
+  return environmentRepo.delete(envId);
 }

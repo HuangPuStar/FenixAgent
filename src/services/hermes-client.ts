@@ -3,7 +3,7 @@ import type { ChannelBinding } from "./channel-binding";
 import { findRunningInstanceByEnvironment } from "./instance";
 import { sendToAgentWs } from "../transport/acp-ws-handler";
 import { sendToInstanceLocalWs } from "../transport/acp-relay-handler";
-import { getAcpEventBus } from "../transport/event-bus";
+import { eventService } from "../services/event-service";
 import { log, error as logError } from "../logger";
 
 // --- Types ---
@@ -277,7 +277,7 @@ export class HermesClient {
 
     let accumulated = "";
 
-    const bus = getAcpEventBus(agentId);
+    const bus = eventService.getAcpBus(agentId);
     const unsub = bus.subscribe((event) => {
       if (event.direction !== "inbound") return;
 

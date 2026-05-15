@@ -7,7 +7,7 @@ import { createApiKey } from "../auth/api-key-service";
 import { getBaseUrl } from "../config";
 import { log } from "../logger";
 import { listAgentKnowledgeBindings } from "./agent-knowledge";
-import { storeGetEnvironment, storeCreateSession, storeListSessionsByEnvironment } from "../store";
+import { environmentRepo, sessionRepo } from "../repositories";
 import { closeInstanceLocalWs } from "../transport/acp-relay-handler";
 import { resolveExecutable } from "../utils/executable";
 
@@ -194,14 +194,14 @@ export function stopAllInstances(): void {
 export async function spawnInstanceFromEnvironment(userId: string, environmentId: string): Promise<SpawnedInstance> {
   const acpLinkPath = resolveExecutable("acp-link");
 
-  const env = await storeGetEnvironment(environmentId);
+  const env = await environmentRepo.getById(environmentId);
   if (!env) throw new Error("Environment not found");
   if (env.userId !== userId) throw new Error("Not your environment");
 
   // Reuse existing session if one was restored from DB, otherwise create new
-  let session = storeListSessionsByEnvironment(environmentId)[0];
+  let session = (await sessionRepo.listByEnvironment(environmentId))[0];
   if (!session) {
-    session = await storeCreateSession({
+    session = await sessionRepo.create({
       environmentId,
       title: env.agentName || env.name,
       source: "acp",

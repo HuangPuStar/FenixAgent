@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import { auth } from "../auth/better-auth";
 import { config } from "../config";
-import { validateApiKey } from "../auth/api-key";
+import { validateLegacyApiKey } from "../auth/api-key-service";
 import { verifyWorkerJwt } from "../auth/jwt";
 
 interface UserInfo {
@@ -23,7 +23,7 @@ function extractToken(request: Request): string | undefined {
   return authHeader?.replace("Bearer ", "") || queryToken || undefined;
 }
 
-async function ensureSystemUser(): Promise<UserInfo | null> {
+export async function ensureSystemUser(): Promise<UserInfo | null> {
   const { db } = await import("../db");
   const { user } = await import("../db/schema");
   const { eq } = await import("drizzle-orm");
@@ -56,7 +56,7 @@ async function ensureSystemUser(): Promise<UserInfo | null> {
   return null;
 }
 
-async function lookupUserById(userId: string): Promise<UserInfo | null> {
+export async function lookupUserById(userId: string): Promise<UserInfo | null> {
   const { db } = await import("../db");
   const { user } = await import("../db/schema");
   const { eq } = await import("drizzle-orm");
@@ -115,8 +115,8 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
           }
 
           // 0. Environment secret match
-          const { storeGetEnvironmentBySecret } = await import("../store");
-          const envRecord = await storeGetEnvironmentBySecret(token);
+          const { environmentRepo } = await import("../repositories");
+          const envRecord = await environmentRepo.getBySecret(token);
           if (envRecord && envRecord.userId) {
             const user = await lookupUserById(envRecord.userId);
             if (user) {
@@ -170,7 +170,7 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
           const token = extractToken(request);
 
           // Try legacy API key
-          if (validateApiKey(token)) {
+          if (validateLegacyApiKey(token)) {
             const systemUser = await ensureSystemUser();
             if (systemUser) {
               store.user = systemUser;

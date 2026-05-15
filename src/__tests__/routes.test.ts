@@ -21,7 +21,7 @@ mock.module("../config", () => ({
 }));
 
 import Elysia from "elysia";
-import { storeReset, storeCreateSession, storeCreateEnvironment, storeBindSession } from "../store";
+import { resetAllRepos, sessionRepo, environmentRepo } from "../repositories";
 import { removeEventBus, getAllEventBuses, getEventBus } from "../transport/event-bus";
 import { issueToken } from "../auth/token";
 import { publishSessionEvent } from "../services/transport";
@@ -90,7 +90,7 @@ describe("V1 Session Routes", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }
@@ -307,7 +307,7 @@ describe("V1 Environment Routes", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     app = createApp();
   });
 
@@ -379,7 +379,7 @@ describe("V1 Work Routes", () => {
   let envId: string;
 
   beforeEach(async () => {
-    storeReset();
+    resetAllRepos();
     app = createApp();
 
     const envRes = await request(app, "/v1/environments/bridge", {
@@ -456,7 +456,7 @@ describe("V2 Code Session Routes", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     process.env.RCS_API_KEYS = "test-api-key";
     app = createApp();
   });
@@ -507,7 +507,7 @@ describe("V2 Worker Routes", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     process.env.RCS_API_KEYS = "test-api-key";
     app = createApp();
   });
@@ -543,7 +543,7 @@ describe("Web Auth Routes", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     app = createApp();
   });
 
@@ -609,7 +609,7 @@ describe("Web Session Routes", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }
@@ -645,8 +645,8 @@ describe("Web Session Routes", () => {
   });
 
   test.skip("GET /web/sessions and /all — serialize owned code sessions as compat IDs", async () => {
-    const codeSession = await storeCreateSession({ idPrefix: "cse_" });
-    await storeBindSession(codeSession.id, "user-1");
+    const codeSession = await sessionRepo.create({ idPrefix: "cse_" });
+    await sessionRepo.bindOwner(codeSession.id, "user-1");
     const compatId = toWebSessionId(codeSession.id);
 
     const listRes = await request(app, "/web/sessions?uuid=user-1");
@@ -687,20 +687,19 @@ describe("Web Session Routes", () => {
   });
 
   test.skip("GET /web/sessions and /all — hides archived and inactive sessions", async () => {
-    const archived = await storeCreateSession({});
-    const inactive = await storeCreateSession({});
-    const open = await storeCreateSession({});
-    await storeBindSession(archived.id, "user-1");
-    await storeBindSession(inactive.id, "user-1");
-    await storeBindSession(open.id, "user-1");
+    const archived = await sessionRepo.create({});
+    const inactive = await sessionRepo.create({});
+    const open = await sessionRepo.create({});
+    await sessionRepo.bindOwner(archived.id, "user-1");
+    await sessionRepo.bindOwner(inactive.id, "user-1");
+    await sessionRepo.bindOwner(open.id, "user-1");
 
     await request(app, `/v1/sessions/${archived.id}/archive`, {
       method: "POST",
       headers: AUTH_HEADERS,
     });
 
-    const { storeUpdateSession } = await import("../store");
-    await storeUpdateSession(inactive.id, { status: "inactive" });
+    await sessionRepo.update(inactive.id, { status: "inactive" });
 
     const listRes = await request(app, "/web/sessions?uuid=user-1");
     expect(listRes.status).toBe(200);
@@ -734,7 +733,7 @@ describe("Web Session Routes", () => {
     const {
       session: { id },
     } = await createRes.json();
-    await storeBindSession(id, "user-1");
+    await sessionRepo.bindOwner(id, "user-1");
 
     await request(app, `/v1/code/sessions/${id}/worker`, {
       method: "PUT",
@@ -819,8 +818,8 @@ describe("Web Session Routes", () => {
   });
 
   test.skip("GET /web/sessions/:id and history — supports compat code session IDs", async () => {
-    const codeSession = await storeCreateSession({ idPrefix: "cse_" });
-    await storeBindSession(codeSession.id, "user-1");
+    const codeSession = await sessionRepo.create({ idPrefix: "cse_" });
+    await sessionRepo.bindOwner(codeSession.id, "user-1");
     const compatId = toWebSessionId(codeSession.id);
 
     const getRes = await request(app, `/web/sessions/${compatId}?uuid=user-1`);
@@ -877,8 +876,7 @@ describe("Web Session Routes", () => {
     const { id } = await createRes.json();
 
     // Delete the session from store directly
-    const { storeDeleteSession } = await import("../store");
-    await storeDeleteSession(id);
+    await sessionRepo.delete(id);
 
     const histRes = await request(app, `/web/sessions/${id}/history?uuid=user-1`);
     expect(histRes.status).toBe(404);
@@ -919,8 +917,8 @@ describe("Web Session Routes", () => {
   });
 
   test.skip("GET /web/sessions/:id/events — supports compat code session IDs", async () => {
-    const codeSession = await storeCreateSession({ idPrefix: "cse_" });
-    await storeBindSession(codeSession.id, "user-1");
+    const codeSession = await sessionRepo.create({ idPrefix: "cse_" });
+    await sessionRepo.bindOwner(codeSession.id, "user-1");
     const compatId = toWebSessionId(codeSession.id);
 
     const eventsRes = await request(app, `/web/sessions/${compatId}/events?uuid=user-1`);
@@ -973,7 +971,7 @@ describe("Web Control Routes", () => {
   let sessionId: string;
 
   beforeEach(async () => {
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }
@@ -1001,8 +999,8 @@ describe("Web Control Routes", () => {
   });
 
   test.skip("POST /web/sessions/:id/events/control/interrupt — supports compat code session IDs", async () => {
-    const rawSessionId = (await storeCreateSession({ idPrefix: "cse_" })).id;
-    storeBindSession(rawSessionId, "user-1");
+    const rawSessionId = (await sessionRepo.create({ idPrefix: "cse_" })).id;
+    await sessionRepo.bindOwner(rawSessionId, "user-1");
     const compatId = toWebSessionId(rawSessionId);
 
     const eventsRes = await request(app, `/web/sessions/${compatId}/events?uuid=user-1`, {
@@ -1110,7 +1108,7 @@ describe("Web Environment Routes", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     app = createApp();
   });
 
@@ -1139,7 +1137,7 @@ describe("V1 Session Ingress Routes (HTTP)", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }
@@ -1260,7 +1258,7 @@ describe("V2 Worker Events Routes", () => {
   let app: Elysia;
 
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }

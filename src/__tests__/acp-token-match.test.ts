@@ -6,7 +6,8 @@ mock.module("../config", () => ({
   getBaseUrl: () => "http://localhost:3000",
 }));
 
-const { storeReset, storeCreateEnvironment, storeGetEnvironment, storeGetEnvironmentBySecret, storeUpdateEnvironment, storeDeleteEnvironment } = await import("../store");
+const { resetAllRepos, environmentRepo } = await import("../repositories");
+const { deleteEnvironment } = await import("../services/environment");
 const { db } = await import("../db");
 const { user } = await import("../db/schema");
 const { eq } = await import("drizzle-orm");
@@ -32,30 +33,30 @@ async function ensureUser(userId: string) {
 
 describe("ACP Token Match", () => {
   beforeEach(async () => {
-    storeReset();
+    resetAllRepos();
     await ensureUser("u-acp-test");
   });
 
   test("environment.secret can be looked up by secret", async () => {
-    const env = await storeCreateEnvironment({
+    const env = await environmentRepo.create({
       name: `test-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
       status: "idle",
     });
 
-    const found = await storeGetEnvironmentBySecret(env.secret);
+    const found = await environmentRepo.getBySecret(env.secret);
     expect(found).toBeDefined();
     expect(found!.id).toBe(env.id);
     expect(found!.userId).toBe("u-acp-test");
   });
 
   test("environment.secret returns undefined for non-existent secret", async () => {
-    expect(await storeGetEnvironmentBySecret("no_such_secret")).toBeUndefined();
+    expect(await environmentRepo.getBySecret("no_such_secret")).toBeUndefined();
   });
 
   test("persistent environment disconnect updates status to idle", async () => {
-    const env = await storeCreateEnvironment({
+    const env = await environmentRepo.create({
       name: `persistent-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
@@ -63,26 +64,26 @@ describe("ACP Token Match", () => {
     });
 
     // Simulate disconnect — update status to idle
-    await storeUpdateEnvironment(env.id, { status: "idle" });
+    await environmentRepo.update(env.id, { status: "idle" });
 
-    const updated = await storeGetEnvironment(env.id);
+    const updated = await environmentRepo.getById(env.id);
     expect(updated).toBeDefined();
     expect(updated!.status).toBe("idle");
   });
 
   test("temporary environment disconnect deletes record", async () => {
-    const env = await storeCreateEnvironment({
+    const env = await environmentRepo.create({
       userId: "u-acp-test",
       status: "active",
     });
 
-    await storeDeleteEnvironment(env.id);
-    expect(await storeGetEnvironment(env.id)).toBeUndefined();
+    await deleteEnvironment(env.id);
+    expect(await environmentRepo.getById(env.id)).toBeUndefined();
   });
 
   test("disconnect monitor ACP agent timeout updates status to idle", async () => {
     const past = new Date(Date.now() - 600_000); // 10 minutes ago
-    const env = await storeCreateEnvironment({
+    const env = await environmentRepo.create({
       name: `timeout-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
@@ -90,11 +91,11 @@ describe("ACP Token Match", () => {
     });
 
     // Manually set lastPollAt to past
-    await storeUpdateEnvironment(env.id, { lastPollAt: past });
+    await environmentRepo.update(env.id, { lastPollAt: past });
 
     await runDisconnectMonitorSweep();
 
-    const updated = await storeGetEnvironment(env.id);
+    const updated = await environmentRepo.getById(env.id);
     expect(updated).toBeDefined();
     expect(updated!.status).toBe("idle");
   });

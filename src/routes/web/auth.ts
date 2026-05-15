@@ -1,6 +1,6 @@
 import Elysia from "elysia";
 import { errorResponse } from "../../plugins/auth";
-import { storeBindSession } from "../../store";
+import { sessionRepo } from "../../repositories";
 import { resolveExistingWebSessionId, toWebSessionId } from "../../services/session";
 
 const BindSessionRequestSchema = {
@@ -21,12 +21,12 @@ app.post("/bind", async ({ body, query, error }) => {
     return error(400, { error: "sessionId and uuid are required" });
   }
 
-  const resolvedSessionId = resolveExistingWebSessionId(sessionId);
+  const resolvedSessionId = await resolveExistingWebSessionId(sessionId);
   if (!resolvedSessionId) {
     return error(404, { error: "Session not found" });
   }
 
-  storeBindSession(resolvedSessionId, uuid);
+  await sessionRepo.bindOwner(resolvedSessionId, uuid);
   return { ok: true, sessionId: toWebSessionId(resolvedSessionId) };
 });
 

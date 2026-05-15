@@ -1,11 +1,7 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import {
-  storeGetSession,
-  storeGetEnvironment,
-  storeListSessionsByUserId,
-} from "../../store";
-import { getEventBus } from "../../transport/event-bus";
+import { environmentRepo, sessionRepo } from "../../repositories";
+import { eventService } from "../../services/event-service";
 import { resolveExistingWebSessionId, resolveOwnedWebSessionId } from "../../services/session";
 import {
   SessionResponseSchema,
@@ -24,7 +20,7 @@ const app = new Elysia({ name: "web-sessions", prefix: "/web" })
   });
 
 async function toSessionResponse(row: { id: string; environmentId: string | null; title: string | null; status: string; source: string; permissionMode: string | null; workerEpoch: number; username: string | null; createdAt: Date; updatedAt: Date }) {
-  const env = row.environmentId ? await storeGetEnvironment(row.environmentId) : null;
+  const env = row.environmentId ? await environmentRepo.getById(row.environmentId) : null;
   return {
     id: row.id,
     environment_id: row.environmentId,
@@ -54,16 +50,16 @@ function toSessionSummary(row: { id: string; title: string | null; status: strin
 app.get("/sessions", async ({ store }) => {
   const user = store.user!;
   const results = [];
-  for (const s of storeListSessionsByUserId(user.id)) {
+  for (const s of await sessionRepo.listByUserId(user.id)) {
     results.push(await toSessionResponse(s));
   }
   return results;
 }, { sessionAuth: true, response: "session-response-list" });
 
 /** GET /web/sessions/all — List session summaries owned by the current user */
-app.get("/sessions/all", ({ store }) => {
+app.get("/sessions/all", async ({ store }) => {
   const user = store.user!;
-  const sessions = storeListSessionsByUserId(user.id).map(toSessionSummary);
+  const sessions = (await sessionRepo.listByUserId(user.id)).map(toSessionSummary);
   return sessions;
 }, { sessionAuth: true, response: "session-summary-list" });
 
@@ -71,7 +67,7 @@ app.get("/sessions/all", ({ store }) => {
 app.get("/sessions/:id", async ({ store, params, error }) => {
   const user = store.user!;
   const sessionId = params.id;
-  const session = storeGetSession(sessionId);
+  const session = await sessionRepo.getById(sessionId);
   if (!session) {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
   }
@@ -92,23 +88,23 @@ app.get("/sessions/:id/history", async ({ store, params, request, error }) => {
   const user = store.user;
 
   if (uuid) {
-    resolvedId = resolveOwnedWebSessionId(sessionId, uuid);
+    resolvedId = await resolveOwnedWebSessionId(sessionId, uuid);
   } else if (user && user.id) {
-    const session = storeGetSession(sessionId);
+    const session = await sessionRepo.getById(sessionId);
     if (session && (!session.userId || session.userId === user.id)) {
       resolvedId = sessionId;
     }
   }
 
   if (!resolvedId) {
-    resolvedId = resolveExistingWebSessionId(sessionId);
+    resolvedId = await resolveExistingWebSessionId(sessionId);
   }
 
   if (!resolvedId) {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
   }
 
-  const bus = getEventBus(resolvedId);
+  const bus = eventService.getBus(resolvedId);
   const events = bus.getEventsSince(0);
   return { events };
 }, { sessionAuth: true });

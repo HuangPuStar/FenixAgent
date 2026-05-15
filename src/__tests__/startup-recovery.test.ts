@@ -1,12 +1,12 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { storeReset, storeUpdateSession, storeGetSession, storeListSessions, storeLoadSessionsFromDB } from "../store";
+import { resetAllRepos, sessionRepo } from "../repositories";
 import { db } from "../db";
 import { agentSession } from "../db/schema";
 import { eq } from "drizzle-orm";
 
-describe("Startup recovery - storeLoadSessionsFromDB", () => {
+describe("Startup recovery - sessionRepo.loadFromDB", () => {
   beforeEach(async () => {
-    storeReset();
+    resetAllRepos();
     await db.delete(agentSession);
   });
 
@@ -18,16 +18,16 @@ describe("Startup recovery - storeLoadSessionsFromDB", () => {
       { id: "session_test2", status: "running", source: "web", shareMode: "none", createdAt: now, updatedAt: now, title: "Restored 2", cwd: null },
     ]);
 
-    await storeLoadSessionsFromDB();
-    expect(storeListSessions().length).toBe(2);
+    await sessionRepo.loadFromDB();
+    expect((await sessionRepo.listAll()).length).toBe(2);
 
-    const s1 = storeGetSession("session_test1");
+    const s1 = await sessionRepo.getById("session_test1");
     expect(s1).toBeDefined();
     expect(s1!.title).toBe("Restored 1");
     expect(s1!.cwd).toBe("/home/test1");
     expect(s1!.status).toBe("idle");
 
-    const s2 = storeGetSession("session_test2");
+    const s2 = await sessionRepo.getById("session_test2");
     expect(s2).toBeDefined();
     expect(s2!.status).toBe("running");
     expect(s2!.cwd).toBeNull();
@@ -35,8 +35,8 @@ describe("Startup recovery - storeLoadSessionsFromDB", () => {
 
   // DB 为空时不恢复任何 session
   test("does nothing when DB is empty", async () => {
-    await storeLoadSessionsFromDB();
-    expect(storeListSessions().length).toBe(0);
+    await sessionRepo.loadFromDB();
+    expect((await sessionRepo.listAll()).length).toBe(0);
   });
 
   // 恢复的 session 可以查询和更新
@@ -46,16 +46,16 @@ describe("Startup recovery - storeLoadSessionsFromDB", () => {
       id: "session_updatable", status: "idle", source: "acp", shareMode: "none", createdAt: now, updatedAt: now,
     });
 
-    await storeLoadSessionsFromDB();
+    await sessionRepo.loadFromDB();
 
     // Can query
-    const session = storeGetSession("session_updatable");
+    const session = await sessionRepo.getById("session_updatable");
     expect(session).toBeDefined();
     expect(session!.status).toBe("idle");
 
     // Can update (both memory and DB)
-    await storeUpdateSession("session_updatable", { title: "updated title" });
-    const updated = storeGetSession("session_updatable");
+    await sessionRepo.update("session_updatable", { title: "updated title" });
+    const updated = await sessionRepo.getById("session_updatable");
     expect(updated!.title).toBe("updated title");
 
     // Verify DB also updated

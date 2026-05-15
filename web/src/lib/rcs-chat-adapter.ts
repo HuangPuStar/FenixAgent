@@ -1,12 +1,6 @@
 import type { SetStateAction } from "react";
 import { v4 as uuidv4 } from "uuid";
-import {
-  apiFetchSession,
-  apiFetchSessionHistory,
-  apiSendEvent,
-  apiSendControl,
-  apiInterrupt,
-} from "../api/client";
+import { client } from "../api/client";
 import type { SessionEvent, EventPayload } from "../types";
 import type {
   ThreadEntry,
@@ -204,7 +198,8 @@ export class RCSChatAdapter {
 
   /** 加载历史事件并转为 ThreadEntry */
   async loadHistory(): Promise<void> {
-    const { events } = await apiFetchSessionHistory(this.sessionId);
+    const { data: historyData } = await client.web.sessions({ id: this.sessionId }).history.get();
+    const events = (historyData as any)?.events;
     if (!events || events.length === 0) return;
 
     this.toolCallAliases.clear();
@@ -555,22 +550,22 @@ export class RCSChatAdapter {
     this.setEntries((prev) => [...prev, userEntry]);
 
     // Send to backend
-    await apiSendEvent(this.sessionId, {
+    await client.web.sessions({ id: this.sessionId }).events.post({
       type: "user",
       uuid: uuidv4(),
       content: text,
       message: { content: text },
-    });
+    } as any);
   }
 
   /** 响应权限请求 */
   async respondPermission(requestId: string, approved: boolean, extra?: Record<string, unknown>): Promise<void> {
-    await apiSendControl(this.sessionId, {
+    await client.web.sessions({ id: this.sessionId }).control.post({
       type: "permission_response",
       approved,
       request_id: requestId,
       ...extra,
-    });
+    } as any);
 
     // Update tool call status
     this.setEntries((prev) =>
@@ -603,6 +598,8 @@ export class RCSChatAdapter {
       }),
     );
 
-    await apiInterrupt(this.sessionId);
+    await client.web.sessions({ id: this.sessionId }).control.post({
+      type: "interrupt",
+    } as any);
   }
 }

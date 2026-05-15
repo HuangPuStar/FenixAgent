@@ -3,7 +3,7 @@ import { authGuardPlugin } from "../../plugins/auth";
 import { log, error as logError } from "../../logger";
 import { getSession, isSessionClosedStatus, resolveOwnedWebSessionId, updateSessionStatus } from "../../services/session";
 import { publishSessionEvent } from "../../services/transport";
-import { getEventBus } from "../../transport/event-bus";
+import { eventService } from "../../services/event-service";
 import { SessionEventPayloadSchema } from "../../schemas/session.schema";
 
 const app = new Elysia({ name: "web-control", prefix: "/web" })
@@ -19,7 +19,7 @@ type OwnershipCheckResult =
 
 async function checkOwnership(uuid: string | null, sessionId: string): Promise<OwnershipCheckResult> {
   if (!uuid) return { error: true };
-  const resolvedSessionId = resolveOwnedWebSessionId(sessionId, uuid);
+  const resolvedSessionId = await resolveOwnedWebSessionId(sessionId, uuid);
   if (!resolvedSessionId) {
     return { error: true };
   }
@@ -53,7 +53,7 @@ app.post("/sessions/:id/events", async ({ store, params, body, error }) => {
   const eventType = b.type || "user";
   log(`[RC-DEBUG] web -> server: POST /web/sessions/${sessionId}/events type=${eventType} content=${JSON.stringify(b).slice(0, 200)}`);
   const event = publishSessionEvent(sessionId, eventType, b, "outbound");
-  log(`[RC-DEBUG] web -> server: published outbound event id=${event.id} type=${event.type} direction=${event.direction} subscribers=${getEventBus(sessionId).subscriberCount()}`);
+  log(`[RC-DEBUG] web -> server: published outbound event id=${event.id} type=${event.type} direction=${event.direction} subscribers=${eventService.getBus(sessionId).subscriberCount()}`);
   return { status: "ok" as const, event };
 }, { uuidAuth: true, body: "session-event-payload" });
 

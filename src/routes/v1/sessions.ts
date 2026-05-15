@@ -41,7 +41,7 @@ app.post("/", async ({ store, body }) => {
 
 /** GET /v1/sessions/:id — Get session */
 app.get("/:id", async ({ params, error }) => {
-  const sessionId = resolveExistingSessionId(params.id) ?? params.id;
+  const sessionId = await resolveExistingSessionId(params.id) ?? params.id;
   const session = await getSession(sessionId);
   if (!session) {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
@@ -51,7 +51,7 @@ app.get("/:id", async ({ params, error }) => {
 
 /** PATCH /v1/sessions/:id — Update session title */
 app.patch("/:id", async ({ params, body, error }) => {
-  const sessionId = resolveExistingSessionId(params.id) ?? params.id;
+  const sessionId = await resolveExistingSessionId(params.id) ?? params.id;
   const existing = await getSession(sessionId);
   if (!existing) {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
@@ -66,7 +66,7 @@ app.patch("/:id", async ({ params, body, error }) => {
 
 /** POST /v1/sessions/:id/archive — Archive session */
 app.post("/:id/archive", async ({ params, error }) => {
-  const sessionId = resolveExistingSessionId(params.id) ?? params.id;
+  const sessionId = await resolveExistingSessionId(params.id) ?? params.id;
   const session = await getSession(sessionId);
   if (!session) {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
@@ -83,7 +83,7 @@ app.post("/:id/archive", async ({ params, error }) => {
 
 /** POST /v1/sessions/:id/events — Send event to session */
 app.post("/:id/events", async ({ params, body, error }) => {
-  const sessionId = resolveExistingSessionId(params.id) ?? params.id;
+  const sessionId = await resolveExistingSessionId(params.id) ?? params.id;
   const session = await getSession(sessionId);
   if (!session) {
     return error(404, { error: { type: "not_found", message: "Session not found" } });

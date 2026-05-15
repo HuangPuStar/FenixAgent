@@ -1,12 +1,9 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import {
-  storeReset,
-  storeCreateEnvironment,
-  storeCreateSession,
-  storeGetSession,
-  storeBindSession,
-  storeGetSessionOwners,
-} from "../store";
+  resetAllRepos,
+  environmentRepo,
+  sessionRepo,
+} from "../repositories";
 import { db } from "../db";
 import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -48,7 +45,7 @@ async function ensureUser(userId: string) {
 describe("Session Service - Extended Tests", () => {
   beforeEach(async () => {
     await ensureUser("u1");
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }
@@ -76,9 +73,9 @@ describe("Session Service - Extended Tests", () => {
     });
 
     test("converts code session id to web format", async () => {
-      const env = await storeCreateEnvironment({ userId: "u1" });
+      const env = await environmentRepo.create({ userId: "u1" });
       // Manually create a session with cse_ prefix
-      const record = await storeCreateSession({
+      const record = await sessionRepo.create({
         idPrefix: "cse_",
         environmentId: env.id,
         title: "Code Session",
@@ -131,48 +128,48 @@ describe("Session Service - Extended Tests", () => {
   describe("resolveExistingSessionId", () => {
     test("returns id when session exists", async () => {
       const s = await createSession({});
-      expect(resolveExistingSessionId(s.id)).toBe(s.id);
+      expect(await resolveExistingSessionId(s.id)).toBe(s.id);
     });
 
-    test("returns null when session does not exist", () => {
-      expect(resolveExistingSessionId("nonexistent")).toBeNull();
+    test("returns null when session does not exist", async () => {
+      expect(await resolveExistingSessionId("nonexistent")).toBeNull();
     });
 
     test("resolves web session id to code session id", async () => {
-      const record = await storeCreateSession({ idPrefix: "cse_" });
+      const record = await sessionRepo.create({ idPrefix: "cse_" });
       const webId = `session_${record.id.slice(4)}`;
-      expect(resolveExistingSessionId(webId)).toBe(record.id);
+      expect(await resolveExistingSessionId(webId)).toBe(record.id);
     });
   });
 
   describe("resolveOwnedWebSessionId", () => {
     test("returns session id when user is owner", async () => {
       const s = await createSession({});
-      storeBindSession(s.id, "user-uuid-1");
-      expect(resolveOwnedWebSessionId(s.id, "user-uuid-1")).toBe(s.id);
+      await sessionRepo.bindOwner(s.id, "user-uuid-1");
+      expect(await resolveOwnedWebSessionId(s.id, "user-uuid-1")).toBe(s.id);
     });
 
-    test("returns null when session does not exist", () => {
-      expect(resolveOwnedWebSessionId("nonexistent", "user-uuid-1")).toBeNull();
+    test("returns null when session does not exist", async () => {
+      expect(await resolveOwnedWebSessionId("nonexistent", "user-uuid-1")).toBeNull();
     });
 
     test("returns null when user is not owner and session has owners", async () => {
       const s = await createSession({});
-      storeBindSession(s.id, "user-uuid-1");
-      expect(resolveOwnedWebSessionId(s.id, "user-uuid-2")).toBeNull();
+      await sessionRepo.bindOwner(s.id, "user-uuid-1");
+      expect(await resolveOwnedWebSessionId(s.id, "user-uuid-2")).toBeNull();
     });
 
     test("auto-binds unclaimed session to requesting user", async () => {
       const s = await createSession({});
       // Session has no owners
-      const owners = storeGetSessionOwners(s.id);
+      const owners = await sessionRepo.getOwners(s.id);
       expect(owners).toBeUndefined();
 
-      const resolved = resolveOwnedWebSessionId(s.id, "user-uuid-auto");
+      const resolved = await resolveOwnedWebSessionId(s.id, "user-uuid-auto");
       expect(resolved).toBe(s.id);
 
       // Now the session should be bound
-      const ownersAfter = storeGetSessionOwners(s.id);
+      const ownersAfter = await sessionRepo.getOwners(s.id);
       expect(ownersAfter?.has("user-uuid-auto")).toBe(true);
     });
   });
@@ -181,8 +178,8 @@ describe("Session Service - Extended Tests", () => {
     test("returns only owned and non-closed sessions in web format", async () => {
       const s1 = await createSession({ title: "Active 1" });
       const s2 = await createSession({ title: "Active 2" });
-      storeBindSession(s1.id, "user-a");
-      storeBindSession(s2.id, "user-a");
+      await sessionRepo.bindOwner(s1.id, "user-a");
+      await sessionRepo.bindOwner(s2.id, "user-a");
 
       const result = await listWebSessionsByOwnerUuid("user-a");
       expect(result).toHaveLength(2);
@@ -190,12 +187,11 @@ describe("Session Service - Extended Tests", () => {
 
     test("excludes archived sessions", async () => {
       const s1 = await createSession({});
-      storeBindSession(s1.id, "user-a");
+      await sessionRepo.bindOwner(s1.id, "user-a");
       // Archive s1
-      const session = storeGetSession(s1.id);
+      const session = await sessionRepo.getById(s1.id);
       if (session) {
-        const { storeUpdateSession } = require("../store");
-        await storeUpdateSession(s1.id, { status: "archived" });
+        await sessionRepo.update(s1.id, { status: "archived" });
       }
 
       const result = await listWebSessionsByOwnerUuid("user-a");
@@ -232,21 +228,21 @@ describe("Session Service - Extended Tests", () => {
   describe("cwd passthrough", () => {
     test("createSession passes cwd to store", async () => {
       const session = await createSession({ cwd: "/home/user/project" });
-      const record = storeGetSession(session.id);
+      const record = await sessionRepo.getById(session.id);
       expect(record).toBeDefined();
       expect(record!.cwd).toBe("/home/user/project");
     });
 
     test("createSession without cwd defaults to null", async () => {
       const session = await createSession({});
-      const record = storeGetSession(session.id);
+      const record = await sessionRepo.getById(session.id);
       expect(record).toBeDefined();
       expect(record!.cwd).toBeNull();
     });
 
     test("createCodeSession passes cwd to store", async () => {
       const session = await createCodeSession({ cwd: "/tmp/workspace" });
-      const record = storeGetSession(session.id);
+      const record = await sessionRepo.getById(session.id);
       expect(record).toBeDefined();
       expect(record!.cwd).toBe("/tmp/workspace");
     });

@@ -17,7 +17,7 @@ mock.module("../config", () => ({
   getBaseUrl: () => "http://localhost:3000",
 }));
 
-import { storeReset, storeCreateEnvironment, storeCreateSession, storeGetWorkItem, storeGetPendingWorkItem } from "../store";
+import { resetAllRepos, environmentRepo, sessionRepo, workItemRepo } from "../repositories";
 import { db } from "../db";
 import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -35,16 +35,16 @@ describe("Work Dispatch", () => {
   let sessionId: string;
 
   beforeEach(async () => {
-    storeReset();
+    resetAllRepos();
     // Ensure user exists for foreign key constraint
     const existing = await db.select().from(user).where(eq(user.id, "u1")).limit(1);
     if (existing.length === 0) {
       const now = new Date();
       await db.insert(user).values({ id: "u1", name: "u1", email: "u1@test.com", emailVerified: false, createdAt: now, updatedAt: now });
     }
-    const env = await storeCreateEnvironment({ userId: "u1" });
+    const env = await environmentRepo.create({ userId: "u1" });
     envId = env.id;
-    const session = await storeCreateSession({ environmentId: envId });
+    const session = await sessionRepo.create({ environmentId: envId });
     sessionId = session.id;
   });
 
@@ -52,7 +52,7 @@ describe("Work Dispatch", () => {
     test("creates work item for active environment", async () => {
       const workId = await createWorkItem(envId, sessionId);
       expect(workId).toMatch(/^work_/);
-      const item = storeGetWorkItem(workId);
+      const item = await workItemRepo.getById(workId);
       expect(item?.state).toBe("pending");
       expect(item?.sessionId).toBe(sessionId);
     });
@@ -62,16 +62,15 @@ describe("Work Dispatch", () => {
     });
 
     test("throws for inactive environment", async () => {
-      const inactiveEnv = await storeCreateEnvironment({ userId: "u1" });
+      const inactiveEnv = await environmentRepo.create({ userId: "u1" });
       // Manually set status to deregistered
-      const { storeUpdateEnvironment } = await import("../store");
-      await storeUpdateEnvironment(inactiveEnv.id, { status: "deregistered" });
+      await environmentRepo.update(inactiveEnv.id, { status: "deregistered" });
       await expect(createWorkItem(inactiveEnv.id, sessionId)).rejects.toThrow("not active");
     });
 
     test("encodes work secret as base64 JSON", async () => {
       const workId = await createWorkItem(envId, sessionId);
-      const item = storeGetWorkItem(workId);
+      const item = await workItemRepo.getById(workId);
       const decoded = JSON.parse(Buffer.from(item!.secret, "base64url").toString());
       expect(decoded.version).toBe(1);
       expect(decoded.session_ingress_token).toBe("test-api-key");
@@ -94,11 +93,11 @@ describe("Work Dispatch", () => {
       expect(result!.data.type).toBe("session");
       expect(result!.data.id).toBe(sessionId);
       // Work should no longer be pending
-      expect(storeGetPendingWorkItem(envId)).toBeUndefined();
+      expect(await workItemRepo.getPendingByEnvironment(envId)).toBeUndefined();
     });
 
     test("does not return work for different environment", async () => {
-      const env2 = await storeCreateEnvironment({ userId: "u1" });
+      const env2 = await environmentRepo.create({ userId: "u1" });
       await createWorkItem(envId, sessionId);
       const result = await pollWork(env2.id, 0.1);
       expect(result).toBeNull();
@@ -108,30 +107,30 @@ describe("Work Dispatch", () => {
   describe("ackWork", () => {
     test("marks work as acked", async () => {
       const workId = await createWorkItem(envId, sessionId);
-      ackWork(workId);
-      expect(storeGetWorkItem(workId)?.state).toBe("acked");
+      await ackWork(workId);
+      expect((await workItemRepo.getById(workId))?.state).toBe("acked");
     });
   });
 
   describe("stopWork", () => {
     test("marks work as completed", async () => {
       const workId = await createWorkItem(envId, sessionId);
-      stopWork(workId);
-      expect(storeGetWorkItem(workId)?.state).toBe("completed");
+      await stopWork(workId);
+      expect((await workItemRepo.getById(workId))?.state).toBe("completed");
     });
   });
 
   describe("heartbeatWork", () => {
     test("extends lease and returns heartbeat info", async () => {
       const workId = await createWorkItem(envId, sessionId);
-      const result = heartbeatWork(workId);
+      const result = await heartbeatWork(workId);
       expect(result.lease_extended).toBe(true);
       expect(result.ttl_seconds).toBe(40); // heartbeatInterval * 2
       expect(result.last_heartbeat).toBeTruthy();
     });
 
     test("returns default state for non-existent work", async () => {
-      const result = heartbeatWork("work_no");
+      const result = await heartbeatWork("work_no");
       expect(result.state).toBe("acked");
     });
   });
@@ -139,25 +138,24 @@ describe("Work Dispatch", () => {
   describe("reconnectWorkForEnvironment", () => {
     test("creates work items for idle sessions in environment", async () => {
       // Create another idle session
-      await storeCreateSession({ environmentId: envId });
+      await sessionRepo.create({ environmentId: envId });
       const workIds = await reconnectWorkForEnvironment(envId);
       expect(workIds).toHaveLength(2);
       for (const id of workIds) {
-        expect(storeGetWorkItem(id)?.state).toBe("pending");
+        expect((await workItemRepo.getById(id))?.state).toBe("pending");
       }
     });
 
     test("skips non-idle sessions", async () => {
-      const activeSession = await storeCreateSession({ environmentId: envId });
-      const { storeUpdateSession } = await import("../store");
-      await storeUpdateSession(activeSession.id, { status: "active" });
+      const activeSession = await sessionRepo.create({ environmentId: envId });
+      await sessionRepo.update(activeSession.id, { status: "active" });
       const workIds = await reconnectWorkForEnvironment(envId);
       // Only the original idle session should get work
       expect(workIds).toHaveLength(1);
     });
 
     test("returns empty for environment with no sessions", async () => {
-      const emptyEnv = await storeCreateEnvironment({ userId: "u1" });
+      const emptyEnv = await environmentRepo.create({ userId: "u1" });
       const workIds = await reconnectWorkForEnvironment(emptyEnv.id);
       expect(workIds).toHaveLength(0);
     });

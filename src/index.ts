@@ -27,7 +27,8 @@ import webAuth from "./routes/web/auth";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import { stopAllInstances, spawnInstanceFromEnvironment, findRunningInstanceByEnvironment } from "./services/instance";
-import { storeListAllEnvironments, storeLoadSessionsFromDB } from "./store";
+import { environmentRepo, sessionRepo } from "./repositories";
+import { repoPlugin } from "./plugins/repositories";
 import { migrateSkillsDir } from "./services/skill";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { initHermesClient, getHermesClient } from "./services/hermes-client";
@@ -42,7 +43,7 @@ await initDb();
 console.log("[RCS] Database initialized (PostgreSQL + better-auth)");
 
 await migrateSkillsDir();
-await storeLoadSessionsFromDB();
+await sessionRepo.loadFromDB();
 console.log("[RCS] Sessions restored from database");
 await startScheduler();
 
@@ -62,7 +63,7 @@ try {
 
 // Auto-start instances for all environments on server boot
 (async () => {
-  const envs = await storeListAllEnvironments();
+  const envs = await environmentRepo.listAll();
   for (const env of envs) {
     if (!env.userId) continue;
     if (!env.autoStart) continue;
@@ -86,6 +87,7 @@ const app = new Elysia()
   .use(corsPlugin)
   .use(loggerPlugin)
   .use(errorPlugin)
+  .use(repoPlugin)
   // Path normalization: collapse double slashes
   .onBeforeHandle(({ request }) => {
     const url = new URL(request.url);

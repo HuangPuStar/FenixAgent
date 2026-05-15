@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Environment, Session } from "../types";
-import { apiCreateSession } from "../api/client";
+import { client } from "../api/client";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +56,8 @@ export function NewSessionDialog({ open, environments, onClose, onCreated }: New
       const body: Record<string, string> = {};
       if (values.title.trim()) body.title = values.title.trim();
       if (values.envId) body.environment_id = values.envId;
-      const session = await apiCreateSession(body);
+      const { data: session, error: sessionErr } = await client.web.sessions.post(body as any);
+      if (sessionErr) throw new Error(sessionErr.message ?? "Failed to create session");
       onCreated(session);
     } catch (err) {
       form.setError("root", {

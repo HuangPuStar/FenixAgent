@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { apiListFiles, apiUploadFile } from "../api/client";
+import { client, fetchUpload } from "../api/client";
 import type { FileInfo } from "../types";
 import {
   Dialog,
@@ -37,8 +37,9 @@ export function FilePickerDialog({ open, sessionId, onClose, onSelect }: FilePic
     setLoading(true);
     setError(null);
     try {
-      const result = await apiListFiles(sessionId, dirPath || undefined);
-      setEntries(result.entries);
+      const queryParams = dirPath ? { path: dirPath } : {};
+      const { data: result } = await client.web.sessions({ id: sessionId }).user.get(queryParams);
+      setEntries((result as any)?.entries ?? []);
       setCurrentDir(dirPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load files");
@@ -73,7 +74,11 @@ export function FilePickerDialog({ open, sessionId, onClose, onSelect }: FilePic
     setLoading(true);
     setError(null);
     try {
-      await apiUploadFile(sessionId, "user", Array.from(files));
+      const formData = new FormData();
+      for (const file of Array.from(files)) {
+        formData.append("files", file);
+      }
+      await fetchUpload(`/web/sessions/${sessionId}/user/user`, formData);
       await loadDirectory(currentDir);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");

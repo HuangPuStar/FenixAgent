@@ -57,48 +57,112 @@ mock.module("../transport/acp-relay-handler", () => ({
   closeInstanceLocalWs: mock(() => {}),
 }));
 
-mock.module("../store", () => ({
-  storeGetEnvironment: mock((id: string) => ({
-    id,
-    userId: "test-user",
-    agentName: "test-agent",
-    name: "test-env",
-    workspacePath: process.cwd(),
-    secret: "env_secret_test123",
-  })),
-  storeGetEnvironmentBySecret: mock((secret: string) => {
-    if (secret === "env_secret_test123") {
-      return {
-        id: "env_test_secret",
-        userId: "test-user",
-        agentName: "test-agent",
-        name: "test-env",
-        workspacePath: process.cwd(),
-        secret,
-      };
-    }
-    if (secret === "env_secret_kb_mcp") {
-      return {
-        id: "env_kb_mcp",
-        userId: "kb-mcp-user",
-        agentName: "general",
-        name: "kb-mcp-env",
-        workspacePath: process.cwd(),
-        secret,
-      };
-    }
-    return undefined;
-  }),
-  storeCreateSession: mock((req: any) => ({
-    id: `session_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    environmentId: req.environmentId,
-    title: req.title,
-    status: "idle",
-    source: req.source,
-    userId: req.userId,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  })),
+mock.module("../repositories", () => ({
+  environmentRepo: {
+    getById: mock(async (id: string) => ({
+      id,
+      userId: "test-user",
+      agentName: "test-agent",
+      name: "test-env",
+      workspacePath: process.cwd(),
+      secret: "env_secret_test123",
+    })),
+    getBySecret: mock(async (secret: string) => {
+      if (secret === "env_secret_test123") {
+        return {
+          id: "env_test_secret",
+          userId: "test-user",
+          agentName: "test-agent",
+          name: "test-env",
+          workspacePath: process.cwd(),
+          secret,
+        };
+      }
+      if (secret === "env_secret_kb_mcp") {
+        return {
+          id: "env_kb_mcp",
+          userId: "kb-mcp-user",
+          agentName: "general",
+          name: "kb-mcp-env",
+          workspacePath: process.cwd(),
+          secret,
+        };
+      }
+      return undefined;
+    }),
+    update: mock(async () => true),
+    delete: mock(async () => true),
+    create: mock(async (params: any) => ({
+      id: `env_${Date.now()}`,
+      ...params,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastPollAt: new Date(),
+      maxSessions: 1,
+      workerType: "acp",
+      capabilities: null,
+      status: params.status || "active",
+    })),
+    listActive: mock(async () => []),
+    listAll: mock(async () => []),
+    listByUserId: mock(async () => []),
+    listActiveByUsername: mock(async () => []),
+    listAcpAgents: mock(async () => []),
+    listAcpAgentsByUserId: mock(async () => []),
+    listOnlineAcpAgents: mock(async () => []),
+  },
+  sessionRepo: {
+    create: mock(async (req: any) => ({
+      id: `session_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      environmentId: req.environmentId ?? null,
+      title: req.title ?? null,
+      status: "idle",
+      source: req.source ?? "acp",
+      permissionMode: null,
+      workerEpoch: 0,
+      username: null,
+      userId: req.userId ?? null,
+      cwd: null,
+      shareMode: "none",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+    getById: mock(async () => undefined),
+    update: mock(async () => true),
+    delete: mock(async () => true),
+    listAll: mock(async () => []),
+    listByEnvironment: mock(async () => []),
+    listByUserId: mock(async () => []),
+    listForAgentByCwd: mock(async () => []),
+    listByOwnerUuid: mock(async () => []),
+    listByUsername: mock(async () => []),
+    dissociateFromEnvironment: mock(async () => {}),
+    loadFromDB: mock(async () => {}),
+    bindOwner: mock(async () => {}),
+    isOwner: mock(async () => false),
+    getOwners: mock(async () => undefined),
+    setShareMode: mock(() => {}),
+    reset: mock(() => {}),
+  },
+  sessionWorkerRepo: {
+    get: mock(async () => undefined),
+    upsert: mock(async (_sessionId: string, patch: any) => ({ sessionId: _sessionId, workerStatus: patch?.workerStatus ?? null, externalMetadata: null, requiresActionDetails: null, lastHeartbeatAt: null })),
+    reset: mock(() => {}),
+  },
+  shareLinkRepo: {},
+  tokenRepo: {
+    create: mock(async () => {}),
+    getByToken: mock(async () => undefined),
+    reset: mock(() => {}),
+  },
+  workItemRepo: {
+    create: mock(async (params: any) => ({ id: `work_${Date.now()}`, ...params, state: "pending", createdAt: new Date(), updatedAt: new Date() })),
+    getById: mock(async () => undefined),
+    getPendingByEnvironment: mock(async () => undefined),
+    update: mock(async () => true),
+    reset: mock(() => {}),
+  },
+  resetAllRepos: mock(() => {}),
 }));
 
 mock.module("../utils/executable", () => ({

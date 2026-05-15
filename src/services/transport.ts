@@ -1,4 +1,4 @@
-import { getEventBus } from "../transport/event-bus";
+import { eventService } from "../services/event-service";
 import { v4 as uuid } from "uuid";
 
 /**
@@ -87,7 +87,7 @@ export function publishSessionEvent(
   payload: unknown,
   direction: "inbound" | "outbound",
 ) {
-  const bus = getEventBus(sessionId);
+  const bus = eventService.getBus(sessionId);
   const eventId = uuid();
 
   const normalized = normalizePayload(type, payload);

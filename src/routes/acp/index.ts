@@ -1,10 +1,7 @@
 import Elysia from "elysia";
-import { validateApiKeyAndGetUser } from "../../auth/api-key-service";
+import { validateApiKeyAndGetUser, validateLegacyApiKey } from "../../auth/api-key-service";
 import { auth } from "../../auth/better-auth";
 import { config } from "../../config";
-import { db } from "../../db";
-import { user } from "../../db/schema";
-import { eq } from "drizzle-orm";
 import {
   handleAcpWsOpen,
   handleAcpWsMessage,
@@ -15,12 +12,9 @@ import {
   handleRelayMessage,
   handleRelayClose,
 } from "../../transport/acp-relay-handler";
-import {
-  storeListAcpAgentsByUserId,
-  storeGetEnvironment,
-} from "../../store";
+import { environmentRepo } from "../../repositories";
 import { log, error as logError } from "../../logger";
-import { authGuardPlugin } from "../../plugins/auth";
+import { authGuardPlugin, ensureSystemUser, lookupUserById } from "../../plugins/auth";
 import type { WsConnection } from "../../transport/ws-types";
 import { v4 as uuid } from "uuid";
 
@@ -37,7 +31,7 @@ function adaptWs(ws: any): WsConnection {
 }
 
 /** Response shape for an ACP agent */
-function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof storeGetEnvironment>>>) {
+function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environmentRepo.getById>>>) {
   return {
     id: env.id,
     agent_name: env.machineName,
@@ -48,46 +42,13 @@ function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof storeGetE
   };
 }
 
-/**
- * Find or create the system user for legacy global API key fallback.
- * Mirrors the logic in plugins/auth.ts ensureSystemUser.
- */
-async function ensureSystemUser(): Promise<{ id: string; email: string; name: string } | null> {
-  const rows = await db.select().from(user).where(eq(user.email, "system@rcs.local")).limit(1);
-  if (rows.length > 0) {
-    return { id: rows[0].id, email: rows[0].email, name: rows[0].name };
-  }
-
-  const anyUser = await db.select().from(user).limit(1);
-  if (anyUser.length > 0) {
-    return { id: anyUser[0].id, email: anyUser[0].email, name: anyUser[0].name };
-  }
-
-  try {
-    const result = await (auth.api.signUpEmail as any)({
-      email: "system@rcs.local",
-      password: "system",
-      name: "System",
-    });
-    if (result.user) {
-      const { createApiKey } = await import("../../auth/api-key-service");
-      await createApiKey(result.user.id, "legacy-auto");
-      return { id: result.user.id, email: result.user.email, name: result.user.name };
-    }
-  } catch {
-    // signUpEmail may fail if user was created concurrently
-  }
-
-  return null;
-}
-
 /** Resolve userId from token (three-level auth) */
 async function resolveTokenAuth(token: string | undefined): Promise<{ userId: string; envId?: string } | null> {
   if (!token) return null;
 
   // 0. Environment secret match
-  const { storeGetEnvironmentBySecret } = await import("../../store");
-  const envRecord = await storeGetEnvironmentBySecret(token);
+  const { environmentRepo } = await import("../../repositories");
+  const envRecord = await environmentRepo.getBySecret(token);
   if (envRecord) {
     if (envRecord.userId) {
       return { userId: envRecord.userId, envId: envRecord.id };
@@ -97,7 +58,7 @@ async function resolveTokenAuth(token: string | undefined): Promise<{ userId: st
   // 1. Per-user API Key
   const keyInfo = await validateApiKeyAndGetUser(token);
   if (keyInfo) {
-    const [userRow] = await db.select().from(user).where(eq(user.id, keyInfo.userId)).limit(1);
+    const userRow = await lookupUserById(keyInfo.userId);
     if (userRow) {
       return { userId: userRow.id };
     }
@@ -120,7 +81,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
   /** GET /acp/agents — List current user's ACP agents */
   .get("/agents", async ({ store }) => {
     const currentUser = store.user!;
-    const agents = await storeListAcpAgentsByUserId(currentUser.id);
+    const agents = await environmentRepo.listAcpAgentsByUserId(currentUser.id);
     return agents.map((a) => toAcpAgentResponse(a));
   }, { sessionAuth: true })
 
@@ -193,7 +154,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       const sessionId = ws.data.query?.sessionId as string | undefined;
 
       // Verify agent belongs to this user
-      const env = await storeGetEnvironment(agentId);
+      const env = await environmentRepo.getById(agentId);
       if (!env || env.userId !== userId) {
         log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not found or not owned by user ${userId}`);
         adaptWs(ws).close(4003, "unauthorized");

@@ -19,12 +19,8 @@ import Elysia from "elysia";
 import { db } from "../db";
 import { user as userTable } from "../db/schema";
 import { eq } from "drizzle-orm";
-import {
-    storeCreateEnvironment,
-    storeCreateSession,
-    storeReset,
-    storeDeleteEnvironment,
-} from "../store";
+import { resetAllRepos, environmentRepo, sessionRepo } from "../repositories";
+import { deleteEnvironment } from "../services/environment";
 
 async function ensureUser() {
     const existing = await db.select().from(userTable).where(eq(userTable.id, "test-user")).limit(1);
@@ -56,16 +52,16 @@ describe("Files Route", () => {
         workspaceDir = await mkdtemp(join(tmpdir(), "rcs-files-test-"));
         await mkdir(join(workspaceDir, "user"), { recursive: true });
 
-        storeReset();
+        resetAllRepos();
 
         // Create real environment and session with test workspace
-        const env = await storeCreateEnvironment({
+        const env = await environmentRepo.create({
             userId: "test-user",
             workspacePath: workspaceDir,
             status: "active",
         });
         envId = env.id;
-        const session = await storeCreateSession({ environmentId: env.id });
+        const session = await sessionRepo.create({ environmentId: env.id });
         sessionId = session.id;
 
         const mod = await import("../routes/web/files");
@@ -92,12 +88,11 @@ describe("Files Route", () => {
 
     test("GET /:sessionId/user — 404 for invalid session without environment", async () => {
         // Delete the specific environment and clear sessions so no fallback is available
-        await storeDeleteEnvironment(envId);
-        storeReset();
+        await deleteEnvironment(envId);
+        resetAllRepos();
         // Also delete any other environments for this user to prevent fallback
-        const { storeListEnvironmentsByUserId } = await import("../store");
-        for (const env of await storeListEnvironmentsByUserId("test-user")) {
-            await storeDeleteEnvironment(env.id);
+        for (const env of await environmentRepo.listByUserId("test-user")) {
+            await deleteEnvironment(env.id);
         }
         const res = await request(app, `/web/sessions/invalid-session/user`, {
             headers: { "Content-Type": "application/json" },

@@ -1,15 +1,8 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import {
-    storeCreateEnvironment,
-    storeGetEnvironment,
-    storeUpdateEnvironment,
-    storeListEnvironmentsByUserId,
-    storeDeleteEnvironment,
-    storeListSessionsByEnvironment,
-    storeCreateSession,
-} from "../../store";
-import type { EnvironmentRecord } from "../../store";
+import { environmentRepo, sessionRepo } from "../../repositories";
+import type { EnvironmentRecord } from "../../repositories";
+import { deleteEnvironment } from "../../services/environment";
 import * as configPg from "../../services/config-pg";
 import {
     spawnInstanceFromEnvironment,
@@ -91,12 +84,12 @@ const app = new Elysia({ name: "web-environments", prefix: "/web" })
 /** GET /web/environments — List environments for the current user */
 app.get("/environments", async ({ store }) => {
     const user = store.user!;
-    const envs = await storeListEnvironmentsByUserId(user.id);
+    const envs = await environmentRepo.listByUserId(user.id);
     const results = [];
     for (const env of envs) {
-      let sessions = storeListSessionsByEnvironment(env.id);
+      let sessions = await sessionRepo.listByEnvironment(env.id);
       if (sessions.length === 0) {
-        const session = await storeCreateSession({
+        const session = await sessionRepo.create({
           environmentId: env.id,
           title: env.agentName || env.name,
           source: "acp",
@@ -181,7 +174,7 @@ app.post("/environments", async ({ store, body, error }) => {
     const secret = generateEnvSecret();
     let record;
     try {
-        record = await storeCreateEnvironment({
+        record = await environmentRepo.create({
             name,
             description,
             workspacePath,
@@ -219,7 +212,7 @@ app.post("/environments", async ({ store, body, error }) => {
 app.get("/environments/:id", async ({ store, params, error }) => {
     const user = store.user!;
     const envId = params.id;
-    const env = await storeGetEnvironment(envId);
+    const env = await environmentRepo.getById(envId);
     if (!env || env.userId !== user.id) {
         return error(404, { error: { type: "NOT_FOUND", message: "环境不存在" } });
     }
@@ -230,7 +223,7 @@ app.get("/environments/:id", async ({ store, params, error }) => {
 app.put("/environments/:id", async ({ store, params, body, error }) => {
     const user = store.user!;
     const envId = params.id;
-    const env = await storeGetEnvironment(envId);
+    const env = await environmentRepo.getById(envId);
     if (!env || env.userId !== user.id) {
         return error(404, { error: { type: "NOT_FOUND", message: "环境不存在" } });
     }
@@ -272,8 +265,8 @@ app.put("/environments/:id", async ({ store, params, body, error }) => {
         patch.autoStart = !!b.autoStart;
     }
 
-    await storeUpdateEnvironment(envId, patch);
-    const updated = await storeGetEnvironment(envId);
+    await environmentRepo.update(envId, patch);
+    const updated = await environmentRepo.getById(envId);
     return sanitizeResponse(updated!);
 }, { sessionAuth: true, body: "update-environment-request" });
 
@@ -281,7 +274,7 @@ app.put("/environments/:id", async ({ store, params, body, error }) => {
 app.post("/environments/:id/enter", async ({ store, params, body, error }) => {
     const user = store.user!;
     const envId = params.id;
-    const env = await storeGetEnvironment(envId);
+    const env = await environmentRepo.getById(envId);
     if (!env || env.userId !== user.id) {
         return error(404, { error: { type: "NOT_FOUND", message: "环境不存在" } });
     }
@@ -315,11 +308,11 @@ app.post("/environments/:id/enter", async ({ store, params, body, error }) => {
 
     let sessionId = inst.sessionId;
     if (!sessionId) {
-        const sessions = storeListSessionsByEnvironment(envId);
+        const sessions = await sessionRepo.listByEnvironment(envId);
         sessionId = sessions.length > 0 ? sessions[0].id : undefined;
     }
     if (!sessionId) {
-        const session = await storeCreateSession({
+        const session = await sessionRepo.create({
             environmentId: envId,
             title: env.agentName || env.name,
             source: "acp",
@@ -341,7 +334,7 @@ app.post("/environments/:id/enter", async ({ store, params, body, error }) => {
 app.get("/environments/:id/instances", async ({ store, params, error }) => {
     const user = store.user!;
     const envId = params.id;
-    const env = await storeGetEnvironment(envId);
+    const env = await environmentRepo.getById(envId);
     if (!env || env.userId !== user.id) {
         return error(404, { error: { type: "NOT_FOUND", message: "环境不存在" } });
     }
@@ -364,11 +357,11 @@ app.get("/environments/:id/instances", async ({ store, params, error }) => {
 app.delete("/environments/:id", async ({ store, params, error }) => {
     const user = store.user!;
     const envId = params.id;
-    const env = await storeGetEnvironment(envId);
+    const env = await environmentRepo.getById(envId);
     if (!env || env.userId !== user.id) {
         return error(404, { error: { type: "NOT_FOUND", message: "环境不存在" } });
     }
-    await storeDeleteEnvironment(envId);
+    await deleteEnvironment(envId);
     return { ok: true as const };
 }, { sessionAuth: true });
 

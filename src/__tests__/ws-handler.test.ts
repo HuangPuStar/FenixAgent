@@ -17,7 +17,7 @@ mock.module("../config", () => ({
   getBaseUrl: () => "http://localhost:3000",
 }));
 
-import { storeReset } from "../store";
+import { resetAllRepos } from "../repositories";
 import { getEventBus, removeEventBus, getAllEventBuses } from "../transport/event-bus";
 import {
   ingestBridgeMessage,
@@ -40,7 +40,7 @@ function createMockWs(readyState = 1) {
 
 describe("ws-handler", () => {
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }

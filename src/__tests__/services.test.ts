@@ -17,7 +17,7 @@ mock.module("../config", () => ({
   getBaseUrl: () => "http://localhost:3000",
 }));
 
-import { storeReset, storeCreateEnvironment } from "../store";
+import { resetAllRepos, environmentRepo } from "../repositories";
 import { db } from "../db";
 import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -70,7 +70,7 @@ async function ensureUser(userId: string) {
 describe("Session Service", () => {
   beforeEach(async () => {
     await ensureUser("u1");
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }
@@ -88,7 +88,7 @@ describe("Session Service", () => {
     });
 
     test("creates a session with all options", async () => {
-      const env = await storeCreateEnvironment({ userId: "u1" });
+      const env = await environmentRepo.create({ userId: "u1" });
       const resp = await createSession({
         environment_id: env.id,
         title: "My Session",
@@ -178,7 +178,7 @@ describe("Session Service", () => {
   describe("listSessionSummaries", () => {
     test("returns summaries with correct fields", async () => {
       await createSession({ title: "Test" });
-      const summaries = listSessionSummaries();
+      const summaries = await listSessionSummaries();
       expect(summaries).toHaveLength(1);
       expect(summaries[0].title).toBe("Test");
       expect(summaries[0].updated_at).toBeGreaterThan(0);
@@ -191,13 +191,13 @@ describe("Session Service", () => {
     test("filters by username", async () => {
       await createSession({ username: "alice" });
       await createSession({ username: "bob" });
-      expect(listSessionSummariesByUsername("alice")).toHaveLength(1);
+      expect(await listSessionSummariesByUsername("alice")).toHaveLength(1);
     });
   });
 
   describe("listSessionsByEnvironment", () => {
     test("filters by environment", async () => {
-      const env = await storeCreateEnvironment({ userId: "u1" });
+      const env = await environmentRepo.create({ userId: "u1" });
       await createSession({ environment_id: env.id });
       await createSession({});
       expect(await listSessionsByEnvironment(env.id)).toHaveLength(1);
@@ -210,7 +210,7 @@ describe("Session Service", () => {
 describe("Environment Service", () => {
   beforeEach(async () => {
     await ensureUser("system");
-    storeReset();
+    resetAllRepos();
   });
 
   describe("registerEnvironment", () => {
@@ -311,7 +311,7 @@ describe("Environment Service", () => {
 
 describe("Transport Service", () => {
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }

@@ -1,14 +1,8 @@
 import Elysia from "elysia";
 import { randomBytes } from "node:crypto";
 import { authGuardPlugin } from "../../plugins/auth";
-import {
-  storeCreateEnvironment,
-  storeCreateSession,
-  storeDeleteEnvironment,
-  storeGetEnvironment,
-  storeUpdateEnvironment,
-  storeListSessionsByEnvironment,
-} from "../../store";
+import { environmentRepo, sessionRepo } from "../../repositories";
+import { deleteEnvironment } from "../../services/environment";
 
 const app = new Elysia({ name: "v1-environments", prefix: "/v1/environments" })
   .use(authGuardPlugin);
@@ -25,16 +19,16 @@ app.post("/bridge", async ({ store, body, error }) => {
   // If authenticated via environment secret, return the existing environment
   const authEnvId = store.authEnvironmentId as string | undefined;
   if (authEnvId) {
-    const existing = await storeGetEnvironment(authEnvId);
+    const existing = await environmentRepo.getById(authEnvId);
     if (existing) {
-      await storeUpdateEnvironment(authEnvId, {
+      await environmentRepo.update(authEnvId, {
         status: "active",
         lastPollAt: new Date(),
         capabilities: b.capabilities || undefined,
         maxSessions: b.max_sessions,
       });
 
-      const sessions = storeListSessionsByEnvironment(authEnvId);
+      const sessions = await sessionRepo.listByEnvironment(authEnvId);
       return {
         environment_id: existing.id,
         environment_secret: existing.secret,
@@ -46,7 +40,7 @@ app.post("/bridge", async ({ store, body, error }) => {
 
   const workerType = b.worker_type || b.metadata?.worker_type || "acp";
 
-  const record = await storeCreateEnvironment({
+  const record = await environmentRepo.create({
     secret: generateBridgeSecret(),
     userId: user.id,
     machineName: b.machine_name,
@@ -60,11 +54,11 @@ app.post("/bridge", async ({ store, body, error }) => {
 
   let sessionId: string | undefined;
   if (workerType === "acp") {
-    const existing = storeListSessionsByEnvironment(record.id);
+    const existing = await sessionRepo.listByEnvironment(record.id);
     if (existing.length > 0) {
       sessionId = existing[0].id;
     } else {
-      const session = await storeCreateSession({
+      const session = await sessionRepo.create({
         environmentId: record.id,
         title: b.machine_name || "ACP Agent",
         source: "acp",
@@ -86,11 +80,11 @@ app.post("/bridge", async ({ store, body, error }) => {
 app.delete("/bridge/:id", async ({ store, params, error }) => {
   const user = store.user!;
   const envId = params.id;
-  const env = await storeGetEnvironment(envId);
+  const env = await environmentRepo.getById(envId);
   if (!env || env.userId !== user.id) {
     return error(404, { error: { type: "not_found", message: "Environment not found" } });
   }
-  await storeDeleteEnvironment(envId);
+  await deleteEnvironment(envId);
   return { status: "ok" };
 }, { apiKeyAuth: true });
 
@@ -98,11 +92,11 @@ app.delete("/bridge/:id", async ({ store, params, error }) => {
 app.post("/:id/bridge/reconnect", async ({ store, params, error }) => {
   const user = store.user!;
   const envId = params.id;
-  const env = await storeGetEnvironment(envId);
+  const env = await environmentRepo.getById(envId);
   if (!env || env.userId !== user.id) {
     return error(404, { error: { type: "not_found", message: "Environment not found" } });
   }
-  await storeUpdateEnvironment(envId, { status: "active" });
+  await environmentRepo.update(envId, { status: "active" });
   return { status: "ok" };
 }, { apiKeyAuth: true });
 

@@ -1,7 +1,7 @@
 import { log, error as logError } from "../../logger";
 import Elysia from "elysia";
 import { errorResponse } from "../../plugins/auth";
-import { validateApiKey } from "../../auth/api-key";
+import { validateLegacyApiKey } from "../../auth/api-key-service";
 import { verifyWorkerJwt } from "../../auth/jwt";
 import {
   handleWebSocketOpen,
@@ -28,7 +28,7 @@ function authenticateRequest(request: Request, label: string, expectedSessionId?
   const token = authHeader?.replace("Bearer ", "") || queryToken;
 
   // Try API key first
-  if (validateApiKey(token)) {
+  if (validateLegacyApiKey(token)) {
     return true;
   }
 
@@ -54,7 +54,7 @@ const app = new Elysia({ name: "v2-session-ingress", prefix: "/v2/session_ingres
 /** POST /v2/session_ingress/session/:sessionId/events — HTTP POST (HybridTransport writes) */
 app.post("/session/:sessionId/events", async ({ request, params, error }) => {
   const requestedSessionId = params.sessionId;
-  const sessionId = resolveExistingSessionId(requestedSessionId) ?? requestedSessionId;
+  const sessionId = await resolveExistingSessionId(requestedSessionId) ?? requestedSessionId;
 
   if (!authenticateRequest(request, `POST session/${sessionId}`, sessionId)) {
     return error(401, { error: { type: "unauthorized", message: "Invalid auth" } });
@@ -80,9 +80,9 @@ app.post("/session/:sessionId/events", async ({ request, params, error }) => {
 
 /** WS /v2/session_ingress/ws/:sessionId — WebSocket transport */
 app.ws("/ws/:sessionId", {
-  open(ws) {
+  async open(ws) {
     const requestedSessionId = ws.data.params.sessionId;
-    const sessionId = resolveExistingSessionId(requestedSessionId) ?? requestedSessionId;
+    const sessionId = await resolveExistingSessionId(requestedSessionId) ?? requestedSessionId;
 
     if (!authenticateRequest(ws.data.request, `WS ${sessionId}`, sessionId)) {
       ws.close(4003, "unauthorized");
@@ -99,17 +99,17 @@ app.ws("/ws/:sessionId", {
     log(`[WS] Upgrade accepted: session=${sessionId}`);
     handleWebSocketOpen(adaptWs(ws), sessionId);
   },
-  message(ws, message) {
+  async message(ws, message) {
     const requestedSessionId = ws.data.params.sessionId;
-    const sessionId = resolveExistingSessionId(requestedSessionId) ?? requestedSessionId;
+    const sessionId = await resolveExistingSessionId(requestedSessionId) ?? requestedSessionId;
     const data = typeof message === "string"
       ? message
       : new TextDecoder().decode(message as ArrayBuffer);
     handleWebSocketMessage(adaptWs(ws), sessionId, data);
   },
-  close(ws, code, reason) {
+  async close(ws, code, reason) {
     const requestedSessionId = ws.data.params.sessionId;
-    const sessionId = resolveExistingSessionId(requestedSessionId) ?? requestedSessionId;
+    const sessionId = await resolveExistingSessionId(requestedSessionId) ?? requestedSessionId;
     handleWebSocketClose(adaptWs(ws), sessionId, code, reason);
   },
 });

@@ -7,6 +7,7 @@ import { mcpTool } from "../../../db/schema";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ConfigBodySchema } from "../../../schemas/config.schema";
+import { configSuccess, configError, configValidationError, configNotFound, isValidResourceName } from "../../../services/config-utils";
 
 // 内部类型定义（与前端 web/src/types/config.ts 对齐）
 type McpLocalConfig = {

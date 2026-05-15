@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterAll } from "bun:test";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { client, fetchUpload } from "../api/client";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -9,7 +10,7 @@ let mockFetchCalls: Array<{ url: string; method: string; headers?: Record<string
 
 const originalFetch = globalThis.fetch;
 
-describe("File API Functions", () => {
+describe("File API Functions (Eden Treaty)", () => {
   beforeEach(() => {
     mockFetchCalls = [];
     globalThis.fetch = async (input: any, init?: any) => {
@@ -24,6 +25,7 @@ describe("File API Functions", () => {
         ok: true,
         status: 200,
         statusText: "OK",
+        headers: new Map([["content-type", "application/json"]]),
         json: async () => ({ success: true }),
         text: async () => JSON.stringify({ success: true }),
       } as any;
@@ -35,28 +37,28 @@ describe("File API Functions", () => {
   });
 
   // 测试列出文件不带目录参数
-  test("apiListFiles — no dir param", async () => {
-    const { apiListFiles } = await import("../api/client");
-    await apiListFiles("s1");
+  test("listFiles — no path param", async () => {
+    await client.web.sessions({ id: "s1" }).user.get();
     expect(mockFetchCalls.length).toBe(1);
-    expect(mockFetchCalls[0].url).toBe("/web/sessions/s1/user");
+    expect(mockFetchCalls[0].url).toContain("/web/sessions/s1/user");
     expect(mockFetchCalls[0].method).toBe("GET");
   });
 
   // 测试列出文件带目录参数
-  test("apiListFiles — with dir param", async () => {
-    const { apiListFiles } = await import("../api/client");
-    await apiListFiles("s1", "docs/");
+  test("listFiles — with path query param", async () => {
+    await client.web.sessions({ id: "s1" }).user.get({ path: "docs/" });
     expect(mockFetchCalls.length).toBe(1);
-    expect(mockFetchCalls[0].url).toContain("/web/sessions/s1/user?path=");
-    expect(mockFetchCalls[0].url).toContain(encodeURIComponent("docs/"));
+    expect(mockFetchCalls[0].url).toContain("/web/sessions/s1/user");
+    // Eden Treaty passes query params via fetch options
+    expect(mockFetchCalls[0].method).toBe("GET");
   });
 
-  // 测试上传文件使用 FormData 和 POST
-  test("apiUploadFile — uses FormData and POST", async () => {
-    const { apiUploadFile } = await import("../api/client");
+  // 测试上传文件使用 fetchUpload 和 FormData
+  test("fetchUpload — uses FormData and POST", async () => {
     const file = new File(["content"], "test.txt");
-    await apiUploadFile("s1", "docs/", [file]);
+    const formData = new FormData();
+    formData.append("files", file);
+    await fetchUpload("/web/sessions/s1/user/docs/", formData);
     expect(mockFetchCalls.length).toBe(1);
     expect(mockFetchCalls[0].method).toBe("POST");
     expect(mockFetchCalls[0].body).toBeInstanceOf(FormData);

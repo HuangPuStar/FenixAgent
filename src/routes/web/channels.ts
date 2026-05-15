@@ -3,7 +3,7 @@ import { authGuardPlugin } from "../../plugins/auth";
 import { getChannelProvider, listChannelProviders } from "../../services/channel-provider";
 import { getHermesClient } from "../../services/hermes-client";
 import { listBindings, createBinding, deleteBinding, updateBinding } from "../../services/channel-binding";
-import { storeGetEnvironment } from "../../store";
+import { environmentRepo } from "../../repositories";
 import {
   ChannelProviderDescriptorSchema,
   HermesStatusSchema,
@@ -58,7 +58,7 @@ app.get("/channels/bindings", async () => {
   const bindings = await listBindings();
   const enriched = [];
   for (const b of bindings) {
-    const env = await storeGetEnvironment(b.agentId);
+    const env = await environmentRepo.getById(b.agentId);
     enriched.push({ ...b, agentName: env?.name ?? null });
   }
   return enriched;
@@ -70,7 +70,7 @@ app.post("/channels/bindings", async ({ body, error }) => {
     return error(400, { error: { type: "VALIDATION_ERROR", message: "platform 和 agentId 为必填字段" } });
   }
   const binding = await createBinding({ platform: b.platform, chatId: b.chatId ?? null, agentId: b.agentId, enabled: b.enabled });
-  const env = await storeGetEnvironment(binding.agentId);
+  const env = await environmentRepo.getById(binding.agentId);
   return { ...binding, agentName: env?.name ?? null };
 }, { sessionAuth: true, body: "create-channel-binding-request" });
 
@@ -90,7 +90,7 @@ app.patch("/channels/bindings/:id", async ({ params, body, error }) => {
   if (!updated) {
     return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
   }
-  const env = await storeGetEnvironment(updated.agentId);
+  const env = await environmentRepo.getById(updated.agentId);
   return { ...updated, agentName: env?.name ?? null };
 }, { sessionAuth: true });
 

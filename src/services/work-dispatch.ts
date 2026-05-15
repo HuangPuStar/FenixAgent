@@ -1,12 +1,5 @@
 import { log, error as logError } from "../logger";
-import {
-  storeCreateWorkItem,
-  storeGetWorkItem,
-  storeGetPendingWorkItem,
-  storeUpdateWorkItem,
-  storeListSessionsByEnvironment,
-  storeGetEnvironment,
-} from "../store";
+import { environmentRepo, sessionRepo, workItemRepo } from "../repositories";
 import { config, getBaseUrl } from "../config";
 import type { WorkResponse } from "../types/api";
 
@@ -25,7 +18,7 @@ function encodeWorkSecret(): string {
 
 export async function createWorkItem(environmentId: string, sessionId: string): Promise<string> {
   // Validate environment exists and is active
-  const env = await storeGetEnvironment(environmentId);
+  const env = await environmentRepo.getById(environmentId);
   if (!env) {
     throw new Error(`Environment ${environmentId} not found`);
   }
@@ -34,7 +27,7 @@ export async function createWorkItem(environmentId: string, sessionId: string): 
   }
 
   const secret = encodeWorkSecret();
-  const record = storeCreateWorkItem({ environmentId, sessionId, secret });
+  const record = await workItemRepo.create({ environmentId, sessionId, secret });
   log(`[RCS] Work item created: ${record.id} for env=${environmentId} session=${sessionId}`);
   return record.id;
 }
@@ -45,10 +38,10 @@ export async function pollWork(environmentId: string, timeoutSeconds = config.po
   const deadline = Date.now() + timeoutSeconds * 1000;
 
   while (Date.now() < deadline) {
-    const item = storeGetPendingWorkItem(environmentId);
+    const item = await workItemRepo.getPendingByEnvironment(environmentId);
 
     if (item) {
-      storeUpdateWorkItem(item.id, { state: "dispatched" });
+      await workItemRepo.update(item.id, { state: "dispatched" });
 
       return {
         id: item.id,
@@ -70,17 +63,17 @@ export async function pollWork(environmentId: string, timeoutSeconds = config.po
   return null;
 }
 
-export function ackWork(workId: string) {
-  storeUpdateWorkItem(workId, { state: "acked" });
+export async function ackWork(workId: string) {
+  await workItemRepo.update(workId, { state: "acked" });
 }
 
-export function stopWork(workId: string) {
-  storeUpdateWorkItem(workId, { state: "completed" });
+export async function stopWork(workId: string) {
+  await workItemRepo.update(workId, { state: "completed" });
 }
 
-export function heartbeatWork(workId: string): { lease_extended: boolean; state: string; last_heartbeat: string; ttl_seconds: number } {
-  storeUpdateWorkItem(workId, {}); // bump updatedAt
-  const item = storeGetWorkItem(workId);
+export async function heartbeatWork(workId: string): Promise<{ lease_extended: boolean; state: string; last_heartbeat: string; ttl_seconds: number }> {
+  await workItemRepo.update(workId, {}); // bump updatedAt
+  const item = await workItemRepo.getById(workId);
   const now = new Date();
   return {
     lease_extended: true,
@@ -91,8 +84,8 @@ export function heartbeatWork(workId: string): { lease_extended: boolean; state:
 }
 
 /** Reconnect: re-queue sessions associated with an environment */
-export function reconnectWorkForEnvironment(envId: string) {
-  const activeSessions = storeListSessionsByEnvironment(envId).filter((s) => s.status === "idle");
+export async function reconnectWorkForEnvironment(envId: string) {
+  const activeSessions = (await sessionRepo.listByEnvironment(envId)).filter((s) => s.status === "idle");
   const promises = activeSessions.map((s) => createWorkItem(envId, s.id));
   return Promise.all(promises);
 }

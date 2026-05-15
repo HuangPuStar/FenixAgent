@@ -5,8 +5,8 @@ import {
   getAutomationStateEventPayload,
 } from "../../services/automationState";
 import { authGuardPlugin } from "../../plugins/auth";
-import { getEventBus } from "../../transport/event-bus";
-import { storeGetSessionWorker, storeUpsertSessionWorker } from "../../store";
+import { eventService } from "../../services/event-service";
+import { sessionWorkerRepo } from "../../repositories";
 import { v4 as uuid } from "uuid";
 
 const app = new Elysia({ name: "v1-code-sessions-worker", prefix: "/v1/code/sessions" })
@@ -20,7 +20,7 @@ app.get("/:id/worker", async ({ params, error }) => {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
   }
 
-  const worker = storeGetSessionWorker(sessionId);
+  const worker = await sessionWorkerRepo.get(sessionId);
   return {
     worker: {
       worker_status: worker?.workerStatus ?? session.status,
@@ -41,7 +41,7 @@ app.put("/:id/worker", async ({ params, body, error }) => {
 
   const b = (body as any) ?? {};
   const prevAutomationState = getAutomationStateEventPayload(
-    storeGetSessionWorker(sessionId)?.externalMetadata,
+    (await sessionWorkerRepo.get(sessionId))?.externalMetadata,
   );
   if (b.worker_status) {
     await updateSessionStatus(sessionId, b.worker_status);
@@ -49,7 +49,7 @@ app.put("/:id/worker", async ({ params, body, error }) => {
     await touchSession(sessionId);
   }
 
-  const worker = storeUpsertSessionWorker(sessionId, {
+  const worker = await sessionWorkerRepo.upsert(sessionId, {
     workerStatus: b.worker_status,
     externalMetadata: b.external_metadata,
     requiresActionDetails: b.requires_action_details,
@@ -57,7 +57,7 @@ app.put("/:id/worker", async ({ params, body, error }) => {
   const nextAutomationState = getAutomationStateEventPayload(worker.externalMetadata);
 
   if (!automationStatesEqual(prevAutomationState, nextAutomationState)) {
-    getEventBus(sessionId).publish({
+    eventService.publishEvent(sessionId, {
       id: uuid(),
       sessionId,
       type: "automation_state",
@@ -86,7 +86,7 @@ app.post("/:id/worker/heartbeat", async ({ params, error }) => {
   }
 
   const now = new Date();
-  storeUpsertSessionWorker(sessionId, { lastHeartbeatAt: now });
+  await sessionWorkerRepo.upsert(sessionId, { lastHeartbeatAt: now });
   await touchSession(sessionId);
   return { status: "ok", last_heartbeat_at: now.toISOString() };
 }, { sessionIngressAuth: true });
