@@ -1,0 +1,61 @@
+{
+  "enabled": false,
+  "instanceId": "inst_core_integration",
+  "nodeId": "local-default",
+  "engineType": "opencode",
+  "launchTimeoutMs": 30000,
+  "relayReadyDelayMs": 1000,
+  "responseTimeoutMs": 30000,
+  "launchSpec": {
+    "workspace": "/path/to/workspace",
+    "env": {
+      "KEY1": "VALUE1",
+      "KEY2": "VALUE2"
+    },
+    "agent": {
+      "name": "test-agent",
+      "prompt": "你是AI助手小Q。"
+    },
+    "model": {
+      "provider": "aliyun",
+      "protocol": "anthropic",
+      "baseUrl": "https://example.invalid/apps/anthropic/v1",
+      "apiKey": "replace-with-local-secret",
+      "model": "replace-with-model-id",
+      "modelName": "replace-with-model-name"
+    },
+    "skills": [],
+    "mcpServers": [
+      {
+        "name": "mcp-test",
+        "type": "streamable-http",
+        "url": "http://127.0.0.1:9001/api/v1/mcp"
+      }
+    ]
+  },
+  "relay": {
+    "requestMessages": [
+      {
+        "type": "new_session",
+        "payload": {
+          "cwd": "/path/to/workspace"
+        }
+      },
+      {
+        "type": "prompt",
+        "payload": {
+          "content": [
+            {
+              "type": "text",
+              "text": "你是谁"
+            }
+          ]
+        }
+      }
+    ],
+    "successMatch": {
+      "type": "session_update",
+      "sessionUpdate": "agent_message_chunk"
+    }
+  }
+}
