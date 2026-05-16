@@ -57,7 +57,7 @@ export async function upsertSkill(
     .where(conditions)
     .limit(1);
 
-  const values = {
+  const commonFields = {
     description: data.description,
     contentPath: data.contentPath,
     metadata: data.metadata ?? undefined,
@@ -67,7 +67,7 @@ export async function upsertSkill(
   };
 
   if (existing.length > 0) {
-    await db.update(skill).set(values)
+    await db.update(skill).set(commonFields)
       .where(eq(skill.id, existing[0].id));
     return existing[0].id;
   }
@@ -75,11 +75,8 @@ export async function upsertSkill(
   const inserted = await db.insert(skill).values({
     userId,
     environmentId: envId,
-    agentConfigId: data.agentConfigId ?? null,
     name,
-    description: data.description,
-    contentPath: data.contentPath,
-    metadata: data.metadata ?? undefined,
+    ...commonFields,
     enabled: data.enabled ?? true,
   }).returning({ id: skill.id });
   return inserted[0].id;

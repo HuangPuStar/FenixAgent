@@ -3,6 +3,7 @@ import { getCoreRuntime } from "./core-bootstrap";
 import { buildLaunchSpec } from "./launch-spec-builder";
 import { getAgentConfigById, getAgentFullConfig } from "./config-pg";
 import { environmentRepo } from "../repositories";
+import type { EnvironmentRecord } from "../repositories";
 import { findOrCreateForEnvironment } from "./session";
 import { log, error as logError } from "../logger";
 import { NotFoundError, AppError } from "../errors";
@@ -115,8 +116,9 @@ function filterInstances(
 export async function spawnInstanceFromEnvironment(
   userId: string,
   environmentId: string,
+  prefetchedEnv?: EnvironmentRecord,
 ): Promise<SpawnedInstance> {
-  const env = await environmentRepo.getById(environmentId);
+  const env = prefetchedEnv ?? await environmentRepo.getById(environmentId);
   if (!env) throw new NotFoundError("Environment not found");
   if (env.userId !== userId) throw new AppError("Not your environment", "FORBIDDEN", 403);
 
@@ -262,7 +264,7 @@ export async function ensureRunning(userId: string, environmentId: string): Prom
     throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
   }
 
-  const instance = await spawnInstanceFromEnvironment(userId, environmentId);
+  const instance = await spawnInstanceFromEnvironment(userId, environmentId, env);
   return { instance, status: "spawned" };
 }
 

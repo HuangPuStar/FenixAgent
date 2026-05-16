@@ -17,7 +17,7 @@ export async function addModel(
     options?: unknown;
   },
 ) {
-  await db.insert(model).values({
+  const values = {
     providerId,
     modelId: data.modelId,
     displayName: data.displayName,
@@ -25,7 +25,20 @@ export async function addModel(
     limitConfig: data.limitConfig ?? undefined,
     cost: data.cost ?? undefined,
     options: data.options ?? undefined,
-  });
+    updatedAt: new Date(),
+  };
+  await db.insert(model).values(values)
+    .onConflictDoUpdate({
+      target: [model.providerId, model.modelId],
+      set: {
+        displayName: data.displayName,
+        modalities: data.modalities ?? undefined,
+        limitConfig: data.limitConfig ?? undefined,
+        cost: data.cost ?? undefined,
+        options: data.options ?? undefined,
+        updatedAt: new Date(),
+      },
+    });
 }
 
 export async function updateModel(
