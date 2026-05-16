@@ -187,3 +187,14 @@
 1. **CLEANUP — deleteTask 双查询 → 单查询**：`task.ts` 的 `deleteTask` 从 `existsByUserAndId` + `deleteByUserAndId`（2次DB查询）简化为单次 `deleteByUserAndId`（已有 userId WHERE + returning 判断），消除 TOCTOU 竞态窗口。
 2. **WARNING — importWorkspaceSkillDirectories 回滚错误掩盖**：`skill.ts` 的 workspace import 回滚路径中 `cleanupWrittenSkills`/`restoreFromBackup` 若抛出异常会掩盖原始错误。包裹 try-catch + logError。
 3. 新增 `delete-task-toctou.test.ts`（4 用例）覆盖单查询删除逻辑。16 轮累计 199 个测试。
+
+## 2026-05-17 第十七次审查
+
+审查范围：全量 CRUD 层（task、environment-acp、skill、instance）
+
+修复（1 BUG + 3 WARNING + 1 CLEANUP）：
+1. **BUG — writeLogAndReturn 重复日志**：`task.ts` 的 `scheduledTaskRepo.update` 未 try-catch，失败时异常冒泡到 `executeTaskById` 的 catch 块，导致重复写入 "failed" 日志条目。
+2. **WARNING — registerBridge 越权**：`environment-acp.ts` 收到 `authEnvironmentId` 时未校验 `existing.userId === userId`，可跨用户重新激活环境。
+3. **WARNING — importSkillDirectories rollback 错误掩盖**：全局导入的 rollback 路径 `cleanupWrittenSkills`/`restoreFromBackup` 未 try-catch（R16 只修了 workspace 变体）。
+4. **WARNING — stopInstance 二次 stop**：`instance.ts` 仅检查 `"stopped"` 状态，对 `"stopping"` 仍尝试 stop。
+5. 新增 `write-log-no-duplicate.test.ts`（3 用例）、`register-bridge-ownership.test.ts`（5 用例）。17 轮累计 207 个测试。
