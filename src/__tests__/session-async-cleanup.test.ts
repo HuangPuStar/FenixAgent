@@ -41,7 +41,7 @@ describe("session async cleanup (removed redundant Promise.resolve)", () => {
 
   // getSession 返回 active session（有 bus）
   test("getSession returns active session when bus exists", async () => {
-    mockBuses.set("ses_active", { publish: mock(() => {}) } as unknown as typeof mock);
+    mockBuses.set("ses_active", { publish: mock(() => {}) } as any);
     const result = await getSession("ses_active");
     expect(result).toEqual({ id: "ses_active", status: "active" });
   });
@@ -54,7 +54,7 @@ describe("session async cleanup (removed redundant Promise.resolve)", () => {
 
   // resolveExistingSessionId 返回 sessionId
   test("resolveExistingSessionId returns id when bus exists", async () => {
-    mockBuses.set("ses_found", { publish: mock(() => {}) } as unknown as typeof mock);
+    mockBuses.set("ses_found", { publish: mock(() => {}) } as any);
     const result = await resolveExistingSessionId("ses_found");
     expect(result).toBe("ses_found");
   });
@@ -74,7 +74,7 @@ describe("session async cleanup (removed redundant Promise.resolve)", () => {
   // archiveSession 清理 bus
   test("archiveSession removes bus", () => {
     const publish = mock(() => {});
-    mockBuses.set("ses_archive", { publish } as unknown as typeof mock);
+    mockBuses.set("ses_archive", { publish } as any);
     archiveSession("ses_archive");
     expect(mockRemoveBus).toHaveBeenCalledWith("ses_archive");
   });

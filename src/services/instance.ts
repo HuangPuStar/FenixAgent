@@ -241,8 +241,16 @@ export async function stopInstance(id: string, userId: string): Promise<{ ok: bo
 
   const facade = getCoreRuntime();
   const snapshot = facade.getInstance(id);
-  if (!snapshot) return { ok: false, error: "Instance not found" };
-  if (snapshot.status === "stopped" || snapshot.status === "stopping") return { ok: false, error: "Already stopped" };
+  if (!snapshot) {
+    // core 中不存在实例时清理残留 supplement 避免内存泄漏
+    supplements.delete(id);
+    return { ok: false, error: "Instance not found" };
+  }
+  if (snapshot.status === "stopped" || snapshot.status === "stopping") {
+    // 已停止实例清理 supplement
+    supplements.delete(id);
+    return { ok: false, error: "Already stopped" };
+  }
 
   try {
     await facade.stopInstance(id);

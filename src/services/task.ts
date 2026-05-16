@@ -24,6 +24,9 @@ function truncateSummary(value: string | null | undefined): string | null {
   return value.length > 2000 ? value.slice(0, 2000) : value;
 }
 
+/** 支持的 HTTP 方法白名单 */
+const VALID_HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
+
 export interface CreateTaskInput {
   name: string;
   description?: string;
@@ -105,7 +108,7 @@ function validateTaskInput(data: Partial<CreateTaskInput>, isUpdate = false): st
   }
   if (data.method !== undefined) {
     if (typeof data.method !== "string" || data.method.trim().length === 0) return "HTTP 方法不能为空";
-    if (!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(data.method.toUpperCase())) {
+    if (!VALID_HTTP_METHODS.includes(data.method.toUpperCase() as typeof VALID_HTTP_METHODS[number])) {
       return "不支持的 HTTP 方法";
     }
   }
@@ -339,8 +342,8 @@ export async function executeTaskById(
     );
   } catch (err: unknown) {
     logError("[Task] Execution failed for task", taskId, err);
-    // 区分超时和其他错误：AbortSignal.timeout 触发的 AbortError 标为 "timeout"
-    const isTimeout = err instanceof DOMException && err.name === "AbortError";
+    // 区分超时和其他错误：AbortSignal.timeout 触发 AbortError 或 TimeoutError（Bun）
+    const isTimeout = err instanceof DOMException && (err.name === "AbortError" || err.name === "TimeoutError");
     const message = err instanceof Error ? err.message : String(err);
     const duration = Date.now() - startTime;
 

@@ -94,7 +94,7 @@ describe("handleAcpIdentify parallel optimization", () => {
       userId: "user1",
       workerType: "acp",
       capabilities: { tools: true },
-    });
+    } as any);
 
     const result = await handleAcpIdentify({
       agentId: "agent_1",

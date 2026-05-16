@@ -117,11 +117,9 @@ export async function updateWebEnvironment(envId: string, userId: string, params
 
 /** 获取用户所有环境并组装实例信息（web/environments 路由用） */
 export async function listEnvironmentsWithInstances(userId: string) {
-  const [allEnvs, instanceMap] = await Promise.all([
-    environmentRepo.listByUserId(userId),
-    // 单次遍历按 environmentId 分组实例，避免 N 次 listInstances 调用
-    Promise.resolve(groupActiveInstancesByEnvironment()),
-  ]);
+  const allEnvs = await environmentRepo.listByUserId(userId);
+  // 单次遍历按 environmentId 分组实例，避免 N 次 listInstances 调用
+  const instanceMap = groupActiveInstancesByEnvironment();
   const results = [];
   for (const env of allEnvs) {
     const activeInstances = instanceMap.get(env.id) ?? [];
