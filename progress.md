@@ -361,3 +361,13 @@
 2. **类型安全 — scheduler.ts toInvocationDate**：`as` 类型断言改为 `in` 操作符 + typeof 守卫，增加 toDate/toJSDate 非函数属性防御。
 3. **性能 — instance.ts ensureRunning 查询合并**：`findRunningInstanceByEnvironment` + `getRunningInstancesByEnvironment` 两次 `filterInstances`（各遍历 core 全量实例）合并为单次 `getRunningInstancesByEnvironment` 调用。
 4. 新增 3 个测试文件共 12 用例。33 轮累计 338 个测试。
+
+## 2026-05-17 第三十四次审查
+
+审查范围：同 R33 全量 service 文件及 config 子目录
+
+修复（1 CLEANUP + 1 WARNING + 1 CLEANUP）：
+1. **CLEANUP — mcp-server.ts countToolsByServer 类型转换**：`sql<number>` 的 `count(*)` 可能从 PG 驱动返回字符串，添加 `Number()` 包裹，与 `provider.ts:listProviders` 行为对齐。
+2. **WARNING — agent-config.ts 服务层 top_p→topP 防御映射**：路由层已做映射，但服务层 `AGENT_SETTABLE_FIELDS` 循环直接用 `set["top_p"]=value`（Drizzle 不识别），添加 `FIELD_ALIAS` 映射表兜底，防止直接调用时值被静默丢弃。
+3. **CLEANUP — agent-config.ts validateAgentData topP 校验**：补充 `data.topP` 范围校验（0-1），消除已知校验缺口。
+4. 新增 `mcp-count-number-coercion.test.ts`（3 用例）、`agent-config-top-p-alias.test.ts`（6 用例），修正 `agent-config-validators.test.ts` expected 数组。34 轮累计 347 个测试。
