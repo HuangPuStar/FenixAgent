@@ -55,7 +55,8 @@ async function executeTask(taskId: string): Promise<void> {
   try {
     const task = await getTaskById(taskId);
     if (!task) {
-      log(`[Scheduler] Task ${taskId} not found, skipping`);
+      log(`[Scheduler] Task ${taskId} not found, removing stale job`);
+      unscheduleTask(taskId);
       return;
     }
     if (!task.enabled) {

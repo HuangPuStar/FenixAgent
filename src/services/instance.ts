@@ -227,8 +227,12 @@ export function groupActiveInstancesByEnvironment(): Map<string, SpawnedInstance
 export function getInstance(id: string, userId?: string): SpawnedInstance | undefined {
   const facade = getCoreRuntime();
   const snapshot = facade.getInstance(id);
-  if (!snapshot) return undefined;
   const sup = supplements.get(id);
+  if (!snapshot) {
+    // core 中不存在实例时清理残留 supplement 避免内存泄漏
+    if (sup) supplements.delete(id);
+    return undefined;
+  }
   if (!sup) return undefined;
   if (userId && sup.userId !== userId) return undefined;
   return toSpawnedInstance(snapshot, sup);

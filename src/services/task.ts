@@ -102,6 +102,7 @@ function validateTaskInput(data: Partial<CreateTaskInput>, isUpdate = false): st
   if (data.url !== undefined && data.url.trim().length === 0) return "URL 不能为空";
   if (!isUpdate && !data.url) return "URL 不能为空";
   if (!isUpdate && (!data.cron || data.cron.trim().length === 0)) return "cron 表达式不能为空";
+  if (data.cron !== undefined && data.cron.trim().length === 0) return "cron 表达式不能为空";
   if (data.cron) {
     const cronErr = validateCron(data.cron);
     if (cronErr) return cronErr;
