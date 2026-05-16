@@ -40,12 +40,11 @@ app.get("/environments", async ({ store }) => {
 /** POST /web/environments — Register a new environment */
 app.post("/environments", async ({ store, body }) => {
   const user = store.user!;
-  const b = body as { name: string; description?: string; agentName?: string; agentConfigId?: string; autoStart?: boolean; workspacePath: string };
+  const b = body as { name: string; description?: string; agentConfigId?: string; autoStart?: boolean; workspacePath: string };
 
   const record = await createWebEnvironment({
     name: b.name,
     description: b.description,
-    agentName: b.agentName,
     agentConfigId: b.agentConfigId,
     workspacePath: b.workspacePath,
     autoStart: b.autoStart,
@@ -71,13 +70,12 @@ app.get("/environments/:id", async ({ store, params }) => {
 /** PUT /web/environments/:id — Update environment metadata */
 app.put("/environments/:id", async ({ store, params, body }) => {
   const user = store.user!;
-  const b = body as { name?: string; description?: string | null; workspacePath?: string; agentName?: string | null; agentConfigId?: string | null; autoStart?: boolean };
+  const b = body as { name?: string; description?: string | null; workspacePath?: string; agentConfigId?: string | null; autoStart?: boolean };
 
   const updated = await updateWebEnvironment(params.id, user.id, {
     name: b.name,
     description: b.description,
     workspacePath: b.workspacePath,
-    agentName: b.agentName,
     agentConfigId: b.agentConfigId,
     autoStart: b.autoStart,
   });

@@ -106,22 +106,17 @@ export async function spawnInstanceFromEnvironment(
   const cwd = env.workspacePath || env.directory;
   if (!cwd) throw new Error(`Workspace directory not set for environment: ${environmentId}`);
 
-  // 解析 AgentConfig
-  let resolvedAgentConfig: { name: string; id?: string } | null = null;
-  if (env.agentConfigId) {
-    resolvedAgentConfig = await getAgentConfigById(env.agentConfigId);
-  } else if (env.agentName) {
-    resolvedAgentConfig = { name: env.agentName };
+  // 解析 AgentConfig：必须通过 agentConfigId
+  if (!env.agentConfigId) {
+    throw new Error(`No agent config bound to environment: ${environmentId}`);
   }
-
+  const resolvedAgentConfig = await getAgentConfigById(env.agentConfigId);
   if (!resolvedAgentConfig) {
-    throw new Error(`No agent config found for environment: ${environmentId}`);
+    throw new Error(`AgentConfig '${env.agentConfigId}' not found`);
   }
 
-  // 获取完整配置
-  const fullConfig = resolvedAgentConfig.id && env.userId
-    ? await getAgentFullConfig(env.userId, resolvedAgentConfig.id)
-    : { agentConfig: null, providers: [], skills: [], mcpServers: [] as any[] };
+  // 获取完整配置（providers、skills、mcpServers）
+  const fullConfig = await getAgentFullConfig(env.userId, resolvedAgentConfig.id);
 
   // 组装 AgentLaunchSpec
   const ac = fullConfig.agentConfig as Record<string, unknown> | null;

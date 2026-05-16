@@ -41,7 +41,7 @@ export const EnvironmentDetailResponseSchema = EnvironmentInfoSchema.extend({
 export const CreateEnvironmentRequestSchema = z.object({
   name: z.string().regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, "name 必须为 kebab-case 格式"),
   workspacePath: z.string().min(1, "workspacePath 为必填字段"),
-  agentName: z.string().optional(),
+  agentConfigId: z.string().min(1, "agentConfigId 为必填字段"),
   description: z.string().optional(),
   autoStart: z.boolean().optional(),
 });
@@ -49,7 +49,7 @@ export const CreateEnvironmentRequestSchema = z.object({
 export const UpdateEnvironmentRequestSchema = z.object({
   name: z.string().regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, "name 必须为 kebab-case 格式").optional(),
   workspacePath: z.string().min(1).optional(),
-  agentName: z.string().nullable().optional(),
+  agentConfigId: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   autoStart: z.boolean().optional(),
 });

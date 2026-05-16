@@ -77,7 +77,7 @@ function rowToRecord(row: typeof environment.$inferSelect): EnvironmentRecord {
     description: row.description,
     workspacePath: row.workspacePath,
     agentName: row.agentName,
-    agentConfigId: (row as any).agentConfigId ?? null,
+    agentConfigId: row.agentConfigId ?? null,
     secret: row.secret,
     machineName: row.machineName,
     directory: row.workspacePath,

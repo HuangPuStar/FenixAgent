@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { environmentRepo } from "../repositories/environment";
+import { getAgentConfigById } from "./config-pg";
 import { resolveExecutable } from "../utils/executable";
 
 const SUMMARY_LIMIT = 2000;
@@ -55,7 +56,13 @@ export async function runAgentTask(input: RunAgentTaskInput): Promise<AgentTaskR
   const runDir = buildRunWorkspacePath(env.workspacePath, input.taskId, input.logId);
   const opencodeConfigDir = join(runDir, ".opencode");
   const workspaceName = basename(runDir);
-  const config = env.agentName ? { default_agent: env.agentName } : {};
+
+  let defaultAgent = env.agentName;
+  if (!defaultAgent && env.agentConfigId) {
+    const agentConfig = await getAgentConfigById(env.agentConfigId);
+    defaultAgent = agentConfig?.name ?? null;
+  }
+  const config = defaultAgent ? { default_agent: defaultAgent } : {};
 
   await mkdir(runDir, { recursive: true });
   await mkdir(opencodeConfigDir, { recursive: true });

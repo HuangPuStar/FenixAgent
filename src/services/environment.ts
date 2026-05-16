@@ -44,7 +44,6 @@ function generateEnvSecret(): string {
 export interface CreateWebEnvironmentParams {
   name: string;
   description?: string;
-  agentName?: string;
   agentConfigId?: string;
   workspacePath: string;
   autoStart?: boolean;
@@ -65,19 +64,12 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
   const pathError = validateWorkspacePath(workspacePath);
   if (pathError) throw new ValidationError(pathError);
 
-  // Agent 配置解析
-  let resolvedAgentName = params.agentName ?? null;
-  let resolvedAgentConfigId = params.agentConfigId ?? null;
-
-  if (params.agentConfigId) {
-    const agent = await configPg.getAgentConfigById(params.agentConfigId);
-    if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
-    resolvedAgentName = agent.name;
-  } else if (params.agentName) {
-    const agent = await configPg.getAgentConfig(userId, params.agentName);
-    if (!agent) throw new ValidationError(`Agent '${params.agentName}' 不存在`);
-    resolvedAgentConfigId = agent.id;
+  // Agent 配置解析：必须提供 agentConfigId
+  if (!params.agentConfigId) {
+    throw new ValidationError("agentConfigId 为必填字段");
   }
+  const agent = await configPg.getAgentConfigById(params.agentConfigId);
+  if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
 
   // workspace 目录初始化
   try {
@@ -94,12 +86,12 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
       name,
       description,
       workspacePath,
-      agentName: resolvedAgentName ?? undefined,
+      agentName: agent.name,
       status: "idle",
       secret,
       userId,
       autoStart: autoStart === true,
-      agentConfigId: resolvedAgentConfigId ?? undefined,
+      agentConfigId: params.agentConfigId,
     });
   } catch (err: any) {
     if (err.message?.includes("unique") || err.message?.includes("duplicate") || err.message?.includes("UNIQUE")) {
@@ -192,7 +184,7 @@ export function sanitizeResponse(row: EnvironmentRecord) {
     description: row.description ?? null,
     workspace_path: row.workspacePath,
     agent_name: row.agentName ?? null,
-    agent_config_id: (row as any).agentConfigId ?? null,
+    agent_config_id: row.agentConfigId ?? null,
     status: row.status,
     machine_name: row.machineName ?? null,
     branch: row.branch ?? null,
@@ -218,7 +210,6 @@ export interface UpdateWebEnvironmentParams {
   name?: string;
   description?: string | null;
   workspacePath?: string;
-  agentName?: string | null;
   agentConfigId?: string | null;
   autoStart?: boolean;
 }
@@ -247,14 +238,8 @@ export async function updateWebEnvironment(envId: string, userId: string, params
       patch.agentName = agent.name;
     } else {
       patch.agentConfigId = null;
+      patch.agentName = null;
     }
-  } else if (params.agentName !== undefined) {
-    if (params.agentName) {
-      const agent = await configPg.getAgentConfig(userId, params.agentName);
-      if (!agent) throw new ValidationError(`Agent '${params.agentName}' 不存在`);
-      patch.agentConfigId = agent.id;
-    }
-    patch.agentName = params.agentName ?? null;
   }
   if (params.description !== undefined) {
     patch.description = params.description;
