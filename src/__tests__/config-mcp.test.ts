@@ -42,9 +42,11 @@ mock.module("../services/config-pg", () => ({
   },
 }));
 
-// mcp-server service mock for tool operations
+// mcp-server service mock: 只 mock 异步函数，纯函数直接透传
 const _mockToolsState: { tools: any[] } = { tools: [] };
+const realMcpServer = require("../services/config/mcp-server");
 mock.module("../services/config/mcp-server", () => ({
+  ...realMcpServer,
   countToolsByServer: async (_serverName: string) => _mockToolsState.tools.length,
   deleteToolsByServer: async (serverName: string) => {
     _mockToolsState.tools = _mockToolsState.tools.filter((t: any) => t.serverName !== serverName);

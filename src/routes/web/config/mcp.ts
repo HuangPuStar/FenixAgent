@@ -4,7 +4,7 @@ import * as configPg from "../../../services/config-pg";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
 import { ConfigBodySchema } from "../../../schemas/config.schema";
 import { configSuccess, configError, configValidationError, configNotFound, isValidResourceName } from "../../../services/config-utils";
-import { countToolsByServer, deleteToolsByServer, replaceToolsForServer, listToolsByServer } from "../../../services/config/mcp-server";
+import { countToolsByServer, deleteToolsByServer, replaceToolsForServer, listToolsByServer, isValidMcpName, validateMcpConfig, toServerInfo } from "../../../services/config/mcp-server";
 
 // 内部类型定义（与前端 web/src/types/config.ts 对齐）
 type McpLocalConfig = {
@@ -27,73 +27,6 @@ type McpRemoteConfig = {
 type McpDisabledConfig = { enabled: false };
 
 type McpServerConfig = McpLocalConfig | McpRemoteConfig | McpDisabledConfig;
-
-// 服务器名称校验
-function isValidMcpName(name: string): boolean {
-  return typeof name === "string"
-    && name.length >= 1 && name.length <= 64
-    && !/--/.test(name)
-    && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name);
-}
-
-function validateMcpConfig(config: unknown): string | null {
-  if (typeof config !== "object" || config === null) return "INVALID_CONFIG";
-  const cfg = config as Record<string, unknown>;
-
-  if ("enabled" in cfg && cfg.enabled === false && Object.keys(cfg).length === 1) return null;
-
-  if (!("type" in cfg) || typeof cfg.type !== "string") return "INVALID_CONFIG_TYPE";
-  const type = cfg.type as string;
-
-  if (type === "local") {
-    if (!Array.isArray(cfg.command) || cfg.command.length === 0 || !cfg.command.every((c: unknown) => typeof c === "string")) {
-      return "INVALID_COMMAND";
-    }
-    if (cfg.environment !== undefined && (typeof cfg.environment !== "object" || cfg.environment === null)) {
-      return "INVALID_ENVIRONMENT";
-    }
-    if (cfg.timeout !== undefined && (typeof cfg.timeout !== "number" || cfg.timeout <= 0)) {
-      return "INVALID_TIMEOUT";
-    }
-  } else if (type === "remote") {
-    if (typeof cfg.url !== "string" || cfg.url.length === 0) return "INVALID_URL";
-    if (cfg.headers !== undefined && (typeof cfg.headers !== "object" || cfg.headers === null)) {
-      return "INVALID_HEADERS";
-    }
-    if (cfg.timeout !== undefined && (typeof cfg.timeout !== "number" || cfg.timeout <= 0)) {
-      return "INVALID_TIMEOUT";
-    }
-  } else {
-    return "INVALID_CONFIG_TYPE";
-  }
-  return null;
-}
-
-function toServerInfo(name: string, row: { type: string; config: unknown; enabled: boolean }) {
-  const config = row.config as Record<string, unknown>;
-  if (!row.enabled && !("type" in config)) {
-    return { name, type: "disabled" as const, enabled: false, summary: "已禁用" };
-  }
-  const cfgType = config.type as string;
-  if (cfgType === "local") {
-    const command = config.command as string[];
-    return {
-      name,
-      type: "local" as const,
-      enabled: row.enabled,
-      summary: command[0] ?? "",
-      timeout: config.timeout,
-    };
-  }
-  // remote
-  return {
-    name,
-    type: "remote" as const,
-    enabled: row.enabled,
-    summary: (config as Record<string, unknown>).url ?? "",
-    timeout: (config as Record<string, unknown>).timeout,
-  };
-}
 
 // --- Action Handlers ---
 

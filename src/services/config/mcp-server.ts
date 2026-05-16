@@ -99,3 +99,75 @@ export async function listToolsByServer(serverName: string) {
     .from(mcpTool)
     .where(eq(mcpTool.serverName, serverName));
 }
+
+// ────────────────────────────────────────────
+// MCP Server 验证与转换
+// ────────────────────────────────────────────
+
+/** MCP 服务器名称校验 */
+export function isValidMcpName(name: string): boolean {
+  return typeof name === "string"
+    && name.length >= 1 && name.length <= 64
+    && !/--/.test(name)
+    && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name);
+}
+
+/** 校验 MCP 配置结构，返回错误码或 null */
+export function validateMcpConfig(config: unknown): string | null {
+  if (typeof config !== "object" || config === null) return "INVALID_CONFIG";
+  const cfg = config as Record<string, unknown>;
+
+  if ("enabled" in cfg && cfg.enabled === false && Object.keys(cfg).length === 1) return null;
+
+  if (!("type" in cfg) || typeof cfg.type !== "string") return "INVALID_CONFIG_TYPE";
+  const type = cfg.type as string;
+
+  if (type === "local") {
+    if (!Array.isArray(cfg.command) || cfg.command.length === 0 || !cfg.command.every((c: unknown) => typeof c === "string")) {
+      return "INVALID_COMMAND";
+    }
+    if (cfg.environment !== undefined && (typeof cfg.environment !== "object" || cfg.environment === null)) {
+      return "INVALID_ENVIRONMENT";
+    }
+    if (cfg.timeout !== undefined && (typeof cfg.timeout !== "number" || cfg.timeout <= 0)) {
+      return "INVALID_TIMEOUT";
+    }
+  } else if (type === "remote") {
+    if (typeof cfg.url !== "string" || cfg.url.length === 0) return "INVALID_URL";
+    if (cfg.headers !== undefined && (typeof cfg.headers !== "object" || cfg.headers === null)) {
+      return "INVALID_HEADERS";
+    }
+    if (cfg.timeout !== undefined && (typeof cfg.timeout !== "number" || cfg.timeout <= 0)) {
+      return "INVALID_TIMEOUT";
+    }
+  } else {
+    return "INVALID_CONFIG_TYPE";
+  }
+  return null;
+}
+
+/** 将 PG 行数据转为前端展示信息 */
+export function toServerInfo(name: string, row: { type: string; config: unknown; enabled: boolean }) {
+  const config = row.config as Record<string, unknown>;
+  if (!row.enabled && !("type" in config)) {
+    return { name, type: "disabled" as const, enabled: false, summary: "已禁用" };
+  }
+  const cfgType = config.type as string;
+  if (cfgType === "local") {
+    const command = config.command as string[];
+    return {
+      name,
+      type: "local" as const,
+      enabled: row.enabled,
+      summary: command[0] ?? "",
+      timeout: config.timeout,
+    };
+  }
+  return {
+    name,
+    type: "remote" as const,
+    enabled: row.enabled,
+    summary: (config as Record<string, unknown>).url ?? "",
+    timeout: (config as Record<string, unknown>).timeout,
+  };
+}
