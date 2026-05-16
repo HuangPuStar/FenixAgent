@@ -1,7 +1,6 @@
 import Elysia from "elysia";
 import { errorResponse } from "../../plugins/auth";
-import { sessionRepo } from "../../repositories";
-import { resolveExistingSessionId } from "../../services/session";
+import { resolveExistingSessionId, bindSessionOwner } from "../../services/session";
 
 const BindSessionRequestSchema = {
   sessionId: "",
@@ -26,7 +25,7 @@ app.post("/bind", async ({ body, query, error }) => {
     return error(404, { error: "Session not found" });
   }
 
-  await sessionRepo.bindOwner(resolvedSessionId, uuid);
+  await bindSessionOwner(resolvedSessionId, uuid);
   return { ok: true, sessionId: resolvedSessionId };
 });
 

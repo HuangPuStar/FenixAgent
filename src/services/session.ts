@@ -90,3 +90,34 @@ export async function createSession(req: Record<string, unknown>): Promise<Light
     updated_at: now,
   };
 }
+
+// ────────────────────────────────────────────
+// Repository 代理接口
+// ────────────────────────────────────────────
+
+import { sessionRepo } from "../repositories";
+
+/** 查找或创建属于某 Environment 的 Session（Bridge 注册编排用） */
+export async function findOrCreateForEnvironment(
+  environmentId: string,
+  defaultTitle: string,
+  userId: string,
+  source: string = "acp",
+): Promise<{ id: string }> {
+  const existing = await sessionRepo.listByEnvironment(environmentId);
+  if (existing.length > 0) {
+    return { id: existing[0].id };
+  }
+  const session = await sessionRepo.create({
+    environmentId,
+    title: defaultTitle,
+    source,
+    userId,
+  });
+  return { id: session.id };
+}
+
+/** 绑定 Session 的 owner UUID（web/auth 路由用） */
+export async function bindSessionOwner(sessionId: string, userId: string): Promise<void> {
+  await sessionRepo.bindOwner(sessionId, userId);
+}

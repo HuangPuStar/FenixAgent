@@ -1,12 +1,12 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { environmentRepo } from "../../repositories";
 import {
   createWebEnvironment,
   updateWebEnvironment,
   getOwnedEnvironment,
   deleteEnvironment,
   sanitizeResponse,
+  listEnvironmentsWithInstances,
 } from "../../services/environment";
 import {
   spawnInstanceFromEnvironment,
@@ -35,28 +35,7 @@ const app = new Elysia({ name: "web-environments", prefix: "/web" })
 /** GET /web/environments — List environments for the current user */
 app.get("/environments", async ({ store }) => {
   const user = store.user!;
-  const allEnvs = await environmentRepo.listByUserId(user.id);
-  const results = [];
-  for (const env of allEnvs) {
-    const activeInstances = listInstancesByEnvironment(env.id);
-    const firstInstance = activeInstances[0];
-    results.push({
-      ...sanitizeResponse(env),
-      session_id: firstInstance?.sessionId ?? null,
-      instance_status: firstInstance ? firstInstance.status : null,
-      instance_id: firstInstance ? firstInstance.id : null,
-      instances: activeInstances.map((inst) => ({
-        id: inst.id,
-        instance_number: inst.instanceNumber,
-        status: inst.status,
-        session_id: inst.sessionId ?? null,
-        port: inst.port,
-        created_at: Math.floor(inst.createdAt.getTime() / 1000),
-      })),
-      instances_count: activeInstances.length,
-    });
-  }
-  return results;
+  return listEnvironmentsWithInstances(user.id);
 }, { sessionAuth: true });
 
 /** POST /web/environments — Register a new environment */

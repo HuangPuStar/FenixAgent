@@ -1,11 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import { mkdirSync, realpathSync } from "node:fs";
-import { environmentRepo } from "../repositories";
+import { environmentRepo, sessionRepo } from "../repositories";
 import type { RegisterEnvironmentRequest, EnvironmentResponse } from "../types/api";
 import type { EnvironmentRecord } from "../repositories";
 import { ValidationError, NotFoundError, ConflictError, ConfigWriteError } from "../errors";
 import * as configPg from "./config-pg";
+import { findOrCreateForEnvironment } from "./session";
+import { listInstancesByEnvironment } from "./instance";
+import type { BridgeRegistrationRequest } from "../schemas/v1-environment.schema";
 
 const BLOCKED_PATHS = [
   "/", "/etc", "/usr", "/bin", "/sbin", "/var", "/sys", "/proc",
@@ -312,4 +315,148 @@ export async function createTemporaryEnvironment(params: {
     maxSessions: params.maxSessions,
     capabilities: params.capabilities,
   });
+}
+
+// ────────────────────────────────────────────
+// Bridge 注册编排（v1/environments 路由用）
+// ────────────────────────────────────────────
+
+/** Bridge 注册请求参数 */
+export interface BridgeRegistrationInput {
+  authEnvironmentId?: string;
+  userId: string;
+  machine_name?: string;
+  directory?: string;
+  branch?: string;
+  git_repo_url?: string;
+  max_sessions?: number;
+  worker_type?: string;
+  capabilities?: Record<string, unknown>;
+  metadata?: { worker_type?: string };
+}
+
+/** Bridge 注册结果 */
+export interface BridgeRegistrationResult {
+  environment_id: string;
+  environment_secret: string;
+  status: string;
+  session_id?: string;
+}
+
+/** Bridge 注册编排：已认证环境更新 + 新环境创建 + 自动会话 */
+export async function registerBridge(input: BridgeRegistrationInput): Promise<BridgeRegistrationResult> {
+  const {
+    authEnvironmentId,
+    userId,
+    machine_name,
+    directory,
+    branch,
+    git_repo_url,
+    max_sessions,
+    capabilities,
+    metadata,
+  } = input;
+
+  // 已认证环境：更新并返回
+  if (authEnvironmentId) {
+    const existing = await environmentRepo.getById(authEnvironmentId);
+    if (existing) {
+      await environmentRepo.update(authEnvironmentId, {
+        status: "active",
+        lastPollAt: new Date(),
+        capabilities: capabilities || undefined,
+        maxSessions: max_sessions,
+      });
+
+      const sessions = await sessionRepo.listByEnvironment(authEnvironmentId);
+      return {
+        environment_id: existing.id,
+        environment_secret: existing.secret,
+        status: "active",
+        session_id: sessions.length > 0 ? sessions[0].id : undefined,
+      };
+    }
+  }
+
+  // 新环境：创建 + 自动会话
+  const workerType = input.worker_type || metadata?.worker_type || "acp";
+  const secret = `rest_${randomBytes(24).toString("hex")}`;
+
+  const record = await environmentRepo.create({
+    secret,
+    userId,
+    machineName: machine_name,
+    directory,
+    branch,
+    gitRepoUrl: git_repo_url,
+    maxSessions: max_sessions,
+    workerType,
+    capabilities,
+  });
+
+  let sessionId: string | undefined;
+  if (workerType === "acp") {
+    const sessionResult = await findOrCreateForEnvironment(
+      record.id,
+      machine_name || "ACP Agent",
+      userId,
+      "acp",
+    );
+    sessionId = sessionResult.id;
+  }
+
+  return {
+    environment_id: record.id,
+    environment_secret: record.secret,
+    status: record.status,
+    session_id: sessionId,
+  };
+}
+
+/** Bridge 重连编排：校验归属 + 标记 active */
+export async function reconnectBridge(envId: string, userId: string): Promise<void> {
+  const env = await environmentRepo.getById(envId);
+  if (!env || env.userId !== userId) {
+    throw new NotFoundError("Environment not found");
+  }
+  await environmentRepo.update(envId, { status: "active" });
+}
+
+/** Bridge 注销编排：校验归属 + 删除 */
+export async function deregisterBridge(envId: string, userId: string): Promise<void> {
+  const env = await environmentRepo.getById(envId);
+  if (!env || env.userId !== userId) {
+    throw new NotFoundError("Environment not found");
+  }
+  await deleteEnvironment(envId);
+}
+
+// ────────────────────────────────────────────
+// Web 控制面板列表组装
+// ────────────────────────────────────────────
+
+/** 获取用户所有环境并组装实例信息（web/environments 路由用） */
+export async function listEnvironmentsWithInstances(userId: string) {
+  const allEnvs = await environmentRepo.listByUserId(userId);
+  const results = [];
+  for (const env of allEnvs) {
+    const activeInstances = listInstancesByEnvironment(env.id);
+    const firstInstance = activeInstances[0];
+    results.push({
+      ...sanitizeResponse(env),
+      session_id: firstInstance?.sessionId ?? null,
+      instance_status: firstInstance ? firstInstance.status : null,
+      instance_id: firstInstance ? firstInstance.id : null,
+      instances: activeInstances.map((inst) => ({
+        id: inst.id,
+        instance_number: inst.instanceNumber,
+        status: inst.status,
+        session_id: inst.sessionId ?? null,
+        port: inst.port,
+        created_at: Math.floor(inst.createdAt.getTime() / 1000),
+      })),
+      instances_count: activeInstances.length,
+    });
+  }
+  return results;
 }
