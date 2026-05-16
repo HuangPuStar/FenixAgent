@@ -429,3 +429,14 @@
 2. **CLEANUP — skill.ts migrateSkillsDir 死导入瘦身**：`writeFile/rm/cp/rename` 从顶层静态导入改为函数内动态 `import()`，仅在迁移执行时加载。
 3. **WARNING — environment-web.ts createWebEnvironment 错误匹配类型守卫**：PG unique 检测从 `String(err)` 改为 `instanceof Error` 守卫后读取 `.message`，避免非 Error 对象误匹配。
 4. 新增 `skill-import-shared-validation.test.ts`（5 用例）、`env-create-duplicate-detect.test.ts`（3 用例）。40 轮累计 397 个测试。
+
+## 2026-05-17 第四十一次审查
+
+审查范围：同 R40 全量 service 文件及 config 子目录
+
+修复（4 WARNING）：
+1. **WARNING — instance.ts stopInstance envInstanceCounters 泄漏**：个别实例停止时不清理环境级计数器 Map 条目，长时间运行导致无界内存增长。添加 `getRunningInstancesByEnvironment` 检查，无剩余活跃实例时 `delete` 计数器。
+2. **WARNING — scheduler.ts scheduleTask 返回 void→boolean**：调用方（createTask/toggleTask）无法检测 cron job 创建失败（node-schedule 返回 null）。改为返回 `boolean`，失败时调用方可记录警告。
+3. **WARNING — task.ts updateTask 条件 reschedule**：即使只修改 name/description/url 也触发 `rescheduleTask`（unschedule+schedule），造成不必要的 job 中断。添加 `schedulingChanged` 守卫，仅 cron/timezone/enabled 变更时 reschedule。
+4. **WARNING — task.ts toggleTask 验证更新结果**：`scheduledTaskRepo.update` 可能因并发删除返回 null，原代码静默继续调度/取消调度。添加 null 检查返回 NOT_FOUND。
+5. 新增 `instance-counter-cleanup.test.ts`（2 用例）、`scheduler-return-value.test.ts`（4 用例）、`task-reschedule-conditional.test.ts`（8 用例）。41 轮累计 411 个测试。
