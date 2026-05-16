@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { log, error as logError } from "../../logger";
-import { getSession, isSessionClosedStatus, resolveOwnedWebSessionId, updateSessionStatus } from "../../services/session";
+import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
 import { publishSessionEvent } from "../../services/transport";
 import { eventService } from "../../services/event-service";
 import { SessionEventPayloadSchema } from "../../schemas/session.schema";
@@ -14,12 +14,11 @@ const app = new Elysia({ name: "web-control", prefix: "/web" })
 
 type OwnershipCheckResult =
   | { error: true }
-  | { error: true; reason: string }
   | { error: false; session: NonNullable<Awaited<ReturnType<typeof getSession>>>; sessionId: string };
 
 async function checkOwnership(uuid: string | null, sessionId: string): Promise<OwnershipCheckResult> {
   if (!uuid) return { error: true };
-  const resolvedSessionId = await resolveOwnedWebSessionId(sessionId, uuid);
+  const resolvedSessionId = await resolveExistingSessionId(sessionId);
   if (!resolvedSessionId) {
     return { error: true };
   }
@@ -27,14 +26,7 @@ async function checkOwnership(uuid: string | null, sessionId: string): Promise<O
   if (!session) {
     return { error: true };
   }
-  if (isSessionClosedStatus(session.status)) {
-    return { error: true, reason: `Session is ${session.status}` };
-  }
   return { error: false, session, sessionId: resolvedSessionId };
-}
-
-function closedSessionResponse(message: string) {
-  return { error: { type: "session_closed", message } };
 }
 
 /** POST /web/sessions/:id/events — Send user message to session */
@@ -43,9 +35,7 @@ app.post("/sessions/:id/events", async ({ store, params, body, error }) => {
   const uuid = store.uuid;
   const ownership = await checkOwnership(uuid, requestedSessionId);
   if (ownership.error) {
-    const message = "reason" in ownership ? ownership.reason : "Not your session";
-    const status = "reason" in ownership ? 409 : 403;
-    return error(status, "reason" in ownership ? closedSessionResponse(message) : { error: { type: "forbidden", message } });
+    return error(403, { error: { type: "forbidden", message: "Not your session" } });
   }
   const { sessionId } = ownership;
 
@@ -63,9 +53,7 @@ app.post("/sessions/:id/control", async ({ store, params, body, error }) => {
   const uuid = store.uuid;
   const ownership = await checkOwnership(uuid, requestedSessionId);
   if (ownership.error) {
-    const message = "reason" in ownership ? ownership.reason : "Not your session";
-    const status = "reason" in ownership ? 409 : 403;
-    return error(status, "reason" in ownership ? closedSessionResponse(message) : { error: { type: "forbidden", message } });
+    return error(403, { error: { type: "forbidden", message: "Not your session" } });
   }
   const { sessionId } = ownership;
 
@@ -80,9 +68,7 @@ app.post("/sessions/:id/interrupt", async ({ store, params, error }) => {
   const uuid = store.uuid;
   const ownership = await checkOwnership(uuid, requestedSessionId);
   if (ownership.error) {
-    const message = "reason" in ownership ? ownership.reason : "Not your session";
-    const status = "reason" in ownership ? 409 : 403;
-    return error(status, "reason" in ownership ? closedSessionResponse(message) : { error: { type: "forbidden", message } });
+    return error(403, { error: { type: "forbidden", message: "Not your session" } });
   }
   const { sessionId } = ownership;
 

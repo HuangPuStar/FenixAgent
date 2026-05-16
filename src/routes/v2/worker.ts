@@ -1,5 +1,5 @@
 import Elysia from "elysia";
-import { getSession, incrementEpoch, touchSession, updateSessionStatus } from "../../services/session";
+import { getSession, updateSessionStatus } from "../../services/session";
 import {
   automationStatesEqual,
   getAutomationStateEventPayload,
@@ -47,8 +47,6 @@ app.put("/:id/worker", async ({ params, body, error }) => {
   );
   if (b.worker_status) {
     await updateSessionStatus(sessionId, b.worker_status);
-  } else {
-    await touchSession(sessionId);
   }
 
   const worker = await sessionWorkerRepo.upsert(sessionId, {
@@ -89,7 +87,6 @@ app.post("/:id/worker/heartbeat", async ({ params, error }) => {
 
   const now = new Date();
   await sessionWorkerRepo.upsert(sessionId, { lastHeartbeatAt: now });
-  await touchSession(sessionId);
   return { status: "ok", last_heartbeat_at: now.toISOString() };
 }, { sessionIngressAuth: true });
 
@@ -101,8 +98,7 @@ app.post("/:id/worker/register", async ({ params, error }) => {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
   }
 
-  const epoch = await incrementEpoch(sessionId);
-  return { worker_epoch: epoch };
+  return { worker_epoch: 0 };
 }, { apiKeyAuth: true });
 
 export default app;

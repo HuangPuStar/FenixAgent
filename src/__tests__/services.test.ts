@@ -23,16 +23,9 @@ import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
 import {
   createSession,
-  createCodeSession,
   getSession,
-  updateSessionTitle,
   updateSessionStatus,
   archiveSession,
-  incrementEpoch,
-  listSessions,
-  listSessionSummaries,
-  listSessionSummariesByUsername,
-  listSessionsByEnvironment,
 } from "../services/session";
 import {
   registerEnvironment,
@@ -76,6 +69,7 @@ describe("Session Service", () => {
     }
   });
 
+  // createSession 返回轻量存根
   describe("createSession", () => {
     test("creates a session with defaults", async () => {
       const resp = await createSession({});
@@ -107,100 +101,40 @@ describe("Session Service", () => {
     });
   });
 
-  describe("createCodeSession", () => {
-    test("creates a code session with cse_ prefix", async () => {
-      const resp = await createCodeSession({});
-      expect(resp.id).toMatch(/^cse_/);
-    });
-  });
-
+  // getSession 检查 EventBus 是否活跃
   describe("getSession", () => {
-    test("returns null for non-existent session", async () => {
+    test("returns null when no EventBus for session", async () => {
       expect(await getSession("nope")).toBeNull();
     });
 
-    test("returns created session", async () => {
-      const created = await createSession({});
-      const fetched = await getSession(created.id);
+    test("returns session when EventBus is active", async () => {
+      getEventBus("test-session-1");
+      const fetched = await getSession("test-session-1");
       expect(fetched).not.toBeNull();
-      expect(fetched!.id).toBe(created.id);
+      expect(fetched!.id).toBe("test-session-1");
+      expect(fetched!.status).toBe("active");
     });
   });
 
-  describe("updateSessionTitle", () => {
-    test("updates title", async () => {
-      const s = await createSession({});
-      await updateSessionTitle(s.id, "New Title");
-      expect((await getSession(s.id))?.title).toBe("New Title");
-    });
-  });
-
+  // updateSessionStatus 通过 EventBus 发布状态变更
   describe("updateSessionStatus", () => {
-    test("updates status", async () => {
-      const s = await createSession({});
-      await updateSessionStatus(s.id, "active");
-      expect((await getSession(s.id))?.status).toBe("active");
+    test("publishes status change on EventBus", async () => {
+      const bus = getEventBus("test-session-2");
+      const events: any[] = [];
+      bus.subscribe((e: any) => events.push(e));
+      await updateSessionStatus("test-session-2", "running");
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe("session_status");
+      expect(events[0].payload.status).toBe("running");
     });
   });
 
+  // archiveSession 移除 EventBus
   describe("archiveSession", () => {
-    test("sets status to archived and removes event bus", async () => {
-      const s = await createSession({});
-      // Create event bus for this session
-      getEventBus(s.id);
-      await archiveSession(s.id);
-      expect((await getSession(s.id))?.status).toBe("archived");
-      expect(getAllEventBuses().has(s.id)).toBe(false);
-    });
-  });
-
-  describe("incrementEpoch", () => {
-    test("increments epoch by 1", async () => {
-      const s = await createSession({});
-      expect(await incrementEpoch(s.id)).toBe(1);
-      expect(await incrementEpoch(s.id)).toBe(2);
-      expect((await getSession(s.id))?.worker_epoch).toBe(2);
-    });
-
-    test("throws for non-existent session", async () => {
-      await expect(incrementEpoch("nope")).rejects.toThrow("Session not found");
-    });
-  });
-
-  describe("listSessions", () => {
-    test("returns all sessions", async () => {
-      await createSession({});
-      await createSession({});
-      expect(await listSessions()).toHaveLength(2);
-    });
-  });
-
-  describe("listSessionSummaries", () => {
-    test("returns summaries with correct fields", async () => {
-      await createSession({ title: "Test" });
-      const summaries = await listSessionSummaries();
-      expect(summaries).toHaveLength(1);
-      expect(summaries[0].title).toBe("Test");
-      expect(summaries[0].updated_at).toBeGreaterThan(0);
-      // Summary should not have environment_id
-      expect("environment_id" in summaries[0]).toBe(false);
-    });
-  });
-
-  describe("listSessionSummariesByUsername", () => {
-    test("filters by username", async () => {
-      await createSession({ username: "alice" });
-      await createSession({ username: "bob" });
-      expect(await listSessionSummariesByUsername("alice")).toHaveLength(1);
-    });
-  });
-
-  describe("listSessionsByEnvironment", () => {
-    test("filters by environment", async () => {
-      const env = await environmentRepo.create({ userId: "u1" });
-      await createSession({ environment_id: env.id });
-      await createSession({});
-      expect(await listSessionsByEnvironment(env.id)).toHaveLength(1);
+    test("removes EventBus for session", async () => {
+      getEventBus("test-session-3");
+      await archiveSession("test-session-3");
+      expect(getAllEventBuses().has("test-session-3")).toBe(false);
     });
   });
 });

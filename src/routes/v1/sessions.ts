@@ -3,7 +3,6 @@ import Elysia from "elysia";
 import {
   createSession,
   getSession,
-  updateSessionTitle,
   archiveSession,
   resolveExistingSessionId,
 } from "../../services/session";
@@ -63,18 +62,13 @@ app.get("/:id", async ({ params, error }) => {
   return session;
 }, { apiKeyAuth: true });
 
-/** PATCH /v1/sessions/:id — Update session title */
-app.patch("/:id", async ({ params, body, error }) => {
+/** PATCH /v1/sessions/:id — Update session title (no-op, title managed by Agent) */
+app.patch("/:id", async ({ params, error }) => {
   const sessionId = await resolveExistingSessionId(params.id) ?? params.id;
-  const existing = await getSession(sessionId);
-  if (!existing) {
+  const session = await getSession(sessionId);
+  if (!session) {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
   }
-  const b = body as UpdateSessionRequest;
-  if (b.title) {
-    await updateSessionTitle(sessionId, b.title);
-  }
-  const session = await getSession(sessionId);
   return session;
 }, { apiKeyAuth: true, body: "update-session-request" });
 

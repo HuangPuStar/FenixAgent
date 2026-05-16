@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { publishSessionEvent } from "../../services/transport";
-import { getSession, touchSession, updateSessionStatus } from "../../services/session";
+import { getSession, updateSessionStatus } from "../../services/session";
 import { WorkerEventsRequestSchema, WorkerStateRequestSchema, type WorkerStateRequest } from "../../schemas/v2-worker-events.schema";
 
 const app = new Elysia({ name: "v1-code-sessions-worker-events", prefix: "/v1/code/sessions" })
@@ -49,8 +49,6 @@ app.post("/:id/worker/events", async ({ params, body, error }) => {
     published.push(result);
   }
 
-  touchSession(sessionId);
-
   return { status: "ok", count: published.length };
 }, { sessionIngressAuth: true, body: "worker-events-request" });
 
@@ -64,8 +62,6 @@ app.put("/:id/worker/state", async ({ params, body, error }) => {
 
   if (b.status) {
     updateSessionStatus(sessionId, b.status);
-  } else {
-    touchSession(sessionId);
   }
 
   return { status: "ok" };

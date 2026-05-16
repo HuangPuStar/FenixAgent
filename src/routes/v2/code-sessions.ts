@@ -1,5 +1,5 @@
 import Elysia from "elysia";
-import { createCodeSession, getSession, incrementEpoch } from "../../services/session";
+import { createSession, getSession } from "../../services/session";
 import { authGuardPlugin } from "../../plugins/auth";
 import { generateWorkerJwt } from "../../auth/jwt";
 import { getBaseUrl, config } from "../../config";
@@ -12,7 +12,7 @@ const app = new Elysia({ name: "v1-code-sessions", prefix: "/v1/code/sessions" }
 /** POST /v1/code/sessions — Create code session (wrapped response for TUI compat) */
 app.post("/", async ({ body }) => {
   const b = body as CreateCodeSessionRequest;
-  const session = await createCodeSession(b);
+  const session = await createSession({ ...b, source: "code" });
   return { session };
 }, { apiKeyAuth: true, body: "create-code-session-request" });
 
@@ -24,13 +24,12 @@ app.post("/:id/bridge", async ({ params, error }) => {
     return error(404, { error: { type: "not_found", message: "Session not found" } });
   }
 
-  const epoch = await incrementEpoch(sessionId);
   const expiresInSeconds = config.jwtExpiresIn;
   const workerJwt = generateWorkerJwt(sessionId, expiresInSeconds);
 
   return {
     api_base_url: getBaseUrl(),
-    worker_epoch: epoch,
+    worker_epoch: 0,
     worker_jwt: workerJwt,
     expires_in: expiresInSeconds,
   };
