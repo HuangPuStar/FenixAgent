@@ -43,6 +43,13 @@
       "when": 1778892403090,
       "tag": "0005_wealthy_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778892514906,
+      "tag": "0006_bent_kingpin",
+      "breakpoints": true
     }
   ]
 }
