@@ -30,7 +30,6 @@ import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import { stopAllInstances, spawnInstanceFromEnvironment, findRunningInstanceByEnvironment } from "./services/instance";
 import { getCoreRuntime } from "./services/core-bootstrap";
 import { environmentRepo } from "./repositories";
-import { repoPlugin } from "./plugins/repositories";
 import { migrateSkillsDir } from "./services/skill";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { initHermesClient, getHermesClient } from "./services/hermes-client";
@@ -90,7 +89,6 @@ const app = new Elysia()
   .use(corsPlugin)
   .use(loggerPlugin)
   .use(errorPlugin)
-  .use(repoPlugin)
   // Path normalization: collapse double slashes
   .onBeforeHandle(({ request }) => {
     const url = new URL(request.url);
