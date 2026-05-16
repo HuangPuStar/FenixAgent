@@ -37,8 +37,8 @@ app.get("/tasks", async ({ store }) => {
 /** POST /tasks — Create a new scheduled task */
 app.post("/tasks", async ({ store, body, error }) => {
   const user = store.user!;
-  const payload = body as { name: string; description?: string; cron: string; timezone?: string | null; environmentId: string; task: string; timeoutMinutes?: number };
-  const result = await createTask(user.id, payload);
+  const payload = body as Record<string, unknown>;
+  const result = await createTask(user.id, payload as any);
 
   if (!result.success) {
     const err = result.error!;

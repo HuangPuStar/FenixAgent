@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { environment, scheduledTask, taskExecutionLog, user } from "../db/schema";
+import { scheduledTask, taskExecutionLog, user } from "../db/schema";
 
 const mockCancel = mock(() => {});
 const mockNextInvocation = mock(() => ({ toJSDate: mock(() => new Date(Date.now() + 60000)) }));
@@ -10,7 +10,6 @@ const mockScheduleJob = mock((_config: unknown, handler: () => void) => ({
   nextInvocation: mockNextInvocation,
   __handler: handler,
 }));
-const mockRunAgentTask = mock();
 
 mock.module("node-schedule", () => ({
   default: { scheduleJob: mockScheduleJob },
@@ -21,15 +20,18 @@ mock.module("../logger", () => ({
   error: mock(() => {}),
 }));
 
+// Mock fetch for HTTP cron execution
+const mockFetch = mock(() => Promise.resolve(new Response("ok", { status: 200 })));
+mock.module("node:crypto", () => ({
+  randomBytes: (n: number) => ({ toString: () => "x".repeat(n * 2) }),
+}));
+
 const scheduler = await import("../services/scheduler");
-const { setRunAgentTaskForTesting } = await import("../services/task");
 
 mock.restore();
 
 const TEST_USER_ID = "user_scheduler_test";
-const TEST_ENV_ID = "env_scheduler_test";
 
-// 确保 DB 中存在测试用户
 async function ensureUser() {
   const existing = await db.select().from(user).where(eq(user.id, TEST_USER_ID)).limit(1);
   if (existing.length > 0) return;
@@ -44,33 +46,6 @@ async function ensureUser() {
   });
 }
 
-// 确保 DB 中存在测试环境
-async function ensureEnvironment() {
-  const existing = await db.select().from(environment).where(eq(environment.id, TEST_ENV_ID)).limit(1);
-  if (existing.length > 0) return;
-  const now = new Date();
-  await db.insert(environment).values({
-    id: TEST_ENV_ID,
-    name: "scheduler-env",
-    description: null,
-    workspacePath: "/tmp/scheduler-env",
-    agentName: "scheduler-agent",
-    status: "idle",
-    machineName: null,
-    branch: null,
-    gitRepoUrl: null,
-    maxSessions: 1,
-    workerType: "acp",
-    capabilities: null,
-    secret: "scheduler-secret",
-    userId: TEST_USER_ID,
-    lastPollAt: null,
-    createdAt: now,
-    updatedAt: now,
-  });
-}
-
-// 插入测试任务
 async function insertTask(id: string, enabled: boolean, timezone: string | null, cron = "* * * * *") {
   const now = new Date();
   try {
@@ -82,9 +57,10 @@ async function insertTask(id: string, enabled: boolean, timezone: string | null,
       cron,
       timezone,
       enabled,
-      environmentId: TEST_ENV_ID,
-      task: "echo hi",
-      timeoutMinutes: 30,
+      url: "https://httpbin.org/post",
+      method: "POST",
+      headers: null,
+      body: null,
       lastRunAt: null,
       nextRunAt: null,
       lastStatus: null,
@@ -94,14 +70,12 @@ async function insertTask(id: string, enabled: boolean, timezone: string | null,
   } catch {}
 }
 
-// 清理测试数据
 async function cleanupRows() {
   try { await db.delete(taskExecutionLog); } catch {}
   try { await db.delete(scheduledTask).where(eq(scheduledTask.userId, TEST_USER_ID)); } catch {}
 }
 
 await ensureUser();
-await ensureEnvironment();
 
 describe("Scheduler", () => {
   beforeEach(async () => {
@@ -109,30 +83,26 @@ describe("Scheduler", () => {
     await cleanupRows();
     mockScheduleJob.mockClear();
     mockCancel.mockClear();
-    mockRunAgentTask.mockReset();
-    setRunAgentTaskForTesting(mockRunAgentTask);
   });
 
   afterAll(async () => {
     scheduler.stopScheduler();
     await cleanupRows();
-    setRunAgentTaskForTesting(null);
-    try { await db.delete(environment).where(eq(environment.id, TEST_ENV_ID)); } catch {}
     try { await db.delete(user).where(eq(user.id, TEST_USER_ID)); } catch {}
   });
 
   describe("scheduleTask", () => {
-    it("registers a cron job for enabled task", () => {
+    it("为 enabled 任务注册 cron job", () => {
       scheduler.scheduleTask({ id: "task_abc", cron: "*/5 * * * *", timezone: "UTC", enabled: true });
       expect(mockScheduleJob).toHaveBeenCalled();
     });
 
-    it("omits tz when timezone is null", () => {
+    it("timezone 为 null 时不传 tz", () => {
       scheduler.scheduleTask({ id: "task_local", cron: "*/5 * * * *", timezone: null, enabled: true });
       expect(mockScheduleJob).toHaveBeenCalledWith({ rule: "*/5 * * * *" }, expect.any(Function));
     });
 
-    it("skips disabled task", () => {
+    it("跳过 disabled 任务", () => {
       const before = mockScheduleJob.mock.calls.length;
       scheduler.scheduleTask({ id: "task_disabled", cron: "*/5 * * * *", timezone: "UTC", enabled: false });
       expect(mockScheduleJob.mock.calls.length).toBe(before);
@@ -140,7 +110,7 @@ describe("Scheduler", () => {
   });
 
   describe("startScheduler", () => {
-    it("schedules only enabled tasks from db", async () => {
+    it("只为 enabled 任务调度", async () => {
       await insertTask("task_s1", true, "UTC", "1 * * * *");
       await insertTask("task_s2", false, "UTC", "2 * * * *");
 
@@ -152,21 +122,9 @@ describe("Scheduler", () => {
     });
   });
 
-  describe("concurrent execution", () => {
-    it("writes skipped log when the same task triggers twice", async () => {
+  describe("并发执行保护", () => {
+    it("同一任务重复触发时写入 skipped 日志", async () => {
       await insertTask("task_skip", true, "UTC");
-
-      let resolveExecution: (() => void) | null = null;
-      mockRunAgentTask.mockImplementation(() => new Promise((resolve) => {
-        resolveExecution = () => resolve({
-          status: "success",
-          workspacePath: "/tmp/scheduler-env/.scheduled-runs/task_skip/log_1",
-          workspaceName: "20260427-130000-log_1",
-          resultSummary: "done",
-          error: null,
-          duration: 123,
-        });
-      }));
 
       scheduler.scheduleTask({ id: "task_skip", cron: "* * * * *", timezone: "UTC", enabled: true });
       const handler = (mockScheduleJob.mock.results.at(-1)?.value as { __handler: () => void }).__handler;
@@ -178,10 +136,6 @@ describe("Scheduler", () => {
 
       const logs = await db.select().from(taskExecutionLog).where(eq(taskExecutionLog.taskId, "task_skip"));
       expect(logs.some((row) => row.status === "skipped" && row.skipReason === "previous_run_still_active")).toBe(true);
-
-      expect(resolveExecution).toBeDefined();
-      resolveExecution!();
-      await new Promise((resolve) => setTimeout(resolve, 0));
     });
   });
 });

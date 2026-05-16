@@ -22,6 +22,13 @@
       "when": 1778891489244,
       "tag": "0002_vengeful_enchantress",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778892018479,
+      "tag": "0003_magical_raider",
+      "breakpoints": true
     }
   ]
 }

@@ -1,12 +1,7 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { db } from "../db";
-import { environment, scheduledTask, taskExecutionLog } from "../db/schema";
-import {
-  type AgentTaskRunResult,
-  type RunAgentTaskInput,
-  runAgentTask,
-} from "./agent-task-runner";
+import { scheduledTask, taskExecutionLog } from "../db/schema";
 
 function generateTaskId(): string {
   return `task_${randomBytes(12).toString("hex")}`;
@@ -32,9 +27,10 @@ export interface CreateTaskInput {
   description?: string;
   cron: string;
   timezone?: string | null;
-  environmentId: string;
-  task: string;
-  timeoutMinutes?: number;
+  url: string;
+  method?: string;
+  headers?: Record<string, string> | null;
+  body?: string | null;
 }
 
 export type UpdateTaskInput = Partial<CreateTaskInput> & { enabled?: boolean };
@@ -51,10 +47,10 @@ interface TaskResponse {
   cron: string;
   timezone: string | null;
   enabled: boolean;
-  environmentId: string;
-  environmentName: string | null;
-  task: string;
-  timeoutMinutes: number;
+  url: string;
+  method: string;
+  headers: Record<string, string> | null;
+  body: string | null;
   lastRunAt: number | null;
   nextRunAt: number | null;
   lastStatus: string | null;
@@ -69,26 +65,11 @@ interface TaskExecutionLogResponse {
   error: string | null;
   duration: number | null;
   triggeredBy: string;
-  workspacePath: string | null;
-  workspaceName: string | null;
-  environmentId: string | null;
-  environmentName: string | null;
-  taskSnapshot: string | null;
+  statusCode: number | null;
   skipReason: string | null;
   resultSummary: string | null;
   createdAt: number;
 }
-
-type OwnedEnvironment = {
-  id: string;
-  name: string;
-  workspacePath: string;
-  agentName: string | null;
-};
-
-type RunAgentTaskFn = (input: RunAgentTaskInput) => Promise<AgentTaskRunResult>;
-
-let runAgentTaskImpl: RunAgentTaskFn = runAgentTask;
 
 function normalizeTimezone(timezone: string | null | undefined): string | null {
   if (timezone === undefined || timezone === null) {
@@ -108,62 +89,24 @@ function validateCron(cron: string): string | null {
   return null;
 }
 
-function validateTimeoutMinutes(timeoutMinutes: number | undefined): string | null {
-  if (timeoutMinutes === undefined) {
-    return null;
-  }
-  if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1 || timeoutMinutes > 180) {
-    return "超时时间必须在 1-180 分钟之间";
-  }
-  return null;
-}
-
 function validateTaskInput(data: CreateTaskInput, isUpdate = false): string | null {
   if (!isUpdate && (!data.name || data.name.trim().length === 0)) return "任务名称不能为空";
   if (data.name !== undefined && data.name.trim().length === 0) return "任务名称不能为空";
   if (data.name && data.name.length > 128) return "任务名称不能超过 128 字符";
-  if (!isUpdate && (!data.environmentId || data.environmentId.trim().length === 0)) return "Environment 不能为空";
-  if (data.environmentId !== undefined && data.environmentId.trim().length === 0) return "Environment 不能为空";
-  if (!isUpdate && (!data.task || data.task.trim().length === 0)) return "任务内容不能为空";
-  if (data.task !== undefined && data.task.trim().length === 0) return "任务内容不能为空";
-  if (data.task && (data.task.length < 1 || data.task.length > 10000)) return "任务内容长度必须在 1-10000 字符之间";
+  if (!isUpdate && (!data.url || data.url.trim().length === 0)) return "URL 不能为空";
+  if (data.url !== undefined && data.url.trim().length === 0) return "URL 不能为空";
   if (!isUpdate && (!data.cron || data.cron.trim().length === 0)) return "cron 表达式不能为空";
   if (data.cron) {
     const cronErr = validateCron(data.cron);
     if (cronErr) return cronErr;
   }
-  const timeoutError = validateTimeoutMinutes(data.timeoutMinutes);
-  if (timeoutError) {
-    return timeoutError;
+  if (data.method && !["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(data.method.toUpperCase())) {
+    return "不支持的 HTTP 方法";
   }
   return null;
 }
 
-async function getOwnedEnvironment(userId: string, environmentId: string): Promise<OwnedEnvironment | null> {
-  const [row] = await db.select({
-    id: environment.id,
-    name: environment.name,
-    workspacePath: environment.workspacePath,
-    agentName: environment.agentName,
-  }).from(environment).where(and(eq(environment.id, environmentId), eq(environment.userId, userId)));
-
-  return row ?? null;
-}
-
-async function loadEnvironmentMap(environmentIds: string[]): Promise<Map<string, string>> {
-  if (environmentIds.length === 0) {
-    return new Map();
-  }
-
-  const rows = await db.select({
-    id: environment.id,
-    name: environment.name,
-  }).from(environment).where(inArray(environment.id, Array.from(new Set(environmentIds))));
-
-  return new Map(rows.map((row) => [row.id, row.name]));
-}
-
-function sanitizeTask(row: typeof scheduledTask.$inferSelect, environmentName: string | null): TaskResponse {
+function sanitizeTask(row: typeof scheduledTask.$inferSelect): TaskResponse {
   return {
     id: row.id,
     name: row.name,
@@ -171,10 +114,10 @@ function sanitizeTask(row: typeof scheduledTask.$inferSelect, environmentName: s
     cron: row.cron,
     timezone: row.timezone ?? null,
     enabled: row.enabled,
-    environmentId: row.environmentId,
-    environmentName,
-    task: row.task,
-    timeoutMinutes: row.timeoutMinutes,
+    url: row.url,
+    method: row.method ?? "POST",
+    headers: row.headers as Record<string, string> | null ?? null,
+    body: row.body ?? null,
     lastRunAt: toUnixTimestamp(row.lastRunAt),
     nextRunAt: toUnixTimestamp(row.nextRunAt),
     lastStatus: row.lastStatus ?? null,
@@ -191,11 +134,7 @@ function sanitizeExecutionLog(row: typeof taskExecutionLog.$inferSelect): TaskEx
     error: row.error ?? null,
     duration: row.duration ?? null,
     triggeredBy: row.triggeredBy,
-    workspacePath: row.workspacePath ?? null,
-    workspaceName: row.workspaceName ?? null,
-    environmentId: row.environmentId ?? null,
-    environmentName: row.environmentName ?? null,
-    taskSnapshot: row.taskSnapshot ? JSON.stringify(row.taskSnapshot) : null,
+    statusCode: null,
     skipReason: row.skipReason ?? null,
     resultSummary: row.resultSummary ?? null,
     createdAt: Math.floor(row.createdAt.getTime() / 1000),
@@ -205,11 +144,6 @@ function sanitizeExecutionLog(row: typeof taskExecutionLog.$inferSelect): TaskEx
 export async function createTask(userId: string, data: CreateTaskInput): Promise<ServiceResult<TaskResponse>> {
   const validationError = validateTaskInput(data);
   if (validationError) return { success: false, error: { code: "VALIDATION_ERROR", message: validationError } };
-
-  const ownedEnvironment = await getOwnedEnvironment(userId, data.environmentId);
-  if (!ownedEnvironment) {
-    return { success: false, error: { code: "VALIDATION_ERROR", message: "Environment 不存在或无权访问" } };
-  }
 
   const id = generateTaskId();
   const now = new Date();
@@ -223,9 +157,10 @@ export async function createTask(userId: string, data: CreateTaskInput): Promise
     cron: data.cron.trim(),
     timezone,
     enabled: true,
-    environmentId: ownedEnvironment.id,
-    task: data.task.trim(),
-    timeoutMinutes: data.timeoutMinutes ?? 30,
+    url: data.url.trim(),
+    method: data.method?.toUpperCase() ?? "POST",
+    headers: data.headers ? JSON.stringify(data.headers) : null,
+    body: data.body ?? null,
     lastRunAt: null,
     nextRunAt: null,
     lastStatus: null,
@@ -234,17 +169,16 @@ export async function createTask(userId: string, data: CreateTaskInput): Promise
   });
 
   const [row] = await db.select().from(scheduledTask).where(eq(scheduledTask.id, id));
-  return { success: true, data: sanitizeTask(row, ownedEnvironment.name) };
+  return { success: true, data: sanitizeTask(row) };
 }
 
 export async function listTasks(userId: string): Promise<ServiceSuccess<TaskResponse[]>> {
   const rows = await db.select().from(scheduledTask)
     .where(eq(scheduledTask.userId, userId))
     .orderBy(desc(scheduledTask.createdAt));
-  const environmentMap = await loadEnvironmentMap(rows.map((row) => row.environmentId));
   return {
     success: true,
-    data: rows.map((row) => sanitizeTask(row, environmentMap.get(row.environmentId) ?? null)),
+    data: rows.map(sanitizeTask),
   };
 }
 
@@ -252,9 +186,7 @@ export async function getTask(userId: string, taskId: string): Promise<ServiceRe
   const [row] = await db.select().from(scheduledTask)
     .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
   if (!row) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
-
-  const ownedEnvironment = await getOwnedEnvironment(userId, row.environmentId);
-  return { success: true, data: sanitizeTask(row, ownedEnvironment?.name ?? null) };
+  return { success: true, data: sanitizeTask(row) };
 }
 
 export async function updateTask(userId: string, taskId: string, data: UpdateTaskInput): Promise<ServiceResult<TaskResponse>> {
@@ -265,26 +197,21 @@ export async function updateTask(userId: string, taskId: string, data: UpdateTas
   const validationError = validateTaskInput(data as CreateTaskInput, true);
   if (validationError) return { success: false, error: { code: "VALIDATION_ERROR", message: validationError } };
 
-  const targetEnvironmentId = data.environmentId ?? existing.environmentId;
-  const ownedEnvironment = await getOwnedEnvironment(userId, targetEnvironmentId);
-  if (!ownedEnvironment) {
-    return { success: false, error: { code: "VALIDATION_ERROR", message: "Environment 不存在或无权访问" } };
-  }
-
   const updates: Partial<typeof scheduledTask.$inferInsert> = { updatedAt: new Date() };
   if (data.name !== undefined) updates.name = data.name.trim();
   if (data.description !== undefined) updates.description = data.description?.trim() ?? null;
   if (data.cron !== undefined) updates.cron = data.cron.trim();
   if (data.timezone !== undefined) updates.timezone = normalizeTimezone(data.timezone);
-  if (data.environmentId !== undefined) updates.environmentId = ownedEnvironment.id;
-  if (data.task !== undefined) updates.task = data.task.trim();
-  if (data.timeoutMinutes !== undefined) updates.timeoutMinutes = data.timeoutMinutes;
+  if (data.url !== undefined) updates.url = data.url.trim();
+  if (data.method !== undefined) updates.method = data.method.toUpperCase();
+  if (data.headers !== undefined) updates.headers = data.headers ? JSON.stringify(data.headers) : null;
+  if (data.body !== undefined) updates.body = data.body;
   if (data.enabled !== undefined) updates.enabled = data.enabled;
 
   await db.update(scheduledTask).set(updates).where(eq(scheduledTask.id, taskId));
 
   const [row] = await db.select().from(scheduledTask).where(eq(scheduledTask.id, taskId));
-  return { success: true, data: sanitizeTask(row, ownedEnvironment.name) };
+  return { success: true, data: sanitizeTask(row) };
 }
 
 export async function deleteTask(userId: string, taskId: string): Promise<ServiceResult<undefined>> {
@@ -319,62 +246,58 @@ export async function executeTaskById(
     return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   }
 
-  const ownedEnvironment = await getOwnedEnvironment(task.userId, task.environmentId);
-  if (!ownedEnvironment) {
-    return { success: false, error: { code: "VALIDATION_ERROR", message: "Environment 不存在或无权访问" } };
-  }
-
   const logId = generateLogId();
   const now = new Date();
+  const startTime = Date.now();
 
   try {
-    const result = await runAgentTaskImpl({
-      userId: task.userId,
-      environmentId: task.environmentId,
-      taskId: task.id,
-      taskText: task.task,
-      timeoutMinutes: task.timeoutMinutes,
-      logId,
+    const headers: Record<string, string> = task.headers
+      ? (typeof task.headers === "string" ? JSON.parse(task.headers) : task.headers) as Record<string, string>
+      : {};
+    if (!headers["Content-Type"] && task.method?.toUpperCase() !== "GET") {
+      headers["Content-Type"] = "application/json";
+    }
+
+    const response = await fetch(task.url, {
+      method: task.method ?? "POST",
+      headers,
+      body: task.method?.toUpperCase() === "GET" ? undefined : (task.body ?? undefined),
     });
+
+    const duration = Date.now() - startTime;
+    const responseText = await response.text().catch(() => "");
+    const status = response.ok ? "success" : "failed";
+    const resultSummary = truncateSummary(responseText || `HTTP ${response.status}`);
 
     await db.insert(taskExecutionLog).values({
       id: logId,
       taskId: task.id,
-      status: result.status,
-      error: result.error,
-      duration: result.duration,
+      status,
+      error: response.ok ? null : `HTTP ${response.status}: ${responseText.slice(0, 500)}`,
+      duration,
       triggeredBy,
-      workspacePath: result.workspacePath,
-      workspaceName: result.workspaceName,
-      environmentId: task.environmentId,
-      environmentName: ownedEnvironment.name,
-      taskSnapshot: task.task,
       skipReason: null,
-      resultSummary: truncateSummary(result.resultSummary),
+      resultSummary,
       createdAt: now,
     });
 
     await db.update(scheduledTask)
-      .set({ lastRunAt: now, lastStatus: result.status, updatedAt: now })
+      .set({ lastRunAt: now, lastStatus: status, updatedAt: now })
       .where(eq(scheduledTask.id, task.id));
 
     const [logRow] = await db.select().from(taskExecutionLog).where(eq(taskExecutionLog.id, logId));
     return { success: true, data: sanitizeExecutionLog(logRow) };
-  } catch (error: any) {
-    const message = error?.message ?? String(error);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const duration = Date.now() - startTime;
 
     await db.insert(taskExecutionLog).values({
       id: logId,
       taskId: task.id,
       status: "failed",
       error: message,
-      duration: null,
+      duration,
       triggeredBy,
-      workspacePath: null,
-      workspaceName: null,
-      environmentId: task.environmentId,
-      environmentName: ownedEnvironment.name,
-      taskSnapshot: task.task,
       skipReason: null,
       resultSummary: truncateSummary(message),
       createdAt: now,
@@ -436,11 +359,6 @@ export async function createExecutionLog(params: {
   error?: string | null;
   duration?: number | null;
   triggeredBy?: "cron" | "manual";
-  workspacePath?: string | null;
-  workspaceName?: string | null;
-  environmentId?: string | null;
-  environmentName?: string | null;
-  taskSnapshot?: string | null;
   skipReason?: string | null;
   resultSummary?: string | null;
 }) {
@@ -453,18 +371,9 @@ export async function createExecutionLog(params: {
     error: params.error ?? null,
     duration: params.duration ?? null,
     triggeredBy: params.triggeredBy ?? "cron",
-    workspacePath: params.workspacePath ?? null,
-    workspaceName: params.workspaceName ?? null,
-    environmentId: params.environmentId ?? null,
-    environmentName: params.environmentName ?? null,
-    taskSnapshot: params.taskSnapshot ?? null,
     skipReason: params.skipReason ?? null,
     resultSummary: truncateSummary(params.resultSummary),
     createdAt: now,
   });
   return logId;
-}
-
-export function setRunAgentTaskForTesting(fn: RunAgentTaskFn | null): void {
-  runAgentTaskImpl = fn ?? runAgentTask;
 }

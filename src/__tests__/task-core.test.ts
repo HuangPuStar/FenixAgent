@@ -1,9 +1,7 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { environment, scheduledTask, taskExecutionLog, user } from "../db/schema";
-
-const mockRunAgentTask = mock();
+import { scheduledTask, taskExecutionLog, user } from "../db/schema";
 
 const {
   createTask,
@@ -17,14 +15,10 @@ const {
   clearExecutionLogs,
   getTaskById,
   createExecutionLog,
-  executeTaskById,
-  setRunAgentTaskForTesting,
 } = await import("../services/task");
 
 const USER_A = "user_task_a";
 const USER_B = "user_task_b";
-const ENV_A = "env_task_a";
-const ENV_B = "env_task_b";
 
 async function ensureUser(id: string, name: string, email: string) {
   const existing = await db.select().from(user).where(eq(user.id, id)).limit(1);
@@ -40,31 +34,6 @@ async function ensureUser(id: string, name: string, email: string) {
   });
 }
 
-async function ensureEnvironment(id: string, userId: string, name: string, workspacePath: string) {
-  const existing = await db.select().from(environment).where(eq(environment.id, id)).limit(1);
-  if (existing.length > 0) return;
-  const now = new Date();
-  await db.insert(environment).values({
-    id,
-    name,
-    description: null,
-    workspacePath,
-    agentName: `${name}-agent`,
-    status: "idle",
-    machineName: null,
-    branch: null,
-    gitRepoUrl: null,
-    maxSessions: 1,
-    workerType: "acp",
-    capabilities: null,
-    secret: `${id}-secret`,
-    userId,
-    lastPollAt: null,
-    createdAt: now,
-    updatedAt: now,
-  });
-}
-
 async function cleanupTasks() {
   try { await db.delete(taskExecutionLog); } catch {}
   try { await db.delete(scheduledTask).where(eq(scheduledTask.userId, USER_A)); } catch {}
@@ -73,26 +42,18 @@ async function cleanupTasks() {
 
 await ensureUser(USER_A, "Alice Task", "alice-task@test.com");
 await ensureUser(USER_B, "Bob Task", "bob-task@test.com");
-await ensureEnvironment(ENV_A, USER_A, "env-a", "/tmp/env-a");
-await ensureEnvironment(ENV_B, USER_B, "env-b", "/tmp/env-b");
 
 beforeEach(async () => {
   await cleanupTasks();
-  mockRunAgentTask.mockReset();
-  setRunAgentTaskForTesting(mockRunAgentTask);
 });
 
 afterEach(async () => {
   await cleanupTasks();
-  setRunAgentTaskForTesting(null);
 });
 
 afterAll(async () => {
-  setRunAgentTaskForTesting(null);
   try { await db.delete(taskExecutionLog); } catch {}
   try { await db.delete(scheduledTask); } catch {}
-  try { await db.delete(environment).where(and(eq(environment.id, ENV_A), eq(environment.userId, USER_A))); } catch {}
-  try { await db.delete(environment).where(and(eq(environment.id, ENV_B), eq(environment.userId, USER_B))); } catch {}
   try { await db.delete(user).where(eq(user.id, USER_A)); } catch {}
   try { await db.delete(user).where(eq(user.id, USER_B)); } catch {}
 });
@@ -102,29 +63,28 @@ function getValidInput(overrides: Record<string, unknown> = {}) {
     name: "Test Task",
     cron: "*/5 * * * *",
     timezone: "",
-    environmentId: ENV_A,
-    task: "echo hello",
-    timeoutMinutes: 30,
+    url: "https://httpbin.org/post",
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: '{"hello":"world"}',
     ...overrides,
   };
 }
 
 describe("Task Service", () => {
   describe("createTask", () => {
-    it("creates an agent task and normalizes empty timezone", async () => {
+    it("创建 HTTP cron 任务并规范化空 timezone", async () => {
       const result = await createTask(USER_A, getValidInput());
       expect(result.success).toBe(true);
       if (!result.success) return;
 
       expect(result.data.id).toMatch(/^task_/);
-      expect(result.data.environmentId).toBe(ENV_A);
-      expect(result.data.environmentName).toBe("env-a");
-      expect(result.data.task).toBe("echo hello");
-      expect(result.data.timeoutMinutes).toBe(30);
+      expect(result.data.url).toBe("https://httpbin.org/post");
+      expect(result.data.method).toBe("POST");
       expect(result.data.timezone).toBeNull();
     });
 
-    it("rejects invalid cron expression", async () => {
+    it("拒绝无效的 cron 表达式", async () => {
       const result = await createTask(USER_A, getValidInput({ cron: "abc" }));
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -132,8 +92,8 @@ describe("Task Service", () => {
       }
     });
 
-    it("rejects non-owned environment", async () => {
-      const result = await createTask(USER_A, getValidInput({ environmentId: ENV_B }));
+    it("拒绝空的 URL", async () => {
+      const result = await createTask(USER_A, getValidInput({ url: "" }));
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe("VALIDATION_ERROR");
@@ -142,58 +102,44 @@ describe("Task Service", () => {
   });
 
   describe("listTasks/getTask/updateTask", () => {
-    it("lists tasks with environment names", async () => {
+    it("列出用户的所有任务", async () => {
       await createTask(USER_A, getValidInput({ name: "Task A1" }));
-      await createTask(USER_A, getValidInput({ name: "Task A2", task: "echo world" }));
-      await createTask(USER_B, getValidInput({ name: "Task B1", environmentId: ENV_B, task: "echo bob" }));
+      await createTask(USER_A, getValidInput({ name: "Task A2", url: "https://example.com/b" }));
+      await createTask(USER_B, getValidInput({ name: "Task B1", url: "https://example.com/c" }));
 
       const result = await listTasks(USER_A);
       expect(result.success).toBe(true);
       expect(result.data.length).toBe(2);
-      expect(result.data.every((task) => task.environmentName === "env-a")).toBe(true);
     });
 
-    it("returns task detail by id", async () => {
+    it("通过 ID 获取任务详情", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
 
       const result = await getTask(USER_A, created.data.id);
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.data.environmentName).toBe("env-a");
-      expect(result.data.task).toBe("echo hello");
+      expect(result.data.url).toBe("https://httpbin.org/post");
+      expect(result.data.method).toBe("POST");
     });
 
-    it("updates timeoutMinutes and enabled fields", async () => {
+    it("更新 url 和 enabled 字段", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
 
       const result = await updateTask(USER_A, created.data.id, {
-        timeoutMinutes: 45,
         enabled: false,
-        task: "echo updated",
+        url: "https://example.com/updated",
       });
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.data.timeoutMinutes).toBe(45);
       expect(result.data.enabled).toBe(false);
-      expect(result.data.task).toBe("echo updated");
-    });
-
-    it("rejects update when environment is not owned", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
-
-      const result = await updateTask(USER_A, created.data.id, { environmentId: ENV_B });
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("VALIDATION_ERROR");
-      }
+      expect(result.data.url).toBe("https://example.com/updated");
     });
   });
 
   describe("deleteTask/toggleTask", () => {
-    it("deletes a task", async () => {
+    it("删除任务", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
       const result = await deleteTask(USER_A, created.data.id);
@@ -203,7 +149,7 @@ describe("Task Service", () => {
       expect(task.success).toBe(false);
     });
 
-    it("toggles enabled state", async () => {
+    it("切换 enabled 状态", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
 
@@ -222,56 +168,7 @@ describe("Task Service", () => {
   });
 
   describe("execution flow", () => {
-    it("triggerTask writes workspace and summary fields on success", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
-
-      mockRunAgentTask.mockResolvedValue({
-        status: "success",
-        workspacePath: "/tmp/env-a/.scheduled-runs/task-1/log-1",
-        workspaceName: "20260427-120000-log-1",
-        resultSummary: "run summary",
-        error: null,
-        duration: 321,
-      });
-
-      const result = await triggerTask(USER_A, created.data.id);
-      expect(result.success).toBe(true);
-      if (!result.success) return;
-
-      expect(result.data.status).toBe("success");
-      expect(result.data.workspacePath).toContain(".scheduled-runs");
-      expect(result.data.resultSummary).toBe("run summary");
-      expect(result.data.environmentId).toBe(ENV_A);
-      expect(result.data.environmentName).toBe("env-a");
-
-      const task = await getTaskById(created.data.id);
-      expect(task?.lastStatus).toBe("success");
-    });
-
-    it("executeTaskById maps timeout status from runner", async () => {
-      const created = await createTask(USER_A, getValidInput());
-      if (!created.success) return;
-
-      mockRunAgentTask.mockResolvedValue({
-        status: "timeout",
-        workspacePath: "/tmp/env-a/.scheduled-runs/task-2/log-2",
-        workspaceName: "20260427-120500-log-2",
-        resultSummary: "timeout summary",
-        error: "Task execution timed out",
-        duration: 1800000,
-      });
-
-      const result = await executeTaskById(created.data.id, "manual");
-      expect(result.success).toBe(true);
-      if (!result.success) return;
-
-      expect(result.data.status).toBe("timeout");
-      expect(result.data.error).toBe("Task execution timed out");
-      expect(result.data.resultSummary).toBe("timeout summary");
-    });
-
-    it("createExecutionLog and listExecutionLogs expose workspace metadata", async () => {
+    it("createExecutionLog 和 listExecutionLogs 记录执行日志", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
 
@@ -279,11 +176,6 @@ describe("Task Service", () => {
         taskId: created.data.id,
         status: "skipped",
         triggeredBy: "cron",
-        workspacePath: "/tmp/env-a/.scheduled-runs/task/log",
-        workspaceName: "task-log",
-        environmentId: ENV_A,
-        environmentName: "env-a",
-        taskSnapshot: "echo hello",
         skipReason: "previous_run_still_active",
         resultSummary: "skip summary",
       });
@@ -291,14 +183,13 @@ describe("Task Service", () => {
       const logs = await listExecutionLogs(created.data.id);
       expect(logs.success).toBe(true);
       expect(logs.data.total).toBe(1);
-      expect(logs.data.items[0].workspacePath).toContain(".scheduled-runs");
       expect(logs.data.items[0].skipReason).toBe("previous_run_still_active");
       expect(logs.data.items[0].resultSummary).toBe("skip summary");
     });
   });
 
   describe("clearExecutionLogs/getTaskById", () => {
-    it("clears all logs for a task", async () => {
+    it("清除任务的所有执行日志", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
 
@@ -311,14 +202,14 @@ describe("Task Service", () => {
       expect(logs.data.total).toBe(0);
     });
 
-    it("returns task by id without ownership filter", async () => {
+    it("通过 ID 获取任务（无权限过滤）", async () => {
       const created = await createTask(USER_A, getValidInput());
       if (!created.success) return;
 
       const task = await getTaskById(created.data.id);
       expect(task).toBeTruthy();
       expect(task?.id).toBe(created.data.id);
-      expect(task?.environmentId).toBe(ENV_A);
+      expect(task?.url).toBe("https://httpbin.org/post");
     });
   });
 });

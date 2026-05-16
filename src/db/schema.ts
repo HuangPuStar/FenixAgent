@@ -178,7 +178,7 @@ export const agentKnowledgeBinding = pgTable("agent_knowledge_binding", {
   agentKbIdx: uniqueIndex("idx_agent_knowledge_binding_agent_kb").on(table.agentName, table.knowledgeBaseId),
 }));
 
-// 定时任务表
+// 定时任务表（HTTP Cron 触发器）
 export const scheduledTask = pgTable("scheduled_task", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: text("user_id")
@@ -189,11 +189,16 @@ export const scheduledTask = pgTable("scheduled_task", {
   cron: varchar("cron").notNull(),
   timezone: varchar("timezone"),
   enabled: boolean("enabled").notNull().default(true),
+  // HTTP cron 目标
+  url: text("url").notNull(),
+  method: varchar("method", { length: 10 }).notNull().default("POST"),
+  headers: jsonb("headers"),
+  body: text("body"),
+  // 遗留字段（过渡期保留，deprecated）
   environmentId: varchar("environment_id")
-    .notNull()
     .references(() => environment.id, { onDelete: "cascade" }),
-  task: text("task").notNull(),
-  timeoutMinutes: integer("timeout_minutes").notNull().default(30),
+  task: text("task"),
+  timeoutMinutes: integer("timeout_minutes").default(30),
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
   lastStatus: varchar("last_status"),

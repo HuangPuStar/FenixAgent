@@ -34,18 +34,10 @@ function toInvocationDate(invocation: unknown): Date | null {
 
 async function executeTask(taskId: string): Promise<void> {
   if (runningTasks.has(taskId)) {
-    const task = await getTaskById(taskId);
-    if (!task) {
-      log(`[Scheduler] Task ${taskId} not found while skipping concurrent run`);
-      return;
-    }
-
     await createExecutionLog({
       taskId,
       status: "skipped",
       triggeredBy: "cron",
-      environmentId: task.environmentId,
-      taskSnapshot: task.task,
       skipReason: "previous_run_still_active",
     });
 

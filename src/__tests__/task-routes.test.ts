@@ -1,16 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { environment, scheduledTask, taskExecutionLog, user } from "../db/schema";
-
-const mockRunAgentTask = mock((): Promise<import("../services/agent-task-runner").AgentTaskRunResult> => Promise.resolve({
-  status: "success" as const,
-  workspacePath: "/tmp/route-env/.scheduled-runs/task/log",
-  workspaceName: "20260427-130000-log",
-  resultSummary: "route summary",
-  error: null,
-  duration: 88,
-}));
+import { scheduledTask, taskExecutionLog, user } from "../db/schema";
 
 mock.module("../auth/better-auth", () => ({
   auth: {
@@ -37,7 +28,6 @@ mock.module("../services/scheduler", () => ({
 }));
 
 const TEST_USER_ID = "test_user";
-const TEST_ENV_ID = "env_routes_test";
 
 async function ensureUser() {
   const existing = await db.select().from(user).where(eq(user.id, TEST_USER_ID)).limit(1);
@@ -53,41 +43,14 @@ async function ensureUser() {
   });
 }
 
-async function ensureEnvironment() {
-  const existing = await db.select().from(environment).where(eq(environment.id, TEST_ENV_ID)).limit(1);
-  if (existing.length > 0) return;
-  const now = new Date();
-  await db.insert(environment).values({
-    id: TEST_ENV_ID,
-    name: "route-env",
-    description: null,
-    workspacePath: "/tmp/route-env",
-    agentName: "route-agent",
-    status: "idle",
-    machineName: null,
-    branch: null,
-    gitRepoUrl: null,
-    maxSessions: 1,
-    workerType: "acp",
-    capabilities: null,
-    secret: "route-secret",
-    userId: TEST_USER_ID,
-    lastPollAt: null,
-    createdAt: now,
-    updatedAt: now,
-  });
-}
-
 async function cleanup() {
   try { await db.delete(taskExecutionLog); } catch {}
   try { await db.delete(scheduledTask).where(eq(scheduledTask.userId, TEST_USER_ID)); } catch {}
 }
 
 await ensureUser();
-await ensureEnvironment();
 
 const app = (await import("../routes/web/tasks")).default;
-const { setRunAgentTaskForTesting } = await import("../services/task");
 
 mock.restore();
 
@@ -103,9 +66,10 @@ async function createTaskViaRoute(overrides: Record<string, unknown> = {}) {
       name: "Route Test",
       cron: "*/5 * * * *",
       timezone: "",
-      environmentId: TEST_ENV_ID,
-      task: "echo route",
-      timeoutMinutes: 30,
+      url: "https://httpbin.org/post",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: '{"hello":"world"}',
       ...overrides,
     }),
   });
@@ -116,20 +80,17 @@ async function createTaskViaRoute(overrides: Record<string, unknown> = {}) {
 describe("Task Routes", () => {
   beforeEach(async () => {
     await cleanup();
-    mockRunAgentTask.mockClear();
     mockScheduleTask.mockClear();
     mockUnscheduleTask.mockClear();
     mockRescheduleTask.mockClear();
-    setRunAgentTaskForTesting(mockRunAgentTask);
   });
 
   afterEach(async () => {
     await cleanup();
-    setRunAgentTaskForTesting(null);
   });
 
   describe("POST /web/tasks", () => {
-    it("creates an agent task and schedules it", async () => {
+    it("创建 HTTP cron 任务并调度", async () => {
       const res = await fetchRoute("/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -137,78 +98,57 @@ describe("Task Routes", () => {
           name: "Test",
           cron: "*/5 * * * *",
           timezone: "",
-          environmentId: TEST_ENV_ID,
-          task: "echo hello",
-          timeoutMinutes: 30,
+          url: "https://httpbin.org/post",
+          method: "POST",
         }),
       });
 
       expect(res.status).toBe(201);
       const body: any = await res.json();
       expect(body.success).toBe(true);
-      expect(body.data.environmentId).toBe(TEST_ENV_ID);
-      expect(body.data.task).toBe("echo hello");
-      expect(body.data.timeoutMinutes).toBe(30);
+      expect(body.data.url).toBe("https://httpbin.org/post");
+      expect(body.data.method).toBe("POST");
       expect(mockScheduleTask).toHaveBeenCalled();
     });
 
-    it("returns 400 on validation error", async () => {
+    it("验证失败返回 400", async () => {
       const res = await fetchRoute("/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Test", cron: "bad", environmentId: TEST_ENV_ID, task: "echo hi" }),
+        body: JSON.stringify({ name: "Test", cron: "bad", url: "https://example.com" }),
       });
       expect(res.status).toBe(400);
     });
   });
 
   describe("PUT /web/tasks/:id", () => {
-    it("updates timeoutMinutes and enabled fields, then reschedules", async () => {
+    it("更新 url 和 enabled 字段后重新调度", async () => {
       const id = await createTaskViaRoute();
       expect(id).toBeTruthy();
 
       const res = await fetchRoute(`/tasks/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ timeoutMinutes: 45, enabled: false }),
+        body: JSON.stringify({ url: "https://example.com/updated", enabled: false }),
       });
 
       expect(res.status).toBe(200);
       const body: any = await res.json();
-      expect(body.data.timeoutMinutes).toBe(45);
+      expect(body.data.url).toBe("https://example.com/updated");
       expect(body.data.enabled).toBe(false);
       expect(mockRescheduleTask).toHaveBeenCalled();
     });
   });
 
-  describe("POST /web/tasks/:id/trigger", () => {
-    it("returns workspacePath and resultSummary", async () => {
-      const id = await createTaskViaRoute();
-      expect(id).toBeTruthy();
-
-      const res = await fetchRoute(`/tasks/${id}/trigger`, { method: "POST" });
-      expect(res.status).toBe(200);
-      const body: any = await res.json();
-      expect(body.success).toBe(true);
-      expect(body.data.workspacePath).toContain(".scheduled-runs");
-      expect(body.data.resultSummary).toBe("route summary");
-      expect(body.data.triggeredBy).toBe("manual");
-    });
-  });
-
   describe("GET /web/tasks/:id/logs", () => {
-    it("does not return legacy HTTP log fields", async () => {
+    it("返回执行日志列表", async () => {
       const id = await createTaskViaRoute();
       expect(id).toBeTruthy();
-      await fetchRoute(`/tasks/${id}/trigger`, { method: "POST" });
 
       const res = await fetchRoute(`/tasks/${id}/logs`);
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.success).toBe(true);
-      expect(body.data.items[0].workspacePath).toContain(".scheduled-runs");
-      expect("statusCode" in body.data.items[0]).toBe(false);
-      expect("responseBody" in body.data.items[0]).toBe(false);
     });
   });
 });
