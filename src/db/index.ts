@@ -7,6 +7,9 @@ export const client = postgres(DATABASE_URL);
 export const db = drizzle(client, { schema });
 
 export async function initDb() {
+  // Suppress NOTICE-level messages from CREATE IF NOT EXISTS / ALTER IF NOT EXISTS
+  await client.unsafe(`SET client_min_messages TO WARNING`);
+
   // Create better-auth tables first — custom tables reference "user"(id) via FK.
   // better-auth's drizzleAdapter auto-creates these on first request, but we need them now.
   await client.unsafe(`
