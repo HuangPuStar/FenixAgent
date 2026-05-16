@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { scheduledTaskRepo, taskExecutionLogRepo } from "../repositories/task";
 import type { ScheduledTaskRow, TaskExecutionLogRow, ScheduledTaskInsert } from "../repositories/task";
 import { scheduleTask, rescheduleTask, unscheduleTask } from "./scheduler";
@@ -6,11 +6,11 @@ import { parseJsonb } from "./config/jsonb";
 import { error as logError } from "../logger";
 
 function generateTaskId(): string {
-  return `task_${randomBytes(12).toString("hex")}`;
+  return randomUUID();
 }
 
 function generateLogId(): string {
-  return `log_${randomBytes(12).toString("hex")}`;
+  return randomUUID();
 }
 
 function toUnixTimestamp(value: Date | null | undefined): number | null {
