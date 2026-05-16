@@ -10,9 +10,8 @@ import {
 } from "../../services/environment";
 import {
   spawnInstanceFromEnvironment,
-  listInstancesByEnvironment,
-  getRunningInstancesByEnvironment,
-  ensureRunning,
+  enterEnvironment,
+  listInstancesResponse,
 } from "../../services/instance";
 import {
   EnvironmentInfoSchema,
@@ -91,53 +90,21 @@ app.post("/environments/:id/enter", async ({ store, params, body, error }) => {
   await getOwnedEnvironment(params.id, user.id);
 
   const b = body as { instance_number?: number };
-  let inst: import("../../services/instance").SpawnedInstance | undefined;
-
-  if (b.instance_number !== undefined) {
-    const runningInstances = getRunningInstancesByEnvironment(params.id);
-    inst = runningInstances.find((i) => i.instanceNumber === b.instance_number);
-    if (!inst) {
-      return error(404, { error: { type: "NOT_FOUND", message: `实例 ${b.instance_number} 不存在或未运行` } });
+  try {
+    return await enterEnvironment(user.id, params.id, b.instance_number);
+  } catch (err: any) {
+    if (err.code === "NOT_FOUND") {
+      return error(404, { error: { type: "NOT_FOUND", message: err.message } });
     }
-  } else {
-    try {
-      const result = await ensureRunning(user.id, params.id);
-      inst = result.instance;
-    } catch (err: any) {
-      return error(500, { error: { type: "CONFIG_WRITE_ERROR", message: err.message } });
-    }
+    return error(500, { error: { type: "CONFIG_WRITE_ERROR", message: err.message } });
   }
-
-  if (!inst) {
-    return error(500, { error: { type: "CONFIG_WRITE_ERROR", message: "无法创建实例" } });
-  }
-
-  return {
-    session_id: inst.sessionId ?? null,
-    instance_id: inst.id,
-    instance_number: inst.instanceNumber,
-    instance_status: inst.status,
-    environment_id: params.id,
-  };
 }, { sessionAuth: true, body: "enter-environment-request" });
 
 /** GET /web/environments/:id/instances — List active instances for an environment */
 app.get("/environments/:id/instances", async ({ store, params }) => {
   const user = store.user!;
   await getOwnedEnvironment(params.id, user.id);
-
-  const activeInstances = listInstancesByEnvironment(params.id);
-  return {
-    environment_id: params.id,
-    instances: activeInstances.map((inst) => ({
-      id: inst.id,
-      instance_number: inst.instanceNumber,
-      status: inst.status,
-      session_id: inst.sessionId ?? null,
-      port: inst.port,
-      created_at: Math.floor(inst.createdAt.getTime() / 1000),
-    })),
-  };
+  return listInstancesResponse(params.id);
 }, { sessionAuth: true });
 
 /** DELETE /web/environments/:id — Delete environment */

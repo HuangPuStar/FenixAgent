@@ -275,5 +275,78 @@ export async function ensureRunning(userId: string, environmentId: string): Prom
   return { instance, status: "spawned" };
 }
 
+// ────────────────────────────────────────────
+// 响应组装视图函数（供路由层直接返回）
+// ────────────────────────────────────────────
+
+export interface EnterEnvironmentResult {
+  session_id: string | null;
+  instance_id: string;
+  instance_number: number;
+  instance_status: string;
+  environment_id: string;
+}
+
+export async function enterEnvironment(
+  userId: string,
+  environmentId: string,
+  instanceNumber?: number,
+): Promise<EnterEnvironmentResult> {
+  let inst: SpawnedInstance | undefined;
+
+  if (instanceNumber !== undefined) {
+    const runningInstances = getRunningInstancesByEnvironment(environmentId);
+    inst = runningInstances.find((i) => i.instanceNumber === instanceNumber);
+    if (!inst) {
+      throw Object.assign(
+        new Error(`实例 ${instanceNumber} 不存在或未运行`),
+        { code: "NOT_FOUND" },
+      );
+    }
+  } else {
+    const result = await ensureRunning(userId, environmentId);
+    inst = result.instance;
+  }
+
+  if (!inst) {
+    throw Object.assign(new Error("无法创建实例"), { code: "INTERNAL_ERROR" });
+  }
+
+  return {
+    session_id: inst.sessionId ?? null,
+    instance_id: inst.id,
+    instance_number: inst.instanceNumber,
+    instance_status: inst.status,
+    environment_id: environmentId,
+  };
+}
+
+export interface InstanceListResponse {
+  environment_id: string;
+  instances: Array<{
+    id: string;
+    instance_number: number;
+    status: string;
+    session_id: string | null;
+    port: number | undefined;
+    created_at: number;
+  }>;
+}
+
+export function listInstancesResponse(environmentId: string): InstanceListResponse {
+  const activeInstances = listInstancesByEnvironment(environmentId);
+  return {
+    environment_id: environmentId,
+    instances: activeInstances.map((inst) => ({
+      id: inst.id,
+      instance_number: inst.instanceNumber,
+      status: inst.status,
+      session_id: inst.sessionId ?? null,
+      port: inst.port,
+      created_at: Math.floor(inst.createdAt.getTime() / 1000),
+    })),
+  };
+}
+
 /** @deprecated 不再需要，保留空实现避免测试崩溃 */
 export function setInstanceSpawnForTesting(_fn: unknown): void {}
