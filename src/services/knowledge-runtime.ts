@@ -2,9 +2,8 @@ import {
   agentKnowledgeBindingRepo,
   knowledgeResourceRepo,
 } from "../repositories/knowledge-base";
-import { createKnowledgeProvider } from "./knowledge-provider/openviking";
+import { getKnowledgeProvider as getKnowledgeRuntimeProvider, setKnowledgeProviderForTesting as setKnowledgeRuntimeProviderForTesting } from "./knowledge-provider/registry";
 import type {
-  KnowledgeProvider,
   KnowledgeResourceContent,
   KnowledgeSearchResult,
 } from "./knowledge-provider/types";
@@ -17,18 +16,7 @@ export interface BoundKnowledgeBase {
   priority: number;
 }
 
-let knowledgeRuntimeProvider: KnowledgeProvider | null = null;
-
-function getKnowledgeRuntimeProvider(): KnowledgeProvider {
-  if (!knowledgeRuntimeProvider) {
-    knowledgeRuntimeProvider = createKnowledgeProvider();
-  }
-  return knowledgeRuntimeProvider;
-}
-
-export function setKnowledgeRuntimeProviderForTesting(provider: KnowledgeProvider | null) {
-  knowledgeRuntimeProvider = provider;
-}
+export { setKnowledgeProviderForTesting as setKnowledgeRuntimeProviderForTesting } from "./knowledge-provider/registry";
 
 /**
  * Resolves the ordered bound knowledge bases for an agent, optionally scoped to a user.

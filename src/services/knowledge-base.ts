@@ -6,10 +6,9 @@ import {
 } from "../repositories/knowledge-base";
 import type { KnowledgeBaseRow } from "../repositories/knowledge-base";
 import { config } from "../config";
-import { createKnowledgeProvider } from "./knowledge-provider/openviking";
+import { getKnowledgeProvider, setKnowledgeProviderForTesting } from "./knowledge-provider/registry";
 import type {
   KnowledgeBaseStatus,
-  KnowledgeProvider,
   KnowledgeResourceStatus,
 } from "./knowledge-provider/types";
 
@@ -62,18 +61,7 @@ function toUnixTimestamp(value: Date | null | undefined): number | null {
   return value ? Math.floor(value.getTime() / 1000) : null;
 }
 
-let knowledgeProvider: KnowledgeProvider | null = null;
-
-function getKnowledgeProvider(): KnowledgeProvider {
-  if (!knowledgeProvider) {
-    knowledgeProvider = createKnowledgeProvider();
-  }
-  return knowledgeProvider;
-}
-
-export function setKnowledgeProviderForTesting(provider: KnowledgeProvider | null) {
-  knowledgeProvider = provider;
-}
+export { setKnowledgeProviderForTesting } from "./knowledge-provider/registry";
 
 function sanitizeKnowledgeBase(
   row: KnowledgeBaseRow,

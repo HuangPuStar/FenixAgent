@@ -6,7 +6,7 @@ import {
   knowledgeResourceRepo,
 } from "../repositories/knowledge-base";
 import type { KnowledgeResourceRow } from "../repositories/knowledge-base";
-import { createKnowledgeProvider } from "./knowledge-provider/openviking";
+import { getKnowledgeProvider } from "./knowledge-provider/registry";
 import type { KnowledgeProvider, KnowledgeResourceStatus } from "./knowledge-provider/types";
 import {
   buildKnowledgeBaseRemoteId,
@@ -22,18 +22,7 @@ function generateKnowledgeResourceId(): string {
   return `res_${randomBytes(8).toString("hex")}`;
 }
 
-let knowledgeProvider: KnowledgeProvider | null = null;
-
-function getKnowledgeProvider(): KnowledgeProvider {
-  if (!knowledgeProvider) {
-    knowledgeProvider = createKnowledgeProvider();
-  }
-  return knowledgeProvider;
-}
-
-export function setKnowledgeUploadProviderForTesting(provider: KnowledgeProvider | null) {
-  knowledgeProvider = provider;
-}
+export { setKnowledgeProviderForTesting as setKnowledgeUploadProviderForTesting } from "./knowledge-provider/registry";
 
 function isMissingParentUriError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
