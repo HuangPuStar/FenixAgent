@@ -351,3 +351,13 @@
 3. **CLEANUP — environment-web.ts 移除多余 Promise.resolve**：`groupActiveInstancesByEnvironment` 是同步函数，R31 引入的 `Promise.resolve()` 包裹多余。
 4. **DRY — task.ts 提取 VALID_HTTP_METHODS 常量**：内联数组字面量提取为模块级 `as const` 常量。
 5. 新增 3 个测试文件共 10 用例。32 轮累计 326 个测试。
+
+## 2026-05-17 第三十三次审查
+
+审查范围：同 R32 全部 service 文件及子模块
+
+修复（3 项优化）：
+1. **UX — task.ts HTTP 错误消息 fallback**：`executeTaskById` 中 `!response.ok` 且 responseText 为空时，error message 从 `HTTP 500: ` 改为 `HTTP 500`（去掉无意义尾部冒号和空内容）。
+2. **类型安全 — scheduler.ts toInvocationDate**：`as` 类型断言改为 `in` 操作符 + typeof 守卫，增加 toDate/toJSDate 非函数属性防御。
+3. **性能 — instance.ts ensureRunning 查询合并**：`findRunningInstanceByEnvironment` + `getRunningInstancesByEnvironment` 两次 `filterInstances`（各遍历 core 全量实例）合并为单次 `getRunningInstancesByEnvironment` 调用。
+4. 新增 3 个测试文件共 12 用例。33 轮累计 338 个测试。
