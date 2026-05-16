@@ -262,3 +262,14 @@
 3. **DRY — config/skill.ts upsertSkill 字段映射合并**：提取 `commonFields` 消除 insert/update 路径的重复字段映射（description/contentPath/metadata/enabled/agentConfigId/updatedAt）。
 4. **CLEANUP — scheduler.ts 冗余表达式**：移除 `task ?? undefined`（null check 后 `task` 必然非空）。
 5. 新增 `instance-prefetch-env.test.ts`（4 用例）、`model-upsert-conflict.test.ts`（5 用例）。23 轮累计 255 个测试。
+
+## 2026-05-17 第二十四次审查
+
+审查范围：全量 CRUD 层（config/mcp-server、config/agent-config、skill、session）
+
+修复（2 BUG + 1 PERF + 1 CLEANUP）：
+1. **BUG — config/mcp-server.ts createMcpServer TOCTOU**：原始 INSERT 改为 `onConflictDoUpdate`，利用 `idx_mcp_server_user_name` uniqueIndex 消除并发注册同名 MCP 的 unique violation。
+2. **BUG — config/agent-config.ts createAgentConfig TOCTOU**：同上，利用 `idx_agent_config_user_name` uniqueIndex 实现原子 upsert。
+3. **PERF — skill.ts importSkillDirectories N+1**：冲突检测循环中 `getSkill` 从串行改为 `Promise.all` 并行查询。
+4. **CLEANUP — session.ts 不必要 async**：`getSession`/`resolveExistingSessionId`/`createSession` 移除 `async` 关键字，改为显式 `Promise.resolve`。
+5. 新增 `mcp-agent-config-upsert.test.ts`（6 用例）、`session-sync-functions.test.ts`（5 用例）。24 轮累计 266 个测试。
