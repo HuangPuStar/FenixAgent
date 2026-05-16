@@ -28,6 +28,7 @@ import webAuth from "./routes/web/auth";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import { stopAllInstances, spawnInstanceFromEnvironment, findRunningInstanceByEnvironment } from "./services/instance";
+import { getCoreRuntime } from "./services/core-bootstrap";
 import { environmentRepo } from "./repositories";
 import { repoPlugin } from "./plugins/repositories";
 import { migrateSkillsDir } from "./services/skill";
@@ -42,6 +43,9 @@ import { ctrlStaticPlugin } from "./plugins/static";
 
 await initDb();
 console.log("[RCS] Database initialized (PostgreSQL + better-auth)");
+
+getCoreRuntime();
+console.log("[RCS] Core runtime initialized (opencode engine + local node)");
 
 await migrateSkillsDir();
 await startScheduler();
@@ -157,7 +161,7 @@ async function gracefulShutdown(signal: string) {
   await hermesClient?.stop();
   closeAllAcpConnections();
   closeAllRelayConnections();
-  stopAllInstances();
+  await stopAllInstances();
   stopScheduler();
   await pgClient.end();
   process.exit(0);

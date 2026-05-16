@@ -63,10 +63,10 @@ app.get("/instances", ({ store }) => {
   return insts.map(toResponse);
 }, { sessionAuth: true, response: "instance-info-list" });
 
-app.delete("/instances/:id", ({ store, params, error }) => {
+app.delete("/instances/:id", async ({ store, params, error }) => {
   const user = store.user!;
   const id = params.id;
-  const result = stopInstance(id, user.id);
+  const result = await stopInstance(id, user.id);
   if (!result.ok) {
     const statusCode = result.error === "Instance not found" ? 404
       : result.error === "Not your instance" ? 403

@@ -1,16 +1,15 @@
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import * as net from "node:net";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { createApiKey } from "../auth/api-key-service";
-import { getBaseUrl } from "../config";
-import { log } from "../logger";
-import { listAgentKnowledgeBindings } from "./agent-knowledge";
+import { getCoreRuntime } from "./core-bootstrap";
+import { buildLaunchSpec } from "./launch-spec-builder";
 import { getAgentConfigById, getAgentFullConfig } from "./config-pg";
 import { environmentRepo } from "../repositories";
 import { closeInstanceLocalWs } from "../transport/acp-relay-handler";
-import { resolveExecutable } from "../utils/executable";
+import { log } from "../logger";
+import type { RuntimeInstanceSnapshot } from "@mothership/core";
+
+// ────────────────────────────────────────────
+// 公共类型（保持向后兼容）
+// ────────────────────────────────────────────
 
 export interface SpawnedInstance {
   id: string;
@@ -27,14 +26,26 @@ export interface SpawnedInstance {
   instanceNumber: number;
 }
 
-const PORT_MIN = 8888;
-const PORT_MAX = 8999;
-const ACP_LINK_BIND_HOST = "0.0.0.0";
+export interface EnsureRunningResult {
+  instance: SpawnedInstance;
+  status: "reused" | "spawned";
+}
 
-const instances = new Map<string, SpawnedInstance>();
-const allocatingPorts = new Set<number>();
+// ────────────────────────────────────────────
+// 补充映射：core facade 不维护的 relay 所需字段
+// ────────────────────────────────────────────
+
+interface InstanceSupplement {
+  userId: string;
+  environmentId: string;
+  port: number;
+  token: string;
+  pid: number | null;
+  instanceNumber: number;
+}
+
+const supplements = new Map<string, InstanceSupplement>();
 const envInstanceCounters = new Map<string, number>();
-let spawnImpl: typeof spawn = spawn;
 
 function getNextInstanceNumber(environmentId: string): number {
   const current = envInstanceCounters.get(environmentId) ?? 0;
@@ -43,168 +54,58 @@ function getNextInstanceNumber(environmentId: string): number {
   return next;
 }
 
-function allocatePort(): number | null {
-  const occupied = new Set<number>();
-  for (const inst of instances.values()) {
-    occupied.add(inst.port);
-  }
-  for (const port of allocatingPorts) {
-    occupied.add(port);
-  }
-  for (let port = PORT_MIN; port <= PORT_MAX; port++) {
-    if (!occupied.has(port)) return port;
-  }
-  return null;
-}
-
-function probePort(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(port, () => {
-      server.close(() => resolve(true));
-    });
-    server.on("error", () => resolve(false));
-  });
-}
-
-export async function spawnInstance(userId: string): Promise<SpawnedInstance> {
-  const acpLinkPath = resolveExecutable("acp-link");
-
-  // 1. Create dedicated API Key
-  const { fullKey } = await createApiKey(userId, `instance-${Date.now()}`);
-  const apiKey = fullKey;
-
-  // 2. Allocate port (with concurrency guard)
-  const port = allocatePort();
-  if (!port) throw new Error("No available port");
-  allocatingPorts.add(port);
-  try {
-    const available = await probePort(port);
-    if (!available) throw new Error(`Port ${port} is in use`);
-
-    // 3. Create SpawnedInstance record
-    const id = `inst_${randomBytes(8).toString("hex")}`;
-    const baseUrl = getBaseUrl();
-    const command = `ACP_RCS_URL=${baseUrl} ACP_RCS_TOKEN=${apiKey} acp-link --host ${ACP_LINK_BIND_HOST} --group "${apiKey}" --port ${port} opencode -- acp`;
-    const instance: SpawnedInstance = {
-      id, userId, port, pid: null,
-      status: "starting", command, error: null, apiKey,
-      createdAt: new Date(),
-      instanceNumber: 1,
-    };
-    instances.set(id, instance);
-
-    // 4. Spawn child process
-    const proc = spawnImpl(acpLinkPath, [
-      "--host", ACP_LINK_BIND_HOST,
-      "--group", apiKey,
-      "--port", String(port),
-      "opencode", "--", "acp",
-    ], {
-      env: { ...process.env, ACP_RCS_URL: baseUrl, ACP_RCS_TOKEN: apiKey },
-      stdio: ["pipe", "ignore", "ignore"],
-    });
-    instance.pid = proc.pid ?? null;
-    instance.status = "running";
-
-    // 5. Listen to events
-    proc.on("close", (code) => {
-      instance.status = "stopped";
-      if (code !== 0 && code !== null) {
-        instance.error = `Process exited with code ${code}`;
-      }
-      allocatingPorts.delete(port);
-    });
-    proc.on("error", (err) => {
-      instance.status = "error";
-      instance.error = err.message;
-      allocatingPorts.delete(port);
-    });
-
-    return instance;
-  } catch (err) {
-    allocatingPorts.delete(port);
-    throw err;
+function mapCoreStatus(
+  status: import("@mothership/core").RuntimeInstanceStatus,
+): SpawnedInstance["status"] {
+  switch (status) {
+    case "running":
+      return "running";
+    case "stopped":
+    case "stopping":
+      return "stopped";
+    case "error":
+      return "error";
+    default:
+      return "starting";
   }
 }
 
-export function listInstances(userId: string): SpawnedInstance[] {
-  return Array.from(instances.values()).filter(i => i.userId === userId);
+function toSpawnedInstance(
+  snapshot: RuntimeInstanceSnapshot,
+  supplement: InstanceSupplement,
+): SpawnedInstance {
+  return {
+    id: snapshot.instanceId,
+    userId: supplement.userId,
+    port: supplement.port,
+    pid: supplement.pid,
+    status: mapCoreStatus(snapshot.status),
+    command: "",
+    error: snapshot.errorMessage ?? null,
+    apiKey: supplement.token,
+    createdAt: snapshot.createdAt,
+    environmentId: supplement.environmentId,
+    sessionId: undefined,
+    instanceNumber: supplement.instanceNumber,
+  };
 }
 
-export function findRunningInstanceByEnvironment(environmentId: string): SpawnedInstance | undefined {
-  return Array.from(instances.values()).find(
-    (i) => i.environmentId === environmentId && i.status !== "stopped" && i.status !== "error",
-  );
-}
+// ────────────────────────────────────────────
+// 公共 API
+// ────────────────────────────────────────────
 
-export function findInstanceBySessionId(sessionId: string): SpawnedInstance | undefined {
-  return Array.from(instances.values()).find(
-    (i) => i.sessionId === sessionId && i.status !== "stopped" && i.status !== "error",
-  );
-}
-
-export function listInstancesByEnvironment(environmentId: string): SpawnedInstance[] {
-  return Array.from(instances.values()).filter(
-    (i) => i.environmentId === environmentId && i.status !== "stopped" && i.status !== "error",
-  );
-}
-
-export function getRunningInstancesByEnvironment(environmentId: string): SpawnedInstance[] {
-  return Array.from(instances.values()).filter(
-    (i) => i.environmentId === environmentId && i.status === "running",
-  );
-}
-
-export function getInstance(id: string): SpawnedInstance | undefined {
-  return instances.get(id);
-}
-
-export function stopInstance(id: string, userId: string): { ok: boolean; error?: string } {
-  const inst = instances.get(id);
-  if (!inst) return { ok: false, error: "Instance not found" };
-  if (inst.userId !== userId) return { ok: false, error: "Not your instance" };
-  if (inst.status === "stopped") return { ok: false, error: "Already stopped" };
-
-  // Close the shared local WS to acp-link before killing the process
-  if (inst.environmentId) {
-    closeInstanceLocalWs(id);
-  }
-
-  if (!inst.pid) { inst.status = "stopped"; return { ok: true }; }
-  try {
-    process.kill(inst.pid, "SIGTERM");
-    setTimeout(() => {
-      try { process.kill(inst.pid!, "SIGKILL"); } catch {}
-    }, 5000);
-    return { ok: true };
-  } catch {
-    inst.status = "stopped";
-    return { ok: true };
-  }
-}
-
-export function stopAllInstances(): void {
-  for (const inst of instances.values()) {
-    if (inst.pid && inst.status !== "stopped") {
-      try { process.kill(inst.pid, "SIGTERM"); } catch {}
-    }
-  }
-}
-
-export async function spawnInstanceFromEnvironment(userId: string, environmentId: string): Promise<SpawnedInstance> {
-  const acpLinkPath = resolveExecutable("acp-link");
-
+export async function spawnInstanceFromEnvironment(
+  userId: string,
+  environmentId: string,
+): Promise<SpawnedInstance> {
   const env = await environmentRepo.getById(environmentId);
   if (!env) throw new Error("Environment not found");
   if (env.userId !== userId) throw new Error("Not your environment");
 
-  // Session 由 acp-link 进程自行管理，RCS 不再创建/查找 session
   const cwd = env.workspacePath || env.directory;
-  if (!cwd || !existsSync(cwd)) throw new Error(`Workspace directory does not exist: ${cwd}`);
+  if (!cwd) throw new Error(`Workspace directory not set for environment: ${environmentId}`);
 
-  // Inject full config into workspace — RCS is the single source of truth
-  // 优先使用 agentConfigId（UUID 强绑定），fallback 到 agentName（兼容过渡）
+  // 解析 AgentConfig
   let resolvedAgentConfig: { name: string; id?: string } | null = null;
   if (env.agentConfigId) {
     resolvedAgentConfig = await getAgentConfigById(env.agentConfigId);
@@ -212,168 +113,161 @@ export async function spawnInstanceFromEnvironment(userId: string, environmentId
     resolvedAgentConfig = { name: env.agentName };
   }
 
-  if (resolvedAgentConfig) {
-    try {
-      const configDir = join(cwd, ".opencode");
-      const configPath = join(configDir, "opencode.json");
-      const config: Record<string, unknown> = {
-        _generated: "RCS — DO NOT EDIT — auto-generated on spawn",
-      };
+  if (!resolvedAgentConfig) {
+    throw new Error(`No agent config found for environment: ${environmentId}`);
+  }
 
-      config.default_agent = resolvedAgentConfig.name;
+  // 获取完整配置
+  const fullConfig = resolvedAgentConfig.id && env.userId
+    ? await getAgentFullConfig(env.userId, resolvedAgentConfig.id)
+    : { agentConfig: null, providers: [], skills: [], mcpServers: [] as any[] };
 
-      // 批量获取 AgentConfig 关联的完整配置
-      if (resolvedAgentConfig.id && env.userId) {
-        const fullConfig = await getAgentFullConfig(env.userId, resolvedAgentConfig.id);
+  // 组装 AgentLaunchSpec
+  const ac = fullConfig.agentConfig as Record<string, unknown> | null;
+  const launchSpec = await buildLaunchSpec({
+    workspacePath: cwd,
+    agentName: resolvedAgentConfig.name,
+    agentPrompt: (ac?.prompt as string) ?? null,
+    modelRef: (ac?.model as string) ?? null,
+    fullConfig,
+    environmentSecret: env.secret,
+  });
 
-        if (fullConfig.agentConfig) {
-          const ac = fullConfig.agentConfig;
-          if (ac.model) config.model = ac.model;
-          if (ac.prompt) config.system_prompt = ac.prompt;
-          if (ac.steps) config.max_steps = ac.steps;
-          if (ac.temperature) config.temperature = Number(ac.temperature);
-          if (ac.topP) config.top_p = Number(ac.topP);
-          if (ac.permission) config.permission = ac.permission;
-        }
+  const instanceId = `inst_${randomBytes(8).toString("hex")}`;
+  const instanceNumber = getNextInstanceNumber(environmentId);
 
-        // 注入 MCP 服务器配置
-        const mcp: Record<string, unknown> = {};
-        for (const server of fullConfig.mcpServers) {
-          mcp[server.name] = {
-            ...(typeof server.config === "string" ? JSON.parse(server.config) : server.config),
-            enabled: true,
-          };
-        }
+  // 委托 core 执行 launch
+  const { facade, opencodeRuntime } = getCoreRuntime();
+  const snapshot = await facade.launchInstance({
+    instanceId,
+    engineType: "opencode",
+    nodeId: "local-default",
+    launchSpec,
+  });
 
-        // 注入 Knowledge MCP 端点
-        const knowledgeBindings = await listAgentKnowledgeBindings(resolvedAgentConfig.name);
-        if (knowledgeBindings.length > 0) {
-          mcp.kb = {
-            type: "remote",
-            url: `${getBaseUrl()}/mcp/knowledge`,
-            headers: { Authorization: `Bearer ${env.secret}` },
-            enabled: true,
-            timeout: 15000,
-          };
-        }
+  // 从共享的 opencode runtime 读取 port/token/pid
+  const runtimeState = opencodeRuntime.getInstanceState(instanceId);
+  const port = runtimeState?.port ?? 0;
+  const token = runtimeState?.token ?? "";
+  const pid = runtimeState?.pid ?? null;
 
-        if (Object.keys(mcp).length > 0) {
-          config.mcp = mcp;
-        }
-      } else {
-        // Fallback：只注入 KB MCP（兼容无 agentConfigId 的旧环境）
-        const knowledgeBindings = await listAgentKnowledgeBindings(resolvedAgentConfig.name);
-        if (knowledgeBindings.length > 0) {
-          config.mcp = {
-            kb: {
-              type: "remote",
-              url: `${getBaseUrl()}/mcp/knowledge`,
-              headers: { Authorization: `Bearer ${env.secret}` },
-              enabled: true,
-              timeout: 15000,
-            },
-          };
-        }
-      }
+  const supplement: InstanceSupplement = {
+    userId,
+    environmentId,
+    port,
+    token,
+    pid,
+    instanceNumber,
+  };
+  supplements.set(instanceId, supplement);
 
-      if (!existsSync(configDir)) {
-        mkdirSync(configDir, { recursive: true });
-      }
-      writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-    } catch (err) {
-      log(`[instance] Failed to write .opencode/opencode.json: ${err}`);
+  return toSpawnedInstance(snapshot, supplement);
+}
+
+export async function spawnInstance(userId: string): Promise<SpawnedInstance> {
+  throw new Error("spawnInstance without environment is deprecated. Use spawnInstanceFromEnvironment instead.");
+}
+
+export function listInstances(userId: string): SpawnedInstance[] {
+  const { facade } = getCoreRuntime();
+  return facade.listInstances()
+    .filter((s) => {
+      const sup = supplements.get(s.instanceId);
+      return sup?.userId === userId;
+    })
+    .map((s) => {
+      const sup = supplements.get(s.instanceId)!;
+      return toSpawnedInstance(s, sup);
+    });
+}
+
+export function findRunningInstanceByEnvironment(environmentId: string): SpawnedInstance | undefined {
+  const { facade } = getCoreRuntime();
+  for (const snapshot of facade.listInstances()) {
+    const sup = supplements.get(snapshot.instanceId);
+    if (sup?.environmentId === environmentId && snapshot.status === "running") {
+      return toSpawnedInstance(snapshot, sup);
     }
   }
+  return undefined;
+}
 
-  // Allocate port
-  const port = allocatePort();
-  if (!port) throw new Error("No available port");
-  allocatingPorts.add(port);
+export function findInstanceBySessionId(_sessionId: string): SpawnedInstance | undefined {
+  return undefined;
+}
+
+export function listInstancesByEnvironment(environmentId: string): SpawnedInstance[] {
+  const { facade } = getCoreRuntime();
+  return facade.listInstances()
+    .filter((s) => {
+      const sup = supplements.get(s.instanceId);
+      return sup?.environmentId === environmentId && s.status !== "stopped" && s.status !== "error";
+    })
+    .map((s) => {
+      const sup = supplements.get(s.instanceId)!;
+      return toSpawnedInstance(s, sup);
+    });
+}
+
+export function getRunningInstancesByEnvironment(environmentId: string): SpawnedInstance[] {
+  const { facade } = getCoreRuntime();
+  return facade.listInstances()
+    .filter((s) => {
+      const sup = supplements.get(s.instanceId);
+      return sup?.environmentId === environmentId && s.status === "running";
+    })
+    .map((s) => {
+      const sup = supplements.get(s.instanceId)!;
+      return toSpawnedInstance(s, sup);
+    });
+}
+
+export function getInstance(id: string): SpawnedInstance | undefined {
+  const { facade } = getCoreRuntime();
+  const snapshot = facade.getInstance(id);
+  if (!snapshot) return undefined;
+  const sup = supplements.get(id);
+  if (!sup) return undefined;
+  return toSpawnedInstance(snapshot, sup);
+}
+
+export async function stopInstance(id: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+  const sup = supplements.get(id);
+  if (!sup) return { ok: false, error: "Instance not found" };
+  if (sup.userId !== userId) return { ok: false, error: "Not your instance" };
+
+  const { facade } = getCoreRuntime();
+  const snapshot = facade.getInstance(id);
+  if (!snapshot) return { ok: false, error: "Instance not found" };
+  if (snapshot.status === "stopped") return { ok: false, error: "Already stopped" };
+
+  closeInstanceLocalWs(id);
+
   try {
-    const available = await probePort(port);
-    if (!available) throw new Error(`Port ${port} is in use`);
-
-    const id = `inst_${randomBytes(8).toString("hex")}`;
-    const command = `ACP_RCS_TOKEN=${env.secret} acp-link --host ${ACP_LINK_BIND_HOST} --group "${env.secret}" --port ${port} opencode -- acp`;
-    const instance: SpawnedInstance = {
-      id, userId, port, pid: null,
-      status: "starting", command, error: null, apiKey: env.secret,
-      createdAt: new Date(),
-      environmentId,
-      sessionId: undefined,
-      instanceNumber: getNextInstanceNumber(environmentId),
-    };
-    instances.set(id, instance);
-
-    // Spawn acp-link as standalone local proxy (no RCS upstream URL).
-    // Pass ACP_RCS_TOKEN so acp-link uses it as its local WS auth token.
-    // The relay handler connects with this token to trigger agent spawning.
-    const proc = spawnImpl(acpLinkPath, [
-      "--host", ACP_LINK_BIND_HOST,
-      "--group", env.secret,
-      "--port", String(port),
-      "opencode", "--", "acp",
-    ], {
-      env: { ...process.env, ACP_RCS_TOKEN: env.secret },
-      cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    instance.pid = proc.pid ?? null;
-
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString().trim();
-      log(`[instance:${id}] stdout: ${text}`);
-      // Capture the auth token that acp-link generates for its local WS
-      const match = text.match(/Token:\s*([a-f0-9]{64})/);
-      if (match) {
-        instance.apiKey = match[1];
-        log(`[instance:${id}] Captured local WS token`);
-      }
-    });
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      log(`[instance:${id}] stderr: ${chunk.toString().trim()}`);
-    });
-    instance.status = "running";
-
-    proc.on("close", (code) => {
-      instance.status = "stopped";
-      if (code !== 0 && code !== null) {
-        instance.error = `Process exited with code ${code}`;
-      }
-      allocatingPorts.delete(port);
-    });
-    proc.on("error", (err) => {
-      instance.status = "error";
-      instance.error = err.message;
-      allocatingPorts.delete(port);
-    });
-
-    return instance;
-  } catch (err) {
-    allocatingPorts.delete(port);
-    throw err;
+    await facade.stopInstance(id);
+    return { ok: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
   }
 }
 
-export function setInstanceSpawnForTesting(fn: typeof spawn | null): void {
-  spawnImpl = fn ?? spawn;
-}
-
-// ────────────────────────────────────────────
-// ensureRunning：统一 spawn 决策入口
-// ────────────────────────────────────────────
-
-export interface EnsureRunningResult {
-  instance: SpawnedInstance;
-  status: "reused" | "spawned";
+export async function stopAllInstances(): Promise<void> {
+  const { facade } = getCoreRuntime();
+  for (const snapshot of facade.listInstances()) {
+    if (snapshot.status !== "stopped") {
+      try {
+        await facade.stopInstance(snapshot.instanceId);
+      } catch {}
+    }
+  }
+  supplements.clear();
 }
 
 export async function ensureRunning(userId: string, environmentId: string): Promise<EnsureRunningResult> {
-  // 1. 检查是否已有 running instance → 复用
   const existing = findRunningInstanceByEnvironment(environmentId);
   if (existing) return { instance: existing, status: "reused" };
 
-  // 2. 检查 maxSessions 限制
   const env = await environmentRepo.getById(environmentId);
   if (!env) throw new Error("Environment not found");
 
@@ -382,7 +276,9 @@ export async function ensureRunning(userId: string, environmentId: string): Prom
     throw new Error(`max_sessions_reached: 已达到最大实例数 ${env.maxSessions}`);
   }
 
-  // 3. 执行 spawn
   const instance = await spawnInstanceFromEnvironment(userId, environmentId);
   return { instance, status: "spawned" };
 }
+
+/** @deprecated 不再需要，保留空实现避免测试崩溃 */
+export function setInstanceSpawnForTesting(_fn: unknown): void {}

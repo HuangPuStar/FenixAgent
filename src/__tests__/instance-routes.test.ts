@@ -81,7 +81,7 @@ type StopInstanceResult =
   | { ok: true }
   | { ok: false; error: "Instance not found" | "Not your instance" | string };
 
-const mockStopInstance = mock<(id: string, userId: string) => StopInstanceResult>(() => ({ ok: true }));
+const mockStopInstance = mock<(id: string, userId: string) => Promise<StopInstanceResult>>(async () => ({ ok: true }));
 
 function request(app: Elysia, path: string, init?: RequestInit) {
   return app.handle(new Request(`http://localhost${path}`, init));
@@ -117,10 +117,10 @@ function createInstanceApp() {
     return insts.map(toResponse);
   });
 
-  app.delete("/web/instances/:id", ({ store, params }) => {
+  app.delete("/web/instances/:id", async ({ store, params }) => {
     const user = store.user!;
     const id = params.id;
-    const result = mockStopInstance(id, user.id);
+    const result = await mockStopInstance(id, user.id);
     if (!result.ok) {
       const statusCode = result.error === "Instance not found" ? 404
         : result.error === "Not your instance" ? 403
@@ -195,7 +195,7 @@ describe("Instance Routes", () => {
   });
 
   test("DELETE /web/instances/:id — returns 404 for not found", async () => {
-    mockStopInstance.mockReturnValueOnce({ ok: false, error: "Instance not found" });
+    mockStopInstance.mockResolvedValueOnce({ ok: false, error: "Instance not found" });
 
     const res = await request(app, "/web/instances/inst_nonexistent", { method: "DELETE" });
     expect(res.status).toBe(404);
@@ -204,7 +204,7 @@ describe("Instance Routes", () => {
   });
 
   test("DELETE /web/instances/:id — returns 403 for non-owner", async () => {
-    mockStopInstance.mockReturnValueOnce({ ok: false, error: "Not your instance" });
+    mockStopInstance.mockResolvedValueOnce({ ok: false, error: "Not your instance" });
 
     const res = await request(app, "/web/instances/inst_other", { method: "DELETE" });
     expect(res.status).toBe(403);
