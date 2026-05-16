@@ -358,8 +358,9 @@ export async function executeTaskById(
     );
   } catch (err: unknown) {
     logError("[Task] Execution failed for task", taskId, err);
-    // 区分超时和其他错误：AbortSignal.timeout 触发 AbortError 或 TimeoutError（Bun）
-    const isTimeout = err instanceof DOMException && (err.name === "AbortError" || err.name === "TimeoutError");
+    // 区分超时和其他错误：AbortSignal.timeout 触发 AbortError 或 TimeoutError
+    // 使用 instanceof Error（而非 DOMException）兼容 Node.js 和 Bun 两种运行时
+    const isTimeout = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
     const message = err instanceof Error ? err.message : String(err);
     const duration = Date.now() - startTime;
 
@@ -388,7 +389,7 @@ export async function listExecutionLogs(
   return {
     success: true,
     data: {
-      total,
+      total: Number(total),
       items: rows.map(sanitizeExecutionLog),
     },
   };

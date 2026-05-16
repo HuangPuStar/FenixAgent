@@ -66,10 +66,12 @@ export async function deleteMcpServer(userId: string, name: string): Promise<boo
   return result.length > 0;
 }
 
-export async function setMcpServerEnabled(userId: string, name: string, enabled: boolean) {
-  await db.update(mcpServer)
+export async function setMcpServerEnabled(userId: string, name: string, enabled: boolean): Promise<boolean> {
+  const result = await db.update(mcpServer)
     .set({ enabled, updatedAt: new Date() })
-    .where(and(eq(mcpServer.userId, userId), eq(mcpServer.name, name)));
+    .where(and(eq(mcpServer.userId, userId), eq(mcpServer.name, name)))
+    .returning({ id: mcpServer.id });
+  return result.length > 0;
 }
 
 // ────────────────────────────────────────────
