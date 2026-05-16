@@ -390,3 +390,13 @@
 2. **WARNING — scheduler.ts stale job 残留**：任务从 DB 删除后 cron job 仍在 activeJobs Map 中，每次 tick 无用触发。`executeTask` 在 task-not-found 分支调用 `unscheduleTask` 清理。
 3. **CLEANUP — instance.ts getInstance supplement 泄漏**：core 无实例但 supplements 有条目时未清理，长期运行内存累积。与 `stopInstance` 行为对齐，发现孤立条目时 `supplements.delete(id)`。
 4. 新增 `task-cron-empty-update.test.ts`（5 用例）、`scheduler-stale-job-cleanup.test.ts`（1 用例）、`instance-getinstance-cleanup.test.ts`（4 用例）。36 轮累计 364 个测试。
+
+## 2026-05-17 第三十七次审查
+
+审查范围：同 R36 全量 service 文件及 config 子目录
+
+修复（1 SECURITY + 2 CLEANUP）：
+1. **SECURITY — environment-web.ts 符号链接逃逸**：`ensureWorkspaceDir` 通过 `realpathSync` 解析符号链接后未重新校验，`/tmp/link_to_etc → /etc` 可绕过 `BLOCKED_PATHS`。`createWebEnvironment` 和 `updateWebEnvironment` 两处添加 realpath 重校验。
+2. **CLEANUP — agent-config.ts**：移除 `createAgentConfig` 中冗余的双重 `as typeof agentConfig.$inferInsert` 类型断言。
+3. **CLEANUP — mcp-server.ts**：`validateMcpConfig` command 校验从 `!every(typeof === "string")` 改为 `some(typeof !== "string")` 提高可读性。
+4. 新增 `workspace-symlink-escape.test.ts`（4 用例）、`mcp-command-validation.test.ts`（5 用例）。37 轮累计 373 个测试。
