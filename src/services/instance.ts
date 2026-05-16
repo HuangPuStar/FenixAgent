@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { getCoreRuntime } from "./core-bootstrap";
 import { buildLaunchSpec } from "./launch-spec-builder";
 import { getAgentConfigById, getAgentFullConfig } from "./config-pg";
-import { environmentRepo, sessionRepo } from "../repositories";
+import { environmentRepo } from "../repositories";
+import { findOrCreateForEnvironment } from "./session";
 import { log, error as logError } from "../logger";
 import type { RuntimeInstanceSnapshot } from "@mothership/core";
 import type { AgentFullConfig } from "./config-pg";
@@ -316,18 +317,12 @@ export async function enterEnvironment(
   }
 
   // 为该环境查找或创建 RCS session（前端导航需要 session_id）
-  const existing = await sessionRepo.listByEnvironment(environmentId);
-  let sessionId: string;
-  if (existing.length > 0) {
-    sessionId = existing[0].id;
-  } else {
-    const session = await sessionRepo.create({
-      environmentId,
-      source: "acp",
-      userId,
-    });
-    sessionId = session.id;
-  }
+  const { id: sessionId } = await findOrCreateForEnvironment(
+    environmentId,
+    "Web Session",
+    userId,
+    "web",
+  );
 
   return {
     session_id: sessionId,

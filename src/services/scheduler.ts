@@ -114,7 +114,6 @@ export function unscheduleTask(taskId: string): void {
 export function rescheduleTask(task: { id: string; cron: string; timezone?: string | null; enabled?: boolean }): void {
   unscheduleTask(task.id);
   scheduleTask(task);
-  log(`[Scheduler] Rescheduled task ${task.id}`);
 }
 
 export async function startScheduler(): Promise<void> {

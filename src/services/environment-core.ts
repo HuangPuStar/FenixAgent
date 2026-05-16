@@ -48,7 +48,7 @@ export function toResponse(row: EnvironmentRecord): EnvironmentResponse {
     branch: row.branch,
     status: row.status,
     username: row.username,
-    last_poll_at: row.lastPollAt ? row.lastPollAt.getTime() / 1000 : null,
+    last_poll_at: row.lastPollAt ? Math.floor(row.lastPollAt.getTime() / 1000) : null,
     worker_type: row.workerType,
     capabilities: row.capabilities,
   };
