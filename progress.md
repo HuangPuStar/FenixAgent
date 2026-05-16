@@ -440,3 +440,13 @@
 3. **WARNING — task.ts updateTask 条件 reschedule**：即使只修改 name/description/url 也触发 `rescheduleTask`（unschedule+schedule），造成不必要的 job 中断。添加 `schedulingChanged` 守卫，仅 cron/timezone/enabled 变更时 reschedule。
 4. **WARNING — task.ts toggleTask 验证更新结果**：`scheduledTaskRepo.update` 可能因并发删除返回 null，原代码静默继续调度/取消调度。添加 null 检查返回 NOT_FOUND。
 5. 新增 `instance-counter-cleanup.test.ts`（2 用例）、`scheduler-return-value.test.ts`（4 用例）、`task-reschedule-conditional.test.ts`（8 用例）。41 轮累计 411 个测试。
+
+## 2026-05-17 第四十二次审查
+
+审查范围：同 R41 全量 service 文件及 config 子目录
+
+修复（1 CLEANUP + 2 WARNING）：
+1. **CLEANUP — task.ts timeout 检测 `instanceof DOMException` → `instanceof Error`**：Node.js 环境下 `AbortSignal.timeout` 抛出普通 Error 而非 DOMException，改为 `instanceof Error` + `.name` 检查兼容两种运行时。
+2. **WARNING — task.ts `listExecutionLogs` total 缺少 `Number()` 转换**：PG `count(*)` 部分驱动返回字符串，添加��御性 `Number()` 与 R34 `countToolsByServer` 对齐。
+3. **WARNING — config/mcp-server.ts `setMcpServerEnabled` void→boolean**：添加 `.returning()` 检测是否存在匹配行，与 `deleteMcpServer`/`enableSkill`/`disableSkill` 返回值约定一致。
+4. 新增 `task-timeout-instanceof-error.test.ts`（7 用例）、`task-list-logs-total-coercion.test.ts`（3 用例）、`mcp-set-enabled-return.test.ts`（2 用例）。42 轮累计 423 个测试。
