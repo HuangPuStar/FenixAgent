@@ -13,7 +13,7 @@ describe("AGENT_SETTABLE_FIELDS", () => {
   it("包含所���期望的可设置字段", () => {
     const expected = [
       "model", "prompt", "steps", "mode", "permission",
-      "variant", "temperature", "topP", "disable", "hidden",
+      "variant", "temperature", "topP", "top_p", "disable", "hidden",
       "color", "description", "knowledge",
     ];
     for (const field of expected) {
@@ -62,16 +62,18 @@ describe("validateAgentData", () => {
     expect(validateAgentData({ temperature: 2.1 })).toBe("INVALID_TEMPERATURE");
   });
 
-  // topP 边界（validateAgentData 检查 top_p 而非 topP，已知不匹配）
-  it("接受 topP 0 和 1（camelCase 字段名，校验检查 top_p）", () => {
+  // topP 边界（R34 修复后 validateAgentData 同时校验 topP 和 top_p）
+  it("接受 topP 0 和 1", () => {
     expect(validateAgentData({ topP: 0 })).toBeNull();
     expect(validateAgentData({ topP: 1 })).toBeNull();
-    // 注意：topP 走 AGENT_SETTABLE_FIELDS 存储，但 validateAgentData 只校验 top_p
-    // 这是已知问题，topP 超范围不会被拦截
-    expect(validateAgentData({ topP: -0.1 })).toBeNull();
   });
 
-  it("拒绝超范围 top_p（snake_case，validateAgentData 实际校验的字段名）", () => {
+  it("拒绝超范围 topP", () => {
+    expect(validateAgentData({ topP: -0.1 })).toBe("INVALID_TOP_P");
+    expect(validateAgentData({ topP: 1.1 })).toBe("INVALID_TOP_P");
+  });
+
+  it("拒绝超范围 top_p（snake_case）", () => {
     expect(validateAgentData({ top_p: -0.1 })).toBe("INVALID_TOP_P");
     expect(validateAgentData({ top_p: 1.1 })).toBe("INVALID_TOP_P");
   });

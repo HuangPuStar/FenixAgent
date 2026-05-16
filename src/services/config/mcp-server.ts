@@ -81,7 +81,7 @@ export async function countToolsByServer(serverName: string): Promise<number> {
   const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(mcpTool)
     .where(eq(mcpTool.serverName, serverName));
-  return row?.count ?? 0;
+  return Number(row?.count ?? 0);
 }
 
 /** 删除指定 server 的所有缓存 tool */

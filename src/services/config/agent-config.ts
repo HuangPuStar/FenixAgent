@@ -14,6 +14,9 @@ const AGENT_SETTABLE_FIELDS = [
   "variant", "temperature", "topP", "top_p", "disable", "hidden", "color", "description", "knowledge",
 ] as const;
 
+/** 前端字段名 → Drizzle 列名映射（路由层已做映射，此处为防御性兜底） */
+const FIELD_ALIAS: Record<string, string> = { top_p: "topP" };
+
 export async function listAgentConfigs(userId: string) {
   return db.select().from(agentConfig)
     .where(eq(agentConfig.userId, userId));
@@ -41,7 +44,8 @@ export async function createAgentConfig(
   const set: Partial<typeof agentConfig.$inferInsert> = { updatedAt: new Date() };
   for (const field of AGENT_SETTABLE_FIELDS) {
     if (data[field] !== undefined) {
-      (set as Record<string, unknown>)[field] = data[field] ?? null;
+      const drizzleKey = FIELD_ALIAS[field] ?? field;
+      (set as Record<string, unknown>)[drizzleKey] = data[field] ?? null;
     }
   }
   const values = { userId, name, ...set } as typeof agentConfig.$inferInsert;
@@ -61,7 +65,8 @@ export async function updateAgentConfig(
   const set: Partial<typeof agentConfig.$inferInsert> = { updatedAt: new Date() };
   for (const field of AGENT_SETTABLE_FIELDS) {
     if (data[field] !== undefined) {
-      (set as Record<string, unknown>)[field] = data[field] ?? null;
+      const drizzleKey = FIELD_ALIAS[field] ?? field;
+      (set as Record<string, unknown>)[drizzleKey] = data[field] ?? null;
     }
   }
   await db.update(agentConfig).set(set)
@@ -103,6 +108,9 @@ export function validateAgentData(data: Record<string, unknown>): string | null 
   }
   if (data.top_p !== undefined) {
     if (typeof data.top_p !== "number" || data.top_p < 0 || data.top_p > 1) return "INVALID_TOP_P";
+  }
+  if (data.topP !== undefined) {
+    if (typeof data.topP !== "number" || data.topP < 0 || data.topP > 1) return "INVALID_TOP_P";
   }
   if (data.color !== undefined) {
     if (typeof data.color !== "string") return "INVALID_COLOR";
