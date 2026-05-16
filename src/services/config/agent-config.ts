@@ -36,11 +36,8 @@ export async function getAgentConfigById(id: string) {
   return rows[0] ?? null;
 }
 
-export async function createAgentConfig(
-  userId: string,
-  name: string,
-  data: Record<string, unknown>,
-) {
+/** 将 data 中 AGENT_SETTABLE_FIELDS 范围内的字段映射为 Drizzle set 对象 */
+function buildSetFromData(data: Record<string, unknown>): Partial<typeof agentConfig.$inferInsert> {
   const set: Partial<typeof agentConfig.$inferInsert> = { updatedAt: new Date() };
   for (const field of AGENT_SETTABLE_FIELDS) {
     if (data[field] !== undefined) {
@@ -48,6 +45,15 @@ export async function createAgentConfig(
       (set as Record<string, unknown>)[drizzleKey] = data[field] ?? null;
     }
   }
+  return set;
+}
+
+export async function createAgentConfig(
+  userId: string,
+  name: string,
+  data: Record<string, unknown>,
+) {
+  const set = buildSetFromData(data);
   const values = { userId, name, ...set } as typeof agentConfig.$inferInsert;
 
   await db.insert(agentConfig).values(values as typeof agentConfig.$inferInsert)
@@ -62,13 +68,7 @@ export async function updateAgentConfig(
   name: string,
   data: Record<string, unknown>,
 ) {
-  const set: Partial<typeof agentConfig.$inferInsert> = { updatedAt: new Date() };
-  for (const field of AGENT_SETTABLE_FIELDS) {
-    if (data[field] !== undefined) {
-      const drizzleKey = FIELD_ALIAS[field] ?? field;
-      (set as Record<string, unknown>)[drizzleKey] = data[field] ?? null;
-    }
-  }
+  const set = buildSetFromData(data);
   await db.update(agentConfig).set(set)
     .where(and(eq(agentConfig.userId, userId), eq(agentConfig.name, name)));
 }

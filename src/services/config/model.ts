@@ -6,6 +6,24 @@ import { eq, and } from "drizzle-orm";
 // Model 操作
 // ────────────────────────────────────────────
 
+/** 构建 model 写入字段（addModel 的 values 和 set 共享） */
+function buildModelValues(data: {
+  displayName?: string;
+  modalities?: unknown;
+  limitConfig?: unknown;
+  cost?: unknown;
+  options?: unknown;
+}) {
+  return {
+    displayName: data.displayName,
+    modalities: data.modalities ?? undefined,
+    limitConfig: data.limitConfig ?? undefined,
+    cost: data.cost ?? undefined,
+    options: data.options ?? undefined,
+    updatedAt: new Date(),
+  };
+}
+
 export async function addModel(
   providerId: string,
   data: {
@@ -17,27 +35,11 @@ export async function addModel(
     options?: unknown;
   },
 ) {
-  const values = {
-    providerId,
-    modelId: data.modelId,
-    displayName: data.displayName,
-    modalities: data.modalities ?? undefined,
-    limitConfig: data.limitConfig ?? undefined,
-    cost: data.cost ?? undefined,
-    options: data.options ?? undefined,
-    updatedAt: new Date(),
-  };
-  await db.insert(model).values(values)
+  const fields = buildModelValues(data);
+  await db.insert(model).values({ providerId, modelId: data.modelId, ...fields })
     .onConflictDoUpdate({
       target: [model.providerId, model.modelId],
-      set: {
-        displayName: data.displayName,
-        modalities: data.modalities ?? undefined,
-        limitConfig: data.limitConfig ?? undefined,
-        cost: data.cost ?? undefined,
-        options: data.options ?? undefined,
-        updatedAt: new Date(),
-      },
+      set: fields,
     });
 }
 
