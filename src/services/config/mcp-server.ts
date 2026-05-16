@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { mcpServer, mcpTool } from "../../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { parseJsonb } from "./jsonb";
 import { randomUUID } from "node:crypto";
 
@@ -61,12 +61,12 @@ export async function setMcpServerEnabled(userId: string, name: string, enabled:
 // MCP Tool 缓存操作（mcp_tool 表）
 // ────────────────────────────────────────────
 
-/** 统计指定 server 的 tool 数量 */
+/** 统计指定 server 的 tool 数量（使用 SQL COUNT，避免全量拉取） */
 export async function countToolsByServer(serverName: string): Promise<number> {
-  const rows = await db.select({ id: mcpTool.id })
+  const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(mcpTool)
     .where(eq(mcpTool.serverName, serverName));
-  return rows.length;
+  return row?.count ?? 0;
 }
 
 /** 删除指定 server 的所有缓存 tool */
@@ -74,24 +74,26 @@ export async function deleteToolsByServer(serverName: string): Promise<void> {
   await db.delete(mcpTool).where(eq(mcpTool.serverName, serverName));
 }
 
-/** 替换指定 server 的缓存 tool（先删后插） */
+/** 替换指定 server 的缓存 tool（事务保证原子性：先删后插） */
 export async function replaceToolsForServer(
   serverName: string,
   tools: Array<{ name: string; description?: string; inputSchema?: unknown }>,
 ): Promise<void> {
-  await deleteToolsByServer(serverName);
-  if (tools.length > 0) {
-    const now = new Date();
-    const rows = tools.map((t) => ({
-      id: randomUUID(),
-      serverName,
-      toolName: t.name,
-      description: t.description ?? null,
-      inputSchema: t.inputSchema ?? null,
-      inspectedAt: now,
-    }));
-    await db.insert(mcpTool).values(rows);
-  }
+  await db.transaction(async (tx) => {
+    await tx.delete(mcpTool).where(eq(mcpTool.serverName, serverName));
+    if (tools.length > 0) {
+      const now = new Date();
+      const rows = tools.map((t) => ({
+        id: randomUUID(),
+        serverName,
+        toolName: t.name,
+        description: t.description ?? null,
+        inputSchema: t.inputSchema ?? null,
+        inspectedAt: now,
+      }));
+      await tx.insert(mcpTool).values(rows);
+    }
+  });
 }
 
 /** 列出指定 server 的缓存 tool */

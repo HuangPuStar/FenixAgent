@@ -250,6 +250,36 @@ export async function toggleTask(userId: string, taskId: string): Promise<Servic
   return { success: true, data: { id: taskId, enabled: newEnabled } };
 }
 
+/** 写入执行日志 + 更新任务状态 + 返回规范化结果（成功/错误路径共用） */
+async function writeLogAndReturn(
+  logId: string,
+  taskId: string,
+  status: string,
+  errorMsg: string | null,
+  duration: number,
+  triggeredBy: "cron" | "manual",
+  resultSummary: string | null,
+  now: Date,
+): Promise<ServiceResult<TaskExecutionLogResponse>> {
+  await taskExecutionLogRepo.create({
+    id: logId,
+    taskId,
+    status,
+    error: errorMsg,
+    duration,
+    triggeredBy,
+    skipReason: null,
+    resultSummary,
+    createdAt: now,
+  });
+
+  await scheduledTaskRepo.update(taskId, { lastRunAt: now, lastStatus: status, updatedAt: now });
+
+  const logRow = await taskExecutionLogRepo.getById(logId);
+  if (!logRow) return { success: false, error: { code: "NOT_FOUND", message: "执行日志未找到" } };
+  return { success: true, data: sanitizeExecutionLog(logRow) };
+}
+
 export async function executeTaskById(
   taskId: string,
   triggeredBy: "cron" | "manual",
@@ -280,45 +310,20 @@ export async function executeTaskById(
     const status = response.ok ? "success" : "failed";
     const resultSummary = truncateSummary(responseText || `HTTP ${response.status}`);
 
-    await taskExecutionLogRepo.create({
-      id: logId,
-      taskId: task.id,
-      status,
-      error: response.ok ? null : `HTTP ${response.status}: ${responseText.slice(0, 500)}`,
-      duration,
-      triggeredBy,
-      skipReason: null,
-      resultSummary,
-      createdAt: now,
-    });
-
-    await scheduledTaskRepo.update(task.id, { lastRunAt: now, lastStatus: status, updatedAt: now });
-
-    const logRow = await taskExecutionLogRepo.getById(logId);
-    if (!logRow) return { success: false, error: { code: "NOT_FOUND", message: "执行日志未找到" } };
-    return { success: true, data: sanitizeExecutionLog(logRow) };
+    return writeLogAndReturn(
+      logId, task.id, status,
+      response.ok ? null : `HTTP ${response.status}: ${responseText.slice(0, 500)}`,
+      duration, triggeredBy, resultSummary, now,
+    );
   } catch (err: unknown) {
     logError("[Task] Execution failed for task", taskId, err);
     const message = err instanceof Error ? err.message : String(err);
     const duration = Date.now() - startTime;
 
-    await taskExecutionLogRepo.create({
-      id: logId,
-      taskId: task.id,
-      status: "failed",
-      error: message,
-      duration,
-      triggeredBy,
-      skipReason: null,
-      resultSummary: truncateSummary(message),
-      createdAt: now,
-    });
-
-    await scheduledTaskRepo.update(task.id, { lastRunAt: now, lastStatus: "failed", updatedAt: now });
-
-    const logRow = await taskExecutionLogRepo.getById(logId);
-    if (!logRow) return { success: false, error: { code: "NOT_FOUND", message: "执行日志未找到" } };
-    return { success: true, data: sanitizeExecutionLog(logRow) };
+    return writeLogAndReturn(
+      logId, task.id, "failed",
+      message, duration, triggeredBy, truncateSummary(message), now,
+    );
   }
 }
 

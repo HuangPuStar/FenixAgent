@@ -108,6 +108,8 @@ export function unscheduleTask(taskId: string): void {
     activeJobs.delete(taskId);
     log(`[Scheduler] Unscheduled task ${taskId}`);
   }
+  // 清理残留的运行标记（任务可能在执行中被删除）
+  runningTasks.delete(taskId);
 }
 
 export function rescheduleTask(task: { id: string; cron: string; timezone?: string | null; enabled?: boolean }): void {

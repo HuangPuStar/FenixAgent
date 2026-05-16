@@ -90,21 +90,20 @@ function isValidSteps(steps: number): boolean {
 
 /** 校验 agent 数据字段，返回错误码或 null */
 export function validateAgentData(data: Record<string, unknown>): string | null {
-  if (data.mode !== undefined && !isValidMode(data.mode as string)) return "INVALID_MODE";
-  if (data.steps !== undefined && !isValidSteps(data.steps as number)) return "INVALID_STEPS";
+  if (data.mode !== undefined && typeof data.mode === "string" && !isValidMode(data.mode)) return "INVALID_MODE";
+  if (data.steps !== undefined && typeof data.steps === "number" && !isValidSteps(data.steps)) return "INVALID_STEPS";
   if (data.temperature !== undefined) {
-    const t = data.temperature as number;
-    if (typeof t !== "number" || t < 0 || t > 2) return "INVALID_TEMPERATURE";
+    if (typeof data.temperature !== "number" || data.temperature < 0 || data.temperature > 2) return "INVALID_TEMPERATURE";
   }
   if (data.top_p !== undefined) {
-    const p = data.top_p as number;
-    if (typeof p !== "number" || p < 0 || p > 1) return "INVALID_TOP_P";
+    if (typeof data.top_p !== "number" || data.top_p < 0 || data.top_p > 1) return "INVALID_TOP_P";
   }
   if (data.color !== undefined) {
-    const c = data.color as string;
+    if (typeof data.color !== "string") return "INVALID_COLOR";
+    const c = data.color;
     const PRESET_COLORS = ["primary", "secondary", "accent", "success", "warning", "error", "info"];
     const isHex = /^#[0-9a-fA-F]{6}$/.test(c);
-    if (typeof c !== "string" || (!isHex && !PRESET_COLORS.includes(c))) return "INVALID_COLOR";
+    if (!isHex && !PRESET_COLORS.includes(c)) return "INVALID_COLOR";
   }
   if (data.permission !== undefined && data.permission !== null) {
     if (typeof data.permission === "string") return "INVALID_PERMISSION";

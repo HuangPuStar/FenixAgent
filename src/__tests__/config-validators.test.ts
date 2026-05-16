@@ -217,6 +217,32 @@ describe("validateAgentData", () => {
   it("接受 null permission", () => {
     expect(validateAgentData({ permission: null })).toBeNull();
   });
+
+  // 类型安全：非数字 temperature 不崩溃
+  it("非数字 temperature 返回 INVALID_TEMPERATURE", () => {
+    expect(validateAgentData({ temperature: "hot" as any })).toBe("INVALID_TEMPERATURE");
+    expect(validateAgentData({ temperature: null as any })).toBe("INVALID_TEMPERATURE");
+  });
+
+  // 类型安全：非数字 top_p 不崩溃
+  it("非数字 top_p 返回 INVALID_TOP_P", () => {
+    expect(validateAgentData({ top_p: "high" as any })).toBe("INVALID_TOP_P");
+  });
+
+  // 类型安全：非字符串 color 返回 INVALID_COLOR
+  it("非字符串 color 返回 INVALID_COLOR", () => {
+    expect(validateAgentData({ color: 123 as any })).toBe("INVALID_COLOR");
+  });
+
+  // 类型安全：非字符串 mode 跳过校验（不崩溃）
+  it("非字符串 mode 跳过校验（不崩溃）", () => {
+    expect(validateAgentData({ mode: 123 as any })).toBeNull();
+  });
+
+  // 类型安全：非数字 steps 跳过校验（不崩溃）
+  it("非数字 steps 跳过校验（不崩溃）", () => {
+    expect(validateAgentData({ steps: "ten" as any })).toBeNull();
+  });
 });
 
 // ── toolsToPermission ──

@@ -78,7 +78,8 @@ export async function migrateSkillsDir(): Promise<void> {
   try {
     const { rename } = await import("node:fs/promises");
     await rename(OLD_SKILLS_DIR, SKILLS_DIR);
-  } catch {
+  } catch (renameErr) {
+    log("[RCS] Skills dir rename failed, falling back to copy:", renameErr);
     await cp(OLD_SKILLS_DIR, SKILLS_DIR, { recursive: true });
     await rm(OLD_SKILLS_DIR, { recursive: true, force: true });
   }
