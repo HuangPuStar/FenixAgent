@@ -1,7 +1,6 @@
-import { and, desc, eq, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { db } from "../db";
-import { scheduledTask, taskExecutionLog } from "../db/schema";
+import { scheduledTaskRepo, taskExecutionLogRepo } from "../repositories/task";
+import type { ScheduledTaskRow, TaskExecutionLogRow } from "../repositories/task";
 
 function generateTaskId(): string {
   return `task_${randomBytes(12).toString("hex")}`;
@@ -106,7 +105,7 @@ function validateTaskInput(data: CreateTaskInput, isUpdate = false): string | nu
   return null;
 }
 
-function sanitizeTask(row: typeof scheduledTask.$inferSelect): TaskResponse {
+function sanitizeTask(row: ScheduledTaskRow): TaskResponse {
   return {
     id: row.id,
     name: row.name,
@@ -126,7 +125,7 @@ function sanitizeTask(row: typeof scheduledTask.$inferSelect): TaskResponse {
   };
 }
 
-function sanitizeExecutionLog(row: typeof taskExecutionLog.$inferSelect): TaskExecutionLogResponse {
+function sanitizeExecutionLog(row: TaskExecutionLogRow): TaskExecutionLogResponse {
   return {
     id: row.id,
     taskId: row.taskId,
@@ -149,7 +148,7 @@ export async function createTask(userId: string, data: CreateTaskInput): Promise
   const now = new Date();
   const timezone = normalizeTimezone(data.timezone);
 
-  await db.insert(scheduledTask).values({
+  const row = await scheduledTaskRepo.create({
     id,
     userId,
     name: data.name.trim(),
@@ -168,14 +167,11 @@ export async function createTask(userId: string, data: CreateTaskInput): Promise
     updatedAt: now,
   });
 
-  const [row] = await db.select().from(scheduledTask).where(eq(scheduledTask.id, id));
   return { success: true, data: sanitizeTask(row) };
 }
 
 export async function listTasks(userId: string): Promise<ServiceSuccess<TaskResponse[]>> {
-  const rows = await db.select().from(scheduledTask)
-    .where(eq(scheduledTask.userId, userId))
-    .orderBy(desc(scheduledTask.createdAt));
+  const rows = await scheduledTaskRepo.listByUser(userId);
   return {
     success: true,
     data: rows.map(sanitizeTask),
@@ -183,21 +179,19 @@ export async function listTasks(userId: string): Promise<ServiceSuccess<TaskResp
 }
 
 export async function getTask(userId: string, taskId: string): Promise<ServiceResult<TaskResponse>> {
-  const [row] = await db.select().from(scheduledTask)
-    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
+  const row = await scheduledTaskRepo.getByUserAndId(userId, taskId);
   if (!row) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   return { success: true, data: sanitizeTask(row) };
 }
 
 export async function updateTask(userId: string, taskId: string, data: UpdateTaskInput): Promise<ServiceResult<TaskResponse>> {
-  const [existing] = await db.select().from(scheduledTask)
-    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
+  const existing = await scheduledTaskRepo.getByUserAndId(userId, taskId);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   const validationError = validateTaskInput(data as CreateTaskInput, true);
   if (validationError) return { success: false, error: { code: "VALIDATION_ERROR", message: validationError } };
 
-  const updates: Partial<typeof scheduledTask.$inferInsert> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) updates.name = data.name.trim();
   if (data.description !== undefined) updates.description = data.description?.trim() ?? null;
   if (data.cron !== undefined) updates.cron = data.cron.trim();
@@ -208,31 +202,26 @@ export async function updateTask(userId: string, taskId: string, data: UpdateTas
   if (data.body !== undefined) updates.body = data.body;
   if (data.enabled !== undefined) updates.enabled = data.enabled;
 
-  await db.update(scheduledTask).set(updates).where(eq(scheduledTask.id, taskId));
+  await scheduledTaskRepo.update(taskId, updates);
 
-  const [row] = await db.select().from(scheduledTask).where(eq(scheduledTask.id, taskId));
-  return { success: true, data: sanitizeTask(row) };
+  const row = await scheduledTaskRepo.getById(taskId);
+  return { success: true, data: sanitizeTask(row!) };
 }
 
 export async function deleteTask(userId: string, taskId: string): Promise<ServiceResult<undefined>> {
-  const [existing] = await db.select({ id: scheduledTask.id }).from(scheduledTask)
-    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
-  if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
+  const exists = await scheduledTaskRepo.existsByUserAndId(userId, taskId);
+  if (!exists) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
-  await db.delete(scheduledTask)
-    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
+  await scheduledTaskRepo.deleteByUserAndId(userId, taskId);
   return { success: true, data: undefined };
 }
 
 export async function toggleTask(userId: string, taskId: string): Promise<ServiceResult<{ id: string; enabled: boolean }>> {
-  const [existing] = await db.select().from(scheduledTask)
-    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
+  const existing = await scheduledTaskRepo.getByUserAndId(userId, taskId);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   const newEnabled = !existing.enabled;
-  await db.update(scheduledTask)
-    .set({ enabled: newEnabled, updatedAt: new Date() })
-    .where(eq(scheduledTask.id, taskId));
+  await scheduledTaskRepo.update(taskId, { enabled: newEnabled, updatedAt: new Date() });
 
   return { success: true, data: { id: taskId, enabled: newEnabled } };
 }
@@ -269,7 +258,7 @@ export async function executeTaskById(
     const status = response.ok ? "success" : "failed";
     const resultSummary = truncateSummary(responseText || `HTTP ${response.status}`);
 
-    await db.insert(taskExecutionLog).values({
+    await taskExecutionLogRepo.create({
       id: logId,
       taskId: task.id,
       status,
@@ -281,17 +270,15 @@ export async function executeTaskById(
       createdAt: now,
     });
 
-    await db.update(scheduledTask)
-      .set({ lastRunAt: now, lastStatus: status, updatedAt: now })
-      .where(eq(scheduledTask.id, task.id));
+    await scheduledTaskRepo.update(task.id, { lastRunAt: now, lastStatus: status, updatedAt: now });
 
-    const [logRow] = await db.select().from(taskExecutionLog).where(eq(taskExecutionLog.id, logId));
-    return { success: true, data: sanitizeExecutionLog(logRow) };
+    const logRow = await taskExecutionLogRepo.getById(logId);
+    return { success: true, data: sanitizeExecutionLog(logRow!) };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const duration = Date.now() - startTime;
 
-    await db.insert(taskExecutionLog).values({
+    await taskExecutionLogRepo.create({
       id: logId,
       taskId: task.id,
       status: "failed",
@@ -303,18 +290,15 @@ export async function executeTaskById(
       createdAt: now,
     });
 
-    await db.update(scheduledTask)
-      .set({ lastRunAt: now, lastStatus: "failed", updatedAt: now })
-      .where(eq(scheduledTask.id, task.id));
+    await scheduledTaskRepo.update(task.id, { lastRunAt: now, lastStatus: "failed", updatedAt: now });
 
-    const [logRow] = await db.select().from(taskExecutionLog).where(eq(taskExecutionLog.id, logId));
-    return { success: true, data: sanitizeExecutionLog(logRow) };
+    const logRow = await taskExecutionLogRepo.getById(logId);
+    return { success: true, data: sanitizeExecutionLog(logRow!) };
   }
 }
 
 export async function triggerTask(userId: string, taskId: string): Promise<ServiceResult<TaskExecutionLogResponse>> {
-  const [task] = await db.select().from(scheduledTask)
-    .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.userId, userId)));
+  const task = await scheduledTaskRepo.getByUserAndId(userId, taskId);
   if (!task) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   return executeTaskById(taskId, "manual");
 }
@@ -324,15 +308,7 @@ export async function listExecutionLogs(
   page = 1,
   pageSize = 20,
 ): Promise<ServiceSuccess<{ total: number; items: TaskExecutionLogResponse[] }>> {
-  const offset = (page - 1) * pageSize;
-  const [{ count: total }] = await db.select({ count: sql<number>`count(*)` })
-    .from(taskExecutionLog)
-    .where(eq(taskExecutionLog.taskId, taskId));
-  const rows = await db.select().from(taskExecutionLog)
-    .where(eq(taskExecutionLog.taskId, taskId))
-    .orderBy(desc(taskExecutionLog.createdAt))
-    .limit(pageSize)
-    .offset(offset);
+  const { rows, total } = await taskExecutionLogRepo.listByTaskPaged(taskId, page, pageSize);
 
   return {
     success: true,
@@ -344,13 +320,12 @@ export async function listExecutionLogs(
 }
 
 export async function clearExecutionLogs(taskId: string): Promise<ServiceSuccess<undefined>> {
-  await db.delete(taskExecutionLog).where(eq(taskExecutionLog.taskId, taskId));
+  await taskExecutionLogRepo.deleteByTask(taskId);
   return { success: true, data: undefined };
 }
 
 export async function getTaskById(taskId: string) {
-  const [row] = await db.select().from(scheduledTask).where(eq(scheduledTask.id, taskId));
-  return row ?? null;
+  return scheduledTaskRepo.getById(taskId);
 }
 
 export async function createExecutionLog(params: {
@@ -364,7 +339,7 @@ export async function createExecutionLog(params: {
 }) {
   const logId = generateLogId();
   const now = new Date();
-  await db.insert(taskExecutionLog).values({
+  await taskExecutionLogRepo.create({
     id: logId,
     taskId: params.taskId,
     status: params.status,

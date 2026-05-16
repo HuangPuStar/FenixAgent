@@ -1,9 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { and, eq } from "drizzle-orm";
-import { db } from "../db";
-import { environment } from "../db/schema";
+import { environmentRepo } from "../repositories/environment";
 import { resolveExecutable } from "../utils/executable";
 
 const SUMMARY_LIMIT = 2000;
@@ -49,10 +47,8 @@ function summarizeOutput(output: string): string | null {
 }
 
 export async function runAgentTask(input: RunAgentTaskInput): Promise<AgentTaskRunResult> {
-  const [env] = await db.select().from(environment).where(
-    and(eq(environment.id, input.environmentId), eq(environment.userId, input.userId)),
-  );
-  if (!env) {
+  const env = await environmentRepo.getById(input.environmentId);
+  if (!env || env.userId !== input.userId) {
     throw new Error("Environment not found");
   }
 

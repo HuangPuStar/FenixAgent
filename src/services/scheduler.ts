@@ -1,7 +1,5 @@
-import { eq } from "drizzle-orm";
 import schedule from "node-schedule";
-import { db } from "../db";
-import { scheduledTask } from "../db/schema";
+import { scheduledTaskRepo } from "../repositories/task";
 import { error, log } from "../logger";
 import { createExecutionLog, executeTaskById, getTaskById } from "./task";
 
@@ -41,9 +39,7 @@ async function executeTask(taskId: string): Promise<void> {
       skipReason: "previous_run_still_active",
     });
 
-    await db.update(scheduledTask)
-      .set({ lastStatus: "skipped", updatedAt: new Date() })
-      .where(eq(scheduledTask.id, taskId));
+    await scheduledTaskRepo.update(taskId, { lastStatus: "skipped", updatedAt: new Date() });
 
     log(`[Scheduler] Task ${taskId} is already running, skipped`);
     return;
@@ -99,9 +95,7 @@ export function scheduleTask(task: { id: string; cron: string; timezone?: string
   activeJobs.set(task.id, { taskId: task.id, job });
   const nextRunAt = toInvocationDate(job.nextInvocation());
 
-  db.update(scheduledTask)
-    .set({ nextRunAt, updatedAt: new Date() })
-    .where(eq(scheduledTask.id, task.id))
+  scheduledTaskRepo.update(task.id, { nextRunAt, updatedAt: new Date() })
     .then(() => {})
     .catch(() => {});
 
@@ -125,8 +119,7 @@ export function rescheduleTask(task: { id: string; cron: string; timezone?: stri
 
 export async function startScheduler(): Promise<void> {
   try {
-    const tasks = await db.select().from(scheduledTask)
-      .where(eq(scheduledTask.enabled, true));
+    const tasks = await scheduledTaskRepo.listEnabled();
     log(`[Scheduler] Starting scheduler, found ${tasks.length} enabled tasks`);
     for (const task of tasks) {
       scheduleTask(task);
