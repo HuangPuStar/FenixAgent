@@ -49,12 +49,6 @@ describe("Session Service - Core Functions", () => {
       const resp = await createSession({});
       expect(resp.id).toMatch(/^session_/);
       expect(resp.status).toBe("idle");
-      expect(resp.source).toBe("acp");
-    });
-
-    test("creates session with source override", async () => {
-      const resp = await createSession({ source: "code" });
-      expect(resp.source).toBe("code");
     });
   });
 

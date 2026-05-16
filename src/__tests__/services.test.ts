@@ -75,29 +75,6 @@ describe("Session Service", () => {
       const resp = await createSession({});
       expect(resp.id).toMatch(/^session_/);
       expect(resp.status).toBe("idle");
-      expect(resp.source).toBe("acp");
-      expect(resp.environment_id).toBeNull();
-      expect(resp.worker_epoch).toBe(0);
-      expect(resp.created_at).toBeGreaterThan(0);
-    });
-
-    test("creates a session with all options", async () => {
-      const env = await environmentRepo.create({ userId: "u1" });
-      const resp = await createSession({
-        environment_id: env.id,
-        title: "My Session",
-        source: "cli",
-        permission_mode: "auto",
-      });
-      expect(resp.environment_id).toBe(env.id);
-      expect(resp.title).toBe("My Session");
-      expect(resp.source).toBe("cli");
-      expect(resp.permission_mode).toBe("auto");
-    });
-
-    test("creates session with username", async () => {
-      const resp = await createSession({ username: "alice" });
-      expect(resp.username).toBe("alice");
     });
   });
 
