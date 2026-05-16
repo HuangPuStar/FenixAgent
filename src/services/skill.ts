@@ -233,7 +233,9 @@ export async function importSkillDirectories(
   } catch (error) {
     await cleanupWrittenSkills(SKILLS_DIR, attemptedNames);
     for (const name of attemptedNames) {
-      await configPg.deleteSkill(userId, name).catch(() => {});
+      await configPg.deleteSkill(userId, name).catch((e) => {
+        console.error(`[Skill] Failed to cleanup skill ${name}:`, e);
+      });
     }
     await restoreFromBackup(snapshots, SKILLS_DIR);
     throw error;

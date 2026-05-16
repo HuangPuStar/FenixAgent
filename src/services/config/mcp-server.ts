@@ -40,7 +40,7 @@ export async function updateMcpServer(
   config: Record<string, unknown>,
 ) {
   await db.update(mcpServer)
-    .set({ config: JSON.stringify(config), updatedAt: new Date() })
+    .set({ config, updatedAt: new Date() })
     .where(and(eq(mcpServer.userId, userId), eq(mcpServer.name, name)));
 }
 
@@ -168,7 +168,7 @@ export function toServerInfo(name: string, row: { type: string; config: unknown;
     name,
     type: "remote" as const,
     enabled: row.enabled,
-    summary: (config as Record<string, unknown>).url ?? "",
-    timeout: (config as Record<string, unknown>).timeout,
+    summary: config.url ?? "",
+    timeout: config.timeout,
   };
 }

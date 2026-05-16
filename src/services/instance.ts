@@ -80,12 +80,12 @@ function toSpawnedInstance(
   return {
     id: snapshot.instanceId,
     userId: supplement.userId,
-    port: (meta.port as number) ?? 0,
-    pid: (meta.pid as number | null) ?? null,
+    port: typeof meta.port === "number" ? meta.port : 0,
+    pid: typeof meta.pid === "number" ? meta.pid : null,
     status: mapCoreStatus(snapshot.status),
     command: "",
     error: snapshot.errorMessage ?? null,
-    apiKey: (meta.token as string) ?? "",
+    apiKey: typeof meta.token === "string" ? meta.token : "",
     createdAt: snapshot.createdAt,
     environmentId: supplement.environmentId,
     sessionId: undefined,
@@ -135,8 +135,8 @@ export async function spawnInstanceFromEnvironment(
     fullConfig = await getAgentFullConfig(env.userId, resolvedAgentConfig.id);
     const ac = fullConfig.agentConfig as Record<string, unknown> | null;
     agentName = resolvedAgentConfig.name;
-    agentPrompt = (ac?.prompt as string) ?? null;
-    modelRef = (ac?.model as string) ?? null;
+    agentPrompt = typeof ac?.prompt === "string" ? ac.prompt : null;
+    modelRef = typeof ac?.model === "string" ? ac.model : null;
   } else {
     fullConfig = await getAgentFullConfig(env.userId, null);
   }
