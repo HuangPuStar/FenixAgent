@@ -1,6 +1,7 @@
-import { and, eq, inArray } from "drizzle-orm";
-import { db } from "../db";
-import { agentKnowledgeBinding, knowledgeBase, knowledgeResource } from "../db/schema";
+import {
+  agentKnowledgeBindingRepo,
+  knowledgeResourceRepo,
+} from "../repositories/knowledge-base";
 import { createKnowledgeProvider } from "./knowledge-provider/openviking";
 import type {
   KnowledgeProvider,
@@ -36,26 +37,16 @@ export async function resolveBoundKnowledgeBasesForAgent(
   agentName: string,
   userId?: string,
 ): Promise<BoundKnowledgeBase[]> {
-  const rows = await db.select({
-    id: knowledgeBase.id,
-    remoteId: knowledgeBase.remoteId,
-    remoteAccountId: knowledgeBase.remoteAccountId,
-    remoteUserId: knowledgeBase.remoteUserId,
-    priority: agentKnowledgeBinding.priority,
-    userId: knowledgeBase.userId,
-  })
-    .from(agentKnowledgeBinding)
-    .innerJoin(knowledgeBase, eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBase.id))
-    .where(and(eq(agentKnowledgeBinding.agentName, agentName), eq(agentKnowledgeBinding.enabled, true)));
+  const rows = await agentKnowledgeBindingRepo.listJoinedWithKnowledgeBase(agentName);
 
   return rows
-    .filter((row) => !!row.remoteId && (!userId || row.userId === userId))
+    .filter((row) => !!row.kbRemoteId && (!userId || row.kbUserId === userId))
     .sort((a, b) => a.priority - b.priority)
     .map((row) => ({
-      id: row.id,
-      remoteId: row.remoteId!,
-      remoteAccountId: row.remoteAccountId?.trim() || row.userId,
-      remoteUserId: row.remoteUserId?.trim() || row.userId,
+      id: row.kbId,
+      remoteId: row.kbRemoteId!,
+      remoteAccountId: row.kbRemoteAccountId?.trim() || row.kbUserId,
+      remoteUserId: row.kbRemoteUserId?.trim() || row.kbUserId,
       priority: row.priority,
     }));
 }
@@ -95,12 +86,7 @@ export async function searchKnowledgeForAgent(input: {
   );
   const resourceIdByRemoteId = new Map<string, string>();
   if (resourceRemoteIds.length > 0) {
-    const resourceRows = await db.select({
-      id: knowledgeResource.id,
-      remoteId: knowledgeResource.remoteId,
-    })
-      .from(knowledgeResource)
-      .where(inArray(knowledgeResource.remoteId, resourceRemoteIds));
+    const resourceRows = await knowledgeResourceRepo.findByRemoteIds(resourceRemoteIds);
     for (const row of resourceRows) {
       if (row.remoteId) {
         resourceIdByRemoteId.set(row.remoteId, row.id);
@@ -130,42 +116,32 @@ export async function readKnowledgeResourceForAgent(input: {
   resourceId: string;
   userId?: string;
 }): Promise<KnowledgeResourceContent & { knowledgeBaseId: string }> {
-  const [resourceRow] = await db.select({
-    id: knowledgeResource.id,
-    remoteId: knowledgeResource.remoteId,
-    knowledgeBaseId: knowledgeResource.knowledgeBaseId,
-    knowledgeBaseUserId: knowledgeBase.userId,
-    knowledgeBaseRemoteAccountId: knowledgeBase.remoteAccountId,
-    knowledgeBaseRemoteUserId: knowledgeBase.remoteUserId,
-  })
-    .from(knowledgeResource)
-    .innerJoin(knowledgeBase, eq(knowledgeResource.knowledgeBaseId, knowledgeBase.id))
-    .where(eq(knowledgeResource.id, input.resourceId));
+  const result = await agentKnowledgeBindingRepo.getResourceWithKnowledgeBase(input.resourceId);
 
-  if (!resourceRow) {
+  if (!result) {
     throw new Error("Knowledge resource not found");
   }
-  if (!resourceRow.remoteId) {
+  if (!result.resource.remoteId) {
     throw new Error("Knowledge resource remote id is missing");
   }
-  if (input.userId && resourceRow.knowledgeBaseUserId !== input.userId) {
+  if (input.userId && result.kbUserId !== input.userId) {
     throw new Error("Knowledge resource not accessible");
   }
 
   const boundKnowledgeBases = await resolveBoundKnowledgeBasesForAgent(input.agentName, input.userId);
-  if (!boundKnowledgeBases.some((item) => item.id === resourceRow.knowledgeBaseId)) {
+  if (!boundKnowledgeBases.some((item) => item.id === result.resource.knowledgeBaseId)) {
     throw new Error("Knowledge resource is not bound to the agent");
   }
 
   const provider = getKnowledgeRuntimeProvider();
   const content = await provider.readResource({
-    resourceRemoteId: resourceRow.remoteId,
-    remoteAccountId: resourceRow.knowledgeBaseRemoteAccountId?.trim() || resourceRow.knowledgeBaseUserId,
-    remoteUserId: resourceRow.knowledgeBaseRemoteUserId?.trim() || resourceRow.knowledgeBaseUserId,
+    resourceRemoteId: result.resource.remoteId,
+    remoteAccountId: result.kbRemoteAccountId?.trim() || result.kbUserId,
+    remoteUserId: result.kbRemoteUserId?.trim() || result.kbUserId,
   });
   return {
     ...content,
-    knowledgeBaseId: resourceRow.knowledgeBaseId,
-    resourceId: resourceRow.id,
+    knowledgeBaseId: result.resource.knowledgeBaseId,
+    resourceId: result.resource.id,
   };
 }

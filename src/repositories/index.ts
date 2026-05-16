@@ -16,6 +16,22 @@ export type { TokenRecord, ITokenRepo } from "./token";
 export { workItemRepo } from "./work-item";
 export type { WorkItemRecord, IWorkItemRepo } from "./work-item";
 
+export { scheduledTaskRepo, taskExecutionLogRepo } from "./task";
+export type { IScheduledTaskRepo, ITaskExecutionLogRepo, ScheduledTaskRow, TaskExecutionLogRow } from "./task";
+
+export { channelBindingRepo } from "./channel-binding";
+export type { IChannelBindingRepo, ChannelBindingRow, ChannelBindingInsert } from "./channel-binding";
+
+export { knowledgeBaseRepo, knowledgeResourceRepo, agentKnowledgeBindingRepo } from "./knowledge-base";
+export type {
+  IKnowledgeBaseRepo,
+  IKnowledgeResourceRepo,
+  IAgentKnowledgeBindingRepo,
+  KnowledgeBaseRow,
+  KnowledgeResourceRow,
+  AgentKnowledgeBindingRow,
+} from "./knowledge-base";
+
 import { sessionRepo } from "./session";
 import { tokenRepo } from "./token";
 import { workItemRepo } from "./work-item";

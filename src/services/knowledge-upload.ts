@@ -1,9 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { db } from "../db";
-import { knowledgeBase, knowledgeResource } from "../db/schema";
+import {
+  knowledgeBaseRepo,
+  knowledgeResourceRepo,
+} from "../repositories/knowledge-base";
+import type { KnowledgeResourceRow } from "../repositories/knowledge-base";
 import { createKnowledgeProvider } from "./knowledge-provider/openviking";
 import type { KnowledgeProvider, KnowledgeResourceStatus } from "./knowledge-provider/types";
 import {
@@ -82,13 +84,7 @@ async function addResourceWithParentFallback(input: {
   }
 }
 
-async function getOwnedKnowledgeBaseRow(userId: string, knowledgeBaseId: string) {
-  const [row] = await db.select().from(knowledgeBase)
-    .where(and(eq(knowledgeBase.id, knowledgeBaseId), eq(knowledgeBase.userId, userId)));
-  return row ?? null;
-}
-
-function sanitizeResource(row: typeof knowledgeResource.$inferSelect) {
+function sanitizeResource(row: KnowledgeResourceRow) {
   return {
     id: row.id,
     knowledgeBaseId: row.knowledgeBaseId,
@@ -111,27 +107,22 @@ async function createOrReusePendingResource(
   targetRemoteId: string,
 ) {
   const now = new Date();
-  const [existing] = await db.select().from(knowledgeResource)
-    .where(and(
-      eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId),
-      eq(knowledgeResource.remoteId, targetRemoteId),
-    ))
-    .limit(1);
+  const existing = await knowledgeResourceRepo.getByRemoteId(knowledgeBaseId, targetRemoteId);
 
   if (existing) {
-    await db.update(knowledgeResource).set({
+    await knowledgeResourceRepo.update(existing.id, {
       sourceType,
       sourceName,
       sourcePath,
       status: "pending",
       lastError: null,
       updatedAt: now,
-    }).where(eq(knowledgeResource.id, existing.id));
+    });
     return existing.id;
   }
 
   const id = generateKnowledgeResourceId();
-  await db.insert(knowledgeResource).values({
+  await knowledgeResourceRepo.create({
     id,
     knowledgeBaseId,
     sourceType,
@@ -147,11 +138,11 @@ async function createOrReusePendingResource(
 }
 
 async function failResource(resourceId: string, knowledgeBaseId: string, message: string) {
-  await db.update(knowledgeResource).set({
+  await knowledgeResourceRepo.update(resourceId, {
     status: "error",
     lastError: message,
     updatedAt: new Date(),
-  }).where(eq(knowledgeResource.id, resourceId));
+  });
   await touchKnowledgeBaseUpdatedAt(knowledgeBaseId, {
     status: "error",
     lastError: message,
@@ -164,12 +155,12 @@ async function completeResource(resourceId: string, knowledgeBaseId: string, pat
   status: KnowledgeResourceStatus;
   lastError?: string | null;
 }) {
-  await db.update(knowledgeResource).set({
+  await knowledgeResourceRepo.update(resourceId, {
     remoteId: patch.remoteId ?? null,
     status: patch.status,
     lastError: patch.lastError ?? null,
     updatedAt: new Date(),
-  }).where(eq(knowledgeResource.id, resourceId));
+  });
   await touchKnowledgeBaseUpdatedAt(knowledgeBaseId, {
     ...(patch.knowledgeBaseRemoteId ? { remoteId: patch.knowledgeBaseRemoteId } : {}),
     status: patch.status === "ready" ? "ready" : "indexing",
@@ -178,7 +169,7 @@ async function completeResource(resourceId: string, knowledgeBaseId: string, pat
 }
 
 export async function uploadKnowledgeResource(userId: string, knowledgeBaseId: string, file: File) {
-  const kb = await getOwnedKnowledgeBaseRow(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
   if (!kb) {
     throw new Error("知识库不存在");
   }
@@ -218,8 +209,8 @@ export async function uploadKnowledgeResource(userId: string, knowledgeBaseId: s
     await failResource(resourceId, knowledgeBaseId, (error as Error).message);
   }
 
-  const [row] = await db.select().from(knowledgeResource).where(eq(knowledgeResource.id, resourceId));
-  return sanitizeResource(row);
+  const row = await knowledgeResourceRepo.getById(resourceId);
+  return sanitizeResource(row!);
 }
 
 export async function importKnowledgeResourceFromUrl(
@@ -227,7 +218,7 @@ export async function importKnowledgeResourceFromUrl(
   knowledgeBaseId: string,
   input: { url: string; sourceName?: string },
 ) {
-  const kb = await getOwnedKnowledgeBaseRow(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
   if (!kb) {
     throw new Error("知识库不存在");
   }
@@ -261,29 +252,26 @@ export async function importKnowledgeResourceFromUrl(
   } catch (error) {
     await failResource(resourceId, knowledgeBaseId, (error as Error).message);
   }
-  const [row] = await db.select().from(knowledgeResource).where(eq(knowledgeResource.id, resourceId));
-  return sanitizeResource(row);
+  const row = await knowledgeResourceRepo.getById(resourceId);
+  return sanitizeResource(row!);
 }
 
 export async function listKnowledgeResources(userId: string, knowledgeBaseId: string) {
-  const kb = await getOwnedKnowledgeBaseRow(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
   if (!kb) {
     return null;
   }
-  const rows = await db.select().from(knowledgeResource)
-    .where(eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId))
-    .orderBy(desc(knowledgeResource.updatedAt));
+  const rows = await knowledgeResourceRepo.listByKnowledgeBase(knowledgeBaseId);
   return rows.map(sanitizeResource);
 }
 
 export async function deleteKnowledgeResource(userId: string, knowledgeBaseId: string, resourceId: string) {
-  const kb = await getOwnedKnowledgeBaseRow(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
   if (!kb) {
     return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
   }
-  const [resourceRow] = await db.select().from(knowledgeResource)
-    .where(and(eq(knowledgeResource.id, resourceId), eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId)));
-  if (!resourceRow) {
+  const resourceRow = await knowledgeResourceRepo.getById(resourceId);
+  if (!resourceRow || resourceRow.knowledgeBaseId !== knowledgeBaseId) {
     return { success: false as const, error: { code: "NOT_FOUND", message: "资源不存在" } };
   }
 
@@ -297,14 +285,14 @@ export async function deleteKnowledgeResource(userId: string, knowledgeBaseId: s
     });
   }
 
-  await db.delete(knowledgeResource).where(eq(knowledgeResource.id, resourceId));
+  await knowledgeResourceRepo.delete(resourceId);
   await upsertKnowledgeBaseStatusFromResources(knowledgeBaseId);
 
   return { success: true as const, data: { ok: true } };
 }
 
 export async function refreshKnowledgeResourceStatus(userId: string, knowledgeBaseId: string) {
-  const kb = await getOwnedKnowledgeBaseRow(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
   if (!kb) {
     return null;
   }
@@ -329,11 +317,11 @@ export async function refreshKnowledgeResourceStatus(userId: string, knowledgeBa
     if (!local) {
       continue;
     }
-    await db.update(knowledgeResource).set({
+    await knowledgeResourceRepo.update(local.id, {
       status: remote.status,
       lastError: remote.lastError ?? null,
       updatedAt: new Date(),
-    }).where(eq(knowledgeResource.id, local.id));
+    });
   }
   await upsertKnowledgeBaseStatusFromResources(knowledgeBaseId);
   const rows = await listKnowledgeResources(userId, knowledgeBaseId);
