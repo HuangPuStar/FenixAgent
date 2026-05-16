@@ -4,6 +4,8 @@ import { mkdirSync, realpathSync } from "node:fs";
 import { environmentRepo } from "../repositories";
 import type { RegisterEnvironmentRequest, EnvironmentResponse } from "../types/api";
 import type { EnvironmentRecord } from "../repositories";
+import { ValidationError, NotFoundError, ConflictError, ConfigWriteError } from "../errors";
+import * as configPg from "./config-pg";
 
 const BLOCKED_PATHS = [
   "/", "/etc", "/usr", "/bin", "/sbin", "/var", "/sys", "/proc",
@@ -28,6 +30,82 @@ export function validateWorkspacePath(p: string): string | null {
 export function ensureWorkspaceDir(workspacePath: string): string {
   mkdirSync(workspacePath, { recursive: true });
   return realpathSync(workspacePath);
+}
+
+const KEBAB_CASE_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+function generateEnvSecret(): string {
+  return `env_secret_${randomBytes(24).toString("hex")}`;
+}
+
+export interface CreateWebEnvironmentParams {
+  name: string;
+  description?: string;
+  agentName?: string;
+  agentConfigId?: string;
+  workspacePath: string;
+  autoStart?: boolean;
+  userId: string;
+}
+
+/** 创建 Web 控制面板 Environment — 包含完整的参数校验、Agent 配置解析、目录初始化 */
+export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
+  const { name, description, autoStart, userId } = params;
+  let { workspacePath } = params;
+
+  // 名称校验
+  if (!name || !KEBAB_CASE_RE.test(name)) {
+    throw new ValidationError("name 必须为 kebab-case 格式（小写字母、数字、连字符）");
+  }
+
+  // 路径校验
+  const pathError = validateWorkspacePath(workspacePath);
+  if (pathError) throw new ValidationError(pathError);
+
+  // Agent 配置解析
+  let resolvedAgentName = params.agentName ?? null;
+  let resolvedAgentConfigId = params.agentConfigId ?? null;
+
+  if (params.agentConfigId) {
+    const agent = await configPg.getAgentConfigById(params.agentConfigId);
+    if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
+    resolvedAgentName = agent.name;
+  } else if (params.agentName) {
+    const agent = await configPg.getAgentConfig(userId, params.agentName);
+    if (!agent) throw new ValidationError(`Agent '${params.agentName}' 不存在`);
+    resolvedAgentConfigId = agent.id;
+  }
+
+  // workspace 目录初始化
+  try {
+    workspacePath = ensureWorkspaceDir(workspacePath);
+  } catch (err: any) {
+    throw new ConfigWriteError(`无法创建目录: ${err.message}`);
+  }
+
+  // 创建记录
+  const secret = generateEnvSecret();
+  let record;
+  try {
+    record = await environmentRepo.create({
+      name,
+      description,
+      workspacePath,
+      agentName: resolvedAgentName ?? undefined,
+      status: "idle",
+      secret,
+      userId,
+      autoStart: autoStart === true,
+      agentConfigId: resolvedAgentConfigId ?? undefined,
+    });
+  } catch (err: any) {
+    if (err.message?.includes("unique") || err.message?.includes("duplicate") || err.message?.includes("UNIQUE")) {
+      throw new ConflictError(`环境名称 '${name}' 已存在`);
+    }
+    throw err;
+  }
+
+  return record;
 }
 
 function toResponse(row: EnvironmentRecord): EnvironmentResponse {
