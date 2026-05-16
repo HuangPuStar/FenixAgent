@@ -1,58 +1,63 @@
-import * as net from "node:net";
+import { createServer } from "node:net";
 
-export const PORT_MIN = 18800;
-export const PORT_MAX = 18900;
+export const PORT_MIN = 8888;
+export const PORT_MAX = 8999;
 
-/**
- * 探测端口是否可用。
- */
-export function probePort(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(port, () => {
+export interface PortAllocatorDependencies {
+  probePort?: (port: number) => Promise<boolean>;
+}
+
+async function defaultProbePort(port: number): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const server = createServer();
+
+    server.once("error", () => {
+      resolve(false);
+    });
+
+    server.listen(port, "127.0.0.1", () => {
       server.close(() => resolve(true));
     });
-    server.on("error", () => resolve(false));
   });
 }
 
 /**
- * 为 opencode/acp-link 实例分配本地端口。
- *
- * 分配器既检查当前进程内是否已经占用，也探测操作系统层面的可监听状态，
- * 避免多个实例误用同一端口。
+ * 为本地 acp-link 实例提供可复用的端口分配策略。
  */
 export class PortAllocator {
-  private readonly allocatedPorts = new Set<number>();
+  private readonly occupied = new Set<number>();
+  private readonly probePort: (port: number) => Promise<boolean>;
 
-  /** 使用自定义端口探测实现初始化分配器。 */
   constructor(
-    private readonly probe: (port: number) => Promise<boolean> = probePort,
-    private readonly minPort: number = PORT_MIN,
-    private readonly maxPort: number = PORT_MAX,
-  ) {}
+    private readonly minPort = PORT_MIN,
+    private readonly maxPort = PORT_MAX,
+    dependencies: PortAllocatorDependencies = {},
+  ) {
+    this.probePort = dependencies.probePort ?? defaultProbePort;
+  }
 
-  /** 分配一个可用端口，并保留到 release 之前。 */
   async allocate(): Promise<number> {
     for (let port = this.minPort; port <= this.maxPort; port += 1) {
-      if (this.allocatedPorts.has(port)) {
+      if (this.occupied.has(port)) {
         continue;
       }
-
-      const available = await this.probe(port);
-      if (!available) {
+      if (!(await this.probePort(port))) {
         continue;
       }
-
-      this.allocatedPorts.add(port);
+      this.occupied.add(port);
       return port;
     }
 
-    throw new Error("No available port");
+    throw new Error(`No available port in range ${this.minPort}-${this.maxPort}`);
   }
 
-  /** 释放一个先前分配过的端口。 */
   release(port: number): void {
-    this.allocatedPorts.delete(port);
+    this.occupied.delete(port);
   }
+}
+
+export function createPortAllocator(
+  dependencies: PortAllocatorDependencies = {},
+): PortAllocator {
+  return new PortAllocator(PORT_MIN, PORT_MAX, dependencies);
 }

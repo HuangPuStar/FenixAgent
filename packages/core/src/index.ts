@@ -1,60 +1,38 @@
 /**
- * `@mothership/core` 的公共导出面。
- *
- * 这里重新导出领域类型、仓储契约、服务和测试工具，
- * 让 server 和 engine 插件都能从单一入口引用 core 能力。
+ * `@mothership/core` 的受控公开导出面。
  */
+export { createCoreRuntime } from "./facade/core-runtime";
 export type {
-  Environment,
-  EnvironmentConfigRefs,
-} from "./domain/environment";
-export type { Instance, InstanceStatus } from "./domain/instance";
+  CoreRuntimeFacade,
+  CreateCoreRuntimeOptions,
+} from "./facade/core-runtime";
+
+export { EnginePluginRegistry } from "./registry/engine-plugin-registry";
+export { CoreNodeRegistry } from "./registry/core-node-registry";
+
 export type {
-  EnvironmentId,
-  InstanceId,
-  EngineSessionId,
-  SessionId,
-} from "./domain/ids";
-export {
-  createEnvironmentId,
-  createInstanceId,
-  createEngineSessionId,
-  createSessionId,
-} from "./domain/ids";
-export type { Session, SessionStatus } from "./domain/session";
+  CoreNode,
+  CoreNodeMode,
+  CoreNodeStatus,
+  CreateCoreNodeInput,
+} from "./types/core-node";
 export type {
-  AgentConfigRecord,
-  ConfigRepository,
-  McpServerConfigRecord,
-  ModelConfigRecord,
-  EngineConfigRecord,
-  SkillConfigRecord,
-} from "./contracts/config-repository";
-export type { EnvironmentRepository } from "./contracts/environment-repository";
-export type { InstanceRepository } from "./contracts/instance-repository";
-export type { SessionRepository } from "./contracts/session-repository";
-export { PluginRegistry } from "./plugins/plugin-registry";
+  LaunchInstanceRequest,
+  ConnectInstanceRelayRequest,
+  StopInstanceRequest,
+} from "./types/launch-request";
+export type {
+  RuntimeInstanceRecord,
+  RuntimeInstanceSnapshot,
+  RuntimeInstanceStatus,
+} from "./types/runtime-instance";
+
 export {
-  RuntimeConfigResolutionError,
-  RuntimeConfigResolver,
-} from "./runtime/runtime-config-resolver";
-export type { ResolveRuntimeConfigInput } from "./runtime/runtime-config-resolver";
-export type { RuntimeEvent, RuntimeEventListener } from "./events/runtime-event-bus";
-export { RuntimeEventBus } from "./events/runtime-event-bus";
-export type { CreateEnvironmentInput } from "./services/environment-service";
-export { EnvironmentService } from "./services/environment-service";
-export type { CreateSessionInput } from "./services/session-service";
-export { SessionService } from "./services/session-service";
-export type { InstanceServiceOptions } from "./services/instance-service";
-export { InstanceService, EnginePluginNotFoundError } from "./services/instance-service";
-export type { RelayTransport } from "./services/relay-orchestrator";
-export { RelayOrchestrator } from "./services/relay-orchestrator";
-export { CoreFacade } from "./services/core-facade";
-export {
-  InMemoryConfigRepository,
-  InMemoryEnvironmentRepository,
-  InMemoryInstanceRepository,
-  InMemorySessionRepository,
-  resetRepositories,
-} from "./testing/in-memory-repositories";
-export type { InMemoryConfigSnapshot } from "./testing/in-memory-repositories";
+  CoreRuntimeError,
+  isCoreRuntimeError,
+  createCoreRuntimeError,
+} from "./errors/core-runtime-error";
+export type { CoreRuntimeErrorCode } from "./errors/core-runtime-error";
+
+export { createRuntimeInstanceStore } from "./runtime/runtime-instance-store";
+export type { RuntimeInstanceStore } from "./runtime/runtime-instance-store";

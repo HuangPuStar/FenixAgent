@@ -1,67 +1,97 @@
-/** acp-link 进程管理器的端口、状态与停止逻辑测试。 */
 import { describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
+import type { ChildProcess } from "node:child_process";
 import { AcpLinkProcessManager } from "../process/acp-link-process-manager";
-import { PortAllocator } from "../process/port-allocator";
 
 class FakeChildProcess extends EventEmitter {
   pid = 4321;
-  stdout = new PassThrough();
-  stderr = new PassThrough();
+  stdout = new EventEmitter();
+  stderr = new EventEmitter();
+  kill = mock((signal?: NodeJS.Signals | number) => {
+    if (signal === "SIGTERM") {
+      queueMicrotask(() => this.emit("exit", 0, signal));
+    }
+    if (signal === "SIGKILL") {
+      queueMicrotask(() => this.emit("exit", 0, signal));
+    }
+    return true;
+  });
 }
 
 describe("AcpLinkProcessManager", () => {
-  // 验证 start() 能从 stdout 中捕获 64 位 hex token 并写入进程状态。
-  test("start captures local websocket token from stdout", async () => {
+  // 启动成功
+  test("starts acp-link and records pid, port and status", async () => {
     const child = new FakeChildProcess();
+    const spawnMock = mock(() => child as unknown as ChildProcess);
     const manager = new AcpLinkProcessManager({
-      portAllocator: new PortAllocator(async () => true, 9001, 9001),
-      resolveBinary: () => "acp-link",
-      spawnProcess: mock(() => child as never),
+      resolveExecutable: (command) => `/tmp/${command}`,
+      spawn: spawnMock as any,
     });
 
-    const state = await manager.start({
-      environmentId: "env-1",
-      instanceId: "ins-1",
-      workspacePath: "/tmp/workspace",
+    const started = manager.start({
+      instanceId: "inst_start",
+      workspace: "/tmp/workspace",
+      port: 8888,
+      env: { ACP_RCS_TOKEN: "rcs-secret" },
     });
+    child.stdout.emit("data", `Token: ${"a".repeat(64)}`);
 
-    child.stdout.write("Token: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
-
-    expect(state.port).toBe(9001);
-    expect(manager.getProcessState("ins-1")?.token).toBe(
-      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    await expect(started).resolves.toMatchObject({
+      pid: 4321,
+      port: 8888,
+      status: "running",
+    });
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/tmp/acp-link",
+      ["--host", "127.0.0.1", "--port", "8888", "/tmp/opencode", "--", "acp"],
+      expect.objectContaining({
+        cwd: "/tmp/workspace",
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
     );
-    expect(manager.getProcessState("ins-1")?.status).toBe("running");
   });
 
-  // 验证 stop() 会先发 SIGTERM，再注册 5 秒后的 SIGKILL。
-  test("stop sends SIGTERM and schedules SIGKILL fallback", async () => {
+  // token 捕获
+  test("captures the local websocket token from stdout", async () => {
     const child = new FakeChildProcess();
-    const killProcess = mock(() => {});
-    const setTimeoutFn = mock((callback: () => void) => {
-      callback();
-      return 1 as never;
-    });
     const manager = new AcpLinkProcessManager({
-      portAllocator: new PortAllocator(async () => true, 9002, 9002),
-      resolveBinary: () => "acp-link",
-      spawnProcess: mock(() => child as never),
-      killProcess,
-      setTimeoutFn: setTimeoutFn as never,
+      resolveExecutable: (command) => `/tmp/${command}`,
+      spawn: (() => child) as any,
     });
 
-    await manager.start({
-      environmentId: "env-2",
-      instanceId: "ins-2",
-      workspacePath: "/tmp/workspace",
+    const started = manager.start({
+      instanceId: "inst_token",
+      workspace: "/tmp/workspace",
+      port: 8889,
+    });
+    const token = "b".repeat(64);
+    child.stdout.emit("data", `ready\nToken: ${token}\n`);
+
+    await expect(started).resolves.toMatchObject({ token });
+  });
+
+  // stop 幂等
+  test("stops processes idempotently", async () => {
+    const child = new FakeChildProcess();
+    const manager = new AcpLinkProcessManager({
+      resolveExecutable: (command) => `/tmp/${command}`,
+      spawn: (() => child) as any,
+      stopTimeoutMs: 1,
     });
 
-    manager.stop("ins-2");
+    const started = manager.start({
+      instanceId: "inst_stop",
+      workspace: "/tmp/workspace",
+      port: 8890,
+    });
+    child.stdout.emit("data", `Token: ${"c".repeat(64)}`);
+    await started;
 
-    expect(killProcess).toHaveBeenNthCalledWith(1, 4321, "SIGTERM");
-    expect(setTimeoutFn).toHaveBeenCalledTimes(1);
-    expect(killProcess).toHaveBeenNthCalledWith(2, 4321, "SIGKILL");
+    await manager.stop("inst_stop");
+    await manager.stop("inst_stop");
+
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
   });
 });

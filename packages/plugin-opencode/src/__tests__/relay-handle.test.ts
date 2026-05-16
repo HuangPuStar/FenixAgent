@@ -1,83 +1,83 @@
-/** opencode relay handle 的过滤、转发与关闭行为测试。 */
-import { describe, expect, mock, test } from "bun:test";
-import { RuntimeEventBus } from "@mothership/core";
-import { createOpencodeRelayHandle } from "../relay/relay-handle";
+import { describe, expect, test } from "bun:test";
+import type { RelaySocket } from "../relay/relay-handle";
+import { createRelayHandle } from "../relay/relay-handle";
 
-class FakeWebSocket {
-  readyState = 1;
-  sent: string[] = [];
-  closed = false;
-  onopen: ((event: unknown) => void) | null = null;
-  onmessage: ((event: { data: string | Buffer }) => void) | null = null;
-  onclose: ((event: { code?: number; reason?: string }) => void) | null = null;
-  onerror: ((event: unknown) => void) | null = null;
-
-  send(data: string): void {
-    this.sent.push(data);
-  }
-
-  close(code?: number, reason?: string): void {
-    this.closed = true;
-    this.onclose?.({ code, reason });
-  }
+interface FakeRelaySocket extends RelaySocket {
+  sent: string[];
 }
 
-describe("createOpencodeRelayHandle", () => {
-  // 验证上游收到 keep_alive 时不会向前端透传。
-  test("filters keep_alive messages from upstream websocket", async () => {
-    const eventBus = new RuntimeEventBus();
-    const publish = mock(eventBus.publish.bind(eventBus));
-    const webSocket = new FakeWebSocket();
+function createFakeSocket(): FakeRelaySocket {
+  return {
+    readyState: 1,
+    sent: [],
+    onopen: null,
+    onmessage: null,
+    onclose: null,
+    onerror: null,
+    send(data: string) {
+      this.sent.push(data);
+    },
+    close() {
+      this.readyState = 3;
+      this.onclose?.({ code: 1000, reason: "closed" });
+    },
+  };
+}
 
-    createOpencodeRelayHandle({
-      port: 9001,
-      token: "token",
-      sessionId: "ses-1",
-      eventBus: { ...eventBus, publish },
-      webSocketFactory: () => webSocket,
-      setIntervalFn: (() => 1) as never,
-      clearIntervalFn: (() => {}) as never,
-    });
-
-    webSocket.onmessage?.({
-      data: [
-        JSON.stringify({ type: "keep_alive" }),
-        JSON.stringify({ type: "error", message: "keep_alive timeout" }),
-        JSON.stringify({ type: "assistant", payload: { content: "hello" } }),
-      ].join("\n"),
-    });
-
-    expect(publish).toHaveBeenCalledTimes(1);
-    expect(publish).toHaveBeenCalledWith({
-      type: "relay_message",
-      payload: {
-        sessionId: "ses-1",
-        message: { type: "assistant", payload: { content: "hello" } },
+describe("relay-handle", () => {
+  // relay 过滤噪音消息
+  test("filters keep_alive, pong and keep_alive errors while forwarding business messages", () => {
+    const socket = createFakeSocket();
+    const handle = createRelayHandle(
+      {
+        instanceId: "inst_relay",
+        port: 8888,
+        token: "f".repeat(64),
       },
+      {
+        createWebSocket: () => socket as any,
+        keepAliveIntervalMs: 60_000,
+      },
+    );
+
+    const received: string[] = [];
+    handle.onMessage((message) => {
+      received.push(message.type);
     });
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "keep_alive" }) });
+    socket.onmessage?.({ data: JSON.stringify({ type: "pong" }) });
+    socket.onmessage?.({ data: JSON.stringify({ type: "error", payload: { message: "keep_alive timeout" } }) });
+    socket.onmessage?.({ data: JSON.stringify({ type: "assistant", payload: { text: "hello" } }) });
+
+    expect(received).toEqual(["assistant"]);
   });
 
-  // 验证前端断开时仅清理 relay 转发器，不代表要终止底层进程。
-  test("frontend disconnect closes local relay without extra forwarding", async () => {
-    const eventBus = new RuntimeEventBus();
-    const publish = mock(eventBus.publish.bind(eventBus));
-    const webSocket = new FakeWebSocket();
-    const handle = createOpencodeRelayHandle({
-      port: 9002,
-      token: "token",
-      sessionId: "ses-2",
-      eventBus: { ...eventBus, publish },
-      webSocketFactory: () => webSocket,
-      setIntervalFn: (() => 1) as never,
-      clearIntervalFn: (() => {}) as never,
+  // relay 会等待 websocket 真正 ready
+  test("exposes a ready promise that resolves on websocket open", async () => {
+    const socket = createFakeSocket();
+    socket.readyState = 0;
+
+    const handle = createRelayHandle(
+      {
+        instanceId: "inst_ready",
+        port: 8889,
+        token: "e".repeat(64),
+      },
+      {
+        createWebSocket: () => socket as any,
+      },
+    );
+
+    let resolved = false;
+    handle.ready.then(() => {
+      resolved = true;
     });
 
-    await handle.close(1000, "frontend_disconnect");
-    webSocket.onmessage?.({
-      data: JSON.stringify({ type: "assistant", payload: { content: "late" } }),
-    });
-
-    expect(webSocket.closed).toBe(true);
-    expect(publish).not.toHaveBeenCalled();
+    expect(resolved).toBe(false);
+    socket.readyState = 1;
+    socket.onopen?.();
+    await handle.ready;
+    expect(resolved).toBe(true);
   });
 });

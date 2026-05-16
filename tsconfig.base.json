@@ -1,5 +1,11 @@
 {
   "compilerOptions": {
+    "paths": {
+      "@mothership/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
+      "@mothership/core": ["./packages/core/src/index.ts"],
+      "@mothership/opencode": ["./packages/plugin-opencode/src/index.ts"],
+      "@mothership/engine-node": ["./packages/engine-node/src/index.ts"]
+    },
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "bundler",

@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@mothership/core": "workspace:*",
-    "@mothership/plugin-sdk": "workspace:*"
+    "@mothership/plugin-sdk": "workspace:*",
+    "acp-link": "^1.1.0"
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --format esm",

@@ -1,29 +1,33 @@
-# opencode Plugin
+# @mothership/opencode
 
-`@mothership/opencode` 是一个 engine plugin，实现了新 Core 所需的 opencode 运行时适配。
+`@mothership/opencode` 是仓库里的首个真实 engine plugin，负责把平台层的
+`AgentLaunchSpec` 转成 opencode 运行时可消费的 workspace、进程和 relay 生命周期。
 
-## 文件架构
+## 使用方式
 
-```text
-src/
-├── index.ts                         # 包入口，导出 createEnginePlugin 和少量工具
-├── plugin.ts                        # 插件主入口，负责组装 runtime
-├── process/
-│   ├── acp-link-process-manager.ts  # 管理 acp-link 进程、状态和 token 捕获
-│   └── port-allocator.ts            # 分配和释放本地端口
-├── runtime/
-│   ├── config-writer.ts             # 将配置写入 .opencode/opencode.json
-│   └── runtime-config.ts            # 将 AgentRuntimeSpec 翻译成 opencode 私有配置
-├── relay/
-│   └── relay-handle.ts              # 适配本地 WS relay，过滤 keep_alive 等噪音消息
-└── __tests__/
-    ├── acp-link-process-manager.test.ts # 验证 token 捕获与停止流程
-    ├── config-writer.test.ts            # 验证配置写入
-    └── relay-handle.test.ts             # 验证 relay 转发、过滤与清理行为
+包外唯一应该调用的入口是 `createEnginePlugin()`：
+
+```ts
+import { createEnginePlugin } from "@mothership/opencode";
+
+const runtime = createEnginePlugin().createRuntime();
 ```
 
-## 职责边界
+## 目录职责
 
-- 负责 `acp-link` 本地进程管理，包括端口分配、stdout token 捕获和停止清理。
-- 负责把 `plugin-sdk` 暴露的 `AgentRuntimeSpec` 翻译为 engine 私有的 `.opencode/opencode.json` 注入文件。
-- 负责把本地 relay WebSocket 适配为 `EngineRelayHandle`，并过滤 `keep_alive` 等 engine 私有噪音消息。
+- `src/plugin.ts`: 插件入口工厂，声明固定 `meta` 并组装 `createRuntime()`
+- `src/runtime/`: runtime 生命周期与共享实例状态表
+- `src/process/`: 本地 `acp-link` 进程与端口分配逻辑
+  - `port-allocator.ts` 统一维护 `8888-8999` 端口分配与释放
+  - `acp-link-process-manager.ts` 负责 `acp-link` 子进程启停和本地 WS token 捕获
+- `src/relay/`: 连接本地 `acp-link` WebSocket 的共享 relay 句柄
+- `src/__tests__/`: 插件入口、prepare、process、relay 和 runtime 主流程测试
+
+## 设计约束
+
+- `src/index.ts` 只暴露公开入口，不泄漏内部 process/relay 实现细节
+- `createEnginePlugin()` 是唯一外部调用入口
+- 本地 WS token 来自 `acp-link` stdout 捕获，只用于连接本地 relay，不能与 RCS
+  environment secret 混用
+- runtime 内部状态会在 `prepareEnvironment`、`startInstance`、`connectRelay`、
+  `stopInstance` 四段生命周期之间共享，后续模块都基于同一状态表协作
