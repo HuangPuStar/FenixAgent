@@ -198,3 +198,14 @@
 3. **WARNING — importSkillDirectories rollback 错误掩盖**：全局导入的 rollback 路径 `cleanupWrittenSkills`/`restoreFromBackup` 未 try-catch（R16 只修了 workspace 变体）。
 4. **WARNING — stopInstance 二次 stop**：`instance.ts` 仅检查 `"stopped"` 状态，对 `"stopping"` 仍尝试 stop。
 5. 新增 `write-log-no-duplicate.test.ts`（3 用例）、`register-bridge-ownership.test.ts`（5 用例）。17 轮累计 207 个测试。
+
+## 2026-05-17 第十八次审查
+
+审查范围：全量 CRUD 层（instance、skill、task、config/aggregate）
+
+修复（2 WARNING + 1 DRY + 1 CLEANUP）：
+1. **WARNING — stopAllInstances stopping 状态**：`instance.ts` 的 `stopAllInstances` 仅跳过 `"stopped"`，未跳过 `"stopping"`（R17 修复了 `stopInstance` 但遗漏此处）。
+2. **WARNING — setSkill 部分写入**：`skill.ts` 文件写入成功后 PG upsert 失败时清理孤儿文件，包裹 try-catch 回滚。
+3. **DRY — aggregate.ts 重复查询**：全局 skills 查询提取 `listGlobalSkills` 辅助函数，消除两处重复。
+4. **CLEANUP — getTaskById 返回类型**：`task.ts` 补充 `Promise<ScheduledTaskRow | null>` 显式返回类型。
+5. 新增 `set-skill-rollback.test.ts`（3 用例）、`stop-all-instances-stopping.test.ts`（4 用例）。18 轮累计 214 个测试。
