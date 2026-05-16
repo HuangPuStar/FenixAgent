@@ -150,9 +150,13 @@ export async function setSkill(
 }
 
 export async function deleteSkill(userId: string, name: string): Promise<boolean> {
+  const deleted = await configPg.deleteSkill(userId, name);
+  if (!deleted) return false;
   const skillDir = join(SKILLS_DIR, name);
-  await deleteSkillDir(skillDir);
-  return configPg.deleteSkill(userId, name);
+  await deleteSkillDir(skillDir).catch((e) => {
+    logError(`[Skill] Failed to cleanup skill directory ${skillDir}:`, e);
+  });
+  return true;
 }
 
 export async function enableSkill(userId: string, name: string): Promise<boolean> {

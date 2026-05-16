@@ -148,3 +148,12 @@
 4. **CLEANUP — updateTask updates 类型**：从 `Record<string, unknown>` 改为 `Partial<ScheduledTaskInsert>`。
 5. **CLEANUP — updateMcpServer updates 类型**：从 `Record<string, unknown>` 改为 `Partial<...$inferInsert>`。
 6. **测试** — 新增 `agent-config-validators.test.ts`（19 用例）覆盖 validateAgentData/isBuiltInAgent/toolsToPermission/AGENT_SETTABLE_FIELDS；`environment-core-utils.test.ts` 新增 1 用例验证毫秒精度。确认 `top_p` vs `topP` 命名不匹配为已知问题。12 轮累计 172 个测试。
+
+## 2026-05-17 第十三次审查
+
+审查范围：全量 CRUD 层最终精细审计
+
+修复（2 BUG + 1 CLEANUP）：
+1. **BUG — writeLogAndReturn 错误码语义错误**：`task.ts` 执行日志写入失败返回 `"NOT_FOUND"`，改为 `"WRITE_ERROR"`，新增 `WRITE_ERROR` 错误码。
+2. **BUG — deleteSkill 删除顺序不安全**：`skill.ts` 先删文件再删 DB 记录，若 DB 删除失败则文件已丢失。改为 DB-first + 文件清理容错（catch 不抛出）。
+3. **测试** — 新增 `task-utils-edge-cases.test.ts`（10 用例）覆盖 `truncateSummary`（空串/null/2000边界/unicode）和 `toUnixTimestamp`（null/毫秒截断/epoch零点）。13 轮累计 182 个测试���

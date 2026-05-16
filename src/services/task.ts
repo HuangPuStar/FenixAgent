@@ -36,7 +36,7 @@ export interface CreateTaskInput {
 }
 
 export type UpdateTaskInput = Partial<CreateTaskInput> & { enabled?: boolean };
-type ServiceErrorCode = "VALIDATION_ERROR" | "NOT_FOUND";
+type ServiceErrorCode = "VALIDATION_ERROR" | "NOT_FOUND" | "WRITE_ERROR";
 type ServiceError = { code: ServiceErrorCode; message: string };
 type ServiceSuccess<T> = { success: true; data: T };
 type ServiceFailure = { success: false; error: ServiceError };
@@ -278,7 +278,7 @@ async function writeLogAndReturn(
     });
   } catch (err) {
     logError("[Task] Failed to write execution log for task", taskId, err);
-    return { success: false, error: { code: "NOT_FOUND", message: "执行日志写入失败" } };
+    return { success: false, error: { code: "WRITE_ERROR", message: "执行日志写入失败" } };
   }
 
   await scheduledTaskRepo.update(taskId, { lastRunAt: now, lastStatus: status, updatedAt: now });
