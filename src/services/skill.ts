@@ -4,7 +4,7 @@
  * 全局 Skill 和 Workspace Skill 的业务逻辑，
  * 文件系统操作全部委托给 skill-fs.ts。
  */
-import { mkdir, writeFile, rm, cp, rename } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -75,15 +75,21 @@ export async function migrateSkillsDir(): Promise<void> {
   await mkdir(join(homedir(), ".agents"), { recursive: true });
 
   try {
+    const { rename } = await import("node:fs/promises");
     await rename(OLD_SKILLS_DIR, SKILLS_DIR);
   } catch (renameErr) {
     log("[RCS] Skills dir rename failed, falling back to copy:", renameErr);
+    const { cp, rm, writeFile: writeFileFn } = await import("node:fs/promises");
     await cp(OLD_SKILLS_DIR, SKILLS_DIR, { recursive: true });
     await rm(OLD_SKILLS_DIR, { recursive: true, force: true });
+    await writeFileFn(MIGRATED_MARKER, new Date().toISOString(), "utf-8");
+    log("[RCS] Skills directory migrated:", OLD_SKILLS_DIR, "→", SKILLS_DIR);
+    return;
   }
 
+  const { writeFile: writeFileFn } = await import("node:fs/promises");
   await mkdir(OLD_SKILLS_DIR, { recursive: true });
-  await writeFile(MIGRATED_MARKER, new Date().toISOString(), "utf-8");
+  await writeFileFn(MIGRATED_MARKER, new Date().toISOString(), "utf-8");
 
   log("[RCS] Skills directory migrated:", OLD_SKILLS_DIR, "→", SKILLS_DIR);
 }
@@ -173,29 +179,78 @@ export async function disableSkill(userId: string, name: string): Promise<boolea
   return configPg.disableSkill(userId, name);
 }
 
+/** 校验上传文件并检测冲突（全局和 workspace 共享） */
+function validateImportFiles(files: UploadSkillFile[]): Map<string, UploadSkillFile[]> {
+  if (files.length === 0) {
+    throw createSkillValidationError("未提供任何上传文件");
+  }
+  const grouped = groupUploadFiles(files);
+  if (grouped.size === 0) {
+    throw createSkillValidationError("未解析出任何 skill");
+  }
+  for (const [name, skillFiles] of grouped) {
+    if (!skillFiles.some((file) => file.relativePath === "SKILL.md")) {
+      throw createSkillValidationError(`Skill "${name}" 缺少 SKILL.md`);
+    }
+  }
+  return grouped;
+}
+
+/** 通用导入核心：备份→写入→回滚（全局和 workspace 共享） */
+async function executeImportCore(
+  targetDir: string,
+  pendingEntries: [string, UploadSkillFile[]][],
+  overwriteNames: string[],
+  backupPrefix: string,
+  onConflictCleanup?: (names: string[]) => Promise<void>,
+  onSkillWritten?: (info: { name: string; description: string; path: string }) => Promise<void>,
+  onRollbackCleanup?: (names: string[]) => Promise<void>,
+): Promise<ImportSkillsResult> {
+  const backupRoot = await createBackupDir(backupPrefix);
+  const snapshots = new Map<string, string | null>();
+  const attemptedNames: string[] = [];
+
+  try {
+    if (overwriteNames.length > 0) {
+      const backed = await backupSkillDirs(backupRoot, targetDir, overwriteNames);
+      for (const [bName, bPath] of backed) snapshots.set(bName, bPath);
+      await cleanupWrittenSkills(targetDir, overwriteNames);
+      if (onConflictCleanup) await onConflictCleanup(overwriteNames);
+    }
+
+    const writtenNames = await writeImportFiles(targetDir, pendingEntries);
+    attemptedNames.push(...writtenNames);
+
+    const imported = await buildImportedSkillInfos(targetDir, writtenNames);
+
+    if (onSkillWritten) {
+      await Promise.all(imported.map((info) => onSkillWritten(info)));
+    }
+
+    return { imported, skipped: [], conflicts: [] };
+  } catch (err) {
+    try { await cleanupWrittenSkills(targetDir, attemptedNames); } catch (e) { logError("[Skill] Failed to cleanup written skills:", e); }
+    if (onRollbackCleanup) {
+      await onRollbackCleanup(attemptedNames).catch((e) => {
+        logError("[Skill] Failed to rollback PG records:", e);
+      });
+    }
+    try { await restoreFromBackup(snapshots, targetDir); } catch (e) { logError("[Skill] Failed to restore from backup:", e); }
+    throw err;
+  } finally {
+    try { await cleanupBackupDir(backupRoot); } catch (e) { logError("[Skill] Failed to cleanup backup dir:", e); }
+  }
+}
+
 export async function importSkillDirectories(
   userId: string,
   files: UploadSkillFile[],
   strategy?: ImportConflictStrategy,
 ): Promise<ImportSkillsResult> {
-  if (files.length === 0) {
-    throw createSkillValidationError("未提供任何上传文件");
-  }
-
-  const grouped = groupUploadFiles(files);
-  if (grouped.size === 0) {
-    throw createSkillValidationError("未解析出任何 skill");
-  }
-
-  // 校验每个 skill 必须包含 SKILL.md，同时检测冲突
-  const entries = Array.from(grouped.entries());
-  for (const [name, skillFiles] of entries) {
-    if (!skillFiles.some((file) => file.relativePath === "SKILL.md")) {
-      throw createSkillValidationError(`Skill "${name}" 缺少 SKILL.md`);
-    }
-  }
+  const grouped = validateImportFiles(files);
 
   // 并行检测冲突（N+1 → 单轮并行查询）
+  const entries = Array.from(grouped.entries());
   const existingResults = await Promise.all(
     entries.map(async ([name]) => {
       const existing = await configPg.getSkill(userId, name);
@@ -219,45 +274,30 @@ export async function importSkillDirectories(
   const conflictNames = new Set(conflicts.map((item) => item.name));
   const overwriteNames = pendingEntries.filter(([name]) => conflictNames.has(name)).map(([name]) => name);
 
-  const backupRoot = await createBackupDir("rcs-skill-import-");
-  const snapshots = new Map<string, string | null>();
-  const attemptedNames: string[] = [];
-
-  try {
-    // 备份并删除已有冲突目录，同时清理 PG 记录
-    if (strategy === "overwrite" && overwriteNames.length > 0) {
-      const backed = await backupSkillDirs(backupRoot, SKILLS_DIR, overwriteNames);
-      for (const [bName, bPath] of backed) snapshots.set(bName, bPath);
-      await cleanupWrittenSkills(SKILLS_DIR, overwriteNames);
-      // 并行清理 PG 记录
-      await Promise.all(overwriteNames.map((name) => configPg.deleteSkill(userId, name)));
-    }
-
-    const writtenNames = await writeImportFiles(SKILLS_DIR, pendingEntries);
-    attemptedNames.push(...writtenNames);
-
-    const imported = await buildImportedSkillInfos(SKILLS_DIR, writtenNames);
-    await Promise.all(imported.map((info) =>
-      configPg.upsertSkill(userId, info.name, {
+  const result = await executeImportCore(
+    SKILLS_DIR,
+    pendingEntries,
+    strategy === "overwrite" ? overwriteNames : [],
+    "rcs-skill-import-",
+    // onConflictCleanup: overwrite 时清理 PG 冲突记录（pre-write）
+    strategy === "overwrite" ? async (names) => {
+      await Promise.all(names.map((name) => configPg.deleteSkill(userId, name)));
+    } : undefined,
+    // onSkillWritten: 并行写入 PG 元数据
+    async (info) => {
+      await configPg.upsertSkill(userId, info.name, {
         description: info.description,
         contentPath: info.path,
         enabled: true,
-      }),
-    ));
+      });
+    },
+    // onRollbackCleanup: 回滚时清理已尝试写入的 PG 记录
+    async (names) => {
+      await Promise.all(names.map((name) => configPg.deleteSkill(userId, name)));
+    },
+  );
 
-    return { imported, skipped, conflicts: [] };
-  } catch (err) {
-    try { await cleanupWrittenSkills(SKILLS_DIR, attemptedNames); } catch (e) { logError("[Skill] Failed to cleanup written skills:", e); }
-    await Promise.all(attemptedNames.map((name) =>
-      configPg.deleteSkill(userId, name).catch((e) => {
-        logError(`[Skill] Failed to cleanup skill ${name}:`, e);
-      }),
-    ));
-    try { await restoreFromBackup(snapshots, SKILLS_DIR); } catch (e) { logError("[Skill] Failed to restore from backup:", e); }
-    throw err;
-  } finally {
-    try { await cleanupBackupDir(backupRoot); } catch (e) { logError("[Skill] Failed to cleanup backup dir:", e); }
-  }
+  return { ...result, skipped };
 }
 // ────────────────────────────────────────────
 
@@ -374,22 +414,11 @@ export async function importWorkspaceSkillDirectories(
   strategy?: ImportConflictStrategy,
 ): Promise<ImportSkillsResult> {
   const targetDir = getWorkspaceSkillDir(workspacePath);
+  const grouped = validateImportFiles(files);
 
-  if (files.length === 0) {
-    throw createSkillValidationError("未提供任何上传文件");
-  }
-
-  const grouped = groupUploadFiles(files);
-  if (grouped.size === 0) {
-    throw createSkillValidationError("未解析出任何 skill");
-  }
-
-  // 校验每个 skill 必须包含 SKILL.md，同时检测冲突
+  // workspace skill 冲突检测基于文件系统存在性
   const conflicts: ImportSkillsConflict[] = [];
-  for (const [name, skillFiles] of grouped) {
-    if (!skillFiles.some((file) => file.relativePath === "SKILL.md")) {
-      throw createSkillValidationError(`Skill "${name}" 缺少 SKILL.md`);
-    }
+  for (const [name] of grouped) {
     const skillMdPath = join(targetDir, name, "SKILL.md");
     if (existsSync(skillMdPath)) {
       conflicts.push({ name, enabled: true, path: skillMdPath });
@@ -409,29 +438,12 @@ export async function importWorkspaceSkillDirectories(
   const conflictNames = new Set(conflicts.map((item) => item.name));
   const overwriteNames = pendingEntries.filter(([name]) => conflictNames.has(name)).map(([name]) => name);
 
-  const backupRoot = await createBackupDir("rcs-ws-skill-import-");
-  const snapshots = new Map<string, string | null>();
-  const attemptedNames: string[] = [];
+  const result = await executeImportCore(
+    targetDir,
+    pendingEntries,
+    strategy === "overwrite" ? overwriteNames : [],
+    "rcs-ws-skill-import-",
+  );
 
-  try {
-    // 备份并删除已有冲突目录
-    if (strategy === "overwrite" && overwriteNames.length > 0) {
-      const backed = await backupSkillDirs(backupRoot, targetDir, overwriteNames);
-      for (const [bName, bPath] of backed) snapshots.set(bName, bPath);
-      await cleanupWrittenSkills(targetDir, overwriteNames);
-    }
-
-    const writtenNames = await writeImportFiles(targetDir, pendingEntries);
-    attemptedNames.push(...writtenNames);
-
-    const imported = await buildImportedSkillInfos(targetDir, writtenNames);
-
-    return { imported, skipped, conflicts: [] };
-  } catch (err) {
-    try { await cleanupWrittenSkills(targetDir, attemptedNames); } catch (e) { logError("[Skill] Failed to cleanup written skills:", e); }
-    try { await restoreFromBackup(snapshots, targetDir); } catch (e) { logError("[Skill] Failed to restore from backup:", e); }
-    throw err;
-  } finally {
-    try { await cleanupBackupDir(backupRoot); } catch (e) { logError("[Skill] Failed to cleanup backup dir:", e); }
-  }
+  return { ...result, skipped };
 }

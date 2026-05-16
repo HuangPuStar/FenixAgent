@@ -70,8 +70,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
       agentConfigId: params.agentConfigId ?? null,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("unique") || msg.includes("duplicate") || msg.includes("UNIQUE")) {
+    if (err instanceof Error && (err.message?.includes("unique") || err.message?.includes("duplicate") || err.message?.includes("UNIQUE"))) {
       throw new ConflictError(`环境名称 '${name}' 已存在`);
     }
     throw err;
