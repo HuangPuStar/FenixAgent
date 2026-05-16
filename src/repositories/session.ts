@@ -7,12 +7,8 @@ export interface SessionRecord {
   title: string | null;
   status: string;
   source: string;
-  permissionMode: string | null;
-  workerEpoch: number;
   username: string | null;
   userId: string | null;
-  cwd: string | null;
-  shareMode: "none" | "readonly" | "writable";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,30 +17,21 @@ export interface SessionCreateParams {
   environmentId?: string | null;
   title?: string | null;
   source?: string;
-  permissionMode?: string | null;
   idPrefix?: string;
   username?: string | null;
   userId?: string | null;
-  cwd?: string | null;
 }
 
 /** Session 仓储接口 — 纯内存 Map */
 export interface ISessionRepo {
   create(params: SessionCreateParams): Promise<SessionRecord>;
   getById(id: string): Promise<SessionRecord | undefined>;
-  update(id: string, patch: Partial<Pick<SessionRecord, "title" | "status" | "workerEpoch" | "updatedAt" | "shareMode">>): Promise<boolean>;
+  update(id: string, patch: Partial<Pick<SessionRecord, "title" | "status" | "updatedAt">>): Promise<boolean>;
   delete(id: string): Promise<boolean>;
   listAll(): Promise<SessionRecord[]>;
   listByEnvironment(envId: string): Promise<SessionRecord[]>;
   listByUserId(userId: string): Promise<SessionRecord[]>;
-  listForAgentByCwd(agentId: string, cwd?: string): Promise<SessionRecord[]>;
-  listByOwnerUuid(uuid: string): Promise<SessionRecord[]>;
-  listByUsername(username: string): Promise<SessionRecord[]>;
-  dissociateFromEnvironment(environmentId: string): Promise<void>;
   bindOwner(sessionId: string, uuid: string): Promise<void>;
-  isOwner(sessionId: string, uuid: string): Promise<boolean>;
-  getOwners(sessionId: string): Promise<Set<string> | undefined>;
-  setShareMode(sessionId: string, mode: "none" | "readonly" | "writable"): void;
   reset(): void;
 }
 
@@ -61,12 +48,8 @@ class SessionRepo implements ISessionRepo {
       title: params.title ?? null,
       status: "idle",
       source: params.source ?? "acp",
-      permissionMode: params.permissionMode ?? null,
-      workerEpoch: 0,
       username: params.username ?? null,
       userId: params.userId ?? null,
-      cwd: params.cwd ?? null,
-      shareMode: "none" as const,
       createdAt: now,
       updatedAt: now,
     };
@@ -78,7 +61,7 @@ class SessionRepo implements ISessionRepo {
     return this.sessions.get(id);
   }
 
-  async update(id: string, patch: Partial<Pick<SessionRecord, "title" | "status" | "workerEpoch" | "updatedAt" | "shareMode">>): Promise<boolean> {
+  async update(id: string, patch: Partial<Pick<SessionRecord, "title" | "status" | "updatedAt">>): Promise<boolean> {
     const rec = this.sessions.get(id);
     if (!rec) return false;
     Object.assign(rec, patch, { updatedAt: new Date() });
@@ -101,48 +84,11 @@ class SessionRepo implements ISessionRepo {
     return [...this.sessions.values()].filter((s) => s.userId === userId);
   }
 
-  async listForAgentByCwd(agentId: string, _cwd?: string): Promise<SessionRecord[]> {
-    return this.listByEnvironment(agentId);
-  }
-
-  async listByOwnerUuid(uuid: string): Promise<SessionRecord[]> {
-    const ownedIds = new Set<string>();
-    for (const [sid, owners] of this.sessionOwners) {
-      if (owners.has(uuid)) ownedIds.add(sid);
-    }
-    return [...this.sessions.values()].filter((s) => ownedIds.has(s.id));
-  }
-
-  async listByUsername(username: string): Promise<SessionRecord[]> {
-    return [...this.sessions.values()].filter((s) => s.username === username);
-  }
-
-  async dissociateFromEnvironment(environmentId: string): Promise<void> {
-    for (const s of this.sessions.values()) {
-      if (s.environmentId === environmentId) {
-        s.environmentId = null;
-      }
-    }
-  }
-
   async bindOwner(sessionId: string, uuid: string): Promise<void> {
     if (!this.sessionOwners.has(sessionId)) {
       this.sessionOwners.set(sessionId, new Set());
     }
     this.sessionOwners.get(sessionId)!.add(uuid);
-  }
-
-  async isOwner(sessionId: string, uuid: string): Promise<boolean> {
-    return this.sessionOwners.get(sessionId)?.has(uuid) ?? false;
-  }
-
-  async getOwners(sessionId: string): Promise<Set<string> | undefined> {
-    return this.sessionOwners.get(sessionId);
-  }
-
-  setShareMode(sessionId: string, mode: "none" | "readonly" | "writable"): void {
-    const rec = this.sessions.get(sessionId);
-    if (rec) rec.shareMode = mode;
   }
 
   reset(): void {
