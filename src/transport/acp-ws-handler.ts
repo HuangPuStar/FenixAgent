@@ -3,13 +3,11 @@ import { v4 as uuid } from "uuid";
 import { getAcpEventBus } from "./event-bus";
 import type { SessionEvent } from "./event-bus";
 import {
-  markEnvironmentActive,
-  markEnvironmentIdle,
+  handleAcpConnect,
+  handleAcpRegister,
+  handleAcpIdentify,
+  handleAcpDisconnect,
   touchEnvironmentPoll,
-  updateEnvironmentCapabilities,
-  createTemporaryEnvironment,
-  getEnvironment,
-  deleteEnvironment,
 } from "../services/environment";
 import { config } from "../config";
 import { log, error as logError } from "../logger";
@@ -46,7 +44,7 @@ export function handleAcpWsOpen(ws: WsConnection, wsId: string, userId: string, 
   log(`[ACP-WS] Connection opened: wsId=${wsId} userId=${userId}${boundEnvId ? ` boundEnvId=${boundEnvId}` : ""}`);
 
   if (boundEnvId) {
-    markEnvironmentActive(boundEnvId).catch(() => {});
+    handleAcpConnect(boundEnvId).catch(() => {});
   }
 
   const keepalive = setInterval(() => {
@@ -113,40 +111,37 @@ async function handleRegister(wsId: string, msg: Record<string, unknown>): Promi
   const maxSessions = typeof msg.max_sessions === "number" ? msg.max_sessions : 1;
   const directory = (msg.directory as string) || undefined;
 
-  if (entry.boundEnvId) {
-    await markEnvironmentActive(entry.boundEnvId);
-    await updateEnvironmentCapabilities(entry.boundEnvId, { capabilities: capabilities || null, maxSessions });
+  try {
+    const result = await handleAcpRegister({
+      wsId,
+      userId: entry.userId,
+      agentName,
+      capabilities,
+      maxSessions,
+      directory,
+      boundEnvId: entry.boundEnvId,
+    });
 
-    entry.agentId = entry.boundEnvId;
+    entry.agentId = result.envId;
     entry.capabilities = capabilities || null;
 
-    log(`[ACP-WS] Bound agent registered: agentId=${entry.boundEnvId} userId=${entry.userId} name=${agentName}`);
-    sendToWs(entry.ws, { type: "registered", agent_id: entry.boundEnvId });
-    return;
+    // unbound 环境需要新建 EventBus 订阅；bound 环境在 onOpen 时已订阅
+    if (result.isNew) {
+      const bus = getAcpEventBus(result.envId);
+      const unsub = bus.subscribe((event: SessionEvent) => {
+        if (entry.ws.readyState !== 1) return;
+        if (event.direction !== "outbound") return;
+        sendToWs(entry.ws, event.payload as object);
+      });
+      entry.unsub = unsub;
+    }
+
+    log(`[ACP-WS] ${result.isNew ? "Agent registered" : "Bound agent registered"}: agentId=${result.envId} userId=${entry.userId} name=${agentName}`);
+    sendToWs(entry.ws, { type: "registered", agent_id: result.envId });
+  } catch (err) {
+    logError("[ACP-WS] Error in register handler:", err);
+    sendToWs(entry.ws, { type: "error", message: "Registration failed" });
   }
-
-  const record = await createTemporaryEnvironment({
-    secret: `ws_${wsId}`,
-    userId: entry.userId,
-    machineName: agentName,
-    directory,
-    maxSessions,
-    capabilities: capabilities || undefined,
-  });
-
-  entry.agentId = record.id;
-  entry.capabilities = capabilities || null;
-
-  const bus = getAcpEventBus(record.id);
-  const unsub = bus.subscribe((event: SessionEvent) => {
-    if (entry.ws.readyState !== 1) return;
-    if (event.direction !== "outbound") return;
-    sendToWs(entry.ws, event.payload as object);
-  });
-  entry.unsub = unsub;
-
-  log(`[ACP-WS] Agent registered: agentId=${record.id} userId=${entry.userId} name=${agentName}`);
-  sendToWs(entry.ws, { type: "registered", agent_id: record.id });
 }
 
 /** Handle identify message — binds WS to an existing agent registered via REST */
@@ -164,54 +159,51 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
     return;
   }
 
-  if (entry.boundEnvId) {
-    await markEnvironmentActive(entry.boundEnvId);
-
-    const bus = getAcpEventBus(entry.boundEnvId);
-    const unsub = bus.subscribe((event: SessionEvent) => {
-      if (entry.ws.readyState !== 1) return;
-      if (event.direction !== "outbound") return;
-      sendToWs(entry.ws, event.payload as object);
-    });
-    entry.unsub = unsub;
-
-    log(`[ACP-WS] Bound agent identified: agentId=${entry.boundEnvId} userId=${entry.userId}`);
-    sendToWs(entry.ws, { type: "identified", agent_id: entry.boundEnvId });
-    return;
-  }
-
-  const agentId = msg.agent_id as string;
-  if (!agentId) {
+  // unbound 情况下必须提供 agent_id
+  const agentId = (msg.agent_id as string) || "";
+  if (!entry.boundEnvId && !agentId) {
     sendToWs(entry.ws, { type: "error", message: "Missing agent_id" });
     return;
   }
 
-  const record = await getEnvironment(agentId);
-  if (!record || record.workerType !== "acp") {
-    sendToWs(entry.ws, { type: "error", message: "Agent not found" });
-    return;
+  try {
+    const result = await handleAcpIdentify({
+      agentId,
+      userId: entry.userId,
+      boundEnvId: entry.boundEnvId,
+    });
+
+    entry.agentId = result.envId;
+    entry.capabilities = result.capabilities;
+
+    // bound 环境在 onOpen 时未订阅（identify 场景需要单独订阅）
+    if (entry.boundEnvId && !entry.unsub) {
+      const bus = getAcpEventBus(entry.boundEnvId);
+      const unsub = bus.subscribe((event: SessionEvent) => {
+        if (entry.ws.readyState !== 1) return;
+        if (event.direction !== "outbound") return;
+        sendToWs(entry.ws, event.payload as object);
+      });
+      entry.unsub = unsub;
+    } else if (!entry.boundEnvId) {
+      const bus = getAcpEventBus(result.envId);
+      const unsub = bus.subscribe((event: SessionEvent) => {
+        if (entry.ws.readyState !== 1) return;
+        if (event.direction !== "outbound") return;
+        sendToWs(entry.ws, event.payload as object);
+      });
+      entry.unsub = unsub;
+    }
+
+    log(`[ACP-WS] ${entry.boundEnvId ? "Bound agent identified" : "Agent identified"}: agentId=${result.envId} userId=${entry.userId}`);
+    sendToWs(entry.ws, { type: "identified", agent_id: result.envId });
+  } catch (err: any) {
+    logError("[ACP-WS] Error in identify handler:", err);
+    const message = err.code === "NOT_FOUND" ? "Agent not found"
+      : err.code === "FORBIDDEN" ? "Agent not owned by you"
+      : "Identification failed";
+    sendToWs(entry.ws, { type: "error", message });
   }
-
-  if (record.userId && record.userId !== entry.userId) {
-    sendToWs(entry.ws, { type: "error", message: "Agent not owned by you" });
-    return;
-  }
-
-  await markEnvironmentActive(agentId);
-
-  entry.agentId = record.id;
-  entry.capabilities = record.capabilities || null;
-
-  const bus = getAcpEventBus(record.id);
-  const unsub = bus.subscribe((event: SessionEvent) => {
-    if (entry.ws.readyState !== 1) return;
-    if (event.direction !== "outbound") return;
-    sendToWs(entry.ws, event.payload as object);
-  });
-  entry.unsub = unsub;
-
-  log(`[ACP-WS] Agent identified: agentId=${record.id} userId=${entry.userId}`);
-  sendToWs(entry.ws, { type: "identified", agent_id: record.id });
 }
 
 /** Called from onMessage — processes NDJSON lines */
@@ -282,11 +274,7 @@ export function handleAcpWsClose(ws: WsConnection, wsId: string, code?: number, 
   if (entry.keepalive) clearInterval(entry.keepalive);
 
   if (entry.agentId) {
-    if (entry.boundEnvId) {
-      markEnvironmentIdle(entry.agentId).catch(() => {});
-    } else {
-      deleteEnvironment(entry.agentId).catch(() => {});
-    }
+    handleAcpDisconnect(entry.agentId, !!entry.boundEnvId).catch(() => {});
 
     const bus = getAcpEventBus(entry.agentId);
     bus.publish({
@@ -332,11 +320,7 @@ export function closeAllAcpConnections(): void {
         entry.ws.close(1001, "server_shutdown");
       }
       if (entry.agentId) {
-        if (entry.boundEnvId) {
-          markEnvironmentIdle(entry.agentId).catch(() => {});
-        } else {
-          deleteEnvironment(entry.agentId).catch(() => {});
-        }
+        handleAcpDisconnect(entry.agentId, !!entry.boundEnvId).catch(() => {});
       }
     } catch {
       // ignore errors during shutdown

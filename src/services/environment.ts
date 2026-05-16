@@ -460,3 +460,86 @@ export async function listEnvironmentsWithInstances(userId: string) {
   }
   return results;
 }
+
+// ────────────────────────────────────────────
+// ACP 连接生命周期管理
+// ────────────────────────────────────────────
+
+/**
+ * ACP 连接建立时激活环境（bound 环境）。
+ */
+export async function handleAcpConnect(boundEnvId: string | null): Promise<void> {
+  if (boundEnvId) {
+    await markEnvironmentActive(boundEnvId);
+  }
+}
+
+/**
+ * ACP register 消息处理：bound 环境 → active + 更新 capabilities；unbound → 创建临时环境
+ */
+export async function handleAcpRegister(params: {
+  wsId: string;
+  userId: string;
+  agentName: string;
+  capabilities?: Record<string, unknown>;
+  maxSessions?: number;
+  directory?: string;
+  boundEnvId: string | null;
+}): Promise<{ envId: string; isNew: boolean }> {
+  if (params.boundEnvId) {
+    await markEnvironmentActive(params.boundEnvId);
+    await updateEnvironmentCapabilities(params.boundEnvId, {
+      capabilities: params.capabilities || null,
+      maxSessions: params.maxSessions,
+    });
+    return { envId: params.boundEnvId, isNew: false };
+  }
+
+  const record = await createTemporaryEnvironment({
+    secret: `ws_${params.wsId}`,
+    userId: params.userId,
+    machineName: params.agentName,
+    directory: params.directory,
+    maxSessions: params.maxSessions,
+    capabilities: params.capabilities,
+  });
+
+  return { envId: record.id, isNew: true };
+}
+
+/**
+ * ACP identify 消息处理：bound → active；unbound → 验证 + active
+ */
+export async function handleAcpIdentify(params: {
+  agentId: string;
+  userId: string;
+  boundEnvId: string | null;
+}): Promise<{ envId: string; capabilities: Record<string, unknown> | null }> {
+  if (params.boundEnvId) {
+    await markEnvironmentActive(params.boundEnvId);
+    const env = await getEnvironment(params.boundEnvId);
+    return { envId: params.boundEnvId, capabilities: env?.capabilities || null };
+  }
+
+  const record = await getEnvironment(params.agentId);
+  if (!record || record.workerType !== "acp") {
+    throw Object.assign(new Error("Agent not found"), { code: "NOT_FOUND" });
+  }
+  if (record.userId && record.userId !== params.userId) {
+    throw Object.assign(new Error("Agent not owned by you"), { code: "FORBIDDEN" });
+  }
+
+  await markEnvironmentActive(params.agentId);
+  return { envId: record.id, capabilities: record.capabilities || null };
+}
+
+/**
+ * ACP 断连处理：bound → idle；unbound → 删除
+ */
+export async function handleAcpDisconnect(agentId: string, isBound: boolean): Promise<void> {
+  if (isBound) {
+    await markEnvironmentIdle(agentId);
+  } else {
+    await deleteEnvironment(agentId);
+  }
+}
