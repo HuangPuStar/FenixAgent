@@ -305,8 +305,11 @@ export async function handleAcpIdentify(params: {
   boundEnvId: string | null;
 }): Promise<{ envId: string; capabilities: Record<string, unknown> | null }> {
   if (params.boundEnvId) {
-    await markEnvironmentActive(params.boundEnvId);
-    const env = await getEnvironment(params.boundEnvId);
+    // markActive 更新 status/poll，getEnvironment 读取 capabilities，两操作无依赖
+    const [, env] = await Promise.all([
+      markEnvironmentActive(params.boundEnvId),
+      getEnvironment(params.boundEnvId),
+    ]);
     return { envId: params.boundEnvId, capabilities: env?.capabilities ?? null };
   }
 

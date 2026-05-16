@@ -205,6 +205,25 @@ export function getRunningInstancesByEnvironment(environmentId: string): Spawned
   );
 }
 
+/** 一次遍历：按 environmentId 分组所有活跃实例，避免 N 次 listInstances 调用 */
+export function groupActiveInstancesByEnvironment(): Map<string, SpawnedInstance[]> {
+  const facade = getCoreRuntime();
+  const result = new Map<string, SpawnedInstance[]>();
+  for (const s of facade.listInstances()) {
+    const sup = supplements.get(s.instanceId);
+    if (!sup) continue;
+    if (s.status === "stopped" || s.status === "error") continue;
+    const inst = toSpawnedInstance(s, sup);
+    const list = result.get(sup.environmentId);
+    if (list) {
+      list.push(inst);
+    } else {
+      result.set(sup.environmentId, [inst]);
+    }
+  }
+  return result;
+}
+
 export function getInstance(id: string, userId?: string): SpawnedInstance | undefined {
   const facade = getCoreRuntime();
   const snapshot = facade.getInstance(id);
