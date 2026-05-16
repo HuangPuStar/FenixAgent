@@ -6,7 +6,7 @@ import { test, expect, mock, describe, beforeEach } from "bun:test";
 const mockModelTable = {
   providerId: "provider_id",
   modelId: "model_id",
-} as unknown as import("../db/schema").model;
+};
 
 const mockOnConflictDoUpdate = mock(() => Promise.resolve());
 const mockValues = mock(() => ({ onConflictDoUpdate: mockOnConflictDoUpdate }));
@@ -37,7 +37,7 @@ describe("addModel — onConflictDoUpdate 幂等 upsert", () => {
     expect(mockInsert).toHaveBeenCalledWith(mockModelTable);
     expect(mockValues).toHaveBeenCalledTimes(1);
 
-    const valuesArg = mockValues.mock.calls[0][0] as Record<string, unknown>;
+    const valuesArg = (mockValues.mock.calls as any[][])[0][0] as Record<string, unknown>;
     expect(valuesArg.providerId).toBe("prov-1");
     expect(valuesArg.modelId).toBe("gpt-4");
     expect(valuesArg.updatedAt).toBeInstanceOf(Date);
@@ -48,7 +48,7 @@ describe("addModel — onConflictDoUpdate 幂等 upsert", () => {
     await addModel("prov-1", { modelId: "gpt-4" });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledTimes(1);
 
-    const [conflictArg] = mockOnConflictDoUpdate.mock.calls[0] as [Record<string, unknown>];
+    const [conflictArg] = (mockOnConflictDoUpdate.mock.calls as any[][])[0] as [Record<string, unknown>];
     expect(conflictArg.target).toEqual(["provider_id", "model_id"]);
   });
 
@@ -62,7 +62,7 @@ describe("addModel — onConflictDoUpdate 幂等 upsert", () => {
       cost: { prompt: 0.03 },
       options: { temperature: 0.7 },
     });
-    const setArg = (mockOnConflictDoUpdate.mock.calls[0][0] as Record<string, unknown>).set as Record<string, unknown>;
+    const setArg = ((mockOnConflictDoUpdate.mock.calls as any[][])[0][0] as Record<string, unknown>).set as Record<string, unknown>;
     expect(setArg.updatedAt).toBeInstanceOf(Date);
     expect(setArg.displayName).toBe("GPT-4");
     expect(setArg.modalities).toEqual({ input: ["text"] });
@@ -74,7 +74,7 @@ describe("addModel — onConflictDoUpdate 幂等 upsert", () => {
   // onConflictDoUpdate set 不包含 providerId 和 modelId（冲突目标列不参与更新）
   test("onConflictDoUpdate set excludes providerId and modelId", async () => {
     await addModel("prov-1", { modelId: "gpt-4", displayName: "GPT-4" });
-    const setArg = (mockOnConflictDoUpdate.mock.calls[0][0] as Record<string, unknown>).set as Record<string, unknown>;
+    const setArg = ((mockOnConflictDoUpdate.mock.calls as any[][])[0][0] as Record<string, unknown>).set as Record<string, unknown>;
     expect("providerId" in setArg).toBe(false);
     expect("modelId" in setArg).toBe(false);
   });
@@ -83,7 +83,7 @@ describe("addModel — onConflictDoUpdate 幂等 upsert", () => {
   test("works with only required modelId field", async () => {
     await addModel("prov-2", { modelId: "claude-3" });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledTimes(1);
-    const setArg = (mockOnConflictDoUpdate.mock.calls[0][0] as Record<string, unknown>).set as Record<string, unknown>;
+    const setArg = ((mockOnConflictDoUpdate.mock.calls as any[][])[0][0] as Record<string, unknown>).set as Record<string, unknown>;
     expect(setArg.updatedAt).toBeInstanceOf(Date);
     // 可选字段在未传入时为 undefined，不包含在 set 中也不会报错
     expect(setArg.displayName).toBeUndefined();

@@ -38,28 +38,28 @@ interface LightweightSession {
 }
 
 /** Session 由 Agent 管理，此函数仅检查 EventBus 是否活跃 */
-export async function getSession(sessionId: string): Promise<LightweightSession | null> {
+export function getSession(sessionId: string): Promise<LightweightSession | null> {
   const bus = eventService.getAllBuses().get(sessionId);
-  if (!bus) return null;
-  return {
+  if (!bus) return Promise.resolve(null);
+  return Promise.resolve({
     id: sessionId,
     status: "active",
-  };
+  });
 }
 
 /** Session 由 Agent 管理，直接返回 sessionId */
-export async function resolveExistingSessionId(sessionId: string): Promise<string | null> {
+export function resolveExistingSessionId(sessionId: string): Promise<string | null> {
   const bus = eventService.getAllBuses().get(sessionId);
-  return bus ? sessionId : null;
+  return Promise.resolve(bus ? sessionId : null);
 }
 
 /** Session 不再由 RCS 创建，返回轻量存根 */
-export async function createSession(_req: Record<string, unknown>): Promise<LightweightSession> {
+export function createSession(_req: Record<string, unknown>): Promise<LightweightSession> {
   const id = `session_${uuid().replace(/-/g, "")}`;
-  return {
+  return Promise.resolve({
     id,
     status: "idle",
-  };
+  });
 }
 
 // ────────────────────────────────────────────

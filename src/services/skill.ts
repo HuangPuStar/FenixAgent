@@ -189,17 +189,23 @@ export async function importSkillDirectories(
   }
 
   // 校验每个 skill 必须包含 SKILL.md，同时检测冲突
-  const conflicts: ImportSkillsConflict[] = [];
-  for (const [name, skillFiles] of grouped) {
+  const entries = Array.from(grouped.entries());
+  for (const [name, skillFiles] of entries) {
     if (!skillFiles.some((file) => file.relativePath === "SKILL.md")) {
       throw createSkillValidationError(`Skill "${name}" 缺少 SKILL.md`);
     }
-
-    const existing = await configPg.getSkill(userId, name);
-    if (existing) {
-      conflicts.push({ name, enabled: existing.enabled, path: existing.contentPath ?? skillContentPath(name) });
-    }
   }
+
+  // 并行检测冲突（N+1 → 单轮并行查询）
+  const existingResults = await Promise.all(
+    entries.map(async ([name]) => {
+      const existing = await configPg.getSkill(userId, name);
+      return existing
+        ? { name, enabled: existing.enabled, path: existing.contentPath ?? skillContentPath(name) }
+        : null;
+    }),
+  );
+  const conflicts: ImportSkillsConflict[] = existingResults.filter((r): r is ImportSkillsConflict => r !== null);
 
   if (conflicts.length > 0 && !strategy) {
     return { imported: [], skipped: [], conflicts };

@@ -26,12 +26,23 @@ export async function createMcpServer(
   type: string,
   config: Record<string, unknown>,
 ) {
-  await db.insert(mcpServer).values({
+  const values = {
     userId,
     name,
     type,
     config,
-  });
+    enabled: true,
+    updatedAt: new Date(),
+  };
+  await db.insert(mcpServer).values(values)
+    .onConflictDoUpdate({
+      target: [mcpServer.userId, mcpServer.name],
+      set: {
+        type,
+        config,
+        updatedAt: new Date(),
+      },
+    });
 }
 
 export async function updateMcpServer(
