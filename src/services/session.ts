@@ -34,35 +34,16 @@ export async function archiveSession(sessionId: string) {
 
 interface LightweightSession {
   id: string;
-  environment_id: string | null;
-  agent_name: string | null;
-  title: string | null;
   status: string;
-  source: string;
-  permission_mode: string | null;
-  worker_epoch: number;
-  username: string | null;
-  created_at: number;
-  updated_at: number;
 }
 
 /** Session 由 Agent 管理，此函数仅检查 EventBus 是否活跃 */
 export async function getSession(sessionId: string): Promise<LightweightSession | null> {
   const bus = eventService.getAllBuses().get(sessionId);
   if (!bus) return null;
-  const now = Date.now() / 1000;
   return {
     id: sessionId,
-    environment_id: null,
-    agent_name: null,
-    title: null,
     status: "active",
-    source: "acp",
-    permission_mode: null,
-    worker_epoch: 0,
-    username: null,
-    created_at: now,
-    updated_at: now,
   };
 }
 
@@ -73,21 +54,11 @@ export async function resolveExistingSessionId(sessionId: string): Promise<strin
 }
 
 /** Session 不再由 RCS 创建，返回轻量存根 */
-export async function createSession(req: Record<string, unknown>): Promise<LightweightSession> {
+export async function createSession(_req: Record<string, unknown>): Promise<LightweightSession> {
   const id = `session_${uuid().replace(/-/g, "")}`;
-  const now = Date.now() / 1000;
   return {
     id,
-    environment_id: (req.environment_id as string) ?? null,
-    agent_name: null,
-    title: (req.title as string) ?? null,
     status: "idle",
-    source: (req.source as string) ?? "acp",
-    permission_mode: (req.permission_mode as string) ?? null,
-    worker_epoch: 0,
-    username: (req.username as string) ?? null,
-    created_at: now,
-    updated_at: now,
   };
 }
 
