@@ -278,11 +278,9 @@ async function writeLogAndReturn(
     return { success: false, error: { code: "WRITE_ERROR", message: "执行日志写入失败" } };
   }
 
-  try {
-    await scheduledTaskRepo.update(taskId, { lastRunAt: now, lastStatus: status, updatedAt: now });
-  } catch (err) {
-    logError("[Task] Failed to update task status for", taskId, err);
-  }
+  // 尽力而为更新任务状态（不阻塞返回，失败仅记日志）
+  scheduledTaskRepo.update(taskId, { lastRunAt: now, lastStatus: status, updatedAt: now })
+    .catch((err) => { logError("[Task] Failed to update task status for", taskId, err); });
 
   return {
     success: true,
@@ -313,18 +311,19 @@ export async function executeTaskById(
   const logId = generateLogId();
   const now = new Date();
   const startTime = Date.now();
+  const method = (task.method ?? "POST").toUpperCase();
 
   try {
     const headers: Record<string, string> = parseHeaders(task.headers) ?? {};
     const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === "content-type");
-    if (!hasContentType && task.method?.toUpperCase() !== "GET") {
+    if (!hasContentType && method !== "GET") {
       headers["Content-Type"] = "application/json";
     }
 
     const response = await fetch(task.url, {
-      method: task.method ?? "POST",
+      method,
       headers,
-      body: task.method?.toUpperCase() === "GET" ? undefined : (task.body ?? undefined),
+      body: method === "GET" ? undefined : (task.body ?? undefined),
       signal: AbortSignal.timeout(30_000),
     });
 
