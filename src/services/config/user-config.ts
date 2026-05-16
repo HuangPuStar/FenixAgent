@@ -30,7 +30,7 @@ export async function getUserConfig(userId: string): Promise<UserConfigData> {
 }
 
 export async function setUserConfig(userId: string, patch: UserConfigData) {
-  const values: Record<string, unknown> = { updatedAt: new Date() };
+  const values: Partial<typeof userConfig.$inferInsert> = { updatedAt: new Date() };
   if (patch.defaultAgent !== undefined) values.defaultAgent = patch.defaultAgent;
   if (patch.currentModel !== undefined) values.currentModel = patch.currentModel;
   if (patch.smallModel !== undefined) values.smallModel = patch.smallModel;
@@ -49,6 +49,6 @@ export async function setUserConfig(userId: string, patch: UserConfigData) {
     await db.insert(userConfig).values({
       userId,
       ...values,
-    } as typeof userConfig.$inferInsert);
+    });
   }
 }

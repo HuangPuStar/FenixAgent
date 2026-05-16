@@ -305,12 +305,14 @@ export async function listSkillSources(userId: string): Promise<SkillSourceInfo[
         skills: result.value.skills,
       });
     } else {
+      const reason = result.reason;
+      const isTimeout = reason instanceof Error && reason.message === "TIMEOUT";
       sources.push({
         type: "workspace",
         id: env.id,
         name: env.name,
         path: env.workspacePath,
-        status: "timeout",
+        status: isTimeout ? "timeout" : "offline",
         skills: [],
       });
     }

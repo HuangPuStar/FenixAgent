@@ -23,11 +23,13 @@ function validateTaskInput(
   data: { name?: string; url?: string; cron?: string; method?: string },
   isUpdate = false,
 ): string | null {
-  if (!isUpdate && (!data.name || data.name.trim().length === 0)) return "任务名称不能为空";
-  if (data.name !== undefined && data.name.trim().length === 0) return "任务名称不能为空";
-  if (data.name && data.name.length > 128) return "任务名称不能超过 128 字符";
-  if (!isUpdate && (!data.url || data.url.trim().length === 0)) return "URL 不能为空";
+  if (data.name !== undefined) {
+    if (data.name.trim().length === 0) return "任务名称不能为空";
+    if (data.name.length > 128) return "任务名称不能超过 128 字符";
+  }
+  if (!isUpdate && !data.name) return "任务名称不能为空";
   if (data.url !== undefined && data.url.trim().length === 0) return "URL 不能为空";
+  if (!isUpdate && !data.url) return "URL 不能为空";
   if (!isUpdate && (!data.cron || data.cron.trim().length === 0)) return "cron 表达式不能为空";
   if (data.cron) {
     const cronErr = validateCron(data.cron);
@@ -167,5 +169,20 @@ describe("validateTaskInput", () => {
   // 纯空白 method 被拦截
   it("拒绝纯空白 method", () => {
     expect(validateTaskInput({ name: "t", url: "http://x", cron: "* * * * *", method: "  " })).not.toBeNull();
+  });
+
+  // 重构后的边界场景：更新模式下 name 未提供时不报 name 错误
+  it("更新模式下 name 为 undefined 时不报 name 错误", () => {
+    expect(validateTaskInput({ url: "http://x" }, true)).toBeNull();
+  });
+
+  // 更新模式下 url 为 undefined 时不报 url 错误
+  it("更新模式下 url 为 undefined 时不报 url 错误", () => {
+    expect(validateTaskInput({ name: "t" }, true)).toBeNull();
+  });
+
+  // 更新模式下 name 为空字符串时仍报错
+  it("更新模式下 name 为空字符串时仍报错", () => {
+    expect(validateTaskInput({ name: "" }, true)).not.toBeNull();
   });
 });

@@ -168,9 +168,11 @@ export function toServerInfo(name: string, row: { type: string; config: unknown;
       timeout: config.timeout,
     };
   }
+  // streamable-http 和 remote 统一展示为 remote 类型（使用 URL）
+  const typeLabel = cfgType === "streamable-http" ? "streamable-http" as const : "remote" as const;
   return {
     name,
-    type: "remote" as const,
+    type: typeLabel,
     enabled: row.enabled,
     summary: config.url ?? "",
     timeout: config.timeout,

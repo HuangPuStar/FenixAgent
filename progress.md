@@ -122,3 +122,17 @@
 7. **WARNING — 定时器泄漏**：`listSkillSources` 添加 `clearTimeout` 防止悬挂定时器。
 8. **WARNING — 变量遮蔽**：`skill.ts` 两处 `catch (error)` → `catch (err)`，消除与 logger 导入的命名混淆。
 9. 新增 `pagination-bounds.test.ts`（6 用例），`task-validators.test.ts` 新增 2 用例。10 轮累计 153 个测试。
+
+## 2026-05-17 第十一次审查
+
+审查范围：全量 CRUD 层 + config 子目录类型安全审计
+
+修复（4 WARNING + 4 CLEANUP）：
+1. **WARNING — filterInstances 并发安全**：`instance.ts` 的 `filterInstances` 从 `.filter().map(!)` 改为 `.flatMap()`，消除 concurrent `stopAllInstances` 导致的 `!` 断言失败风险。
+2. **WARNING — listSkillSources 错误误标**：非超时拒绝（权限/ENOENT 等）从统一标为 `"timeout"` 改为区分 `"timeout"` 和 `"offline"`。
+3. **WARNING — toServerInfo streamable-http**：`mcp-server.ts` 的 `toServerInfo` 新增 `streamable-http` 类型识别，不再误归为 `remote`。
+4. **WARNING — writeLogAndReturn 二次查询**：`task.ts` 的 `writeLogAndReturn` 从 create 后 re-read 改为直接从参数构造响应，消除 create→getById 不一致风险。
+5. **CLEANUP — validateTaskInput 冗余**：`task.ts` 合并 6 处重复 name/url 检查为统一模式（先 `undefined` 检查再必填检查）。
+6. **CLEANUP — registerEnvironment 类型欺骗**：`environment-acp.ts` 移除 `as "active"` 强制转换，使用实际 record.status。
+7. **CLEANUP — Record<string, unknown> 类型安全**：`user-config.ts` 和 `model.ts` 的 `values`/`set` 变量从 `Record<string, unknown>` 改为 `Partial<...$inferInsert>`，移除 `as` 断言。
+8. 新增 `skill-source-error-status.test.ts`（5 用例），`mcp-server-info.test.ts` 新增 3 用例，`task-validators.test.ts` 新增 3 用例。11 轮累计 164 个测试。

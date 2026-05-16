@@ -91,11 +91,13 @@ function validateCron(cron: string): string | null {
 }
 
 function validateTaskInput(data: CreateTaskInput, isUpdate = false): string | null {
-  if (!isUpdate && (!data.name || data.name.trim().length === 0)) return "任务名称不能为空";
-  if (data.name !== undefined && data.name.trim().length === 0) return "任务名称不能为空";
-  if (data.name && data.name.length > 128) return "任务名称不能超过 128 字符";
-  if (!isUpdate && (!data.url || data.url.trim().length === 0)) return "URL 不能为空";
+  if (data.name !== undefined) {
+    if (data.name.trim().length === 0) return "任务名称不能为空";
+    if (data.name.length > 128) return "任务名称不能超过 128 字符";
+  }
+  if (!isUpdate && !data.name) return "任务名称不能为空";
   if (data.url !== undefined && data.url.trim().length === 0) return "URL 不能为空";
+  if (!isUpdate && !data.url) return "URL 不能为空";
   if (!isUpdate && (!data.cron || data.cron.trim().length === 0)) return "cron 表达式不能为空";
   if (data.cron) {
     const cronErr = validateCron(data.cron);
@@ -251,7 +253,7 @@ export async function toggleTask(userId: string, taskId: string): Promise<Servic
   return { success: true, data: { id: taskId, enabled: newEnabled } };
 }
 
-/** 写入执行日志 + 更新任务状态 + 返回规范化结果（成功/错误路径共用） */
+/** 写入执行日志 + 更新任务状态 + 返回规范化结果（成功/错误路径��用） */
 async function writeLogAndReturn(
   logId: string,
   taskId: string,
@@ -262,23 +264,39 @@ async function writeLogAndReturn(
   resultSummary: string | null,
   now: Date,
 ): Promise<ServiceResult<TaskExecutionLogResponse>> {
-  await taskExecutionLogRepo.create({
-    id: logId,
-    taskId,
-    status,
-    error: errorMsg,
-    duration,
-    triggeredBy,
-    skipReason: null,
-    resultSummary,
-    createdAt: now,
-  });
+  try {
+    await taskExecutionLogRepo.create({
+      id: logId,
+      taskId,
+      status,
+      error: errorMsg,
+      duration,
+      triggeredBy,
+      skipReason: null,
+      resultSummary,
+      createdAt: now,
+    });
+  } catch (err) {
+    logError("[Task] Failed to write execution log for task", taskId, err);
+    return { success: false, error: { code: "NOT_FOUND", message: "执行日志写入失败" } };
+  }
 
   await scheduledTaskRepo.update(taskId, { lastRunAt: now, lastStatus: status, updatedAt: now });
 
-  const logRow = await taskExecutionLogRepo.getById(logId);
-  if (!logRow) return { success: false, error: { code: "NOT_FOUND", message: "执行日志未找到" } };
-  return { success: true, data: sanitizeExecutionLog(logRow) };
+  return {
+    success: true,
+    data: {
+      id: logId,
+      taskId,
+      status,
+      error: errorMsg,
+      duration,
+      triggeredBy,
+      skipReason: null,
+      resultSummary: truncateSummary(resultSummary),
+      createdAt: Math.floor(now.getTime() / 1000),
+    },
+  };
 }
 
 export async function executeTaskById(

@@ -59,7 +59,7 @@ export async function registerEnvironment(req: RegisterEnvironmentRequest & { me
   });
 
   // Session 由 acp-link 管理，RCS 不再创建
-  return { environment_id: record.id, environment_secret: record.secret, status: record.status as "active", session_id: undefined };
+  return { environment_id: record.id, environment_secret: record.secret, status: record.status, session_id: undefined };
 }
 
 /** 旧式 WS 注销 */

@@ -39,7 +39,7 @@ export async function updateModel(
     options?: unknown;
   },
 ) {
-  const set: Record<string, unknown> = { updatedAt: new Date() };
+  const set: Partial<typeof model.$inferInsert> = { updatedAt: new Date() };
   if (data.displayName !== undefined) set.displayName = data.displayName;
   if (data.modalities !== undefined) set.modalities = data.modalities;
   if (data.limitConfig !== undefined) set.limitConfig = data.limitConfig;

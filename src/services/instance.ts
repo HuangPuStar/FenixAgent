@@ -103,11 +103,12 @@ function filterInstances(
 ): SpawnedInstance[] {
   const facade = getCoreRuntime();
   return facade.listInstances()
-    .filter((s) => {
+    .flatMap((s) => {
       const sup = supplements.get(s.instanceId);
-      return sup !== undefined && predicate(s, sup);
-    })
-    .map((s) => toSpawnedInstance(s, supplements.get(s.instanceId)!));
+      if (!sup) return [];
+      if (!predicate(s, sup)) return [];
+      return [toSpawnedInstance(s, sup)];
+    });
 }
 
 export async function spawnInstanceFromEnvironment(

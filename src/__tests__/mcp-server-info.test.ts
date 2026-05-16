@@ -75,4 +75,36 @@ describe("toServerInfo", () => {
     });
     expect(result.timeout).toBe(5000);
   });
+
+  // streamable-http 类型正确识别
+  it("streamable-http 类型正确识别", () => {
+    const result = toServerInfo("stream-server", {
+      type: "streamable-http",
+      config: { type: "streamable-http", url: "https://api.example.com/mcp" },
+      enabled: true,
+    });
+    expect(result.type).toBe("streamable-http");
+    expect(result.summary).toBe("https://api.example.com/mcp");
+  });
+
+  // streamable-http 无 url 时降级
+  it("streamable-http 无 url 时降级为空字符串", () => {
+    const result = toServerInfo("stream-no-url", {
+      type: "streamable-http",
+      config: { type: "streamable-http" },
+      enabled: true,
+    });
+    expect(result.type).toBe("streamable-http");
+    expect(result.summary).toBe("");
+  });
+
+  // 未知类型归为 remote
+  it("未知类型归为 remote", () => {
+    const result = toServerInfo("unknown-server", {
+      type: "custom",
+      config: { type: "custom", url: "https://custom.example.com" },
+      enabled: true,
+    });
+    expect(result.type).toBe("remote");
+  });
 });
