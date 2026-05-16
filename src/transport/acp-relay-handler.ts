@@ -5,7 +5,7 @@ import {
 } from "./acp-ws-handler";
 import { getAcpEventBus } from "./event-bus";
 import type { SessionEvent } from "./event-bus";
-import { environmentRepo } from "../repositories";
+import { getEnvironment } from "../services/environment";
 import { findRunningInstanceByEnvironment, findInstanceBySessionId } from "../services/instance";
 import { getCoreRuntime } from "../services/core-bootstrap";
 import { log, error as logError } from "../logger";
@@ -228,7 +228,7 @@ export async function handleRelayMessage(ws: WsConnection, relayWsId: string, da
     }
 
     if (msg.type === "connect") {
-      const env = await environmentRepo.getById(entry.agentId);
+      const env = await getEnvironment(entry.agentId);
       sendToRelayWs(ws, {
         type: "status",
         payload: { connected: true, capabilities: env?.capabilities ?? null },

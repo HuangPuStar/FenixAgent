@@ -263,3 +263,53 @@ export async function updateWebEnvironment(envId: string, userId: string, params
   await environmentRepo.update(envId, patch);
   return environmentRepo.getById(envId);
 }
+
+// ────────────────────────────────────────────
+// Transport 层专用接口
+// ────────────────────────────────────────────
+
+/** 标记 Environment 为 active 并更新 poll 时间 */
+export async function markEnvironmentActive(envId: string): Promise<void> {
+  await environmentRepo.update(envId, { status: "active", lastPollAt: new Date() });
+}
+
+/** 标记 Environment 为 idle */
+export async function markEnvironmentIdle(envId: string): Promise<void> {
+  await environmentRepo.update(envId, { status: "idle" });
+}
+
+/** 更新 Environment 的 lastPollAt */
+export async function touchEnvironmentPoll(envId: string): Promise<void> {
+  await environmentRepo.update(envId, { lastPollAt: new Date() });
+}
+
+/** 更新 Environment capabilities 和 maxSessions */
+export async function updateEnvironmentCapabilities(
+  envId: string,
+  patch: { capabilities?: Record<string, unknown> | null; maxSessions?: number },
+): Promise<void> {
+  await environmentRepo.update(envId, {
+    capabilities: patch.capabilities ?? undefined,
+    maxSessions: patch.maxSessions,
+  });
+}
+
+/** 创建临时 Environment（非持久化，WS 注册用） */
+export async function createTemporaryEnvironment(params: {
+  secret: string;
+  userId: string;
+  machineName: string;
+  directory?: string;
+  maxSessions?: number;
+  capabilities?: Record<string, unknown>;
+}): Promise<EnvironmentRecord> {
+  return environmentRepo.create({
+    secret: params.secret,
+    userId: params.userId,
+    machineName: params.machineName,
+    workerType: "acp",
+    directory: params.directory,
+    maxSessions: params.maxSessions,
+    capabilities: params.capabilities,
+  });
+}

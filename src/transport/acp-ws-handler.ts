@@ -2,15 +2,22 @@ import type { WsConnection } from "./ws-types";
 import { v4 as uuid } from "uuid";
 import { getAcpEventBus } from "./event-bus";
 import type { SessionEvent } from "./event-bus";
-import { environmentRepo } from "../repositories";
-import { deleteEnvironment } from "../services/environment";
+import {
+  markEnvironmentActive,
+  markEnvironmentIdle,
+  touchEnvironmentPoll,
+  updateEnvironmentCapabilities,
+  createTemporaryEnvironment,
+  getEnvironment,
+  deleteEnvironment,
+} from "../services/environment";
 import { config } from "../config";
 import { log, error as logError } from "../logger";
 
 // Per-connection state
 interface AcpConnectionEntry {
-  agentId: string | null; // Set after register message
-  boundEnvId: string | null; // Set when connected via environment.secret
+  agentId: string | null;
+  boundEnvId: string | null;
   userId: string;
   unsub: (() => void) | null;
   keepalive: ReturnType<typeof setInterval> | null;
@@ -20,12 +27,11 @@ interface AcpConnectionEntry {
   capabilities: Record<string, unknown> | null;
 }
 
-const connections = new Map<string, AcpConnectionEntry>(); // key: wsId
+const connections = new Map<string, AcpConnectionEntry>();
 
 const SERVER_KEEPALIVE_INTERVAL_MS = config.wsKeepaliveInterval * 1000;
 const CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
 
-/** Send a JSON message to a WS connection (NDJSON format) */
 function sendToWs(ws: WsConnection, msg: object): void {
   if (ws.readyState !== 1) return;
   try {
@@ -39,9 +45,8 @@ function sendToWs(ws: WsConnection, msg: object): void {
 export function handleAcpWsOpen(ws: WsConnection, wsId: string, userId: string, boundEnvId?: string | null): void {
   log(`[ACP-WS] Connection opened: wsId=${wsId} userId=${userId}${boundEnvId ? ` boundEnvId=${boundEnvId}` : ""}`);
 
-  // If bound to a persistent environment, mark it active immediately (fire-and-forget)
   if (boundEnvId) {
-    environmentRepo.update(boundEnvId, { status: "active", lastPollAt: new Date() }).catch(() => {});
+    markEnvironmentActive(boundEnvId).catch(() => {});
   }
 
   const keepalive = setInterval(() => {
@@ -75,7 +80,6 @@ export function handleAcpWsOpen(ws: WsConnection, wsId: string, userId: string, 
     capabilities: null,
   });
 
-  // If bound to a persistent environment, subscribe to EventBus immediately
   if (boundEnvId) {
     const bus = getAcpEventBus(boundEnvId);
     const unsub = bus.subscribe((event: SessionEvent) => {
@@ -95,13 +99,9 @@ async function handleRegister(wsId: string, msg: Record<string, unknown>): Promi
   if (!entry) return;
 
   if (entry.agentId) {
-    // Already bound via environment.secret during WS upgrade — acknowledge silently
     if (entry.agentId === entry.boundEnvId) {
       log(`[ACP-WS] Register after bound: agentId=${entry.agentId}, acknowledging`);
-      sendToWs(entry.ws, {
-        type: "registered",
-        agent_id: entry.agentId,
-      });
+      sendToWs(entry.ws, { type: "registered", agent_id: entry.agentId });
       return;
     }
     sendToWs(entry.ws, { type: "error", message: "Already registered" });
@@ -110,49 +110,33 @@ async function handleRegister(wsId: string, msg: Record<string, unknown>): Promi
 
   const agentName = (msg.agent_name as string) || "unknown";
   const capabilities = msg.capabilities as Record<string, unknown> | undefined;
-  const acpLinkVersion = (msg.acp_link_version as string) || null;
   const maxSessions = typeof msg.max_sessions === "number" ? msg.max_sessions : 1;
   const directory = (msg.directory as string) || undefined;
 
-  // If already bound to a persistent environment via environment.secret
   if (entry.boundEnvId) {
-    await environmentRepo.update(entry.boundEnvId, {
-      status: "active",
-      lastPollAt: new Date(),
-      capabilities: capabilities || null,
-      maxSessions,
-    });
+    await markEnvironmentActive(entry.boundEnvId);
+    await updateEnvironmentCapabilities(entry.boundEnvId, { capabilities: capabilities || null, maxSessions });
 
     entry.agentId = entry.boundEnvId;
     entry.capabilities = capabilities || null;
 
-    // Session 由 acp-link 管理，RCS 不再自动创建
-
     log(`[ACP-WS] Bound agent registered: agentId=${entry.boundEnvId} userId=${entry.userId} name=${agentName}`);
-    sendToWs(entry.ws, {
-      type: "registered",
-      agent_id: entry.boundEnvId,
-    });
+    sendToWs(entry.ws, { type: "registered", agent_id: entry.boundEnvId });
     return;
   }
 
-  // Create new EnvironmentRecord (temporary, not bound to persistent env)
-  const record = await environmentRepo.create({
+  const record = await createTemporaryEnvironment({
     secret: `ws_${wsId}`,
     userId: entry.userId,
     machineName: agentName,
-    workerType: "acp",
     directory,
     maxSessions,
     capabilities: capabilities || undefined,
   });
 
-  // Session 由 acp-link 管理，RCS 不再自动创建
-
   entry.agentId = record.id;
   entry.capabilities = capabilities || null;
 
-  // Subscribe to per-agent EventBus — broadcast events to this WS
   const bus = getAcpEventBus(record.id);
   const unsub = bus.subscribe((event: SessionEvent) => {
     if (entry.ws.readyState !== 1) return;
@@ -162,10 +146,7 @@ async function handleRegister(wsId: string, msg: Record<string, unknown>): Promi
   entry.unsub = unsub;
 
   log(`[ACP-WS] Agent registered: agentId=${record.id} userId=${entry.userId} name=${agentName}`);
-  sendToWs(entry.ws, {
-    type: "registered",
-    agent_id: record.id,
-  });
+  sendToWs(entry.ws, { type: "registered", agent_id: record.id });
 }
 
 /** Handle identify message — binds WS to an existing agent registered via REST */
@@ -174,22 +155,17 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
   if (!entry) return;
 
   if (entry.agentId) {
-    // Already bound via environment.secret during WS upgrade — acknowledge silently
     if (entry.agentId === entry.boundEnvId) {
       log(`[ACP-WS] Identify after bound: agentId=${entry.agentId}, acknowledging`);
-      sendToWs(entry.ws, {
-        type: "identified",
-        agent_id: entry.agentId,
-      });
+      sendToWs(entry.ws, { type: "identified", agent_id: entry.agentId });
       return;
     }
     sendToWs(entry.ws, { type: "error", message: "Already identified" });
     return;
   }
 
-  // If already bound via environment.secret, use the bound ID directly
   if (entry.boundEnvId) {
-    await environmentRepo.update(entry.boundEnvId, { status: "active", lastPollAt: new Date() });
+    await markEnvironmentActive(entry.boundEnvId);
 
     const bus = getAcpEventBus(entry.boundEnvId);
     const unsub = bus.subscribe((event: SessionEvent) => {
@@ -200,10 +176,7 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
     entry.unsub = unsub;
 
     log(`[ACP-WS] Bound agent identified: agentId=${entry.boundEnvId} userId=${entry.userId}`);
-    sendToWs(entry.ws, {
-      type: "identified",
-      agent_id: entry.boundEnvId,
-    });
+    sendToWs(entry.ws, { type: "identified", agent_id: entry.boundEnvId });
     return;
   }
 
@@ -213,26 +186,22 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
     return;
   }
 
-  // Look up the environment record
-  const record = await environmentRepo.getById(agentId);
+  const record = await getEnvironment(agentId);
   if (!record || record.workerType !== "acp") {
     sendToWs(entry.ws, { type: "error", message: "Agent not found" });
     return;
   }
 
-  // Verify ownership
   if (record.userId && record.userId !== entry.userId) {
     sendToWs(entry.ws, { type: "error", message: "Agent not owned by you" });
     return;
   }
 
-  // Update status to active
-  await environmentRepo.update(agentId, { status: "active", lastPollAt: new Date() });
+  await markEnvironmentActive(agentId);
 
   entry.agentId = record.id;
   entry.capabilities = record.capabilities || null;
 
-  // Subscribe to per-agent EventBus
   const bus = getAcpEventBus(record.id);
   const unsub = bus.subscribe((event: SessionEvent) => {
     if (entry.ws.readyState !== 1) return;
@@ -242,10 +211,7 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
   entry.unsub = unsub;
 
   log(`[ACP-WS] Agent identified: agentId=${record.id} userId=${entry.userId}`);
-  sendToWs(entry.ws, {
-    type: "identified",
-    agent_id: record.id,
-  });
+  sendToWs(entry.ws, { type: "identified", agent_id: record.id });
 }
 
 /** Called from onMessage — processes NDJSON lines */
@@ -265,15 +231,13 @@ export function handleAcpWsMessage(ws: WsConnection, wsId: string, data: string)
       continue;
     }
 
-    // Handle keepalive (fire-and-forget update)
     if (msg.type === "keep_alive") {
       if (entry.agentId) {
-        environmentRepo.update(entry.agentId, { lastPollAt: new Date() }).catch(() => {});
+        touchEnvironmentPoll(entry.agentId).catch(() => {});
       }
       continue;
     }
 
-    // Handle registration (async)
     if (msg.type === "register") {
       handleRegister(wsId, msg).catch((err) => {
         logError("[ACP-WS] Error in register handler:", err);
@@ -281,7 +245,6 @@ export function handleAcpWsMessage(ws: WsConnection, wsId: string, data: string)
       continue;
     }
 
-    // Handle identify (async)
     if (msg.type === "identify") {
       handleIdentify(wsId, msg).catch((err) => {
         logError("[ACP-WS] Error in identify handler:", err);
@@ -289,16 +252,13 @@ export function handleAcpWsMessage(ws: WsConnection, wsId: string, data: string)
       continue;
     }
 
-    // Not registered yet — reject
     if (!entry.agentId) {
       sendToWs(entry.ws, { type: "error", message: "Not registered. Send register message first." });
       continue;
     }
 
-    // Update agent activity (fire-and-forget)
-    environmentRepo.update(entry.agentId, { lastPollAt: new Date() }).catch(() => {});
+    touchEnvironmentPoll(entry.agentId).catch(() => {});
 
-    // Pass-through: publish to per-agent EventBus as inbound
     const bus = getAcpEventBus(entry.agentId);
     bus.publish({
       id: uuid(),
@@ -318,24 +278,16 @@ export function handleAcpWsClose(ws: WsConnection, wsId: string, code?: number, 
   const duration = Math.round((Date.now() - entry.openTime) / 1000);
   log(`[ACP-WS] Connection closed: wsId=${wsId} agentId=${entry.agentId} code=${code ?? "none"} reason=${reason || "(none)"} duration=${duration}s`);
 
-  if (entry.unsub) {
-    entry.unsub();
-  }
-  if (entry.keepalive) {
-    clearInterval(entry.keepalive);
-  }
+  if (entry.unsub) entry.unsub();
+  if (entry.keepalive) clearInterval(entry.keepalive);
 
-  // Handle agent record cleanup based on binding type
   if (entry.agentId) {
     if (entry.boundEnvId) {
-      // Persistent environment: update status to idle, don't delete (fire-and-forget)
-      environmentRepo.update(entry.agentId, { status: "idle" }).catch(() => {});
+      markEnvironmentIdle(entry.agentId).catch(() => {});
     } else {
-      // Temporary environment: delete record and associated sessions (fire-and-forget)
       deleteEnvironment(entry.agentId).catch(() => {});
     }
 
-    // Notify all relay connections that this agent is gone
     const bus = getAcpEventBus(entry.agentId);
     bus.publish({
       id: uuid(),
@@ -381,7 +333,7 @@ export function closeAllAcpConnections(): void {
       }
       if (entry.agentId) {
         if (entry.boundEnvId) {
-          environmentRepo.update(entry.agentId, { status: "idle" }).catch(() => {});
+          markEnvironmentIdle(entry.agentId).catch(() => {});
         } else {
           deleteEnvironment(entry.agentId).catch(() => {});
         }
