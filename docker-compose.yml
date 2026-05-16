@@ -57,6 +57,7 @@ services:
             RUSTFS_CONSOLE_ENABLE: "true"
             RUSTFS_ACCESS_KEY: rustfsadmin
             RUSTFS_SECRET_KEY: rustfsadmin
+            RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
         volumes:
             - rustfs-data:/data
         depends_on:
