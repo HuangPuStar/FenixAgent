@@ -300,3 +300,43 @@
 修复（1 PERF）：
 1. **PERF — getAgentFullConfig agentConfigId 路径 2 轮→1 轮**：当 `agentConfigId` 存在时，providers/mcpServers/agentConfig/skills 4 路查询从 3+1 串行改为 `Promise.all` 并行；agentConfig 不存在时从内存过滤掉 agent-scoped skills（不再二次查询），减少 spawn 延迟。
 2. 更新 `aggregate-parallel-queries.test.ts`（3 用例）覆盖新的内存过滤逻辑。27 轮累计 285 个测试。
+
+## 2026-05-17 第二十八次审查
+
+审查范围：scheduler.ts、environment-acp.ts、instance.ts 并行化优化
+
+修复（3 PERF）：
+1. **PERF — scheduler.ts skipped 分支串行→并行**：`executeTask` 在任务已在运行时，`createExecutionLog` + `scheduledTaskRepo.update` 从串行 await 改为 `Promise.all`，减少 skipped 日志写入延迟。
+2. **PERF — environment-acp.ts registerBridge existing env 路径串行→并行**：环境更新 + session 列表查询从串行改为 `Promise.all`，减少 Bridge 注册（重连）场景的响应延迟。
+3. **PERF — instance.ts stopAllInstances 串行→并行**：活跃实例停止从 for 循环串行 `await facade.stopInstance` 改为 `Promise.all` 并行，N 个实例停止延迟从 O(N) 降至 O(1)。
+4. 新增 `scheduler-skipped-parallel.test.ts`（3）、`register-bridge-parallel.test.ts`（3）、`stop-all-instances-parallel.test.ts`（4）。28 轮累计 295 个测试。
+
+## 2026-05-17 第二十九次审查
+
+审查范围：task.ts、skill.ts 延迟与冗余优化
+
+修复（2 PERF + 1 DRY）：
+1. **PERF — task.ts writeLogAndReturn 状态更新 fire-and-forget**：`scheduledTaskRepo.update` 是尽力而为操作（catch 不影响返回值），从 `await` 改为 `.catch()` 即发即弃，每次任务执行节省 ~1 次 DB 往返延迟。
+2. **PERF — skill.ts listSkillSources 动态导入→静态导入**：`await import("../repositories")` 每次调用都触发模块解析，改为顶层 `import { environmentRepo }` 消除重复开销。
+3. **DRY — task.ts executeTaskById method 提取**：`task.method?.toUpperCase()` 重复 3 次提取为 `method` 局部变量。
+4. 新增 `write-log-fire-forget.test.ts`（3 用例：不阻塞返回、容忍拒绝、日志失败仍返回 WRITE_ERROR）。29 轮累计 298 个测试。
+
+## 2026-05-17 第三十次审查
+
+审查范围：environment-acp.ts、skill.ts、session.ts 类型安全与导入规范
+
+修复（1 BUG + 2 CLEANUP）：
+1. **BUG — environment-acp.ts `||` 误吞空字符串**：`registerEnvironment` 和 `registerBridge` 中 worker_type/userId 解析从 `||` 改为 `??`，空字符串不再被静默替换为 fallback（3 处）。
+2. **CLEANUP — skill.ts migrateSkillsDir 动态导入合并**：`cp`/`rename` 从运行时 `import()` 改为顶层静态导入（与 mkdir/writeFile/rm 同属 `node:fs/promises`）。
+3. **CLEANUP — session.ts 去除不必要 async**：`updateSessionStatus`/`archiveSession` 中 `bus.publish()` 是同步函数，移除 `async` 关键字。
+4. 新增 `nullish-coalescing-acp.test.ts`（4 用例）。30 轮累计 302 个测试。
+
+## 2026-05-17 第三十一次审查
+
+审查范围：config-pg.ts、skill.ts、instance.ts、task.ts、scheduler.ts、session.ts、environment.ts 及子模块
+
+修复（3 项优化）：
+1. **性能 — instance.ts + environment-web.ts 批量实例分组**：新增 `groupActiveInstancesByEnvironment()` 单次遍历按 envId 分组，替代 `listEnvironmentsWithInstances` 中 N 次 `listInstancesByEnvironment` 调用（每次内部重查 core 全量实例），复杂度从 O(N×M) 降至 O(M)。
+2. **并行 — environment-acp.ts handleAcpIdentify bound 路径**：`markEnvironmentActive`（写 status/poll）与 `getEnvironment`（读 capabilities）无依赖，串行→`Promise.all` 并行。
+3. **清理 — session.ts 移除冗余 Promise.resolve**：`getSession`/`resolveExistingSessionId`/`createSession` 为 async 函数，`async` 自动包装返回值为 Promise，内部 `Promise.resolve()` 多余。
+4. 新增 3 个测试文件共 14 用例（group-instances-batch、acp-identify-parallel、session-async-cleanup）。31 轮累计 316 个测试。
