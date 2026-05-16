@@ -73,14 +73,14 @@ async function executeTask(taskId: string): Promise<void> {
   }
 }
 
-export function scheduleTask(task: { id: string; cron: string; timezone?: string | null; enabled?: boolean }): void {
+export function scheduleTask(task: { id: string; cron: string; timezone?: string | null; enabled?: boolean }): boolean {
   if (activeJobs.has(task.id)) {
     unscheduleTask(task.id);
   }
 
   if (!task.enabled) {
     log(`[Scheduler] Task ${task.id} is disabled, not scheduling`);
-    return;
+    return true;
   }
 
   const handler = () => {
@@ -96,7 +96,7 @@ export function scheduleTask(task: { id: string; cron: string; timezone?: string
 
   if (!job) {
     error(`[Scheduler] Invalid cron expression "${task.cron}" for task ${task.id}, job not created`);
-    return;
+    return false;
   }
 
   activeJobs.set(task.id, { taskId: task.id, job });
@@ -106,6 +106,7 @@ export function scheduleTask(task: { id: string; cron: string; timezone?: string
     .catch((err) => { error(`[Scheduler] Failed to update nextRunAt for task ${task.id}:`, err); });
 
   log(`[Scheduler] Scheduled task ${task.id} with cron "${task.cron}" (tz: ${task.timezone ?? "server-local"})`);
+  return true;
 }
 
 export function unscheduleTask(taskId: string): void {

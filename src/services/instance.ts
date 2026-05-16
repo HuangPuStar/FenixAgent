@@ -259,6 +259,11 @@ export async function stopInstance(id: string, userId: string): Promise<{ ok: bo
   try {
     await facade.stopInstance(id);
     supplements.delete(id);
+    // 清理环境级计数器：无活跃实例时释放 Map 条目
+    const remaining = getRunningInstancesByEnvironment(sup.environmentId);
+    if (remaining.length === 0) {
+      envInstanceCounters.delete(sup.environmentId);
+    }
     log(`[Instance] Stopped instance ${id}`);
     return { ok: true };
   } catch (err: unknown) {

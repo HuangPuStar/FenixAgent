@@ -3,7 +3,7 @@ import { scheduledTaskRepo, taskExecutionLogRepo } from "../repositories/task";
 import type { ScheduledTaskRow, TaskExecutionLogRow, ScheduledTaskInsert } from "../repositories/task";
 import { scheduleTask, rescheduleTask, unscheduleTask } from "./scheduler";
 import { parseJsonb } from "./config/jsonb";
-import { error as logError } from "../logger";
+import { error as logError, log } from "../logger";
 
 function generateTaskId(): string {
   return randomUUID();
@@ -184,7 +184,10 @@ export async function createTask(userId: string, data: CreateTaskInput): Promise
 
   const result = sanitizeTask(row);
   if (result.enabled) {
-    scheduleTask({ id: result.id, cron: result.cron, timezone: result.timezone, enabled: result.enabled });
+    const scheduled = scheduleTask({ id: result.id, cron: result.cron, timezone: result.timezone, enabled: result.enabled });
+    if (!scheduled) {
+      log(`[Task] Task ${result.id} created but cron job not scheduled (invalid cron expression)`);
+    }
   }
 
   return { success: true, data: result };
@@ -225,7 +228,11 @@ export async function updateTask(userId: string, taskId: string, data: UpdateTas
   const row = await scheduledTaskRepo.update(taskId, updates);
   if (!row) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在（更新后未找到）" } };
   const result = sanitizeTask(row);
-  rescheduleTask({ id: result.id, cron: result.cron, timezone: result.timezone, enabled: result.enabled });
+  // 仅在调度相关字段变更时重新调度，避免不必要的 job 中断
+  const schedulingChanged = data.cron !== undefined || data.timezone !== undefined || data.enabled !== undefined;
+  if (schedulingChanged) {
+    rescheduleTask({ id: result.id, cron: result.cron, timezone: result.timezone, enabled: result.enabled });
+  }
 
   return { success: true, data: result };
 }
@@ -243,7 +250,8 @@ export async function toggleTask(userId: string, taskId: string): Promise<Servic
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   const newEnabled = !existing.enabled;
-  await scheduledTaskRepo.update(taskId, { enabled: newEnabled, updatedAt: new Date() });
+  const updated = await scheduledTaskRepo.update(taskId, { enabled: newEnabled, updatedAt: new Date() });
+  if (!updated) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在（更新失败）" } };
 
   if (newEnabled) {
     scheduleTask({ id: taskId, cron: existing.cron, timezone: existing.timezone, enabled: true });
