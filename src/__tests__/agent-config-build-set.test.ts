@@ -1,20 +1,6 @@
 // R35: agent-config.ts buildSetFromData 辅助函数（验证字段映射间接行为）
-import { describe, test, expect, mock } from "bun:test";
-
-// mock 依赖以避免级联导入问题（路径相对于 test 文件位置 src/__tests__/）
-mock.module("../db", () => ({
-  db: { select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }), insert: () => ({ values: () => ({ onConflictDoUpdate: () => Promise.resolve() }) }), update: () => ({ set: () => ({ where: () => Promise.resolve() }) }) },
-}));
-mock.module("../db/schema", () => ({
-  agentConfig: { userId: "user_id", name: "name", id: "id" },
-}));
-mock.module("../services/agent-knowledge", () => ({
-  resolveAgentKnowledgePolicy: () => ({ searchFirst: false, maxResults: 5, defaultNamespaces: [] }),
-}));
-
-const { AGENT_SETTABLE_FIELDS, validateAgentData } = await import(
-  "../services/config/agent-config"
-);
+import { describe, test, expect } from "bun:test";
+import { AGENT_SETTABLE_FIELDS, validateAgentData } from "../services/config/agent-config";
 
 describe("buildSetFromData 字段映射", () => {
   // AGENT_SETTABLE_FIELDS 包含所有可写字段
