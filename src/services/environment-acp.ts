@@ -42,12 +42,13 @@ export interface BridgeRegistrationResult {
 }
 
 /** 旧式 WS 注册（env_ 前缀 secret），保留向后兼容 */
-export async function registerEnvironment(req: RegisterEnvironmentRequest & { metadata?: { worker_type?: string }; username?: string; userId?: string }) {
+export async function registerEnvironment(req: RegisterEnvironmentRequest & { metadata?: { worker_type?: string }; username?: string; userId?: string; teamId?: string }) {
   const secret = `env_${randomBytes(24).toString("hex")}`;
   const workerType = req.worker_type ?? req.metadata?.worker_type;
   const record = await environmentRepo.create({
     secret,
     userId: req.userId ?? "system",
+    teamId: req.teamId,
     machineName: req.machine_name,
     directory: req.directory,
     branch: req.branch,

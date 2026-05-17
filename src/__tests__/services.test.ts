@@ -19,8 +19,25 @@ mock.module("../config", () => ({
 
 import { resetAllRepos, environmentRepo } from "../repositories";
 import { db } from "../db";
-import { user } from "../db/schema";
+import { user, team } from "../db/schema";
 import { eq } from "drizzle-orm";
+
+const TEST_TEAM_ID = "d0000000-0000-0000-0000-000000000004";
+
+async function ensureTeam() {
+  const [existing] = await db.select().from(team).where(eq(team.id, TEST_TEAM_ID));
+  if (!existing) {
+    const now = new Date();
+    await db.insert(team).values({
+      id: TEST_TEAM_ID,
+      name: "Services Test Team",
+      slug: "services-test-team",
+      createdBy: "u1",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
 import {
   createSession,
   getSession,
@@ -121,12 +138,13 @@ describe("Session Service", () => {
 describe("Environment Service", () => {
   beforeEach(async () => {
     await ensureUser("system");
+    await ensureTeam();
     resetAllRepos();
   });
 
   describe("registerEnvironment", () => {
     test("registers environment with defaults", async () => {
-      const result = await registerEnvironment({});
+      const result = await registerEnvironment({ teamId: TEST_TEAM_ID });
       expect(result.environment_id).toMatch(/^env_/);
       expect(result.environment_secret).toMatch(/^env_[0-9a-f]+$/);
       expect(result.status).toBe("active");
@@ -134,6 +152,7 @@ describe("Environment Service", () => {
 
     test("registers with options", async () => {
       const result = await registerEnvironment({
+        teamId: TEST_TEAM_ID,
         machine_name: "mac1",
         directory: "/home/user",
         branch: "main",
@@ -148,7 +167,7 @@ describe("Environment Service", () => {
     });
 
     test("registers with username", async () => {
-      const result = await registerEnvironment({ username: "alice" });
+      const result = await registerEnvironment({ teamId: TEST_TEAM_ID, username: "alice" });
       // username is not persisted in DB, but registration succeeds
       expect(result.environment_id).toMatch(/^env_/);
       expect(result.status).toBe("active");
@@ -157,7 +176,7 @@ describe("Environment Service", () => {
 
   describe("deregisterEnvironment", () => {
     test("sets status to deregistered", async () => {
-      const result = await registerEnvironment({});
+      const result = await registerEnvironment({ teamId: TEST_TEAM_ID });
       await deregisterEnvironment(result.environment_id);
       const env = await getEnvironment(result.environment_id);
       expect(env?.status).toBe("deregistered");
@@ -166,7 +185,7 @@ describe("Environment Service", () => {
 
   describe("updatePollTime", () => {
     test("updates lastPollAt", async () => {
-      const result = await registerEnvironment({});
+      const result = await registerEnvironment({ teamId: TEST_TEAM_ID });
       const before = (await getEnvironment(result.environment_id))?.lastPollAt;
       // Small delay to ensure time difference
       await updatePollTime(result.environment_id);
@@ -178,15 +197,15 @@ describe("Environment Service", () => {
   describe("listActiveEnvironments", () => {
     test("returns active environments", async () => {
       const before = (await listActiveEnvironments()).length;
-      await registerEnvironment({});
-      await registerEnvironment({});
+      await registerEnvironment({ teamId: TEST_TEAM_ID });
+      await registerEnvironment({ teamId: TEST_TEAM_ID });
       expect((await listActiveEnvironments()).length - before).toBe(2);
     });
   });
 
   describe("listActiveEnvironmentsResponse", () => {
     test("returns response format", async () => {
-      const result = await registerEnvironment({ machine_name: "mac1" });
+      const result = await registerEnvironment({ teamId: TEST_TEAM_ID, machine_name: "mac1" });
       const envs = await listActiveEnvironmentsResponse();
       const found = envs.find((e: any) => e.id === result.environment_id);
       expect(found).toBeDefined();
@@ -201,15 +220,15 @@ describe("Environment Service", () => {
       await ensureUser("alice");
       await ensureUser("bob");
       const beforeAlice = (await listActiveEnvironmentsByUsername("alice")).length;
-      await registerEnvironment({ username: "alice", userId: "alice" });
-      await registerEnvironment({ username: "bob", userId: "bob" });
+      await registerEnvironment({ teamId: TEST_TEAM_ID, username: "alice", userId: "alice" });
+      await registerEnvironment({ teamId: TEST_TEAM_ID, username: "bob", userId: "bob" });
       expect((await listActiveEnvironmentsByUsername("alice")).length - beforeAlice).toBe(1);
     });
   });
 
   describe("reconnectEnvironment", () => {
     test("sets status back to active", async () => {
-      const result = await registerEnvironment({});
+      const result = await registerEnvironment({ teamId: TEST_TEAM_ID });
       await deregisterEnvironment(result.environment_id);
       expect((await getEnvironment(result.environment_id))?.status).toBe("deregistered");
       await reconnectEnvironment(result.environment_id);

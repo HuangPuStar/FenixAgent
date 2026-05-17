@@ -9,9 +9,11 @@ mock.module("../config", () => ({
 const { resetAllRepos, environmentRepo } = await import("../repositories");
 const { deleteEnvironment } = await import("../services/environment");
 const { db } = await import("../db");
-const { user } = await import("../db/schema");
+const { user, team } = await import("../db/schema");
 const { eq } = await import("drizzle-orm");
 const { runDisconnectMonitorSweep } = await import("../services/disconnect-monitor");
+
+const TEST_TEAM_ID = "d0000000-0000-0000-0000-000000000001";
 
 async function ensureUser(userId: string) {
   const existing = await db.select().from(user).where(eq(user.id, userId)).limit(1);
@@ -31,10 +33,26 @@ async function ensureUser(userId: string) {
   }
 }
 
+async function ensureTeam() {
+  const [existing] = await db.select().from(team).where(eq(team.id, TEST_TEAM_ID));
+  if (!existing) {
+    const now = new Date();
+    await db.insert(team).values({
+      id: TEST_TEAM_ID,
+      name: "ACP Token Test Team",
+      slug: "acp-token-test-team",
+      createdBy: "u-acp-test",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
 describe("ACP Token Match", () => {
   beforeEach(async () => {
     resetAllRepos();
     await ensureUser("u-acp-test");
+    await ensureTeam();
   });
 
   test("environment.secret can be looked up by secret", async () => {
@@ -42,6 +60,7 @@ describe("ACP Token Match", () => {
       name: `test-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
+      teamId: TEST_TEAM_ID,
       status: "idle",
     });
 
@@ -60,6 +79,7 @@ describe("ACP Token Match", () => {
       name: `persistent-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
+      teamId: TEST_TEAM_ID,
       status: "active",
     });
 
@@ -74,6 +94,7 @@ describe("ACP Token Match", () => {
   test("temporary environment disconnect deletes record", async () => {
     const env = await environmentRepo.create({
       userId: "u-acp-test",
+      teamId: TEST_TEAM_ID,
       status: "active",
     });
 
@@ -87,6 +108,7 @@ describe("ACP Token Match", () => {
       name: `timeout-env-${Date.now()}`,
       workspacePath: "/tmp/ws",
       userId: "u-acp-test",
+      teamId: TEST_TEAM_ID,
       status: "active",
     });
 

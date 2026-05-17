@@ -19,7 +19,7 @@ mock.module("../config", () => ({
 
 import { resetAllRepos, environmentRepo, sessionRepo, workItemRepo } from "../repositories";
 import { db } from "../db";
-import { user } from "../db/schema";
+import { user, team } from "../db/schema";
 import { eq } from "drizzle-orm";
 import {
   createWorkItem,
@@ -30,11 +30,29 @@ import {
   reconnectWorkForEnvironment,
 } from "../services/work-dispatch";
 
+const TEST_TEAM_ID = "d0000000-0000-0000-0000-000000000002";
+
+async function ensureTeam() {
+  const [existing] = await db.select().from(team).where(eq(team.id, TEST_TEAM_ID));
+  if (!existing) {
+    const now = new Date();
+    await db.insert(team).values({
+      id: TEST_TEAM_ID,
+      name: "Work Dispatch Test Team",
+      slug: "work-dispatch-test-team",
+      createdBy: "u1",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
 describe("Work Dispatch", () => {
   let envId: string;
   let sessionId: string;
 
   beforeEach(async () => {
+    process.env.RCS_API_KEYS = "test-api-key";
     resetAllRepos();
     // Ensure user exists for foreign key constraint
     const existing = await db.select().from(user).where(eq(user.id, "u1")).limit(1);
@@ -42,7 +60,8 @@ describe("Work Dispatch", () => {
       const now = new Date();
       await db.insert(user).values({ id: "u1", name: "u1", email: "u1@test.com", emailVerified: false, createdAt: now, updatedAt: now });
     }
-    const env = await environmentRepo.create({ userId: "u1" });
+    await ensureTeam();
+    const env = await environmentRepo.create({ userId: "u1", teamId: TEST_TEAM_ID });
     envId = env.id;
     const session = await sessionRepo.create({ environmentId: envId });
     sessionId = session.id;
@@ -62,7 +81,7 @@ describe("Work Dispatch", () => {
     });
 
     test("throws for inactive environment", async () => {
-      const inactiveEnv = await environmentRepo.create({ userId: "u1" });
+      const inactiveEnv = await environmentRepo.create({ userId: "u1", teamId: TEST_TEAM_ID });
       // Manually set status to deregistered
       await environmentRepo.update(inactiveEnv.id, { status: "deregistered" });
       await expect(createWorkItem(inactiveEnv.id, sessionId)).rejects.toThrow("not active");
@@ -73,7 +92,7 @@ describe("Work Dispatch", () => {
       const item = await workItemRepo.getById(workId);
       const decoded = JSON.parse(Buffer.from(item!.secret, "base64url").toString());
       expect(decoded.version).toBe(1);
-      expect(decoded.session_ingress_token).toBe("test-api-key");
+      expect(decoded.session_ingress_token).toMatch(/^eyJ/);
       expect(decoded.api_base_url).toBe("http://localhost:3000");
     });
   });
@@ -97,7 +116,7 @@ describe("Work Dispatch", () => {
     });
 
     test("does not return work for different environment", async () => {
-      const env2 = await environmentRepo.create({ userId: "u1" });
+      const env2 = await environmentRepo.create({ userId: "u1", teamId: TEST_TEAM_ID });
       await createWorkItem(envId, sessionId);
       const result = await pollWork(env2.id, 0.1);
       expect(result).toBeNull();
@@ -155,7 +174,7 @@ describe("Work Dispatch", () => {
     });
 
     test("returns empty for environment with no sessions", async () => {
-      const emptyEnv = await environmentRepo.create({ userId: "u1" });
+      const emptyEnv = await environmentRepo.create({ userId: "u1", teamId: TEST_TEAM_ID });
       const workIds = await reconnectWorkForEnvironment(emptyEnv.id);
       expect(workIds).toHaveLength(0);
     });

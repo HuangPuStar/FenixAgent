@@ -16,7 +16,18 @@ const TEST_TEAM_ID = "a0000000-0000-0000-0000-000000000002";
 
 mock.module("../services/team", () => ({
   getAuthContext: async () => ({ teamId: TEST_TEAM_ID, userId: "kb-user-1", role: "owner" }),
+    getAuthContextByTeamId: async () => ({ teamId: TEST_TEAM_ID, userId: "kb-user-1", role: "owner" }),
   ensurePersonalTeam: async () => {},
+  listMyTeams: async () => [],
+  getTeamDetail: async () => null,
+  createTeam: async () => null,
+  switchTeam: async () => null,
+  addMember: async () => {},
+  removeMember: async () => false,
+  updateRole: async () => false,
+  getTeamMembers: async () => [],
+  updateTeam: async () => false,
+  deleteTeam: async () => false,
 }));
 
 const { default: Elysia } = await import("elysia");

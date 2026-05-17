@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { apiKey, user } from "../db/schema";
+import { apiKey, user, team } from "../db/schema";
 import {
   createApiKey,
   listApiKeysByUser,
@@ -12,7 +12,7 @@ import {
 
 const TEST_USER_ID = "user_apikey_test";
 const TEST_USER_EMAIL = "apikey-test@rcs.local";
-const TEST_TEAM_ID = "team_apikey_test";
+const TEST_TEAM_ID = "e0000000-0000-0000-0000-000000000001";
 
 async function ensureUser() {
   const existing = await db.select().from(user).where(eq(user.id, TEST_USER_ID)).limit(1);
@@ -28,6 +28,21 @@ async function ensureUser() {
   });
 }
 
+async function ensureTeam() {
+  const [existing] = await db.select().from(team).where(eq(team.id, TEST_TEAM_ID));
+  if (!existing) {
+    const now = new Date();
+    await db.insert(team).values({
+      id: TEST_TEAM_ID,
+      name: "API Key Test Team",
+      slug: "apikey-test-team",
+      createdBy: TEST_USER_ID,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
 async function cleanupApiKeys() {
   try {
     await db.delete(apiKey).where(eq(apiKey.userId, TEST_USER_ID));
@@ -35,6 +50,7 @@ async function cleanupApiKeys() {
 }
 
 await ensureUser();
+await ensureTeam();
 
 describe("API Key Service", () => {
   beforeEach(async () => {

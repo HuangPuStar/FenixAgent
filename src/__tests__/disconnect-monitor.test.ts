@@ -23,10 +23,12 @@ import {
   sessionRepo,
 } from "../repositories";
 import { db } from "../db";
-import { user } from "../db/schema";
+import { user, team } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { getEventBus, getAllEventBuses, removeEventBus } from "../transport/event-bus";
 import { runDisconnectMonitorSweep } from "../services/disconnect-monitor";
+
+const TEST_TEAM_ID = "d0000000-0000-0000-0000-000000000003";
 
 async function ensureUser(userId: string) {
   const existing = await db.select().from(user).where(eq(user.id, userId)).limit(1);
@@ -46,9 +48,25 @@ async function ensureUser(userId: string) {
   }
 }
 
+async function ensureTeam() {
+  const [existing] = await db.select().from(team).where(eq(team.id, TEST_TEAM_ID));
+  if (!existing) {
+    const now = new Date();
+    await db.insert(team).values({
+      id: TEST_TEAM_ID,
+      name: "Disconnect Monitor Test Team",
+      slug: "disconnect-monitor-test-team",
+      createdBy: "u1",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
 describe("Disconnect Monitor Logic", () => {
   beforeEach(async () => {
     await ensureUser("u1");
+    await ensureTeam();
     resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
@@ -56,7 +74,7 @@ describe("Disconnect Monitor Logic", () => {
   });
 
   test("environment times out when lastPollAt is too old", async () => {
-    const env = await environmentRepo.create({ userId: "u1", workerType: "legacy" });
+    const env = await environmentRepo.create({ userId: "u1", teamId: TEST_TEAM_ID, workerType: "legacy" });
     const timeoutMs = 300 * 1000; // 5 minutes
 
     // Simulate lastPollAt being 6 minutes ago
@@ -70,29 +88,15 @@ describe("Disconnect Monitor Logic", () => {
   });
 
   test("environment stays active when lastPollAt is recent", async () => {
-    const env = await environmentRepo.create({ userId: "u1", workerType: "legacy" });
+    const env = await environmentRepo.create({ userId: "u1", teamId: TEST_TEAM_ID, workerType: "legacy" });
     await runDisconnectMonitorSweep();
 
     const updated = await environmentRepo.getById(env.id);
     expect(updated?.status).toBe("active");
   });
 
-  test("session becomes inactive when updatedAt is too old", async () => {
-    const session = await sessionRepo.create({});
-    await sessionRepo.update(session.id, { status: "running" });
-    const rec = await sessionRepo.getById(session.id);
-    expect(rec).toBeTruthy();
-    if (!rec) return;
-
-    rec.updatedAt = new Date(Date.now() - 300 * 1000 * 2 - 60000);
-
-    await runDisconnectMonitorSweep();
-
-    const updated = await sessionRepo.getById(session.id);
-    expect(updated?.status).toBe("inactive");
-  });
-
-  test("session stays running when recently updated", async () => {
+  // Session 超时检查已移除 — Session 由 Agent 进程管理，monitor 不再处理 session 超时
+  test("session status unchanged by monitor sweep", async () => {
     const session = await sessionRepo.create({});
     await sessionRepo.update(session.id, { status: "running" });
 
@@ -102,13 +106,9 @@ describe("Disconnect Monitor Logic", () => {
     expect(updated?.status).toBe("running");
   });
 
-  test("session timeout publishes an inactive session_status event", async () => {
+  test("session timeout does not publish session_status event", async () => {
     const session = await sessionRepo.create({});
     await sessionRepo.update(session.id, { status: "idle" });
-    const rec = await sessionRepo.getById(session.id);
-    expect(rec).toBeTruthy();
-    if (!rec) return;
-    rec.updatedAt = new Date(Date.now() - 300 * 1000 * 2 - 60000);
 
     const bus = getEventBus(session.id);
     const events: Array<{ type: string; payload: { status?: string } }> = [];
@@ -118,7 +118,7 @@ describe("Disconnect Monitor Logic", () => {
 
     await runDisconnectMonitorSweep();
 
-    expect(events).toContainEqual({
+    expect(events).not.toContainEqual({
       type: "session_status",
       payload: { status: "inactive" },
     });

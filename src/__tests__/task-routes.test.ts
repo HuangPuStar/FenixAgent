@@ -1,14 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { scheduledTask, taskExecutionLog, user } from "../db/schema";
+import { scheduledTask, taskExecutionLog, team, teamMember, user } from "../db/schema";
+
+const TEAM_ID = "aaaaaaaa-0000-0000-0000-000000000001";
+const TEST_USER_ID = "test_user";
 
 mock.module("../auth/better-auth", () => ({
   auth: {
     api: {
       getSession: async () => ({
-        user: { id: "test_user", email: "task-routes@test.com", name: "Test" },
-        session: { id: "sess_test", userId: "test_user", token: "tok" },
+        user: { id: TEST_USER_ID, email: "task-routes@test.com", name: "Test" },
+        session: { id: "sess_test", userId: TEST_USER_ID, token: "tok" },
       }),
       signUpEmail: async () => ({}),
     },
@@ -16,8 +19,19 @@ mock.module("../auth/better-auth", () => ({
 }));
 
 mock.module("../services/team", () => ({
-  getAuthContext: async () => ({ teamId: "test-team", userId: "test_user", role: "owner" }),
+  getAuthContext: async () => ({ teamId: TEAM_ID, userId: TEST_USER_ID, role: "owner" }),
+    getAuthContextByTeamId: async () => ({ teamId: TEAM_ID, userId: TEST_USER_ID, role: "owner" }),
   ensurePersonalTeam: async () => {},
+  listMyTeams: async () => [{ id: TEAM_ID, name: "Test Team", slug: "test-team" }],
+  getTeamDetail: async () => null,
+  createTeam: async () => null,
+  switchTeam: async () => null,
+  addMember: async () => {},
+  removeMember: async () => false,
+  updateRole: async () => false,
+  getTeamMembers: async () => [],
+  updateTeam: async () => false,
+  deleteTeam: async () => false,
 }));
 
 const mockScheduleTask = mock(() => {});
@@ -31,8 +45,6 @@ mock.module("../services/scheduler", () => ({
   startScheduler: mock(() => Promise.resolve()),
   stopScheduler: mock(() => {}),
 }));
-
-const TEST_USER_ID = "test_user";
 
 async function ensureUser() {
   const existing = await db.select().from(user).where(eq(user.id, TEST_USER_ID)).limit(1);
@@ -48,19 +60,41 @@ async function ensureUser() {
   });
 }
 
+async function ensureTeam() {
+  const existing = await db.select().from(team).where(eq(team.id, TEAM_ID)).limit(1);
+  if (existing.length > 0) return;
+  const now = new Date();
+  await db.insert(team).values({
+    id: TEAM_ID,
+    name: "Test Team",
+    slug: "test-team-routes",
+    description: null,
+    createdBy: TEST_USER_ID,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(teamMember).values({
+    teamId: TEAM_ID,
+    userId: TEST_USER_ID,
+    role: "owner",
+    joinedAt: now,
+  }).onConflictDoNothing();
+}
+
 async function cleanup() {
   try { await db.delete(taskExecutionLog); } catch {}
-  try { await db.delete(scheduledTask).where(eq(scheduledTask.userId, TEST_USER_ID)); } catch {}
+  try { await db.delete(scheduledTask).where(eq(scheduledTask.teamId, TEAM_ID)); } catch {}
 }
 
 await ensureUser();
+await ensureTeam();
 
 const app = (await import("../routes/web/tasks")).default;
 
 mock.restore();
 
 async function fetchRoute(path: string, options: RequestInit = {}) {
-  return app.fetch(new Request(`http://localhost${path}`, options));
+  return app.fetch(new Request(`http://localhost/web${path}`, options));
 }
 
 async function createTaskViaRoute(overrides: Record<string, unknown> = {}) {

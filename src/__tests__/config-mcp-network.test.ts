@@ -26,7 +26,18 @@ mock.module("../auth/better-auth", () => ({
 
 mock.module("../services/team", () => ({
   getAuthContext: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
+    getAuthContextByTeamId: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
   ensurePersonalTeam: async () => {},
+  listMyTeams: async () => [{ id: "test-team", name: "Test Team", slug: "test-team" }],
+  getTeamDetail: async () => null,
+  createTeam: async () => null,
+  switchTeam: async () => null,
+  addMember: async () => {},
+  removeMember: async () => false,
+  updateRole: async () => false,
+  getTeamMembers: async () => [],
+  updateTeam: async () => false,
+  deleteTeam: async () => false,
 }));
 
 mock.module("../services/config-pg", () => ({
@@ -84,6 +95,7 @@ mock.module("../db/schema", () => ({
 }));
 
 mock.module("drizzle-orm", () => ({
+  sql: (strings: TemplateStringsArray, ...values: any[]) => ({ sql: strings.join("?"), params: values }),
   eq: (_col: string, _val: string) => ({ col: _col, val: _val }),
   and: (..._conds: any[]) => _conds,
 }));

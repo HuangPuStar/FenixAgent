@@ -2,9 +2,12 @@ import { describe, test, expect, mock, beforeEach } from "bun:test";
 
 // ── updateTask 使用 repo.update 返回值（消除冗余 getById 查询）──
 
+const TEAM_ID = "aaaaaaaa-0000-0000-0000-000000000001";
+
 const mockTaskUpdate = mock(async (): Promise<any> => ({
   id: "task_up1",
   userId: "u1",
+  teamId: TEAM_ID,
   name: "updated-task",
   description: "updated desc",
   cron: "*/5 * * * *",
@@ -21,9 +24,10 @@ const mockTaskUpdate = mock(async (): Promise<any> => ({
   updatedAt: new Date(),
 }));
 
-const mockTaskGetByUserAndId = mock(async (): Promise<any> => ({
+const mockTaskGetByTeamAndId = mock(async (): Promise<any> => ({
   id: "task_up1",
   userId: "u1",
+  teamId: TEAM_ID,
   name: "old-task",
   description: null,
   cron: "0 * * * *",
@@ -44,12 +48,12 @@ const mockTaskGetById = mock(async (): Promise<any> => null);
 
 mock.module("../repositories/task", () => ({
   scheduledTaskRepo: {
-    listByUser: mock(async () => []),
+    listByTeam: mock(async () => []),
     getById: mockTaskGetById,
-    getByUserAndId: mockTaskGetByUserAndId,
+    getByTeamAndId: mockTaskGetByTeamAndId,
     create: mock(async (d: any) => d),
     update: mockTaskUpdate,
-    deleteByUserAndId: mock(async () => true),
+    deleteByTeamAndId: mock(async () => true),
     listEnabled: mock(async () => []),
   },
   taskExecutionLogRepo: {
@@ -80,13 +84,13 @@ const { updateTask } = await import("../services/task");
 describe("updateTask uses repo.update return value", () => {
   beforeEach(() => {
     mockTaskUpdate.mockClear();
-    mockTaskGetByUserAndId.mockClear();
+    mockTaskGetByTeamAndId.mockClear();
     mockTaskGetById.mockClear();
   });
 
   // updateTask 应使用 repo.update 的返回值，不再调用 getById
   test("does not call getById after update (uses repo.update return)", async () => {
-    const result = await updateTask("u1", "task_up1", {
+    const result = await updateTask(TEAM_ID, "task_up1", {
       name: "updated-task",
       description: "updated desc",
       cron: "*/5 * * * *",
@@ -99,8 +103,8 @@ describe("updateTask uses repo.update return value", () => {
       expect(result.data.cron).toBe("*/5 * * * *");
     }
 
-    // getByUserAndId 被调用一次（所有权检查）
-    expect(mockTaskGetByUserAndId).toHaveBeenCalledTimes(1);
+    // getByTeamAndId 被调用一次（所有权检查）
+    expect(mockTaskGetByTeamAndId).toHaveBeenCalledTimes(1);
     // update 被调用一次
     expect(mockTaskUpdate).toHaveBeenCalledTimes(1);
     // getById 不应被调用（使用 update 返回值）
@@ -111,7 +115,7 @@ describe("updateTask uses repo.update return value", () => {
   test("returns NOT_FOUND when repo.update returns null", async () => {
     mockTaskUpdate.mockResolvedValueOnce(null);
 
-    const result = await updateTask("u1", "task_missing", { name: "x" });
+    const result = await updateTask(TEAM_ID, "task_missing", { name: "x" });
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -121,7 +125,7 @@ describe("updateTask uses repo.update return value", () => {
 
   // updateTask 正确传递所有字段到 repo.update
   test("passes correct update fields to repo", async () => {
-    await updateTask("u1", "task_up1", {
+    await updateTask(TEAM_ID, "task_up1", {
       name: "new-name",
       url: "http://new-url",
       method: "PUT",

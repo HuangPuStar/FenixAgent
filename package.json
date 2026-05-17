@@ -7,10 +7,12 @@
         "packages/*"
     ],
     "scripts": {
-        "postinstall": "bunx peri-cli install acpx-g && bunx peri-cli add-env",
         "dev": "bun run src/index.ts",
         "dev:web": "cd web && bunx vite",
         "start": "bun run src/index.ts",
+        "db:push": "bunx drizzle-kit push",
+        "db:generate": "bunx drizzle-kit generate",
+        "db:migrate": "bunx drizzle-kit migrate",
         "build:web": "cd web && bunx vite build",
         "preview:web": "cd web && bunx vite preview",
         "typecheck": "tsc --noEmit",

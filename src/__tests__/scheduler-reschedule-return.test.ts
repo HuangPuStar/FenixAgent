@@ -9,6 +9,12 @@ mock.module("node-schedule", () => ({
 }));
 mock.module("../repositories/task", () => ({
   scheduledTaskRepo: { update: mock(async () => {}) },
+  taskExecutionLogRepo: {
+    listByTask: mock(async () => []),
+    listByTaskPaged: mock(async () => ({ rows: [], total: 0 })),
+    create: mock(async () => ({ id: "log_1" })),
+    deleteByTask: mock(async () => {}),
+  },
 }));
 mock.module("../logger", () => ({
   log: mock(),

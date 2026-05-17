@@ -1,19 +1,21 @@
 // 测试 updateTask 仅在调度相关字段变更时重新调度；toggleTask 验证更新结果
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 
+const TEAM_ID = "aaaaaaaa-0000-0000-0000-000000000001";
+
 // mock 依赖
 const mockCreate = mock(async (data: any) => ({ ...data, lastRunAt: null, nextRunAt: null, lastStatus: null }));
-const mockGetByUserAndId = mock(async () => null) as any;
+const mockGetByTeamAndId = mock(async () => null) as any;
 const mockUpdate = mock(async () => null) as any;
 
 mock.module("../repositories/task", () => ({
   scheduledTaskRepo: {
-    listByUser: mock(async () => []),
+    listByTeam: mock(async () => []),
     getById: mock(async () => null),
-    getByUserAndId: mockGetByUserAndId,
+    getByTeamAndId: mockGetByTeamAndId,
     create: mockCreate,
     update: mockUpdate,
-    deleteByUserAndId: mock(async () => true),
+    deleteByTeamAndId: mock(async () => true),
     listEnabled: mock(async () => []),
   },
   taskExecutionLogRepo: {
@@ -41,6 +43,7 @@ describe("updateTask conditional reschedule", () => {
   const baseTask = {
     id: "t1",
     userId: "u1",
+    teamId: TEAM_ID,
     name: "test",
     description: null,
     cron: "0 * * * *",
@@ -60,42 +63,42 @@ describe("updateTask conditional reschedule", () => {
   beforeEach(() => {
     rescheduleCalled = false;
     rescheduleArg = null;
-    mockGetByUserAndId.mockImplementation(async () => ({ ...baseTask }));
+    mockGetByTeamAndId.mockImplementation(async () => ({ ...baseTask }));
     mockUpdate.mockImplementation(async (_id: string, data: any) => ({ ...baseTask, ...data }));
   });
 
   test("reschedules when cron changes", async () => {
-    const result = await updateTask("u1", "t1", { cron: "*/5 * * * *" });
+    const result = await updateTask(TEAM_ID, "t1", { cron: "*/5 * * * *" });
     expect(result.success).toBe(true);
     expect(rescheduleCalled).toBe(true);
   });
 
   test("reschedules when enabled changes", async () => {
-    const result = await updateTask("u1", "t1", { enabled: false });
+    const result = await updateTask(TEAM_ID, "t1", { enabled: false });
     expect(result.success).toBe(true);
     expect(rescheduleCalled).toBe(true);
   });
 
   test("does not reschedule when only name changes", async () => {
-    const result = await updateTask("u1", "t1", { name: "new-name" });
+    const result = await updateTask(TEAM_ID, "t1", { name: "new-name" });
     expect(result.success).toBe(true);
     expect(rescheduleCalled).toBe(false);
   });
 
   test("does not reschedule when only description changes", async () => {
-    const result = await updateTask("u1", "t1", { description: "new desc" });
+    const result = await updateTask(TEAM_ID, "t1", { description: "new desc" });
     expect(result.success).toBe(true);
     expect(rescheduleCalled).toBe(false);
   });
 
   test("does not reschedule when only url changes", async () => {
-    const result = await updateTask("u1", "t1", { url: "http://new.example.com" });
+    const result = await updateTask(TEAM_ID, "t1", { url: "http://new.example.com" });
     expect(result.success).toBe(true);
     expect(rescheduleCalled).toBe(false);
   });
 
   test("reschedules when timezone changes", async () => {
-    const result = await updateTask("u1", "t1", { timezone: "Asia/Tokyo" });
+    const result = await updateTask(TEAM_ID, "t1", { timezone: "Asia/Tokyo" });
     expect(result.success).toBe(true);
     expect(rescheduleCalled).toBe(true);
   });
@@ -105,6 +108,7 @@ describe("toggleTask update verification", () => {
   const baseTask = {
     id: "t1",
     userId: "u1",
+    teamId: TEAM_ID,
     name: "test",
     description: null,
     cron: "0 * * * *",
@@ -122,10 +126,10 @@ describe("toggleTask update verification", () => {
   };
 
   test("returns NOT_FOUND when update returns null (concurrent delete)", async () => {
-    mockGetByUserAndId.mockImplementation(async () => ({ ...baseTask }));
+    mockGetByTeamAndId.mockImplementation(async () => ({ ...baseTask }));
     mockUpdate.mockImplementation(async () => null);
 
-    const result = await toggleTask("u1", "t1");
+    const result = await toggleTask(TEAM_ID, "t1");
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.code).toBe("NOT_FOUND");
@@ -133,10 +137,10 @@ describe("toggleTask update verification", () => {
   });
 
   test("returns success when update succeeds", async () => {
-    mockGetByUserAndId.mockImplementation(async () => ({ ...baseTask }));
+    mockGetByTeamAndId.mockImplementation(async () => ({ ...baseTask }));
     mockUpdate.mockImplementation(async (_id: string, data: any) => ({ ...baseTask, ...data }));
 
-    const result = await toggleTask("u1", "t1");
+    const result = await toggleTask(TEAM_ID, "t1");
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.enabled).toBe(false);

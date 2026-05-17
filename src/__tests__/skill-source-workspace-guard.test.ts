@@ -46,7 +46,7 @@ describe("listSkillSources skips environments without workspacePath", () => {
         { id: "env-2", workspacePath: "/tmp/ws", name: "Web Env", status: "active" },
       ]);
 
-    const sources = await listSkillSources({ teamId: "test-team", userId: "user-1", role: "owner" });
+    const sources = await listSkillSources({ teamId: "f0000000-0000-0000-0000-000000000001", userId: "user-1", role: "owner" });
     // 应只有全局源 + env-2 的 workspace 源
     expect(sources.length).toBe(2); // global + env-2
     expect(sources[0].type).toBe("global");
@@ -62,7 +62,7 @@ describe("listSkillSources skips environments without workspacePath", () => {
         { id: "env-2", workspacePath: undefined, name: "Agent 2", status: "active" },
       ]);
 
-    const sources = await listSkillSources({ teamId: "test-team", userId: "user-1", role: "owner" });
+    const sources = await listSkillSources({ teamId: "f0000000-0000-0000-0000-000000000001", userId: "user-1", role: "owner" });
     expect(sources.length).toBe(1);
     expect(sources[0].type).toBe("global");
   });
@@ -72,7 +72,7 @@ describe("listSkillSources skips environments without workspacePath", () => {
     (environmentRepo.listByUserId as ReturnType<typeof mock>)
       .mockResolvedValueOnce([]);
 
-    const sources = await listSkillSources({ teamId: "test-team", userId: "user-1", role: "owner" });
+    const sources = await listSkillSources({ teamId: "f0000000-0000-0000-0000-000000000001", userId: "user-1", role: "owner" });
     expect(sources.length).toBe(1);
     expect(sources[0].type).toBe("global");
   });

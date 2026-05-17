@@ -16,16 +16,29 @@ mock.module("../auth/better-auth", () => ({
 }));
 
 mock.module("../services/team", () => ({
-  getAuthContext: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
+  getAuthContext: async () => ({ teamId: "d0000000-0000-0000-0000-000000000005", userId: "test-user", role: "owner" }),
+  getAuthContextByTeamId: async () => ({ teamId: "d0000000-0000-0000-0000-000000000005", userId: "test-user", role: "owner" }),
   ensurePersonalTeam: async () => {},
+  listMyTeams: async () => [],
+  getTeamDetail: async () => null,
+  createTeam: async () => null,
+  switchTeam: async () => null,
+  addMember: async () => {},
+  removeMember: async () => false,
+  updateRole: async () => false,
+  getTeamMembers: async () => [],
+  updateTeam: async () => false,
+  deleteTeam: async () => false,
 }));
 
 import Elysia from "elysia";
 import { db } from "../db";
-import { user as userTable } from "../db/schema";
+import { user as userTable, team as teamTable } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { resetAllRepos, environmentRepo, sessionRepo } from "../repositories";
 import { deleteEnvironment } from "../services/environment";
+
+const TEST_TEAM_ID = "d0000000-0000-0000-0000-000000000005";
 
 async function ensureUser() {
     const existing = await db.select().from(userTable).where(eq(userTable.id, "test-user")).limit(1);
@@ -40,7 +53,24 @@ async function ensureUser() {
         updatedAt: now,
     });
 }
+
+async function ensureTeam() {
+    const [existing] = await db.select().from(teamTable).where(eq(teamTable.id, TEST_TEAM_ID));
+    if (!existing) {
+        const now = new Date();
+        await db.insert(teamTable).values({
+            id: TEST_TEAM_ID,
+            name: "Files Route Test Team",
+            slug: "files-route-test-team",
+            createdBy: "test-user",
+            createdAt: now,
+            updatedAt: now,
+        });
+    }
+}
+
 await ensureUser();
+await ensureTeam();
 
 let workspaceDir = "";
 
@@ -62,6 +92,7 @@ describe("Files Route", () => {
         // Create real environment and session with test workspace
         const env = await environmentRepo.create({
             userId: "test-user",
+            teamId: TEST_TEAM_ID,
             workspacePath: workspaceDir,
             status: "active",
         });
@@ -82,7 +113,7 @@ describe("Files Route", () => {
 
     test("default empty path still resolves to user/", async () => {
         await writeFile(join(workspaceDir, "user", "hello.txt"), "Hello World");
-        const res = await request(app, `/web/sessions/${sessionId}/user`);
+        const res = await request(app, `/web/environments/${envId}/user`);
         expect(res.status).toBe(200);
         const body = await res.json();
         const helloFile = body.entries.find(
@@ -99,7 +130,7 @@ describe("Files Route", () => {
         for (const env of await environmentRepo.listByUserId("test-user")) {
             await deleteEnvironment(env.id);
         }
-        const res = await request(app, `/web/sessions/invalid-session/user`, {
+        const res = await request(app, `/web/environments/invalid-session/user`, {
             headers: { "Content-Type": "application/json" },
         });
         expect(res.status).toBe(404);
@@ -108,7 +139,7 @@ describe("Files Route", () => {
     test("PUT /:sessionId/user/* — writes file content", async () => {
         const res = await request(
             app,
-            `/web/sessions/${sessionId}/user/notes.txt`,
+            `/web/environments/${envId}/user/notes.txt`,
             {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -130,7 +161,7 @@ describe("Files Route", () => {
         await writeFile(join(workspaceDir, "user", "readme.md"), "# Readme");
         const res = await request(
             app,
-            `/web/sessions/${sessionId}/user/readme.md`,
+            `/web/environments/${envId}/user/readme.md`,
         );
         expect(res.status).toBe(200);
         const body = await res.json();
@@ -142,7 +173,7 @@ describe("Files Route", () => {
         await writeFile(join(workspaceDir, "user", "temp.txt"), "to delete");
         const res = await request(
             app,
-            `/web/sessions/${sessionId}/user/temp.txt`,
+            `/web/environments/${envId}/user/temp.txt`,
             {
                 method: "DELETE",
             },
@@ -170,7 +201,7 @@ describe("Files Route", () => {
 
         const res = await request(
             app,
-            `/web/sessions/${sessionId}/user?path=.scheduled-runs/task_1/run_1`,
+            `/web/environments/${envId}/user?path=.scheduled-runs/task_1/run_1`,
         );
         expect(res.status).toBe(200);
         const body = await res.json();
@@ -197,7 +228,7 @@ describe("Files Route", () => {
 
         const res = await request(
             app,
-            `/web/sessions/${sessionId}/user/.scheduled-runs/task_1/run_1/report.md`,
+            `/web/environments/${envId}/user/.scheduled-runs/task_1/run_1/report.md`,
         );
         expect(res.status).toBe(200);
         const body = await res.json();
@@ -208,13 +239,13 @@ describe("Files Route", () => {
     test("path traversal is blocked for workspace root and user root", async () => {
         const listRes = await request(
             app,
-            `/web/sessions/${sessionId}/user?path=../../../etc`,
+            `/web/environments/${envId}/user?path=../../../etc`,
         );
         expect(listRes.status).toBe(404);
 
         const putRes = await request(
             app,
-            `/web/sessions/${sessionId}/user/../../../etc/evil.txt`,
+            `/web/environments/${envId}/user/../../../etc/evil.txt`,
             {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -227,7 +258,7 @@ describe("Files Route", () => {
     test("workspace-root write requests are rejected", async () => {
         const putRes = await request(
             app,
-            `/web/sessions/${sessionId}/user/.scheduled-runs/task_1/run_1/report.md`,
+            `/web/environments/${envId}/user/.scheduled-runs/task_1/run_1/report.md`,
             {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -241,7 +272,7 @@ describe("Files Route", () => {
         await mkdir(join(workspaceDir, "user", "subdir"), { recursive: true });
         const res = await request(
             app,
-            `/web/sessions/${sessionId}/user/subdir`,
+            `/web/environments/${envId}/user/subdir`,
             {
                 method: "DELETE",
             },
@@ -252,7 +283,7 @@ describe("Files Route", () => {
     test("path traversal — DELETE with ../ returns 404", async () => {
         const res = await request(
             app,
-            `/web/sessions/${sessionId}/user/../../../etc/passwd`,
+            `/web/environments/${envId}/user/../../../etc/passwd`,
             {
                 method: "DELETE",
             },
@@ -263,7 +294,7 @@ describe("Files Route", () => {
     test("POST /:sessionId/user/* — uploads files", async () => {
         const formData = new FormData();
         formData.append("files", new File(["file content"], "upload.txt"));
-        const res = await request(app, `/web/sessions/${sessionId}/user/`, {
+        const res = await request(app, `/web/environments/${envId}/user/`, {
             method: "POST",
             body: formData,
         });

@@ -15,7 +15,18 @@ mock.module("../auth/better-auth", () => ({
 
 mock.module("../services/team", () => ({
   getAuthContext: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
+    getAuthContextByTeamId: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
   ensurePersonalTeam: async () => {},
+  listMyTeams: async () => [{ id: "test-team", name: "Test Team", slug: "test-team" }],
+  getTeamDetail: async () => null,
+  createTeam: async () => null,
+  switchTeam: async () => null,
+  addMember: async () => {},
+  removeMember: async () => false,
+  updateRole: async () => false,
+  getTeamMembers: async () => [],
+  updateTeam: async () => false,
+  deleteTeam: async () => false,
 }));
 
 // Mock config-pg service

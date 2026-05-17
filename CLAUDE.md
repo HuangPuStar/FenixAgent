@@ -37,9 +37,20 @@ bun run start
 
 # 类型检查
 bun run typecheck
+
+# 数据库 schema 同步（开发环境，直接推送 schema.ts 到 DB）
+bun run db:push
+
+# 生成迁移文件（修改 schema.ts 后执行）
+bun run db:generate --name <描述性名称>
+
+# 应用迁移文件（生产环境）
+bun run db:migrate
 ```
 
-**重要**：后端通过 `serveStatic` 挂载 `web/dist/` 目录（见 `src/index.ts`）。修改任何前端代码后，**必须**执行 `bun run build:web` 重新构建，否则更改不会生效。
+**重要**：
+- 后端通过 `serveStatic` 挂载 `web/dist/` 目录（见 `src/index.ts`）。修改任何前端代码后，**必须**执行 `bun run build:web` 重新构建，否则更改不会生效。
+- `initDb()` 不再包含手写 SQL，只验证数据库连接。所有 schema 变更通过 `bun run db:push`（开发）或 `bun run db:migrate`（生产）同步。**严禁在 `src/db/index.ts` 中添加手写建表 SQL。**
 
 ### 测试
 
