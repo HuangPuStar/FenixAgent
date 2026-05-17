@@ -1,4 +1,11 @@
-import { getHermesClient } from "./hermes-client";
+import { getHermesClient as _getHermesClient } from "./hermes-client";
+
+/** 可替换的 getHermesClient（测试时注入 mock） */
+let _hermesClientGetter = _getHermesClient;
+
+export function setHermesClientGetter(fn: typeof _getHermesClient | null) {
+  _hermesClientGetter = fn ?? _getHermesClient;
+}
 
 export type ChannelProviderType = "wechat" | "feishu";
 
@@ -28,7 +35,7 @@ const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
 ];
 
 export function listChannelProviders(): ChannelProviderDescriptor[] {
-  const hermesClient = getHermesClient();
+  const hermesClient = _hermesClientGetter();
   const hermesStatus = hermesClient?.getStatus();
   const hermesConnected = hermesStatus?.connected ?? false;
   const hermesPlatforms = hermesStatus?.platforms ?? [];
