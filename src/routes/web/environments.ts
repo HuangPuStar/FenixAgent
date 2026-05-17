@@ -9,6 +9,7 @@ import {
   sanitizeResponse,
   listEnvironmentsWithInstances,
 } from "../../services/environment";
+import { ValidationError as AppValidationError } from "../../errors";
 import {
   spawnInstanceFromEnvironment,
   enterEnvironment,
@@ -46,20 +47,28 @@ app.get("/environments", async ({ store, request }) => {
 }, { sessionAuth: true });
 
 /** POST /web/environments — Register a new environment */
-app.post("/environments", async ({ store, body, request }) => {
+app.post("/environments", async ({ store, body, request, error }) => {
   const user = store.user!;
   const authCtx = (await loadTeamContext(user, request))!;
   const b = body as { name: string; description?: string; agentConfigId?: string; autoStart?: boolean; workspacePath: string };
 
-  const record = await createWebEnvironment({
-    name: b.name,
-    description: b.description,
-    agentConfigId: b.agentConfigId,
-    workspacePath: b.workspacePath,
-    autoStart: b.autoStart,
-    userId: user.id,
-    teamId: authCtx.teamId,
-  });
+  let record;
+  try {
+    record = await createWebEnvironment({
+      name: b.name,
+      description: b.description,
+      agentConfigId: b.agentConfigId,
+      workspacePath: b.workspacePath,
+      autoStart: b.autoStart,
+      userId: user.id,
+      teamId: authCtx.teamId,
+    });
+  } catch (err: any) {
+    if (err instanceof AppValidationError || err.code === "VALIDATION_ERROR") {
+      return error(400, { error: { type: "VALIDATION_ERROR", message: err.message } });
+    }
+    throw err;
+  }
 
   if (b.autoStart && record.userId) {
     spawnInstanceFromEnvironment(record.userId, record.id)
@@ -98,6 +107,9 @@ app.put("/environments/:id", async ({ store, params, body, request, error }) => 
   });
   } catch (err: any) {
     if (err.code === "NOT_FOUND") return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+    if (err instanceof AppValidationError || err.code === "VALIDATION_ERROR") {
+      return error(400, { error: { type: "VALIDATION_ERROR", message: err.message } });
+    }
     throw err;
   }
   return sanitizeResponse(updated!);

@@ -345,7 +345,7 @@ describe("Skills Config Route", () => {
     }));
     expect(res.status).toBe(422);
     const json = await res.json();
-    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.type).toBe("validation");
   });
 
   test("upload 冲突时返回 409 和策略", async () => {

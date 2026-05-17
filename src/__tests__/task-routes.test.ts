@@ -91,10 +91,10 @@ async function createTaskViaRoute(overrides: Record<string, unknown> = {}) {
 describe("Task Routes", () => {
   beforeEach(async () => {
     setTestAuth({
-      user: { id: "test-user", email: "test@test.com", name: "Test" },
-      authContext: { teamId: "test-team", userId: "test-user", role: "owner" },
+      user: { id: TEST_USER_ID, email: "task-routes@test.com", name: "Test" },
+      authContext: { teamId: TEAM_ID, userId: TEST_USER_ID, role: "owner" },
     });
-    setTestTeamContext({ teamId: "test-team", userId: "test-user", role: "owner" });
+    setTestTeamContext({ teamId: TEAM_ID, userId: TEST_USER_ID, role: "owner" });
     await cleanup();
     mockScheduleTask.mockClear();
     mockUnscheduleTask.mockClear();

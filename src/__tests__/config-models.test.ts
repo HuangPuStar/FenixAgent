@@ -158,7 +158,7 @@ describe("Models Config Route", () => {
     expect(json.data.count).toBe(2);
   });
 
-  test("未知 action 返回 VALIDATION_ERROR", async () => {
+  test("未知 action 返回验证错误", async () => {
     const res = await modelsRoute.handle(new Request("http://localhost/web/config/models", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -166,7 +166,7 @@ describe("Models Config Route", () => {
     }));
     expect(res.status).toBe(422);
     const json = await res.json();
-    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.type).toBe("validation");
   });
 
   test("get action — 无 permission 返回 null", async () => {

@@ -13,6 +13,9 @@ import {
 const TEST_USER_ID = "user_apikey_test";
 const TEST_USER_EMAIL = "apikey-test@rcs.local";
 const TEST_TEAM_ID = "e0000000-0000-0000-0000-000000000001";
+// 不存在于 DB 的合法 UUID，用于 "not found" 测试
+const OTHER_TEAM_ID = "e0000000-0000-0000-0000-000000000099";
+const OTHER_KEY_ID = "00000000-0000-0000-0000-000000000099";
 
 async function ensureUser() {
   const existing = await db.select().from(user).where(eq(user.id, TEST_USER_ID)).limit(1);
@@ -109,7 +112,7 @@ describe("API Key Service", () => {
     });
 
     test("returns empty for user with no keys", async () => {
-      const keys = await listApiKeysByUser("team_no_keys_xyz");
+      const keys = await listApiKeysByUser(OTHER_TEAM_ID);
       expect(keys).toHaveLength(0);
     });
   });
@@ -124,13 +127,13 @@ describe("API Key Service", () => {
     });
 
     test("returns false for non-existent key", async () => {
-      const deleted = await deleteApiKey(TEST_TEAM_ID, "key_nonexistent");
+      const deleted = await deleteApiKey(TEST_TEAM_ID, OTHER_KEY_ID);
       expect(deleted).toBe(false);
     });
 
     test("returns false when deleting another user's key", async () => {
       const { record } = await createApiKey(TEST_USER_ID, "owned", TEST_TEAM_ID);
-      const deleted = await deleteApiKey("team_other_xyz", record.id);
+      const deleted = await deleteApiKey(OTHER_TEAM_ID, record.id);
       expect(deleted).toBe(false);
     });
   });
@@ -145,13 +148,13 @@ describe("API Key Service", () => {
     });
 
     test("returns false for non-existent key", async () => {
-      const updated = await updateApiKeyLabel(TEST_TEAM_ID, "key_nonexistent", "label");
+      const updated = await updateApiKeyLabel(TEST_TEAM_ID, OTHER_KEY_ID, "label");
       expect(updated).toBe(false);
     });
 
     test("returns false when updating another user's key", async () => {
       const { record } = await createApiKey(TEST_USER_ID, "owned", TEST_TEAM_ID);
-      const updated = await updateApiKeyLabel("team_other_xyz", record.id, "hacked");
+      const updated = await updateApiKeyLabel(OTHER_TEAM_ID, record.id, "hacked");
       expect(updated).toBe(false);
     });
   });

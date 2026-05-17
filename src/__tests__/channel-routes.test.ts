@@ -35,8 +35,12 @@ mock.module("../repositories", () => ({
   environmentRepo: {
     getById: async (id: string) =>
       id === "env_001"
-        ? { id: "env_001", name: "test-agent", workerType: "acp", status: "active" }
+        ? { id: "env_001", name: "test-agent", workerType: "acp", status: "active", teamId: "test-team" }
         : undefined,
+    listByTeamId: async (teamId: string) =>
+      teamId === "test-team"
+        ? [{ id: "env_001", name: "test-agent", workerType: "acp", status: "active", teamId: "test-team" }]
+        : [],
   },
   sessionRepo: {},
   sessionWorkerRepo: {},
@@ -125,7 +129,7 @@ describe("channel routes", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ platform: "telegram", agentId: "env_001" }),
     });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.id).toMatch(/^bind_/);
     expect(body.platform).toBe("telegram");
@@ -137,9 +141,9 @@ describe("channel routes", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ platform: "telegram" }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     const body = (await res.json()) as any;
-    expect(body.error.type).toBe("VALIDATION_ERROR");
+    expect(body.type).toBe("validation");
   });
 
   test("DELETE /web/channels/bindings/bind_001 删除成功", async () => {

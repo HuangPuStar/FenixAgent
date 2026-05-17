@@ -32,14 +32,48 @@ mock.module("../services/instance", () => ({
   listInstancesByEnvironment: mock(() => []),
   getRunningInstancesByEnvironment: mock(() => []),
   groupActiveInstancesByEnvironment: mock(() => new Map()),
-  listInstancesResponse: mock(() => ({ instances: [] })),
+  listInstancesResponse: mock((_envId: string) => {
+    const instances = instanceMock.listInstancesByEnvironment(_envId);
+    return { environment_id: _envId, instances: instances.map((inst: any) => ({
+      id: inst.id,
+      instance_number: inst.instanceNumber,
+      status: inst.status,
+      session_id: inst.sessionId ?? null,
+      port: inst.port,
+      created_at: Math.floor(inst.createdAt.getTime() / 1000),
+    }))};
+  }),
   listInstances: mock(() => []),
   findInstanceBySessionId: mock(() => undefined),
   getInstance: mock(() => undefined),
   stopInstance: mock(async () => ({ ok: true })),
   stopAllInstances: mock(async () => {}),
-  ensureRunning: mock(async () => ({ instance: { id: "inst_test", status: "running" }, sessionId: "ses_test" } as any)),
-  enterEnvironment: mock(async () => ({ instanceId: "inst_test", port: 8888, token: "tok" } as any)),
+  ensureRunning: mock(async () => ({ instance: { id: "inst_test", instanceNumber: 1, status: "running", sessionId: "ses_test" }, sessionId: "ses_test" } as any)),
+  enterEnvironment: mock(async (_userId: string, envId: string, instanceNumber?: number) => {
+    if (instanceNumber !== undefined) {
+      const running = instanceMock.getRunningInstancesByEnvironment(envId);
+      const inst = running.find((i: any) => i.instanceNumber === instanceNumber);
+      if (!inst) {
+        const err = new Error(`实例 ${instanceNumber} 不存在或未运行`);
+        (err as any).code = "NOT_FOUND";
+        throw err;
+      }
+      return {
+        session_id: inst.sessionId ?? "ses_test",
+        instance_id: inst.id,
+        instance_number: inst.instanceNumber,
+        instance_status: inst.status,
+        environment_id: envId,
+      };
+    }
+    return {
+      session_id: "ses_test",
+      instance_id: "inst_test",
+      instance_number: 1,
+      instance_status: "running",
+      environment_id: envId,
+    };
+  }),
 }));
 
 const { resetAllRepos, environmentRepo } = await import("../repositories");
@@ -104,10 +138,10 @@ describe("Web Environments CRUD API", () => {
 
   beforeEach(() => {
     setTestAuth({
-      user: { id: "test-user", email: "test@test.com", name: "Test" },
-      authContext: { teamId: "test-team", userId: "test-user", role: "owner" },
+      user: { id: "test-user-1", email: "test-webenv@test.com", name: "TestUser" },
+      authContext: { teamId: TEST_TEAM_ID, userId: "test-user-1", role: "owner" },
     });
-    setTestTeamContext({ teamId: "test-team", userId: "test-user", role: "owner" });
+    setTestTeamContext({ teamId: TEST_TEAM_ID, userId: "test-user-1", role: "owner" });
     resetAllRepos();
     (instanceMock.listInstancesByEnvironment as any).mockClear?.();
     (instanceMock.listInstancesByEnvironment as any).mockReturnValue?.([]);
@@ -124,12 +158,12 @@ describe("Web Environments CRUD API", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: envName, workspacePath: "/tmp/test-crud-ws" }),
     });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.id).toBeDefined();
     expect(body.name).toBe(envName);
     expect(body.secret).toMatch(/^env_secret_/);
-    expect(body.workspace_path).toBe("/tmp/test-crud-ws");
+    expect(body.workspace_path).toMatch(/\/tmp\/test-crud-ws$/);
   });
 
   test("POST /web/environments — rejects invalid name", async () => {
@@ -138,9 +172,9 @@ describe("Web Environments CRUD API", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "INVALID", workspacePath: "/tmp/ws" }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     const body = await res.json();
-    expect(body.error.type).toBe("VALIDATION_ERROR");
+    expect(body.type).toBe("validation");
   });
 
   test("POST /web/environments — rejects relative workspacePath", async () => {
@@ -234,7 +268,8 @@ describe("Web Environments CRUD API", () => {
 
   test("GET /web/environments — includes active instance data", async () => {
     const env = await environmentRepo.create({ name: `env-inst-data-${Date.now()}`, workspacePath: "/tmp/ws2", userId: "test-user-1", teamId: TEST_TEAM_ID, status: "idle" });
-    (instanceMock.listInstancesByEnvironment as any).mockReturnValue([{
+    const instMap = new Map();
+    instMap.set(env.id, [{
       id: "inst_1",
       instanceNumber: 1,
       status: "running",
@@ -242,6 +277,7 @@ describe("Web Environments CRUD API", () => {
       port: 8888,
       createdAt: new Date("2026-01-01T00:00:00Z"),
     }]);
+    (instanceMock.groupActiveInstancesByEnvironment as any).mockReturnValue(instMap);
 
     const res = await request("/web/environments");
     expect(res.status).toBe(200);

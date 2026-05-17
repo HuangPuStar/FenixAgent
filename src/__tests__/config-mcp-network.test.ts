@@ -54,6 +54,14 @@ mock.module("../db", () => ({
     select: mockSelect,
     delete: mockDelete,
     insert: mockInsert,
+    transaction: async (fn: (tx: any) => Promise<any>) => {
+      // 模拟事务：直接执行 fn，传入 mock db 作为 tx
+      const tx = {
+        delete: mockDelete,
+        insert: mockInsert,
+      };
+      return fn(tx);
+    },
   },
 }));
 
