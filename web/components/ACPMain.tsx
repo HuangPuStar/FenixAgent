@@ -65,14 +65,21 @@ export function ACPMain({ client, agentId, initialCwd, readonly, rcsSessionId }:
     }
   }, [agentId, cwd]);
 
-  // When capabilities arrive (supportsSessionList flips to true), trigger bootstrap immediately
+  // When capabilities arrive via ACP event (not React getter), bump bootstrap attempt once.
+  // This avoids the infinite loop caused by depending on a getter that returns true on every render.
   useEffect(() => {
-    if (!cwdReady || bootstrappedRef.current) return;
-    if (client.getState() !== "connected") return;
-    if (!client.supportsSessionList) return;
-    // Capabilities just became available — bump bootstrapAttempt to re-trigger the bootstrap effect
-    setBootstrapAttempt((prev) => prev + 1);
-  }, [cwdReady, client, client.supportsSessionList]);
+    if (!cwdReady) return;
+    const onCaps = () => {
+      if (bootstrappedRef.current) return;
+      if (client.getState() !== "connected") return;
+      if (!client.supportsSessionList) return;
+      setBootstrapAttempt((prev) => prev + 1);
+    };
+    client.state.on("capabilitiesChange", onCaps);
+    // Also check immediately in case capabilities already arrived before listener was registered
+    onCaps();
+    return () => client.state.off("capabilitiesChange", onCaps);
+  }, [cwdReady, client]);
 
   // Handle session selection
   const handleSelectSession = useCallback(async (session: AgentSessionInfo) => {
@@ -275,6 +282,18 @@ function SidebarSessionList({
     if (client.getState() === "connected" && client.supportsSessionList) {
       loadSessions();
     }
+  }, [client, cwdReady, loadSessions]);
+
+  // When capabilities arrive via ACP event, load sessions
+  useEffect(() => {
+    if (!cwdReady) return;
+    const onCaps = () => {
+      if (client.supportsSessionList) {
+        loadSessions();
+      }
+    };
+    client.state.on("capabilitiesChange", onCaps);
+    return () => client.state.off("capabilitiesChange", onCaps);
   }, [client, cwdReady, loadSessions]);
 
   useEffect(() => {

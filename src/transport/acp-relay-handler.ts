@@ -28,6 +28,7 @@ interface RelayConnectionEntry {
 }
 
 const relayConnections = new Map<string, RelayConnectionEntry>();
+let isShuttingDown = false;
 
 const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
 
@@ -293,7 +294,9 @@ export function handleRelayClose(ws: WsConnection, relayWsId: string, code?: num
   relayConnections.delete(relayWsId);
 
   // 如果这是最后一个使用此 instanceId 的 relay 连接，关闭 core relay handle 避免僵尸 WS
-  if (instanceId) {
+  // shutdown 期间跳过：closeAllRelayConnections 已经关闭了 relayHandle，
+  // 此处如果再 connectInstanceRelay 会创建新的 WS 连接，导致关闭时出现幽灵 relay
+  if (instanceId && !isShuttingDown) {
     const hasOtherRelay = [...relayConnections.values()].some(
       (e) => e.instanceId === instanceId,
     );
@@ -318,6 +321,7 @@ export function handleRelayClose(ws: WsConnection, relayWsId: string, code?: num
 export function closeAllRelayConnections(): void {
   if (relayConnections.size === 0) return;
 
+  isShuttingDown = true;
   log(`[ACP-Relay] Closing ${relayConnections.size} relay connection(s)...`);
   for (const [relayWsId, entry] of relayConnections) {
     try {
