@@ -57,14 +57,24 @@ export interface IKnowledgeResourceRepo {
 export interface IAgentKnowledgeBindingRepo {
   listByAgentName(agentName: string): Promise<AgentKnowledgeBindingRow[]>;
   listEnabledByAgentName(agentName: string): Promise<AgentKnowledgeBindingRow[]>;
+  listByAgentConfigId(agentConfigId: string): Promise<AgentKnowledgeBindingRow[]>;
+  listEnabledByAgentConfigId(agentConfigId: string): Promise<AgentKnowledgeBindingRow[]>;
   listByKnowledgeBaseId(knowledgeBaseId: string): Promise<AgentKnowledgeBindingRow[]>;
   countByKnowledgeBaseId(knowledgeBaseId: string): Promise<number>;
   countByKnowledgeBaseIds(knowledgeBaseIds: string[]): Promise<Record<string, number>>;
   create(data: AgentKnowledgeBindingInsert): Promise<AgentKnowledgeBindingRow>;
   createMany(dataList: AgentKnowledgeBindingInsert[]): Promise<void>;
   deleteByAgentName(agentName: string): Promise<void>;
+  deleteByAgentConfigId(agentConfigId: string): Promise<void>;
   deleteByKnowledgeBaseId(knowledgeBaseId: string): Promise<void>;
   listJoinedWithKnowledgeBase(agentName: string): Promise<Array<AgentKnowledgeBindingRow & {
+    kbId: string;
+    kbRemoteId: string | null;
+    kbRemoteAccountId: string | null;
+    kbRemoteUserId: string | null;
+    kbUserId: string;
+  }>>;
+  listJoinedWithKnowledgeBaseByConfigId(agentConfigId: string): Promise<Array<AgentKnowledgeBindingRow & {
     kbId: string;
     kbRemoteId: string | null;
     kbRemoteAccountId: string | null;
@@ -236,6 +246,17 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
       .where(and(eq(agentKnowledgeBinding.agentName, agentName), eq(agentKnowledgeBinding.enabled, true)));
   }
 
+  async listByAgentConfigId(agentConfigId: string) {
+    return db.select().from(agentKnowledgeBinding)
+      .where(eq(agentKnowledgeBinding.agentConfigId, agentConfigId))
+      .orderBy(agentKnowledgeBinding.priority);
+  }
+
+  async listEnabledByAgentConfigId(agentConfigId: string) {
+    return db.select().from(agentKnowledgeBinding)
+      .where(and(eq(agentKnowledgeBinding.agentConfigId, agentConfigId), eq(agentKnowledgeBinding.enabled, true)));
+  }
+
   async listByKnowledgeBaseId(knowledgeBaseId: string) {
     return db.select().from(agentKnowledgeBinding)
       .where(eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBaseId));
@@ -275,6 +296,10 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
     await db.delete(agentKnowledgeBinding).where(eq(agentKnowledgeBinding.agentName, agentName));
   }
 
+  async deleteByAgentConfigId(agentConfigId: string) {
+    await db.delete(agentKnowledgeBinding).where(eq(agentKnowledgeBinding.agentConfigId, agentConfigId));
+  }
+
   async deleteByKnowledgeBaseId(knowledgeBaseId: string) {
     await db.delete(agentKnowledgeBinding).where(eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBaseId));
   }
@@ -297,6 +322,27 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
       .from(agentKnowledgeBinding)
       .innerJoin(knowledgeBase, eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBase.id))
       .where(and(eq(agentKnowledgeBinding.agentName, agentName), eq(agentKnowledgeBinding.enabled, true)));
+  }
+
+  async listJoinedWithKnowledgeBaseByConfigId(agentConfigId: string) {
+    return db.select({
+      id: agentKnowledgeBinding.id,
+      agentName: agentKnowledgeBinding.agentName,
+      agentConfigId: agentKnowledgeBinding.agentConfigId,
+      knowledgeBaseId: agentKnowledgeBinding.knowledgeBaseId,
+      priority: agentKnowledgeBinding.priority,
+      enabled: agentKnowledgeBinding.enabled,
+      createdAt: agentKnowledgeBinding.createdAt,
+      updatedAt: agentKnowledgeBinding.updatedAt,
+      kbId: knowledgeBase.id,
+      kbRemoteId: knowledgeBase.remoteId,
+      kbRemoteAccountId: knowledgeBase.remoteAccountId,
+      kbRemoteUserId: knowledgeBase.remoteUserId,
+      kbUserId: knowledgeBase.userId,
+    })
+      .from(agentKnowledgeBinding)
+      .innerJoin(knowledgeBase, eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBase.id))
+      .where(and(eq(agentKnowledgeBinding.agentConfigId, agentConfigId), eq(agentKnowledgeBinding.enabled, true)));
   }
 
   async getResourceWithKnowledgeBase(resourceId: string) {

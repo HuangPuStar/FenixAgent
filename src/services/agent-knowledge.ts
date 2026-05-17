@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   agentKnowledgeBindingRepo,
   knowledgeBaseRepo,
@@ -35,7 +35,7 @@ const DEFAULT_SEARCH_FIRST = true;
 const DEFAULT_MAX_RESULTS = 5;
 
 function generateBindingId(): string {
-  return `akb_${randomBytes(8).toString("hex")}`;
+  return randomUUID();
 }
 
 function normalizeKnowledgeBaseIds(knowledgeBaseIds: string[] | undefined): string[] {
@@ -125,6 +125,59 @@ export async function syncAgentKnowledgeBindings(
     knowledgeBaseIds.map((knowledgeBaseId, priority) => ({
       id: generateBindingId(),
       agentName,
+      knowledgeBaseId,
+      priority,
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+    })),
+  );
+}
+
+/**
+ * Lists enabled knowledge base bindings for an agent config in priority order.
+ */
+export async function listAgentKnowledgeBindingsById(agentConfigId: string): Promise<AgentKnowledgeBindingRecord[]> {
+  const rows = await agentKnowledgeBindingRepo.listEnabledByAgentConfigId(agentConfigId);
+  return rows.map((row) => ({
+    knowledgeBaseId: row.knowledgeBaseId,
+    priority: row.priority,
+    enabled: row.enabled,
+  }));
+}
+
+/**
+ * Replaces all agent knowledge bindings for an agent config with the provided ordered knowledge base ids.
+ */
+export async function syncAgentKnowledgeBindingsById(
+  teamId: string,
+  agentConfigId: string,
+  knowledge: AgentKnowledgeConfig | null | undefined,
+): Promise<void> {
+  const knowledgeBaseIds = normalizeKnowledgeBaseIds(knowledge?.knowledgeBaseIds);
+  await agentKnowledgeBindingRepo.deleteByAgentConfigId(agentConfigId);
+
+  if (knowledgeBaseIds.length === 0) {
+    return;
+  }
+
+  const existingIds = new Set<string>();
+  for (const kbId of knowledgeBaseIds) {
+    const kb = await knowledgeBaseRepo.getByTeamAndId(teamId, kbId);
+    if (kb) {
+      existingIds.add(kb.id);
+    }
+  }
+  const missingIds = knowledgeBaseIds.filter((id) => !existingIds.has(id));
+  if (missingIds.length > 0) {
+    throw new InvalidKnowledgeBindingError(`知识库不存在或无权限访问: ${missingIds.join(", ")}`);
+  }
+
+  const now = new Date();
+  await agentKnowledgeBindingRepo.createMany(
+    knowledgeBaseIds.map((knowledgeBaseId, priority) => ({
+      id: generateBindingId(),
+      agentConfigId,
       knowledgeBaseId,
       priority,
       enabled: true,

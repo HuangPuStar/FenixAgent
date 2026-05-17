@@ -1,7 +1,7 @@
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@mothership/plugin-sdk";
 import type { AgentFullConfig } from "./config-pg";
 import { getBaseUrl } from "../config";
-import { listAgentKnowledgeBindings } from "./agent-knowledge";
+import { listAgentKnowledgeBindings, listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import { log } from "../logger";
 
 function inferProtocol(npm?: string | null): "openai" | "anthropic" {
@@ -98,6 +98,7 @@ function resolveModelConfig(
 export interface BuildLaunchSpecInput {
   workspacePath: string;
   agentName: string;
+  agentConfigId?: string | null;
   agentPrompt?: string | null;
   modelRef?: string | null;
   fullConfig: AgentFullConfig;
@@ -105,7 +106,7 @@ export interface BuildLaunchSpecInput {
 }
 
 export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<AgentLaunchSpec> {
-  const { workspacePath, agentName, agentPrompt, modelRef, fullConfig, environmentSecret } = input;
+  const { workspacePath, agentName, agentConfigId, agentPrompt, modelRef, fullConfig, environmentSecret } = input;
 
   const agent = {
     name: agentName,
@@ -131,7 +132,9 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     }
   }
 
-  const knowledgeBindings = await listAgentKnowledgeBindings(agentName);
+  const knowledgeBindings = agentConfigId
+    ? await listAgentKnowledgeBindingsById(agentConfigId)
+    : await listAgentKnowledgeBindings(agentName);
   if (knowledgeBindings.length > 0) {
     mcpServers.push({
       name: "kb",

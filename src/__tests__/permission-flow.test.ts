@@ -18,16 +18,27 @@ mock.module("../auth/better-auth", () => ({
 
 mock.module("../services/team", () => ({
   getAuthContext: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
+  getAuthContextByTeamId: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
   ensurePersonalTeam: async () => {},
+  listMyTeams: async () => [{ id: "test-team", name: "Test Team", slug: "test-team" }],
+  getTeamDetail: async () => null,
+  createTeam: async () => null,
+  switchTeam: async () => null,
+  addMember: async () => {},
+  removeMember: async () => false,
+  updateRole: async () => false,
+  getTeamMembers: async () => [],
+  updateTeam: async () => false,
+  deleteTeam: async () => false,
 }));
 
 mock.module("../services/config-pg", () => ({
   listAgentConfigs: async (_ctx: any) => {
-    return Object.entries(_agentStore).map(([name, cfg]) => ({ name, ...cfg }));
+    return Object.entries(_agentStore).map(([name, cfg]) => ({ id: `ac_${name}`, name, ...cfg }));
   },
   getAgentConfig: async (_ctx: any, name: string) => {
     const cfg = _agentStore[name];
-    return cfg ? { name, ...cfg } : null;
+    return cfg ? { id: `ac_${name}`, name, ...cfg } : null;
   },
   createAgentConfig: async (_ctx: any, name: string, data: Record<string, unknown>) => {
     _agentStore[name] = { ...data };
@@ -57,8 +68,8 @@ mock.module("../services/config-pg", () => ({
 
 mock.module("../services/agent-knowledge", () => ({
   InvalidKnowledgeBindingError: class InvalidKnowledgeBindingError extends Error {},
-  syncAgentKnowledgeBindings: async () => {},
-  listAgentKnowledgeBindings: async () => [],
+  syncAgentKnowledgeBindingsById: async () => {},
+  listAgentKnowledgeBindingsById: async () => [],
   resolveAgentKnowledgePolicy: () => ({ searchFirst: true, maxResults: 5, defaultNamespaces: [] }),
 }));
 

@@ -16,12 +16,24 @@ const TEST_TEAM_ID = "a0000000-0000-0000-0000-000000000001";
 
 mock.module("../services/team", () => ({
   getAuthContext: async () => ({ teamId: TEST_TEAM_ID, userId: "kb-user-1", role: "owner" }),
+  getAuthContextByTeamId: async () => ({ teamId: TEST_TEAM_ID, userId: "kb-user-1", role: "owner" }),
   ensurePersonalTeam: async () => {},
+  listMyTeams: async () => [{ id: TEST_TEAM_ID, name: "KB Test Team", slug: "kb-test-team" }],
+  getTeamDetail: async () => null,
+  createTeam: async () => null,
+  switchTeam: async () => null,
+  addMember: async () => {},
+  removeMember: async () => false,
+  updateRole: async () => false,
+  getTeamMembers: async () => [],
+  updateTeam: async () => false,
+  deleteTeam: async () => false,
 }));
 
 const { default: Elysia } = await import("elysia");
 const { db } = await import("../db");
 const {
+  agentConfig,
   agentKnowledgeBinding,
   knowledgeBase,
   knowledgeResource,
@@ -102,6 +114,7 @@ describe("Knowledge base routes", () => {
     await db.delete(agentKnowledgeBinding);
     await db.delete(knowledgeResource);
     await db.delete(knowledgeBase);
+    await db.delete(agentConfig);
     await db.delete(user).where(eq(user.id, "kb-user-1"));
     await db.delete(user).where(eq(user.id, "other-user"));
     await ensureUser();
@@ -163,6 +176,7 @@ describe("Knowledge base routes", () => {
       updatedAt: now,
     }).returning();
     await db.insert(agentKnowledgeBinding).values({
+      agentConfigId: null,
       agentName: "build",
       knowledgeBaseId: kbA.id,
       priority: 0,

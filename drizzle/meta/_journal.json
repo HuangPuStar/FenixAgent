@@ -57,6 +57,13 @@
       "when": 1779006701910,
       "tag": "0007_team_layer_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779009474155,
+      "tag": "0008_agent_knowledge_binding_agent_config_id",
+      "breakpoints": true
     }
   ]
 }

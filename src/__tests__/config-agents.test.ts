@@ -19,16 +19,27 @@ mock.module("../auth/better-auth", () => ({
 
 mock.module("../services/team", () => ({
   getAuthContext: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
+  getAuthContextByTeamId: async () => ({ teamId: "test-team", userId: "test-user", role: "owner" }),
   ensurePersonalTeam: async () => {},
+  listMyTeams: async () => [{ id: "test-team", name: "Test Team", slug: "test-team" }],
+  getTeamDetail: async () => null,
+  createTeam: async () => null,
+  switchTeam: async () => null,
+  addMember: async () => {},
+  removeMember: async () => false,
+  updateRole: async () => false,
+  getTeamMembers: async () => [],
+  updateTeam: async () => false,
+  deleteTeam: async () => false,
 }));
 
 mock.module("../services/config-pg", () => ({
   listAgentConfigs: async (_ctx: any) => {
-    return Object.entries(_agentStore).map(([name, cfg]) => ({ name, ...cfg }));
+    return Object.entries(_agentStore).map(([name, cfg]) => ({ id: `ac_${name}`, name, ...cfg }));
   },
   getAgentConfig: async (_ctx: any, name: string) => {
     const cfg = _agentStore[name];
-    return cfg ? { name, ...cfg } : null;
+    return cfg ? { id: `ac_${name}`, name, ...cfg } : null;
   },
   createAgentConfig: async (_ctx: any, name: string, data: Record<string, unknown>) => {
     _agentStore[name] = { ...data };
@@ -64,20 +75,20 @@ mock.module("../services/agent-knowledge", () => ({
   InvalidKnowledgeBindingError: class InvalidKnowledgeBindingError extends Error {
     code = "INVALID_KNOWLEDGE_BINDINGS";
   },
-  syncAgentKnowledgeBindings: async (_ctx: any, agentName: string, knowledge: { knowledgeBaseIds: string[] } | null | undefined) => {
+  syncAgentKnowledgeBindingsById: async (teamId: string, agentConfigId: string, knowledge: { knowledgeBaseIds: string[] } | null | undefined) => {
     const missingIds = (knowledge?.knowledgeBaseIds ?? []).filter((id) => id === "kb_missing");
     if (missingIds.length > 0) {
       const error = new Error(`知识库不存在或无权限访问: ${missingIds.join(", ")}`) as Error & { code: string };
       error.code = "INVALID_KNOWLEDGE_BINDINGS";
       throw error;
     }
-    _agentKnowledgeBindings[agentName] = (knowledge?.knowledgeBaseIds ?? []).map((knowledgeBaseId, priority) => ({
+    _agentKnowledgeBindings[agentConfigId] = (knowledge?.knowledgeBaseIds ?? []).map((knowledgeBaseId, priority) => ({
       knowledgeBaseId,
       priority,
       enabled: true,
     }));
   },
-  listAgentKnowledgeBindings: async (agentName: string) => _agentKnowledgeBindings[agentName] ?? [],
+  listAgentKnowledgeBindingsById: async (agentConfigId: string) => _agentKnowledgeBindings[agentConfigId] ?? [],
   countBindingsByKnowledgeBaseIds: async (knowledgeBaseIds: string[]) => {
     const counts: Record<string, number> = {};
     for (const knowledgeBaseId of knowledgeBaseIds) {
@@ -505,7 +516,7 @@ describe("Agents Config Route", () => {
     });
 
     test("set 更新 knowledge 并覆盖旧绑定", async () => {
-      _agentKnowledgeBindings.build = [{ knowledgeBaseId: "kb_old", priority: 0, enabled: true }];
+      _agentKnowledgeBindings["ac_build"] = [{ knowledgeBaseId: "kb_old", priority: 0, enabled: true }];
       const res = await agentsRoute.handle(new Request("http://localhost/web/config/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -526,7 +537,7 @@ describe("Agents Config Route", () => {
         knowledgeBaseIds: ["kb_new_a", "kb_new_b"],
         policy: { searchFirst: false, maxResults: 8, defaultNamespaces: [] },
       });
-      expect(_agentKnowledgeBindings.build).toEqual([
+      expect(_agentKnowledgeBindings["ac_build"]).toEqual([
         { knowledgeBaseId: "kb_new_a", priority: 0, enabled: true },
         { knowledgeBaseId: "kb_new_b", priority: 1, enabled: true },
       ]);
@@ -558,7 +569,7 @@ describe("Agents Config Route", () => {
     });
 
     test("list 返回 knowledgeBaseCount", async () => {
-      _agentKnowledgeBindings.build = [
+      _agentKnowledgeBindings["ac_build"] = [
         { knowledgeBaseId: "kb_a", priority: 0, enabled: true },
         { knowledgeBaseId: "kb_b", priority: 1, enabled: true },
       ];

@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { agentKnowledgeBinding, knowledgeBase, user, team } from "../db/schema";
+import { agentKnowledgeBinding, agentConfig, knowledgeBase, user, team } from "../db/schema";
 import {
   countBindingsByKnowledgeBaseIds,
   listAgentKnowledgeBindings,
+  listAgentKnowledgeBindingsById,
   resolveAgentKnowledgePolicy,
   syncAgentKnowledgeBindings,
+  syncAgentKnowledgeBindingsById,
 } from "../services/agent-knowledge";
 
 // 固定的测试团队 UUID
@@ -46,6 +48,7 @@ describe("agent-knowledge service", () => {
 
   beforeEach(async () => {
     await db.delete(agentKnowledgeBinding);
+    await db.delete(agentConfig);
     await db.delete(knowledgeBase);
     await db.delete(user).where(inArray(user.id, ["agent-kb-user", "agent-kb-user-2"]));
     await ensureUser("agent-kb-user");
@@ -125,6 +128,49 @@ describe("agent-knowledge service", () => {
 
   test("syncAgentKnowledgeBindings rejects missing knowledge bases before insert", async () => {
     await expect(syncAgentKnowledgeBindings("agent-kb-user", "build", {
+      knowledgeBaseIds: [kbAgent1Id, "00000000-0000-0000-0000-000000009999"],
+    })).rejects.toThrow("知识库不存在或无权限访问: 00000000-0000-0000-0000-000000009999");
+  });
+
+  // ByConfigId 版本测试
+  test("syncAgentKnowledgeBindingsById replaces old bindings and preserves priority order", async () => {
+    const now = new Date();
+    const [ac] = await db.insert(agentConfig).values({
+      userId: "agent-kb-user",
+      teamId: TEST_TEAM_ID,
+      name: "test-by-id",
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+
+    // 先创建一个旧绑定
+    await syncAgentKnowledgeBindingsById(TEST_TEAM_ID, ac.id, {
+      knowledgeBaseIds: [kbAgent1Id],
+    });
+
+    // 替换为新顺序
+    await syncAgentKnowledgeBindingsById(TEST_TEAM_ID, ac.id, {
+      knowledgeBaseIds: [kbAgent2Id, kbAgent1Id],
+    });
+
+    const bindings = await listAgentKnowledgeBindingsById(ac.id);
+    expect(bindings).toEqual([
+      { knowledgeBaseId: kbAgent2Id, priority: 0, enabled: true },
+      { knowledgeBaseId: kbAgent1Id, priority: 1, enabled: true },
+    ]);
+  });
+
+  test("syncAgentKnowledgeBindingsById rejects missing knowledge bases before insert", async () => {
+    const now = new Date();
+    const [ac] = await db.insert(agentConfig).values({
+      userId: "agent-kb-user",
+      teamId: TEST_TEAM_ID,
+      name: "test-by-id-reject",
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+
+    await expect(syncAgentKnowledgeBindingsById(TEST_TEAM_ID, ac.id, {
       knowledgeBaseIds: [kbAgent1Id, "00000000-0000-0000-0000-000000009999"],
     })).rejects.toThrow("知识库不存在或无权限访问: 00000000-0000-0000-0000-000000009999");
   });

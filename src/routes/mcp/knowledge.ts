@@ -7,6 +7,7 @@ import { getEnvironmentBySecret } from "../../services/environment";
 import {
   readKnowledgeResourceForAgent,
   searchKnowledgeForAgent,
+  searchKnowledgeByConfigId,
 } from "../../services/knowledge-runtime";
 
 function getBearerToken(headerValue: string | undefined): string | null {
@@ -15,7 +16,7 @@ function getBearerToken(headerValue: string | undefined): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function createKnowledgeMcpServer(environment: { agentName: string | null; userId: string | null; secret: string }) {
+function createKnowledgeMcpServer(environment: { agentName: string | null; agentConfigId: string | null; userId: string | null; secret: string }) {
   const server = new McpServer({
     name: "kb-mcp",
     version: "1.0.0",
@@ -29,18 +30,27 @@ function createKnowledgeMcpServer(environment: { agentName: string | null; userI
       agentName: z.string().min(1).optional(),
     },
   }, async ({ query, topK, agentName }) => {
-    if (!environment.agentName) {
-      throw new Error("Environment default agent is not configured");
+    // 优先使用 agentConfigId 查询，回退到 agentName
+    let results;
+    if (environment.agentConfigId) {
+      results = await searchKnowledgeByConfigId({
+        agentConfigId: environment.agentConfigId,
+        query,
+        topK: topK ?? 5,
+      });
+    } else if (environment.agentName) {
+      if (agentName && agentName !== environment.agentName) {
+        throw new Error("agentName does not match environment default agent");
+      }
+      results = await searchKnowledgeForAgent({
+        agentName: environment.agentName,
+        query,
+        topK: topK ?? 5,
+        userId: environment.userId ?? undefined,
+      });
+    } else {
+      throw new Error("Environment agent is not configured");
     }
-    if (agentName && agentName !== environment.agentName) {
-      throw new Error("agentName does not match environment default agent");
-    }
-    const results = await searchKnowledgeForAgent({
-      agentName: environment.agentName,
-      query,
-      topK: topK ?? 5,
-      userId: environment.userId ?? undefined,
-    });
     return {
       content: [{ type: "text", text: JSON.stringify({ results }) }],
       structuredContent: { results },
@@ -53,11 +63,11 @@ function createKnowledgeMcpServer(environment: { agentName: string | null; userI
       resourceId: z.string().min(1),
     },
   }, async ({ resourceId }) => {
-    if (!environment.agentName) {
-      throw new Error("Environment default agent is not configured");
+    if (!environment.agentName && !environment.agentConfigId) {
+      throw new Error("Environment agent is not configured");
     }
     const result = await readKnowledgeResourceForAgent({
-      agentName: environment.agentName,
+      agentName: environment.agentName ?? undefined,
       resourceId,
       userId: environment.userId ?? undefined,
     });

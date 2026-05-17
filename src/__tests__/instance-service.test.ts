@@ -75,7 +75,7 @@ mock.module("../config", () => ({
 
 // Mock agent-knowledge
 mock.module("../services/agent-knowledge", () => ({
-  listAgentKnowledgeBindings: mock(async () => []),
+  listAgentKnowledgeBindingsById: mock(async () => []),
 }));
 
 // Mock repositories

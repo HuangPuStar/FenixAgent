@@ -3,8 +3,8 @@ import { authGuardPlugin, type AuthContext } from "../../../plugins/auth";
 import * as configPg from "../../../services/config-pg";
 import {
   InvalidKnowledgeBindingError,
-  listAgentKnowledgeBindings,
-  syncAgentKnowledgeBindings,
+  listAgentKnowledgeBindingsById,
+  syncAgentKnowledgeBindingsById,
   type AgentKnowledgeConfig,
 } from "../../../services/agent-knowledge";
 import {
@@ -51,7 +51,7 @@ async function handleList(ctx: AuthContext) {
     mode: a.mode ?? null,
     description: a.description ?? null,
     color: a.color ?? null,
-    knowledgeBaseCount: (await listAgentKnowledgeBindings(a.name)).length,
+    knowledgeBaseCount: (await listAgentKnowledgeBindingsById(a.id)).length,
   })));
   return configSuccess({ default_agent: defaultAgent, agents: list });
 }
@@ -117,7 +117,10 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   }
 
   await configPg.updateAgentConfig(ctx, name, updateData);
-  await syncAgentKnowledgeBindings(ctx.userId, name, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
+  const updatedAgent = await configPg.getAgentConfig(ctx, name);
+  if (updatedAgent) {
+    await syncAgentKnowledgeBindingsById(ctx.teamId, updatedAgent.id, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
+  }
   return configSuccess({ name, ...filtered });
 }
 
@@ -152,7 +155,10 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   if (existing) return configError("ALREADY_EXISTS", `Agent '${name}' already exists`);
 
   await configPg.createAgentConfig(ctx, name, pgData);
-  await syncAgentKnowledgeBindings(ctx.userId, name, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
+  const createdAgent = await configPg.getAgentConfig(ctx, name);
+  if (createdAgent) {
+    await syncAgentKnowledgeBindingsById(ctx.teamId, createdAgent.id, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
+  }
   return configSuccess({ name });
 }
 

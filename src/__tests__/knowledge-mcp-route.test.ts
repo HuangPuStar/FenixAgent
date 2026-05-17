@@ -3,6 +3,7 @@ import Elysia from "elysia";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
+  agentConfig,
   agentKnowledgeBinding,
   environment,
   knowledgeBase,
@@ -74,6 +75,7 @@ describe("knowledge MCP route", () => {
     await db.delete(knowledgeResource);
     await db.delete(knowledgeBase);
     await db.delete(environment);
+    await db.delete(agentConfig);
     await db.delete(user).where(inArray(user.id, ["kb-mcp-user", "kb-mcp-user-2"]));
     // 清理测试团队（如果存在）
     await db.delete(team).where(eq(team.id, TEST_TEAM_ID)).catch(() => {});
@@ -104,12 +106,20 @@ describe("knowledge MCP route", () => {
       createdAt: now,
       updatedAt: now,
     });
+    const [acRow] = await db.insert(agentConfig).values({
+      userId: "kb-mcp-user",
+      teamId: TEST_TEAM_ID,
+      name: "general",
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
     await db.insert(environment).values({
       id: "env_kb_mcp",
       name: "env-kb-mcp",
       description: null,
       workspacePath: process.cwd(),
       agentName: "general",
+      agentConfigId: acRow.id,
       status: "idle",
       machineName: null,
       branch: null,
@@ -184,6 +194,7 @@ describe("knowledge MCP route", () => {
     resLocal2Id = resRows[1].id;
 
     await db.insert(agentKnowledgeBinding).values({
+      agentConfigId: acRow.id,
       agentName: "general",
       knowledgeBaseId: kbLocal1Id,
       priority: 0,

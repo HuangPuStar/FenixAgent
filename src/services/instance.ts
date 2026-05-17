@@ -151,6 +151,7 @@ export async function spawnInstanceFromEnvironment(
   const launchSpec = await buildLaunchSpec({
     workspacePath: cwd,
     agentName,
+    agentConfigId: env.agentConfigId ?? null,
     agentPrompt,
     modelRef,
     fullConfig,
