@@ -31,6 +31,15 @@ mock.module("../services/instance", () => ({
   })),
   listInstancesByEnvironment: mock(() => []),
   getRunningInstancesByEnvironment: mock(() => []),
+  groupActiveInstancesByEnvironment: mock(() => new Map()),
+  listInstancesResponse: mock(() => ({ instances: [] })),
+  listInstances: mock(() => []),
+  findInstanceBySessionId: mock(() => undefined),
+  getInstance: mock(() => undefined),
+  stopInstance: mock(async () => ({ ok: true })),
+  stopAllInstances: mock(async () => {}),
+  ensureRunning: mock(async () => ({ instance: { id: "inst_test", status: "running" }, sessionId: "ses_test" } as any)),
+  enterEnvironment: mock(async () => ({ instanceId: "inst_test", port: 8888, token: "tok" } as any)),
 }));
 
 const { resetAllRepos, environmentRepo } = await import("../repositories");
