@@ -33,12 +33,10 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
   const pathError = validateWorkspacePath(workspacePath);
   if (pathError) throw new ValidationError(pathError);
 
-  // Agent 配置解析：可选，提供时需验证存在性
-  let agentName: string | undefined = undefined;
+  // Agent 配置校验：可选，提供时需验证存在性
   if (params.agentConfigId) {
     const agent = await configPg.getAgentConfigById(params.agentConfigId);
     if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
-    agentName = agent.name;
   }
 
   // workspace 目录初始化
@@ -62,7 +60,6 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
       name,
       description,
       workspacePath,
-      agentName,
       status: "idle",
       secret,
       userId,
@@ -105,10 +102,8 @@ export async function updateWebEnvironment(envId: string, teamId: string, params
       const agent = await configPg.getAgentConfigById(params.agentConfigId);
       if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
       patch.agentConfigId = params.agentConfigId;
-      patch.agentName = agent.name;
     } else {
       patch.agentConfigId = null;
-      patch.agentName = null;
     }
   }
   if (params.description !== undefined) {

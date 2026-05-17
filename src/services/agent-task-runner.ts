@@ -74,8 +74,8 @@ export async function runAgentTask(input: RunAgentTaskInput): Promise<AgentTaskR
     throw new Error("Environment not found");
   }
 
-  let defaultAgent = env.agentName;
-  if (!defaultAgent && env.agentConfigId) {
+  let defaultAgent: string | null = null;
+  if (env.agentConfigId) {
     const agentConfig = await getAgentConfigById(env.agentConfigId);
     defaultAgent = agentConfig?.name ?? null;
   }

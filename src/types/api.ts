@@ -94,14 +94,14 @@ export interface RegisterEnvironmentWebRequest {
   name: string;
   description?: string;
   workspacePath: string;
-  agentName?: string;
+  agentConfigId?: string;
 }
 
 export interface UpdateEnvironmentWebRequest {
   name?: string;
   description?: string;
   workspacePath?: string;
-  agentName?: string;
+  agentConfigId?: string | null;
 }
 
 export interface EnvironmentWebResponse {
@@ -109,7 +109,7 @@ export interface EnvironmentWebResponse {
   name: string;
   description: string | null;
   workspace_path: string;
-  agent_name: string | null;
+  agent_config_id: string | null;
   status: string;
   machine_name: string | null;
   branch: string | null;

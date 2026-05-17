@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { environment, team, user } from "../db/schema";
+import { agentConfig, environment, team, user } from "../db/schema";
 import { runAgentTask } from "../services/agent-task-runner";
 
 const TEST_USER_ID = "user_agent_runner_test";
 const TEST_ENV_ID = "env_agent_runner_test";
 let TEST_TEAM_ID = "";
+let TEST_AC_ID = "";
 
 let workspaceRoot = "";
 let toolDir = "";
@@ -42,13 +43,24 @@ async function ensureTeam() {
   TEST_TEAM_ID = t.id;
 }
 
-async function upsertEnvironment(agentName: string | null) {
+async function ensureAgentConfig(name: string) {
+  if (TEST_AC_ID) return;
+  const now = new Date();
+  const [ac] = await db.insert(agentConfig).values({
+    name,
+    teamId: TEST_TEAM_ID,
+    userId: TEST_USER_ID,
+  }).returning();
+  TEST_AC_ID = ac.id;
+}
+
+async function upsertEnvironment(agentConfigId: string | null) {
   const now = new Date();
   const existing = await db.select().from(environment).where(eq(environment.id, TEST_ENV_ID)).limit(1);
   if (existing.length > 0) {
     await db.update(environment).set({
       workspacePath: workspaceRoot,
-      agentName,
+      agentConfigId,
       updatedAt: now,
     }).where(eq(environment.id, TEST_ENV_ID));
     return;
@@ -59,7 +71,7 @@ async function upsertEnvironment(agentName: string | null) {
     name: "runner-env",
     description: null,
     workspacePath: workspaceRoot,
-    agentName,
+    agentConfigId,
     status: "idle",
     machineName: null,
     branch: null,
@@ -121,13 +133,15 @@ describe("agent-task-runner", () => {
     await createFakeOpencode();
     await upsertUser();
     await ensureTeam();
-    await upsertEnvironment("agent-alpha");
+    await ensureAgentConfig("agent-alpha");
+    await upsertEnvironment(TEST_AC_ID);
   });
 
   afterAll(async () => {
     process.env.PATH = originalPath;
-    try { await db.delete(team).where(eq(team.id, TEST_TEAM_ID)); } catch {}
     try { await db.delete(environment).where(eq(environment.id, TEST_ENV_ID)); } catch {}
+    try { await db.delete(agentConfig).where(eq(agentConfig.id, TEST_AC_ID)); } catch {}
+    try { await db.delete(team).where(eq(team.id, TEST_TEAM_ID)); } catch {}
     try { await db.delete(user).where(eq(user.id, TEST_USER_ID)); } catch {}
     if (workspaceRoot) {
       await rm(workspaceRoot, { recursive: true, force: true });
@@ -184,7 +198,7 @@ describe("agent-task-runner", () => {
     })).rejects.toThrow("Environment not found");
   });
 
-  it("writes an empty config when environment has no agent name", async () => {
+  it("writes an empty config when environment has no agent config", async () => {
     await upsertEnvironment(null);
 
     const result = await runAgentTask({

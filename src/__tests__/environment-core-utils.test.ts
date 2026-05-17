@@ -97,7 +97,6 @@ describe("sanitizeResponse", () => {
       name: "my-project",
       description: "A project",
       workspacePath: "/home/user/project",
-      agentName: "general",
       agentConfigId: "cfg_123",
       status: "idle",
       machineName: "my-machine",
@@ -112,7 +111,6 @@ describe("sanitizeResponse", () => {
     expect(result.name).toBe("my-project");
     expect(result.description).toBe("A project");
     expect(result.workspace_path).toBe("/home/user/project");
-    expect(result.agent_name).toBe("general");
     expect(result.agent_config_id).toBe("cfg_123");
     expect(result.status).toBe("idle");
     expect(result.auto_start).toBe(true);
@@ -128,7 +126,6 @@ describe("sanitizeResponse", () => {
       name: null,
       description: null,
       workspacePath: null,
-      agentName: null,
       agentConfigId: null,
       status: "idle",
       machineName: null,
@@ -140,7 +137,6 @@ describe("sanitizeResponse", () => {
     } as any);
 
     expect(result.description).toBeNull();
-    expect(result.agent_name).toBeNull();
     expect(result.agent_config_id).toBeNull();
     expect(result.auto_start).toBe(false);
     expect(result.last_poll_at).toBeNull();
@@ -154,7 +150,6 @@ describe("sanitizeResponse", () => {
       name: "test",
       description: null,
       workspacePath: "/tmp",
-      agentName: null,
       agentConfigId: null,
       status: "idle",
       machineName: null,

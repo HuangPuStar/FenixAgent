@@ -308,6 +308,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
     return db.select({
       id: agentKnowledgeBinding.id,
       agentName: agentKnowledgeBinding.agentName,
+      agentConfigId: agentKnowledgeBinding.agentConfigId,
       knowledgeBaseId: agentKnowledgeBinding.knowledgeBaseId,
       priority: agentKnowledgeBinding.priority,
       enabled: agentKnowledgeBinding.enabled,

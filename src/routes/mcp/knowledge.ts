@@ -16,7 +16,7 @@ function getBearerToken(headerValue: string | undefined): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function createKnowledgeMcpServer(environment: { agentName: string | null; agentConfigId: string | null; userId: string | null; secret: string }) {
+function createKnowledgeMcpServer(environment: { agentConfigId: string | null; userId: string | null; secret: string }) {
   const server = new McpServer({
     name: "kb-mcp",
     version: "1.0.0",
@@ -27,30 +27,16 @@ function createKnowledgeMcpServer(environment: { agentName: string | null; agent
     inputSchema: {
       query: z.string().min(1),
       topK: z.number().int().min(1).max(20).optional(),
-      agentName: z.string().min(1).optional(),
     },
-  }, async ({ query, topK, agentName }) => {
-    // 优先使用 agentConfigId 查询，回退到 agentName
-    let results;
-    if (environment.agentConfigId) {
-      results = await searchKnowledgeByConfigId({
-        agentConfigId: environment.agentConfigId,
-        query,
-        topK: topK ?? 5,
-      });
-    } else if (environment.agentName) {
-      if (agentName && agentName !== environment.agentName) {
-        throw new Error("agentName does not match environment default agent");
-      }
-      results = await searchKnowledgeForAgent({
-        agentName: environment.agentName,
-        query,
-        topK: topK ?? 5,
-        userId: environment.userId ?? undefined,
-      });
-    } else {
+  }, async ({ query, topK }) => {
+    if (!environment.agentConfigId) {
       throw new Error("Environment agent is not configured");
     }
+    const results = await searchKnowledgeByConfigId({
+      agentConfigId: environment.agentConfigId,
+      query,
+      topK: topK ?? 5,
+    });
     return {
       content: [{ type: "text", text: JSON.stringify({ results }) }],
       structuredContent: { results },
@@ -63,11 +49,11 @@ function createKnowledgeMcpServer(environment: { agentName: string | null; agent
       resourceId: z.string().min(1),
     },
   }, async ({ resourceId }) => {
-    if (!environment.agentName && !environment.agentConfigId) {
+    if (!environment.agentConfigId) {
       throw new Error("Environment agent is not configured");
     }
     const result = await readKnowledgeResourceForAgent({
-      agentName: environment.agentName ?? undefined,
+      agentConfigId: environment.agentConfigId,
       resourceId,
       userId: environment.userId ?? undefined,
     });

@@ -61,7 +61,6 @@ export function sanitizeResponse(row: EnvironmentRecord) {
     name: row.name,
     description: row.description ?? null,
     workspace_path: row.workspacePath,
-    agent_name: row.agentName ?? null,
     agent_config_id: row.agentConfigId ?? null,
     status: row.status,
     machine_name: row.machineName ?? null,

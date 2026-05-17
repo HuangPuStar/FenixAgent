@@ -100,7 +100,8 @@ export async function searchKnowledgeForAgent(input: {
  * Reads a knowledge resource only if it belongs to a knowledge base bound to the agent.
  */
 export async function readKnowledgeResourceForAgent(input: {
-  agentName: string;
+  agentConfigId?: string;
+  agentName?: string;
   resourceId: string;
   userId?: string;
 }): Promise<KnowledgeResourceContent & { knowledgeBaseId: string }> {
@@ -116,7 +117,11 @@ export async function readKnowledgeResourceForAgent(input: {
     throw new Error("Knowledge resource not accessible");
   }
 
-  const boundKnowledgeBases = await resolveBoundKnowledgeBasesForAgent(input.agentName, input.userId);
+  const boundKnowledgeBases = input.agentConfigId
+    ? await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId, input.userId)
+    : input.agentName
+      ? await resolveBoundKnowledgeBasesForAgent(input.agentName, input.userId)
+      : [];
   if (!boundKnowledgeBases.some((item) => item.id === result.resource.knowledgeBaseId)) {
     throw new Error("Knowledge resource is not bound to the agent");
   }

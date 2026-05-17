@@ -137,8 +137,7 @@ export const environment = pgTable("environment", {
   name: varchar("name").notNull(),
   description: text("description"),
   workspacePath: varchar("workspace_path").notNull(),
-  agentName: varchar("agent_name"),
-  // UUID 强绑定 AgentConfig（优先于 agentName）
+  // UUID 强绑定 AgentConfig
   agentConfigId: uuid("agent_config_id")
     .references(() => agentConfig.id, { onDelete: "set null" }),
   status: varchar("status", { length: 50 }).notNull().default("idle"),

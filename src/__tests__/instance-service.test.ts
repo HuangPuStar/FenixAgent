@@ -84,7 +84,6 @@ mock.module("../repositories", () => ({
     getById: mock(async (id: string) => ({
       id,
       userId: envOwnerMap.get(id) ?? "test-user",
-      agentName: "test-agent",
       agentConfigId: null,
       name: "test-env",
       workspacePath: "/tmp/test-workspace",

@@ -118,7 +118,6 @@ describe("knowledge MCP route", () => {
       name: "env-kb-mcp",
       description: null,
       workspacePath: process.cwd(),
-      agentName: "general",
       agentConfigId: acRow.id,
       status: "idle",
       machineName: null,
@@ -195,7 +194,6 @@ describe("knowledge MCP route", () => {
 
     await db.insert(agentKnowledgeBinding).values({
       agentConfigId: acRow.id,
-      agentName: "general",
       knowledgeBaseId: kbLocal1Id,
       priority: 0,
       enabled: true,

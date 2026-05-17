@@ -7,7 +7,6 @@ export const EnvironmentInfoSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   workspace_path: z.string(),
-  agent_name: z.string().nullable(),
   agent_config_id: z.string().nullable(),
   status: z.string(),
   machine_name: z.string().nullable(),
