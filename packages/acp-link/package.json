@@ -4,24 +4,17 @@
     "description": "ACP stdio-to-WebSocket bridge — spawns an ACP agent and exposes it via WebSocket",
     "author": "claude-code-best",
     "type": "module",
-    "main": "./dist/server.js",
-    "types": "./dist/server.d.ts",
+    "main": "./src/server.ts",
     "exports": {
         ".": {
-            "import": "./dist/server.js",
-            "types": "./dist/server.d.ts"
+            "import": "./src/server.ts",
+            "types": "./src/server.ts"
         },
         "./client": {
-            "import": "./dist/client/index.js",
-            "types": "./dist/client/index.d.ts"
+            "import": "./src/client/index.ts",
+            "types": "./src/client/index.ts"
         }
     },
-    "bin": {
-        "acp-link": "dist/cli/bin.js"
-    },
-    "files": [
-        "dist"
-    ],
     "scripts": {
         "build": "tsc",
         "dev": "bun run src/cli/bin.ts ccb-bun -- --acp",

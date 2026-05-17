@@ -206,23 +206,28 @@ async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promi
   }
 }
 
-/** Called from onMessage — processes NDJSON lines */
-export function handleAcpWsMessage(ws: WsConnection, wsId: string, data: string): void {
+/** Called from onMessage — processes NDJSON lines or pre-parsed objects */
+export function handleAcpWsMessage(ws: WsConnection, wsId: string, data: string | Record<string, unknown>): void {
   const entry = connections.get(wsId);
   if (!entry) return;
 
   entry.lastClientActivity = Date.now();
 
-  const lines = data.split("\n").filter((l) => l.trim());
-  for (const line of lines) {
-    let msg: Record<string, unknown>;
-    try {
-      msg = JSON.parse(line);
-    } catch {
-      logError("[ACP-WS] parse error:", line);
-      continue;
+  // Normalize to array of parsed messages
+  const messages: Record<string, unknown>[] = [];
+  if (typeof data === "string") {
+    for (const line of data.split("\n").filter((l) => l.trim())) {
+      try {
+        messages.push(JSON.parse(line));
+      } catch {
+        logError("[ACP-WS] parse error:", line);
+      }
     }
+  } else {
+    messages.push(data);
+  }
 
+  for (const msg of messages) {
     if (msg.type === "keep_alive") {
       if (entry.agentId) {
         touchEnvironmentPoll(entry.agentId).catch(() => {});

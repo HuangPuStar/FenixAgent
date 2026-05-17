@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for port in 3000 $(seq 8888 8999); do
+for port in 3000 $(seq 8888 8900); do
   pids=$(lsof -ti :"$port" 2>/dev/null || true)
   if [ -n "$pids" ]; then
     echo "Killing port $port (PIDs: $pids)"

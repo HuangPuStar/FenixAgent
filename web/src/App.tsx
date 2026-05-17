@@ -73,6 +73,7 @@ export default function App() {
         null,
     );
     const [currentSessionCwd, setCurrentSessionCwd] = useState<string | null>(null);
+    const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
     const [showApiKeys, setShowApiKeys] = useState(false);
     const [configView, setConfigView] = useState<string | null>(null);
 
@@ -123,7 +124,7 @@ export default function App() {
         return () => window.removeEventListener("popstate", parseRoute);
     }, [parseRoute]);
 
-    const navigateToSession = useCallback((sessionId: string, options?: { cwd?: string }) => {
+    const navigateToSession = useCallback((sessionId: string, options?: { cwd?: string; agentId?: string }) => {
         const params = new URLSearchParams();
         if (options?.cwd) {
             params.set("cwd", options.cwd);
@@ -134,12 +135,14 @@ export default function App() {
         setShowApiKeys(false);
         setCurrentSessionId(sessionId);
         setCurrentSessionCwd(options?.cwd ?? null);
+        setCurrentAgentId(options?.agentId ?? null);
     }, []);
 
     const navigateToDashboard = useCallback(() => {
         window.history.pushState(null, "", "/ctrl/");
         setCurrentSessionId(null);
         setCurrentSessionCwd(null);
+        setCurrentAgentId(null);
         setShowApiKeys(false);
         setConfigView(null);
     }, []);
@@ -148,6 +151,7 @@ export default function App() {
         setShowApiKeys(true);
         setCurrentSessionId(null);
         setCurrentSessionCwd(null);
+        setCurrentAgentId(null);
         setConfigView(null);
     }, []);
 
@@ -157,6 +161,7 @@ export default function App() {
         setShowApiKeys(false);
         setCurrentSessionId(null);
         setCurrentSessionCwd(null);
+        setCurrentAgentId(null);
     }, []);
 
     const activeView: ViewId = showApiKeys
@@ -231,6 +236,7 @@ export default function App() {
                         <SessionDetail
                             key={currentSessionId}
                             sessionId={currentSessionId}
+                            agentId={currentAgentId ?? undefined}
                             initialCwd={currentSessionCwd ?? undefined}
                         />
                     ) : (

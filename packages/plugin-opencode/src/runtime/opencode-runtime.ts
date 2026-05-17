@@ -45,7 +45,6 @@ export interface RuntimeInstanceState {
   runtimeConfig?: OpencodeRuntimeConfig;
   installedSkills?: InstalledSkillReference[];
   process?: ManagedAcpLinkProcess | null;
-  pid?: number | null;
   port?: number | null;
   token?: string | null;
   relay?: EngineRelayHandle | null;
@@ -108,7 +107,6 @@ function getOrCreateState(
   const created: RuntimeInstanceState = {
     instanceId,
     status: "idle",
-    pid: null,
     port: null,
     token: null,
     relay: null,
@@ -195,7 +193,6 @@ export function createOpencodeRuntime(
           env: state.env,
         });
         state.process = process;
-        state.pid = process.pid;
         state.port = process.port;
         state.token = process.token;
 
@@ -208,7 +205,6 @@ export function createOpencodeRuntime(
           portAllocator.release(state.port);
         }
         state.process = null;
-        state.pid = null;
         state.port = null;
         state.token = null;
         state.status = "error";
@@ -290,7 +286,6 @@ export function createOpencodeRuntime(
           portAllocator.release(state.port);
         }
         state.process = null;
-        state.pid = null;
         state.port = null;
         state.token = null;
         state.status = "stopped";

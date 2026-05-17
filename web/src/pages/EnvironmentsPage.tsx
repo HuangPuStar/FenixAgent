@@ -213,10 +213,11 @@ export function EnvironmentsPage({
             try {
                 const { data, error: err } = await client.web.environments({ id: env.id }).enter.post({});
                 if (err) throw new Error(err.message ?? "进入失败");
-                const result = data as { session_id: string } | null;
+                const result = data as { session_id: string; environment_id: string } | null;
                 await new Promise((r) => setTimeout(r, 500));
                 onNavigateToSession(result?.session_id ?? "", {
                     cwd: env.workspace_path,
+                    agentId: result?.environment_id ?? env.id,
                 });
             } catch (err) {
                 console.error("进入智能体失败", err);
@@ -237,10 +238,11 @@ export function EnvironmentsPage({
                     instance_number: instanceNumber,
                 });
                 if (err) throw new Error(err.message ?? "进入失败");
-                const result = data as { session_id: string } | null;
+                const result = data as { session_id: string; environment_id: string } | null;
                 await new Promise((r) => setTimeout(r, 500));
                 onNavigateToSession(result?.session_id ?? "", {
                     cwd: env.workspace_path,
+                    agentId: result?.environment_id ?? env.id,
                 });
             } catch (err) {
                 console.error("进入实例失败", err);
@@ -259,10 +261,11 @@ export function EnvironmentsPage({
             try {
                 const { data, error: err } = await client.web.instances.post({ environmentId: env.id });
                 if (err) throw new Error(err.message ?? "创建实例失败");
-                const spawnResult = data as { session_id?: string } | null;
+                const spawnResult = data as { session_id?: string; environment_id?: string } | null;
                 await new Promise((r) => setTimeout(r, 500));
                 onNavigateToSession(spawnResult?.session_id ?? "", {
                     cwd: env.workspace_path,
+                    agentId: spawnResult?.environment_id ?? env.id,
                 });
                 await loadEnvs();
             } catch (err) {

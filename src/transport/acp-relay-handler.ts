@@ -5,7 +5,7 @@ import {
 } from "./acp-ws-handler";
 import { getAcpEventBus } from "./event-bus";
 import type { SessionEvent } from "./event-bus";
-import { getEnvironment } from "../services/environment";
+
 import { findRunningInstanceByEnvironment, findInstanceBySessionId } from "../services/instance";
 import { getCoreRuntime } from "../services/core-bootstrap";
 import { log, error as logError } from "../logger";
@@ -33,7 +33,9 @@ const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
 function sendToRelayWs(ws: WsConnection, msg: object): void {
   if (ws.readyState !== 1) return;
   try {
-    ws.send(JSON.stringify(msg));
+    const payload = JSON.stringify(msg);
+    ws.send(payload);
+    log(`[ACP-Relay] Sent to frontend: type=${(msg as any).type} bytes=${payload.length}`);
   } catch (err) {
     logError("[ACP-Relay] send error:", err);
   }
@@ -129,11 +131,17 @@ function openInstanceRelay(ws: WsConnection, relayWsId: string, agentId: string,
     if ("onMessage" in handle && typeof (handle as any).onMessage === "function") {
       const opencodeHandle = handle as { onMessage: (listener: (msg: any) => void) => () => void };
       entry.relayUnsub = opencodeHandle.onMessage((message) => {
+        log(`[ACP-Relay] Forwarding to frontend: type=${(message as any).type} readyState=${ws.readyState}`);
         publishToEventBus(agentId, message);
         if (ws.readyState === 1) {
           sendToRelayWs(ws, message);
+        } else {
+          log(`[ACP-Relay] Frontend WS not open (state=${ws.readyState}), dropping message type=${(message as any).type}`);
         }
       });
+      log(`[ACP-Relay] onMessage listener registered for instance ${instanceId}`);
+    } else {
+      logError(`[ACP-Relay] Relay handle missing onMessage for instance ${instanceId}, handle keys: ${Object.keys(handle).join(",")}`);
     }
 
     // 不再主动发 status，由 acp-link 的 connect 响应自然推送给前端
@@ -184,62 +192,50 @@ function openEventBusRelay(ws: WsConnection, relayWsId: string, agentId: string,
   log(`[ACP-Relay] EventBus relay established: relayWsId=${relayWsId} → agentId=${agentId}`);
 }
 
-/** Called from onMessage — forwards frontend messages */
-export async function handleRelayMessage(ws: WsConnection, relayWsId: string, data: string): Promise<void> {
+/** Called from onMessage — forwards frontend messages.
+ *  Accepts either a pre-parsed object (from Elysia WS) or a raw JSON string.
+ */
+export async function handleRelayMessage(ws: WsConnection, relayWsId: string, data: string | Record<string, unknown>): Promise<void> {
   const entry = relayConnections.get(relayWsId);
   if (!entry) return;
 
-  // Instance mode: forward via core relay handle
-  if (entry.relayHandle) {
+  // Normalize input to parsed object(s)
+  let parsed: Record<string, unknown>;
+  if (typeof data === "string") {
     try {
-      const parsed = JSON.parse(data);
-      // Intercept frontend ping — reply pong directly
-      if (parsed.type === "ping") {
-        sendToRelayWs(ws, { type: "pong" });
-        return;
-      }
-      await entry.relayHandle.send(parsed);
+      parsed = JSON.parse(data);
     } catch {
-      // If JSON parse fails, try sending raw
-      try {
-        await entry.relayHandle.send({ type: "raw", payload: data });
-      } catch {}
+      logError("[ACP-Relay] parse error:", data.substring(0, 120));
+      return;
+    }
+  } else {
+    parsed = data;
+  }
+
+  log(`[ACP-Relay] handleRelayMessage: relayWsId=${relayWsId} type=${parsed.type} hasRelayHandle=${!!entry.relayHandle}`);
+
+  // Instance mode: forward messages via core relay handle
+  if (entry.relayHandle) {
+    if (parsed.type === "connect") {
+      // Relay handle already sent connect; acp-link will emit status via onMessage
+      log("[ACP-Relay] Skipping frontend connect in instance mode (relay handle auto-connects)");
+      return;
+    }
+    log(`[ACP-Relay] Forwarding outbound to acp-server: type=${parsed.type}`);
+    try {
+      await entry.relayHandle.send(parsed as any);
+    } catch {
+      // relay closed — ignore
     }
     return;
   }
 
-  // EventBus mode: handle control messages and forward
-  const lines = data.split("\n").filter((l) => l.trim());
-  for (const line of lines) {
-    let msg: Record<string, unknown>;
-    try {
-      msg = JSON.parse(line);
-    } catch {
-      logError("[ACP-Relay] parse error:", line);
-      continue;
-    }
+  // EventBus mode: forward all ACP messages transparently, only drop keep_alive
+  if (parsed.type === "keep_alive") return;
 
-    if (msg.type === "keep_alive") continue;
-
-    if (msg.type === "ping") {
-      sendToRelayWs(ws, { type: "pong" });
-      continue;
-    }
-
-    if (msg.type === "connect") {
-      const env = await getEnvironment(entry.agentId);
-      sendToRelayWs(ws, {
-        type: "status",
-        payload: { connected: true, capabilities: env?.capabilities ?? null },
-      });
-      continue;
-    }
-
-    const sent = sendToAgentWs(entry.agentId, msg);
-    if (!sent) {
-      sendToRelayWs(ws, { type: "error", message: "Agent connection lost" });
-      return;
-    }
+  const sent = sendToAgentWs(entry.agentId, parsed as any);
+  if (!sent) {
+    sendToRelayWs(ws, { type: "error", message: "Agent connection lost" });
   }
 }
 

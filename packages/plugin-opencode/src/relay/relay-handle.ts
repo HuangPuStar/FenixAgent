@@ -33,16 +33,22 @@ export interface OpencodeRelayHandle extends EngineRelayHandle {
   onMessage(listener: (message: EngineRelayMessage) => void): () => void;
 }
 
+const KEEPALIVE_TYPE = "keep_alive";
+const PONG_TYPE = "pong";
+const PING_TYPE = "ping";
+const CONNECT_TYPE = "connect";
+const ERROR_TYPE = "error";
+
 function shouldIgnoreInbound(message: EngineRelayMessage): boolean {
-  if (message.type === "keep_alive" || message.type === "pong") {
+  if (message.type === KEEPALIVE_TYPE || message.type === PONG_TYPE) {
     return true;
   }
-  if (message.type === "error") {
+  if (message.type === ERROR_TYPE) {
     const payloadMessage =
       typeof message.payload === "object" && message.payload && "message" in message.payload
         ? (message.payload as { message?: unknown }).message
         : undefined;
-    if (typeof payloadMessage === "string" && payloadMessage.includes("keep_alive")) {
+    if (typeof payloadMessage === "string" && payloadMessage.includes(KEEPALIVE_TYPE)) {
       return true;
     }
   }
@@ -51,12 +57,17 @@ function shouldIgnoreInbound(message: EngineRelayMessage): boolean {
 
 /**
  * 建立连接到本地 acp-link websocket 的 relay handle。
+ *
+ * 消息缓冲：在第一个 onMessage 监听器注册之前，所有收到的非过滤消息
+ * 会被缓冲。首个监听器注册时立即回放缓冲，避免 .then() 回调延迟注册
+ * 导致 connect 响应（status）丢失的竞态问题。
  */
 export function createRelayHandle(
   input: CreateRelayHandleInput,
   dependencies: RelayHandleDependencies,
 ): OpencodeRelayHandle {
   const url = `ws://127.0.0.1:${input.port}/ws?token=${encodeURIComponent(input.token)}`;
+  console.log(`[RelayHandle] Creating relay to ${url.replace(/token=[^&]+/, "token=***")} for instance ${input.instanceId}`);
   const socket = dependencies.createWebSocket(url);
   const listeners = new Set<(message: EngineRelayMessage) => void>();
   const keepAliveIntervalMs = dependencies.keepAliveIntervalMs ?? RELAY_KEEPALIVE_INTERVAL_MS;
@@ -73,8 +84,26 @@ export function createRelayHandle(
     resolveReady();
   }
 
+  // 缓冲：onMessage 注册前收到的消息暂存，注册后立即回放
+  const messageBuffer: EngineRelayMessage[] = [];
+  let hasListeners = false;
+
+  const flushBuffer = () => {
+    if (messageBuffer.length === 0) return;
+    const buffered = messageBuffer.splice(0);
+    for (const msg of buffered) {
+      for (const listener of listeners) {
+        listener(msg);
+      }
+    }
+  };
+
   const emit = (message: EngineRelayMessage) => {
     if (shouldIgnoreInbound(message)) {
+      return;
+    }
+    if (!hasListeners) {
+      messageBuffer.push(message);
       return;
     }
     for (const listener of listeners) {
@@ -86,12 +115,12 @@ export function createRelayHandle(
     if (state !== "open") {
       return;
     }
-    socket.send(JSON.stringify({ type: "ping" }));
+    socket.send(JSON.stringify({ type: PING_TYPE }));
   }, keepAliveIntervalMs);
 
   socket.onopen = () => {
-    // acp-link 要求客户端先发 connect 才启动 agent 并推送 capabilities
-    socket.send(JSON.stringify({ type: "connect" }));
+    console.log(`[RelayHandle] WS opened for instance ${input.instanceId}, sending connect`);
+    socket.send(JSON.stringify({ type: CONNECT_TYPE }));
     if (readySettled) {
       return;
     }
@@ -103,7 +132,11 @@ export function createRelayHandle(
     const text = typeof event.data === "string" ? event.data : event.data.toString();
     for (const line of text.split("\n").filter(Boolean)) {
       try {
-        emit(JSON.parse(line));
+        const parsed = JSON.parse(line);
+        if (!shouldIgnoreInbound(parsed)) {
+          console.log(`[RelayHandle] Inbound ← acp-link (${input.instanceId}): type=${parsed.type}${hasListeners ? "" : " (buffered)"}`);
+        }
+        emit(parsed);
       } catch {
         // Ignore malformed relay frames from local acp-link.
       }
@@ -111,16 +144,20 @@ export function createRelayHandle(
   };
 
   socket.onclose = () => {
+    console.log(`[RelayHandle] WS closed for instance ${input.instanceId}`);
     state = "closed";
     clearInterval(keepalive);
+    messageBuffer.length = 0;
     if (!readySettled) {
       readySettled = true;
       rejectReady(new Error("Relay closed before websocket open"));
     }
   };
   socket.onerror = () => {
+    console.error(`[RelayHandle] WS error for instance ${input.instanceId}`);
     state = "closed";
     clearInterval(keepalive);
+    messageBuffer.length = 0;
     if (!readySettled) {
       readySettled = true;
       rejectReady(new Error("Relay websocket errored before open"));
@@ -135,26 +172,35 @@ export function createRelayHandle(
     },
     onMessage(listener) {
       listeners.add(listener);
+      const wasEmpty = !hasListeners;
+      hasListeners = true;
+      if (wasEmpty) {
+        flushBuffer();
+      }
       return () => {
         listeners.delete(listener);
+        hasListeners = listeners.size > 0;
       };
     },
     send(message) {
       if (state !== "open") {
         throw new Error("Relay is closed");
       }
-      if (message.type === "ping") {
-        emit({ type: "pong" });
+      if (message.type === PING_TYPE) {
+        emit({ type: PONG_TYPE });
         return;
       }
+      console.log(`[RelayHandle] Outbound → acp-link (${input.instanceId}): type=${message.type}`);
       socket.send(JSON.stringify(message));
     },
     close(code, reason) {
       if (state === "closed") {
         return;
       }
+      console.log(`[RelayHandle] Closing WS for instance ${input.instanceId}, code=${code} reason=${reason}`);
       state = "closed";
       clearInterval(keepalive);
+      messageBuffer.length = 0;
       socket.close(code, reason);
     },
   };

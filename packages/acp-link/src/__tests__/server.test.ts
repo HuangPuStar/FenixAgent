@@ -10,9 +10,7 @@ describe('Server HTTP endpoints', () => {
   test('package.json has correct bin and main entries', async () => {
     const pkg = await import('../../package.json', { with: { type: 'json' } })
     expect(pkg.default.name).toBe('acp-link')
-    expect(pkg.default.main).toBe('./dist/server.js')
-    expect(pkg.default.bin).toBeDefined()
-    expect(pkg.default.bin['acp-link']).toBe('dist/cli/bin.js')
+    expect(pkg.default.main).toBe('./src/server.ts')
   })
 
   // ServerConfig 类型验证

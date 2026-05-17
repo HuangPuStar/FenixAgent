@@ -27,10 +27,19 @@ import { toast } from "sonner";
 
 interface SessionDetailProps {
   sessionId: string;
+  agentId?: string;
   initialCwd?: string;
 }
 
-export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
+export function SessionDetail({ sessionId, agentId, initialCwd }: SessionDetailProps) {
+  // If agentId is provided (from environment enter), skip REST API and go directly to ACP
+  if (agentId) {
+    return <ACPSessionDetail sessionId={sessionId} agentId={agentId} initialCwd={initialCwd} />;
+  }
+  return <SessionDetailInner sessionId={sessionId} initialCwd={initialCwd} />;
+}
+
+function SessionDetailInner({ sessionId, initialCwd }: { sessionId: string; initialCwd?: string }) {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
   const [error, setError] = useState("");

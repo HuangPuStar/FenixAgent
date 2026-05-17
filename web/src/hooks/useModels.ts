@@ -51,7 +51,7 @@ export function useModels(client: ACPClient): UseModelsResult {
       if (state && state.availableModels.length > 0) {
         const saved = localStorage.getItem("acp_model_id");
         if (saved && saved !== state.currentModelId && state.availableModels.some((m) => m.modelId === saved)) {
-          client.setSessionModel(saved).catch(() => {});
+          try { client.setSessionModel(saved); } catch { /* ignore */ }
         }
       }
     };

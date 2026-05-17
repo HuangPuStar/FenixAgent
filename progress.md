@@ -450,3 +450,24 @@
 2. **WARNING — task.ts `listExecutionLogs` total 缺少 `Number()` 转换**：PG `count(*)` 部分驱动返回字符串，添加��御性 `Number()` 与 R34 `countToolsByServer` 对齐。
 3. **WARNING — config/mcp-server.ts `setMcpServerEnabled` void→boolean**：添加 `.returning()` 检测是否存在匹配行，与 `deleteMcpServer`/`enableSkill`/`disableSkill` 返回值约定一致。
 4. 新增 `task-timeout-instanceof-error.test.ts`（7 用例）、`task-list-logs-total-coercion.test.ts`（3 用例）、`mcp-set-enabled-return.test.ts`（2 用例）。42 轮累计 423 个测试。
+
+## 2026-05-17 第四十三次审查
+
+审查范围：同 R42 全量 service 文件及 config 子目录
+
+修复（4 WARNING）：
+1. **WARNING — scheduler.ts `rescheduleTask` 返回 void→boolean**：调用方（updateTask）无法检测重新调度失败。改为传播 `scheduleTask` 的 boolean 返回值。
+2. **WARNING — task.ts `clearExecutionLogs` 缺少所有权校验**：函数仅接收 taskId 不验证用户归属，任意认证用户可清除他人任务日志。添加 userId 参数 + `getByUserAndId` 校验。
+3. **WARNING — skill.ts `listSkillSources` 未过滤无 workspacePath 环境**：ACP 环境可能 workspacePath 为 null，传入 `path.join` 导致 TypeError。添加 `workspaceEnvs` 过滤。
+4. **WARNING — config/mcp-server.ts `updateMcpServer` void→boolean**：添加 `.returning()` 返回 boolean，与 `deleteMcpServer`/`setMcpServerEnabled` 一致。
+5. 新增 4 测试文件共 11 用例（scheduler 3 + task 3 + skill 3 + mcp 2）。43 轮累计 434 个测试。
+
+## 2026-05-17 第四十四次审查
+
+审查范围：同 R43 全量 service 文件及 config 子目录
+
+修复（2 WARNING + 1 CLEANUP）：
+1. **WARNING — config/agent-config.ts `updateAgentConfig` void→boolean**：添加 `.returning()` 返回 boolean，与 `deleteAgentConfig` 一致，调用方可检测不存在的 agent。
+2. **WARNING — config/model.ts `updateModel` void→boolean**：添加 `.returning()` 返回 boolean，与 `removeModel` 一致。
+3. **CLEANUP — scheduler.ts `startScheduler` 跟踪失败计数**：启动时记录无效 cron 导致的调度失败数量，日志区分全部成功/部分失败。
+4. 新增 3 测试文件共 7 用例（agent-config 2 + model 2 + scheduler 3）。44 轮累计 441 个测试。

@@ -30,7 +30,6 @@ export function getCoreRuntime(): CoreRuntimeFacade {
           updateMetadata({
             port: state.port ?? 0,
             token: state.token ?? "",
-            pid: state.pid ?? null,
           });
         }
       },

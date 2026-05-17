@@ -101,28 +101,25 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       }
 
       const wsId = `acp_ws_${uuid().replace(/-/g, "")}`;
-      (ws as any).__acpWsId = wsId;
+      (ws.data as any).__acpWsId = wsId;
       log(`[ACP-WS] Upgrade accepted: wsId=${wsId} userId=${authResult.userId}`);
       handleAcpWsOpen(conn, wsId, authResult.userId, authResult.envId);
     },
     message(ws, data) {
-      const text = typeof data === "string" ? data : new TextDecoder().decode(data as ArrayBuffer);
-      if (text.length > MAX_WS_MESSAGE_SIZE) {
-        logError(`[ACP-WS] Message too large: ${text.length} bytes`);
+      // Elysia's parseMessage auto-parses JSON strings into objects;
+      // pass the already-parsed object directly to avoid redundant stringify→parse.
+      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
+        logError(`[ACP-WS] Message too large: ${data.length} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }
-      // Use ws.data for wsId — we need to track it. For now, pass the raw ws.
-      // The handler tracks by wsId, but we don't have it here.
-      // We need a way to pass wsId from open to message/close.
-      // Store wsId in ws.data via store or metadata.
-      const wsId = (ws as any).__acpWsId as string | undefined;
+      const wsId = (ws.data as any).__acpWsId as string | undefined;
       if (wsId) {
-        handleAcpWsMessage(adaptWs(ws), wsId, text);
+        handleAcpWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
       }
     },
     close(ws, code, reason) {
-      const wsId = (ws as any).__acpWsId as string | undefined;
+      const wsId = (ws.data as any).__acpWsId as string | undefined;
       if (wsId) {
         handleAcpWsClose(adaptWs(ws), wsId, code, reason);
       }
@@ -153,25 +150,31 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       }
 
       const relayWsId = `relay_${uuid().replace(/-/g, "")}`;
-      (ws as any).__relayWsId = relayWsId;
+      (ws.data as any).__relayWsId = relayWsId;
 
       log(`[ACP-Relay] Upgrade accepted: relayWsId=${relayWsId} agentId=${agentId}`);
       handleRelayOpen(adaptWs(ws), relayWsId, agentId, userId, sessionId);
     },
     message(ws, data) {
-      const text = typeof data === "string" ? data : new TextDecoder().decode(data as ArrayBuffer);
-      if (text.length > MAX_WS_MESSAGE_SIZE) {
-        logError(`[ACP-Relay] Message too large: ${text.length} bytes`);
+      // Elysia's parseMessage auto-parses JSON strings into objects;
+      // pass the already-parsed object directly to avoid redundant stringify→parse.
+      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
+        logError(`[ACP-Relay] Message too large: ${data.length} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }
-      const relayWsId = (ws as any).__relayWsId as string | undefined;
+      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
       if (relayWsId) {
-        handleRelayMessage(adaptWs(ws), relayWsId, text);
+        const payload = typeof data === "object" && data !== null
+          ? data as Record<string, unknown>
+          : data as string;
+        handleRelayMessage(adaptWs(ws), relayWsId, payload);
+      } else {
+        logError(`[ACP-Relay-WS] No relayWsId on ws.data`);
       }
     },
     close(ws, code, reason) {
-      const relayWsId = (ws as any).__relayWsId as string | undefined;
+      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
       if (relayWsId) {
         handleRelayClose(adaptWs(ws), relayWsId, code, reason);
       }
