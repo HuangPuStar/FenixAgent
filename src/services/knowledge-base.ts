@@ -129,7 +129,7 @@ export async function listKnowledgeBasesByTeamId(teamId: string) {
 }
 
 export async function getKnowledgeBaseDetail(teamId: string, knowledgeBaseId: string) {
-  const row = await knowledgeBaseRepo.getByUserAndId(teamId, knowledgeBaseId);
+  const row = await knowledgeBaseRepo.getByTeamAndId(teamId, knowledgeBaseId);
   if (!row) {
     return null;
   }
@@ -211,7 +211,7 @@ export async function updateKnowledgeBase(
   knowledgeBaseId: string,
   input: { name?: string; slug?: string; description?: string | null },
 ) {
-  const row = await knowledgeBaseRepo.getByUserAndId(teamId, knowledgeBaseId);
+  const row = await knowledgeBaseRepo.getByTeamAndId(teamId, knowledgeBaseId);
   if (!row) {
     return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
   }
@@ -251,7 +251,7 @@ export async function updateKnowledgeBase(
 }
 
 export async function deleteKnowledgeBase(teamId: string, knowledgeBaseId: string) {
-  const row = await knowledgeBaseRepo.getByUserAndId(teamId, knowledgeBaseId);
+  const row = await knowledgeBaseRepo.getByTeamAndId(teamId, knowledgeBaseId);
   if (!row) {
     return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
   }

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   knowledgeBaseRepo,
   knowledgeResourceRepo,
@@ -19,7 +19,7 @@ import {
 const KNOWLEDGE_UPLOAD_ROOT = join(process.cwd(), "data/knowledge-upload");
 
 function generateKnowledgeResourceId(): string {
-  return `res_${randomBytes(8).toString("hex")}`;
+  return randomUUID();
 }
 
 export { setKnowledgeProviderForTesting as setKnowledgeUploadProviderForTesting } from "./knowledge-provider/registry";
@@ -158,7 +158,7 @@ async function completeResource(resourceId: string, knowledgeBaseId: string, pat
 }
 
 export async function uploadKnowledgeResource(userId: string, knowledgeBaseId: string, file: File) {
-  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByTeamAndId(userId, knowledgeBaseId);
   if (!kb) {
     throw new Error("知识库不存在");
   }
@@ -207,7 +207,7 @@ export async function importKnowledgeResourceFromUrl(
   knowledgeBaseId: string,
   input: { url: string; sourceName?: string },
 ) {
-  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByTeamAndId(userId, knowledgeBaseId);
   if (!kb) {
     throw new Error("知识库不存在");
   }
@@ -246,7 +246,7 @@ export async function importKnowledgeResourceFromUrl(
 }
 
 export async function listKnowledgeResources(userId: string, knowledgeBaseId: string) {
-  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByTeamAndId(userId, knowledgeBaseId);
   if (!kb) {
     return null;
   }
@@ -255,7 +255,7 @@ export async function listKnowledgeResources(userId: string, knowledgeBaseId: st
 }
 
 export async function deleteKnowledgeResource(userId: string, knowledgeBaseId: string, resourceId: string) {
-  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByTeamAndId(userId, knowledgeBaseId);
   if (!kb) {
     return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
   }
@@ -281,7 +281,7 @@ export async function deleteKnowledgeResource(userId: string, knowledgeBaseId: s
 }
 
 export async function refreshKnowledgeResourceStatus(userId: string, knowledgeBaseId: string) {
-  const kb = await knowledgeBaseRepo.getByUserAndId(userId, knowledgeBaseId);
+  const kb = await knowledgeBaseRepo.getByTeamAndId(userId, knowledgeBaseId);
   if (!kb) {
     return null;
   }

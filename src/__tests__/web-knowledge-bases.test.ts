@@ -128,14 +128,14 @@ describe("Knowledge base routes", () => {
       }),
     });
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(200);
     const body = await response.json();
     // id 现在是 UUID 格式
     expect(body.id).toMatch(/^[0-9a-f]{8}-/);
     expect(body.remoteId).toBe("viking://resources/kb/kb-user-1/project-docs/");
   });
 
-  test("GET /web/knowledgeBases lists only current user rows with binding summary", async () => {
+  test("GET /web/knowledgeBases lists team rows with binding summary", async () => {
     const now = new Date();
     await db.insert(user).values({
       id: "other-user",
@@ -188,9 +188,11 @@ describe("Knowledge base routes", () => {
     const response = await request("/web/knowledgeBases");
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toHaveLength(1);
-    expect(body[0].id).toBe(kbA.id);
-    expect(body[0].bindingsCount).toBe(1);
+    // 同一 team 下所有知识库都返回（多租户按 team 隔离）
+    expect(body).toHaveLength(2);
+    const foundA = body.find((e: any) => e.id === kbA.id);
+    expect(foundA).toBeDefined();
+    expect(foundA.bindingsCount).toBe(1);
   });
 
   test("PATCH /web/knowledgeBases/:id updates description and preserves other fields", async () => {

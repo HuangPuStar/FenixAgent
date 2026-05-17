@@ -46,7 +46,7 @@ app.post("/knowledgeBases", async ({ store, body, error, request }: any) => {
     name: payload.name,
     slug: payload.slug,
     description: payload.description,
-  }, authCtx.teamId);
+  }, authCtx.userId);
   if (!result.success) {
     return error(400, { error: { type: result.error.code, message: result.error.message } });
   }

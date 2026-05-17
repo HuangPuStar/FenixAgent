@@ -8,6 +8,7 @@ import webKnowledgeBases from "../routes/web/knowledge-bases";
 import { setKnowledgeProviderForTesting } from "../services/knowledge-base";
 import { setKnowledgeUploadProviderForTesting } from "../services/knowledge-upload";
 import { setTestAuth, resetTestAuth } from "../plugins/auth";
+import { setTestTeamContext } from "../services/team-context";
 
 // 固定的测试团队 UUID
 const TEST_TEAM_ID = "a0000000-0000-0000-0000-000000000002";
@@ -114,6 +115,7 @@ describe("Knowledge resource routes", () => {
       user: { id: TEST_USER_ID, email: "kb@test.com", name: "KB User" },
       authContext: { teamId: TEST_TEAM_ID, userId: TEST_USER_ID, role: "owner" },
     });
+    setTestTeamContext({ teamId: TEST_TEAM_ID, userId: TEST_USER_ID, role: "owner" });
     setKnowledgeProviderForTesting(fakeProvider as any);
     setKnowledgeUploadProviderForTesting(fakeProvider as any);
     await db.delete(knowledgeResource);
@@ -126,18 +128,19 @@ describe("Knowledge resource routes", () => {
 
   afterEach(() => {
     resetTestAuth();
+    setTestTeamContext(null);
   });
 
   test("multipart upload creates pending/processing resource with sourcePath", async () => {
     const form = new FormData();
     form.append("files", new File(["# Guide"], "guide.md", { type: "text/markdown" }));
 
-    const response = await request(`/web/knowledge-bases/${seededKbId}/resources/upload`, {
+    const response = await request(`/web/knowledgeBases/${seededKbId}/resources/upload`, {
       method: "POST",
       body: form,
     });
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.items).toHaveLength(1);
     expect(["pending", "processing"]).toContain(body.items[0].status);
@@ -145,7 +148,7 @@ describe("Knowledge resource routes", () => {
   });
 
   test("URL import failure writes lastError and marks knowledge base error", async () => {
-    const response = await request(`/web/knowledge-bases/${seededKbId}/resources/url`, {
+    const response = await request(`/web/knowledgeBases/${seededKbId}/resources/url`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -191,7 +194,7 @@ describe("Knowledge resource routes", () => {
       },
     ]);
 
-    const response = await request(`/web/knowledge-bases/${seededKbId}/resources`);
+    const response = await request(`/web/knowledgeBases/${seededKbId}/resources`);
     expect(response.status).toBe(200);
     const body = await response.json();
     // 按 updatedAt desc 排序，new 在前
@@ -220,7 +223,7 @@ describe("Knowledge resource routes", () => {
       updatedAt: now,
     }).returning();
 
-    const response = await request(`/web/knowledge-bases/${seededKbId}/resources/${res.id}`, {
+    const response = await request(`/web/knowledgeBases/${seededKbId}/resources/${res.id}`, {
       method: "DELETE",
     });
 
@@ -257,12 +260,12 @@ describe("Knowledge resource routes", () => {
     const form = new FormData();
     form.append("files", new File(["# Retry"], "retry.md", { type: "text/markdown" }));
 
-    const response = await request(`/web/knowledge-bases/${seededKbId}/resources/upload`, {
+    const response = await request(`/web/knowledgeBases/${seededKbId}/resources/upload`, {
       method: "POST",
       body: form,
     });
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(200);
     const [kbRow] = await db.select().from(knowledgeBase).where(eq(knowledgeBase.id, seededKbId));
     expect(kbRow.remoteId).toBe("viking://resources/kb_upload/");
   });
@@ -294,12 +297,12 @@ describe("Knowledge resource routes", () => {
     form.append("files", new File(["# Retry"], "retry.md", { type: "text/markdown" }));
     form.append("files", new File(["# Stable"], "stable.md", { type: "text/markdown" }));
 
-    const response = await request(`/web/knowledge-bases/${seededKbId}/resources/upload`, {
+    const response = await request(`/web/knowledgeBases/${seededKbId}/resources/upload`, {
       method: "POST",
       body: form,
     });
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.items).toHaveLength(2);
     expect(attempts.get("retry.md")).toBe(2);
@@ -310,21 +313,21 @@ describe("Knowledge resource routes", () => {
   test("re-uploading the same file reuses the existing resource row instead of creating duplicates", async () => {
     const form = new FormData();
     form.append("files", new File(["# Guide v1"], "guide.md", { type: "text/markdown" }));
-    const firstResponse = await request(`/web/knowledge-bases/${seededKbId}/resources/upload`, {
+    const firstResponse = await request(`/web/knowledgeBases/${seededKbId}/resources/upload`, {
       method: "POST",
       body: form,
     });
-    expect(firstResponse.status).toBe(201);
+    expect(firstResponse.status).toBe(200);
     const firstBody = await firstResponse.json();
     const firstId = firstBody.items[0].id;
 
     const secondForm = new FormData();
     secondForm.append("files", new File(["# Guide v2"], "guide.md", { type: "text/markdown" }));
-    const secondResponse = await request(`/web/knowledge-bases/${seededKbId}/resources/upload`, {
+    const secondResponse = await request(`/web/knowledgeBases/${seededKbId}/resources/upload`, {
       method: "POST",
       body: secondForm,
     });
-    expect(secondResponse.status).toBe(201);
+    expect(secondResponse.status).toBe(200);
     const secondBody = await secondResponse.json();
     expect(secondBody.items[0].id).toBe(firstId);
 
