@@ -38,7 +38,7 @@ app.get("/tasks", async ({ store, request }: any) => {
 app.post("/tasks", async ({ store, body, error, request }: any) => {
   const authCtx = (await loadTeamContext(store.user!, request as any))!;
   const payload = body as Record<string, unknown>;
-  const result = await createTask(authCtx.teamId, payload as any, authCtx.teamId);
+  const result = await createTask(authCtx.teamId, payload as any, authCtx.userId);
 
   if (!result.success) {
     const err = result.error!;

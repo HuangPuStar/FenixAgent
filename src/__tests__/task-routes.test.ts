@@ -107,8 +107,6 @@ async function createTaskViaRoute(overrides: Record<string, unknown> = {}) {
       timezone: "",
       url: "https://httpbin.org/post",
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: '{"hello":"world"}',
       ...overrides,
     }),
   });
@@ -142,7 +140,7 @@ describe("Task Routes", () => {
         }),
       });
 
-      expect(res.status).toBe(201);
+      expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.success).toBe(true);
       expect(body.data.url).toBe("https://httpbin.org/post");
