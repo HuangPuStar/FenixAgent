@@ -1,31 +1,43 @@
 import Elysia from "elysia";
-import { errorResponse } from "../../plugins/auth";
+import { authGuardPlugin, errorResponse } from "../../plugins/auth";
 import { bindSessionOwner, resolveExistingSessionId } from "../../services/session";
+import { loadTeamContext } from "../../services/team-context";
 
-const BindSessionRequestSchema = {
-  sessionId: "",
-  uuid: "",
-};
+const app = new Elysia({ name: "web-auth", prefix: "/web" })
+  .use(authGuardPlugin)
+  .decorate({ error: errorResponse });
 
-const app = new Elysia({ name: "web-auth", prefix: "/web" }).decorate({ error: errorResponse });
+/** POST /web/bind — Bind a session to a user (requires session auth) */
+app.post(
+  "/bind",
+  async ({ store, body, query, error, request }) => {
+    const user = store.user;
+    if (!user) {
+      return error(401, { error: "Not authenticated" });
+    }
 
-/** POST /web/bind — Bind a session to a UUID (no-login auth) */
-app.post("/bind", async ({ body, query, error }) => {
-  const b = body as { sessionId?: string; uuid?: string };
-  const sessionId = b.sessionId;
-  const uuid = (query as any)?.uuid || b.uuid;
+    const b = body as { sessionId?: string; uuid?: string };
+    const sessionId = b.sessionId;
+    const uuid = (query as any)?.uuid || b.uuid;
 
-  if (!sessionId || !uuid) {
-    return error(400, { error: "sessionId and uuid are required" });
-  }
+    if (!sessionId || !uuid) {
+      return error(400, { error: "sessionId and uuid are required" });
+    }
 
-  const resolvedSessionId = await resolveExistingSessionId(sessionId);
-  if (!resolvedSessionId) {
-    return error(404, { error: "Session not found" });
-  }
+    const authCtx = await loadTeamContext(user, request);
+    if (!authCtx) {
+      return error(403, { error: "No team context" });
+    }
 
-  await bindSessionOwner(resolvedSessionId, uuid);
-  return { ok: true, sessionId: resolvedSessionId };
-});
+    const resolvedSessionId = await resolveExistingSessionId(sessionId);
+    if (!resolvedSessionId) {
+      return error(404, { error: "Session not found" });
+    }
+
+    await bindSessionOwner(resolvedSessionId, uuid);
+    return { ok: true, sessionId: resolvedSessionId };
+  },
+  { sessionAuth: true },
+);
 
 export default app;
