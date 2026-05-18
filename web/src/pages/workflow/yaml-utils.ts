@@ -4,34 +4,38 @@ import type { Node, Edge } from "@xyflow/react";
 export const START_NODE_ID = "__start__";
 
 export interface WfMeta {
+  schema_version: string;
   name: string;
-  version: string;
   description: string;
-  timeout: number | null;
-  defaults: { retry: number; timeout: number; shell: string };
-  inputs: Record<string, string>;
-  env: Record<string, string>;
+  timeout: number;
+  params: Record<string, unknown>;
+  secrets: string[];
 }
 
 export const defaultMeta: WfMeta = {
+  schema_version: "1",
   name: "new-workflow",
-  version: "1.0",
   description: "",
-  timeout: null,
-  defaults: { retry: 0, timeout: 300, shell: "bash -c" },
-  inputs: {},
-  env: {},
+  timeout: 300,
+  params: {},
+  secrets: [],
 };
 
+interface YamlNode {
+  id: string;
+  type: string;
+  depends_on?: string[];
+  [key: string]: unknown;
+}
+
 interface YamlWorkflow {
+  schema_version?: string;
   name?: string;
-  version?: string;
   description?: string;
   timeout?: number;
-  defaults?: { retry?: number; timeout?: number; shell?: string };
-  inputs?: Record<string, unknown>;
-  env?: Record<string, string>;
-  nodes?: Record<string, Record<string, unknown>>;
+  params?: Record<string, unknown>;
+  secrets?: string[];
+  nodes?: YamlNode[];
 }
 
 export function createStartNode(): Node {
@@ -48,53 +52,41 @@ export function yamlToFlow(yamlStr: string): { nodes: Node[]; edges: Edge[]; met
   const doc = yaml.load(yamlStr) as YamlWorkflow | undefined;
 
   const meta: WfMeta = {
+    schema_version: doc?.schema_version || "1",
     name: doc?.name || "untitled",
-    version: doc?.version || "1.0",
     description: doc?.description || "",
-    timeout: doc?.timeout ?? null,
-    defaults: {
-      retry: doc?.defaults?.retry ?? 0,
-      timeout: doc?.defaults?.timeout ?? 300,
-      shell: doc?.defaults?.shell ?? "bash -c",
-    },
-    inputs: {},
-    env: doc?.env || {},
+    timeout: doc?.timeout ?? 300,
+    params: doc?.params || {},
+    secrets: doc?.secrets || [],
   };
 
-  const rawNodes = doc?.nodes || {};
+  const rawNodes = doc?.nodes || [];
   const nodes: Node[] = [createStartNode()];
   const edges: Edge[] = [];
-  let idx = 0;
 
-  // 找出没有任何依赖的根节点，连到 start
-  const allDepends = new Set<string>();
-  for (const raw of Object.values(rawNodes)) {
-    const depends = Array.isArray(raw.depends) ? (raw.depends as string[]) : [];
-    for (const d of depends) allDepends.add(d);
-  }
+  rawNodes.forEach((raw, idx) => {
+    const type = raw.type || "shell";
+    const depends = raw.depends_on || [];
 
-  for (const [id, raw] of Object.entries(rawNodes)) {
-    const type = String(raw.type || "shell");
-    const depends = Array.isArray(raw.depends) ? (raw.depends as string[]) : [];
-
+    // 将除 id/type/depends_on 之外的字段存入 node.data
     const data: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(raw)) {
-      if (k !== "type" && k !== "depends") data[k] = v;
+      if (k !== "id" && k !== "type" && k !== "depends_on") data[k] = v;
     }
 
     nodes.push({
-      id,
+      id: raw.id,
       type,
       position: { x: 240 + idx * 260, y: 100 + (idx % 3) * 100 },
       data,
     });
 
-    // 根节点（无依赖）连到 start
+    // 根节点（无 depends_on）连到 start
     if (depends.length === 0) {
       edges.push({
-        id: `e-${START_NODE_ID}-${id}`,
+        id: `e-${START_NODE_ID}-${raw.id}`,
         source: START_NODE_ID,
-        target: id,
+        target: raw.id,
         type: "smoothstep",
         animated: false,
       });
@@ -102,16 +94,14 @@ export function yamlToFlow(yamlStr: string): { nodes: Node[]; edges: Edge[]; met
 
     for (const dep of depends) {
       edges.push({
-        id: `e-${dep}-${id}`,
+        id: `e-${dep}-${raw.id}`,
         source: dep,
-        target: id,
+        target: raw.id,
         type: "smoothstep",
         animated: true,
       });
     }
-
-    idx++;
-  }
+  });
 
   return { nodes, edges, meta };
 }
@@ -119,7 +109,6 @@ export function yamlToFlow(yamlStr: string): { nodes: Node[]; edges: Edge[]; met
 export function flowToYaml(nodes: Node[], edges: Edge[], meta: WfMeta): string {
   const dependsMap = new Map<string, string[]>();
   for (const edge of edges) {
-    // 忽略从 start 节点出发的边（它们表示根节点，depends 为空）
     if (edge.source === START_NODE_ID) continue;
     const deps = dependsMap.get(edge.target) || [];
     if (!deps.includes(edge.source)) deps.push(edge.source);
@@ -127,24 +116,37 @@ export function flowToYaml(nodes: Node[], edges: Edge[], meta: WfMeta): string {
   }
 
   const doc: Record<string, unknown> = {
+    schema_version: meta.schema_version || "1",
     name: meta.name,
-    version: meta.version,
     ...(meta.description ? { description: meta.description } : {}),
-    ...(meta.timeout ? { timeout: meta.timeout } : {}),
-    defaults: meta.defaults,
-    ...(Object.keys(meta.env).length ? { env: meta.env } : {}),
+    timeout: meta.timeout,
+    ...(Object.keys(meta.params).length ? { params: meta.params } : {}),
+    ...(meta.secrets.length ? { secrets: meta.secrets } : {}),
   };
 
-  const yamlNodes: Record<string, unknown> = {};
+  const yamlNodes: Record<string, unknown>[] = [];
   for (const node of nodes) {
-    // 排除 start 节点
     if (node.id === START_NODE_ID) continue;
 
-    yamlNodes[node.id] = {
+    const entry: Record<string, unknown> = {
+      id: node.id,
       type: node.type,
-      depends: dependsMap.get(node.id) || [],
-      ...(node.data as Record<string, unknown>),
     };
+
+    const depends = dependsMap.get(node.id);
+    if (depends && depends.length > 0) {
+      entry.depends_on = depends;
+    }
+
+    // 合并 node.data 中的非空字段
+    const data = node.data as Record<string, unknown>;
+    for (const [k, v] of Object.entries(data)) {
+      if (v !== undefined && v !== null && v !== "") {
+        entry[k] = v;
+      }
+    }
+
+    yamlNodes.push(entry);
   }
   doc.nodes = yamlNodes;
 
@@ -153,8 +155,17 @@ export function flowToYaml(nodes: Node[], edges: Edge[], meta: WfMeta): string {
 
 let nodeCounter = 0;
 
+const TYPE_PREFIXES: Record<string, string> = {
+  shell: "shell",
+  agent: "agent",
+  api: "api",
+  audit: "audit",
+  workflow: "wf",
+  loop: "loop",
+};
+
 export function nextNodeId(type: string): string {
-  const prefix = type === "shell" ? "shell" : type === "agent" ? "agent" : type === "reference" ? "ref" : "node";
+  const prefix = TYPE_PREFIXES[type] || "node";
   return `${prefix}_${++nodeCounter}`;
 }
 

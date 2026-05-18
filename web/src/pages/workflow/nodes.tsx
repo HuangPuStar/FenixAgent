@@ -1,35 +1,53 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Terminal, Bot, GitBranch, Play } from "lucide-react";
+import { Terminal, Bot, Globe, ShieldCheck, GitBranch, RefreshCw, Play } from "lucide-react";
 
 const NODE_COLORS: Record<string, { main: string; light: string; headerText: string }> = {
   start: { main: "#6366f1", light: "#eef2ff", headerText: "#fff" },
   shell: { main: "#3b82f6", light: "#eff6ff", headerText: "#fff" },
   agent: { main: "#22c55e", light: "#f0fdf4", headerText: "#fff" },
-  reference: { main: "#f59e0b", light: "#fffbeb", headerText: "#fff" },
+  api: { main: "#8b5cf6", light: "#f5f3ff", headerText: "#fff" },
+  audit: { main: "#f59e0b", light: "#fffbeb", headerText: "#fff" },
+  workflow: { main: "#ec4899", light: "#fdf2f8", headerText: "#fff" },
+  loop: { main: "#06b6d4", light: "#ecfeff", headerText: "#fff" },
 };
 
 const NODE_ICONS: Record<string, React.ReactNode> = {
   start: <Play size={12} />,
   shell: <Terminal size={12} />,
   agent: <Bot size={12} />,
-  reference: <GitBranch size={12} />,
+  api: <Globe size={12} />,
+  audit: <ShieldCheck size={12} />,
+  workflow: <GitBranch size={12} />,
+  loop: <RefreshCw size={12} />,
 };
 
 const NODE_LABELS: Record<string, string> = {
   start: "开始",
   shell: "Shell",
   agent: "Agent",
-  reference: "引用",
+  api: "API",
+  audit: "审批",
+  workflow: "子流程",
+  loop: "循环",
 };
 
 function getPreview(type: string, data: Record<string, unknown>): string {
   switch (type) {
     case "shell":
-      return String(data.run || "");
+      return String(data.command || "");
     case "agent":
       return String(data.prompt || "");
-    case "reference":
-      return String(data.workflow || "");
+    case "api":
+      return String(data.url || "");
+    case "audit": {
+      const dd = data.display_data;
+      if (dd && typeof dd === "object") return String((dd as Record<string, string>).message || "");
+      return "";
+    }
+    case "workflow":
+      return String(data.ref || "");
+    case "loop":
+      return String(data.condition || "");
     default:
       return "";
   }
@@ -119,5 +137,8 @@ export const nodeTypes = {
   start: WorkflowNode,
   shell: WorkflowNode,
   agent: WorkflowNode,
-  reference: WorkflowNode,
+  api: WorkflowNode,
+  audit: WorkflowNode,
+  workflow: WorkflowNode,
+  loop: WorkflowNode,
 };

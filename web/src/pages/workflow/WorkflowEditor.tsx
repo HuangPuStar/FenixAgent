@@ -26,10 +26,17 @@ import {
   X,
   Terminal,
   Bot,
+  Globe,
+  ShieldCheck,
   GitBranch,
+  RefreshCw,
   Eye,
   Edit3,
   Lock,
+  Play,
+  CheckCircle,
+  AlertTriangle,
+  List,
 } from "lucide-react";
 import { nodeTypes } from "./nodes";
 import { autoLayout } from "./layout";
@@ -43,9 +50,24 @@ import {
   START_NODE_ID,
   type WfMeta,
 } from "./yaml-utils";
+import { workflowEngineApi } from "../../api/workflow-engine";
 import "./workflow.css";
 
-function WorkflowEditorInner() {
+const PALETTE_ITEMS = [
+  { type: "shell", label: "Shell", icon: Terminal, color: "#3b82f6" },
+  { type: "agent", label: "Agent", icon: Bot, color: "#22c55e" },
+  { type: "api", label: "API", icon: Globe, color: "#8b5cf6" },
+  { type: "audit", label: "审批", icon: ShieldCheck, color: "#f59e0b" },
+  { type: "workflow", label: "子流程", icon: GitBranch, color: "#ec4899" },
+  { type: "loop", label: "循环", icon: RefreshCw, color: "#06b6d4" },
+] as const;
+
+interface WorkflowEditorProps {
+  onViewRuns?: () => void;
+  onRunStarted?: (runId: string) => void;
+}
+
+function WorkflowEditorInner({ onViewRuns, onRunStarted }: WorkflowEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([createStartNode()]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { fitView, screenToFlowPosition } = useReactFlow();
@@ -55,6 +77,13 @@ function WorkflowEditorInner() {
   const [yamlOpen, setYamlOpen] = useState(false);
   const [yamlText, setYamlText] = useState("");
   const [readOnly, setReadOnly] = useState(false);
+
+  // dryRun / run 状态
+  const [dryRunResult, setDryRunResult] = useState<{
+    valid: boolean;
+    issues: Array<{ type: string; message: string; field?: string }>;
+  } | null>(null);
+  const [running, setRunning] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingConnectSource = useRef<string | null>(null);
@@ -71,7 +100,12 @@ function WorkflowEditorInner() {
       didConnect.current = true;
       setEdges((eds) =>
         addEdge(
-          { ...connection, type: "smoothstep", animated: connection.source !== START_NODE_ID, id: `e-${connection.source}-${connection.target}` },
+          {
+            ...connection,
+            type: "smoothstep",
+            animated: connection.source !== START_NODE_ID,
+            id: `e-${connection.source}-${connection.target}`,
+          },
           eds,
         ),
       );
@@ -90,14 +124,13 @@ function WorkflowEditorInner() {
       const sourceId = pendingConnectSource.current;
       pendingConnectSource.current = null;
 
-      // 如果 onConnect 已经触发（成功连到已有节点），不创建新节点
       if (!sourceId || readOnly || didConnect.current) return;
       didConnect.current = false;
 
       const sourceNode = nodes.find((n) => n.id === sourceId);
       if (!sourceNode) return;
 
-      const newType = sourceId === START_NODE_ID ? "shell" : sourceNode.type ?? "shell";
+      const newType = sourceId === START_NODE_ID ? "shell" : (sourceNode.type ?? "shell");
       const newId = nextNodeId(newType);
       const position = screenToFlowPosition({
         x: (event as MouseEvent).clientX,
@@ -108,7 +141,13 @@ function WorkflowEditorInner() {
       setNodes((nds) => [...nds, newNode]);
       setEdges((eds) => [
         ...eds,
-        { id: `e-${sourceId}-${newId}`, source: sourceId, target: newId, type: "smoothstep", animated: sourceId !== START_NODE_ID },
+        {
+          id: `e-${sourceId}-${newId}`,
+          source: sourceId,
+          target: newId,
+          type: "smoothstep",
+          animated: sourceId !== START_NODE_ID,
+        },
       ]);
     },
     [nodes, readOnly, screenToFlowPosition, setNodes, setEdges],
@@ -180,6 +219,7 @@ function WorkflowEditorInner() {
     setSelectedNode(null);
     setMeta({ ...defaultMeta });
     setYamlText("");
+    setDryRunResult(null);
     resetNodeCounter();
   }, [setNodes, setEdges]);
 
@@ -194,6 +234,7 @@ function WorkflowEditorInner() {
         setEdges(newEdges);
         setMeta(newMeta);
         setSelectedNode(null);
+        setDryRunResult(null);
         setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
       } catch (err) {
         console.error(err);
@@ -232,6 +273,7 @@ function WorkflowEditorInner() {
           setMeta(newMeta);
           setSelectedNode(null);
           setYamlText(text);
+          setDryRunResult(null);
           setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
         } catch (err) {
           console.error(err);
@@ -244,13 +286,47 @@ function WorkflowEditorInner() {
     [setNodes, setEdges, fitView],
   );
 
+  // ── Dry Run ──
+  const handleDryRun = useCallback(async () => {
+    const y = syncYaml();
+    setRunning(true);
+    setDryRunResult(null);
+    try {
+      const result = await workflowEngineApi.dryRun(y);
+      setDryRunResult(result);
+    } catch (err) {
+      console.error(err);
+      setDryRunResult({ valid: false, issues: [{ type: "error", message: (err as Error).message }] });
+    } finally {
+      setRunning(false);
+    }
+  }, [syncYaml]);
+
+  // ── Run workflow ──
+  const handleRun = useCallback(async () => {
+    const y = syncYaml();
+    setRunning(true);
+    setDryRunResult(null);
+    try {
+      const result = await workflowEngineApi.run(y);
+      if (onRunStarted) {
+        onRunStarted(result.runId);
+      } else {
+        alert(`工作流已提交，runId: ${result.runId}\n状态: ${result.status}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("执行失败: " + (err as Error).message);
+    } finally {
+      setRunning(false);
+    }
+  }, [syncYaml, onRunStarted]);
+
   // ── Update selected node data ──
   const updateNodeData = useCallback(
     (updates: Record<string, unknown>) => {
       if (!selectedNode) return;
-      setNodes((nds) =>
-        nds.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...updates } } : n)),
-      );
+      setNodes((nds) => nds.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...updates } } : n)));
       setSelectedNode((prev) => (prev ? { ...prev, data: { ...prev.data, ...updates } } : null));
     },
     [selectedNode, setNodes],
@@ -338,69 +414,49 @@ function WorkflowEditorInner() {
           <MiniMap
             position="bottom-right"
             nodeColor={(n) => {
-              if (n.type === "start") return "#6366f1";
-              if (n.type === "agent") return "#22c55e";
-              if (n.type === "reference") return "#f59e0b";
-              return "#3b82f6";
+              const colorMap: Record<string, string> = {
+                start: "#6366f1",
+                agent: "#22c55e",
+                api: "#8b5cf6",
+                audit: "#f59e0b",
+                workflow: "#ec4899",
+                loop: "#06b6d4",
+              };
+              return colorMap[n.type ?? ""] ?? "#3b82f6";
             }}
             maskColor="rgba(0,0,0,0.08)"
             style={{ borderRadius: 8 }}
           />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#d1d5db" />
 
+          {/* 节点面板 */}
           {!readOnly && (
             <Panel position="top-left" className="wf-panel-palette">
               <div className="wf-palette">
                 <div className="wf-palette-title">拖拽或点击添加</div>
-                <button
-                  type="button"
-                  className="wf-palette-btn"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("application/workflow-node", "shell");
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onClick={() => addNode("shell")}
-                >
-                  <span className="wf-palette-icon" style={{ background: "#3b82f6" }}>
-                    <Terminal size={14} />
-                  </span>
-                  Shell
-                </button>
-                <button
-                  type="button"
-                  className="wf-palette-btn"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("application/workflow-node", "agent");
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onClick={() => addNode("agent")}
-                >
-                  <span className="wf-palette-icon" style={{ background: "#22c55e" }}>
-                    <Bot size={14} />
-                  </span>
-                  Agent
-                </button>
-                <button
-                  type="button"
-                  className="wf-palette-btn"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("application/workflow-node", "reference");
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onClick={() => addNode("reference")}
-                >
-                  <span className="wf-palette-icon" style={{ background: "#f59e0b" }}>
-                    <GitBranch size={14} />
-                  </span>
-                  引用
-                </button>
+                {PALETTE_ITEMS.map(({ type, label, icon: Icon, color }) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className="wf-palette-btn"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/workflow-node", type);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onClick={() => addNode(type)}
+                  >
+                    <span className="wf-palette-icon" style={{ background: color }}>
+                      <Icon size={14} />
+                    </span>
+                    {label}
+                  </button>
+                ))}
               </div>
             </Panel>
           )}
 
+          {/* 工具栏 */}
           <Panel position="top-center" className="wf-panel-toolbar">
             <div className="wf-toolbar">
               {!readOnly && (
@@ -437,16 +493,91 @@ function WorkflowEditorInner() {
               <div className="wf-toolbar-divider" />
               <button
                 type="button"
+                className="wf-toolbar-btn"
+                onClick={handleDryRun}
+                disabled={running}
+                title="校验 (dryRun)"
+              >
+                <CheckCircle size={15} />
+              </button>
+              <button
+                type="button"
+                className="wf-toolbar-btn"
+                onClick={handleRun}
+                disabled={running}
+                title="执行工作流"
+                style={running ? { opacity: 0.5 } : undefined}
+              >
+                <Play size={15} />
+              </button>
+              <div className="wf-toolbar-divider" />
+              <button
+                type="button"
                 className={`wf-toolbar-btn ${readOnly ? "active" : ""}`}
                 onClick={() => setReadOnly(!readOnly)}
                 title={readOnly ? "切换到编辑模式" : "切换到只读模式"}
               >
                 {readOnly ? <Eye size={15} /> : <Edit3 size={15} />}
               </button>
+              {onViewRuns && (
+                <>
+                  <div className="wf-toolbar-divider" />
+                  <button
+                    type="button"
+                    className="wf-toolbar-btn"
+                    onClick={onViewRuns}
+                    title="运行记录"
+                  >
+                    <List size={15} />
+                  </button>
+                </>
+              )}
             </div>
           </Panel>
         </ReactFlow>
 
+        {/* DryRun 结果提示 */}
+        {dryRunResult && (
+          <div
+            style={{
+              position: "absolute",
+              top: 52,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 10,
+              background: dryRunResult.valid ? "#f0fdf4" : "#fef2f2",
+              border: `1px solid ${dryRunResult.valid ? "#86efac" : "#fca5a5"}`,
+              borderRadius: 8,
+              padding: "8px 14px",
+              fontSize: 12,
+              color: dryRunResult.valid ? "#166534" : "#991b1b",
+              maxWidth: 480,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, marginBottom: dryRunResult.issues.length ? 4 : 0 }}>
+              {dryRunResult.valid ? <CheckCircle size={13} /> : <AlertTriangle size={13} />}
+              {dryRunResult.valid ? "校验通过" : `校验失败 (${dryRunResult.issues.length} 个问题)`}
+              <button
+                type="button"
+                onClick={() => setDryRunResult(null)}
+                style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", padding: 0, color: "inherit" }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+            {dryRunResult.issues.length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {dryRunResult.issues.map((issue, i) => (
+                  <li key={i}>
+                    {issue.type === "error" ? "❌" : "⚠️"} {issue.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* YAML 滑出面板 */}
         <div className={`wf-yaml-slide ${yamlOpen ? "open" : ""}`}>
           <div className="wf-yaml-slide-header">
             <span className="wf-yaml-slide-title">YAML</span>
@@ -472,12 +603,10 @@ function WorkflowEditorInner() {
         </div>
       </div>
 
-      {/* Right Panel */}
+      {/* 右侧属性面板 */}
       <aside className="wf-prop-panel">
         <div className="wf-prop-header">
-          <span className="wf-prop-title">
-            {isStartNode ? "开始节点" : selectedNode ? "节点属性" : "工作流"}
-          </span>
+          <span className="wf-prop-title">{isStartNode ? "开始节点" : selectedNode ? "节点属性" : "工作流"}</span>
           {readOnly && (
             <span className="wf-prop-readonly-tag">
               <Lock size={10} /> 只读
@@ -485,6 +614,7 @@ function WorkflowEditorInner() {
           )}
         </div>
         <div className="wf-prop-body">
+          {/* ── 开始节点 ── */}
           {isStartNode ? (
             <div className="wf-prop-section">
               <div className="wf-prop-section-title">开始节点</div>
@@ -495,15 +625,12 @@ function WorkflowEditorInner() {
             </div>
           ) : selectedNode ? (
             <>
+              {/* ── 节点基本信息 ── */}
               <div className="wf-prop-section">
                 <div className="wf-prop-section-title">基本信息</div>
                 <div className="wf-prop-field">
                   <label>节点 ID</label>
-                  <input
-                    value={selectedNode.id}
-                    onChange={(e) => handleIdChange(e.target.value)}
-                    readOnly={readOnly}
-                  />
+                  <input value={selectedNode.id} onChange={(e) => handleIdChange(e.target.value)} readOnly={readOnly} />
                 </div>
                 <div className="wf-prop-field">
                   <label>类型</label>
@@ -511,41 +638,44 @@ function WorkflowEditorInner() {
                     value={nodeType}
                     onChange={(e) => {
                       const newType = e.target.value;
-                      setNodes((nds) =>
-                        nds.map((n) => (n.id === selectedNode.id ? { ...n, type: newType } : n)),
-                      );
+                      setNodes((nds) => nds.map((n) => (n.id === selectedNode.id ? { ...n, type: newType } : n)));
                       setSelectedNode((prev) => (prev ? { ...prev, type: newType } : null));
                     }}
                     disabled={readOnly}
                   >
                     <option value="shell">Shell</option>
                     <option value="agent">Agent</option>
-                    <option value="reference">引用</option>
+                    <option value="api">API</option>
+                    <option value="audit">审批 (Audit)</option>
+                    <option value="workflow">子流程 (Workflow)</option>
+                    <option value="loop">循环 (Loop)</option>
                   </select>
                 </div>
               </div>
 
+              {/* ── 节点配置（按类型） ── */}
               <div className="wf-prop-section">
                 <div className="wf-prop-section-title">配置</div>
 
                 {nodeType === "shell" && (
                   <>
                     <div className="wf-prop-field">
-                      <label>命令 (run)</label>
+                      <label>命令 (command)</label>
                       <textarea
-                        value={String(sd?.run ?? "")}
-                        onChange={(e) => updateNodeData({ run: e.target.value })}
-                        placeholder="echo hello"
+                        value={String(sd?.command ?? "")}
+                        onChange={(e) => updateNodeData({ command: e.target.value })}
+                        placeholder='echo "Hello ${{ params.name }}"'
                         rows={3}
                         readOnly={readOnly}
                       />
                     </div>
                     <div className="wf-prop-field">
-                      <label>Shell</label>
-                      <input
-                        value={String(sd?.shell ?? "")}
-                        onChange={(e) => updateNodeData({ shell: e.target.value })}
-                        placeholder="bash -c"
+                      <label>环境变量</label>
+                      <textarea
+                        value={String(sd?.env ?? "")}
+                        onChange={(e) => updateNodeData({ env: e.target.value })}
+                        placeholder="KEY=value（每行一个）"
+                        rows={2}
                         readOnly={readOnly}
                       />
                     </div>
@@ -565,30 +695,149 @@ function WorkflowEditorInner() {
                       />
                     </div>
                     <div className="wf-prop-field">
-                      <label>模型</label>
+                      <label>Agent 名称</label>
                       <input
-                        value={String(sd?.model ?? "")}
-                        onChange={(e) => updateNodeData({ model: e.target.value })}
-                        placeholder="gpt-4o"
+                        value={String(sd?.agent ?? "")}
+                        onChange={(e) => updateNodeData({ agent: e.target.value })}
+                        placeholder="general"
+                        readOnly={readOnly}
+                      />
+                    </div>
+                    <div className="wf-prop-field">
+                      <label>Skill</label>
+                      <input
+                        value={String(sd?.skill ?? "")}
+                        onChange={(e) => updateNodeData({ skill: e.target.value })}
+                        placeholder="skill-name"
                         readOnly={readOnly}
                       />
                     </div>
                   </>
                 )}
 
-                {nodeType === "reference" && (
+                {nodeType === "api" && (
+                  <>
+                    <div className="wf-prop-field">
+                      <label>URL</label>
+                      <input
+                        value={String(sd?.url ?? "")}
+                        onChange={(e) => updateNodeData({ url: e.target.value })}
+                        placeholder="https://api.example.com/data"
+                        readOnly={readOnly}
+                      />
+                    </div>
+                    <div className="wf-prop-field">
+                      <label>方法</label>
+                      <select
+                        value={String(sd?.method ?? "GET")}
+                        onChange={(e) => updateNodeData({ method: e.target.value })}
+                        disabled={readOnly}
+                      >
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="PATCH">PATCH</option>
+                        <option value="DELETE">DELETE</option>
+                      </select>
+                    </div>
+                    <div className="wf-prop-field">
+                      <label>Headers (JSON)</label>
+                      <textarea
+                        value={String(sd?.headers ?? "")}
+                        onChange={(e) => updateNodeData({ headers: e.target.value })}
+                        placeholder='{"Authorization": "Bearer ${{ secrets.KEY }}"}'
+                        rows={2}
+                        readOnly={readOnly}
+                      />
+                    </div>
+                    <div className="wf-prop-field">
+                      <label>Body</label>
+                      <textarea
+                        value={String(sd?.body ?? "")}
+                        onChange={(e) => updateNodeData({ body: e.target.value })}
+                        placeholder='{"key": "value"}'
+                        rows={2}
+                        readOnly={readOnly}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {nodeType === "audit" && (
+                  <>
+                    <div className="wf-prop-field">
+                      <label>审批提示消息</label>
+                      <input
+                        value={String(
+                          (typeof sd?.display_data === "object" && sd?.display_data !== null
+                            ? (sd.display_data as Record<string, string>).message
+                            : sd?.display_data) ?? "",
+                        )}
+                        onChange={(e) => updateNodeData({ display_data: { message: e.target.value } })}
+                        placeholder="请审核此步骤"
+                        readOnly={readOnly}
+                      />
+                    </div>
+                    <div className="wf-prop-field">
+                      <label>过期时间 (秒)</label>
+                      <input
+                        type="number"
+                        value={sd?.expires_in != null ? String(sd.expires_in) : ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateNodeData({ expires_in: v ? Number(v) : undefined });
+                        }}
+                        placeholder="86400"
+                        readOnly={readOnly}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {nodeType === "workflow" && (
                   <div className="wf-prop-field">
-                    <label>工作流名称</label>
+                    <label>子流程路径 (ref)</label>
                     <input
-                      value={String(sd?.workflow ?? "")}
-                      onChange={(e) => updateNodeData({ workflow: e.target.value })}
-                      placeholder="my-workflow"
+                      value={String(sd?.ref ?? "")}
+                      onChange={(e) => updateNodeData({ ref: e.target.value })}
+                      placeholder="./sub-workflow.yaml"
                       readOnly={readOnly}
                     />
                   </div>
                 )}
+
+                {nodeType === "loop" && (
+                  <>
+                    <div className="wf-prop-field">
+                      <label>循环条件 (condition)</label>
+                      <input
+                        value={String(sd?.condition ?? "")}
+                        onChange={(e) => updateNodeData({ condition: e.target.value })}
+                        placeholder="{{ counter < 10 }}"
+                        readOnly={readOnly}
+                      />
+                    </div>
+                    <div className="wf-prop-field">
+                      <label>最大迭代次数</label>
+                      <input
+                        type="number"
+                        value={sd?.max_iterations != null ? String(sd.max_iterations) : ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateNodeData({ max_iterations: v ? Number(v) : undefined });
+                        }}
+                        placeholder="10"
+                        readOnly={readOnly}
+                      />
+                    </div>
+                    <div className="wf-prop-hint" style={{ marginTop: 4 }}>
+                      <p>循环体 (body) 请在 YAML 面板中编辑。</p>
+                    </div>
+                  </>
+                )}
               </div>
 
+              {/* ── 高级配置 ── */}
               <div className="wf-prop-section">
                 <div className="wf-prop-section-title">高级</div>
                 <div className="wf-prop-field">
@@ -617,37 +866,20 @@ function WorkflowEditorInner() {
                     readOnly={readOnly}
                   />
                 </div>
-                <div className="wf-prop-field">
-                  <label>环境变量</label>
-                  <textarea
-                    value={String(sd?.env ?? "")}
-                    onChange={(e) => updateNodeData({ env: e.target.value })}
-                    placeholder="KEY=value"
-                    rows={2}
-                    readOnly={readOnly}
-                  />
-                </div>
               </div>
             </>
           ) : (
             <>
+              {/* ── 工作流元数据 ── */}
               <div className="wf-prop-section">
                 <div className="wf-prop-section-title">基本信息</div>
                 <div className="wf-prop-field">
-                  <label>名称</label>
-                  <input
-                    value={meta.name}
-                    onChange={(e) => updateMeta({ name: e.target.value })}
-                    readOnly={readOnly}
-                  />
+                  <label>Schema 版本</label>
+                  <input value={meta.schema_version} readOnly />
                 </div>
                 <div className="wf-prop-field">
-                  <label>版本</label>
-                  <input
-                    value={meta.version}
-                    onChange={(e) => updateMeta({ version: e.target.value })}
-                    readOnly={readOnly}
-                  />
+                  <label>名称</label>
+                  <input value={meta.name} onChange={(e) => updateMeta({ name: e.target.value })} readOnly={readOnly} />
                 </div>
                 <div className="wf-prop-field">
                   <label>描述</label>
@@ -660,11 +892,11 @@ function WorkflowEditorInner() {
                   />
                 </div>
                 <div className="wf-prop-field">
-                  <label>默认超时 (秒)</label>
+                  <label>超时 (秒)</label>
                   <input
                     type="number"
-                    value={meta.timeout ?? ""}
-                    onChange={(e) => updateMeta({ timeout: e.target.value ? Number(e.target.value) : null })}
+                    value={meta.timeout}
+                    onChange={(e) => updateMeta({ timeout: e.target.value ? Number(e.target.value) : 300 })}
                     placeholder="300"
                     readOnly={readOnly}
                   />
@@ -672,25 +904,42 @@ function WorkflowEditorInner() {
               </div>
 
               <div className="wf-prop-section">
-                <div className="wf-prop-section-title">默认配置</div>
+                <div className="wf-prop-section-title">参数 (params)</div>
                 <div className="wf-prop-field">
-                  <label>默认 Shell</label>
-                  <input
-                    value={meta.defaults.shell}
-                    onChange={(e) =>
-                      updateMeta({ defaults: { ...meta.defaults, shell: e.target.value } })
-                    }
+                  <label>参数定义 (JSON)</label>
+                  <textarea
+                    value={Object.keys(meta.params).length ? JSON.stringify(meta.params, null, 2) : ""}
+                    onChange={(e) => {
+                      try {
+                        const parsed = e.target.value.trim() ? JSON.parse(e.target.value) : {};
+                        updateMeta({ params: parsed });
+                      } catch {
+                        // 用户还在编辑，暂不更新
+                      }
+                    }}
+                    placeholder='{"name": {"type": "string", "default": "World"}}'
+                    rows={3}
                     readOnly={readOnly}
                   />
                 </div>
+              </div>
+
+              <div className="wf-prop-section">
+                <div className="wf-prop-section-title">密钥 (secrets)</div>
                 <div className="wf-prop-field">
-                  <label>默认重试</label>
-                  <input
-                    type="number"
-                    value={meta.defaults.retry}
+                  <label>环境变量名（每行一个）</label>
+                  <textarea
+                    value={meta.secrets.join("\n")}
                     onChange={(e) =>
-                      updateMeta({ defaults: { ...meta.defaults, retry: Number(e.target.value) || 0 } })
+                      updateMeta({
+                        secrets: e.target.value
+                          .split("\n")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                      })
                     }
+                    placeholder="API_KEY&#10;DATABASE_URL"
+                    rows={2}
                     readOnly={readOnly}
                   />
                 </div>
@@ -700,7 +949,7 @@ function WorkflowEditorInner() {
                 <p>点击画布中的节点查看属性</p>
                 {!readOnly && (
                   <>
-                    <p>从左侧面板点击添加节点</p>
+                    <p>从左侧面板点击或拖拽添加节点</p>
                     <p>从节点右侧端口拖出可快速创建后续节点</p>
                     <p>按 Delete 键删除选中的节点或连线</p>
                   </>
@@ -714,10 +963,10 @@ function WorkflowEditorInner() {
   );
 }
 
-export function WorkflowEditor() {
+export function WorkflowEditor(props: WorkflowEditorProps) {
   return (
     <ReactFlowProvider>
-      <WorkflowEditorInner />
+      <WorkflowEditorInner {...props} />
     </ReactFlowProvider>
   );
 }
