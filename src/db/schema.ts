@@ -535,13 +535,34 @@ export const workflow = pgTable(
       .references(() => team.id, { onDelete: "cascade" }),
     name: varchar("name").notNull(),
     description: text("description"),
-    steps: jsonb("steps").notNull(),
-    enabled: boolean("enabled").notNull().default(true),
+    latestVersion: integer("latest_version"),
+    storagePath: text("storage_path"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     teamNameIdx: uniqueIndex("idx_workflow_team_name").on(table.teamId, table.name),
+  }),
+);
+
+// Workflow 版本（草稿 + 已发布）
+export const workflowVersion = pgTable(
+  "workflow_version",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(() => workflow.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    filePath: text("file_path").notNull(),
+    status: varchar("status", { length: 20 }).notNull(), // "draft" | "published"
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    workflowVersionIdx: uniqueIndex("idx_workflow_version_unique").on(table.workflowId, table.version),
   }),
 );
 
@@ -553,6 +574,7 @@ export const workflowRun = pgTable(
     workflowId: uuid("workflow_id")
       .notNull()
       .references(() => workflow.id, { onDelete: "cascade" }),
+    version: integer("version"),
     status: varchar("status").notNull().default("running"),
     input: jsonb("input"),
     output: jsonb("output"),
@@ -565,6 +587,81 @@ export const workflowRun = pgTable(
   (table) => ({
     workflowIdx: index("idx_workflow_run_workflow").on(table.workflowId),
     statusIdx: index("idx_workflow_run_status").on(table.status),
+  }),
+);
+
+// ────────────────────────────────────────────
+// Workflow Engine Event Sourcing（@mothership/workflow-engine）
+// ────────────────────────────────────────────
+
+// Workflow 事件流表
+export const workflowEvent = pgTable(
+  "workflow_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: varchar("event_id").notNull(),
+    runId: varchar("run_id").notNull(),
+    projectId: varchar("project_id"),
+    nodeId: varchar("node_id"),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    type: varchar("type").notNull(),
+    nodeType: varchar("node_type"),
+    metadata: jsonb("metadata"),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    runIdx: index("idx_workflow_event_run").on(table.runId),
+    teamIdx: index("idx_workflow_event_team").on(table.teamId),
+    typeIdx: index("idx_workflow_event_run_type").on(table.runId, table.type),
+    nodeIdx: index("idx_workflow_event_run_node").on(table.runId, table.nodeId),
+  }),
+);
+
+// Workflow 快照表
+export const workflowSnapshot = pgTable(
+  "workflow_snapshot",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    snapshotId: varchar("snapshot_id").notNull(),
+    runId: varchar("run_id").notNull(),
+    lastEventId: varchar("last_event_id").notNull(),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    nodeStates: jsonb("node_states").notNull(),
+    dagStatus: varchar("dag_status").notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    runIdx: index("idx_workflow_snapshot_run").on(table.runId),
+    teamIdx: index("idx_workflow_snapshot_team").on(table.teamId),
+  }),
+);
+
+// Workflow 节点输出表
+export const workflowNodeOutput = pgTable(
+  "workflow_node_output",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: varchar("run_id").notNull(),
+    nodeId: varchar("node_id").notNull(),
+    stdout: text("stdout").notNull().default(""),
+    json: jsonb("json"),
+    exitCode: integer("exit_code").notNull(),
+    size: integer("size"),
+    ref: text("ref"),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    runNodeIdx: uniqueIndex("idx_workflow_node_output_run_node").on(table.runId, table.nodeId),
+    teamIdx: index("idx_workflow_node_output_team").on(table.teamId),
   }),
 );
 
