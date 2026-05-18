@@ -17,7 +17,7 @@ const fakeFacade = {
 beforeEach(() => {
   resetCoreRuntime();
   _deps.getCoreRuntime = () => fakeFacade as any;
-  _deps.getAgentConfigById = mock(async () => null);
+  _deps.getAgentConfigById = mock(async () => null as any) as any;
   _deps.getAgentFullConfig = mock(async () => ({ agentConfig: null, providers: [], skills: [], mcpServers: [] }));
   _deps.environmentRepo = { getById: mock(async () => null) } as any;
   _deps.findOrCreateForEnvironment = mock(async () => ({ id: "ses_1" })) as any;
@@ -35,12 +35,12 @@ function snap(id: string, status: string): RuntimeInstanceSnapshot {
   return {
     instanceId: id,
     status: status as any,
-    errorMessage: null,
+    errorMessage: undefined,
     pluginMetadata: {},
     createdAt: new Date(),
     engineType: "opencode",
     nodeId: "local-default",
-    launchSpec: {},
+    launchSpec: {} as any,
     relayConnected: false,
     updatedAt: new Date(),
   };

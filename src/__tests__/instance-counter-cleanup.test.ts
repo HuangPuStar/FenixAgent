@@ -15,7 +15,7 @@ const mockLaunchInstance = mock(
       pluginMetadata: {},
       errorMessage: null,
       createdAt: new Date(),
-    }) as RuntimeInstanceSnapshot,
+    }) as any as RuntimeInstanceSnapshot,
 );
 
 const fakeFacade = {
@@ -28,7 +28,7 @@ const fakeFacade = {
 beforeEach(() => {
   resetCoreRuntime();
   _deps.getCoreRuntime = () => fakeFacade as any;
-  _deps.getAgentConfigById = mock(async () => null);
+  _deps.getAgentConfigById = mock(async () => null as any) as any;
   _deps.getAgentFullConfig = mock(async () => ({ agentConfig: null, providers: [], skills: [], mcpServers: [] }));
   _deps.environmentRepo = {
     getById: mock(async () => ({
@@ -60,14 +60,14 @@ describe("stopInstance envInstanceCounters cleanup", () => {
         instanceId: spec.instanceId,
         status: "running" as const,
         pluginMetadata: { port: 8888, pid: 1234, token: "abc" },
-        errorMessage: null,
+        errorMessage: undefined,
         createdAt: new Date(),
         engineType: "opencode",
         nodeId: "local-default",
-        launchSpec: {},
+        launchSpec: {} as any,
         relayConnected: false,
         updatedAt: new Date(),
-      };
+      } as any as RuntimeInstanceSnapshot;
       snapshots.push(s);
       mockListInstances.mockImplementation(() => [...snapshots]);
       mockGetInstance.mockImplementation((id: string) => snapshots.find((s) => s.instanceId === id) as any);
@@ -101,14 +101,14 @@ describe("stopInstance envInstanceCounters cleanup", () => {
         instanceId: spec.instanceId,
         status: "running" as const,
         pluginMetadata: { port: 8888 + snapshots.length, pid: 100 + snapshots.length, token: `tok${snapshots.length}` },
-        errorMessage: null,
+        errorMessage: undefined,
         createdAt: new Date(),
         engineType: "opencode",
         nodeId: "local-default",
-        launchSpec: {},
+        launchSpec: {} as any,
         relayConnected: false,
         updatedAt: new Date(),
-      };
+      } as any as RuntimeInstanceSnapshot;
       snapshots.push(s);
       mockListInstances.mockImplementation(() => [...snapshots]);
       mockGetInstance.mockImplementation((id: string) => snapshots.find((s) => s.instanceId === id) as any);

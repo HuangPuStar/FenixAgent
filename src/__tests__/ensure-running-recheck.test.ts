@@ -23,7 +23,7 @@ const fakeFacade = {
 beforeEach(() => {
   resetCoreRuntime();
   _deps.getCoreRuntime = () => fakeFacade as any;
-  _deps.getAgentConfigById = mock(async () => null);
+  _deps.getAgentConfigById = mock(async () => null as any) as any;
   _deps.getAgentFullConfig = mock(async () => ({ agentConfig: null, providers: [], skills: [], mcpServers: [] }));
   _deps.environmentRepo = {
     getById: mock(async () => ({

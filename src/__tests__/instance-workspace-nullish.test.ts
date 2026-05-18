@@ -14,7 +14,7 @@ beforeEach(() => {
       launchInstance: mock(async () => ({})),
       stopInstance: mock(async () => {}),
     }) as any;
-  _deps.getAgentConfigById = mock(async () => null);
+  _deps.getAgentConfigById = mock(async () => null as any) as any;
   _deps.getAgentFullConfig = mock(async () => ({ agentConfig: null, providers: [], skills: [], mcpServers: [] }));
   _deps.environmentRepo = { getById: mockEnvGetById } as any;
   _deps.findOrCreateForEnvironment = mock(async () => ({ id: "ses_test" })) as any;

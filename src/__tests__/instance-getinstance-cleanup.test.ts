@@ -16,7 +16,7 @@ const fakeFacade = {
 beforeEach(() => {
   resetCoreRuntime();
   _deps.getCoreRuntime = () => fakeFacade as any;
-  _deps.getAgentConfigById = mock(async () => null);
+  _deps.getAgentConfigById = mock(async () => null as any) as any;
   _deps.getAgentFullConfig = mock(async () => ({ agentConfig: null, providers: [], skills: [], mcpServers: [] }));
   _deps.environmentRepo = { getById: mock(async () => null) } as any;
   _deps.findOrCreateForEnvironment = mock(async () => ({ id: "ses_1" })) as any;
@@ -50,7 +50,7 @@ describe("getInstance supplement cleanup on stale core", () => {
       errorMessage: null,
       pluginMetadata: {},
       createdAt: new Date(),
-    } as RuntimeInstanceSnapshot);
+    } as any as RuntimeInstanceSnapshot);
     const result = getInstance("inst_1", "other_user");
     expect(result).toBeUndefined();
   });
@@ -70,7 +70,7 @@ describe("getInstance supplement cleanup on stale core", () => {
       errorMessage: null,
       pluginMetadata: {},
       createdAt: new Date(),
-    } as RuntimeInstanceSnapshot);
+    } as any as RuntimeInstanceSnapshot);
     const result = getInstance("inst_orphan");
     expect(result).toBeUndefined();
   });

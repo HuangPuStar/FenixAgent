@@ -60,13 +60,13 @@ beforeEach(() => {
   _deps.getCoreRuntime = () => fakeFacade as any;
 
   // 注入 fake config-pg
-  _deps.getAgentConfigById = mock(async (id: string) => ({ name: "test-agent", id }));
+  _deps.getAgentConfigById = mock(async (id: string) => ({ name: "test-agent", id })) as any;
   _deps.getAgentFullConfig = mock(async () => ({
     agentConfig: { name: "test-agent", model: "openai/gpt-4", prompt: "test" },
     providers: [{ name: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "sk-test", npm: "@ai-sdk/openai" }],
     skills: [],
     mcpServers: [],
-  }));
+  })) as any;
 
   // 注入 fake launch-spec-builder
   setBuildLaunchSpec(
