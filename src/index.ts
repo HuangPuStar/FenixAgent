@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import Elysia from "elysia";
+import swagger from "@elysiajs/swagger";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { validateEnv } from "./env";
@@ -92,6 +93,31 @@ try {
 
 const app = new Elysia()
   .use(corsPlugin)
+  .use(
+    swagger({
+      documentation: {
+        info: {
+          title: "RCS API",
+          version: config.version,
+          description: "Remote Control Server API — config, sessions, environments, ACP protocol",
+        },
+        tags: [
+          { name: "Config", description: "Configuration management (providers, models, agents, skills, MCP)" },
+          { name: "Sessions", description: "Session management and event streaming" },
+          { name: "Environments", description: "ACP agent environments" },
+          { name: "Instances", description: "Agent instance lifecycle" },
+          { name: "Tasks", description: "Scheduled HTTP tasks" },
+          { name: "Knowledge", description: "Knowledge bases and resources" },
+          { name: "Channels", description: "IM channel bindings" },
+        ],
+      },
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+      exclude: ["/health", /^\/ctrl\/.*/],
+      path: "/docs/swagger",
+    }),
+  )
   .use(loggerPlugin)
   .use(errorPlugin)
   // Path normalization: collapse double slashes

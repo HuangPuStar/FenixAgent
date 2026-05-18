@@ -250,7 +250,7 @@ app.post(
       throw error_;
     }
   },
-  { sessionAuth: true, body: "config-body" },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "Agent 配置管理" } },
 );
 
 export default app;

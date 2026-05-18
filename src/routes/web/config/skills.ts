@@ -275,7 +275,7 @@ app.post(
         return error(400, configValidationError(`Unknown action: ${action}`));
     }
   },
-  { sessionAuth: true, body: "config-body" },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "Skill 配置管理" } },
 );
 
 app.post(
