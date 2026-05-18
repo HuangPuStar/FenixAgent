@@ -1,6 +1,7 @@
 import Elysia from "elysia";
 import { log, error as logError } from "../../logger";
 import { authGuardPlugin } from "../../plugins/auth";
+import { environmentRepo, sessionRepo } from "../../repositories";
 import { SessionEventPayloadSchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
 import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
@@ -11,20 +12,41 @@ const app = new Elysia({ name: "web-control", prefix: "/web" }).use(authGuardPlu
 });
 
 type OwnershipCheckResult =
-  | { error: true }
+  | { error: true; response: Response }
   | { error: false; session: NonNullable<Awaited<ReturnType<typeof getSession>>>; sessionId: string };
 
-async function checkOwnership(uuid: string | null, sessionId: string): Promise<OwnershipCheckResult> {
-  if (!uuid) return { error: true };
+async function checkOwnership(
+  userId: string | null,
+  teamId: string | null,
+  sessionId: string,
+  errorFn: (code: number, body: unknown) => Response,
+): Promise<OwnershipCheckResult> {
+  if (!userId || !teamId) {
+    return { error: true, response: errorFn(403, { error: { type: "forbidden", message: "Not authenticated" } }) };
+  }
   const resolvedSessionId = await resolveExistingSessionId(sessionId);
   if (!resolvedSessionId) {
-    return { error: true };
+    return { error: true, response: errorFn(404, { error: { type: "not_found", message: "Session not found" } }) };
   }
-  const session = await getSession(resolvedSessionId);
+  // 验证 session 所属环境属于当前团队
+  const session = await sessionRepo.getById(resolvedSessionId);
   if (!session) {
-    return { error: true };
+    return { error: true, response: errorFn(404, { error: { type: "not_found", message: "Session not found" } }) };
   }
-  return { error: false, session, sessionId: resolvedSessionId };
+  if (session.environmentId) {
+    const env = await environmentRepo.getById(session.environmentId);
+    if (env && env.teamId && env.teamId !== teamId) {
+      return {
+        error: true,
+        response: errorFn(403, { error: { type: "forbidden", message: "Not your team's session" } }),
+      };
+    }
+  }
+  const activeSession = await getSession(resolvedSessionId);
+  if (!activeSession) {
+    return { error: true, response: errorFn(404, { error: { type: "not_found", message: "Session not active" } }) };
+  }
+  return { error: false, session: activeSession, sessionId: resolvedSessionId };
 }
 
 /** POST /web/sessions/:id/events — Send user message to session */
@@ -32,10 +54,11 @@ app.post(
   "/sessions/:id/events",
   async ({ store, params, body, error }) => {
     const requestedSessionId = params.id;
-    const uuid = store.uuid;
-    const ownership = await checkOwnership(uuid, requestedSessionId);
+    const userId = store.user?.id ?? null;
+    const teamId = store.authContext?.teamId ?? null;
+    const ownership = await checkOwnership(userId, teamId, requestedSessionId, error);
     if (ownership.error) {
-      return error(403, { error: { type: "forbidden", message: "Not your session" } });
+      return ownership.response;
     }
     const { sessionId } = ownership;
 
@@ -50,7 +73,7 @@ app.post(
     );
     return { status: "ok" as const, event };
   },
-  { uuidAuth: true, body: "session-event-payload" },
+  { sessionAuth: true, body: "session-event-payload" },
 );
 
 /** POST /web/sessions/:id/control — Send control request (permission approval etc) */
@@ -58,10 +81,11 @@ app.post(
   "/sessions/:id/control",
   async ({ store, params, body, error }) => {
     const requestedSessionId = params.id;
-    const uuid = store.uuid;
-    const ownership = await checkOwnership(uuid, requestedSessionId);
+    const userId = store.user?.id ?? null;
+    const teamId = store.authContext?.teamId ?? null;
+    const ownership = await checkOwnership(userId, teamId, requestedSessionId, error);
     if (ownership.error) {
-      return error(403, { error: { type: "forbidden", message: "Not your session" } });
+      return ownership.response;
     }
     const { sessionId } = ownership;
 
@@ -69,7 +93,7 @@ app.post(
     const event = publishSessionEvent(sessionId, b.type || "control_request", b, "outbound");
     return { status: "ok" as const, event };
   },
-  { uuidAuth: true, body: "session-event-payload" },
+  { sessionAuth: true, body: "session-event-payload" },
 );
 
 /** POST /web/sessions/:id/interrupt — Interrupt session */
@@ -77,10 +101,11 @@ app.post(
   "/sessions/:id/interrupt",
   async ({ store, params, error }) => {
     const requestedSessionId = params.id;
-    const uuid = store.uuid;
-    const ownership = await checkOwnership(uuid, requestedSessionId);
+    const userId = store.user?.id ?? null;
+    const teamId = store.authContext?.teamId ?? null;
+    const ownership = await checkOwnership(userId, teamId, requestedSessionId, error);
     if (ownership.error) {
-      return error(403, { error: { type: "forbidden", message: "Not your session" } });
+      return ownership.response;
     }
     const { sessionId } = ownership;
 
@@ -88,7 +113,7 @@ app.post(
     await updateSessionStatus(sessionId, "idle");
     return { status: "ok" as const };
   },
-  { uuidAuth: true },
+  { sessionAuth: true },
 );
 
 export default app;
