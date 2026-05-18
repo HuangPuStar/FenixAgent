@@ -47,3 +47,6 @@ export { DAGScheduler, SuspendedError } from "./scheduler/dag-scheduler";
 export type { DAGRunResult, NodeExecutor, NodeExecutionContext, SchedulerContext } from "./scheduler/dag-scheduler";
 export { CancellationManager } from "./scheduler/cancellation";
 export { topologicalSort, identifyParallelGroups, buildReverseAdjacency } from "./scheduler/topological-sort";
+// 执行器
+export { ProcessExecutor } from "./executor/process-executor";
+export { NodeExecutorRegistry, createNodeExecutorRegistry } from "./executor/node-executor";
