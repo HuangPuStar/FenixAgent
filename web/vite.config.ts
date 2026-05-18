@@ -41,6 +41,15 @@ export default defineConfig({
           if (id.includes("node_modules/qrcode") || id.includes("node_modules/jsqr")) {
             return "qr";
           }
+          if (id.includes("node_modules/@radix-ui")) {
+            return "radix-ui";
+          }
+          if (id.includes("node_modules/@tanstack")) {
+            return "tanstack";
+          }
+          if (id.includes("node_modules/@hookform") || id.includes("node_modules/react-hook-form")) {
+            return "hookform";
+          }
         },
       },
     },
