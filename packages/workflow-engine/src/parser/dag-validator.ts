@@ -8,7 +8,7 @@
 import type { NodeDef, WorkflowDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 
-/** 校验结果 */
+/** 校验问题 */
 export interface ValidationIssue {
   type: "error" | "warning";
   code: string;
@@ -20,14 +20,17 @@ export interface ValidationIssue {
 export interface ValidationResult {
   valid: boolean;
   issues: ValidationIssue[];
+  /** 深拷贝并增强后的 WorkflowDef（自动补充的 depends_on 等修改仅作用于此副本） */
+  def: WorkflowDef;
 }
 
 /**
  * 校验 WorkflowDef 的 DAG 结构
- * @returns ValidationResult，valid=true 表示所有检查通过
+ * @returns ValidationResult，包含校验结果、问题列表和增强后的定义副本
  * @throws WorkflowError(DUPLICATE_NODE_ID) 重复节点 ID（硬错误）
  */
-export function validateDAG(def: WorkflowDef): ValidationResult {
+export function validateDAG(input: WorkflowDef): ValidationResult {
+  const def = structuredClone(input);
   const issues: ValidationIssue[] = [];
 
   // 1. 节点 ID 唯一性
@@ -139,6 +142,7 @@ export function validateDAG(def: WorkflowDef): ValidationResult {
   return {
     valid: issues.filter((i) => i.type === "error").length === 0,
     issues,
+    def,
   };
 }
 

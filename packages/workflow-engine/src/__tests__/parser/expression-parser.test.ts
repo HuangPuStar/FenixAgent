@@ -283,6 +283,15 @@ test("超出范围索引返回 null", () => {
   expect(evaluateExpression(parseExpression("params.items[5]"), arrCtx)).toBe(null);
 });
 
+// 负数索引返回 null（不泄漏 undefined）
+test("负数索引返回 null", () => {
+  const arrCtx: EvalContext = {
+    params: { items: ["a", "b", "c"] },
+  };
+  expect(evaluateExpression(parseExpression("params.items[-1]"), arrCtx)).toBe(null);
+  expect(evaluateExpression(parseExpression("params.items[-999]"), arrCtx)).toBe(null);
+});
+
 // 未定义变量
 test("未定义的命名空间报错", () => {
   try {

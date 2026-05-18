@@ -409,7 +409,7 @@ export function evaluateExpression(ast: ASTNode, context: EvalContext, depth = 0
       const idx = evaluateExpression(ast.index, context, depth + 1);
       if (obj === null || obj === undefined) return null;
       if (Array.isArray(obj)) {
-        if (typeof idx === "number") return idx < obj.length ? obj[idx] : null;
+        if (typeof idx === "number") return (idx >= 0 && idx < obj.length ? obj[idx] : null) ?? null;
         return null;
       }
       if (isObject(obj) && typeof idx === "string") return obj[idx] ?? null;

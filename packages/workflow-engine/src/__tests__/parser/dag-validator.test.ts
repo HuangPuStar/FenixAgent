@@ -24,6 +24,25 @@ nodes:
   const result = validateDAG(def);
   expect(result.valid).toBe(true);
   expect(result.issues).toHaveLength(0);
+  expect(result.def).toBeDefined();
+});
+
+// 校验器不修改原始输入
+test("校验器不修改原始输入", () => {
+  const def = parseWorkflowYaml(`\
+schema_version: '1'
+name: test
+nodes:
+  - id: step1
+    type: shell
+    command: echo hello
+  - id: step2
+    type: shell
+    command: "echo \${{ nodes.step1.output.stdout }}"
+`);
+  const originalDeps = def.nodes[1].depends_on;
+  validateDAG(def);
+  expect(def.nodes[1].depends_on).toEqual(originalDeps);
 });
 
 // 环检测：环形依赖 DAG 报 CYCLE_DETECTED
@@ -112,7 +131,7 @@ nodes:
   expect(depIssue!.message).toContain("nonexistent");
 });
 
-// 自动补充 depends_on
+// 自动补充 depends_on（返回的 def 包含补充后的依赖）
 test("自动扫描模板补充 depends_on", () => {
   const def = parseWorkflowYaml(`\
 schema_version: '1'
@@ -130,8 +149,8 @@ nodes:
   const autoDep = result.issues.find((i) => i.code === "AUTO_DEPENDENCY_ADDED");
   expect(autoDep).toBeDefined();
   expect(autoDep!.message).toContain("step1");
-  // step2 的 depends_on 应已被修改
-  expect(def.nodes[1].depends_on).toContain("step1");
+  // 返回的 def 中 step2 的 depends_on 应已被修改
+  expect(result.def.nodes[1].depends_on).toContain("step1");
 });
 
 // 自动补充后 DAG 仍然有效
@@ -168,7 +187,7 @@ nodes:
   const result = validateDAG(def);
   const autoDep = result.issues.find((i) => i.code === "AUTO_DEPENDENCY_ADDED");
   expect(autoDep).toBeUndefined();
-  expect(def.nodes[1].depends_on).toEqual(["step1"]);
+  expect(result.def.nodes[1].depends_on).toEqual(["step1"]);
 });
 
 // 多个模板引用自动补充多个依赖
@@ -190,8 +209,8 @@ nodes:
   const result = validateDAG(def);
   const autoDeps = result.issues.filter((i) => i.code === "AUTO_DEPENDENCY_ADDED");
   expect(autoDeps).toHaveLength(2);
-  expect(def.nodes[2].depends_on).toContain("a");
-  expect(def.nodes[2].depends_on).toContain("b");
+  expect(result.def.nodes[2].depends_on).toContain("a");
+  expect(result.def.nodes[2].depends_on).toContain("b");
 });
 
 // env 字段中的模板引用也扫描
@@ -212,7 +231,7 @@ nodes:
   const result = validateDAG(def);
   const autoDep = result.issues.find((i) => i.code === "AUTO_DEPENDENCY_ADDED");
   expect(autoDep).toBeDefined();
-  expect(def.nodes[1].depends_on).toContain("step1");
+  expect(result.def.nodes[1].depends_on).toContain("step1");
 });
 
 // 空节点列表
