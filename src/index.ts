@@ -1,5 +1,6 @@
 import Elysia from "elysia";
-import { config } from "./config";
+import { config, applyEnv } from "./config";
+import { validateEnv } from "./env";
 import { initDb, client as pgClient } from "./db";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllRelayConnections } from "./transport/acp-relay-handler";
@@ -43,6 +44,9 @@ import { ctrlStaticPlugin } from "./plugins/static";
 
 await initDb();
 console.log("[RCS] Database initialized (PostgreSQL + better-auth)");
+
+const env = validateEnv();
+applyEnv(env);
 
 getCoreRuntime();
 console.log("[RCS] Core runtime initialized (opencode engine + local node)");
