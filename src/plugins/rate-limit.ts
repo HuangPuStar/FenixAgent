@@ -34,10 +34,10 @@ export const rateLimitPlugin = new Elysia({ name: "rate-limit" }).onBeforeHandle
   entry.count++;
 
   if (entry.count > MAX_REQUESTS) {
-    return new Response(
-      JSON.stringify({ error: { type: "RATE_LIMITED", message: "Too many requests" } }),
-      { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" } },
-    );
+    return new Response(JSON.stringify({ error: { type: "RATE_LIMITED", message: "Too many requests" } }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "60" },
+    });
   }
 });
 

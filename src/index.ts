@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import Elysia from "elysia";
 import swagger from "@elysiajs/swagger";
+import Elysia from "elysia";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { validateEnv } from "./env";
@@ -9,8 +9,8 @@ import { authGuardPlugin, authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
 import { loggerPlugin } from "./plugins/logger";
-import { ctrlStaticPlugin } from "./plugins/static";
 import { rateLimitPlugin } from "./plugins/rate-limit";
+import { ctrlStaticPlugin } from "./plugins/static";
 import { environmentRepo } from "./repositories";
 import acpRoutes from "./routes/acp";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";

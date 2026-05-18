@@ -1,6 +1,6 @@
 import Elysia from "elysia";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
-import { ConfigBodySchema, type ConfigBody } from "../../../schemas/config.schema";
+import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
 import { buildModelData } from "../../../services/config/provider";
 import * as configPg from "../../../services/config-pg";
 import { configError, configSuccess, resolveApiKey, toKeyHint } from "../../../services/config-utils";

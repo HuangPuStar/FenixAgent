@@ -1,5 +1,5 @@
 import Elysia from "elysia";
-import { log, error } from "../logger";
+import { error, log } from "../logger";
 
 let _requestCounter = 0;
 
