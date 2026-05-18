@@ -161,16 +161,64 @@ test("不存在的属性返回 null", () => {
   expect(evaluateExpression(ast, ctx)).toBe(null);
 });
 
-// null 语义：null == null → true
-test("null == null 为 true", () => {
-  const ast = parseExpression("null == null");
-  expect(evaluateExpression(ast, ctx)).toBe(true);
-});
-
-// null 语义：null 在比较中 → false
+// null 语义：null 在其他比较中 → false
 test("null 在其他比较中为 false", () => {
   const ast = parseExpression("null > 0");
   expect(evaluateExpression(ast, ctx)).toBe(false);
+});
+
+// null 排序比较语义：null 参与任何 > < >= <= 比较一律返回 false
+test("null > 任何值返回 false", () => {
+  expect(evaluateExpression(parseExpression("null > -1"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null > 0"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null > 1"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null > null"), ctx)).toBe(false);
+});
+
+test("null < 任何值返回 false", () => {
+  expect(evaluateExpression(parseExpression("null < -1"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null < 0"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null < 1"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null < null"), ctx)).toBe(false);
+});
+
+test("null >= 任何值返回 false", () => {
+  expect(evaluateExpression(parseExpression("null >= -1"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null >= 0"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null >= 1"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null >= null"), ctx)).toBe(false);
+});
+
+test("null <= 任何值返回 false", () => {
+  expect(evaluateExpression(parseExpression("null <= -1"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null <= 0"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null <= 1"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null <= null"), ctx)).toBe(false);
+});
+
+// null 等值比较语义：null == null → true，null != null → false，null == 其他 → false
+test("null == null 为 true", () => {
+  expect(evaluateExpression(parseExpression("null == null"), ctx)).toBe(true);
+});
+
+test("null != null 为 false", () => {
+  expect(evaluateExpression(parseExpression("null != null"), ctx)).toBe(false);
+});
+
+test("null == 字符串返回 false", () => {
+  expect(evaluateExpression(parseExpression('null == "string"'), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression('null == ""'), ctx)).toBe(false);
+});
+
+test("null == 数字返回 false", () => {
+  expect(evaluateExpression(parseExpression("null == 0"), ctx)).toBe(false);
+  expect(evaluateExpression(parseExpression("null == 1"), ctx)).toBe(false);
+});
+
+test("null != 非null值返回 true", () => {
+  expect(evaluateExpression(parseExpression('null != "string"'), ctx)).toBe(true);
+  expect(evaluateExpression(parseExpression("null != 0"), ctx)).toBe(true);
+  expect(evaluateExpression(parseExpression("null != false"), ctx)).toBe(true);
 });
 
 // 比较运算

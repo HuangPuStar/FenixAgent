@@ -444,13 +444,22 @@ export function evaluateExpression(ast: ASTNode, context: EvalContext, depth = 0
         case "!=":
           return left !== right;
         case ">":
-          return (left as number) > (right as number);
         case "<":
-          return (left as number) < (right as number);
         case ">=":
-          return (left as number) >= (right as number);
         case "<=":
-          return (left as number) <= (right as number);
+          // null 参与排序比较时一律返回 false（仅 null == null 为 true）
+          if (left === null || right === null) return false;
+          switch (ast.op) {
+            case ">":
+              return (left as number) > (right as number);
+            case "<":
+              return (left as number) < (right as number);
+            case ">=":
+              return (left as number) >= (right as number);
+            case "<=":
+              return (left as number) <= (right as number);
+          }
+          break;
         case "+":
           if (typeof left === "string" || typeof right === "string") {
             return String(left ?? "") + String(right ?? "");
