@@ -64,3 +64,6 @@ export { SubWorkflowExecutor } from "./executor/sub-workflow-executor";
 // Secrets
 export { SecretsResolver } from "./secrets/secrets-resolver";
 export type { SecretsResolverOptions } from "./secrets/secrets-resolver";
+// 引擎门面
+export { createWorkflowEngine } from "./engine/workflow-engine";
+export type { WorkflowEngine, WorkflowEngineOptions, DryRunResult } from "./engine/workflow-engine";
