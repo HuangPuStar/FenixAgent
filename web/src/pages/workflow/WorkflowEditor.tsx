@@ -39,6 +39,12 @@ import {
   List,
   Save,
   Rocket,
+  Square,
+  Clock,
+  Loader,
+  XCircle,
+  Copy,
+  Check,
 } from "lucide-react";
 import { nodeTypes } from "./nodes";
 import { autoLayout } from "./layout";
@@ -52,7 +58,14 @@ import {
   START_NODE_ID,
   type WfMeta,
 } from "./yaml-utils";
-import { workflowEngineApi } from "../../api/workflow-engine";
+import {
+  workflowEngineApi,
+  type DAGSnapshot,
+  type DAGEvent,
+  type NodeOutput,
+  type PendingApproval,
+  type DAGStatus,
+} from "../../api/workflow-engine";
 import { workflowDefApi } from "../../api/workflow-defs";
 import "./workflow.css";
 
@@ -68,10 +81,9 @@ const PALETTE_ITEMS = [
 interface WorkflowEditorProps {
   workflowId?: string;
   onViewRuns?: () => void;
-  onRunStarted?: (runId: string) => void;
 }
 
-function WorkflowEditorInner({ workflowId, onViewRuns, onRunStarted }: WorkflowEditorProps) {
+function WorkflowEditorInner({ workflowId, onViewRuns }: WorkflowEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([createStartNode()]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { fitView, screenToFlowPosition } = useReactFlow();
@@ -88,6 +100,21 @@ function WorkflowEditorInner({ workflowId, onViewRuns, onRunStarted }: WorkflowE
     issues: Array<{ type: string; message: string; field?: string }>;
   } | null>(null);
   const [running, setRunning] = useState(false);
+
+  // ── 运行模式状态 ──
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [runSnapshot, setRunSnapshot] = useState<DAGSnapshot | null>(null);
+  const [runEvents, setRunEvents] = useState<DAGEvent[]>([]);
+  const [runApprovals, setRunApprovals] = useState<PendingApproval[]>([]);
+  const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
+  const [selectedNodeOutput, setSelectedNodeOutput] = useState<NodeOutput | null>(null);
+  const [nodeOutputLoading, setNodeOutputLoading] = useState(false);
+  const [runRightTab, setRunRightTab] = useState<"events" | "output">("events");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isRunMode = activeRunId !== null;
+  const dagStatus = runSnapshot?.dag_status;
+  const isRunDone = dagStatus ? ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(dagStatus) : false;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingConnectSource = useRef<string | null>(null);
@@ -123,7 +150,10 @@ function WorkflowEditorInner({ workflowId, onViewRuns, onRunStarted }: WorkflowE
   // ── Selection ──
   const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: selNodes }) => {
     setSelectedNode(selNodes[0] ?? null);
-  }, []);
+    if (activeRunId && selNodes[0] && selNodes[0].id !== START_NODE_ID) {
+      setSelectedRunNodeId(selNodes[0].id);
+    }
+  }, [activeRunId]);
 
   // ── Connection ──
   const onConnect = useCallback(
@@ -390,13 +420,88 @@ function WorkflowEditorInner({ workflowId, onViewRuns, onRunStarted }: WorkflowE
     }
   }, [syncYaml]);
 
-  // ── Run workflow（自动保存再执行） ──
+  // ── Run mode helpers ──
+
+  /** 将 snapshot 的节点状态同步到编辑器节点 */
+  const updateNodesFromSnapshot = useCallback(
+    (snap: DAGSnapshot) => {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === START_NODE_ID) return n;
+          const state = snap.node_states[n.id];
+          if (!state) return { ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } };
+          return { ...n, data: { ...n.data, _runStatus: state.status, _exitCode: state.exit_code } };
+        }),
+      );
+    },
+    [setNodes],
+  );
+
+  /** 加载运行快照和事件 */
+  const loadRunData = useCallback(
+    async (runId: string) => {
+      try {
+        const [snap, evts] = await Promise.all([
+          workflowEngineApi.getRunStatus(runId),
+          workflowEngineApi.getEvents(runId),
+        ]);
+        if (snap) {
+          setRunSnapshot(snap);
+          updateNodesFromSnapshot(snap);
+        }
+        if (Array.isArray(evts)) setRunEvents(evts);
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    [updateNodesFromSnapshot],
+  );
+
+  // 轮询运行中的工作流
+  useEffect(() => {
+    if (!activeRunId || !runSnapshot) return;
+    const status = runSnapshot.dag_status;
+    if (["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(status)) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      return;
+    }
+    pollRef.current = setInterval(() => loadRunData(activeRunId), 2000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [activeRunId, runSnapshot, loadRunData]);
+
+  // SUSPENDED 时加载审批列表
+  useEffect(() => {
+    if (!activeRunId || !runSnapshot || runSnapshot.dag_status !== "SUSPENDED") {
+      setRunApprovals([]);
+      return;
+    }
+    workflowEngineApi
+      .getPendingApprovals(activeRunId)
+      .then((list) => setRunApprovals(Array.isArray(list) ? list : []))
+      .catch((err) => console.error(err));
+  }, [activeRunId, runSnapshot]);
+
+  // 选中节点 → 加载输出
+  useEffect(() => {
+    if (!activeRunId || !selectedRunNodeId) return;
+    setNodeOutputLoading(true);
+    setSelectedNodeOutput(null);
+    setRunRightTab("output");
+    workflowEngineApi
+      .getOutput(activeRunId, selectedRunNodeId)
+      .then((out) => setSelectedNodeOutput(out ?? null))
+      .catch((err) => console.error(err))
+      .finally(() => setNodeOutputLoading(false));
+  }, [activeRunId, selectedRunNodeId]);
+
+  // ── Run workflow（自动保存再执行，结果内联显示） ──
   const handleRun = useCallback(async () => {
     const y = syncYaml();
     setRunning(true);
     setDryRunResult(null);
 
-    // 自动保存草稿
     if (workflowId) {
       try {
         await workflowDefApi.save(workflowId, y);
@@ -405,20 +510,82 @@ function WorkflowEditorInner({ workflowId, onViewRuns, onRunStarted }: WorkflowE
       }
     }
 
+    // 所有节点标记为 RUNNING（等待 API 返回）
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === START_NODE_ID
+          ? n
+          : { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } },
+      ),
+    );
+
     try {
       const result = await workflowEngineApi.run(y);
-      if (onRunStarted) {
-        onRunStarted(result.runId);
-      } else {
-        alert(`工作流已提交，runId: ${result.runId}\n状态: ${result.status}`);
-      }
+      setActiveRunId(result.runId);
+      setRunSnapshot(null);
+      setRunEvents([]);
+      setRunApprovals([]);
+      setSelectedRunNodeId(null);
+      setSelectedNodeOutput(null);
+      await loadRunData(result.runId);
     } catch (err) {
       console.error(err);
+      // 重置节点状态
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === START_NODE_ID
+            ? n
+            : { ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } },
+        ),
+      );
       alert("执行失败: " + (err as Error).message);
     } finally {
       setRunning(false);
     }
-  }, [syncYaml, workflowId, onRunStarted]);
+  }, [syncYaml, workflowId, setNodes, loadRunData]);
+
+  // ── Cancel run ──
+  const handleCancelRun = useCallback(async () => {
+    if (!activeRunId) return;
+    try {
+      await workflowEngineApi.cancel(activeRunId);
+      await loadRunData(activeRunId);
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message);
+    }
+  }, [activeRunId, loadRunData]);
+
+  // ── Approve ──
+  const handleApprove = useCallback(
+    async (approval: PendingApproval) => {
+      if (!activeRunId) return;
+      try {
+        await workflowEngineApi.approve(activeRunId, approval.nodeId, approval.approvalToken);
+        await loadRunData(activeRunId);
+        const list = await workflowEngineApi.getPendingApprovals(activeRunId);
+        setRunApprovals(Array.isArray(list) ? list : []);
+      } catch (err) {
+        console.error(err);
+        alert((err as Error).message);
+      }
+    },
+    [activeRunId, loadRunData],
+  );
+
+  // ── Back to edit ──
+  const handleBackToEdit = useCallback(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setActiveRunId(null);
+    setRunSnapshot(null);
+    setRunEvents([]);
+    setRunApprovals([]);
+    setSelectedRunNodeId(null);
+    setSelectedNodeOutput(null);
+    setNodes((nds) =>
+      nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })),
+    );
+  }, [setNodes]);
 
   // ── Update selected node data ──
   const updateNodeData = useCallback(
@@ -747,14 +914,292 @@ function WorkflowEditorInner({ workflowId, onViewRuns, onRunStarted }: WorkflowE
 
       {/* 右侧属性面板 */}
       <aside className="wf-prop-panel">
-        <div className="wf-prop-header">
-          <span className="wf-prop-title">{isStartNode ? "开始节点" : selectedNode ? "节点属性" : "工作流"}</span>
-          {readOnly && (
-            <span className="wf-prop-readonly-tag">
-              <Lock size={10} /> 只读
-            </span>
-          )}
-        </div>
+        {isRunMode ? (
+          /* ── 运行模式面板 ── */
+          <>
+            <div className="wf-prop-header" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span className="wf-prop-title">运行结果</span>
+              {runSnapshot && (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 3,
+                    padding: "1px 7px",
+                    borderRadius: 99,
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: DAG_STATUS_CFG[dagStatus!]?.color ?? "#6b7280",
+                    background: DAG_STATUS_CFG[dagStatus!]?.bg ?? "#f3f4f6",
+                  }}
+                >
+                  {dagStatus === "RUNNING" && (
+                    <span
+                      style={{
+                        width: 5,
+                        height: 5,
+                        borderRadius: "50%",
+                        background: "#3b82f6",
+                        animation: "wf-pulse 1.5s ease-in-out infinite",
+                      }}
+                    />
+                  )}
+                  {DAG_STATUS_CFG[dagStatus!]?.label ?? dagStatus}
+                </span>
+              )}
+              <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                {!isRunDone && (
+                  <button
+                    type="button"
+                    onClick={handleCancelRun}
+                    title="取消运行"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 24,
+                      height: 24,
+                      border: "none",
+                      background: "#fef2f2",
+                      borderRadius: 4,
+                      color: "#ef4444",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Square size={11} />
+                  </button>
+                )}
+                {isRunDone && (
+                  <button
+                    type="button"
+                    onClick={handleBackToEdit}
+                    title="返回编辑"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 24,
+                      height: 24,
+                      border: "none",
+                      background: "#f3f4f6",
+                      borderRadius: 4,
+                      color: "#6b7280",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Edit3 size={11} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 审批卡片 */}
+            {dagStatus === "SUSPENDED" && runApprovals.length > 0 && (
+              <div
+                style={{
+                  padding: 10,
+                  borderBottom: "1px solid #fbbf24",
+                  background: "#fffbeb",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#92400e",
+                    marginBottom: 6,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <ShieldCheck size={12} /> 等待审批
+                </div>
+                {runApprovals.map((a) => (
+                  <div key={a.nodeId} style={{ fontSize: 10, color: "#78350f", marginBottom: 6 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 2 }}>节点: {a.nodeId}</div>
+                    {a.displayData && typeof a.displayData === "object" && (
+                      <div style={{ color: "#92400e", marginBottom: 3 }}>
+                        {(a.displayData as Record<string, string>).message ?? ""}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleApprove(a)}
+                      style={{
+                        padding: "2px 8px",
+                        border: "1px solid #f59e0b",
+                        borderRadius: 4,
+                        background: "#f59e0b",
+                        color: "#fff",
+                        fontSize: 10,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                      }}
+                    >
+                      通过
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 进度条 */}
+            {runSnapshot && (
+              <div
+                style={{
+                  padding: "4px 12px",
+                  borderBottom: "1px solid #f3f4f6",
+                  fontSize: 10,
+                  color: "#9ca3af",
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>
+                  {Object.values(runSnapshot.node_states).filter((s) => s.status === "COMPLETED").length}/
+                  {Object.keys(runSnapshot.node_states).length} 节点
+                </span>
+                <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 9 }}>
+                  {activeRunId?.substring(0, 16)}...
+                </span>
+              </div>
+            )}
+
+            {/* Tab 切换 */}
+            <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb" }}>
+              <button
+                type="button"
+                onClick={() => setRunRightTab("events")}
+                style={{
+                  flex: 1,
+                  padding: "7px 0",
+                  border: "none",
+                  background: "none",
+                  fontSize: 11,
+                  fontWeight: runRightTab === "events" ? 600 : 400,
+                  color: runRightTab === "events" ? "#111827" : "#9ca3af",
+                  borderBottom: runRightTab === "events" ? "2px solid #3b82f6" : "2px solid transparent",
+                  cursor: "pointer",
+                }}
+              >
+                事件流 ({selectedRunNodeId ? runEvents.filter((e) => e.node_id === selectedRunNodeId).length : runEvents.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setRunRightTab("output")}
+                style={{
+                  flex: 1,
+                  padding: "7px 0",
+                  border: "none",
+                  background: "none",
+                  fontSize: 11,
+                  fontWeight: runRightTab === "output" ? 600 : 400,
+                  color: runRightTab === "output" ? "#111827" : "#9ca3af",
+                  borderBottom: runRightTab === "output" ? "2px solid #3b82f6" : "2px solid transparent",
+                  cursor: "pointer",
+                }}
+              >
+                {selectedRunNodeId ? `输出 (${selectedRunNodeId})` : "节点输出"}
+              </button>
+            </div>
+
+            {/* 事件列表 */}
+            {runRightTab === "events" && (
+              <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
+                {(() => {
+                  const filtered = selectedRunNodeId
+                    ? runEvents.filter((e) => e.node_id === selectedRunNodeId)
+                    : runEvents;
+                  return filtered.length === 0 ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>
+                      {selectedRunNodeId ? "该节点暂无事件" : "暂无事件"}
+                    </div>
+                  ) : (
+                    filtered.map((evt) => (
+                      <div
+                        key={evt.event_id}
+                        style={{
+                          padding: "5px 10px",
+                          borderBottom: "1px solid #f3f4f6",
+                          display: "flex",
+                          gap: 5,
+                          alignItems: "flex-start",
+                          cursor: evt.node_id ? "pointer" : "default",
+                        }}
+                        onClick={() => {
+                          if (evt.node_id) setSelectedRunNodeId(evt.node_id);
+                        }}
+                      >
+                        <EventIcon type={evt.type} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
+                            <span style={{ fontWeight: 500, color: "#374151" }}>{formatEventType(evt.type)}</span>
+                            <span style={{ color: "#d1d5db", fontSize: 9, flexShrink: 0 }}>
+                              {new Date(evt.timestamp).toLocaleTimeString("zh-CN", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          {evt.node_id && (
+                            <span
+                              style={{ color: "#9ca3af", fontFamily: "ui-monospace, monospace", fontSize: 9 }}
+                            >
+                              {evt.node_id}
+                            </span>
+                          )}
+                          {evt.metadata && Object.keys(evt.metadata).length > 0 && (
+                            <div
+                              style={{
+                                color: "#9ca3af",
+                                fontSize: 9,
+                                marginTop: 1,
+                                fontFamily: "ui-monospace, monospace",
+                              }}
+                            >
+                              {formatMeta(evt.type, evt.metadata)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* 节点输出 */}
+            {runRightTab === "output" && (
+              <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
+                {!selectedRunNodeId ? (
+                  <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>点击节点查看输出</div>
+                ) : nodeOutputLoading ? (
+                  <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
+                    <Loader size={14} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+                  </div>
+                ) : !selectedNodeOutput ? (
+                  <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>暂无输出</div>
+                ) : (
+                  <NodeOutputView output={selectedNodeOutput} />
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          /* ── 编辑模式面板（原有内容） ── */
+          <>
+            <div className="wf-prop-header">
+              <span className="wf-prop-title">
+                {isStartNode ? "开始节点" : selectedNode ? "节点属性" : "工作流"}
+              </span>
+              {readOnly && (
+                <span className="wf-prop-readonly-tag">
+                  <Lock size={10} /> 只读
+                </span>
+              )}
+            </div>
         <div className="wf-prop-body">
           {/* ── 开始节点 ── */}
           {isStartNode ? (
@@ -1100,7 +1545,167 @@ function WorkflowEditorInner({ workflowId, onViewRuns, onRunStarted }: WorkflowE
             </>
           )}
         </div>
+          </>
+        )}
       </aside>
+    </div>
+  );
+}
+
+// ── DAG 状态样式 ──
+const DAG_STATUS_CFG: Record<string, { color: string; bg: string; label: string }> = {
+  PENDING: { color: "#94a3b8", bg: "#f1f5f9", label: "等待中" },
+  RUNNING: { color: "#3b82f6", bg: "#eff6ff", label: "运行中" },
+  SUSPENDED: { color: "#f59e0b", bg: "#fffbeb", label: "等待审批" },
+  SUCCESS: { color: "#22c55e", bg: "#f0fdf4", label: "成功" },
+  FAILED: { color: "#ef4444", bg: "#fef2f2", label: "失败" },
+  CANCELLED: { color: "#94a3b8", bg: "#f8fafc", label: "已取消" },
+  ERROR: { color: "#ef4444", bg: "#fef2f2", label: "错误" },
+};
+
+// ── 事件渲染辅助 ──
+
+function EventIcon({ type }: { type: string }) {
+  if (type.startsWith("dag.")) {
+    const isOk = type === "dag.completed";
+    return isOk ? (
+      <CheckCircle size={11} style={{ color: "#22c55e", flexShrink: 0, marginTop: 1 }} />
+    ) : type === "dag.cancelled" ? (
+      <XCircle size={11} style={{ color: "#94a3b8", flexShrink: 0, marginTop: 1 }} />
+    ) : (
+      <Play size={11} style={{ color: "#3b82f6", flexShrink: 0, marginTop: 1 }} />
+    );
+  }
+  if (type.includes("failed")) return <XCircle size={11} style={{ color: "#ef4444", flexShrink: 0, marginTop: 1 }} />;
+  if (type.includes("completed")) return <CheckCircle size={11} style={{ color: "#22c55e", flexShrink: 0, marginTop: 1 }} />;
+  if (type.includes("started")) return <Loader size={11} style={{ color: "#3b82f6", flexShrink: 0, marginTop: 1 }} />;
+  if (type.includes("retrying")) return <RefreshCw size={11} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 1 }} />;
+  if (type.includes("audit")) return <ShieldCheck size={11} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 1 }} />;
+  return <Clock size={11} style={{ color: "#94a3b8", flexShrink: 0, marginTop: 1 }} />;
+}
+
+function formatEventType(type: string): string {
+  const map: Record<string, string> = {
+    "dag.started": "工作流启动",
+    "dag.completed": "工作流完成",
+    "dag.cancelled": "工作流取消",
+    "node.started": "节点开始",
+    "node.completed": "节点完成",
+    "node.failed": "节点失败",
+    "node.cancelled": "节点取消",
+    "node.retrying": "节点重试",
+    "node.skipped": "节点跳过",
+    "sub_workflow.started": "子流程启动",
+    "sub_workflow.completed": "子流程完成",
+    "loop.iteration_started": "循环迭代开始",
+    "loop.iteration_completed": "循环迭代完成",
+    "audit.requested": "审批请求",
+    "audit.approved": "审批通过",
+  };
+  return map[type] ?? type;
+}
+
+function formatMeta(type: string, meta: Record<string, unknown>): string {
+  if (type === "node.completed") {
+    const parts: string[] = [];
+    if (meta.exit_code != null) parts.push(`exit=${meta.exit_code}`);
+    if (meta.output_size != null) parts.push(`${meta.output_size}B`);
+    if (meta.latency_ms != null) parts.push(`${Math.round(Number(meta.latency_ms))}ms`);
+    return parts.join(" · ");
+  }
+  if (type === "node.failed") return String(meta.error ?? "");
+  if (type === "node.retrying") return `第${meta.attempt}次 · ${meta.next_delay_ms}ms 后重试`;
+  if (type === "node.started") {
+    if (meta.pid) return `pid=${meta.pid}`;
+    return "";
+  }
+  if (type === "dag.completed") {
+    if (meta.duration_ms != null) return `${Math.round(Number(meta.duration_ms) / 1000)}s`;
+    return "";
+  }
+  return "";
+}
+
+function NodeOutputView({ output }: { output: NodeOutput }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(output.stdout).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div>
+      <div
+        style={{
+          padding: "5px 10px",
+          borderBottom: "1px solid #f3f4f6",
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          fontSize: 9,
+          color: "#6b7280",
+        }}
+      >
+        <span>exit_code: {output.exit_code}</span>
+        {output.size != null && <span>· {output.size}B</span>}
+        {output.ref && <span style={{ color: "#f59e0b" }}>· 大输出(ref)</span>}
+        <button
+          type="button"
+          onClick={handleCopy}
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "#6b7280",
+            fontSize: 9,
+          }}
+        >
+          {copied ? <Check size={10} /> : <Copy size={10} />} {copied ? "已复制" : "复制"}
+        </button>
+      </div>
+      {output.stdout ? (
+        <pre
+          style={{
+            padding: 10,
+            margin: 0,
+            fontSize: 10,
+            lineHeight: 1.5,
+            fontFamily: "ui-monospace, monospace",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-all",
+            color: "#1f2937",
+            background: "#fafafa",
+          }}
+        >
+          {output.stdout}
+        </pre>
+      ) : (
+        <div style={{ padding: 14, textAlign: "center", color: "#d1d5db" }}>无输出</div>
+      )}
+      {output.json !== undefined && output.json !== null && (
+        <div style={{ borderTop: "1px solid #f3f4f6" }}>
+          <div style={{ padding: "5px 10px", fontSize: 9, color: "#6b7280", fontWeight: 500 }}>JSON 输出</div>
+          <pre
+            style={{
+              padding: 10,
+              margin: 0,
+              fontSize: 10,
+              lineHeight: 1.5,
+              fontFamily: "ui-monospace, monospace",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              color: "#6b7280",
+            }}
+          >
+            {JSON.stringify(output.json, null, 2)}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }

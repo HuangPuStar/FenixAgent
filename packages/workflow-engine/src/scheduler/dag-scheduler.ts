@@ -135,11 +135,11 @@ export class DAGScheduler {
 
     this.dagStartTime = new Date().toISOString();
 
-    // DAG 级别超时信号
+    // DAG 级别超时信号（timeout 字段单位为秒，转换为毫秒）
     const dagTimeout = this.ctx.workflowDef.timeout;
     let timeoutSignal: AbortSignal | undefined;
     if (dagTimeout) {
-      timeoutSignal = AbortSignal.timeout(dagTimeout);
+      timeoutSignal = AbortSignal.timeout(dagTimeout * 1000);
       timeoutSignal.addEventListener('abort', () => {
         this.ctx.cancellation.cancel();
       }, { once: true });

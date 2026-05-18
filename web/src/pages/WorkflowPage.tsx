@@ -3,15 +3,13 @@ import { WorkflowList } from "./workflow/WorkflowList";
 import { WorkflowEditor } from "./workflow/WorkflowEditor";
 import { WorkflowVersions } from "./workflow/WorkflowVersions";
 import { WorkflowRuns } from "./workflow/WorkflowRuns";
-import { WorkflowRunDetail } from "./workflow/WorkflowRunDetail";
 import { Pencil, History, ArrowLeft } from "lucide-react";
 
-type WfView = "list" | "edit" | "versions" | "runs" | "detail";
+type WfView = "list" | "edit" | "versions" | "runs";
 
 interface WfRoute {
   view: WfView;
   workflowId?: string;
-  runId?: string;
 }
 
 function parseWfPath(): WfRoute {
@@ -20,10 +18,6 @@ function parseWfPath(): WfRoute {
 
   if (parts[0] !== "workflow") return { view: "list" };
 
-  // /ctrl/workflow/runs/:runId
-  if (parts[1] === "runs" && parts[2]) {
-    return { view: "detail", runId: parts[2] };
-  }
   // /ctrl/workflow/runs
   if (parts[1] === "runs") {
     return { view: "runs" };
@@ -54,20 +48,14 @@ export function WorkflowPage() {
     return () => window.removeEventListener("popstate", sync);
   }, []);
 
-  const navigateTo = useCallback((view: WfView, workflowId?: string, runId?: string) => {
+  const navigateTo = useCallback((view: WfView, workflowId?: string) => {
     let path = "/ctrl/workflow";
     if (view === "runs") path = "/ctrl/workflow/runs";
-    if (view === "detail" && runId) path = `/ctrl/workflow/runs/${runId}`;
     if (view === "edit" && workflowId) path = `/ctrl/workflow/${workflowId}/edit`;
     if (view === "versions" && workflowId) path = `/ctrl/workflow/${workflowId}/versions`;
     window.history.pushState(null, "", path);
-    setRoute({ view, workflowId, runId });
+    setRoute({ view, workflowId });
   }, []);
-
-  // 全屏独立视图：运行详情
-  if (route.view === "detail" && route.runId) {
-    return <WorkflowRunDetail runId={route.runId} onBack={() => navigateTo("runs")} />;
-  }
 
   // 全屏独立视图：编辑器
   if (route.view === "edit" && route.workflowId) {
@@ -92,7 +80,6 @@ export function WorkflowPage() {
           <WorkflowEditor
             workflowId={route.workflowId}
             onViewRuns={() => navigateTo("runs")}
-            onRunStarted={(runId) => navigateTo("detail", undefined, runId)}
           />
         </div>
       </div>
@@ -139,7 +126,7 @@ export function WorkflowPage() {
   }
 
   // Tab 框架：工作流列表 / 运行记录
-  const activeTab = route.view === "detail" ? "runs" : route.view === "list" ? "list" : "runs";
+  const activeTab = route.view === "list" ? "list" : "runs";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -179,7 +166,7 @@ export function WorkflowPage() {
             onViewVersions={(id) => navigateTo("versions", id)}
           />
         ) : (
-          <WorkflowRuns onSelectRun={(id) => navigateTo("detail", undefined, id)} />
+          <WorkflowRuns />
         )}
       </div>
     </div>

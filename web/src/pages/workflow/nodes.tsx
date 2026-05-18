@@ -1,5 +1,17 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Terminal, Bot, Globe, ShieldCheck, GitBranch, RefreshCw, Play } from "lucide-react";
+import {
+  Terminal,
+  Bot,
+  Globe,
+  ShieldCheck,
+  GitBranch,
+  RefreshCw,
+  Play,
+  CheckCircle,
+  XCircle,
+  Loader,
+  Clock,
+} from "lucide-react";
 
 const NODE_COLORS: Record<string, { main: string; light: string; headerText: string }> = {
   start: { main: "#6366f1", light: "#eef2ff", headerText: "#fff" },
@@ -30,6 +42,34 @@ const NODE_LABELS: Record<string, string> = {
   workflow: "子流程",
   loop: "循环",
 };
+
+/** 运行状态样式 */
+const RUN_STATUS_CFG: Record<string, { color: string; bg: string; label: string }> = {
+  PENDING: { color: "#94a3b8", bg: "#f1f5f9", label: "等待中" },
+  RUNNING: { color: "#3b82f6", bg: "#eff6ff", label: "运行中" },
+  COMPLETED: { color: "#22c55e", bg: "#f0fdf4", label: "已完成" },
+  FAILED: { color: "#ef4444", bg: "#fef2f2", label: "失败" },
+  CANCELLED: { color: "#94a3b8", bg: "#f8fafc", label: "已取消" },
+  SKIPPED: { color: "#d1d5db", bg: "#f9fafb", label: "已跳过" },
+};
+
+function StatusDot({ status }: { status: string }) {
+  if (status === "RUNNING")
+    return <Loader size={11} style={{ color: "#fff", animation: "wf-spin 1s linear infinite" }} />;
+  if (status === "COMPLETED") return <CheckCircle size={11} style={{ color: "#fff" }} />;
+  if (status === "FAILED") return <XCircle size={11} style={{ color: "#fff" }} />;
+  return (
+    <span
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: "50%",
+        background: status === "PENDING" ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)",
+        display: "inline-block",
+      }}
+    />
+  );
+}
 
 function getPreview(type: string, data: Record<string, unknown>): string {
   switch (type) {
@@ -62,6 +102,18 @@ export function WorkflowNode({ data, selected, type }: NodeProps) {
   const isStart = nodeType === "start";
   const preview = getPreview(nodeType, d);
 
+  // 运行状态
+  const runStatus = d._runStatus as string | undefined;
+  const exitCode = d._exitCode as number | undefined;
+  const statusCfg = runStatus ? RUN_STATUS_CFG[runStatus] ?? RUN_STATUS_CFG.PENDING : null;
+
+  const borderColor = statusCfg ? statusCfg.color : selected ? colors.main : "#e5e7eb";
+  const boxShadow = statusCfg
+    ? `0 0 0 2px ${statusCfg.color}20`
+    : selected
+      ? `0 0 0 3px ${colors.main}30`
+      : "0 1px 3px rgba(0,0,0,0.08)";
+
   return (
     <div
       style={{
@@ -71,12 +123,11 @@ export function WorkflowNode({ data, selected, type }: NodeProps) {
         maxWidth: isStart ? 140 : 240,
         fontSize: 12,
         overflow: "hidden",
-        border: `2px solid ${selected ? colors.main : "#e5e7eb"}`,
-        boxShadow: selected ? `0 0 0 3px ${colors.main}30` : "0 1px 3px rgba(0,0,0,0.08)",
+        border: `2px solid ${borderColor}`,
+        boxShadow,
         transition: "border-color 0.15s, box-shadow 0.15s",
       }}
     >
-      {/* 开始节点没有输入端口 */}
       {!isStart && (
         <Handle
           type="target"
@@ -99,12 +150,12 @@ export function WorkflowNode({ data, selected, type }: NodeProps) {
         }}
       >
         {icon}
-        <span>{label}</span>
+        <span style={{ flex: 1 }}>{label}</span>
+        {statusCfg && !isStart && <StatusDot status={runStatus!} />}
       </div>
 
-      {/* 开始节点没有预览区 */}
       {!isStart && (
-        <div style={{ background: colors.light, padding: "6px 10px" }}>
+        <div style={{ background: statusCfg?.bg ?? colors.light, padding: "6px 10px" }}>
           {preview ? (
             <div
               style={{
@@ -121,6 +172,26 @@ export function WorkflowNode({ data, selected, type }: NodeProps) {
           ) : (
             <div style={{ color: "#9ca3af", fontSize: 11, fontStyle: "italic" }}>未配置</div>
           )}
+        </div>
+      )}
+
+      {/* 运行状态条 */}
+      {statusCfg && !isStart && (
+        <div
+          style={{
+            padding: "3px 10px",
+            background: statusCfg.bg,
+            borderTop: `1px solid ${statusCfg.color}20`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: 10,
+            color: statusCfg.color,
+            fontWeight: 500,
+          }}
+        >
+          <span>{statusCfg.label}</span>
+          {exitCode != null && <span>exit: {exitCode}</span>}
         </div>
       )}
 

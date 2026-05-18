@@ -355,7 +355,7 @@ test('DAG 超时后进入 CANCELLED', async () => {
     shellNode('B', ['A']),
   ];
   executor.setDelay('A', 5000); // A 执行很久
-  const ctx = makeContext(executor, nodes, 100); // 100ms 超时
+  const ctx = makeContext(executor, nodes, 0.1); // 0.1 秒超时（100ms）
   const scheduler = new DAGScheduler(ctx);
 
   const start = Date.now();

@@ -78,7 +78,7 @@ function formatDuration(startedAt?: string | null, completedAt?: string | null):
 }
 
 interface WorkflowRunsProps {
-  onSelectRun: (runId: string) => void;
+  onSelectRun?: (runId: string) => void;
 }
 
 export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
@@ -313,7 +313,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                 <button
                   type="button"
                   title="查看详情"
-                  onClick={() => onSelectRun(r.run_id)}
+	              onClick={() => onSelectRun?.(r.run_id)}
                   style={{
                     display: "flex",
                     alignItems: "center",

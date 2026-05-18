@@ -147,11 +147,18 @@ export function validateDAG(input: WorkflowDef): ValidationResult {
 }
 
 /**
- * 扫描节点所有字符串字段中的 ${{ }} 模板，提取 nodes.<id> 引用
+ * 扫描节点所有字符串字段中的 ${{ }} 模板，提取 nodes.<id> 引用。
+ * loop 节点的 condition/body 引用的是内部子 DAG 节点，不应加入外层 depends_on。
  */
 function scanTemplateDeps(node: NodeDef): Set<string> {
   const refs = new Set<string>();
-  scanNodeStrings(node, refs);
+  if (node.type === "loop") {
+    // loop 节点只扫描外层字段，跳过 condition 和 body
+    const { condition, body, ...outer } = node;
+    scanNodeStrings(outer, refs);
+  } else {
+    scanNodeStrings(node, refs);
+  }
   return refs;
 }
 
