@@ -9,18 +9,21 @@ const app = new Elysia({ name: "web-config-models", prefix: "/web" }).use(authGu
   "config-body": ConfigBodySchema,
 });
 
-/** 可用模型缓存 */
-let cachedAvailable: {
-  models: Array<{
-    id: string;
-    provider: string;
-    fullId: string;
-    label: string;
-    contextLimit: number | null;
-    outputLimit: number | null;
-  }>;
-  updatedAt: number;
-} | null = null;
+/** 可用模型缓存（按 teamId 隔离） */
+const cachedAvailableByTeam = new Map<
+  string,
+  {
+    models: Array<{
+      id: string;
+      provider: string;
+      fullId: string;
+      label: string;
+      contextLimit: number | null;
+      outputLimit: number | null;
+    }>;
+    updatedAt: number;
+  }
+>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
 
 type ModelEntry = {
@@ -55,11 +58,12 @@ async function buildAvailableList(ctx: AuthContext): Promise<ModelEntry[]> {
 
 async function getAvailable(ctx: AuthContext, forceRefresh = false): Promise<ModelEntry[]> {
   const now = Date.now();
-  if (!forceRefresh && cachedAvailable && now - cachedAvailable.updatedAt < CACHE_TTL_MS) {
-    return cachedAvailable.models;
+  const cached = cachedAvailableByTeam.get(ctx.teamId);
+  if (!forceRefresh && cached && now - cached.updatedAt < CACHE_TTL_MS) {
+    return cached.models;
   }
   const models = await buildAvailableList(ctx);
-  cachedAvailable = { models, updatedAt: now };
+  cachedAvailableByTeam.set(ctx.teamId, { models, updatedAt: now });
   return models;
 }
 
@@ -85,7 +89,7 @@ async function handleSet(ctx: AuthContext, data: { model?: string; small_model?:
     smallModel: data.small_model,
     permission: data.permission,
   });
-  cachedAvailable = null;
+  cachedAvailableByTeam.delete(ctx.teamId);
   const uc = await configPg.getUserConfig(ctx);
   return configSuccess({
     model: uc.currentModel ?? null,
@@ -95,7 +99,7 @@ async function handleSet(ctx: AuthContext, data: { model?: string; small_model?:
 }
 
 export function invalidateAvailableCache() {
-  cachedAvailable = null;
+  cachedAvailableByTeam.clear();
 }
 
 async function handleRefresh(ctx: AuthContext) {
