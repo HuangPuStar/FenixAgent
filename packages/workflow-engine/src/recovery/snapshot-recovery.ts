@@ -199,7 +199,8 @@ async function detectOrphans(
       event.type === 'node.completed' ||
       event.type === 'node.failed' ||
       event.type === 'node.cancelled' ||
-      event.type === 'node.skipped'
+      event.type === 'node.skipped' ||
+      event.type === 'audit.requested'
     ) {
       completedNodes.add(event.node_id);
     }

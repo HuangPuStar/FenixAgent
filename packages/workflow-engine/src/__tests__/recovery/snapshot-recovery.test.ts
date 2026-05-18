@@ -440,3 +440,166 @@ test('DAGScheduler 使用 initialNodeStates 跳过已完成节点', async () => 
   expect(result.status).toBe('SUCCESS');
   expect(result.summary.node_summary.completed).toBe(3);
 });
+
+// ---------- 混合崩溃：孤儿 + SUSPENDED ----------
+
+// A → [audit_B, shell_C] → 恢复时 C 是孤儿，B 是 SUSPENDED
+test('混合崩溃：孤儿节点 + SUSPENDED 节点同时存在', async () => {
+  const nodes = [shellNode('A'), auditNode('B', ['A']), shellNode('C', ['A']), shellNode('D', ['B', 'C'])];
+  const workflow = makeWorkflow(nodes);
+  // A 已完成，B SUSPENDED，C 是孤儿（started 但未完成）
+  await simulatePartialRun(storage, ['A'], ['C'], 'RUNNING', ['B']);
+
+  const ctx = makeBaseContext(workflow, storage);
+  const result = await recoverRun(ctx);
+
+  // C 被取消（孤儿清理），B 保持 SUSPENDED
+  // D 依赖 B(SUSPENDED) 和 C(CANCELLED) → 永远不会 READY，DAG 最终 SUSPENDED
+  expect(result.status).toBe('SUSPENDED');
+
+  // 验证 C 被取消
+  const events = await storage.getEvents('test_run_1');
+  expect(events.some((e) => e.type === 'node.cancelled' && e.node_id === 'C')).toBe(true);
+
+  // B 仍是 SUSPENDED 状态
+  const snapshot = await storage.getLatestSnapshot('test_run_1');
+  expect(snapshot).not.toBeNull();
+  expect(snapshot!.node_states['B'].status).toBe('SUSPENDED');
+});
+
+// ---------- Shell 孤儿真实进程清理 ----------
+
+// 实际 spawn 进程后恢复时验证进程被终止
+test('Shell 孤儿真实进程在恢复时被 SIGKILL', async () => {
+  // spawn 一个长时间运行的进程
+  const proc = Bun.spawn(['sleep', '60'], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const pid = proc.pid;
+
+  // 等待进程启动
+  await Bun.sleep(100);
+
+  // 验证进程存活
+  let processAlive = true;
+  try {
+    process.kill(pid, 0);
+  } catch {
+    processAlive = false;
+  }
+
+  if (!processAlive) {
+    // 进程意外退出，跳过此测试
+    return;
+  }
+
+  try {
+    const nodes = [shellNode('A'), shellNode('B', ['A'])];
+    const workflow = makeWorkflow(nodes);
+
+    // 手动构造事件：A 完成，B 是孤儿（带真实 PID）
+    await storage.appendEvent(makeEvent({ type: 'dag.started' }));
+    await storage.appendEvent(makeEvent({ type: 'node.started', node_id: 'A' }));
+    await storage.appendEvent(makeEvent({ type: 'node.completed', node_id: 'A' }));
+    await storage.setOutput('test_run_1', 'A', { stdout: 'A ok', exit_code: 0 });
+    await storage.appendEvent(makeEvent({ type: 'node.started', node_id: 'B', node_type: 'shell', metadata: { pid } }));
+
+    // 创建快照
+    await storage.createSnapshot(makeSnapshot({
+      dag_status: 'RUNNING',
+      node_states: {
+        A: { status: 'COMPLETED' },
+        B: { status: 'RUNNING' },
+      },
+    }));
+
+    const ctx = makeBaseContext(workflow, storage);
+    const result = await recoverRun(ctx);
+
+    // B 是孤儿，应被取消
+    expect(result.status).toBe('FAILED'); // B 被取消导致错误传播
+
+    // 验证进程已被终止（可能仍在等待 5s 宽限期中的 SIGKILL 或已退出）
+    // SIGTERM 对 sleep 无效，最终通过 SIGKILL 终止
+    try {
+      const exited = await proc.exited;
+      expect(exited).toBeDefined();
+    } catch {
+      // exited promise 可能 reject，忽略
+    }
+
+    // 进程应已被 kill
+    try {
+      process.kill(pid, 0);
+      // 如果到这里说明进程还活着，手动 kill
+      proc.kill('SIGKILL');
+    } catch {
+      // ESRCH：进程已死 — 这正是我们期望的
+    }
+  } finally {
+    // 确保进程被终止
+    try { proc.kill('SIGKILL'); } catch { /* already dead */ }
+  }
+}, 15000); // 15s 超时（宽限期 5s + 余量）
+
+// ---------- 连续两次崩溃恢复 ----------
+
+// 恢复中途再次崩溃，第二次恢复仍能正确工作
+test('连续两次恢复幂等且正确', async () => {
+  const nodes = [shellNode('A'), shellNode('B', ['A']), shellNode('C', ['B']), shellNode('D', ['C'])];
+  const workflow = makeWorkflow(nodes);
+
+  // 第一次部分执行：A 完成，B 是孤儿
+  await simulatePartialRun(storage, ['A'], ['B'], 'RUNNING');
+
+  const ctx1 = makeBaseContext(workflow, storage);
+  const result1 = await recoverRun(ctx1);
+  // B 被取消 → 下游 SKIPPED → 最终 FAILED
+  expect(result1.status).toBe('FAILED');
+
+  // 模拟第一次恢复后又有新事件（B 被取消，C SKIPPED，D SKIPPED）
+  // 这些事件由第一次恢复写入，第二次恢复从快照重放
+  const lastSnapshot = await storage.getLatestSnapshot('test_run_1');
+  expect(lastSnapshot).not.toBeNull();
+  expect(lastSnapshot!.dag_status).toBe('FAILED');
+
+  // 第二次恢复：直接返回 FAILED（幂等）
+  const ctx2 = makeBaseContext(workflow, storage);
+  const result2 = await recoverRun(ctx2);
+  expect(result2.status).toBe('FAILED');
+
+  // 两次结果一致
+  expect(result1.summary.node_summary.completed).toBe(result2.summary.node_summary.completed);
+  expect(result1.summary.node_summary.failed).toBe(result2.summary.node_summary.failed);
+});
+
+// ---------- 部分完成 + 定义变更（恢复后兼容新旧节点） ----------
+
+// 崩溃前执行了 A→B，重启后 workflow 新增了节点 C（A→B→C）
+// 恢复时应：A COMPLETED 保留, B PENDING 继续执行, C 作为新节点 PENDING 调度
+test('恢复兼容定义变更：新增节点按 PENDING 正常调度', async () => {
+  // 原始定义（崩溃时）：A, B
+  const originalNodes = [shellNode('A'), shellNode('B', ['A'])];
+  const originalWorkflow = makeWorkflow(originalNodes);
+
+  // 模拟部分执行：A 完成
+  await simulatePartialRun(storage, ['A'], [], 'RUNNING');
+
+  // 新定义（恢复时）：比原来多了 C
+  const newNodes = [shellNode('A'), shellNode('B', ['A']), shellNode('C', ['B'])];
+  const newWorkflow = makeWorkflow(newNodes);
+
+  // 用新定义恢复（模拟用户修改 YAML 后 recover）
+  const ctx = makeBaseContext(newWorkflow, storage);
+  const result = await recoverRun(ctx);
+
+  // A 已完成，B 继续执行，C 作为新增 PENDING→执行→完成
+  expect(result.status).toBe('SUCCESS');
+  expect(result.summary.node_summary.completed).toBe(3);
+  expect(result.summary.node_summary.total).toBe(3);
+
+  // C 的输出应该存在
+  const cOutput = await storage.getOutput('test_run_1', 'C');
+  expect(cOutput).not.toBeNull();
+});

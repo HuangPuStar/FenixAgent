@@ -64,6 +64,17 @@ export function EnvironmentsPage({ onNavigateToSession }: EnvironmentsPageProps)
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
   const [envTab, setEnvTab] = useState<"environments" | "subagents">("environments");
 
+  const loadAgentOptions = useCallback(async () => {
+    try {
+      const { data, error: err } = await client.web.config.agents.post({ action: "list" });
+      if (err || !data) return;
+      const result = data as { data?: { agents?: Array<{ id: string; name: string }> } } | null;
+      setAgentOptions((result?.data?.agents ?? []).map((a) => ({ id: a.id, name: a.name })));
+    } catch {
+      /* silent */
+    }
+  }, []);
+
   const loadEnvs = useCallback(async () => {
     try {
       const { data, error: err } = await client.web.environments.get();
@@ -101,17 +112,6 @@ export function EnvironmentsPage({ onNavigateToSession }: EnvironmentsPageProps)
     loadAgentOptions();
   }, [loadEnvs, loadAgentOptions]);
 
-  const loadAgentOptions = useCallback(async () => {
-    try {
-      const { data, error: err } = await client.web.config.agents.post({ action: "list" });
-      if (err || !data) return;
-      const result = data as { data?: { agents?: Array<{ id: string; name: string }> } } | null;
-      setAgentOptions((result?.data?.agents ?? []).map((a) => ({ id: a.id, name: a.name })));
-    } catch {
-      /* silent */
-    }
-  }, []);
-
   const openCreateDialog = useCallback(async () => {
     await loadAgentOptions();
     setEditingEnv(null);
@@ -124,17 +124,20 @@ export function EnvironmentsPage({ onNavigateToSession }: EnvironmentsPageProps)
     setDialogOpen(true);
   }, [loadAgentOptions]);
 
-  const openEditDialog = useCallback(async (env: Environment) => {
-    await loadAgentOptions();
-    setEditingEnv(env);
-    setFormName(env.name);
-    setFormDescription(env.description || "");
-    setFormWorkspacePath(env.workspace_path);
-    setFormAgentConfigId(env.agent_config_id || "");
-    setFormAutoStart(env.auto_start ?? false);
-    setFormError("");
-    setDialogOpen(true);
-  }, [loadAgentOptions]);
+  const openEditDialog = useCallback(
+    async (env: Environment) => {
+      await loadAgentOptions();
+      setEditingEnv(env);
+      setFormName(env.name);
+      setFormDescription(env.description || "");
+      setFormWorkspacePath(env.workspace_path);
+      setFormAgentConfigId(env.agent_config_id || "");
+      setFormAutoStart(env.auto_start ?? false);
+      setFormError("");
+      setDialogOpen(true);
+    },
+    [loadAgentOptions],
+  );
 
   const handleFormSubmit = useCallback(async () => {
     if (!formName || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(formName)) {

@@ -61,6 +61,10 @@ export interface SchedulerContext {
   secrets: Record<string, string>;
   nodeExecutor: NodeExecutor;
   cancellation: CancellationManager;
+  /** 恢复时注入的初始节点状态（跳过已完成的节点） */
+  initialNodeStates?: Map<string, NodeStatus>;
+  /** 恢复时注入的初始节点输出 */
+  initialNodeOutputs?: Map<string, NodeOutput>;
 }
 
 // ---------- 调度结果 ----------
@@ -105,9 +109,28 @@ export class DAGScheduler {
    * 4. 重复直到无 READY 且无 RUNNING 节点
    */
   async run(): Promise<DAGRunResult> {
-    // 初始化所有节点为 PENDING
-    for (const node of this.nodes) {
-      this.nodeStates.set(node.id, 'PENDING');
+    // 初始化节点状态：恢复时使用注入的初始状态，否则全部 PENDING
+    if (this.ctx.initialNodeStates) {
+      // 注入初始状态（恢复模式）
+      for (const [id, status] of this.ctx.initialNodeStates) {
+        this.nodeStates.set(id, status);
+      }
+      // 注入初始输出
+      if (this.ctx.initialNodeOutputs) {
+        for (const [id, output] of this.ctx.initialNodeOutputs) {
+          this.nodeOutputs.set(id, output);
+        }
+      }
+      // 未在初始状态中的节点标记为 PENDING（恢复后继续执行）
+      for (const node of this.nodes) {
+        if (!this.nodeStates.has(node.id)) {
+          this.nodeStates.set(node.id, 'PENDING');
+        }
+      }
+    } else {
+      for (const node of this.nodes) {
+        this.nodeStates.set(node.id, 'PENDING');
+      }
     }
 
     this.dagStartTime = new Date().toISOString();
