@@ -42,3 +42,8 @@ export type { ASTNode, EvalContext } from "./types/expression";
 // 存储接口 + 内存实现
 export type { StorageAdapter } from "./storage/storage-adapter";
 export { createInMemoryStorage } from "./storage/in-memory-storage";
+// 调度器
+export { DAGScheduler, SuspendedError } from "./scheduler/dag-scheduler";
+export type { DAGRunResult, NodeExecutor, NodeExecutionContext, SchedulerContext } from "./scheduler/dag-scheduler";
+export { CancellationManager } from "./scheduler/cancellation";
+export { topologicalSort, identifyParallelGroups, buildReverseAdjacency } from "./scheduler/topological-sort";
