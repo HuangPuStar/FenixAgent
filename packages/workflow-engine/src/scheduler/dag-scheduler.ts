@@ -338,6 +338,9 @@ export class DAGScheduler {
         resolved.prompt = resolveTemplate(node.prompt, evalContext);
         if (node.agent) resolved.agent = resolveTemplate(node.agent, evalContext);
         if (node.skill) resolved.skill = resolveTemplate(node.skill, evalContext);
+        if (node.model) resolved.model = resolveTemplate(node.model, evalContext);
+        if (node.temperature !== undefined) resolved.temperature = node.temperature;
+        if (node.steps !== undefined) resolved.steps = node.steps;
         break;
       }
       case 'api': {
