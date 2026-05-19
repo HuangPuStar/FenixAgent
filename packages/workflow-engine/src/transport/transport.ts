@@ -12,6 +12,16 @@ export interface AgentRequest {
   skill?: string;
   cwd?: string;
   signal?: AbortSignal;
+  /** 模型（来自 agent config 或节点覆盖） */
+  model?: string;
+  /** 温度（来自 agent config 或节点覆盖） */
+  temperature?: number;
+  /** 最大步数（来自 agent config 或节点覆盖） */
+  steps?: number;
+  /** 权限配置（来自 agent config） */
+  permission?: unknown;
+  /** 知识库配置（来自 agent config） */
+  knowledge?: unknown;
 }
 
 /** Agent 响应结果 */
