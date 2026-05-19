@@ -56,6 +56,7 @@ export { ProcessExecutor } from "./executor/process-executor";
 export { ApiExecutor } from "./executor/api-executor";
 export { RemoteExecutorBase } from "./executor/remote-executor";
 export { AgentExecutor } from "./executor/agent-executor";
+export type { AgentResolvedConfig, AgentExecutorOptions } from "./executor/agent-executor";
 export { AuditExecutor, verifyApprovalToken } from "./executor/awaitable-executor";
 export type { PendingApproval } from "./executor/awaitable-executor";
 export { NodeExecutorRegistry, createNodeExecutorRegistry } from "./executor/node-executor";
