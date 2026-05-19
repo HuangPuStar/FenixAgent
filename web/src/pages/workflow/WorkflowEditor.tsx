@@ -810,7 +810,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
           <Panel position="top-center" className="wf-panel-toolbar">
             <div className="wf-toolbar">
               {!readOnly && (
-                <button type="button" className="wf-toolbar-btn" onClick={handleNew} title="清空画布，新建工作流">
+                <button type="button" className="wf-toolbar-btn" onClick={handleNew} data-tooltip="清空画布，新建工作流">
                   <FilePlus size={15} />
                 </button>
               )}
@@ -818,15 +818,15 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                 type="button"
                 className="wf-toolbar-btn"
                 onClick={() => fileInputRef.current?.click()}
-                title="从 .yaml / .yml 文件导入工作流"
+                data-tooltip="从 .yaml / .yml 文件导入工作流"
               >
                 <Upload size={15} />
               </button>
-              <button type="button" className="wf-toolbar-btn" onClick={handleExportYaml} title="将当前工作流导出为 YAML 文件">
+              <button type="button" className="wf-toolbar-btn" onClick={handleExportYaml} data-tooltip="将当前工作流导出为 YAML 文件">
                 <Download size={15} />
               </button>
               <div className="wf-toolbar-divider" />
-              <button type="button" className="wf-toolbar-btn" onClick={handleAutoLayout} title="自动排列节点布局（Dagre）">
+              <button type="button" className="wf-toolbar-btn" onClick={handleAutoLayout} data-tooltip="自动排列节点布局（Dagre）">
                 <LayoutGrid size={15} />
               </button>
               {workflowId && (
@@ -837,7 +837,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                     className="wf-toolbar-btn"
                     onClick={handleSaveDraft}
                     disabled={saveStatus === "saving"}
-                    title="保存草稿到服务器（Cmd+S）"
+                    data-tooltip="保存草稿到服务器（Cmd+S）"
                   >
                     <Save size={15} />
                   </button>
@@ -846,7 +846,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                     className="wf-toolbar-btn"
                     onClick={handlePublish}
                     disabled={publishing}
-                    title="发布为新版本（可回滚）"
+                    data-tooltip="发布为新版本（可回滚）"
                     style={{ color: "#22c55e" }}
                   >
                     <Rocket size={15} />
@@ -860,7 +860,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                   if (!yamlOpen) syncYaml();
                   setYamlOpen(!yamlOpen);
                 }}
-                title="打开 / 关闭 YAML 编辑面板"
+                data-tooltip="打开 / 关闭 YAML 编辑面板"
               >
                 <Code size={15} />
               </button>
@@ -870,7 +870,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                 className="wf-toolbar-btn"
                 onClick={handleDryRun}
                 disabled={running}
-                title="校验工作流结构（检查引用、依赖、循环，不实际执行）"
+                data-tooltip="校验工作流结构（检查引用、依赖、循环，不实际执行）"
               >
                 <CheckCircle size={15} />
               </button>
@@ -879,7 +879,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                 className="wf-toolbar-btn"
                 onClick={handleRun}
                 disabled={running}
-                title="执行工作流（自动保存草稿，结果直接显示在画布上）"
+                data-tooltip="执行工作流（自动保存草稿，结果直接显示在画布上）"
                 style={running ? { opacity: 0.5 } : undefined}
               >
                 <Play size={15} />
@@ -889,7 +889,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                 type="button"
                 className={`wf-toolbar-btn ${readOnly ? "active" : ""}`}
                 onClick={() => setReadOnly(!readOnly)}
-                title={readOnly ? "切换到编辑模式（可拖拽、连线、修改属性）" : "切换到只读模式（防止误操作）"}
+                data-tooltip={readOnly ? "切换到编辑模式（可拖拽、连线、修改属性）" : "切换到只读模式（防止误操作）"}
               >
                 {readOnly ? <Eye size={15} /> : <Edit3 size={15} />}
               </button>
@@ -900,7 +900,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                     type="button"
                     className="wf-toolbar-btn"
                     onClick={onViewRuns}
-                    title="查看历史运行记录"
+                    data-tooltip="查看历史运行记录"
                   >
                     <List size={15} />
                   </button>
@@ -977,7 +977,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
             <span className="wf-yaml-slide-title">YAML</span>
             <div style={{ display: "flex", gap: 4 }}>
               {!readOnly && (
-                <button type="button" className="wf-toolbar-btn" onClick={handleImportYaml} title="应用 YAML">
+                <button type="button" className="wf-toolbar-btn" onClick={handleImportYaml} data-tooltip="应用 YAML">
                   <Upload size={14} />
                 </button>
               )}
@@ -1037,7 +1037,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                   <button
                     type="button"
                     onClick={handleCancelRun}
-                    title="取消运行"
+                    data-tooltip="取消运行"
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1058,7 +1058,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                   <button
                     type="button"
                     onClick={handleBackToEdit}
-                    title="返回编辑"
+                    data-tooltip="返回编辑"
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1285,7 +1285,7 @@ function WorkflowEditorInner({ workflowId, runId, onViewRuns }: WorkflowEditorPr
                         type="button"
                         onClick={() => handleRerunFrom(selectedRunNodeId)}
                         disabled={running}
-                        title={`从 ${selectedRunNodeId} 开始重跑`}
+                        data-tooltip={`从 ${selectedRunNodeId} 开始重跑`}
                         style={{
                           display: "flex",
                           alignItems: "center",

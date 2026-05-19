@@ -212,6 +212,28 @@
   color: #111827;
 }
 
+.wf-toolbar-btn[data-tooltip] {
+  position: relative;
+}
+
+.wf-toolbar-btn[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 50;
+}
+
 .wf-toolbar-btn.active {
   background: #eff6ff;
   color: #3b82f6;
