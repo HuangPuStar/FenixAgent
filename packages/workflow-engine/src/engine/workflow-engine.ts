@@ -42,6 +42,8 @@ export interface WorkflowEngineOptions {
   envFile?: string;
   /** 默认工作目录（子流程 ref 解析基准） */
   defaultCwd?: string;
+  /** Agent 配置解析回调（方案 A：注入依赖，不耦合数据库） */
+  resolveAgentConfig?: (agentName: string) => Promise<import('../executor/agent-executor').AgentResolvedConfig | null>;
 }
 
 /** dryRun 结果 */
@@ -123,7 +125,9 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     registry.register('shell', new ProcessExecutor());
     registry.register('api', new ApiExecutor());
     if (transport) {
-      registry.register('agent', new AgentExecutor(transport));
+      registry.register('agent', new AgentExecutor(transport, {
+        resolveAgentConfig: options.resolveAgentConfig,
+      }));
     }
     registry.register('audit', new AuditExecutor(hmacSecret));
     registry.register('workflow', new SubWorkflowExecutor(runId, registry, baseDir));
