@@ -1,7 +1,9 @@
 import Elysia from "elysia";
 import { auth } from "../auth/better-auth";
+import { decryptPassword, getEncryptionKey } from "../auth/encryption";
 import { verifyWorkerJwt } from "../auth/jwt";
 import { AppError } from "../errors";
+import { config } from "../config";
 
 // ────────────────────────────────────────────
 // 测试注入：路由级测试通过 setTestAuth 绕过认证
@@ -60,9 +62,33 @@ export async function lookupUserById(userId: string): Promise<UserInfo | null> {
 }
 
 /** Mounts better-auth handler at /api/auth/* */
-export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" }).all("/*", ({ request }) =>
-  auth.handler(request),
-);
+export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" })
+  /** 前端获取 AES 加密公钥 */
+  .get("/encryption-key", () => ({ key: getEncryptionKey() }))
+  /** 前端查询注册开关 */
+  .get("/signup-status", () => ({ signupAllowed: !config.disableSignup }))
+  .all("/*", async ({ request }) => {
+    const url = new URL(request.url);
+    const decryptRoutes = ["/sign-in/email", "/sign-up/email"];
+    if (request.method === "POST" && decryptRoutes.some((r) => url.pathname.endsWith(r))) {
+      try {
+        const body: any = await request.clone().json();
+        if (body?.password && typeof body.password === "string" && body.password.startsWith("AESGCM:")) {
+          body.password = decryptPassword(body.password);
+          return auth.handler(
+            new Request(request.url, {
+              method: request.method,
+              headers: request.headers,
+              body: JSON.stringify(body),
+            }),
+          );
+        }
+      } catch {
+        // 解密失败，使用原始请求透传
+      }
+    }
+    return auth.handler(request);
+  });
 
 /** Provides `error(code, body)` to route handler context */
 export function errorResponse(code: number, response: unknown): Response {

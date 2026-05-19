@@ -40,6 +40,12 @@ const envSchema = z.object({
   RCS_S3_PRESIGN_EXPIRES: z.coerce.number().int().positive().default(3600),
   RCS_S3_PRESIGN_UPLOAD_EXPIRES: z.coerce.number().int().positive().default(600),
 
+  // ── 可选：认证 ──
+  RCS_DISABLE_SIGNUP: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+
   // ── 可选：Hermes ──
   HERMES_URL: z.string().optional(),
   HERMES_PLATFORMS: z.string().optional(),

@@ -1,6 +1,7 @@
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { authClient } from "../lib/auth-client";
+import { encryptPassword } from "../lib/password-crypto";
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -8,6 +9,7 @@ interface LoginPageProps {
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [signupAllowed, setSignupAllowed] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -15,16 +17,24 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  useEffect(() => {
+    fetch("/api/auth/signup-status")
+      .then((res) => res.json())
+      .then((data) => setSignupAllowed(data.signupAllowed === true))
+      .catch(() => setSignupAllowed(true));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
+      const encPassword = await encryptPassword(password);
       if (isSignUp) {
         const res = await authClient.signUp.email({
           email,
-          password,
+          password: encPassword,
           name: name || email.split("@")[0],
         });
         if (res.error) {
@@ -34,7 +44,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       } else {
         const res = await authClient.signIn.email({
           email,
-          password,
+          password: encPassword,
         });
         if (res.error) {
           setError(res.error.message || "登录失败");
@@ -119,35 +129,37 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </button>
         </form>
 
-        <div className="text-center text-sm text-text-muted">
-          {isSignUp ? (
-            <>
-              已有账户？{" "}
-              <button
-                onClick={() => {
-                  setIsSignUp(false);
-                  setError("");
-                }}
-                className="text-brand hover:underline"
-              >
-                登录
-              </button>
-            </>
-          ) : (
-            <>
-              没有账户？{" "}
-              <button
-                onClick={() => {
-                  setIsSignUp(true);
-                  setError("");
-                }}
-                className="text-brand hover:underline"
-              >
-                创建账户
-              </button>
-            </>
-          )}
-        </div>
+        {signupAllowed && (
+          <div className="text-center text-sm text-text-muted">
+            {isSignUp ? (
+              <>
+                已有账户？{" "}
+                <button
+                  onClick={() => {
+                    setIsSignUp(false);
+                    setError("");
+                  }}
+                  className="text-brand hover:underline"
+                >
+                  登录
+                </button>
+              </>
+            ) : (
+              <>
+                没有账户？{" "}
+                <button
+                  onClick={() => {
+                    setIsSignUp(true);
+                    setError("");
+                  }}
+                  className="text-brand hover:underline"
+                >
+                  创建账户
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

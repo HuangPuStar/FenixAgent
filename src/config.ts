@@ -43,6 +43,7 @@ function buildConfig(env: Env) {
       presignExpires: env.RCS_S3_PRESIGN_EXPIRES,
       presignUploadExpires: env.RCS_S3_PRESIGN_UPLOAD_EXPIRES,
     },
+    disableSignup: env.RCS_DISABLE_SIGNUP,
   };
 }
 
