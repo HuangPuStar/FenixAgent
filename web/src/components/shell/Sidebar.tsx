@@ -209,12 +209,7 @@ export function Sidebar({ collapsed, onToggle, currentPage, onNavigate }: Sideba
       </nav>
 
       {/* ---- Bottom: Team section ---- */}
-      <div
-        className={[
-          "border-t border-border-subtle",
-          collapsed ? "px-0 py-2" : "px-2 py-2",
-        ].join(" ")}
-      >
+      <div className={["border-t border-border-subtle", collapsed ? "px-0 py-2" : "px-2 py-2"].join(" ")}>
         {/* TeamSwitcher — current team display + dropdown */}
         {!collapsed && (
           <div className="px-1 mb-1.5">
@@ -232,9 +227,7 @@ export function Sidebar({ collapsed, onToggle, currentPage, onNavigate }: Sideba
             "text-[13px] font-medium cursor-pointer",
             "transition-all duration-150",
             "whitespace-nowrap overflow-hidden select-none",
-            collapsed
-              ? "justify-center gap-0 px-0 py-2 mx-0 rounded-lg"
-              : "gap-2.5 px-3 py-2 rounded-[var(--radius)]",
+            collapsed ? "justify-center gap-0 px-0 py-2 mx-0 rounded-lg" : "gap-2.5 px-3 py-2 rounded-[var(--radius)]",
             currentPage === "teams"
               ? "bg-brand-subtle text-brand-light"
               : "text-text-secondary hover:bg-surface-hover hover:text-text-primary",

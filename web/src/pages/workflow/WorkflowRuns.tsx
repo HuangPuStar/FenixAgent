@@ -190,7 +190,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                 cursor: "pointer",
               }}
             >
-              {s === "all" ? "全部" : STATUS_CONFIG[s]?.label ?? s}
+              {s === "all" ? "全部" : (STATUS_CONFIG[s]?.label ?? s)}
             </button>
           ))}
         </div>
@@ -218,7 +218,9 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
             {statusFilter !== "all" || searchQuery ? "没有匹配的记录" : "暂无运行记录"}
           </p>
           <p style={{ fontSize: 11, color: "#d1d5db", marginTop: 4 }}>
-            {statusFilter !== "all" || searchQuery ? "尝试调整筛选条件" : "在编辑器中执行工作流后，运行记录将显示在这里"}
+            {statusFilter !== "all" || searchQuery
+              ? "尝试调整筛选条件"
+              : "在编辑器中执行工作流后，运行记录将显示在这里"}
           </p>
         </div>
       ) : (
@@ -313,7 +315,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                 <button
                   type="button"
                   title="查看详情"
-	              onClick={() => onSelectRun?.(r.run_id, r.workflow_id)}
+                  onClick={() => onSelectRun?.(r.run_id, r.workflow_id)}
                   style={{
                     display: "flex",
                     alignItems: "center",

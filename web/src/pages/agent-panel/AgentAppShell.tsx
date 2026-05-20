@@ -52,19 +52,16 @@ export function AgentAppShell({ initialAgentId, initialSessionId }: AgentAppShel
   }, [artifactsCollapsed]);
 
   // 选中实例 → 更新 URL
-  const handleSelectInstance = useCallback(
-    (instanceId: string, envId: string, sessionId: string | null) => {
-      setSelectedInstanceId(instanceId);
-      setSelectedAgentId(envId);
-      setCurrentSessionId(sessionId);
-      if (sessionId) {
-        window.history.pushState(null, "", `/ctrl/agent/${envId}/${sessionId}`);
-      } else {
-        window.history.pushState(null, "", `/ctrl/agent/${envId}`);
-      }
-    },
-    [],
-  );
+  const handleSelectInstance = useCallback((instanceId: string, envId: string, sessionId: string | null) => {
+    setSelectedInstanceId(instanceId);
+    setSelectedAgentId(envId);
+    setCurrentSessionId(sessionId);
+    if (sessionId) {
+      window.history.pushState(null, "", `/ctrl/agent/${envId}/${sessionId}`);
+    } else {
+      window.history.pushState(null, "", `/ctrl/agent/${envId}`);
+    }
+  }, []);
 
   // 配置导航跳转（回到旧布局）
   const handleNavigate = useCallback((pageId: string) => {
@@ -90,10 +87,7 @@ export function AgentAppShell({ initialAgentId, initialSessionId }: AgentAppShel
 
       {/* 中间聊天区域 */}
       <div className="agent-chat-area">
-        <ChatPanel
-          agentId={selectedAgentId}
-          sessionId={currentSessionId}
-        />
+        <ChatPanel agentId={selectedAgentId} sessionId={currentSessionId} />
       </div>
 
       {/* 右侧 Artifacts 面板 */}

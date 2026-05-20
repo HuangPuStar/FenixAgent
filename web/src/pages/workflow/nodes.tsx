@@ -114,7 +114,7 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   // 运行状态
   const runStatus = d._runStatus as string | undefined;
   const exitCode = d._exitCode as number | undefined;
-  const statusCfg = runStatus ? RUN_STATUS_CFG[runStatus] ?? RUN_STATUS_CFG.PENDING : null;
+  const statusCfg = runStatus ? (RUN_STATUS_CFG[runStatus] ?? RUN_STATUS_CFG.PENDING) : null;
 
   // 回调（通过 data 注入）
   const onViewOutput = d._onViewOutput as ((nodeId: string) => void) | undefined;
@@ -225,7 +225,10 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
           {showActions && onViewOutput && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onViewOutput(id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewOutput(id);
+              }}
               title="查看输出"
               style={{
                 display: "flex",
@@ -247,7 +250,10 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
           {showActions && onRerunFrom && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onRerunFrom(id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRerunFrom(id);
+              }}
               title="从此节点重跑"
               style={{
                 display: "flex",

@@ -150,7 +150,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   }, [chatOpen]);
 
   // ── Agent 配置联动 ──
-  const [agentList, setAgentList] = useState<Array<{ name: string; model: string | null; description: string | null }>>([]);
+  const [agentList, setAgentList] = useState<Array<{ name: string; model: string | null; description: string | null }>>(
+    [],
+  );
   const [agentOverrideOpen, setAgentOverrideOpen] = useState(false);
 
   useEffect(() => {
@@ -164,11 +166,13 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       .then((json) => {
         const agents = json?.data?.agents;
         if (Array.isArray(agents)) {
-          setAgentList(agents.map((a: any) => ({
-            name: a.name,
-            model: a.model ?? null,
-            description: a.description ?? null,
-          })));
+          setAgentList(
+            agents.map((a: any) => ({
+              name: a.name,
+              model: a.model ?? null,
+              description: a.description ?? null,
+            })),
+          );
         }
       })
       .catch((err) => console.error("加载 agent 列表失败:", err));
@@ -242,16 +246,21 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         console.error("加载运行记录失败:", err);
       }
     })();
-    return () => { abort = true; };
+    return () => {
+      abort = true;
+    };
   }, [runId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Selection ──
-  const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: selNodes }) => {
-    setSelectedNode(selNodes[0] ?? null);
-    if (activeRunId && selNodes[0] && selNodes[0].id !== START_NODE_ID) {
-      setSelectedRunNodeId(selNodes[0].id);
-    }
-  }, [activeRunId]);
+  const onSelectionChange: OnSelectionChangeFunc = useCallback(
+    ({ nodes: selNodes }) => {
+      setSelectedNode(selNodes[0] ?? null);
+      if (activeRunId && selNodes[0] && selNodes[0].id !== START_NODE_ID) {
+        setSelectedRunNodeId(selNodes[0].id);
+      }
+    },
+    [activeRunId],
+  );
 
   // ── Connection ──
   const onConnect = useCallback(
@@ -527,7 +536,17 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         nds.map((n) => {
           if (n.id === START_NODE_ID) return n;
           const state = snap.node_states[n.id];
-          if (!state) return { ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined, _onViewOutput: undefined, _onRerunFrom: undefined } };
+          if (!state)
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                _runStatus: undefined,
+                _exitCode: undefined,
+                _onViewOutput: undefined,
+                _onRerunFrom: undefined,
+              },
+            };
           return {
             ...n,
             data: {
@@ -651,9 +670,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     // 所有节点标记为 RUNNING（等待 API 返回）
     setNodes((nds) =>
       nds.map((n) =>
-        n.id === START_NODE_ID
-          ? n
-          : { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } },
+        n.id === START_NODE_ID ? n : { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } },
       ),
     );
 
@@ -711,9 +728,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
     setRightTab("config");
-    setNodes((nds) =>
-      nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })),
-    );
+    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })));
   }, [setNodes]);
 
   // ── Rerun from selected node ──
@@ -936,7 +951,12 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           <Panel position="top-center" className="wf-panel-toolbar">
             <div className="wf-toolbar">
               {!readOnly && (
-                <button type="button" className="wf-toolbar-btn" onClick={handleNew} data-tooltip="清空画布，新建工作流">
+                <button
+                  type="button"
+                  className="wf-toolbar-btn"
+                  onClick={handleNew}
+                  data-tooltip="清空画布，新建工作流"
+                >
                   <FilePlus size={15} />
                 </button>
               )}
@@ -948,11 +968,21 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               >
                 <Upload size={15} />
               </button>
-              <button type="button" className="wf-toolbar-btn" onClick={handleExportYaml} data-tooltip="将当前工作流导出为 YAML 文件">
+              <button
+                type="button"
+                className="wf-toolbar-btn"
+                onClick={handleExportYaml}
+                data-tooltip="将当前工作流导出为 YAML 文件"
+              >
                 <Download size={15} />
               </button>
               <div className="wf-toolbar-divider" />
-              <button type="button" className="wf-toolbar-btn" onClick={handleAutoLayout} data-tooltip="自动排列节点布局（Dagre）">
+              <button
+                type="button"
+                className="wf-toolbar-btn"
+                onClick={handleAutoLayout}
+                data-tooltip="自动排列节点布局（Dagre）"
+              >
                 <LayoutGrid size={15} />
               </button>
               {workflowId && (
@@ -1051,20 +1081,40 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
 
         {/* 保存状态指示器 */}
         {saveStatus === "saving" && (
-          <div style={{
-            position: "absolute", top: 52, left: "50%", transform: "translateX(-50%)",
-            background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8,
-            padding: "6px 12px", fontSize: 11, color: "#1d4ed8", zIndex: 10,
-          }}>
+          <div
+            style={{
+              position: "absolute",
+              top: 52,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "#eff6ff",
+              border: "1px solid #93c5fd",
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 11,
+              color: "#1d4ed8",
+              zIndex: 10,
+            }}
+          >
             保存中...
           </div>
         )}
         {saveStatus === "saved" && (
-          <div style={{
-            position: "absolute", top: 52, left: "50%", transform: "translateX(-50%)",
-            background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8,
-            padding: "6px 12px", fontSize: 11, color: "#166534", zIndex: 10,
-          }}>
+          <div
+            style={{
+              position: "absolute",
+              top: 52,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "#f0fdf4",
+              border: "1px solid #86efac",
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 11,
+              color: "#166534",
+              zIndex: 10,
+            }}
+          >
             已保存
           </div>
         )}
@@ -1087,13 +1137,28 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               maxWidth: 480,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, marginBottom: dryRunResult.issues.length ? 4 : 0 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontWeight: 600,
+                marginBottom: dryRunResult.issues.length ? 4 : 0,
+              }}
+            >
               {dryRunResult.valid ? <CheckCircle size={13} /> : <AlertTriangle size={13} />}
               {dryRunResult.valid ? "校验通过" : `校验失败 (${dryRunResult.issues.length} 个问题)`}
               <button
                 type="button"
                 onClick={() => setDryRunResult(null)}
-                style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", padding: 0, color: "inherit" }}
+                style={{
+                  marginLeft: "auto",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                  color: "inherit",
+                }}
               >
                 <X size={12} />
               </button>
@@ -1140,17 +1205,21 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       <aside className="wf-prop-panel" style={{ width: 300, minWidth: 300 }}>
         {/* Tab 头 */}
         <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb" }}>
-          {([
+          {[
             { key: "config" as const, label: "配置" },
             { key: "run" as const, label: "运行" },
             { key: "versions" as const, label: "版本" },
-          ]).map((tab) => (
+          ].map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setRightTab(tab.key)}
               style={{
-                flex: 1, padding: "8px 0", border: "none", background: "none", fontSize: 11,
+                flex: 1,
+                padding: "8px 0",
+                border: "none",
+                background: "none",
+                fontSize: 11,
                 fontWeight: rightTab === tab.key ? 600 : 400,
                 color: rightTab === tab.key ? "#111827" : "#9ca3af",
                 borderBottom: rightTab === tab.key ? "2px solid #3b82f6" : "2px solid transparent",
@@ -1166,7 +1235,18 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         {rightTab === "config" && (
           <div className="wf-prop-body">
             {readOnly && (
-              <div style={{ padding: "4px 12px", background: "#fefce8", borderBottom: "1px solid #fde68a", fontSize: 10, color: "#92400e", display: "flex", alignItems: "center", gap: 4 }}>
+              <div
+                style={{
+                  padding: "4px 12px",
+                  background: "#fefce8",
+                  borderBottom: "1px solid #fde68a",
+                  fontSize: 10,
+                  color: "#92400e",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
                 <Lock size={10} /> 只读
               </div>
             )}
@@ -1186,7 +1266,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                   <div className="wf-prop-section-title">基本信息</div>
                   <div className="wf-prop-field">
                     <label>节点 ID</label>
-                    <input value={selectedNode.id} onChange={(e) => handleIdChange(e.target.value)} readOnly={readOnly} />
+                    <input
+                      value={selectedNode.id}
+                      onChange={(e) => handleIdChange(e.target.value)}
+                      readOnly={readOnly}
+                    />
                   </div>
                   <div className="wf-prop-field">
                     <label>类型</label>
@@ -1263,12 +1347,21 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                       <div className="wf-prop-field">
                         <label>依赖包 (requirements)</label>
                         <textarea
-                          value={Array.isArray(sd?.requirements) ? (sd.requirements as string[]).join("\n") : String(sd?.requirements ?? "")}
-                          onChange={(e) => updateNodeData({
-                            requirements: e.target.value
-                              ? e.target.value.split("\n").map((s: string) => s.trim()).filter(Boolean)
-                              : undefined,
-                          })}
+                          value={
+                            Array.isArray(sd?.requirements)
+                              ? (sd.requirements as string[]).join("\n")
+                              : String(sd?.requirements ?? "")
+                          }
+                          onChange={(e) =>
+                            updateNodeData({
+                              requirements: e.target.value
+                                ? e.target.value
+                                    .split("\n")
+                                    .map((s: string) => s.trim())
+                                    .filter(Boolean)
+                                : undefined,
+                            })
+                          }
                           placeholder={"requests\nnumpy（每行一个）"}
                           rows={2}
                           readOnly={readOnly}
@@ -1308,20 +1401,23 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                         >
                           <option value="">（默认）</option>
                           {agentList.map((a) => (
-                            <option key={a.name} value={a.name}>{a.name}</option>
+                            <option key={a.name} value={a.name}>
+                              {a.name}
+                            </option>
                           ))}
                         </select>
-                        {sd?.agent && (() => {
-                          const found = agentList.find((a) => a.name === sd.agent);
-                          if (!found) return null;
-                          return (
-                            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
-                              {found.model && <span>模型: {found.model}</span>}
-                              {found.model && found.description && <span> · </span>}
-                              {found.description && <span>{found.description}</span>}
-                            </div>
-                          );
-                        })()}
+                        {sd?.agent &&
+                          (() => {
+                            const found = agentList.find((a) => a.name === sd.agent);
+                            if (!found) return null;
+                            return (
+                              <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
+                                {found.model && <span>模型: {found.model}</span>}
+                                {found.model && found.description && <span> · </span>}
+                                {found.description && <span>{found.description}</span>}
+                              </div>
+                            );
+                          })()}
                       </div>
                       <div className="wf-prop-field">
                         <label>Skill</label>
@@ -1376,9 +1472,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                                 min="0"
                                 max="2"
                                 value={sd?.temperature ?? ""}
-                                onChange={(e) => updateNodeData({
-                                  temperature: e.target.value ? Number(e.target.value) : undefined,
-                                })}
+                                onChange={(e) =>
+                                  updateNodeData({
+                                    temperature: e.target.value ? Number(e.target.value) : undefined,
+                                  })
+                                }
                                 placeholder="沿用 agent 配置"
                                 readOnly={readOnly}
                               />
@@ -1390,9 +1488,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                                 min="1"
                                 max="200"
                                 value={sd?.steps ?? ""}
-                                onChange={(e) => updateNodeData({
-                                  steps: e.target.value ? Number(e.target.value) : undefined,
-                                })}
+                                onChange={(e) =>
+                                  updateNodeData({
+                                    steps: e.target.value ? Number(e.target.value) : undefined,
+                                  })
+                                }
                                 placeholder="沿用 agent 配置"
                                 readOnly={readOnly}
                               />
@@ -1567,7 +1667,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                   </div>
                   <div className="wf-prop-field">
                     <label>名称</label>
-                    <input value={meta.name} onChange={(e) => updateMeta({ name: e.target.value })} readOnly={readOnly} />
+                    <input
+                      value={meta.name}
+                      onChange={(e) => updateMeta({ name: e.target.value })}
+                      readOnly={readOnly}
+                    />
                   </div>
                   <div className="wf-prop-field">
                     <label>描述</label>
@@ -1654,7 +1758,15 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             {isRunMode ? (
               <>
                 {/* 运行状态头 */}
-                <div style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 6 }}>
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderBottom: "1px solid #e5e7eb",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>运行结果</span>
                   {runSnapshot && (
                     <span
@@ -1690,9 +1802,16 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                         type="button"
                         onClick={handleCancelRun}
                         style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          width: 24, height: 24, border: "none", background: "#fef2f2",
-                          borderRadius: 4, color: "#ef4444", cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 24,
+                          height: 24,
+                          border: "none",
+                          background: "#fef2f2",
+                          borderRadius: 4,
+                          color: "#ef4444",
+                          cursor: "pointer",
                         }}
                       >
                         <Square size={11} />
@@ -1703,9 +1822,16 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                         type="button"
                         onClick={handleBackToEdit}
                         style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          width: 24, height: 24, border: "none", background: "#f3f4f6",
-                          borderRadius: 4, color: "#6b7280", cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 24,
+                          height: 24,
+                          border: "none",
+                          background: "#f3f4f6",
+                          borderRadius: 4,
+                          color: "#6b7280",
+                          cursor: "pointer",
                         }}
                       >
                         <Edit3 size={11} />
@@ -1717,7 +1843,17 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                 {/* 审批卡片 */}
                 {dagStatus === "SUSPENDED" && runApprovals.length > 0 && (
                   <div style={{ padding: 10, borderBottom: "1px solid #fbbf24", background: "#fffbeb" }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "#92400e", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "#92400e",
+                        marginBottom: 6,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
                       <ShieldCheck size={12} /> 等待审批
                     </div>
                     {runApprovals.map((a) => (
@@ -1732,8 +1868,14 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                           type="button"
                           onClick={() => handleApprove(a)}
                           style={{
-                            padding: "2px 8px", border: "1px solid #f59e0b", borderRadius: 4,
-                            background: "#f59e0b", color: "#fff", fontSize: 10, fontWeight: 500, cursor: "pointer",
+                            padding: "2px 8px",
+                            border: "1px solid #f59e0b",
+                            borderRadius: 4,
+                            background: "#f59e0b",
+                            color: "#fff",
+                            fontSize: 10,
+                            fontWeight: 500,
+                            cursor: "pointer",
                           }}
                         >
                           通过
@@ -1745,10 +1887,16 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
 
                 {/* 进度条 */}
                 {runSnapshot && (
-                  <div style={{
-                    padding: "4px 12px", borderBottom: "1px solid #f3f4f6",
-                    fontSize: 10, color: "#9ca3af", display: "flex", justifyContent: "space-between",
-                  }}>
+                  <div
+                    style={{
+                      padding: "4px 12px",
+                      borderBottom: "1px solid #f3f4f6",
+                      fontSize: 10,
+                      color: "#9ca3af",
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <span>
                       {Object.values(runSnapshot.node_states).filter((s) => s.status === "COMPLETED").length}/
                       {Object.keys(runSnapshot.node_states).length} 节点
@@ -1765,20 +1913,32 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                     type="button"
                     onClick={() => setRunRightTab("events")}
                     style={{
-                      flex: 1, padding: "7px 0", border: "none", background: "none", fontSize: 11,
+                      flex: 1,
+                      padding: "7px 0",
+                      border: "none",
+                      background: "none",
+                      fontSize: 11,
                       fontWeight: runRightTab === "events" ? 600 : 400,
                       color: runRightTab === "events" ? "#111827" : "#9ca3af",
                       borderBottom: runRightTab === "events" ? "2px solid #3b82f6" : "2px solid transparent",
                       cursor: "pointer",
                     }}
                   >
-                    事件流 ({selectedRunNodeId ? runEvents.filter((e) => e.node_id === selectedRunNodeId).length : runEvents.length})
+                    事件流 (
+                    {selectedRunNodeId
+                      ? runEvents.filter((e) => e.node_id === selectedRunNodeId).length
+                      : runEvents.length}
+                    )
                   </button>
                   <button
                     type="button"
                     onClick={() => setRunRightTab("output")}
                     style={{
-                      flex: 1, padding: "7px 0", border: "none", background: "none", fontSize: 11,
+                      flex: 1,
+                      padding: "7px 0",
+                      border: "none",
+                      background: "none",
+                      fontSize: 11,
                       fontWeight: runRightTab === "output" ? 600 : 400,
                       color: runRightTab === "output" ? "#111827" : "#9ca3af",
                       borderBottom: runRightTab === "output" ? "2px solid #3b82f6" : "2px solid transparent",
@@ -1805,25 +1965,43 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                           <div
                             key={evt.event_id}
                             style={{
-                              padding: "5px 12px", borderBottom: "1px solid #f3f4f6",
-                              display: "flex", gap: 5, alignItems: "flex-start",
+                              padding: "5px 12px",
+                              borderBottom: "1px solid #f3f4f6",
+                              display: "flex",
+                              gap: 5,
+                              alignItems: "flex-start",
                               cursor: evt.node_id ? "pointer" : "default",
                             }}
-                            onClick={() => { if (evt.node_id) setSelectedRunNodeId(evt.node_id); }}
+                            onClick={() => {
+                              if (evt.node_id) setSelectedRunNodeId(evt.node_id);
+                            }}
                           >
                             <EventIcon type={evt.type} />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
                                 <span style={{ fontWeight: 500, color: "#374151" }}>{formatEventType(evt.type)}</span>
                                 <span style={{ color: "#d1d5db", fontSize: 9, flexShrink: 0 }}>
-                                  {new Date(evt.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                  {new Date(evt.timestamp).toLocaleTimeString("zh-CN", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                  })}
                                 </span>
                               </div>
                               {evt.node_id && (
-                                <span style={{ color: "#9ca3af", fontFamily: "ui-monospace, monospace", fontSize: 9 }}>{evt.node_id}</span>
+                                <span style={{ color: "#9ca3af", fontFamily: "ui-monospace, monospace", fontSize: 9 }}>
+                                  {evt.node_id}
+                                </span>
                               )}
                               {evt.metadata && Object.keys(evt.metadata).length > 0 && (
-                                <div style={{ color: "#9ca3af", fontSize: 9, marginTop: 1, fontFamily: "ui-monospace, monospace" }}>
+                                <div
+                                  style={{
+                                    color: "#9ca3af",
+                                    fontSize: 9,
+                                    marginTop: 1,
+                                    fontFamily: "ui-monospace, monospace",
+                                  }}
+                                >
                                   {formatMeta(evt.type, evt.metadata)}
                                 </div>
                               )}
@@ -1842,26 +2020,45 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                       <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>点击节点查看输出</div>
                     ) : nodeOutputLoading ? (
                       <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
-                        <Loader size={14} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+                        <Loader
+                          size={14}
+                          style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }}
+                        />
                       </div>
                     ) : !selectedNodeOutput ? (
                       <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>暂无输出</div>
                     ) : (
                       <>
-                        <div style={{
-                          padding: "6px 12px", borderBottom: "1px solid #f3f4f6",
-                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
-                        }}>
-                          <span style={{ fontSize: 10, color: "#6b7280", fontFamily: "ui-monospace, monospace" }}>{selectedRunNodeId}</span>
+                        <div
+                          style={{
+                            padding: "6px 12px",
+                            borderBottom: "1px solid #f3f4f6",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 6,
+                          }}
+                        >
+                          <span style={{ fontSize: 10, color: "#6b7280", fontFamily: "ui-monospace, monospace" }}>
+                            {selectedRunNodeId}
+                          </span>
                           <button
                             type="button"
                             onClick={() => handleRerunFrom(selectedRunNodeId)}
                             disabled={running}
                             style={{
-                              display: "flex", alignItems: "center", gap: 3, padding: "2px 8px",
-                              border: "1px solid #3b82f6", borderRadius: 4, background: "#eff6ff",
-                              color: "#3b82f6", fontSize: 10, fontWeight: 500,
-                              cursor: running ? "not-allowed" : "pointer", opacity: running ? 0.5 : 1,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 3,
+                              padding: "2px 8px",
+                              border: "1px solid #3b82f6",
+                              borderRadius: 4,
+                              background: "#eff6ff",
+                              color: "#3b82f6",
+                              fontSize: 10,
+                              fontWeight: 500,
+                              cursor: running ? "not-allowed" : "pointer",
+                              opacity: running ? 0.5 : 1,
                             }}
                           >
                             <RefreshCw size={10} /> 从此重跑
@@ -1916,8 +2113,25 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
 
       {/* Meta Agent Chat 侧边栏 */}
       {chatOpen && (
-        <div style={{ width: 400, minWidth: 400, display: "flex", flexDirection: "column", background: "#fff", borderLeft: "1px solid #e5e7eb" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #e5e7eb" }}>
+        <div
+          style={{
+            width: 400,
+            minWidth: 400,
+            display: "flex",
+            flexDirection: "column",
+            background: "#fff",
+            borderLeft: "1px solid #e5e7eb",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 12px",
+              borderBottom: "1px solid #e5e7eb",
+            }}
+          >
             <span style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
               <Bot size={14} />
               Meta Agent
@@ -1925,7 +2139,16 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
               <button
                 type="button"
-                style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 4, color: "#6b7280", display: "flex", alignItems: "center" }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 4,
+                  borderRadius: 4,
+                  color: "#6b7280",
+                  display: "flex",
+                  alignItems: "center",
+                }}
                 onClick={() => setChatOpen(false)}
                 title="收起 Chat 面板"
               >
@@ -1954,7 +2177,12 @@ function dedupEvents(events: DAGEvent[]): DAGEvent[] {
 
 // ── 版本管理面板 ──
 
-function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
+function VersionPanel({
+  workflowId,
+  onClose,
+  onPublish,
+  publishing,
+}: {
   workflowId?: string;
   onClose: () => void;
   onPublish: () => Promise<void>;
@@ -1984,7 +2212,9 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
     }
   }, [workflowId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handlePublishClick = useCallback(async () => {
     setPublishingLocal(true);
@@ -1998,57 +2228,76 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
     }
   }, [onPublish, loadData]);
 
-  const handleSetLatest = useCallback(async (version: number) => {
-    if (!workflowId) return;
-    try {
-      await workflowDefApi.setLatest(workflowId, version);
-      loadData();
-    } catch (err) {
-      console.error(err);
-      alert("操作失败: " + (err as Error).message);
-    }
-  }, [workflowId, loadData]);
+  const handleSetLatest = useCallback(
+    async (version: number) => {
+      if (!workflowId) return;
+      try {
+        await workflowDefApi.setLatest(workflowId, version);
+        loadData();
+      } catch (err) {
+        console.error(err);
+        alert("操作失败: " + (err as Error).message);
+      }
+    },
+    [workflowId, loadData],
+  );
 
-  const handleRestoreToDraft = useCallback(async (version: number) => {
-    if (!workflowId) return;
-    try {
-      await workflowDefApi.restoreToDraft(workflowId, version);
-      alert("已恢复到草稿");
-    } catch (err) {
-      console.error(err);
-      alert("恢复失败: " + (err as Error).message);
-    }
-  }, [workflowId]);
+  const handleRestoreToDraft = useCallback(
+    async (version: number) => {
+      if (!workflowId) return;
+      try {
+        await workflowDefApi.restoreToDraft(workflowId, version);
+        alert("已恢复到草稿");
+      } catch (err) {
+        console.error(err);
+        alert("恢复失败: " + (err as Error).message);
+      }
+    },
+    [workflowId],
+  );
 
-  const handleViewYaml = useCallback(async (version: number) => {
-    if (!workflowId) return;
-    if (viewingVersion === version) {
-      setViewingVersion(null);
-      setViewingYaml(null);
-      return;
-    }
-    try {
-      const result = await workflowDefApi.getVersion(workflowId, version);
-      setViewingVersion(version);
-      setViewingYaml(result.yaml);
-    } catch (err) {
-      console.error(err);
-    }
-  }, [workflowId, viewingVersion]);
+  const handleViewYaml = useCallback(
+    async (version: number) => {
+      if (!workflowId) return;
+      if (viewingVersion === version) {
+        setViewingVersion(null);
+        setViewingYaml(null);
+        return;
+      }
+      try {
+        const result = await workflowDefApi.getVersion(workflowId, version);
+        setViewingVersion(version);
+        setViewingYaml(result.yaml);
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    [workflowId, viewingVersion],
+  );
 
   const isBusy = publishing || publishingLocal;
 
   return (
     <>
-      <div className="wf-prop-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div
+        className="wf-prop-header"
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+      >
         <span className="wf-prop-title">版本管理</span>
         <button
           type="button"
           onClick={onClose}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: 24, height: 24, border: "none", background: "#f3f4f6",
-            borderRadius: 4, color: "#6b7280", cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 24,
+            height: 24,
+            border: "none",
+            background: "#f3f4f6",
+            borderRadius: 4,
+            color: "#6b7280",
+            cursor: "pointer",
           }}
         >
           <X size={11} />
@@ -2063,10 +2312,19 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
             onClick={handlePublishClick}
             disabled={isBusy}
             style={{
-              width: "100%", padding: "7px 0", border: "none", borderRadius: 6,
-              background: isBusy ? "#d1d5db" : "#22c55e", color: "#fff",
-              fontSize: 12, fontWeight: 600, cursor: isBusy ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              width: "100%",
+              padding: "7px 0",
+              border: "none",
+              borderRadius: 6,
+              background: isBusy ? "#d1d5db" : "#22c55e",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: isBusy ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 5,
             }}
           >
             <Rocket size={13} />
@@ -2077,13 +2335,22 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
 
       {/* 状态摘要 */}
       {wf && (
-        <div style={{
-          padding: "6px 12px", borderBottom: "1px solid #f3f4f6",
-          fontSize: 10, color: "#9ca3af", display: "flex", justifyContent: "space-between",
-        }}>
-          <span>latest: <strong style={{ color: wf.latestVersion ? "#22c55e" : "#d1d5db" }}>
-            {wf.latestVersion ? `v${wf.latestVersion}` : "未发布"}
-          </strong></span>
+        <div
+          style={{
+            padding: "6px 12px",
+            borderBottom: "1px solid #f3f4f6",
+            fontSize: 10,
+            color: "#9ca3af",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>
+            latest:{" "}
+            <strong style={{ color: wf.latestVersion ? "#22c55e" : "#d1d5db" }}>
+              {wf.latestVersion ? `v${wf.latestVersion}` : "未发布"}
+            </strong>
+          </span>
           <span>共 {versions.length} 个版本</span>
         </div>
       )}
@@ -2110,27 +2377,44 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
               <div key={v.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                 <div
                   style={{
-                    padding: "8px 12px", cursor: "pointer", transition: "background 0.1s",
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    transition: "background 0.1s",
                   }}
                   onClick={() => handleViewYaml(v.version)}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span style={{ fontFamily: "ui-monospace, monospace", fontWeight: 600, color: "#111827", fontSize: 12 }}>
+                    <span
+                      style={{ fontFamily: "ui-monospace, monospace", fontWeight: 600, color: "#111827", fontSize: 12 }}
+                    >
                       v{v.version}
                     </span>
                     {isLatest && (
-                      <span style={{
-                        display: "inline-flex", alignItems: "center", gap: 2,
-                        fontSize: 9, fontWeight: 500, color: "#22c55e", background: "#f0fdf4",
-                        padding: "1px 5px", borderRadius: 99,
-                      }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 2,
+                          fontSize: 9,
+                          fontWeight: 500,
+                          color: "#22c55e",
+                          background: "#f0fdf4",
+                          padding: "1px 5px",
+                          borderRadius: 99,
+                        }}
+                      >
                         latest
                       </span>
                     )}
                     <span style={{ marginLeft: "auto", fontSize: 9, color: "#d1d5db" }}>
-                      {new Date(v.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {new Date(v.createdAt).toLocaleString("zh-CN", {
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: 3 }} onClick={(e) => e.stopPropagation()}>
@@ -2139,8 +2423,13 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
                         type="button"
                         onClick={() => handleSetLatest(v.version)}
                         style={{
-                          padding: "2px 6px", border: "1px solid #e5e7eb", borderRadius: 3,
-                          background: "#fff", color: "#6b7280", fontSize: 9, cursor: "pointer",
+                          padding: "2px 6px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 3,
+                          background: "#fff",
+                          color: "#6b7280",
+                          fontSize: 9,
+                          cursor: "pointer",
                         }}
                       >
                         设为 latest
@@ -2150,8 +2439,13 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
                       type="button"
                       onClick={() => handleRestoreToDraft(v.version)}
                       style={{
-                        padding: "2px 6px", border: "1px solid #e5e7eb", borderRadius: 3,
-                        background: "#fff", color: "#6b7280", fontSize: 9, cursor: "pointer",
+                        padding: "2px 6px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 3,
+                        background: "#fff",
+                        color: "#6b7280",
+                        fontSize: 9,
+                        cursor: "pointer",
                       }}
                     >
                       恢复到草稿
@@ -2160,12 +2454,21 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
                 </div>
                 {isViewing && viewingYaml !== null && (
                   <div style={{ padding: "0 12px 8px" }}>
-                    <pre style={{
-                      background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 4,
-                      padding: 8, fontSize: 9, fontFamily: "ui-monospace, monospace",
-                      color: "#374151", maxHeight: 200, overflow: "auto", margin: 0,
-                      whiteSpace: "pre-wrap",
-                    }}>
+                    <pre
+                      style={{
+                        background: "#f9fafb",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 4,
+                        padding: 8,
+                        fontSize: 9,
+                        fontFamily: "ui-monospace, monospace",
+                        color: "#374151",
+                        maxHeight: 200,
+                        overflow: "auto",
+                        margin: 0,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
                       {viewingYaml}
                     </pre>
                   </div>
@@ -2181,10 +2484,7 @@ function VersionPanel({ workflowId, onClose, onPublish, publishing }: {
 
 // ── 历史运行记录面板 ──
 
-function RunListPanel({ onClose, onSelect }: {
-  onClose: () => void;
-  onSelect: (runId: string) => void;
-}) {
+function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (runId: string) => void }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -2193,9 +2493,13 @@ function RunListPanel({ onClose, onSelect }: {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    workflowEngineApi.listRuns()
+    workflowEngineApi
+      .listRuns()
       .then((data) => setRuns(Array.isArray(data) ? data : []))
-      .catch((err) => { console.error(err); setError(err.message); })
+      .catch((err) => {
+        console.error(err);
+        setError(err.message);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -2206,15 +2510,25 @@ function RunListPanel({ onClose, onSelect }: {
 
   return (
     <>
-      <div className="wf-prop-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div
+        className="wf-prop-header"
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+      >
         <span className="wf-prop-title">运行记录</span>
         <button
           type="button"
           onClick={onClose}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: 24, height: 24, border: "none", background: "#f3f4f6",
-            borderRadius: 4, color: "#6b7280", cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 24,
+            height: 24,
+            border: "none",
+            background: "#f3f4f6",
+            borderRadius: 4,
+            color: "#6b7280",
+            cursor: "pointer",
           }}
         >
           <X size={11} />
@@ -2222,7 +2536,9 @@ function RunListPanel({ onClose, onSelect }: {
       </div>
 
       {/* 筛选 */}
-      <div style={{ display: "flex", gap: 3, padding: "6px 12px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap" }}>
+      <div
+        style={{ display: "flex", gap: 3, padding: "6px 12px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap" }}
+      >
         {["all", "RUNNING", "SUSPENDED", "SUCCESS", "FAILED"].map((s) => (
           <button
             key={s}
@@ -2240,7 +2556,7 @@ function RunListPanel({ onClose, onSelect }: {
               cursor: "pointer",
             }}
           >
-            {s === "all" ? "全部" : DAG_STATUS_CFG[s]?.label ?? s}
+            {s === "all" ? "全部" : (DAG_STATUS_CFG[s]?.label ?? s)}
           </button>
         ))}
       </div>
@@ -2294,7 +2610,15 @@ function RunListPanel({ onClose, onSelect }: {
                     }}
                   >
                     {isRunning && (
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: cfg.color, animation: "wf-pulse 1.5s ease-in-out infinite" }} />
+                      <span
+                        style={{
+                          width: 4,
+                          height: 4,
+                          borderRadius: "50%",
+                          background: cfg.color,
+                          animation: "wf-pulse 1.5s ease-in-out infinite",
+                        }}
+                      />
                     )}
                     {cfg.label}
                   </span>
@@ -2305,7 +2629,16 @@ function RunListPanel({ onClose, onSelect }: {
                     {relativeTime(r.started_at)}
                   </span>
                 </div>
-                <div style={{ fontSize: 11, fontWeight: 500, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: "#111827",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
                   {r.workflow_name}
                 </div>
                 <div style={{ fontSize: 9, color: "#d1d5db", fontFamily: "ui-monospace, monospace" }}>
@@ -2319,7 +2652,15 @@ function RunListPanel({ onClose, onSelect }: {
 
       {/* 底部统计 */}
       {runs.length > 0 && (
-        <div style={{ padding: "6px 12px", borderTop: "1px solid #f3f4f6", fontSize: 10, color: "#d1d5db", textAlign: "center" }}>
+        <div
+          style={{
+            padding: "6px 12px",
+            borderTop: "1px solid #f3f4f6",
+            fontSize: 10,
+            color: "#d1d5db",
+            textAlign: "center",
+          }}
+        >
           共 {runs.length} 条记录
         </div>
       )}
@@ -2363,10 +2704,13 @@ function EventIcon({ type }: { type: string }) {
     );
   }
   if (type.includes("failed")) return <XCircle size={11} style={{ color: "#ef4444", flexShrink: 0, marginTop: 1 }} />;
-  if (type.includes("completed")) return <CheckCircle size={11} style={{ color: "#22c55e", flexShrink: 0, marginTop: 1 }} />;
+  if (type.includes("completed"))
+    return <CheckCircle size={11} style={{ color: "#22c55e", flexShrink: 0, marginTop: 1 }} />;
   if (type.includes("started")) return <Loader size={11} style={{ color: "#3b82f6", flexShrink: 0, marginTop: 1 }} />;
-  if (type.includes("retrying")) return <RefreshCw size={11} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 1 }} />;
-  if (type.includes("audit")) return <ShieldCheck size={11} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 1 }} />;
+  if (type.includes("retrying"))
+    return <RefreshCw size={11} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 1 }} />;
+  if (type.includes("audit"))
+    return <ShieldCheck size={11} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 1 }} />;
   return <Clock size={11} style={{ color: "#94a3b8", flexShrink: 0, marginTop: 1 }} />;
 }
 
@@ -2492,7 +2836,6 @@ function NodeOutputView({ output }: { output: NodeOutput }) {
           </pre>
         </div>
       )}
-
     </div>
   );
 }

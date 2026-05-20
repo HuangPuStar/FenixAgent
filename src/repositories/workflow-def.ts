@@ -74,11 +74,7 @@ export async function createWorkflowDef(
 }
 
 /** 保存草稿（upsert version=0） */
-export async function saveDraft(
-  workflowId: string,
-  ctx: AuthCtx,
-  yaml: string,
-): Promise<void> {
+export async function saveDraft(workflowId: string, ctx: AuthCtx, yaml: string): Promise<void> {
   const [wf] = await db
     .select()
     .from(workflow)
@@ -96,10 +92,7 @@ export async function saveDraft(
     .limit(1);
 
   if (existing.length > 0) {
-    await db
-      .update(workflowVersion)
-      .set({ filePath: fileName })
-      .where(eq(workflowVersion.id, existing[0].id));
+    await db.update(workflowVersion).set({ filePath: fileName }).where(eq(workflowVersion.id, existing[0].id));
   } else {
     await db.insert(workflowVersion).values({
       workflowId,
@@ -114,10 +107,7 @@ export async function saveDraft(
 }
 
 /** 发布版本：复制草稿内容到 v{n}.yaml，更新 latestVersion */
-export async function publishVersion(
-  workflowId: string,
-  ctx: AuthCtx,
-): Promise<WorkflowVersionRow> {
+export async function publishVersion(workflowId: string, ctx: AuthCtx): Promise<WorkflowVersionRow> {
   const [wf] = await db
     .select()
     .from(workflow)
@@ -151,18 +141,11 @@ export async function publishVersion(
 
 /** 列出工作流（按 updatedAt 降序） */
 export async function listWorkflowDefs(teamId: string): Promise<WorkflowDefRow[]> {
-  return db
-    .select()
-    .from(workflow)
-    .where(eq(workflow.teamId, teamId))
-    .orderBy(desc(workflow.updatedAt));
+  return db.select().from(workflow).where(eq(workflow.teamId, teamId)).orderBy(desc(workflow.updatedAt));
 }
 
 /** 获取单个工作流 */
-export async function getWorkflowDef(
-  workflowId: string,
-  teamId: string,
-): Promise<WorkflowDefRow | null> {
+export async function getWorkflowDef(workflowId: string, teamId: string): Promise<WorkflowDefRow | null> {
   const [row] = await db
     .select()
     .from(workflow)
@@ -172,10 +155,7 @@ export async function getWorkflowDef(
 }
 
 /** 获取版本历史列表（不含草稿） */
-export async function getVersions(
-  workflowId: string,
-  teamId: string,
-): Promise<WorkflowVersionRow[]> {
+export async function getVersions(workflowId: string, teamId: string): Promise<WorkflowVersionRow[]> {
   const wf = await getWorkflowDef(workflowId, teamId);
   if (!wf) return [];
 
@@ -187,15 +167,8 @@ export async function getVersions(
 }
 
 /** 获取特定版本的 YAML 内容 */
-export async function getVersionYaml(
-  workflowId: string,
-  version: number,
-): Promise<string | null> {
-  const [wf] = await db
-    .select()
-    .from(workflow)
-    .where(eq(workflow.id, workflowId))
-    .limit(1);
+export async function getVersionYaml(workflowId: string, version: number): Promise<string | null> {
+  const [wf] = await db.select().from(workflow).where(eq(workflow.id, workflowId)).limit(1);
   if (!wf?.storagePath) return null;
 
   const fileName = version === 0 ? "draft.yaml" : `v${version}.yaml`;
@@ -203,11 +176,7 @@ export async function getVersionYaml(
 }
 
 /** 设置 latest 指针到指定版本（回滚） */
-export async function setLatestVersion(
-  workflowId: string,
-  teamId: string,
-  version: number,
-): Promise<void> {
+export async function setLatestVersion(workflowId: string, teamId: string, version: number): Promise<void> {
   const [vRow] = await db
     .select()
     .from(workflowVersion)
@@ -222,10 +191,7 @@ export async function setLatestVersion(
 }
 
 /** 删除工作流（只删数据库，不动文件系统） */
-export async function deleteWorkflowDef(
-  workflowId: string,
-  teamId: string,
-): Promise<boolean> {
+export async function deleteWorkflowDef(workflowId: string, teamId: string): Promise<boolean> {
   const result = await db
     .delete(workflow)
     .where(and(eq(workflow.id, workflowId), eq(workflow.teamId, teamId)))
@@ -252,23 +218,15 @@ export async function updateWorkflowMeta(
 }
 
 /** 扫描文件系统中可恢复的孤立工作流 */
-export async function listRecoverableWorkflows(
-  teamId: string,
-): Promise<string[]> {
-  const existing = await db
-    .select({ id: workflow.id })
-    .from(workflow)
-    .where(eq(workflow.teamId, teamId));
+export async function listRecoverableWorkflows(teamId: string): Promise<string[]> {
+  const existing = await db.select({ id: workflow.id }).from(workflow).where(eq(workflow.teamId, teamId));
   const existingIds = new Set(existing.map((r) => r.id));
 
   return fsListRecoverable(WORKFLOW_BASE_DIR, teamId, existingIds);
 }
 
 /** 从文件系统恢复工作流 */
-export async function recoverWorkflows(
-  ctx: AuthCtx,
-  workflowIds: string[],
-): Promise<WorkflowDefRow[]> {
+export async function recoverWorkflows(ctx: AuthCtx, workflowIds: string[]): Promise<WorkflowDefRow[]> {
   const results: WorkflowDefRow[] = [];
   for (const wid of workflowIds) {
     const dir = buildStoragePath(WORKFLOW_BASE_DIR, ctx.teamId, wid);
@@ -291,13 +249,16 @@ export async function recoverWorkflows(
       .returning();
 
     if (draftYaml) {
-      await db.insert(workflowVersion).values({
-        workflowId: wid,
-        version: 0,
-        filePath: "draft.yaml",
-        status: "draft",
-        createdBy: ctx.userId,
-      }).onConflictDoNothing();
+      await db
+        .insert(workflowVersion)
+        .values({
+          workflowId: wid,
+          version: 0,
+          filePath: "draft.yaml",
+          status: "draft",
+          createdBy: ctx.userId,
+        })
+        .onConflictDoNothing();
     }
 
     const { readdir: readdirFn } = await import("node:fs/promises");
@@ -306,13 +267,16 @@ export async function recoverWorkflows(
       const versionFiles = files.filter((f) => /^v(\d+)\.yaml$/.test(f));
       for (const f of versionFiles) {
         const ver = parseInt(f.match(/^v(\d+)\.yaml$/)![1], 10);
-        await db.insert(workflowVersion).values({
-          workflowId: wid,
-          version: ver,
-          filePath: f,
-          status: "published",
-          createdBy: ctx.userId,
-        }).onConflictDoNothing();
+        await db
+          .insert(workflowVersion)
+          .values({
+            workflowId: wid,
+            version: ver,
+            filePath: f,
+            status: "published",
+            createdBy: ctx.userId,
+          })
+          .onConflictDoNothing();
       }
       if (versionFiles.length > 0) {
         const maxVer = Math.max(...versionFiles.map((f) => parseInt(f.match(/^v(\d+)/)![1], 10)));
@@ -328,11 +292,7 @@ export async function recoverWorkflows(
 }
 
 /** 恢复已发布版本内容到草稿 */
-export async function restoreVersionToDraft(
-  workflowId: string,
-  ctx: AuthCtx,
-  version: number,
-): Promise<void> {
+export async function restoreVersionToDraft(workflowId: string, ctx: AuthCtx, version: number): Promise<void> {
   const yaml = await getVersionYaml(workflowId, version);
   if (!yaml) throw new Error(`Version ${version} not found`);
   await saveDraft(workflowId, ctx, yaml);

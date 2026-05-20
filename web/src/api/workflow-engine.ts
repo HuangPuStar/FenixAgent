@@ -7,30 +7,11 @@
 
 // ── 状态枚举 ──
 
-export type DAGStatus =
-  | "PENDING"
-  | "RUNNING"
-  | "SUSPENDED"
-  | "FAILED"
-  | "CANCELLED"
-  | "ERROR"
-  | "SUCCESS";
+export type DAGStatus = "PENDING" | "RUNNING" | "SUSPENDED" | "FAILED" | "CANCELLED" | "ERROR" | "SUCCESS";
 
-export type NodeStatus =
-  | "PENDING"
-  | "RUNNING"
-  | "COMPLETED"
-  | "FAILED"
-  | "CANCELLED"
-  | "SKIPPED";
+export type NodeStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "SKIPPED";
 
-export type NodeType =
-  | "shell"
-  | "agent"
-  | "api"
-  | "audit"
-  | "workflow"
-  | "loop";
+export type NodeType = "shell" | "agent" | "api" | "audit" | "workflow" | "loop";
 
 export type EventType =
   | "dag.started"
@@ -119,10 +100,7 @@ export interface DryRunResult {
 
 // ── API Client ──
 
-async function wfFetch<T>(
-  action: string,
-  extra?: Record<string, unknown>,
-): Promise<T> {
+async function wfFetch<T>(action: string, extra?: Record<string, unknown>): Promise<T> {
   const res = await fetch("/web/workflow-engine", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -177,12 +155,7 @@ export const workflowEngineApi = {
   },
 
   /** 审批通过 */
-  async approve(
-    runId: string,
-    nodeId: string,
-    token: string,
-    data?: unknown,
-  ): Promise<void> {
+  async approve(runId: string, nodeId: string, token: string, data?: unknown): Promise<void> {
     await wfFetch("approve", { runId, nodeId, token, data });
   },
 

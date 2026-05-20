@@ -37,10 +37,7 @@ export interface VersionYamlResponse {
 
 // ── API Helper ──
 
-async function defFetch<T>(
-  action: string,
-  extra?: Record<string, unknown>,
-): Promise<T> {
+async function defFetch<T>(action: string, extra?: Record<string, unknown>): Promise<T> {
   const res = await fetch("/web/workflow-defs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -15,7 +15,14 @@ interface ChatPanelProps {
   scenePrompt?: string;
 }
 
-export function ChatPanel({ agentId, sessionId, initialCwd, hideSidebar, onClientChange, scenePrompt }: ChatPanelProps) {
+export function ChatPanel({
+  agentId,
+  sessionId,
+  initialCwd,
+  hideSidebar,
+  onClientChange,
+  scenePrompt,
+}: ChatPanelProps) {
   const [client, setClient] = useState<ACPClient | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +98,14 @@ export function ChatPanel({ agentId, sessionId, initialCwd, hideSidebar, onClien
   if (client && connectionState === "connected") {
     return (
       <TooltipProvider>
-        <ACPMain client={client} agentId={agentId} initialCwd={initialCwd} hideSidebar={hideSidebar} rcsSessionId={sessionId ?? undefined} scenePrompt={scenePrompt} />
+        <ACPMain
+          client={client}
+          agentId={agentId}
+          initialCwd={initialCwd}
+          hideSidebar={hideSidebar}
+          rcsSessionId={sessionId ?? undefined}
+          scenePrompt={scenePrompt}
+        />
       </TooltipProvider>
     );
   }

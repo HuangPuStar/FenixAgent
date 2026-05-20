@@ -65,26 +65,38 @@ export function WorkflowPage() {
   if (route.view === "edit" && route.workflowId) {
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "0 16px",
-          borderBottom: "1px solid #e5e7eb", background: "#fff", minHeight: 40, flexShrink: 0,
-        }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 16px",
+            borderBottom: "1px solid #e5e7eb",
+            background: "#fff",
+            minHeight: 40,
+            flexShrink: 0,
+          }}
+        >
           <button
             type="button"
             onClick={() => navigateTo("list")}
             style={{
-              display: "flex", alignItems: "center", gap: 4, padding: "4px 8px",
-              border: "none", background: "none", fontSize: 12, color: "#6b7280", cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              border: "none",
+              background: "none",
+              fontSize: 12,
+              color: "#6b7280",
+              cursor: "pointer",
             }}
           >
             <ArrowLeft size={14} /> 返回列表
           </button>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
-          <WorkflowEditor
-            workflowId={route.workflowId}
-            runId={route.runId}
-          />
+          <WorkflowEditor workflowId={route.workflowId} runId={route.runId} />
         </div>
       </div>
     );
@@ -94,16 +106,31 @@ export function WorkflowPage() {
   if (route.view === "versions" && route.workflowId) {
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "0 16px",
-          borderBottom: "1px solid #e5e7eb", background: "#fff", minHeight: 40, flexShrink: 0,
-        }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 16px",
+            borderBottom: "1px solid #e5e7eb",
+            background: "#fff",
+            minHeight: 40,
+            flexShrink: 0,
+          }}
+        >
           <button
             type="button"
             onClick={() => navigateTo("list")}
             style={{
-              display: "flex", alignItems: "center", gap: 4, padding: "4px 8px",
-              border: "none", background: "none", fontSize: 12, color: "#6b7280", cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              border: "none",
+              background: "none",
+              fontSize: 12,
+              color: "#6b7280",
+              cursor: "pointer",
             }}
           >
             <ArrowLeft size={14} /> 返回列表
@@ -112,18 +139,22 @@ export function WorkflowPage() {
             type="button"
             onClick={() => navigateTo("edit", route.workflowId)}
             style={{
-              display: "flex", alignItems: "center", gap: 4, padding: "4px 8px",
-              border: "none", background: "none", fontSize: 12, color: "#6b7280", cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              border: "none",
+              background: "none",
+              fontSize: 12,
+              color: "#6b7280",
+              cursor: "pointer",
             }}
           >
             <Pencil size={14} /> 编辑器
           </button>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
-          <WorkflowVersions
-            workflowId={route.workflowId}
-            onEditWorkflow={(id) => navigateTo("edit", id)}
-          />
+          <WorkflowVersions workflowId={route.workflowId} onEditWorkflow={(id) => navigateTo("edit", id)} />
         </div>
       </div>
     );
@@ -136,8 +167,14 @@ export function WorkflowPage() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
         style={{
-          display: "flex", alignItems: "center", gap: 0, padding: "0 20px",
-          borderBottom: "1px solid #e5e7eb", background: "#fff", minHeight: 40, flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 0,
+          padding: "0 20px",
+          borderBottom: "1px solid #e5e7eb",
+          background: "#fff",
+          minHeight: 40,
+          flexShrink: 0,
         }}
       >
         {TAB_ITEMS.map((tab) => {
@@ -149,11 +186,18 @@ export function WorkflowPage() {
               type="button"
               onClick={() => navigateTo(tab.id)}
               style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "8px 14px",
-                border: "none", background: "none", fontSize: 12,
-                fontWeight: isActive ? 600 : 400, color: isActive ? "#111827" : "#6b7280",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "8px 14px",
+                border: "none",
+                background: "none",
+                fontSize: 12,
+                fontWeight: isActive ? 600 : 400,
+                color: isActive ? "#111827" : "#6b7280",
                 borderBottom: isActive ? "2px solid #3b82f6" : "2px solid transparent",
-                cursor: "pointer", transition: "color 0.15s, border-color 0.15s",
+                cursor: "pointer",
+                transition: "color 0.15s, border-color 0.15s",
               }}
             >
               <Icon size={14} />

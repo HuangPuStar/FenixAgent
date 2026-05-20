@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  AlertTriangle,
-  Inbox,
-  Loader,
-  RefreshCw,
-  RotateCcw,
-  Star,
-  Clock,
-} from "lucide-react";
+import { AlertTriangle, Inbox, Loader, RefreshCw, RotateCcw, Star, Clock } from "lucide-react";
 import { workflowDefApi, type WorkflowVersionItem, type WorkflowDefItem } from "../../api/workflow-defs";
 
 interface WorkflowVersionsProps {
@@ -73,21 +65,24 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
     [workflowId],
   );
 
-  const handleViewYaml = useCallback(async (version: number) => {
-    if (viewingVersion === version) {
-      setViewingVersion(null);
-      setViewingYaml(null);
-      return;
-    }
-    try {
-      const result = await workflowDefApi.getVersion(workflowId, version);
-      setViewingVersion(version);
-      setViewingYaml(result.yaml);
-    } catch (err) {
-      console.error(err);
-      alert("加载失败: " + (err as Error).message);
-    }
-  }, [workflowId, viewingVersion]);
+  const handleViewYaml = useCallback(
+    async (version: number) => {
+      if (viewingVersion === version) {
+        setViewingVersion(null);
+        setViewingYaml(null);
+        return;
+      }
+      try {
+        const result = await workflowDefApi.getVersion(workflowId, version);
+        setViewingVersion(version);
+        setViewingYaml(result.yaml);
+      } catch (err) {
+        console.error(err);
+        alert("加载失败: " + (err as Error).message);
+      }
+    },
+    [workflowId, viewingVersion],
+  );
 
   function relativeTime(iso?: string | null): string {
     if (!iso) return "--";
@@ -109,9 +104,16 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
           type="button"
           onClick={loadData}
           style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "5px 10px",
-            border: "1px solid #e5e7eb", borderRadius: 6, background: "#fff",
-            fontSize: 12, color: "#374151", cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "5px 10px",
+            border: "1px solid #e5e7eb",
+            borderRadius: 6,
+            background: "#fff",
+            fontSize: 12,
+            color: "#374151",
+            cursor: "pointer",
           }}
         >
           <RefreshCw size={13} /> 刷新
@@ -120,15 +122,28 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
       {/* 当前状态 */}
       {wf && (
-        <div style={{
-          padding: "10px 16px", background: "#f9fafb", borderRadius: 8,
-          border: "1px solid #e5e7eb", marginBottom: 16, fontSize: 12, color: "#6b7280",
-          display: "flex", gap: 16,
-        }}>
-          <span>latest: <strong style={{ color: wf.latestVersion ? "#22c55e" : "#9ca3af" }}>
-            {wf.latestVersion ? `v${wf.latestVersion}` : "未设置"}
-          </strong></span>
-          <span>发布版本数: <strong>{versions.length}</strong></span>
+        <div
+          style={{
+            padding: "10px 16px",
+            background: "#f9fafb",
+            borderRadius: 8,
+            border: "1px solid #e5e7eb",
+            marginBottom: 16,
+            fontSize: 12,
+            color: "#6b7280",
+            display: "flex",
+            gap: 16,
+          }}
+        >
+          <span>
+            latest:{" "}
+            <strong style={{ color: wf.latestVersion ? "#22c55e" : "#9ca3af" }}>
+              {wf.latestVersion ? `v${wf.latestVersion}` : "未设置"}
+            </strong>
+          </span>
+          <span>
+            发布版本数: <strong>{versions.length}</strong>
+          </span>
         </div>
       )}
 
@@ -159,26 +174,42 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
               <div key={v.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                 <div
                   style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                    fontSize: 12, cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "12px 16px",
+                    fontSize: 12,
+                    cursor: "pointer",
                   }}
                   onClick={() => handleViewYaml(v.version)}
                 >
                   {/* 版本号 */}
-                  <div style={{
-                    fontFamily: "ui-monospace, monospace", fontWeight: 600, color: "#111827",
-                    minWidth: 40,
-                  }}>
+                  <div
+                    style={{
+                      fontFamily: "ui-monospace, monospace",
+                      fontWeight: 600,
+                      color: "#111827",
+                      minWidth: 40,
+                    }}
+                  >
                     v{v.version}
                   </div>
 
                   {/* latest 标记 */}
                   {isLatest && (
-                    <span style={{
-                      display: "inline-flex", alignItems: "center", gap: 3,
-                      fontSize: 10, fontWeight: 500, color: "#22c55e", background: "#f0fdf4",
-                      padding: "1px 6px", borderRadius: 99,
-                    }}>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        fontSize: 10,
+                        fontWeight: 500,
+                        color: "#22c55e",
+                        background: "#f0fdf4",
+                        padding: "1px 6px",
+                        borderRadius: 99,
+                      }}
+                    >
                       <Star size={10} /> latest
                     </span>
                   )}
@@ -190,18 +221,23 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
                   </span>
 
                   {/* 操作 */}
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
                     {!isLatest && (
                       <button
                         type="button"
                         title="设为 latest"
                         onClick={() => handleSetLatest(v.version)}
                         style={{
-                          display: "flex", alignItems: "center", gap: 3, padding: "3px 8px",
-                          border: "1px solid #e5e7eb", borderRadius: 4, background: "#fff",
-                          fontSize: 10, color: "#6b7280", cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 3,
+                          padding: "3px 8px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 4,
+                          background: "#fff",
+                          fontSize: 10,
+                          color: "#6b7280",
+                          cursor: "pointer",
                         }}
                       >
                         <Star size={10} /> 设为 latest
@@ -212,9 +248,16 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
                       title="恢复到草稿"
                       onClick={() => handleRestoreToDraft(v.version)}
                       style={{
-                        display: "flex", alignItems: "center", gap: 3, padding: "3px 8px",
-                        border: "1px solid #e5e7eb", borderRadius: 4, background: "#fff",
-                        fontSize: 10, color: "#6b7280", cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 3,
+                        padding: "3px 8px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 4,
+                        background: "#fff",
+                        fontSize: 10,
+                        color: "#6b7280",
+                        cursor: "pointer",
                       }}
                     >
                       <RotateCcw size={10} /> 恢复到草稿
@@ -225,12 +268,21 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
                 {/* YAML 展开区域 */}
                 {isViewing && viewingYaml !== null && (
                   <div style={{ padding: "0 16px 12px" }}>
-                    <pre style={{
-                      background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 6,
-                      padding: 10, fontSize: 11, fontFamily: "ui-monospace, monospace",
-                      color: "#374151", maxHeight: 300, overflow: "auto", margin: 0,
-                      whiteSpace: "pre-wrap",
-                    }}>
+                    <pre
+                      style={{
+                        background: "#f9fafb",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 6,
+                        padding: 10,
+                        fontSize: 11,
+                        fontFamily: "ui-monospace, monospace",
+                        color: "#374151",
+                        maxHeight: 300,
+                        overflow: "auto",
+                        margin: 0,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
                       {viewingYaml}
                     </pre>
                   </div>

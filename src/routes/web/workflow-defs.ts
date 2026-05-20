@@ -73,7 +73,8 @@ app.post(
 
         case "get": {
           const workflowId = payload.workflowId as string;
-          if (!workflowId) return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+          if (!workflowId)
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const wf = await getWorkflowDef(workflowId, authCtx.teamId);
           if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
           const draftYaml = await getVersionYaml(workflowId, 0);
@@ -82,7 +83,8 @@ app.post(
 
         case "getVersions": {
           const workflowId = payload.workflowId as string;
-          if (!workflowId) return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+          if (!workflowId)
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const versions = await getVersions(workflowId, authCtx.teamId);
           return { success: true, data: versions };
         }
@@ -110,7 +112,8 @@ app.post(
 
         case "delete": {
           const workflowId = payload.workflowId as string;
-          if (!workflowId) return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+          if (!workflowId)
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const deleted = await deleteWorkflowDef(workflowId, authCtx.teamId);
           if (!deleted) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
           return { success: true };
@@ -120,7 +123,8 @@ app.post(
           const workflowId = payload.workflowId as string;
           const name = payload.name as string | undefined;
           const description = payload.description as string | undefined;
-          if (!workflowId) return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+          if (!workflowId)
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const updated = await updateWorkflowMeta(workflowId, authCtx.teamId, { name, description });
           if (!updated) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
           return { success: true, data: updated };

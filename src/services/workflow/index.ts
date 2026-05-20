@@ -29,11 +29,7 @@ function getTransport(): Transport {
 /** 创建 resolveAgentConfig 回调：按 name 查询 agentConfig 表 */
 function createAgentConfigResolver(teamId: string): (name: string) => Promise<AgentResolvedConfig | null> {
   return async (name: string) => {
-    const rows = await db
-      .select()
-      .from(agentConfig)
-      .where(eq(agentConfig.teamId, teamId))
-      .limit(100);
+    const rows = await db.select().from(agentConfig).where(eq(agentConfig.teamId, teamId)).limit(100);
 
     const row = rows.find((r) => r.name === name);
     if (!row) return null;

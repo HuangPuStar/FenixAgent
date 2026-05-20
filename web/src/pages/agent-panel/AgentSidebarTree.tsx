@@ -165,10 +165,7 @@ export function AgentSidebarTree({ collapsed, selectedInstanceId, onSelectInstan
               </div>
             ))
           ) : (
-            <div
-              className="agent-tree-instance"
-              onClick={() => handleEnterInstance(env)}
-            >
+            <div className="agent-tree-instance" onClick={() => handleEnterInstance(env)}>
               <span className="status-dot stopped" />
               <span className="truncate">{env.name}</span>
             </div>

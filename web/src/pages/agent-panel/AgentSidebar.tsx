@@ -19,12 +19,7 @@ export function AgentSidebar({
   onNavigate,
 }: AgentSidebarProps) {
   return (
-    <aside
-      className={[
-        "agent-sidebar",
-        collapsed ? "collapsed" : "",
-      ].join(" ")}
-    >
+    <aside className={["agent-sidebar", collapsed ? "collapsed" : ""].join(" ")}>
       {/* 品牌区 */}
       <div
         className={[

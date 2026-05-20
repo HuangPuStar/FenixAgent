@@ -1,16 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  BookOpen,
-  Clock,
-  Cpu,
-  KeyRound,
-  MessageSquare,
-  Monitor,
-  Plug,
-  Radio,
-  Settings,
-  Workflow,
-} from "lucide-react";
+import { BookOpen, Clock, Cpu, KeyRound, MessageSquare, Monitor, Plug, Radio, Settings, Workflow } from "lucide-react";
 
 interface NavEntry {
   id: string;
@@ -65,11 +54,7 @@ export function AgentSidebarConfig({ collapsed, onNavigate }: AgentSidebarConfig
               collapsed && "text-center px-2 text-[0px] pt-3 pb-1.5",
             ].join(" ")}
           >
-            {collapsed ? (
-              <span className="block w-4 h-px bg-border-default mx-auto mt-1" />
-            ) : (
-              group.label
-            )}
+            {collapsed ? <span className="block w-4 h-px bg-border-default mx-auto mt-1" /> : group.label}
           </div>
 
           {group.items.map((item) => {

@@ -7,6 +7,12 @@ const mockUpsertSkill = mock<(ctx: any, name: string, data: any) => Promise<stri
 const mockGetAgentConfig = mock<(ctx: any, name: string) => Promise<any>>();
 const mockCreateAgentConfig = mock<(ctx: any, name: string, data: any) => Promise<any>>();
 const mockWriteMetaSkillFile = mock<() => Promise<string>>();
+const mockCreateApiKey = mock<(userId: string, label: string, teamId: string, options?: any) => Promise<any>>();
+
+mock.module("../auth/api-key-service", () => ({
+  createApiKey: mockCreateApiKey,
+  hashApiKey: (key: string) => `hash_${key}`,
+}));
 
 mock.module("../services/environment-web", () => ({
   createWebEnvironment: mockCreateWebEnvironment,
@@ -32,11 +38,7 @@ mock.module("../services/config/skill-meta-content", () => ({
   writeMetaSkillFile: mockWriteMetaSkillFile,
 }));
 
-import {
-  META_ENVIRONMENT_NAME,
-  findMetaEnvironment,
-  ensureMetaEnvironment,
-} from "../services/meta-agent";
+import { META_ENVIRONMENT_NAME, findMetaEnvironment, ensureMetaEnvironment } from "../services/meta-agent";
 
 const testCtx = {
   teamId: "team-001",
@@ -52,6 +54,10 @@ beforeEach(() => {
   mockGetAgentConfig.mockReset();
   mockCreateAgentConfig.mockReset();
   mockWriteMetaSkillFile.mockReset().mockResolvedValue("/tmp/SKILL.md");
+  mockCreateApiKey.mockReset().mockResolvedValue({
+    record: { id: "key-1", label: "Meta Agent" },
+    fullKey: "rcs_test_meta_key_123",
+  });
 });
 
 // 常量校验
@@ -72,9 +78,7 @@ describe("findMetaEnvironment", () => {
   });
 
   test("列表中不存在 meta-agent 时返回 null", async () => {
-    mockListEnvironmentsWithInstances.mockResolvedValueOnce([
-      { id: "env-1", name: "my-agent" },
-    ]);
+    mockListEnvironmentsWithInstances.mockResolvedValueOnce([{ id: "env-1", name: "my-agent" }]);
     const result = await findMetaEnvironment(testCtx);
     expect(result).toBeNull();
   });
@@ -83,9 +87,7 @@ describe("findMetaEnvironment", () => {
 // ensureMetaEnvironment
 describe("ensureMetaEnvironment", () => {
   test("已存在 meta 环境时直接返回，不重复创建", async () => {
-    mockListEnvironmentsWithInstances.mockResolvedValueOnce([
-      { id: "env-meta-1", name: "meta-agent" },
-    ]);
+    mockListEnvironmentsWithInstances.mockResolvedValueOnce([{ id: "env-meta-1", name: "meta-agent" }]);
     mockGetAgentConfig.mockResolvedValueOnce({ id: "ac-meta" });
     mockUpsertSkill.mockResolvedValueOnce("skill-1");
     mockSpawnInstanceFromEnvironment.mockResolvedValueOnce({ id: "inst-1", status: "running" });
@@ -106,8 +108,6 @@ describe("ensureMetaEnvironment", () => {
     const result = await ensureMetaEnvironment(testCtx);
     expect(result.environmentId).toBe("env-new-meta");
     expect(result.status).toBe("created");
-    expect(mockCreateWebEnvironment).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "meta-agent" }),
-    );
+    expect(mockCreateWebEnvironment).toHaveBeenCalledWith(expect.objectContaining({ name: "meta-agent" }));
   });
 });
