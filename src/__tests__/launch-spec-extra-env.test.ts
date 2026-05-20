@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildLaunchSpec, type BuildLaunchSpecInput } from "../services/launch-spec-builder";
+import { type BuildLaunchSpecInput, buildLaunchSpec } from "../services/launch-spec-builder";
 
 describe("buildLaunchSpec extraEnv", () => {
   // extraEnv 应合并到 AgentLaunchSpec.env

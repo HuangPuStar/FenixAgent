@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 mock.module("../db", () => ({ db: {} }));
 mock.module("../auth/better-auth", () => ({}));
