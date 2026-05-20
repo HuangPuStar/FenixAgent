@@ -132,6 +132,7 @@ function parseNode(raw: unknown, index: number): NodeDef {
         type: "shell",
         command: n.command as string | string[],
         cwd: typeof n.cwd === "string" ? n.cwd : undefined,
+        inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
       };
     }
     case "python": {
@@ -147,6 +148,7 @@ function parseNode(raw: unknown, index: number): NodeDef {
         code: n.code as string,
         requirements: Array.isArray(n.requirements) ? (n.requirements as string[]) : undefined,
         cwd: typeof n.cwd === "string" ? n.cwd : undefined,
+        inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
       };
     }
     case "agent": {

@@ -35,6 +35,8 @@ export interface ShellNodeDef extends BaseNodeDef {
   type: 'shell';
   command: string | string[];
   cwd?: string;
+  /** 显式声明需要注入为环境变量的上游数据，key 为环境变量名，value 为表达式 */
+  inputs?: Record<string, string>;
 }
 
 /** Python 节点 — 执行 Python 脚本 */
@@ -43,6 +45,8 @@ export interface PythonNodeDef extends BaseNodeDef {
   code: string;
   requirements?: string[];
   cwd?: string;
+  /** 显式声明需要注入为 Python 变量的上游数据，key 为变量名，value 为表达式 */
+  inputs?: Record<string, string>;
 }
 
 /** Agent 节点 — 调用 AI Agent */
