@@ -34,6 +34,29 @@ bash restart-server.sh
 5、仪表盘 - 注册环境、启动实例、接入实例对话
 
 
+## 新机器部署
+
+首次在新机器上部署时，需要先初始化数据库表结构，否则启动会报 `relation "xxx" does not exist` 错误。
+
+```bash
+# 1. 确保 PostgreSQL 已运行，并配置 DATABASE_URL
+export DATABASE_URL="postgres://rcs:rcs@localhost:5432/rcs"
+
+# 2. 创建数据库（如果还没创建）
+createdb -h localhost -U rcs rcs
+
+# 3. 同步数据库表结构（二选一）
+#    方式 A：直接推送 schema（适合首次部署 / 开发环境，交互式）
+bunx drizzle-kit push
+#    方式 B：按迁移文件逐步应用（适合生产环境，非交互式）
+bunx drizzle-kit migrate
+
+# 4. 启动服务
+bun run start
+```
+
+> 如果 `drizzle/` 目录下没有迁移文件（全新项目），先用 `push` 建基线，之后改 schema 时用 `bunx drizzle-kit generate --name xxx` 生成迁移文件。
+
 ## 开发
 
 ```bash

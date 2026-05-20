@@ -1,3 +1,5 @@
+import { gcm } from "@noble/ciphers/aes.js";
+
 let cachedKey: string | null = null;
 let keyPromise: Promise<string> | null = null;
 
@@ -27,13 +29,26 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** 使用 AES-256-GCM 加密密码，返回 AESGCM:iv.data 格式 */
+function base64ToUint8(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/** 使用 AES-256-GCM 加密密码，返回 AESGCM:iv.ciphertext+tag 格式。
+ *  使用 @noble/ciphers 替代 crypto.subtle，兼容 HTTP 环境。 */
 export async function encryptPassword(password: string): Promise<string> {
   const keyBase64 = await fetchEncryptionKey();
-  const keyBytes = Uint8Array.from(atob(keyBase64), (c) => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt"]);
+  const keyBytes = base64ToUint8(keyBase64);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoded = new TextEncoder().encode(password);
-  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
-  return `AESGCM:${uint8ToBase64(iv)}.${uint8ToBase64(new Uint8Array(encrypted))}`;
+  const plaintext = new TextEncoder().encode(password);
+
+  // gcm() 输出 = ciphertext + 16-byte auth tag，与 Node.js decipher.setAuthTag 格式一致
+  const cipher = gcm(keyBytes, iv);
+  const encrypted = cipher.encrypt(plaintext);
+
+  return `AESGCM:${uint8ToBase64(iv)}.${uint8ToBase64(encrypted)}`;
 }
