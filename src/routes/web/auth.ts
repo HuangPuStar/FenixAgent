@@ -1,14 +1,13 @@
 import Elysia from "elysia";
 import { authGuardPlugin, errorResponse } from "../../plugins/auth";
 import { bindSessionOwner, resolveExistingSessionId } from "../../services/session";
-import { loadOrgContext } from "../../services/org-context";
 
 const app = new Elysia({ name: "web-auth", prefix: "/web" }).use(authGuardPlugin).decorate({ error: errorResponse });
 
 /** POST /web/bind — Bind a session to a user (requires session auth) */
 app.post(
   "/bind",
-  async ({ store, body, query, error, request }) => {
+  async ({ store, body, query, error }) => {
     const user = store.user;
     if (!user) {
       return error(401, { error: "Not authenticated" });
@@ -22,7 +21,7 @@ app.post(
       return error(400, { error: "sessionId and uuid are required" });
     }
 
-    const authCtx = await loadOrgContext(user, request);
+    const authCtx = store.authContext;
     if (!authCtx) {
       return error(403, { error: "No organization context" });
     }

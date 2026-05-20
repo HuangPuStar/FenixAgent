@@ -18,7 +18,6 @@ import {
   setSkill,
   setWorkspaceSkill,
 } from "../../../services/skill";
-import { loadOrgContext } from "../../../services/org-context";
 
 const app = new Elysia({ name: "web-config-skills", prefix: "/web" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
@@ -240,13 +239,7 @@ type SkillBody = {
 app.post(
   "/config/skills",
   async ({ store, body, error, request }: any) => {
-    const authContext = await loadOrgContext(store.user!, request);
-    if (!authContext)
-      return error(500, {
-        success: false,
-        error: { code: "NO_ORG_CONTEXT", message: "Failed to load organization context" },
-      });
-    const authCtx = authContext;
+    const authCtx = store.authContext!;
     const b = (body as any) ?? {};
     const payload: SkillBody = {
       action: b.action ?? "",
@@ -284,13 +277,7 @@ app.post(
 app.post(
   "/config/skills/upload",
   async ({ store, request, error }: any) => {
-    const authContext = await loadOrgContext(store.user!, request);
-    if (!authContext)
-      return error(500, {
-        success: false,
-        error: { code: "NO_ORG_CONTEXT", message: "Failed to load organization context" },
-      });
-    const authCtx = authContext;
+    const authCtx = store.authContext!;
     return await handleUpload(authCtx, request, (status, data) => error(status, data));
   },
   { sessionAuth: true },

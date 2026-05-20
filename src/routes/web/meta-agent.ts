@@ -6,7 +6,6 @@
 
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { loadOrgContext } from "../../services/org-context";
 import { ensureMetaEnvironment } from "../../services/meta-agent";
 
 const app = new Elysia({ name: "web-meta-agent", prefix: "/web" }).use(authGuardPlugin);
@@ -14,8 +13,7 @@ const app = new Elysia({ name: "web-meta-agent", prefix: "/web" }).use(authGuard
 app.post(
   "/meta-agent/ensure",
   async ({ store, request, error }: any) => {
-    const user = store.user!;
-    const authCtx = await loadOrgContext(user, request);
+    const authCtx = store.authContext!;
     if (!authCtx) {
       return error(401, { error: { type: "UNAUTHORIZED", message: "No organization context" } });
     }

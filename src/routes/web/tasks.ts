@@ -12,7 +12,7 @@ import {
   triggerTask,
   updateTask,
 } from "../../services/task";
-import { loadOrgContext } from "../../services/org-context";
+
 
 const app = new Elysia({ name: "web-tasks", prefix: "/web" }).use(authGuardPlugin).model({
   "task-info": TaskInfoSchema,
@@ -25,7 +25,7 @@ const app = new Elysia({ name: "web-tasks", prefix: "/web" }).use(authGuardPlugi
 app.get(
   "/tasks",
   async ({ store, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const result = await listTasks(authCtx.organizationId);
     return result;
   },
@@ -36,7 +36,7 @@ app.get(
 app.post(
   "/tasks",
   async ({ store, body, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const payload = body as Record<string, unknown>;
     const result = await createTask(authCtx.organizationId, payload as any, authCtx.userId);
 
@@ -70,7 +70,7 @@ async function safeTaskOp<T>(
 app.get(
   "/tasks/:id",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const taskId = params.id;
     return safeTaskOp(async () => {
       const result = await getTask(authCtx.organizationId, taskId);
@@ -87,7 +87,7 @@ app.get(
 app.put(
   "/tasks/:id",
   async ({ store, params, body, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const taskId = params.id;
     const payload = body as Record<string, unknown>;
     return safeTaskOp(async () => {
@@ -109,7 +109,7 @@ app.put(
 app.delete(
   "/tasks/:id",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const taskId = params.id;
     try {
       const result = await deleteTask(authCtx.organizationId, taskId);
@@ -134,7 +134,7 @@ app.delete(
 app.post(
   "/tasks/:id/toggle",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const taskId = params.id;
     return safeTaskOp(async () => {
       const result = await toggleTask(authCtx.organizationId, taskId);
@@ -149,7 +149,7 @@ app.post(
 app.post(
   "/tasks/:id/trigger",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const taskId = params.id;
     return safeTaskOp(async () => {
       const result = await triggerTask(authCtx.organizationId, taskId);
@@ -164,7 +164,7 @@ app.post(
 app.get(
   "/tasks/:id/logs",
   async ({ store, params, query, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const taskId = params.id;
     return safeTaskOp(async () => {
       const taskResult = await getTask(authCtx.organizationId, taskId);
@@ -182,7 +182,7 @@ app.get(
 app.delete(
   "/tasks/:id/logs",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const taskId = params.id;
     return safeTaskOp(async () => {
       const taskResult = await getTask(authCtx.organizationId, taskId);

@@ -1,6 +1,5 @@
 import Elysia from "elysia";
 import { ValidationError as AppValidationError } from "../../errors";
-import type { AuthContext } from "../../plugins/auth";
 import { authGuardPlugin } from "../../plugins/auth";
 import {
   CreateEnvironmentRequestSchema,
@@ -18,18 +17,6 @@ import {
   updateWebEnvironment,
 } from "../../services/environment";
 import { enterEnvironment, listInstancesResponse, spawnInstanceFromEnvironment } from "../../services/instance";
-import { loadOrgContext } from "../../services/org-context";
-
-async function requireAuthContext(store: any, request: Request, error: any): Promise<AuthContext | Response> {
-  const ctx = await loadOrgContext(store.user!, request);
-  if (!ctx)
-    return error(500, {
-      success: false,
-      error: { code: "NO_ORG_CONTEXT", message: "Failed to load organization context" },
-    });
-  return ctx;
-}
-
 const app = new Elysia({ name: "web-environments", prefix: "/web" }).use(authGuardPlugin).model({
   "environment-info": EnvironmentInfoSchema,
   "environment-list-response": EnvironmentListResponseSchema,
@@ -42,7 +29,7 @@ const app = new Elysia({ name: "web-environments", prefix: "/web" }).use(authGua
 app.get(
   "/environments",
   async ({ store, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     return listEnvironmentsWithInstances(authCtx.organizationId);
   },
   { sessionAuth: true },
@@ -53,7 +40,7 @@ app.post(
   "/environments",
   async ({ store, body, request, error }) => {
     const user = store.user!;
-    const authCtx = (await loadOrgContext(user, request))!;
+    const authCtx = store.authContext!;
     const b = body as {
       name: string;
       description?: string;
@@ -95,7 +82,7 @@ app.post(
 app.get(
   "/environments/:id",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     try {
       const env = await getOwnedEnvironment(params.id, authCtx.organizationId);
       return { ...sanitizeResponse(env), secret: env.secret };
@@ -111,7 +98,7 @@ app.get(
 app.put(
   "/environments/:id",
   async ({ store, params, body, request, error }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const b = body as {
       name?: string;
       description?: string | null;
@@ -146,7 +133,7 @@ app.post(
   "/environments/:id/enter",
   async ({ store, params, body, error, request }) => {
     const user = store.user!;
-    const authCtx = (await loadOrgContext(user, request))!;
+    const authCtx = store.authContext!;
     try {
       await getOwnedEnvironment(params.id, authCtx.organizationId);
     } catch (err: any) {
@@ -171,7 +158,7 @@ app.post(
 app.get(
   "/environments/:id/instances",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     try {
       await getOwnedEnvironment(params.id, authCtx.organizationId);
     } catch (err: any) {
@@ -187,7 +174,7 @@ app.get(
 app.delete(
   "/environments/:id",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     try {
       await getOwnedEnvironment(params.id, authCtx.organizationId);
     } catch (err: any) {

@@ -11,7 +11,7 @@ import {
   WriteFileRequestSchema,
 } from "../../schemas/file.schema";
 import { getOwnedEnvironment } from "../../services/environment-core";
-import { loadOrgContext } from "../../services/org-context";
+
 import {
   createFileStream,
   deleteFile,
@@ -49,7 +49,7 @@ async function requireEnv(envId: string, orgId: string, errorFn: (status: number
 app.get(
   "/:id/user",
   async ({ store, params, query, error, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
     const queryPath = (query as any)?.path || "";
@@ -70,7 +70,7 @@ app.get(
 app.get(
   "/:id/user/*",
   async ({ store, params, query, error, set, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
     const filePath = normalizeUserRoutePath((params as any)["*"]);
@@ -119,7 +119,7 @@ app.get(
 app.post(
   "/:id/user/*",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
     const dirPath = normalizeUserRoutePath((params as any)["*"] || "");
@@ -163,7 +163,7 @@ app.post(
 app.put(
   "/:id/user/*",
   async ({ store, params, body, error, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
     const filePath = normalizeUserRoutePath((params as any)["*"]);
@@ -194,7 +194,7 @@ app.put(
 app.delete(
   "/:id/user/*",
   async ({ store, params, error, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
     const filePath = normalizeUserRoutePath((params as any)["*"]);

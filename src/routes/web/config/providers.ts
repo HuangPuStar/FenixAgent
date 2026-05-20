@@ -4,7 +4,6 @@ import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schem
 import { buildModelData } from "../../../services/config/provider";
 import * as configPg from "../../../services/config-pg";
 import { configError, configSuccess, resolveApiKey, toKeyHint } from "../../../services/config-utils";
-import { loadOrgContext } from "../../../services/org-context";
 import { invalidateAvailableCache } from "./models";
 
 type ProviderBody = { action: string; name?: string; modelId?: string; data?: Record<string, unknown> };
@@ -206,14 +205,7 @@ async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId
 app.post(
   "/config/providers",
   async ({ store, body, error, request }: any) => {
-    const user = store.user;
-    if (!user) return error(401, { success: false, error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    const authCtx = await loadOrgContext(user, request);
-    if (!authCtx)
-      return error(500, {
-        success: false,
-        error: { code: "NO_ORG_CONTEXT", message: "Failed to load organization context" },
-      });
+    const authCtx = store.authContext!;
     const b = body as ConfigBody;
     const payload: ProviderBody = { action: b.action ?? "", name: b.name, modelId: b.modelId, data: b.data };
     try {

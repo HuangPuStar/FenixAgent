@@ -19,7 +19,6 @@ import {
   isValidResourceName,
 } from "../../../services/config-utils";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
-import { loadOrgContext } from "../../../services/org-context";
 
 // 内部类型定义（与前端 web/src/types/config.ts 对齐）
 type McpLocalConfig = {
@@ -285,13 +284,7 @@ const app = new Elysia({ name: "web-config-mcp", prefix: "/web" }).use(authGuard
 app.post(
   "/config/mcp",
   async ({ store, body, error, request }: any) => {
-    const authContext = await loadOrgContext(store.user!, request);
-    if (!authContext)
-      return error(500, {
-        success: false,
-        error: { code: "NO_ORG_CONTEXT", message: "Failed to load organization context" },
-      });
-    const authCtx = authContext;
+    const authCtx = store.authContext!;
     const b = body as ConfigBody;
     const { action, name, config, url, headers, timeout } = {
       action: b.action ?? "",

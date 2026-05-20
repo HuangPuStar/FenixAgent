@@ -4,7 +4,7 @@ import { environmentRepo } from "../../repositories";
 import { sessionRepo } from "../../repositories/session";
 import { SessionHistorySchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
-import { loadOrgContext } from "../../services/org-context";
+
 
 const app = new Elysia({ name: "web-sessions", prefix: "/web" }).use(authGuardPlugin).model({
   "session-history": SessionHistorySchema,
@@ -14,7 +14,7 @@ const app = new Elysia({ name: "web-sessions", prefix: "/web" }).use(authGuardPl
 app.get(
   "/sessions",
   async ({ store, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     // 获取团队所有 environmentId，再过滤 session
     const teamEnvs = await environmentRepo.listByOrganizationId(authCtx.organizationId);
     const teamEnvIds = new Set(teamEnvs.map((e) => e.id));
@@ -38,7 +38,7 @@ app.get(
 app.get(
   "/sessions/:id",
   async ({ store, params, error, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const row = await sessionRepo.getById(params.id);
     if (!row) {
       return error(404, { error: { type: "not_found", message: `Session '${params.id}' not found` } });
@@ -69,7 +69,7 @@ app.get(
 app.get(
   "/sessions/:id/history",
   async ({ store, params, error, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const sessionId = params.id;
     // 验证 session 属于当前团队
     const row = await sessionRepo.getById(sessionId);

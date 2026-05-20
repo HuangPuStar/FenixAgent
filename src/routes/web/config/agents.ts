@@ -21,7 +21,6 @@ import {
   configValidationError,
   isValidResourceName,
 } from "../../../services/config-utils";
-import { loadOrgContext } from "../../../services/org-context";
 
 /** 将 PG 行数据映射为前端兼容的 agent 字段 */
 function pgRowToAgentFields(
@@ -205,13 +204,7 @@ const app = new Elysia({ name: "web-config-agents", prefix: "/web" }).use(authGu
 app.post(
   "/config/agents",
   async ({ store, body, error, request }: any) => {
-    const authContext = await loadOrgContext(store.user!, request);
-    if (!authContext)
-      return error(500, {
-        success: false,
-        error: { code: "NO_ORG_CONTEXT", message: "Failed to load organization context" },
-      });
-    const authCtx = authContext;
+    const authCtx = store.authContext!;
     const b = (body as any) ?? {};
     const { action, name, data } = {
       action: b.action ?? "",

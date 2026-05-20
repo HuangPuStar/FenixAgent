@@ -10,7 +10,6 @@ import {
 import { createBinding, deleteBinding, listBindings, updateBinding } from "../../services/channel-binding";
 import { getChannelProvider, listChannelProviders } from "../../services/channel-provider";
 import { getHermesClient } from "../../services/hermes-client";
-import { loadOrgContext } from "../../services/org-context";
 
 const app = new Elysia({ name: "web-channels", prefix: "/web" }).use(authGuardPlugin).model({
   "channel-provider-list": ChannelProviderDescriptorSchema.array(),
@@ -72,7 +71,7 @@ app.get(
 app.get(
   "/channels/bindings",
   async ({ store, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     // 获取团队所有 environmentId
     const teamEnvs = await environmentRepo.listByOrganizationId(authCtx.organizationId);
     const teamEnvIds = new Set(teamEnvs.map((e) => e.id));
@@ -92,7 +91,7 @@ app.get(
 app.post(
   "/channels/bindings",
   async ({ store, body, error, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const b = body as { platform: string; chatId?: string | null; agentId: string; enabled?: boolean };
     if (!b.platform || !b.agentId) {
       return error(400, { error: { type: "VALIDATION_ERROR", message: "platform 和 agentId 为必填字段" } });
@@ -116,7 +115,7 @@ app.post(
 app.delete(
   "/channels/bindings/:id",
   async ({ store, params, error, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const id = params.id;
     // 验证绑定关联的 agent 属于当前团队
     const binding = await listBindings();
@@ -140,7 +139,7 @@ app.delete(
 app.patch(
   "/channels/bindings/:id",
   async ({ store, params, body, error, request }) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const id = params.id;
     // 验证绑定关联的 agent 属于当前团队
     const binding = await listBindings();

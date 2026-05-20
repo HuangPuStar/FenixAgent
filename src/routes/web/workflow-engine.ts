@@ -8,7 +8,7 @@
 import Elysia from "elysia";
 import { WorkflowError } from "@mothership/workflow-engine";
 import { authGuardPlugin } from "../../plugins/auth";
-import { loadOrgContext } from "../../services/org-context";
+
 import { getTeamEngine } from "../../services/workflow";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { db } from "../../db";
@@ -21,7 +21,7 @@ const app = new Elysia({ name: "web-workflow-engine", prefix: "/web" }).use(auth
 app.post(
   "/workflow-engine",
   async ({ store, body, error, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    const authCtx = store.authContext!;
     const payload = body as Record<string, unknown>;
     const action = payload.action as string;
     const engine = getTeamEngine(authCtx.organizationId);

@@ -4,7 +4,7 @@ import { InstanceInfoSchema, SpawnInstanceFromEnvironmentRequestSchema } from ".
 import { getOwnedEnvironment } from "../../services/environment-core";
 import type { SpawnedInstance } from "../../services/instance";
 import { listInstances, spawnInstanceFromEnvironment, stopInstance } from "../../services/instance";
-import { loadOrgContext } from "../../services/org-context";
+
 
 const app = new Elysia({ name: "web-instances", prefix: "/web" }).use(authGuardPlugin).model({
   "instance-info": InstanceInfoSchema,
@@ -30,7 +30,7 @@ app.post(
   "/instances/from-environment",
   async ({ store, body, error, request }: any) => {
     const user = store.user!;
-    const authCtx = (await loadOrgContext(user, request))!;
+    const authCtx = store.authContext!;
     const b = body as { environmentId: string };
     if (!b.environmentId) {
       return error(400, { error: { type: "VALIDATION_ERROR", message: "environmentId is required" } });
@@ -60,7 +60,7 @@ app.post(
 app.get(
   "/instances",
   async ({ store, request }: any) => {
-    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const authCtx = store.authContext!;
     const insts = listInstances(authCtx.organizationId);
     return insts.map(toResponse);
   },
@@ -71,7 +71,7 @@ app.delete(
   "/instances/:id",
   async ({ store, params, error, request }) => {
     const user = store.user!;
-    const authCtx = (await loadOrgContext(user, request))!;
+    const authCtx = store.authContext!;
     const id = params.id;
     const result = await stopInstance(id, authCtx.organizationId);
     if (!result.ok) {
