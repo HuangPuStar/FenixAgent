@@ -1,7 +1,8 @@
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
 import { authGuardPlugin } from "../../plugins/auth";
-import { sessionWorkerRepo } from "../../repositories";
+import { requireTeamScope } from "../../plugins/require-team-scope";
+import { environmentRepo, sessionRepo, sessionWorkerRepo } from "../../repositories";
 import { type UpdateWorkerRequest, UpdateWorkerRequestSchema } from "../../schemas/v2-worker.schema";
 import { automationStatesEqual, getAutomationStateEventPayload } from "../../services/automationState";
 import { eventService } from "../../services/event-service";
@@ -102,11 +103,25 @@ app.post(
 /** POST /v1/code/sessions/:id/worker/register — Register worker */
 app.post(
   "/:id/worker/register",
-  async ({ params, error }) => {
+  async ({ store, params, error }) => {
+    const authContext = store.authContext;
+    if (!authContext) {
+      return error(403, { error: { type: "forbidden", message: "No team context" } });
+    }
     const sessionId = params.id;
     const session = await getSession(sessionId);
     if (!session) {
       return error(404, { error: { type: "not_found", message: "Session not found" } });
+    }
+
+    // 校验 session 归属
+    const sessionRecord = await sessionRepo.getById(sessionId);
+    if (sessionRecord?.environmentId) {
+      const env = await environmentRepo.getById(sessionRecord.environmentId);
+      if (env) {
+        const denied = requireTeamScope(authContext, env.teamId);
+        if (denied) return denied;
+      }
     }
 
     return { status: "ok" };
