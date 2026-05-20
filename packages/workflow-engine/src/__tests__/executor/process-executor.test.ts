@@ -106,20 +106,36 @@ describe('ProcessExecutor', () => {
     expect(completedEvents[0].metadata?.exit_code).toBe(0);
   });
 
-  // 模板解析：${{ params.input }}
-  test('command 中的 ${{ params }} 模板正确替换', async () => {
-    const ctx = makeCtx({ params: { input: 'world' } });
-    const node = shellNode('echo "hello ${{ params.input }}"');
+  // inputs 注入 params 为环境变量
+  test('inputs 注入 params 为环境变量', async () => {
+    const ctx = makeCtx({
+      params: { input: 'world' },
+      resolvedInputs: {
+        command: 'echo "hello $input"',
+        inputs: { input: { value: 'world', rawExpression: 'params.input' } },
+      },
+    });
+    const node = shellNode('echo "hello $input"', {
+      inputs: { input: 'params.input' },
+    });
     const output = await executor.execute(node, ctx);
 
     expect(output.exit_code).toBe(0);
     expect(output.stdout).toBe('hello world\n');
   });
 
-  // 模板解析：${{ secrets.MY_SECRET }}
-  test('command 中的 ${{ secrets }} 模板正确替换', async () => {
-    const ctx = makeCtx({ secrets: { MY_SECRET: 's3cret' } });
-    const node = shellNode('echo "${{ secrets.MY_SECRET }}"');
+  // inputs 注入 secrets 为环境变量
+  test('inputs 注入 secrets 为环境变量', async () => {
+    const ctx = makeCtx({
+      secrets: { MY_SECRET: 's3cret' },
+      resolvedInputs: {
+        command: 'echo "$MY_SECRET"',
+        inputs: { MY_SECRET: { value: 's3cret', rawExpression: 'secrets.MY_SECRET' } },
+      },
+    });
+    const node = shellNode('echo "$MY_SECRET"', {
+      inputs: { MY_SECRET: 'secrets.MY_SECRET' },
+    });
     const output = await executor.execute(node, ctx);
 
     expect(output.exit_code).toBe(0);

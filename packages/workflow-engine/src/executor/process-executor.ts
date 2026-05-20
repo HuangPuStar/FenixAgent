@@ -2,7 +2,7 @@
  * Shell 节点执行器 — 通过 Bun.spawn 执行命令。
  *
  * 职责：
- * - 模板解析：将 command/env 中的 ${{ }} 替换为实际值
+ * - 从 resolvedInputs 读取已解析的命令和 inputs 环境变量
  * - 进程管理：spawn 子进程、收集 stdout/stderr、等待退出
  * - 超时控制：AbortSignal.timeout + ctx.signal 组合
  * - 重试：指数退避 + jitter，发射 node.retrying 事件
@@ -13,8 +13,6 @@ import { nanoid } from 'nanoid';
 import type { ShellNodeDef } from '../types/dag';
 import type { NodeExecutor, NodeExecutionContext } from '../scheduler/dag-scheduler';
 import type { NodeOutput } from '../types/execution';
-import { resolveTemplate } from '../parser/expression-parser';
-import type { EvalContext } from '../types/expression';
 import { WorkflowError, WorkflowErrorCode } from '../types/errors';
 
 // ---------- 常量 ----------
@@ -36,28 +34,55 @@ export class ProcessExecutor implements NodeExecutor {
     }
 
     const shellNode = node as ShellNodeDef;
-    const evalContext = this.buildEvalContext(ctx);
 
-    // 解析模板
-    const command = this.resolveCommand(shellNode.command, evalContext);
-    const env = this.resolveEnv(shellNode.env, evalContext, ctx.secrets);
-    const cwd = shellNode.cwd ?? process.cwd();
+    // 从 resolvedInputs 获取命令（scheduler 已处理）
+    const command = (ctx.resolvedInputs.command as string | string[]) ?? shellNode.command;
+    const resolvedCommand = typeof command === 'string'
+      ? ['/bin/sh', '-c', command]
+      : command;
+
+    // 合并环境变量：进程环境 + env（静态）+ inputs（动态）+ secrets
+    const env: Record<string, string | undefined> = { ...process.env as Record<string, string> };
+
+    const nodeEnv = (ctx.resolvedInputs.env as Record<string, string>) ?? shellNode.env;
+    if (nodeEnv) {
+      for (const [k, v] of Object.entries(nodeEnv)) {
+        env[k] = v;
+      }
+    }
+
+    // inputs 注入为环境变量
+    const resolvedInputs = ctx.resolvedInputs.inputs as Record<string, { value: unknown; rawExpression: string }> | undefined;
+    if (resolvedInputs) {
+      for (const [key, { value }] of Object.entries(resolvedInputs)) {
+        if (value === null || value === undefined) {
+          env[key] = "";
+        } else if (typeof value === "object") {
+          env[key] = JSON.stringify(value);
+        } else {
+          env[key] = String(value);
+        }
+      }
+    }
+
+    for (const [k, v] of Object.entries(ctx.secrets)) {
+      env[k] = v;
+    }
+
+    const cwd = (ctx.resolvedInputs.cwd as string) ?? shellNode.cwd ?? process.cwd();
 
     // 构建 AbortSignal：超时 + 外部取消
     const timeoutMs = (shellNode.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000;
     const timeoutController = new AbortController();
 
-    // 如果外部信号已经中止，直接标记
     if (ctx.signal.aborted) {
       timeoutController.abort();
     }
 
-    // 超时定时器
     const timer = setTimeout(() => {
       timeoutController.abort();
     }, timeoutMs);
 
-    // 外部取消时同步清理
     const onExternalAbort = () => {
       clearTimeout(timer);
       timeoutController.abort();
@@ -67,12 +92,11 @@ export class ProcessExecutor implements NodeExecutor {
     try {
       return await this.executeWithRetry(
         shellNode,
-        command,
+        resolvedCommand,
         env,
         cwd,
         ctx,
         timeoutController.signal,
-        evalContext,
       );
     } finally {
       clearTimeout(timer);
@@ -88,7 +112,6 @@ export class ProcessExecutor implements NodeExecutor {
     cwd: string,
     ctx: NodeExecutionContext,
     signal: AbortSignal,
-    evalContext: EvalContext,
   ): Promise<NodeOutput> {
     const retryConfig = node.retry;
     const maxAttempts = (retryConfig?.count ?? 0) + 1;
@@ -112,7 +135,7 @@ export class ProcessExecutor implements NodeExecutor {
       }
 
       try {
-        return await this.spawnProcess(node, command, env, cwd, ctx, signal, evalContext);
+        return await this.spawnProcess(node, command, env, cwd, ctx, signal);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         // 超时和取消不重试
@@ -138,7 +161,6 @@ export class ProcessExecutor implements NodeExecutor {
     cwd: string,
     ctx: NodeExecutionContext,
     signal: AbortSignal,
-    _evalContext: EvalContext,
   ): Promise<NodeOutput> {
     // 发射 node.started 事件
     const subprocess = Bun.spawn(command, {
@@ -255,45 +277,6 @@ export class ProcessExecutor implements NodeExecutor {
       exit_code: exitCode,
       size: outputSize,
     };
-  }
-
-  /** 构建表达式求值上下文 */
-  private buildEvalContext(ctx: NodeExecutionContext): EvalContext {
-    // 从 storage 读取已完成节点的输出
-    // 注意：resolvedInputs 已经由 scheduler 解析过，这里用于 command/env 的模板解析
-    return {
-      params: ctx.params,
-      secrets: ctx.secrets,
-    };
-  }
-
-  /** 解析命令中的模板 */
-  private resolveCommand(command: string | string[], evalContext: EvalContext): string[] {
-    if (typeof command === 'string') {
-      // 简单按空格分词（shell 风格）
-      return ['/bin/sh', '-c', resolveTemplate(command, evalContext)];
-    }
-    return command.map((c) => resolveTemplate(c, evalContext));
-  }
-
-  /** 合并环境变量 */
-  private resolveEnv(
-    nodeEnv: Record<string, string> | undefined,
-    evalContext: EvalContext,
-    secrets: Record<string, string>,
-  ): Record<string, string | undefined> {
-    if (!nodeEnv && Object.keys(secrets).length === 0) return {};
-    const resolved: Record<string, string | undefined> = {};
-    if (nodeEnv) {
-      for (const [k, v] of Object.entries(nodeEnv)) {
-        resolved[k] = resolveTemplate(v, evalContext);
-      }
-    }
-    // secrets 也注入为环境变量
-    for (const [k, v] of Object.entries(secrets)) {
-      resolved[k] = v;
-    }
-    return resolved;
   }
 
   /** 发射事件到 storage */
