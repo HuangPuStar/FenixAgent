@@ -2696,18 +2696,8 @@ function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (r
   );
 }
 
-import _i18n from "i18next";
 
-function i18nStatusLabel(key: string): string {
-  try {
-    return _i18n.t(key, { ns: "workflows" });
-  } catch {
-    return key;
-  }
-}
-
-function relativeTime(iso?: string | null): string {
-  const t = _i18n.t.bind(_i18n);
+function relativeTime(t: (key: string, opts?: Record<string, unknown>) => string, iso?: string | null): string {
   if (!iso) return "--";
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
   if (diff < 0) return t("runs.relative_now");
@@ -2719,14 +2709,14 @@ function relativeTime(iso?: string | null): string {
 }
 
 // ── DAG 状态样式 ──
-const DAG_STATUS_CFG: Record<string, { color: string; bg: string; label: string }> = {
-  PENDING: { color: "#94a3b8", bg: "#f1f5f9", label: i18nStatusLabel("editor.dag_status_pending") },
-  RUNNING: { color: "#3b82f6", bg: "#eff6ff", label: i18nStatusLabel("editor.dag_status_running") },
-  SUSPENDED: { color: "#f59e0b", bg: "#fffbeb", label: i18nStatusLabel("editor.dag_status_suspended") },
-  SUCCESS: { color: "#22c55e", bg: "#f0fdf4", label: i18nStatusLabel("editor.dag_status_success") },
-  FAILED: { color: "#ef4444", bg: "#fef2f2", label: i18nStatusLabel("editor.dag_status_failed") },
-  CANCELLED: { color: "#94a3b8", bg: "#f8fafc", label: i18nStatusLabel("editor.dag_status_cancelled") },
-  ERROR: { color: "#ef4444", bg: "#fef2f2", label: i18nStatusLabel("editor.dag_status_error") },
+const DAG_STATUS_CFG: Record<string, { color: string; bg: string; labelKey: string }> = {
+  PENDING: { color: "#94a3b8", bg: "#f1f5f9", labelKey: "editor.dag_status_pending" },
+  RUNNING: { color: "#3b82f6", bg: "#eff6ff", labelKey: "editor.dag_status_running" },
+  SUSPENDED: { color: "#f59e0b", bg: "#fffbeb", labelKey: "editor.dag_status_suspended" },
+  SUCCESS: { color: "#22c55e", bg: "#f0fdf4", labelKey: "editor.dag_status_success" },
+  FAILED: { color: "#ef4444", bg: "#fef2f2", labelKey: "editor.dag_status_failed" },
+  CANCELLED: { color: "#94a3b8", bg: "#f8fafc", labelKey: "editor.dag_status_cancelled" },
+  ERROR: { color: "#ef4444", bg: "#fef2f2", labelKey: "editor.dag_status_error" },
 };
 
 // ── 事件渲染辅助 ──
@@ -2753,28 +2743,28 @@ function EventIcon({ type }: { type: string }) {
   return <Clock size={11} style={{ color: "#94a3b8", flexShrink: 0, marginTop: 1 }} />;
 }
 
-function formatEventType(type: string): string {
+function formatEventType(t: (key: string) => string, type: string): string {
   const map: Record<string, string> = {
-    "dag.started": i18nStatusLabel("editor.dag_started"),
-    "dag.completed": i18nStatusLabel("editor.dag_completed"),
-    "dag.cancelled": i18nStatusLabel("editor.dag_cancelled"),
-    "node.started": i18nStatusLabel("editor.node_started"),
-    "node.completed": i18nStatusLabel("editor.node_completed"),
-    "node.failed": i18nStatusLabel("editor.node_failed"),
-    "node.cancelled": i18nStatusLabel("editor.node_cancelled"),
-    "node.retrying": i18nStatusLabel("editor.node_retrying"),
-    "node.skipped": i18nStatusLabel("editor.node_skipped"),
-    "sub_workflow.started": i18nStatusLabel("editor.sub_workflow_started"),
-    "sub_workflow.completed": i18nStatusLabel("editor.sub_workflow_completed"),
-    "loop.iteration_started": i18nStatusLabel("editor.loop_iteration_started"),
-    "loop.iteration_completed": i18nStatusLabel("editor.loop_iteration_completed"),
-    "audit.requested": i18nStatusLabel("editor.audit_requested"),
+    "dag.started": t("editor.dag_started"),
+    "dag.completed": t("editor.dag_completed"),
+    "dag.cancelled": t("editor.dag_cancelled"),
+    "node.started": t("editor.node_started"),
+    "node.completed": t("editor.node_completed"),
+    "node.failed": t("editor.node_failed"),
+    "node.cancelled": t("editor.node_cancelled"),
+    "node.retrying": t("editor.node_retrying"),
+    "node.skipped": t("editor.node_skipped"),
+    "sub_workflow.started": t("editor.sub_workflow_started"),
+    "sub_workflow.completed": t("editor.sub_workflow_completed"),
+    "loop.iteration_started": t("editor.loop_iteration_started"),
+    "loop.iteration_completed": t("editor.loop_iteration_completed"),
+    "audit.requested": t("editor.audit_requested"),
     "audit.approved": t("editor.audit_approved"),
   };
   return map[type] ?? type;
 }
 
-function formatMeta(type: string, meta: Record<string, unknown>): string {
+function formatMeta(t: (key: string, opts?: Record<string, unknown>) => string, type: string, meta: Record<string, unknown>): string {
   if (type === "node.completed") {
     const parts: string[] = [];
     if (meta.exit_code != null) parts.push(`exit=${meta.exit_code}`);
