@@ -2,7 +2,7 @@
  * API 节点执行器 — 通过 fetch() 发送 HTTP 请求。
  *
  * 职责：
- * - 模板解析：url / headers / body 中的 ${{ }} 替换
+ * - 从 resolvedInputs 读取已解析的 url / headers / body
  * - HTTP 请求：GET / POST / PUT / DELETE，支持 JSON body
  * - 超时控制：AbortSignal.timeout + ctx.signal 组合
  * - 重试：指数退避 + jitter（继承 RemoteExecutorBase）
@@ -13,8 +13,6 @@
 import type { ApiNodeDef, NodeDef } from '../types/dag';
 import type { NodeExecutionContext } from '../scheduler/dag-scheduler';
 import type { NodeOutput } from '../types/execution';
-import { resolveTemplate } from '../parser/expression-parser';
-import type { EvalContext } from '../types/expression';
 import { WorkflowError, WorkflowErrorCode } from '../types/errors';
 import { RemoteExecutorBase } from './remote-executor';
 
@@ -31,36 +29,22 @@ export class ApiExecutor extends RemoteExecutorBase {
     }
 
     const apiNode = node as ApiNodeDef;
-    const evalContext = this.buildEvalContext(ctx);
 
-    return this.executeWithRetry(apiNode, ctx, (_attempt, signal) => this.doRequest(apiNode, evalContext, ctx, signal));
-  }
-
-  /** 构建表达式求值上下文 */
-  private buildEvalContext(ctx: NodeExecutionContext): EvalContext {
-    return {
-      params: ctx.params,
-      secrets: ctx.secrets,
-    };
+    return this.executeWithRetry(apiNode, ctx, (_attempt, signal) => this.doRequest(apiNode, ctx, signal));
   }
 
   /** 执行单次 HTTP 请求 */
   private async doRequest(
     node: ApiNodeDef,
-    evalContext: EvalContext,
     ctx: NodeExecutionContext,
     signal: AbortSignal,
   ): Promise<NodeOutput> {
-    // 解析模板
-    const url = resolveTemplate(node.url, evalContext);
+    // 从 resolvedInputs 读取已解析的模板值（scheduler 已处理）
+    const url = (ctx.resolvedInputs.url as string) ?? node.url;
     const method = node.method ?? 'GET';
 
-    const headers: Record<string, string> = {};
-    if (node.headers) {
-      for (const [k, v] of Object.entries(node.headers)) {
-        headers[k] = resolveTemplate(v, evalContext);
-      }
-    }
+    const resolvedHeaders = (ctx.resolvedInputs.headers as Record<string, string>) ?? node.headers ?? {};
+    const headers: Record<string, string> = { ...resolvedHeaders };
 
     // 构建 fetch init
     const init: RequestInit = {
@@ -69,10 +53,9 @@ export class ApiExecutor extends RemoteExecutorBase {
       signal,
     };
 
-    if (node.body) {
-      const resolvedBody = resolveTemplate(node.body, evalContext);
-      init.body = resolvedBody;
-      // 设置 Content-Type（如果未指定）
+    const resolvedBody = ctx.resolvedInputs.body as string | undefined;
+    if (resolvedBody ?? node.body) {
+      init.body = (resolvedBody ?? node.body)!;
       if (!headers['Content-Type'] && !headers['content-type']) {
         headers['Content-Type'] = 'application/json';
       }
@@ -84,7 +67,6 @@ export class ApiExecutor extends RemoteExecutorBase {
     try {
       response = await fetch(url, init);
     } catch (error) {
-      // 网络错误或超时
       if (error instanceof DOMException && error.name === 'AbortError') {
         const isExternalCancel = ctx.signal.aborted;
         await this.emitNodeFailed(

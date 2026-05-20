@@ -201,9 +201,9 @@ describe('ApiExecutor', () => {
   });
 });
 
-// ========== 模板解析测试 ==========
+// ========== resolvedInputs 测试 ==========
 
-describe('ApiExecutor 模板解析', () => {
+describe('ApiExecutor resolvedInputs', () => {
   let executor: ApiExecutor;
   let originalFetch: typeof globalThis.fetch;
 
@@ -216,8 +216,8 @@ describe('ApiExecutor 模板解析', () => {
     globalThis.fetch = originalFetch;
   });
 
-  // URL 中的模板
-  test('URL 中的 ${{ params }} 模板正确替换', async () => {
+  // resolvedInputs.url 注入到 fetch 请求
+  test('resolvedInputs.url 注入到 fetch 请求', async () => {
     let capturedUrl: string | undefined;
     globalThis.fetch = async (url) => {
       capturedUrl = url as string;
@@ -225,15 +225,18 @@ describe('ApiExecutor 模板解析', () => {
         ok: true, status: 200, text: async () => 'ok', headers: new Headers(),
       } as Response;
     };
-    const ctx = makeCtx({ params: { host: 'example.com', path: 'users' } });
+    const ctx = makeCtx({
+      params: { host: 'example.com', path: 'users' },
+      resolvedInputs: { url: 'https://example.com/users' },
+    });
     const node = apiNode({ url: 'https://${{ params.host }}/${{ params.path }}' });
     await executor.execute(node, ctx);
 
     expect(capturedUrl).toBe('https://example.com/users');
   });
 
-  // headers 中的模板
-  test('headers 中的 ${{ secrets }} 模板正确替换', async () => {
+  // resolvedInputs.headers 注入到 fetch 请求
+  test('resolvedInputs.headers 注入到 fetch 请求', async () => {
     let capturedInit: RequestInit | undefined;
     globalThis.fetch = async (_url, init) => {
       capturedInit = init;
@@ -241,7 +244,10 @@ describe('ApiExecutor 模板解析', () => {
         ok: true, status: 200, text: async () => 'ok', headers: new Headers(),
       } as Response;
     };
-    const ctx = makeCtx({ secrets: { API_KEY: 'key123' } });
+    const ctx = makeCtx({
+      secrets: { API_KEY: 'key123' },
+      resolvedInputs: { headers: { Authorization: 'Bearer key123' } },
+    });
     const node = apiNode({
       headers: { Authorization: 'Bearer ${{ secrets.API_KEY }}' },
     });
@@ -251,8 +257,8 @@ describe('ApiExecutor 模板解析', () => {
     expect(headers?.Authorization).toBe('Bearer key123');
   });
 
-  // body 中的模板
-  test('body 中的 ${{ params }} 模板正确替换', async () => {
+  // resolvedInputs.body 注入到 fetch 请求
+  test('resolvedInputs.body 注入到 fetch 请求', async () => {
     let capturedInit: RequestInit | undefined;
     globalThis.fetch = async (_url, init) => {
       capturedInit = init;
@@ -260,7 +266,10 @@ describe('ApiExecutor 模板解析', () => {
         ok: true, status: 200, text: async () => '{"done":true}', headers: new Headers(),
       } as Response;
     };
-    const ctx = makeCtx({ params: { name: 'test-user' } });
+    const ctx = makeCtx({
+      params: { name: 'test-user' },
+      resolvedInputs: { body: '{"user":"test-user"}' },
+    });
     const node = apiNode({
       method: 'POST',
       body: '{"user":"${{ params.name }}"}',
