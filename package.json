@@ -29,6 +29,7 @@
         "@ai-sdk/react": "^3.0.170",
         "@aws-sdk/client-s3": "^3.1047.0",
         "@aws-sdk/s3-request-presigner": "^3.1047.0",
+        "@better-auth/api-key": "^1.6.11",
         "@elysiajs/cors": "^1.4.2",
         "@elysiajs/eden": "^1.4.9",
         "@elysiajs/static": "^1.4.10",
