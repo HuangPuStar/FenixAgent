@@ -117,7 +117,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [selectedNodeOutput, setSelectedNodeOutput] = useState<NodeOutput | null>(null);
   const [nodeOutputLoading, setNodeOutputLoading] = useState(false);
   const [runRightTab, setRunRightTab] = useState<"events" | "output">("events");
-  const [sidePanelMode, setSidePanelMode] = useState<"runs" | "versions" | null>(null);
+  const [rightTab, setRightTab] = useState<"config" | "run" | "versions">("config");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Meta Agent Chat ──
@@ -199,7 +199,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         const wf = await workflowDefApi.get(workflowId);
         if (wf.draftYaml) {
           const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
-          setNodes(newNodes);
+          const laid = autoLayout(newNodes, newEdges);
+          setNodes(laid);
           setEdges(newEdges);
           setMeta(newMeta);
           setLastSavedYaml(wf.draftYaml);
@@ -225,7 +226,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setRunApprovals([]);
         setSelectedRunNodeId(null);
         setSelectedNodeOutput(null);
-        setSidePanelMode("runs");
+        setRightTab("run");
 
         const [snap, evts] = await Promise.all([
           workflowEngineApi.getRunStatus(runId),
@@ -543,6 +544,33 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     [setNodes],
   );
 
+  // ── Refresh draft from server ──
+  const handleRefreshDraft = useCallback(async () => {
+    if (!workflowId) return;
+    if (isRunMode && !isRunDone) return;
+    try {
+      const wf = await workflowDefApi.get(workflowId);
+      if (wf.draftYaml) {
+        const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
+        setNodes(newNodes);
+        setEdges(newEdges);
+        setMeta(newMeta);
+        setLastSavedYaml(wf.draftYaml);
+        if (activeRunId) {
+          try {
+            const snap = await workflowEngineApi.getRunStatus(activeRunId);
+            if (snap) updateNodesFromSnapshot(snap);
+          } catch (err) {
+            console.error("恢复运行状态失败:", err);
+          }
+        }
+        setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
+      }
+    } catch (err) {
+      console.error("刷新工作流失败:", err);
+    }
+  }, [workflowId, isRunMode, isRunDone, activeRunId, setNodes, setEdges, fitView, updateNodesFromSnapshot]);
+
   /** 加载运行快照和事件 */
   const loadRunData = useCallback(
     async (runId: string) => {
@@ -637,7 +665,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       setRunApprovals([]);
       setSelectedRunNodeId(null);
       setSelectedNodeOutput(null);
-      setSidePanelMode("runs");
+      setRightTab("run");
       await loadRunData(result.runId);
     } finally {
       setRunning(false);
@@ -682,7 +710,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setRunApprovals([]);
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
-    setSidePanelMode(null);
+    setRightTab("config");
     setNodes((nds) =>
       nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })),
     );
@@ -731,7 +759,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setRunApprovals([]);
         setSelectedRunNodeId(null);
         setSelectedNodeOutput(null);
-        setSidePanelMode("runs");
+        setRightTab("run");
         await loadRunData(result.runId);
       } catch (err) {
         console.error(err);
@@ -752,7 +780,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       setNodeOutputLoading(true);
       setSelectedNodeOutput(null);
       // 确保运行面板打开
-      setSidePanelMode("runs");
+      setRightTab("run");
       try {
         const out = await workflowEngineApi.getOutput(activeRunId, nodeId);
         setSelectedNodeOutput(out ?? null);
@@ -928,6 +956,17 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                 <LayoutGrid size={15} />
               </button>
               {workflowId && (
+                <button
+                  type="button"
+                  className="wf-toolbar-btn"
+                  onClick={handleRefreshDraft}
+                  disabled={isRunMode && !isRunDone}
+                  data-tooltip="刷新"
+                >
+                  <RefreshCw size={15} />
+                </button>
+              )}
+              {workflowId && (
                 <>
                   <div className="wf-toolbar-divider" />
                   <button
@@ -941,8 +980,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                   </button>
                   <button
                     type="button"
-                    className={`wf-toolbar-btn ${sidePanelMode === "versions" ? "active" : ""}`}
-                    onClick={() => setSidePanelMode(sidePanelMode === "versions" ? null : "versions")}
+                    className={`wf-toolbar-btn ${rightTab === "versions" ? "active" : ""}`}
+                    onClick={() => setRightTab(rightTab === "versions" ? "config" : "versions")}
                     data-tooltip="版本管理（发布、回滚、查看历史）"
                   >
                     <Rocket size={15} />
@@ -1000,8 +1039,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               </button>
               <button
                 type="button"
-                className="wf-toolbar-btn"
-                onClick={() => setSidePanelMode(sidePanelMode === "runs" ? null : "runs")}
+                className={`wf-toolbar-btn ${rightTab === "run" ? "active" : ""}`}
+                onClick={() => setRightTab(rightTab === "run" ? "config" : "run")}
                 data-tooltip="查看历史运行记录"
               >
                 <List size={15} />
@@ -1097,768 +1136,783 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         </div>
       </div>
 
-      {/* 右侧属性面板（始终显示编辑模式） */}
-      <aside className="wf-prop-panel">
-          <>
-            <div className="wf-prop-header">
-              <span className="wf-prop-title">
-                {isStartNode ? "开始节点" : selectedNode ? "节点属性" : "工作流"}
-              </span>
-              {readOnly && (
-                <span className="wf-prop-readonly-tag">
-                  <Lock size={10} /> 只读
-                </span>
-              )}
-            </div>
-        <div className="wf-prop-body">
-          {/* ── 开始节点 ── */}
-          {isStartNode ? (
-            <div className="wf-prop-section">
-              <div className="wf-prop-section-title">开始节点</div>
-              <div className="wf-prop-hint">
-                <p>这是工作流的入口点，不可删除。</p>
-                <p>从右侧端口拖出连线创建第一个任务节点。</p>
+      {/* 右侧统一面板（配置 / 运行 / 版本 tabs） */}
+      <aside className="wf-prop-panel" style={{ width: 300, minWidth: 300 }}>
+        {/* Tab 头 */}
+        <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb" }}>
+          {([
+            { key: "config" as const, label: "配置" },
+            { key: "run" as const, label: "运行" },
+            { key: "versions" as const, label: "版本" },
+          ]).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setRightTab(tab.key)}
+              style={{
+                flex: 1, padding: "8px 0", border: "none", background: "none", fontSize: 11,
+                fontWeight: rightTab === tab.key ? 600 : 400,
+                color: rightTab === tab.key ? "#111827" : "#9ca3af",
+                borderBottom: rightTab === tab.key ? "2px solid #3b82f6" : "2px solid transparent",
+                cursor: "pointer",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── 配置 Tab ── */}
+        {rightTab === "config" && (
+          <div className="wf-prop-body">
+            {readOnly && (
+              <div style={{ padding: "4px 12px", background: "#fefce8", borderBottom: "1px solid #fde68a", fontSize: 10, color: "#92400e", display: "flex", alignItems: "center", gap: 4 }}>
+                <Lock size={10} /> 只读
               </div>
-            </div>
-          ) : selectedNode ? (
-            <>
-              {/* ── 节点基本信息 ── */}
+            )}
+            {/* 开始节点 */}
+            {isStartNode ? (
               <div className="wf-prop-section">
-                <div className="wf-prop-section-title">基本信息</div>
-                <div className="wf-prop-field">
-                  <label>节点 ID</label>
-                  <input value={selectedNode.id} onChange={(e) => handleIdChange(e.target.value)} readOnly={readOnly} />
-                </div>
-                <div className="wf-prop-field">
-                  <label>类型</label>
-                  <select
-                    value={nodeType}
-                    onChange={(e) => {
-                      const newType = e.target.value;
-                      setNodes((nds) => nds.map((n) => (n.id === selectedNode.id ? { ...n, type: newType } : n)));
-                      setSelectedNode((prev) => (prev ? { ...prev, type: newType } : null));
-                    }}
-                    disabled={readOnly}
-                  >
-                    <option value="shell">Shell</option>
-                    <option value="agent">Agent</option>
-                    <option value="api">API</option>
-                    <option value="audit">审批 (Audit)</option>
-                    <option value="workflow">子流程 (Workflow)</option>
-                    <option value="loop">循环 (Loop)</option>
-                  </select>
-                <div className="wf-prop-field">
-                  <label>描述</label>
-                  <input
-                    value={String(sd?.description ?? "")}
-                    onChange={(e) => updateNodeData({ description: e.target.value || undefined })}
-                    placeholder="说明该节点的用途..."
-                    readOnly={readOnly}
-                  />
+                <div className="wf-prop-section-title">开始节点</div>
+                <div className="wf-prop-hint">
+                  <p>这是工作流的入口点，不可删除。</p>
+                  <p>从右侧端口拖出连线创建第一个任务节点。</p>
                 </div>
               </div>
-
-              {/* ── 节点配置（按类型） ── */}
-              <div className="wf-prop-section">
-                <div className="wf-prop-section-title">配置</div>
-
-                {nodeType === "shell" && (
-                  <>
-                    <div className="wf-prop-field">
-                      <label>命令 (command)</label>
-                      <textarea
-                        value={String(sd?.command ?? "")}
-                        onChange={(e) => updateNodeData({ command: e.target.value })}
-                        placeholder='echo "Hello ${{ params.name }}"'
-                        rows={3}
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>环境变量</label>
-                      <textarea
-                        value={String(sd?.env ?? "")}
-                        onChange={(e) => updateNodeData({ env: e.target.value })}
-                        placeholder="KEY=value（每行一个）"
-                        rows={2}
-                        readOnly={readOnly}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {nodeType === "python" && (
-                  <>
-                    <div className="wf-prop-field">
-                      <label>Python 代码 (code)</label>
-                      <textarea
-                        value={String(sd?.code ?? "")}
-                        onChange={(e) => updateNodeData({ code: e.target.value })}
-                        placeholder={'import json\nprint(json.dumps({"result": "hello"}))'}
-                        rows={6}
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>依赖包 (requirements)</label>
-                      <textarea
-                        value={Array.isArray(sd?.requirements) ? (sd.requirements as string[]).join("\n") : String(sd?.requirements ?? "")}
-                        onChange={(e) => updateNodeData({
-                          requirements: e.target.value
-                            ? e.target.value.split("\n").map((s: string) => s.trim()).filter(Boolean)
-                            : undefined,
-                        })}
-                        placeholder={"requests\nnumpy（每行一个）"}
-                        rows={2}
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>环境变量</label>
-                      <textarea
-                        value={String(sd?.env ?? "")}
-                        onChange={(e) => updateNodeData({ env: e.target.value })}
-                        placeholder="KEY=value（每行一个）"
-                        rows={2}
-                        readOnly={readOnly}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {nodeType === "agent" && (
-                  <>
-                    <div className="wf-prop-field">
-                      <label>Prompt</label>
-                      <textarea
-                        value={String(sd?.prompt ?? "")}
-                        onChange={(e) => updateNodeData({ prompt: e.target.value })}
-                        placeholder="描述任务..."
-                        rows={4}
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>Agent 名称</label>
-                      <select
-                        value={String(sd?.agent ?? "")}
-                        onChange={(e) => updateNodeData({ agent: e.target.value })}
-                        disabled={readOnly}
-                      >
-                        <option value="">（默认）</option>
-                        {agentList.map((a) => (
-                          <option key={a.name} value={a.name}>{a.name}</option>
-                        ))}
-                      </select>
-                      {sd?.agent && (() => {
-                        const found = agentList.find((a) => a.name === sd.agent);
-                        if (!found) return null;
-                        return (
-                          <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
-                            {found.model && <span>模型: {found.model}</span>}
-                            {found.model && found.description && <span> · </span>}
-                            {found.description && <span>{found.description}</span>}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>Skill</label>
-                      <input
-                        value={String(sd?.skill ?? "")}
-                        onChange={(e) => updateNodeData({ skill: e.target.value })}
-                        placeholder="skill-name"
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <button
-                        type="button"
-                        onClick={() => setAgentOverrideOpen(!agentOverrideOpen)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          fontSize: 11,
-                          color: "#6b7280",
-                          padding: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        <ChevronRight
-                          size={11}
-                          style={{
-                            transform: agentOverrideOpen ? "rotate(90deg)" : "rotate(0deg)",
-                            transition: "transform 0.15s",
-                          }}
-                        />
-                        覆盖配置（可选）
-                      </button>
-                      {agentOverrideOpen && (
-                        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
-                          <div>
-                            <label style={{ fontSize: 10, color: "#9ca3af" }}>模型</label>
-                            <input
-                              value={String(sd?.model ?? "")}
-                              onChange={(e) => updateNodeData({ model: e.target.value || undefined })}
-                              placeholder="沿用 agent 配置"
-                              readOnly={readOnly}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 10, color: "#9ca3af" }}>Temperature</label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="2"
-                              value={sd?.temperature ?? ""}
-                              onChange={(e) => updateNodeData({
-                                temperature: e.target.value ? Number(e.target.value) : undefined,
-                              })}
-                              placeholder="沿用 agent 配置"
-                              readOnly={readOnly}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 10, color: "#9ca3af" }}>最大步数</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="200"
-                              value={sd?.steps ?? ""}
-                              onChange={(e) => updateNodeData({
-                                steps: e.target.value ? Number(e.target.value) : undefined,
-                              })}
-                              placeholder="沿用 agent 配置"
-                              readOnly={readOnly}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {nodeType === "api" && (
-                  <>
-                    <div className="wf-prop-field">
-                      <label>URL</label>
-                      <input
-                        value={String(sd?.url ?? "")}
-                        onChange={(e) => updateNodeData({ url: e.target.value })}
-                        placeholder="https://api.example.com/data"
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>方法</label>
-                      <select
-                        value={String(sd?.method ?? "GET")}
-                        onChange={(e) => updateNodeData({ method: e.target.value })}
-                        disabled={readOnly}
-                      >
-                        <option value="GET">GET</option>
-                        <option value="POST">POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="PATCH">PATCH</option>
-                        <option value="DELETE">DELETE</option>
-                      </select>
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>Headers (JSON)</label>
-                      <textarea
-                        value={String(sd?.headers ?? "")}
-                        onChange={(e) => updateNodeData({ headers: e.target.value })}
-                        placeholder='{"Authorization": "Bearer ${{ secrets.KEY }}"}'
-                        rows={2}
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>Body</label>
-                      <textarea
-                        value={String(sd?.body ?? "")}
-                        onChange={(e) => updateNodeData({ body: e.target.value })}
-                        placeholder='{"key": "value"}'
-                        rows={2}
-                        readOnly={readOnly}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {nodeType === "audit" && (
-                  <>
-                    <div className="wf-prop-field">
-                      <label>审批提示消息</label>
-                      <input
-                        value={String(
-                          (typeof sd?.display_data === "object" && sd?.display_data !== null
-                            ? (sd.display_data as Record<string, string>).message
-                            : sd?.display_data) ?? "",
-                        )}
-                        onChange={(e) => updateNodeData({ display_data: { message: e.target.value } })}
-                        placeholder="请审核此步骤"
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>过期时间 (秒)</label>
-                      <input
-                        type="number"
-                        value={sd?.expires_in != null ? String(sd.expires_in) : ""}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateNodeData({ expires_in: v ? Number(v) : undefined });
-                        }}
-                        placeholder="86400"
-                        readOnly={readOnly}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {nodeType === "workflow" && (
+            ) : selectedNode ? (
+              <>
+                {/* 节点基本信息 */}
+                <div className="wf-prop-section">
+                  <div className="wf-prop-section-title">基本信息</div>
                   <div className="wf-prop-field">
-                    <label>子流程路径 (ref)</label>
+                    <label>节点 ID</label>
+                    <input value={selectedNode.id} onChange={(e) => handleIdChange(e.target.value)} readOnly={readOnly} />
+                  </div>
+                  <div className="wf-prop-field">
+                    <label>类型</label>
+                    <select
+                      value={nodeType}
+                      onChange={(e) => {
+                        const newType = e.target.value;
+                        setNodes((nds) => nds.map((n) => (n.id === selectedNode.id ? { ...n, type: newType } : n)));
+                        setSelectedNode((prev) => (prev ? { ...prev, type: newType } : null));
+                      }}
+                      disabled={readOnly}
+                    >
+                      <option value="shell">Shell</option>
+                      <option value="python">Python</option>
+                      <option value="agent">Agent</option>
+                      <option value="api">API</option>
+                      <option value="audit">审批 (Audit)</option>
+                      <option value="workflow">子流程 (Workflow)</option>
+                      <option value="loop">循环 (Loop)</option>
+                    </select>
+                  </div>
+                  <div className="wf-prop-field">
+                    <label>描述</label>
                     <input
-                      value={String(sd?.ref ?? "")}
-                      onChange={(e) => updateNodeData({ ref: e.target.value })}
-                      placeholder="./sub-workflow.yaml"
+                      value={String(sd?.description ?? "")}
+                      onChange={(e) => updateNodeData({ description: e.target.value || undefined })}
+                      placeholder="说明该节点的用途..."
                       readOnly={readOnly}
                     />
                   </div>
-                )}
+                </div>
 
-                {nodeType === "loop" && (
-                  <>
-                    <div className="wf-prop-field">
-                      <label>循环条件 (condition)</label>
-                      <input
-                        value={String(sd?.condition ?? "")}
-                        onChange={(e) => updateNodeData({ condition: e.target.value })}
-                        placeholder="{{ counter < 10 }}"
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-field">
-                      <label>最大迭代次数</label>
-                      <input
-                        type="number"
-                        value={sd?.max_iterations != null ? String(sd.max_iterations) : ""}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateNodeData({ max_iterations: v ? Number(v) : undefined });
-                        }}
-                        placeholder="10"
-                        readOnly={readOnly}
-                      />
-                    </div>
-                    <div className="wf-prop-hint" style={{ marginTop: 4 }}>
-                      <p>循环体 (body) 请在 YAML 面板中编辑。</p>
-                    </div>
-                  </>
-                )}
-              </div>
+                {/* 节点配置（按类型） */}
+                <div className="wf-prop-section">
+                  <div className="wf-prop-section-title">配置</div>
 
-              {/* ── 高级配置 ── */}
-              <div className="wf-prop-section">
-                <div className="wf-prop-section-title">高级</div>
-                <div className="wf-prop-field">
-                  <label>超时 (秒)</label>
-                  <input
-                    type="number"
-                    value={sd?.timeout != null ? String(sd.timeout) : ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      updateNodeData({ timeout: v ? Number(v) : undefined });
-                    }}
-                    placeholder="300"
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>重试次数</label>
-                  <input
-                    type="number"
-                    value={sd?.retry != null ? String(sd.retry) : ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      updateNodeData({ retry: v ? Number(v) : undefined });
-                    }}
-                    placeholder="0"
-                    readOnly={readOnly}
-                  />
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* ── 工作流元数据 ── */}
-              <div className="wf-prop-section">
-                <div className="wf-prop-section-title">基本信息</div>
-                <div className="wf-prop-field">
-                  <label>Schema 版本</label>
-                  <input value={meta.schema_version} readOnly />
-                </div>
-                <div className="wf-prop-field">
-                  <label>名称</label>
-                  <input value={meta.name} onChange={(e) => updateMeta({ name: e.target.value })} readOnly={readOnly} />
-                </div>
-                <div className="wf-prop-field">
-                  <label>描述</label>
-                  <textarea
-                    value={meta.description}
-                    onChange={(e) => updateMeta({ description: e.target.value })}
-                    placeholder="工作流描述..."
-                    rows={2}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>超时 (秒)</label>
-                  <input
-                    type="number"
-                    value={meta.timeout}
-                    onChange={(e) => updateMeta({ timeout: e.target.value ? Number(e.target.value) : 300 })}
-                    placeholder="300"
-                    readOnly={readOnly}
-                  />
-                </div>
-              </div>
-
-              <div className="wf-prop-section">
-                <div className="wf-prop-section-title">参数 (params)</div>
-                <div className="wf-prop-field">
-                  <label>参数定义 (JSON)</label>
-                  <textarea
-                    value={Object.keys(meta.params).length ? JSON.stringify(meta.params, null, 2) : ""}
-                    onChange={(e) => {
-                      try {
-                        const parsed = e.target.value.trim() ? JSON.parse(e.target.value) : {};
-                        updateMeta({ params: parsed });
-                      } catch {
-                        // 用户还在编辑，暂不更新
-                      }
-                    }}
-                    placeholder='{"name": {"type": "string", "default": "World"}}'
-                    rows={3}
-                    readOnly={readOnly}
-                  />
-                </div>
-              </div>
-
-              <div className="wf-prop-section">
-                <div className="wf-prop-section-title">密钥 (secrets)</div>
-                <div className="wf-prop-field">
-                  <label>环境变量名（每行一个）</label>
-                  <textarea
-                    value={meta.secrets.join("\n")}
-                    onChange={(e) =>
-                      updateMeta({
-                        secrets: e.target.value
-                          .split("\n")
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                    placeholder="API_KEY&#10;DATABASE_URL"
-                    rows={2}
-                    readOnly={readOnly}
-                  />
-                </div>
-              </div>
-
-              <div className="wf-prop-hint">
-                <p>点击画布中的节点查看属性</p>
-                {!readOnly && (
-                  <>
-                    <p>从左侧面板点击或拖拽添加节点</p>
-                    <p>从节点右侧端口拖出可快速创建后续节点</p>
-                    <p>按 Delete 键删除选中的节点或连线</p>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-          </>
-      </aside>
-
-      {/* ── 侧边栏（运行记录 / 版本管理） ── */}
-      {sidePanelMode && (
-        <aside className="wf-run-panel">
-          {sidePanelMode === "versions" ? (
-            <VersionPanel
-              workflowId={workflowId}
-              onClose={() => setSidePanelMode(null)}
-              onPublish={handlePublish}
-              publishing={publishing}
-            />
-          ) : isRunMode ? (
-            <>
-              <div className="wf-prop-header" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span className="wf-prop-title">运行结果</span>
-                {runSnapshot && (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 3,
-                      padding: "1px 7px",
-                      borderRadius: 99,
-                      fontSize: 10,
-                      fontWeight: 500,
-                      color: DAG_STATUS_CFG[dagStatus!]?.color ?? "#6b7280",
-                      background: DAG_STATUS_CFG[dagStatus!]?.bg ?? "#f3f4f6",
-                    }}
-                  >
-                    {dagStatus === "RUNNING" && (
-                      <span
-                        style={{
-                          width: 5,
-                          height: 5,
-                          borderRadius: "50%",
-                          background: "#3b82f6",
-                          animation: "wf-pulse 1.5s ease-in-out infinite",
-                        }}
-                      />
-                    )}
-                    {DAG_STATUS_CFG[dagStatus!]?.label ?? dagStatus}
-                  </span>
-                )}
-                <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-                  {!isRunDone && (
-                    <button
-                      type="button"
-                      onClick={handleCancelRun}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        width: 24, height: 24, border: "none", background: "#fef2f2",
-                        borderRadius: 4, color: "#ef4444", cursor: "pointer",
-                      }}
-                    >
-                      <Square size={11} />
-                    </button>
-                  )}
-                  {isRunDone && (
-                    <button
-                      type="button"
-                      onClick={handleBackToEdit}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        width: 24, height: 24, border: "none", background: "#f3f4f6",
-                        borderRadius: 4, color: "#6b7280", cursor: "pointer",
-                      }}
-                    >
-                      <Edit3 size={11} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setSidePanelMode(null)}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      width: 24, height: 24, border: "none", background: "#f3f4f6",
-                      borderRadius: 4, color: "#6b7280", cursor: "pointer",
-                    }}
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              </div>
-
-              {/* 审批卡片 */}
-              {dagStatus === "SUSPENDED" && runApprovals.length > 0 && (
-                <div style={{ padding: 10, borderBottom: "1px solid #fbbf24", background: "#fffbeb" }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "#92400e", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                    <ShieldCheck size={12} /> 等待审批
-                  </div>
-                  {runApprovals.map((a) => (
-                    <div key={a.nodeId} style={{ fontSize: 10, color: "#78350f", marginBottom: 6 }}>
-                      <div style={{ fontWeight: 500, marginBottom: 2 }}>节点: {a.nodeId}</div>
-                      {a.displayData && typeof a.displayData === "object" && (
-                        <div style={{ color: "#92400e", marginBottom: 3 }}>
-                          {(a.displayData as Record<string, string>).message ?? ""}
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(a)}
-                        style={{
-                          padding: "2px 8px", border: "1px solid #f59e0b", borderRadius: 4,
-                          background: "#f59e0b", color: "#fff", fontSize: 10, fontWeight: 500, cursor: "pointer",
-                        }}
-                      >
-                        通过
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* 进度条 */}
-              {runSnapshot && (
-                <div style={{
-                  padding: "4px 12px", borderBottom: "1px solid #f3f4f6",
-                  fontSize: 10, color: "#9ca3af", display: "flex", justifyContent: "space-between",
-                }}>
-                  <span>
-                    {Object.values(runSnapshot.node_states).filter((s) => s.status === "COMPLETED").length}/
-                    {Object.keys(runSnapshot.node_states).length} 节点
-                  </span>
-                  <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 9 }}>
-                    {activeRunId?.substring(0, 16)}...
-                  </span>
-                </div>
-              )}
-
-              {/* Tab 切换 */}
-              <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb" }}>
-                <button
-                  type="button"
-                  onClick={() => setRunRightTab("events")}
-                  style={{
-                    flex: 1, padding: "7px 0", border: "none", background: "none", fontSize: 11,
-                    fontWeight: runRightTab === "events" ? 600 : 400,
-                    color: runRightTab === "events" ? "#111827" : "#9ca3af",
-                    borderBottom: runRightTab === "events" ? "2px solid #3b82f6" : "2px solid transparent",
-                    cursor: "pointer",
-                  }}
-                >
-                  事件流 ({selectedRunNodeId ? runEvents.filter((e) => e.node_id === selectedRunNodeId).length : runEvents.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRunRightTab("output")}
-                  style={{
-                    flex: 1, padding: "7px 0", border: "none", background: "none", fontSize: 11,
-                    fontWeight: runRightTab === "output" ? 600 : 400,
-                    color: runRightTab === "output" ? "#111827" : "#9ca3af",
-                    borderBottom: runRightTab === "output" ? "2px solid #3b82f6" : "2px solid transparent",
-                    cursor: "pointer",
-                  }}
-                >
-                  {selectedRunNodeId ? `输出 (${selectedRunNodeId})` : "节点输出"}
-                </button>
-              </div>
-
-              {/* 事件列表 */}
-              {runRightTab === "events" && (
-                <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
-                  {(() => {
-                    const filtered = selectedRunNodeId
-                      ? runEvents.filter((e) => e.node_id === selectedRunNodeId)
-                      : runEvents;
-                    return filtered.length === 0 ? (
-                      <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>
-                        {selectedRunNodeId ? "该节点暂无事件" : "暂无事件"}
-                      </div>
-                    ) : (
-                      filtered.map((evt) => (
-                        <div
-                          key={evt.event_id}
-                          style={{
-                            padding: "5px 12px", borderBottom: "1px solid #f3f4f6",
-                            display: "flex", gap: 5, alignItems: "flex-start",
-                            cursor: evt.node_id ? "pointer" : "default",
-                          }}
-                          onClick={() => { if (evt.node_id) setSelectedRunNodeId(evt.node_id); }}
-                        >
-                          <EventIcon type={evt.type} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
-                              <span style={{ fontWeight: 500, color: "#374151" }}>{formatEventType(evt.type)}</span>
-                              <span style={{ color: "#d1d5db", fontSize: 9, flexShrink: 0 }}>
-                                {new Date(evt.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </span>
-                            </div>
-                            {evt.node_id && (
-                              <span style={{ color: "#9ca3af", fontFamily: "ui-monospace, monospace", fontSize: 9 }}>{evt.node_id}</span>
-                            )}
-                            {evt.metadata && Object.keys(evt.metadata).length > 0 && (
-                              <div style={{ color: "#9ca3af", fontSize: 9, marginTop: 1, fontFamily: "ui-monospace, monospace" }}>
-                                {formatMeta(evt.type, evt.metadata)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    );
-                  })()}
-                </div>
-              )}
-
-              {/* 节点输出 */}
-              {runRightTab === "output" && (
-                <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
-                  {!selectedRunNodeId ? (
-                    <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>点击节点查看输出</div>
-                  ) : nodeOutputLoading ? (
-                    <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
-                      <Loader size={14} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
-                    </div>
-                  ) : !selectedNodeOutput ? (
-                    <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>暂无输出</div>
-                  ) : (
+                  {nodeType === "shell" && (
                     <>
-                      <div style={{
-                        padding: "6px 12px", borderBottom: "1px solid #f3f4f6",
-                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
-                      }}>
-                        <span style={{ fontSize: 10, color: "#6b7280", fontFamily: "ui-monospace, monospace" }}>{selectedRunNodeId}</span>
+                      <div className="wf-prop-field">
+                        <label>命令 (command)</label>
+                        <textarea
+                          value={String(sd?.command ?? "")}
+                          onChange={(e) => updateNodeData({ command: e.target.value })}
+                          placeholder='echo "Hello ${{ params.name }}"'
+                          rows={3}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>环境变量</label>
+                        <textarea
+                          value={String(sd?.env ?? "")}
+                          onChange={(e) => updateNodeData({ env: e.target.value })}
+                          placeholder="KEY=value（每行一个）"
+                          rows={2}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {nodeType === "python" && (
+                    <>
+                      <div className="wf-prop-field">
+                        <label>Python 代码 (code)</label>
+                        <textarea
+                          value={String(sd?.code ?? "")}
+                          onChange={(e) => updateNodeData({ code: e.target.value })}
+                          placeholder={'import json\nprint(json.dumps({"result": "hello"}))'}
+                          rows={6}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>依赖包 (requirements)</label>
+                        <textarea
+                          value={Array.isArray(sd?.requirements) ? (sd.requirements as string[]).join("\n") : String(sd?.requirements ?? "")}
+                          onChange={(e) => updateNodeData({
+                            requirements: e.target.value
+                              ? e.target.value.split("\n").map((s: string) => s.trim()).filter(Boolean)
+                              : undefined,
+                          })}
+                          placeholder={"requests\nnumpy（每行一个）"}
+                          rows={2}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>环境变量</label>
+                        <textarea
+                          value={String(sd?.env ?? "")}
+                          onChange={(e) => updateNodeData({ env: e.target.value })}
+                          placeholder="KEY=value（每行一个）"
+                          rows={2}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {nodeType === "agent" && (
+                    <>
+                      <div className="wf-prop-field">
+                        <label>Prompt</label>
+                        <textarea
+                          value={String(sd?.prompt ?? "")}
+                          onChange={(e) => updateNodeData({ prompt: e.target.value })}
+                          placeholder="描述任务..."
+                          rows={4}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>Agent 名称</label>
+                        <select
+                          value={String(sd?.agent ?? "")}
+                          onChange={(e) => updateNodeData({ agent: e.target.value })}
+                          disabled={readOnly}
+                        >
+                          <option value="">（默认）</option>
+                          {agentList.map((a) => (
+                            <option key={a.name} value={a.name}>{a.name}</option>
+                          ))}
+                        </select>
+                        {sd?.agent && (() => {
+                          const found = agentList.find((a) => a.name === sd.agent);
+                          if (!found) return null;
+                          return (
+                            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
+                              {found.model && <span>模型: {found.model}</span>}
+                              {found.model && found.description && <span> · </span>}
+                              {found.description && <span>{found.description}</span>}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>Skill</label>
+                        <input
+                          value={String(sd?.skill ?? "")}
+                          onChange={(e) => updateNodeData({ skill: e.target.value })}
+                          placeholder="skill-name"
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
                         <button
                           type="button"
-                          onClick={() => handleRerunFrom(selectedRunNodeId)}
-                          disabled={running}
+                          onClick={() => setAgentOverrideOpen(!agentOverrideOpen)}
                           style={{
-                            display: "flex", alignItems: "center", gap: 3, padding: "2px 8px",
-                            border: "1px solid #3b82f6", borderRadius: 4, background: "#eff6ff",
-                            color: "#3b82f6", fontSize: 10, fontWeight: 500,
-                            cursor: running ? "not-allowed" : "pointer", opacity: running ? 0.5 : 1,
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: 11,
+                            color: "#6b7280",
+                            padding: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
                           }}
                         >
-                          <RefreshCw size={10} /> 从此重跑
+                          <ChevronRight
+                            size={11}
+                            style={{
+                              transform: agentOverrideOpen ? "rotate(90deg)" : "rotate(0deg)",
+                              transition: "transform 0.15s",
+                            }}
+                          />
+                          覆盖配置（可选）
                         </button>
+                        {agentOverrideOpen && (
+                          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div>
+                              <label style={{ fontSize: 10, color: "#9ca3af" }}>模型</label>
+                              <input
+                                value={String(sd?.model ?? "")}
+                                onChange={(e) => updateNodeData({ model: e.target.value || undefined })}
+                                placeholder="沿用 agent 配置"
+                                readOnly={readOnly}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 10, color: "#9ca3af" }}>Temperature</label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="2"
+                                value={sd?.temperature ?? ""}
+                                onChange={(e) => updateNodeData({
+                                  temperature: e.target.value ? Number(e.target.value) : undefined,
+                                })}
+                                placeholder="沿用 agent 配置"
+                                readOnly={readOnly}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 10, color: "#9ca3af" }}>最大步数</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="200"
+                                value={sd?.steps ?? ""}
+                                onChange={(e) => updateNodeData({
+                                  steps: e.target.value ? Number(e.target.value) : undefined,
+                                })}
+                                placeholder="沿用 agent 配置"
+                                readOnly={readOnly}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <NodeOutputView output={selectedNodeOutput} />
+                    </>
+                  )}
+
+                  {nodeType === "api" && (
+                    <>
+                      <div className="wf-prop-field">
+                        <label>URL</label>
+                        <input
+                          value={String(sd?.url ?? "")}
+                          onChange={(e) => updateNodeData({ url: e.target.value })}
+                          placeholder="https://api.example.com/data"
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>方法</label>
+                        <select
+                          value={String(sd?.method ?? "GET")}
+                          onChange={(e) => updateNodeData({ method: e.target.value })}
+                          disabled={readOnly}
+                        >
+                          <option value="GET">GET</option>
+                          <option value="POST">POST</option>
+                          <option value="PUT">PUT</option>
+                          <option value="PATCH">PATCH</option>
+                          <option value="DELETE">DELETE</option>
+                        </select>
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>Headers (JSON)</label>
+                        <textarea
+                          value={String(sd?.headers ?? "")}
+                          onChange={(e) => updateNodeData({ headers: e.target.value })}
+                          placeholder='{"Authorization": "Bearer ${{ secrets.KEY }}"}'
+                          rows={2}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>Body</label>
+                        <textarea
+                          value={String(sd?.body ?? "")}
+                          onChange={(e) => updateNodeData({ body: e.target.value })}
+                          placeholder='{"key": "value"}'
+                          rows={2}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {nodeType === "audit" && (
+                    <>
+                      <div className="wf-prop-field">
+                        <label>审批提示消息</label>
+                        <input
+                          value={String(
+                            (typeof sd?.display_data === "object" && sd?.display_data !== null
+                              ? (sd.display_data as Record<string, string>).message
+                              : sd?.display_data) ?? "",
+                          )}
+                          onChange={(e) => updateNodeData({ display_data: { message: e.target.value } })}
+                          placeholder="请审核此步骤"
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>过期时间 (秒)</label>
+                        <input
+                          type="number"
+                          value={sd?.expires_in != null ? String(sd.expires_in) : ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            updateNodeData({ expires_in: v ? Number(v) : undefined });
+                          }}
+                          placeholder="86400"
+                          readOnly={readOnly}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {nodeType === "workflow" && (
+                    <div className="wf-prop-field">
+                      <label>子流程路径 (ref)</label>
+                      <input
+                        value={String(sd?.ref ?? "")}
+                        onChange={(e) => updateNodeData({ ref: e.target.value })}
+                        placeholder="./sub-workflow.yaml"
+                        readOnly={readOnly}
+                      />
+                    </div>
+                  )}
+
+                  {nodeType === "loop" && (
+                    <>
+                      <div className="wf-prop-field">
+                        <label>循环条件 (condition)</label>
+                        <input
+                          value={String(sd?.condition ?? "")}
+                          onChange={(e) => updateNodeData({ condition: e.target.value })}
+                          placeholder="{{ counter < 10 }}"
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-field">
+                        <label>最大迭代次数</label>
+                        <input
+                          type="number"
+                          value={sd?.max_iterations != null ? String(sd.max_iterations) : ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            updateNodeData({ max_iterations: v ? Number(v) : undefined });
+                          }}
+                          placeholder="10"
+                          readOnly={readOnly}
+                        />
+                      </div>
+                      <div className="wf-prop-hint" style={{ marginTop: 4 }}>
+                        <p>循环体 (body) 请在 YAML 面板中编辑。</p>
+                      </div>
                     </>
                   )}
                 </div>
-              )}
-            </>
-          ) : (
-            /* 历史运行列表模式 */
-            <RunListPanel
-              onSelect={async (runId) => {
-                setActiveRunId(runId);
-                setRunSnapshot(null);
-                setRunEvents([]);
-                setRunApprovals([]);
-                setSelectedRunNodeId(null);
-                setSelectedNodeOutput(null);
-                try {
-                  const [snap, evts] = await Promise.all([
-                    workflowEngineApi.getRunStatus(runId),
-                    workflowEngineApi.getEvents(runId),
-                  ]);
-                  if (snap) {
-                    setRunSnapshot(snap);
-                    updateNodesFromSnapshot(snap);
+
+                {/* 高级配置 */}
+                <div className="wf-prop-section">
+                  <div className="wf-prop-section-title">高级</div>
+                  <div className="wf-prop-field">
+                    <label>超时 (秒)</label>
+                    <input
+                      type="number"
+                      value={sd?.timeout != null ? String(sd.timeout) : ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateNodeData({ timeout: v ? Number(v) : undefined });
+                      }}
+                      placeholder="300"
+                      readOnly={readOnly}
+                    />
+                  </div>
+                  <div className="wf-prop-field">
+                    <label>重试次数</label>
+                    <input
+                      type="number"
+                      value={sd?.retry != null ? String(sd.retry) : ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateNodeData({ retry: v ? Number(v) : undefined });
+                      }}
+                      placeholder="0"
+                      readOnly={readOnly}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* 工作流元数据 */}
+                <div className="wf-prop-section">
+                  <div className="wf-prop-section-title">基本信息</div>
+                  <div className="wf-prop-field">
+                    <label>Schema 版本</label>
+                    <input value={meta.schema_version} readOnly />
+                  </div>
+                  <div className="wf-prop-field">
+                    <label>名称</label>
+                    <input value={meta.name} onChange={(e) => updateMeta({ name: e.target.value })} readOnly={readOnly} />
+                  </div>
+                  <div className="wf-prop-field">
+                    <label>描述</label>
+                    <textarea
+                      value={meta.description}
+                      onChange={(e) => updateMeta({ description: e.target.value })}
+                      placeholder="工作流描述..."
+                      rows={2}
+                      readOnly={readOnly}
+                    />
+                  </div>
+                  <div className="wf-prop-field">
+                    <label>超时 (秒)</label>
+                    <input
+                      type="number"
+                      value={meta.timeout}
+                      onChange={(e) => updateMeta({ timeout: e.target.value ? Number(e.target.value) : 300 })}
+                      placeholder="300"
+                      readOnly={readOnly}
+                    />
+                  </div>
+                </div>
+
+                <div className="wf-prop-section">
+                  <div className="wf-prop-section-title">参数 (params)</div>
+                  <div className="wf-prop-field">
+                    <label>参数定义 (JSON)</label>
+                    <textarea
+                      value={Object.keys(meta.params).length ? JSON.stringify(meta.params, null, 2) : ""}
+                      onChange={(e) => {
+                        try {
+                          const parsed = e.target.value.trim() ? JSON.parse(e.target.value) : {};
+                          updateMeta({ params: parsed });
+                        } catch {
+                          // 用户还在编辑，暂不更新
+                        }
+                      }}
+                      placeholder='{"name": {"type": "string", "default": "World"}}'
+                      rows={3}
+                      readOnly={readOnly}
+                    />
+                  </div>
+                </div>
+
+                <div className="wf-prop-section">
+                  <div className="wf-prop-section-title">密钥 (secrets)</div>
+                  <div className="wf-prop-field">
+                    <label>环境变量名（每行一个）</label>
+                    <textarea
+                      value={meta.secrets.join("\n")}
+                      onChange={(e) =>
+                        updateMeta({
+                          secrets: e.target.value
+                            .split("\n")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      placeholder="API_KEY&#10;DATABASE_URL"
+                      rows={2}
+                      readOnly={readOnly}
+                    />
+                  </div>
+                </div>
+
+                <div className="wf-prop-hint">
+                  <p>点击画布中的节点查看属性</p>
+                  {!readOnly && (
+                    <>
+                      <p>从左侧面板点击或拖拽添加节点</p>
+                      <p>从节点右侧端口拖出可快速创建后续节点</p>
+                      <p>按 Delete 键删除选中的节点或连线</p>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── 运行 Tab ── */}
+        {rightTab === "run" && (
+          <>
+            {isRunMode ? (
+              <>
+                {/* 运行状态头 */}
+                <div style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>运行结果</span>
+                  {runSnapshot && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        padding: "1px 7px",
+                        borderRadius: 99,
+                        fontSize: 10,
+                        fontWeight: 500,
+                        color: DAG_STATUS_CFG[dagStatus!]?.color ?? "#6b7280",
+                        background: DAG_STATUS_CFG[dagStatus!]?.bg ?? "#f3f4f6",
+                      }}
+                    >
+                      {dagStatus === "RUNNING" && (
+                        <span
+                          style={{
+                            width: 5,
+                            height: 5,
+                            borderRadius: "50%",
+                            background: "#3b82f6",
+                            animation: "wf-pulse 1.5s ease-in-out infinite",
+                          }}
+                        />
+                      )}
+                      {DAG_STATUS_CFG[dagStatus!]?.label ?? dagStatus}
+                    </span>
+                  )}
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                    {!isRunDone && (
+                      <button
+                        type="button"
+                        onClick={handleCancelRun}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 24, height: 24, border: "none", background: "#fef2f2",
+                          borderRadius: 4, color: "#ef4444", cursor: "pointer",
+                        }}
+                      >
+                        <Square size={11} />
+                      </button>
+                    )}
+                    {isRunDone && (
+                      <button
+                        type="button"
+                        onClick={handleBackToEdit}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 24, height: 24, border: "none", background: "#f3f4f6",
+                          borderRadius: 4, color: "#6b7280", cursor: "pointer",
+                        }}
+                      >
+                        <Edit3 size={11} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 审批卡片 */}
+                {dagStatus === "SUSPENDED" && runApprovals.length > 0 && (
+                  <div style={{ padding: 10, borderBottom: "1px solid #fbbf24", background: "#fffbeb" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#92400e", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                      <ShieldCheck size={12} /> 等待审批
+                    </div>
+                    {runApprovals.map((a) => (
+                      <div key={a.nodeId} style={{ fontSize: 10, color: "#78350f", marginBottom: 6 }}>
+                        <div style={{ fontWeight: 500, marginBottom: 2 }}>节点: {a.nodeId}</div>
+                        {a.displayData && typeof a.displayData === "object" && (
+                          <div style={{ color: "#92400e", marginBottom: 3 }}>
+                            {(a.displayData as Record<string, string>).message ?? ""}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleApprove(a)}
+                          style={{
+                            padding: "2px 8px", border: "1px solid #f59e0b", borderRadius: 4,
+                            background: "#f59e0b", color: "#fff", fontSize: 10, fontWeight: 500, cursor: "pointer",
+                          }}
+                        >
+                          通过
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 进度条 */}
+                {runSnapshot && (
+                  <div style={{
+                    padding: "4px 12px", borderBottom: "1px solid #f3f4f6",
+                    fontSize: 10, color: "#9ca3af", display: "flex", justifyContent: "space-between",
+                  }}>
+                    <span>
+                      {Object.values(runSnapshot.node_states).filter((s) => s.status === "COMPLETED").length}/
+                      {Object.keys(runSnapshot.node_states).length} 节点
+                    </span>
+                    <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 9 }}>
+                      {activeRunId?.substring(0, 16)}...
+                    </span>
+                  </div>
+                )}
+
+                {/* 事件/输出子 Tab */}
+                <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb" }}>
+                  <button
+                    type="button"
+                    onClick={() => setRunRightTab("events")}
+                    style={{
+                      flex: 1, padding: "7px 0", border: "none", background: "none", fontSize: 11,
+                      fontWeight: runRightTab === "events" ? 600 : 400,
+                      color: runRightTab === "events" ? "#111827" : "#9ca3af",
+                      borderBottom: runRightTab === "events" ? "2px solid #3b82f6" : "2px solid transparent",
+                      cursor: "pointer",
+                    }}
+                  >
+                    事件流 ({selectedRunNodeId ? runEvents.filter((e) => e.node_id === selectedRunNodeId).length : runEvents.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRunRightTab("output")}
+                    style={{
+                      flex: 1, padding: "7px 0", border: "none", background: "none", fontSize: 11,
+                      fontWeight: runRightTab === "output" ? 600 : 400,
+                      color: runRightTab === "output" ? "#111827" : "#9ca3af",
+                      borderBottom: runRightTab === "output" ? "2px solid #3b82f6" : "2px solid transparent",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {selectedRunNodeId ? `输出 (${selectedRunNodeId})` : "节点输出"}
+                  </button>
+                </div>
+
+                {/* 事件列表 */}
+                {runRightTab === "events" && (
+                  <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
+                    {(() => {
+                      const filtered = selectedRunNodeId
+                        ? runEvents.filter((e) => e.node_id === selectedRunNodeId)
+                        : runEvents;
+                      return filtered.length === 0 ? (
+                        <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>
+                          {selectedRunNodeId ? "该节点暂无事件" : "暂无事件"}
+                        </div>
+                      ) : (
+                        filtered.map((evt) => (
+                          <div
+                            key={evt.event_id}
+                            style={{
+                              padding: "5px 12px", borderBottom: "1px solid #f3f4f6",
+                              display: "flex", gap: 5, alignItems: "flex-start",
+                              cursor: evt.node_id ? "pointer" : "default",
+                            }}
+                            onClick={() => { if (evt.node_id) setSelectedRunNodeId(evt.node_id); }}
+                          >
+                            <EventIcon type={evt.type} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
+                                <span style={{ fontWeight: 500, color: "#374151" }}>{formatEventType(evt.type)}</span>
+                                <span style={{ color: "#d1d5db", fontSize: 9, flexShrink: 0 }}>
+                                  {new Date(evt.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                              </div>
+                              {evt.node_id && (
+                                <span style={{ color: "#9ca3af", fontFamily: "ui-monospace, monospace", fontSize: 9 }}>{evt.node_id}</span>
+                              )}
+                              {evt.metadata && Object.keys(evt.metadata).length > 0 && (
+                                <div style={{ color: "#9ca3af", fontSize: 9, marginTop: 1, fontFamily: "ui-monospace, monospace" }}>
+                                  {formatMeta(evt.type, evt.metadata)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* 节点输出 */}
+                {runRightTab === "output" && (
+                  <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
+                    {!selectedRunNodeId ? (
+                      <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>点击节点查看输出</div>
+                    ) : nodeOutputLoading ? (
+                      <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
+                        <Loader size={14} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+                      </div>
+                    ) : !selectedNodeOutput ? (
+                      <div style={{ padding: 20, textAlign: "center", color: "#d1d5db" }}>暂无输出</div>
+                    ) : (
+                      <>
+                        <div style={{
+                          padding: "6px 12px", borderBottom: "1px solid #f3f4f6",
+                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
+                        }}>
+                          <span style={{ fontSize: 10, color: "#6b7280", fontFamily: "ui-monospace, monospace" }}>{selectedRunNodeId}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRerunFrom(selectedRunNodeId)}
+                            disabled={running}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 3, padding: "2px 8px",
+                              border: "1px solid #3b82f6", borderRadius: 4, background: "#eff6ff",
+                              color: "#3b82f6", fontSize: 10, fontWeight: 500,
+                              cursor: running ? "not-allowed" : "pointer", opacity: running ? 0.5 : 1,
+                            }}
+                          >
+                            <RefreshCw size={10} /> 从此重跑
+                          </button>
+                        </div>
+                        <NodeOutputView output={selectedNodeOutput} />
+                      </>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              /* 历史运行列表 */
+              <RunListPanel
+                onSelect={async (runId) => {
+                  setActiveRunId(runId);
+                  setRunSnapshot(null);
+                  setRunEvents([]);
+                  setRunApprovals([]);
+                  setSelectedRunNodeId(null);
+                  setSelectedNodeOutput(null);
+                  try {
+                    const [snap, evts] = await Promise.all([
+                      workflowEngineApi.getRunStatus(runId),
+                      workflowEngineApi.getEvents(runId),
+                    ]);
+                    if (snap) {
+                      setRunSnapshot(snap);
+                      updateNodesFromSnapshot(snap);
+                    }
+                    if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
+                  } catch (err) {
+                    console.error("加载运行数据失败:", err);
                   }
-                  if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
-                } catch (err) {
-                  console.error("加载运行数据失败:", err);
-                }
-              }}
-              onClose={() => setSidePanelMode(null)}
-            />
-          )}
-        </aside>
-      )}
+                }}
+                onClose={() => setRightTab("config")}
+              />
+            )}
+          </>
+        )}
+
+        {/* ── 版本 Tab ── */}
+        {rightTab === "versions" && (
+          <VersionPanel
+            workflowId={workflowId}
+            onClose={() => setRightTab("config")}
+            onPublish={handlePublish}
+            publishing={publishing}
+          />
+        )}
+      </aside>
 
       {/* Meta Agent Chat 侧边栏 */}
       {chatOpen && (
@@ -1869,30 +1923,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               Meta Agent
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-              {workflowId && (
-                <button
-                  type="button"
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 4, color: "#6b7280", display: "flex", alignItems: "center" }}
-                  onClick={async () => {
-                    try {
-                      const wf = await workflowDefApi.get(workflowId);
-                      if (wf.draftYaml) {
-                        const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
-                        setNodes(newNodes);
-                        setEdges(newEdges);
-                        setMeta(newMeta);
-                        setLastSavedYaml(wf.draftYaml);
-                        setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
-                      }
-                    } catch (err) {
-                      console.error("刷新工作流失败:", err);
-                    }
-                  }}
-                  title="刷新工作流画布"
-                >
-                  <RefreshCw size={13} />
-                </button>
-              )}
               <button
                 type="button"
                 style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 4, color: "#6b7280", display: "flex", alignItems: "center" }}
