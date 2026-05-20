@@ -12,7 +12,7 @@ function generateApiKey(): string {
 export interface ApiKeyRecord {
   id: string;
   userId: string;
-  key: string;
+  keyHash: string;
   keyPrefix: string;
   label: string;
   createdAt: Date;
@@ -27,7 +27,6 @@ export interface ApiKeySanitized {
   lastUsedAt: number | null;
 }
 
-/** 从完整 key 计算 "rcs_1234...ab12" 格式前缀 */
 function computeKeyPrefix(fullKey: string): string {
   return `${fullKey.slice(0, 8)}...${fullKey.slice(-4)}`;
 }
@@ -36,7 +35,7 @@ function sanitize(record: ApiKeyRecord): ApiKeySanitized {
   return {
     id: record.id,
     label: record.label,
-    keyPrefix: record.keyPrefix || computeKeyPrefix(record.key),
+    keyPrefix: record.keyPrefix,
     createdAt: Math.floor(record.createdAt.getTime() / 1000),
     lastUsedAt: record.lastUsedAt ? Math.floor(record.lastUsedAt.getTime() / 1000) : null,
   };
@@ -52,24 +51,20 @@ export async function createApiKey(
   const keyPrefix = computeKeyPrefix(fullKey);
   const now = new Date();
 
-  const [row] = await db
-    .insert(apiKey)
-    .values({
-      userId,
-      teamId,
-      key: keyHash,
-      keyHash,
-      keyPrefix,
-      label: label || "Default",
-      createdAt: now,
-      lastUsedAt: null,
-    })
-    .returning();
+  await db.insert(apiKey).values({
+    userId,
+    teamId,
+    keyHash,
+    keyPrefix,
+    label: label || "Default",
+    createdAt: now,
+    lastUsedAt: null,
+  });
 
   const record: ApiKeyRecord = {
-    id: row.id,
+    id: "",
     userId,
-    key: fullKey,
+    keyHash,
     keyPrefix,
     label: label || "Default",
     createdAt: now,
@@ -83,14 +78,7 @@ export async function validateApiKeyAndGetUser(
   key: string,
 ): Promise<{ userId: string; keyId: string; teamId: string | null } | null> {
   const inputHash = hashApiKey(key);
-
-  // 优先查 keyHash 列（新格式）
-  let rows = await db.select().from(apiKey).where(eq(apiKey.keyHash, inputHash)).limit(1);
-
-  // 回退查 key 列（兼容迁移期未 hash 的旧 key）
-  if (rows.length === 0) {
-    rows = await db.select().from(apiKey).where(eq(apiKey.key, key)).limit(1);
-  }
+  const rows = await db.select().from(apiKey).where(eq(apiKey.keyHash, inputHash)).limit(1);
 
   if (rows.length === 0) return null;
 
@@ -113,7 +101,7 @@ export async function listApiKeysByUser(teamId: string): Promise<ApiKeySanitized
     sanitize({
       id: r.id,
       userId: r.userId,
-      key: r.key,
+      keyHash: r.keyHash,
       keyPrefix: r.keyPrefix ?? "",
       label: r.label,
       createdAt: r.createdAt,
@@ -149,7 +137,6 @@ export async function updateApiKeyLabel(teamId: string, keyId: string, label: st
   return true;
 }
 
-/** Hash an API key with SHA-256 */
 export function hashApiKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");
 }
