@@ -104,6 +104,8 @@ export const invitation = pgTable(
     email: varchar("email").notNull(),
     role: varchar("role").notNull(),
     status: varchar("status").notNull().default("pending"),
+    // better-auth organization 插件的子团队功能预留列
+    // 当前未启用 teams 功能（organization() 未配置 teams.enabled: true）
     teamId: text("team_id"),
     inviterId: text("inviter_id")
       .notNull()

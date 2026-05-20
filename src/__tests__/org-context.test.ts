@@ -12,11 +12,12 @@ mock.module("../auth/better-auth", () => ({
   },
 }));
 
-import { setTestOrgContext } from "../services/org-context";
+import { setTestOrgContext, clearOrgCache } from "../services/org-context";
 
 describe("loadOrgContext", () => {
   beforeEach(() => {
     setTestOrgContext(null);
+    clearOrgCache();
   });
 
   // 无组织时不应自动创建
@@ -44,5 +45,33 @@ describe("loadOrgContext", () => {
       userId: "user_1",
       role: "owner",
     });
+  });
+});
+
+describe("org-context cache", () => {
+  beforeEach(() => {
+    setTestOrgContext(null);
+    clearOrgCache();
+  });
+
+  // 缓存命中时不再查 DB
+  test("cache hit returns cached context without DB call", async () => {
+    const { loadOrgContext } = await import("../services/org-context");
+    const { auth } = await import("../auth/better-auth");
+
+    // 第一次调用：查 DB
+    (auth.api.listMembers as any).mockImplementationOnce(async () => [
+      { userId: "user_cache", role: "admin" },
+    ]);
+    const req = new Request("http://localhost/web/test", {
+      headers: { "x-active-org-id": "org_cached" },
+    });
+    const result1 = await loadOrgContext({ id: "user_cache" }, req);
+    expect(result1).not.toBeNull();
+    expect(result1!.organizationId).toBe("org_cached");
+
+    // 第二次调用：应命中缓存
+    const result2 = await loadOrgContext({ id: "user_cache" }, req);
+    expect(result2).toEqual(result1);
   });
 });
