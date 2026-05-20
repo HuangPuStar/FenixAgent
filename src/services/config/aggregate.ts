@@ -15,22 +15,22 @@ export interface AgentFullConfig {
 }
 
 /** 获取团队全局 skills（environmentId=NULL, agentConfigId=NULL） */
-function listGlobalSkills(teamId: string) {
+function listGlobalSkills(orgId: string) {
   return db
     .select()
     .from(skill)
-    .where(and(eq(skill.teamId, teamId), isNull(skill.environmentId), isNull(skill.agentConfigId)));
+    .where(and(eq(skill.organizationId, orgId), isNull(skill.environmentId), isNull(skill.agentConfigId)));
 }
 
 export async function getAgentFullConfig(ctx: AuthContext, agentConfigId: string | null): Promise<AgentFullConfig> {
   if (!agentConfigId) {
     const [providers, mcpServers, skills] = await Promise.all([
-      db.select().from(provider).where(eq(provider.teamId, ctx.teamId)),
+      db.select().from(provider).where(eq(provider.organizationId, ctx.organizationId)),
       db
         .select()
         .from(mcpServer)
-        .where(and(eq(mcpServer.teamId, ctx.teamId), eq(mcpServer.enabled, true))),
-      listGlobalSkills(ctx.teamId),
+        .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.enabled, true))),
+      listGlobalSkills(ctx.organizationId),
     ]);
     return { agentConfig: null, providers, skills, mcpServers };
   }
@@ -38,22 +38,22 @@ export async function getAgentFullConfig(ctx: AuthContext, agentConfigId: string
   // 并行拉取 providers、mcpServers、agentConfig、skills（4 路并行→1 轮完成）
   // skills 使用较宽的 filter（全局 + agent-scoped），若 agentConfig 不存在则在内存中过滤
   const [providers, mcpServers, acRows, allSkills] = await Promise.all([
-    db.select().from(provider).where(eq(provider.teamId, ctx.teamId)),
+    db.select().from(provider).where(eq(provider.organizationId, ctx.organizationId)),
     db
       .select()
       .from(mcpServer)
-      .where(and(eq(mcpServer.teamId, ctx.teamId), eq(mcpServer.enabled, true))),
+      .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.enabled, true))),
     db
       .select()
       .from(agentConfig)
-      .where(and(eq(agentConfig.id, agentConfigId), eq(agentConfig.teamId, ctx.teamId)))
+      .where(and(eq(agentConfig.id, agentConfigId), eq(agentConfig.organizationId, ctx.organizationId)))
       .limit(1),
     db
       .select()
       .from(skill)
       .where(
         and(
-          eq(skill.teamId, ctx.teamId),
+          eq(skill.organizationId, ctx.organizationId),
           isNull(skill.environmentId),
           sql`(${skill.agentConfigId} IS NULL OR ${skill.agentConfigId} = ${agentConfigId})`,
         ),

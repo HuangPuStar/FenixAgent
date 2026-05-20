@@ -18,7 +18,7 @@ import {
   setSkill,
   setWorkspaceSkill,
 } from "../../../services/skill";
-import { loadTeamContext } from "../../../services/team-context";
+import { loadOrgContext } from "../../../services/org-context";
 
 const app = new Elysia({ name: "web-config-skills", prefix: "/web" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
@@ -44,7 +44,7 @@ async function handleGet(
   }
   if (body.source === "workspace" && body.workspaceId) {
     const env = await environmentRepo.getById(body.workspaceId);
-    if (!env || env.teamId !== ctx.teamId) return errorFn(404, configNotFound("Workspace not found"));
+    if (!env || env.organizationId !== ctx.organizationId) return errorFn(404, configNotFound("Workspace not found"));
     const skill = await getWorkspaceSkill(env.workspacePath, body.name);
     if (!skill) return errorFn(404, configNotFound(`Skill '${body.name}' not found`));
     return configSuccess(skill);
@@ -74,7 +74,7 @@ async function handleSet(
   }
   if (body.source === "workspace" && body.workspaceId) {
     const env = await environmentRepo.getById(body.workspaceId);
-    if (!env || env.teamId !== ctx.teamId) return errorFn(404, configNotFound("Workspace not found"));
+    if (!env || env.organizationId !== ctx.organizationId) return errorFn(404, configNotFound("Workspace not found"));
     const result = await setWorkspaceSkill(env.workspacePath, body.name, body.data);
     return configSuccess({ name: result.name, enabled: result.enabled });
   }
@@ -92,7 +92,7 @@ async function handleDelete(
   }
   if (body.source === "workspace" && body.workspaceId) {
     const env = await environmentRepo.getById(body.workspaceId);
-    if (!env || env.teamId !== ctx.teamId) return errorFn(404, configNotFound("Workspace not found"));
+    if (!env || env.organizationId !== ctx.organizationId) return errorFn(404, configNotFound("Workspace not found"));
     const deleted = await deleteWorkspaceSkill(env.workspacePath, body.name);
     if (!deleted) return errorFn(404, configNotFound(`Skill '${body.name}' not found`));
     return configSuccess(null);
@@ -195,7 +195,7 @@ async function handleUpload(ctx: AuthContext, request: Request, errorFn: (status
 
     if (isWorkspaceUpload) {
       const env = await environmentRepo.getById(workspaceIdValue);
-      if (!env || env.teamId !== ctx.teamId) return errorFn(404, configNotFound("Workspace not found"));
+      if (!env || env.organizationId !== ctx.organizationId) return errorFn(404, configNotFound("Workspace not found"));
       const result = await importWorkspaceSkillDirectories(env.workspacePath, uploadFiles, conflictStrategy);
       if (result.conflicts.length > 0) {
         return errorFn(
@@ -240,7 +240,7 @@ type SkillBody = {
 app.post(
   "/config/skills",
   async ({ store, body, error, request }: any) => {
-    const authContext = await loadTeamContext(store.user!, request);
+    const authContext = await loadOrgContext(store.user!, request);
     if (!authContext)
       return error(500, { success: false, error: { code: "NO_TEAM_CONTEXT", message: "Failed to load team context" } });
     const authCtx = authContext;
@@ -281,7 +281,7 @@ app.post(
 app.post(
   "/config/skills/upload",
   async ({ store, request, error }: any) => {
-    const authContext = await loadTeamContext(store.user!, request);
+    const authContext = await loadOrgContext(store.user!, request);
     if (!authContext)
       return error(500, { success: false, error: { code: "NO_TEAM_CONTEXT", message: "Failed to load team context" } });
     const authCtx = authContext;

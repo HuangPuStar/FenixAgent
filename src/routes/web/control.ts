@@ -17,28 +17,28 @@ type OwnershipCheckResult =
 
 async function checkOwnership(
   userId: string | null,
-  teamId: string | null,
+  orgId: string | null,
   sessionId: string,
   errorFn: (code: number, body: unknown) => Response,
 ): Promise<OwnershipCheckResult> {
-  if (!userId || !teamId) {
+  if (!userId || !orgId) {
     return { error: true, response: errorFn(403, { error: { type: "forbidden", message: "Not authenticated" } }) };
   }
   const resolvedSessionId = await resolveExistingSessionId(sessionId);
   if (!resolvedSessionId) {
     return { error: true, response: errorFn(404, { error: { type: "not_found", message: "Session not found" } }) };
   }
-  // 验证 session 所属环境属于当前团队
+  // 验证 session 所属环境属于当前组织
   const session = await sessionRepo.getById(resolvedSessionId);
   if (!session) {
     return { error: true, response: errorFn(404, { error: { type: "not_found", message: "Session not found" } }) };
   }
   if (session.environmentId) {
     const env = await environmentRepo.getById(session.environmentId);
-    if (env && env.teamId && env.teamId !== teamId) {
+    if (env && env.organizationId && env.organizationId !== orgId) {
       return {
         error: true,
-        response: errorFn(403, { error: { type: "forbidden", message: "Not your team's session" } }),
+        response: errorFn(403, { error: { type: "forbidden", message: "Not your organization's session" } }),
       };
     }
   }
@@ -55,8 +55,8 @@ app.post(
   async ({ store, params, body, error }) => {
     const requestedSessionId = params.id;
     const userId = store.user?.id ?? null;
-    const teamId = store.authContext?.teamId ?? null;
-    const ownership = await checkOwnership(userId, teamId, requestedSessionId, error);
+    const orgId = store.authContext?.organizationId ?? null;
+    const ownership = await checkOwnership(userId, orgId, requestedSessionId, error);
     if (ownership.error) {
       return ownership.response;
     }
@@ -82,8 +82,8 @@ app.post(
   async ({ store, params, body, error }) => {
     const requestedSessionId = params.id;
     const userId = store.user?.id ?? null;
-    const teamId = store.authContext?.teamId ?? null;
-    const ownership = await checkOwnership(userId, teamId, requestedSessionId, error);
+    const orgId = store.authContext?.organizationId ?? null;
+    const ownership = await checkOwnership(userId, orgId, requestedSessionId, error);
     if (ownership.error) {
       return ownership.response;
     }
@@ -102,8 +102,8 @@ app.post(
   async ({ store, params, error }) => {
     const requestedSessionId = params.id;
     const userId = store.user?.id ?? null;
-    const teamId = store.authContext?.teamId ?? null;
-    const ownership = await checkOwnership(userId, teamId, requestedSessionId, error);
+    const orgId = store.authContext?.organizationId ?? null;
+    const ownership = await checkOwnership(userId, orgId, requestedSessionId, error);
     if (ownership.error) {
       return ownership.response;
     }

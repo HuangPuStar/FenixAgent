@@ -157,7 +157,7 @@ function sanitizeExecutionLog(row: TaskExecutionLogRow): TaskExecutionLogRespons
 }
 
 export async function createTask(
-  teamId: string,
+  organizationId: string,
   data: CreateTaskInput,
   userId?: string,
 ): Promise<ServiceResult<TaskResponse>> {
@@ -170,8 +170,8 @@ export async function createTask(
 
   const row = await scheduledTaskRepo.create({
     id,
-    userId: userId ?? teamId,
-    teamId,
+    userId: userId ?? organizationId,
+    organizationId,
     name: data.name.trim(),
     description: data.description?.trim() ?? null,
     cron: data.cron.trim(),
@@ -204,26 +204,26 @@ export async function createTask(
   return { success: true, data: result };
 }
 
-export async function listTasks(teamId: string): Promise<ServiceSuccess<TaskResponse[]>> {
-  const rows = await scheduledTaskRepo.listByTeam(teamId);
+export async function listTasks(organizationId: string): Promise<ServiceSuccess<TaskResponse[]>> {
+  const rows = await scheduledTaskRepo.listByOrganization(organizationId);
   return {
     success: true,
     data: rows.map(sanitizeTask),
   };
 }
 
-export async function getTask(teamId: string, taskId: string): Promise<ServiceResult<TaskResponse>> {
-  const row = await scheduledTaskRepo.getByTeamAndId(teamId, taskId);
+export async function getTask(organizationId: string, taskId: string): Promise<ServiceResult<TaskResponse>> {
+  const row = await scheduledTaskRepo.getByOrgAndId(organizationId, taskId);
   if (!row) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   return { success: true, data: sanitizeTask(row) };
 }
 
 export async function updateTask(
-  teamId: string,
+  organizationId: string,
   taskId: string,
   data: UpdateTaskInput,
 ): Promise<ServiceResult<TaskResponse>> {
-  const existing = await scheduledTaskRepo.getByTeamAndId(teamId, taskId);
+  const existing = await scheduledTaskRepo.getByOrgAndId(organizationId, taskId);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   const validationError = validateTaskInput(data, true);
@@ -252,8 +252,8 @@ export async function updateTask(
   return { success: true, data: result };
 }
 
-export async function deleteTask(teamId: string, taskId: string): Promise<ServiceResult<undefined>> {
-  const deleted = await scheduledTaskRepo.deleteByTeamAndId(teamId, taskId);
+export async function deleteTask(organizationId: string, taskId: string): Promise<ServiceResult<undefined>> {
+  const deleted = await scheduledTaskRepo.deleteByTeamAndId(organizationId, taskId);
   if (!deleted) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   unscheduleTask(taskId);
@@ -261,10 +261,10 @@ export async function deleteTask(teamId: string, taskId: string): Promise<Servic
 }
 
 export async function toggleTask(
-  teamId: string,
+  organizationId: string,
   taskId: string,
 ): Promise<ServiceResult<{ id: string; enabled: boolean }>> {
-  const existing = await scheduledTaskRepo.getByTeamAndId(teamId, taskId);
+  const existing = await scheduledTaskRepo.getByOrgAndId(organizationId, taskId);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   const newEnabled = !existing.enabled;
@@ -392,8 +392,8 @@ export async function executeTaskById(
   }
 }
 
-export async function triggerTask(teamId: string, taskId: string): Promise<ServiceResult<TaskExecutionLogResponse>> {
-  const task = await scheduledTaskRepo.getByTeamAndId(teamId, taskId);
+export async function triggerTask(organizationId: string, taskId: string): Promise<ServiceResult<TaskExecutionLogResponse>> {
+  const task = await scheduledTaskRepo.getByOrgAndId(organizationId, taskId);
   if (!task) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   return executeTaskById(taskId, "manual", task);
 }
@@ -416,8 +416,8 @@ export async function listExecutionLogs(
   };
 }
 
-export async function clearExecutionLogs(teamId: string, taskId: string): Promise<ServiceResult<undefined>> {
-  const task = await scheduledTaskRepo.getByTeamAndId(teamId, taskId);
+export async function clearExecutionLogs(organizationId: string, taskId: string): Promise<ServiceResult<undefined>> {
+  const task = await scheduledTaskRepo.getByOrgAndId(organizationId, taskId);
   if (!task) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   await taskExecutionLogRepo.deleteByTask(taskId);
   return { success: true, data: undefined };

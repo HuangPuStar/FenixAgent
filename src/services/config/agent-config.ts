@@ -30,22 +30,22 @@ const AGENT_SETTABLE_FIELDS = [
 const FIELD_ALIAS: Record<string, string> = { top_p: "topP" };
 
 export async function listAgentConfigs(ctx: AuthContext) {
-  return db.select().from(agentConfig).where(eq(agentConfig.teamId, ctx.teamId));
+  return db.select().from(agentConfig).where(eq(agentConfig.organizationId, ctx.organizationId));
 }
 
 export async function getAgentConfig(ctx: AuthContext, name: string) {
   const rows = await db
     .select()
     .from(agentConfig)
-    .where(and(eq(agentConfig.teamId, ctx.teamId), eq(agentConfig.name, name)))
+    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.name, name)))
     .limit(1);
   return rows[0] ?? null;
 }
 
-export async function getAgentConfigById(id: string, teamId?: string) {
+export async function getAgentConfigById(id: string, orgId?: string) {
   const conditions = [eq(agentConfig.id, id)];
-  if (teamId) {
-    conditions.push(eq(agentConfig.teamId, teamId));
+  if (orgId) {
+    conditions.push(eq(agentConfig.organizationId, orgId));
   }
   const rows = await db
     .select()
@@ -69,13 +69,13 @@ function buildSetFromData(data: Record<string, unknown>): Partial<typeof agentCo
 
 export async function createAgentConfig(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   const set = buildSetFromData(data);
-  const values = { teamId: ctx.teamId, userId: ctx.userId, name, ...set } as typeof agentConfig.$inferInsert;
+  const values = { organizationId: ctx.organizationId, userId: ctx.userId, name, ...set } as typeof agentConfig.$inferInsert;
 
   await db
     .insert(agentConfig)
     .values(values)
     .onConflictDoUpdate({
-      target: [agentConfig.teamId, agentConfig.name],
+      target: [agentConfig.organizationId, agentConfig.name],
       set,
     });
 }
@@ -89,7 +89,7 @@ export async function updateAgentConfig(
   const result = await db
     .update(agentConfig)
     .set(set)
-    .where(and(eq(agentConfig.teamId, ctx.teamId), eq(agentConfig.name, name)))
+    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.name, name)))
     .returning({ id: agentConfig.id });
   return result.length > 0;
 }
@@ -97,7 +97,7 @@ export async function updateAgentConfig(
 export async function deleteAgentConfig(ctx: AuthContext, name: string): Promise<boolean> {
   const result = await db
     .delete(agentConfig)
-    .where(and(eq(agentConfig.teamId, ctx.teamId), eq(agentConfig.name, name)))
+    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.name, name)))
     .returning({ id: agentConfig.id });
   return result.length > 0;
 }

@@ -27,9 +27,9 @@ function getTransport(): Transport {
 }
 
 /** 创建 resolveAgentConfig 回调：按 name 查询 agentConfig 表 */
-function createAgentConfigResolver(teamId: string): (name: string) => Promise<AgentResolvedConfig | null> {
+function createAgentConfigResolver(organizationId: string): (name: string) => Promise<AgentResolvedConfig | null> {
   return async (name: string) => {
-    const rows = await db.select().from(agentConfig).where(eq(agentConfig.teamId, teamId)).limit(100);
+    const rows = await db.select().from(agentConfig).where(eq(agentConfig.organizationId, organizationId)).limit(100);
 
     const row = rows.find((r) => r.name === name);
     if (!row) return null;
@@ -45,17 +45,17 @@ function createAgentConfigResolver(teamId: string): (name: string) => Promise<Ag
 }
 
 /** 获取或创建指定 team 的 WorkflowEngine 实例 */
-export function getTeamEngine(teamId: string): WorkflowEngine {
-  let engine = engines.get(teamId);
+export function getTeamEngine(organizationId: string): WorkflowEngine {
+  let engine = engines.get(organizationId);
   if (!engine) {
-    const storage = createPgStorageAdapter(teamId);
+    const storage = createPgStorageAdapter(organizationId);
     engine = createWorkflowEngine({
       storage,
       transport: getTransport(),
       hmacSecret: process.env.RCS_WORKFLOW_HMAC_SECRET || crypto.randomUUID(),
-      resolveAgentConfig: createAgentConfigResolver(teamId),
+      resolveAgentConfig: createAgentConfigResolver(organizationId),
     });
-    engines.set(teamId, engine);
+    engines.set(organizationId, engine);
   }
   return engine;
 }

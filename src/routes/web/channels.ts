@@ -10,7 +10,7 @@ import {
 import { createBinding, deleteBinding, listBindings, updateBinding } from "../../services/channel-binding";
 import { getChannelProvider, listChannelProviders } from "../../services/channel-provider";
 import { getHermesClient } from "../../services/hermes-client";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 
 const app = new Elysia({ name: "web-channels", prefix: "/web" }).use(authGuardPlugin).model({
   "channel-provider-list": ChannelProviderDescriptorSchema.array(),
@@ -72,9 +72,9 @@ app.get(
 app.get(
   "/channels/bindings",
   async ({ store, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     // 获取团队所有 environmentId
-    const teamEnvs = await environmentRepo.listByTeamId(authCtx.teamId);
+    const teamEnvs = await environmentRepo.listByOrganizationId(authCtx.organizationId);
     const teamEnvIds = new Set(teamEnvs.map((e) => e.id));
     const bindings = await listBindings();
     // 仅返回 agentId 属于当前团队的绑定
@@ -92,14 +92,14 @@ app.get(
 app.post(
   "/channels/bindings",
   async ({ store, body, error, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const b = body as { platform: string; chatId?: string | null; agentId: string; enabled?: boolean };
     if (!b.platform || !b.agentId) {
       return error(400, { error: { type: "VALIDATION_ERROR", message: "platform 和 agentId 为必填字段" } });
     }
     // 验证 agentId 属于当前团队
     const env = await environmentRepo.getById(b.agentId);
-    if (!env || env.teamId !== authCtx.teamId) {
+    if (!env || env.organizationId !== authCtx.organizationId) {
       return error(404, { error: { type: "NOT_FOUND", message: "Agent 不存在" } });
     }
     const binding = await createBinding({
@@ -116,7 +116,7 @@ app.post(
 app.delete(
   "/channels/bindings/:id",
   async ({ store, params, error, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const id = params.id;
     // 验证绑定关联的 agent 属于当前团队
     const binding = await listBindings();
@@ -125,7 +125,7 @@ app.delete(
       return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
     }
     const env = await environmentRepo.getById(target.agentId);
-    if (!env || env.teamId !== authCtx.teamId) {
+    if (!env || env.organizationId !== authCtx.organizationId) {
       return error(403, { error: { type: "FORBIDDEN", message: "无权操作此绑定" } });
     }
     const deleted = await deleteBinding(id);
@@ -140,7 +140,7 @@ app.delete(
 app.patch(
   "/channels/bindings/:id",
   async ({ store, params, body, error, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const id = params.id;
     // 验证绑定关联的 agent 属于当前团队
     const binding = await listBindings();
@@ -149,7 +149,7 @@ app.patch(
       return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
     }
     const env = await environmentRepo.getById(target.agentId);
-    if (!env || env.teamId !== authCtx.teamId) {
+    if (!env || env.organizationId !== authCtx.organizationId) {
       return error(403, { error: { type: "FORBIDDEN", message: "无权操作此绑定" } });
     }
     const b = body as Record<string, unknown>;

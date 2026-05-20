@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import { log, error as logError } from "../../logger";
 import { authGuardPlugin } from "../../plugins/auth";
-import { requireTeamScope } from "../../plugins/require-team-scope";
+import { requireOrgScope } from "../../plugins/require-team-scope";
 import { environmentRepo, sessionRepo } from "../../repositories";
 import {
   type CreateSessionRequest,
@@ -23,7 +23,7 @@ const app = new Elysia({ name: "v1-sessions", prefix: "/v1/sessions" }).use(auth
 
 /**
  * 校验 session 归属当前认证 team。
- * 解析链路：sessionId → sessionRecord.environmentId → environment.teamId。
+ * 解析链路：sessionId → sessionRecord.environmentId → environment.organizationId。
  * 返回 undefined 表示通过，否则返回错误响应。
  */
 async function requireSessionScope(
@@ -38,7 +38,7 @@ async function requireSessionScope(
   }
   const env = await environmentRepo.getById(sessionRecord.environmentId);
   if (!env) return undefined;
-  return requireTeamScope(authContext, env.teamId);
+  return requireOrgScope(authContext, env.organizationId);
 }
 
 /** POST /v1/sessions — Create session */
@@ -58,7 +58,7 @@ app.post(
       // 校验 environment 归属
       const env = await environmentRepo.getById(b.environment_id);
       if (env) {
-        const denied = requireTeamScope(authContext, env.teamId);
+        const denied = requireOrgScope(authContext, env.organizationId);
         if (denied) return denied;
       }
       try {

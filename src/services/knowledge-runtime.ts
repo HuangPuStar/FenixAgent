@@ -60,11 +60,11 @@ export async function readKnowledgeResourceForAgent(input: {
  */
 export async function resolveBoundKnowledgeBasesByConfigId(
   agentConfigId: string,
-  teamId?: string,
+  orgId?: string,
 ): Promise<BoundKnowledgeBase[]> {
   const rows = await agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId(agentConfigId);
   return rows
-    .filter((row) => !!row.kbRemoteId && (!teamId || row.kbUserId === teamId))
+    .filter((row) => !!row.kbRemoteId && (!orgId || row.kbUserId === organizationId))
     .sort((a, b) => a.priority - b.priority)
     .map((row) => ({
       id: row.kbId,
@@ -82,9 +82,9 @@ export async function searchKnowledgeByConfigId(input: {
   agentConfigId: string;
   query: string;
   topK: number;
-  teamId?: string;
+  organizationId?: string;
 }): Promise<KnowledgeSearchResult[]> {
-  const knowledgeBases = await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId, input.teamId);
+  const knowledgeBases = await resolveBoundKnowledgeBasesByConfigId(input.agentConfigId, input.organizationId);
   if (knowledgeBases.length === 0) return [];
 
   const provider = getKnowledgeRuntimeProvider();

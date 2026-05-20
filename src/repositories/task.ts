@@ -21,10 +21,10 @@ export interface IScheduledTaskRepo {
   deleteByUserAndId(userId: string, taskId: string): Promise<boolean>;
   listEnabled(): Promise<ScheduledTaskRow[]>;
   existsByUserAndId(userId: string, taskId: string): Promise<boolean>;
-  listByTeam(teamId: string): Promise<ScheduledTaskRow[]>;
-  getByTeamAndId(teamId: string, taskId: string): Promise<ScheduledTaskRow | null>;
-  deleteByTeamAndId(teamId: string, taskId: string): Promise<boolean>;
-  existsByTeamAndId(teamId: string, taskId: string): Promise<boolean>;
+  listByOrganization(organizationId: string): Promise<ScheduledTaskRow[]>;
+  getByOrgAndId(organizationId: string, taskId: string): Promise<ScheduledTaskRow | null>;
+  deleteByOrgAndId(organizationId: string, taskId: string): Promise<boolean>;
+  existsByOrgAndId(organizationId: string, taskId: string): Promise<boolean>;
 }
 
 /** TaskExecutionLog 仓储接口 */
@@ -103,36 +103,36 @@ class PgScheduledTaskRepo implements IScheduledTaskRepo {
     return rows.length > 0;
   }
 
-  async listByTeam(teamId: string) {
+  async listByOrganization(organizationId: string) {
     return db
       .select()
       .from(scheduledTask)
-      .where(eq(scheduledTask.teamId, teamId))
+      .where(eq(scheduledTask.organizationId, organizationId))
       .orderBy(desc(scheduledTask.createdAt));
   }
 
-  async getByTeamAndId(teamId: string, taskId: string) {
+  async getByOrgAndId(organizationId: string, taskId: string) {
     const rows = await db
       .select()
       .from(scheduledTask)
-      .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.teamId, teamId)))
+      .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.organizationId, organizationId)))
       .limit(1);
     return rows[0] ?? null;
   }
 
-  async deleteByTeamAndId(teamId: string, taskId: string): Promise<boolean> {
+  async deleteByOrgAndId(organizationId: string, taskId: string): Promise<boolean> {
     const result = await db
       .delete(scheduledTask)
-      .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.teamId, teamId)))
+      .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.organizationId, organizationId)))
       .returning({ id: scheduledTask.id });
     return result.length > 0;
   }
 
-  async existsByTeamAndId(teamId: string, taskId: string): Promise<boolean> {
+  async existsByOrgAndId(organizationId: string, taskId: string): Promise<boolean> {
     const rows = await db
       .select({ id: scheduledTask.id })
       .from(scheduledTask)
-      .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.teamId, teamId)));
+      .where(and(eq(scheduledTask.id, taskId), eq(scheduledTask.organizationId, organizationId)));
     return rows.length > 0;
   }
 }

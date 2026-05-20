@@ -11,7 +11,7 @@ import {
   WriteFileRequestSchema,
 } from "../../schemas/file.schema";
 import { getOwnedEnvironment } from "../../services/environment-core";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 import {
   createFileStream,
   deleteFile,
@@ -34,9 +34,9 @@ const app = new Elysia({ name: "web-files", prefix: "/web/environments" }).use(a
   "write-file-request": WriteFileRequestSchema,
 });
 
-async function requireEnv(envId: string, teamId: string, errorFn: (status: number, body: unknown) => any) {
+async function requireEnv(envId: string, orgId: string, errorFn: (status: number, body: unknown) => any) {
   try {
-    return await getOwnedEnvironment(envId, teamId);
+    return await getOwnedEnvironment(envId, orgId);
   } catch (e) {
     if (e instanceof NotFoundError) {
       return errorFn(404, { error: { type: "not_found", message: "环境不存在" } });
@@ -49,9 +49,9 @@ async function requireEnv(envId: string, teamId: string, errorFn: (status: numbe
 app.get(
   "/:id/user",
   async ({ store, params, query, error, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.teamId, error);
+    await requireEnv(envId, authCtx.organizationId, error);
     const queryPath = (query as any)?.path || "";
     const result = await resolveWorkspacePath(envId, queryPath);
     if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
@@ -70,9 +70,9 @@ app.get(
 app.get(
   "/:id/user/*",
   async ({ store, params, query, error, set, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.teamId, error);
+    await requireEnv(envId, authCtx.organizationId, error);
     const filePath = normalizeUserRoutePath((params as any)["*"]);
     const preview = (query as any)?.preview === "true";
 
@@ -119,9 +119,9 @@ app.get(
 app.post(
   "/:id/user/*",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.teamId, error);
+    await requireEnv(envId, authCtx.organizationId, error);
     const dirPath = normalizeUserRoutePath((params as any)["*"] || "");
 
     if (!isUserPath(dirPath))
@@ -163,9 +163,9 @@ app.post(
 app.put(
   "/:id/user/*",
   async ({ store, params, body, error, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.teamId, error);
+    await requireEnv(envId, authCtx.organizationId, error);
     const filePath = normalizeUserRoutePath((params as any)["*"]);
 
     if (!isUserPath(filePath))
@@ -194,9 +194,9 @@ app.put(
 app.delete(
   "/:id/user/*",
   async ({ store, params, error, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.teamId, error);
+    await requireEnv(envId, authCtx.organizationId, error);
     const filePath = normalizeUserRoutePath((params as any)["*"]);
 
     if (!isUserPath(filePath))

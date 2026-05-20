@@ -20,7 +20,7 @@ import {
   listKnowledgeResources,
   uploadKnowledgeResource,
 } from "../../services/knowledge-upload";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 
 const app = new Elysia({ name: "web-knowledge-bases", prefix: "/web" }).use(authGuardPlugin).model({
   "knowledge-base-info": KnowledgeBaseInfoSchema,
@@ -35,8 +35,8 @@ const app = new Elysia({ name: "web-knowledge-bases", prefix: "/web" }).use(auth
 app.get(
   "/knowledgeBases",
   async ({ store, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
-    return await listKnowledgeBasesByTeamId(authCtx.teamId);
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
+    return await listKnowledgeBasesByTeamId(authCtx.organizationId);
   },
   { sessionAuth: true, response: "knowledge-base-list" },
 );
@@ -44,10 +44,10 @@ app.get(
 app.post(
   "/knowledgeBases",
   async ({ store, body, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const payload = body as { name: string; slug: string; description?: string };
     const result = await createKnowledgeBaseRecord(
-      authCtx.teamId,
+      authCtx.organizationId,
       {
         name: payload.name,
         slug: payload.slug,
@@ -66,9 +66,9 @@ app.post(
 app.get(
   "/knowledgeBases/:id",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const id = params.id;
-    const detail = await getKnowledgeBaseDetail(authCtx.teamId, id);
+    const detail = await getKnowledgeBaseDetail(authCtx.organizationId, id);
     if (!detail) {
       return error(404, { error: { type: "NOT_FOUND", message: "知识库不存在" } });
     }
@@ -80,10 +80,10 @@ app.get(
 app.patch(
   "/knowledgeBases/:id",
   async ({ store, params, body, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const id = params.id;
     const payload = body as { name?: string; slug?: string; description?: string };
-    const result = await updateKnowledgeBase(authCtx.teamId, id, {
+    const result = await updateKnowledgeBase(authCtx.organizationId, id, {
       name: payload.name,
       slug: payload.slug,
       description: payload.description,
@@ -100,10 +100,10 @@ app.patch(
 app.delete(
   "/knowledgeBases/:id",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const id = params.id;
     try {
-      const result = await deleteKnowledgeBase(authCtx.teamId, id);
+      const result = await deleteKnowledgeBase(authCtx.organizationId, id);
       if (!result.success) {
         return error(404, { error: { type: "NOT_FOUND", message: result.error.message } });
       }
@@ -123,7 +123,7 @@ app.delete(
 app.post(
   "/knowledgeBases/:id/resources/upload",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const id = params.id;
     try {
       const form = await request.formData();
@@ -131,15 +131,15 @@ app.post(
         (entry: any): entry is globalThis.File => entry instanceof globalThis.File,
       );
       const items = await Promise.all(
-        files.map((file) => uploadKnowledgeResource(authCtx.teamId, id, file as unknown as File)),
+        files.map((file) => uploadKnowledgeResource(authCtx.organizationId, id, file as unknown as File)),
       );
 
       for (let index = 0; index < items.length; index += 1) {
         if (items[index]?.status !== "error") {
           continue;
         }
-        await deleteKnowledgeResource(authCtx.teamId, id, items[index]!.id);
-        items[index] = await uploadKnowledgeResource(authCtx.teamId, id, files[index]! as unknown as File);
+        await deleteKnowledgeResource(authCtx.organizationId, id, items[index]!.id);
+        items[index] = await uploadKnowledgeResource(authCtx.organizationId, id, files[index]! as unknown as File);
       }
 
       const failedItem = items.find((item) => item.status === "error");
@@ -159,14 +159,14 @@ app.post(
 app.post(
   "/knowledgeBases/:id/resources/url",
   async ({ store, params, body, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const id = params.id;
     const payload = body as { url: string; sourceName?: string };
     if (!payload.url || typeof payload.url !== "string") {
       return error(400, { error: { type: "VALIDATION_ERROR", message: "url 为必填字段" } });
     }
     try {
-      const item = await importKnowledgeResourceFromUrl(authCtx.teamId, id, {
+      const item = await importKnowledgeResourceFromUrl(authCtx.organizationId, id, {
         url: payload.url,
         sourceName: payload.sourceName,
       });
@@ -185,9 +185,9 @@ app.post(
 app.get(
   "/knowledgeBases/:id/resources",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const id = params.id;
-    const items = await listKnowledgeResources(authCtx.teamId, id);
+    const items = await listKnowledgeResources(authCtx.organizationId, id);
     if (!items) {
       return error(404, { error: { type: "NOT_FOUND", message: "知识库不存在" } });
     }
@@ -199,11 +199,11 @@ app.get(
 app.delete(
   "/knowledgeBases/:id/resources/:resourceId",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const id = params.id;
     const resourceId = params.resourceId;
     try {
-      const result = await deleteKnowledgeResource(authCtx.teamId, id, resourceId);
+      const result = await deleteKnowledgeResource(authCtx.organizationId, id, resourceId);
       if (!result.success) {
         return error(404, { error: { type: result.error.code, message: result.error.message } });
       }

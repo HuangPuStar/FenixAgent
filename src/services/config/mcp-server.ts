@@ -10,21 +10,21 @@ import { parseJsonb } from "./jsonb";
 // ────────────────────────────────────────────
 
 export async function listMcpServers(ctx: AuthContext) {
-  return db.select().from(mcpServer).where(eq(mcpServer.teamId, ctx.teamId));
+  return db.select().from(mcpServer).where(eq(mcpServer.organizationId, ctx.organizationId));
 }
 
 export async function getMcpServer(ctx: AuthContext, name: string) {
   const rows = await db
     .select()
     .from(mcpServer)
-    .where(and(eq(mcpServer.teamId, ctx.teamId), eq(mcpServer.name, name)))
+    .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.name, name)))
     .limit(1);
   return rows[0] ?? null;
 }
 
 export async function createMcpServer(ctx: AuthContext, name: string, type: string, config: Record<string, unknown>) {
   const values = {
-    teamId: ctx.teamId,
+    organizationId: ctx.organizationId,
     userId: ctx.userId,
     name,
     type,
@@ -36,7 +36,7 @@ export async function createMcpServer(ctx: AuthContext, name: string, type: stri
     .insert(mcpServer)
     .values(values)
     .onConflictDoUpdate({
-      target: [mcpServer.teamId, mcpServer.name],
+      target: [mcpServer.organizationId, mcpServer.name],
       set: {
         type,
         config,
@@ -57,7 +57,7 @@ export async function updateMcpServer(
   const result = await db
     .update(mcpServer)
     .set(updates)
-    .where(and(eq(mcpServer.teamId, ctx.teamId), eq(mcpServer.name, name)))
+    .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.name, name)))
     .returning({ id: mcpServer.id });
   return result.length > 0;
 }
@@ -65,7 +65,7 @@ export async function updateMcpServer(
 export async function deleteMcpServer(ctx: AuthContext, name: string): Promise<boolean> {
   const result = await db
     .delete(mcpServer)
-    .where(and(eq(mcpServer.teamId, ctx.teamId), eq(mcpServer.name, name)))
+    .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.name, name)))
     .returning({ id: mcpServer.id });
   return result.length > 0;
 }
@@ -74,7 +74,7 @@ export async function setMcpServerEnabled(ctx: AuthContext, name: string, enable
   const result = await db
     .update(mcpServer)
     .set({ enabled, updatedAt: new Date() })
-    .where(and(eq(mcpServer.teamId, ctx.teamId), eq(mcpServer.name, name)))
+    .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.name, name)))
     .returning({ id: mcpServer.id });
   return result.length > 0;
 }

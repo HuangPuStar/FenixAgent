@@ -21,7 +21,7 @@ import { db } from "../../db";
 import { workflowEvent, workflowNodeOutput, workflowSnapshot } from "../../db/schema";
 
 /** 创建 PostgreSQL 存储适配器，所有查询限定在指定 team 内 */
-export function createPgStorageAdapter(teamId: string): StorageAdapter {
+export function createPgStorageAdapter(organizationId: string): StorageAdapter {
   return {
     // ---------- 事件 ----------
 
@@ -36,7 +36,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
         type: event.type,
         nodeType: event.node_type,
         metadata: event.metadata ?? null,
-        teamId,
+        organizationId,
       });
     },
 
@@ -45,7 +45,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
       runId: string,
       opts?: { afterEventId?: string; nodeId?: string; types?: EventType[] },
     ): Promise<DAGEvent[]> {
-      const conditions = [eq(workflowEvent.runId, runId), eq(workflowEvent.teamId, teamId)];
+      const conditions = [eq(workflowEvent.runId, runId), eq(workflowEvent.organizationId, organizationId)];
 
       // afterEventId：找到该事件的 createdAt，然后取之后的事件
       if (opts?.afterEventId) {
@@ -56,7 +56,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
             and(
               eq(workflowEvent.runId, runId),
               eq(workflowEvent.eventId, opts.afterEventId),
-              eq(workflowEvent.teamId, teamId),
+              eq(workflowEvent.organizationId, organizationId),
             ),
           )
           .limit(1);
@@ -93,7 +93,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
       const [row] = await db
         .select()
         .from(workflowSnapshot)
-        .where(and(eq(workflowSnapshot.runId, runId), eq(workflowSnapshot.teamId, teamId)))
+        .where(and(eq(workflowSnapshot.runId, runId), eq(workflowSnapshot.organizationId, organizationId)))
         .orderBy(desc(workflowSnapshot.createdAt))
         .limit(1);
 
@@ -109,7 +109,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
         timestamp: new Date(snapshot.timestamp),
         nodeStates: snapshot.node_states,
         dagStatus: snapshot.dag_status,
-        teamId,
+        organizationId,
       });
     },
 
@@ -124,7 +124,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
           and(
             eq(workflowNodeOutput.runId, runId),
             eq(workflowNodeOutput.nodeId, nodeId),
-            eq(workflowNodeOutput.teamId, teamId),
+            eq(workflowNodeOutput.organizationId, organizationId),
           ),
         )
         .limit(1);
@@ -152,7 +152,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
           exitCode: output.exit_code,
           size: output.size ?? null,
           ref: output.ref ?? null,
-          teamId,
+          organizationId,
         })
         .onConflictDoUpdate({
           target: [workflowNodeOutput.runId, workflowNodeOutput.nodeId],
@@ -174,7 +174,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
       const latestSnapshots = db
         .selectDistinctOn([workflowSnapshot.runId])
         .from(workflowSnapshot)
-        .where(eq(workflowSnapshot.teamId, teamId))
+        .where(eq(workflowSnapshot.organizationId, organizationId))
         .orderBy(workflowSnapshot.runId, desc(workflowSnapshot.createdAt))
         .as("latest");
 
@@ -185,7 +185,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
         const projectRunIds = db
           .selectDistinct({ runId: workflowEvent.runId })
           .from(workflowEvent)
-          .where(and(eq(workflowEvent.teamId, teamId), eq(workflowEvent.projectId, projectId)));
+          .where(and(eq(workflowEvent.organizationId, organizationId), eq(workflowEvent.projectId, projectId)));
 
         rows = await db
           .select()
@@ -224,7 +224,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
             exitCode: opts.output.exit_code,
             size: opts.output.size ?? null,
             ref: opts.output.ref ?? null,
-            teamId,
+            organizationId,
           })
           .onConflictDoUpdate({
             target: [workflowNodeOutput.runId, workflowNodeOutput.nodeId],
@@ -245,7 +245,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
           timestamp: new Date(opts.snapshot.timestamp),
           nodeStates: opts.snapshot.node_states,
           dagStatus: opts.snapshot.dag_status,
-          teamId,
+          organizationId,
         });
 
         // 写入事件
@@ -258,7 +258,7 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
           type: opts.event.type,
           nodeType: opts.event.node_type,
           metadata: opts.event.metadata ?? null,
-          teamId,
+          organizationId,
         });
       });
     },
@@ -268,13 +268,13 @@ export function createPgStorageAdapter(teamId: string): StorageAdapter {
     /** 删除指定运行的所有关联数据（事件、快照、节点输出），在事务中执行 */
     async deleteRun(runId: string): Promise<void> {
       await db.transaction(async (tx) => {
-        await tx.delete(workflowEvent).where(and(eq(workflowEvent.runId, runId), eq(workflowEvent.teamId, teamId)));
+        await tx.delete(workflowEvent).where(and(eq(workflowEvent.runId, runId), eq(workflowEvent.organizationId, organizationId)));
         await tx
           .delete(workflowSnapshot)
-          .where(and(eq(workflowSnapshot.runId, runId), eq(workflowSnapshot.teamId, teamId)));
+          .where(and(eq(workflowSnapshot.runId, runId), eq(workflowSnapshot.organizationId, organizationId)));
         await tx
           .delete(workflowNodeOutput)
-          .where(and(eq(workflowNodeOutput.runId, runId), eq(workflowNodeOutput.teamId, teamId)));
+          .where(and(eq(workflowNodeOutput.runId, runId), eq(workflowNodeOutput.organizationId, organizationId)));
       });
     },
   };

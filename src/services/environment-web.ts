@@ -18,7 +18,7 @@ export type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams };
 
 /** 创建 Web 控制面板 Environment — 包含完整的参数校验、Agent 配置解析、目录初始化 */
 export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
-  const { name, description, autoStart, userId, teamId } = params;
+  const { name, description, autoStart, userId, organizationId } = params;
   let { workspacePath } = params;
 
   // 名称校验
@@ -32,7 +32,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
 
   // Agent 配置校验：可选，提供时需验证存在性
   if (params.agentConfigId) {
-    const agent = await configPg.getAgentConfigById(params.agentConfigId, teamId);
+    const agent = await configPg.getAgentConfigById(params.agentConfigId, organizationId);
     if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
   }
 
@@ -60,7 +60,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
       status: "idle",
       secret,
       userId,
-      teamId: teamId ?? userId,
+      organizationId: organizationId ?? userId,
       autoStart: autoStart === true,
       agentConfigId: params.agentConfigId ?? null,
     });
@@ -78,8 +78,8 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
 }
 
 /** 更新 Web 控制面板 Environment — 包含参数校验、Agent 配置解析 */
-export async function updateWebEnvironment(envId: string, teamId: string, params: UpdateWebEnvironmentParams) {
-  await getOwnedEnvironment(envId, teamId);
+export async function updateWebEnvironment(envId: string, organizationId: string, params: UpdateWebEnvironmentParams) {
+  await getOwnedEnvironment(envId, organizationId);
   const patch: EnvironmentUpdateParams = {};
 
   if (params.name !== undefined) {
@@ -99,7 +99,7 @@ export async function updateWebEnvironment(envId: string, teamId: string, params
   }
   if (params.agentConfigId !== undefined) {
     if (params.agentConfigId) {
-      const agent = await configPg.getAgentConfigById(params.agentConfigId, teamId);
+      const agent = await configPg.getAgentConfigById(params.agentConfigId, organizationId);
       if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
       patch.agentConfigId = params.agentConfigId;
     } else {
@@ -120,8 +120,8 @@ export async function updateWebEnvironment(envId: string, teamId: string, params
 }
 
 /** 获取团队所有环境并组装实例信息（web/environments 路由用） */
-export async function listEnvironmentsWithInstances(teamId: string) {
-  const allEnvs = await environmentRepo.listByTeamId(teamId);
+export async function listEnvironmentsWithInstances(organizationId: string) {
+  const allEnvs = await environmentRepo.listByOrganizationId(organizationId);
   // 单次遍历按 environmentId 分组实例，避免 N 次 listInstances 调用
   const instanceMap = groupActiveInstancesByEnvironment();
   const results = [];

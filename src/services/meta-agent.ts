@@ -30,7 +30,7 @@ export interface EnsureMetaResult {
 
 /** 从环境列表中查找名为 meta-agent 的环境 */
 export async function findMetaEnvironment(ctx: AuthContext): Promise<{ id: string; name: string } | null> {
-  const envs = await listEnvironmentsWithInstances(ctx.teamId);
+  const envs = await listEnvironmentsWithInstances(ctx.organizationId);
   const meta = envs.find((e: any) => e.name === META_ENVIRONMENT_NAME);
   return meta ? { id: meta.id, name: meta.name } : null;
 }
@@ -62,7 +62,7 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
 /** 为 meta agent 创建 API key（1 小时过期） */
 async function createMetaApiKey(ctx: AuthContext): Promise<string> {
   const expiresAt = new Date(Date.now() + META_KEY_EXPIRY_MS);
-  const { fullKey } = await createApiKey(ctx.userId, META_KEY_LABEL, ctx.teamId, { expiresAt });
+  const { fullKey } = await createApiKey(ctx.userId, META_KEY_LABEL, ctx.organizationId, { expiresAt });
   return fullKey;
 }
 
@@ -96,7 +96,7 @@ export async function ensureMetaEnvironment(ctx: AuthContext): Promise<EnsureMet
     agentConfigId,
     workspacePath: process.cwd(),
     userId: ctx.userId,
-    teamId: ctx.teamId,
+    organizationId: ctx.organizationId,
   });
 
   try {

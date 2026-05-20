@@ -6,7 +6,7 @@
 
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 import {
   createWorkflowDef,
   deleteWorkflowDef,
@@ -29,7 +29,7 @@ app.post(
   "/workflow-defs",
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async ({ store, body, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     if (!authCtx) return error(401, { error: { type: "UNAUTHORIZED", message: "No team context" } });
 
     const payload = body as Record<string, unknown>;
@@ -67,7 +67,7 @@ app.post(
         }
 
         case "list": {
-          const list = await listWorkflowDefs(authCtx.teamId);
+          const list = await listWorkflowDefs(authCtx.organizationId);
           return { success: true, data: list };
         }
 
@@ -75,7 +75,7 @@ app.post(
           const workflowId = payload.workflowId as string;
           if (!workflowId)
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
-          const wf = await getWorkflowDef(workflowId, authCtx.teamId);
+          const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
           if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
           const draftYaml = await getVersionYaml(workflowId, 0);
           return { success: true, data: { ...wf, draftYaml } };
@@ -85,7 +85,7 @@ app.post(
           const workflowId = payload.workflowId as string;
           if (!workflowId)
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
-          const versions = await getVersions(workflowId, authCtx.teamId);
+          const versions = await getVersions(workflowId, authCtx.organizationId);
           return { success: true, data: versions };
         }
 
@@ -106,7 +106,7 @@ app.post(
           if (!workflowId || version === undefined) {
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and version are required" } });
           }
-          await setLatestVersion(workflowId, authCtx.teamId, version);
+          await setLatestVersion(workflowId, authCtx.organizationId, version);
           return { success: true };
         }
 
@@ -114,7 +114,7 @@ app.post(
           const workflowId = payload.workflowId as string;
           if (!workflowId)
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
-          const deleted = await deleteWorkflowDef(workflowId, authCtx.teamId);
+          const deleted = await deleteWorkflowDef(workflowId, authCtx.organizationId);
           if (!deleted) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
           return { success: true };
         }
@@ -125,13 +125,13 @@ app.post(
           const description = payload.description as string | undefined;
           if (!workflowId)
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
-          const updated = await updateWorkflowMeta(workflowId, authCtx.teamId, { name, description });
+          const updated = await updateWorkflowMeta(workflowId, authCtx.organizationId, { name, description });
           if (!updated) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
           return { success: true, data: updated };
         }
 
         case "recover": {
-          const ids = await listRecoverableWorkflows(authCtx.teamId);
+          const ids = await listRecoverableWorkflows(authCtx.organizationId);
           return { success: true, data: ids };
         }
 

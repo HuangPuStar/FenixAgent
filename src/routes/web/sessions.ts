@@ -4,7 +4,7 @@ import { environmentRepo } from "../../repositories";
 import { sessionRepo } from "../../repositories/session";
 import { SessionHistorySchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 
 const app = new Elysia({ name: "web-sessions", prefix: "/web" }).use(authGuardPlugin).model({
   "session-history": SessionHistorySchema,
@@ -14,9 +14,9 @@ const app = new Elysia({ name: "web-sessions", prefix: "/web" }).use(authGuardPl
 app.get(
   "/sessions",
   async ({ store, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     // 获取团队所有 environmentId，再过滤 session
-    const teamEnvs = await environmentRepo.listByTeamId(authCtx.teamId);
+    const teamEnvs = await environmentRepo.listByOrganizationId(authCtx.organizationId);
     const teamEnvIds = new Set(teamEnvs.map((e) => e.id));
     const allSessions = await sessionRepo.listAll();
     const rows = allSessions.filter((s) => s.environmentId && teamEnvIds.has(s.environmentId));
@@ -38,7 +38,7 @@ app.get(
 app.get(
   "/sessions/:id",
   async ({ store, params, error, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const row = await sessionRepo.getById(params.id);
     if (!row) {
       return error(404, { error: { type: "not_found", message: `Session '${params.id}' not found` } });
@@ -46,7 +46,7 @@ app.get(
     // 验证 session 的 environment 属于当前团队
     if (row.environmentId) {
       const env = await environmentRepo.getById(row.environmentId);
-      if (!env || env.teamId !== authCtx.teamId) {
+      if (!env || env.organizationId !== authCtx.organizationId) {
         return error(404, { error: { type: "not_found", message: `Session '${params.id}' not found` } });
       }
     }
@@ -69,7 +69,7 @@ app.get(
 app.get(
   "/sessions/:id/history",
   async ({ store, params, error, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const sessionId = params.id;
     // 验证 session 属于当前团队
     const row = await sessionRepo.getById(sessionId);
@@ -78,7 +78,7 @@ app.get(
     }
     if (row.environmentId) {
       const env = await environmentRepo.getById(row.environmentId);
-      if (!env || env.teamId !== authCtx.teamId) {
+      if (!env || env.organizationId !== authCtx.organizationId) {
         return error(404, { error: { type: "not_found", message: "Session not found" } });
       }
     }

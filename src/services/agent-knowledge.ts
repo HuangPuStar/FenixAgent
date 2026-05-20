@@ -101,7 +101,7 @@ export async function listAgentKnowledgeBindingsById(agentConfigId: string): Pro
  * Replaces all agent knowledge bindings for an agent config with the provided ordered knowledge base ids.
  */
 export async function syncAgentKnowledgeBindingsById(
-  teamId: string,
+  organizationId: string,
   agentConfigId: string,
   knowledge: AgentKnowledgeConfig | null | undefined,
 ): Promise<void> {
@@ -114,7 +114,7 @@ export async function syncAgentKnowledgeBindingsById(
 
   const existingIds = new Set<string>();
   for (const kbId of knowledgeBaseIds) {
-    const kb = await knowledgeBaseRepo.getByTeamAndId(teamId, kbId);
+    const kb = await knowledgeBaseRepo.getByOrgAndId(organizationId, kbId);
     if (kb) {
       existingIds.add(kb.id);
     }

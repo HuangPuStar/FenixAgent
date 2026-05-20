@@ -11,10 +11,10 @@ const app = new Elysia({ name: "web-s3-files", prefix: "/web/s3" }).use(authGuar
   }
 });
 
-/** 验证 sessionId 所属环境属于指定 teamId */
-async function requireSessionInTeam(
+/** 验证 sessionId 所属环境属于指定组织 */
+async function requireSessionInOrg(
   sessionId: string,
-  teamId: string,
+  orgId: string,
   error: (code: number, body: unknown) => Response,
 ): Promise<Response | null> {
   const session = await sessionRepo.getById(sessionId);
@@ -23,8 +23,8 @@ async function requireSessionInTeam(
     return error(400, { error: { type: "validation_error", message: "Session has no environment" } });
   const env = await environmentRepo.getById(session.environmentId);
   if (!env) return error(404, { error: { type: "not_found", message: "Environment not found" } });
-  if (env.teamId !== teamId)
-    return error(403, { error: { type: "forbidden", message: "Session does not belong to your team" } });
+  if (env.organizationId !== orgId)
+    return error(403, { error: { type: "forbidden", message: "Session does not belong to your organization" } });
   return null;
 }
 
@@ -32,15 +32,15 @@ async function requireSessionInTeam(
 app.get(
   "/files",
   async ({ query, error, store }) => {
-    const teamId = store.authContext?.teamId;
-    if (!teamId) return error(403, { error: { type: "forbidden", message: "No team context" } });
+    const orgId = store.authContext?.organizationId;
+    if (!orgId) return error(403, { error: { type: "forbidden", message: "No team context" } });
 
     const q = query as Record<string, string | undefined>;
     const sessionId = q.sessionId;
     const prefix = q.prefix || "";
     if (!sessionId) return error(400, { error: { type: "validation_error", message: "sessionId is required" } });
 
-    const denied = await requireSessionInTeam(sessionId, teamId, error);
+    const denied = await requireSessionInOrg(sessionId, orgId, error);
     if (denied) return denied;
 
     const objects = await s3.listSessionFiles(sessionId, prefix);
@@ -62,8 +62,8 @@ app.get(
 app.get(
   "/files/presign",
   async ({ query, error, store }) => {
-    const teamId = store.authContext?.teamId;
-    if (!teamId) return error(403, { error: { type: "forbidden", message: "No team context" } });
+    const orgId = store.authContext?.organizationId;
+    if (!orgId) return error(403, { error: { type: "forbidden", message: "No team context" } });
 
     const q = query as Record<string, string | undefined>;
     const sessionId = q.sessionId;
@@ -71,7 +71,7 @@ app.get(
     if (!sessionId || !key)
       return error(400, { error: { type: "validation_error", message: "sessionId and key are required" } });
 
-    const denied = await requireSessionInTeam(sessionId, teamId, error);
+    const denied = await requireSessionInOrg(sessionId, orgId, error);
     if (denied) return denied;
 
     const url = await s3.getSessionFileUrl(sessionId, key);
@@ -85,8 +85,8 @@ app.get(
 app.post(
   "/files/presign",
   async ({ body, error, store }) => {
-    const teamId = store.authContext?.teamId;
-    if (!teamId) return error(403, { error: { type: "forbidden", message: "No team context" } });
+    const orgId = store.authContext?.organizationId;
+    if (!orgId) return error(403, { error: { type: "forbidden", message: "No team context" } });
 
     const b = body as S3PresignPutBody;
     if (!b.sessionId || !b.key || !b.contentType) {
@@ -95,7 +95,7 @@ app.post(
       });
     }
 
-    const denied = await requireSessionInTeam(b.sessionId, teamId, error);
+    const denied = await requireSessionInOrg(b.sessionId, orgId, error);
     if (denied) return denied;
 
     const url = await s3.getSessionUploadUrl(b.sessionId, b.key, b.contentType);
@@ -109,15 +109,15 @@ app.post(
 app.post(
   "/files/upload",
   async ({ query, request, error, store }) => {
-    const teamId = store.authContext?.teamId;
-    if (!teamId) return error(403, { error: { type: "forbidden", message: "No team context" } });
+    const orgId = store.authContext?.organizationId;
+    if (!orgId) return error(403, { error: { type: "forbidden", message: "No team context" } });
 
     const q = query as Record<string, string | undefined>;
     const sessionId = q.sessionId;
     if (!sessionId)
       return error(400, { error: { type: "validation_error", message: "sessionId query param is required" } });
 
-    const denied = await requireSessionInTeam(sessionId, teamId, error);
+    const denied = await requireSessionInOrg(sessionId, orgId, error);
     if (denied) return denied;
 
     const formData = await request.formData();
@@ -145,15 +145,15 @@ app.post(
 app.delete(
   "/files",
   async ({ body, error, store }) => {
-    const teamId = store.authContext?.teamId;
-    if (!teamId) return error(403, { error: { type: "forbidden", message: "No team context" } });
+    const orgId = store.authContext?.organizationId;
+    if (!orgId) return error(403, { error: { type: "forbidden", message: "No team context" } });
 
     const b = body as S3DeleteBody;
     if (!b.sessionId || !b.key) {
       return error(400, { error: { type: "validation_error", message: "sessionId and key are required" } });
     }
 
-    const denied = await requireSessionInTeam(b.sessionId, teamId, error);
+    const denied = await requireSessionInOrg(b.sessionId, orgId, error);
     if (denied) return denied;
 
     await s3.deleteSessionFile(b.sessionId, b.key);

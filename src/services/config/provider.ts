@@ -22,7 +22,7 @@ export async function listProviders(ctx: AuthContext) {
       modelCount: sql<number>`(SELECT COUNT(*) FROM ${model} WHERE ${model.providerId} = ${provider.id})`,
     })
     .from(provider)
-    .where(eq(provider.teamId, ctx.teamId));
+    .where(eq(provider.organizationId, ctx.organizationId));
 
   return rows.map((r) => ({
     id: r.id,
@@ -42,7 +42,7 @@ export async function getProvider(ctx: AuthContext, name: string) {
   const rows = await db
     .select()
     .from(provider)
-    .where(and(eq(provider.teamId, ctx.teamId), eq(provider.name, name)))
+    .where(and(eq(provider.organizationId, ctx.organizationId), eq(provider.name, name)))
     .limit(1);
   if (rows.length === 0) return null;
   const p = rows[0];
@@ -75,13 +75,13 @@ export async function upsertProvider(
   const [row] = await db
     .insert(provider)
     .values({
-      teamId: ctx.teamId,
+      organizationId: ctx.organizationId,
       userId: ctx.userId,
       name,
       ...set,
     })
     .onConflictDoUpdate({
-      target: [provider.teamId, provider.name],
+      target: [provider.organizationId, provider.name],
       set,
     })
     .returning({ id: provider.id });
@@ -92,7 +92,7 @@ export async function upsertProvider(
 export async function deleteProvider(ctx: AuthContext, name: string): Promise<boolean> {
   const result = await db
     .delete(provider)
-    .where(and(eq(provider.teamId, ctx.teamId), eq(provider.name, name)))
+    .where(and(eq(provider.organizationId, ctx.organizationId), eq(provider.name, name)))
     .returning({ id: provider.id });
   return result.length > 0;
 }

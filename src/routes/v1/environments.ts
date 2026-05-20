@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import { NotFoundError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
-import { requireTeamScope } from "../../plugins/require-team-scope";
+import { requireOrgScope } from "../../plugins/require-team-scope";
 import { environmentRepo } from "../../repositories";
 import { type BridgeRegistrationRequest, BridgeRegistrationRequestSchema } from "../../schemas/v1-environment.schema";
 import { deregisterBridge, reconnectBridge, registerBridge } from "../../services/environment";
@@ -22,7 +22,7 @@ app.post(
     return registerBridge({
       authEnvironmentId: authEnvId,
       userId: user.id,
-      teamId: authContext?.teamId,
+      organizationId: authContext?.organizationId,
       machine_name: b.machine_name,
       directory: b.directory,
       branch: b.branch,
@@ -47,7 +47,7 @@ app.delete(
     if (!env) {
       return error(404, { error: { type: "not_found", message: "Environment not found" } });
     }
-    const denied = requireTeamScope(authContext, env.teamId);
+    const denied = requireOrgScope(authContext, env.organizationId);
     if (denied) return denied;
 
     try {
@@ -74,7 +74,7 @@ app.post(
     if (!env) {
       return error(404, { error: { type: "not_found", message: "Environment not found" } });
     }
-    const denied = requireTeamScope(authContext, env.teamId);
+    const denied = requireOrgScope(authContext, env.organizationId);
     if (denied) return denied;
 
     try {

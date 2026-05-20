@@ -8,7 +8,7 @@
 import Elysia from "elysia";
 import { WorkflowError } from "@mothership/workflow-engine";
 import { authGuardPlugin } from "../../plugins/auth";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 import { getTeamEngine } from "../../services/workflow";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { db } from "../../db";
@@ -21,10 +21,10 @@ const app = new Elysia({ name: "web-workflow-engine", prefix: "/web" }).use(auth
 app.post(
   "/workflow-engine",
   async ({ store, body, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const payload = body as Record<string, unknown>;
     const action = payload.action as string;
-    const engine = getTeamEngine(authCtx.teamId);
+    const engine = getTeamEngine(authCtx.organizationId);
 
     try {
       switch (action) {
@@ -39,7 +39,7 @@ app.post(
             await db
               .update(workflowSnapshot)
               .set({ workflowId })
-              .where(and(eq(workflowSnapshot.runId, result.runId), eq(workflowSnapshot.teamId, authCtx.teamId)));
+              .where(and(eq(workflowSnapshot.runId, result.runId), eq(workflowSnapshot.organizationId, authCtx.organizationId)));
           }
           return { success: true, data: result };
         }
@@ -100,7 +100,7 @@ app.post(
 
         // 列出运行记录（直接调用 StorageAdapter）
         case "listRuns": {
-          const storage = createPgStorageAdapter(authCtx.teamId);
+          const storage = createPgStorageAdapter(authCtx.organizationId);
           const runs = await storage.listRuns();
           return { success: true, data: runs };
         }
@@ -125,7 +125,7 @@ app.post(
             await db
               .update(workflowSnapshot)
               .set({ workflowId })
-              .where(and(eq(workflowSnapshot.runId, result.runId), eq(workflowSnapshot.teamId, authCtx.teamId)));
+              .where(and(eq(workflowSnapshot.runId, result.runId), eq(workflowSnapshot.organizationId, authCtx.organizationId)));
           }
           return { success: true, data: result };
         }

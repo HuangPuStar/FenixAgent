@@ -41,7 +41,7 @@ interface AuthSessionInfo {
 
 /** 统一认证上下文：替代散参数 userId */
 export interface AuthContext {
-  teamId: string;
+  organizationId: string;
   userId: string;
   role: "owner" | "admin" | "member";
 }
@@ -143,9 +143,9 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
             userId: session.session.userId,
             token: session.session.token,
           };
-          // 加载团队上下文
-          const { loadTeamContext } = await import("../services/team-context");
-          const ctx = await loadTeamContext(store.user, request);
+          // 加载组织上下文
+          const { loadOrgContext } = await import("../services/org-context");
+          const ctx = await loadOrgContext(store.user, request);
           if (ctx) {
             store.authContext = ctx;
           }
@@ -169,32 +169,31 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
             if (user) {
               store.user = user;
               store.authEnvironmentId = envRecord.id;
-              // 加载团队上下文（environment 有关联 teamId）
-              const teamId = envRecord.teamId ?? envRecord.userId;
-              const role = envRecord.teamId && envRecord.teamId !== envRecord.userId ? "member" : "owner";
-              store.authContext = { teamId, userId: user.id, role: role as "owner" | "admin" | "member" };
+              const organizationId = envRecord.organizationId ?? envRecord.userId;
+              const role = envRecord.organizationId && envRecord.organizationId !== envRecord.userId ? "member" : "owner";
+              store.authContext = { organizationId, userId: user.id, role: role as "owner" | "admin" | "member" };
               return;
             }
           }
 
-          // 1. Per-user API Key
-          const { validateApiKeyAndGetUser } = await import("../auth/api-key-service");
-          const result = await validateApiKeyAndGetUser(token);
-          if (result) {
-            const user = await lookupUserById(result.userId);
+          // 1. better-auth API Key 验证
+          const result = await auth.api.verifyApiKey({ key: token });
+          if (result.valid && result.key) {
+            const apiKeyMeta = result.key as any;
+            const userId = apiKeyMeta.userId;
+            const user = await lookupUserById(userId);
             if (user) {
               store.user = user;
-              // 加载团队上下文（API Key 关联 teamId）
-              if (result.teamId) {
-                const { getAuthContextByTeamId } = await import("../services/team");
-                const ctx = await getAuthContextByTeamId(user.id, result.teamId);
-                if (ctx) {
-                  store.authContext = ctx;
-                  return;
-                }
+              const orgId = apiKeyMeta.organizationId || apiKeyMeta.metadata?.organizationId;
+              if (orgId) {
+                store.authContext = {
+                  organizationId: orgId,
+                  userId: user.id,
+                  role: (apiKeyMeta.metadata?.role as "owner" | "admin" | "member") || "owner",
+                };
+                return;
               }
-              // API Key 无有效团队上下文 → 拒绝
-              return error(403, { error: { type: "forbidden", message: "API key has no valid team context" } });
+              return error(403, { error: { type: "forbidden", message: "API key has no valid organization context" } });
             }
           }
 

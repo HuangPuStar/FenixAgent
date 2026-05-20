@@ -4,7 +4,7 @@ import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schem
 import { buildModelData } from "../../../services/config/provider";
 import * as configPg from "../../../services/config-pg";
 import { configError, configSuccess, resolveApiKey, toKeyHint } from "../../../services/config-utils";
-import { loadTeamContext } from "../../../services/team-context";
+import { loadOrgContext } from "../../../services/org-context";
 import { invalidateAvailableCache } from "./models";
 
 type ProviderBody = { action: string; name?: string; modelId?: string; data?: Record<string, unknown> };
@@ -208,7 +208,7 @@ app.post(
   async ({ store, body, error, request }: any) => {
     const user = store.user;
     if (!user) return error(401, { success: false, error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    const authCtx = await loadTeamContext(user, request);
+    const authCtx = await loadOrgContext(user, request);
     if (!authCtx)
       return error(500, { success: false, error: { code: "NO_TEAM_CONTEXT", message: "Failed to load team context" } });
     const b = body as ConfigBody;

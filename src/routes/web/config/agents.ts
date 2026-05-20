@@ -21,7 +21,7 @@ import {
   configValidationError,
   isValidResourceName,
 } from "../../../services/config-utils";
-import { loadTeamContext } from "../../../services/team-context";
+import { loadOrgContext } from "../../../services/org-context";
 
 /** 将 PG 行数据映射为前端兼容的 agent 字段 */
 function pgRowToAgentFields(
@@ -130,7 +130,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   const updatedAgent = await configPg.getAgentConfig(ctx, name);
   if (updatedAgent) {
     await syncAgentKnowledgeBindingsById(
-      ctx.teamId,
+      ctx.organizationId,
       updatedAgent.id,
       filtered.knowledge as AgentKnowledgeConfig | null | undefined,
     );
@@ -172,7 +172,7 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   const createdAgent = await configPg.getAgentConfig(ctx, name);
   if (createdAgent) {
     await syncAgentKnowledgeBindingsById(
-      ctx.teamId,
+      ctx.organizationId,
       createdAgent.id,
       filtered.knowledge as AgentKnowledgeConfig | null | undefined,
     );
@@ -205,7 +205,7 @@ const app = new Elysia({ name: "web-config-agents", prefix: "/web" }).use(authGu
 app.post(
   "/config/agents",
   async ({ store, body, error, request }: any) => {
-    const authContext = await loadTeamContext(store.user!, request);
+    const authContext = await loadOrgContext(store.user!, request);
     if (!authContext)
       return error(500, { success: false, error: { code: "NO_TEAM_CONTEXT", message: "Failed to load team context" } });
     const authCtx = authContext;

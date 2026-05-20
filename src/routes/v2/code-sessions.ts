@@ -2,7 +2,7 @@ import Elysia from "elysia";
 import { generateWorkerJwt } from "../../auth/jwt";
 import { config, getBaseUrl } from "../../config";
 import { authGuardPlugin } from "../../plugins/auth";
-import { requireTeamScope } from "../../plugins/require-team-scope";
+import { requireOrgScope } from "../../plugins/require-team-scope";
 import { environmentRepo, sessionRepo } from "../../repositories";
 import { type CreateCodeSessionRequest, CreateCodeSessionRequestSchema } from "../../schemas/v2-code-session.schema";
 import { createSession, getSession } from "../../services/session";
@@ -45,7 +45,7 @@ app.post(
     if (sessionRecord?.environmentId) {
       const env = await environmentRepo.getById(sessionRecord.environmentId);
       if (env) {
-        const denied = requireTeamScope(authContext, env.teamId);
+        const denied = requireOrgScope(authContext, env.organizationId);
         if (denied) return denied;
       }
     }

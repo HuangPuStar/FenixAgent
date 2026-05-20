@@ -19,7 +19,7 @@ import {
   isValidResourceName,
 } from "../../../services/config-utils";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
-import { loadTeamContext } from "../../../services/team-context";
+import { loadOrgContext } from "../../../services/org-context";
 
 // 内部类型定义（与前端 web/src/types/config.ts 对齐）
 type McpLocalConfig = {
@@ -285,7 +285,7 @@ const app = new Elysia({ name: "web-config-mcp", prefix: "/web" }).use(authGuard
 app.post(
   "/config/mcp",
   async ({ store, body, error, request }: any) => {
-    const authContext = await loadTeamContext(store.user!, request);
+    const authContext = await loadOrgContext(store.user!, request);
     if (!authContext)
       return error(500, { success: false, error: { code: "NO_TEAM_CONTEXT", message: "Failed to load team context" } });
     const authCtx = authContext;

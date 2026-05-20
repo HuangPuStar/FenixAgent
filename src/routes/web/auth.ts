@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import { authGuardPlugin, errorResponse } from "../../plugins/auth";
 import { bindSessionOwner, resolveExistingSessionId } from "../../services/session";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 
 const app = new Elysia({ name: "web-auth", prefix: "/web" }).use(authGuardPlugin).decorate({ error: errorResponse });
 
@@ -22,7 +22,7 @@ app.post(
       return error(400, { error: "sessionId and uuid are required" });
     }
 
-    const authCtx = await loadTeamContext(user, request);
+    const authCtx = await loadOrgContext(user, request);
     if (!authCtx) {
       return error(403, { error: "No team context" });
     }

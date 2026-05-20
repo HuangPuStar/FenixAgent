@@ -18,10 +18,10 @@ import {
   updateWebEnvironment,
 } from "../../services/environment";
 import { enterEnvironment, listInstancesResponse, spawnInstanceFromEnvironment } from "../../services/instance";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 
 async function requireAuthContext(store: any, request: Request, error: any): Promise<AuthContext | Response> {
-  const ctx = await loadTeamContext(store.user!, request);
+  const ctx = await loadOrgContext(store.user!, request);
   if (!ctx)
     return error(500, { success: false, error: { code: "NO_TEAM_CONTEXT", message: "Failed to load team context" } });
   return ctx;
@@ -39,8 +39,8 @@ const app = new Elysia({ name: "web-environments", prefix: "/web" }).use(authGua
 app.get(
   "/environments",
   async ({ store, request }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
-    return listEnvironmentsWithInstances(authCtx.teamId);
+    const authCtx = (await loadOrgContext(store.user!, request))!;
+    return listEnvironmentsWithInstances(authCtx.organizationId);
   },
   { sessionAuth: true },
 );
@@ -50,7 +50,7 @@ app.post(
   "/environments",
   async ({ store, body, request, error }) => {
     const user = store.user!;
-    const authCtx = (await loadTeamContext(user, request))!;
+    const authCtx = (await loadOrgContext(user, request))!;
     const b = body as {
       name: string;
       description?: string;
@@ -68,7 +68,7 @@ app.post(
         workspacePath: b.workspacePath,
         autoStart: b.autoStart,
         userId: user.id,
-        teamId: authCtx.teamId,
+        organizationId: authCtx.organizationId,
       });
     } catch (err: any) {
       if (err instanceof AppValidationError || err.code === "VALIDATION_ERROR") {
@@ -92,9 +92,9 @@ app.post(
 app.get(
   "/environments/:id",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     try {
-      const env = await getOwnedEnvironment(params.id, authCtx.teamId);
+      const env = await getOwnedEnvironment(params.id, authCtx.organizationId);
       return { ...sanitizeResponse(env), secret: env.secret };
     } catch (err: any) {
       if (err.code === "NOT_FOUND") return error(404, { error: { type: "NOT_FOUND", message: err.message } });
@@ -108,7 +108,7 @@ app.get(
 app.put(
   "/environments/:id",
   async ({ store, params, body, request, error }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     const b = body as {
       name?: string;
       description?: string | null;
@@ -119,7 +119,7 @@ app.put(
 
     let updated;
     try {
-      updated = await updateWebEnvironment(params.id, authCtx.teamId, {
+      updated = await updateWebEnvironment(params.id, authCtx.organizationId, {
         name: b.name,
         description: b.description,
         workspacePath: b.workspacePath,
@@ -143,9 +143,9 @@ app.post(
   "/environments/:id/enter",
   async ({ store, params, body, error, request }) => {
     const user = store.user!;
-    const authCtx = (await loadTeamContext(user, request))!;
+    const authCtx = (await loadOrgContext(user, request))!;
     try {
-      await getOwnedEnvironment(params.id, authCtx.teamId);
+      await getOwnedEnvironment(params.id, authCtx.organizationId);
     } catch (err: any) {
       if (err.code === "NOT_FOUND") return error(404, { error: { type: "NOT_FOUND", message: err.message } });
       throw err;
@@ -168,9 +168,9 @@ app.post(
 app.get(
   "/environments/:id/instances",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     try {
-      await getOwnedEnvironment(params.id, authCtx.teamId);
+      await getOwnedEnvironment(params.id, authCtx.organizationId);
     } catch (err: any) {
       if (err.code === "NOT_FOUND") return error(404, { error: { type: "NOT_FOUND", message: err.message } });
       throw err;
@@ -184,9 +184,9 @@ app.get(
 app.delete(
   "/environments/:id",
   async ({ store, params, request, error }) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
+    const authCtx = (await loadOrgContext(store.user!, request))!;
     try {
-      await getOwnedEnvironment(params.id, authCtx.teamId);
+      await getOwnedEnvironment(params.id, authCtx.organizationId);
     } catch (err: any) {
       if (err.code === "NOT_FOUND") return error(404, { error: { type: "NOT_FOUND", message: err.message } });
       throw err;

@@ -22,7 +22,7 @@ import {
 export interface WorkflowDefRow {
   id: string;
   userId: string;
-  teamId: string;
+  organizationId: string;
   name: string;
   description: string | null;
   latestVersion: number | null;
@@ -42,7 +42,7 @@ export interface WorkflowVersionRow {
 }
 
 export interface AuthCtx {
-  teamId: string;
+  organizationId: string;
   userId: string;
 }
 
@@ -58,14 +58,14 @@ export async function createWorkflowDef(
     .insert(workflow)
     .values({
       userId: ctx.userId,
-      teamId: ctx.teamId,
+      organizationId: ctx.organizationId,
       name: data.name,
       description: data.description ?? null,
       storagePath: "",
     })
     .returning();
 
-  const storagePath = buildStoragePath(baseDir, ctx.teamId, row.id);
+  const storagePath = buildStoragePath(baseDir, ctx.organizationId, row.id);
   await db.update(workflow).set({ storagePath }).where(eq(workflow.id, row.id));
 
   await ensureWorkflowDir(storagePath);
@@ -78,7 +78,7 @@ export async function saveDraft(workflowId: string, ctx: AuthCtx, yaml: string):
   const [wf] = await db
     .select()
     .from(workflow)
-    .where(and(eq(workflow.id, workflowId), eq(workflow.teamId, ctx.teamId)))
+    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, ctx.organizationId)))
     .limit(1);
   if (!wf || !wf.storagePath) throw new Error("Workflow not found");
 
@@ -111,7 +111,7 @@ export async function publishVersion(workflowId: string, ctx: AuthCtx): Promise<
   const [wf] = await db
     .select()
     .from(workflow)
-    .where(and(eq(workflow.id, workflowId), eq(workflow.teamId, ctx.teamId)))
+    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, ctx.organizationId)))
     .limit(1);
   if (!wf || !wf.storagePath) throw new Error("Workflow not found");
 
@@ -140,23 +140,23 @@ export async function publishVersion(workflowId: string, ctx: AuthCtx): Promise<
 }
 
 /** 列出工作流（按 updatedAt 降序） */
-export async function listWorkflowDefs(teamId: string): Promise<WorkflowDefRow[]> {
-  return db.select().from(workflow).where(eq(workflow.teamId, teamId)).orderBy(desc(workflow.updatedAt));
+export async function listWorkflowDefs(organizationId: string): Promise<WorkflowDefRow[]> {
+  return db.select().from(workflow).where(eq(workflow.organizationId, organizationId)).orderBy(desc(workflow.updatedAt));
 }
 
 /** 获取单个工作流 */
-export async function getWorkflowDef(workflowId: string, teamId: string): Promise<WorkflowDefRow | null> {
+export async function getWorkflowDef(workflowId: string, organizationId: string): Promise<WorkflowDefRow | null> {
   const [row] = await db
     .select()
     .from(workflow)
-    .where(and(eq(workflow.id, workflowId), eq(workflow.teamId, teamId)))
+    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
     .limit(1);
   return row ?? null;
 }
 
 /** 获取版本历史列表（不含草稿） */
-export async function getVersions(workflowId: string, teamId: string): Promise<WorkflowVersionRow[]> {
-  const wf = await getWorkflowDef(workflowId, teamId);
+export async function getVersions(workflowId: string, organizationId: string): Promise<WorkflowVersionRow[]> {
+  const wf = await getWorkflowDef(workflowId, organizationId);
   if (!wf) return [];
 
   return db
@@ -176,7 +176,7 @@ export async function getVersionYaml(workflowId: string, version: number): Promi
 }
 
 /** 设置 latest 指针到指定版本（回滚） */
-export async function setLatestVersion(workflowId: string, teamId: string, version: number): Promise<void> {
+export async function setLatestVersion(workflowId: string, organizationId: string, version: number): Promise<void> {
   const [vRow] = await db
     .select()
     .from(workflowVersion)
@@ -187,14 +187,14 @@ export async function setLatestVersion(workflowId: string, teamId: string, versi
   await db
     .update(workflow)
     .set({ latestVersion: version })
-    .where(and(eq(workflow.id, workflowId), eq(workflow.teamId, teamId)));
+    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)));
 }
 
 /** 删除工作流（只删数据库，不动文件系统） */
-export async function deleteWorkflowDef(workflowId: string, teamId: string): Promise<boolean> {
+export async function deleteWorkflowDef(workflowId: string, organizationId: string): Promise<boolean> {
   const result = await db
     .delete(workflow)
-    .where(and(eq(workflow.id, workflowId), eq(workflow.teamId, teamId)))
+    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
     .returning();
   return result.length > 0;
 }
@@ -202,7 +202,7 @@ export async function deleteWorkflowDef(workflowId: string, teamId: string): Pro
 /** 更新工作流元数据（name, description） */
 export async function updateWorkflowMeta(
   workflowId: string,
-  teamId: string,
+  organizationId: string,
   data: { name?: string; description?: string },
 ): Promise<WorkflowDefRow | null> {
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -212,24 +212,24 @@ export async function updateWorkflowMeta(
   const [row] = await db
     .update(workflow)
     .set(updates)
-    .where(and(eq(workflow.id, workflowId), eq(workflow.teamId, teamId)))
+    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
     .returning();
   return row ?? null;
 }
 
 /** 扫描文件系统中可恢复的孤立工作流 */
-export async function listRecoverableWorkflows(teamId: string): Promise<string[]> {
-  const existing = await db.select({ id: workflow.id }).from(workflow).where(eq(workflow.teamId, teamId));
+export async function listRecoverableWorkflows(organizationId: string): Promise<string[]> {
+  const existing = await db.select({ id: workflow.id }).from(workflow).where(eq(workflow.organizationId, organizationId));
   const existingIds = new Set(existing.map((r) => r.id));
 
-  return fsListRecoverable(WORKFLOW_BASE_DIR, teamId, existingIds);
+  return fsListRecoverable(WORKFLOW_BASE_DIR, organizationId, existingIds);
 }
 
 /** 从文件系统恢复工作流 */
 export async function recoverWorkflows(ctx: AuthCtx, workflowIds: string[]): Promise<WorkflowDefRow[]> {
   const results: WorkflowDefRow[] = [];
   for (const wid of workflowIds) {
-    const dir = buildStoragePath(WORKFLOW_BASE_DIR, ctx.teamId, wid);
+    const dir = buildStoragePath(WORKFLOW_BASE_DIR, ctx.organizationId, wid);
     const draftYaml = await readYamlFile(dir, "draft.yaml");
     let name = wid;
     if (draftYaml) {
@@ -242,7 +242,7 @@ export async function recoverWorkflows(ctx: AuthCtx, workflowIds: string[]): Pro
       .values({
         id: wid,
         userId: ctx.userId,
-        teamId: ctx.teamId,
+        organizationId: ctx.organizationId,
         name,
         storagePath: dir,
       })

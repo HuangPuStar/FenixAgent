@@ -5,7 +5,7 @@ import { shareEventSnapshot, shareLink } from "../db/schema";
 /** ShareLink 仓储接口 — PostgreSQL 持久化 */
 export interface IShareLinkRepo {
   create(
-    teamId: string,
+    organizationId: string,
     sessionId: string,
     environmentId: string,
     mode: string,
@@ -13,7 +13,7 @@ export interface IShareLinkRepo {
     createdBy: string,
   ): Promise<{
     id: string;
-    teamId: string;
+    organizationId: string;
     sessionId: string;
     environmentId: string;
     token: string;
@@ -25,19 +25,19 @@ export interface IShareLinkRepo {
     createdAt: Date;
     updatedAt: Date;
   }>;
-  getById(teamId: string, id: string): Promise<typeof shareLink.$inferSelect | undefined>;
+  getById(organizationId: string, id: string): Promise<typeof shareLink.$inferSelect | undefined>;
   getByToken(token: string): Promise<typeof shareLink.$inferSelect | undefined>;
-  listBySession(teamId: string, sessionId: string): Promise<(typeof shareLink.$inferSelect)[]>;
-  listByTeamId(teamId: string): Promise<(typeof shareLink.$inferSelect)[]>;
-  delete(teamId: string, id: string): Promise<boolean>;
-  updateAccess(teamId: string, id: string): Promise<void>;
+  listBySession(organizationId: string, sessionId: string): Promise<(typeof shareLink.$inferSelect)[]>;
+  listByOrganizationId(organizationId: string): Promise<(typeof shareLink.$inferSelect)[]>;
+  delete(organizationId: string, id: string): Promise<boolean>;
+  updateAccess(organizationId: string, id: string): Promise<void>;
   saveEventSnapshot(shareLinkId: string, events: unknown): Promise<void>;
   getEventSnapshot(shareLinkId: string): Promise<unknown | null>;
 }
 
 class PgShareLinkRepo implements IShareLinkRepo {
   async create(
-    teamId: string,
+    organizationId: string,
     sessionId: string,
     environmentId: string,
     mode: string,
@@ -49,7 +49,7 @@ class PgShareLinkRepo implements IShareLinkRepo {
     const [row] = await db
       .insert(shareLink)
       .values({
-        teamId,
+        organizationId,
         sessionId,
         environmentId,
         token,
@@ -62,7 +62,7 @@ class PgShareLinkRepo implements IShareLinkRepo {
       .returning();
     return {
       id: row.id,
-      teamId,
+      organizationId,
       sessionId,
       environmentId,
       token,
@@ -76,11 +76,11 @@ class PgShareLinkRepo implements IShareLinkRepo {
     };
   }
 
-  async getById(teamId: string, id: string) {
+  async getById(organizationId: string, id: string) {
     const rows = await db
       .select()
       .from(shareLink)
-      .where(and(eq(shareLink.teamId, teamId), eq(shareLink.id, id)))
+      .where(and(eq(shareLink.organizationId, organizationId), eq(shareLink.id, id)))
       .limit(1);
     return rows[0] ?? undefined;
   }
@@ -90,23 +90,23 @@ class PgShareLinkRepo implements IShareLinkRepo {
     return rows[0] ?? undefined;
   }
 
-  async listBySession(teamId: string, sessionId: string) {
+  async listBySession(organizationId: string, sessionId: string) {
     return db
       .select()
       .from(shareLink)
-      .where(and(eq(shareLink.teamId, teamId), eq(shareLink.sessionId, sessionId)));
+      .where(and(eq(shareLink.organizationId, organizationId), eq(shareLink.sessionId, sessionId)));
   }
 
-  async listByTeamId(teamId: string) {
-    return db.select().from(shareLink).where(eq(shareLink.teamId, teamId));
+  async listByOrganizationId(organizationId: string) {
+    return db.select().from(shareLink).where(eq(shareLink.organizationId, organizationId));
   }
 
-  async delete(teamId: string, id: string): Promise<boolean> {
-    const result = await db.delete(shareLink).where(and(eq(shareLink.teamId, teamId), eq(shareLink.id, id)));
+  async delete(organizationId: string, id: string): Promise<boolean> {
+    const result = await db.delete(shareLink).where(and(eq(shareLink.organizationId, organizationId), eq(shareLink.id, id)));
     return (result as any).count > 0;
   }
 
-  async updateAccess(teamId: string, id: string): Promise<void> {
+  async updateAccess(organizationId: string, id: string): Promise<void> {
     await db
       .update(shareLink)
       .set({
@@ -114,7 +114,7 @@ class PgShareLinkRepo implements IShareLinkRepo {
         lastAccessedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(and(eq(shareLink.teamId, teamId), eq(shareLink.id, id)));
+      .where(and(eq(shareLink.organizationId, organizationId), eq(shareLink.id, id)));
   }
 
   async saveEventSnapshot(shareLinkId: string, events: unknown): Promise<void> {

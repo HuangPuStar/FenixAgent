@@ -67,10 +67,10 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
   .get(
     "/agents",
     async ({ store, request }) => {
-      const { loadTeamContext } = await import("../../services/team-context");
-      const authCtx = await loadTeamContext(store.user!, request);
-      const teamId = authCtx?.teamId ?? store.user!.id;
-      const teamEnvs = await environmentRepo.listByTeamId(teamId);
+      const { loadOrgContext } = await import("../../services/org-context");
+      const authCtx = await loadOrgContext(store.user!, request);
+      const orgId = authCtx?.organizationId ?? store.user!.id;
+      const teamEnvs = await environmentRepo.listByOrganizationId(orgId);
       const acpEnvs = teamEnvs.filter((e) => e.workerType === "acp");
       return acpEnvs.map((a) => toAcpAgentResponse(a));
     },
@@ -149,10 +149,10 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
-      // 验证团队归属：env.teamId 或 env.userId 必须匹配
-      const { loadTeamContext } = await import("../../services/team-context");
-      const authCtx = await loadTeamContext({ id: userId }, ws.data.request);
-      if (!authCtx || (env.teamId !== authCtx.teamId && env.userId !== userId)) {
+      // 验证团队归属：env.organizationId 或 env.userId 必须匹配
+      const { loadOrgContext } = await import("../../services/org-context");
+      const authCtx = await loadOrgContext({ id: userId }, ws.data.request);
+      if (!authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
         log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not owned by user ${userId}'s team`);
         adaptWs(ws).close(4003, "unauthorized");
         return;

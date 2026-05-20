@@ -22,7 +22,6 @@ import v2CodeSessions from "./routes/v2/code-sessions";
 import v2Worker from "./routes/v2/worker";
 import v2WorkerEvents from "./routes/v2/worker-events";
 import v2WorkerEventsStream from "./routes/v2/worker-events-stream";
-import webApiKeys from "./routes/web/api-keys";
 import webAuth from "./routes/web/auth";
 import webChannels from "./routes/web/channels";
 import webConfig from "./routes/web/config";
@@ -31,10 +30,10 @@ import webEnvironments from "./routes/web/environments";
 import webFiles from "./routes/web/files";
 import webInstances from "./routes/web/instances";
 import webKnowledgeBases from "./routes/web/knowledge-bases";
+import webOrganizations from "./routes/web/organizations";
 import webS3Files from "./routes/web/s3-files";
 import webSessions from "./routes/web/sessions";
 import webTasks from "./routes/web/tasks";
-import webTeams from "./routes/web/teams";
 import webMetaAgent from "./routes/web/meta-agent";
 import webWorkflowDefs from "./routes/web/workflow-defs";
 import webWorkflowEngine from "./routes/web/workflow-engine";
@@ -167,7 +166,7 @@ const app = new Elysia()
   // Web control panel routes
   .use(webSessions)
   .use(webEnvironments)
-  .use(webApiKeys)
+  .use(webOrganizations)
   .use(webConfig)
   .use(webInstances)
   .use(webTasks)
@@ -177,7 +176,6 @@ const app = new Elysia()
   .use(webS3Files)
   .use(webControl)
   .use(webAuth)
-  .use(webTeams)
   // Workflow proxy
   .use(workflowStaticApp)
   // Workflow engine API

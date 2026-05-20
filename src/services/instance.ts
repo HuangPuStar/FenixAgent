@@ -65,7 +65,7 @@ interface InstanceSupplement {
   userId: string;
   environmentId: string;
   instanceNumber: number;
-  teamId: string;
+  organizationId: string;
 }
 
 const supplements = new Map<string, InstanceSupplement>();
@@ -157,7 +157,7 @@ export async function spawnInstanceFromEnvironment(
       throw new NotFoundError(`AgentConfig '${env.agentConfigId}' not found`);
     }
     fullConfig = await _deps.getAgentFullConfig(
-      { teamId: env.teamId ?? "", userId: env.userId ?? "", role: "owner" },
+      { organizationId: env.organizationId ?? "", userId: env.userId ?? "", role: "owner" },
       resolvedAgentConfig.id,
     );
     const ac = fullConfig.agentConfig as Record<string, unknown> | null;
@@ -166,7 +166,7 @@ export async function spawnInstanceFromEnvironment(
     modelRef = typeof ac?.model === "string" ? ac.model : null;
   } else {
     fullConfig = await _deps.getAgentFullConfig(
-      { teamId: env.teamId ?? "", userId: env.userId ?? "", role: "owner" },
+      { organizationId: env.organizationId ?? "", userId: env.userId ?? "", role: "owner" },
       null,
     );
   }
@@ -200,20 +200,20 @@ export async function spawnInstanceFromEnvironment(
     userId,
     environmentId,
     instanceNumber,
-    teamId: env.teamId ?? userId,
+    organizationId: env.organizationId ?? userId,
   };
   supplements.set(instanceId, supplement);
 
   return toSpawnedInstance(snapshot, supplement);
 }
 
-/** 按 teamId 过滤实例 */
-function filterInstancesWithTeamId(teamId: string): SpawnedInstance[] {
-  return filterInstances((_s, sup) => sup.teamId === teamId);
+/** 按 organizationId 过滤实例 */
+function filterInstancesWithTeamId(organizationId: string): SpawnedInstance[] {
+  return filterInstances((_s, sup) => sup.organizationId === organizationId);
 }
 
-export function listInstances(teamId: string): SpawnedInstance[] {
-  return filterInstancesWithTeamId(teamId);
+export function listInstances(organizationId: string): SpawnedInstance[] {
+  return filterInstancesWithTeamId(organizationId);
 }
 
 export function findRunningInstanceByEnvironment(environmentId: string, userId?: string): SpawnedInstance | undefined {
@@ -270,10 +270,10 @@ export function getInstance(id: string, userId?: string): SpawnedInstance | unde
   return toSpawnedInstance(snapshot, sup);
 }
 
-export async function stopInstance(id: string, teamId: string): Promise<{ ok: boolean; error?: string }> {
+export async function stopInstance(id: string, organizationId: string): Promise<{ ok: boolean; error?: string }> {
   const sup = supplements.get(id);
   if (!sup) return { ok: false, error: "Instance not found" };
-  if (sup.teamId !== teamId) return { ok: false, error: "Not your instance" };
+  if (sup.organizationId !== organizationId) return { ok: false, error: "Not your instance" };
 
   const facade = _deps.getCoreRuntime();
   const snapshot = facade.getInstance(id);

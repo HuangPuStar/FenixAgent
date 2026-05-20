@@ -15,7 +15,7 @@ export async function listSkills(ctx: AuthContext, agentConfigId?: string | null
       .from(skill)
       .where(
         and(
-          eq(skill.teamId, ctx.teamId),
+          eq(skill.organizationId, ctx.organizationId),
           isNull(skill.environmentId),
           sql`(${skill.agentConfigId} IS NULL OR ${skill.agentConfigId} = ${agentConfigId})`,
         ),
@@ -24,20 +24,20 @@ export async function listSkills(ctx: AuthContext, agentConfigId?: string | null
   return db
     .select()
     .from(skill)
-    .where(and(eq(skill.teamId, ctx.teamId), isNull(skill.environmentId)));
+    .where(and(eq(skill.organizationId, ctx.organizationId), isNull(skill.environmentId)));
 }
 
 export async function listWorkspaceSkills(ctx: AuthContext, environmentId: string) {
   return db
     .select()
     .from(skill)
-    .where(and(eq(skill.teamId, ctx.teamId), eq(skill.environmentId, environmentId)));
+    .where(and(eq(skill.organizationId, ctx.organizationId), eq(skill.environmentId, environmentId)));
 }
 
 export async function getSkill(ctx: AuthContext, name: string, environmentId?: string | null) {
   const conditions = environmentId
-    ? and(eq(skill.teamId, ctx.teamId), eq(skill.name, name), eq(skill.environmentId, environmentId))
-    : and(eq(skill.teamId, ctx.teamId), eq(skill.name, name), isNull(skill.environmentId));
+    ? and(eq(skill.organizationId, ctx.organizationId), eq(skill.name, name), eq(skill.environmentId, environmentId))
+    : and(eq(skill.organizationId, ctx.organizationId), eq(skill.name, name), isNull(skill.environmentId));
 
   const rows = await db.select().from(skill).where(conditions).limit(1);
   return rows[0] ?? null;
@@ -57,8 +57,8 @@ export async function upsertSkill(
 ) {
   const envId = data.environmentId ?? null;
   const conditions = envId
-    ? and(eq(skill.teamId, ctx.teamId), eq(skill.name, name), eq(skill.environmentId, envId))
-    : and(eq(skill.teamId, ctx.teamId), eq(skill.name, name), isNull(skill.environmentId));
+    ? and(eq(skill.organizationId, ctx.organizationId), eq(skill.name, name), eq(skill.environmentId, envId))
+    : and(eq(skill.organizationId, ctx.organizationId), eq(skill.name, name), isNull(skill.environmentId));
 
   const existing = await db.select({ id: skill.id }).from(skill).where(conditions).limit(1);
 
@@ -79,7 +79,7 @@ export async function upsertSkill(
   const inserted = await db
     .insert(skill)
     .values({
-      teamId: ctx.teamId,
+      organizationId: ctx.organizationId,
       userId: ctx.userId,
       environmentId: envId,
       name,
@@ -92,8 +92,8 @@ export async function upsertSkill(
 
 export async function deleteSkill(ctx: AuthContext, name: string, environmentId?: string | null): Promise<boolean> {
   const conditions = environmentId
-    ? and(eq(skill.teamId, ctx.teamId), eq(skill.name, name), eq(skill.environmentId, environmentId))
-    : and(eq(skill.teamId, ctx.teamId), eq(skill.name, name), isNull(skill.environmentId));
+    ? and(eq(skill.organizationId, ctx.organizationId), eq(skill.name, name), eq(skill.environmentId, environmentId))
+    : and(eq(skill.organizationId, ctx.organizationId), eq(skill.name, name), isNull(skill.environmentId));
 
   const result = await db.delete(skill).where(conditions).returning({ id: skill.id });
   return result.length > 0;
@@ -103,7 +103,7 @@ export async function enableSkill(ctx: AuthContext, name: string): Promise<boole
   const result = await db
     .update(skill)
     .set({ enabled: true, updatedAt: new Date() })
-    .where(and(eq(skill.teamId, ctx.teamId), eq(skill.name, name), isNull(skill.environmentId)))
+    .where(and(eq(skill.organizationId, ctx.organizationId), eq(skill.name, name), isNull(skill.environmentId)))
     .returning({ id: skill.id });
   return result.length > 0;
 }
@@ -112,7 +112,7 @@ export async function disableSkill(ctx: AuthContext, name: string): Promise<bool
   const result = await db
     .update(skill)
     .set({ enabled: false, updatedAt: new Date() })
-    .where(and(eq(skill.teamId, ctx.teamId), eq(skill.name, name), isNull(skill.environmentId)))
+    .where(and(eq(skill.organizationId, ctx.organizationId), eq(skill.name, name), isNull(skill.environmentId)))
     .returning({ id: skill.id });
   return result.length > 0;
 }

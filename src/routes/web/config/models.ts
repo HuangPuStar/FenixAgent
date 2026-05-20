@@ -3,7 +3,7 @@ import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { ConfigBodySchema } from "../../../schemas/config.schema";
 import * as configPg from "../../../services/config-pg";
 import { configError, configSuccess } from "../../../services/config-utils";
-import { loadTeamContext } from "../../../services/team-context";
+import { loadOrgContext } from "../../../services/org-context";
 
 const app = new Elysia({ name: "web-config-models", prefix: "/web" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
@@ -58,12 +58,12 @@ async function buildAvailableList(ctx: AuthContext): Promise<ModelEntry[]> {
 
 async function getAvailable(ctx: AuthContext, forceRefresh = false): Promise<ModelEntry[]> {
   const now = Date.now();
-  const cached = cachedAvailableByTeam.get(ctx.teamId);
+  const cached = cachedAvailableByTeam.get(ctx.organizationId);
   if (!forceRefresh && cached && now - cached.updatedAt < CACHE_TTL_MS) {
     return cached.models;
   }
   const models = await buildAvailableList(ctx);
-  cachedAvailableByTeam.set(ctx.teamId, { models, updatedAt: now });
+  cachedAvailableByTeam.set(ctx.organizationId, { models, updatedAt: now });
   return models;
 }
 
@@ -89,7 +89,7 @@ async function handleSet(ctx: AuthContext, data: { model?: string; small_model?:
     smallModel: data.small_model,
     permission: data.permission,
   });
-  cachedAvailableByTeam.delete(ctx.teamId);
+  cachedAvailableByTeam.delete(ctx.organizationId);
   const uc = await configPg.getUserConfig(ctx);
   return configSuccess({
     model: uc.currentModel ?? null,
@@ -110,7 +110,7 @@ async function handleRefresh(ctx: AuthContext) {
 app.post(
   "/config/models",
   async ({ store, body, error, request }: any) => {
-    const authContext = await loadTeamContext(store.user!, request);
+    const authContext = await loadOrgContext(store.user!, request);
     if (!authContext)
       return error(500, { success: false, error: { code: "NO_TEAM_CONTEXT", message: "Failed to load team context" } });
     const authCtx = authContext;

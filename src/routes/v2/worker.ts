@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
 import { authGuardPlugin } from "../../plugins/auth";
-import { requireTeamScope } from "../../plugins/require-team-scope";
+import { requireOrgScope } from "../../plugins/require-team-scope";
 import { environmentRepo, sessionRepo, sessionWorkerRepo } from "../../repositories";
 import { type UpdateWorkerRequest, UpdateWorkerRequestSchema } from "../../schemas/v2-worker.schema";
 import { automationStatesEqual, getAutomationStateEventPayload } from "../../services/automationState";
@@ -119,7 +119,7 @@ app.post(
     if (sessionRecord?.environmentId) {
       const env = await environmentRepo.getById(sessionRecord.environmentId);
       if (env) {
-        const denied = requireTeamScope(authContext, env.teamId);
+        const denied = requireOrgScope(authContext, env.organizationId);
         if (denied) return denied;
       }
     }

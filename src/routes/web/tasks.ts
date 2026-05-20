@@ -12,7 +12,7 @@ import {
   triggerTask,
   updateTask,
 } from "../../services/task";
-import { loadTeamContext } from "../../services/team-context";
+import { loadOrgContext } from "../../services/org-context";
 
 const app = new Elysia({ name: "web-tasks", prefix: "/web" }).use(authGuardPlugin).model({
   "task-info": TaskInfoSchema,
@@ -25,8 +25,8 @@ const app = new Elysia({ name: "web-tasks", prefix: "/web" }).use(authGuardPlugi
 app.get(
   "/tasks",
   async ({ store, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request))!;
-    const result = await listTasks(authCtx.teamId);
+    const authCtx = (await loadOrgContext(store.user!, request))!;
+    const result = await listTasks(authCtx.organizationId);
     return result;
   },
   { sessionAuth: true },
@@ -36,9 +36,9 @@ app.get(
 app.post(
   "/tasks",
   async ({ store, body, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const payload = body as Record<string, unknown>;
-    const result = await createTask(authCtx.teamId, payload as any, authCtx.userId);
+    const result = await createTask(authCtx.organizationId, payload as any, authCtx.userId);
 
     if (!result.success) {
       const err = result.error!;
@@ -70,10 +70,10 @@ async function safeTaskOp<T>(
 app.get(
   "/tasks/:id",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const taskId = params.id;
     return safeTaskOp(async () => {
-      const result = await getTask(authCtx.teamId, taskId);
+      const result = await getTask(authCtx.organizationId, taskId);
       if (!result.success) {
         return error(404, { error: { type: "not_found", message: result.error!.message } });
       }
@@ -87,11 +87,11 @@ app.get(
 app.put(
   "/tasks/:id",
   async ({ store, params, body, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const taskId = params.id;
     const payload = body as Record<string, unknown>;
     return safeTaskOp(async () => {
-      const result = await updateTask(authCtx.teamId, taskId, payload);
+      const result = await updateTask(authCtx.organizationId, taskId, payload);
       if (!result.success) {
         const err = result.error!;
         if (err.code === "NOT_FOUND") {
@@ -109,10 +109,10 @@ app.put(
 app.delete(
   "/tasks/:id",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const taskId = params.id;
     try {
-      const result = await deleteTask(authCtx.teamId, taskId);
+      const result = await deleteTask(authCtx.organizationId, taskId);
 
       if (!result.success) {
         const err = result.error!;
@@ -134,10 +134,10 @@ app.delete(
 app.post(
   "/tasks/:id/toggle",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const taskId = params.id;
     return safeTaskOp(async () => {
-      const result = await toggleTask(authCtx.teamId, taskId);
+      const result = await toggleTask(authCtx.organizationId, taskId);
       if (!result.success) return error(404, { error: { type: "not_found", message: result.error!.message } });
       return result;
     }, error);
@@ -149,10 +149,10 @@ app.post(
 app.post(
   "/tasks/:id/trigger",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const taskId = params.id;
     return safeTaskOp(async () => {
-      const result = await triggerTask(authCtx.teamId, taskId);
+      const result = await triggerTask(authCtx.organizationId, taskId);
       if (!result.success) return error(404, { error: { type: "not_found", message: result.error!.message } });
       return result;
     }, error);
@@ -164,10 +164,10 @@ app.post(
 app.get(
   "/tasks/:id/logs",
   async ({ store, params, query, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const taskId = params.id;
     return safeTaskOp(async () => {
-      const taskResult = await getTask(authCtx.teamId, taskId);
+      const taskResult = await getTask(authCtx.organizationId, taskId);
       if (!taskResult.success) return error(404, { error: { type: "not_found", message: "任务不存在" } });
 
       const page = Math.max(1, Number((query as any)?.page) || 1);
@@ -182,13 +182,13 @@ app.get(
 app.delete(
   "/tasks/:id/logs",
   async ({ store, params, error, request }: any) => {
-    const authCtx = (await loadTeamContext(store.user!, request as any))!;
+    const authCtx = (await loadOrgContext(store.user!, request as any))!;
     const taskId = params.id;
     return safeTaskOp(async () => {
-      const taskResult = await getTask(authCtx.teamId, taskId);
+      const taskResult = await getTask(authCtx.organizationId, taskId);
       if (!taskResult.success) return error(404, { error: { type: "not_found", message: "任务不存在" } });
 
-      return await clearExecutionLogs(authCtx.teamId, taskId);
+      return await clearExecutionLogs(authCtx.organizationId, taskId);
     }, error);
   },
   { sessionAuth: true },

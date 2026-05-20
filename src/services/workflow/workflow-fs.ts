@@ -13,7 +13,7 @@ import { join } from "node:path";
 export const WORKFLOW_BASE_DIR = join(process.cwd(), ".agents", "workflows");
 
 /** 拼接工作流目录绝对路径 */
-export function buildStoragePath(baseDir: string, _teamId: string, workflowId: string): string {
+export function buildStoragePath(baseDir: string, _organizationId: string, workflowId: string): string {
   return join(baseDir, workflowId);
 }
 
@@ -41,7 +41,7 @@ export async function readYamlFile(dir: string, fileName: string): Promise<strin
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function listRecoverable(baseDir: string, _teamId: string, excludeIds: Set<string>): Promise<string[]> {
+export async function listRecoverable(baseDir: string, _organizationId: string, excludeIds: Set<string>): Promise<string[]> {
   if (!existsSync(baseDir)) return [];
 
   const entries = await readdir(baseDir, { withFileTypes: true });

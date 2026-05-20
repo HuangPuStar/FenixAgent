@@ -20,9 +20,9 @@ export interface IKnowledgeBaseRepo {
   getByUserAndId(userId: string, knowledgeBaseId: string): Promise<KnowledgeBaseRow | null>;
   listByUserId(userId: string): Promise<KnowledgeBaseRow[]>;
   findByUserAndSlug(userId: string, slug: string): Promise<KnowledgeBaseRow | null>;
-  listByTeamId(teamId: string): Promise<KnowledgeBaseRow[]>;
-  getByTeamAndId(teamId: string, knowledgeBaseId: string): Promise<KnowledgeBaseRow | null>;
-  findByTeamAndSlug(teamId: string, slug: string): Promise<KnowledgeBaseRow | null>;
+  listByOrganizationId(organizationId: string): Promise<KnowledgeBaseRow[]>;
+  getByOrgAndId(organizationId: string, knowledgeBaseId: string): Promise<KnowledgeBaseRow | null>;
+  findByOrgAndSlug(organizationId: string, slug: string): Promise<KnowledgeBaseRow | null>;
   create(data: KnowledgeBaseInsert): Promise<KnowledgeBaseRow>;
   update(knowledgeBaseId: string, data: Partial<KnowledgeBaseInsert>): Promise<void>;
   delete(knowledgeBaseId: string): Promise<boolean>;
@@ -109,27 +109,27 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
     return rows[0] ?? null;
   }
 
-  async listByTeamId(teamId: string) {
+  async listByOrganizationId(organizationId: string) {
     return db
       .select()
       .from(knowledgeBase)
-      .where(eq(knowledgeBase.teamId, teamId))
+      .where(eq(knowledgeBase.organizationId, organizationId))
       .orderBy(desc(knowledgeBase.updatedAt));
   }
 
-  async getByTeamAndId(teamId: string, knowledgeBaseId: string) {
+  async getByOrgAndId(organizationId: string, knowledgeBaseId: string) {
     const rows = await db
       .select()
       .from(knowledgeBase)
-      .where(and(eq(knowledgeBase.id, knowledgeBaseId), eq(knowledgeBase.teamId, teamId)));
+      .where(and(eq(knowledgeBase.id, knowledgeBaseId), eq(knowledgeBase.organizationId, organizationId)));
     return rows[0] ?? null;
   }
 
-  async findByTeamAndSlug(teamId: string, slug: string) {
+  async findByOrgAndSlug(organizationId: string, slug: string) {
     const rows = await db
       .select()
       .from(knowledgeBase)
-      .where(and(eq(knowledgeBase.teamId, teamId), eq(knowledgeBase.slug, slug)));
+      .where(and(eq(knowledgeBase.organizationId, organizationId), eq(knowledgeBase.slug, slug)));
     return rows[0] ?? null;
   }
 

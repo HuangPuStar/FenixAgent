@@ -15,7 +15,7 @@ export interface UserConfigData {
 }
 
 export async function getUserConfig(ctx: AuthContext): Promise<UserConfigData> {
-  const rows = await db.select().from(userConfig).where(eq(userConfig.teamId, ctx.teamId)).limit(1);
+  const rows = await db.select().from(userConfig).where(eq(userConfig.organizationId, ctx.organizationId)).limit(1);
   if (rows.length === 0) {
     return { defaultAgent: null, currentModel: null, smallModel: null, permission: null };
   }
@@ -40,12 +40,12 @@ export async function setUserConfig(ctx: AuthContext, patch: UserConfigData) {
   await db
     .insert(userConfig)
     .values({
-      teamId: ctx.teamId,
+      organizationId: ctx.organizationId,
       userId: ctx.userId,
       ...set,
     })
     .onConflictDoUpdate({
-      target: [userConfig.teamId],
+      target: [userConfig.organizationId],
       set,
     });
 }
