@@ -3,7 +3,7 @@
  *
  * 职责：
  * - 类型守卫：仅处理 'agent' 节点
- * - 模板解析：将 prompt/agent/skill 中的 ${{ }} 替换为实际值
+ * - 从 resolvedInputs 读取已解析的 prompt/agent/skill/model/temperature/steps
  * - Transport 连接：connect → execute → 收集响应
  * - 重试：默认 2 次指数退避（不同于 ShellNode 的 0 次）
  * - 事件发射：node.started / node.completed / node.failed / node.retrying
@@ -13,9 +13,7 @@ import { nanoid } from 'nanoid';
 import type { AgentNodeDef, NodeDef } from '../types/dag';
 import type { NodeExecutor, NodeExecutionContext } from '../scheduler/dag-scheduler';
 import type { NodeOutput } from '../types/execution';
-import { resolveTemplate } from '../parser/expression-parser';
-import type { EvalContext } from '../types/expression';
-import type { Transport, AgentRequest, AgentResponse } from '../transport/transport';
+import type { Transport, AgentRequest } from '../transport/transport';
 import { WorkflowError, WorkflowErrorCode } from '../types/errors';
 
 /** 从宿主层获取的 agent 配置 */
@@ -55,12 +53,11 @@ export class AgentExecutor implements NodeExecutor {
     }
 
     const agentNode = node as AgentNodeDef;
-    const evalContext = this.buildEvalContext(ctx);
 
-    // 解析模板
-    const resolvedPrompt = resolveTemplate(agentNode.prompt, evalContext);
-    const resolvedAgent = agentNode.agent ? resolveTemplate(agentNode.agent, evalContext) : undefined;
-    const resolvedSkill = agentNode.skill ? resolveTemplate(agentNode.skill, evalContext) : undefined;
+    // 从 resolvedInputs 读取已解析的模板值（scheduler 已处理）
+    const resolvedPrompt = (ctx.resolvedInputs.prompt as string) ?? agentNode.prompt;
+    const resolvedAgent = (ctx.resolvedInputs.agent as string | undefined) ?? agentNode.agent;
+    const resolvedSkill = (ctx.resolvedInputs.skill as string | undefined) ?? agentNode.skill;
 
     // 合并 agent config + 节点级覆盖
     const mergedConfig = await this.resolveAndMergeConfig(agentNode);
@@ -219,14 +216,6 @@ export class AgentExecutor implements NodeExecutor {
       steps: node.steps ?? config.steps,
       permission: config.permission,
       knowledge: config.knowledge,
-    };
-  }
-
-  /** 构建表达式求值上下文 */
-  private buildEvalContext(ctx: NodeExecutionContext): EvalContext {
-    return {
-      params: ctx.params,
-      secrets: ctx.secrets,
     };
   }
 

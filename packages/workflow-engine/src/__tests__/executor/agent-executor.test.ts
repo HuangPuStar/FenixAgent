@@ -239,9 +239,9 @@ describe('AgentExecutor events', () => {
   });
 });
 
-// ========== 模板解析测试 ==========
+// ========== resolvedInputs 测试 ==========
 
-describe('AgentExecutor template resolution', () => {
+describe('AgentExecutor resolvedInputs', () => {
   let transport: FakeTransport;
   let executor: AgentExecutor;
 
@@ -250,14 +250,17 @@ describe('AgentExecutor template resolution', () => {
     executor = new AgentExecutor(transport);
   });
 
-  // prompt 中的 ${{ params }} 模板替换
-  test('prompt 中的 ${{ params }} 模板正确替换', async () => {
+  // resolvedInputs.prompt 注入到 AgentRequest
+  test('resolvedInputs.prompt 注入到 AgentRequest', async () => {
     transport.setResponse('default', {
       stdout: 'resolved',
       exit_code: 0,
     });
 
-    const ctx = makeCtx({ params: { topic: 'world' } });
+    const ctx = makeCtx({
+      params: { topic: 'world' },
+      resolvedInputs: { prompt: 'Tell me about world' },
+    });
     const node = agentNode('Tell me about ${{ params.topic }}');
     await executor.execute(node, ctx);
 
@@ -265,19 +268,45 @@ describe('AgentExecutor template resolution', () => {
     expect(lastReq?.prompt).toBe('Tell me about world');
   });
 
-  // prompt 中的 ${{ secrets }} 模板替换
-  test('prompt 中的 ${{ secrets }} 模板正确替换', async () => {
+  // resolvedInputs.agent 注入到 AgentRequest
+  test('resolvedInputs.agent 注入到 AgentRequest', async () => {
+    transport.setResponse('resolved-agent', {
+      stdout: 'ok',
+      exit_code: 0,
+    });
+
+    const ctx = makeCtx({
+      resolvedInputs: {
+        prompt: 'test',
+        agent: 'resolved-agent',
+      },
+    });
+    const node = agentNode('test', { agent: 'original-agent' });
+    await executor.execute(node, ctx);
+
+    const lastReq = transport.getLastRequest('resolved-agent');
+    expect(lastReq?.agent).toBe('resolved-agent');
+    expect(transport.getConnectedAgents().has('resolved-agent')).toBe(true);
+  });
+
+  // resolvedInputs.skill 注入到 AgentRequest
+  test('resolvedInputs.skill 注入到 AgentRequest', async () => {
     transport.setResponse('default', {
       stdout: 'ok',
       exit_code: 0,
     });
 
-    const ctx = makeCtx({ secrets: { API_KEY: 'key123' } });
-    const node = agentNode('Use key ${{ secrets.API_KEY }}');
+    const ctx = makeCtx({
+      resolvedInputs: {
+        prompt: 'test',
+        skill: 'resolved-skill',
+      },
+    });
+    const node = agentNode('test', { skill: 'original-skill' });
     await executor.execute(node, ctx);
 
     const lastReq = transport.getLastRequest('default');
-    expect(lastReq?.prompt).toBe('Use key key123');
+    expect(lastReq?.skill).toBe('resolved-skill');
   });
 });
 
