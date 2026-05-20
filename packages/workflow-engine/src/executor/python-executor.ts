@@ -2,9 +2,9 @@
  * Python 节点执行器 — 通过 Bun.spawn 执行 Python 脚本。
  *
  * 职责：
- * - 将 code 写入临时 .py 文件
+ * - 从 resolvedInputs 读取已解析的 code、inputs 变量注入代码、env
+ * - 将 preamble + code 写入临时 .py 文件
  * - 可选安装 pip 依赖（requirements 字段）
- * - 模板解析：将 code/env 中的 ${{ }} 替换为实际值
  * - 进程管理、超时控制、重试、事件发射（与 ProcessExecutor 一致）
  */
 
@@ -16,8 +16,8 @@ import { nanoid } from 'nanoid';
 import type { PythonNodeDef } from '../types/dag';
 import type { NodeExecutor, NodeExecutionContext } from '../scheduler/dag-scheduler';
 import type { NodeOutput } from '../types/execution';
-import { resolveTemplate } from '../parser/expression-parser';
-import type { EvalContext } from '../types/expression';
+import type { ResolvedInput } from '../parser/inputs-resolver';
+import { generatePythonPreamble } from '../parser/inputs-resolver';
 import { WorkflowError, WorkflowErrorCode } from '../types/errors';
 
 const MAX_STDERR_SIZE = 10 * 1024 * 1024;
@@ -34,11 +34,30 @@ export class PythonExecutor implements NodeExecutor {
     }
 
     const pyNode = node as PythonNodeDef;
-    const evalContext: EvalContext = { params: ctx.params, secrets: ctx.secrets };
 
-    const code = resolveTemplate(pyNode.code, evalContext);
-    const env = this.resolveEnv(pyNode.env, evalContext, ctx.secrets);
-    const cwd = pyNode.cwd ?? process.cwd();
+    // 从 resolvedInputs 获取 code（scheduler 已处理）
+    const code = (ctx.resolvedInputs.code as string) ?? pyNode.code;
+
+    // 生成 inputs 变量注入代码（preamble）
+    const resolvedInputs = ctx.resolvedInputs.inputs as Record<string, ResolvedInput> | undefined;
+    const preamble = resolvedInputs ? generatePythonPreamble(resolvedInputs) : '';
+    const fullCode = preamble ? `${preamble}\n${code}` : code;
+
+    // 合并环境变量：进程环境 + env（静态）+ secrets
+    const env: Record<string, string | undefined> = { ...process.env as Record<string, string> };
+
+    const nodeEnv = (ctx.resolvedInputs.env as Record<string, string>) ?? pyNode.env;
+    if (nodeEnv) {
+      for (const [k, v] of Object.entries(nodeEnv)) {
+        env[k] = v;
+      }
+    }
+
+    for (const [k, v] of Object.entries(ctx.secrets)) {
+      env[k] = v;
+    }
+
+    const cwd = (ctx.resolvedInputs.cwd as string) ?? pyNode.cwd ?? process.cwd();
 
     const timeoutMs = (pyNode.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000;
     const timeoutController = new AbortController();
@@ -50,7 +69,7 @@ export class PythonExecutor implements NodeExecutor {
     ctx.signal.addEventListener('abort', onExternalAbort, { once: true });
 
     try {
-      return await this.executeWithRetry(pyNode, code, env, cwd, ctx, timeoutController.signal, evalContext);
+      return await this.executeWithRetry(pyNode, fullCode, env, cwd, ctx, timeoutController.signal);
     } finally {
       clearTimeout(timer);
       ctx.signal.removeEventListener('abort', onExternalAbort);
@@ -64,7 +83,6 @@ export class PythonExecutor implements NodeExecutor {
     cwd: string,
     ctx: NodeExecutionContext,
     signal: AbortSignal,
-    evalContext: EvalContext,
   ): Promise<NodeOutput> {
     const retryConfig = node.retry;
     const maxAttempts = (retryConfig?.count ?? 0) + 1;
@@ -86,7 +104,7 @@ export class PythonExecutor implements NodeExecutor {
       }
 
       try {
-        return await this.spawnPython(node, code, env, cwd, ctx, signal, evalContext);
+        return await this.spawnPython(node, code, env, cwd, ctx, signal);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         if (
@@ -109,7 +127,6 @@ export class PythonExecutor implements NodeExecutor {
     cwd: string,
     ctx: NodeExecutionContext,
     signal: AbortSignal,
-    _evalContext: EvalContext,
   ): Promise<NodeOutput> {
     // 写入临时脚本文件
     const scriptPath = join(tmpdir(), `wf-python-${randomUUID()}.py`);
@@ -216,7 +233,6 @@ export class PythonExecutor implements NodeExecutor {
 
       return { stdout: stdoutStr, json, exit_code: exitCode, size: outputSize };
     } finally {
-      // 清理临时文件
       await unlink(scriptPath).catch(() => {});
     }
   }
@@ -248,24 +264,6 @@ export class PythonExecutor implements NodeExecutor {
         WorkflowErrorCode.NODE_FAILED,
       );
     }
-  }
-
-  private resolveEnv(
-    nodeEnv: Record<string, string> | undefined,
-    evalContext: EvalContext,
-    secrets: Record<string, string>,
-  ): Record<string, string | undefined> {
-    if (!nodeEnv && Object.keys(secrets).length === 0) return {};
-    const resolved: Record<string, string | undefined> = {};
-    if (nodeEnv) {
-      for (const [k, v] of Object.entries(nodeEnv)) {
-        resolved[k] = resolveTemplate(v, evalContext);
-      }
-    }
-    for (const [k, v] of Object.entries(secrets)) {
-      resolved[k] = v;
-    }
-    return resolved;
   }
 
   private async emitEvent(
