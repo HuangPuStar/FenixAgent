@@ -119,10 +119,7 @@ export const apiKey = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   },
-  (t) => [
-    index("idx_api_key_team_id").on(t.teamId),
-    uniqueIndex("idx_api_key_hash").on(t.keyHash),
-  ],
+  (t) => [index("idx_api_key_team_id").on(t.teamId), uniqueIndex("idx_api_key_hash").on(t.keyHash)],
 );
 
 // MCP Tool 缓存表

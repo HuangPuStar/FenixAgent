@@ -9,10 +9,6 @@ function generateApiKey(): string {
   return KEY_PREFIX + randomBytes(24).toString("hex");
 }
 
-function generateId(): string {
-  return `key_${randomBytes(12).toString("hex")}`;
-}
-
 export interface ApiKeyRecord {
   id: string;
   userId: string;
@@ -33,7 +29,7 @@ export interface ApiKeySanitized {
 
 /** 从完整 key 计算 "rcs_1234...ab12" 格式前缀 */
 function computeKeyPrefix(fullKey: string): string {
-  return fullKey.slice(0, 8) + "..." + fullKey.slice(-4);
+  return `${fullKey.slice(0, 8)}...${fullKey.slice(-4)}`;
 }
 
 function sanitize(record: ApiKeyRecord): ApiKeySanitized {
