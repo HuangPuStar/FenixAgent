@@ -1807,7 +1807,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                           }}
                         />
                       )}
-                      {DAG_STATUS_CFG[dagStatus!]?.label ?? dagStatus}
+                      {DAG_STATUS_CFG[dagStatus!] ? t(DAG_STATUS_CFG[dagStatus!].labelKey) : dagStatus}
                     </span>
                   )}
                   <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
@@ -2000,7 +2000,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                             <EventIcon type={evt.type} />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
-                                <span style={{ fontWeight: 500, color: "#374151" }}>{formatEventType(evt.type)}</span>
+                                <span style={{ fontWeight: 500, color: "#374151" }}>
+                                  {formatEventType(t, evt.type)}
+                                </span>
                                 <span style={{ color: "#d1d5db", fontSize: 9, flexShrink: 0 }}>
                                   {new Date(evt.timestamp).toLocaleTimeString("zh-CN", {
                                     hour: "2-digit",
@@ -2023,7 +2025,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                                     fontFamily: "ui-monospace, monospace",
                                   }}
                                 >
-                                  {formatMeta(evt.type, evt.metadata)}
+                                  {formatMeta(t, evt.type, evt.metadata)}
                                 </div>
                               )}
                             </div>
@@ -2584,7 +2586,7 @@ function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (r
               cursor: "pointer",
             }}
           >
-            {s === "all" ? t("runs.filter_all") : (DAG_STATUS_CFG[s]?.label ?? s)}
+            {s === "all" ? t("runs.filter_all") : DAG_STATUS_CFG[s] ? t(DAG_STATUS_CFG[s].labelKey) : s}
           </button>
         ))}
       </div>
@@ -2648,13 +2650,13 @@ function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (r
                         }}
                       />
                     )}
-                    {cfg.label}
+                    {t(cfg.labelKey)}
                   </span>
                   <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "ui-monospace, monospace" }}>
                     {r.node_summary.completed}/{r.node_summary.total}
                   </span>
                   <span style={{ marginLeft: "auto", fontSize: 9, color: "#d1d5db" }}>
-                    {relativeTime(r.started_at)}
+                    {relativeTime(t, r.started_at)}
                   </span>
                 </div>
                 <div
@@ -2695,7 +2697,6 @@ function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (r
     </>
   );
 }
-
 
 function relativeTime(t: (key: string, opts?: Record<string, unknown>) => string, iso?: string | null): string {
   if (!iso) return "--";
@@ -2764,7 +2765,11 @@ function formatEventType(t: (key: string) => string, type: string): string {
   return map[type] ?? type;
 }
 
-function formatMeta(t: (key: string, opts?: Record<string, unknown>) => string, type: string, meta: Record<string, unknown>): string {
+function formatMeta(
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  type: string,
+  meta: Record<string, unknown>,
+): string {
   if (type === "node.completed") {
     const parts: string[] = [];
     if (meta.exit_code != null) parts.push(`exit=${meta.exit_code}`);
@@ -2786,6 +2791,7 @@ function formatMeta(t: (key: string, opts?: Record<string, unknown>) => string, 
 }
 
 function NodeOutputView({ output }: { output: NodeOutput }) {
+  const { t } = useTranslation("workflows");
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText(output.stdout).catch(() => {});

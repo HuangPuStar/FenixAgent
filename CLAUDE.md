@@ -79,7 +79,7 @@ bun test src/__tests__/config-providers.test.ts
 bun test web/src/__tests__/
 
 # 前端单个测试文件
-bun test web/src/__tests__/app-i18n.test.ts
+bun test web/src/__tests__/config-mcp-page.test.ts
 ```
 
 **注意**：前端代码在 `web/` 目录，但没有独立的 `package.json`。所有依赖在根目录 `package.json`，构建命令需要从项目根目录执行。前端测试使用 `import.meta.dirname` 解析文件路径，从项目根目录运行即可。
@@ -384,6 +384,70 @@ async function api<T>(method: string, path: string, body?: unknown): Promise<T> 
 }
 ```
 
+### 前端 i18n 国际化
+
+前端使用 **react-i18next + i18next** 实现中英双语国际化，英文为默认语言。
+
+**初始化**：`web/src/i18n/index.ts` — i18next 配置中心，在 `main.tsx` 中优先导入
+
+- **语言检测**：`i18next-browser-languagedetector`，优先读取 localStorage（key: `rcs-lang`），回退到 `navigator.language`
+- **默认语言**：`fallbackLng: "en"`，中文缺失时回退英文
+- **命名空间**：17 个按模块划分的 namespace，常量定义在 `NS` 对象中
+
+**命名空间列表**：
+
+| Namespace | 文件 | 覆盖范围 |
+|-----------|------|---------|
+| `common` | `common.json` | 通用按钮/状态/错误/时间 |
+| `sidebar` | `sidebar.json` | 侧边栏导航项/标签 |
+| `login` | `login.json` | 登录/注册表单 |
+| `dashboard` | `dashboard.json` | 系统概览页 |
+| `agents` | `agents.json` | Agent 配置页 |
+| `models` | `models.json` | 模型配置页 |
+| `skills` | `skills.json` | Skill 管理页 |
+| `mcp` | `mcp.json` | MCP 服务器配置页 |
+| `tasks` | `tasks.json` | 定时任务页 |
+| `workflows` | `workflows.json` | 工作流编辑器/列表/运行/版本 |
+| `sessions` | `sessions.json` | 会话详情/事件流 |
+| `environments` | `environments.json` | 环境管理页 |
+| `orgs` | `orgs.json` | 组织管理页 |
+| `apikey` | `apikey.json` | API Key 管理页 |
+| `channels` | `channels.json` | 消息渠道页 |
+| `knowledge` | `knowledge.json` | 知识库页 |
+| `agentPanel` | `agentPanel.json` | Agent 面板侧栏/聊天 |
+| `components` | `components.json` | 共享组件（Navbar/Permission/FilePicker 等） |
+
+**翻译文件位置**：
+- 英文：`web/src/i18n/locales/en/<namespace>.json`
+- 中文：`web/src/i18n/locales/zh/<namespace>.json`
+
+**使用方式**：
+
+```typescript
+// React 组件内（推荐）
+const { t } = useTranslation("namespace");
+<p>{t("section.key")}</p>
+
+// 带插值
+<p>{t("items.count", { count: 42 })}</p>
+
+// 跨命名空间引用
+const { t } = useTranslation("dashboard");
+<p>{t("common:loading")}</p>
+```
+
+**语言切换**：`web/src/i18n/LanguageSwitcher.tsx` — Topbar 中的 Globe 按钮，切换 "EN"/"中文"
+
+**新增页面 i18n 步骤**：
+1. 创建 `web/src/i18n/locales/en/<namespace>.json` 和 `zh/<namespace>.json`
+2. 在 `web/src/i18n/index.ts` 中添加 import、`NS` 常量、resources 注册、ns 数组
+3. 页面组件中 `const { t } = useTranslation("<namespace>")` + 替换硬编码文本
+
+**禁止事项**：
+- 前端源文件中不得出现硬编码的中文字符串（注释除外）
+- 不得直接 `import i18n from "i18next"` 在模块级调用 `i18n.t()`（应通过 `useTranslation` hook 或参数传递 `t` 函数）
+- 不得创建新的顶层 `*-i18n.test.ts` 测试文件（旧文件已删除）
+
 ## 配置存储
 
 配置数据存储在 PostgreSQL 中，通过 `src/services/config/` 子模块管理（`config-pg.ts` 为兼容桶文件）。旧版文件 `~/.config/opencode/opencode.json` 已废弃。
@@ -596,7 +660,7 @@ bun test src/__tests__/store.test.ts
 bun test web/src/__tests__/
 
 # 前端单个测试文件
-bun test web/src/__tests__/app-i18n.test.ts
+bun test web/src/__tests__/config-mcp-page.test.ts
 ```
 
 ### tsconfig
@@ -625,7 +689,6 @@ bun test web/src/__tests__/app-i18n.test.ts
 
 - 路径：`web/src/__tests__/*.ts` 和 `*.test.tsx`
 - 运行框架：Bun test（不是 vitest，尽管 `bun test` 兼容 vitest API）
-- i18n 测试：检查中文文本是否存在（`app-i18n.test.ts` 等）
 - 组件测试：使用 React Testing Library + ReactDOMServer
 - **文件读取路径**：使用 `import.meta.dirname` 或 `join(import.meta.dirname, "..")` 构建 web 根目录，不使用相对路径字符串（如 `"src/App.tsx"`），因为 CWD 可能不是 `web/`
 - **shadcn 组件导入**：使用相对路径如 `../../components/ui/skeleton`（从 `__tests__/` 出发）
