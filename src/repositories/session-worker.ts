@@ -1,9 +1,14 @@
+import type { PermissionRequestDetails, WorkerStatus } from "../types/store";
+
 /** SessionWorker 仓储 — 内存 Map 存储，Worker 状态追踪 */
 export interface SessionWorkerRecord {
   sessionId: string;
-  workerStatus: string | null;
+  /** Worker status: "idle" | "running" | "requires_action" | "completed" | "error" | null */
+  workerStatus: WorkerStatus | string | null;
+  /** Opaque metadata from the ACP agent worker (tool info, model name, etc.) */
   externalMetadata: Record<string, unknown> | null;
-  requiresActionDetails: Record<string, unknown> | null;
+  /** Details of a pending permission request (tool name, input, etc.) */
+  requiresActionDetails: PermissionRequestDetails | null;
   lastHeartbeatAt: Date | null;
 }
 

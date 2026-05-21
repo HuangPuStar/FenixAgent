@@ -8,22 +8,10 @@ import {
   handleAcpRegister,
   touchEnvironmentPoll,
 } from "../services/environment";
+import type { AcpConnectionEntry } from "../types/store";
 import type { SessionEvent } from "./event-bus";
 import { getAcpEventBus } from "./event-bus";
 import type { WsConnection } from "./ws-types";
-
-// Per-connection state
-interface AcpConnectionEntry {
-  agentId: string | null;
-  boundEnvId: string | null;
-  userId: string;
-  unsub: (() => void) | null;
-  keepalive: ReturnType<typeof setInterval> | null;
-  ws: WsConnection;
-  openTime: number;
-  lastClientActivity: number;
-  capabilities: Record<string, unknown> | null;
-}
 
 const connections = new Map<string, AcpConnectionEntry>();
 

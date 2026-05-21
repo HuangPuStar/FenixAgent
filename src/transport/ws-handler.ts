@@ -1,20 +1,13 @@
 import { config } from "../config";
 import { log, error as logError } from "../logger";
 import { publishSessionEvent } from "../services/transport";
+import type { WsSessionCleanupEntry } from "../types/store";
 import { toClientPayload } from "./client-payload";
 import type { SessionEvent } from "./event-bus";
 import { getEventBus } from "./event-bus";
 import type { WsConnection } from "./ws-types";
 
-// Per-connection cleanup, keyed by sessionId (only one WS per session)
-interface CleanupEntry {
-  unsub: () => void;
-  keepalive: ReturnType<typeof setInterval>;
-  ws: WsConnection;
-  openTime: number;
-  lastClientActivity: number;
-}
-const cleanupBySession = new Map<string, CleanupEntry>();
+const cleanupBySession = new Map<string, WsSessionCleanupEntry>();
 
 // Track all active WS connections for graceful shutdown
 const activeConnections = new Set<WsConnection>();

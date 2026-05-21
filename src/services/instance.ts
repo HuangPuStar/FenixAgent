@@ -4,6 +4,7 @@ import { AppError, NotFoundError } from "../errors";
 import { log, error as logError } from "../logger";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
+import type { InstanceSupplement } from "../types/store";
 import type { AgentFullConfig } from "./config-pg";
 import { getAgentConfigById, getAgentFullConfig } from "./config-pg";
 import { getCoreRuntime } from "./core-bootstrap";
@@ -37,13 +38,6 @@ export interface EnsureRunningResult {
 // ────────────────────────────────────────────
 // 补充映射：core 不维护的 RCS 业务字段
 // ────────────────────────────────────────────
-
-interface InstanceSupplement {
-  userId: string;
-  environmentId: string;
-  instanceNumber: number;
-  organizationId: string;
-}
 
 const supplements = new Map<string, InstanceSupplement>();
 const envInstanceCounters = new Map<string, number>();

@@ -12,13 +12,10 @@ export function setScheduleJobImpl(fn: ScheduleJobFn) {
   scheduleJobImpl = fn;
 }
 
-interface ScheduledJob {
-  taskId: string;
-  job: schedule.Job;
-}
+import type { ScheduledJobEntry } from "../types/store";
 
 const runningTasks = new Set<string>();
-const activeJobs = new Map<string, ScheduledJob>();
+const activeJobs = new Map<string, ScheduledJobEntry>();
 
 function toInvocationDate(invocation: unknown): Date | null {
   if (!invocation) {

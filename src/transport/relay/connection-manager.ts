@@ -1,23 +1,8 @@
-import type { EngineRelayHandle } from "@mothership/plugin-sdk";
 import { log, error as logError } from "../../logger";
+import type { ManagedConnection, RelayConnectionEntry } from "../../types/store";
 import type { WsConnection } from "../ws-types";
 
-export interface RelayConnectionEntry {
-  agentId: string;
-  userId: string;
-  unsub: (() => void) | null;
-  keepalive: ReturnType<typeof setInterval> | null;
-  ws: WsConnection;
-  openTime: number;
-  instanceId: string | null;
-  relayHandle: EngineRelayHandle | null;
-  relayUnsub: (() => void) | null;
-  outboundBuffer: Record<string, unknown>[];
-}
-
-export interface ManagedConnection extends RelayConnectionEntry {
-  wsId: string;
-}
+export type { ManagedConnection, RelayConnectionEntry };
 
 export class RelayConnectionManager {
   private connections = new Map<string, RelayConnectionEntry>();

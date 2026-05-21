@@ -1,9 +1,5 @@
 import Elysia from "elysia";
-
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
+import type { RateLimitEntry } from "../types/store";
 
 const store = new Map<string, RateLimitEntry>();
 
