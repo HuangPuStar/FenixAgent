@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { client, unwrapEden } from "../../../api/client";
+import { apiPost } from "../../../api/client";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -33,7 +33,7 @@ export function AgentApiKeysPage() {
   const loadKeys = useCallback(async () => {
     setLoading(true);
     try {
-      const list = unwrapEden<ApiKeyInfo[]>(await client.web.apiKeys.post({ action: "list" }));
+      const list = await apiPost<ApiKeyInfo[]>("/web/apiKeys", { action: "list" });
       setKeys(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);
@@ -60,9 +60,7 @@ export function AgentApiKeysPage() {
     }
     setFormSaving(true);
     try {
-      const result = unwrapEden<{ key?: string }>(
-        await client.web.apiKeys.post({ action: "create", name: formName.trim() }),
-      );
+      const result = await apiPost<{ key?: string }>("/web/apiKeys", { action: "create", name: formName.trim() });
       if (result?.key) {
         setNewKeyValue(result.key);
       }
@@ -79,7 +77,7 @@ export function AgentApiKeysPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      unwrapEden(await client.web.apiKeys.post({ action: "delete", id: deleteTarget }));
+      await apiPost("/web/apiKeys", { action: "delete", id: deleteTarget });
       toast.success(t("toast.deleted"));
       setConfirmOpen(false);
       setDeleteTarget(null);

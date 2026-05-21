@@ -1,7 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { client, unwrapEden } from "../../api/client";
+import { api } from "../../api/client";
 
 interface PreviewTabProps {
   envId: string | null;
@@ -27,8 +27,7 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
     setError(null);
     try {
       const normalized = filePath.endsWith("/") ? filePath.slice(0, -1) : filePath;
-      const res = await client.web.environments({ id: envId }).user({ path: normalized }).get();
-      const result = unwrapEden<{ content?: string; name?: string }>(res);
+      const result = await api<{ content?: string; name?: string }>("GET", `/web/environments/${envId}/user/${normalized}`);
       if (result && typeof result.content === "string") {
         setContent(result.content);
         setFileName(result.name || normalized.split("/").pop() || normalized);

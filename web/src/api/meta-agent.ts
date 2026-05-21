@@ -4,7 +4,7 @@
  * 对接后端 POST /web/meta-agent/ensure。
  */
 
-import { client, unwrapEden } from "./client";
+import { apiPost } from "./client";
 
 export interface EnsureMetaResult {
   environmentId: string;
@@ -13,6 +13,5 @@ export interface EnsureMetaResult {
 }
 
 export async function ensureMetaAgent(): Promise<EnsureMetaResult> {
-  const res = await client.web.metaAgent.ensure.post({});
-  return unwrapEden<EnsureMetaResult>(res);
+  return apiPost<EnsureMetaResult>("/web/meta-agent/ensure", {});
 }

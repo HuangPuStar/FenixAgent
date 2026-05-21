@@ -100,72 +100,61 @@ export interface DryRunResult {
 
 // ── API Client ──
 
-import { client, unwrapEden } from "./client";
+import { apiPost } from "./client";
 
 export const workflowEngineApi = {
   /** 执行工作流（同步，会阻塞到完成或 SUSPENDED） */
   async run(yaml: string, params?: Record<string, unknown>, workflowId?: string): Promise<DAGRunResult> {
-    const res = await client.web.workflowEngine.post({ action: "run", yaml, params, workflowId });
-    return unwrapEden<DAGRunResult>(res);
+    return apiPost<DAGRunResult>("/web/workflow-engine", { action: "run", yaml, params, workflowId });
   },
 
   /** 校验 + 执行计划（不执行） */
   async dryRun(yaml: string): Promise<DryRunResult> {
-    const res = await client.web.workflowEngine.post({ action: "dryRun", yaml });
-    return unwrapEden<DryRunResult>(res);
+    return apiPost<DryRunResult>("/web/workflow-engine", { action: "dryRun", yaml });
   },
 
   /** 取消运行 */
   async cancel(runId: string): Promise<void> {
-    const res = await client.web.workflowEngine.post({ action: "cancel", runId });
-    unwrapEden(res);
+    await apiPost("/web/workflow-engine", { action: "cancel", runId });
   },
 
   /** 获取运行状态快照 */
   async getRunStatus(runId: string): Promise<DAGSnapshot | null> {
-    const res = await client.web.workflowEngine.post({ action: "getRunStatus", runId });
-    return unwrapEden<DAGSnapshot | null>(res);
+    return apiPost<DAGSnapshot | null>("/web/workflow-engine", { action: "getRunStatus", runId });
   },
 
   /** 获取事件流 */
   async getEvents(runId: string, nodeId?: string): Promise<DAGEvent[]> {
-    const res = await client.web.workflowEngine.post({ action: "getEvents", runId, nodeId });
-    return unwrapEden<DAGEvent[]>(res);
+    return apiPost<DAGEvent[]>("/web/workflow-engine", { action: "getEvents", runId, nodeId });
   },
 
   /** 获取节点输出 */
   async getOutput(runId: string, nodeId: string): Promise<NodeOutput | null> {
-    const res = await client.web.workflowEngine.post({ action: "getOutput", runId, nodeId });
-    return unwrapEden<NodeOutput | null>(res);
+    return apiPost<NodeOutput | null>("/web/workflow-engine", { action: "getOutput", runId, nodeId });
   },
 
   /** 获取待审批列表 */
   async getPendingApprovals(runId: string): Promise<PendingApproval[]> {
-    const res = await client.web.workflowEngine.post({ action: "getPendingApprovals", runId });
-    return unwrapEden<PendingApproval[]>(res);
+    return apiPost<PendingApproval[]>("/web/workflow-engine", { action: "getPendingApprovals", runId });
   },
 
   /** 审批通过 */
   async approve(runId: string, nodeId: string, token: string, data?: unknown): Promise<void> {
-    const res = await client.web.workflowEngine.post({ action: "approve", runId, nodeId, token, data });
-    unwrapEden(res);
+    await apiPost("/web/workflow-engine", { action: "approve", runId, nodeId, token, data });
   },
 
   /** 列出运行记录 */
   async listRuns(): Promise<RunSummary[]> {
-    const res = await client.web.workflowEngine.post({ action: "listRuns" });
-    return unwrapEden<RunSummary[]>(res);
+    return apiPost<RunSummary[]>("/web/workflow-engine", { action: "listRuns" });
   },
 
   /** 崩溃恢复 */
   async recover(runId: string, yaml: string): Promise<DAGRunResult> {
-    const res = await client.web.workflowEngine.post({ action: "recover", runId, yaml });
-    return unwrapEden<DAGRunResult>(res);
+    return apiPost<DAGRunResult>("/web/workflow-engine", { action: "recover", runId, yaml });
   },
 
   /** 从指定节点重新运行（保留上游输出，目标及下游重新执行） */
   async rerunFrom(runId: string, yaml: string, fromNodeId: string, workflowId?: string): Promise<DAGRunResult> {
-    const res = await client.web.workflowEngine.post({ action: "rerunFrom", runId, yaml, fromNodeId, workflowId });
-    return unwrapEden<DAGRunResult>(res);
+    return apiPost<DAGRunResult>("/web/workflow-engine", { action: "rerunFrom", runId, yaml, fromNodeId, workflowId });
   },
 };

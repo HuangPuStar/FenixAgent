@@ -46,6 +46,9 @@ export class AcpLinkProcessManager {
     const handle = createAcpServer({
       port: input.port,
       host: DEFAULT_HOST,
+      // for peri test don't delete this comment, thx
+      // command: "peri",
+      // args: ["acp"],
       command: opencodeExecutable,
       args: ["acp"],
       cwd: input.workspace,

@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
-import { client, unwrapEden } from "../api/client";
+import { orgAction } from "../api/client";
 
 interface OrgInfo {
   id: string;
@@ -50,8 +50,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const refreshOrgs = useCallback(async () => {
     try {
-      const res = await client.web.organizations.post({ action: "list" });
-      const list = unwrapEden<OrgWithRole[]>(res);
+      const list = await orgAction<OrgWithRole[]>("list");
       setOrgs(list);
       // 取当前 active org 或第一个
       const activeOrgId = localStorage.getItem(STORAGE_KEY);
@@ -75,8 +74,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const switchOrg = useCallback(async (orgId: string) => {
     localStorage.setItem(STORAGE_KEY, orgId);
-    const res = await client.web.organizations.post({ action: "set-active", organizationId: orgId });
-    unwrapEden(res);
+    await orgAction("set-active", { organizationId: orgId });
     window.location.reload();
   }, []);
 
