@@ -928,7 +928,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             <Panel position="top-left" className="wf-panel-palette">
               <div className="wf-palette">
                 <div className="wf-palette-title">{t("editor.palette_drag_hint")}</div>
-                {PALETTE_ITEMS.map(({ type, label, icon: Icon, color }) => (
+                {PALETTE_ITEMS.map(({ type, labelKey, icon: Icon, color }) => (
                   <button
                     key={type}
                     type="button"
@@ -943,7 +943,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                     <span className="wf-palette-icon" style={{ background: color }}>
                       <Icon size={14} />
                     </span>
-                    {label}
+                    {t(labelKey)}
                   </button>
                 ))}
               </div>
