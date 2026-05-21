@@ -84,7 +84,7 @@ export function AgentSidebar({
       </div>
 
       {/* 更多导航：下拉菜单 */}
-      <div className="border-t border-border-subtle py-2">
+      <div className="border-t border-border-subtle">
         <AgentSidebarConfig onNavigate={onNavigate} />
       </div>
 
