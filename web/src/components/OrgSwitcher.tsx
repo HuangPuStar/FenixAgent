@@ -24,14 +24,15 @@ export function OrgSwitcher() {
         type="button"
         onClick={() => setOpen(!open)}
         className={[
-          "flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium",
-          "text-text-primary hover:bg-surface-hover",
-          "transition-colors duration-150",
+          "flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius)]",
+          "text-[13px] font-medium text-text-secondary",
+          "hover:bg-surface-hover hover:text-text-primary",
+          "transition-all duration-150 cursor-pointer",
         ].join(" ")}
       >
-        <Users className="w-4 h-4 text-text-dim" />
+        <Users className="w-[18px] h-[18px] flex-shrink-0" />
         <span className="max-w-[120px] truncate">{org.name}</span>
-        <ChevronDown className="w-3.5 h-3.5 text-text-dim" />
+        <ChevronDown className="w-3.5 h-3.5 text-text-dim ml-auto" />
       </button>
 
       {open && (
@@ -51,7 +52,7 @@ export function OrgSwitcher() {
                 setOpen(false);
               }}
               className={[
-                "flex items-center gap-2 w-full px-3 py-2 text-sm text-left",
+                "flex items-center gap-2 w-full px-3 py-2 text-[13px] text-left",
                 "hover:bg-surface-hover transition-colors",
                 o.id === org.id ? "text-brand font-medium" : "text-text-secondary",
               ].join(" ")}
