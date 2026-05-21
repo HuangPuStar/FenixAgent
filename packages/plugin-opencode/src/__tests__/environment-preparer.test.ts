@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentLaunchSpec } from "@mothership/plugin-sdk";
@@ -7,7 +7,6 @@ import {
   ensureWorkspaceRuntimeDirs,
   prepareWorkspaceEnvironment,
   writeOpencodeConfig,
-  writeWorkspaceEnvFile,
 } from "../runtime/environment-preparer";
 import { buildOpencodeRuntimeConfig } from "../runtime/runtime-config";
 
@@ -82,25 +81,8 @@ describe("environment-preparer", () => {
     }
   });
 
-  // 写入 .env
-  test("writes workspace .env and overwrites previous values", async () => {
-    const workspace = await createWorkspace();
-    try {
-      await writeFile(join(workspace, ".env"), "OLD=value\n", "utf8");
-      const envPath = await writeWorkspaceEnvFile(workspace, {
-        OPENAI_API_KEY: "sk-next",
-        ACP_RCS_TOKEN: "rcs-next",
-      });
-      const raw = await readFile(envPath, "utf8");
-
-      expect(raw).toBe("OPENAI_API_KEY=sk-next\nACP_RCS_TOKEN=rcs-next\n");
-    } finally {
-      await rm(workspace, { recursive: true, force: true });
-    }
-  });
-
-  // 准备运行目录
-  test("prepares runtime directories and keeps skill targets under .opencode/skills", async () => {
+  // 准备运行目录（不再写 .env 文件）
+  test("prepares runtime directories without touching .env", async () => {
     const workspace = await createWorkspace();
     try {
       const paths = await ensureWorkspaceRuntimeDirs(workspace);
@@ -115,7 +97,9 @@ describe("environment-preparer", () => {
       expect(Bun.file(paths.runtimeDir).size).toBeGreaterThanOrEqual(0);
       expect(Bun.file(paths.skillsDir).size).toBeGreaterThanOrEqual(0);
       expect((await Bun.file(paths.configPath).text()).length).toBeGreaterThan(0);
-      expect((await Bun.file(paths.envPath).text()).trim()).toBe("TEST_KEY=test");
+      // .env 不应被创建
+      const envExists = await Bun.file(join(workspace, ".env")).exists();
+      expect(envExists).toBe(false);
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

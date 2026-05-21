@@ -55,7 +55,9 @@ describe("opencode-runtime prepareEnvironment", () => {
       expect(state?.workspace).toBe(workspace);
       expect(state?.launchSpec).toEqual(launchSpec);
       expect(state?.installedSkills?.[0]?.path).toContain(".opencode/skills/writer-skill");
-      expect(await readFile(join(workspace, ".env"), "utf8")).toContain("ACP_RCS_TOKEN=rcs-secret");
+      // .env 不再被写入
+      const envExists = await Bun.file(join(workspace, ".env")).exists();
+      expect(envExists).toBe(false);
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
@@ -112,7 +114,9 @@ describe("opencode-runtime prepareEnvironment", () => {
       });
 
       await expect(access(workspace, constants.R_OK | constants.W_OK)).resolves.toBeNull();
-      expect(await readFile(join(workspace, ".env"), "utf8")).toContain("ACP_RCS_TOKEN=rcs-secret");
+      // .env 不再被写入
+      const envExists = await Bun.file(join(workspace, ".env")).exists();
+      expect(envExists).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
