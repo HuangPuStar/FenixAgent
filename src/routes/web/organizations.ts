@@ -1,5 +1,8 @@
+import { eq } from "drizzle-orm";
 import Elysia from "elysia";
 import { auth } from "../../auth/better-auth";
+import { db } from "../../db";
+import { member } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
 
 const app = new Elysia({ name: "web-organizations" }).use(authGuardPlugin);
@@ -70,7 +73,22 @@ app.post(
     switch (b.action) {
       case "list": {
         const orgs = await api.listOrganizations({ headers: request.headers });
-        return { success: true, data: Array.isArray(orgs) ? orgs : [] };
+        if (!Array.isArray(orgs) || orgs.length === 0) {
+          return { success: true, data: [] };
+        }
+        // better-auth listOrganizations 丢弃了 member.role，需要从 member 表补回
+        const userId = store.user?.id;
+        const memberships = await db
+          .select({ organizationId: member.organizationId, role: member.role })
+          .from(member)
+          .where(eq(member.userId, userId))
+          .execute();
+        const roleMap = new Map(memberships.map((m) => [m.organizationId, m.role]));
+        const enriched = orgs.map((o: Record<string, unknown>) => ({
+          ...o,
+          role: roleMap.get(o.id as string) ?? "member",
+        }));
+        return { success: true, data: enriched };
       }
       case "get": {
         if (!b.organizationId)
