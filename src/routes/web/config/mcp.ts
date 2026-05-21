@@ -50,7 +50,7 @@ async function handleList(ctx: AuthContext) {
   const serversWithCount = await Promise.all(
     servers.map(async (s) => {
       try {
-        const toolsCount = await countToolsByServer(s.name);
+        const toolsCount = await countToolsByServer(ctx.organizationId, s.name);
         return { ...toServerInfo(s.name, s), toolsCount };
       } catch {
         return { ...toServerInfo(s.name, s), toolsCount: 0 };
@@ -108,7 +108,7 @@ async function handleDelete(ctx: AuthContext, name: string) {
   if (!deleted) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
   try {
-    await deleteToolsByServer(name);
+    await deleteToolsByServer(ctx.organizationId, name);
   } catch {
     // ignore db errors on cleanup
   }
@@ -244,7 +244,7 @@ async function handleInspect(ctx: AuthContext, name: string) {
     return { success: false, error: { code: "VALIDATION_ERROR", message: result.message ?? "无法连接到 MCP 服务器" } };
   }
 
-  await replaceToolsForServer(name, result.tools);
+  await replaceToolsForServer(ctx.organizationId, name, result.tools);
 
   return {
     success: true,
@@ -258,8 +258,8 @@ async function handleInspect(ctx: AuthContext, name: string) {
   };
 }
 
-async function handleListTools(name: string) {
-  const tools = await listToolsByServer(name);
+async function handleListTools(ctx: AuthContext, name: string) {
+  const tools = await listToolsByServer(ctx.organizationId, name);
 
   return {
     success: true,
@@ -318,7 +318,7 @@ app.post(
         case "inspect":
           return await handleInspect(authCtx, name!);
         case "list_tools":
-          return await handleListTools(name!);
+          return await handleListTools(authCtx, name!);
         default:
           return error(400, {
             success: false,

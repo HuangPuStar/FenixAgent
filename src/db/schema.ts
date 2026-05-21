@@ -152,14 +152,21 @@ export const apikey = pgTable(
 );
 
 // MCP Tool 缓存表
-export const mcpTool = pgTable("mcp_tool", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  serverName: varchar("server_name").notNull(),
-  toolName: varchar("tool_name").notNull(),
-  description: text("description"),
-  inputSchema: jsonb("input_schema"),
-  inspectedAt: timestamp("inspected_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const mcpTool = pgTable(
+  "mcp_tool",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: text("organization_id").notNull(),
+    serverName: varchar("server_name").notNull(),
+    toolName: varchar("tool_name").notNull(),
+    description: text("description"),
+    inputSchema: jsonb("input_schema"),
+    inspectedAt: timestamp("inspected_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgServerIdx: index("idx_mcp_tool_org_server").on(table.organizationId, table.serverName),
+  }),
+);
 
 // Share Link 分享链接表
 export const shareLink = pgTable(

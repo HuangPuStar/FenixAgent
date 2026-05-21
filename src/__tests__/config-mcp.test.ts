@@ -37,11 +37,11 @@ const _mockToolsState: { tools: any[] } = { tools: [] };
 const realMcpServer = require("../services/config/mcp-server");
 mock.module("../services/config/mcp-server", () => ({
   ...realMcpServer,
-  countToolsByServer: async (_serverName: string) => _mockToolsState.tools.length,
-  deleteToolsByServer: async (serverName: string) => {
+  countToolsByServer: async (_orgId: string, _serverName: string) => _mockToolsState.tools.length,
+  deleteToolsByServer: async (_orgId: string, serverName: string) => {
     _mockToolsState.tools = _mockToolsState.tools.filter((t: any) => t.serverName !== serverName);
   },
-  replaceToolsForServer: async (serverName: string, tools: any[]) => {
+  replaceToolsForServer: async (_orgId: string, serverName: string, tools: any[]) => {
     _mockToolsState.tools = tools.map((t) => ({
       serverName,
       toolName: t.name,
@@ -50,7 +50,7 @@ mock.module("../services/config/mcp-server", () => ({
       inspectedAt: new Date(),
     }));
   },
-  listToolsByServer: async (serverName: string) =>
+  listToolsByServer: async (_orgId: string, serverName: string) =>
     _mockToolsState.tools.filter((t: any) => t.serverName === serverName),
 }));
 

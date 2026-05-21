@@ -84,30 +84,36 @@ export async function setMcpServerEnabled(ctx: AuthContext, name: string, enable
 // ────────────────────────────────────────────
 
 /** 统计指定 server 的 tool 数量（使用 SQL COUNT，避免全量拉取） */
-export async function countToolsByServer(serverName: string): Promise<number> {
+export async function countToolsByServer(organizationId: string, serverName: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)` })
     .from(mcpTool)
-    .where(eq(mcpTool.serverName, serverName));
+    .where(and(eq(mcpTool.organizationId, organizationId), eq(mcpTool.serverName, serverName)));
   return Number(row?.count ?? 0);
 }
 
 /** 删除指定 server 的所有缓存 tool */
-export async function deleteToolsByServer(serverName: string): Promise<void> {
-  await db.delete(mcpTool).where(eq(mcpTool.serverName, serverName));
+export async function deleteToolsByServer(organizationId: string, serverName: string): Promise<void> {
+  await db
+    .delete(mcpTool)
+    .where(and(eq(mcpTool.organizationId, organizationId), eq(mcpTool.serverName, serverName)));
 }
 
 /** 替换指定 server 的缓存 tool（事务保证原子性：先删后插） */
 export async function replaceToolsForServer(
+  organizationId: string,
   serverName: string,
   tools: Array<{ name: string; description?: string; inputSchema?: unknown }>,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.delete(mcpTool).where(eq(mcpTool.serverName, serverName));
+    await tx
+      .delete(mcpTool)
+      .where(and(eq(mcpTool.organizationId, organizationId), eq(mcpTool.serverName, serverName)));
     if (tools.length > 0) {
       const now = new Date();
       const rows = tools.map((t) => ({
         id: randomUUID(),
+        organizationId,
         serverName,
         toolName: t.name,
         description: t.description ?? null,
@@ -120,8 +126,11 @@ export async function replaceToolsForServer(
 }
 
 /** 列出指定 server 的缓存 tool */
-export async function listToolsByServer(serverName: string) {
-  return db.select().from(mcpTool).where(eq(mcpTool.serverName, serverName));
+export async function listToolsByServer(organizationId: string, serverName: string) {
+  return db
+    .select()
+    .from(mcpTool)
+    .where(and(eq(mcpTool.organizationId, organizationId), eq(mcpTool.serverName, serverName)));
 }
 
 // ────────────────────────────────────────────

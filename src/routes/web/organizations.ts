@@ -10,7 +10,7 @@ interface OrgApi {
   getFullOrganization: (opts: { query: { organizationId: string }; headers: Headers }) => Promise<unknown>;
   listMembers: (opts: { query: { organizationId: string }; headers: Headers }) => Promise<unknown>;
   createOrganization: (opts: {
-    body: { name: string; slug: string; metadata?: string | null };
+    body: { name: string; slug: string; metadata?: Record<string, unknown> };
     headers: Headers;
   }) => Promise<unknown>;
   updateOrganization: (opts: {
@@ -90,7 +90,11 @@ app.post(
           return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name and slug required" } });
         try {
           const org = await api.createOrganization({
-            body: { name: b.name, slug: b.slug, metadata: b.description ?? null },
+            body: {
+              name: b.name,
+              slug: b.slug,
+              metadata: b.description ? { description: b.description } : undefined,
+            },
             headers: request.headers,
           });
           return { success: true, data: org };
