@@ -12,10 +12,9 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
@@ -298,25 +297,23 @@ export function DataTable<T>({
                 const rowId = row.id;
                 const isExpanded = row.getIsExpanded();
                 return (
-                  <Collapsible key={rowId} open={isExpanded} onOpenChange={() => row.toggleExpanded()} asChild>
+                  <Fragment key={rowId}>
                     <TableRow className="group border-b hover:bg-surface-hover transition-colors relative table-row-hover">
                       {row.getVisibleCells().map((cell) => {
                         if (cell.column.id === "expand" && expandableRow) {
                           return (
                             <TableCell key={cell.id} className="w-10 px-2 py-2">
-                              <CollapsibleTrigger asChild>
-                                <button className="p-0.5 rounded hover:bg-muted">
-                                  <span
-                                    className={`inline-flex transition-transform duration-200 ${isExpanded ? "rotate-0" : "-rotate-0"}`}
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronDown className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4" />
-                                    )}
-                                  </span>
-                                </button>
-                              </CollapsibleTrigger>
+                              <button className="p-0.5 rounded hover:bg-muted" onClick={() => row.toggleExpanded()}>
+                                <span
+                                  className={`inline-flex transition-transform duration-200 ${isExpanded ? "rotate-0" : "-rotate-0"}`}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </span>
+                              </button>
                             </TableCell>
                           );
                         }
@@ -327,18 +324,16 @@ export function DataTable<T>({
                         );
                       })}
                     </TableRow>
-                    {expandableRow && (
+                    {expandableRow && isExpanded && (
                       <TableRow className="border-b">
                         <TableCell colSpan={colSpan} className="p-0 whitespace-normal overflow-hidden">
-                          <CollapsibleContent>
-                            <div className="px-6 py-3 bg-surface-2/50 border-t border-border-light">
-                              {expandableRow(row.original)}
-                            </div>
-                          </CollapsibleContent>
+                          <div className="px-6 py-3 bg-surface-2/50 border-t border-border-light">
+                            {expandableRow(row.original)}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}
-                  </Collapsible>
+                  </Fragment>
                 );
               })
             )}
