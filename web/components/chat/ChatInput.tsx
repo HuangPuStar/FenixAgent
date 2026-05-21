@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, type KeyboardEvent, type ClipboardEvent } from "react";
+import { useState, useRef, useCallback, useEffect, type KeyboardEvent, type ClipboardEvent, type DragEvent } from "react";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
 import { Send, Square, Paperclip, Slash, AtSign } from "lucide-react";
@@ -59,6 +59,36 @@ export function ChatInput({
 
   // 文件上传和浏览使用 envId（environment ID），后端路由为 /web/environments/:envId/user/*
   const fileWorkspaceId = envId;
+
+  // 监听文件树引用事件（右键菜单"引用到聊天"）
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { path, name } = (e as CustomEvent).detail;
+      setText((prev) => prev + `@./${path} `);
+      setAttachments((prev) => {
+        if (prev.some((a) => a.path === path)) return prev;
+        return [...prev, { name, path }];
+      });
+      textareaRef.current?.focus();
+    };
+    window.addEventListener("file-tree:reference", handler);
+    return () => window.removeEventListener("file-tree:reference", handler);
+  }, []);
+
+  // 拖拽文件路径到输入框（从文件树拖拽）
+  const handleDrop = useCallback((e: DragEvent) => {
+    const treePath = e.dataTransfer.getData("text/plain");
+    if (!treePath || treePath.startsWith("file://") || treePath.startsWith("blob:")) return;
+    e.preventDefault();
+    const name = treePath.split("/").pop() || treePath;
+    const cleanPath = treePath.endsWith("/") ? treePath.slice(0, -1) : treePath;
+    setText((prev) => prev + `@./${cleanPath} `);
+    setAttachments((prev) => {
+      if (prev.some((a) => a.path === cleanPath)) return prev;
+      return [...prev, { name, path: cleanPath }];
+    });
+    textareaRef.current?.focus();
+  }, []);
 
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
@@ -289,7 +319,11 @@ export function ChatInput({
         )}
 
         {/* 输入区域 — Anthropic 单行紧凑布局 */}
-        <div className="flex items-end gap-2 px-3 py-2.5">
+        <div
+          className="flex items-end gap-2 px-3 py-2.5"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+        >
           {/* Slash 命令按钮 */}
           {commands && commands.length > 0 && (
             <Button
