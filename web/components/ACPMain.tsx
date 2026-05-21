@@ -237,7 +237,7 @@ export function ACPMain({ client, agentId, initialCwd, readonly, hideSidebar, rc
             </Button>
           </div>
         )}
-        <ChatInterface ref={chatRef} client={client} agentId={agentId} cwd={cwd} cwdReady={cwdReady} readonly={readonly} hideContextPanel={hideSidebar} rcsSessionId={rcsSessionId} scenePrompt={scenePrompt} onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)} />
+        <ChatInterface ref={chatRef} client={client} agentId={agentId} cwd={cwd} cwdReady={cwdReady} readonly={readonly} hideContextPanel={true} rcsSessionId={rcsSessionId} scenePrompt={scenePrompt} onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)} />
       </div>
     </div>
   );

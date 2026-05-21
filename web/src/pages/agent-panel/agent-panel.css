@@ -6,9 +6,9 @@
 :root {
   --agent-sidebar-width: 220px;
   --agent-sidebar-collapsed: 60px;
-  --agent-artifacts-width: 400px;
-  --agent-artifacts-min: 300px;
-  --agent-artifacts-max: 600px;
+  --agent-artifacts-width: 480px;
+  --agent-artifacts-min: 360px;
+  --agent-artifacts-max: 700px;
 }
 
 /* ---------- 三栏布局容器 ---------- */
@@ -16,6 +16,23 @@
   display: flex;
   height: 100dvh;
   width: 100%;
+  overflow: hidden;
+}
+
+/* agent-panel-body: column layout — StatusHeader on top, three columns below */
+.agent-panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* agent-panel-content: row layout — chat area + artifacts side by side */
+.agent-panel-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -80,11 +97,13 @@
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 24px;
-  height: 48px;
+  width: 28px;
+  height: 56px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   border: 1px solid var(--color-border-subtle);
   border-right: none;
   border-radius: 6px 0 0 6px;
@@ -93,13 +112,19 @@
   cursor: pointer;
   transition:
     background 150ms,
-    color 150ms;
+    color 150ms,
+    width 150ms;
   z-index: 5;
+  font-size: 10px;
+  font-weight: 500;
+  writing-mode: vertical-lr;
+  letter-spacing: 0.05em;
 }
 
 .agent-artifacts-expand-btn:hover {
   background: var(--color-surface-2);
   color: var(--color-text-primary);
+  width: 32px;
 }
 
 /* ---------- 拖拽分隔线 ---------- */
@@ -341,4 +366,25 @@ file-tree-container {
 .agent-welcome-empty .desc {
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+/* ---------- Artifacts split layout (tree + preview) ---------- */
+.agent-artifacts-split {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.agent-artifacts-tree-pane {
+  width: 50%;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.agent-artifacts-preview-pane {
+  width: 50%;
+  min-width: 0;
+  overflow: hidden;
 }

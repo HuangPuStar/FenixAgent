@@ -21,8 +21,6 @@
   "stopInstanceFailed": "停止实例失败: {{message}}",
   "enterInstanceFailed": "进入实例失败: {{message}}",
   "tabFiles": "文件",
-  "tabPreview": "预览",
-  "tabContext": "上下文",
   "closePanel": "关闭面板",
   "selectAgent": "选择一个智能体实例",
   "selectAgentDesc": "从左侧边栏选择一个智能体实例开始对话",

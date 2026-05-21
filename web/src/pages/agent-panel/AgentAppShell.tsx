@@ -97,24 +97,26 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
           modelName={stats.modelName}
           entries={stats.entries}
         />
-        <div className="agent-chat-area">
-          <ChatPanel agentId={selectedAgentId} sessionId={currentSessionId} />
+        <div className="agent-panel-content">
+          <div className="agent-chat-area">
+            <ChatPanel agentId={selectedAgentId} sessionId={currentSessionId} />
+          </div>
+          <ArtifactsPanel
+            collapsed={artifactsCollapsed}
+            onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
+            envId={selectedAgentId}
+          />
+          {artifactsCollapsed && (
+            <button
+              type="button"
+              className="agent-artifacts-expand-btn"
+              onClick={() => setArtifactsCollapsed(false)}
+              title={t("showArtifacts")}
+            >
+              <PanelRight className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
-        <ArtifactsPanel
-          collapsed={artifactsCollapsed}
-          onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
-          envId={selectedAgentId}
-        />
-        {artifactsCollapsed && (
-          <button
-            type="button"
-            className="agent-artifacts-expand-btn"
-            onClick={() => setArtifactsCollapsed(false)}
-            title={t("showArtifacts")}
-          >
-            <PanelRight className="h-3.5 w-3.5" />
-          </button>
-        )}
       </div>
       <AgentCreateDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
     </div>

@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, FileText, FolderTree, BarChart3 } from "lucide-react";
+import { PanelRightClose, FolderTree } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../i18n";
 import { FileTreeTab } from "../../components/agent-panel/FileTreeTab";
 import { PreviewTab } from "../../components/agent-panel/PreviewTab";
-
-type ArtifactsTab = "files" | "preview" | "context";
 
 interface ArtifactsPanelProps {
   collapsed: boolean;
@@ -15,24 +13,16 @@ interface ArtifactsPanelProps {
 
 export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
-  const [activeTab, setActiveTab] = useState<ArtifactsTab>(() => {
-    const saved = localStorage.getItem("agent-panel:artifacts-tab");
-    return saved === "preview" || saved === "context" || saved === "files" ? saved : "files";
-  });
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
 
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem("agent-panel:artifacts-width");
-    return saved ? Number(saved) : 400;
+    return saved ? Number(saved) : 480;
   });
 
   const resizingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
-
-  useEffect(() => {
-    localStorage.setItem("agent-panel:artifacts-tab", activeTab);
-  }, [activeTab]);
 
   useEffect(() => {
     localStorage.setItem("agent-panel:artifacts-width", String(width));
@@ -48,7 +38,7 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
       const handleMouseMove = (ev: MouseEvent) => {
         if (!resizingRef.current) return;
         const delta = startXRef.current - ev.clientX;
-        const newWidth = Math.min(600, Math.max(300, startWidthRef.current + delta));
+        const newWidth = Math.min(700, Math.max(360, startWidthRef.current + delta));
         setWidth(newWidth);
       };
 
@@ -66,7 +56,6 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
 
   const handlePreviewFile = useCallback((path: string) => {
     setPreviewFilePath(path);
-    setActiveTab("preview");
   }, []);
 
   const handleReferenceFile = useCallback((path: string, name: string) => {
@@ -82,65 +71,44 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
   }
 
   return (
-    <>
-      {/* 拖拽分隔线 */}
+    <div className="relative flex shrink-0">
+      {/* Toggle button — pinned to the left edge */}
+      <button
+        className="absolute left-0 -translate-x-full top-1/2 -translate-y-1/2 z-10 w-6 h-12 flex items-center justify-center rounded-l-lg border border-border border-r-0 bg-surface-1 text-text-muted cursor-pointer transition-colors duration-150 hover:bg-surface-2 hover:text-text-primary"
+        onClick={onToggleCollapse}
+        title={t("closePanel")}
+        aria-label={t("closePanel")}
+      >
+        <PanelRightClose className="h-3.5 w-3.5" />
+      </button>
+
+      {/* Resize handle */}
       <div className="agent-artifacts-resize-handle" style={{ left: 0 }} onMouseDown={handleMouseDown} />
 
-      {/* 面板主体 */}
+      {/* Panel body */}
       <div className="agent-artifacts" style={{ width }}>
-        {/* Tab 栏 */}
+        {/* Tab bar — single "Files" tab */}
         <div className="agent-artifacts-tabs">
-          <button
-            type="button"
-            className={`agent-artifacts-tab ${activeTab === "files" ? "active" : ""}`}
-            onClick={() => setActiveTab("files")}
-          >
+          <span className="agent-artifacts-tab active">
             <FolderTree className="inline h-3 w-3 mr-1" />
             {t("tabFiles")}
-          </button>
-          <button
-            type="button"
-            className={`agent-artifacts-tab ${activeTab === "preview" ? "active" : ""}`}
-            onClick={() => setActiveTab("preview")}
-          >
-            <FileText className="inline h-3 w-3 mr-1" />
-            {t("tabPreview")}
-          </button>
-          <button
-            type="button"
-            className={`agent-artifacts-tab ${activeTab === "context" ? "active" : ""}`}
-            onClick={() => setActiveTab("context")}
-          >
-            <BarChart3 className="inline h-3 w-3 mr-1" />
-            {t("tabContext")}
-          </button>
-          <button
-            type="button"
-            className="agent-artifacts-close-btn"
-            onClick={onToggleCollapse}
-            title={t("closePanel")}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          </span>
         </div>
 
-        {/* Tab 内容 */}
-        <div className="flex-1 overflow-hidden">
-          {activeTab === "files" && (
+        {/* Split content: file tree (left) + preview (right) */}
+        <div className="agent-artifacts-split">
+          <div className="agent-artifacts-tree-pane">
             <FileTreeTab
               envId={envId}
               onPreviewFile={handlePreviewFile}
               onReferenceFile={handleReferenceFile}
             />
-          )}
-          {activeTab === "preview" && <PreviewTab envId={envId} filePath={previewFilePath} />}
-          {activeTab === "context" && (
-            <div className="flex-1 overflow-y-auto p-4">
-              <p className="text-sm text-text-muted">Context (placeholder)</p>
-            </div>
-          )}
+          </div>
+          <div className="agent-artifacts-preview-pane">
+            <PreviewTab envId={envId} filePath={previewFilePath} />
+          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

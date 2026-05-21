@@ -7,6 +7,7 @@ import { ChatView } from "./chat/ChatView";
 import { ChatInput } from "./chat/ChatInput";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import { ContextPanel } from "./ContextPanel";
+import { StatusHeader } from "../src/components/agent-panel/StatusHeader";
 import { ModelSelectorPopover } from "./model-selector";
 import { useCommands } from "../src/hooks/useCommands";
 import { useModes } from "../src/hooks/useModes";
@@ -567,6 +568,20 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     };
   }, [activateSession, client, handlePermissionRequest, handleSessionUpdate, resetThreadState]);
 
+  // Broadcast stats to AgentAppShell via custom event (for top-level StatusHeader)
+  useEffect(() => {
+    const modelName = client.modelState
+      ? client.modelState.availableModels.find(
+          (m) => m.modelId === client.modelState!.currentModelId,
+        )?.name ?? client.modelState.currentModelId
+      : undefined;
+    window.dispatchEvent(
+      new CustomEvent("chat:stats", {
+        detail: { agentName: agentId, modelName, entries },
+      }),
+    );
+  }, [entries, agentId, client.modelState]);
+
   // =============================================================================
   // User Actions
   // =============================================================================
@@ -597,7 +612,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     requestCreateSession();
   }, [cwdReady, isLoading, resetThreadState, requestCreateSession]);
 
-  useImperativeHandle(ref, () => ({ newSession: handleNewSession }), [handleNewSession]);
+  useImperativeHandle(ref, () => ({
+  newSession: handleNewSession,
+}), [handleNewSession]);
 
   // Cancel handler - matches Zed's cancel() logic in acp_thread.rs
   // 1. Mark all pending/running/waiting_for_confirmation tool calls as canceled
