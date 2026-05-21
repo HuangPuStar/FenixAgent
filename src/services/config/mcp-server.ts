@@ -4,6 +4,7 @@ import { db } from "../../db";
 import { mcpServer, mcpTool } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
 import { parseJsonb } from "./jsonb";
+import type { McpServerConfig, McpServerInfoOutput } from "./types";
 
 // ────────────────────────────────────────────
 // MCP Server 操作
@@ -22,7 +23,7 @@ export async function getMcpServer(ctx: AuthContext, name: string) {
   return rows[0] ?? null;
 }
 
-export async function createMcpServer(ctx: AuthContext, name: string, type: string, config: Record<string, unknown>) {
+export async function createMcpServer(ctx: AuthContext, name: string, type: string, config: McpServerConfig) {
   const values = {
     organizationId: ctx.organizationId,
     userId: ctx.userId,
@@ -45,13 +46,9 @@ export async function createMcpServer(ctx: AuthContext, name: string, type: stri
     });
 }
 
-export async function updateMcpServer(
-  ctx: AuthContext,
-  name: string,
-  config: Record<string, unknown>,
-): Promise<boolean> {
+export async function updateMcpServer(ctx: AuthContext, name: string, config: McpServerConfig): Promise<boolean> {
   const updates: Partial<typeof mcpServer.$inferInsert> = { config, updatedAt: new Date() };
-  if (typeof config.type === "string" && VALID_MCP_TYPES.includes(config.type)) {
+  if ("type" in config && typeof config.type === "string" && VALID_MCP_TYPES.includes(config.type)) {
     updates.type = config.type;
   }
   const result = await db
@@ -186,29 +183,32 @@ export function validateMcpConfig(config: unknown): string | null {
 }
 
 /** 将 PG 行数据转为前端展示信息 */
-export function toServerInfo(name: string, row: { type: string; config: unknown; enabled: boolean }) {
+export function toServerInfo(
+  name: string,
+  row: { type: string; config: unknown; enabled: boolean },
+): McpServerInfoOutput {
   const config = parseJsonb<Record<string, unknown>>(row.config) ?? {};
   if (!row.enabled && !("type" in config)) {
-    return { name, type: "disabled" as const, enabled: false, summary: "已禁用" };
+    return { name, type: "disabled", enabled: false, summary: "已禁用" };
   }
   const cfgType = config.type as string;
   if (cfgType === "local") {
     const command = Array.isArray(config.command) ? (config.command as string[]) : [];
     return {
       name,
-      type: "local" as const,
+      type: "local",
       enabled: row.enabled,
       summary: command[0] ?? "",
-      timeout: config.timeout,
+      timeout: config.timeout as number | undefined,
     };
   }
-  // streamable-http 和 remote 统一展示为 remote 类型（使用 URL）
+  // streamable-http 和 remote 统一展示（使用 URL）
   const typeLabel = cfgType === "streamable-http" ? ("streamable-http" as const) : ("remote" as const);
   return {
     name,
     type: typeLabel,
     enabled: row.enabled,
-    summary: config.url ?? "",
-    timeout: config.timeout,
+    summary: (config.url as string) ?? "",
+    timeout: config.timeout as number | undefined,
   };
 }

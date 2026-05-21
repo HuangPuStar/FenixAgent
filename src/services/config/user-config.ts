@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { userConfig } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
+import type { PermissionConfig } from "./types";
 
 // ────────────────────────────────────────────
 // UserConfig 操作
@@ -11,7 +12,7 @@ export interface UserConfigData {
   defaultAgent?: string | null;
   currentModel?: string | null;
   smallModel?: string | null;
-  permission?: unknown;
+  permission?: PermissionConfig | null;
 }
 
 export async function getUserConfig(ctx: AuthContext): Promise<UserConfigData> {
@@ -24,7 +25,7 @@ export async function getUserConfig(ctx: AuthContext): Promise<UserConfigData> {
     defaultAgent: r.defaultAgent,
     currentModel: r.currentModel,
     smallModel: r.smallModel,
-    permission: r.permission,
+    permission: r.permission as PermissionConfig | null,
   };
 }
 

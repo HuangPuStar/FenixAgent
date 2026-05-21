@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { skill } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
+import type { SkillUpsertData } from "./types";
 
 // ────────────────────────────────────────────
 // Skill 操作（全局技能库）
@@ -20,15 +21,7 @@ export async function getSkill(ctx: AuthContext, name: string) {
   return rows[0] ?? null;
 }
 
-export async function upsertSkill(
-  ctx: AuthContext,
-  name: string,
-  data: {
-    description?: string;
-    contentPath?: string;
-    metadata?: Record<string, unknown>;
-  },
-) {
+export async function upsertSkill(ctx: AuthContext, name: string, data: SkillUpsertData) {
   const existing = await db
     .select({ id: skill.id })
     .from(skill)

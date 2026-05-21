@@ -35,5 +35,21 @@ export {
   listSkills,
   upsertSkill,
 } from "./skill";
+export type {
+  AgentConfigUpsertData,
+  AgentKnowledgeConfig,
+  McpServerConfig,
+  McpServerInfoOutput,
+  ModelCostConfig,
+  ModelLimitConfig,
+  ModelModalities,
+  ModelOptions,
+  PermissionAction,
+  PermissionConfig,
+  ProviderExtraOptions,
+  ProviderUpsertData,
+  SkillMetadata,
+  SkillUpsertData,
+} from "./types";
 export type { UserConfigData } from "./user-config";
 export { getUserConfig, setUserConfig } from "./user-config";

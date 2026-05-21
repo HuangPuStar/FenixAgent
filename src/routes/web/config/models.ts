@@ -86,7 +86,7 @@ async function handleSet(ctx: AuthContext, data: { model?: string; small_model?:
   await configPg.setUserConfig(ctx, {
     currentModel: data.model,
     smallModel: data.small_model,
-    permission: data.permission,
+    permission: data.permission as import("../../../services/config/types").PermissionConfig | null,
   });
   cachedAvailableByOrg.delete(ctx.organizationId);
   const uc = await configPg.getUserConfig(ctx);

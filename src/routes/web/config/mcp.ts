@@ -10,30 +10,9 @@ import {
   toServerInfo,
   validateMcpConfig,
 } from "../../../services/config/mcp-server";
+import type { McpRemoteConfig, McpServerConfig } from "../../../services/config/types";
 import * as configPg from "../../../services/config-pg";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
-
-// 内部类型定义（与前端 web/src/types/config.ts 对齐）
-type McpLocalConfig = {
-  type: "local";
-  command: string[];
-  environment?: Record<string, string>;
-  enabled?: boolean;
-  timeout?: number;
-};
-
-type McpRemoteConfig = {
-  type: "remote";
-  url: string;
-  enabled?: boolean;
-  headers?: Record<string, string>;
-  oauth?: { clientId?: string; clientSecret?: string; scope?: string; redirectUri?: string } | false;
-  timeout?: number;
-};
-
-type McpDisabledConfig = { enabled: false };
-
-type McpServerConfig = McpLocalConfig | McpRemoteConfig | McpDisabledConfig;
 
 // --- Action Handlers ---
 
@@ -79,9 +58,9 @@ async function handleCreate(ctx: AuthContext, name: string, config: McpServerCon
 
   const cfgType =
     typeof config === "object" && config !== null && "type" in config
-      ? ((config as Record<string, unknown>).type as string)
+      ? ((config as unknown as Record<string, unknown>).type as string)
       : "local";
-  await configPg.createMcpServer(ctx, name, cfgType, config as Record<string, unknown>);
+  await configPg.createMcpServer(ctx, name, cfgType, config as McpServerConfig);
   return { success: true, data: { name } };
 }
 
@@ -92,7 +71,7 @@ async function handleUpdate(ctx: AuthContext, name: string, config: McpServerCon
   const existing = await configPg.getMcpServer(ctx, name);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
-  await configPg.updateMcpServer(ctx, name, config as Record<string, unknown>);
+  await configPg.updateMcpServer(ctx, name, config as McpServerConfig);
   return { success: true, data: { name } };
 }
 

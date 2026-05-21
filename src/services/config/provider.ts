@@ -2,6 +2,14 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { model, provider } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
+import type {
+  ModelCostConfig,
+  ModelDataInput,
+  ModelLimitConfig,
+  ModelModalities,
+  ModelOptions,
+  ProviderUpsertData,
+} from "./types";
 
 // ────────────────────────────────────────────
 // Provider 操作
@@ -52,17 +60,7 @@ export async function getProvider(ctx: AuthContext, name: string) {
   return { ...p, models };
 }
 
-export async function upsertProvider(
-  ctx: AuthContext,
-  name: string,
-  data: {
-    displayName?: string;
-    npm?: string;
-    baseUrl?: string;
-    apiKey?: string;
-    extraOptions?: Record<string, unknown>;
-  },
-) {
+export async function upsertProvider(ctx: AuthContext, name: string, data: ProviderUpsertData) {
   const set = {
     displayName: data.displayName,
     npm: data.npm,
@@ -98,24 +96,24 @@ export async function deleteProvider(ctx: AuthContext, name: string): Promise<bo
 }
 
 /** 将前端数据映射为 PG model 字段 */
-export function buildModelData(data: Record<string, unknown>): {
+export function buildModelData(data: ModelDataInput): {
   displayName?: string;
-  modalities?: unknown;
-  limitConfig?: unknown;
-  cost?: unknown;
-  options?: unknown;
+  modalities?: ModelModalities | null;
+  limitConfig?: ModelLimitConfig | null;
+  cost?: ModelCostConfig | null;
+  options?: ModelOptions | null;
 } {
   const result: {
     displayName?: string;
-    modalities?: unknown;
-    limitConfig?: unknown;
-    cost?: unknown;
-    options?: unknown;
+    modalities?: ModelModalities | null;
+    limitConfig?: ModelLimitConfig | null;
+    cost?: ModelCostConfig | null;
+    options?: ModelOptions | null;
   } = {};
   if (typeof data.name === "string") result.displayName = data.name;
-  if (data.modalities !== undefined) result.modalities = data.modalities;
-  if (data.limit !== undefined) result.limitConfig = data.limit;
-  if (data.cost !== undefined) result.cost = data.cost;
-  if (data.options !== undefined) result.options = data.options;
+  if (data.modalities !== undefined) result.modalities = data.modalities as ModelModalities | null;
+  if (data.limit !== undefined) result.limitConfig = data.limit as ModelLimitConfig | null;
+  if (data.cost !== undefined) result.cost = data.cost as ModelCostConfig | null;
+  if (data.options !== undefined) result.options = data.options as ModelOptions | null;
   return result;
 }

@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { model } from "../../db/schema";
+import type { ModelCostConfig, ModelLimitConfig, ModelModalities, ModelOptions } from "./types";
 
 // ────────────────────────────────────────────
 // Model 操作
@@ -12,10 +13,10 @@ import { model } from "../../db/schema";
 /** 构建 model 写入字段（addModel 的 values 和 set 共享） */
 function buildModelValues(data: {
   displayName?: string;
-  modalities?: unknown;
-  limitConfig?: unknown;
-  cost?: unknown;
-  options?: unknown;
+  modalities?: ModelModalities | null;
+  limitConfig?: ModelLimitConfig | null;
+  cost?: ModelCostConfig | null;
+  options?: ModelOptions | null;
 }) {
   return {
     displayName: data.displayName,
@@ -33,10 +34,10 @@ export async function addModel(
   data: {
     modelId: string;
     displayName?: string;
-    modalities?: unknown;
-    limitConfig?: unknown;
-    cost?: unknown;
-    options?: unknown;
+    modalities?: ModelModalities | null;
+    limitConfig?: ModelLimitConfig | null;
+    cost?: ModelCostConfig | null;
+    options?: ModelOptions | null;
   },
 ) {
   const fields = buildModelValues(data);
@@ -55,10 +56,10 @@ export async function updateModel(
   modelId: string,
   data: {
     displayName?: string;
-    modalities?: unknown;
-    limitConfig?: unknown;
-    cost?: unknown;
-    options?: unknown;
+    modalities?: ModelModalities | null;
+    limitConfig?: ModelLimitConfig | null;
+    cost?: ModelCostConfig | null;
+    options?: ModelOptions | null;
   },
 ): Promise<boolean> {
   const set: Partial<typeof model.$inferInsert> = { updatedAt: new Date() };
