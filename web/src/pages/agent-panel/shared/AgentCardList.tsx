@@ -12,6 +12,8 @@ interface AgentCardListProps<T> {
   selectedItems?: T[];
   onSelectionChange?: (items: T[]) => void;
   batchActions?: React.ReactNode;
+  /** Grid column class, e.g. "grid-cols-2 md:grid-cols-3 lg:grid-cols-4". Defaults to single column list. */
+  gridCols?: string;
 }
 
 export function AgentCardList<T>({
@@ -25,6 +27,7 @@ export function AgentCardList<T>({
   selectedItems = [],
   onSelectionChange,
   batchActions,
+  gridCols,
 }: AgentCardListProps<T>) {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -116,7 +119,7 @@ export function AgentCardList<T>({
             <p className="text-sm">{emptyMessage}</p>
           </div>
         ) : (
-          <div className="grid gap-3">
+          <div className={`grid gap-3 ${gridCols ?? ""}`}>
             {filtered.map((item) => renderCard(item, selectedSet.has(cardKey(item)), () => toggleSelect(item)))}
           </div>
         )}
