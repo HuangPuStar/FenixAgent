@@ -1,9 +1,9 @@
-import { LogOut, Users } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { signOut, useSession } from "../../../src/lib/auth-client";
 import { OrgSwitcher } from "../../components/OrgSwitcher";
-import { AgentSidebarConfig } from "./AgentSidebarConfig";
+import { AgentSidebarConfig, AgentSidebarQuickNav } from "./AgentSidebarConfig";
 import { AgentSidebarTree } from "./AgentSidebarTree";
 
 interface AgentSidebarProps {
@@ -71,33 +71,28 @@ export function AgentSidebar({
         </span>
       </div>
 
+      {/* 快捷导航：模型、技能、MCP、组织管理 */}
+      <AgentSidebarQuickNav onNavigate={onNavigate} />
+
       {/* 智能体树 */}
-      <AgentSidebarTree
-        selectedInstanceId={selectedInstanceId}
-        onSelectInstance={onSelectInstance}
-        onCreateAgent={onCreateAgent}
-      />
+      <div className="border-t border-border-subtle">
+        <AgentSidebarTree
+          selectedInstanceId={selectedInstanceId}
+          onSelectInstance={onSelectInstance}
+          onCreateAgent={onCreateAgent}
+        />
+      </div>
 
-      {/* 配置导航 */}
-      <AgentSidebarConfig onNavigate={onNavigate} />
+      {/* 更多导航：下拉菜单 */}
+      <div className="border-t border-border-subtle py-2">
+        <AgentSidebarConfig onNavigate={onNavigate} />
+      </div>
 
-      {/* 底部：团队切换 + 组织管理 + 用户头像 */}
+      {/* 底部：组织切换 + 用户头像 */}
       <div className="mt-auto border-t border-border-subtle">
-        {/* 团队切换 */}
+        {/* 组织切换 */}
         <div className="px-2 py-1.5">
           <OrgSwitcher />
-        </div>
-
-        {/* 组织管理 */}
-        <div className="border-t border-border-subtle px-2 py-1.5">
-          <button
-            type="button"
-            onClick={() => onNavigate("organizations")}
-            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius)] text-[13px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all duration-150 cursor-pointer"
-          >
-            <Users className="w-[18px] h-[18px] flex-shrink-0" />
-            <span>{tSidebar("organizations")}</span>
-          </button>
         </div>
 
         {/* 用户头像 */}
