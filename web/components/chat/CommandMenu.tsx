@@ -59,18 +59,23 @@ export function CommandMenu({
   }, [onClose]);
 
   // Handle keyboard navigation (ArrowUp/ArrowDown/Enter) via document-level listener
+  // Uses capture phase + stopPropagation to prevent events from reaching the textarea
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Always intercept these keys when menu is open, even with no filtered results
+      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter") {
+        if (e.shiftKey && e.key === "Enter") return; // allow Shift+Enter for newline
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
       if (filtered.length === 0) return;
 
       if (e.key === "ArrowDown") {
-        e.preventDefault();
         setActiveIndex((prev) => (prev + 1) % filtered.length);
       } else if (e.key === "ArrowUp") {
-        e.preventDefault();
         setActiveIndex((prev) => (prev - 1 + filtered.length) % filtered.length);
-      } else if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
+      } else if (e.key === "Enter") {
         const cmd = filtered[activeIndex];
         if (cmd) onSelect(cmd);
       }

@@ -97,12 +97,13 @@ interface AssistantBubbleProps {
     entry: AssistantMessageEntry;
     isStreaming?: boolean;
     sessionId?: string;
+    envId?: string;
 }
 
 export function AssistantBubble({
     entry,
     isStreaming,
-    sessionId,
+    envId,
 }: AssistantBubbleProps) {
     return (
         <div className="flex gap-4 items-start message-bubble-enter">
@@ -197,7 +198,7 @@ export function AssistantBubble({
                         <div
                             key={i}
                             className="message-content text-text-primary leading-[1.75]">
-                            <MessageResponse sessionId={sessionId}>
+                            <MessageResponse envId={envId}>
                                 {chunk.text}
                             </MessageResponse>
                         </div>

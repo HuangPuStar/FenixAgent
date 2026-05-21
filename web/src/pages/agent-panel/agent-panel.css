@@ -180,6 +180,13 @@
   color: var(--color-text-primary);
 }
 
+/* ---------- @pierre/trees 自定义元素 ---------- */
+file-tree-container {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* ---------- 智能体树样式 ---------- */
 
 /* 区块标题 */

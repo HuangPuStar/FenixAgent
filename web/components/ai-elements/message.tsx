@@ -441,21 +441,23 @@ export type MessageResponseProps = {
     className?: string;
     mode?: "static" | "streaming";
     sessionId?: string;
+    /** environmentId，用于构建文件预览 URL */
+    envId?: string;
 };
 
 export const MessageResponse = memo(
-    ({ className, children, sessionId, ...props }: MessageResponseProps) => {
+    ({ className, children, envId, ...props }: MessageResponseProps) => {
         const urlTransform = useCallback(
             (url: string) => {
-                if (!sessionId) return url;
+                if (!envId) return url;
                 // Rewrite relative paths like ./user/xxx, user/xxx, /user/xxx
                 const match = url.match(/^(?:\.?\/)?(user\/.*)$/);
                 if (match) {
-                    return `/web/sessions/${sessionId}/${match[1]}?preview=true`;
+                    return `/web/environments/${envId}/${match[1]}?preview=true`;
                 }
                 return url;
             },
-            [sessionId],
+            [envId],
         );
 
         return (
@@ -499,7 +501,7 @@ export const MessageResponse = memo(
             </StreamdownErrorBoundary>
         );
     },
-    (prevProps, nextProps) => prevProps.children === nextProps.children && prevProps.sessionId === nextProps.sessionId,
+    (prevProps, nextProps) => prevProps.children === nextProps.children && prevProps.envId === nextProps.envId,
 );
 
 MessageResponse.displayName = "MessageResponse";

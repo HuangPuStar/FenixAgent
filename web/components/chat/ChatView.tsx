@@ -17,6 +17,7 @@ interface ChatViewProps {
   emptyTitle?: string;
   emptyDescription?: string;
   sessionId?: string;
+  envId?: string;
 }
 
 export function ChatView({
@@ -26,6 +27,7 @@ export function ChatView({
   emptyTitle = "开始对话",
   emptyDescription = "输入消息开始聊天",
   sessionId,
+  envId,
 }: ChatViewProps) {
   // 将相邻的 ToolCallEntry 合并为一组
   const grouped = groupToolCalls(entries);
@@ -48,7 +50,7 @@ export function ChatView({
               if (item.type === "single") {
                 return (
                   <div key={`entry-${i}`} className={cn(entrySpacing(entries, i))}>
-                    <EntryRenderer entry={item.entry} isLoading={isLoading} onPermissionRespond={onPermissionRespond} sessionId={sessionId} />
+                    <EntryRenderer entry={item.entry} isLoading={isLoading} onPermissionRespond={onPermissionRespond} sessionId={sessionId} envId={envId} />
                   </div>
                 );
               }
@@ -124,17 +126,19 @@ function EntryRenderer({
   isLoading,
   onPermissionRespond,
   sessionId,
+  envId,
 }: {
   entry: ThreadEntry;
   isLoading: boolean;
   onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
   sessionId?: string;
+  envId?: string;
 }) {
   switch (entry.type) {
     case "user_message":
       return <UserBubble entry={entry} />;
     case "assistant_message":
-      return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} />;
+      return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} envId={envId} />;
     case "tool_call":
       return (
         <ToolCallGroup

@@ -292,7 +292,7 @@ export function ChatInput({
       <div className={cn(
         "rounded-xl border border-border bg-surface-2 overflow-hidden",
         "focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.15)] transition-all",
-      )}>
+      )} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         {/* 图片预览 */}
         {images.length > 0 && (
           <div className="flex flex-wrap gap-2 px-3 pt-3">
@@ -321,8 +321,6 @@ export function ChatInput({
         {/* 输入区域 — Anthropic 单行紧凑布局 */}
         <div
           className="flex items-end gap-2 px-3 py-2.5"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
         >
           {/* Slash 命令按钮 */}
           {commands && commands.length > 0 && (
