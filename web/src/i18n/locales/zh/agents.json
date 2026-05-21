@@ -31,7 +31,8 @@
     "tabs": {
       "basic": "基础配置",
       "knowledge": "知识库",
-      "permission": "权限配置"
+      "permission": "权限配置",
+      "skills": "技能"
     }
   },
   "form": {
@@ -71,6 +72,11 @@
     "maxResults": "最大返回条数",
     "maxResultsValidationError": "知识库检索条数须在 1-20 之间",
     "loadError": "加载Agent详情失败: {{message}}"
+  },
+  "skills": {
+    "tabTitle": "绑定技能",
+    "selectedCount": "已选择 {{count}} 个技能",
+    "noOptions": "暂无可用技能"
   },
   "save": {
     "successCreate": "Agent已创建",

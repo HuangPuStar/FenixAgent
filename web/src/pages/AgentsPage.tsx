@@ -161,7 +161,9 @@ export function AgentsPage() {
   const [formKnowledgeSearchFirst, setFormKnowledgeSearchFirst] = useState(true);
   const [formKnowledgeMaxResults, setFormKnowledgeMaxResults] = useState("5");
   const [formPermission, setFormPermission] = useState<Record<string, unknown> | null>(null);
-  const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission">("basic");
+  const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
+  const [skillOptions, setSkillOptions] = useState<{ id: string; name: string; description: string }[]>([]);
+  const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission" | "skills">("basic");
 
   const loadAgents = useCallback(async () => {
     setLoading(true);
@@ -200,11 +202,27 @@ export function AgentsPage() {
     }
   }, []);
 
+  const loadSkillOptions = useCallback(async () => {
+    try {
+      const { data: skillsData, error: skillsErr } = await client.web.config.skills.post({ action: "list" });
+      if (skillsErr) return;
+      const data = unwrapConfigData(skillsData) ?? skillsData;
+      setSkillOptions(
+        Array.isArray(data?.skills)
+          ? data.skills.map((s: any) => ({ id: s.id, name: s.name, description: s.description ?? "" }))
+          : [],
+      );
+    } catch {
+      /* silent */
+    }
+  }, []);
+
   useEffect(() => {
     loadAgents();
     loadModelOptions();
     loadKnowledgeOptions();
-  }, [loadAgents, loadModelOptions, loadKnowledgeOptions]);
+    loadSkillOptions();
+  }, [loadAgents, loadModelOptions, loadKnowledgeOptions, loadSkillOptions]);
 
   const columns: Column<AgentInfo>[] = [
     { key: "name", header: t("columns.name"), sortable: true, filterable: true },
@@ -254,6 +272,7 @@ export function AgentsPage() {
     setFormKnowledgeSearchFirst(knowledgeDefaults.searchFirst);
     setFormKnowledgeMaxResults(knowledgeDefaults.maxResults);
     setFormPermission(null);
+    setFormSkillIds([]);
     setActiveTab("basic");
     setDialogOpen(true);
   };
@@ -306,6 +325,7 @@ export function AgentsPage() {
             : (detail.permission as Record<string, unknown>)
           : null,
       );
+      setFormSkillIds(Array.isArray(detail.skillIds) ? detail.skillIds : []);
     } catch {
       setFormSteps("50");
     }
@@ -353,25 +373,28 @@ export function AgentsPage() {
       if (validKnowledgeBaseIds.length !== formKnowledgeBaseIds.length) {
         setFormKnowledgeBaseIds(validKnowledgeBaseIds);
       }
-      const data: Record<string, unknown> = buildAgentPayload({
-        model: formModel,
-        mode: formMode,
-        steps: formSteps,
-        prompt: formPrompt,
-        description: formDescription,
-        variant: formVariant,
-        temperature: formTemperature,
-        topP: formTopP,
-        color: formColor,
-        hidden: formHidden,
-        disable: formDisable,
-        permission: formPermission,
-        knowledge: {
-          knowledgeBaseIds: validKnowledgeBaseIds,
-          searchFirst: formKnowledgeSearchFirst,
-          maxResults: formKnowledgeMaxResults,
-        },
-      });
+      const data: Record<string, unknown> = {
+        ...buildAgentPayload({
+          model: formModel,
+          mode: formMode,
+          steps: formSteps,
+          prompt: formPrompt,
+          description: formDescription,
+          variant: formVariant,
+          temperature: formTemperature,
+          topP: formTopP,
+          color: formColor,
+          hidden: formHidden,
+          disable: formDisable,
+          permission: formPermission,
+          knowledge: {
+            knowledgeBaseIds: validKnowledgeBaseIds,
+            searchFirst: formKnowledgeSearchFirst,
+            maxResults: formKnowledgeMaxResults,
+          },
+        }),
+        skillIds: formSkillIds,
+      };
       if (editingAgent) {
         const { error: setErr } = await client.web.config.agents.post({ action: "set", name, data });
         if (setErr) throw new Error(setErr.message ?? t("save.errorUpdate", { message: "" }));
@@ -540,6 +563,13 @@ export function AgentsPage() {
             onClick={() => setActiveTab("permission")}
           >
             {t("dialog.tabs.permission")}
+          </button>
+          <button
+            type="button"
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "skills" ? "bg-surface-1 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"}`}
+            onClick={() => setActiveTab("skills")}
+          >
+            {t("dialog.tabs.skills")}
           </button>
         </div>
         {activeTab === "basic" && (
@@ -747,6 +777,49 @@ export function AgentsPage() {
               permission={formPermission}
               onPermissionChange={setFormPermission}
             />
+          </div>
+        )}
+        {activeTab === "skills" && (
+          <div className="space-y-4 max-h-[55vh] overflow-y-auto">
+            <div className="rounded-lg border border-border-subtle p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-text-bright">{t("skills.tabTitle")}</p>
+                  <p className="text-xs text-text-muted">
+                    {t("skills.selectedCount", { count: formSkillIds.length })}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                {skillOptions.length === 0 ? (
+                  <p className="text-sm text-text-muted">{t("skills.noOptions")}</p>
+                ) : (
+                  skillOptions.map((item) => {
+                    const checked = formSkillIds.includes(item.id);
+                    return (
+                      <label
+                        key={item.id}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium text-text-bright">{item.name}</p>
+                          {item.description && <p className="text-xs text-text-muted">{item.description}</p>}
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setFormSkillIds((current) =>
+                              e.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
+                            );
+                          }}
+                        />
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
         )}
       </FormDialog>

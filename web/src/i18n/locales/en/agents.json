@@ -31,7 +31,8 @@
     "tabs": {
       "basic": "Basic Config",
       "knowledge": "Knowledge Base",
-      "permission": "Permissions"
+      "permission": "Permissions",
+      "skills": "Skills"
     }
   },
   "form": {
@@ -71,6 +72,11 @@
     "maxResults": "Max Results",
     "maxResultsValidationError": "Max results must be between 1-20",
     "loadError": "Failed to load agent details: {{message}}"
+  },
+  "skills": {
+    "tabTitle": "Bind Skills",
+    "selectedCount": "{{count}} skill(s) selected",
+    "noOptions": "No skills available"
   },
   "save": {
     "successCreate": "Agent created",
