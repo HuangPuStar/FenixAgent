@@ -1,24 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, FileText, BarChart3 } from "lucide-react";
+import { X, FileText, FolderTree, BarChart3 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ArtifactPreview } from "../../components/agent-panel/ArtifactPreview";
-import { ArtifactContext } from "../../components/agent-panel/ArtifactContext";
 import { NS } from "../../i18n";
+import { FileTreeTab } from "../../components/agent-panel/FileTreeTab";
+import { PreviewTab } from "../../components/agent-panel/PreviewTab";
 
-type ArtifactsTab = "preview" | "context";
+type ArtifactsTab = "files" | "preview" | "context";
 
 interface ArtifactsPanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
-  entries: unknown[];
+  envId: string | null;
 }
 
-export function ArtifactsPanel({ collapsed, onToggleCollapse, entries }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [activeTab, setActiveTab] = useState<ArtifactsTab>(() => {
     const saved = localStorage.getItem("agent-panel:artifacts-tab");
-    return saved === "preview" || saved === "context" ? saved : "preview";
+    return saved === "preview" || saved === "context" || saved === "files" ? saved : "files";
   });
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
 
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem("agent-panel:artifacts-width");
@@ -63,6 +64,19 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, entries }: Artifac
     [width],
   );
 
+  const handlePreviewFile = useCallback((path: string) => {
+    setPreviewFilePath(path);
+    setActiveTab("preview");
+  }, []);
+
+  const handleReferenceFile = useCallback((path: string, name: string) => {
+    window.dispatchEvent(
+      new CustomEvent("file-tree:reference", {
+        detail: { path, name },
+      }),
+    );
+  }, []);
+
   if (collapsed) {
     return null;
   }
@@ -76,6 +90,14 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, entries }: Artifac
       <div className="agent-artifacts" style={{ width }}>
         {/* Tab 栏 */}
         <div className="agent-artifacts-tabs">
+          <button
+            type="button"
+            className={`agent-artifacts-tab ${activeTab === "files" ? "active" : ""}`}
+            onClick={() => setActiveTab("files")}
+          >
+            <FolderTree className="inline h-3 w-3 mr-1" />
+            {t("tabFiles")}
+          </button>
           <button
             type="button"
             className={`agent-artifacts-tab ${activeTab === "preview" ? "active" : ""}`}
@@ -104,7 +126,19 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, entries }: Artifac
 
         {/* Tab 内容 */}
         <div className="flex-1 overflow-hidden">
-          {activeTab === "preview" ? <ArtifactPreview entries={entries} /> : <ArtifactContext entries={entries} />}
+          {activeTab === "files" && (
+            <FileTreeTab
+              envId={envId}
+              onPreviewFile={handlePreviewFile}
+              onReferenceFile={handleReferenceFile}
+            />
+          )}
+          {activeTab === "preview" && <PreviewTab envId={envId} filePath={previewFilePath} />}
+          {activeTab === "context" && (
+            <div className="flex-1 overflow-y-auto p-4">
+              <p className="text-sm text-text-muted">Context (placeholder)</p>
+            </div>
+          )}
         </div>
       </div>
     </>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RefreshCw, Search } from "lucide-react";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
-import { fetchUpload } from "../../../api/client";
+import { fetchUpload } from "../../api/client";
 import { FileTreeContextMenu } from "./FileTreeContextMenu";
 
 interface FileTreeTabProps {

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { AgentCreateDialog } from "./AgentCreateDialog";
 import { AgentSidebar } from "./AgentSidebar";
 import { ChatPanel } from "./ChatPanel";
 import { ArtifactsPanel } from "./ArtifactsPanel";
@@ -30,8 +29,6 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
     const saved = localStorage.getItem("agent-panel:artifacts-collapsed");
     return saved === "true";
   });
-
-  const [chatEntries, setChatEntries] = useState<unknown[]>([]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
@@ -96,7 +93,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
       <ArtifactsPanel
         collapsed={artifactsCollapsed}
         onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
-        entries={chatEntries}
+        envId={selectedAgentId}
       />
       {artifactsCollapsed && (
         <button
