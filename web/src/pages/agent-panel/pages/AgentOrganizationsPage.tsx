@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { client, unwrapEden } from "../../../api/client";
 import { useOrg } from "../../../contexts/OrgContext";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -33,18 +34,6 @@ interface OrgDetail {
   slug: string;
   logo?: string;
   members: OrgMember[];
-}
-
-async function orgApi<T>(body: Record<string, unknown>): Promise<T> {
-  const res = await fetch("/web/organizations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error?.message || "Operation failed");
-  return json.data as T;
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -69,7 +58,7 @@ function nameToSlug(name: string): string {
 
 export function AgentOrganizationsPage() {
   const { t } = useTranslation("orgs");
-  const { org: currentOrg, role: currentRole, refreshOrgs } = useOrg();
+  const { org: currentOrg, refreshOrgs } = useOrg();
 
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [detail, setDetail] = useState<OrgDetail | null>(null);
@@ -97,7 +86,8 @@ export function AgentOrganizationsPage() {
 
   const loadMyOrgs = useCallback(async () => {
     try {
-      const list = await orgApi<{ id: string; name: string; slug: string; role: string }[]>({ action: "list" });
+      const res = await client.web.organizations.post({ action: "list" });
+      const list = unwrapEden<{ id: string; name: string; slug: string; role: string }[]>(res);
       setMyOrgs(list);
     } catch (err) {
       console.error(err);
@@ -120,28 +110,32 @@ export function AgentOrganizationsPage() {
       return;
     }
     setLoading(true);
-    orgApi<OrgDetail>({ action: "get", organizationId: selectedOrgId })
-      .then((d) => setDetail(d))
-      .catch((err) => {
+    client.web.organizations
+      .post({ action: "get", organizationId: selectedOrgId })
+      .then((r: unknown) => unwrapEden<OrgDetail>(r))
+      .then((d: OrgDetail) => setDetail(d))
+      .catch((err: unknown) => {
         console.error(err);
         toast.error(t("toast.loadDetailFailed"));
       })
       .finally(() => setLoading(false));
   }, [selectedOrgId, t]);
 
-  const canManage = currentRole === "owner" || currentRole === "admin";
-  const isOwner = currentRole === "owner";
+  const selectedOrgRole = myOrgs.find((o) => o.id === selectedOrgId)?.role;
+  const canManage = selectedOrgRole === "owner" || selectedOrgRole === "admin";
+  const isOwner = selectedOrgRole === "owner";
 
   const handleCreate = async () => {
     if (!formName.trim()) return;
     setFormSaving(true);
     try {
-      const result = await orgApi<{ id: string }>({
+      const createRes = await client.web.organizations.post({
         action: "create",
         name: formName.trim(),
         slug: formSlug || nameToSlug(formName),
         description: formDesc.trim() || undefined,
       });
+      const result = unwrapEden<{ id: string }>(createRes);
       toast.success(t("toast.createSuccess"));
       setCreateOpen(false);
       setFormName("");
@@ -162,7 +156,12 @@ export function AgentOrganizationsPage() {
     if (!selectedOrgId || !editName.trim()) return;
     setEditSaving(true);
     try {
-      await orgApi({ action: "update", organizationId: selectedOrgId, data: { name: editName.trim() } });
+      const updateRes = await client.web.organizations.post({
+        action: "update",
+        organizationId: selectedOrgId,
+        data: { name: editName.trim() },
+      });
+      unwrapEden(updateRes);
       toast.success(t("toast.updateSuccess"));
       setEditingName(false);
       setDetail((d) => (d ? { ...d, name: editName.trim() } : d));
@@ -180,16 +179,18 @@ export function AgentOrganizationsPage() {
     if (!selectedOrgId || !addMemberEmail.trim()) return;
     setAddMemberSaving(true);
     try {
-      await orgApi({
+      const addRes = await client.web.organizations.post({
         action: "add-member",
         organizationId: selectedOrgId,
         email: addMemberEmail.trim(),
         role: addMemberRole,
       });
+      unwrapEden(addRes);
       toast.success(t("toast.inviteSent"));
       setAddMemberOpen(false);
       setAddMemberEmail("");
-      const d = await orgApi<OrgDetail>({ action: "get", organizationId: selectedOrgId });
+      const dRes = await client.web.organizations.post({ action: "get", organizationId: selectedOrgId });
+      const d = unwrapEden<OrgDetail>(dRes);
       setDetail(d);
     } catch (err) {
       console.error(err);
@@ -202,9 +203,15 @@ export function AgentOrganizationsPage() {
   const handleRemoveMember = async (userId: string) => {
     if (!selectedOrgId) return;
     try {
-      await orgApi({ action: "remove-member", organizationId: selectedOrgId, userId });
+      const rmRes = await client.web.organizations.post({
+        action: "remove-member",
+        organizationId: selectedOrgId,
+        userId,
+      });
+      unwrapEden(rmRes);
       toast.success(t("toast.removeSuccess"));
-      const d = await orgApi<OrgDetail>({ action: "get", organizationId: selectedOrgId });
+      const gdRes = await client.web.organizations.post({ action: "get", organizationId: selectedOrgId });
+      const d = unwrapEden<OrgDetail>(gdRes);
       setDetail(d);
     } catch (err) {
       console.error(err);
@@ -215,9 +222,16 @@ export function AgentOrganizationsPage() {
   const handleUpdateRole = async (userId: string, newRole: string) => {
     if (!selectedOrgId) return;
     try {
-      await orgApi({ action: "update-role", organizationId: selectedOrgId, userId, role: newRole });
+      const roleRes = await client.web.organizations.post({
+        action: "update-role",
+        organizationId: selectedOrgId,
+        userId,
+        role: newRole,
+      });
+      unwrapEden(roleRes);
       toast.success(t("toast.roleUpdated"));
-      const d = await orgApi<OrgDetail>({ action: "get", organizationId: selectedOrgId });
+      const dRes2 = await client.web.organizations.post({ action: "get", organizationId: selectedOrgId });
+      const d = unwrapEden<OrgDetail>(dRes2);
       setDetail(d);
     } catch (err) {
       console.error(err);
@@ -229,7 +243,8 @@ export function AgentOrganizationsPage() {
     if (!selectedOrgId) return;
     setDeleteSaving(true);
     try {
-      await orgApi({ action: "delete", organizationId: selectedOrgId });
+      const delRes = await client.web.organizations.post({ action: "delete", organizationId: selectedOrgId });
+      unwrapEden(delRes);
       toast.success(t("toast.deleteSuccess"));
       setDeleteOpen(false);
       setSelectedOrgId(null);
@@ -276,7 +291,9 @@ export function AgentOrganizationsPage() {
               >
                 <RoleIcon role={o.role} />
                 <span className="truncate">{o.name}</span>
-                <span className="ml-auto text-[11px] text-text-dim">{t(`roles.${o.role ?? "member"}`, o.role ?? "member")}</span>
+                <span className="ml-auto text-[11px] text-text-dim">
+                  {t(`roles.${o.role ?? "member"}`, o.role ?? "member")}
+                </span>
               </button>
             ))}
             {myOrgs.length === 0 && <p className="px-4 py-6 text-sm text-text-dim text-center">{t("noOrgs")}</p>}

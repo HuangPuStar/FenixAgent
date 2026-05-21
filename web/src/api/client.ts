@@ -11,6 +11,29 @@ const _client = treaty<App>(typeof globalThis.window !== "undefined" ? globalThi
 // biome-ignore lint/suspicious/noExplicitAny: Eden Treaty 降级为 index signature，需要 any 补充 web 命名空间
 export const client = _client as typeof _client & { web: any };
 
+// --- Eden 响应解包辅助 ---
+
+/**
+ * 从 Eden Treaty 响应中解包数据。
+ * 处理 { success, data } 格式的后端响应，以及 Eden 的 { data, error } 结构。
+ * 统一错误抛出逻辑，消除各处重复的 fetch + JSON parse + error 检查。
+ * 参数类型为 unknown 而非 EdenResponse，因为 client.web 被降级为 any，
+ * 回调中拿到的值也是 unknown/any，需要用运行时检查来解包。
+ */
+// biome-ignore lint/suspicious/noExplicitAny: Eden client.web 是 any，这里也需要 any 来访问属性
+export function unwrapEden<T>(res: any): T {
+  if (res?.error) {
+    const errInfo = res.error.value ?? res.error;
+    throw new Error(errInfo?.message ?? errInfo?.type ?? "Request failed");
+  }
+  const raw = res?.data;
+  // 后端 { success, data } 包装
+  if (raw && typeof raw === "object" && raw.success === true) {
+    return raw.data as T;
+  }
+  return raw as T;
+}
+
 // --- SSE 辅助函数（Eden 不原生支持 SSE） ---
 
 export function createSessionEventSource(sessionId: string): EventSource {

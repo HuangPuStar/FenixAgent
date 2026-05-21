@@ -100,77 +100,72 @@ export interface DryRunResult {
 
 // ── API Client ──
 
-async function wfFetch<T>(action: string, extra?: Record<string, unknown>): Promise<T> {
-  const res = await fetch("/web/workflow-engine", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ action, ...extra }),
-  });
-
-  const json = await res.json();
-
-  if (!res.ok) {
-    const errInfo = json.error ?? { message: res.statusText };
-    throw new Error(errInfo.message ?? errInfo.type ?? `Request failed (${res.status})`);
-  }
-
-  return json.success && json.data !== undefined ? (json.data as T) : (json as T);
-}
+import { client, unwrapEden } from "./client";
 
 export const workflowEngineApi = {
   /** 执行工作流（同步，会阻塞到完成或 SUSPENDED） */
   async run(yaml: string, params?: Record<string, unknown>, workflowId?: string): Promise<DAGRunResult> {
-    return wfFetch<DAGRunResult>("run", { yaml, params, workflowId });
+    const res = await client.web.workflowEngine.post({ action: "run", yaml, params, workflowId });
+    return unwrapEden<DAGRunResult>(res);
   },
 
   /** 校验 + 执行计划（不执行） */
   async dryRun(yaml: string): Promise<DryRunResult> {
-    return wfFetch<DryRunResult>("dryRun", { yaml });
+    const res = await client.web.workflowEngine.post({ action: "dryRun", yaml });
+    return unwrapEden<DryRunResult>(res);
   },
 
   /** 取消运行 */
   async cancel(runId: string): Promise<void> {
-    await wfFetch("cancel", { runId });
+    const res = await client.web.workflowEngine.post({ action: "cancel", runId });
+    unwrapEden(res);
   },
 
   /** 获取运行状态快照 */
   async getRunStatus(runId: string): Promise<DAGSnapshot | null> {
-    return wfFetch<DAGSnapshot | null>("getRunStatus", { runId });
+    const res = await client.web.workflowEngine.post({ action: "getRunStatus", runId });
+    return unwrapEden<DAGSnapshot | null>(res);
   },
 
   /** 获取事件流 */
   async getEvents(runId: string, nodeId?: string): Promise<DAGEvent[]> {
-    return wfFetch<DAGEvent[]>("getEvents", { runId, nodeId });
+    const res = await client.web.workflowEngine.post({ action: "getEvents", runId, nodeId });
+    return unwrapEden<DAGEvent[]>(res);
   },
 
   /** 获取节点输出 */
   async getOutput(runId: string, nodeId: string): Promise<NodeOutput | null> {
-    return wfFetch<NodeOutput | null>("getOutput", { runId, nodeId });
+    const res = await client.web.workflowEngine.post({ action: "getOutput", runId, nodeId });
+    return unwrapEden<NodeOutput | null>(res);
   },
 
   /** 获取待审批列表 */
   async getPendingApprovals(runId: string): Promise<PendingApproval[]> {
-    return wfFetch<PendingApproval[]>("getPendingApprovals", { runId });
+    const res = await client.web.workflowEngine.post({ action: "getPendingApprovals", runId });
+    return unwrapEden<PendingApproval[]>(res);
   },
 
   /** 审批通过 */
   async approve(runId: string, nodeId: string, token: string, data?: unknown): Promise<void> {
-    await wfFetch("approve", { runId, nodeId, token, data });
+    const res = await client.web.workflowEngine.post({ action: "approve", runId, nodeId, token, data });
+    unwrapEden(res);
   },
 
   /** 列出运行记录 */
   async listRuns(): Promise<RunSummary[]> {
-    return wfFetch<RunSummary[]>("listRuns");
+    const res = await client.web.workflowEngine.post({ action: "listRuns" });
+    return unwrapEden<RunSummary[]>(res);
   },
 
   /** 崩溃恢复 */
   async recover(runId: string, yaml: string): Promise<DAGRunResult> {
-    return wfFetch<DAGRunResult>("recover", { runId, yaml });
+    const res = await client.web.workflowEngine.post({ action: "recover", runId, yaml });
+    return unwrapEden<DAGRunResult>(res);
   },
 
   /** 从指定节点重新运行（保留上游输出，目标及下游重新执行） */
   async rerunFrom(runId: string, yaml: string, fromNodeId: string, workflowId?: string): Promise<DAGRunResult> {
-    return wfFetch<DAGRunResult>("rerunFrom", { runId, yaml, fromNodeId, workflowId });
+    const res = await client.web.workflowEngine.post({ action: "rerunFrom", runId, yaml, fromNodeId, workflowId });
+    return unwrapEden<DAGRunResult>(res);
   },
 };

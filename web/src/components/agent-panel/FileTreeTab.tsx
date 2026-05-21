@@ -2,7 +2,7 @@ import { FileTree, useFileTree, useFileTreeSelection } from "@pierre/trees/react
 import { Eye, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchUpload } from "../../api/client";
+import { client, fetchUpload, unwrapEden } from "../../api/client";
 import { FileTreeContextMenu } from "./FileTreeContextMenu";
 
 interface FileTreeTabProps {
@@ -27,12 +27,9 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
     if (!envId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/web/environments/${envId}/user-file/tree`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const newPaths = data.paths ?? [];
+      const res = await client.web.environments({ id: envId })["user-file"].tree.get();
+      const data = unwrapEden<{ paths?: string[] }>(res);
+      const newPaths = data?.paths ?? [];
       setHasPaths(newPaths.length > 0);
       model.resetPaths(newPaths);
     } catch (err) {
@@ -64,13 +61,8 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
       const parentDir = path.endsWith("/") ? path.slice(0, -1) : path.substring(0, path.lastIndexOf("/"));
       const newPath = parentDir ? `${parentDir}/${newName}` : newName;
       try {
-        const res = await fetch(`/web/environments/${envId}/user-file/rename`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ oldPath: path, newPath }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await client.web.environments({ id: envId })["user-file"].rename.post({ oldPath: path, newPath });
+        unwrapEden(res);
         await loadTree();
       } catch (err) {
         console.error("Rename failed:", err);
@@ -83,13 +75,8 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
     async (path: string) => {
       if (!window.confirm(`${t("fileTree.contextMenu.delete")}: ${path}?`)) return;
       try {
-        const res = await fetch(`/web/environments/${envId}/user-file/batch`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ paths: [path] }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await client.web.environments({ id: envId })["user-file"].batch.delete({ paths: [path] });
+        unwrapEden(res);
         await loadTree();
       } catch (err) {
         console.error("Delete failed:", err);
@@ -105,13 +92,8 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
       const cleanParent = parentPath.endsWith("/") ? parentPath.slice(0, -1) : parentPath;
       const fullPath = cleanParent ? `${cleanParent}/${name}` : name;
       try {
-        const res = await fetch(`/web/environments/${envId}/user-file/mkdir`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ path: fullPath }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await client.web.environments({ id: envId })["user-file"].mkdir.post({ path: fullPath });
+        unwrapEden(res);
         await loadTree();
       } catch (err) {
         console.error("Mkdir failed:", err);

@@ -49,6 +49,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { client } from "../../api/client";
 import { ensureMetaAgent } from "../../api/meta-agent";
 import { workflowDefApi } from "../../api/workflow-defs";
 import {
@@ -156,18 +157,21 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [agentOverrideOpen, setAgentOverrideOpen] = useState(false);
 
   useEffect(() => {
-    fetch("/web/config/agents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ action: "list" }),
-    })
-      .then((res) => res.json())
-      .then((json) => {
-        const agents = json?.data?.agents;
+    client.web.config.agents
+      .post({ action: "list" })
+      .then((res: unknown) => {
+        const data = (
+          res as {
+            data?: {
+              success?: boolean;
+              data?: { agents?: Array<{ name: string; model?: string; description?: string }> };
+            };
+          }
+        )?.data;
+        const agents = data?.data?.agents;
         if (Array.isArray(agents)) {
           setAgentList(
-            agents.map((a: { name: string; model?: string; description?: string }) => ({
+            agents.map((a) => ({
               name: a.name,
               model: a.model ?? null,
               description: a.description ?? null,
@@ -175,7 +179,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           );
         }
       })
-      .catch((err) => console.error("Failed to load agent list:", err));
+      .catch((err: unknown) => console.error("Failed to load agent list:", err));
   }, []);
 
   const isRunMode = activeRunId !== null;

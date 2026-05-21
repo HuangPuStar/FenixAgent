@@ -16,6 +16,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
+import { client, unwrapEden } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 
 /* ------------------------------------------------------------------ */
@@ -35,22 +36,6 @@ interface OrgDetail {
   slug: string;
   logo?: string;
   members: OrgMember[];
-}
-
-/* ------------------------------------------------------------------ */
-/*  API helper                                                         */
-/* ------------------------------------------------------------------ */
-
-async function orgApi<T>(body: Record<string, unknown>): Promise<T> {
-  const res = await fetch("/web/organizations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error?.message || "Operation failed");
-  return json.data as T;
 }
 
 /* ------------------------------------------------------------------ */
@@ -118,7 +103,8 @@ export function OrgsPage() {
 
   const loadMyOrgs = useCallback(async () => {
     try {
-      const list = await orgApi<{ id: string; name: string; slug: string; role: string }[]>({ action: "list" });
+      const res = await client.web.organizations.post({ action: "list" });
+      const list = unwrapEden<{ id: string; name: string; slug: string; role: string }[]>(res);
       setMyOrgs(list);
     } catch (err) {
       console.error(err);
@@ -143,11 +129,13 @@ export function OrgsPage() {
       return;
     }
     setLoading(true);
-    orgApi<OrgDetail>({ action: "get", organizationId: selectedOrgId })
-      .then((d) => {
+    client.web.organizations
+      .post({ action: "get", organizationId: selectedOrgId })
+      .then((r: unknown) => unwrapEden<OrgDetail>(r))
+      .then((d: OrgDetail) => {
         setDetail(d);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error(err);
         toast.error(t("toast.loadDetailFailed"));
       })
@@ -162,12 +150,13 @@ export function OrgsPage() {
     if (!formName.trim()) return;
     setFormSaving(true);
     try {
-      const result = await orgApi<{ id: string }>({
+      const createRes = await client.web.organizations.post({
         action: "create",
         name: formName.trim(),
         slug: formSlug || nameToSlug(formName),
         description: formDesc.trim() || undefined,
       });
+      const result = unwrapEden<{ id: string }>(createRes);
       toast.success(t("toast.createSuccess"));
       setCreateOpen(false);
       setFormName("");
@@ -189,11 +178,12 @@ export function OrgsPage() {
     if (!selectedOrgId || !editName.trim()) return;
     setEditSaving(true);
     try {
-      await orgApi({
+      const updateRes = await client.web.organizations.post({
         action: "update",
         organizationId: selectedOrgId,
         data: { name: editName.trim() },
       });
+      unwrapEden(updateRes);
       toast.success(t("toast.updateSuccess"));
       setEditingName(false);
       setDetail((d) => (d ? { ...d, name: editName.trim() } : d));
@@ -212,17 +202,19 @@ export function OrgsPage() {
     if (!selectedOrgId || !addMemberEmail.trim()) return;
     setAddMemberSaving(true);
     try {
-      await orgApi({
+      const addRes = await client.web.organizations.post({
         action: "add-member",
         organizationId: selectedOrgId,
         email: addMemberEmail.trim(),
         role: addMemberRole,
       });
+      unwrapEden(addRes);
       toast.success(t("toast.inviteSent"));
       setAddMemberOpen(false);
       setAddMemberEmail("");
       // Reload detail
-      const d = await orgApi<OrgDetail>({ action: "get", organizationId: selectedOrgId });
+      const dRes = await client.web.organizations.post({ action: "get", organizationId: selectedOrgId });
+      const d = unwrapEden<OrgDetail>(dRes);
       setDetail(d);
     } catch (err) {
       console.error(err);
@@ -236,9 +228,15 @@ export function OrgsPage() {
   const handleRemoveMember = async (userId: string) => {
     if (!selectedOrgId) return;
     try {
-      await orgApi({ action: "remove-member", organizationId: selectedOrgId, userId });
+      const rmRes = await client.web.organizations.post({
+        action: "remove-member",
+        organizationId: selectedOrgId,
+        userId,
+      });
+      unwrapEden(rmRes);
       toast.success(t("toast.removeSuccess"));
-      const d = await orgApi<OrgDetail>({ action: "get", organizationId: selectedOrgId });
+      const gdRes = await client.web.organizations.post({ action: "get", organizationId: selectedOrgId });
+      const d = unwrapEden<OrgDetail>(gdRes);
       setDetail(d);
     } catch (err) {
       console.error(err);
@@ -250,9 +248,16 @@ export function OrgsPage() {
   const handleUpdateRole = async (userId: string, newRole: string) => {
     if (!selectedOrgId) return;
     try {
-      await orgApi({ action: "update-role", organizationId: selectedOrgId, userId, role: newRole });
+      const roleRes = await client.web.organizations.post({
+        action: "update-role",
+        organizationId: selectedOrgId,
+        userId,
+        role: newRole,
+      });
+      unwrapEden(roleRes);
       toast.success(t("toast.roleUpdated"));
-      const d = await orgApi<OrgDetail>({ action: "get", organizationId: selectedOrgId });
+      const dRes2 = await client.web.organizations.post({ action: "get", organizationId: selectedOrgId });
+      const d = unwrapEden<OrgDetail>(dRes2);
       setDetail(d);
     } catch (err) {
       console.error(err);
@@ -265,7 +270,8 @@ export function OrgsPage() {
     if (!selectedOrgId) return;
     setDeleteSaving(true);
     try {
-      await orgApi({ action: "delete", organizationId: selectedOrgId });
+      const delRes = await client.web.organizations.post({ action: "delete", organizationId: selectedOrgId });
+      unwrapEden(delRes);
       toast.success(t("toast.deleteSuccess"));
       setDeleteOpen(false);
       setSelectedOrgId(null);

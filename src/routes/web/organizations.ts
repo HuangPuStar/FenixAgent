@@ -218,8 +218,11 @@ app.post(
 
     switch (b.action) {
       case "list": {
-        const keys = await api.listApiKeys({ headers: request.headers });
-        return { success: true, data: Array.isArray(keys) ? keys : [] };
+        const result = (await api.listApiKeys({ headers: request.headers })) as {
+          apiKeys?: unknown[];
+        } | null;
+        const keys = Array.isArray(result?.apiKeys) ? result.apiKeys : Array.isArray(result) ? result : [];
+        return { success: true, data: keys };
       }
       case "create": {
         if (!b.name)

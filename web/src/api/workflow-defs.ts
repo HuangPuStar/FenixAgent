@@ -35,91 +35,88 @@ export interface VersionYamlResponse {
   yaml: string;
 }
 
-// ── API Helper ──
+// ── API Client ──
 
-async function defFetch<T>(action: string, extra?: Record<string, unknown>): Promise<T> {
-  const res = await fetch("/web/workflow-defs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ action, ...extra }),
-  });
-
-  const json = await res.json();
-
-  if (!res.ok) {
-    const errInfo = json.error ?? { message: res.statusText };
-    throw new Error(errInfo.message ?? errInfo.type ?? `Request failed (${res.status})`);
-  }
-
-  return json.success && json.data !== undefined ? (json.data as T) : (json as T);
-}
+import { client, unwrapEden } from "./client";
 
 // ── API Methods ──
 
 export const workflowDefApi = {
   /** 创建工作流 */
   async create(name: string, description?: string): Promise<WorkflowDefItem> {
-    return defFetch<WorkflowDefItem>("create", { name, description });
+    const res = await client.web.workflowDefs.post({ action: "create", name, description });
+    return unwrapEden<WorkflowDefItem>(res);
   },
 
   /** 保存草稿 */
   async save(workflowId: string, yaml: string): Promise<void> {
-    await defFetch("save", { workflowId, yaml });
+    const res = await client.web.workflowDefs.post({ action: "save", workflowId, yaml });
+    unwrapEden(res);
   },
 
   /** 发布版本 */
   async publish(workflowId: string): Promise<WorkflowVersionItem> {
-    return defFetch<WorkflowVersionItem>("publish", { workflowId });
+    const res = await client.web.workflowDefs.post({ action: "publish", workflowId });
+    return unwrapEden<WorkflowVersionItem>(res);
   },
 
   /** 列出工作流 */
   async list(): Promise<WorkflowDefItem[]> {
-    return defFetch<WorkflowDefItem[]>("list");
+    const res = await client.web.workflowDefs.post({ action: "list" });
+    return unwrapEden<WorkflowDefItem[]>(res);
   },
 
   /** 获取单个工作流（含草稿内容） */
   async get(workflowId: string): Promise<WorkflowDefItem> {
-    return defFetch<WorkflowDefItem>("get", { workflowId });
+    const res = await client.web.workflowDefs.post({ action: "get", workflowId });
+    return unwrapEden<WorkflowDefItem>(res);
   },
 
   /** 获取版本历史 */
   async getVersions(workflowId: string): Promise<WorkflowVersionItem[]> {
-    return defFetch<WorkflowVersionItem[]>("getVersions", { workflowId });
+    const res = await client.web.workflowDefs.post({ action: "getVersions", workflowId });
+    return unwrapEden<WorkflowVersionItem[]>(res);
   },
 
   /** 获取特定版本 YAML */
   async getVersion(workflowId: string, version: number): Promise<VersionYamlResponse> {
-    return defFetch<VersionYamlResponse>("getVersion", { workflowId, version });
+    const res = await client.web.workflowDefs.post({ action: "getVersion", workflowId, version });
+    return unwrapEden<VersionYamlResponse>(res);
   },
 
   /** 设置 latest 指针（回滚） */
   async setLatest(workflowId: string, version: number): Promise<void> {
-    await defFetch("setLatest", { workflowId, version });
+    const res = await client.web.workflowDefs.post({ action: "setLatest", workflowId, version });
+    unwrapEden(res);
   },
 
   /** 删除工作流 */
   async delete(workflowId: string): Promise<void> {
-    await defFetch("delete", { workflowId });
+    const res = await client.web.workflowDefs.post({ action: "delete", workflowId });
+    unwrapEden(res);
   },
 
   /** 更新元数据 */
   async updateMeta(workflowId: string, data: { name?: string; description?: string }): Promise<WorkflowDefItem> {
-    return defFetch<WorkflowDefItem>("updateMeta", { workflowId, ...data });
+    const res = await client.web.workflowDefs.post({ action: "updateMeta", workflowId, ...data });
+    return unwrapEden<WorkflowDefItem>(res);
   },
 
   /** 扫描可恢复的工作流 ID */
   async recover(): Promise<string[]> {
-    return defFetch<string[]>("recover");
+    const res = await client.web.workflowDefs.post({ action: "recover" });
+    return unwrapEden<string[]>(res);
   },
 
   /** 执行恢复 */
   async recoverApply(workflowIds: string[]): Promise<WorkflowDefItem[]> {
-    return defFetch<WorkflowDefItem[]>("recoverApply", { workflowIds });
+    const res = await client.web.workflowDefs.post({ action: "recoverApply", workflowIds });
+    return unwrapEden<WorkflowDefItem[]>(res);
   },
 
   /** 恢复版本到草稿 */
   async restoreToDraft(workflowId: string, version: number): Promise<void> {
-    await defFetch("restoreToDraft", { workflowId, version });
+    const res = await client.web.workflowDefs.post({ action: "restoreToDraft", workflowId, version });
+    unwrapEden(res);
   },
 };

@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { client, unwrapEden } from "../api/client";
 
 interface OrgInfo {
   id: string;
@@ -23,22 +24,6 @@ interface OrgContextValue {
 const STORAGE_KEY = "active_org_id";
 
 const OrgContext = createContext<OrgContextValue | null>(null);
-
-/** 组织 API 调用辅助 — 自动附带 activeOrganizationId header */
-async function orgApi<T>(body: Record<string, unknown>): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const activeOrgId = localStorage.getItem(STORAGE_KEY);
-  if (activeOrgId) headers["X-Active-Org-Id"] = activeOrgId;
-  const res = await fetch("/web/organizations", {
-    method: "POST",
-    headers,
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Organization API error: ${res.status}`);
-  const json = await res.json();
-  return (json as { success: boolean; data: T }).data;
-}
 
 /** 给全局 fetch 注入 X-Active-Org-Id header */
 let fetchInterceptorInstalled = false;
@@ -65,7 +50,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const refreshOrgs = useCallback(async () => {
     try {
-      const list = await orgApi<OrgWithRole[]>({ action: "list" });
+      const res = await client.web.organizations.post({ action: "list" });
+      const list = unwrapEden<OrgWithRole[]>(res);
       setOrgs(list);
       // 取当前 active org 或第一个
       const activeOrgId = localStorage.getItem(STORAGE_KEY);
@@ -89,7 +75,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const switchOrg = useCallback(async (orgId: string) => {
     localStorage.setItem(STORAGE_KEY, orgId);
-    await orgApi<void>({ action: "set-active", organizationId: orgId });
+    const res = await client.web.organizations.post({ action: "set-active", organizationId: orgId });
+    unwrapEden(res);
     window.location.reload();
   }, []);
 
