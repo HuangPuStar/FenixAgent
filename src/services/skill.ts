@@ -5,7 +5,6 @@
  * 文件系统操作全部委托给 skill-fs.ts。
  */
 
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config";
 import { error as logError } from "../logger";
@@ -13,6 +12,7 @@ import type { AuthContext } from "../plugins/auth";
 import * as _configPg from "./config-pg";
 import {
   assertValidSkillName as _assertValidSkillName,
+  backupSkillDirs as _backupSkillDirs,
   buildImportedSkillInfos as _buildImportedSkillInfos,
   buildSkillArchive as _buildSkillArchive,
   cleanupBackupDir as _cleanupBackupDir,
@@ -39,6 +39,7 @@ export const _deps = {
   configPg: _configPg,
   skillFs: {
     assertValidSkillName: _assertValidSkillName,
+    backupSkillDirs: _backupSkillDirs,
     getSkillSourceDir: _getSkillSourceDir,
     getSkillArchivePath: _getSkillArchivePath,
     buildSkillArchive: _buildSkillArchive,
@@ -62,6 +63,7 @@ export function _resetDeps() {
   _deps.configPg = _configPg;
   _deps.skillFs = {
     assertValidSkillName: _assertValidSkillName,
+    backupSkillDirs: _backupSkillDirs,
     getSkillSourceDir: _getSkillSourceDir,
     getSkillArchivePath: _getSkillArchivePath,
     buildSkillArchive: _buildSkillArchive,
@@ -301,6 +303,7 @@ export async function importSkillDirectories(
   const grouped = validateImportFiles(files);
   const root = getGlobalSkillsDir();
 
+  // 并行检测冲突（N+1 → 单轮并行查询）
   const entries = Array.from(grouped.entries());
   const existingResults = await Promise.all(
     entries.map(async ([name]) => {
@@ -330,11 +333,13 @@ export async function importSkillDirectories(
     pendingEntries,
     strategy === "overwrite" ? overwriteNames : [],
     "rcs-skill-import-",
+    // onConflictCleanup: overwrite 时清理 PG 冲突记录（pre-write）
     strategy === "overwrite"
       ? async (names) => {
           await Promise.all(names.map((name) => _deps.configPg.deleteSkill(ctx, name)));
         }
       : undefined,
+    // onSkillWritten: 并行写入 PG 元数据
     async (info) => {
       await _deps.skillFs.buildSkillArchive(
         _deps.skillFs.getSkillSourceDir(root, info.name),
@@ -345,6 +350,7 @@ export async function importSkillDirectories(
         contentPath: info.path,
       });
     },
+    // onRollbackCleanup: 回滚时清理已尝试写入的 PG 记录
     async (names) => {
       await Promise.all([
         ...names.map((name) => _deps.configPg.deleteSkill(ctx, name)),
