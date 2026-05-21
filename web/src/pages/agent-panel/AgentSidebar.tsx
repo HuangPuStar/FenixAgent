@@ -1,4 +1,4 @@
-import { LogOut } from "lucide-react";
+import { LogOut, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { signOut, useSession } from "../../../src/lib/auth-client";
@@ -81,15 +81,27 @@ export function AgentSidebar({
       {/* 配置导航 */}
       <AgentSidebarConfig onNavigate={onNavigate} />
 
-      {/* 底部：团队切换 + 用户头像 */}
+      {/* 底部：团队切换 + 组织管理 + 用户头像 */}
       <div className="mt-auto border-t border-border-subtle">
         {/* 团队切换 */}
-        <div className="px-2 py-1.5 border-b border-border-subtle">
+        <div className="px-2 py-1.5">
           <OrgSwitcher />
         </div>
 
+        {/* 组织管理 */}
+        <div className="border-t border-border-subtle px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => onNavigate("organizations")}
+            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius)] text-[13px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all duration-150 cursor-pointer"
+          >
+            <Users className="w-[18px] h-[18px] flex-shrink-0" />
+            <span>{tSidebar("organizations")}</span>
+          </button>
+        </div>
+
         {/* 用户头像 */}
-        <div className="relative">
+        <div className="border-t border-border-subtle relative">
           <button
             type="button"
             onClick={() => setUserMenuOpen((v) => !v)}

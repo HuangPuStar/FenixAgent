@@ -23,22 +23,27 @@ interface NavGroup {
   items: NavEntry[];
 }
 
+/** 直接显示的快捷入口（模型、技能、MCP） */
+const QUICK_NAV: NavEntry[] = [
+  { id: "models", labelKey: "agentPanel:models", icon: Cpu },
+  { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
+  { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
+];
+
+/** 折叠到下拉菜单的其余导航 */
 const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: "agentPanel:console",
     items: [
       { id: "dashboard", labelKey: "agentPanel:overview", icon: Monitor },
       { id: "workflow", labelKey: "agentPanel:workflow", icon: Workflow },
-      { id: "models", labelKey: "agentPanel:models", icon: Cpu },
       { id: "session", labelKey: "agentPanel:sessions", icon: MessageSquare },
     ],
   },
   {
     labelKey: "agentPanel:config",
     items: [
-      { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
       { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
-      { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
       { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
       { id: "channels", labelKey: "agentPanel:channels", icon: Radio },
       { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },
@@ -54,7 +59,26 @@ export function AgentSidebarConfig({ onNavigate }: AgentSidebarConfigProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
 
   return (
-    <nav className="py-2 overflow-y-auto overflow-x-hidden">
+    <div className="border-t border-border-subtle">
+      {/* 快捷导航：模型、技能、MCP */}
+      <div className="px-2 py-1.5">
+        {QUICK_NAV.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onNavigate(item.id)}
+              className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius)] text-[13px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all duration-150 cursor-pointer"
+            >
+              <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+              <span>{t(item.labelKey)}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 更多导航：下拉菜单 */}
       <div className="px-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -87,6 +111,6 @@ export function AgentSidebarConfig({ onNavigate }: AgentSidebarConfigProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </nav>
+    </div>
   );
 }
