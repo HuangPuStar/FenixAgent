@@ -28,6 +28,7 @@ import webConfig from "./routes/web/config";
 import webControl from "./routes/web/control";
 import webEnvironments from "./routes/web/environments";
 import webFiles from "./routes/web/files";
+import webUserFile from "./routes/web/user-file";
 import webInstances from "./routes/web/instances";
 import webKnowledgeBases from "./routes/web/knowledge-bases";
 import webOrganizations from "./routes/web/organizations";
@@ -176,6 +177,7 @@ const app = new Elysia()
   .use(webChannels)
   .use(webKnowledgeBases)
   .use(webFiles)
+  .use(webUserFile)
   .use(webS3Files)
   .use(webControl)
   .use(webAuth)
