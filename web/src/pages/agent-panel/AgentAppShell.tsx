@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { AgentCreateDialog } from "./AgentCreateDialog";
 import { AgentSidebar } from "./AgentSidebar";
 import { ChatPanel } from "./ChatPanel";
 import { ArtifactsPanel } from "./ArtifactsPanel";
