@@ -276,7 +276,7 @@ export function AgentOrganizationsPage() {
               >
                 <RoleIcon role={o.role} />
                 <span className="truncate">{o.name}</span>
-                <span className="ml-auto text-[11px] text-text-dim">{t(`roles.${o.role}`, o.role)}</span>
+                <span className="ml-auto text-[11px] text-text-dim">{t(`roles.${o.role ?? "member"}`, o.role ?? "member")}</span>
               </button>
             ))}
             {myOrgs.length === 0 && <p className="px-4 py-6 text-sm text-text-dim text-center">{t("noOrgs")}</p>}
