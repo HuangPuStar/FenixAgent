@@ -516,7 +516,7 @@ export const mcpServer = pgTable(
   }),
 );
 
-// 技能元数据（内容保留在文件系统 content_path）
+// 技能元数据（全局技能库，内容保留在文件系统）
 export const skill = pgTable(
   "skill",
   {
@@ -525,23 +525,35 @@ export const skill = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     organizationId: text("organization_id").notNull(),
-    environmentId: varchar("environment_id").references(() => environment.id, { onDelete: "cascade" }),
-    // Agent 专属 Skill：null = 全局，UUID = 仅该 AgentConfig 可用
-    agentConfigId: uuid("agent_config_id").references(() => agentConfig.id, { onDelete: "cascade" }),
     name: varchar("name").notNull(),
     description: text("description"),
     contentPath: text("content_path"),
     metadata: jsonb("metadata"),
-    enabled: boolean("enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    globalIdx: index("idx_skill_global").on(table.organizationId, table.name),
-    workspaceIdx: index("idx_skill_workspace").on(table.organizationId, table.environmentId, table.name),
-    agentIdx: index("idx_skill_agent_config").on(table.agentConfigId),
+    orgNameIdx: uniqueIndex("idx_skill_org_name").on(table.organizationId, table.name),
   }),
 );
+
+// Agent↔Skill 多对多关联
+export const agentConfigSkill = pgTable(
+  "agent_config_skill",
+  {
+    agentConfigId: uuid("agent_config_id")
+      .notNull()
+      .references(() => agentConfig.id, { onDelete: "cascade" }),
+    skillId: uuid("skill_id")
+      .notNull()
+      .references(() => skill.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: uniqueIndex("idx_agent_config_skill_pk").on(table.agentConfigId, table.skillId),
+  }),
+);
+
 
 // ────────────────────────────────────────────
 // Workflow 独立领域模块
