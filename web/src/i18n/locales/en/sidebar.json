@@ -17,5 +17,6 @@
   "collapse": "Collapse sidebar",
   "expand": "Expand sidebar",
   "logout": "Sign Out",
-  "searchDev": "Global search coming soon"
+  "searchDev": "Global search coming soon",
+  "agentPanel": "Agent Panel"
 }
