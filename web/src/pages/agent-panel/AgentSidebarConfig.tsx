@@ -8,7 +8,6 @@ import {
   MessageSquare,
   Monitor,
   Plug,
-  Radio,
   Settings,
   Users,
   Workflow,
@@ -59,7 +58,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
       { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
-      { id: "channels", labelKey: "agentPanel:channels", icon: Radio },
       { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },
     ],
   },

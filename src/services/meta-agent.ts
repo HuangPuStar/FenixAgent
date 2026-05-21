@@ -62,8 +62,23 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
   return agentConfig.id;
 }
 
-/** 为 meta agent 创建 API key（1 小时过期） */
-async function createMetaApiKey(ctx: AuthContext, headers: Headers): Promise<string> {
+/** 为 meta agent 获取或创建 API key。先删除所有同名旧 key，再创建唯一一个。 */
+async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<string> {
+  // 删除所有同名旧 key，避免累积
+  // biome-ignore lint/suspicious/noExplicitAny: better-auth listApiKeys return type is untyped
+  const listResult: any = await (auth.api as any).listApiKeys({ headers });
+  const existingKeys: Array<{ id: string; name?: string }> =
+    listResult?.apiKeys ?? (Array.isArray(listResult) ? listResult : []);
+  for (const old of existingKeys.filter((k) => k.name === META_KEY_LABEL)) {
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: better-auth deleteApiKey return type is untyped
+      await (auth.api as any).deleteApiKey({ body: { id: old.id }, headers });
+    } catch {
+      // 旧 key 删除失败不阻断
+    }
+  }
+
+  // 创建新 key
   // biome-ignore lint/suspicious/noExplicitAny: better-auth createApiKey return type is untyped
   const result: any = await (auth.api as any).createApiKey({
     body: {
@@ -80,7 +95,7 @@ async function createMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
 /** 查找或创建 meta environment + spawn 实例 */
 export async function ensureMetaEnvironment(ctx: AuthContext, request: Request): Promise<EnsureMetaResult> {
   const agentConfigId = await ensureMetaConfig(ctx);
-  const apiKey = await createMetaApiKey(ctx, request.headers);
+  const apiKey = await ensureMetaApiKey(ctx, request.headers);
   const extraEnv: Record<string, string> = { USER_META_API_KEY: apiKey };
 
   const existing = await findMetaEnvironment(ctx);

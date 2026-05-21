@@ -7,17 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { client } from "../../../api/client";
+import { client, unwrapEden } from "../../../api/client";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-type ApiKeyInfo = {
+interface ApiKeyInfo {
   id: string;
   name: string;
   prefix: string;
   createdAt: number;
   expiresAt: number | null;
-};
+}
 
 export function AgentApiKeysPage() {
   const { t } = useTranslation("apikey");
@@ -33,11 +33,10 @@ export function AgentApiKeysPage() {
   const loadKeys = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await client.web.apikeys.get();
-      if (error) throw new Error(error.message ?? "Failed");
-      setKeys((Array.isArray(data) ? data : []) as ApiKeyInfo[]);
-    } catch (e) {
-      console.error("Failed to load API keys", e);
+      const list = unwrapEden<ApiKeyInfo[]>(await client.web.apiKeys.post({ action: "list" }));
+      setKeys(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.error(err);
       toast.error(t("toast.loadFailed"));
     } finally {
       setLoading(false);
@@ -61,16 +60,16 @@ export function AgentApiKeysPage() {
     }
     setFormSaving(true);
     try {
-      const { data, error } = await client.web.apikeys.post({ name: formName.trim() });
-      if (error) throw new Error(error.message ?? "Failed");
-      const result = data as { key?: string } | null;
+      const result = unwrapEden<{ key?: string }>(
+        await client.web.apiKeys.post({ action: "create", name: formName.trim() }),
+      );
       if (result?.key) {
         setNewKeyValue(result.key);
       }
       toast.success(t("toast.created"));
       loadKeys();
-    } catch (e) {
-      console.error("Create failed", e);
+    } catch (err) {
+      console.error(err);
       toast.error(t("toast.createFailed"));
     } finally {
       setFormSaving(false);
@@ -80,14 +79,13 @@ export function AgentApiKeysPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const { error } = await client.web.apikeys[deleteTarget].delete();
-      if (error) throw new Error(error.message ?? "Failed");
+      unwrapEden(await client.web.apiKeys.post({ action: "delete", id: deleteTarget }));
       toast.success(t("toast.deleted"));
       setConfirmOpen(false);
       setDeleteTarget(null);
       loadKeys();
-    } catch (e) {
-      console.error("Delete failed", e);
+    } catch (err) {
+      console.error(err);
       toast.error(t("toast.deleteFailed"));
     }
   };
