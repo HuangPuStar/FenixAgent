@@ -14,7 +14,13 @@ interface AgentSidebarProps {
   onEditAgent?: (agentName: string) => void;
 }
 
-export function AgentSidebar({ activeNav, onSelectInstance, onNavigate, onCreateAgent, onEditAgent }: AgentSidebarProps) {
+export function AgentSidebar({
+  activeNav,
+  onSelectInstance,
+  onNavigate,
+  onCreateAgent,
+  onEditAgent,
+}: AgentSidebarProps) {
   const { t } = useTranslation("agentPanel");
   const { t: tSidebar } = useTranslation("sidebar");
   const { data: session } = useSession();
@@ -72,7 +78,12 @@ export function AgentSidebar({ activeNav, onSelectInstance, onNavigate, onCreate
 
       {/* 智能体树 */}
       <div className="border-t border-border-subtle flex-1 min-h-0 overflow-hidden">
-        <AgentSidebarTree selectedInstanceId={null} onSelectInstance={onSelectInstance} onCreateAgent={onCreateAgent} onEditAgent={onEditAgent} />
+        <AgentSidebarTree
+          selectedInstanceId={null}
+          onSelectInstance={onSelectInstance}
+          onCreateAgent={onCreateAgent}
+          onEditAgent={onEditAgent}
+        />
       </div>
 
       {/* 更多导航：下拉菜单 */}

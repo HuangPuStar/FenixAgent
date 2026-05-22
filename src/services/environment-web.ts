@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { ConflictError, NotFoundError, ValidationError } from "../errors";
 import { db } from "../db";
 import { agentConfig, environment } from "../db/schema";
+import { ConflictError, NotFoundError, ValidationError } from "../errors";
 import type { EnvironmentUpdateParams } from "../repositories";
 import { environmentRepo } from "../repositories";
 import * as configPg from "./config-pg";

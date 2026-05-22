@@ -11,7 +11,10 @@ export function AgentPanelLayout() {
   const pathname = routerState.location.pathname;
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({ open: false, agentName: "" });
+  const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
+    open: false,
+    agentName: "",
+  });
 
   const activeNav = (() => {
     const segment = pathname.replace("/ctrl/agent/", "").split("/")[0];
