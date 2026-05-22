@@ -21,5 +21,6 @@
       "@server/*": ["../../src/*"]
     }
   },
-  "include": ["src", "components"]
+  "include": ["src", "components"],
+  "exclude": ["src/__tests__/eden-fetch-type-test.ts"]
 }
