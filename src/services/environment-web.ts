@@ -1,9 +1,12 @@
+import { eq } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
+import { db } from "../db";
+import { agentConfig, environment } from "../db/schema";
 import type { EnvironmentUpdateParams } from "../repositories";
 import { environmentRepo } from "../repositories";
 import * as configPg from "./config-pg";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "./environment-core";
-import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE, sanitizeResponse } from "./environment-core";
+import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "./environment-core";
 import { groupActiveInstancesByEnvironment } from "./instance";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
@@ -90,15 +93,36 @@ export async function updateWebEnvironment(envId: string, organizationId: string
 
 /** 获取团队所有环境并组装实例信息（web/environments 路由用） */
 export async function listEnvironmentsWithInstances(organizationId: string) {
-  const allEnvs = await environmentRepo.listByOrganizationId(organizationId);
+  // LEFT JOIN agentConfig 一次性拿到 environment + agent_name
+  const rows = await db
+    .select({
+      env: environment,
+      agentName: agentConfig.name,
+    })
+    .from(environment)
+    .leftJoin(agentConfig, eq(environment.agentConfigId, agentConfig.id))
+    .where(eq(environment.organizationId, organizationId));
+
   // 单次遍历按 environmentId 分组实例，避免 N 次 listInstances 调用
   const instanceMap = groupActiveInstancesByEnvironment();
   const results = [];
-  for (const env of allEnvs) {
+  for (const { env, agentName } of rows) {
     const activeInstances = instanceMap.get(env.id) ?? [];
     const firstInstance = activeInstances[0];
     results.push({
-      ...sanitizeResponse(env),
+      id: env.id,
+      name: env.name,
+      description: env.description ?? null,
+      workspace_path: env.workspacePath,
+      agent_config_id: env.agentConfigId ?? null,
+      agent_name: agentName ?? null,
+      status: env.status,
+      machine_name: env.machineName ?? null,
+      branch: env.branch ?? null,
+      auto_start: env.autoStart ?? false,
+      last_poll_at: env.lastPollAt ? Math.floor(env.lastPollAt.getTime() / 1000) : null,
+      created_at: Math.floor(env.createdAt.getTime() / 1000),
+      updated_at: Math.floor(env.updatedAt.getTime() / 1000),
       session_id: firstInstance?.sessionId ?? null,
       instance_status: firstInstance ? firstInstance.status : null,
       instance_id: firstInstance ? firstInstance.id : null,
