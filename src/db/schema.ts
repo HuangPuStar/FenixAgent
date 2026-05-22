@@ -228,6 +228,24 @@ export const environment = pgTable(
   }),
 );
 
+// Agent Session 持久化表（RCS 侧 session，非 better-auth session）
+export const agentSession = pgTable(
+  "agent_session",
+  {
+    id: varchar("id").primaryKey(),
+    environmentId: varchar("environment_id").references(() => environment.id, { onDelete: "cascade" }),
+    title: varchar("title"),
+    status: varchar("status", { length: 50 }).notNull().default("idle"),
+    source: varchar("source", { length: 50 }).notNull().default("acp"),
+    userId: text("user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    envIdx: index("idx_agent_session_org_environment_id").on(table.environmentId),
+  }),
+);
+
 export const knowledgeBase = pgTable(
   "knowledge_base",
   {
