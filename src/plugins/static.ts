@@ -5,8 +5,14 @@ import { staticPlugin } from "@elysiajs/static";
 import Elysia from "elysia";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const distDir = resolve(__dirname, "../../web/dist");
-const webDir = existsSync(resolve(distDir, "index.html")) ? distDir : resolve(__dirname, "../../web");
+const cwd = process.cwd();
+const distDir = resolve(cwd, "web/dist");
+const srcDir = resolve(__dirname, "../../web/dist");
+const webDir = existsSync(resolve(distDir, "index.html"))
+  ? distDir
+  : existsSync(resolve(srcDir, "index.html"))
+    ? srcDir
+    : resolve(cwd, "web");
 const indexHtmlPath = resolve(webDir, "index.html");
 
 export const ctrlStaticPlugin = new Elysia({ name: "ctrl-static" })
