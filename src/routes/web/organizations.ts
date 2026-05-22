@@ -22,13 +22,13 @@ interface OrgApi {
   }) => Promise<unknown>;
   deleteOrganization: (opts: { body: { organizationId: string }; headers: Headers }) => Promise<void>;
   setActiveOrganization: (opts: { body: { organizationId: string }; headers: Headers }) => Promise<void>;
-  removeMember: (opts: { body: { organizationId: string; userId: string }; headers: Headers }) => Promise<void>;
+  removeMember: (opts: { body: { memberIdOrEmail: string; organizationId?: string }; headers: Headers }) => Promise<void>;
   addMember: (opts: {
     body: { userId: string; role: string; organizationId: string };
     headers: Headers;
   }) => Promise<unknown>;
   updateMemberRole: (opts: {
-    body: { organizationId: string; userId: string; role: string };
+    body: { memberId: string; organizationId?: string; role: string };
     headers: Headers;
   }) => Promise<void>;
   listApiKeys: (opts: { headers: Headers }) => Promise<unknown>;
@@ -179,42 +179,55 @@ app.post(
         return { success: true, data: memberData };
       }
       case "add-member": {
-        if (!b.organizationId || !b.email || !b.role)
+        if (!b.organizationId || !b.role)
           return error(400, {
             success: false,
-            error: { code: "VALIDATION_ERROR", message: "organizationId, email, role required" },
+            error: { code: "VALIDATION_ERROR", message: "organizationId, role required" },
           });
-        // 通过邮箱查找用户（better-auth addMember 需要 userId）
-        const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, b.email)).limit(1);
-        if (!foundUser)
-          return error(404, { success: false, error: { code: "USER_NOT_FOUND", message: "该邮箱用户不存在" } });
-        // 使用 better-auth 原生 addMember API（自带权限校验和重复检查）
+        // 支持 userId（直接传或传邮箱自动转换）
+        let memberUserId: string | undefined;
+        const rawId = (b.userId ?? b.email) as string | undefined;
+        if (!rawId) {
+          return error(400, {
+            success: false,
+            error: { code: "VALIDATION_ERROR", message: "userId or email required" },
+          });
+        }
+        if (rawId.includes("@")) {
+          // 传入的是邮箱，查找对应 userId
+          const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, rawId)).limit(1);
+          if (!foundUser)
+            return error(404, { success: false, error: { code: "USER_NOT_FOUND", message: "该邮箱用户不存在" } });
+          memberUserId = foundUser.id;
+        } else {
+          memberUserId = rawId;
+        }
         const result = await api.addMember({
-          body: { userId: foundUser.id, role: b.role, organizationId: b.organizationId },
+          body: { userId: memberUserId, role: b.role, organizationId: b.organizationId },
           headers: request.headers,
         });
         return { success: true, data: result };
       }
       case "remove-member": {
-        if (!b.organizationId || !b.userId)
+        if (!b.organizationId || !b.memberId)
           return error(400, {
             success: false,
-            error: { code: "VALIDATION_ERROR", message: "organizationId, userId required" },
+            error: { code: "VALIDATION_ERROR", message: "organizationId, memberId required" },
           });
         await api.removeMember({
-          body: { organizationId: b.organizationId, userId: b.userId },
+          body: { memberIdOrEmail: b.memberId, organizationId: b.organizationId },
           headers: request.headers,
         });
         return { success: true };
       }
       case "update-role": {
-        if (!b.organizationId || !b.userId || !b.role)
+        if (!b.organizationId || !b.memberId || !b.role)
           return error(400, {
             success: false,
-            error: { code: "VALIDATION_ERROR", message: "organizationId, userId, role required" },
+            error: { code: "VALIDATION_ERROR", message: "organizationId, memberId, role required" },
           });
         await api.updateMemberRole({
-          body: { organizationId: b.organizationId, userId: b.userId, role: b.role },
+          body: { memberId: b.memberId, organizationId: b.organizationId, role: b.role },
           headers: request.headers,
         });
         return { success: true };

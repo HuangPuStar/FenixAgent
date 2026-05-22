@@ -172,12 +172,12 @@ export function AgentOrganizationsPage() {
     if (!selectedOrgId || !addMemberEmail.trim()) return;
     setAddMemberSaving(true);
     const { error: addErr } = await orgApi.addMember(selectedOrgId, {
-      userId: addMemberEmail.trim() as unknown as string,
+      email: addMemberEmail.trim(),
       role: addMemberRole,
     });
     if (addErr) {
       console.error(addErr);
-      toast.error(t("toast.inviteFailed"));
+      toast.error(addErr.message || t("toast.inviteFailed"));
       setAddMemberSaving(false);
       return;
     }
@@ -362,7 +362,7 @@ export function AgentOrganizationsPage() {
                         {isOwner && m.role !== "owner" && (
                           <select
                             value={m.role}
-                            onChange={(e) => handleUpdateRole(m.userId, e.target.value)}
+                            onChange={(e) => handleUpdateRole(m.id, e.target.value)}
                             className="text-xs border border-border-subtle rounded px-1.5 py-0.5 bg-transparent text-text-secondary"
                           >
                             <option value="admin">{t("roles.admin")}</option>
@@ -374,7 +374,7 @@ export function AgentOrganizationsPage() {
                             variant="ghost"
                             size="xs"
                             className="text-text-dim hover:text-destructive"
-                            onClick={() => handleRemoveMember(m.userId)}
+                            onClick={() => handleRemoveMember(m.id)}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>

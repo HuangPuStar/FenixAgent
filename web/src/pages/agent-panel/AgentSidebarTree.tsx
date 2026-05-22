@@ -46,12 +46,13 @@ export function AgentSidebarTree({
 
   const loadData = useCallback(async () => {
     try {
-      const [{ data: agentsData }, { data: envsData }] = await Promise.all([
+      const [{ data: agentsResult }, { data: envsData }] = await Promise.all([
         agentApi.list(),
         envApi.list(),
       ]);
 
-      const agents = Array.isArray(agentsData) ? (agentsData as AgentConfigItem[]) : [];
+      const rawAgents = (agentsResult as unknown as { agents?: AgentConfigItem[] } | null)?.agents;
+      const agents = Array.isArray(rawAgents) ? rawAgents : [];
       const envs = Array.isArray(envsData) ? (envsData as Environment[]) : [];
 
       // 过滤内置智能体
