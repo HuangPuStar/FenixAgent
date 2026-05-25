@@ -61,6 +61,7 @@ import {
   workflowEngineApi,
 } from "../../api/workflow-engine";
 import { ChatPanel } from "../agent-panel/ChatPanel";
+import { useWorkflowEvents } from "../../lib/use-workflow-events";
 import { autoLayout } from "./layout";
 import { nodeTypes } from "./nodes";
 import {
@@ -127,6 +128,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     return saved === "true";
   });
   const [metaAgentId, setMetaAgentId] = useState<string | null>(null);
+
+  const { pushWorkflowError } = useWorkflowEvents();
 
   const scenePrompt = useMemo(() => {
     if (!workflowId) return;
@@ -461,6 +464,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       setTimeout(() => setSaveStatus("idle"), 2000);
     } catch (err) {
       console.error(err);
+      pushWorkflowError("save", (err as Error).message);
       alert(`${t("editor.save_failed")}: ${(err as Error).message}`);
       setSaveStatus("idle");
     }
@@ -488,6 +492,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       alert(t("editor.published_as", { version: result.version }));
     } catch (err) {
       console.error(err);
+      pushWorkflowError("publish", (err as Error).message);
       alert(`${t("editor.publish_failed")}: ${(err as Error).message}`);
     } finally {
       setPublishing(false);
@@ -516,6 +521,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       setDryRunResult(result);
     } catch (err) {
       console.error(err);
+      pushWorkflowError("validation", (err as Error).message);
       setDryRunResult({ valid: false, issues: [{ type: "error", message: (err as Error).message }] });
     } finally {
       setRunning(false);
