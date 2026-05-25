@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { RuntimeInstanceSnapshot } from "@mothership/core";
+import { getBaseUrl } from "../config";
 import { AppError, NotFoundError } from "../errors";
 import { log, error as logError } from "../logger";
 import type { EnvironmentRecord } from "../repositories";
@@ -138,6 +139,13 @@ export async function spawnInstanceFromEnvironment(
     );
   }
 
+  // 注入平台级环境变量（caller 的 extraEnv 可覆盖）
+  const platformEnv: Record<string, string> = {
+    USER_META_API_KEY: env.secret,
+    USER_META_BASE_URL: getBaseUrl(),
+  };
+  const mergedExtraEnv = { ...platformEnv, ...extraEnv };
+
   // 组装 AgentLaunchSpec
   const launchSpec = await buildLaunchSpec({
     organizationId: env.organizationId ?? userId,
@@ -148,7 +156,7 @@ export async function spawnInstanceFromEnvironment(
     modelRef,
     fullConfig,
     environmentSecret: env.secret,
-    extraEnv,
+    extraEnv: mergedExtraEnv,
   });
 
   const instanceId = `inst_${randomBytes(8).toString("hex")}`;

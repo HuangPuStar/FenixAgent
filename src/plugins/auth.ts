@@ -53,6 +53,55 @@ function extractToken(request: Request): string | undefined {
   return authHeader?.replace("Bearer ", "") || queryToken || undefined;
 }
 
+/** 尝试通过 API key / environment secret 认证，成功返回 true 并设置 store */
+async function tryApiKeyAuth(
+  store: { user: UserInfo | null; authEnvironmentId: string | null; authContext: AuthContext | null },
+  request: Request,
+): Promise<boolean> {
+  const token = extractToken(request);
+  if (!token) return false;
+
+  // 0. Environment secret match
+  const { environmentRepo } = await import("../repositories");
+  const envRecord = await environmentRepo.getBySecret(token);
+  if (envRecord?.userId) {
+    const user = await lookupUserById(envRecord.userId);
+    if (user) {
+      store.user = user;
+      store.authEnvironmentId = envRecord.id;
+      const organizationId = envRecord.organizationId ?? envRecord.userId;
+      const role =
+        envRecord.organizationId && envRecord.organizationId !== envRecord.userId ? "member" : "owner";
+      store.authContext = { organizationId, userId: user.id, role: role as "owner" | "admin" | "member" };
+      return true;
+    }
+  }
+
+  // 1. better-auth API Key 验证
+  // biome-ignore lint/suspicious/noExplicitAny: better-auth verifyApiKey return type is untyped
+  const result: any = await auth.api.verifyApiKey({ body: { key: token } });
+  if (result.valid && result.key) {
+    // biome-ignore lint/suspicious/noExplicitAny: better-auth API key metadata shape is untyped
+    const apiKeyMeta = result.key as any;
+    const userId = apiKeyMeta.userId;
+    const user = await lookupUserById(userId);
+    if (user) {
+      store.user = user;
+      const orgId = apiKeyMeta.organizationId || apiKeyMeta.metadata?.organizationId;
+      if (orgId) {
+        store.authContext = {
+          organizationId: orgId,
+          userId: user.id,
+          role: (apiKeyMeta.metadata?.role as "owner" | "admin" | "member") || "owner",
+        };
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export async function lookupUserById(userId: string): Promise<UserInfo | null> {
   const { db } = await import("../db");
   const { user } = await import("../db/schema");
@@ -136,20 +185,25 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
             return;
           }
           const session = await auth.api.getSession({ headers: request.headers });
-          if (!session?.user) {
-            return error(401, { error: { type: "unauthorized", message: "Not authenticated" } });
+          if (session?.user) {
+            store.user = { id: session.user.id, email: session.user.email, name: session.user.name };
+            store.authSession = {
+              id: session.session.id,
+              userId: session.session.userId,
+              token: session.session.token,
+            };
+            // 加载组织上下文
+            const { loadOrgContext } = await import("../services/org-context");
+            const ctx = await loadOrgContext(store.user, request);
+            if (ctx) {
+              store.authContext = ctx;
+            }
+            return;
           }
-          store.user = { id: session.user.id, email: session.user.email, name: session.user.name };
-          store.authSession = {
-            id: session.session.id,
-            userId: session.session.userId,
-            token: session.session.token,
-          };
-          // 加载组织上下文
-          const { loadOrgContext } = await import("../services/org-context");
-          const ctx = await loadOrgContext(store.user, request);
-          if (ctx) {
-            store.authContext = ctx;
+          // Cookie 认证失败，fallback 到 API key / environment secret
+          const apiKeyOk = await tryApiKeyAuth(store, request);
+          if (!apiKeyOk) {
+            return error(401, { error: { type: "unauthorized", message: "Not authenticated" } });
           }
         },
       };
@@ -159,51 +213,10 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
       return {
         // biome-ignore lint/suspicious/noExplicitAny: Elysia macro context type not fully expressible
         beforeHandle: async ({ store, request, error }: any) => {
-          const token = extractToken(request);
-          if (!token) {
-            return error(401, { error: { type: "unauthorized", message: "Missing API key" } });
+          const ok = await tryApiKeyAuth(store, request);
+          if (!ok) {
+            return error(401, { error: { type: "unauthorized", message: "Invalid API key" } });
           }
-
-          // 0. Environment secret match
-          const { environmentRepo } = await import("../repositories");
-          const envRecord = await environmentRepo.getBySecret(token);
-          if (envRecord?.userId) {
-            const user = await lookupUserById(envRecord.userId);
-            if (user) {
-              store.user = user;
-              store.authEnvironmentId = envRecord.id;
-              const organizationId = envRecord.organizationId ?? envRecord.userId;
-              const role =
-                envRecord.organizationId && envRecord.organizationId !== envRecord.userId ? "member" : "owner";
-              store.authContext = { organizationId, userId: user.id, role: role as "owner" | "admin" | "member" };
-              return;
-            }
-          }
-
-          // 1. better-auth API Key 验证
-          // biome-ignore lint/suspicious/noExplicitAny: better-auth verifyApiKey return type is untyped
-          const result: any = await auth.api.verifyApiKey({ body: { key: token } });
-          if (result.valid && result.key) {
-            // biome-ignore lint/suspicious/noExplicitAny: better-auth API key metadata shape is untyped
-            const apiKeyMeta = result.key as any;
-            const userId = apiKeyMeta.userId;
-            const user = await lookupUserById(userId);
-            if (user) {
-              store.user = user;
-              const orgId = apiKeyMeta.organizationId || apiKeyMeta.metadata?.organizationId;
-              if (orgId) {
-                store.authContext = {
-                  organizationId: orgId,
-                  userId: user.id,
-                  role: (apiKeyMeta.metadata?.role as "owner" | "admin" | "member") || "owner",
-                };
-                return;
-              }
-              return error(403, { error: { type: "forbidden", message: "API key has no valid organization context" } });
-            }
-          }
-
-          return error(401, { error: { type: "unauthorized", message: "Invalid API key" } });
         },
       };
     },
