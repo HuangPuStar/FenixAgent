@@ -1,0 +1,57 @@
+{
+  "title": "系统概览",
+  "subtitle": "实时监控 AI Agent 控制面板运行状态",
+  "loading": "加载系统概览...",
+  "system_running": "系统运行中",
+  "stat_cards": {
+    "agents": "智能体",
+    "sessions": "会话",
+    "models": "模型",
+    "availability": "可用率",
+    "tasks": "定时任务",
+    "trend_active": "{{count}} 活跃",
+    "trend_in_progress": "{{count}} 进行中",
+    "trend_configured": "已配置",
+    "trend_healthy": "健康",
+    "trend_enabled": "{{count}} 启用"
+  },
+  "topology": {
+    "title": "Agent 拓扑",
+    "online": "在线",
+    "offline": "离线",
+    "more": "+{{count}} 更多",
+    "status_running": "运行中",
+    "status_idle": "空闲",
+    "status_error": "异常",
+    "status_offline": "离线",
+    "empty": "暂无智能体 — 前往智能体页面创建"
+  },
+  "health": {
+    "title": "系统健康度",
+    "agents_online": "智能体在线",
+    "sessions_active": "会话活跃",
+    "config_enabled": "配置启用率"
+  },
+  "recent": {
+    "title": "最近活动",
+    "quick_stats": "快速统计",
+    "no_activity": "暂无近期活动",
+    "no_startup": "系统刚启动，暂无活动记录"
+  },
+  "quick_stats": {
+    "agent_config": "Agent 配置",
+    "skills": "Skills",
+    "mcp_servers": "MCP 服务器",
+    "session_archive": "会话归档",
+    "scheduled_tasks": "定时任务"
+  },
+  "timeline": {
+    "agents_active": "{{count}} 个智能体处于活跃状态",
+    "sessions_in_progress": "{{count}} 个会话进行中",
+    "tasks_registered": "{{count}} 个定时任务已注册",
+    "models_available": "{{count}} 个模型可用",
+    "time_now": "现在",
+    "time_system": "系统",
+    "time_config": "配置"
+  }
+}

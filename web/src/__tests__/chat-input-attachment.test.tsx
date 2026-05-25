@@ -1,6 +1,5 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
-import React from "react";
 
 describe("ChatInput Attachment Integration", () => {
   test("ChatInput exports with sessionId prop type", async () => {
@@ -8,26 +7,22 @@ describe("ChatInput Attachment Integration", () => {
     expect(typeof mod.ChatInput).toBe("function");
   });
 
-  test("ChatInput renders without sessionId", async () => {
+  test("ChatInput renders without envId", async () => {
     const { ChatInput } = await import("../../components/chat/ChatInput");
     expect(() => {
-      ReactDOMServer.renderToString(
-        <ChatInput onSubmit={() => {}} />
-      );
+      ReactDOMServer.renderToString(<ChatInput onSubmit={() => {}} />);
     }).not.toThrow();
   });
 
-  test("ChatInput renders with sessionId", async () => {
+  test("ChatInput renders with envId", async () => {
     const { ChatInput } = await import("../../components/chat/ChatInput");
     expect(() => {
-      ReactDOMServer.renderToString(
-        <ChatInput onSubmit={() => {}} sessionId="s1" />
-      );
+      ReactDOMServer.renderToString(<ChatInput onSubmit={() => {}} envId="env_1" />);
     }).not.toThrow();
   });
 
   test("ChatInputMessage type includes attachments field", async () => {
-    const typesMod = await import("../../src/lib/types");
+    const _typesMod = await import("../../src/lib/types");
     // Verify the type exists by checking that we can create a valid object
     const msg: any = {
       text: "hello",
@@ -39,7 +34,7 @@ describe("ChatInput Attachment Integration", () => {
   });
 
   test("FileAttachment type is exported", async () => {
-    const typesMod = await import("../../src/lib/types");
+    const _typesMod = await import("../../src/lib/types");
     const att: any = { name: "test.txt", path: "user/test.txt" };
     expect(att.name).toBe("test.txt");
     expect(att.path).toBe("user/test.txt");

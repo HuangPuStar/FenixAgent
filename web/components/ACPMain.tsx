@@ -1,31 +1,44 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { MessageSquare, PanelLeft, PanelLeftClose, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
-import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
+import { envApi } from "../src/api/sdk";
 import { cn } from "../src/lib/utils";
-import { MessageSquare, Plus, PanelLeftClose, PanelLeft } from "lucide-react";
+import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
-import { apiGetEnvironment } from "../src/api/client";
 
 interface ACPMainProps {
   client: ACPClient;
   agentId?: string;
   initialCwd?: string;
   readonly?: boolean;
+  hideSidebar?: boolean;
   rcsSessionId?: string;
+  scenePrompt?: string;
 }
 
 /**
  * Main container — Anthropic sidebar + chat layout.
  * Sidebar: sectioned by recency, orange active state, warm raised bg.
  */
-export function ACPMain({ client, agentId, initialCwd, readonly, rcsSessionId }: ACPMainProps) {
+export function ACPMain({
+  client,
+  agentId,
+  initialCwd,
+  readonly,
+  hideSidebar,
+  rcsSessionId,
+  scenePrompt,
+}: ACPMainProps) {
+  const { t } = useTranslation("components");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cwd, setCwd] = useState<string | undefined>(initialCwd?.replace(/\/+$/, ""));
   const [cwdReady, setCwdReady] = useState(!agentId || !!initialCwd);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
+  const BOOTSTRAP_MAX_ATTEMPTS = 10;
   const chatRef = useRef<ChatInterfaceHandle>(null);
   const bootstrappedRef = useRef(false);
   const bootstrapRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,9 +56,11 @@ export function ACPMain({ client, agentId, initialCwd, readonly, rcsSessionId }:
     }
 
     setCwdReady(false);
-    apiGetEnvironment(agentId)
-      .then((env) => {
-        setCwd(env.workspace_path.replace(/\/+$/, ""));
+    envApi
+      .get({ id: agentId })
+      .then(({ data, error }) => {
+        if (error) throw new Error(error.message ?? "加载环境失败");
+        setCwd(data.workspace_path?.replace(/\/+$/, ""));
         setCwdReady(true);
       })
       .catch(() => {
@@ -60,23 +75,44 @@ export function ACPMain({ client, agentId, initialCwd, readonly, rcsSessionId }:
       clearTimeout(bootstrapRetryTimerRef.current);
       bootstrapRetryTimerRef.current = null;
     }
-  }, [agentId, cwd]);
+  }, []);
+
+  // When capabilities arrive via ACP event (not React getter), bump bootstrap attempt once.
+  // This avoids the infinite loop caused by depending on a getter that returns true on every render.
+  useEffect(() => {
+    if (!cwdReady) return;
+    const onCaps = () => {
+      if (bootstrappedRef.current) return;
+      if (client.getState() !== "connected") return;
+      if (!client.supportsSessionList) return;
+      setBootstrapAttempt((prev) => prev + 1);
+    };
+    client.state.on("capabilitiesChange", onCaps);
+    // Also check immediately in case capabilities already arrived before listener was registered
+    onCaps();
+    return () => client.state.off("capabilitiesChange", onCaps);
+  }, [cwdReady, client]);
 
   // Handle session selection
-  const handleSelectSession = useCallback(async (session: AgentSessionInfo) => {
-    try {
-      if (client.supportsLoadSession) {
-        await client.loadSession({ sessionId: session.sessionId, cwd: session.cwd });
-      } else if (client.supportsResumeSession) {
-        await client.resumeSession({ sessionId: session.sessionId, cwd: session.cwd });
-      } else {
-        throw new Error("Loading or resuming sessions is not supported by this agent.");
+  const handleSelectSession = useCallback(
+    async (session: AgentSessionInfo) => {
+      try {
+        if (client.supportsLoadSession) {
+          await client.loadSession({ sessionId: session.sessionId, cwd: session.cwd });
+        } else if (client.supportsResumeSession) {
+          await client.resumeSession({ sessionId: session.sessionId, cwd: session.cwd });
+        } else {
+          throw new Error("Loading or resuming sessions is not supported by this agent.");
+        }
+      } catch (error) {
+        console.error("Failed to load/resume session:", error);
       }
-    } catch (error) {
-      console.error("Failed to load/resume session:", error);
-    }
-  }, [client]);
+    },
+    [client],
+  );
 
+  // Bootstrap: load latest session or create new one.
+  // Triggers on connection ready AND when capabilities arrive (via bootstrapAttempt increment).
   useEffect(() => {
     if (!cwdReady) {
       return;
@@ -93,12 +129,19 @@ export function ACPMain({ client, agentId, initialCwd, readonly, rcsSessionId }:
     const bootstrap = async () => {
       try {
         if (!client.supportsSessionList) {
-          console.log("[ACPMain] Session list capability not ready yet, retrying bootstrap...");
-          if (!cancelled) {
-            bootstrapRetryTimerRef.current = setTimeout(() => {
-              setBootstrapAttempt((prev) => prev + 1);
-            }, 500);
+          // Capabilities not ready yet — retry via timer (not polling, just wait)
+          if (bootstrapAttempt < BOOTSTRAP_MAX_ATTEMPTS) {
+            if (!cancelled) {
+              bootstrapRetryTimerRef.current = setTimeout(() => {
+                setBootstrapAttempt((prev) => prev + 1);
+              }, 200);
+            }
+            return;
           }
+          // capabilities 始终不可用，跳过 session list 直接创建新会话
+          console.log("[ACPMain] Session list not supported, creating new session directly");
+          bootstrappedRef.current = true;
+          chatRef.current?.newSession();
           return;
         }
 
@@ -140,61 +183,85 @@ export function ACPMain({ client, agentId, initialCwd, readonly, rcsSessionId }:
   return (
     <div className="flex h-full w-full">
       {/* 侧边栏 — Anthropic warm sidebar, hidden on mobile / hidden in readonly share mode */}
-      {!readonly && <div
-        className={cn(
-          "hidden md:flex flex-col border-r border-border/60 bg-surface-1/50 transition-all duration-200 flex-shrink-0",
-          sidebarCollapsed ? "w-12" : "w-64",
-        )}
-      >
-        {/* 头部 */}
-        <div className="flex items-center justify-between px-3 py-4">
-          {!sidebarCollapsed && (
-            <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">会话</span>
+      {!readonly && !hideSidebar && (
+        <div
+          className={cn(
+            "hidden md:flex flex-col border-r border-border/60 bg-surface-1/50 transition-all duration-200 flex-shrink-0",
+            sidebarCollapsed ? "w-12" : "w-64",
           )}
-          <div className={cn("flex items-center gap-0.5", sidebarCollapsed && "mx-auto")}>
+        >
+          {/* 头部 */}
+          <div className="flex items-center justify-between px-3 py-4">
             {!sidebarCollapsed && (
+              <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
+                会话
+              </span>
+            )}
+            <div className={cn("flex items-center gap-0.5", sidebarCollapsed && "mx-auto")}>
+              {!sidebarCollapsed && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => chatRef.current?.newSession()}
+                  className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
+                  title={t("acpMain.newSession")}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => chatRef.current?.newSession()}
-                className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
-                title="新会话"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="h-7 w-7 text-text-muted hover:text-text-primary hover:bg-surface-2"
               >
-                <Plus className="h-4 w-4" />
+                {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
               </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="h-7 w-7 text-text-muted hover:text-text-primary hover:bg-surface-2"
-            >
-              {sidebarCollapsed ? (
-                <PanelLeft className="h-4 w-4" />
-              ) : (
-                <PanelLeftClose className="h-4 w-4" />
-              )}
-            </Button>
+            </div>
           </div>
-        </div>
 
-        {/* 会话列表 */}
-        {!sidebarCollapsed && (
-          <ScrollArea className="flex-1">
-            <SidebarSessionList
-              client={client}
-              cwd={cwd}
-              cwdReady={cwdReady}
-              initialActiveSessionId={initialActiveSessionId}
-              onSelectSession={handleSelectSession}
-            />
-          </ScrollArea>
-        )}
-      </div>}
+          {/* 会话列表 */}
+          {!sidebarCollapsed && (
+            <ScrollArea className="flex-1">
+              <SidebarSessionList
+                client={client}
+                cwd={cwd}
+                cwdReady={cwdReady}
+                initialActiveSessionId={initialActiveSessionId}
+                onSelectSession={handleSelectSession}
+              />
+            </ScrollArea>
+          )}
+        </div>
+      )}
 
       {/* 聊天区域 */}
       <div className="flex-1 flex flex-col min-w-0">
-        <ChatInterface ref={chatRef} client={client} agentId={agentId} cwd={cwd} cwdReady={cwdReady} readonly={readonly} rcsSessionId={rcsSessionId} onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)} />
+        {hideSidebar && (
+          <div className="flex items-center justify-end px-2 py-1 border-b border-border/40">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => chatRef.current?.newSession()}
+              className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
+              title={t("acpMain.newSession")}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        <ChatInterface
+          ref={chatRef}
+          client={client}
+          agentId={agentId}
+          cwd={cwd}
+          cwdReady={cwdReady}
+          readonly={readonly}
+          hideContextPanel={true}
+          rcsSessionId={rcsSessionId}
+          scenePrompt={scenePrompt}
+          onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
+        />
       </div>
     </div>
   );
@@ -217,6 +284,7 @@ function SidebarSessionList({
   initialActiveSessionId: string | null;
   onSelectSession: (session: AgentSessionInfo) => void;
 }) {
+  const { t } = useTranslation("components");
   const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -256,6 +324,18 @@ function SidebarSessionList({
     }
   }, [client, cwdReady, loadSessions]);
 
+  // When capabilities arrive via ACP event, load sessions
+  useEffect(() => {
+    if (!cwdReady) return;
+    const onCaps = () => {
+      if (client.supportsSessionList) {
+        loadSessions();
+      }
+    };
+    client.state.on("capabilitiesChange", onCaps);
+    return () => client.state.off("capabilitiesChange", onCaps);
+  }, [client, cwdReady, loadSessions]);
+
   useEffect(() => {
     const handler = (state: string) => {
       if (state === "connected" && cwdReady) {
@@ -270,7 +350,7 @@ function SidebarSessionList({
     if (!cwdReady) {
       return;
     }
-    const interval = setInterval(loadSessions, 10000);
+    const interval = setInterval(loadSessions, 30_000);
     return () => clearInterval(interval);
   }, [cwdReady, loadSessions]);
 
@@ -295,17 +375,21 @@ function SidebarSessionList({
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 gap-1">
-        <span className="text-xs text-text-muted font-display">暂无会话</span>
-        <span className="text-[10px] text-text-muted">点击上方 + 创建新会话</span>
+        <span className="text-xs text-text-muted font-display">{t("acpMain.noSessions")}</span>
+        <span className="text-[10px] text-text-muted">{t("acpMain.clickToCreate")}</span>
       </div>
     );
   }
 
   // 按日期分组
-  const groups = groupByRecency(sorted);
+  const groups = groupByRecency(sorted, {
+    today: t("acpMain.today"),
+    yesterday: t("acpMain.yesterday"),
+    earlier: t("acpMain.earlier"),
+  });
 
   return (
-    <nav className="py-1" aria-label="历史会话">
+    <nav className="py-1" aria-label={t("acpMain.historySessions")}>
       {groups.map((group, gi) => (
         <div key={group.label}>
           {gi > 0 && <div className="mx-3 my-2 border-t border-border/40" />}
@@ -332,7 +416,7 @@ function SidebarSessionList({
             >
               <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
               <span className="text-[13px] font-display truncate leading-snug">
-                {session.title && session.title.trim() ? session.title : "新会话"}
+                {session.title?.trim() ? session.title : t("acpMain.newSession")}
               </span>
             </Button>
           ))}
@@ -351,15 +435,18 @@ interface SessionGroup {
   sessions: AgentSessionInfo[];
 }
 
-function groupByRecency(sessions: AgentSessionInfo[]): SessionGroup[] {
+function groupByRecency(
+  sessions: AgentSessionInfo[],
+  labels: { today: string; yesterday: string; earlier: string },
+): SessionGroup[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 86400000);
 
   const groups: SessionGroup[] = [
-    { label: "今天", sessions: [] },
-    { label: "昨天", sessions: [] },
-    { label: "更早", sessions: [] },
+    { label: labels.today, sessions: [] },
+    { label: labels.yesterday, sessions: [] },
+    { label: labels.earlier, sessions: [] },
   ];
 
   for (const session of sessions) {

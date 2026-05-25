@@ -1,0 +1,52 @@
+{
+  "loading": "Loading...",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "confirm": "Confirm",
+  "edit": "Edit",
+  "create": "Create",
+  "close": "Close",
+  "search": "Search",
+  "submit": "Submit",
+  "enable": "Enable",
+  "disable": "Disable",
+  "connecting": "Connecting to dashboard...",
+  "not_found": "Page not found",
+  "back_home": "Back to Home",
+  "status": {
+    "active": "Active",
+    "running": "Running",
+    "idle": "Idle",
+    "inactive": "Inactive",
+    "offline": "Offline",
+    "error": "Error",
+    "online": "Online",
+    "requires_action": "Requires Action",
+    "archived": "Archived",
+    "disconnected": "Disconnected"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "language": {
+    "switch": "Language",
+    "en": "English",
+    "zh": "中文"
+  },
+  "errors": {
+    "unknown": "Unknown error",
+    "network": "Network error, please try again",
+    "forbidden": "Access denied",
+    "not_found": "Resource not found",
+    "unauthorized": "Please log in first"
+  },
+  "time": {
+    "just_now": "Just now",
+    "minutes_ago": "{{count}} min ago",
+    "hours_ago": "{{count}}h ago",
+    "days_ago": "{{count}}d ago"
+  }
+}

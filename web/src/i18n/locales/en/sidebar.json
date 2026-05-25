@@ -1,0 +1,23 @@
+{
+  "console": "Console",
+  "overview": "Overview",
+  "agents": "Agents",
+  "sessions": "Sessions",
+  "agentConfig": "Agent Config",
+  "models": "Models",
+  "skills": "Skills",
+  "mcp": "MCP",
+  "tasks": "Scheduled Tasks",
+  "channels": "Channels",
+  "config": "Configuration",
+  "apiKeys": "API Key",
+  "workflow": "Workflow",
+  "knowledge": "Knowledge",
+  "organizations": "Organizations",
+  "collapse": "Collapse sidebar",
+  "expand": "Expand sidebar",
+  "logout": "Sign Out",
+  "searchDev": "Global search coming soon",
+  "agentPanel": "Agent Panel",
+  "dashboard": "Dashboard"
+}

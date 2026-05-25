@@ -10,120 +10,120 @@ export type RuleBasedPermission = PermissionAction | Record<string, PermissionAc
 
 /** 完整的 PermissionConfig 对象模式 */
 export interface PermissionObjectConfig {
-    // 规则型工具（支持通配符匹配）
-    read?: RuleBasedPermission;
-    edit?: RuleBasedPermission;
-    glob?: RuleBasedPermission;
-    grep?: RuleBasedPermission;
-    list?: RuleBasedPermission;
-    bash?: RuleBasedPermission;
-    task?: RuleBasedPermission;
-    external_directory?: RuleBasedPermission;
-    lsp?: RuleBasedPermission;
-    skill?: RuleBasedPermission;
-    // 开关型工具（仅支持三态字符串）
-    todowrite?: PermissionAction;
-    question?: PermissionAction;
-    webfetch?: PermissionAction;
-    websearch?: PermissionAction;
-    codesearch?: PermissionAction;
-    doom_loop?: PermissionAction;
+  // 规则型工具（支持通配符匹配）
+  read?: RuleBasedPermission;
+  edit?: RuleBasedPermission;
+  glob?: RuleBasedPermission;
+  grep?: RuleBasedPermission;
+  list?: RuleBasedPermission;
+  bash?: RuleBasedPermission;
+  task?: RuleBasedPermission;
+  external_directory?: RuleBasedPermission;
+  lsp?: RuleBasedPermission;
+  skill?: RuleBasedPermission;
+  // 开关型工具（仅支持三态字符串）
+  todowrite?: PermissionAction;
+  question?: PermissionAction;
+  webfetch?: PermissionAction;
+  websearch?: PermissionAction;
+  codesearch?: PermissionAction;
+  doom_loop?: PermissionAction;
 }
 
 /** PermissionConfig: 字符串模式（全局策略）或对象模式（按工具配置） */
 export type PermissionConfig = PermissionAction | PermissionObjectConfig;
 
 export interface AgentKnowledgePolicy {
-    searchFirst?: boolean;
-    maxResults?: number;
-    defaultNamespaces?: string[];
+  searchFirst?: boolean;
+  maxResults?: number;
+  defaultNamespaces?: string[];
 }
 
 export interface AgentKnowledgeConfig {
-    knowledgeBaseIds: string[];
-    policy?: AgentKnowledgePolicy | null;
+  knowledgeBaseIds: string[];
+  policy?: AgentKnowledgePolicy | null;
 }
 
 export interface OpenCodeModel {
-    name?: string;
-    modalities?: {
-        input?: ("text" | "image")[];
-        output?: ("text" | "image")[];
-    };
-    limit?: {
-        context?: number;
-        output?: number;
-    };
-    cost?: {
-        input?: number;
-        output?: number;
-    };
-    options?: Record<string, unknown>;
+  name?: string;
+  modalities?: {
+    input?: ("text" | "image")[];
+    output?: ("text" | "image")[];
+  };
+  limit?: {
+    context?: number;
+    output?: number;
+  };
+  cost?: {
+    input?: number;
+    output?: number;
+  };
+  options?: Record<string, unknown>;
 }
 
 export interface OpenCodeProvider {
-    npm: string;
-    name?: string;
-    options?: {
-        apiKey?: string;
-        baseURL?: string;
-        [key: string]: unknown;
-    };
-    models?: Record<string, OpenCodeModel>;
+  npm: string;
+  name?: string;
+  options?: {
+    apiKey?: string;
+    baseURL?: string;
+    [key: string]: unknown;
+  };
+  models?: Record<string, OpenCodeModel>;
 }
 
 export interface OpenCodeAgent {
-    model?: string;
-    steps?: number;
-    mode?: "primary" | "subagent" | "all";
-    prompt?: string;
-    tools?: string[];
-    permission?: PermissionConfig;
-    knowledge?: AgentKnowledgeConfig | null;
+  model?: string;
+  steps?: number;
+  mode?: "primary" | "subagent" | "all";
+  prompt?: string;
+  tools?: string[];
+  permission?: PermissionConfig;
+  knowledge?: AgentKnowledgeConfig | null;
 }
 
 // === MCP 类型定义 ===
 
 /** OAuth 认证配置 */
 export interface McpOAuthConfig {
-    clientId?: string;
-    clientSecret?: string;
-    scope?: string;
-    redirectUri?: string;
+  clientId?: string;
+  clientSecret?: string;
+  scope?: string;
+  redirectUri?: string;
 }
 
 /** 本地 MCP 服务器配置（命令行启动） */
 export interface McpLocalConfig {
-    type: "local";
-    command: string[];
-    environment?: Record<string, string>;
-    enabled?: boolean;
-    timeout?: number;
+  type: "local";
+  command: string[];
+  environment?: Record<string, string>;
+  enabled?: boolean;
+  timeout?: number;
 }
 
 /** 远程 MCP 服务器配置（URL 连接） */
 export interface McpRemoteConfig {
-    type: "remote";
-    url: string;
-    enabled?: boolean;
-    headers?: Record<string, string>;
-    oauth?: McpOAuthConfig | false;
-    timeout?: number;
+  type: "remote";
+  url: string;
+  enabled?: boolean;
+  headers?: Record<string, string>;
+  oauth?: McpOAuthConfig | false;
+  timeout?: number;
 }
 
 /** MCP 服务器配置联合类型（含禁用变体） */
 export type McpServerConfig = McpLocalConfig | McpRemoteConfig | { enabled: false };
 
 export interface OpenCodeConfig {
-    $schema?: string;
-    model?: string;
-    small_model?: string;
-    provider?: Record<string, OpenCodeProvider>;
-    agent?: Record<string, OpenCodeAgent>;
-    experimental?: Record<string, unknown>;
-    plugin?: string[];
-    mcp?: Record<string, McpServerConfig>;
-    theme?: string;
+  $schema?: string;
+  model?: string;
+  small_model?: string;
+  provider?: Record<string, OpenCodeProvider>;
+  agent?: Record<string, OpenCodeAgent>;
+  experimental?: Record<string, unknown>;
+  plugin?: string[];
+  mcp?: Record<string, McpServerConfig>;
+  theme?: string;
 }
 
 // === API 响应类型 ===
@@ -131,190 +131,179 @@ export interface OpenCodeConfig {
 // --- Providers ---
 
 export interface ProviderInfo {
-    id: string;
-    name: string;
-    npm: string | null;
-    configured: boolean;
-    keyHint: string | null;
-    baseURL: string | null;
-    modelCount: number;
+  id: string;
+  name: string;
+  npm: string | null;
+  configured: boolean;
+  keyHint: string | null;
+  baseURL: string | null;
+  modelCount: number;
 }
 
 export interface ProviderModel {
-    id: string;
-    name: string;
-    modalities: unknown;
-    limit: unknown;
-    cost: unknown;
-    options?: Record<string, unknown>;
+  id: string;
+  name: string;
+  modalities: unknown;
+  limit: unknown;
+  cost: unknown;
+  options?: Record<string, unknown>;
 }
 
 export interface ProviderDetail {
-    id: string;
-    name: string;
-    npm: string | null;
-    keyHint: string | null;
-    baseURL: string | null;
-    options: Record<string, unknown>;
-    models: ProviderModel[];
+  id: string;
+  name: string;
+  npm: string | null;
+  keyHint: string | null;
+  baseURL: string | null;
+  options: Record<string, unknown>;
+  models: ProviderModel[];
 }
 
 // --- Models ---
 
 export interface ModelEntry {
-    id: string;
-    provider: string;
-    fullId: string;
-    label: string;
-    contextLimit: number | null;
-    outputLimit: number | null;
+  id: string;
+  provider: string;
+  fullId: string;
+  label: string;
+  contextLimit: number | null;
+  outputLimit: number | null;
 }
 
 export interface ModelConfig {
-    current: {
-        model: string | null;
-        small_model: string | null;
-        permission: PermissionConfig | null;
-    };
-    available: ModelEntry[];
+  current: {
+    model: string | null;
+    small_model: string | null;
+    permission: PermissionConfig | null;
+  };
+  available: ModelEntry[];
 }
 
 // --- Agents ---
 
 export interface AgentInfo {
-    name: string;
-    builtIn: boolean;
-    model: string | null;
-    mode: string | null;
-    description: string | null;
-    color: string | null;
-    knowledgeBaseCount: number;
+  name: string;
+  builtIn: boolean;
+  model: string | null;
+  mode: string | null;
+  description: string | null;
+  color: string | null;
+  knowledgeBaseCount: number;
+  enabled?: boolean;
 }
 
 export interface AgentDetail {
-    name: string;
-    builtIn: boolean;
-    model: string | null;
-    prompt: string | null;
-    tools: Record<string, boolean> | null;
-    steps: number | null;
-    mode: string | null;
-    permission: PermissionConfig | null;
-    variant: string | null;
-    temperature: number | null;
-    top_p: number | null;
-    disable: boolean;
-    hidden: boolean;
-    color: string | null;
-    description: string | null;
-    knowledge: AgentKnowledgeConfig | null;
+  name: string;
+  builtIn: boolean;
+  model: string | null;
+  prompt: string | null;
+  tools: Record<string, boolean> | null;
+  steps: number | null;
+  mode: string | null;
+  permission: PermissionConfig | null;
+  variant: string | null;
+  temperature: number | null;
+  top_p: number | null;
+  disable: boolean;
+  hidden: boolean;
+  color: string | null;
+  description: string | null;
+  knowledge: AgentKnowledgeConfig | null;
 }
 
 // --- Skills ---
 
 export interface SkillInfo {
-    name: string;
-    enabled: boolean;
-    description: string;
-    path: string;
-}
-
-export type SkillSourceStatus = "online" | "offline" | "timeout";
-
-export interface SkillSourceInfo {
-    type: "global" | "workspace";
-    id?: string;
-    name: string;
-    path: string;
-    status: SkillSourceStatus;
-    skills: SkillInfo[];
+  id: string;
+  name: string;
+  description: string;
+  path: string;
 }
 
 export interface SkillDetail {
-    name: string;
-    description: string;
-    content: string;
-    enabled: boolean;
-    path: string;
-    metadata: Record<string, string>;
+  name: string;
+  description: string;
+  content: string;
+  path: string;
+  metadata: Record<string, string>;
 }
 
 export interface UploadManifestEntry {
-    skillName: string;
-    relativePath: string;
+  skillName: string;
+  relativePath: string;
 }
 
 export interface UploadSkillFileItem {
-    relativePath: string;
-    file: File;
+  relativePath: string;
+  file: File;
 }
 
 export interface UploadSkillSummary {
-    skillName: string;
-    fileCount: number;
-    hasSkillMd: boolean;
-    files: UploadSkillFileItem[];
+  skillName: string;
+  fileCount: number;
+  hasSkillMd: boolean;
+  files: UploadSkillFileItem[];
 }
 
 export type SkillUploadConflictStrategy = "ignore" | "overwrite";
 
 export interface SkillUploadResponse {
-    imported: SkillInfo[];
-    skipped: string[];
-    conflicts: SkillUploadConflict[];
+  imported: SkillInfo[];
+  skipped: string[];
+  conflicts: SkillUploadConflict[];
 }
 
 export interface SkillUploadConflict {
-    name: string;
-    enabled: boolean;
-    path: string;
+  name: string;
+  enabled: boolean;
+  path: string;
 }
 
 export interface SkillUploadConflictResponse {
-    conflicts: SkillUploadConflict[];
-    allowedStrategies: SkillUploadConflictStrategy[];
+  conflicts: SkillUploadConflict[];
+  allowedStrategies: SkillUploadConflictStrategy[];
 }
 
 // --- MCP ---
 
 /** 用于前端列表展示的 MCP 服务器信息 */
 export interface McpServerInfo {
-    name: string;
-    type: "local" | "remote" | "disabled";
-    enabled: boolean;
-    summary: string;
-    timeout?: number;
-    toolsCount?: number;
+  name: string;
+  type: "local" | "remote" | "disabled";
+  enabled: boolean;
+  summary: string;
+  timeout?: number;
+  toolsCount?: number;
 }
 
 /** MCP 服务器详情（编辑用） */
 export interface McpServerDetail {
-    name: string;
-    config: McpServerConfig;
+  name: string;
+  config: McpServerConfig;
 }
 
 /** MCP Tool 缓存记录 */
 export interface McpToolInfo {
-    id: string;
-    toolName: string;
-    description: string | null;
-    inputSchema: string | null;
-    inspectedAt: number;
+  id: string;
+  toolName: string;
+  description: string | null;
+  inputSchema: string | null;
+  inspectedAt: number;
 }
 
 /** MCP 检测结果 */
 export interface McpInspectResult {
-    name: string;
-    serverInfo: { name?: string; version?: string };
-    tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
-    transport?: "streamable-http" | "sse";
-    stored: boolean;
+  name: string;
+  serverInfo: { name?: string; version?: string };
+  tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
+  transport?: "streamable-http" | "sse";
+  stored: boolean;
 }
 
 // === Generic API Response ===
 
 export interface ApiResponse<T> {
-    success: boolean;
-    data?: T;
-    error?: { code: string; message: string };
+  success: boolean;
+  data?: T;
+  error?: { code: string; message: string };
 }

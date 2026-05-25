@@ -1,0 +1,271 @@
+{
+  "navbar": {
+    "status": {
+      "active": "Active",
+      "running": "Running",
+      "idle": "Idle",
+      "inactive": "Offline",
+      "requires_action": "Pending",
+      "archived": "Archived",
+      "error": "Error",
+      "disconnected": "Disconnected"
+    }
+  },
+  "controlBar": {
+    "sessionClosed": "Session is closed",
+    "typeMessage": "Type a message...",
+    "stop": "Stop",
+    "send": "Send"
+  },
+  "newSession": {
+    "title": "New Session",
+    "titleLabel": "Title (optional)",
+    "titlePlaceholder": "My session",
+    "environment": "Environment",
+    "noneOption": "-- None --",
+    "noBranch": "no branch",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "create": "Create",
+    "createFailed": "Failed to create session"
+  },
+  "filePicker": {
+    "title": "Select File",
+    "searchPlaceholder": "Search files...",
+    "uploadFile": "Upload file",
+    "noFiles": "No files",
+    "loadFailed": "Failed to load files",
+    "uploadFailed": "Upload failed"
+  },
+  "identity": {
+    "title": "Identity",
+    "yourUuid": "Your UUID",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "scanOnAnotherDevice": "Scan on another device",
+    "cameraScanner": "Camera scanner",
+    "stopScanning": "Stop scanning",
+    "stopCamera": "Stop Camera",
+    "scanWithCamera": "Scan with Camera",
+    "uploadQrImage": "Upload QR Image",
+    "qrNotFound": "QR code not found, please try a clearer image"
+  },
+  "loading": {
+    "thinking": "Thinking"
+  },
+  "permission": {
+    "notSet": "Not set",
+    "ask": "Ask",
+    "allow": "Allow",
+    "deny": "Deny",
+    "globalStrategy": "Global Strategy",
+    "globalStrategyDesc": "When set, all tools inherit this strategy. When unset, the Agent engine built-in defaults are used",
+    "toolPermissions": "Tool Permissions",
+    "toggleTools": "Toggle Tools",
+    "ruleTools": "Rule-based Tools (supports wildcard rules)",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "wildcardPlaceholder": "Wildcard, e.g. *.env",
+    "addRule": "+ Add Rule",
+    "skillPermissions": "Skill Permissions",
+    "loadingSkills": "Loading skills...",
+    "customRules": "Custom Rules (wildcard pattern)",
+    "skillWildcardPlaceholder": "Wildcard, e.g. \"internal-*\"",
+    "addCustomRule": "+ Add Custom Rule"
+  },
+  "permissionViews": {
+    "permissionRequest": "Permission Request",
+    "approve": "Approve",
+    "reject": "Reject",
+    "other": "Other...",
+    "send": "Send",
+    "submit": "Submit",
+    "skip": "Skip",
+    "submitAll": "Submit All",
+    "question": "Question",
+    "questions": "Questions",
+    "exitPlanMode": "Exit plan mode?",
+    "readyToCode": "Ready to code?",
+    "yes": "Yes",
+    "no": "No",
+    "yesAutoAccept": "Yes, auto-accept edits",
+    "yesAutoAcceptDesc": "Approve plan and auto-accept file edits",
+    "yesManualApprove": "Yes, manually approve edits",
+    "yesManualApproveDesc": "Approve plan but confirm each edit",
+    "noKeepPlanning": "No, keep planning",
+    "noKeepPlanningDesc": "Provide feedback to refine the plan",
+    "planFeedbackPlaceholder": "Tell the agent what needs to be changed..."
+  },
+  "sessionList": {
+    "noSessions": "No sessions"
+  },
+  "taskPanel": {
+    "title": "Tasks",
+    "noActiveTasks": "No active tasks"
+  },
+  "tokenManager": {
+    "title": "Token Manager",
+    "description": "Manage API tokens for RCS authentication.",
+    "noTokens": "No tokens saved yet. Add one below.",
+    "addToken": "Add Token",
+    "tokenPlaceholder": "API Token",
+    "labelPlaceholder": "Label (optional)",
+    "tokenRequired": "Token is required",
+    "unnamed": "Unnamed",
+    "toggleVisibility": "Toggle token visibility",
+    "copyToken": "Copy token",
+    "editLabel": "Edit label",
+    "deleteToken": "Delete token"
+  },
+  "acpDirect": {
+    "loginExpired": "Session expired, please log in again",
+    "backToDashboard": "Back to Dashboard",
+    "connectingAgent": "Connecting to ACP agent...",
+    "connectionFailed": "Connection Failed"
+  },
+  "artifact": {
+    "contextPlaceholder": "Context (placeholder), entries: {{count}}",
+    "previewPlaceholder": "Preview (placeholder), entries: {{count}}"
+  },
+  "fileTree": {
+    "refresh": "Refresh",
+    "emptyState": "No files in workspace",
+    "contextMenu": {
+      "reference": "Reference in chat",
+      "rename": "Rename",
+      "delete": "Delete",
+      "newFolder": "New Folder",
+      "newFolderName": "New folder name"
+    },
+    "preview": {
+      "title": "Preview",
+      "loading": "Loading...",
+      "notTextFile": "Cannot preview binary file",
+      "fetchFailed": "Failed to load file content",
+      "noFileSelected": "Select a file to preview",
+      "modifiedAt": "Modified"
+    }
+  },
+  "tool": {
+    "statusPending": "Pending",
+    "statusRunning": "Running",
+    "statusAwaitingApproval": "Awaiting Approval",
+    "statusResponded": "Responded",
+    "statusCompleted": "Completed",
+    "statusError": "Error",
+    "statusDenied": "Denied",
+    "statusRejected": "Rejected",
+    "parameters": "Parameters",
+    "error": "Error",
+    "result": "Result"
+  },
+  "codeBlock": {
+    "copied": "Copied",
+    "copy": "Copy"
+  },
+  "permissionRequest": {
+    "title": "Permission Required"
+  },
+  "reasoning": {
+    "thinking": "Thinking...",
+    "thought": "Thought for a while",
+    "thoughtFor": "Thought for {{duration}}s"
+  },
+  "conversation": {
+    "noMessages": "No messages yet",
+    "startConversation": "Start a conversation to see messages here",
+    "scrollToBottom": "Scroll to bottom",
+    "scrollToLastUserMessage": "Scroll to last user message"
+  },
+  "message": {
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "previousBranch": "Previous branch",
+    "nextBranch": "Next branch",
+    "image": "Image",
+    "attachment": "Attachment",
+    "removeAttachment": "Remove attachment",
+    "remove": "Remove"
+  },
+  "promptInput": {
+    "image": "Image",
+    "attachment": "Attachment",
+    "removeAttachment": "Remove attachment",
+    "remove": "Remove",
+    "addPhotosOrFiles": "Add photos or files",
+    "uploadFiles": "Upload files",
+    "submit": "Submit"
+  },
+  "chatView": {
+    "thinking": "Thinking..."
+  },
+  "commandMenu": {
+    "noMatch": "No matching commands"
+  },
+  "messageBubble": {
+    "expand": "Expand",
+    "uploadedImage": "Uploaded image"
+  },
+  "planView": {
+    "executionPlan": "Execution Plan"
+  },
+  "sessionSidebar": {
+    "sessions": "Sessions",
+    "historySessions": "History Sessions",
+    "noSessions": "No sessions"
+  },
+  "toolCallGroup": {
+    "input": "Input",
+    "output": "Output"
+  },
+  "chatInput": {
+    "placeholder": "Send a message to the agent...",
+    "commandList": "Command List",
+    "referenceFile": "Reference File"
+  },
+  "modelConfig": {
+    "title": "Model Configuration",
+    "description": "Select primary and lightweight models",
+    "primaryModel": "Primary Model",
+    "primaryModelPlaceholder": "Select primary model",
+    "lightweightModel": "Lightweight Model",
+    "lightweightModelPlaceholder": "Select lightweight model",
+    "manualInputPlaceholder": "Or enter model ID manually"
+  },
+  "acpConnect": {
+    "server": "Server",
+    "connect": "Connect",
+    "remoteAccessPlaceholder": "For remote access"
+  },
+  "acpMain": {
+    "newSession": "New Session",
+    "noSessions": "No sessions",
+    "clickToCreate": "Click + above to create a new session",
+    "historySessions": "History Sessions",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "earlier": "Earlier"
+  },
+  "chatInterface": {
+    "newThread": "New Thread",
+    "agentPlaceholder": "Send a message to the agent...",
+    "waitingSession": "Waiting for session...",
+    "readonlyMode": "Read-only mode — cannot send messages"
+  },
+  "chatMessage": {
+    "you": "You",
+    "agent": "Agent"
+  },
+  "contextPanel": {
+    "showContext": "Show context panel",
+    "hideContext": "Hide context panel",
+    "running": "Running",
+    "tokens": "Tokens",
+    "tools": "Tools",
+    "messages": "Messages",
+    "tokenUsage": "Token Usage",
+    "toolCalls": "Tool Calls",
+    "noToolCalls": "No tool calls",
+    "pendingConfirmation": "Pending"
+  }
+}

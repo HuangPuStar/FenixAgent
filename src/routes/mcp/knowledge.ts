@@ -1,12 +1,10 @@
-import { Hono } from "hono";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import Elysia from "elysia";
 import * as z from "zod/v4";
-import { storeGetEnvironmentBySecret } from "../../store";
-import {
-  readKnowledgeResourceForAgent,
-  searchKnowledgeForAgent,
-} from "../../services/knowledge-runtime";
+import { errorResponse } from "../../plugins/auth";
+import { getEnvironmentBySecret } from "../../services/environment";
+import { readKnowledgeResourceForAgent, searchKnowledgeByConfigId } from "../../services/knowledge-runtime";
 
 function getBearerToken(headerValue: string | undefined): string | null {
   if (!headerValue) return null;
@@ -14,72 +12,79 @@ function getBearerToken(headerValue: string | undefined): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function createKnowledgeMcpServer(environment: { agentName: string | null; userId: string | null; secret: string }) {
+function createKnowledgeMcpServer(environment: {
+  agentConfigId: string | null;
+  userId: string | null;
+  secret: string;
+}) {
   const server = new McpServer({
     name: "kb-mcp",
     version: "1.0.0",
   });
 
-  server.registerTool("kb_search", {
-    description: "Searches the agent's bound knowledge bases.",
-    inputSchema: {
-      query: z.string().min(1),
-      topK: z.number().int().min(1).max(20).optional(),
-      agentName: z.string().min(1).optional(),
+  server.registerTool(
+    "kb_search",
+    {
+      description: "Searches the agent's bound knowledge bases.",
+      inputSchema: {
+        query: z.string().min(1),
+        topK: z.number().int().min(1).max(20).optional(),
+      },
     },
-  }, async ({ query, topK, agentName }) => {
-    if (!environment.agentName) {
-      throw new Error("Environment default agent is not configured");
-    }
-    if (agentName && agentName !== environment.agentName) {
-      throw new Error("agentName does not match environment default agent");
-    }
-    const results = await searchKnowledgeForAgent({
-      agentName: environment.agentName,
-      query,
-      topK: topK ?? 5,
-      userId: environment.userId ?? undefined,
-    });
-    return {
-      content: [{ type: "text", text: JSON.stringify({ results }) }],
-      structuredContent: { results },
-    };
-  });
+    async ({ query, topK }) => {
+      if (!environment.agentConfigId) {
+        throw new Error("Environment agent is not configured");
+      }
+      const results = await searchKnowledgeByConfigId({
+        agentConfigId: environment.agentConfigId,
+        query,
+        topK: topK ?? 5,
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify({ results }) }],
+        structuredContent: { results },
+      };
+    },
+  );
 
-  server.registerTool("kb_read", {
-    description: "Reads a knowledge resource already bound to the agent.",
-    inputSchema: {
-      resourceId: z.string().min(1),
+  server.registerTool(
+    "kb_read",
+    {
+      description: "Reads a knowledge resource already bound to the agent.",
+      inputSchema: {
+        resourceId: z.string().min(1),
+      },
     },
-  }, async ({ resourceId }) => {
-    if (!environment.agentName) {
-      throw new Error("Environment default agent is not configured");
-    }
-    const result = await readKnowledgeResourceForAgent({
-      agentName: environment.agentName,
-      resourceId,
-      userId: environment.userId ?? undefined,
-    });
-    return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
-      structuredContent: result as unknown as Record<string, unknown>,
-    };
-  });
+    async ({ resourceId }) => {
+      if (!environment.agentConfigId) {
+        throw new Error("Environment agent is not configured");
+      }
+      const result = await readKnowledgeResourceForAgent({
+        agentConfigId: environment.agentConfigId,
+        resourceId,
+        userId: environment.userId ?? undefined,
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    },
+  );
 
   return server;
 }
 
-const app = new Hono();
+const app = new Elysia({ name: "mcp-knowledge" }).decorate({ error: errorResponse });
 
-app.all("/mcp/knowledge", async (c) => {
-  const token = getBearerToken(c.req.header("Authorization"));
+app.all("/mcp/knowledge", async ({ request, error }) => {
+  const token = getBearerToken(request.headers.get("Authorization") ?? undefined);
   if (!token) {
-    return c.json({ error: { message: "Missing bearer token" } }, 401);
+    return error(401, { error: { message: "Missing bearer token" } });
   }
 
-  const environment = storeGetEnvironmentBySecret(token);
+  const environment = await getEnvironmentBySecret(token);
   if (!environment) {
-    return c.json({ error: { message: "Invalid bearer token" } }, 401);
+    return error(401, { error: { message: "Invalid bearer token" } });
   }
 
   const transport = new WebStandardStreamableHTTPServerTransport({
@@ -88,7 +93,7 @@ app.all("/mcp/knowledge", async (c) => {
   });
   const server = createKnowledgeMcpServer(environment);
   await server.connect(transport);
-  return transport.handleRequest(c.req.raw);
+  return transport.handleRequest(request);
 });
 
 export default app;

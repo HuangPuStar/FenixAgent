@@ -1,0 +1,568 @@
+/**
+ * DAG 调度器 — 工作流引擎的核心调度循环。
+ *
+ * 职责：
+ * - 按拓扑序调度节点执行
+ * - 并行扇出：同层级无依赖节点并行执行
+ * - 错误传播：节点失败时 BFS 标记下游为 SKIPPED
+ * - 取消处理：通过 AbortSignal 传播取消
+ * - 超时控制：DAG 级别超时自动取消
+ * - SUSPENDED 处理：审计节点挂起时暂停整个 DAG
+ */
+
+import { nanoid } from "nanoid";
+import { resolveTemplate } from "../parser/expression-parser";
+import { resolveInputs } from "../parser/inputs-resolver";
+import type { StorageAdapter } from "../storage/storage-adapter";
+import type { NodeDef, WorkflowDef } from "../types/dag";
+import { WorkflowError, WorkflowErrorCode } from "../types/errors";
+import type { DAGEvent, DAGSnapshot, DAGStatus, NodeOutput, NodeStatus, RunSummary } from "../types/execution";
+import type { EvalContext } from "../types/expression";
+import type { CancellationManager } from "./cancellation";
+import { buildReverseAdjacency } from "./topological-sort";
+
+// ---------- 节点执行器接口（Task 5+ 实现） ----------
+
+/** 节点执行上下文 — 传递给 NodeExecutor */
+export interface NodeExecutionContext {
+  runId: string;
+  params: Record<string, unknown>;
+  secrets: Record<string, string>;
+  resolvedInputs: Record<string, unknown>;
+  signal: AbortSignal;
+  storage: StorageAdapter;
+}
+
+/** 节点执行器接口 — 各节点类型实现此接口 */
+export interface NodeExecutor {
+  execute(node: NodeDef, ctx: NodeExecutionContext): Promise<NodeOutput>;
+}
+
+// ---------- SuspendedError ----------
+
+/** 审计节点请求人工审批时抛出的错误 */
+export class SuspendedError extends WorkflowError {
+  constructor(
+    message: string,
+    public readonly nodeId: string,
+    public readonly displayData?: unknown,
+  ) {
+    super(message, WorkflowErrorCode.RECOVERY_ERROR, { nodeId, displayData });
+    this.name = "SuspendedError";
+  }
+}
+
+// ---------- 调度上下文 ----------
+
+export interface SchedulerContext {
+  runId: string;
+  workflowDef: WorkflowDef;
+  storage: StorageAdapter;
+  params: Record<string, unknown>;
+  secrets: Record<string, string>;
+  nodeExecutor: NodeExecutor;
+  cancellation: CancellationManager;
+  /** 恢复时注入的初始节点状态（跳过已完成的节点） */
+  initialNodeStates?: Map<string, NodeStatus>;
+  /** 恢复时注入的初始节点输出 */
+  initialNodeOutputs?: Map<string, NodeOutput>;
+}
+
+// ---------- 调度结果 ----------
+
+export interface DAGRunResult {
+  runId: string;
+  status: DAGStatus;
+  summary: RunSummary;
+}
+
+// ---------- DAGScheduler ----------
+
+export class DAGScheduler {
+  private readonly ctx: SchedulerContext;
+  private readonly nodes: NodeDef[];
+  private readonly nodeMap: Map<string, NodeDef>;
+  private readonly reverseAdj: Map<string, string[]>;
+  private readonly nodeStates: Map<string, NodeStatus>;
+  private readonly nodeOutputs: Map<string, NodeOutput>;
+  private lastEventId = "";
+  private dagStartTime = "";
+
+  constructor(context: SchedulerContext) {
+    this.ctx = context;
+    this.nodes = context.workflowDef.nodes;
+    this.nodeMap = new Map(this.nodes.map((n) => [n.id, n]));
+    this.reverseAdj = buildReverseAdjacency(this.nodes);
+    this.nodeStates = new Map();
+    this.nodeOutputs = new Map();
+  }
+
+  /** 存储最近的 SuspendedError（从 Promise.allSettled 中提取） */
+  private suspendedError: SuspendedError | null = null;
+
+  /**
+   * 执行 DAG，返回最终结果。
+   *
+   * 调度循环：
+   * 1. 找到所有 READY 节点（PENDING && 所有依赖 COMPLETED）
+   * 2. 并行执行 READY 节点
+   * 3. 处理完成/失败/跳过
+   * 4. 重复直到无 READY 且无 RUNNING 节点
+   */
+  async run(): Promise<DAGRunResult> {
+    // 初始化节点状态：恢复时使用注入的初始状态，否则全部 PENDING
+    if (this.ctx.initialNodeStates) {
+      // 注入初始状态（恢复模式）
+      for (const [id, status] of this.ctx.initialNodeStates) {
+        this.nodeStates.set(id, status);
+      }
+      // 注入初始输出
+      if (this.ctx.initialNodeOutputs) {
+        for (const [id, output] of this.ctx.initialNodeOutputs) {
+          this.nodeOutputs.set(id, output);
+        }
+      }
+      // 未在初始状态中的节点标记为 PENDING（恢复后继续执行）
+      for (const node of this.nodes) {
+        if (!this.nodeStates.has(node.id)) {
+          this.nodeStates.set(node.id, "PENDING");
+        }
+      }
+    } else {
+      for (const node of this.nodes) {
+        this.nodeStates.set(node.id, "PENDING");
+      }
+    }
+
+    this.dagStartTime = new Date().toISOString();
+
+    // DAG 级别超时信号（timeout 字段单位为秒，转换为毫秒）
+    const dagTimeout = this.ctx.workflowDef.timeout;
+    let timeoutSignal: AbortSignal | undefined;
+    if (dagTimeout) {
+      timeoutSignal = AbortSignal.timeout(dagTimeout * 1000);
+      timeoutSignal.addEventListener(
+        "abort",
+        () => {
+          this.ctx.cancellation.cancel();
+        },
+        { once: true },
+      );
+    }
+
+    // 发射 dag.started 事件
+    const startEventId = await this.emitEvent("dag.started");
+    await this.createSnapshot("RUNNING", startEventId);
+
+    try {
+      // 主调度循环
+      while (true) {
+        // 检查取消
+        if (this.ctx.cancellation.cancelled) {
+          break;
+        }
+
+        // 检查 SUSPENDED��从上一轮 executeNode 中捕获）
+        if (this.suspendedError) {
+          break;
+        }
+
+        // 找到 READY 节点
+        const readyNodes = this.findReadyNodes();
+
+        // 检查是否有 RUNNING 节点
+        const hasRunning = this.hasStatus("RUNNING");
+
+        if (readyNodes.length === 0 && !hasRunning) {
+          // DAG 完成
+          break;
+        }
+
+        if (readyNodes.length > 0) {
+          // 并行执行所有 READY 节点
+          const promises = readyNodes.map((node) => this.executeNode(node));
+          const results = await Promise.allSettled(promises);
+
+          // 从 allSettled 结果中提取 SuspendedError
+          for (const r of results) {
+            if (r.status === "rejected" && r.reason instanceof SuspendedError) {
+              this.suspendedError = r.reason;
+              break;
+            }
+          }
+        }
+
+        // 短暂让出事件循环，避免忙等待
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      // 计算最终状态
+      const finalStatus = this.computeFinalStatus();
+      const completedAt = new Date().toISOString();
+
+      // 发射 dag.completed 或 dag.cancelled 事件
+      if (finalStatus === "CANCELLED") {
+        await this.emitEvent("dag.cancelled");
+        // 标记所有 RUNNING 节点为 CANCELLED
+        for (const [id, status] of this.nodeStates) {
+          if (status === "RUNNING") {
+            this.nodeStates.set(id, "CANCELLED");
+            await this.emitEvent("node.cancelled", id);
+          }
+        }
+      } else if (finalStatus === "SUSPENDED") {
+        // SUSPENDED 事件已在 executeNode 中发射
+      } else {
+        await this.emitEvent("dag.completed");
+      }
+
+      const snapshotEventId = this.lastEventId;
+      await this.createSnapshot(finalStatus, snapshotEventId);
+
+      const summary = this.buildSummary(finalStatus, completedAt);
+      return { runId: this.ctx.runId, status: finalStatus, summary };
+    } catch (_error) {
+      // 未预期的异常 → ERROR 状态
+      const completedAt = new Date().toISOString();
+      await this.emitEvent("dag.cancelled");
+      const summary = this.buildSummary("ERROR", completedAt);
+      return { runId: this.ctx.runId, status: "ERROR", summary };
+    }
+  }
+
+  // ---------- 私有方法 ----------
+
+  /** 找到所有 READY 节点：PENDING 且所有依赖 COMPLETED */
+  private findReadyNodes(): NodeDef[] {
+    const ready: NodeDef[] = [];
+    for (const node of this.nodes) {
+      const status = this.nodeStates.get(node.id);
+      if (status !== "PENDING") continue;
+
+      const deps = node.depends_on ?? [];
+      const allDepsCompleted = deps.every((depId) => this.nodeStates.get(depId) === "COMPLETED");
+      if (allDepsCompleted) {
+        ready.push(node);
+      }
+    }
+    return ready;
+  }
+
+  /** 检查是否有指定状态的节点 */
+  private hasStatus(status: NodeStatus): boolean {
+    for (const s of this.nodeStates.values()) {
+      if (s === status) return true;
+    }
+    return false;
+  }
+
+  /** 执行单个节点 */
+  private async executeNode(node: NodeDef): Promise<void> {
+    const nodeId = node.id;
+
+    // 再次检查取消
+    if (this.ctx.cancellation.cancelled) {
+      this.nodeStates.set(nodeId, "CANCELLED");
+      await this.emitEvent("node.cancelled", nodeId);
+      return;
+    }
+
+    // 设置 RUNNING（执行器内部会发射 node.started 事件）
+    this.nodeStates.set(nodeId, "RUNNING");
+
+    try {
+      // 解析 ${{ }} 表达式
+      const resolvedInputs = this.resolveNodeInputs(node);
+
+      // 构建执行上下文
+      const execCtx: NodeExecutionContext = {
+        runId: this.ctx.runId,
+        params: this.ctx.params,
+        secrets: this.ctx.secrets,
+        resolvedInputs,
+        signal: this.ctx.cancellation.signal,
+        storage: this.ctx.storage,
+      };
+
+      // 执行节点（执行器内部发射 node.started / node.completed 事件）
+      const output = await this.ctx.nodeExecutor.execute(node, execCtx);
+
+      // 成功 → COMPLETED + 快照（不再发射额外的 node.completed 事件）
+      this.nodeStates.set(nodeId, "COMPLETED");
+      this.nodeOutputs.set(nodeId, output);
+      this.lastEventId = `evt_${nanoid(10)}`;
+      await this.saveSnapshotAfterNode(nodeId, output);
+    } catch (error) {
+      // 处理 SUSPENDED
+      if (error instanceof SuspendedError) {
+        this.nodeStates.set(nodeId, "SUSPENDED" as NodeStatus);
+        await this.emitEvent("audit.requested", nodeId, {
+          display_data: error.displayData,
+        });
+        // 重新抛出让 run() 通过 allSettled 捕获
+        throw error;
+      }
+
+      // 处理 AbortError（取消）
+      if (error instanceof DOMException && error.name === "AbortError") {
+        this.nodeStates.set(nodeId, "CANCELLED");
+        await this.emitEvent("node.cancelled", nodeId);
+        return;
+      }
+
+      // 节点失败（执行器内部已发射 node.failed 事件，此处不再重复）
+      this.nodeStates.set(nodeId, "FAILED");
+
+      // BFS 错误传播：标记下游为 SKIPPED
+      await this.propagateFailure(nodeId);
+    }
+  }
+
+  /** 解析节点输入中的 ${{ }} 表达式 */
+  private resolveNodeInputs(node: NodeDef): Record<string, unknown> {
+    const evalContext = this.buildEvalContext();
+
+    const resolved: Record<string, unknown> = {};
+
+    // 解析各节点类型特有的字段
+    switch (node.type) {
+      case "shell": {
+        // Shell 节点：command 不做模板解析，通过 inputs 注入环境变量
+        resolved.command = node.command;
+        if (node.cwd) resolved.cwd = node.cwd;
+        if (node.inputs) {
+          resolved.inputs = resolveInputs(node.inputs, evalContext);
+        }
+        break;
+      }
+      case "agent": {
+        resolved.prompt = resolveTemplate(node.prompt, evalContext);
+        if (node.agent) resolved.agent = resolveTemplate(node.agent, evalContext);
+        if (node.skill) resolved.skill = resolveTemplate(node.skill, evalContext);
+        if (node.model) resolved.model = resolveTemplate(node.model, evalContext);
+        if (node.temperature !== undefined) resolved.temperature = node.temperature;
+        if (node.steps !== undefined) resolved.steps = node.steps;
+        break;
+      }
+      case "api": {
+        resolved.url = resolveTemplate(node.url, evalContext);
+        if (node.body) resolved.body = resolveTemplate(node.body, evalContext);
+        if (node.headers) {
+          resolved.headers = Object.fromEntries(
+            Object.entries(node.headers).map(([k, v]) => [k, resolveTemplate(v, evalContext)]),
+          );
+        }
+        break;
+      }
+      case "audit": {
+        resolved.display_data = node.display_data;
+        break;
+      }
+      case "python": {
+        // Python 节点：code 不做模板解析，通过 inputs 注入变量
+        resolved.code = node.code;
+        if (node.requirements) resolved.requirements = node.requirements;
+        if (node.cwd) resolved.cwd = node.cwd;
+        if (node.inputs) {
+          resolved.inputs = resolveInputs(node.inputs, evalContext);
+        }
+        break;
+      }
+      case "workflow": {
+        resolved.ref = resolveTemplate(node.ref, evalContext);
+        if (node.params) {
+          resolved.params = Object.fromEntries(
+            Object.entries(node.params).map(([k, v]) => {
+              if (typeof v === "string") return [k, resolveTemplate(v, evalContext)];
+              return [k, v];
+            }),
+          );
+        }
+        break;
+      }
+      case "loop": {
+        resolved.condition = resolveTemplate(node.condition, evalContext);
+        resolved.max_iterations = node.max_iterations;
+        break;
+      }
+    }
+
+    // 通用字段
+    if (node.condition) {
+      resolved.condition = resolveTemplate(node.condition, evalContext);
+    }
+    if (node.env) {
+      if (node.type === "shell" || node.type === "python") {
+        resolved.env = node.env;
+      } else {
+        resolved.env = Object.fromEntries(
+          Object.entries(node.env).map(([k, v]) => [k, resolveTemplate(v, evalContext)]),
+        );
+      }
+    }
+
+    return resolved;
+  }
+
+  /** 构建表达式求值上下文 */
+  private buildEvalContext(): EvalContext {
+    const nodes: Record<string, { output: Record<string, unknown>; status: string }> = {};
+    for (const [id, status] of this.nodeStates) {
+      const output = this.nodeOutputs.get(id);
+      nodes[id] = {
+        output: (output?.json ?? { stdout: output?.stdout ?? "" }) as Record<string, unknown>,
+        status,
+      };
+    }
+    return {
+      nodes,
+      params: this.ctx.params,
+      secrets: this.ctx.secrets,
+    };
+  }
+
+  /** BFS 错误传播 — 标记所有下游节点为 SKIPPED */
+  private async propagateFailure(failedNodeId: string): Promise<void> {
+    const visited = new Set<string>();
+    const queue = this.reverseAdj.get(failedNodeId) ?? [];
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      if (visited.has(nodeId)) continue;
+      visited.add(nodeId);
+
+      const status = this.nodeStates.get(nodeId);
+      // 只标记 PENDING 的节点，不影响 RUNNING/COMPLETED 节点
+      if (status === "PENDING") {
+        this.nodeStates.set(nodeId, "SKIPPED");
+        await this.emitEvent("node.skipped", nodeId, {
+          reason: "upstream_failed",
+        });
+      }
+
+      // 继续传播到下游
+      const downstream = this.reverseAdj.get(nodeId) ?? [];
+      queue.push(...downstream);
+    }
+  }
+
+  /** 计算最终 DAG 状态 */
+  private computeFinalStatus(): DAGStatus {
+    if (this.ctx.cancellation.cancelled) {
+      return "CANCELLED";
+    }
+
+    // 检查是否有 SUSPENDED 节点（SuspendedError 抛出后不会走到这里，但保险起见）
+    for (const status of this.nodeStates.values()) {
+      if (status === ("SUSPENDED" as NodeStatus)) {
+        return "SUSPENDED";
+      }
+    }
+
+    let hasFailed = false;
+    let _hasSkipped = false;
+    let allCompleted = true;
+
+    for (const status of this.nodeStates.values()) {
+      if (status === "FAILED") {
+        hasFailed = true;
+        allCompleted = false;
+      } else if (status === "SKIPPED" || status === "CANCELLED") {
+        _hasSkipped = true;
+        allCompleted = false;
+      } else if (status !== "COMPLETED") {
+        allCompleted = false;
+      }
+    }
+
+    if (allCompleted) return "SUCCESS";
+    if (hasFailed) return "FAILED";
+    return "FAILED"; // hasSkipped or partial completion
+  }
+
+  /** 构建运行摘要 */
+  private buildSummary(status: DAGStatus, completedAt: string): RunSummary {
+    let completed = 0;
+    let failed = 0;
+    let running = 0;
+
+    for (const s of this.nodeStates.values()) {
+      if (s === "COMPLETED") completed++;
+      else if (s === "FAILED") failed++;
+      else if (s === "RUNNING") running++;
+    }
+
+    return {
+      run_id: this.ctx.runId,
+      workflow_name: this.ctx.workflowDef.name,
+      status,
+      started_at: this.dagStartTime,
+      completed_at: completedAt,
+      node_summary: {
+        total: this.nodes.length,
+        completed,
+        failed,
+        running,
+      },
+    };
+  }
+
+  /** 发射事件 */
+  private async emitEvent(
+    type: DAGEvent["type"],
+    nodeId?: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<string> {
+    const event: DAGEvent = {
+      event_id: `evt_${nanoid(10)}`,
+      run_id: this.ctx.runId,
+      timestamp: new Date().toISOString(),
+      type,
+      ...(nodeId ? { node_id: nodeId } : {}),
+      ...(nodeId ? { node_type: this.nodeMap.get(nodeId)?.type } : {}),
+      ...(metadata ? { metadata } : {}),
+    };
+    this.lastEventId = event.event_id;
+    await this.ctx.storage.appendEvent(event);
+    return event.event_id;
+  }
+
+  /** 创建快照 */
+  private async createSnapshot(status: DAGStatus, lastEventId: string): Promise<void> {
+    const nodeStates: DAGSnapshot["node_states"] = {};
+    for (const [id, s] of this.nodeStates) {
+      nodeStates[id] = { status: s };
+    }
+
+    const snapshot: DAGSnapshot = {
+      snapshot_id: `snap_${nanoid(10)}`,
+      run_id: this.ctx.runId,
+      last_event_id: lastEventId,
+      timestamp: new Date().toISOString(),
+      node_states: nodeStates,
+      dag_status: status,
+    };
+    await this.ctx.storage.createSnapshot(snapshot);
+  }
+
+  /** 节点完成后写入输出 + 快照（不发射事件，事件由执行器负责） */
+  private async saveSnapshotAfterNode(nodeId: string, output: NodeOutput): Promise<void> {
+    await this.ctx.storage.setOutput(this.ctx.runId, nodeId, output);
+
+    const nodeStates: DAGSnapshot["node_states"] = {};
+    for (const [id, s] of this.nodeStates) {
+      nodeStates[id] = { status: s };
+    }
+
+    const snapshot: DAGSnapshot = {
+      snapshot_id: `snap_${nanoid(10)}`,
+      run_id: this.ctx.runId,
+      last_event_id: this.lastEventId,
+      timestamp: new Date().toISOString(),
+      node_states: nodeStates,
+      dag_status: "RUNNING",
+    };
+
+    await this.ctx.storage.createSnapshot(snapshot);
+  }
+}

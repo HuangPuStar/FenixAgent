@@ -1,0 +1,82 @@
+{
+  "title": "技能管理",
+  "subtitle": "管理 AI Agent 可用的全局技能模板",
+  "search": "搜索技能...",
+  "empty": "暂无技能",
+  "column": {
+    "name": "技能名称",
+    "description": "描述"
+  },
+  "btn": {
+    "edit": "编辑",
+    "delete": "删除",
+    "createSkill": "+ 新建技能",
+    "uploadSkill": "上传技能",
+    "batchDelete": "批量删除",
+    "reselect": "重新选择"
+  },
+  "dialog": {
+    "editTitle": "编辑技能",
+    "createTitle": "新建技能",
+    "save": "保存",
+    "startUpload": "开始上传",
+    "uploadTab": "上传技能",
+    "createTab": "创建技能"
+  },
+  "form": {
+    "name": "技能名称",
+    "description": "描述",
+    "content": "内容",
+    "descriptionPlaceholder": "可选，简要描述技能用途",
+    "contentHint": "Markdown 格式的技能指令",
+    "contentPlaceholder": "输入 Markdown 内容...",
+    "nameRequired": "名称不能为空",
+    "contentRequired": "内容不能为空"
+  },
+  "upload": {
+    "selectFolder": "点击选择包含技能的文件夹",
+    "selectFolderHint": "每个子目录将被识别为一个 skill，目录内需包含 SKILL.md",
+    "selectedDirs": "已选择 {{count}} 个目录",
+    "files": "{{count}} 文件",
+    "missingSkillMd": "缺少 SKILL.md",
+    "importable": "可导入",
+    "itemSummary": "{{name}} ({{count}} 个文件)",
+    "itemSummaryMissing": "{{name}} ({{count}} 个文件，缺少 SKILL.md)"
+  },
+  "confirm": {
+    "deleteTitle": "确认删除",
+    "deleteDescription": "此操作不可逆。确定要删除技能 \"{{name}}\" 吗？",
+    "batchDeleteTitle": "批量删除确认",
+    "batchDeleteDescription": "确定要删除选中的 {{count}} 个技能吗？{{workspaceHint}}",
+    "batchDeleteHint": "此操作不可逆。",
+    "overwriteTitle": "确认覆盖冲突技能",
+    "overwriteDescription": "覆盖会整目录替换已有技能内容，旧文件会被删除。确定继续吗？",
+    "overwriteConfirm": "确认覆盖"
+  },
+  "conflict": {
+    "title": "检测到同名技能冲突",
+    "skipConflicts": "跳过冲突项",
+    "overwriteExisting": "覆盖已有技能",
+    "detected": "检测到同名技能，请选择忽略或覆盖策略"
+  },
+  "toast": {
+    "loadDetailFailed": "加载技能详情失败",
+    "saveFailed": "保存失败",
+    "saveFailedWith": "保存失败: {{message}}",
+    "skillUpdated": "技能已更新",
+    "skillCreated": "技能已创建",
+    "skillDeleted": "技能已删除",
+    "operationFailed": "操作失败: {{message}}",
+    "deleteFailed": "删除失败",
+    "deleteFailedWith": "删除失败: {{message}}",
+    "batchDeleteFailed": "批量删除失败",
+    "batchDeleteFailedWith": "批量删除失败: {{message}}",
+    "batchDeleted": "已删除 {{count}} 个技能",
+    "importResult": "已导入 {{imported}} 个技能",
+    "importResultWithSkipped": "已导入 {{imported}} 个技能，跳过 {{skipped}} 个冲突技能",
+    "importFailed": "导入失败",
+    "importFailedWith": "导入失败: {{message}}",
+    "loadListFailed": "加载技能列表失败",
+    "loadListFailedWith": "加载技能列表失败: {{message}}"
+  }
+}

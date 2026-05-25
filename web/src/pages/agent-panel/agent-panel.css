@@ -1,0 +1,396 @@
+/* ============================================================
+   Unified Agent Panel — 三栏布局专用样式
+   ============================================================ */
+
+/* ---------- CSS 变量 ---------- */
+:root {
+  --agent-sidebar-width: 220px;
+  --agent-sidebar-collapsed: 60px;
+  --agent-artifacts-width: 480px;
+  --agent-artifacts-min: 360px;
+  --agent-artifacts-max: 700px;
+}
+
+/* ---------- 三栏布局容器 ---------- */
+.agent-panel-layout {
+  display: flex;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* agent-panel-body: column layout — StatusHeader on top, three columns below */
+.agent-panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* agent-panel-content: row layout — chat area + artifacts side by side */
+.agent-panel-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---------- 左侧边栏 ---------- */
+.agent-sidebar {
+  width: var(--agent-sidebar-width);
+  min-width: var(--agent-sidebar-width);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-0);
+  transition:
+    width 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.agent-sidebar.collapsed {
+  width: var(--agent-sidebar-collapsed);
+  min-width: var(--agent-sidebar-collapsed);
+}
+
+/* ---------- 中间聊天区域 ---------- */
+.agent-chat-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------- 右侧 Artifacts 面板 ---------- */
+.agent-artifacts {
+  width: var(--agent-artifacts-width);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-1);
+  transition:
+    width 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.agent-artifacts.collapsed {
+  width: 0;
+  min-width: 0;
+  border-left: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Artifacts 折叠展开按钮 ---------- */
+.agent-artifacts-expand-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid var(--color-border-subtle);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  background: var(--color-surface-1);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms,
+    width 150ms;
+  z-index: 5;
+  font-size: 10px;
+  font-weight: 500;
+  writing-mode: vertical-lr;
+  letter-spacing: 0.05em;
+}
+
+.agent-artifacts-expand-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+  width: 32px;
+}
+
+/* ---------- 拖拽分隔线 ---------- */
+.agent-artifacts-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 150ms;
+  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+}
+
+.agent-artifacts-resize-handle:hover,
+.agent-artifacts-resize-handle:active {
+  background: var(--color-brand);
+  opacity: 0.4;
+}
+
+/* ---------- Artifacts Tab 栏 ---------- */
+.agent-artifacts-tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 0 8px;
+  min-height: 40px;
+  flex-shrink: 0;
+}
+
+.agent-artifacts-tab {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 150ms,
+    border-color 150ms;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  white-space: nowrap;
+}
+
+.agent-artifacts-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.agent-artifacts-tab.active {
+  color: var(--color-brand);
+  border-bottom-color: var(--color-brand);
+}
+
+.agent-artifacts-close-btn {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms;
+}
+
+.agent-artifacts-close-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+/* ---------- @pierre/trees 自定义元素 ---------- */
+file-tree-container {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- 智能体树样式 ---------- */
+
+/* 区块标题 */
+.agent-tree-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-dim);
+}
+
+/* 智能体名称（可点击折叠） */
+.agent-tree-env-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  user-select: none;
+  border: none;
+  border-radius: 6px;
+  margin: 0 4px;
+  background: none;
+  width: calc(100% - 8px);
+  transition:
+    background 150ms,
+    color 150ms;
+}
+
+.agent-tree-env-header:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+/* 实例数量徽标 */
+.agent-tree-instance-count {
+  margin-left: auto;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-dim);
+  background: var(--color-surface-2);
+  border-radius: 8px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+/* 实例列表容器 */
+.agent-tree-env-body {
+  padding: 1px 0 2px;
+}
+
+/* 单个实例行 */
+.agent-tree-instance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 28px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms;
+  border-radius: 6px;
+  margin: 1px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-tree-instance:hover {
+  background: var(--color-surface-hover);
+}
+
+.agent-tree-instance.selected {
+  background: var(--color-brand-subtle);
+  color: var(--color-brand-light);
+}
+
+/* "新建实例" 按钮 */
+.agent-tree-new-instance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 28px;
+  margin: 1px 6px;
+  font-size: 13px;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  transition:
+    background 150ms,
+    color 150ms;
+  white-space: nowrap;
+  width: calc(100% - 12px);
+}
+
+.agent-tree-new-instance:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+}
+
+/* ---------- 状态指示灯 ---------- */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.running {
+  background: var(--color-status-running);
+}
+
+.status-dot.idle,
+.status-dot.starting {
+  background: var(--color-status-warning);
+}
+
+.status-dot.stopped {
+  background: var(--color-text-muted);
+}
+
+.status-dot.error {
+  background: var(--color-status-error);
+}
+
+/* ---------- 欢迎空状态 ---------- */
+.agent-welcome-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  color: var(--color-text-muted);
+}
+
+.agent-welcome-empty svg {
+  opacity: 0.3;
+}
+
+.agent-welcome-empty .title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.agent-welcome-empty .desc {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* ---------- Artifacts split layout (tree + preview) ---------- */
+.agent-artifacts-split {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.agent-artifacts-tree-pane {
+  width: 35%;
+  min-width: 120px;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.agent-artifacts-preview-pane {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}

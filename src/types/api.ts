@@ -1,16 +1,5 @@
 /** API 请求/响应类型定义 */
 
-// Hono context variable types
-declare module "hono" {
-  interface ContextVariableMap {
-    user: { id: string; email: string; name: string } | null;
-    session: { id: string; userId: string; token: string } | null;
-    uuid: string | undefined;
-    username: string | undefined;
-    authEnvironmentId: string | undefined;
-  }
-}
-
 // --- Environment ---
 
 export interface EnvironmentResponse {
@@ -52,8 +41,6 @@ export interface SessionResponse {
   title: string | null;
   status: string;
   source: string;
-  permission_mode: string | null;
-  worker_epoch: number;
   username: string | null;
   created_at: number;
   updated_at: number;
@@ -63,17 +50,13 @@ export interface CreateSessionRequest {
   environment_id?: string;
   title?: string;
   source?: string;
-  permission_mode?: string;
   username?: string;
-  cwd?: string;
 }
 
 export interface CreateCodeSessionRequest {
   title?: string;
   source?: string;
   username?: string;
-  permission_mode?: string;
-  cwd?: string;
 }
 
 export interface WorkResponse {
@@ -111,14 +94,14 @@ export interface RegisterEnvironmentWebRequest {
   name: string;
   description?: string;
   workspacePath: string;
-  agentName?: string;
+  agentConfigId?: string;
 }
 
 export interface UpdateEnvironmentWebRequest {
   name?: string;
   description?: string;
   workspacePath?: string;
-  agentName?: string;
+  agentConfigId?: string | null;
 }
 
 export interface EnvironmentWebResponse {
@@ -126,7 +109,7 @@ export interface EnvironmentWebResponse {
   name: string;
   description: string | null;
   workspace_path: string;
-  agent_name: string | null;
+  agent_config_id: string | null;
   status: string;
   machine_name: string | null;
   branch: string | null;

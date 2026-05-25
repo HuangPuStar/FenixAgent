@@ -4,584 +4,453 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Remote Control Server (RCS) 是一个基于 Hono + Bun 的 AI Agent 控制面板后端，配合 React + Vite 前端。核心功能包括：
+Remote Control Server (RCS) 是一个基于 Elysia + Bun 的 AI Agent 控制面板后端（package name: `mothership`），配合 React 19 + Vite 前端，使用 PostgreSQL + Drizzle ORM 持久化。核心功能包括：
 
 - **ACP 协议支持**：通过 WebSocket 与 acp-link Agent通信，实现远程 Agent 控制和事件流转发
-- **配置管理**：Providers/Models/Agents/Skills/MCP 的动态配置，存储于 `~/.config/opencode/opencode.json`
-- **会话管理**：通过 SSE 向前端推送会话事件（user/assistant/tool_use/permission_request 等），支持 ACP session/list 按 cwd 过滤
-- **认证授权**：better-auth (SQLite) + API Key 认证，支持用户会话和 acp-link 的 Bearer token
-- **定时 HTTP 任务**：cron 调度、执行历史记录、失败重试（Drizzle ORM + node-schedule）
-- **用户文件系统**：会话级文件读写上传，支持 iframe 预览（`/web/sessions/:id/user/*`）
-- **Channel 层**：多频道通信支持（`/web/channels`）
-- **会话分享**：share link 表已创建（readonly/writable 模式），功能开发中
+- **配置管理**：Providers/Models/Agents/Skills/MCP 的动态配置，存储于 PostgreSQL（`src/services/config/` 子模块）
+- **多租户**：better-auth organization 插件实现多组织隔离，所有配置和资源以 `organizationId` 为范围，通过 `AuthContext` 传递
+- **会话管理**：会话事件推送，支持 ACP session/list 按 cwd 过滤
+- **认证授权**：better-auth + `@better-auth/api-key` 插件，支持用户会话和 acp-link 的 Bearer token
+- **定时 HTTP 任务**：cron 调度、执行历史记录、失败重试
+- **知识库/工作流引擎/Meta Agent**：知识库管理、DAG 工作流引擎（`@mothership/workflow-engine`）、元智能体编排
+- **IM 通道**（开发中）：多平台消息通道接入与路由绑定
+- **S3 文件存储**（可选）、**Redis 缓存**（可选）、**Hermes 消息推送**（可选）
+- **Workspace Packages**：`packages/` 下有 acp-link、core、plugin-sdk、opencode、workflow-engine 五个内部包
+
+**依赖结构**：`web/` 没有独立的 `package.json`，所有前后端依赖统一在根 `package.json` 管理。前端代码在 `web/` 但依赖安装/升级都在根目录执行。
 
 ## 常用命令
 
-### 开发与构建
-
 ```bash
-# 后端开发（热重载）
-bun run dev
-
-# 前端开发（Vite dev server，独立进程，Agent到后端）
-bun run dev:web
-
-# 生产构建前端（修改前端代码后必须执行！）
-bun run build:web
-
-# 启动生产服务器
-bun run start
-
-# 类型检查
-bun run typecheck
+bun run dev              # 后端开发（热重载）
+bun run dev:web          # 前端开发（Vite dev server，独立进程）
+bun run build:web        # 生产构建前端（修改前端代码后必须执行！）
+bun run docs:dev         # 文档开发（VitePress）
+bun run docs:build       # 构建文档
+bun run precheck         # ⚠️ 提交前必须通过（格式化 + import 排序 + tsc + biome check）
+bun run check:deps       # 依赖健康检查
+bun run db:push          # 数据库 schema 同步（开发环境）
+bun run db:generate --name <名称>  # 生成迁移文件（修改 schema.ts 后执行）
+bun run db:migrate       # 应用迁移文件（生产环境）
 ```
-
-**重要**：后端通过 `serveStatic` 挂载 `web/dist/` 目录（见 `src/index.ts`）。修改任何前端代码后，**必须**执行 `bun run build:web` 重新构建，否则更改不会生效。
 
 ### 测试
 
 ```bash
-# 运行所有后端测试（Bun test）
-bun test src/__tests__
-
-# 运行特定测试文件
-bun test src/__tests__/config-service.test.ts
-
-# 前端全部测试（从项目根目录运行）
-bun test web/src/__tests__/
-
-# 前端单个测试文件
-bun test web/src/__tests__/app-i18n.test.ts
+bun test src/__tests__/                       # 后端全部测试
+bun test src/__tests__/store.test.ts          # 后端单个文件
+bun test web/src/__tests__/                   # 前端全部测试
+bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 ```
 
-**注意**：前端代码在 `web/` 目录，但没有独立的 `package.json`。所有依赖在根目录 `package.json`，构建命令需要从项目根目录执行。前端测试使用 `import.meta.dirname` 解析文件路径，从项目根目录运行即可。
+测试账号：`admin@test.com` / `admin123456`
 
-### 工作目录注意事项
+### 关键注意事项
 
-Bash 的 `cd` 命令会改变 persistent CWD。当在 `web/` 目录执行命令后，后续相对路径会出错。解决方案：
-
-- 使用绝对路径
-- 或在每次命令前重新 `cd` 到项目根
-
-```bash
-# 错误示例
-cd web && bunx vite build && ls src/  # 这里的 src/ 是相对于 web/ 的
-
-# 正确示例
-cd web && bunx vite build && cd .. && ls src/
-```
+- **`bun run precheck` 是代码质量的第一标准**。流程：`biome format --write` → `biome check --write --linter-enabled=false`（import 排序）→ `tsc` → `biome check`。格式和 import 排序自动修复
+- 后端挂载 `web/dist/` 提供前端静态文件，修改前端后**必须** `bun run build:web`
+- **严禁手写 SQL 迁移**：所有 schema 变更通过 `src/db/schema.ts` → `drizzle-kit generate` → `push/migrate`
+- **环境变量**：新增必须先在 `src/env.ts` 的 `envSchema` 中声明（Zod `zod/v4`）
+- **代码质量工具**：Biome v2.4.15 统一 lint + format（`biome.json`），不使用 ESLint/Prettier
+- **Swagger API 文档**：`/docs/swagger`，新增路由时添加 `.tags()` 分组
+- **工作目录漂移**：Bash `cd web` 后相对路径会出错，使用绝对路径或每次回 cd
 
 ## 架构关键点
 
-### 后端架构 (Hono + Bun)
+### 后端架构 (Elysia + Bun)
 
-**入口**：`src/index.ts`
+**入口**：`src/index.ts` — 挂载 `/v1/*`、`/v2/*`、`/web/*`、`/acp/*`、`/mcp/*` 路由，`/ctrl/*` 静态文件，IP 限流 100 req/min
 
-- 挂载所有路由：`/v1/*`（兼容）、`/web/*`（控制面板 API）、`/acp/*`（ACP 协议）
-- 静态文件服务：`/ctrl/*` → `web/dist/`（构建后的前端）
-- iframe 预览重定向：`/ctrl/:sessionId/user/*` → `/web/sessions/:id/user/*?preview=true`
-- 启动时初始化：skills 目录迁移（`migrateSkillsDir`）、定时任务调度器（`startScheduler`）
-- 优雅关闭：清理 WebSocket 连接、instances、调度器
+- `/v1/*`：旧版环境/会话 API（`src/routes/v1/`）
+- `/v2/*`：**主流**，Worker/CodeSession 相关 API（`src/routes/v2/`）
+- `/web/*`：控制面板业务 API（`src/routes/web/`）
+- `/acp/*`：ACP WebSocket 端点（`src/routes/acp/`）
+- `/mcp/*`：MCP 知识库查询（`src/routes/mcp/`）
 
-**认证层**：
+**认证层**（`src/auth/`）：better-auth + organization + apiKey 插件。`src/plugins/auth.ts` 提供 `authGuardPlugin`（`sessionAuth` macro），`src/services/org-context.ts` 的 `loadOrgContext` 从请求解析 `AuthContext`（`organizationId`/`userId`/`role`）
 
-- `src/auth/better-auth.ts`：better-auth 实例，session + email/password
-- `src/auth/api-key-service.ts`：per-user API Key（SQLite），用于 acp-link 认证
-- `src/auth/middleware.ts`：`sessionAuth` 中间件，验证 better-auth session
-- `src/auth/jwt.ts`：JWT 工具（遗留代码，部分功能仍在使用）
+**验证层**（`src/schemas/`）：所有路由请求体通过 Zod v4 schema 校验。新增路由必须创建对应 schema 文件（如 `session.schema.ts`），通过 `index.ts` 统一导出。v1/v2 路由各有独立 schema 文件。
 
-**配置服务**：`src/services/config.ts`
+**配置服务**（`src/services/config/`）：6 张配置表 CRUD，多租户隔离（`AuthContext` 首参 + `organization_id` WHERE）。返回值约定：delete → boolean，get → 对象 | null，list → 数组
 
-- 存储路径：`~/.config/opencode/opencode.json`
-- 写入互斥锁：防止并发写入损坏配置
-- deep merge：`setSection` 会合并而非覆盖现有配置
-- **子服务**：`skill.ts`、`instance.ts`、`task.ts`、`scheduler.ts`、`session.ts` 负责特定功能的 CRUD 和调度
+**传输层**（`src/transport/`）：`acp-ws-handler.ts`（acp-link 注册）、`relay/` 子模块（中继连接管理）、`event-bus.ts`（事件总线）
 
-**传输层**：`src/transport/`
+**插件层**（`src/plugins/`）：auth、cors、error-handler（`AppError` → HTTP 状态码）、logger（requestId）、rate-limit、static、require-team-scope（`requireOrgScope` 组织资源校验）
 
-- `acp-ws-handler.ts`：处理 `/acp/ws` 连接（acp-link 注册）
-- `acp-relay-handler.ts`：处理 `/acp/relay/:agentId` 连接（前端与 Agent 的中继），拦截 `list_sessions` 由服务端直接响应
-- `event-bus.ts`：事件总线，连接会话事件和 ACP 连接
-- `sse-writer.ts`：SSE 事件规范化
+**核心服务模块**（`src/services/`）按业务域划分：
 
-**内存存储**：`src/store.ts`
+- **环境管理**：`environment.ts`、`environment-acp.ts`、`environment-web.ts`、`environment-core.ts` — Agent 环境生命周期
+- **会话管理**：`session.ts` — 会话创建/状态/查询
+- **定时任务**：`scheduler.ts` — cron 调度与执行
+- **知识库**：`knowledge-base.ts`、`knowledge-provider/` — 知识库管理与检索
+- **IM 通道**：`channel-binding.ts`、`channel-provider.ts` — 消息通道接入（开发中）
+- **任务调度**：`agent-task-runner.ts`、`work-dispatch.ts` — Agent 任务执行与分发
+- **Meta Agent**：`meta-agent.ts` — 元智能体编排（开发中）
+- **工作流**：`workflow/` — 工作流运行时服务（开发中）
 
-- `environments` Map：Agent 注册信息（断开时直接删除，不保留 offline）
-- `sessions` Map：会话元数据（environment 删除时关联 session 也会被删除）
-- `sessionWorkers` Map：Worker 状态（`storeGetSessionWorker`、`storeUpsertSessionWorker`）
-- `tokens` Map：遗留 token 存储（`storeCreateToken`、`storeGetUserByToken`）
-- 辅助查询：`storeListSessionsForAgentByCwd`（按 cwd 过滤 session）、`storeListAcpAgentsByUserId`
+**Repository 层**（`src/repositories/`）：数据访问抽象，接口 + 实现模式。新增数据表访问须创建对应 Repository 文件，接口命名 `IXxxRepo`，实现类直接导出，通过 `index.ts` 统一导出。Service 层通过注入 Repository 访问数据，禁止直接 import `db` 写查询。
 
-**数据库持久化**：`src/db/schema.ts`（Drizzle ORM + SQLite）
+**内存存储**（`src/store.ts`）：`environments`/`sessions`/`sessionWorkers`/`tokens` Map。Agent 断开时直接删除记录（不保留 offline）
 
-- better-auth 表：`user`、`session`、`account`、`verification`
-- 自定义表：`apiKey`、`mcpTool`、`scheduledTask`、`taskExecutionLog`、`shareLink`、`shareEventSnapshot`、`environment`
+**错误类**（`src/errors.ts`）：`AppError`（基类）、`ValidationError`(400)、`NotFoundError`(404)、`ConflictError`(409)
+
+### Workspace 自动计算
+
+路径：`{WORKSPACE_ROOT ?? cwd/workspaces}/{organizationId}/{userId}`
+
+- `src/services/workspace-resolver.ts`：`resolveWorkspacePath(orgId, userId)`
+- 前端不填 workspace，后端自动计算写入 DB `workspacePath` 列
 
 ### ACP 协议要点
 
-acp-link 是连接 AI Agent 和 RCS 的桥梁，通过 WebSocket 进行双向通信。
+**认证方式**（优先级从高到低）：
 
-#### 认证方式
+1. better-auth API Key：`Authorization: Bearer rcs_xxx` → `auth.api.verifyApiKey({ body: { key: token } })`
+2. 全局 API Key：`RCS_API_KEYS` 环境变量
 
-acp-link 有两种认证方式（优先级从高到低）：
+**WebSocket 端点**：
 
-1. **Per-user API Key**（SQLite）：`Authorization: Bearer rcs_xxx` 或 `?token=rcs_xxx`
-2. **全局 API Key**（环境变量）：`RCS_API_KEYS=key1,key2`，回退到系统用户
+- `/acp/ws`：acp-link 注册（NDJSON 格式，消息类型：register/registered/identify/keep_alive）
+- `/acp/relay/:agentId`：前端中继（cookie-based auth），`keep_alive` 和 `list_sessions` 由 relay 层拦截
 
-#### WebSocket 端点
+**REST 注册**：POST `/v1/environments/bridge`（注册）→ WS `/acp/ws?token=xxx` → `{"type":"identify","agent_id":"env_xxx"}`
 
-**`/acp/ws`** — acp-link 注册端点
+**关键约定**：
 
-- 认证：API Key（Bearer token 或 query param）
-- 消息格式：NDJSON（每行一个 JSON + `\n`）
+- relay 断连不杀 acp-link 进程，仅用户显式删除才终止
+- `agentLocalWsMap` 按 instanceId 做 key（非 agentId），relay URL 须携带 `?sessionId=`
+- 注册时若无 session 自动创建默认 session
+- 超时/disconnect 直接删除内存记录（不保留 offline）
 
-**关键消息类型**：
+### Workspace Packages
 
-```json
-// acp-link 发送注册请求
-{"type": "register", "agent_name": "my-agent", "max_sessions": 1, "capabilities": {...}}
+`packages/` 下 5 个内部包（`private: true`，`tsconfig.base.json` 路径映射）：
 
-// 服务器响应注册成功
-{"type": "registered", "agent_id": "env_xxx"}
+- **acp-link**：ACP stdio-to-WebSocket 桥接器
+- **@mothership/core**：核心运行时抽象（types/registry/runtime/facade）
+- **@mothership/plugin-sdk**：插件开发 SDK（engine-plugin/engine-relay 接口）
+- **@mothership/opencode**：opencode 引擎插件实现
+- **@mothership/workflow-engine**：DAG 工作流引擎 — parser/scheduler/executor/recovery/secrets（开发中，API 可能变化）
 
-// acp-link 也可以先通过 REST 注册，再通过 WS 绑定
-{"type": "identify", "agent_id": "env_xxx"}
+### 前端架构 (React 19 + Vite + TanStack Router)
 
-// 保活（双向）
-{"type": "keep_alive"}
+**版本**：React 19 + React DOM 19，可直接使用 ref prop（不需要 `forwardRef`）。
 
-// 任意业务消息（透传到 EventBus）
-{"type": "user", "content": "..."}
+**构建配置**（`web/vite.config.ts`）：Tailwind v4（`@tailwindcss/vite`）、TanStack Router（`@tanstack/router-plugin/vite`，**plugins 数组第一位**）、base path `/ctrl/`。
+
+路径别名：
+- `@/src` → `web/src`
+- `@/components` → `web/components`
+- `@server` → `../src`
+
+**UI 技术栈**：
+
+- 组件基础：Radix UI（通过 shadcn/ui 包装，`web/components/ui/`）
+- 组件生成：通过 shadcn CLI（`bunx shadcn add <component>`），配置见根目录 `components.json`。禁止手写 Radix 原生组件，优先用 shadcn/ui 包装
+- 风格：new-york
+- 图标：**lucide-react 是唯一的图标来源**，禁止内联 `<svg>` 手写图标。所有图标必须从 `lucide-react` 导入具名组件（如 `import { ChevronRight } from "lucide-react"`）。需要自定义大小/颜色时通过 `className` 和 `size` prop 控制，不要为此写内联 SVG。lucide 没有的图标应提交 PR 或用简单 CSS 代替，不要内联 SVG
+- 样式：Tailwind CSS v4 + `tw-animate-css` + `tailwind-merge` + `class-variance-authority`
+- Toast：sonner
+- 动画：motion
+- 命令面板：cmdk
+- 表格：@tanstack/react-table
+- 流程图/工作流可视化：@xyflow/react + dagre
+- Chat 消息系统：基于 Vercel AI SDK（`ai` + `@ai-sdk/react`），消息类型使用 `UIMessage`/`UIMessageChunk`，传输层实现 `ChatTransport` 接口
+
+**路由**（file-based routing，`web/src/routes/`）：
+
+- `_app` 是 pathless layout（v1 控制面板），`_` 前缀不贡献 URL 段
+- `_` 后缀（如 `workflow_.$`）是 flat route；`$` 前缀是动态参数
+- `__root.tsx` 统一认证检查
+- `routeTree.gen.ts` 由 Vite 插件自动生成，**严禁手动编辑**
+- 新增页面：在 `web/src/routes/_app/` 下创建路由文件，组件 lazy import
+- v2 Agent 面板：`web/src/routes/agent/_panel.tsx`（AgentPanelLayout），`$agentId.tsx` 重定向到 chat
+
+**前端双版本（v1 控制面板 / v2 Agent 面板）**：
+
+| | v1 控制面板 | v2 Agent 面板 |
+|---|---|---|
+| **入口路由** | `web/src/routes/_app.tsx` | `web/src/routes/agent/_panel.tsx` |
+| **Shell** | `web/src/components/shell/`（AppShell、Sidebar、Topbar） | `web/src/pages/agent-panel/`（AgentPanelLayout、AgentSidebar） |
+| **布局** | Sidebar（可折叠）+ Topbar + 主内容区 | AgentSidebar（不可折叠）+ ChatPanel + ArtifactsPanel |
+| **共享组件** | `web/components/`（chat/、ai-elements/、ui/） | 同左，修改影响两边 |
+| **CSS** | `web/src/index.css` | 专有 `agent-panel.css` |
+
+注意事项：
+
+- v2 Sidebar 不支持折叠，不要添加 collapsed 相关逻辑
+- OrgSwitcher 被两个版本共用，样式需保持一致
+
+**导航**：`<Link to="/path">` 或 `useNavigate()`，**禁止** `window.history.pushState` / `window.location.href`
+
+**API Client**（`web/src/api/client.ts`）：**Eden Treaty 是规范的 API 调用方式**，实现前后端端到端类型安全。当前代码处于过渡期，部分页面仍使用 `api/apiGet/apiPost` fetch wrapper，**新代码必须使用 Eden Treaty**（`client.web.xxx.post()` / `.get()`）。Eden Treaty 因 TS 类型爆炸被降级为 `typeof _client & { web: any }`，须配合 `biome-ignore` 注释。`credentials: "include"` 携带 session cookie。
+
+### 前端 i18n 国际化
+
+react-i18next + i18next，英文默认，中英双语。
+
+**适用范围**：所有 `web/` 下的 TSX 文件均须遵守，无例外。包括 `web/components/`、`web/src/pages/`、`web/src/components/` 下的所有组件（含 `chat/`、`ai-elements/`、`agent-panel/` 等子目录）。不遵守 i18n 的组件不应该被合入。
+
+**命名空间**：见 `web/src/i18n/index.ts` 的 `NS` 常量。现有命名空间：common / login / sidebar / dashboard / agents / models / skills / mcp / tasks / workflows / sessions / environments / orgs / apikey / channels / knowledge / agentPanel / components。
+
+- 语言检测：localStorage `rcs-lang` → `navigator.language`
+- 翻译文件：`web/src/i18n/locales/{en,zh}/<namespace>.json`
+- 命名空间选择：用 `NS` 常量（`useTranslation(NS.AGENT_PANEL)`），不要用字符串字面量（`useTranslation("agentPanel")`）
+- 公共组件（`web/components/` 下被多处引用的组件）使用 `"components"` 命名空间；页面专属内容使用对应页面命名空间
+
+**新增命名空间步骤**（仅新建页面/模块时需要）：
+
+1. 创建 `en/<namespace>.json` 和 `zh/<namespace>.json`
+2. 在 `web/src/i18n/index.ts` 中添加 import、`NS` 常量、en/zh resources 注册、ns 数组
+3. 组件中 `const { t } = useTranslation(NS.<NAMESPACE>)`
+
+**硬编码规则**：
+
+- **禁止**在 JSX 中硬编码用户可见的英文字符串或中文字符串（按钮文字、标题、提示、placeholder、错误提示、状态标签等一律走 `t()`）
+- 中文注释不受此限制
+- `console.log` / `console.error` 中的调试信息不受此限制
+- placeholder 默认值（如 `placeholder = "给智能体发送消息…"`）也必须走 i18n
+- `title` / `aria-label` 等 HTML 属性中的文字也必须走 i18n
+- toast 消息中的文字也必须走 i18n
+
+**常见违规模式**（绝对禁止）：
+
+```tsx
+// ❌ 硬编码中文
+<span>执行计划</span>
+<span>{running} 运行中</span>
+<span>暂无会话</span>
+placeholder = "给智能体发送消息…"
+title="命令列表"
+
+// ✅ 正确做法
+<span>{t("plan.title")}</span>
+<span>{t("toolCall.running", { count: running })}</span>
+placeholder={t("input.placeholder")}
 ```
 
-**`/acp/relay/:agentId`** — 前端与 Agent 的中继端点
+**禁止**：模块级 `i18n.t()` 调用、新建 `*-i18n.test.ts`
 
-- 认证：better-auth session（cookie-based）
-- 用途：前端通过此 WebSocket 与 acp-link 通信，服务器双向转发消息
-- `keep_alive` 消息在 relay 层被拦截，不透传到前端（防止 "Unknown message type: keep_alive" 错误）
-- `list_sessions` 消息由 relay 层拦截，服务端直接按 ACP `AgentSessionInfo` 格式响应（支持 `cwd` 过滤）
-- relay 断连时不关闭 acp-link 子进程（只关闭 WebSocket 连接），仅用户显式删除时才终止进程
-- 多实例隔离：relay URL 携带 `?sessionId=xxx` 参数，`agentLocalWsMap` 按 **instanceId** 做 key（非 agentId），同一环境多个实例各有独立的本地 WS 连接
-- 消息流向：
-  - 前端 → relay → acp-link（`direction: "outbound"`）
-  - acp-link → relay → 前端（`direction: "inbound"`）
+## 配置存储
 
-#### REST 注册端点（必须）
-
-**`/v1/environments/bridge`** — acp-link 标准 REST 注册
-
-- **POST**：注册新 agent，返回 `environment_id` 和 `session_id`
-- **DELETE** `/bridge/:id`：注销 agent
-- **POST** `/:id/bridge/reconnect`：重连（标记 status 为 `active`）
-
-**acp-link 标准连接流程**：
-
-1. REST POST `/v1/environments/bridge` → 获取 `environment_id`
-2. WebSocket 连接 `/acp/ws?token=xxx`
-3. 发送 `{"type": "identify", "agent_id": "env_xxx"}` 绑定连接
-
-#### 保活机制
-
-| 方向 | 间隔 | 说明 |
-|------|------|------|
-| 服务器 → acp-link | 20s | `keep_alive` 数据帧，防止反向Agent超时断开 |
-| acp-link → 服务器 | 60s | 无活动则关闭连接（检测死连接） |
-| 服务器 → 前端 relay | 20s | `keep_alive` 保持 relay 连接 |
-
-#### 连接状态管理
-
-- **注册**：创建 `EnvironmentRecord`（`workerType="acp"`），状态为 `active`
-- **断开**：WS 断开时**直接删除内存记录和关联 session**（不保留 offline 状态），但 acp-link 子进程不会被杀掉（除非用户显式删除）
-- **注销**：DELETE `/v1/environments/bridge/:id` 直接删除记录（不是标记 `deregistered`）
-- **自动会话**：注册时若无 session，自动创建一个默认 session
-- **超时清理**：`disconnect-monitor` 检测到 ACP agent 超时也会直接删除记录
-
-### 前端架构 (React + Vite)
-
-**构建配置**：`web/vite.config.ts`
-
-- Tailwind CSS v4 使用 `@tailwindcss/vite` 插件（**不是** tailwind.config.js）
-- base path: `/ctrl/`
-- 路径别名：`@/src` → `web/src`，`@/components` → `web/components`
-
-**样式系统**：`web/src/index.css`
-
-- Tailwind v4 with `@theme` directive
-- `@plugin "@tailwindcss/typography"` 用于 prose 类
-- 颜色系统：brand blue (#409EFF)，深色侧边栏 (#1a1f2e)
-
-**组件层级**：
-
-- `web/src/App.tsx`：路由 + better-auth session 管理
-- `web/src/components/shell/`：AppShell、Sidebar（应用外壳）
-- `web/src/components/config/`：DataTable、FormDialog、StatusBadge（配置页通用组件）
-- `web/src/components/`：FilePickerDialog、PermissionTab、SessionDetail 等功能组件
-- `web/src/pages/`：Dashboard、ModelsPage、AgentsPage、SkillsPage、McpPage、TasksPage、ChannelsPage、LoginPage、ApiKeyManager 等
-- `web/src/acp/`：ACP 客户端（`client.ts`、`types.ts`），处理 session/list、session/load、session/resume 等 ACP 协议
-
-**状态管理**：
-
-- 本地状态：useState + useCallback
-- 远程数据：API client (`web/src/api/client.ts`) + fetch
-- 认证状态：better-auth session（cookie-based）
-
-**API Client 模式**：
-
-```typescript
-async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    credentials: "include", // 关键：携带 better-auth session cookie
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  // ...错误处理
-}
-```
-
-## 配置文件格式
-
-### `~/.config/opencode/opencode.json`
-
-```json
-{
-  "providers": { "provider-id": { "baseURL": "...", "apiKey": "..." } },
-  "models": { "model-id": { "provider": "provider-id", "model": "..." } },
-  "agents": { "agent-id": { "model": "model-id", "prompt": "...", "permission": {...} } },
-  "skills": { "skill-name": { "description": "...", "content": "..." } },
-  "mcp": { "server-id": { "command": "...", "args": [...] } }
-}
-```
-
-**重要**：`setSection` 使用 deep merge，修改嵌套字段时需注意不会意外合并数组。
-
-### 配置 API 规范
-
-**统一格式**：`POST /web/config/:module`
-
-| Module | 说明 |
-|--------|------|
-| `providers` | AI 服务商管理 |
-| `models` | 模型配置 |
-| `agents` | Agent 配置 |
-| `skills` | Skill 管理 |
-| `mcp` | MCP 服务器配置 |
-
-**请求格式**：
-
-```jsonc
-{
-  "action": "list" | "get" | "set" | "create" | "delete" | "enable" | "disable",
-  // ... 其他字段按 action 而定
-}
-```
-
-**响应格式**：
-
-```jsonc
-// 成功
-{ "success": true, "data": { ... } }
-
-// 失败
-{ "success": false, "error": { "code": "NOT_FOUND", "message": "..." } }
-```
-
-**错误码**：`NOT_FOUND`、`ALREADY_EXISTS`、`VALIDATION_ERROR`、`CONFIG_READ_ERROR`、`CONFIG_WRITE_ERROR`、`FORBIDDEN`
+配置 API：`POST /web/config/:module`（providers/models/agents/skills/mcp），action 分发（list/get/set/create/delete/enable/disable），响应 `{ success, data }` 或 `{ success, error: { code, message } }`。
 
 ### API Key 安全策略
 
-- 用户提交明文 Key 时，服务端替换为 `{env:RCS_SECRET_<provider_name>}` 存入配置文件
-- 实际密文存入环境变量（`.env` 或系统环境变量）
-- API 响应只返回 `keyHint`（尾 4 位），如 `***ab12`
+- `@better-auth/api-key` 插件管理，SHA-256 hash 存储，创建时返回明文（仅一次）
+- 验证：`auth.api.verifyApiKey({ body: { key: token } })`
+- Provider API Key 用 `{env:RCS_SECRET_<name>}` 占位符，密文存环境变量
+
+### better-auth 服务端 API 调用约定
+
+所有参数通过**单参数对象**传递，POST 端点业务数据嵌套在 `body` 中：
+
+```typescript
+await auth.api.createOrganization({
+  body: { name: "Personal", slug: "personal-xxx" },
+  headers: request.headers,
+});
+```
+
+- `expiresIn` 单位是**天**，`null` 表示永不过期
+- `listMembers` 返回 `{ members, total }`，需用 `res.members`
+- 所有需要 session 的 API 必须传 `headers: request.headers`
 
 ### Skills 存储路径
 
-```
-~/.agents/skills/           ← 启用的 skills
-~/.agents/skills/_disabled/  ← 禁用的 skills
-```
-
-**历史**：旧路径为 `~/.config/opencode/skills/`，RCS 启动时自动迁移，创建 `.migrated` 标记文件防止重复迁移。
+元数据在 PostgreSQL `skill` 表，Markdown 内容在文件系统 `{SKILL_DIR}/<name>/SKILL.md`（`SKILL_DIR` 环境变量，默认 `./data/skills`）
 
 ### Permission 权限系统
 
-Agent 权限从旧版 `tools`（布尔值）升级为 `permission`（三态）：
+`permission` 三态：`"ask"` 询问、`"allow"` 允许、`"deny"` 拒绝。规则型工具（read/edit/bash 等）支持通配符规则，开关型工具（todowrite/question/webfetch 等）仅三态。
 
-| 旧格式 | 新格式 |
-|--------|--------|
-| `tools: { bash: true, edit: false }` | `permission: { bash: "allow", edit: "deny" }` |
-
-**权限值**：
-
-- `"ask"` — 询问用户
-- `"allow"` — 允许
-- `"deny"` — 拒绝
-
-**工具类型**：
-
-- **规则型**（支持通配符）：read, edit, glob, grep, list, bash, task, external_directory, lsp, skill
-- **开关型**（仅三态）：todowrite, question, webfetch, websearch, codesearch, doom_loop
-
-**示例**：
-
-```jsonc
-{
-  "permission": {
-    "bash": "allow",              // 全局允许
-    "read": { "*.env": "deny" },  // 通配符规则
-    "skill": { "internal-*": "allow" }
-  }
-}
-```
-
-### 内置 Agent 保护
-
-以下 Agent 为内置，不可删除（可修改配置）：
-
-- `build`、`plan`、`general`、`explore`、`title`、`summary`、`compaction`
-
-### MCP 服务器配置
-
-MCP (Model Context Protocol) 支持两种类型：
-
-**Local**（命令行启动）：
-
-```jsonc
-{
-  "type": "local",
-  "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
-  "environment": { "GITHUB_TOKEN": "{env:GITHUB_TOKEN}" },
-  "enabled": true,
-  "timeout": 5000
-}
-```
-
-**Remote**（URL 连接）：
-
-```jsonc
-{
-  "type": "remote",
-  "url": "https://api.mcp.example.com/sse",
-  "headers": { "Authorization": "Bearer {env:MCP_TOKEN}" },
-  "enabled": true,
-  "timeout": 5000
-}
-```
+内置 Agent（不可删除）：`build`、`plan`、`general`、`explore`、`title`、`summary`、`compaction`
 
 ## 数据库
 
-- SQLite：`data/db.sqlite`（gitignored）
-- ORM：Drizzle ORM
-- Schema：`src/db/schema.ts`
-- 表：
-  - better-auth：`user`、`session`、`account`、`verification`
-  - 自定义：`apiKey`、`mcpTool`（MCP Tool 缓存）、`scheduledTask`（定时任务）、`taskExecutionLog`（执行日志）、`shareLink`（分享链接）、`shareEventSnapshot`（分享事件快照）、`environment`（环境持久化）
+PostgreSQL + Drizzle ORM（`drizzle-orm/postgres-js`），Schema 在 `src/db/schema.ts`（唯一真相来源）。
 
-迁移：无正式迁移系统，better-auth 自动创建表。RCS 启动时自动执行表创建（`CREATE TABLE IF NOT EXISTS`）。
+表分类：better-auth 核心表（user/session/account/verification）、organization 插件（organization/member/invitation）、api-key 插件（apikey）、自定义表（mcpTool/scheduledTask/taskExecutionLog/shareLink/shareEventSnapshot/environment）、配置表（provider/model/agentConfig/mcpServer/skill/userConfig）、知识库（knowledgeBase/knowledgeResource/agentKnowledgeBinding）、Workflow（workflow/workflowVersion/workflowRun/workflowEvent/workflowSnapshot/workflowNodeOutput）、IM 通道（imChannel/imChannelRoute/channelBinding）
+
+**开发流程**：修改 `schema.ts` → `bunx drizzle-kit generate` → `bunx drizzle-kit push`（开发）或 `migrate`（生产）
+
+- **禁止手写 SQL 迁移**，会导致快照不一致
+- 索引命名：`idx_<表名>_org_<字段>` 格式
+- `drizzle-kit generate` 可能需要 TTY 交互，非 TTY 用 `expect` 驱动
 
 ## 测试策略
 
-### 运行命令
-
-```bash
-# 后端全部测试
-bun test src/__tests__/
-
-# 后端单个测试文件
-bun test src/__tests__/store.test.ts
-
-# 前端全部测试（从项目根目录运行）
-bun test web/src/__tests__/
-
-# 前端单个测试文件
-bun test web/src/__tests__/app-i18n.test.ts
-```
-
-### tsconfig
-
-后端 `tsconfig.json` 已配置为自包含（不依赖外部 `tsconfig.base.json`）：
-- `target: ES2022`、`module: ES2022`、`moduleResolution: bundler`
-- `types: ["bun"]`（依赖 `@types/bun`，已安装在 devDependencies）
-- 前端有独立的 `web/tsconfig.json`
-
 ### 后端测试 (Bun test)
 
-- 路径：`src/__tests__/*.test.ts`
-- 模式：单元测试为主，临时文件/目录用于 config 测试
-- Mock：使用 `mock.module()` 模拟依赖，需在 `import` 语句之前注册
+路径 `src/__tests__/*.test.ts`，单元测试为主。Mock 使用 `mock.module()`。
 
-#### Mock 注意事项
+**Mock 注意事项**：
 
-1. **mock.module 必须在 import 之前调用**：Bun test 要求 mock 在模块加载前注册
-2. **mock 隔离限制**：`mock.module()` 在同一进程中全局生效。当多个测试文件 mock 同一模块（如 `../config`）时，后加载的测试可能继承前一个测试的 mock 缓存，导致导入失败。表现为 `SyntaxError: Export named 'xxx' not found`
-3. **db/better-auth mock**：测试中若需要 mock 中间件链，必须同时 mock `../db`、`../auth/better-auth`、`../auth/api-key-service`，否则动态导入会失败
-4. **store 函数无 mock**：`src/store.ts` 是纯内存 Map，测试直接调用 `storeReset()` 清理状态
-
-#### 已知测试问题
-
-- **`middleware.test.ts` 和 `routes.test.ts`**：在 `bun test src/__tests__/` 全局运行时，因 mock 缓存污染可能无法加载 `auth/middleware.ts`（报 `Export named 'xxx' not found`）。单独运行这两个文件时正常。这是 bun test 的 mock 隔离限制，非代码 bug
-- **`routes.test.ts` Web Session Routes**：32 个测试预期 UUID-based 认证（`?uuid=` query param），但当前 `/web/sessions` 路由使用 `sessionAuth`（better-auth cookie）。需要更新测试或实现新的 API 端点
-- **文件路由测试**：`files-route.test.ts` 和 `file-api.test.ts` 中路由路径已从 `/files` 更新为 `/user`，需确保同步
+1. `mock.module()` 必须在 import 之前调用
+2. mock 全局生效，多文件 mock 同一模块可能互相污染（`SyntaxError: Export named 'xxx' not found`）
+3. mock 中间件链时须同时 mock `../db` 和 `../auth/better-auth`
+4. `src/store.ts` 纯内存 Map，测试直接 `storeReset()` 清理
+5. 禁止直接连接数据库的集成测试，用 mock 替代
 
 ### 前端测试 (Bun test)
 
-- 路径：`web/src/__tests__/*.ts` 和 `*.test.tsx`
-- 运行框架：Bun test（不是 vitest，尽管 `bun test` 兼容 vitest API）
-- i18n 测试：检查中文文本是否存在（`app-i18n.test.ts` 等）
-- 组件测试：使用 React Testing Library + ReactDOMServer
-- **文件读取路径**：使用 `import.meta.dirname` 或 `join(import.meta.dirname, "..")` 构建 web 根目录，不使用相对路径字符串（如 `"src/App.tsx"`），因为 CWD 可能不是 `web/`
-- **shadcn 组件导入**：使用相对路径如 `../../components/ui/skeleton`（从 `__tests__/` 出发）
+路径 `web/src/__tests__/`，React Testing Library + ReactDOMServer。文件路径用 `import.meta.dirname` 构建（不用相对路径字符串）。
+
+注释规范：每个 `test(...)` 上方补一行中文注释。
+
+### tsconfig
+
+后端 extends `tsconfig.base.json`（workspace 路径别名），前端独立 `web/tsconfig.json`（`jsx: "react-jsx"`，`@/*` → `./*`）。
 
 ## 状态字段映射
 
-两套 StatusBadge 组件，注意区分：
+两套 StatusBadge，状态值不同：
 
-1. **`web/src/components/Navbar.tsx`**（会话/环境状态）
-   - `active` → 活跃, `running` → 运行中, `idle` → 空闲
-   - `inactive` → 离线, `requires_action` → 待操作
-   - `archived` → 已归档, `error` → 错误, `disconnected` → 已断开
-
-2. **`web/components/config/StatusBadge.tsx`**（配置页状态）
-   - `configured` → 已配置, `enabled` → 已启用
-   - `unconfigured` → 未配置, `disabled` → 已禁用
-   - `builtIn` → 内置, `custom` → 自定义
-   - `primary` → 主模型, `subagent` → 子Agent, `all` → 全部
-
-## 权限配置
-
-Permission 选项（`web/src/components/PermissionTab.tsx`）：
-
-- `ask` → 询问
-- `allow` → 允许
-- `deny` → 拒绝
+- `web/src/components/Navbar.tsx`：会话/环境状态（active/running/idle/inactive 等）
+- `web/components/config/StatusBadge.tsx`：配置页状态（configured/enabled/unconfigured/disabled 等）
 
 ## 常见陷阱
 
-1. **前端修改未生效**：后端直接挂载 `web/dist/`，修改前端代码后必须 `bun run build:web` 重新构建
-2. **前端构建后路径错误**：Vite base 设为 `/ctrl/`，部署时需确保反向Agent匹配
-3. **配置写入竞争**：多请求同时修改配置可能损坏，`services/config.ts` 有锁机制但非分布式
-4. **WebSocket 断连**：反向Agent timeout 需 > 30s（Bun idleTimeout 默认）
-5. **状态 Badge 混淆**：两个不同文件中的 StatusBadge，状态值不同
-6. **工作目录漂移**：Bash `cd web` 后，相对路径命令会失败
-7. **acp-link 实例 spawn 认证**：acp-link 本地 WS 始终启用 auth（`authEnabled: true`），会自动生成 64 位 hex token，不受 `--group`、`ACP_RCS_TOKEN`、`--no-auth` 参数控制。relay 连接时必须从 acp-link stdout 中用正则 `Token:\s*([a-f0-9]{64})` 捕获实际 token，通过 `?token=` 传递。不能假设环境 secret 能复用为本地 WS 认证 token
-8. **acp-link 实例端口残留**：服务器重启时不会自动杀掉已 spawn 的 acp-link 子进程。若旧进程仍占用端口（如 8888），新实例 spawn 会因 `EADDRINUSE` 失败，导致 relay 找不到 running instance（报 "Agent not found or offline"）。重启服务器前应先清理残留的 acp-link 进程（`restart-server.sh` 脚本已包含清理逻辑）
-9. **acp-link standalone 模式**：spawn 时不设 `ACP_RCS_URL`，acp-link 只做本地代理不连 RCS upstream。opencode 子进程由本地 WS 连接触发启动（即 relay 连接时才启动 agent）
-10. **relay 断连不杀进程**：前端断连（刷新、关闭 dashboard）不应终止 acp-link 子进程，只在用户显式点击删除时才关闭。前端断连只关闭 WebSocket 连接
-11. **keep_alive 不透传前端**：relay 层拦截 `keep_alive` 消息，不转发给前端，否则前端报 "Unknown message type: keep_alive"
-12. **文件 API 路径**：文件系统路由已改为 `/web/sessions/:id/user/*`（不是 `/files/*`），前端 API client 同步使用 `/user` 路径
-13. **API 响应兼容**：改造 API 响应格式时，必须保留旧字段（如 `instance_status`、`instance_id`）直到前端所有引用处都已迁移，否则 `isOnline` 等检查会失效
-14. **多实例 relay 路由**：`agentLocalWsMap` 按 instanceId 做 key，不是 agentId。relay URL 须携带 `?sessionId=` 参数才能路由到正确实例，否则所有实例消息混入同一信道
-15. **Split Button 可见性**：多实例下拉按钮应在环境在线时就显示（而非仅在多实例时），用户需要随时能"新建实例"
-16. **ACP vs RCS session ID**：ACP agent 返回 `ses_xxx` 格式 session ID，RCS 内部用 `session_xxx`/`cse_xxx`。文件 API、FilePickerDialog 等需要 workspace 的操作必须用 RCS session ID（通过 `resolveExistingSessionId` 转换）。前端 `ChatInterface` 的 `activeSessionId` 是 ACP session ID，不能直接用于文件 API；需通过 `rcsSessionId` prop 从 `ACPSessionDetail` → `ACPMain` → `ChatInterface` 透传
-17. **resolveWorkspacePath 不做 fallback**：当 session 找不到时不能 fallback 到用户第一个 environment（几乎总是 `/tmp`），应直接返回 404。session ID 必须通过 `resolveExistingSessionId`（session↔cse 格式转换）查找
-18. **ChatInterface 有两处 ChatInput**：消息列表区域的 ChatInput 和底部发送栏的 ChatInput 是两个独立组件实例，修改 sessionId 传递时必须两处都改
-19. **FilePickerDialog 上传始终到 user/**：不管当前浏览哪个目录，上传操作应始终写入 workspace 的 `user/` 子目录
+### 架构约束
+
+违反会直接导致 bug，写代码前必须了解：
+
+1. **配置写入竞争**：`config-pg.ts` 无分布式锁，并发 upsert 可能竞态
+2. **acp-link spawn 认证**：本地 WS 始终 auth，自动生成 64 位 hex token。relay 连接时须从 stdout 用正则 `Token:\s*([a-f0-9]{64})` 捕获，不能假设环境 secret 复用
+3. **acp-link 端口残留**：服务器重启不会杀旧进程，`EADDRINUSE` 导致 spawn 失败，需先清理
+4. **acp-link standalone 模式**：spawn 时不设 `ACP_RCS_URL`，opencode 子进程由 relay 连接触发启动
+5. **relay 断连不杀进程**：前端断连只关 WS，不终止 acp-link 进程
+6. **keep_alive 不透传前端**：relay 层拦截，否则前端报 "Unknown message type: keep_alive"
+7. **ACP vs RCS session ID**：ACP 返回 `ses_xxx`，RCS 用 `session_xxx`/`cse_xxx`。文件 API 须用 RCS ID（`resolveExistingSessionId` 转换）
+8. **requireOrgScope 校验链路**：新增 organization 级资源路由必须调用 `requireOrgScope`
+9. **@noble/ciphers 替代 crypto.subtle**：HTTP 环境下加密用 `@noble/ciphers`
+
+### API/路由约定
+
+涉及端点时必须遵守：
+
+1. **文件 API 路径**：`/web/sessions/:id/user/*`（不是 `/files/*`）
+2. **API 响应兼容**：改造格式时保留旧字段直到前端全部迁移
+3. **多实例 relay 路由**：`agentLocalWsMap` 按 instanceId 做 key，relay URL 须 `?sessionId=`
+4. **resolveWorkspacePath 不做 fallback**：session 找不到时返回 404，不 fallback 到第一个 environment
+5. **Workflow 节点 inputs 引用**：引用的变量必须在 `depends_on` 依赖的节点中存在
+
+### 前端实现细节
+
+改对应模块时参考：
+
+1. **前端修改未生效**：后端挂载 `web/dist/`，修改后必须 `bun run build:web`
+2. **WebSocket 断连**：反向Agent timeout 需 > 30s（Bun idleTimeout 默认）
+3. **状态 Badge 混淆**：两个不同文件的 StatusBadge，状态值不同
+4. **Split Button 可见性**：多实例下拉按钮应在环境在线时就显示
+5. **ChatInterface 有两处 ChatInput**：修改 sessionId 传递时必须两处都改
+6. **FilePickerDialog 上传始终到 user/**：不管浏览哪个目录
+7. **routeTree.gen.ts 严禁手动编辑**：由 Vite 插件自动生成
+8. **TanStack Router Vite 插件顺序**：`TanStackRouterVite` 必须在 `plugins` 数组第一位
+9. **createFileRoute 路径自动修正**：插件会自动修正路由 ID，不需要手动对齐
+10. **Sidebar 导航项必须有 `to` 字段**：有 `to` 渲染 `<Link>`，没有则渲染 `<button>`
+11. **AgentPanelLayout 路由参数**：`agentId`/`sessionId` 从路由参数注入，v2 路由在 `routes/agent/_panel/` 下
 
 ## 代码风格
 
+### Biome（lint + format）
+
+Biome v2.4.15，space indent 2，lineWidth 120。`noExplicitAny: warn`，`noNonNullAssertion: off`，`useConst: error`。测试目录宽松处理。
+
+#### biome-ignore 使用规范
+
+- **禁止对 biome-ignore 行做 `--write` 自动修复**：会误删 suppression 注释，连带破坏类型断言（如 `client.web` 的 `as ... & { web: any }`）
+- **precheck 的 `--write` 只用于格式化和 import 排序**（`--linter-enabled=false`）
+- biome 报 `suppressions/unused` warning 时，确认代码仍需该 suppression 后保留
+
+### TypeScript 类型规范
+
+- **Zod v4**：项目使用 Zod v4，导入路径 `from "zod/v4"`（不是 `from "zod"`）。禁止使用 v3 API
+- **禁止 `as any`**（业务代码），用具体类型或 `as unknown as TargetType` 双重断言
+- **Eden Treaty 类型降级**：`const client = _client as typeof _client & { web: any }`，必须配合 `biome-ignore` 注释
+- **Config 响应解包**：用 `unwrapConfigData<T>()`（`web/src/api/config-response.ts`），禁止 `(data as any)?.data`
+- **Config body 类型**：必须注册在 `src/schemas/config.schema.ts` 的 `ConfigBodySchema` 中
+- **Eden Treaty 路径命名**：连字符路由转 camelCase（`/web/knowledge-bases` → `client.web.knowledgeBases`）
+- **API 响应数组守卫**：`.filter()`/`.map()` 前必须 `Array.isArray()`
+- **catch 块必须有 `console.error(err)`**
+- 允许例外：测试文件 `as any`、`zodResolver(formConfig.schema as any)`、Eden `{ web: any }`
+
 ### 前端约束
 
-- **禁止外部字体链接**：不使用 CDN / Google Fonts / jsdelivr 等外部字体资源，统一使用系统原生字体栈（`system-ui`, `-apple-system`, `ui-monospace` 等），保留中文 fallback
+- **禁止外部字体链接**：用系统字体栈（`system-ui`, `-apple-system` 等）
 
 ### 命名约定
 
 | 类型 | 风格 | 示例 |
 |------|------|------|
-| 文件名 | kebab-case | `config-service.test.ts`, `acp-ws-handler.ts`, `StatusBadge.tsx` |
-| 组件名 | PascalCase | `DataTable`, `FormDialog`, `PermissionTab` |
-| 函数名 | camelCase | `storeGetEnvironment`, `handleAcpWsOpen`, `apiFetchSessions` |
-| 常量 | UPPER_SNAKE_CASE | `MAX_WS_MESSAGE_SIZE`, `CONFIG_PATH` |
-| 接口/类型 | PascalCase | `EnvironmentRecord`, `SessionEvent`, `AgentInfo` |
-| 状态变量 | camelCase + form 前缀 | `formName`, `formModel`, `formSaving` |
+| 文件名 | kebab-case | `config-service.test.ts` |
+| 组件名 | PascalCase | `DataTable`, `FormDialog` |
+| 函数名 | camelCase | `storeGetEnvironment` |
+| 常量 | UPPER_SNAKE_CASE | `MAX_WS_MESSAGE_SIZE` |
+| 状态变量 | camelCase + form 前缀 | `formName`, `formSaving` |
 
 ### 目录结构约定
 
-- **后端**：
-  - `src/routes/`：按 API 版本或功能分组（`v1/`, `v2/`, `web/`, `acp/`）
-  - `src/services/`：业务逻辑层（`config.ts`, `skill.ts`, `instance.ts`, `task.ts`, `scheduler.ts`, `session.ts`, `environment.ts`）
-  - `src/transport/`：WebSocket/传输层（`acp-ws-handler.ts`, `acp-relay-handler.ts`, `event-bus.ts`）
-  - `src/auth/`：认证相关（`better-auth.ts`, `api-key-service.ts`, `middleware.ts`）
-  - `src/__tests__/`：测试文件与源码同名，加 `.test.ts` 后缀
-
-- **前端**：
-  - `web/src/components/`：通用组件
-    - `config/`：配置页专用组件（`DataTable`, `FormDialog`）
-    - `shell/`：应用外壳（`AppShell`, `Sidebar`）
-    - `ui/`：shadcn 原子组件
-  - `web/src/pages/`：页面组件（`Dashboard.tsx`, `ModelsPage.tsx`, `TasksPage.tsx`, `ChannelsPage.tsx`, `SessionDetail.tsx` 等）
-  - `web/src/api/`：API 客户端（`client.ts`）
-  - `web/src/acp/`：ACP 协议客户端（`client.ts`, `types.ts`）
-  - `web/src/__tests__/`：测试文件
-
-### 代码组织模式
-
-1. **功能驱动提交**：一个 git commit 包含完整的端到端功能（后端服务 + API 路由 + 前端页面 + 测试）
-2. **配套测试**：每个功能提交都包含对应的单元测试和集成测试
-3. **验收清单**：使用 `spec/spec-human-verify.md` 进行人工验收，完成后归档
+- **后端**：`src/routes/`（按功能分组：v1/v2/web/acp/mcp）、`src/services/`（业务逻辑）、`src/services/config/`（配置 CRUD）、`src/schemas/`（请求验证 schema）、`src/repositories/`（数据访问层）、`src/plugins/`（Elysia 插件）、`src/transport/`（WebSocket/传输）、`src/auth/`（认证）、`src/db/`（Drizzle schema）、`src/__tests__/`
+- **前端**：`web/src/routes/`（TanStack Router）、`web/components/`（通用组件，`@/components` alias）、`web/src/pages/`（页面组件）、`web/src/api/`（API 客户端）、`web/src/acp/`（ACP 协议客户端）、`web/src/__tests__/`
 
 ### Git 提交风格
 
-```
-<type>: <简洁的中文标题>
-
-<详细变更列表，每行以 - 开头>
-
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
-```
-
-**类型前缀**：
-
-- `feat:` - 新功能
-- `fix:` - 修复 bug
-- `refactor:` - 重构（不改变功能）
-- `test:` - 测试相关
-
-**示例**：
-
-```
-feat: 实现 Permission 配置增强（tools→permission 转换 + PermissionTab UI）
-- Skills 目录从 ~/.config/opencode/skills/ 迁移到 ~/.agents/skills/
-- Agent tools 布尔值自动转换为 permission 三态（allow/deny/ask）
-- 新增 PermissionTab 组件：开关型工具三态 Select、规则型工具通配符规则编辑器
-- 修复 PermissionTab useEffect 循环更新导致 React error #185
-
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
-```
+Angular 风格（`feat:` / `fix:` / `refactor:` / `test:` 等前缀），中文标题。
 
 ### React 组件模式
 
-1. **状态管理**：使用 `useState` + `useCallback`，避免依赖循环
-2. **表单处理**：使用 react-hook-form + zod（`FormDialog` 已封装）
-3. **异步操作**：try-catch + toast 错误提示，finally 清理 loading 状态
-4. **条件渲染**：使用 `&&` 或三元运算符，避免不必要的 div 包裹
+1. `useState` + `useCallback`，避免依赖循环
+2. 导航用 `<Link>` 或 `useNavigate()`，禁止 `window.history.pushState`
+3. 路由参数：`Route.useParams()`，search params：`Route.useSearch()`
+4. 表单：react-hook-form + zod（`FormDialog` 已封装）
+5. 异步操作：try-catch + toast + finally 清理 loading
+6. 新增页面：`web/src/routes/_app/` 下创建路由文件，lazy import
+
+### 前端路由文件模板
+
+```typescript
+import { createFileRoute } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
+
+const MyPage = lazy(() => import("../../pages/MyPage").then((m) => ({ default: m.MyPage })));
+
+export const Route = createFileRoute("/_app/my-page")({
+  component: () => <Suspense><MyPage /></Suspense>,
+});
+```
 
 ### 后端路由模式
 
 ```typescript
-import { Hono } from "hono";
+const app = new Elysia({ name: "web-resource", prefix: "/web" }).use(authGuardPlugin);
 
-const app = new Hono();
-
-// GET /web/resource
-app.get("/", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  // ... 业务逻辑
-  return c.json(data);
-});
-
-// POST /web/resource
-app.post("/", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const body = await c.req.json();
-  // ... 业务逻辑
-  return c.json({ ok: true });
-});
-
-export default app;
+app.post("/resource", async ({ store, body, request }) => {
+  const authCtx = (await loadOrgContext(store.user!, request))!;
+  // authCtx.organizationId, authCtx.userId, authCtx.role
+  return { success: true, data: { ... } };
+}, { sessionAuth: true });
 ```
 
-### 错误处理模式
+### 错误处理
 
-- **前端**：统一使用 `toast.error()` 显示错误信息
-- **后端**：返回 `{ error: { type: "...", message: "..." } }` 格式
-- **日志**：使用 `src/logger.ts` 的 `log()` 和 `error()`
+- **前端**：`toast.error()` 显示错误（sonner）
+- **后端**：`{ error: { type, message } }` 格式
+- **环境变量校验**：`src/env.ts` 的 `validateEnv()`，测试环境抛 Error，生产 `process.exit(1)`
+
+## 部署
+
+- Docker 多阶段构建（`Dockerfile`）：deps → build（前端 `build:web` + 后端 `bun build`）→ runtime
+- `build-image.sh` 构建镜像（默认 linux/amd64，输出 tar.gz）
+- `docker-compose.yml`（开发）/ `docker-compose.prod.yml`（生产）
+- 修改 `packages/` 或 `tsconfig.base.json` 后须同步 Dockerfile 的 COPY 范围
+- 运行时环境预装 Python3、git、ripgrep（opencode 依赖）
+
+## 文档编写规范
+
+VitePress 构建（`docs/`），分用户文档（`docs/user/`）和开发者文档（`docs/developer/`）。
+
+- 标题扁平（H1-H3，禁止 H4+）
+- 中文优先，术语保留原文
+- 功能 PR 必须包含文档更新
+- 模板：`docs/user/_template.md`、`docs/developer/_template.md`

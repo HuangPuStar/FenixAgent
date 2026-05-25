@@ -1,4 +1,4 @@
-import { log, error as logError } from "../logger";
+import { error as logError } from "../logger";
 
 export interface SessionEvent {
   id: string;

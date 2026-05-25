@@ -1,0 +1,64 @@
+# 生产环境叠加 — 在 docker-compose.yml 基础上添加 RCS 服务
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+
+services:
+    rcs-migrate:
+        build:
+            context: .
+            dockerfile: Dockerfile
+            target: migrate
+        container_name: mothership-migrate
+        depends_on:
+            postgres:
+                condition: service_healthy
+        environment:
+            DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
+        command: ["bun", "--bun", "node_modules/.bin/drizzle-kit", "migrate"]
+
+    rcs:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: mothership-beta
+        restart: unless-stopped
+        depends_on:
+            postgres:
+                condition: service_healthy
+            rcs-migrate:
+                condition: service_completed_successfully
+        ports:
+            - "3001:3000"
+        environment:
+            RCS_HOST: 0.0.0.0
+            RCS_PORT: 3000
+            RCS_BASE_URL: http://localhost:3000
+            RCS_API_KEYS: ${RCS_API_KEYS:-}
+            DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
+            ACPX_G_URL: http://localhost:8848
+            RCS_KNOWLEDGE_PROVIDER: ${RCS_KNOWLEDGE_PROVIDER:-}
+            RCS_KNOWLEDGE_BASE_URL: ${RCS_KNOWLEDGE_BASE_URL:-}
+            RCS_KNOWLEDGE_API_KEY: ${RCS_KNOWLEDGE_API_KEY:-}
+            OPENCODE_DISABLE_AUTOUPDATE: "1"
+            OPENCODE_DISABLE_TELEMETRY: "1"
+        volumes:
+            - rcs-opencode-config:/root/.config/opencode
+            - rcs-opencode-data:/root/.local/share/opencode
+            - ./data:/app/data
+            - ./workflow:/app/workflow
+            - ./workspaces:/app/workspaces
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "bun",
+                    "-e",
+                    "fetch('http://127.0.0.1:3000/health').then((r) => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))",
+                ]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 20s
+
+volumes:
+    rcs-opencode-config:
+    rcs-opencode-data:

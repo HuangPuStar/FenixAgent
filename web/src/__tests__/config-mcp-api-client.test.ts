@@ -1,111 +1,140 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Mock fetch
 const fetchMock = { status: 200, body: {} as unknown };
-const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   fetchMock.status = 200;
   fetchMock.body = {};
   globalThis.fetch = mock(() =>
-    Promise.resolve(new Response(JSON.stringify(fetchMock.body), { status: fetchMock.status, headers: { "Content-Type": "application/json" } }))
-  ) as typeof fetch;
+    Promise.resolve(
+      new Response(JSON.stringify(fetchMock.body), {
+        status: fetchMock.status,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ),
+  ) as unknown as typeof fetch;
 });
 
-describe("MCP API 客户端", () => {
-  test("apiListMcpServers 正常返回", async () => {
-    fetchMock.body = { success: true, data: { servers: [{ name: "my-local", type: "local", enabled: true, summary: "npx" }] } };
-    const { apiListMcpServers } = await import("../api/client");
-    const result = await apiListMcpServers();
-    expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("my-local");
+describe("MCP SDK module", () => {
+  // 测试 MCP 服务器列表正常返回
+  test("mcpApi.list returns servers", async () => {
+    fetchMock.body = {
+      success: true,
+      data: { servers: [{ name: "my-local", type: "local", enabled: true, summary: "npx" }] },
+    };
+    const { mcpApi } = await import("../api/sdk");
+    const { data, error } = await mcpApi.list();
+    expect(error).toBeUndefined();
+    const result = data as any;
+    expect(result.servers).toHaveLength(1);
+    expect(result.servers[0].name).toBe("my-local");
   });
 
-  test("apiListMcpServers 发送正确请求", async () => {
+  // 测试 MCP 列表发送正确请求
+  test("mcpApi.list sends correct payload", async () => {
     fetchMock.body = { success: true, data: { servers: [] } };
-    const { apiListMcpServers } = await import("../api/client");
-    await apiListMcpServers();
-    const call = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toBe("/web/config/mcp");
+    const { mcpApi } = await import("../api/sdk");
+    await mcpApi.list();
+    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     const body = JSON.parse(call[1].body);
     expect(body.action).toBe("list");
   });
 
-  test("apiGetMcpServer 正常返回", async () => {
-    fetchMock.body = { success: true, data: { name: "my-local", config: { type: "local", command: ["npx", "mcp-server"] } } };
-    const { apiGetMcpServer } = await import("../api/client");
-    const result = await apiGetMcpServer("my-local");
+  // 测试获取 MCP 服务器详情正常返回
+  test("mcpApi.get returns server detail", async () => {
+    fetchMock.body = {
+      success: true,
+      data: { name: "my-local", config: { type: "local", command: ["npx", "mcp-server"] } },
+    };
+    const { mcpApi } = await import("../api/sdk");
+    const { data, error } = await mcpApi.get("my-local");
+    expect(error).toBeUndefined();
+    const result = data as any;
     expect(result.config.type).toBe("local");
   });
 
-  test("apiGetMcpServer 发送正确 payload", async () => {
+  // 测试获取 MCP 服务器发送正确 payload
+  test("mcpApi.get sends correct payload", async () => {
     fetchMock.body = { success: true, data: { name: "test", config: { type: "local", command: ["npx"] } } };
-    const { apiGetMcpServer } = await import("../api/client");
-    await apiGetMcpServer("test-server");
-    const call = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+    const { mcpApi } = await import("../api/sdk");
+    await mcpApi.get("test-server");
+    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     const body = JSON.parse(call[1].body);
     expect(body.action).toBe("get");
     expect(body.name).toBe("test-server");
   });
 
-  test("apiCreateMcpServer 正常返回", async () => {
+  // 测试创建 MCP 服务器正常返回
+  test("mcpApi.create returns server info", async () => {
     fetchMock.body = { success: true, data: { name: "new-server" } };
-    const { apiCreateMcpServer } = await import("../api/client");
-    const result = await apiCreateMcpServer("new-server", { type: "local", command: ["npx"] });
-    expect(result.name).toBe("new-server");
+    const { mcpApi } = await import("../api/sdk");
+    const { data, error } = await mcpApi.create("new-server", { type: "local", command: ["npx"] });
+    expect(error).toBeUndefined();
+    expect((data as any).name).toBe("new-server");
   });
 
-  test("apiCreateMcpServer 发送正确 payload", async () => {
+  // 测试创建 MCP 服务器发送正确 payload
+  test("mcpApi.create sends correct payload", async () => {
     fetchMock.body = { success: true, data: { name: "new-server" } };
-    const { apiCreateMcpServer } = await import("../api/client");
+    const { mcpApi } = await import("../api/sdk");
     const config = { type: "local" as const, command: ["npx", "mcp-server"] };
-    await apiCreateMcpServer("new-server", config);
-    const call = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+    await mcpApi.create("new-server", config);
+    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     const body = JSON.parse(call[1].body);
     expect(body.action).toBe("create");
     expect(body.name).toBe("new-server");
-    expect(body.config.type).toBe("local");
+    expect(body.data.type).toBe("local");
   });
 
-  test("apiUpdateMcpServer 发送正确 payload", async () => {
+  // 测试更新 MCP 服务器发送正确 payload
+  test("mcpApi.set sends correct payload", async () => {
     fetchMock.body = { success: true, data: { name: "my-local" } };
-    const { apiUpdateMcpServer } = await import("../api/client");
+    const { mcpApi } = await import("../api/sdk");
     const config = { type: "local" as const, command: ["npx", "updated"] };
-    await apiUpdateMcpServer("my-local", config);
-    const call = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+    await mcpApi.set("my-local", config);
+    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("update");
+    expect(body.action).toBe("set");
     expect(body.name).toBe("my-local");
-    expect(body.config.command).toEqual(["npx", "updated"]);
+    expect(body.data.command).toEqual(["npx", "updated"]);
   });
 
-  test("apiDeleteMcpServer 发送 delete action", async () => {
+  // 测试删除 MCP 服务器发送 delete action
+  test("mcpApi.delete sends delete action", async () => {
     fetchMock.body = { success: true, data: null };
-    const { apiDeleteMcpServer } = await import("../api/client");
-    await apiDeleteMcpServer("test-srv");
-    const call = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+    const { mcpApi } = await import("../api/sdk");
+    await mcpApi.delete("test-srv");
+    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     const body = JSON.parse(call[1].body);
     expect(body.action).toBe("delete");
     expect(body.name).toBe("test-srv");
   });
 
-  test("apiEnableMcpServer 正常返回", async () => {
+  // 测试启用 MCP 服务器正常返回
+  test("mcpApi.enable returns enabled server", async () => {
     fetchMock.body = { success: true, data: { name: "s1", enabled: true } };
-    const { apiEnableMcpServer } = await import("../api/client");
-    const result = await apiEnableMcpServer("s1");
-    expect(result.enabled).toBe(true);
+    const { mcpApi } = await import("../api/sdk");
+    const { data, error } = await mcpApi.enable("s1");
+    expect(error).toBeUndefined();
+    expect((data as any).enabled).toBe(true);
   });
 
-  test("apiDisableMcpServer 正常返回", async () => {
+  // 测试禁用 MCP 服务器正常返回
+  test("mcpApi.disable returns disabled server", async () => {
     fetchMock.body = { success: true, data: { name: "s1", enabled: false } };
-    const { apiDisableMcpServer } = await import("../api/client");
-    const result = await apiDisableMcpServer("s1");
-    expect(result.enabled).toBe(false);
+    const { mcpApi } = await import("../api/sdk");
+    const { data, error } = await mcpApi.disable("s1");
+    expect(error).toBeUndefined();
+    expect((data as any).enabled).toBe(false);
   });
 
-  test("错误响应抛出异常", async () => {
+  // 测试错误响应返回 error
+  test("error response returns error", async () => {
+    fetchMock.status = 404;
     fetchMock.body = { success: false, error: { code: "NOT_FOUND", message: "Server not found" } };
-    const { apiGetMcpServer } = await import("../api/client");
-    expect(apiGetMcpServer("xxx")).rejects.toThrow("Server not found");
+    const { mcpApi } = await import("../api/sdk");
+    const { error } = await mcpApi.get("xxx");
+    expect(error).not.toBeNull();
   });
 });

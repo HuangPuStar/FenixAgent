@@ -1,6 +1,9 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 
 export function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation("components");
+
   const colorMap: Record<string, string> = {
     active: "bg-status-active/15 text-status-active",
     running: "bg-status-running/15 text-status-running",
@@ -12,14 +15,14 @@ export function StatusBadge({ status }: { status: string }) {
   };
 
   const labelMap: Record<string, string> = {
-    active: "活跃",
-    running: "运行中",
-    idle: "空闲",
-    inactive: "离线",
-    requires_action: "待操作",
-    archived: "已归档",
-    error: "错误",
-    disconnected: "已断开",
+    active: t("navbar.status.active"),
+    running: t("navbar.status.running"),
+    idle: t("navbar.status.idle"),
+    inactive: t("navbar.status.inactive"),
+    requires_action: t("navbar.status.requires_action"),
+    archived: t("navbar.status.archived"),
+    error: t("navbar.status.error"),
+    disconnected: t("navbar.status.disconnected"),
   };
 
   return (

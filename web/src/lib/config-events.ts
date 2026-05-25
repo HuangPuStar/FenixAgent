@@ -13,18 +13,13 @@ export type ConfigModule = "agents" | "models" | "skills" | "mcp" | "providers";
  * 在配置页面保存/删除/切换操作成功后调用
  */
 export function dispatchConfigChange(module: ConfigModule) {
-  window.dispatchEvent(
-    new CustomEvent(CONFIG_CHANGE_EVENT, { detail: { module, timestamp: Date.now() } }),
-  );
+  window.dispatchEvent(new CustomEvent(CONFIG_CHANGE_EVENT, { detail: { module, timestamp: Date.now() } }));
 }
 
 /**
  * React hook：监听配置变更事件，触发回调
  */
-export function useConfigChangeListener(
-  callback: (module: ConfigModule) => void,
-  deps: Array<unknown>,
-) {
+export function useConfigChangeListener(callback: (module: ConfigModule) => void, deps: Array<unknown>) {
   useEffect(() => {
     const handler = (e: Event) => {
       const { module } = (e as CustomEvent<{ module: ConfigModule }>).detail;
@@ -32,5 +27,6 @@ export function useConfigChangeListener(
     };
     window.addEventListener(CONFIG_CHANGE_EVENT, handler);
     return () => window.removeEventListener(CONFIG_CHANGE_EVENT, handler);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: deps is a caller-provided array, intentionally dynamic
   }, deps);
 }

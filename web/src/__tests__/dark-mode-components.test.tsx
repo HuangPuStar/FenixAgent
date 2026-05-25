@@ -1,11 +1,11 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import ReactDOMServer from "react-dom/server";
-import { readFileSync } from "fs";
-import { join } from "path";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../../components/ui/accordion";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../components/ui/accordion";
 import { Calendar } from "../../components/ui/calendar";
 import { DatePicker } from "../../components/ui/date-picker";
+import { Skeleton } from "../../components/ui/skeleton";
 
 const DARK_MODE_VARIABLES = [
   "--color-background",
@@ -38,9 +38,7 @@ describe("Dark mode component integration", () => {
   });
 
   test("Skeleton renders with animate-pulse", () => {
-    const html = ReactDOMServer.renderToStaticMarkup(
-      <Skeleton className="h-4 w-20" />
-    );
+    const html = ReactDOMServer.renderToStaticMarkup(<Skeleton className="h-4 w-20" />);
     expect(html).toContain("animate-pulse");
   });
 
@@ -66,7 +64,7 @@ describe("Dark mode component integration", () => {
           <AccordionTrigger>标题</AccordionTrigger>
           <AccordionContent>内容</AccordionContent>
         </AccordionItem>
-      </Accordion>
+      </Accordion>,
     );
     expect(html).toContain("标题");
     // AccordionContent is hidden in SSR by Radix (data-state=closed)

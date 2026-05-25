@@ -35,10 +35,7 @@ function getSigningKey(): string {
 }
 
 /** Generate a JWT for worker authentication. */
-export function generateWorkerJwt(
-  sessionId: string,
-  expiresInSeconds: number,
-): string {
+export function generateWorkerJwt(sessionId: string, expiresInSeconds: number): string {
   const header = { alg: "HS256", typ: "JWT" };
   const payload: JwtPayload = {
     session_id: sessionId,
@@ -51,9 +48,7 @@ export function generateWorkerJwt(
   const payloadB64 = base64url(JSON.stringify(payload));
   const signingInput = `${headerB64}.${payloadB64}`;
 
-  const signature = createHmac("sha256", getSigningKey())
-    .update(signingInput)
-    .digest();
+  const signature = createHmac("sha256", getSigningKey()).update(signingInput).digest();
 
   return `${signingInput}.${base64url(signature)}`;
 }
@@ -70,13 +65,8 @@ export function verifyWorkerJwt(token: string): JwtPayload | null {
 
   // Verify signature
   const signingInput = `${headerB64}.${payloadB64}`;
-  const expectedSig = createHmac("sha256", getSigningKey())
-    .update(signingInput)
-    .digest();
-  const actualSig = Buffer.from(
-    signatureB64.replace(/-/g, "+").replace(/_/g, "/"),
-    "base64",
-  );
+  const expectedSig = createHmac("sha256", getSigningKey()).update(signingInput).digest();
+  const actualSig = Buffer.from(signatureB64.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 
   if (expectedSig.length !== actualSig.length) return null;
   if (!timingSafeEqual(expectedSig, actualSig)) return null;

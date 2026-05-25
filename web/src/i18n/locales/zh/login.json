@@ -1,0 +1,17 @@
+{
+  "signUp": "创建账户",
+  "signIn": "登录",
+  "signUpSubtitle": "创建账户以管理你的 Agent",
+  "signInSubtitle": "登录以管理你的 Agent",
+  "name": "名称",
+  "namePlaceholder": "你的名称",
+  "email": "邮箱",
+  "password": "密码",
+  "passwordPlaceholder": "至少 8 个字符",
+  "pleaseWait": "请稍候...",
+  "alreadyHaveAccount": "已有账户？",
+  "noAccount": "没有账户？",
+  "signUpFailed": "注册失败",
+  "signInFailed": "登录失败",
+  "unknownError": "未知错误"
+}

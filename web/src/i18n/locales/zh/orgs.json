@@ -1,0 +1,75 @@
+{
+  "title": "组织管理",
+  "subtitle": "管理你的组织和团队成员",
+  "myOrgs": "我的组织",
+  "noOrgs": "暂无组织",
+  "selectOrg": "选择一个组织查看详情",
+  "roles": {
+    "owner": "拥有者",
+    "admin": "管理员",
+    "member": "成员"
+  },
+  "edit": "编辑",
+  "cancel": "取消",
+  "save": "保存",
+  "saving": "保存中...",
+  "create": "创建",
+  "creating": "创建中...",
+  "members": "成员 ({{count}})",
+  "inviteMember": "添加成员",
+  "noMembers": "暂无成员",
+  "table": {
+    "user": "用户",
+    "role": "角色",
+    "actions": "操作"
+  },
+  "dangerZone": {
+    "title": "危险区域",
+    "description": "删除组织将同时删除所有关联资源，此操作不可撤销。",
+    "deleteOrg": "删除组织",
+    "cannotDeleteLast": "无法删除最后一个组织，请先创建一个新组织。"
+  },
+  "createDialog": {
+    "title": "创建组织",
+    "name": "名称",
+    "namePlaceholder": "组织名称",
+    "slug": "Slug",
+    "description": "描述",
+    "descriptionPlaceholder": "可选"
+  },
+  "inviteDialog": {
+    "title": "添加成员",
+    "email": "邮箱",
+    "emailPlaceholder": "输入邮箱地址",
+    "role": "角色",
+    "invite": "添加",
+    "inviting": "添加中..."
+  },
+  "deleteDialog": {
+    "title": "确认删除组织",
+    "description": "即将删除组织「{{name}}」，所有关联资源将被永久删除。此操作不可撤销。",
+    "confirmDelete": "确认删除",
+    "deleting": "删除中..."
+  },
+  "editName": {
+    "placeholder": "组织名称"
+  },
+  "toast": {
+    "loadDetailFailed": "加载组织详情失败",
+    "createSuccess": "组织创建成功",
+    "createFailed": "创建组织失败",
+    "updateSuccess": "组织信息已更新",
+    "updateFailed": "更新失败",
+    "inviteSent": "成员已添加",
+    "inviteFailed": "添加成员失败",
+    "removeSuccess": "成员已移除",
+    "removeFailed": "移除成员失败",
+    "roleUpdated": "角色已更新",
+    "roleUpdateFailed": "更新角色失败",
+    "deleteSuccess": "组织已删除",
+    "deleteFailed": "删除组织失败"
+  },
+  "error": {
+    "operationFailed": "操作失败"
+  }
+}

@@ -1,29 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "node:path";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const webRoot = join(import.meta.dirname, "..");
 
 describe("ChannelsPage", () => {
+  // 测试页面包含中文文案
   test("page source contains required Chinese copy", () => {
     const src = readFileSync(join(webRoot, "pages/ChannelsPage.tsx"), "utf-8");
     expect(src).toContain("消息渠道");
-    expect(src).toContain("新建消息渠道");
-    expect(src).toContain("搜索消息渠道...");
-    expect(src).toContain("暂不支持");
+    expect(src).toContain("新建绑定");
+    expect(src).toContain("搜索绑定...");
   });
 
-  test("page source uses channel api functions", () => {
+  // 测试页面使用 Eden Treaty client
+  test("page source uses Eden Treaty client for channel APIs", () => {
     const src = readFileSync(join(webRoot, "pages/ChannelsPage.tsx"), "utf-8");
-    expect(src).toContain("apiListChannelProviders");
-    expect(src).toContain("apiListChannels");
+    expect(src).toContain("client.web.channels");
   });
 
-  test("page source contains abstract-layer guidance and empty state", () => {
+  // 测试页面包含绑定管理 UI
+  test("page source contains binding management UI", () => {
     const src = readFileSync(join(webRoot, "pages/ChannelsPage.tsx"), "utf-8");
-    expect(src).toContain("DataTable<ChannelInfo>");
-    expect(src).toContain('emptyMessage="暂无数据"');
-    expect(src).toContain("编辑");
+    expect(src).toContain("DataTable<ChannelBinding>");
+    expect(src).toContain("暂无绑定");
     expect(src).toContain("删除");
     expect(src).not.toContain("Provider 状态");
     expect(src).not.toContain("已接入通道");

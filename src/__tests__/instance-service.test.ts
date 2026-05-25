@@ -1,401 +1,363 @@
-import { describe, test, expect, beforeEach, mock, afterEach } from "bun:test";
-import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { RuntimeInstanceSnapshot } from "@mothership/core";
 
-// Mock dependencies before importing the module
-const mockProbePort = mock(() => Promise.resolve(true));
-const mockSpawn = mock(() => ({
-  pid: 12345,
-  stdout: { on: mock(() => {}) },
-  stderr: { on: mock(() => {}) },
-  on: mock(() => {}),
-}));
+// ────────────────────────────────────────────
+// Mock 依赖 — mock.module 必须在 import 被测模块之前
+// ────────────────────────────────────────────
 
-mock.module("node:net", () => ({
-  default: {
-    createServer: mock(() => ({
-      listen: mock((_port: number, cb: () => void) => cb()),
-      on: mock((_event: string, cb: (err?: Error) => void) => {
-        // Simulate port available by default
-      }),
-      close: mock((cb: () => void) => cb()),
-    })),
-  },
-  createServer: mock(() => ({
-    listen: mock((_port: number, cb: () => void) => cb()),
-    on: mock((_event: string, cb: (err?: Error) => void) => {}),
-    close: mock((cb: () => void) => cb()),
-  })),
-}));
-
-mock.module("../config", () => ({
-  config: {
-    knowledgeProvider: "openviking",
-    knowledgeBaseUrl: "http://localhost:8090",
-    knowledgeApiKey: "",
-    knowledgeRequestTimeoutMs: 15000,
-  },
-  getBaseUrl: () => "http://localhost:3000",
-}));
-
-let mockKnowledgeBindings: Array<{ knowledgeBaseId: string; priority: number; enabled: boolean }> = [];
-
-mock.module("../services/agent-knowledge", () => ({
-  listAgentKnowledgeBindings: mock(async () => mockKnowledgeBindings),
-}));
-
-mock.module("../auth/api-key-service", () => ({
-  createApiKey: mock(async (userId: string, label: string) => ({
-    record: { id: "key_test", label, keyPrefix: "rcs_test...", createdAt: Date.now(), lastUsedAt: null },
-    fullKey: "rcs_test_full_api_key_" + label,
-  })),
-}));
-
-mock.module("../transport/acp-relay-handler", () => ({
-  closeInstanceLocalWs: mock(() => {}),
-}));
-
-mock.module("../store", () => ({
-  storeGetEnvironment: mock((id: string) => ({
-    id,
-    userId: "test-user",
-    agentName: "test-agent",
-    name: "test-env",
-    workspacePath: process.cwd(),
-    secret: "env_secret_test123",
-  })),
-  storeGetEnvironmentBySecret: mock((secret: string) => {
-    if (secret === "env_secret_test123") {
-      return {
-        id: "env_test_secret",
-        userId: "test-user",
-        agentName: "test-agent",
-        name: "test-env",
-        workspacePath: process.cwd(),
-        secret,
-      };
-    }
-    if (secret === "env_secret_kb_mcp") {
-      return {
-        id: "env_kb_mcp",
-        userId: "kb-mcp-user",
-        agentName: "general",
-        name: "kb-mcp-env",
-        workspacePath: process.cwd(),
-        secret,
-      };
-    }
-    return undefined;
-  }),
-  storeCreateSession: mock((req: any) => ({
-    id: `session_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    environmentId: req.environmentId,
-    title: req.title,
-    status: "idle",
-    source: req.source,
-    userId: req.userId,
+const mockLaunchInstance = mock(
+  async (req: { instanceId: string; engineType: string; nodeId: string; launchSpec: unknown }) => ({
+    instanceId: req.instanceId,
+    engineType: "opencode",
+    nodeId: "local-default",
+    status: "running" as const,
+    launchSpec: req.launchSpec,
+    relayConnected: false,
+    errorMessage: undefined,
+    pluginMetadata: {
+      port: 8888,
+      token: "test_token_acquired_from_runtime",
+      pid: 12345,
+    },
     createdAt: new Date(),
     updatedAt: new Date(),
+  }),
+);
+
+const mockStopInstance = mock(async (_id: string) => {});
+const mockListInstances = mock((): RuntimeInstanceSnapshot[] => []);
+const mockGetInstance = mock((_id: string): RuntimeInstanceSnapshot | null => null);
+
+const fakeFacade = {
+  launchInstance: mockLaunchInstance,
+  stopInstance: mockStopInstance,
+  listInstances: mockListInstances,
+  getInstance: mockGetInstance,
+  getPlugin: () => null,
+  registerPlugin: () => {},
+  registerNode: () => {},
+  connectInstanceRelay: mock(async () => ({})),
+  getNode: () => null,
+  listNodes: () => [],
+  listPlugins: () => [],
+};
+
+mock.module("../services/core-bootstrap", () => ({
+  getCoreRuntime: () => fakeFacade as any,
+  resetCoreRuntime: () => {},
+  setCoreRuntimeFactory: () => {},
+}));
+
+mock.module("../services/config-pg", () => ({
+  getAgentConfigById: mock(async (id: string) => ({ name: "test-agent", id })),
+  getAgentFullConfig: mock(async () => ({
+    agentConfig: { name: "test-agent", model: "openai/gpt-4", prompt: "test" },
+    providers: [{ name: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "sk-test", npm: "@ai-sdk/openai" }],
+    skills: [],
+    mcpServers: [],
   })),
 }));
 
-mock.module("../utils/executable", () => ({
-  resolveExecutable: mock(() => process.cwd() + "/node_modules/.bin/acp-link"),
+mock.module("../services/launch-spec-builder", () => ({
+  buildLaunchSpec: mock(async () => ({
+    workspace: "/tmp/test-workspace",
+    agent: { name: "test-agent" },
+    model: {
+      provider: "openai",
+      protocol: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "sk-test",
+      model: "gpt-4",
+    },
+    skills: [],
+    mcpServers: [],
+  })),
+  setBuildLaunchSpec: () => {},
 }));
 
-// Import after mocks are set up
-const {
-  spawnInstance,
-  listInstances,
+// envId → userId 映射
+const envOwnerMap = new Map<string, string>();
+
+mock.module("../repositories", () => ({
+  environmentRepo: {
+    getById: mock(async (id: string) => ({
+      id,
+      userId: envOwnerMap.get(id) ?? "test-user",
+      agentConfigId: null,
+      name: "test-env",
+      workspacePath: "/tmp/test-workspace",
+      directory: "/tmp/test-workspace",
+      secret: "env_secret_test123",
+      maxSessions: 5,
+      status: "active",
+      organizationId: "team-test",
+    })),
+    update: mock(async () => true),
+    create: mock(async (params: any) => ({
+      id: `env_${Date.now()}`,
+      ...params,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+    listActive: mock(async () => []),
+    listAll: mock(async () => []),
+    listByUserId: mock(async () => []),
+  },
+}));
+
+mock.module("../services/session", () => ({
+  findOrCreateForEnvironment: mock(async () => ({ id: "session_test" })),
+}));
+
+beforeEach(() => {
+  mockLaunchInstance.mockClear();
+  mockStopInstance.mockClear();
+  mockListInstances.mockClear();
+  mockGetInstance.mockClear();
+  envOwnerMap.clear();
+});
+
+// ────────────────────────────────────────────
+// 导入被测模块（无 mock.module，直接导入）
+// ────────────────────────────────────────────
+
+function mockSnapshot(overrides: Partial<RuntimeInstanceSnapshot> & { instanceId: string }): RuntimeInstanceSnapshot {
+  return {
+    engineType: "opencode",
+    nodeId: "local-default",
+    status: "running",
+    launchSpec: {
+      workspace: "/tmp",
+      agent: { name: "test" },
+      model: { provider: "openai", protocol: "openai", baseUrl: "", apiKey: "", model: "gpt-4" },
+      skills: [],
+      mcpServers: [],
+    } as any,
+    relayConnected: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+import {
+  ensureRunning,
+  findRunningInstanceByEnvironment,
   getInstance,
-  stopInstance,
-  stopAllInstances,
-  setInstanceSpawnForTesting,
-  listInstancesByEnvironment,
   getRunningInstancesByEnvironment,
+  listInstances,
+  listInstancesByEnvironment,
   spawnInstanceFromEnvironment,
-} = await import("../services/instance");
+  stopInstance,
+} from "../services/instance";
 
-describe("InstanceService", () => {
-  // We need to reset the internal module state between tests.
-  // Since the module uses module-level Map/Set, we use a workaround:
-  // create instances and stop them between tests.
+/** 注册 envId→userId 映射并执行 spawn */
+async function spawnForUser(userId: string, envId: string) {
+  envOwnerMap.set(envId, userId);
+  return spawnInstanceFromEnvironment(userId, envId);
+}
+
+describe("CoreInstanceAdapter — spawn", () => {
   const createdInstanceIds: string[] = [];
-  let originalCwd = process.cwd();
-  let testCwd: string | null = null;
-
-  beforeEach(() => {
-    originalCwd = process.cwd();
-    testCwd = mkdtempSync(join(tmpdir(), "instance-service-cwd-"));
-    const localBinDir = join(testCwd, "node_modules", ".bin");
-    const localAcpLink = join(localBinDir, "acp-link");
-    mkdirSync(localBinDir, { recursive: true });
-    writeFileSync(localAcpLink, "#!/bin/sh\nexit 0\n");
-    chmodSync(localAcpLink, 0o755);
-    process.chdir(testCwd);
-    mockKnowledgeBindings = [];
-    setInstanceSpawnForTesting(mockSpawn as unknown as typeof import("node:child_process").spawn);
-  });
 
   afterEach(async () => {
-    // Clean up any instances created during tests
     for (const id of createdInstanceIds) {
-      try { stopInstance(id, "test-user"); } catch {}
+      try {
+        await stopInstance(id, "test-user");
+      } catch {}
     }
     createdInstanceIds.length = 0;
-    setInstanceSpawnForTesting(null);
-    process.chdir(originalCwd);
-    if (testCwd) {
-      rmSync(testCwd, { recursive: true, force: true });
-      testCwd = null;
-    }
   });
 
-  test("spawnInstance falls back to system PATH when local acp-link is missing", async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "instance-service-no-acp-link-"));
-    const cwdBeforeSwitch = process.cwd();
-    try {
-      mkdirSync(join(tempDir, "node_modules", ".bin"), { recursive: true });
-      process.chdir(tempDir);
+  // spawnInstanceFromEnvironment 委托给 core.launchInstance
+  test("spawnInstanceFromEnvironment 委托给 core.launchInstance", async () => {
+    const inst = await spawnForUser("test-user", "env_test");
 
-      // resolveExecutable should fall back to system PATH (which acp-link)
-      // If acp-link is globally installed, spawn succeeds; otherwise it throws.
-      try {
-        const inst = await spawnInstance("test-user");
-        createdInstanceIds.push(inst.id);
-        // Success — global acp-link was found
-      } catch (e: any) {
-        // If not found anywhere, error message should mention both the executable and install command
-        expect(e.message).toContain("Required executable not found: acp-link");
-        expect(e.message).toContain("bun install -g");
-      }
-    } finally {
-      process.chdir(cwdBeforeSwitch);
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  test("spawnInstance uses project-local acp-link binary", async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "instance-service-local-acp-link-"));
-    const cwdBeforeSwitch = process.cwd();
-    try {
-      const localBinDir = join(tempDir, "node_modules", ".bin");
-      const localAcpLink = join(localBinDir, "acp-link");
-      mkdirSync(localBinDir, { recursive: true });
-      writeFileSync(localAcpLink, "#!/bin/sh\nexit 0\n");
-      chmodSync(localAcpLink, 0o755);
-
-      process.chdir(tempDir);
-
-      const inst = await spawnInstance("test-user");
-      createdInstanceIds.push(inst.id);
-
-      expect(mockSpawn).toHaveBeenCalled();
-      const lastCall = mockSpawn.mock.calls.at(-1) as [string, ...unknown[]] | undefined;
-      expect(lastCall).toBeDefined();
-      expect(realpathSync(lastCall![0])).toBe(realpathSync(localAcpLink));
-    } finally {
-      process.chdir(cwdBeforeSwitch);
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  test("spawnInstance creates an instance and returns it", async () => {
-    const inst = await spawnInstance("test-user");
-    createdInstanceIds.push(inst.id);
+    expect(mockLaunchInstance).toHaveBeenCalledTimes(1);
+    const call = mockLaunchInstance.mock.calls[0][0];
+    expect(call.engineType).toBe("opencode");
+    expect(call.nodeId).toBe("local-default");
+    expect(call.instanceId).toMatch(/^inst_/);
 
     expect(inst.id).toMatch(/^inst_/);
-    expect(inst.userId).toBe("test-user");
-    expect(inst.port).toBeGreaterThanOrEqual(8888);
-    expect(inst.port).toBeLessThanOrEqual(8999);
-    expect(inst.status).toBe("running");
-    expect(inst.apiKey).toBeTruthy();
+    expect(inst.port).toBe(8888);
+    expect(inst.apiKey).toBe("test_token_acquired_from_runtime");
     expect(inst.pid).toBe(12345);
-  });
+    expect(inst.status).toBe("running");
+    expect(inst.environmentId).toBe("env_test");
+    expect(inst.userId).toBe("test-user");
+    expect(inst.instanceNumber).toBe(1);
 
-  test("listInstances filters by userId", async () => {
-    const inst1 = await spawnInstance("user-a");
-    createdInstanceIds.push(inst1.id);
-    const inst2 = await spawnInstance("user-b");
-    createdInstanceIds.push(inst2.id);
-
-    const userAInstances = listInstances("user-a");
-    expect(userAInstances).toHaveLength(1);
-    expect(userAInstances[0].userId).toBe("user-a");
-
-    const userBInstances = listInstances("user-b");
-    expect(userBInstances).toHaveLength(1);
-    expect(userBInstances[0].userId).toBe("user-b");
-  });
-
-  test("getInstance returns the correct instance", async () => {
-    const inst = await spawnInstance("test-user");
     createdInstanceIds.push(inst.id);
+  });
+
+  // 实例编号递增
+  test("instance numbers 严格递增", async () => {
+    const inst1 = await spawnForUser("test-user", "env_nums");
+    const inst2 = await spawnForUser("test-user", "env_nums");
+    const inst3 = await spawnForUser("test-user", "env_nums");
+
+    expect(inst1.instanceNumber).toBe(1);
+    expect(inst2.instanceNumber).toBe(2);
+    expect(inst3.instanceNumber).toBe(3);
+
+    createdInstanceIds.push(inst1.id, inst2.id, inst3.id);
+  });
+});
+
+describe("CoreInstanceAdapter — query", () => {
+  // listInstances 按 teamId 过滤
+  test("listInstances 按 teamId 过滤", async () => {
+    const inst1 = await spawnForUser("user-a", "env_list_a");
+    const inst2 = await spawnForUser("user-b", "env_list_b");
+
+    mockListInstances.mockReturnValueOnce([
+      mockSnapshot({ instanceId: inst1.id, pluginMetadata: { port: 8888, token: "t", pid: 1 } }),
+      mockSnapshot({ instanceId: inst2.id, pluginMetadata: { port: 8889, token: "t2", pid: 2 } }),
+    ]);
+
+    const teamTest = listInstances("team-test");
+    expect(teamTest).toHaveLength(2);
+
+    mockListInstances.mockReturnValueOnce([
+      mockSnapshot({ instanceId: inst1.id, pluginMetadata: { port: 8888, token: "t", pid: 1 } }),
+      mockSnapshot({ instanceId: inst2.id, pluginMetadata: { port: 8889, token: "t2", pid: 2 } }),
+    ]);
+
+    const otherTeam = listInstances("other-team");
+    expect(otherTeam).toHaveLength(0);
+  });
+
+  // findRunningInstanceByEnvironment 按 environmentId 过滤
+  test("findRunningInstanceByEnvironment 找到匹配的 running 实例", async () => {
+    const inst = await spawnForUser("test-user", "env_find");
+
+    mockListInstances.mockReturnValueOnce([
+      mockSnapshot({ instanceId: inst.id, pluginMetadata: { port: 8888, token: "t", pid: 1 } }),
+    ]);
+
+    const found = findRunningInstanceByEnvironment("env_find");
+    expect(found).toBeDefined();
+    expect(found!.id).toBe(inst.id);
+    expect(found!.environmentId).toBe("env_find");
+  });
+
+  // findRunningInstanceByEnvironment 找不到时不返回
+  test("findRunningInstanceByEnvironment 未匹配时返回 undefined", async () => {
+    await spawnForUser("test-user", "env_find_miss");
+
+    mockListInstances.mockReturnValueOnce([mockSnapshot({ instanceId: "inst_no_match" })]);
+
+    const found = findRunningInstanceByEnvironment("env_nonexistent");
+    expect(found).toBeUndefined();
+  });
+
+  // getInstance 返回已创建的实例
+  test("getInstance 返回已有实例", async () => {
+    const inst = await spawnForUser("test-user", "env_get");
+
+    mockGetInstance.mockReturnValueOnce(
+      mockSnapshot({ instanceId: inst.id, pluginMetadata: { port: 8888, token: "t", pid: 1 } }),
+    );
 
     const found = getInstance(inst.id);
     expect(found).toBeDefined();
     expect(found!.id).toBe(inst.id);
   });
 
-  test("getInstance returns undefined for unknown id", () => {
-    const found = getInstance("inst_nonexistent");
-    expect(found).toBeUndefined();
+  // getInstance 返回 undefined
+  test("getInstance 不存在时返回 undefined", () => {
+    mockGetInstance.mockReturnValueOnce(null);
+    expect(getInstance("inst_nonexistent")).toBeUndefined();
   });
 
-  test("stopInstance rejects non-owner", async () => {
-    const inst = await spawnInstance("owner-user");
-    createdInstanceIds.push(inst.id);
+  // listInstancesByEnvironment 只返回活跃实例
+  test("listInstancesByEnvironment 过滤 stopped 实例", async () => {
+    const inst = await spawnForUser("test-user", "env_list_by_env");
 
-    const result = stopInstance(inst.id, "other-user");
+    mockListInstances.mockReturnValueOnce([mockSnapshot({ instanceId: inst.id, status: "stopped" })]);
+
+    const active = listInstancesByEnvironment("env_list_by_env");
+    expect(active).toHaveLength(0);
+  });
+
+  // getRunningInstancesByEnvironment 只返回 running 实例
+  test("getRunningInstancesByEnvironment 只返回 running", async () => {
+    const inst = await spawnForUser("test-user", "env_running");
+
+    mockListInstances.mockReturnValueOnce([
+      mockSnapshot({ instanceId: inst.id, pluginMetadata: { port: 8888, token: "t", pid: 1 } }),
+    ]);
+
+    const running = getRunningInstancesByEnvironment("env_running");
+    expect(running).toHaveLength(1);
+    expect(running[0].status).toBe("running");
+  });
+});
+
+describe("CoreInstanceAdapter — stop", () => {
+  // stopInstance 成功
+  test("stopInstance 委托给 core.stopInstance", async () => {
+    const inst = await spawnForUser("test-user", "env_stop");
+
+    mockGetInstance.mockReturnValueOnce(mockSnapshot({ instanceId: inst.id }));
+
+    const result = await stopInstance(inst.id, "team-test");
+    expect(result.ok).toBe(true);
+    expect(mockStopInstance).toHaveBeenCalledTimes(1);
+  });
+
+  // stopInstance 拒绝非 owner
+  test("stopInstance 拒绝非 owner", async () => {
+    const inst = await spawnForUser("owner-user", "env_owner_stop");
+
+    const result = await stopInstance(inst.id, "wrong-team");
     expect(result.ok).toBe(false);
     expect(result.error).toBe("Not your instance");
   });
 
-  test("stopInstance rejects already stopped instance", async () => {
-    const inst = await spawnInstance("test-user");
-    createdInstanceIds.push(inst.id);
-
-    // Stop it first
-    stopInstance(inst.id, "test-user");
-
-    // Try to stop again
-    const result = stopInstance(inst.id, "test-user");
-    expect(result.ok).toBe(false);
-    expect(result.error).toBe("Already stopped");
-  });
-
-  test("stopInstance returns not found for unknown id", () => {
-    const result = stopInstance("inst_nonexistent", "test-user");
+  // stopInstance 不存在
+  test("stopInstance 不存在时返回错误", async () => {
+    const result = await stopInstance("inst_nonexistent", "team-test");
     expect(result.ok).toBe(false);
     expect(result.error).toBe("Instance not found");
   });
 
-  test("stopInstance succeeds for valid instance", async () => {
-    const inst = await spawnInstance("test-user");
-    createdInstanceIds.push(inst.id);
+  // stopInstance 已停止
+  test("stopInstance 已停止实例", async () => {
+    const inst = await spawnForUser("test-user", "env_already_stopped");
 
-    const result = stopInstance(inst.id, "test-user");
-    expect(result.ok).toBe(true);
+    mockGetInstance.mockReturnValueOnce(mockSnapshot({ instanceId: inst.id, status: "stopped" }));
 
-    const found = getInstance(inst.id);
-    expect(found!.status).toBe("stopped");
-  });
-
-  test("stopAllInstances iterates all instances", async () => {
-    const inst1 = await spawnInstance("user-a");
-    createdInstanceIds.push(inst1.id);
-    const inst2 = await spawnInstance("user-b");
-    createdInstanceIds.push(inst2.id);
-
-    // stopAllInstances should not throw
-    stopAllInstances();
-
-    const inst1After = getInstance(inst1.id);
-    const inst2After = getInstance(inst2.id);
-    // After stopAllInstances, status may still be "running" because process.kill
-    // is mocked and doesn't actually change status (the close event handler does)
-    // but the function should complete without error
-    expect(inst1After).toBeDefined();
-    expect(inst2After).toBeDefined();
+    const result = await stopInstance(inst.id, "team-test");
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("Already stopped");
   });
 });
 
-describe("InstanceService multi-instance", () => {
-  let originalCwd = process.cwd();
-  let testCwd: string | null = null;
+describe("CoreInstanceAdapter — ensureRunning", () => {
+  // 复用已有 running 实例
+  test("ensureRunning 复用已有 running 实例", async () => {
+    const inst = await spawnForUser("test-user", "env_ensure");
 
-  beforeEach(() => {
-    originalCwd = process.cwd();
-    testCwd = mkdtempSync(join(tmpdir(), "instance-multi-"));
-    process.chdir(testCwd);
-    mockKnowledgeBindings = [];
-    setInstanceSpawnForTesting(mockSpawn as unknown as typeof import("node:child_process").spawn);
+    mockLaunchInstance.mockClear();
+
+    mockListInstances.mockReturnValueOnce([
+      mockSnapshot({ instanceId: inst.id, pluginMetadata: { port: 8888, token: "t", pid: 1 } }),
+    ]);
+
+    const result = await ensureRunning("test-user", "env_ensure");
+    expect(result.status).toBe("reused");
+    expect(result.instance.id).toBe(inst.id);
+    expect(mockLaunchInstance).not.toHaveBeenCalled();
   });
 
-  afterEach(() => {
-    stopAllInstances();
-    setInstanceSpawnForTesting(null);
-    process.chdir(originalCwd);
-    if (testCwd) {
-      rmSync(testCwd, { recursive: true, force: true });
-      testCwd = null;
-    }
-  });
+  // 创建新实例
+  test("ensureRunning 创建新实例", async () => {
+    mockListInstances.mockReturnValueOnce([]);
 
-  test("multiple instances can be created for the same environment", async () => {
-    const inst1 = await spawnInstanceFromEnvironment("test-user", "env_test_1");
-    const inst2 = await spawnInstanceFromEnvironment("test-user", "env_test_1");
-    expect(inst1.id).not.toBe(inst2.id);
-    expect(inst1.status).toBe("running");
-    expect(inst2.status).toBe("running");
-  });
-
-  test("instance numbers are strictly increasing", async () => {
-    const inst1 = await spawnInstanceFromEnvironment("test-user", "env_test_num");
-    const inst2 = await spawnInstanceFromEnvironment("test-user", "env_test_num");
-    const inst3 = await spawnInstanceFromEnvironment("test-user", "env_test_num");
-    expect(inst1.instanceNumber).toBe(1);
-    expect(inst2.instanceNumber).toBe(2);
-    expect(inst3.instanceNumber).toBe(3);
-  });
-
-  test("instance numbers are not recycled after stop", async () => {
-    const inst1 = await spawnInstanceFromEnvironment("test-user", "env_test_recycle");
-    stopInstance(inst1.id, "test-user");
-    const inst2 = await spawnInstanceFromEnvironment("test-user", "env_test_recycle");
-    expect(inst2.instanceNumber).toBe(2);
-  });
-
-  test("listInstancesByEnvironment returns only active instances", async () => {
-    const inst1 = await spawnInstanceFromEnvironment("test-user", "env_test_list");
-    const inst2 = await spawnInstanceFromEnvironment("test-user", "env_test_list");
-    const inst3 = await spawnInstanceFromEnvironment("test-user", "env_test_list");
-    stopInstance(inst1.id, "test-user");
-    const active = listInstancesByEnvironment("env_test_list");
-    expect(active).toHaveLength(2);
-    expect(active.every(i => i.status !== "stopped" && i.status !== "error")).toBe(true);
-  });
-
-  test("getRunningInstancesByEnvironment returns only running instances", async () => {
-    const inst1 = await spawnInstanceFromEnvironment("test-user", "env_test_running");
-    const inst2 = await spawnInstanceFromEnvironment("test-user", "env_test_running");
-    const running = getRunningInstancesByEnvironment("env_test_running");
-    expect(running).toHaveLength(2);
-    expect(running.every(i => i.status === "running")).toBe(true);
-  });
-
-  test("each instance gets an independent session", async () => {
-    const inst1 = await spawnInstanceFromEnvironment("test-user", "env_test_session");
-    const inst2 = await spawnInstanceFromEnvironment("test-user", "env_test_session");
-    expect(inst1.sessionId).toBeTruthy();
-    expect(inst2.sessionId).toBeTruthy();
-    expect(inst1.sessionId).not.toBe(inst2.sessionId);
-  });
-
-  test("default agent with knowledge bindings injects kb MCP config", async () => {
-    mockKnowledgeBindings = [{ knowledgeBaseId: "kb_1", priority: 0, enabled: true }];
-    await spawnInstanceFromEnvironment("test-user", "env_test_inject");
-
-    const configPath = join(process.cwd(), ".opencode", "opencode.json");
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
-    expect(config.default_agent).toBe("test-agent");
-    expect(config.mcp.kb).toEqual({
-      type: "remote",
-      url: "http://localhost:3000/mcp/knowledge",
-      headers: { Authorization: "Bearer env_secret_test123" },
-      enabled: true,
-      timeout: 15000,
-    });
-  });
-
-  test("default agent without knowledge bindings does not inject knowledge MCP config", async () => {
-    await spawnInstanceFromEnvironment("test-user", "env_test_no_kb");
-
-    const configPath = join(process.cwd(), ".opencode", "opencode.json");
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
-    expect(config.default_agent).toBe("test-agent");
-    expect(config.mcp).toBeUndefined();
+    const result = await ensureRunning("test-user", "env_ensure_new");
+    expect(result.status).toBe("spawned");
+    expect(result.instance.id).toMatch(/^inst_/);
   });
 });

@@ -1,14 +1,14 @@
+import { cn } from "../../src/lib/utils";
 import {
   AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogAction,
   AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "../ui/alert-dialog";
-import { cn } from "../../src/lib/utils";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -46,8 +46,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={loading}
             className={cn(
-              variant === "destructive" &&
-                "bg-destructive text-white hover:bg-destructive/90 focus:ring-destructive"
+              variant === "destructive" && "bg-destructive text-white hover:bg-destructive/90 focus:ring-destructive",
             )}
           >
             {loading ? "处理中..." : confirmLabel}

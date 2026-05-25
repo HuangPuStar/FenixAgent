@@ -1,6 +1,7 @@
+import { useTranslation } from "react-i18next";
+import { formatTime } from "../lib/utils";
 import type { Session } from "../types";
 import { StatusBadge } from "./Navbar";
-import { esc, formatTime } from "../lib/utils";
 
 interface SessionListProps {
   sessions: Session[];
@@ -8,10 +9,12 @@ interface SessionListProps {
 }
 
 export function SessionList({ sessions, onSelect }: SessionListProps) {
+  const { t } = useTranslation("components");
+
   if (!sessions || sessions.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-surface-1 px-4 py-8 text-center text-text-muted text-sm">
-        暂无会话
+        {t("sessionList.noSessions")}
       </div>
     );
   }
@@ -29,13 +32,9 @@ export function SessionList({ sessions, onSelect }: SessionListProps) {
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="truncate text-sm font-medium text-text-primary">
-                {session.title || session.id}
-              </span>
+              <span className="truncate text-sm font-medium text-text-primary">{session.title || session.id}</span>
               {session.source === "acp" && (
-                <span className="rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brand">
-                  ACP
-                </span>
+                <span className="rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brand">ACP</span>
               )}
             </div>
             <div className="truncate text-xs text-text-muted mt-0.5">{session.id}</div>

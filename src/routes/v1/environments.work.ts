@@ -1,41 +1,86 @@
-import { Hono } from "hono";
-import { pollWork, ackWork, stopWork, heartbeatWork } from "../../services/work-dispatch";
-import { apiKeyAuth, acceptCliHeaders } from "../../auth/middleware";
+import Elysia from "elysia";
+import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
+import { requireOrgScope } from "../../plugins/require-team-scope";
+import { environmentRepo } from "../../repositories";
 import { updatePollTime } from "../../services/environment";
+import { ackWork, heartbeatWork, pollWork, stopWork } from "../../services/work-dispatch";
 
-const app = new Hono();
+const app = new Elysia({ name: "v1-environments-work", prefix: "/v1/environments" }).use(authGuardPlugin);
+
+/** 校验目标 environment 属于当前认证 team */
+async function requireEnvOwnership(
+  authContext: AuthContext | null,
+  envId: string,
+  error: (code: number, body: unknown) => Response,
+): Promise<Response | undefined> {
+  const env = await environmentRepo.getById(envId);
+  if (!env) {
+    return error(404, { error: { type: "not_found", message: "Environment not found" } });
+  }
+  const denied = requireOrgScope(authContext, env.organizationId);
+  if (denied) return denied;
+  return;
+}
 
 /** GET /v1/environments/:id/work/poll — Long-poll for work */
-app.get("/:id/work/poll", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const envId = c.req.param("id")!;
-  updatePollTime(envId);
-  const result = await pollWork(envId);
-  if (!result) {
-    // Return 204 No Content so the client's axios parses it as null
-    return c.body(null, 204);
-  }
-  return c.json(result, 200);
-});
+app.get(
+  "/:id/work/poll",
+  async ({ store, params, set, error }) => {
+    const denied = await requireEnvOwnership(store.authContext, params.id, error);
+    if (denied) return denied;
+
+    const envId = params.id;
+    await updatePollTime(envId);
+    const result = await pollWork(envId);
+    if (!result) {
+      set.status = 204;
+      return null;
+    }
+    return result;
+  },
+  { apiKeyAuth: true },
+);
 
 /** POST /v1/environments/:id/work/:workId/ack — Acknowledge work */
-app.post("/:id/work/:workId/ack", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const workId = c.req.param("workId")!;
-  ackWork(workId);
-  return c.json({ status: "ok" }, 200);
-});
+app.post(
+  "/:id/work/:workId/ack",
+  async ({ store, params, error }) => {
+    const denied = await requireEnvOwnership(store.authContext, params.id, error);
+    if (denied) return denied;
+
+    const workId = params.workId;
+    ackWork(workId);
+    return { status: "ok" };
+  },
+  { apiKeyAuth: true },
+);
 
 /** POST /v1/environments/:id/work/:workId/stop — Stop work */
-app.post("/:id/work/:workId/stop", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const workId = c.req.param("workId")!;
-  stopWork(workId);
-  return c.json({ status: "ok" }, 200);
-});
+app.post(
+  "/:id/work/:workId/stop",
+  async ({ store, params, error }) => {
+    const denied = await requireEnvOwnership(store.authContext, params.id, error);
+    if (denied) return denied;
+
+    const workId = params.workId;
+    stopWork(workId);
+    return { status: "ok" };
+  },
+  { apiKeyAuth: true },
+);
 
 /** POST /v1/environments/:id/work/:workId/heartbeat — Heartbeat */
-app.post("/:id/work/:workId/heartbeat", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const workId = c.req.param("workId")!;
-  const result = heartbeatWork(workId);
-  return c.json(result, 200);
-});
+app.post(
+  "/:id/work/:workId/heartbeat",
+  async ({ store, params, error }) => {
+    const denied = await requireEnvOwnership(store.authContext, params.id, error);
+    if (denied) return denied;
+
+    const workId = params.workId;
+    const result = heartbeatWork(workId);
+    return result;
+  },
+  { apiKeyAuth: true },
+);
 
 export default app;

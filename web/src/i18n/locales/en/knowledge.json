@@ -1,0 +1,73 @@
+{
+  "title": "Knowledge Bases",
+  "subtitle": "Manage knowledge bases, view resource status and upload indexed materials",
+  "newKnowledgeBase": "New Knowledge Base",
+  "loadFailed": "Failed to load knowledge bases",
+  "loadDetailFailed": "Failed to load knowledge base details",
+  "loadResourcesFailed": "Failed to load resource list",
+  "nameAndSlugRequired": "Name and slug are required",
+  "updateFailed": "Update failed",
+  "knowledgeBaseUpdated": "Knowledge base updated",
+  "createFailed": "Create failed",
+  "knowledgeBaseCreated": "Knowledge base created",
+  "saveFailed": "Save failed",
+  "deleteFailed": "Delete failed",
+  "knowledgeBaseDeleted": "Knowledge base deleted",
+  "filesUploaded": "{{count}} file(s) uploaded",
+  "uploadFailed": "Upload failed",
+  "enterResourceUrl": "Please enter a resource URL",
+  "importFailed": "Import failed",
+  "urlResourceSubmitted": "URL resource submitted",
+  "deleteResourceFailed": "Failed to delete resource",
+  "resourceDeleted": "Resource deleted",
+  "columns": {
+    "name": "Name",
+    "status": "Status",
+    "resourcesCount": "Resources",
+    "updatedAt": "Last Updated",
+    "bindingsCount": "Bound Agents"
+  },
+  "table": {
+    "searchPlaceholder": "Search knowledge bases...",
+    "emptyMessage": "No knowledge bases"
+  },
+  "actions": {
+    "detail": "Detail",
+    "upload": "Upload",
+    "delete": "Delete"
+  },
+  "detail": {
+    "slug": "slug",
+    "edit": "Edit",
+    "boundAgents": "Bound to {{count}} Agent(s)",
+    "noDescription": "No description",
+    "recentError": "Recent error",
+    "uploadResources": "Upload Resources",
+    "selectFile": "Select file",
+    "uploading": "Uploading...",
+    "importUrl": "Import URL",
+    "importUrlPlaceholder": "Import URL",
+    "importing": "Importing...",
+    "sourceNamePlaceholder": "Optional: source name",
+    "resourceList": "Resource List",
+    "resourceCount": "{{count}} resource(s)",
+    "noResources": "No resources",
+    "deleting": "Deleting...",
+    "delete": "Delete",
+    "selectToView": "Select a knowledge base on the left to view details"
+  },
+  "form": {
+    "editTitle": "Edit Knowledge Base",
+    "createTitle": "New Knowledge Base",
+    "name": "Name",
+    "namePlaceholder": "e.g. Project Docs",
+    "slug": "Slug",
+    "slugPlaceholder": "e.g. project-docs",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional, briefly describe the knowledge base purpose"
+  },
+  "confirm": {
+    "title": "Confirm Delete Knowledge Base",
+    "description": "Are you sure you want to delete knowledge base \"{{name}}\"?"
+  }
+}

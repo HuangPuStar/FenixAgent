@@ -1,0 +1,82 @@
+{
+  "title": "Skill Management",
+  "subtitle": "Manage global skill templates available to AI Agents",
+  "search": "Search skills...",
+  "empty": "No skills yet",
+  "column": {
+    "name": "Skill Name",
+    "description": "Description"
+  },
+  "btn": {
+    "edit": "Edit",
+    "delete": "Delete",
+    "createSkill": "+ New Skill",
+    "uploadSkill": "Upload Skill",
+    "batchDelete": "Batch Delete",
+    "reselect": "Reselect"
+  },
+  "dialog": {
+    "editTitle": "Edit Skill",
+    "createTitle": "New Skill",
+    "save": "Save",
+    "startUpload": "Start Upload",
+    "uploadTab": "Upload Skill",
+    "createTab": "Create Skill"
+  },
+  "form": {
+    "name": "Skill Name",
+    "description": "Description",
+    "content": "Content",
+    "descriptionPlaceholder": "Optional, briefly describe the skill purpose",
+    "contentHint": "Markdown-formatted skill instructions",
+    "contentPlaceholder": "Enter Markdown content...",
+    "nameRequired": "Name cannot be empty",
+    "contentRequired": "Content cannot be empty"
+  },
+  "upload": {
+    "selectFolder": "Click to select a folder containing skills",
+    "selectFolderHint": "Each subdirectory will be recognized as a skill, and must contain SKILL.md",
+    "selectedDirs": "Selected {{count}} directories",
+    "files": "{{count}} files",
+    "missingSkillMd": "Missing SKILL.md",
+    "importable": "Importable",
+    "itemSummary": "{{name}} ({{count}} files)",
+    "itemSummaryMissing": "{{name}} ({{count}} files, missing SKILL.md)"
+  },
+  "confirm": {
+    "deleteTitle": "Confirm Delete",
+    "deleteDescription": "This action is irreversible. Are you sure you want to delete skill \"{{name}}\"?",
+    "batchDeleteTitle": "Batch Delete Confirmation",
+    "batchDeleteDescription": "Are you sure you want to delete the selected {{count}} skills? {{workspaceHint}}",
+    "batchDeleteHint": "This action is irreversible.",
+    "overwriteTitle": "Confirm Overwrite Conflicting Skills",
+    "overwriteDescription": "Overwriting will replace existing skill content for the entire directory, and old files will be deleted. Are you sure you want to continue?",
+    "overwriteConfirm": "Confirm Overwrite"
+  },
+  "conflict": {
+    "title": "Detected skill name conflicts",
+    "skipConflicts": "Skip Conflicting Items",
+    "overwriteExisting": "Overwrite Existing Skills",
+    "detected": "Detected skills with the same name, please choose to skip or overwrite"
+  },
+  "toast": {
+    "loadDetailFailed": "Failed to load skill details",
+    "saveFailed": "Save failed",
+    "saveFailedWith": "Save failed: {{message}}",
+    "skillUpdated": "Skill updated",
+    "skillCreated": "Skill created",
+    "skillDeleted": "Skill deleted",
+    "operationFailed": "Operation failed: {{message}}",
+    "deleteFailed": "Delete failed",
+    "deleteFailedWith": "Delete failed: {{message}}",
+    "batchDeleteFailed": "Batch delete failed",
+    "batchDeleteFailedWith": "Batch delete failed: {{message}}",
+    "batchDeleted": "Deleted {{count}} skills",
+    "importResult": "Imported {{imported}} skills",
+    "importResultWithSkipped": "Imported {{imported}} skills, skipped {{skipped}} conflicting skills",
+    "importFailed": "Import failed",
+    "importFailedWith": "Import failed: {{message}}",
+    "loadListFailed": "Failed to load skill list",
+    "loadListFailedWith": "Failed to load skill list: {{message}}"
+  }
+}

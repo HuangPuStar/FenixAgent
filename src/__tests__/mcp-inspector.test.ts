@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { McpInspectResult, McpToolItem } from "../services/mcp-inspector";
 
 describe("MCP Inspector - Types and Structure", () => {
@@ -18,7 +18,11 @@ describe("MCP Inspector - Types and Structure", () => {
 
   test("McpInspectResult has correct shape for successful inspection", () => {
     const tools: McpToolItem[] = [
-      { name: "read_file", description: "Read a file", inputSchema: { type: "object", properties: { path: { type: "string" } } } },
+      {
+        name: "read_file",
+        description: "Read a file",
+        inputSchema: { type: "object", properties: { path: { type: "string" } } },
+      },
       { name: "list_files", description: "List files" },
     ];
     const result: McpInspectResult = {

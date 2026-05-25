@@ -1,43 +1,59 @@
-import { Hono } from "hono";
-import { cors } from "hono/cors";
-import { logger } from "hono/logger";
-import { serveStatic } from "hono/bun";
-import { websocket } from "hono/bun";
-import { config } from "./config";
-import { auth } from "./auth/better-auth";
-import { closeAllAcpConnections } from "./transport/acp-ws-handler";
-import { closeAllRelayConnections } from "./transport/acp-relay-handler";
-import { dirname, resolve } from "node:path";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import acpRoutes from "./routes/acp";
-import v1Environments from "./routes/v1/environments";
-import webSessions from "./routes/web/sessions";
-import webEnvironments from "./routes/web/environments";
-import webApiKeys from "./routes/web/api-keys";
-import webConfig from "./routes/web/config";
-import webInstances from "./routes/web/instances";
-import webTasks from "./routes/web/tasks";
-import webChannels from "./routes/web/channels";
-import webKnowledgeBases from "./routes/web/knowledge-bases";
-import fileRoutes from "./routes/web/files";
-import { workflowStaticApp } from "./routes/web/workflow-proxy";
-import knowledgeMcpRoutes from "./routes/mcp/knowledge";
-import { stopAllInstances, spawnInstanceFromEnvironment, findRunningInstanceByEnvironment } from "./services/instance";
-import { storeListAllEnvironments, storeLoadSessionsFromDB } from "./store";
-import { migrateSkillsDir } from "./services/skill";
-import { startScheduler, stopScheduler } from "./services/scheduler";
-import { initHermesClient, getHermesClient } from "./services/hermes-client";
 import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import swagger from "@elysiajs/swagger";
+import Elysia from "elysia";
+import { applyEnv, config } from "./config";
+import { db, initDb, client as pgClient } from "./db";
+import { agentSession } from "./db/schema";
+import { validateEnv } from "./env";
+import { authPlugin } from "./plugins/auth";
+import { corsPlugin } from "./plugins/cors";
+import { errorPlugin } from "./plugins/error-handler";
+import { loggerPlugin } from "./plugins/logger";
+import { rateLimitPlugin } from "./plugins/rate-limit";
+import { ctrlStaticPlugin } from "./plugins/static";
+import { environmentRepo } from "./repositories";
+import acpRoutes from "./routes/acp";
+import knowledgeMcpRoutes from "./routes/mcp/knowledge";
+import v1Environments from "./routes/v1/environments";
+import v1EnvironmentsWork from "./routes/v1/environments.work";
+import v1SessionIngress from "./routes/v1/session-ingress";
+import v1Sessions from "./routes/v1/sessions";
+import v2CodeSessions from "./routes/v2/code-sessions";
+import v2Worker from "./routes/v2/worker";
+import v2WorkerEvents from "./routes/v2/worker-events";
+import v2WorkerEventsStream from "./routes/v2/worker-events-stream";
+import webApp from "./routes/web";
+import { workflowStaticApp } from "./routes/web/workflow-proxy";
+import { closeCache } from "./services/cache";
+import { getCoreRuntime } from "./services/core-bootstrap";
+import { getHermesClient, initHermesClient } from "./services/hermes-client";
+import { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment, stopAllInstances } from "./services/instance";
+import { startScheduler, stopScheduler } from "./services/scheduler";
+import { resolveWorkspacePath } from "./services/workspace-resolver";
+import { closeAllAcpConnections } from "./transport/acp-ws-handler";
+import { closeAllRelayConnections } from "./transport/relay";
 
-console.log("[RCS] Database initialized (SQLite + better-auth)");
+await initDb();
+console.log("[RCS] Database initialized (PostgreSQL + better-auth)");
 
-await migrateSkillsDir();
+// 重启时重置所有 agent_session 状态为 idle
+// WebSocket/EventBus 已断开，之前的运行状态不再有效
+import { sql } from "drizzle-orm";
+
+await db.update(agentSession).set({ status: "idle", updatedAt: new Date() }).where(sql`1=1`);
+console.log("[RCS] All agent sessions reset to idle");
+
+const env = validateEnv();
+applyEnv(env);
+
+getCoreRuntime();
+console.log("[RCS] Core runtime initialized (opencode engine + local node)");
+
 await startScheduler();
-storeLoadSessionsFromDB();
-console.log("[RCS] Sessions restored from database");
 
 // Initialize Hermes client if configured
+// biome-ignore lint/suspicious/noExplicitAny: config channels shape is dynamic
 const hermesUrl = process.env.HERMES_URL ?? (config as any).channels?.hermesUrl;
 if (hermesUrl) {
   initHermesClient(hermesUrl);
@@ -53,12 +69,13 @@ try {
 
 // Auto-start instances for all environments on server boot
 (async () => {
-  const envs = storeListAllEnvironments();
+  const envs = await environmentRepo.listAll();
   for (const env of envs) {
     if (!env.userId) continue;
+    if (!env.organizationId) continue;
     if (!env.autoStart) continue;
-    const cwd = env.workspacePath || env.directory;
-    if (!cwd || !existsSync(cwd)) {
+    const cwd = resolveWorkspacePath(env.organizationId, env.userId);
+    if (!existsSync(cwd)) {
       console.log(`[RCS] Skipping environment ${env.name}: workspace directory does not exist (${cwd})`);
       continue;
     }
@@ -67,82 +84,93 @@ try {
     try {
       await spawnInstanceFromEnvironment(env.userId, env.id);
       console.log(`[RCS] Auto-started instance for environment: ${env.name} (${env.id})`);
-    } catch (err: any) {
-      console.error(`[RCS] Failed to auto-start instance for ${env.name}: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(
+        `[RCS] Failed to auto-start instance for ${env.name}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 })();
 
-const app = new Hono();
+const app = new Elysia()
+  .use(corsPlugin)
+  .use(
+    swagger({
+      documentation: {
+        info: {
+          title: "RCS API",
+          version: config.version,
+          description: "Remote Control Server API — config, sessions, environments, ACP protocol",
+        },
+        tags: [
+          { name: "Config", description: "Configuration management (providers, models, agents, skills, MCP)" },
+          { name: "Sessions", description: "Session management and event streaming" },
+          { name: "Environments", description: "ACP agent environments" },
+          { name: "Instances", description: "Agent instance lifecycle" },
+          { name: "Tasks", description: "Scheduled HTTP tasks" },
+          { name: "Knowledge", description: "Knowledge bases and resources" },
+          { name: "Channels", description: "IM channel bindings" },
+          { name: "Workflow Engine", description: "Native DAG workflow execution engine" },
+        ],
+      },
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+      exclude: ["/health", /^\/ctrl\/.*/],
+      path: "/docs/swagger",
+    }),
+  )
+  .use(loggerPlugin)
+  .use(errorPlugin)
+  .use(rateLimitPlugin)
+  // 全局请求体大小限制 10MB
+  .onBeforeHandle(({ request }) => {
+    const contentLength = request.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
+      return new Response(
+        JSON.stringify({ error: { type: "PAYLOAD_TOO_LARGE", message: "Request body exceeds 10MB limit" } }),
+        { status: 413, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  })
+  // Path normalization: collapse double slashes
+  .onBeforeHandle(({ request }) => {
+    const url = new URL(request.url);
+    if (url.pathname.includes("//")) {
+      url.pathname = url.pathname.replace(/\/+/g, "/");
+      return new Response(null, { status: 302, headers: { Location: url.toString() } });
+    }
+  })
+  // Health check
+  .get("/health", () => ({ status: "ok", version: config.version }))
+  .get("/", ({ set }) => {
+    set.status = 302;
+    set.headers.Location = "/ctrl/";
+  })
+  // better-auth handler
+  .use(authPlugin)
+  // Static files under /ctrl
+  .use(ctrlStaticPlugin)
+  // v1 compatibility routes
+  .use(v1Environments)
+  .use(v1EnvironmentsWork)
+  .use(v1Sessions)
+  .use(v1SessionIngress)
+  // v2 routes
+  .use(v2CodeSessions)
+  .use(v2Worker)
+  .use(v2WorkerEvents)
+  .use(v2WorkerEventsStream)
+  // Web control panel routes
+  .use(webApp)
+  // Workflow proxy (not under /web prefix)
+  .use(workflowStaticApp)
+  // MCP routes
+  .use(knowledgeMcpRoutes)
+  // ACP protocol routes
+  .use(acpRoutes);
 
-// Middleware
-app.use("*", logger());
-app.use("*", async (c, next) => {
-  const path = new URL(c.req.url).pathname;
-  if (path.includes("//")) {
-    const normalized = path.replace(/\/+/g, "/");
-    const url = new URL(c.req.url);
-    url.pathname = normalized;
-    return app.fetch(new Request(url.toString(), c.req.raw));
-  }
-  await next();
-});
-app.use("/web/*", cors());
-app.use("/api/auth/*", cors({
-  origin: "*",
-  allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  allowHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-}));
-
-// Health check
-app.get("/health", (c) => c.json({ status: "ok", version: config.version }));
-app.get("/", (c) => c.redirect("/ctrl/"));
-
-// better-auth handler
-app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
-
-// Static files — serve built web UI under /ctrl path
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const distDir = resolve(__dirname, "../web/dist");
-const webDir = existsSync(resolve(distDir, "index.html")) ? distDir : resolve(__dirname, "../web");
-
-const stripCtrlPrefix = (p: string) => p.replace(/^\/ctrl/, "");
-
-// /ctrl/:sessionId/user/* → redirect to file preview API (for iframe embedding)
-app.get("/ctrl/:sessionId/user/:filePath{.+}", (c) => {
-  const sessionId = c.req.param("sessionId");
-  const filePath = c.req.param("filePath");
-  return c.redirect(`/web/sessions/${sessionId}/user/${filePath}?preview=true`);
-});
-
-app.use("/ctrl/*", serveStatic({ root: webDir, rewriteRequestPath: stripCtrlPrefix }));
-app.get("/ctrl", serveStatic({ root: webDir, path: "index.html" }));
-app.get("/ctrl/", serveStatic({ root: webDir, path: "index.html" }));
-app.get("/ctrl/:sessionId", serveStatic({ root: webDir, path: "index.html" }));
-app.get("/ctrl/:sessionId/", serveStatic({ root: webDir, path: "index.html" }));
-
-// v1 compatibility routes (acp-link REST registration)
-app.route("/v1/environments", v1Environments);
-
-// Web control panel routes
-app.route("/web/sessions", fileRoutes);
-app.route("/web", webSessions);
-app.route("/web", webEnvironments);
-app.route("/web", webApiKeys);
-app.route("/web", webConfig);
-app.route("/web", webInstances);
-app.route("/web", webTasks);
-app.route("/web", webChannels);
-app.route("/web", webKnowledgeBases);
-
-// Workflow proxy routes (forward to acpx-g)
-app.route("/workflow-ui", workflowStaticApp);
-app.route("/", knowledgeMcpRoutes);
-
-// ACP protocol routes
 console.log("[RCS] ACP support enabled");
-app.route("/acp", acpRoutes);
 
 const port = config.port;
 const host = config.host;
@@ -152,16 +180,12 @@ console.log(`[RCS] Base URL: ${config.baseUrl || `http://localhost:${port}`}`);
 console.log(`[RCS] WebSocket idle timeout: ${config.wsIdleTimeout}s`);
 console.log(`[RCS] WebSocket keepalive interval: ${config.wsKeepaliveInterval}s`);
 
-export default {
-  port,
-  hostname: host,
-  fetch: app.fetch,
-  websocket: {
-    ...websocket,
-    idleTimeout: config.wsIdleTimeout,
-  },
-  idleTimeout: config.wsIdleTimeout,
-};
+export type App = typeof app;
+
+// app.listen() 设置 app.server（WebSocket 升级需要），同时 export default
+// 供 Eden Treaty treaty<App>() 做类型推断
+app.listen({ port, hostname: host });
+export default app;
 
 // Graceful shutdown
 async function gracefulShutdown(signal: string) {
@@ -170,8 +194,10 @@ async function gracefulShutdown(signal: string) {
   await hermesClient?.stop();
   closeAllAcpConnections();
   closeAllRelayConnections();
-  stopAllInstances();
+  await stopAllInstances();
   stopScheduler();
+  await closeCache();
+  await pgClient.end();
   process.exit(0);
 }
 

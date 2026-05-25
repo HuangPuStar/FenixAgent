@@ -1,0 +1,73 @@
+{
+  "title": "知识库",
+  "subtitle": "管理知识库、查看资源状态并上传索引材料",
+  "newKnowledgeBase": "新建知识库",
+  "loadFailed": "加载知识库失败",
+  "loadDetailFailed": "加载知识库详情失败",
+  "loadResourcesFailed": "加载资源列表失败",
+  "nameAndSlugRequired": "名称和 slug 为必填项",
+  "updateFailed": "更新失败",
+  "knowledgeBaseUpdated": "知识库已更新",
+  "createFailed": "创建失败",
+  "knowledgeBaseCreated": "知识库已创建",
+  "saveFailed": "保存失败",
+  "deleteFailed": "删除失败",
+  "knowledgeBaseDeleted": "知识库已删除",
+  "filesUploaded": "已上传 {{count}} 个文件",
+  "uploadFailed": "上传失败",
+  "enterResourceUrl": "请输入资源 URL",
+  "importFailed": "导入失败",
+  "urlResourceSubmitted": "URL 资源已提交",
+  "deleteResourceFailed": "删除资源失败",
+  "resourceDeleted": "资源已删除",
+  "columns": {
+    "name": "名称",
+    "status": "状态",
+    "resourcesCount": "资源数",
+    "updatedAt": "最近更新时间",
+    "bindingsCount": "绑定Agent数"
+  },
+  "table": {
+    "searchPlaceholder": "搜索知识库...",
+    "emptyMessage": "暂无知识库"
+  },
+  "actions": {
+    "detail": "详情",
+    "upload": "上传",
+    "delete": "删除"
+  },
+  "detail": {
+    "slug": "slug",
+    "edit": "编辑",
+    "boundAgents": "绑定 {{count}} 个 Agent",
+    "noDescription": "暂无描述",
+    "recentError": "最近错误",
+    "uploadResources": "上传资源",
+    "selectFile": "选择文件",
+    "uploading": "上传中...",
+    "importUrl": "导入 URL",
+    "importUrlPlaceholder": "导入 URL",
+    "importing": "导入中...",
+    "sourceNamePlaceholder": "可选：来源名称",
+    "resourceList": "资源列表",
+    "resourceCount": "{{count}} 个资源",
+    "noResources": "暂无资源",
+    "deleting": "删除中...",
+    "delete": "删除",
+    "selectToView": "选择左侧知识库查看详情"
+  },
+  "form": {
+    "editTitle": "编辑知识库",
+    "createTitle": "新建知识库",
+    "name": "名称",
+    "namePlaceholder": "例如 项目文档",
+    "slug": "Slug",
+    "slugPlaceholder": "例如 project-docs",
+    "description": "描述",
+    "descriptionPlaceholder": "可选，简要描述知识库用途"
+  },
+  "confirm": {
+    "title": "确认删除知识库",
+    "description": "确定删除知识库 \"{{name}}\" 吗？"
+  }
+}

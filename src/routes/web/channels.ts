@@ -1,89 +1,165 @@
-import { Hono } from "hono";
-
-import { sessionAuth } from "../../auth/middleware";
+import Elysia from "elysia";
+import { authGuardPlugin } from "../../plugins/auth";
+import { environmentRepo } from "../../repositories";
+import {
+  ChannelBindingSchema,
+  ChannelProviderDescriptorSchema,
+  CreateChannelBindingRequestSchema,
+  HermesStatusSchema,
+} from "../../schemas/channel.schema";
+import { createBinding, deleteBinding, listBindings, updateBinding } from "../../services/channel-binding";
 import { getChannelProvider, listChannelProviders } from "../../services/channel-provider";
 import { getHermesClient } from "../../services/hermes-client";
-import { listBindings, createBinding, deleteBinding, updateBinding } from "../../services/channel-binding";
-import { storeGetEnvironment } from "../../store";
 
-const app = new Hono();
-
-app.get("/channels/providers", sessionAuth, (c) => {
-  return c.json(listChannelProviders(), 200);
+const app = new Elysia({ name: "web-channels" }).use(authGuardPlugin).model({
+  "channel-provider-list": ChannelProviderDescriptorSchema.array(),
+  "hermes-status": HermesStatusSchema,
+  "channel-binding": ChannelBindingSchema,
+  "channel-binding-list": ChannelBindingSchema.array(),
+  "create-channel-binding-request": CreateChannelBindingRequestSchema,
 });
 
-app.get("/channels", sessionAuth, (c) => {
-  return c.json([], 200);
-});
+app.get(
+  "/channels/providers",
+  () => {
+    return listChannelProviders();
+  },
+  { sessionAuth: true, response: "channel-provider-list" },
+);
 
-app.post("/channels", sessionAuth, async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const provider = typeof body?.type === "string" ? getChannelProvider(body.type) : undefined;
-  const status = provider ? 409 : 400;
-  return c.json(
-    { error: { type: "FORBIDDEN", message: "当前平台暂未开放" } },
-    status,
-  );
-});
+app.get(
+  "/channels",
+  () => {
+    return [];
+  },
+  { sessionAuth: true, response: "channel-binding-list" },
+);
+
+app.post(
+  "/channels",
+  async ({ body, error }) => {
+    const b = body as { type?: string };
+    const provider = typeof b?.type === "string" ? getChannelProvider(b.type) : undefined;
+    const status = provider ? 409 : 400;
+    return error(status, { error: { type: "FORBIDDEN", message: "当前平台暂未开放" } });
+  },
+  { sessionAuth: true },
+);
 
 // --- Hermes Status ---
 
-app.get("/channels/hermes/status", sessionAuth, (c) => {
-  const client = getHermesClient();
-  if (!client) {
-    return c.json({
-      connected: false,
-      url: "",
-      platforms: [],
-      reconnecting: false,
-      lastConnectedAt: null,
-    }, 200);
-  }
-  return c.json(client.getStatus(), 200);
-});
+app.get(
+  "/channels/hermes/status",
+  () => {
+    const client = getHermesClient();
+    if (!client) {
+      return {
+        connected: false,
+        url: "",
+        platforms: [],
+        reconnecting: false,
+        lastConnectedAt: null,
+      };
+    }
+    return client.getStatus();
+  },
+  { sessionAuth: true, response: "hermes-status" },
+);
 
 // --- Bindings CRUD ---
 
-app.get("/channels/bindings", sessionAuth, async (c) => {
-  const bindings = await listBindings();
-  const enriched = bindings.map((b) => {
-    const env = storeGetEnvironment(b.agentId);
-    return { ...b, agentName: env?.name ?? null };
-  });
-  return c.json(enriched, 200);
-});
+app.get(
+  "/channels/bindings",
+  async ({ store, request: _request }) => {
+    const authCtx = store.authContext!;
+    // 获取团队所有 environmentId
+    const teamEnvs = await environmentRepo.listByOrganizationId(authCtx.organizationId);
+    const teamEnvIds = new Set(teamEnvs.map((e) => e.id));
+    const bindings = await listBindings();
+    // 仅返回 agentId 属于当前团队的绑定
+    const filtered = bindings.filter((b) => teamEnvIds.has(b.agentId));
+    const enriched = [];
+    for (const b of filtered) {
+      const env = await environmentRepo.getById(b.agentId);
+      enriched.push({ ...b, agentName: env?.name ?? null });
+    }
+    return enriched;
+  },
+  { sessionAuth: true, response: "channel-binding-list" },
+);
 
-app.post("/channels/bindings", sessionAuth, async (c) => {
-  const body = await c.req.json();
-  const { platform, chatId, agentId, enabled } = body;
-  if (!platform || !agentId) {
-    return c.json({
-      error: { type: "VALIDATION_ERROR", message: "platform 和 agentId 为必填字段" },
-    }, 400);
-  }
-  const binding = await createBinding({ platform, chatId: chatId ?? null, agentId, enabled });
-  const env = storeGetEnvironment(binding.agentId);
-  return c.json({ ...binding, agentName: env?.name ?? null }, 201);
-});
+app.post(
+  "/channels/bindings",
+  async ({ store, body, error, request: _request }) => {
+    const authCtx = store.authContext!;
+    const b = body as { platform: string; chatId?: string | null; agentId: string; enabled?: boolean };
+    if (!b.platform || !b.agentId) {
+      return error(400, { error: { type: "VALIDATION_ERROR", message: "platform 和 agentId 为必填字段" } });
+    }
+    // 验证 agentId 属于当前团队
+    const env = await environmentRepo.getById(b.agentId);
+    if (!env || env.organizationId !== authCtx.organizationId) {
+      return error(404, { error: { type: "NOT_FOUND", message: "Agent 不存在" } });
+    }
+    const binding = await createBinding({
+      platform: b.platform,
+      chatId: b.chatId ?? null,
+      agentId: b.agentId,
+      enabled: b.enabled,
+    });
+    return { ...binding, agentName: env?.name ?? null };
+  },
+  { sessionAuth: true, body: "create-channel-binding-request" },
+);
 
-app.delete("/channels/bindings/:id", sessionAuth, async (c) => {
-  const id = c.req.param("id")!;
-  const deleted = await deleteBinding(id);
-  if (!deleted) {
-    return c.json({ error: { type: "NOT_FOUND", message: "绑定不存在" } }, 404);
-  }
-  return c.json({ success: true }, 200);
-});
+app.delete(
+  "/channels/bindings/:id",
+  async ({ store, params, error, request: _request }) => {
+    const authCtx = store.authContext!;
+    const id = params.id;
+    // 验证绑定关联的 agent 属于当前团队
+    const binding = await listBindings();
+    const target = binding.find((b) => b.id === id);
+    if (!target) {
+      return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
+    }
+    const env = await environmentRepo.getById(target.agentId);
+    if (!env || env.organizationId !== authCtx.organizationId) {
+      return error(403, { error: { type: "FORBIDDEN", message: "无权操作此绑定" } });
+    }
+    const deleted = await deleteBinding(id);
+    if (!deleted) {
+      return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
+    }
+    return { success: true as const };
+  },
+  { sessionAuth: true },
+);
 
-app.patch("/channels/bindings/:id", sessionAuth, async (c) => {
-  const id = c.req.param("id")!;
-  const body = await c.req.json();
-  const updated = await updateBinding(id, body);
-  if (!updated) {
-    return c.json({ error: { type: "NOT_FOUND", message: "绑定不存在" } }, 404);
-  }
-  const env = storeGetEnvironment(updated.agentId);
-  return c.json({ ...updated, agentName: env?.name ?? null }, 200);
-});
+app.patch(
+  "/channels/bindings/:id",
+  async ({ store, params, body, error, request: _request }) => {
+    const authCtx = store.authContext!;
+    const id = params.id;
+    // 验证绑定关联的 agent 属于当前团队
+    const binding = await listBindings();
+    const target = binding.find((b) => b.id === id);
+    if (!target) {
+      return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
+    }
+    const env = await environmentRepo.getById(target.agentId);
+    if (!env || env.organizationId !== authCtx.organizationId) {
+      return error(403, { error: { type: "FORBIDDEN", message: "无权操作此绑定" } });
+    }
+    const b = body as Record<string, unknown>;
+    const updated = await updateBinding(id, b);
+    if (!updated) {
+      return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
+    }
+    const updatedEnv = await environmentRepo.getById(updated.agentId);
+    return { ...updated, agentName: updatedEnv?.name ?? null };
+  },
+  { sessionAuth: true },
+);
 
 export default app;

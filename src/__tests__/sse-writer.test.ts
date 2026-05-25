@@ -1,26 +1,11 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
 // Mock config
-const mockConfig = {
-  port: 3000,
-  host: "0.0.0.0",
-  apiKeys: ["test-api-key"],
-  baseUrl: "http://localhost:3000",
-  pollTimeout: 8,
-  heartbeatInterval: 20,
-  jwtExpiresIn: 3600,
-  disconnectTimeout: 300,
-};
 
-mock.module("../config", () => ({
-  config: mockConfig,
-  getBaseUrl: () => "http://localhost:3000",
-}));
-
-import { Hono } from "hono";
-import { storeReset } from "../store";
-import { removeEventBus, getAllEventBuses, getEventBus } from "../transport/event-bus";
-import { createSSEWriter, createSSEStream } from "../transport/sse-writer";
+import Elysia from "elysia";
+import { resetAllRepos } from "../repositories";
+import { getAllEventBuses, getEventBus, removeEventBus } from "../transport/event-bus";
+import { createSSEStream, createSSEWriter } from "../transport/sse-writer";
 
 /** Read up to N bytes from a Response stream, then cancel */
 async function readPartialStream(res: Response, maxBytes = 4096): Promise<string> {
@@ -49,18 +34,22 @@ async function readPartialStream(res: Response, maxBytes = 4096): Promise<string
   return new TextDecoder().decode(combined);
 }
 
+function elysiaRequest(app: Elysia, path: string, init?: RequestInit) {
+  return app.handle(new Request(`http://localhost${path}`, init));
+}
+
 describe("SSE Writer", () => {
   describe("createSSEWriter", () => {
     test("creates SSEWriter with send and close methods", () => {
-      const app = new Hono();
+      const app = new Elysia();
       let capturedWriter: ReturnType<typeof createSSEWriter> | null = null;
 
-      app.get("/test", (c) => {
-        capturedWriter = createSSEWriter(c);
-        return c.text("ok");
+      app.get("/test", ({ request }) => {
+        capturedWriter = createSSEWriter(request);
+        return "ok";
       });
 
-      app.request("/test");
+      elysiaRequest(app, "/test");
       expect(capturedWriter).not.toBeNull();
       expect(typeof capturedWriter!.send).toBe("function");
       expect(typeof capturedWriter!.close).toBe("function");
@@ -69,21 +58,20 @@ describe("SSE Writer", () => {
 
   describe("createSSEStream", () => {
     beforeEach(() => {
-      storeReset();
+      resetAllRepos();
       for (const [key] of getAllEventBuses()) {
         removeEventBus(key);
       }
     });
 
     test("returns Response with correct SSE headers", async () => {
-      const app = new Hono();
+      const app = new Elysia();
 
-      app.get("/stream/:sessionId", (c) => {
-        const sessionId = c.req.param("sessionId");
-        return createSSEStream(c, sessionId, 0);
+      app.get("/stream/:sessionId", ({ request, params }) => {
+        return createSSEStream(request, params.sessionId, 0);
       });
 
-      const res = await app.request("/stream/s1");
+      const res = await elysiaRequest(app, "/stream/s1");
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toBe("text/event-stream");
       expect(res.headers.get("Cache-Control")).toBe("no-cache");
@@ -95,14 +83,13 @@ describe("SSE Writer", () => {
     });
 
     test("sends initial keepalive", async () => {
-      const app = new Hono();
+      const app = new Elysia();
 
-      app.get("/stream/:sessionId", (c) => {
-        const sessionId = c.req.param("sessionId");
-        return createSSEStream(c, sessionId, 0);
+      app.get("/stream/:sessionId", ({ request, params }) => {
+        return createSSEStream(request, params.sessionId, 0);
       });
 
-      const res = await app.request("/stream/s2");
+      const res = await elysiaRequest(app, "/stream/s2");
       const text = await readPartialStream(res);
       expect(text).toContain(": keepalive");
     });
@@ -113,15 +100,14 @@ describe("SSE Writer", () => {
       bus.publish({ id: "e1", sessionId: "s3", type: "user", payload: { content: "hello" }, direction: "outbound" });
       bus.publish({ id: "e2", sessionId: "s3", type: "assistant", payload: { content: "hi" }, direction: "inbound" });
 
-      const app = new Hono();
+      const app = new Elysia();
 
-      app.get("/stream/:sessionId", (c) => {
-        const sessionId = c.req.param("sessionId");
-        const fromSeq = parseInt(c.req.query("fromSeq") || "0");
-        return createSSEStream(c, sessionId, fromSeq);
+      app.get("/stream/:sessionId", ({ request, params, query }) => {
+        const fromSeq = parseInt((query as any)?.fromSeq || "0", 10);
+        return createSSEStream(request, params.sessionId, fromSeq);
       });
 
-      const res = await app.request("/stream/s3?fromSeq=1");
+      const res = await elysiaRequest(app, "/stream/s3?fromSeq=1");
       const text = await readPartialStream(res);
       // Should replay events since seq 1 (i.e., event 2)
       expect(text).toContain('"seqNum":2');
@@ -132,14 +118,13 @@ describe("SSE Writer", () => {
       const bus = getEventBus("s5");
       bus.publish({ id: "e1", sessionId: "s5", type: "user", payload: {}, direction: "outbound" });
 
-      const app = new Hono();
+      const app = new Elysia();
 
-      app.get("/stream/:sessionId", (c) => {
-        const sessionId = c.req.param("sessionId");
-        return createSSEStream(c, sessionId, 0);
+      app.get("/stream/:sessionId", ({ request, params }) => {
+        return createSSEStream(request, params.sessionId, 0);
       });
 
-      const res = await app.request("/stream/s5");
+      const res = await elysiaRequest(app, "/stream/s5");
       const text = await readPartialStream(res);
       // With fromSeqNum=0, no historical replay, just keepalive
       expect(text).toContain(": keepalive");
@@ -148,14 +133,13 @@ describe("SSE Writer", () => {
     });
 
     test("subscribes to new events and delivers them", async () => {
-      const app = new Hono();
+      const app = new Elysia();
 
-      app.get("/stream/:sessionId", (c) => {
-        const sessionId = c.req.param("sessionId");
-        return createSSEStream(c, sessionId, 0);
+      app.get("/stream/:sessionId", ({ request, params }) => {
+        return createSSEStream(request, params.sessionId, 0);
       });
 
-      const res = await app.request("/stream/s6");
+      const res = await elysiaRequest(app, "/stream/s6");
 
       // Read initial keepalive first
       const reader = res.body!.getReader();
@@ -165,7 +149,13 @@ describe("SSE Writer", () => {
 
       // Now publish an event
       const bus = getEventBus("s6");
-      bus.publish({ id: "e1", sessionId: "s6", type: "user", payload: { content: "real-time" }, direction: "outbound" });
+      bus.publish({
+        id: "e1",
+        sessionId: "s6",
+        type: "user",
+        payload: { content: "real-time" },
+        direction: "outbound",
+      });
 
       // Read the event
       const { value: secondChunk } = await reader.read();

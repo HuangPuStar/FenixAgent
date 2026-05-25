@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 describe("UI Components Import and Export Integrity", () => {
   test("all 25+ component modules can be imported from index", async () => {

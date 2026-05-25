@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
 import QrScanner from "qr-scanner";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** QR code data format for scanning */
 export interface QRCodeData {
@@ -31,10 +31,7 @@ export interface UseQRScannerResult {
  * Hook for QR code scanning functionality.
  * Manages QrScanner lifecycle and camera access.
  */
-export function useQRScanner({
-  onScan,
-  onError,
-}: UseQRScannerOptions): UseQRScannerResult {
+export function useQRScanner({ onScan, onError }: UseQRScannerOptions): UseQRScannerResult {
   const [isScanning, setIsScanning] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const qrScannerRef = useRef<QrScanner | null>(null);
@@ -112,7 +109,7 @@ export function useQRScanner({
             returnDetailedScanResult: true,
             highlightScanRegion: true,
             highlightCodeOutline: true,
-          }
+          },
         );
 
         if (isCancelled) {

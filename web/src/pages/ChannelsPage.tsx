@@ -1,41 +1,44 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-
-import {
-  apiGetHermesStatus,
-  apiListChannelBindings,
-  apiCreateChannelBinding,
-  apiDeleteChannelBinding,
-  apiUpdateChannelBinding,
-  apiFetchEnvironments,
-} from "../api/client";
-import type { HermesStatus, ChannelBinding, Environment } from "../types";
-import { DataTable, type Column } from "@/components/config/DataTable";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+import { type Column, DataTable } from "@/components/config/DataTable";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { channelApi, envApi } from "@/src/api/sdk";
+
+type ChannelBinding = {
+  id: string;
+  platform: string;
+  chatId: string | null;
+  agentId: string;
+  enabled: boolean;
+  agentName?: string | null;
+};
+
+type HermesStatus = {
+  connected: boolean;
+  url: string;
+  platforms: string[];
+  reconnecting: boolean;
+  lastConnectedAt: number | null;
+};
+
+type EnvironmentSummary = {
+  id: string;
+  name: string;
+};
 
 export function ChannelsPage() {
+  const { t } = useTranslation("channels");
   const [hermesStatus, setHermesStatus] = useState<HermesStatus | null>(null);
   const [bindings, setBindings] = useState<ChannelBinding[]>([]);
-  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formPlatform, setFormPlatform] = useState("");
@@ -44,28 +47,35 @@ export function ChannelsPage() {
   const [formSaving, setFormSaving] = useState(false);
 
   const loadHermesStatus = useCallback(async () => {
-    try {
-      const status = await apiGetHermesStatus();
-      setHermesStatus(status);
-    } catch {
+    const { data, error } = await channelApi.hermesStatus();
+    if (error) {
       setHermesStatus(null);
+      return;
     }
+    setHermesStatus(data as HermesStatus);
   }, []);
 
   const loadBindings = useCallback(async () => {
-    try {
-      const list = await apiListChannelBindings();
-      setBindings(list);
-    } catch {
-      toast.error("加载绑定列表失败");
+    const { data, error } = await channelApi.listBindings();
+    if (error) {
+      console.error(t("loadBindingsFailed"), error);
+      toast.error(t("loadBindingsFailed"));
+      return;
     }
-  }, []);
+    setBindings(Array.isArray(data) ? (data as ChannelBinding[]) : []);
+  }, [t]);
 
   const loadEnvironments = useCallback(async () => {
-    try {
-      const list = await apiFetchEnvironments();
-      setEnvironments(list);
-    } catch {}
+    const { data, error } = await envApi.list();
+    if (error) {
+      return;
+    }
+    setEnvironments(
+      (Array.isArray(data) ? data : []).map((e: { id: string; name: string }) => ({
+        id: e.id,
+        name: e.name,
+      })),
+    );
   }, []);
 
   useEffect(() => {
@@ -86,81 +96,72 @@ export function ChannelsPage() {
   }, [loadHermesStatus]);
 
   const handleToggleBinding = async (binding: ChannelBinding) => {
-    try {
-      const updated = await apiUpdateChannelBinding(binding.id, {
-        enabled: !binding.enabled,
-      });
-      setBindings((prev) =>
-        prev.map((b) => (b.id === updated.id ? updated : b)),
-      );
-    } catch {
-      toast.error("更新绑定状态失败");
+    const { data, error } = await channelApi.updateBinding({ id: binding.id }, { enabled: !binding.enabled });
+    if (error) {
+      console.error(t("updateBindingFailed"), error);
+      toast.error(t("updateBindingFailed"));
+      return;
     }
+    if (data) setBindings((prev) => prev.map((b) => (b.id === binding.id ? (data as ChannelBinding) : b)));
   };
 
   const handleDeleteBinding = async (id: string) => {
-    try {
-      await apiDeleteChannelBinding(id);
-      setBindings((prev) => prev.filter((b) => b.id !== id));
-      toast.success("绑定已删除");
-    } catch {
-      toast.error("删除绑定失败");
+    const { error } = await channelApi.deleteBinding({ id });
+    if (error) {
+      console.error(t("deleteBindingFailed"), error);
+      toast.error(t("deleteBindingFailed"));
+      return;
     }
+    setBindings((prev) => prev.filter((b) => b.id !== id));
+    toast.success(t("bindingDeleted"));
   };
 
   const handleCreateBinding = async () => {
     if (!formPlatform || !formAgentId) {
-      toast.error("请选择平台和 Agent");
+      toast.error(t("selectPlatformAndAgent"));
       return;
     }
     setFormSaving(true);
-    try {
-      const created = await apiCreateChannelBinding({
-        platform: formPlatform,
-        chatId: formChatId || null,
-        agentId: formAgentId,
-      });
-      setBindings((prev) => [...prev, created]);
-      setDialogOpen(false);
-      setFormPlatform("");
-      setFormChatId("");
-      setFormAgentId("");
-      toast.success("绑定创建成功");
-    } catch (err) {
-      toast.error(
-        "创建绑定失败: " + (err instanceof Error ? err.message : "未知错误"),
-      );
-    } finally {
+    const { data, error } = await channelApi.createBinding({
+      platform: formPlatform,
+      chatId: formChatId || "",
+      agentId: formAgentId,
+    });
+    if (error) {
+      console.error(t("createBindingFailed"), error);
+      toast.error(`${t("createBindingFailed")}: ${error.message}`);
       setFormSaving(false);
+      return;
     }
+    setBindings((prev) => [...prev, data as ChannelBinding]);
+    setDialogOpen(false);
+    setFormPlatform("");
+    setFormChatId("");
+    setFormAgentId("");
+    toast.success(t("bindingCreated"));
+    setFormSaving(false);
   };
 
   const columns: Column<ChannelBinding>[] = [
     {
       key: "platform",
-      header: "平台",
+      header: t("columns.platform"),
       sortable: true,
     },
     {
       key: "chatId",
-      header: "聊天 ID",
-      render: (row) => row.chatId ?? "全部",
+      header: t("columns.chatId"),
+      render: (row) => row.chatId ?? t("columns.all"),
     },
     {
       key: "agentName",
-      header: "Agent",
+      header: t("columns.agent"),
       render: (row) => row.agentName ?? row.agentId,
     },
     {
       key: "enabled",
-      header: "启用",
-      render: (row) => (
-        <Switch
-          size="sm"
-          checked={row.enabled}
-          onCheckedChange={() => handleToggleBinding(row)}
-        />
-      ),
+      header: t("columns.enabled"),
+      render: (row) => <Switch size="sm" checked={row.enabled} onCheckedChange={() => handleToggleBinding(row)} />,
     },
   ];
 
@@ -188,45 +189,42 @@ export function ChannelsPage() {
       : "bg-gray-400";
 
   const statusText = hermesStatus?.connected
-    ? "已连接"
+    ? t("hermes.connected")
     : hermesStatus?.reconnecting
-      ? "重连中"
-      : "未配置";
+      ? t("hermes.reconnecting")
+      : t("hermes.notConfigured");
 
-  const maskedUrl = hermesStatus?.url
-    ? hermesStatus.url.replace(/\/\/.*@/, "//***@")
-    : "";
+  const maskedUrl = hermesStatus?.url ? hermesStatus.url.replace(/\/\/.*@/, "//***@") : "";
 
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-text-bright">消息渠道</h2>
-        <Button onClick={() => setDialogOpen(true)}>新建绑定</Button>
+        <h2 className="text-xl font-semibold text-text-bright">{t("title")}</h2>
+        <Button onClick={() => setDialogOpen(true)}>{t("newBinding")}</Button>
       </div>
 
       {/* Hermes Connection Status Card */}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-center gap-3">
           <div className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
-          <span className="text-sm font-medium text-text-bright">
-            Hermes Gateway
-          </span>
-          <Badge variant={hermesStatus?.connected ? "default" : "secondary"}>
-            {statusText}
-          </Badge>
+          <span className="text-sm font-medium text-text-bright">{t("hermes.title")}</span>
+          <Badge variant={hermesStatus?.connected ? "default" : "secondary"}>{statusText}</Badge>
         </div>
         {hermesStatus && (
           <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-            {hermesStatus.url && <span>地址: {maskedUrl}</span>}
+            {hermesStatus.url && (
+              <span>
+                {t("hermes.address")}: {maskedUrl}
+              </span>
+            )}
             {hermesStatus.platforms.length > 0 && (
               <span>
-                平台: {hermesStatus.platforms.join(", ")}
+                {t("hermes.platforms")}: {hermesStatus.platforms.join(", ")}
               </span>
             )}
             {hermesStatus.lastConnectedAt && (
               <span>
-                最后连接:{" "}
-                {new Date(hermesStatus.lastConnectedAt).toLocaleString("zh-CN")}
+                {t("hermes.lastConnected")}: {new Date(hermesStatus.lastConnectedAt).toLocaleString()}
               </span>
             )}
           </div>
@@ -239,16 +237,12 @@ export function ChannelsPage() {
           columns={columns}
           data={bindings}
           searchable
-          searchPlaceholder="搜索绑定..."
-          emptyMessage="暂无绑定"
+          searchPlaceholder={t("table.searchPlaceholder")}
+          emptyMessage={t("table.emptyMessage")}
           actions={(row) => (
             <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => handleDeleteBinding(row.id)}
-              >
-                删除
+              <Button size="sm" variant="destructive" onClick={() => handleDeleteBinding(row.id)}>
+                {t("actions.delete")}
               </Button>
             </div>
           )}
@@ -259,14 +253,14 @@ export function ChannelsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>新建通道绑定</DialogTitle>
+            <DialogTitle>{t("dialog.title")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label>平台</Label>
+              <Label>{t("dialog.platform")}</Label>
               <Select value={formPlatform} onValueChange={setFormPlatform}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择平台" />
+                  <SelectValue placeholder={t("dialog.platformPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {hermesStatus?.platforms.map((p) => (
@@ -274,25 +268,23 @@ export function ChannelsPage() {
                       {p}
                     </SelectItem>
                   ))}
-                  {!hermesStatus?.platforms.length && (
-                    <SelectItem value="feishu">feishu</SelectItem>
-                  )}
+                  {!hermesStatus?.platforms.length && <SelectItem value="feishu">feishu</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>聊天 ID（可选，留空匹配全部）</Label>
+              <Label>{t("dialog.chatId")}</Label>
               <Input
                 value={formChatId}
                 onChange={(e) => setFormChatId(e.target.value)}
-                placeholder="如 oc_xxx，留空表示匹配该平台所有消息"
+                placeholder={t("dialog.chatIdPlaceholder")}
               />
             </div>
             <div className="grid gap-2">
-              <Label>Agent</Label>
+              <Label>{t("dialog.agent")}</Label>
               <Select value={formAgentId} onValueChange={setFormAgentId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择 Agent" />
+                  <SelectValue placeholder={t("dialog.agentPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {environments.map((env) => (
@@ -305,15 +297,11 @@ export function ChannelsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="secondary"
-              onClick={() => setDialogOpen(false)}
-              disabled={formSaving}
-            >
-              取消
+            <Button variant="secondary" onClick={() => setDialogOpen(false)} disabled={formSaving}>
+              {t("dialog.cancel")}
             </Button>
             <Button onClick={handleCreateBinding} disabled={formSaving}>
-              {formSaving ? "创建中..." : "创建"}
+              {formSaving ? t("dialog.creating") : t("dialog.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

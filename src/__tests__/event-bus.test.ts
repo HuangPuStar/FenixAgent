@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeEach } from "bun:test";
-import { EventBus, getEventBus, removeEventBus, getAllEventBuses } from "../transport/event-bus";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { EventBus, getAllEventBuses, getEventBus, removeEventBus } from "../transport/event-bus";
 
 describe("EventBus", () => {
   let bus: EventBus;
@@ -78,7 +78,7 @@ describe("EventBus", () => {
       expect(bus.subscriberCount()).toBe(0);
       const unsub1 = bus.subscribe(() => {});
       expect(bus.subscriberCount()).toBe(1);
-      const unsub2 = bus.subscribe(() => {});
+      const _unsub2 = bus.subscribe(() => {});
       expect(bus.subscriberCount()).toBe(2);
       unsub1();
       expect(bus.subscriberCount()).toBe(1);
@@ -126,7 +126,9 @@ describe("EventBus", () => {
       bus.subscribe(() => {});
       bus.close();
       expect(bus.subscriberCount()).toBe(0);
-      expect(() => bus.publish({ id: "e1", sessionId: "s1", type: "user", payload: {}, direction: "outbound" })).toThrow();
+      expect(() =>
+        bus.publish({ id: "e1", sessionId: "s1", type: "user", payload: {}, direction: "outbound" }),
+      ).toThrow();
     });
   });
 
@@ -180,7 +182,9 @@ describe("EventBus registry", () => {
       const bus = getEventBus("s2");
       removeEventBus("s2");
       expect(getAllEventBuses().has("s2")).toBe(false);
-      expect(() => bus.publish({ id: "e1", sessionId: "s2", type: "user", payload: {}, direction: "outbound" })).toThrow();
+      expect(() =>
+        bus.publish({ id: "e1", sessionId: "s2", type: "user", payload: {}, direction: "outbound" }),
+      ).toThrow();
     });
 
     test("no-op for non-existent bus", () => {

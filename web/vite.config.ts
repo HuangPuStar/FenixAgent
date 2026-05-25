@@ -1,20 +1,32 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
-import path from "path";
+import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    TanStackRouterVite({
+      routesDirectory: "./src/routes",
+      generatedRouteTree: "./src/routeTree.gen.ts",
+      quoteStyle: "double",
+    }),
+    react(),
+    tailwindcss(),
+  ],
   base: "/ctrl/",
   resolve: {
     alias: {
       "@/src": path.resolve(__dirname, "src"),
       "@/components": path.resolve(__dirname, "components"),
+      "@server": path.resolve(__dirname, "../src"),
+      "@mothership/sdk": path.resolve(__dirname, "../packages/sdk/src/index.ts"),
     },
   },
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    sourcemap: false,
     chunkSizeWarningLimit: 10000,
     rollupOptions: {
       input: {
@@ -39,6 +51,18 @@ export default defineConfig({
           }
           if (id.includes("node_modules/qrcode") || id.includes("node_modules/jsqr")) {
             return "qr";
+          }
+          if (id.includes("node_modules/@radix-ui")) {
+            return "radix-ui";
+          }
+          if (id.includes("node_modules/@tanstack/react-router") || id.includes("node_modules/@tanstack/router-")) {
+            return "tanstack-router";
+          }
+          if (id.includes("node_modules/@tanstack")) {
+            return "tanstack";
+          }
+          if (id.includes("node_modules/@hookform") || id.includes("node_modules/react-hook-form")) {
+            return "hookform";
           }
         },
       },

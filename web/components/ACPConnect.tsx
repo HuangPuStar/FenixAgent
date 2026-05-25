@@ -1,18 +1,15 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { ChevronDown, FolderOpen, Globe, Image, KeyRound, ScanLine, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
+import type { ACPSettings, BrowserToolParams, BrowserToolResult, ConnectionState } from "../src/acp";
+import { ACPClient, DEFAULT_SETTINGS, DisconnectRequestedError } from "../src/acp";
+import { type QRCodeData, useQRScanner } from "../src/hooks";
 import { Button } from "./ui/button";
 import { StatusDot } from "./ui/connection-status";
-import { ThemeToggle } from "./ui/theme-toggle";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
 import { Label } from "./ui/label";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "./ui/input-group";
-import { ACPClient, DEFAULT_SETTINGS, DisconnectRequestedError } from "../src/acp";
-import type { ACPSettings, ConnectionState, BrowserToolParams, BrowserToolResult } from "../src/acp";
-import { ChevronDown, FolderOpen, Globe, Image, KeyRound, ScanLine, X } from "lucide-react";
-import { useQRScanner, type QRCodeData } from "../src/hooks";
+import { ThemeToggle } from "./ui/theme-toggle";
 
 // Get token from URL query param (for pre-filled URLs from server)
 function getTokenFromUrl(): string | undefined {
@@ -20,7 +17,7 @@ function getTokenFromUrl(): string | undefined {
     const url = new URL(window.location.href);
     return url.searchParams.get("token") || undefined;
   } catch {
-    return undefined;
+    return;
   }
 }
 
@@ -31,12 +28,12 @@ function inferProxyUrlFromPage(): string | undefined {
     const url = new URL(window.location.href);
     // Only infer if we have a token param (indicates user came from server-printed URL)
     if (!url.searchParams.has("token")) {
-      return undefined;
+      return;
     }
     const protocol = url.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${url.host}/ws`;
   } catch {
-    return undefined;
+    return;
   }
 }
 
@@ -86,6 +83,7 @@ export function ACPConnect({
   placeholder = "Proxy server URL",
   showScanButton = false,
 }: ACPConnectProps) {
+  const { t } = useTranslation("components");
   const [settings, setSettings] = useState<ACPSettings>(() => getInitialSettings(inferFromUrl));
   const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +122,7 @@ export function ACPConnect({
     if (expanded && contentRef.current) {
       setMaxHeight(contentRef.current.scrollHeight);
     }
-  }, [expanded, isScanning]);
+  }, [expanded]);
 
   // File input ref for album scanning
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -140,7 +138,7 @@ export function ACPConnect({
       // Reset input to allow re-selecting the same file
       e.target.value = "";
     },
-    [scanFromFile, stopScanning]
+    [scanFromFile, stopScanning],
   );
 
   // Open file picker
@@ -250,12 +248,15 @@ export function ACPConnect({
   const isConnected = connectionState === "connected";
   const isConnecting = connectionState === "connecting";
 
-  const handleInputKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !isConnected && !isConnecting) {
-      e.preventDefault();
-      handleConnect();
-    }
-  }, [isConnected, isConnecting, handleConnect]);
+  const handleInputKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !isConnected && !isConnecting) {
+        e.preventDefault();
+        handleConnect();
+      }
+    },
+    [isConnected, isConnecting, handleConnect],
+  );
 
   // Format URL for display
   const displayUrl = settings.proxyUrl.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
@@ -271,87 +272,70 @@ export function ACPConnect({
   return (
     <div className="bg-background/80 backdrop-blur-sm">
       <div className="max-w-md mx-auto border-b">
-      {/* Status Bar - Always visible */}
-      <Button
-        variant="ghost"
-        onClick={() => onExpandedChange(!expanded)}
-        className="w-full flex items-center justify-between px-3 py-2 rounded-none"
-      >
-        <div className="flex items-center gap-2">
-          <StatusDot state={connectionState} />
-          <span className="text-sm font-medium">{statusLabels[connectionState]}</span>
-          {isConnected && displayUrl && (
-            <span className="text-xs text-muted-foreground">• {displayUrl}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <div onClick={(e) => e.stopPropagation()}>
-            <ThemeToggle />
+        {/* Status Bar - Always visible */}
+        <Button
+          variant="ghost"
+          onClick={() => onExpandedChange(!expanded)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-none"
+        >
+          <div className="flex items-center gap-2">
+            <StatusDot state={connectionState} />
+            <span className="text-sm font-medium">{statusLabels[connectionState]}</span>
+            {isConnected && displayUrl && <span className="text-xs text-muted-foreground">• {displayUrl}</span>}
           </div>
-          <ChevronDown
-            className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
-              expanded ? "rotate-180" : ""
-            }`}
-          />
-        </div>
-      </Button>
+          <div className="flex items-center gap-1">
+            <div onClick={(e) => e.stopPropagation()}>
+              <ThemeToggle />
+            </div>
+            <ChevronDown
+              className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
+                expanded ? "rotate-180" : ""
+              }`}
+            />
+          </div>
+        </Button>
 
-      {/* Expandable Settings Panel */}
-      <div
-        className="overflow-hidden transition-all duration-200 ease-out"
-        style={{
-          maxHeight: expanded ? maxHeight : 0,
-          opacity: expanded ? 1 : 0,
-        }}
-      >
-        <div ref={contentRef} className={`px-3 pb-3 pt-1 space-y-3 ${isShaking ? "animate-shake" : ""}`}>
-          {/* Hidden file input for album scanning */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
+        {/* Expandable Settings Panel */}
+        <div
+          className="overflow-hidden transition-all duration-200 ease-out"
+          style={{
+            maxHeight: expanded ? maxHeight : 0,
+            opacity: expanded ? 1 : 0,
+          }}
+        >
+          <div ref={contentRef} className={`px-3 pb-3 pt-1 space-y-3 ${isShaking ? "animate-shake" : ""}`}>
+            {/* Hidden file input for album scanning */}
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
 
-          {/* QR Scanner View - Portal to body to escape backdrop-blur containing block */}
-          {isScanning && createPortal(
-            <div className="fixed inset-0 z-50 bg-black flex flex-col">
-              <video
-                ref={videoRef}
-                className="flex-1 w-full object-cover"
-              />
-              <Button
-                onClick={stopScanning}
-                variant="ghost"
-                size="sm"
-                className="absolute top-4 right-4 h-10 w-10 p-0 bg-black/50 hover:bg-black/70 text-white rounded-full"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-              <div className="absolute bottom-16 left-0 right-0 flex flex-col items-center gap-3">
-                <Button
-                  onClick={handleSelectFromAlbum}
-                  variant="secondary"
-                  size="sm"
-                  className="h-9 px-4"
-                >
-                  <Image className="h-4 w-4 mr-2" />
-                  Select from Album
-                </Button>
-                <span className="text-sm text-white/80">
-                  or point camera at QR code
-                </span>
-              </div>
-            </div>,
-            document.body
-          )}
+            {/* QR Scanner View - Portal to body to escape backdrop-blur containing block */}
+            {isScanning &&
+              createPortal(
+                <div className="fixed inset-0 z-50 bg-black flex flex-col">
+                  <video ref={videoRef} className="flex-1 w-full object-cover" />
+                  <Button
+                    onClick={stopScanning}
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-4 right-4 h-10 w-10 p-0 bg-black/50 hover:bg-black/70 text-white rounded-full"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                  <div className="absolute bottom-16 left-0 right-0 flex flex-col items-center gap-3">
+                    <Button onClick={handleSelectFromAlbum} variant="secondary" size="sm" className="h-9 px-4">
+                      <Image className="h-4 w-4 mr-2" />
+                      Select from Album
+                    </Button>
+                    <span className="text-sm text-white/80">or point camera at QR code</span>
+                  </div>
+                </div>,
+                document.body,
+              )}
 
-          {/* Connection Settings - use invisible (not hidden) to preserve scrollHeight for animation */}
-          <div className={`space-y-3 ${isScanning ? "invisible" : ""}`}>
+            {/* Connection Settings - use invisible (not hidden) to preserve scrollHeight for animation */}
+            <div className={`space-y-3 ${isScanning ? "invisible" : ""}`}>
               {/* Server URL */}
               <div className="space-y-1.5">
-                <Label htmlFor="proxy-url">Server</Label>
+                <Label htmlFor="proxy-url">{t("acpConnect.server")}</Label>
                 <div className="flex gap-2">
                   {showScanButton && !isConnected && !isConnecting && (
                     <Button
@@ -387,7 +371,7 @@ export function ACPConnect({
                       className="h-9 px-4"
                       type="button"
                     >
-                      {isConnecting ? "..." : "Connect"}
+                      {isConnecting ? "..." : t("acpConnect.connect")}
                     </Button>
                   ) : (
                     <Button
@@ -419,7 +403,7 @@ export function ACPConnect({
                       value={settings.token || ""}
                       onChange={(e) => updateSetting("token", e.target.value || undefined)}
                       onKeyDown={handleInputKeyDown}
-                      placeholder="For remote access"
+                      placeholder={t("acpConnect.remoteAccessPlaceholder")}
                       disabled={isConnected || isConnecting}
                       type="password"
                       aria-invalid={!!error}
@@ -451,16 +435,12 @@ export function ACPConnect({
                   />
                 </InputGroup>
               </div>
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="text-xs text-destructive bg-destructive/10 px-2 py-1.5 rounded">
-              {error}
             </div>
-          )}
+
+            {/* Error Message */}
+            {error && <div className="text-xs text-destructive bg-destructive/10 px-2 py-1.5 rounded">{error}</div>}
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );

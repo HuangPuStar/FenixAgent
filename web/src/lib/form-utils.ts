@@ -6,29 +6,29 @@ import { z } from "zod";
  * - 长度 1-64
  */
 export function nameSchema(opts?: { label?: string }) {
-  const label = opts?.label ?? "名称";
+  const label = opts?.label ?? "Name";
   return z
     .string()
-    .min(1, `${label}不能为空`)
-    .max(64, `${label}长度不能超过 64 字符`)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, `${label}只能包含小写字母、数字和单连字符`);
+    .min(1, `${label} is required`)
+    .max(64, `${label} must be at most 64 characters`)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, `${label} can only contain lowercase letters, digits, and hyphens`);
 }
 
 /**
  * 创建整数范围字段的 zod schema（用于步数等）
  */
 export function intRangeSchema(opts: { label?: string; min?: number; max?: number }) {
-  const label = opts.label ?? "数值";
+  const label = opts.label ?? "Value";
   const min = opts.min ?? 1;
   const max = opts.max ?? 9999;
   return z
     .string()
     .transform((v, ctx) => {
       const n = parseInt(v, 10);
-      if (isNaN(n)) {
+      if (Number.isNaN(n)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `${label}必须是整数`,
+          message: `${label} must be an integer`,
         });
         return z.NEVER;
       }
@@ -37,9 +37,9 @@ export function intRangeSchema(opts: { label?: string; min?: number; max?: numbe
     .pipe(
       z
         .number()
-        .int(`${label}必须是整数`)
-        .min(min, `${label}须在 ${min}-${max} 之间`)
-        .max(max, `${label}须在 ${min}-${max} 之间`)
+        .int(`${label} must be an integer`)
+        .min(min, `${label} must be between ${min} and ${max}`)
+        .max(max, `${label} must be between ${min} and ${max}`),
     );
 }
 
@@ -49,7 +49,7 @@ export function intRangeSchema(opts: { label?: string; min?: number; max?: numbe
  * - 非空时校验范围
  */
 export function optionalFloatSchema(opts: { label?: string; min?: number; max?: number }) {
-  const label = opts.label ?? "数值";
+  const label = opts.label ?? "Value";
   const min = opts.min ?? 0;
   const max = opts.max ?? Infinity;
   return z
@@ -57,10 +57,10 @@ export function optionalFloatSchema(opts: { label?: string; min?: number; max?: 
     .transform((v) => (v.trim() === "" ? undefined : parseFloat(v)))
     .pipe(
       z
-        .number({ message: `${label}必须是数字` })
-        .min(min, `${label}须在 ${min}-${max} 之间`)
-        .max(max, `${label}须在 ${min}-${max} 之间`)
-        .optional()
+        .number({ message: `${label} must be a number` })
+        .min(min, `${label} must be between ${min} and ${max}`)
+        .max(max, `${label} must be between ${min} and ${max}`)
+        .optional(),
     );
 }
 
@@ -68,12 +68,9 @@ export function optionalFloatSchema(opts: { label?: string; min?: number; max?: 
  * 创建非空字符串字段的 zod schema（用于 Skill 内容等必填文本）
  */
 export function requiredStringSchema(opts?: { label?: string; max?: number }) {
-  const label = opts?.label ?? "内容";
+  const label = opts?.label ?? "Content";
   const max = opts?.max ?? 65536;
-  return z
-    .string()
-    .min(1, `${label}不能为空`)
-    .max(max, `${label}长度不能超过 ${max} 字符`);
+  return z.string().min(1, `${label} is required`).max(max, `${label} must be at most ${max} characters`);
 }
 
 /**
@@ -81,7 +78,7 @@ export function requiredStringSchema(opts?: { label?: string; max?: number }) {
  */
 export function optionalStringSchema(opts?: { max?: number }) {
   const max = opts?.max ?? 65536;
-  return z.string().max(max, `长度不能超过 ${max} 字符`);
+  return z.string().max(max, `Must be at most ${max} characters`);
 }
 
 /**
@@ -89,10 +86,7 @@ export function optionalStringSchema(opts?: { max?: number }) {
  * - 供非 react-hook-form 场景手动调用验证
  * - 返回 null 表示验证通过
  */
-export function validateWithSchema<T>(
-  schema: z.ZodType<T>,
-  data: unknown
-): string[] | null {
+export function validateWithSchema<T>(schema: z.ZodType<T>, data: unknown): string[] | null {
   const result = schema.safeParse(data);
   if (result.success) return null;
   return result.error.issues.map((issue) => issue.message);

@@ -1,0 +1,100 @@
+{
+  "title": "智能体模板",
+  "subtitle": "管理 AI Agent 的模型、提示词和权限配置",
+  "createButton": "新建智能体模板",
+  "searchPlaceholder": "搜索智能体...",
+  "emptyMessage": "暂无智能体，点击「新建智能体模板」添加",
+  "loadError": "加载Agent列表失败: {{message}}",
+  "loadErrorShort": "加载Agent列表失败",
+  "unknownError": "未知错误",
+  "columns": {
+    "name": "名称",
+    "type": "类型",
+    "model": "模型",
+    "mode": "模式",
+    "knowledgeBase": "知识库",
+    "default": "默认"
+  },
+  "actions": {
+    "setDefault": "设为默认",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "batchDelete": "批量删除",
+  "batchDeleteCount": "已删除 {{count}} 个Agent",
+  "batchDeleteConfirmTitle": "批量删除确认",
+  "batchDeleteConfirmDesc": "确定要删除选中的 {{count}} 个自定义Agent吗？",
+  "batchDeleteError": "批量删除失败: {{message}}",
+  "dialog": {
+    "editTitle": "编辑Agent",
+    "cancel": "取消",
+    "createTitle": "新建Agent",
+    "createConfirm": "创建",
+    "tabs": {
+      "basic": "基础配置",
+      "knowledge": "知识库",
+      "permission": "权限配置",
+      "skills": "技能"
+    }
+  },
+  "form": {
+    "name": "名称",
+    "namePlaceholder": "例如 my-agent",
+    "nameValidationError": "名称只能包含小写字母、数字和单连字符，长度 1-64",
+    "model": "模型",
+    "modelPlaceholder": "选择模型",
+    "mode": "模式",
+    "steps": "步数 (1-200)",
+    "stepsHint": "Agent 最大思考步骤数。建议：简单任务 10-30，复杂任务 50-100",
+    "stepsValidationError": "最大轮数须在 1-200 之间",
+    "prompt": "提示词 (Prompt)",
+    "promptPlaceholder": "可选，自定义 Agent 提示词",
+    "description": "描述",
+    "descriptionPlaceholder": "可选，Agent 的简短描述",
+    "variant": "Variant",
+    "variantPlaceholder": "可选，例如 thinking",
+    "temperature": "温度 (0-2)",
+    "temperaturePlaceholder": "可选",
+    "temperatureValidationError": "温度须在 0-2 之间",
+    "topP": "Top P (0-1)",
+    "topPPPlaceholder": "可选",
+    "topPValidationError": "Top P 须在 0-1 之间",
+    "color": "颜色",
+    "colorPlaceholder": "hex (#RRGGBB) 或预设色名",
+    "hidden": "隐藏",
+    "hiddenTitle": "不在 Agent 列表中显示，但仍可通过 API 调用",
+    "disable": "禁用",
+    "disableTitle": "Agent 完全不可用，无法在界面或 API 中使用"
+  },
+  "knowledge": {
+    "bindTitle": "绑定知识库",
+    "selectedCount": "已选择 {{count}} 个知识库",
+    "noOptions": "暂无可选知识库",
+    "searchFirst": "优先检索知识库",
+    "maxResults": "最大返回条数",
+    "maxResultsValidationError": "知识库检索条数须在 1-20 之间",
+    "loadError": "加载Agent详情失败: {{message}}"
+  },
+  "skills": {
+    "tabTitle": "绑定技能",
+    "selectedCount": "已选择 {{count}} 个技能",
+    "noOptions": "暂无可用技能"
+  },
+  "save": {
+    "successCreate": "Agent已创建",
+    "successUpdate": "Agent已更新",
+    "errorCreate": "创建失败: {{message}}",
+    "errorUpdate": "更新失败: {{message}}",
+    "errorGeneric": "保存失败: {{message}}"
+  },
+  "setDefault": {
+    "success": "已将 \"{{name}}\" 设为默认Agent",
+    "error": "设置失败: {{message}}"
+  },
+  "delete": {
+    "confirmTitle": "确认删除",
+    "confirmDesc": "确定要删除Agent \"{{name}}\" 吗？",
+    "success": "Agent已删除",
+    "error": "删除失败: {{message}}"
+  }
+}

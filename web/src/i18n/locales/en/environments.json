@@ -1,0 +1,100 @@
+{
+  "title": "Agents",
+  "loading": "Loading agents...",
+  "tabs": {
+    "environments": "Agents",
+    "subagents": "Agent Templates"
+  },
+  "viewToggle": {
+    "tableView": "List view",
+    "cardView": "Card view"
+  },
+  "actions": {
+    "create": "Create Agent",
+    "edit": "Edit",
+    "viewSecret": "View Secret",
+    "restartInstance": "Restart Instance",
+    "stopInstance": "Stop Instance",
+    "delete": "Delete",
+    "retry": "Retry"
+  },
+  "status": {
+    "running": "Running",
+    "idle": "Idle",
+    "warning": "Warning",
+    "error": "Error"
+  },
+  "relativeTime": {
+    "notActive": "Not active",
+    "justNow": "Just now",
+    "secondsAgo": "{{count}}s ago",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago"
+  },
+  "empty": {
+    "createFirst": "Create your first agent",
+    "createHint": "Select an Agent type to start chatting",
+    "noActive": "No active environments"
+  },
+  "card": {
+    "sessions": "Sessions",
+    "instances": "Instances",
+    "autoStart": "Auto",
+    "instanceCount": "Inst. x{{count}}"
+  },
+  "table": {
+    "instanceLabel": "Instance {{number}}"
+  },
+  "buttons": {
+    "starting": "Starting...",
+    "startAndEnter": "Start & Enter",
+    "enterChat": "Enter Chat",
+    "newInstance": "New Instance",
+    "stop": "Stop"
+  },
+  "form": {
+    "editTitle": "Edit Agent",
+    "createTitle": "Create Agent",
+    "name": "Name",
+    "description": "Description",
+    "agentName": "Linked Agent",
+    "selectAgent": "Select Agent (optional)",
+    "autoStartLabel": "Auto-start when server launches",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "update": "Update",
+    "create": "Create"
+  },
+  "validation": {
+    "nameKebab": "Name must be kebab-case (lowercase letters, digits, hyphens)"
+  },
+  "secret": {
+    "title": "Agent Secret",
+    "warning": "Save this Secret immediately. You won't be able to view it after closing.",
+    "copied": "Copied!",
+    "copy": "Copy",
+    "close": "Close"
+  },
+  "confirm": {
+    "deleteTitle": "Confirm Delete",
+    "deleteDescription": "Are you sure you want to delete this agent? This action cannot be undone.",
+    "stopTitle": "Confirm Stop Instance",
+    "stopDescription": "Are you sure you want to stop the running instance of agent \"{{name}}\"? Active conversations will be interrupted."
+  },
+  "toast": {
+    "operationFailed": "Operation failed: {{error}}",
+    "enterFailed": "Failed to enter agent: {{error}}",
+    "enterInstanceFailed": "Failed to enter instance: {{error}}",
+    "spawnFailed": "Failed to create instance: {{error}}",
+    "stopFailed": "Failed to stop instance: {{error}}",
+    "refreshFailed": "Failed to refresh agent: {{error}}",
+    "updateFailed": "Update failed",
+    "createFailed": "Create failed",
+    "enterAgentFailed": "Enter failed"
+  },
+  "envList": {
+    "acpAgent": "ACP Agent",
+    "agent": "Agent"
+  }
+}

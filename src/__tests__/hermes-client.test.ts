@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 
 // Mock WebSocket constructor
 let mockWs: {
@@ -48,9 +48,7 @@ describe("HermesClient", () => {
     mockWs.onopen!({});
 
     // Default platforms include common Hermes platforms
-    const subscribeCalls = mockWs.send.mock.calls.filter(
-      (call: any[]) => JSON.parse(call[0]).type === "subscribe",
-    );
+    const subscribeCalls = mockWs.send.mock.calls.filter((call: any[]) => JSON.parse(call[0]).type === "subscribe");
     expect(subscribeCalls.length).toBe(1);
     const platforms = JSON.parse(subscribeCalls[0][0]).platforms as string[];
     expect(platforms).toContain("feishu");
@@ -85,9 +83,7 @@ describe("HermesClient", () => {
 
     await client.stop();
 
-    expect(mockWs.send).toHaveBeenCalledWith(
-      expect.stringContaining('"unsubscribe"'),
-    );
+    expect(mockWs.send).toHaveBeenCalledWith(expect.stringContaining('"unsubscribe"'));
     expect(mockWs.close).toHaveBeenCalledWith(1000, "shutdown");
 
     const status = client.getStatus();
@@ -160,9 +156,7 @@ describe("HermesClient", () => {
     mockWs.onopen!({});
 
     // Initial subscribe sent on connect (contains default platforms)
-    const subscribeCalls = mockWs.send.mock.calls.filter(
-      (call: any[]) => JSON.parse(call[0]).type === "subscribe",
-    );
+    const subscribeCalls = mockWs.send.mock.calls.filter((call: any[]) => JSON.parse(call[0]).type === "subscribe");
     expect(subscribeCalls.length).toBe(1);
 
     // Simulate platform_status for feishu connected (from Hermes response to subscribe)

@@ -1,10 +1,9 @@
-import { findBindingForMessage } from "./channel-binding";
-import type { ChannelBinding } from "./channel-binding";
-import { findRunningInstanceByEnvironment } from "./instance";
-import { sendToAgentWs } from "../transport/acp-ws-handler";
-import { sendToInstanceLocalWs } from "../transport/acp-relay-handler";
-import { getAcpEventBus } from "../transport/event-bus";
 import { log, error as logError } from "../logger";
+import { eventService } from "../services/event-service";
+import { sendToAgentWs } from "../transport/acp-ws-handler";
+import { sendToInstanceRelay } from "../transport/relay";
+import { findBindingForMessage } from "./channel-binding";
+import { findRunningInstanceByEnvironment } from "./instance";
 
 // --- Types ---
 
@@ -33,6 +32,7 @@ interface HermesInboundMessage {
   };
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: outbound message type kept for reference
 interface HermesOutboundSend {
   type: "send";
   platform: string;
@@ -68,15 +68,16 @@ export class HermesClient {
   // Default platforms to subscribe on connect (covers common Hermes platforms).
   // Hermes replies with "disconnected" for platforms it doesn't have, so it's
   // safe to always subscribe to all of them.
-  private static readonly KNOWN_PLATFORMS = [
-    "feishu", "telegram", "discord", "slack", "wecom", "weixin", "dingtalk",
-  ];
+  private static readonly KNOWN_PLATFORMS = ["feishu", "telegram", "discord", "slack", "wecom", "weixin", "dingtalk"];
 
   constructor(url: string) {
     this.status.url = url;
     const envPlatforms = process.env.HERMES_PLATFORMS;
     if (envPlatforms) {
-      this.platforms = envPlatforms.split(",").map((p) => p.trim()).filter(Boolean);
+      this.platforms = envPlatforms
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
     } else {
       this.platforms = HermesClient.KNOWN_PLATFORMS;
     }
@@ -101,8 +102,10 @@ export class HermesClient {
       this.ws.close(1000, "shutdown");
     }
     // Clean up all outbound routing subscriptions
-    for (const [bindingId, unsub] of this.bindingUnsubs) {
-      try { unsub(); } catch {}
+    for (const [_bindingId, unsub] of this.bindingUnsubs) {
+      try {
+        unsub();
+      } catch {}
     }
     this.bindingUnsubs.clear();
     this.status.connected = false;
@@ -117,7 +120,7 @@ export class HermesClient {
 
   send(platform: string, chatId: string, text: string, replyTo?: string): void {
     if (!this.ws || this.ws.readyState !== 1) return;
-    const id = "rcs_" + crypto.randomUUID().replace(/-/g, "");
+    const id = `rcs_${crypto.randomUUID().replace(/-/g, "")}`;
     const msg: Record<string, unknown> = { type: "send", id, platform, chat_id: chatId, content: text };
     if (replyTo) msg.reply_to = replyTo;
     this.ws.send(JSON.stringify(msg));
@@ -188,9 +191,9 @@ export class HermesClient {
         this.pongTimeout = null;
       }
     } else if (msg.type === "platform_status") {
-      const event = msg as any;
-      const platform = event.platform as string | undefined;
-      const state = event.state as string | undefined;
+      const event = msg as { platform?: string; state?: string };
+      const platform = event.platform;
+      const state = event.state;
       if (platform && state === "connected") {
         // Auto-subscribe to newly connected platforms
         if (!this.status.platforms.includes(platform)) {
@@ -205,7 +208,7 @@ export class HermesClient {
     } else if (msg.type === "error") {
       logError("[Hermes] Error from gateway:", msg);
     } else if (msg.type === "result") {
-      const result = msg as any;
+      const result = msg as { success?: boolean; error?: string; id?: string };
       if (!result.success) {
         logError(`[Hermes] Send failed: ${result.error || "unknown"} (id=${result.id})`);
       }
@@ -253,7 +256,7 @@ export class HermesClient {
     const instance = findRunningInstanceByEnvironment(agentId);
     log(`[Hermes] findRunningInstanceByEnvironment(${agentId}) => ${instance ? instance.id : "null"}`);
     if (instance) {
-      const sent = sendToInstanceLocalWs(instance.id, JSON.stringify(acpMsg));
+      const sent = sendToInstanceRelay(instance.id, JSON.stringify(acpMsg));
       if (sent) {
         log(`[Hermes] Routed message to instance ${instance.id} for agent ${agentId}`);
         return;
@@ -277,7 +280,7 @@ export class HermesClient {
 
     let accumulated = "";
 
-    const bus = getAcpEventBus(agentId);
+    const bus = eventService.getAcpBus(agentId);
     const unsub = bus.subscribe((event) => {
       if (event.direction !== "inbound") return;
 
@@ -339,7 +342,7 @@ export class HermesClient {
   }
 
   private scheduleReconnect(): void {
-    const delay = Math.min(2000 * Math.pow(2, this.reconnectAttempts), MAX_RECONNECT_DELAY_MS);
+    const delay = Math.min(2000 * 2 ** this.reconnectAttempts, MAX_RECONNECT_DELAY_MS);
     this.reconnectAttempts++;
     this.status.reconnecting = true;
     this.notifyStatusChange();
@@ -352,7 +355,9 @@ export class HermesClient {
   private notifyStatusChange(): void {
     const snapshot = this.getStatus();
     for (const cb of this.statusListeners) {
-      try { cb(snapshot); } catch {}
+      try {
+        cb(snapshot);
+      } catch {}
     }
   }
 }

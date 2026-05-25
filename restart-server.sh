@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for port in 3000 $(seq 8888 8999); do
+# 检查 .env 文件是否为空或不存在
+if [ ! -s .env ]; then
+  echo "⚠️  .env 文件为空或不存在！请先填写配置后再启动。"
+  echo "   参考 .env.example 创建 .env 文件。"
+  exit 1
+fi
+
+for port in 3000 $(seq 8888 8900); do
   pids=$(lsof -ti :"$port" 2>/dev/null || true)
   if [ -n "$pids" ]; then
     echo "Killing port $port (PIDs: $pids)"

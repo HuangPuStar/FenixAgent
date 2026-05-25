@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { RCSChatAdapter, normalizeRcsToolCall } from "../lib/rcs-chat-adapter";
+import { normalizeRcsToolCall, RCSChatAdapter } from "../lib/rcs-chat-adapter";
 import type { ThreadEntry } from "../lib/types";
-import type { SessionEvent } from "../types";
+import type { EventPayload, SessionEvent } from "../types";
 
 function createStateHarness() {
   let entries: ThreadEntry[] = [];
@@ -15,10 +15,12 @@ function createStateHarness() {
 }
 
 test("normalizeRcsToolCall unwraps nested MCP tool metadata from rcs wrapper", () => {
-  expect(normalizeRcsToolCall("rcs", {
-    tool: "kb_kb_search",
-    input: { query: "release plan" },
-  })).toEqual({
+  expect(
+    normalizeRcsToolCall("rcs", {
+      tool: "kb_kb_search",
+      input: { query: "release plan" },
+    }),
+  ).toEqual({
     title: "kb_kb_search",
     rawInput: { query: "release plan" },
     wrappedByRcs: true,
@@ -48,13 +50,13 @@ test("RCSChatAdapter deduplicates wrapped rcs tool events against embedded tool_
   const wrappedToolUseEvent: SessionEvent = {
     type: "tool_use",
     payload: {
-      tool_call_id: "wrapper-tool-1",
       tool_name: "rcs",
       tool_input: {
         tool: "kb_kb_search",
         input: { query: "release plan" },
       },
-    },
+      tool_call_id: "wrapper-tool-1",
+    } as unknown as EventPayload,
   };
 
   const toolResultEvent: SessionEvent = {
@@ -62,7 +64,7 @@ test("RCSChatAdapter deduplicates wrapped rcs tool events against embedded tool_
     payload: {
       tool_call_id: "wrapper-tool-1",
       content: "[]",
-    },
+    } as unknown as EventPayload,
   };
 
   (adapter as any).handleEvent(assistantEvent);

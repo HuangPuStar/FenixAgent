@@ -27,10 +27,10 @@ function normalizeAutomationState(raw: unknown): AutomationStateResponse {
 
 function readAutomationStateValue(metadata: Record<string, unknown> | null | undefined): unknown {
   if (!metadata || typeof metadata !== "object") {
-    return undefined;
+    return;
   }
-  if (!Object.prototype.hasOwnProperty.call(metadata, "automation_state")) {
-    return undefined;
+  if (!Object.hasOwn(metadata, "automation_state")) {
+    return;
   }
   return metadata.automation_state;
 }
@@ -40,7 +40,7 @@ export function getAutomationStateSnapshot(
 ): AutomationStateResponse | undefined {
   const raw = readAutomationStateValue(metadata);
   if (raw === undefined) {
-    return undefined;
+    return;
   }
   return normalizeAutomationState(raw);
 }
@@ -51,10 +51,7 @@ export function getAutomationStateEventPayload(
   return getAutomationStateSnapshot(metadata) ?? cloneAutomationState(DISABLED_AUTOMATION_STATE);
 }
 
-export function automationStatesEqual(
-  a: AutomationStateResponse,
-  b: AutomationStateResponse,
-): boolean {
+export function automationStatesEqual(a: AutomationStateResponse, b: AutomationStateResponse): boolean {
   return (
     a.enabled === b.enabled &&
     a.phase === b.phase &&

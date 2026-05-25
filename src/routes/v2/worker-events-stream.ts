@@ -1,24 +1,31 @@
-import { Hono } from "hono";
-import { sessionIngressAuth, acceptCliHeaders } from "../../auth/middleware";
-import { createWorkerEventStream } from "../../transport/sse-writer";
+import Elysia from "elysia";
+import { authGuardPlugin } from "../../plugins/auth";
 import { getSession } from "../../services/session";
+import { createWorkerEventStream } from "../../transport/sse-writer";
 
-const app = new Hono();
+const app = new Elysia({ name: "v1-code-sessions-worker-events-stream", prefix: "/v1/code/sessions" }).use(
+  authGuardPlugin,
+);
 
 /** SSE /v1/code/sessions/:id/worker/events/stream — SSE event stream */
-app.get("/:id/worker/events/stream", acceptCliHeaders, sessionIngressAuth, async (c) => {
-  const sessionId = c.req.param("id")!;
-  const session = getSession(sessionId);
-  if (!session) {
-    return c.json({ error: { type: "not_found", message: "Session not found" } }, 404);
-  }
+app.get(
+  "/:id/worker/events/stream",
+  async ({ request, params, query, error }) => {
+    const sessionId = params.id;
+    const session = getSession(sessionId);
+    if (!session) {
+      return error(404, { error: { type: "not_found", message: "Session not found" } });
+    }
 
-  // Support Last-Event-ID / from_sequence_num for reconnection
-  const lastEventId = c.req.header("Last-Event-ID");
-  const fromSeq = c.req.query("from_sequence_num");
-  const fromSeqNum = fromSeq ? parseInt(fromSeq) : lastEventId ? parseInt(lastEventId) : 0;
+    // Support Last-Event-ID / from_sequence_num for reconnection
+    const lastEventId = request.headers.get("Last-Event-ID");
+    // biome-ignore lint/suspicious/noExplicitAny: query params are dynamic in Elysia
+    const fromSeq = (query as any)?.from_sequence_num;
+    const fromSeqNum = fromSeq ? parseInt(fromSeq, 10) : lastEventId ? parseInt(lastEventId, 10) : 0;
 
-  return createWorkerEventStream(c, sessionId, fromSeqNum);
-});
+    return createWorkerEventStream(request, sessionId, fromSeqNum);
+  },
+  { sessionIngressAuth: true },
+);
 
 export default app;

@@ -1,27 +1,40 @@
-import { Hono } from "hono";
-import { storeBindSession } from "../../store";
-import { resolveExistingWebSessionId, toWebSessionId } from "../../services/session";
+import Elysia from "elysia";
+import { authGuardPlugin, errorResponse } from "../../plugins/auth";
+import { bindSessionOwner, resolveExistingSessionId } from "../../services/session";
 
-const app = new Hono();
+const app = new Elysia({ name: "web-auth" }).use(authGuardPlugin).decorate({ error: errorResponse });
 
-/** POST /web/bind — Bind a session to a UUID (no-login auth) */
-app.post("/bind", async (c) => {
-  const body = await c.req.json();
-  const sessionId = body.sessionId;
-  // UUID can come from query param (api.js sends it in URL) or body
-  const uuid = c.req.query("uuid") || body.uuid;
+/** POST /web/bind — Bind a session to a user (requires session auth) */
+app.post(
+  "/bind",
+  async ({ store, body, query, error }) => {
+    const user = store.user;
+    if (!user) {
+      return error(401, { error: "Not authenticated" });
+    }
 
-  if (!sessionId || !uuid) {
-    return c.json({ error: "sessionId and uuid are required" }, 400);
-  }
+    const b = body as { sessionId?: string; uuid?: string };
+    const sessionId = b.sessionId;
+    const uuid = (query as Record<string, string | undefined>)?.uuid || b.uuid;
 
-  const resolvedSessionId = resolveExistingWebSessionId(sessionId);
-  if (!resolvedSessionId) {
-    return c.json({ error: "Session not found" }, 404);
-  }
+    if (!sessionId || !uuid) {
+      return error(400, { error: "sessionId and uuid are required" });
+    }
 
-  storeBindSession(resolvedSessionId, uuid);
-  return c.json({ ok: true, sessionId: toWebSessionId(resolvedSessionId) });
-});
+    const authCtx = store.authContext;
+    if (!authCtx) {
+      return error(403, { error: "No organization context" });
+    }
+
+    const resolvedSessionId = await resolveExistingSessionId(sessionId);
+    if (!resolvedSessionId) {
+      return error(404, { error: "Session not found" });
+    }
+
+    await bindSessionOwner(resolvedSessionId, uuid);
+    return { ok: true, sessionId: resolvedSessionId };
+  },
+  { sessionAuth: true },
+);
 
 export default app;

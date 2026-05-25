@@ -1,0 +1,23 @@
+{
+  "console": "控制台",
+  "overview": "概览",
+  "agents": "智能体",
+  "sessions": "会话",
+  "agentConfig": "Agent",
+  "models": "模型",
+  "skills": "技能",
+  "mcp": "MCP",
+  "tasks": "定时任务",
+  "channels": "消息渠道",
+  "config": "配置",
+  "apiKeys": "API Key",
+  "workflow": "智能体编排",
+  "knowledge": "知识库",
+  "organizations": "组织",
+  "collapse": "收起侧边栏",
+  "expand": "展开侧边栏",
+  "logout": "退出登录",
+  "searchDev": "全局搜索功能开发中",
+  "agentPanel": "Agent 面板",
+  "dashboard": "仪表盘"
+}

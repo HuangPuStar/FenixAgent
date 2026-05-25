@@ -1,117 +1,71 @@
-import { Hono } from "hono";
-import type { Context } from "hono";
-import { sessionAuth } from "../../../auth/middleware";
-import { storeGetEnvironment } from "../../../store";
+import Elysia from "elysia";
+import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
+import { configError, configNotFound, configSuccess, configValidationError } from "../../../services/config-utils";
 import {
-  listSkills,
-  getSkill,
-  setSkill,
   deleteSkill,
-  enableSkill,
-  disableSkill,
-  importSkillDirectories,
-  importWorkspaceSkillDirectories,
-  listSkillSources,
-  getWorkspaceSkill,
-  setWorkspaceSkill,
-  deleteWorkspaceSkill,
+  getSkill,
   type ImportConflictStrategy,
+  importSkillDirectories,
+  listSkills,
+  setSkill,
 } from "../../../services/skill";
 
-const app = new Hono();
+const app = new Elysia({ name: "web-config-skills" }).use(authGuardPlugin).model({
+  "config-body": ConfigBodySchema,
+});
 
-function successResponse(data: unknown) {
-  return { success: true, data };
+async function handleList(ctx: AuthContext) {
+  const skills = await listSkills(ctx);
+  return configSuccess({ skills });
 }
 
-function errorResponse(code: string, message: string, data?: unknown) {
-  return { success: false, error: { code, message }, ...(data !== undefined ? { data } : {}) };
-}
-
-async function handleList(c: Context) {
-  const skills = await listSkills();
-  return c.json(successResponse({ skills }));
-}
-
-async function handleWorkspaceList(c: Context) {
-  const user = c.get("user")!;
-  const sources = await listSkillSources(user.id);
-  return c.json(successResponse({ sources }));
-}
-
-async function handleGet(c: Context, body: { name?: string; source?: string; workspaceId?: string }) {
+async function handleGet(
+  ctx: AuthContext,
+  body: { name?: string },
+  errorFn: (status: number, body: unknown) => unknown,
+) {
   if (!body.name) {
-    return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
+    return errorFn(400, configValidationError("Missing 'name' field"));
   }
-  if (body.source === "workspace" && body.workspaceId) {
-    const env = storeGetEnvironment(body.workspaceId);
-    if (!env) return c.json(errorResponse("NOT_FOUND", "Workspace not found"), 404);
-    const skill = await getWorkspaceSkill(env.workspacePath, body.name);
-    if (!skill) return c.json(errorResponse("NOT_FOUND", `Skill '${body.name}' not found`), 404);
-    return c.json(successResponse(skill));
-  }
-  const skill = await getSkill(body.name);
+  const skill = await getSkill(ctx, body.name);
   if (!skill) {
-    return c.json(errorResponse("NOT_FOUND", `Skill '${body.name}' not found`), 404);
+    return errorFn(404, configNotFound(`Skill '${body.name}' not found`));
   }
-  return c.json(successResponse(skill));
+  return configSuccess(skill);
 }
 
-async function handleSet(c: Context, body: { name?: string; data?: { description: string; content: string; metadata?: Record<string, string> }; source?: string; workspaceId?: string }) {
+async function handleSet(
+  ctx: AuthContext,
+  body: {
+    name?: string;
+    data?: { description: string; content: string; metadata?: Record<string, string> };
+  },
+  errorFn: (status: number, body: unknown) => unknown,
+) {
   if (!body.name) {
-    return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
+    return errorFn(400, configValidationError("Missing 'name' field"));
   }
-  if (!body.data || !body.data.description || !body.data.content) {
-    return c.json(errorResponse("VALIDATION_ERROR", "Missing required fields: data.description, data.content"), 400);
+  if (!body.data?.content) {
+    return errorFn(400, configValidationError("Missing required field: data.content"));
   }
-  if (body.source === "workspace" && body.workspaceId) {
-    const env = storeGetEnvironment(body.workspaceId);
-    if (!env) return c.json(errorResponse("NOT_FOUND", "Workspace not found"), 404);
-    const result = await setWorkspaceSkill(env.workspacePath, body.name, body.data);
-    return c.json(successResponse({ name: result.name, enabled: result.enabled }));
-  }
-  const result = await setSkill(body.name, body.data);
-  return c.json(successResponse({ name: result.name, enabled: result.enabled }));
+  const result = await setSkill(ctx, body.name, body.data);
+  return configSuccess({ name: result.name });
 }
 
-async function handleDelete(c: Context, body: { name?: string; source?: string; workspaceId?: string }) {
+async function handleDelete(
+  ctx: AuthContext,
+  body: { name?: string },
+  errorFn: (status: number, body: unknown) => unknown,
+) {
   if (!body.name) {
-    return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
+    return errorFn(400, configValidationError("Missing 'name' field"));
   }
-  if (body.source === "workspace" && body.workspaceId) {
-    const env = storeGetEnvironment(body.workspaceId);
-    if (!env) return c.json(errorResponse("NOT_FOUND", "Workspace not found"), 404);
-    const deleted = await deleteWorkspaceSkill(env.workspacePath, body.name);
-    if (!deleted) return c.json(errorResponse("NOT_FOUND", `Skill '${body.name}' not found`), 404);
-    return c.json(successResponse(null));
-  }
-  const deleted = await deleteSkill(body.name);
+  const deleted = await deleteSkill(ctx, body.name);
   if (!deleted) {
-    return c.json(errorResponse("NOT_FOUND", `Skill '${body.name}' not found`), 404);
+    return errorFn(404, configNotFound(`Skill '${body.name}' not found`));
   }
-  return c.json(successResponse(null));
-}
-
-async function handleEnable(c: Context, body: { name?: string }) {
-  if (!body.name) {
-    return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
-  }
-  const enabled = await enableSkill(body.name);
-  if (!enabled) {
-    return c.json(errorResponse("NOT_FOUND", `Skill '${body.name}' not found in disabled directory`), 404);
-  }
-  return c.json(successResponse({ name: body.name, enabled: true }));
-}
-
-async function handleDisable(c: Context, body: { name?: string }) {
-  if (!body.name) {
-    return c.json(errorResponse("VALIDATION_ERROR", "Missing 'name' field"), 400);
-  }
-  const disabled = await disableSkill(body.name);
-  if (!disabled) {
-    return c.json(errorResponse("NOT_FOUND", `Skill '${body.name}' not found in enabled directory`), 404);
-  }
-  return c.json(successResponse({ name: body.name, enabled: false }));
+  return configSuccess(null);
 }
 
 interface UploadManifestEntry {
@@ -119,15 +73,20 @@ interface UploadManifestEntry {
   relativePath: string;
 }
 
-async function handleUpload(c: Context) {
-  const formData = await c.req.formData().catch(() => null);
+async function handleUpload(ctx: AuthContext, request: Request, errorFn: (status: number, body: unknown) => unknown) {
+  let formData: globalThis.FormData | null;
+  try {
+    formData = (await request.formData()) as globalThis.FormData;
+  } catch {
+    formData = null;
+  }
   if (!formData) {
-    return c.json(errorResponse("VALIDATION_ERROR", "上传表单解析失败"), 400);
+    return errorFn(400, configValidationError("上传表单解析失败"));
   }
 
   const manifestRaw = formData.get("manifest");
   if (typeof manifestRaw !== "string") {
-    return c.json(errorResponse("VALIDATION_ERROR", "缺少 manifest"), 400);
+    return errorFn(400, configValidationError("缺少 manifest"));
   }
 
   let manifest: UploadManifestEntry[];
@@ -138,27 +97,22 @@ async function handleUpload(c: Context) {
     }
     manifest = parsed;
   } catch {
-    return c.json(errorResponse("VALIDATION_ERROR", "manifest 格式无效"), 400);
+    return errorFn(400, configValidationError("manifest 格式无效"));
   }
 
   const conflictStrategyValue = formData.get("conflictStrategy");
   let conflictStrategy: ImportConflictStrategy | undefined;
   if (typeof conflictStrategyValue === "string" && conflictStrategyValue) {
     if (conflictStrategyValue !== "ignore" && conflictStrategyValue !== "overwrite") {
-      return c.json(errorResponse("VALIDATION_ERROR", "冲突策略无效"), 400);
+      return errorFn(400, configValidationError("冲突策略无效"));
     }
     conflictStrategy = conflictStrategyValue;
   }
 
   const files = formData.getAll("files").filter((item: unknown): item is File => item instanceof File);
   if (manifest.length !== files.length) {
-    return c.json(errorResponse("VALIDATION_ERROR", "上传文件与 manifest 数量不一致"), 400);
+    return errorFn(400, configValidationError("上传文件与 manifest 数量不一致"));
   }
-
-  // Workspace upload support
-  const sourceValue = formData.get("source");
-  const workspaceIdValue = formData.get("workspaceId");
-  const isWorkspaceUpload = sourceValue === "workspace" && typeof workspaceIdValue === "string" && workspaceIdValue;
 
   try {
     const uploadFiles = await Promise.all(
@@ -169,60 +123,65 @@ async function handleUpload(c: Context) {
       })),
     );
 
-    if (isWorkspaceUpload) {
-      const env = storeGetEnvironment(workspaceIdValue);
-      if (!env) return c.json(errorResponse("NOT_FOUND", "Workspace not found"), 404);
-      const result = await importWorkspaceSkillDirectories(env.workspacePath, uploadFiles, conflictStrategy);
-      if (result.conflicts.length > 0) {
-        return c.json(
-          errorResponse("SKILL_CONFLICT", "检测到同名技能冲突", {
-            conflicts: result.conflicts,
-            allowedStrategies: ["ignore", "overwrite"],
-          }),
-          409,
-        );
-      }
-      return c.json(successResponse(result));
-    }
-
-    const result = await importSkillDirectories(uploadFiles, conflictStrategy);
+    const result = await importSkillDirectories(ctx, uploadFiles, conflictStrategy);
     if (result.conflicts.length > 0) {
-      return c.json(
-        errorResponse("SKILL_CONFLICT", "检测到同名技能冲突", {
+      return errorFn(
+        409,
+        configError("SKILL_CONFLICT", "检测到同名技能冲突", {
           conflicts: result.conflicts,
           allowedStrategies: ["ignore", "overwrite"],
         }),
-        409,
       );
     }
-    return c.json(successResponse(result));
-  } catch (error) {
-    const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : "UNKNOWN_ERROR";
-    const message = error instanceof Error ? error.message : "技能导入失败";
+    return configSuccess(result);
+  } catch (error_) {
+    const code =
+      error_ instanceof Error && "code" in error_ && typeof error_.code === "string" ? error_.code : "UNKNOWN_ERROR";
+    const message = error_ instanceof Error ? error_.message : "技能导入失败";
     const status = code === "VALIDATION_ERROR" ? 400 : 500;
-    return c.json(errorResponse(code, message), status);
+    return errorFn(status, configError(code, message));
   }
 }
 
-type SkillBody = { action: string; name?: string; data?: { description: string; content: string; metadata?: Record<string, string> }; source?: string; workspaceId?: string };
+app.post(
+  "/config/skills",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = (body as ConfigBody) ?? {};
+    const payload = {
+      action: b.action ?? "",
+      name: b.name,
+      data: b.data as { description: string; content: string; metadata?: Record<string, string> } | undefined,
+    };
+    const { action } = payload;
 
-app.post("/config/skills", sessionAuth, async (c) => {
-  const body = await c.req.json<SkillBody>().catch((): SkillBody => ({ action: "" }));
-  const { action } = body;
+    const errFn = (status: number, data: unknown) => error(status, data);
 
-  switch (action) {
-    case "workspace_list": return handleWorkspaceList(c);
-    case "list": return handleList(c);
-    case "get": return handleGet(c, body);
-    case "set": return handleSet(c, body);
-    case "delete": return handleDelete(c, body);
-    case "enable": return handleEnable(c, body);
-    case "disable": return handleDisable(c, body);
-    default:
-      return c.json(errorResponse("VALIDATION_ERROR", `Unknown action: ${action}`), 400);
-  }
-});
+    switch (action) {
+      case "list":
+        return await handleList(authCtx);
+      case "get":
+        return await handleGet(authCtx, payload, errFn);
+      case "set":
+        return await handleSet(authCtx, payload, errFn);
+      case "delete":
+        return await handleDelete(authCtx, payload, errFn);
+      default:
+        return error(400, configValidationError(`Unknown action: ${action}`));
+    }
+  },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "Skill 配置管理" } },
+);
 
-app.post("/config/skills/upload", sessionAuth, handleUpload);
+app.post(
+  "/config/skills/upload",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store, request, error }: any) => {
+    const authCtx = store.authContext!;
+    return await handleUpload(authCtx, request, (status, data) => error(status, data));
+  },
+  { sessionAuth: true },
+);
 
 export default app;

@@ -17,8 +17,11 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@server/*": ["../../src/*"],
+      "@mothership/sdk": ["../../packages/sdk/src/index.ts"]
     }
   },
-  "include": ["src", "components"]
+  "include": ["src", "components"],
+  "exclude": ["src/__tests__/eden-fetch-type-test.ts"]
 }

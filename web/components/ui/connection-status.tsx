@@ -28,31 +28,15 @@ export function getConnectionStateLabel(state: ConnectionState): string {
  * A small dot indicator for connection state
  * Used in status bars and headers
  */
-export function StatusDot({
-  state,
-  className,
-}: {
-  state: ConnectionState;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn("w-2 h-2 rounded-full", connectionDotStyles[state], className)}
-    />
-  );
+export function StatusDot({ state, className }: { state: ConnectionState; className?: string }) {
+  return <span className={cn("w-2 h-2 rounded-full", connectionDotStyles[state], className)} />;
 }
 
 /**
  * A status indicator with dot and label
  * Used in cards and detailed views
  */
-export function StatusIndicator({
-  state,
-  className,
-}: {
-  state: ConnectionState;
-  className?: string;
-}) {
+export function StatusIndicator({ state, className }: { state: ConnectionState; className?: string }) {
   return (
     <span className={cn("flex items-center gap-2 text-sm font-normal", className)}>
       <StatusDot state={state} />
@@ -76,15 +60,10 @@ export function ConnectionStatusBar({
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <StatusDot state={state} />
-      <span className="text-sm font-medium">
-        {getConnectionStateLabel(state)}
-      </span>
+      <span className="text-sm font-medium">{getConnectionStateLabel(state)}</span>
       {state === "connected" && displayUrl && (
-        <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-          {displayUrl}
-        </span>
+        <span className="text-xs text-muted-foreground truncate max-w-[150px]">{displayUrl}</span>
       )}
     </div>
   );
 }
-

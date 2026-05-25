@@ -1,0 +1,133 @@
+{
+  "title": "Providers & Models",
+  "subtitle": "Manage AI providers and their available models",
+  "createButton": "New Provider",
+  "searchPlaceholder": "Search providers...",
+  "emptyMessage": "No providers yet. Click \"New Provider\" to add one",
+  "loadError": "Failed to load data: {{message}}",
+  "loadProvidersError": "Failed to load provider list: {{message}}",
+  "loadProviderDetailError": "Failed to load provider details: {{message}}",
+  "loadModelConfigError": "Failed to load model config: {{message}}",
+  "loadModelsError": "Failed to load model data",
+  "unknownError": "Unknown error",
+  "npmOptions": {
+    "openaiCompatible": "OpenAI Compatible",
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "google": "Google",
+    "deepseek": "DeepSeek",
+    "mistral": "Mistral",
+    "cohere": "Cohere",
+    "fireworks": "Fireworks",
+    "togetherai": "Together AI",
+    "perplexity": "Perplexity",
+    "xai": "xAI",
+    "custom": "Custom"
+  },
+  "columns": {
+    "id": "ID",
+    "protocol": "Protocol",
+    "apiKey": "API Key",
+    "status": "Status",
+    "models": "Models"
+  },
+  "modelUsage": {
+    "primary": "Primary",
+    "small": "Lightweight"
+  },
+  "validation": {
+    "nameEmpty": "Name cannot be empty",
+    "nameLength": "Name must be between 1-64 characters"
+  },
+  "actions": {
+    "test": "Test",
+    "testing": "Testing...",
+    "edit": "Edit",
+    "delete": "Delete",
+    "add": "Add"
+  },
+  "batchDelete": "Batch Delete",
+  "batchDeleteConfirmTitle": "Confirm Batch Delete",
+  "batchDeleteConfirmDesc": "This action is irreversible. Are you sure you want to delete {{count}} selected providers?",
+  "batchDeleteCount": "{{count}} providers deleted",
+  "batchDeleteError": "Batch delete failed: {{message}}",
+  "saveProvider": {
+    "errorGeneric": "Save failed: {{message}}",
+    "successCreate": "Provider created",
+    "successUpdate": "Provider updated"
+  },
+  "deleteProvider": {
+    "confirmTitle": "Confirm Delete",
+    "confirmDesc": "This action is irreversible. Are you sure you want to delete provider \"{{name}}\"?",
+    "success": "Provider deleted",
+    "error": "Delete failed: {{message}}"
+  },
+  "form": {
+    "editTitle": "Edit Provider",
+    "createTitle": "New Provider",
+    "id": "ID (Identifier)",
+    "idPlaceholder": "bailian-token-plan",
+    "idImmutable": "ID cannot be changed after creation",
+    "displayName": "Display Name",
+    "displayNamePlaceholder": "e.g. Alibaba Bailian",
+    "protocol": "Protocol",
+    "sdkPackage": "SDK Package:",
+    "customNpmPlaceholder": "e.g. @ai-sdk/your-provider",
+    "apiKey": "API Key",
+    "apiKeyEditPlaceholder": "Leave empty to keep unchanged",
+    "apiKeyCreatePlaceholder": "Enter API Key",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "Optional, uses provider default URL"
+  },
+  "testDialog": {
+    "failTitle": "Connection Test Failed — {{name}}",
+    "successTitle": "Connection Test Successful — {{name}}",
+    "modelsFound": "Found {{count}} available models",
+    "added": "Added",
+    "addModelSuccess": "Model {{modelId}} added",
+    "addModelError": "Add failed: {{message}}",
+    "testError": "Test failed"
+  },
+  "modelSubrow": {
+    "emptyMessage": "No models yet. Click the button below to add",
+    "addButton": "+ Add Model",
+    "createTitle": "New Model",
+    "editTitle": "Edit Model — {{id}}",
+    "modelId": "Model ID",
+    "modelIdPlaceholder": "e.g. qwen3.6-plus",
+    "modelIdEmpty": "Model ID cannot be empty",
+    "displayName": "Display Name",
+    "displayNamePlaceholder": "e.g. Qwen3.6 Plus",
+    "contextLimit": "Context Limit",
+    "contextHint": "tokens, conversation context window size",
+    "outputLimit": "Output Limit",
+    "outputHint": "tokens, max reply length per turn",
+    "inputModality": "Input Modalities",
+    "outputModality": "Output Modalities",
+    "showAdvanced": "Show Advanced Parameters",
+    "hideAdvanced": "Hide Advanced Parameters",
+    "thinkingEnabled": "Enable Thinking Mode",
+    "thinkingBudget": "Thinking Budget (tokens)",
+    "thinkingBudgetPlaceholder": "e.g. 10000",
+    "inputCost": "Input Cost ($/M tokens)",
+    "inputCostPlaceholder": "e.g. 2.5",
+    "outputCost": "Output Cost ($/M tokens)",
+    "outputCostPlaceholder": "e.g. 10",
+    "modalityBadgeInput": "In",
+    "modalityBadgeOutput": "Out",
+    "contextLabel": "Context",
+    "outputLabel": "Output",
+    "noLimitInfo": "No limit info",
+    "saveModel": {
+      "successCreate": "Model added",
+      "successUpdate": "Model updated",
+      "errorGeneric": "Save failed: {{message}}"
+    },
+    "deleteModel": {
+      "confirmTitle": "Confirm Delete Model",
+      "confirmDesc": "This action is irreversible. Are you sure you want to delete model \"{{id}}\"?",
+      "success": "Model deleted",
+      "error": "Delete failed: {{message}}"
+    }
+  }
+}

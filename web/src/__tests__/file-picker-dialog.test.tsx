@@ -1,6 +1,5 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
-import React from "react";
 
 describe("FilePickerDialog", () => {
   test("exports FilePickerDialog as a function", async () => {
@@ -12,12 +11,7 @@ describe("FilePickerDialog", () => {
     const { FilePickerDialog } = await import("../components/FilePickerDialog");
     expect(() => {
       ReactDOMServer.renderToString(
-        <FilePickerDialog
-          open={true}
-          sessionId="s1"
-          onClose={() => {}}
-          onSelect={() => {}}
-        />
+        <FilePickerDialog open={true} envId="env_1" onClose={() => {}} onSelect={() => {}} />,
       );
     }).not.toThrow();
   });
@@ -26,12 +20,7 @@ describe("FilePickerDialog", () => {
     const { FilePickerDialog } = await import("../components/FilePickerDialog");
     expect(() => {
       ReactDOMServer.renderToString(
-        <FilePickerDialog
-          open={false}
-          sessionId="s1"
-          onClose={() => {}}
-          onSelect={() => {}}
-        />
+        <FilePickerDialog open={false} envId="env_1" onClose={() => {}} onSelect={() => {}} />,
       );
     }).not.toThrow();
   });
@@ -43,14 +32,15 @@ describe("FilePickerDialog", () => {
     expect(typeof dialogMod.DialogTitle).toBe("function");
   });
 
-  test("imports apiListFiles and apiUploadFile from api/client", async () => {
-    const clientMod = await import("../api/client");
-    expect(typeof clientMod.apiListFiles).toBe("function");
-    expect(typeof clientMod.apiUploadFile).toBe("function");
+  test("exports fileApi from api/sdk", async () => {
+    const sdkMod = await import("../api/sdk");
+    expect(sdkMod.fileApi).toBeDefined();
+    expect(typeof sdkMod.fileApi.listDir).toBe("function");
+    expect(typeof sdkMod.fileApi.upload).toBe("function");
   });
 
   test("FileInfo type is exported from types", async () => {
-    const typesMod = await import("../types");
+    const _typesMod = await import("../types");
     const dummy: any = { name: "test.txt", path: "user/test.txt", type: "file" as const, size: 100, modifiedAt: 0 };
     expect(dummy.name).toBe("test.txt");
     // Verify the import works — if FileInfo type doesn't exist, this file won't compile

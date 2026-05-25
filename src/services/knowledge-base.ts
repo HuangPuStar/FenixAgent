@@ -1,25 +1,16 @@
-import { and, count, desc, eq, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { db } from "../db";
-import {
-  agentKnowledgeBinding,
-  knowledgeBase,
-  knowledgeResource,
-} from "../db/schema";
 import { config } from "../config";
-import { createKnowledgeProvider } from "./knowledge-provider/openviking";
-import type {
-  KnowledgeBaseStatus,
-  KnowledgeProvider,
-  KnowledgeResourceStatus,
-} from "./knowledge-provider/types";
+import type { KnowledgeBaseRow } from "../repositories/knowledge-base";
+import { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
+import { getKnowledgeProvider } from "./knowledge-provider/registry";
+import type { KnowledgeBaseStatus, KnowledgeResourceStatus } from "./knowledge-provider/types";
 
 export interface KnowledgeTenantIdentity {
   remoteAccountId: string;
   remoteUserId: string;
 }
 
-function generateKnowledgeBaseId(): string {
+function _generateKnowledgeBaseId(): string {
   return `kb_${randomBytes(8).toString("hex")}`;
 }
 
@@ -59,25 +50,14 @@ function validateSlug(slug: string): string | null {
   return null;
 }
 
-function toUnixTimestamp(value: Date | null | undefined): number | null {
+function _toUnixTimestamp(value: Date | null | undefined): number | null {
   return value ? Math.floor(value.getTime() / 1000) : null;
 }
 
-let knowledgeProvider: KnowledgeProvider | null = null;
-
-function getKnowledgeProvider(): KnowledgeProvider {
-  if (!knowledgeProvider) {
-    knowledgeProvider = createKnowledgeProvider();
-  }
-  return knowledgeProvider;
-}
-
-export function setKnowledgeProviderForTesting(provider: KnowledgeProvider | null) {
-  knowledgeProvider = provider;
-}
+export { setKnowledgeProviderForTesting } from "./knowledge-provider/registry";
 
 function sanitizeKnowledgeBase(
-  row: typeof knowledgeBase.$inferSelect,
+  row: KnowledgeBaseRow,
   extras?: {
     bindingsCount?: number;
     resourcesCount?: number;
@@ -112,7 +92,7 @@ function sanitizeKnowledgeBase(
 }
 
 export function resolveKnowledgeTenantIdentity(
-  row: Pick<typeof knowledgeBase.$inferSelect, "userId" | "remoteAccountId" | "remoteUserId">,
+  row: Pick<KnowledgeBaseRow, "userId" | "remoteAccountId" | "remoteUserId">,
 ): KnowledgeTenantIdentity {
   const fallback = row.userId.trim();
   return {
@@ -121,54 +101,38 @@ export function resolveKnowledgeTenantIdentity(
   };
 }
 
-async function getOwnedKnowledgeBaseRow(userId: string, knowledgeBaseId: string) {
-  const [row] = await db.select().from(knowledgeBase)
-    .where(and(eq(knowledgeBase.id, knowledgeBaseId), eq(knowledgeBase.userId, userId)));
-  return row ?? null;
-}
-
-async function assertUniqueSlug(userId: string, slug: string, excludeId?: string) {
-  const [row] = await db.select({ id: knowledgeBase.id }).from(knowledgeBase)
-    .where(and(eq(knowledgeBase.userId, userId), eq(knowledgeBase.slug, normalizeSlug(slug))));
+async function assertUniqueSlug(organizationId: string, slug: string, excludeId?: string) {
+  const row = await knowledgeBaseRepo.findByUserAndSlug(organizationId, normalizeSlug(slug));
   if (row && row.id !== excludeId) {
     throw new Error(`知识库 slug '${normalizeSlug(slug)}' 已存在`);
   }
 }
 
-async function loadResourceCount(knowledgeBaseId: string): Promise<number> {
-  const [row] = await db.select({ count: count() }).from(knowledgeResource)
-    .where(eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId));
-  return row?.count ?? 0;
-}
-
 export async function countKnowledgeBaseBindings(knowledgeBaseId: string): Promise<number> {
-  const [row] = await db.select({ count: count() }).from(agentKnowledgeBinding)
-    .where(eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBaseId));
-  return row?.count ?? 0;
+  return knowledgeBaseRepo.countBindings(knowledgeBaseId);
 }
 
-export async function listKnowledgeBasesByUserId(userId: string) {
-  const rows = await db.select().from(knowledgeBase)
-    .where(eq(knowledgeBase.userId, userId))
-    .orderBy(desc(knowledgeBase.updatedAt));
-  const items = await Promise.all(rows.map(async (row) => sanitizeKnowledgeBase(row, {
-    bindingsCount: await countKnowledgeBaseBindings(row.id),
-    resourcesCount: await loadResourceCount(row.id),
-  })));
+export async function listKnowledgeBasesByTeamId(organizationId: string) {
+  const rows = await knowledgeBaseRepo.listByOrganizationId(organizationId);
+  const items = await Promise.all(
+    rows.map(async (row) =>
+      sanitizeKnowledgeBase(row, {
+        bindingsCount: await countKnowledgeBaseBindings(row.id),
+        resourcesCount: await knowledgeResourceRepo.countByKnowledgeBase(row.id),
+      }),
+    ),
+  );
   return items;
 }
 
-export async function getKnowledgeBaseDetail(userId: string, knowledgeBaseId: string) {
-  const row = await getOwnedKnowledgeBaseRow(userId, knowledgeBaseId);
+export async function getKnowledgeBaseDetail(organizationId: string, knowledgeBaseId: string) {
+  const row = await knowledgeBaseRepo.getByOrgAndId(organizationId, knowledgeBaseId);
   if (!row) {
     return null;
   }
-  const resourceRows = await db.select().from(knowledgeResource)
-    .where(eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId))
-    .orderBy(desc(knowledgeResource.updatedAt))
-    .limit(20);
+  const resourceRows = await knowledgeResourceRepo.listByKnowledgeBase(knowledgeBaseId, 20);
   const bindingsCount = await countKnowledgeBaseBindings(knowledgeBaseId);
-  const resourcesCount = await loadResourceCount(knowledgeBaseId);
+  const resourcesCount = await knowledgeResourceRepo.countByKnowledgeBase(knowledgeBaseId);
   return sanitizeKnowledgeBase(row, {
     bindingsCount,
     resourcesCount,
@@ -185,8 +149,9 @@ export async function getKnowledgeBaseDetail(userId: string, knowledgeBaseId: st
 }
 
 export async function createKnowledgeBaseRecord(
-  userId: string,
+  organizationId: string,
   input: { name: string; slug: string; description?: string | null },
+  userId?: string,
 ) {
   const nameError = validateName(input.name);
   if (nameError) {
@@ -198,30 +163,30 @@ export async function createKnowledgeBaseRecord(
   }
 
   try {
-    await assertUniqueSlug(userId, input.slug);
+    await assertUniqueSlug(organizationId, input.slug);
   } catch (error) {
     return { success: false as const, error: { code: "VALIDATION_ERROR", message: (error as Error).message } };
   }
 
   const provider = getKnowledgeProvider();
+  const effectiveUserId = userId ?? organizationId;
   const tenantIdentity = resolveKnowledgeTenantIdentity({
-    userId,
-    remoteAccountId: userId,
-    remoteUserId: userId,
+    userId: effectiveUserId,
+    remoteAccountId: effectiveUserId,
+    remoteUserId: effectiveUserId,
   });
   const remote = await provider.createKnowledgeBase({
-    userId,
+    userId: effectiveUserId,
     slug: normalizeSlug(input.slug),
     name: input.name.trim(),
     description: input.description?.trim() || undefined,
   });
 
   const now = new Date();
-  const id = generateKnowledgeBaseId();
-  const remoteId = remote.remoteId ?? buildKnowledgeBaseRemoteId(userId, input.slug);
-  await db.insert(knowledgeBase).values({
-    id,
-    userId,
+  const remoteId = remote.remoteId ?? buildKnowledgeBaseRemoteId(effectiveUserId, input.slug);
+  const row = await knowledgeBaseRepo.create({
+    userId: effectiveUserId,
+    organizationId,
     name: input.name.trim(),
     slug: normalizeSlug(input.slug),
     description: input.description?.trim() || null,
@@ -235,16 +200,15 @@ export async function createKnowledgeBaseRecord(
     updatedAt: now,
   });
 
-  const [row] = await db.select().from(knowledgeBase).where(eq(knowledgeBase.id, id));
   return { success: true as const, data: sanitizeKnowledgeBase(row) };
 }
 
 export async function updateKnowledgeBase(
-  userId: string,
+  organizationId: string,
   knowledgeBaseId: string,
   input: { name?: string; slug?: string; description?: string | null },
 ) {
-  const row = await getOwnedKnowledgeBaseRow(userId, knowledgeBaseId);
+  const row = await knowledgeBaseRepo.getByOrgAndId(organizationId, knowledgeBaseId);
   if (!row) {
     return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
   }
@@ -260,13 +224,13 @@ export async function updateKnowledgeBase(
       return { success: false as const, error: { code: "VALIDATION_ERROR", message: slugError } };
     }
     try {
-      await assertUniqueSlug(userId, input.slug, knowledgeBaseId);
+      await assertUniqueSlug(organizationId, input.slug, knowledgeBaseId);
     } catch (error) {
       return { success: false as const, error: { code: "VALIDATION_ERROR", message: (error as Error).message } };
     }
   }
 
-  const updates: Partial<typeof knowledgeBase.$inferInsert> = {
+  const updates: Record<string, unknown> = {
     updatedAt: new Date(),
   };
   if (input.name !== undefined) {
@@ -278,13 +242,13 @@ export async function updateKnowledgeBase(
   if (input.description !== undefined) {
     updates.description = input.description?.trim() || null;
   }
-  await db.update(knowledgeBase).set(updates).where(eq(knowledgeBase.id, knowledgeBaseId));
-  const [updated] = await db.select().from(knowledgeBase).where(eq(knowledgeBase.id, knowledgeBaseId));
-  return { success: true as const, data: sanitizeKnowledgeBase(updated) };
+  await knowledgeBaseRepo.update(knowledgeBaseId, updates);
+  const updated = await knowledgeBaseRepo.getById(knowledgeBaseId);
+  return { success: true as const, data: sanitizeKnowledgeBase(updated!) };
 }
 
-export async function deleteKnowledgeBase(userId: string, knowledgeBaseId: string) {
-  const row = await getOwnedKnowledgeBaseRow(userId, knowledgeBaseId);
+export async function deleteKnowledgeBase(organizationId: string, knowledgeBaseId: string) {
+  const row = await knowledgeBaseRepo.getByOrgAndId(organizationId, knowledgeBaseId);
   if (!row) {
     return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
   }
@@ -297,45 +261,40 @@ export async function deleteKnowledgeBase(userId: string, knowledgeBaseId: strin
       recursive: true,
     });
   }
-  await db.delete(agentKnowledgeBinding).where(eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBaseId));
-  await db.delete(knowledgeBase).where(eq(knowledgeBase.id, knowledgeBaseId));
+  await agentKnowledgeBindingRepo.deleteByKnowledgeBaseId(knowledgeBaseId);
+  await knowledgeBaseRepo.delete(knowledgeBaseId);
   return { success: true as const, data: { ok: true } };
 }
 
-export async function touchKnowledgeBaseUpdatedAt(knowledgeBaseId: string, patch?: {
-  status?: KnowledgeBaseStatus;
-  lastError?: string | null;
-  remoteId?: string | null;
-}) {
-  await db.update(knowledgeBase).set({
+export async function touchKnowledgeBaseUpdatedAt(
+  knowledgeBaseId: string,
+  patch?: {
+    status?: KnowledgeBaseStatus;
+    lastError?: string | null;
+    remoteId?: string | null;
+  },
+) {
+  await knowledgeBaseRepo.update(knowledgeBaseId, {
     updatedAt: new Date(),
     ...(patch?.status ? { status: patch.status } : {}),
     ...(patch && "lastError" in patch ? { lastError: patch.lastError ?? null } : {}),
     ...(patch && "remoteId" in patch ? { remoteId: patch.remoteId ?? null } : {}),
-  }).where(eq(knowledgeBase.id, knowledgeBaseId));
+  });
 }
 
 export async function listKnowledgeBaseResources(knowledgeBaseId: string, limit?: number) {
-  return db.select().from(knowledgeResource)
-    .where(eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId))
-    .orderBy(desc(knowledgeResource.updatedAt))
-    .limit(limit ?? 100);
+  return knowledgeResourceRepo.listByKnowledgeBase(knowledgeBaseId, limit);
 }
 
 export async function upsertKnowledgeBaseStatusFromResources(knowledgeBaseId: string) {
-  const [summary] = await db.select({
-    readyCount: sql<number>`sum(case when ${knowledgeResource.status} = 'ready' then 1 else 0 end)`,
-    activeCount: sql<number>`sum(case when ${knowledgeResource.status} in ('pending', 'processing') then 1 else 0 end)`,
-    errorCount: sql<number>`sum(case when ${knowledgeResource.status} = 'error' then 1 else 0 end)`,
-    totalCount: count(),
-  }).from(knowledgeResource).where(eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId));
+  const summary = await knowledgeResourceRepo.getStatusSummary(knowledgeBaseId);
 
   let status: KnowledgeBaseStatus = "empty";
-  if ((summary?.errorCount ?? 0) > 0) {
+  if (summary.errorCount > 0) {
     status = "error";
-  } else if ((summary?.activeCount ?? 0) > 0) {
+  } else if (summary.activeCount > 0) {
     status = "indexing";
-  } else if ((summary?.readyCount ?? 0) > 0) {
+  } else if (summary.readyCount > 0) {
     status = "ready";
   }
 

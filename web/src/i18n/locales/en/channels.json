@@ -1,0 +1,47 @@
+{
+  "title": "Channels",
+  "newBinding": "New Binding",
+  "loadBindingsFailed": "Failed to load bindings",
+  "updateBindingFailed": "Failed to update binding status",
+  "deleteBindingFailed": "Failed to delete binding",
+  "bindingDeleted": "Binding deleted",
+  "selectPlatformAndAgent": "Please select a platform and Agent",
+  "createBindingFailed": "Failed to create binding",
+  "unknownError": "Unknown error",
+  "bindingCreated": "Binding created",
+  "hermes": {
+    "title": "Hermes Gateway",
+    "connected": "Connected",
+    "reconnecting": "Reconnecting",
+    "notConfigured": "Not configured",
+    "address": "Address",
+    "platforms": "Platforms",
+    "lastConnected": "Last connected"
+  },
+  "columns": {
+    "platform": "Platform",
+    "chatId": "Chat ID",
+    "all": "All",
+    "agent": "Agent",
+    "enabled": "Enabled"
+  },
+  "table": {
+    "searchPlaceholder": "Search bindings...",
+    "emptyMessage": "No bindings"
+  },
+  "actions": {
+    "delete": "Delete"
+  },
+  "dialog": {
+    "title": "New Channel Binding",
+    "platform": "Platform",
+    "platformPlaceholder": "Select platform",
+    "chatId": "Chat ID (optional, leave empty to match all)",
+    "chatIdPlaceholder": "e.g. oc_xxx, leave empty to match all messages on this platform",
+    "agent": "Agent",
+    "agentPlaceholder": "Select Agent",
+    "cancel": "Cancel",
+    "create": "Create",
+    "creating": "Creating..."
+  }
+}

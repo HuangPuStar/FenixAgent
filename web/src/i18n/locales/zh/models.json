@@ -1,0 +1,133 @@
+{
+  "title": "服务商与模型",
+  "subtitle": "管理 AI 服务商及其可用模型",
+  "createButton": "新建服务商",
+  "searchPlaceholder": "搜索服务商...",
+  "emptyMessage": "暂无服务商，点击「新建服务商」添加",
+  "loadError": "加载数据失败: {{message}}",
+  "loadProvidersError": "加载服务商列表失败: {{message}}",
+  "loadProviderDetailError": "加载服务商详情失败: {{message}}",
+  "loadModelConfigError": "加载模型配置失败: {{message}}",
+  "loadModelsError": "加载模型数据失败",
+  "unknownError": "未知错误",
+  "npmOptions": {
+    "openaiCompatible": "OpenAI 兼容",
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "google": "Google",
+    "deepseek": "DeepSeek",
+    "mistral": "Mistral",
+    "cohere": "Cohere",
+    "fireworks": "Fireworks",
+    "togetherai": "Together AI",
+    "perplexity": "Perplexity",
+    "xai": "xAI",
+    "custom": "自定义"
+  },
+  "columns": {
+    "id": "ID",
+    "protocol": "协议",
+    "apiKey": "API Key",
+    "status": "状态",
+    "models": "模型"
+  },
+  "modelUsage": {
+    "primary": "主模型",
+    "small": "轻量模型"
+  },
+  "validation": {
+    "nameEmpty": "名称不能为空",
+    "nameLength": "名称长度须在 1-64 字符之间"
+  },
+  "actions": {
+    "test": "测试",
+    "testing": "检测中...",
+    "edit": "编辑",
+    "delete": "删除",
+    "add": "添加"
+  },
+  "batchDelete": "批量删除",
+  "batchDeleteConfirmTitle": "批量删除确认",
+  "batchDeleteConfirmDesc": "此操作不可逆。确定要删除选中的 {{count}} 个服务商吗？",
+  "batchDeleteCount": "已删除 {{count}} 个服务商",
+  "batchDeleteError": "批量删除失败: {{message}}",
+  "saveProvider": {
+    "errorGeneric": "保存失败: {{message}}",
+    "successCreate": "服务商已创建",
+    "successUpdate": "服务商已更新"
+  },
+  "deleteProvider": {
+    "confirmTitle": "确认删除",
+    "confirmDesc": "此操作不可逆。确定要删除服务商 \"{{name}}\" 吗？",
+    "success": "服务商已删除",
+    "error": "删除失败: {{message}}"
+  },
+  "form": {
+    "editTitle": "编辑服务商",
+    "createTitle": "新建服务商",
+    "id": "ID（标识符）",
+    "idPlaceholder": "bailian-token-plan",
+    "idImmutable": "ID 创建后不可修改",
+    "displayName": "显示名称",
+    "displayNamePlaceholder": "例如 阿里百炼",
+    "protocol": "协议",
+    "sdkPackage": "SDK 包:",
+    "customNpmPlaceholder": "例如 @ai-sdk/your-provider",
+    "apiKey": "API Key",
+    "apiKeyEditPlaceholder": "留空表示不修改",
+    "apiKeyCreatePlaceholder": "输入 API Key",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "可选，默认使用服务商 URL"
+  },
+  "testDialog": {
+    "failTitle": "连接测试失败 — {{name}}",
+    "successTitle": "连接测试成功 — {{name}}",
+    "modelsFound": "发现 {{count}} 个可用模型",
+    "added": "已添加",
+    "addModelSuccess": "模型 {{modelId}} 已添加",
+    "addModelError": "添加失败: {{message}}",
+    "testError": "测试失败"
+  },
+  "modelSubrow": {
+    "emptyMessage": "暂无模型，点击下方按钮添加",
+    "addButton": "+ 添加模型",
+    "createTitle": "新增模型",
+    "editTitle": "编辑模型 — {{id}}",
+    "modelId": "模型 ID",
+    "modelIdPlaceholder": "例如 qwen3.6-plus",
+    "modelIdEmpty": "模型 ID 不能为空",
+    "displayName": "显示名称",
+    "displayNamePlaceholder": "例如 Qwen3.6 Plus",
+    "contextLimit": "上下文限制",
+    "contextHint": "tokens，对话上下文窗口大小",
+    "outputLimit": "输出限制",
+    "outputHint": "tokens，单次回复最大长度",
+    "inputModality": "输入模态",
+    "outputModality": "输出模态",
+    "showAdvanced": "展开高级参数",
+    "hideAdvanced": "收起高级参数",
+    "thinkingEnabled": "启用思考模式",
+    "thinkingBudget": "思考预算 (tokens)",
+    "thinkingBudgetPlaceholder": "例如 10000",
+    "inputCost": "输入费用 ($/百万 tokens)",
+    "inputCostPlaceholder": "例如 2.5",
+    "outputCost": "输出费用 ($/百万 tokens)",
+    "outputCostPlaceholder": "例如 10",
+    "modalityBadgeInput": "入",
+    "modalityBadgeOutput": "出",
+    "contextLabel": "上下文",
+    "outputLabel": "输出",
+    "noLimitInfo": "无限制信息",
+    "saveModel": {
+      "successCreate": "模型已添加",
+      "successUpdate": "模型已更新",
+      "errorGeneric": "保存失败: {{message}}"
+    },
+    "deleteModel": {
+      "confirmTitle": "确认删除模型",
+      "confirmDesc": "此操作不可逆。确定要删除模型 \"{{id}}\" 吗？",
+      "success": "模型已删除",
+      "error": "删除失败: {{message}}"
+    }
+  }
+}

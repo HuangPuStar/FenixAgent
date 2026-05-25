@@ -1,8 +1,9 @@
+import { ChevronLeft, ChevronRight, MessageSquare, Plus } from "lucide-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { SessionListItem } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import { ScrollArea } from "../ui/scroll-area";
-import { Plus, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
-import type { SessionListItem } from "../../src/lib/types";
 
 // =============================================================================
 // 会话侧边栏 — Anthropic 分段式：今天/昨天/更早 + 橙色活跃态
@@ -16,13 +17,8 @@ interface SessionSidebarProps {
   className?: string;
 }
 
-export function SessionSidebar({
-  sessions,
-  activeId,
-  onSelect,
-  onNew,
-  className,
-}: SessionSidebarProps) {
+export function SessionSidebar({ sessions, activeId, onSelect, onNew, className }: SessionSidebarProps) {
+  const { t } = useTranslation("components");
   const [collapsed, setCollapsed] = useState(false);
 
   // 按日期分组
@@ -39,7 +35,9 @@ export function SessionSidebar({
       {/* 头部 */}
       <div className="flex items-center justify-between px-3 py-3 border-b border-border">
         {!collapsed && (
-          <span className="text-xs font-display font-medium text-text-muted uppercase tracking-wider">会话</span>
+          <span className="text-xs font-display font-medium text-text-muted uppercase tracking-wider">
+            {t("sessionSidebar.sessions")}
+          </span>
         )}
         <div className="flex items-center gap-1">
           {!collapsed && onNew && (
@@ -56,11 +54,7 @@ export function SessionSidebar({
             onClick={() => setCollapsed(!collapsed)}
             className="h-7 w-7 flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors"
           >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
         </div>
       </div>
@@ -68,41 +62,39 @@ export function SessionSidebar({
       {/* 会话列表 — 分段 */}
       {!collapsed && (
         <ScrollArea className="flex-1">
-        <nav className="py-2" aria-label="历史会话">
-          {groups.map((group) => (
-            <div key={group.label}>
-              <div className="px-3 py-1.5">
-                <span className="text-[10px] font-display font-medium uppercase tracking-widest text-text-muted">
-                  {group.label}
-                </span>
-              </div>
-              {group.sessions.map((session) => (
-                <button
-                  key={session.id}
-                  type="button"
-                  onClick={() => onSelect?.(session.id)}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
-                    session.id === activeId
-                      ? "bg-brand/10 text-text-primary"
-                      : "text-text-secondary hover:bg-surface-1/50 hover:text-text-primary",
-                  )}
-                  title={session.title || session.id}
-                >
-                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-                  <span className="text-sm font-display truncate">
-                    {session.title || session.id.slice(0, 8)}
+          <nav className="py-2" aria-label={t("sessionSidebar.historySessions")}>
+            {groups.map((group) => (
+              <div key={group.label}>
+                <div className="px-3 py-1.5">
+                  <span className="text-[10px] font-display font-medium uppercase tracking-widest text-text-muted">
+                    {group.label}
                   </span>
-                </button>
-              ))}
-            </div>
-          ))}
-          {sessions.length === 0 && (
-            <div className="flex items-center justify-center py-8">
-              <span className="text-xs text-text-muted font-display">暂无会话</span>
-            </div>
-          )}
-        </nav>
+                </div>
+                {group.sessions.map((session) => (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => onSelect?.(session.id)}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
+                      session.id === activeId
+                        ? "bg-brand/10 text-text-primary"
+                        : "text-text-secondary hover:bg-surface-1/50 hover:text-text-primary",
+                    )}
+                    title={session.title || session.id}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                    <span className="text-sm font-display truncate">{session.title || session.id.slice(0, 8)}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+            {sessions.length === 0 && (
+              <div className="flex items-center justify-center py-8">
+                <span className="text-xs text-text-muted font-display">{t("sessionSidebar.noSessions")}</span>
+              </div>
+            )}
+          </nav>
         </ScrollArea>
       )}
     </div>

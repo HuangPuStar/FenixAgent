@@ -1,9 +1,9 @@
-import { storeCreateToken, storeGetUserByToken } from "../store";
+import { tokenRepo } from "../repositories";
 
 let tokenCounter = 0;
 
 /** Generate a random session token and associate it with a user */
-export function issueToken(username: string): { token: string; expires_in: number } {
+export async function issueToken(username: string): Promise<{ token: string; expires_in: number }> {
   // Use crypto.getRandomValues for uniqueness
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -11,14 +11,14 @@ export function issueToken(username: string): { token: string; expires_in: numbe
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
   const token = `rct_${tokenCounter++}_${hex}`;
-  storeCreateToken(username, token);
+  await tokenRepo.create(username, token);
   return { token, expires_in: 86400 };
 }
 
 /** Resolve a token to a username. Returns null if invalid. */
-export function resolveToken(token: string | undefined): string | null {
+export async function resolveToken(token: string | undefined): Promise<string | null> {
   if (!token) return null;
-  const entry = storeGetUserByToken(token);
+  const entry = await tokenRepo.getByToken(token);
   if (!entry) return null;
   return entry.username;
 }

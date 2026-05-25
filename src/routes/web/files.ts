@@ -1,509 +1,228 @@
-import { Hono } from "hono";
-import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
+import Elysia from "elysia";
+import { NotFoundError } from "../../errors";
+import { authGuardPlugin } from "../../plugins/auth";
 import {
-    mkdir,
-    open,
-    readFile,
-    readdir,
-    stat,
-    unlink,
-    writeFile,
-} from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
-import { sessionAuth } from "../../auth/middleware";
+  FileContentSchema,
+  FileListResponseSchema,
+  FileUploadResponseSchema,
+  FileWriteResultSchema,
+  WriteFileRequestSchema,
+} from "../../schemas/file.schema";
+import { getOwnedEnvironment } from "../../services/environment-core";
+
 import {
-    storeGetEnvironment,
-    storeGetSession,
-} from "../../store";
-import { resolveExistingSessionId } from "../../services/session";
+  createFileStream,
+  deleteFile,
+  getMimeType,
+  isTextExtension,
+  isTextFile,
+  isUserPath,
+  listDirectory,
+  normalizeUserRoutePath,
+  readFileContent,
+  resolveWorkspacePath,
+  writeFileContent,
+} from "../../services/workspace-fs";
 
-const TEXT_EXTENSIONS = new Set([
-    ".txt",
-    ".md",
-    ".json",
-    ".yaml",
-    ".yml",
-    ".ts",
-    ".js",
-    ".tsx",
-    ".jsx",
-    ".py",
-    ".go",
-    ".rs",
-    ".css",
-    ".html",
-    ".xml",
-    ".toml",
-    ".ini",
-    ".cfg",
-    ".sh",
-    ".bash",
-    ".zsh",
-    ".sql",
-    ".env",
-]);
+const app = new Elysia({ name: "web-files", prefix: "/environments" }).use(authGuardPlugin).model({
+  "file-list-response": FileListResponseSchema,
+  "file-content": FileContentSchema,
+  "file-upload-response": FileUploadResponseSchema,
+  "file-write-result": FileWriteResultSchema,
+  "write-file-request": WriteFileRequestSchema,
+});
 
-const MIME_TYPES: Record<string, string> = {
-    ".html": "text/html",
-    ".htm": "text/html",
-    ".css": "text/css",
-    ".js": "text/javascript",
-    ".ts": "text/typescript",
-    ".tsx": "text/typescript",
-    ".jsx": "text/javascript",
-    ".json": "application/json",
-    ".xml": "application/xml",
-    ".txt": "text/plain",
-    ".md": "text/plain",
-    ".yaml": "text/plain",
-    ".yml": "text/plain",
-    ".py": "text/plain",
-    ".go": "text/plain",
-    ".rs": "text/plain",
-    ".sh": "text/plain",
-    ".bash": "text/plain",
-    ".zsh": "text/plain",
-    ".sql": "text/plain",
-    ".csv": "text/csv",
-    ".pdf": "application/pdf",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".svg": "image/svg+xml",
-    ".webp": "image/webp",
-    ".ico": "image/x-icon",
-    ".mp4": "video/mp4",
-    ".webm": "video/webm",
-    ".mp3": "audio/mpeg",
-    ".wav": "audio/wav",
-};
-
-type ResolvedWorkspacePath = {
-    workspaceDir: string;
-    userDir: string;
-    resolved: string;
-    displayPath: string;
-};
-
-function isUserPath(path: string): boolean {
-    return path === "" || path === "user" || path.startsWith("user/");
+async function requireEnv(envId: string, orgId: string, errorFn: (status: number, body: unknown) => Response) {
+  try {
+    return await getOwnedEnvironment(envId, orgId);
+  } catch (e) {
+    if (e instanceof NotFoundError) {
+      return errorFn(404, { error: { type: "not_found", message: "环境不存在" } });
+    }
+    throw e;
+  }
 }
 
-function normalizeUserRoutePath(path: string): string {
-    const normalized = path.trim();
-    if (!normalized) {
-        return "user";
-    }
-    if (normalized === "user" || normalized.startsWith("user/")) {
-        return normalized;
-    }
-    if (normalized.startsWith(".")) {
-        return normalized;
-    }
-    return `user/${normalized}`;
-}
-
-async function resolveWorkspacePath(
-    sessionId: string,
-    relativePath: string,
-): Promise<ResolvedWorkspacePath | null> {
-    const internalId = resolveExistingSessionId(sessionId);
-    const session = internalId ? storeGetSession(internalId) : undefined;
-    const envId = session?.environmentId;
-
-    if (!envId) {
-        return null;
-    }
-
-    const env = storeGetEnvironment(envId);
-    if (!env) {
-        return null;
-    }
-
-    const workspaceDir = env.workspacePath;
-    const userDir = join(workspaceDir, "user");
-    await mkdir(userDir, { recursive: true });
-
-    const normalizedInput = relativePath.trim();
-    const userScoped = isUserPath(normalizedInput);
-    const baseDir = userScoped ? userDir : workspaceDir;
-
-    let cleanPath = normalizedInput;
-    if (userScoped) {
-        if (cleanPath.startsWith("user/")) {
-            cleanPath = cleanPath.slice(5);
-        } else if (cleanPath === "user") {
-            cleanPath = "";
-        }
-    }
-
-    const resolved = resolve(baseDir, cleanPath);
-    if (!resolved.startsWith(`${baseDir}/`) && resolved !== baseDir) {
-        return null;
-    }
-
-    const relativeToBase = relative(baseDir, resolved);
-    const displayPath = userScoped
-        ? relativeToBase
-            ? `user/${relativeToBase}`
-            : "user"
-        : relativeToBase || ".";
-
-    return { workspaceDir, userDir, resolved, displayPath };
-}
-
-async function isTextFile(filePath: string): Promise<boolean> {
-    try {
-        const buffer = Buffer.alloc(8192);
-        const file = await open(filePath, "r");
-        const { bytesRead } = await file.read(buffer, 0, 8192, 0);
-        await file.close();
-        return !buffer.subarray(0, bytesRead).includes(0);
-    } catch {
-        return false;
-    }
-}
-
-function shouldHideWorkspaceEntry(entryPath: string, userDir: string): boolean {
-    const inUserDir =
-        entryPath.startsWith(`${userDir}/`) || entryPath === userDir;
-    if (inUserDir) {
-        return false;
-    }
-
-    return (
-        entryPath.endsWith("/.opencode") || entryPath.endsWith("/.opencode/")
-    );
-}
-
-const app = new Hono();
-
-app.get("/:sessionId/user", sessionAuth, async (c) => {
-    const user = c.get("user")!;
-    const sessionId = c.req.param("sessionId")!;
-    const queryPath = c.req.query("path") || "";
-    const result = await resolveWorkspacePath(sessionId, queryPath);
-    if (!result)
-        return c.json(
-            {
-                error: {
-                    type: "not_found",
-                    message: "Session or environment not found",
-                },
-            },
-            404,
-        );
+// GET /:id/user — List directory
+app.get(
+  "/:id/user",
+  async ({ store, params, query, error }) => {
+    const authCtx = store.authContext!;
+    const envId = params.id;
+    await requireEnv(envId, authCtx.organizationId, error);
+    const queryPath = (query as Record<string, string | undefined>)?.path || "";
+    const result = await resolveWorkspacePath(envId, queryPath);
+    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
 
     const { userDir, workspaceDir, resolved } = result;
     const info = await stat(resolved);
-    if (!info.isDirectory())
-        return c.json(
-            { error: { type: "validation_error", message: "Not a directory" } },
-            400,
-        );
+    if (!info.isDirectory()) return error(400, { error: { type: "validation_error", message: "Not a directory" } });
 
-    const entries = await readdir(resolved, { withFileTypes: true });
-    const visibleEntries = entries.filter(
-        (entry) =>
-            !shouldHideWorkspaceEntry(join(resolved, entry.name), userDir),
-    );
-    const items = await Promise.all(
-        visibleEntries.map(async (entry) => {
-            const entryPath = join(resolved, entry.name);
-            const statInfo = await stat(entryPath);
-            const inUserDir =
-                entryPath.startsWith(`${userDir}/`) || entryPath === userDir;
-            const relPath = relative(
-                inUserDir ? userDir : workspaceDir,
-                entryPath,
-            );
-            const path = inUserDir
-                ? entry.isDirectory()
-                    ? `user/${relPath}/`
-                    : `user/${relPath}`
-                : entry.isDirectory()
-                  ? `${relPath}/`
-                  : relPath;
+    const items = await listDirectory(resolved, userDir, workspaceDir);
+    return { entries: items };
+  },
+  { sessionAuth: true },
+);
 
-            return {
-                name: entry.name,
-                path,
-                type: entry.isDirectory() ? "dir" : "file",
-                size: entry.isFile() ? statInfo.size : 0,
-                modifiedAt: statInfo.mtimeMs,
-            };
-        }),
-    );
-    return c.json({ entries: items });
-});
+// GET /:id/user/* — Read file
+app.get(
+  "/:id/user/*",
+  async ({ store, params, query, error, set }) => {
+    const authCtx = store.authContext!;
+    const envId = params.id;
+    await requireEnv(envId, authCtx.organizationId, error);
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
+    const filePath = normalizeUserRoutePath((params as any)["*"] as string);
+    const preview = (query as Record<string, string | undefined>)?.preview === "true";
 
-app.get("/:sessionId/user/:filePath{.+}", sessionAuth, async (c) => {
-    const user = c.get("user")!;
-    const sessionId = c.req.param("sessionId")!;
-    const filePath = normalizeUserRoutePath(c.req.param("filePath")!);
-    const preview = c.req.query("preview") === "true";
-
-    const result = await resolveWorkspacePath(sessionId, filePath);
-    if (!result)
-        return c.json(
-            {
-                error: {
-                    type: "not_found",
-                    message: "Session or environment not found",
-                },
-            },
-            404,
-        );
+    const result = await resolveWorkspacePath(envId, filePath);
+    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
 
     const { resolved, displayPath } = result;
-    let info;
+    let info: Awaited<ReturnType<typeof stat>>;
     try {
-        info = await stat(resolved);
+      info = await stat(resolved);
     } catch {
-        return c.json(
-            { error: { type: "not_found", message: "File not found" } },
-            404,
-        );
+      return error(404, { error: { type: "not_found", message: "File not found" } });
     }
     if (info.isDirectory())
-        return c.json(
-            {
-                error: {
-                    type: "validation_error",
-                    message: "Path is a directory, use list endpoint",
-                },
-            },
-            400,
-        );
+      return error(400, { error: { type: "validation_error", message: "Path is a directory, use list endpoint" } });
 
     const lastDot = filePath.lastIndexOf(".");
     const lastSlash = filePath.lastIndexOf("/");
     const ext = lastDot > lastSlash ? filePath.substring(lastDot) : "";
 
     if (preview) {
-        const mimeType = MIME_TYPES[ext] || "application/octet-stream";
-        c.header("Content-Type", mimeType);
-        c.header(
-            "Content-Security-Policy",
-            "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * blob:; connect-src *",
-        );
-        return c.body(createReadStream(resolved) as any);
+      set.headers["Content-Type"] = getMimeType(ext);
+      set.headers["Content-Security-Policy"] =
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * blob:; connect-src *";
+      // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch with Response constructor
+      return new Response(createFileStream(resolved) as any);
     }
 
-    const textFile =
-        TEXT_EXTENSIONS.has(ext) || (!ext && (await isTextFile(resolved)));
+    const textFile = isTextExtension(ext) || (!ext && (await isTextFile(resolved)));
     const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
 
     if (textFile) {
-        const content = await readFile(resolved, "utf-8");
-        return c.json({
-            name: fileName,
-            path: displayPath,
-            content,
-            size: info.size,
-            encoding: "utf-8",
-        });
+      const { content, size } = await readFileContent(resolved);
+      return { name: fileName, path: displayPath, content, size, encoding: "utf-8" };
     }
 
-    c.header("Content-Disposition", `attachment; filename="${fileName}"`);
-    c.header("Content-Type", "application/octet-stream");
-    return c.body(createReadStream(resolved) as any);
-});
+    set.headers["Content-Disposition"] = `attachment; filename="${fileName}"`;
+    set.headers["Content-Type"] = "application/octet-stream";
+    // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch with Response constructor
+    return new Response(createFileStream(resolved) as any);
+  },
+  { sessionAuth: true },
+);
 
-app.post("/:sessionId/user/:dirPath{.*}", sessionAuth, async (c) => {
-    const user = c.get("user")!;
-    const sessionId = c.req.param("sessionId")!;
-    const dirPath = normalizeUserRoutePath(c.req.param("dirPath") || "");
+// POST /:id/user/* — Upload files
+app.post(
+  "/:id/user/*",
+  async ({ store, params, request, error }) => {
+    const authCtx = store.authContext!;
+    const envId = params.id;
+    await requireEnv(envId, authCtx.organizationId, error);
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
+    const dirPath = normalizeUserRoutePath(((params as any)["*"] as string) || "");
 
-    if (!isUserPath(dirPath)) {
-        return c.json(
-            {
-                error: {
-                    type: "validation_error",
-                    message: "Only user/ paths are writable",
-                },
-            },
-            400,
-        );
-    }
+    if (!isUserPath(dirPath))
+      return error(400, { error: { type: "validation_error", message: "Only user/ paths are writable" } });
 
-    const result = await resolveWorkspacePath(sessionId, dirPath);
-    if (!result)
-        return c.json(
-            {
-                error: {
-                    type: "not_found",
-                    message: "Session or environment not found",
-                },
-            },
-            404,
-        );
+    const result = await resolveWorkspacePath(envId, dirPath);
+    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
 
     const { resolved } = result;
+    const { mkdir } = await import("node:fs/promises");
     await mkdir(resolved, { recursive: true });
 
-    const formData = await c.req.formData();
+    const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     if (!files || files.length === 0)
-        return c.json(
-            {
-                error: {
-                    type: "validation_error",
-                    message: "No files provided",
-                },
-            },
-            400,
-        );
+      return error(400, { error: { type: "validation_error", message: "No files provided" } });
 
     const uploaded: Array<{ name: string; path: string; size: number }> = [];
+    const { writeFile: writeFileAsync } = await import("node:fs/promises");
     for (const file of files) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        if (buffer.length > 50 * 1024 * 1024) {
-            return c.json(
-                {
-                    error: {
-                        type: "validation_error",
-                        message: `File ${file.name} exceeds 50MB limit`,
-                    },
-                },
-                413,
-            );
-        }
-        const destPath = join(resolved, file.name);
-        await writeFile(destPath, buffer);
-        uploaded.push({
-            name: file.name,
-            path: `user/${dirPath ? `${dirPath.replace(/^user\/?/, "")}/` : ""}${file.name}`.replace(
-                "user//",
-                "user/",
-            ),
-            size: buffer.length,
-        });
+      const buffer = Buffer.from(await file.arrayBuffer());
+      if (buffer.length > 50 * 1024 * 1024) {
+        return error(413, { error: { type: "validation_error", message: `File ${file.name} exceeds 50MB limit` } });
+      }
+      const destPath = join(resolved, file.name);
+      await writeFileAsync(destPath, buffer);
+      uploaded.push({
+        name: file.name,
+        path: `user/${dirPath ? `${dirPath.replace(/^user\/?/, "")}/` : ""}${file.name}`.replace("user//", "user/"),
+        size: buffer.length,
+      });
     }
-    return c.json({ files: uploaded });
-});
+    return { files: uploaded };
+  },
+  { sessionAuth: true },
+);
 
-app.put("/:sessionId/user/:filePath{.+}", sessionAuth, async (c) => {
-    const user = c.get("user")!;
-    const sessionId = c.req.param("sessionId")!;
-    const filePath = normalizeUserRoutePath(c.req.param("filePath")!);
+// PUT /:id/user/* — Write file content
+app.put(
+  "/:id/user/*",
+  async ({ store, params, body, error }) => {
+    const authCtx = store.authContext!;
+    const envId = params.id;
+    await requireEnv(envId, authCtx.organizationId, error);
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
+    const filePath = normalizeUserRoutePath((params as any)["*"] as string);
 
-    if (!isUserPath(filePath)) {
-        return c.json(
-            {
-                error: {
-                    type: "validation_error",
-                    message: "Only user/ paths are writable",
-                },
-            },
-            400,
-        );
-    }
+    if (!isUserPath(filePath))
+      return error(400, { error: { type: "validation_error", message: "Only user/ paths are writable" } });
 
-    const body = await c.req.json();
-    if (typeof body.content !== "string")
-        return c.json(
-            {
-                error: {
-                    type: "validation_error",
-                    message: "content field required",
-                },
-            },
-            400,
-        );
+    const b = body as { content?: string };
+    if (typeof b.content !== "string")
+      return error(400, { error: { type: "validation_error", message: "content field required" } });
 
-    if (body.content.length > 100 * 1024 * 1024) {
-        return c.json(
-            {
-                error: {
-                    type: "validation_error",
-                    message: "Content exceeds 100MB limit",
-                },
-            },
-            413,
-        );
-    }
+    if (b.content.length > 100 * 1024 * 1024)
+      return error(413, { error: { type: "validation_error", message: "Content exceeds 100MB limit" } });
 
-    const result = await resolveWorkspacePath(sessionId, filePath);
-    if (!result)
-        return c.json(
-            {
-                error: {
-                    type: "not_found",
-                    message: "Session or environment not found",
-                },
-            },
-            404,
-        );
+    const result = await resolveWorkspacePath(envId, filePath);
+    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
 
-    const { resolved } = result;
-    await mkdir(resolve(resolved, ".."), { recursive: true });
-    await writeFile(resolved, body.content, "utf-8");
+    await writeFileContent(result.resolved, b.content);
 
     const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
-    const normalizedPath = filePath.startsWith("user/")
-        ? filePath
-        : `user/${filePath}`;
-    return c.json({
-        name: fileName,
-        path: normalizedPath,
-        size: Buffer.byteLength(body.content),
-    });
-});
+    const normalizedPath = filePath.startsWith("user/") ? filePath : `user/${filePath}`;
+    return { name: fileName, path: normalizedPath, size: Buffer.byteLength(b.content) };
+  },
+  { sessionAuth: true, body: "write-file-request" },
+);
 
-app.delete("/:sessionId/user/:filePath{.+}", sessionAuth, async (c) => {
-    const user = c.get("user")!;
-    const sessionId = c.req.param("sessionId")!;
-    const filePath = normalizeUserRoutePath(c.req.param("filePath")!);
+// DELETE /:id/user/* — Delete file
+app.delete(
+  "/:id/user/*",
+  async ({ store, params, error }) => {
+    const authCtx = store.authContext!;
+    const envId = params.id;
+    await requireEnv(envId, authCtx.organizationId, error);
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
+    const filePath = normalizeUserRoutePath((params as any)["*"] as string);
 
-    if (!isUserPath(filePath)) {
-        return c.json(
-            {
-                error: {
-                    type: "validation_error",
-                    message: "Only user/ paths are writable",
-                },
-            },
-            400,
-        );
-    }
+    if (!isUserPath(filePath))
+      return error(400, { error: { type: "validation_error", message: "Only user/ paths are writable" } });
 
-    const result = await resolveWorkspacePath(sessionId, filePath);
-    if (!result)
-        return c.json(
-            {
-                error: {
-                    type: "not_found",
-                    message: "Session or environment not found",
-                },
-            },
-            404,
-        );
+    const result = await resolveWorkspacePath(envId, filePath);
+    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
 
-    const { resolved } = result;
-    let info;
     try {
-        info = await stat(resolved);
+      const info = await stat(result.resolved);
+      if (info.isDirectory())
+        return error(400, { error: { type: "validation_error", message: "Cannot delete directories" } });
     } catch {
-        return c.json(
-            { error: { type: "not_found", message: "File not found" } },
-            404,
-        );
+      return error(404, { error: { type: "not_found", message: "File not found" } });
     }
-    if (info.isDirectory())
-        return c.json(
-            {
-                error: {
-                    type: "validation_error",
-                    message: "Cannot delete directories",
-                },
-            },
-            400,
-        );
 
-    await unlink(resolved);
-    return c.json({ ok: true });
-});
+    await deleteFile(result.resolved);
+    return { ok: true as const };
+  },
+  { sessionAuth: true },
+);
 
 export default app;

@@ -12,6 +12,7 @@ src/utils/vendor/
 
 # AI tool runtime directories
 .agents/
+!.agents/skills/**/*
 .claude/
 .omx/
 .docs/task/
@@ -51,6 +52,14 @@ user
 .opencode
 
 workspace/
+workspaces/
 .tmp
 
 ov.conf
+
+# VitePress
+docs/.vitepress/dist/
+docs/.vitepress/cache/.superpowers/
+
+.superpowers
+.tanstack

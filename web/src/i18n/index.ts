@@ -1,0 +1,139 @@
+import i18n from "i18next";
+import LanguageDetector from "i18next-browser-languagedetector";
+import { initReactI18next } from "react-i18next";
+
+import agentPanelEN from "./locales/en/agentPanel.json";
+import agentsEN from "./locales/en/agents.json";
+import apikeyEN from "./locales/en/apikey.json";
+import channelsEN from "./locales/en/channels.json";
+import commonEN from "./locales/en/common.json";
+import componentsEN from "./locales/en/components.json";
+import dashboardEN from "./locales/en/dashboard.json";
+import environmentsEN from "./locales/en/environments.json";
+import knowledgeEN from "./locales/en/knowledge.json";
+import loginEN from "./locales/en/login.json";
+import mcpEN from "./locales/en/mcp.json";
+import modelsEN from "./locales/en/models.json";
+import orgsEN from "./locales/en/orgs.json";
+import sessionsEN from "./locales/en/sessions.json";
+import sidebarEN from "./locales/en/sidebar.json";
+import skillsEN from "./locales/en/skills.json";
+import tasksEN from "./locales/en/tasks.json";
+import workflowsEN from "./locales/en/workflows.json";
+import agentPanelZH from "./locales/zh/agentPanel.json";
+import agentsZH from "./locales/zh/agents.json";
+import apikeyZH from "./locales/zh/apikey.json";
+import channelsZH from "./locales/zh/channels.json";
+import commonZH from "./locales/zh/common.json";
+import componentsZH from "./locales/zh/components.json";
+import dashboardZH from "./locales/zh/dashboard.json";
+import environmentsZH from "./locales/zh/environments.json";
+import knowledgeZH from "./locales/zh/knowledge.json";
+import loginZH from "./locales/zh/login.json";
+import mcpZH from "./locales/zh/mcp.json";
+import modelsZH from "./locales/zh/models.json";
+import orgsZH from "./locales/zh/orgs.json";
+import sessionsZH from "./locales/zh/sessions.json";
+import sidebarZH from "./locales/zh/sidebar.json";
+import skillsZH from "./locales/zh/skills.json";
+import tasksZH from "./locales/zh/tasks.json";
+import workflowsZH from "./locales/zh/workflows.json";
+
+export const NS = {
+  COMMON: "common",
+  LOGIN: "login",
+  SIDEBAR: "sidebar",
+  DASHBOARD: "dashboard",
+  AGENTS: "agents",
+  MODELS: "models",
+  SKILLS: "skills",
+  MCP: "mcp",
+  TASKS: "tasks",
+  WORKFLOWS: "workflows",
+  SESSIONS: "sessions",
+  ENVIRONMENTS: "environments",
+  ORGS: "orgs",
+  APIKEY: "apikey",
+  CHANNELS: "channels",
+  KNOWLEDGE: "knowledge",
+  AGENT_PANEL: "agentPanel",
+  COMPONENTS: "components",
+} as const;
+
+export type Namespace = (typeof NS)[keyof typeof NS];
+
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources: {
+      en: {
+        [NS.COMMON]: commonEN,
+        [NS.LOGIN]: loginEN,
+        [NS.SIDEBAR]: sidebarEN,
+        [NS.DASHBOARD]: dashboardEN,
+        [NS.TASKS]: tasksEN,
+        [NS.AGENTS]: agentsEN,
+        [NS.MODELS]: modelsEN,
+        [NS.ENVIRONMENTS]: environmentsEN,
+        [NS.SKILLS]: skillsEN,
+        [NS.MCP]: mcpEN,
+        [NS.AGENT_PANEL]: agentPanelEN,
+        [NS.SESSIONS]: sessionsEN,
+        [NS.ORGS]: orgsEN,
+        [NS.APIKEY]: apikeyEN,
+        [NS.CHANNELS]: channelsEN,
+        [NS.KNOWLEDGE]: knowledgeEN,
+        [NS.COMPONENTS]: componentsEN,
+        [NS.WORKFLOWS]: workflowsEN,
+      },
+      zh: {
+        [NS.COMMON]: commonZH,
+        [NS.LOGIN]: loginZH,
+        [NS.SIDEBAR]: sidebarZH,
+        [NS.DASHBOARD]: dashboardZH,
+        [NS.TASKS]: tasksZH,
+        [NS.AGENTS]: agentsZH,
+        [NS.MODELS]: modelsZH,
+        [NS.ENVIRONMENTS]: environmentsZH,
+        [NS.SKILLS]: skillsZH,
+        [NS.MCP]: mcpZH,
+        [NS.AGENT_PANEL]: agentPanelZH,
+        [NS.SESSIONS]: sessionsZH,
+        [NS.ORGS]: orgsZH,
+        [NS.APIKEY]: apikeyZH,
+        [NS.CHANNELS]: channelsZH,
+        [NS.KNOWLEDGE]: knowledgeZH,
+        [NS.COMPONENTS]: componentsZH,
+        [NS.WORKFLOWS]: workflowsZH,
+      },
+    },
+    fallbackLng: "en",
+    defaultNS: NS.COMMON,
+    ns: [
+      NS.COMMON,
+      NS.LOGIN,
+      NS.SIDEBAR,
+      NS.DASHBOARD,
+      NS.TASKS,
+      NS.ENVIRONMENTS,
+      NS.SKILLS,
+      NS.MCP,
+      NS.AGENT_PANEL,
+      NS.SESSIONS,
+      NS.ORGS,
+      NS.APIKEY,
+      NS.CHANNELS,
+      NS.KNOWLEDGE,
+      NS.COMPONENTS,
+      NS.WORKFLOWS,
+    ],
+    interpolation: { escapeValue: false },
+    detection: {
+      order: ["localStorage", "navigator"],
+      lookupLocalStorage: "rcs-lang",
+      caches: ["localStorage"],
+    },
+  });
+
+export default i18n;

@@ -1,5 +1,5 @@
-import { describe, test, expect } from "bun:test";
-import { validateProviderForm, buildProviderPayload } from "../pages/ModelsPage";
+import { describe, expect, test } from "bun:test";
+import { buildProviderModelRequest, buildProviderPayload, validateProviderForm } from "../pages/ModelsPage";
 
 // NPM_OPTIONS is module-scoped; verify via the exported buildProviderPayload behavior
 // and validateProviderForm which are the public API
@@ -38,5 +38,29 @@ describe("buildProviderPayload", () => {
   test("npm value is passed through correctly", () => {
     const payload = buildProviderPayload("", "", "@ai-sdk/anthropic", "");
     expect(payload.npm).toBe("@ai-sdk/anthropic");
+  });
+});
+
+describe("buildProviderModelRequest", () => {
+  test("add_model wraps model fields in data", () => {
+    expect(buildProviderModelRequest("add_model", "openai", "gpt-4o", { modelId: "gpt-4o", name: "GPT-4o" })).toEqual({
+      action: "add_model",
+      name: "openai",
+      data: { modelId: "gpt-4o", name: "GPT-4o" },
+    });
+  });
+
+  test("update_model keeps target modelId at top level and wraps update fields in data", () => {
+    expect(
+      buildProviderModelRequest("update_model", "openai", "gpt-4o", {
+        modelId: "gpt-4o",
+        limit: { context: 128000 },
+      }),
+    ).toEqual({
+      action: "update_model",
+      name: "openai",
+      modelId: "gpt-4o",
+      data: { modelId: "gpt-4o", limit: { context: 128000 } },
+    });
   });
 });

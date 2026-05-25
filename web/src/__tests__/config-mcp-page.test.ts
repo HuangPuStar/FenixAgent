@@ -1,51 +1,62 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
-  validateMcpForm,
-  parseCommandString,
-  commandToString,
-  buildMcpSummary,
   buildMcpPayload,
+  buildMcpSummary,
+  commandToString,
+  parseCommandString,
+  validateMcpForm,
 } from "../pages/McpPage";
+
+// i18n mock: returns the key for English locale
+const t = (key: string, params?: Record<string, unknown>) => {
+  let result = key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      result = result.replace(`{{${k}}}`, String(v));
+    }
+  }
+  return result;
+};
 
 describe("validateMcpForm", () => {
   test("空名称", () => {
-    expect(validateMcpForm("", "local", "npx", "")).toBe("名称不能为空");
+    expect(validateMcpForm("", "local", "npx", "", t)).toBe("validation.nameRequired");
   });
 
   test("无效名称（大写）", () => {
-    expect(validateMcpForm("UPPER", "local", "npx", "")).toContain("小写字母");
+    expect(validateMcpForm("UPPER", "local", "npx", "", t)).toBe("validation.namePattern");
   });
 
   test("名称含连字符开头", () => {
-    expect(validateMcpForm("-abc", "local", "npx", "")).toContain("连字符");
+    expect(validateMcpForm("-abc", "local", "npx", "", t)).toBe("validation.namePattern");
   });
 
   test("名称含连续连字符", () => {
-    expect(validateMcpForm("my--server", "local", "npx cmd", "")).toContain("连续连字符");
+    expect(validateMcpForm("my--server", "local", "npx cmd", "", t)).toBe("validation.nameNoDoubleHyphen");
   });
 
   test("名称超长", () => {
-    expect(validateMcpForm("a".repeat(65), "local", "npx", "")).toBe("名称长度不能超过 64 个字符");
+    expect(validateMcpForm("a".repeat(65), "local", "npx", "", t)).toBe("validation.nameTooLong");
   });
 
   test("local 缺少命令", () => {
-    expect(validateMcpForm("test", "local", "", "")).toBe("命令不能为空");
+    expect(validateMcpForm("test", "local", "", "", t)).toBe("validation.commandRequired");
   });
 
   test("remote 缺少 URL", () => {
-    expect(validateMcpForm("test", "remote", "", "")).toBe("URL 不能为空");
+    expect(validateMcpForm("test", "remote", "", "", t)).toBe("validation.urlRequired");
   });
 
   test("remote 无效 URL", () => {
-    expect(validateMcpForm("test", "remote", "", "not-a-url")).toBe("URL 格式不正确");
+    expect(validateMcpForm("test", "remote", "", "not-a-url", t)).toBe("validation.urlInvalid");
   });
 
   test("合法 local", () => {
-    expect(validateMcpForm("my-server", "local", "npx mcp-srv", "")).toBeNull();
+    expect(validateMcpForm("my-server", "local", "npx mcp-srv", "", t)).toBeNull();
   });
 
   test("合法 remote", () => {
-    expect(validateMcpForm("my-server", "remote", "", "https://example.com/mcp")).toBeNull();
+    expect(validateMcpForm("my-server", "remote", "", "https://example.com/mcp", t)).toBeNull();
   });
 });
 
@@ -75,23 +86,25 @@ describe("commandToString", () => {
 
 describe("buildMcpSummary", () => {
   test("local 配置", () => {
-    expect(buildMcpSummary({ type: "local", command: ["npx", "srv"] })).toBe("npx");
+    expect(buildMcpSummary({ type: "local", command: ["npx", "srv"] }, "disabled")).toBe("npx");
   });
 
   test("remote 配置", () => {
-    expect(buildMcpSummary({ type: "remote", url: "https://x.com" })).toBe("https://x.com");
+    expect(buildMcpSummary({ type: "remote", url: "https://x.com" }, "disabled")).toBe("https://x.com");
   });
 
   test("禁用变体", () => {
-    expect(buildMcpSummary({ enabled: false })).toBe("已禁用");
+    expect(buildMcpSummary({ enabled: false }, "disabled")).toBe("disabled");
   });
 });
 
 describe("buildMcpPayload", () => {
   test("local 完整", () => {
     const result = buildMcpPayload("local", "npx srv", "", [{ key: "K", value: "V" }], [], "", "", "", "", "5000");
-    expect(result.type).toBe("local");
-    expect(result.command).toEqual(["npx", "srv"]);
+    expect("type" in result && result.type).toBe("local");
+    if ("type" in result && result.type === "local") {
+      expect(result.command).toEqual(["npx", "srv"]);
+    }
     if ("environment" in result) {
       expect(result.environment).toEqual({ K: "V" });
     } else {
@@ -105,8 +118,19 @@ describe("buildMcpPayload", () => {
   });
 
   test("remote 带 OAuth", () => {
-    const result = buildMcpPayload("remote", "", "https://x.com", [], [{ key: "Auth", value: "Bearer t" }], "id1", "sec1", "read", "https://cb", "");
-    expect(result.type).toBe("remote");
+    const result = buildMcpPayload(
+      "remote",
+      "",
+      "https://x.com",
+      [],
+      [{ key: "Auth", value: "Bearer t" }],
+      "id1",
+      "sec1",
+      "read",
+      "https://cb",
+      "",
+    );
+    expect("type" in result && result.type).toBe("remote");
     if ("url" in result) {
       expect(result.url).toBe("https://x.com");
     }
@@ -126,6 +150,6 @@ describe("buildMcpPayload", () => {
     if ("environment" in result) {
       throw new Error("Expected no environment field for empty key");
     }
-    expect(result.type).toBe("local");
+    expect("type" in result && result.type).toBe("local");
   });
 });

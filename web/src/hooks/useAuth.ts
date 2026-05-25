@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { getUuid, setUuid } from "../api/client";
+import { useCallback, useState } from "react";
+import { getUuid, setUuid } from "@/src/api/helpers";
 
 export function useAuth() {
   const [uuid] = useState(() => getUuid());

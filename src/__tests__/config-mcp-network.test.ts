@@ -1,10 +1,10 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { setTestOrgContext } from "../services/org-context";
 
-// --- Mocks (must be registered before imports) ---
+// In-memory mock for MCP servers
+let _mcpStore: Record<string, { type: string; config: Record<string, unknown>; enabled: boolean }> = {};
 
-let _mcpStore: Record<string, any> = {};
-
-// Track inspector calls so tests can assert on arguments
 let _inspectResult: any = {
   reachable: true,
   protocol: true,
@@ -14,29 +14,20 @@ let _inspectResult: any = {
   transport: "streamable-http" as const,
 };
 
-mock.module("../auth/better-auth", () => ({
-  auth: {
-    api: {
-      getSession: async () => ({
-        user: { id: "test-user", email: "test@test.com", name: "Test" },
-        session: { id: "sess_test", userId: "test-user", token: "tok" },
-      }),
-      signUpEmail: async () => ({}),
-    },
+mock.module("../services/config-pg", () => ({
+  getMcpServer: async (_ctx: any, name: string) => {
+    const row = _mcpStore[name];
+    return row ? { name, ...row } : null;
   },
-}));
-
-mock.module("../services/config", () => ({
-  getSection: async (section: string) => section === "mcp" ? _mcpStore : undefined,
-  replaceSection: async (_section: string, data: unknown) => { _mcpStore = data as Record<string, unknown>; },
-  modifySection: async (_section: string, modifier: (current: any) => any) => {
-    const current = _section === "mcp" ? _mcpStore : undefined;
-    _mcpStore = modifier(current);
-  },
+  listMcpServers: async () => [],
+  createMcpServer: async () => {},
+  updateMcpServer: async () => {},
+  deleteMcpServer: async () => [],
+  setMcpServerEnabled: async () => [],
 }));
 
 mock.module("../services/mcp-inspector", () => ({
-  inspectRemoteMcpServer: async (url: string, headers?: Record<string, string>, timeout?: number) => {
+  inspectRemoteMcpServer: async (_url: string, _headers?: Record<string, string>, _timeout?: number) => {
     return _inspectResult;
   },
 }));
@@ -63,10 +54,17 @@ mock.module("../db", () => ({
     select: mockSelect,
     delete: mockDelete,
     insert: mockInsert,
+    transaction: async (fn: (tx: any) => Promise<any>) => {
+      // 模拟事务：直接执行 fn，传入 mock db 作为 tx
+      const tx = {
+        delete: mockDelete,
+        insert: mockInsert,
+      };
+      return fn(tx);
+    },
   },
 }));
 
-// Mock the schema table reference
 mock.module("../db/schema", () => ({
   mcpTool: {
     id: "id",
@@ -78,28 +76,47 @@ mock.module("../db/schema", () => ({
   },
 }));
 
-// Mock drizzle-orm operators
 mock.module("drizzle-orm", () => ({
+  sql: (strings: TemplateStringsArray, ...values: any[]) => ({ sql: strings.join("?"), params: values }),
   eq: (_col: string, _val: string) => ({ col: _col, val: _val }),
   and: (..._conds: any[]) => _conds,
 }));
 
 const mcpRoute = (await import("../routes/web/config/mcp")).default;
 
-// Helper to make requests
 function postRequest(body: Record<string, unknown>) {
-  return mcpRoute.request(new Request("http://localhost/config/mcp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }));
+  return mcpRoute.handle(
+    new Request("http://localhost/web/config/mcp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 describe("MCP Config Route - Network Actions", () => {
+  afterEach(() => {
+    resetTestAuth();
+    setTestOrgContext(null);
+  });
+
   beforeEach(() => {
+    setTestAuth({
+      user: { id: "test-user", email: "test@test.com", name: "Test" },
+      authContext: { organizationId: "test-team", userId: "test-user", role: "owner" },
+    });
+    setTestOrgContext({ organizationId: "test-team", userId: "test-user", role: "owner" });
     _mcpStore = {
-      "my-local": { type: "local", command: ["npx", "mcp-server"], environment: { KEY: "VALUE" }, timeout: 5000 },
-      "my-remote": { type: "remote", url: "https://example.com/mcp", headers: { Auth: "Bearer t" }, timeout: 10000 },
+      "my-local": {
+        type: "local",
+        config: { type: "local", command: ["npx", "mcp-server"], environment: { KEY: "VALUE" }, timeout: 5000 },
+        enabled: true,
+      },
+      "my-remote": {
+        type: "remote",
+        config: { type: "remote", url: "https://example.com/mcp", headers: { Auth: "Bearer t" }, timeout: 10000 },
+        enabled: true,
+      },
     };
     _inspectResult = {
       reachable: true,
@@ -112,7 +129,6 @@ describe("MCP Config Route - Network Actions", () => {
     _mockDbState.tools = [];
   });
 
-  // ==================== test action ====================
   describe("test action", () => {
     test("remote 服务器可达且是 MCP 协议", async () => {
       _inspectResult = {
@@ -172,20 +188,21 @@ describe("MCP Config Route - Network Actions", () => {
     });
 
     test("local 服务器命令可用", async () => {
-      // Bun.spawn uses "which" to check command availability.
-      // "npx" should be available in a normal dev environment.
       const res = await postRequest({ action: "test", name: "my-local" });
       const json = await res.json();
 
       expect(json.success).toBe(true);
       expect(json.data.name).toBe("my-local");
-      // "npx" should exist on a dev machine with bun/node installed
       expect(json.data.reachable).toBe(true);
       expect(json.data.message).toContain("npx");
     });
 
     test("local 服务器命令未找到", async () => {
-      _mcpStore["bad-cmd"] = { type: "local", command: ["nonexistent-command-xyz-12345"] };
+      _mcpStore["bad-cmd"] = {
+        type: "local",
+        config: { type: "local", command: ["nonexistent-command-xyz-12345"] },
+        enabled: true,
+      };
 
       const res = await postRequest({ action: "test", name: "bad-cmd" });
       const json = await res.json();
@@ -205,7 +222,6 @@ describe("MCP Config Route - Network Actions", () => {
     });
   });
 
-  // ==================== test_url action ====================
   describe("test_url action", () => {
     test("URL 缺失返回错误", async () => {
       const res = await postRequest({ action: "test_url" });
@@ -226,7 +242,12 @@ describe("MCP Config Route - Network Actions", () => {
         transport: "streamable-http",
       };
 
-      const res = await postRequest({ action: "test_url", url: "https://example.com/mcp", headers: { Auth: "Bearer tok" }, timeout: 5000 });
+      const res = await postRequest({
+        action: "test_url",
+        url: "https://example.com/mcp",
+        headers: { Auth: "Bearer tok" },
+        timeout: 5000,
+      });
       const json = await res.json();
 
       expect(json.success).toBe(true);
@@ -256,7 +277,6 @@ describe("MCP Config Route - Network Actions", () => {
     });
   });
 
-  // ==================== inspect action ====================
   describe("inspect action", () => {
     test("非 remote 类型拒绝（local server）", async () => {
       const res = await postRequest({ action: "inspect", name: "my-local" });
@@ -309,7 +329,6 @@ describe("MCP Config Route - Network Actions", () => {
       expect(json.data.transport).toBe("sse");
       expect(json.data.stored).toBe(true);
 
-      // Verify db.delete and db.insert were called
       expect(mockDelete).toHaveBeenCalled();
       expect(mockInsert).toHaveBeenCalled();
     });
@@ -324,7 +343,6 @@ describe("MCP Config Route - Network Actions", () => {
         transport: "streamable-http",
       };
 
-      // Clear insert mock call count
       mockInsert.mockClear();
 
       const res = await postRequest({ action: "inspect", name: "my-remote" });
@@ -333,8 +351,6 @@ describe("MCP Config Route - Network Actions", () => {
       expect(json.success).toBe(true);
       expect(json.data.tools).toHaveLength(0);
       expect(json.data.stored).toBe(true);
-      // insert should still be called (but with empty check, it shouldn't)
-      // Looking at the code: if result.tools.length > 0, insert is called
       expect(mockInsert).not.toHaveBeenCalled();
     });
 
@@ -347,12 +363,17 @@ describe("MCP Config Route - Network Actions", () => {
     });
   });
 
-  // ==================== list_tools action ====================
   describe("list_tools action", () => {
     test("返回工具列表", async () => {
       const now = new Date();
       _mockDbState.tools = [
-        { id: "1", toolName: "read_file", description: "Read a file", inputSchema: '{"type":"object"}', inspectedAt: now },
+        {
+          id: "1",
+          toolName: "read_file",
+          description: "Read a file",
+          inputSchema: '{"type":"object"}',
+          inspectedAt: now,
+        },
         { id: "2", toolName: "write_file", description: "Write a file", inputSchema: null, inspectedAt: now },
       ];
 

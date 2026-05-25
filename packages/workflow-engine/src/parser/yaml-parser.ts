@@ -1,0 +1,242 @@
+/**
+ * YAML 解析器 — 将 workflow.yaml 源码解析为 WorkflowDef
+ *
+ * 使用 yaml 包（core schema）解析，校验 schema_version、必填字段、节点类型等。
+ * 无 depends_on �� depends_on 为空的节点绑定到虚拟起始节点。
+ */
+
+import { parse as yamlParse } from "yaml";
+import type { NodeDef, NodeType, WorkflowDef } from "../types/dag";
+import { WorkflowError, WorkflowErrorCode } from "../types/errors";
+
+const VALID_NODE_TYPES: NodeType[] = ["shell", "python", "agent", "api", "audit", "workflow", "loop"];
+
+/**
+ * 将 YAML 源码解析为 WorkflowDef
+ * @param source  YAML 字符串
+ * @param baseDir 工作流定义所在目录，默认 process.cwd()
+ * @throws WorkflowError(INVALID_YAML) 格式错误
+ */
+export function parseWorkflowYaml(source: string, baseDir?: string): WorkflowDef {
+  let doc: unknown;
+  try {
+    doc = yamlParse(source);
+  } catch (e) {
+    throw new WorkflowError(`YAML parse error: ${(e as Error).message}`, WorkflowErrorCode.INVALID_YAML, { cause: e });
+  }
+
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    throw new WorkflowError("YAML root must be a mapping", WorkflowErrorCode.INVALID_YAML);
+  }
+
+  const raw = doc as Record<string, unknown>;
+
+  // 检测 acpx-g 格式
+  if ("kind" in raw && "metadata" in raw && "spec" in raw) {
+    throw new WorkflowError(
+      "Detected acpx-g format YAML — only schema_version format is supported",
+      WorkflowErrorCode.INVALID_YAML,
+    );
+  }
+
+  // schema_version
+  if (!("schema_version" in raw)) {
+    throw new WorkflowError("Missing required field: 'schema_version'", WorkflowErrorCode.INVALID_YAML);
+  }
+  const schemaVersion = String(raw.schema_version);
+  if (schemaVersion !== "1") {
+    throw new WorkflowError(
+      `Unsupported schema_version: '${schemaVersion}', expected '1'`,
+      WorkflowErrorCode.INVALID_YAML,
+    );
+  }
+
+  // name
+  if (!("name" in raw) || typeof raw.name !== "string" || !raw.name.trim()) {
+    throw new WorkflowError("Missing required field: 'name'", WorkflowErrorCode.INVALID_YAML);
+  }
+
+  // params（可选）
+  if ("params" in raw && raw.params) {
+    if (typeof raw.params !== "object" || Array.isArray(raw.params)) {
+      throw new WorkflowError("'params' must be a mapping", WorkflowErrorCode.INVALID_YAML);
+    }
+  }
+
+  // nodes（必填）
+  if (!("nodes" in raw) || !Array.isArray(raw.nodes)) {
+    throw new WorkflowError("Missing required field: 'nodes' (must be an array)", WorkflowErrorCode.INVALID_YAML);
+  }
+
+  const nodes: NodeDef[] = raw.nodes.map((n: unknown, i: number) => parseNode(n, i));
+
+  // 识别隐式起始节点：无 depends_on 或 depends_on 为空数组
+  const startNodes = nodes.filter((n) => !n.depends_on || n.depends_on.length === 0);
+
+  return {
+    schema_version: schemaVersion,
+    name: raw.name as string,
+    description: typeof raw.description === "string" ? raw.description : undefined,
+    params: (raw.params as WorkflowDef["params"]) ?? undefined,
+    secrets: Array.isArray(raw.secrets) ? (raw.secrets as string[]) : undefined,
+    timeout: typeof raw.timeout === "number" ? raw.timeout : undefined,
+    nodes,
+    _startNodeId: startNodes.length === 1 ? startNodes[0].id : undefined,
+    _baseDir: baseDir ?? process.cwd(),
+  };
+}
+
+/**
+ * 解析单个节点定义
+ */
+function parseNode(raw: unknown, index: number): NodeDef {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new WorkflowError(`nodes[${index}] must be a mapping`, WorkflowErrorCode.INVALID_YAML);
+  }
+
+  const n = raw as Record<string, unknown>;
+
+  // id
+  if (typeof n.id !== "string" || !n.id.trim()) {
+    throw new WorkflowError(`nodes[${index}]: missing or empty 'id'`, WorkflowErrorCode.INVALID_YAML);
+  }
+
+  // type
+  if (typeof n.type !== "string" || !VALID_NODE_TYPES.includes(n.type as NodeType)) {
+    throw new WorkflowError(
+      `nodes[${index}] (${n.id}): invalid type '${n.type}', must be one of: ${VALID_NODE_TYPES.join(", ")}`,
+      WorkflowErrorCode.INVALID_YAML,
+    );
+  }
+
+  const type = n.type as NodeType;
+  const base = {
+    id: n.id as string,
+    type,
+    depends_on: Array.isArray(n.depends_on) ? (n.depends_on as string[]) : undefined,
+    condition: typeof n.condition === "string" ? n.condition : undefined,
+    timeout: typeof n.timeout === "number" ? n.timeout : undefined,
+    env: isRecord(n.env) ? (n.env as Record<string, string>) : undefined,
+  };
+
+  switch (type) {
+    case "shell": {
+      if (!("command" in n)) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): shell node requires 'command'`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      return {
+        ...base,
+        type: "shell",
+        command: n.command as string | string[],
+        cwd: typeof n.cwd === "string" ? n.cwd : undefined,
+        inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
+      };
+    }
+    case "python": {
+      if (!("code" in n)) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): python node requires 'code'`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      return {
+        ...base,
+        type: "python",
+        code: n.code as string,
+        requirements: Array.isArray(n.requirements) ? (n.requirements as string[]) : undefined,
+        cwd: typeof n.cwd === "string" ? n.cwd : undefined,
+        inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
+      };
+    }
+    case "agent": {
+      if (!("prompt" in n)) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): agent node requires 'prompt'`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      return {
+        ...base,
+        type: "agent",
+        prompt: n.prompt as string,
+        agent: typeof n.agent === "string" ? n.agent : undefined,
+        skill: typeof n.skill === "string" ? n.skill : undefined,
+        model: typeof n.model === "string" ? n.model : undefined,
+        temperature: typeof n.temperature === "number" ? n.temperature : undefined,
+        steps: typeof n.steps === "number" ? n.steps : undefined,
+      };
+    }
+    case "api": {
+      if (!("url" in n)) {
+        throw new WorkflowError(`nodes[${index}] (${n.id}): api node requires 'url'`, WorkflowErrorCode.INVALID_YAML);
+      }
+      return {
+        ...base,
+        type: "api",
+        url: n.url as string,
+        method: typeof n.method === "string" ? (n.method as "GET" | "POST" | "PUT" | "DELETE") : undefined,
+        headers: isRecord(n.headers) ? (n.headers as Record<string, string>) : undefined,
+        body: typeof n.body === "string" ? n.body : undefined,
+      };
+    }
+    case "audit":
+      return {
+        ...base,
+        type: "audit",
+        display_data: n.display_data,
+        expires_in: typeof n.expires_in === "number" ? n.expires_in : undefined,
+      };
+    case "workflow": {
+      if (!("ref" in n)) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): workflow node requires 'ref'`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      return {
+        ...base,
+        type: "workflow",
+        ref: n.ref as string,
+        params: isRecord(n.params) ? (n.params as Record<string, unknown>) : undefined,
+        ignore_errors: typeof n.ignore_errors === "boolean" ? n.ignore_errors : undefined,
+      };
+    }
+    case "loop": {
+      if (!("condition" in n)) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): loop node requires 'condition'`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      if (!("max_iterations" in n) || typeof n.max_iterations !== "number") {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): loop node requires 'max_iterations' (number)`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      if (!("body" in n) || !isRecord(n.body) || !Array.isArray((n.body as Record<string, unknown>).nodes)) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): loop node requires 'body.nodes' (array)`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      const bodyNodes = (n.body as Record<string, unknown>).nodes as unknown[];
+      return {
+        ...base,
+        type: "loop",
+        condition: n.condition as string,
+        max_iterations: n.max_iterations as number,
+        body: {
+          nodes: bodyNodes.map((bn, bi) => parseNode(bn, bi)),
+        },
+      };
+    }
+  }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}

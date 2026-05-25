@@ -1,6 +1,6 @@
-import { describe, test, expect } from "bun:test";
-import { isExecutable, resolveExecutable } from "../utils/executable";
+import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { isExecutable, resolveExecutable } from "../utils/executable";
 
 describe("isExecutable", () => {
   test("returns true for an executable file", () => {
@@ -37,7 +37,7 @@ describe("resolveExecutable", () => {
 
   test("resolves project-local executable if present", () => {
     // node_modules/.bin typically has executables
-    const localBin = join(process.cwd(), "node_modules", ".bin");
+    const _localBin = join(process.cwd(), "node_modules", ".bin");
     // Just verify the function doesn't crash when checking
     try {
       resolveExecutable("some-binary-that-does-not-exist-locally");

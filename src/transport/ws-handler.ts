@@ -1,23 +1,16 @@
-import type { WSContext } from "hono/ws";
-import { getEventBus } from "./event-bus";
-import type { SessionEvent } from "./event-bus";
-import { publishSessionEvent } from "../services/transport";
-import { log, error as logError } from "../logger";
-import { toClientPayload } from "./client-payload";
 import { config } from "../config";
+import { log, error as logError } from "../logger";
+import { publishSessionEvent } from "../services/transport";
+import type { WsSessionCleanupEntry } from "../types/store";
+import { toClientPayload } from "./client-payload";
+import type { SessionEvent } from "./event-bus";
+import { getEventBus } from "./event-bus";
+import type { WsConnection } from "./ws-types";
 
-// Per-connection cleanup, keyed by sessionId (only one WS per session)
-interface CleanupEntry {
-  unsub: () => void;
-  keepalive: ReturnType<typeof setInterval>;
-  ws: WSContext;
-  openTime: number;
-  lastClientActivity: number;
-}
-const cleanupBySession = new Map<string, CleanupEntry>();
+const cleanupBySession = new Map<string, WsSessionCleanupEntry>();
 
 // Track all active WS connections for graceful shutdown
-const activeConnections = new Set<WSContext>();
+const activeConnections = new Set<WsConnection>();
 
 // Server-side keepalive interval (configurable via RCS_WS_KEEPALIVE_INTERVAL).
 // Sends data frames to keep reverse proxies from closing idle connections.
@@ -33,11 +26,11 @@ const CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
 function toSDKMessage(event: SessionEvent): string {
   // NDJSON format: each message MUST end with \n so the child process's
   // line-based parser can split messages correctly.
-  return JSON.stringify(toClientPayload(event)) + "\n";
+  return `${JSON.stringify(toClientPayload(event))}\n`;
 }
 
 /** Called from onOpen — subscribes to event bus, forwards outbound events to bridge WS */
-export function handleWebSocketOpen(ws: WSContext, sessionId: string) {
+export function handleWebSocketOpen(ws: WsConnection, sessionId: string) {
   const openTime = Date.now();
   const lastClientActivity = Date.now();
   log(`[RC-DEBUG] [WS] Open session=${sessionId}`);
@@ -110,7 +103,7 @@ export function handleWebSocketOpen(ws: WSContext, sessionId: string) {
 /**
  * Called from onMessage — bridge sends newline-delimited JSON.
  */
-export function handleWebSocketMessage(ws: WSContext, sessionId: string, data: string) {
+export function handleWebSocketMessage(_ws: WsConnection, sessionId: string, data: string) {
   // Track client activity for dead-connection detection
   const entry = cleanupBySession.get(sessionId);
   if (entry) {
@@ -127,7 +120,7 @@ export function handleWebSocketMessage(ws: WSContext, sessionId: string, data: s
 }
 
 /** Called from onClose — unsubscribes from event bus */
-export function handleWebSocketClose(ws: WSContext, sessionId: string, code?: number, reason?: string) {
+export function handleWebSocketClose(ws: WsConnection, sessionId: string, code?: number, reason?: string) {
   activeConnections.delete(ws);
 
   const entry = cleanupBySession.get(sessionId);
@@ -175,7 +168,9 @@ export function ingestBridgeMessage(sessionId: string, msg: Record<string, unkno
 
   const eventType = deriveEventType(msg);
 
-  log(`[RC-DEBUG] [WS] <- bridge (inbound): sessionId=${sessionId} type=${eventType}${msg.uuid ? ` uuid=${msg.uuid}` : ""} msg=${JSON.stringify(msg).slice(0, 300)}`);
+  log(
+    `[RC-DEBUG] [WS] <- bridge (inbound): sessionId=${sessionId} type=${eventType}${msg.uuid ? ` uuid=${msg.uuid}` : ""} msg=${JSON.stringify(msg).slice(0, 300)}`,
+  );
 
   let payload: unknown;
 
@@ -188,7 +183,13 @@ export function ingestBridgeMessage(sessionId: string, msg: Record<string, unkno
       text = content;
     } else if (Array.isArray(content)) {
       text = content
-        .filter((b: unknown) => b && typeof b === "object" && "type" in (b as Record<string, unknown>) && (b as Record<string, unknown>).type === "text")
+        .filter(
+          (b: unknown) =>
+            b &&
+            typeof b === "object" &&
+            "type" in (b as Record<string, unknown>) &&
+            (b as Record<string, unknown>).type === "text",
+        )
         .map((b: Record<string, unknown>) => (b as Record<string, unknown>).text || "")
         .join("");
     }
@@ -220,7 +221,7 @@ export function closeAllConnections(): void {
   if (count === 0) return;
 
   log(`[WS] Gracefully closing ${count} active connection(s)...`);
-  for (const [sessionId, entry] of cleanupBySession) {
+  for (const [_sessionId, entry] of cleanupBySession) {
     try {
       entry.unsub();
       clearInterval(entry.keepalive);

@@ -1,12 +1,12 @@
 import type {
-  UploadManifestEntry,
-  UploadSkillSummary,
-  UploadSkillFileItem,
   SkillUploadConflictStrategy,
+  UploadManifestEntry,
+  UploadSkillFileItem,
+  UploadSkillSummary,
 } from "../types/config";
 
 function normalizeRelativePath(path: string): string {
-  return path.replaceAll("\\", "/").replace(/^\/+/, "");
+  return path.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
 function buildUploadSummaries(files: File[], skillSegmentIndex: number): UploadSkillSummary[] {
@@ -50,13 +50,13 @@ export function parseSkillUploadFiles(files: File[]): UploadSkillSummary[] {
 
 export function validateUploadBatch(items: UploadSkillSummary[]): string | null {
   if (items.length === 0) {
-    return "未解析出任何 skill 文件夹";
+    return "No skill folders found";
   }
 
   const validItems = items.filter((item) => item.hasSkillMd);
   const missingSkillMd = items.filter((item) => !item.hasSkillMd).map((item) => item.skillName);
   if (validItems.length === 0 && missingSkillMd.length > 0) {
-    return `以下目录缺少 SKILL.md：${missingSkillMd.join("、")}`;
+    return `Missing SKILL.md in: ${missingSkillMd.join(", ")}`;
   }
 
   const seen = new Set<string>();
@@ -70,13 +70,16 @@ export function validateUploadBatch(items: UploadSkillSummary[]): string | null 
     seen.add(normalizedName);
   }
   if (duplicates.size > 0) {
-    return `本次上传批次包含重复 skill 名：${[...duplicates].join("、")}`;
+    return `Duplicate skill names in upload: ${[...duplicates].join(", ")}`;
   }
 
   return null;
 }
 
-export function buildSkillUploadFormData(items: UploadSkillSummary[], strategy?: SkillUploadConflictStrategy): FormData {
+export function buildSkillUploadFormData(
+  items: UploadSkillSummary[],
+  strategy?: SkillUploadConflictStrategy,
+): FormData {
   const formData = new FormData();
   const manifest: UploadManifestEntry[] = [];
 

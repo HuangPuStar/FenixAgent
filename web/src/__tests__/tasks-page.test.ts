@@ -5,14 +5,15 @@ import { join } from "node:path";
 const webRoot = join(import.meta.dirname, "..");
 
 describe("TasksPage", () => {
+  // 测试包含环境和任务相关状态
   it("contains environment/task/task timeout state and environment loading", () => {
     const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
-    expect(src).toContain("apiFetchEnvironments");
     expect(src).toContain("environmentId");
     expect(src).toContain("timeoutMinutes");
     expect(src).toContain("formEnvironmentId");
   });
 
+  // 测试移除旧版 HTTP 表单标签
   it("removes legacy HTTP form labels", () => {
     const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
     expect(src).not.toContain(["UR", "L *"].join(""));
@@ -24,26 +25,27 @@ describe("TasksPage", () => {
     expect(src).not.toContain(["form", "Retry"].join(""));
   });
 
+  // 测试包含日志对话框中的工作区浏览 UI
   it("contains workspace browsing UI in logs dialog", () => {
     const src = readFileSync(join(webRoot, "pages/TasksPage.tsx"), "utf-8");
     expect(src).toContain("workspacePath");
     expect(src).toContain("resultSummary");
-    expect(src).toContain("查看目录");
-    expect(src).toContain("apiListFiles");
+    expect(src).toContain("viewDirectory");
   });
 });
 
-describe("client.ts tasks API", () => {
-  it("exports task and execution log types with new fields", () => {
-    const src = readFileSync(join(webRoot, "api/client.ts"), "utf-8");
-    expect(src).toContain("export interface TaskInfo");
-    expect(src).toContain("environmentId");
-    expect(src).toContain("environmentName");
-    expect(src).toContain("task");
-    expect(src).toContain("timeoutMinutes");
-    expect(src).toContain("export interface ExecutionLogInfo");
-    expect(src).toContain("workspacePath");
-    expect(src).toContain("taskSnapshot");
-    expect(src).toContain("resultSummary");
+describe("sdk.ts exports", () => {
+  // 测试导出 SDK 模块
+  it("exports SDK modules from api/sdk", async () => {
+    const sdkMod = await import("../api/sdk");
+    expect(sdkMod.providerApi).toBeDefined();
+    expect(sdkMod.agentApi).toBeDefined();
+    expect(sdkMod.envApi).toBeDefined();
+    expect(sdkMod.sessionApi).toBeDefined();
+    expect(sdkMod.mcpApi).toBeDefined();
+    expect(sdkMod.taskApi).toBeDefined();
+    expect(typeof sdkMod.providerApi.list).toBe("function");
+    expect(typeof sdkMod.agentApi.create).toBe("function");
+    expect(typeof sdkMod.envApi.list).toBe("function");
   });
 });

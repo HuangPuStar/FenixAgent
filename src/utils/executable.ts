@@ -1,6 +1,6 @@
+import { execSync } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
 
 export function isExecutable(filePath: string): boolean {
   try {

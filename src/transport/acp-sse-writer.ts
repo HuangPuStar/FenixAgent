@@ -1,10 +1,8 @@
 import { log } from "../logger";
-import type { Context } from "hono";
-import type { SessionEvent } from "./event-bus";
 import { getAcpEventBus } from "./event-bus";
 
 /** Create SSE response stream for an ACP channel group */
-export function createAcpSSEStream(c: Context, channelGroupId: string, fromSeqNum = 0) {
+export function createAcpSSEStream(request: Request, channelGroupId: string, fromSeqNum = 0) {
   const bus = getAcpEventBus(channelGroupId);
 
   const stream = new ReadableStream({
@@ -57,7 +55,7 @@ export function createAcpSSEStream(c: Context, channelGroupId: string, fromSeqNu
       }, 15000);
 
       // Cleanup on abort
-      c.req.raw.signal.addEventListener("abort", () => {
+      request.signal.addEventListener("abort", () => {
         unsub();
         clearInterval(keepalive);
         try {

@@ -1,0 +1,100 @@
+{
+  "title": "Agent Templates",
+  "subtitle": "Manage AI Agent models, prompts, and permissions",
+  "createButton": "New Agent Template",
+  "searchPlaceholder": "Search agents...",
+  "emptyMessage": "No agents yet. Click \"New Agent Template\" to add one",
+  "loadError": "Failed to load agent list: {{message}}",
+  "loadErrorShort": "Failed to load agent list",
+  "unknownError": "Unknown error",
+  "columns": {
+    "name": "Name",
+    "type": "Type",
+    "model": "Model",
+    "mode": "Mode",
+    "knowledgeBase": "Knowledge Base",
+    "default": "Default"
+  },
+  "actions": {
+    "setDefault": "Set Default",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "batchDelete": "Batch Delete",
+  "batchDeleteCount": "{{count}} agents deleted",
+  "batchDeleteConfirmTitle": "Confirm Batch Delete",
+  "batchDeleteConfirmDesc": "Are you sure you want to delete {{count}} selected custom agents?",
+  "batchDeleteError": "Batch delete failed: {{message}}",
+  "dialog": {
+    "editTitle": "Edit Agent",
+    "cancel": "Cancel",
+    "createTitle": "New Agent",
+    "createConfirm": "Create",
+    "tabs": {
+      "basic": "Basic Config",
+      "knowledge": "Knowledge Base",
+      "permission": "Permissions",
+      "skills": "Skills"
+    }
+  },
+  "form": {
+    "name": "Name",
+    "namePlaceholder": "e.g. my-agent",
+    "nameValidationError": "Name can only contain lowercase letters, numbers, and single hyphens, length 1-64",
+    "model": "Model",
+    "modelPlaceholder": "Select model",
+    "mode": "Mode",
+    "steps": "Steps (1-200)",
+    "stepsHint": "Max thinking steps for the agent. Suggested: 10-30 for simple tasks, 50-100 for complex tasks",
+    "stepsValidationError": "Steps must be between 1-200",
+    "prompt": "Prompt",
+    "promptPlaceholder": "Optional, custom agent prompt",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional, brief agent description",
+    "variant": "Variant",
+    "variantPlaceholder": "Optional, e.g. thinking",
+    "temperature": "Temperature (0-2)",
+    "temperaturePlaceholder": "Optional",
+    "temperatureValidationError": "Temperature must be between 0-2",
+    "topP": "Top P (0-1)",
+    "topPPPlaceholder": "Optional",
+    "topPValidationError": "Top P must be between 0-1",
+    "color": "Color",
+    "colorPlaceholder": "hex (#RRGGBB) or preset color name",
+    "hidden": "Hidden",
+    "hiddenTitle": "Hidden from agent list, but still callable via API",
+    "disable": "Disabled",
+    "disableTitle": "Agent is completely unavailable, cannot be used in UI or API"
+  },
+  "knowledge": {
+    "bindTitle": "Bind Knowledge Bases",
+    "selectedCount": "{{count}} knowledge base(s) selected",
+    "noOptions": "No knowledge bases available",
+    "searchFirst": "Search knowledge base first",
+    "maxResults": "Max Results",
+    "maxResultsValidationError": "Max results must be between 1-20",
+    "loadError": "Failed to load agent details: {{message}}"
+  },
+  "skills": {
+    "tabTitle": "Bind Skills",
+    "selectedCount": "{{count}} skill(s) selected",
+    "noOptions": "No skills available"
+  },
+  "save": {
+    "successCreate": "Agent created",
+    "successUpdate": "Agent updated",
+    "errorCreate": "Failed to create: {{message}}",
+    "errorUpdate": "Failed to update: {{message}}",
+    "errorGeneric": "Save failed: {{message}}"
+  },
+  "setDefault": {
+    "success": "\"{{name}}\" set as default agent",
+    "error": "Failed to set default: {{message}}"
+  },
+  "delete": {
+    "confirmTitle": "Confirm Delete",
+    "confirmDesc": "Are you sure you want to delete agent \"{{name}}\"?",
+    "success": "Agent deleted",
+    "error": "Delete failed: {{message}}"
+  }
+}

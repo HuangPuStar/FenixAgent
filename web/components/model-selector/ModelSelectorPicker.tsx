@@ -1,15 +1,8 @@
-import { useState, useMemo } from "react";
 import { Check } from "lucide-react";
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-} from "../ui/command";
+import { useMemo, useState } from "react";
 import type { ModelInfo } from "../../src/acp/types";
 import { cn } from "../../src/lib/utils";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 
 interface ModelSelectorPickerProps {
   models: ModelInfo[];
@@ -59,21 +52,12 @@ export function ModelSelectorPicker({
   // Filter models using fuzzy search
   const filteredModels = useMemo(() => {
     if (!search) return models;
-    return models.filter((model) =>
-      fuzzyMatch(search, model.name) ||
-      fuzzyMatch(search, model.modelId)
-    );
+    return models.filter((model) => fuzzyMatch(search, model.name) || fuzzyMatch(search, model.modelId));
   }, [models, search]);
 
   return (
     <Command shouldFilter={false} value={selectedValue} onValueChange={setSelectedValue}>
-      {showSearch && (
-        <CommandInput
-          placeholder="Select a model…"
-          value={search}
-          onValueChange={setSearch}
-        />
-      )}
+      {showSearch && <CommandInput placeholder="Select a model…" value={search} onValueChange={setSearch} />}
       <CommandList>
         <CommandEmpty>No models found.</CommandEmpty>
         <CommandGroup>
@@ -87,16 +71,11 @@ export function ModelSelectorPicker({
               <div className="flex flex-col gap-0.5 min-w-0">
                 <span className="truncate font-medium">{model.name}</span>
                 {model.description && (
-                  <span className="text-xs text-muted-foreground truncate">
-                    {model.description}
-                  </span>
+                  <span className="text-xs text-muted-foreground truncate">{model.description}</span>
                 )}
               </div>
               <Check
-                className={cn(
-                  "h-4 w-4 shrink-0",
-                  currentModelId === model.modelId ? "opacity-100" : "opacity-0"
-                )}
+                className={cn("h-4 w-4 shrink-0", currentModelId === model.modelId ? "opacity-100" : "opacity-0")}
               />
             </CommandItem>
           ))}
@@ -105,4 +84,3 @@ export function ModelSelectorPicker({
     </Command>
   );
 }
-

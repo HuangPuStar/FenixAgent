@@ -1,7 +1,8 @@
+import { PanelRight, PanelRightClose } from "lucide-react";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import type { ThreadEntry, ToolCallEntry } from "../src/lib/types";
 import { cn } from "../src/lib/utils";
-import { PanelRightClose, PanelRight } from "lucide-react";
 
 // =============================================================================
 // ContextPanel — 方案 A 紧凑流式布局
@@ -16,14 +17,8 @@ interface ContextPanelProps {
   onToggle: () => void;
 }
 
-export function ContextPanel({
-  entries,
-  agentName,
-  modelName,
-  duration,
-  collapsed,
-  onToggle,
-}: ContextPanelProps) {
+export function ContextPanel({ entries, agentName, modelName, duration, collapsed, onToggle }: ContextPanelProps) {
+  const { t } = useTranslation("components");
   const stats = useMemo(() => computeStats(entries), [entries]);
   const displayAgentName = useMemo(() => simplifyDisplayName(agentName), [agentName]);
 
@@ -33,14 +28,10 @@ export function ContextPanel({
       <button
         className="absolute left-0 -translate-x-full top-1/2 -translate-y-1/2 z-10 w-6 h-12 flex items-center justify-center rounded-l-lg border border-border border-r-0 bg-surface-1 text-text-muted cursor-pointer transition-colors duration-150 hover:bg-surface-2 hover:text-text-primary"
         onClick={onToggle}
-        title={collapsed ? "显示上下文面板" : "隐藏上下文面板"}
-        aria-label={collapsed ? "显示上下文面板" : "隐藏上下文面板"}
+        title={collapsed ? t("contextPanel.showContext") : t("contextPanel.hideContext")}
+        aria-label={collapsed ? t("contextPanel.showContext") : t("contextPanel.hideContext")}
       >
-        {collapsed ? (
-          <PanelRightClose className="h-3.5 w-3.5" />
-        ) : (
-          <PanelRight className="h-3.5 w-3.5" />
-        )}
+        {collapsed ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
       </button>
 
       {/* Panel */}
@@ -54,27 +45,36 @@ export function ContextPanel({
         {/* Agent header */}
         <div
           className="px-4 py-3.5 border-b border-border"
-          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-brand) 8%, transparent) 0%, transparent 60%)' }}
+          style={{
+            background:
+              "linear-gradient(135deg, color-mix(in srgb, var(--color-brand) 8%, transparent) 0%, transparent 60%)",
+          }}
         >
           <div className="flex items-center gap-2.5">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0"
               style={{
-                background: 'color-mix(in srgb, var(--color-brand) 10%, transparent)',
-                border: '1px solid color-mix(in srgb, var(--color-brand) 20%, transparent)',
+                background: "color-mix(in srgb, var(--color-brand) 10%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--color-brand) 20%, transparent)",
               }}
-            >⬡</div>
+            >
+              ⬡
+            </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold text-text-primary overflow-hidden text-ellipsis whitespace-nowrap">{displayAgentName}</div>
+              <div className="text-[13px] font-semibold text-text-primary overflow-hidden text-ellipsis whitespace-nowrap">
+                {displayAgentName}
+              </div>
               <div className="text-[11px] text-text-muted mt-px font-mono">{modelName || "未知"}</div>
             </div>
           </div>
           <div className="flex items-center gap-1.5 mt-2">
             <span
               className="w-1.5 h-1.5 rounded-full bg-accent-green animate-[status-active-pulse_2s_ease-in-out_infinite]"
-              style={{ boxShadow: '0 0 6px color-mix(in srgb, var(--color-accent-green) 40%, transparent)' }}
+              style={{ boxShadow: "0 0 6px color-mix(in srgb, var(--color-accent-green) 40%, transparent)" }}
             />
-            <span className="text-[10px] font-semibold text-accent-green uppercase tracking-[0.05em]">Running</span>
+            <span className="text-[10px] font-semibold text-accent-green uppercase tracking-[0.05em]">
+              {t("contextPanel.running")}
+            </span>
             {duration && <span className="text-[10px] text-text-dim ml-auto font-mono">{duration}</span>}
           </div>
         </div>
@@ -83,22 +83,28 @@ export function ContextPanel({
         <div className="grid grid-cols-3 border-b border-border">
           <div className="px-3 py-2.5 text-center border-r border-border">
             <div className="text-sm font-bold font-mono text-brand">{formatTokenCount(stats.estimatedTokens)}</div>
-            <div className="text-[9px] font-semibold uppercase tracking-[0.06em] text-text-muted mt-0.5">Tokens</div>
+            <div className="text-[9px] font-semibold uppercase tracking-[0.06em] text-text-muted mt-0.5">
+              {t("contextPanel.tokens")}
+            </div>
           </div>
           <div className="px-3 py-2.5 text-center border-r border-border">
             <div className="text-sm font-bold font-mono text-accent-green">{stats.totalToolCalls}</div>
-            <div className="text-[9px] font-semibold uppercase tracking-[0.06em] text-text-muted mt-0.5">Tools</div>
+            <div className="text-[9px] font-semibold uppercase tracking-[0.06em] text-text-muted mt-0.5">
+              {t("contextPanel.tools")}
+            </div>
           </div>
           <div className="px-3 py-2.5 text-center">
             <div className="text-sm font-bold font-mono text-accent-yellow">{stats.userMessages}</div>
-            <div className="text-[9px] font-semibold uppercase tracking-[0.06em] text-text-muted mt-0.5">Messages</div>
+            <div className="text-[9px] font-semibold uppercase tracking-[0.06em] text-text-muted mt-0.5">
+              {t("contextPanel.messages")}
+            </div>
           </div>
         </div>
 
         {/* Token bar */}
         <div className="px-4 py-3 border-b border-border">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-[11px] font-semibold text-text-secondary">Token 用量</span>
+            <span className="text-[11px] font-semibold text-text-secondary">{t("contextPanel.tokenUsage")}</span>
             <span className="text-[11px] font-mono text-text-primary font-semibold">
               {formatTokenCount(stats.estimatedTokens)} / 200k
             </span>
@@ -115,12 +121,24 @@ export function ContextPanel({
           </div>
           <div className="flex gap-3 mt-1.5">
             <span className="text-[10px] text-text-muted flex items-center gap-1">
-              <span className="w-[5px] h-[5px] rounded-full inline-block" style={{ background: "var(--color-brand)" }} />
-              输入 <span className="font-mono font-semibold text-text-secondary">{formatTokenCount(stats.estimatedInputTokens)}</span>
+              <span
+                className="w-[5px] h-[5px] rounded-full inline-block"
+                style={{ background: "var(--color-brand)" }}
+              />
+              输入{" "}
+              <span className="font-mono font-semibold text-text-secondary">
+                {formatTokenCount(stats.estimatedInputTokens)}
+              </span>
             </span>
             <span className="text-[10px] text-text-muted flex items-center gap-1">
-              <span className="w-[5px] h-[5px] rounded-full inline-block" style={{ background: "var(--color-accent-green)" }} />
-              输出 <span className="font-mono font-semibold text-text-secondary">{formatTokenCount(stats.estimatedOutputTokens)}</span>
+              <span
+                className="w-[5px] h-[5px] rounded-full inline-block"
+                style={{ background: "var(--color-accent-green)" }}
+              />
+              输出{" "}
+              <span className="font-mono font-semibold text-text-secondary">
+                {formatTokenCount(stats.estimatedOutputTokens)}
+              </span>
             </span>
           </div>
         </div>
@@ -128,11 +146,11 @@ export function ContextPanel({
         {/* Tool chips */}
         <div className="px-4 py-3 flex-1">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-[11px] font-semibold text-text-secondary">工具调用</span>
+            <span className="text-[11px] font-semibold text-text-secondary">{t("contextPanel.toolCalls")}</span>
             <span className="text-[10px] font-mono text-text-muted">{stats.totalToolCalls}</span>
           </div>
           {stats.totalToolCalls === 0 ? (
-            <div className="text-[11px] text-text-muted py-1">暂无工具调用</div>
+            <div className="text-[11px] text-text-muted py-1">{t("contextPanel.noToolCalls")}</div>
           ) : (
             <div className="flex flex-wrap gap-1">
               {Object.entries(stats.toolCounts)
@@ -143,11 +161,15 @@ export function ContextPanel({
                     className={cn(
                       "inline-flex items-center gap-1 px-2 py-[3px] rounded-md text-[10px] font-mono font-medium border border-border bg-surface-2 text-text-secondary transition-all duration-150",
                       "hover:border-[color-mix(in_srgb,var(--color-brand)_25%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-brand)_6%,transparent)] hover:text-text-primary",
-                      name === "bash" && "text-accent-green border-[color-mix(in_srgb,var(--color-accent-green)_15%,transparent)]",
+                      name === "bash" &&
+                        "text-accent-green border-[color-mix(in_srgb,var(--color-accent-green)_15%,transparent)]",
                       name === "read" && "text-cyan border-[color-mix(in_srgb,var(--color-cyan)_15%,transparent)]",
-                      (name === "edit" || name === "write") && "text-brand-light border-[color-mix(in_srgb,var(--color-brand-light)_15%,transparent)]",
-                      (name === "grep" || name === "glob") && "text-accent-yellow border-[color-mix(in_srgb,var(--color-accent-yellow)_15%,transparent)]",
-                      (name === "webfetch" || name === "websearch") && "text-accent-pink border-[color-mix(in_srgb,var(--color-accent-pink)_15%,transparent)]",
+                      (name === "edit" || name === "write") &&
+                        "text-brand-light border-[color-mix(in_srgb,var(--color-brand-light)_15%,transparent)]",
+                      (name === "grep" || name === "glob") &&
+                        "text-accent-yellow border-[color-mix(in_srgb,var(--color-accent-yellow)_15%,transparent)]",
+                      (name === "webfetch" || name === "websearch") &&
+                        "text-accent-pink border-[color-mix(in_srgb,var(--color-accent-pink)_15%,transparent)]",
                     )}
                   >
                     <span
@@ -172,13 +194,17 @@ export function ContextPanel({
         {stats.pendingTools.length > 0 && (
           <div
             className="px-4 py-2.5 border-t border-border"
-            style={{ background: 'color-mix(in srgb, var(--color-accent-yellow) 6%, transparent)' }}
+            style={{ background: "color-mix(in srgb, var(--color-accent-yellow) 6%, transparent)" }}
           >
             {stats.pendingTools.map((tool) => (
               <div key={tool.id} className="flex items-center gap-1.5 [&+&]:mt-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-accent-yellow animate-[status-active-pulse_2s_ease-in-out_infinite] shrink-0" />
-                <span className="text-[11px] text-text-primary overflow-hidden text-ellipsis whitespace-nowrap">{tool.title}</span>
-                <span className="text-[9px] font-bold text-accent-yellow uppercase ml-auto shrink-0">待确认</span>
+                <span className="text-[11px] text-text-primary overflow-hidden text-ellipsis whitespace-nowrap">
+                  {tool.title}
+                </span>
+                <span className="text-[9px] font-bold text-accent-yellow uppercase ml-auto shrink-0">
+                  {t("contextPanel.pendingConfirmation")}
+                </span>
               </div>
             ))}
           </div>
@@ -193,9 +219,7 @@ export function ContextPanel({
 // =============================================================================
 
 function computeStats(entries: ThreadEntry[]) {
-  const toolCalls = entries.filter(
-    (e): e is ToolCallEntry => e.type === "tool_call",
-  );
+  const toolCalls = entries.filter((e): e is ToolCallEntry => e.type === "tool_call");
   const totalToolCalls = toolCalls.length;
   const userMessages = entries.filter((e) => e.type === "user_message").length;
 
@@ -215,10 +239,7 @@ function computeStats(entries: ThreadEntry[]) {
 
   for (const entry of entries) {
     if (entry.type === "assistant_message") {
-      const text = entry.chunks.reduce(
-        (sum, c) => sum + (c.text?.length || 0),
-        0,
-      );
+      const text = entry.chunks.reduce((sum, c) => sum + (c.text?.length || 0), 0);
       outputChars += text;
       totalChars += text;
     }
@@ -250,8 +271,8 @@ function computeStats(entries: ThreadEntry[]) {
 
 function simplifyDisplayName(name?: string): string {
   if (!name) return "默认";
-  if (name.startsWith("env_")) return name.length > 16 ? name.slice(0, 16) + "…" : name;
-  if (name.length > 20) return name.slice(0, 18) + "…";
+  if (name.startsWith("env_")) return name.length > 16 ? `${name.slice(0, 16)}…` : name;
+  if (name.length > 20) return `${name.slice(0, 18)}…`;
   return name;
 }
 

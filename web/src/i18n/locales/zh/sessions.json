@@ -1,0 +1,74 @@
+{
+  "retry": "重试",
+  "backToDashboard": "返回仪表盘",
+  "back": "返回",
+  "loadingSession": "加载会话中...",
+  "started": "开始于 {{time}}",
+  "session": "Session",
+  "environment": "Environment",
+  "startConversation": "开始对话",
+  "startConversationDesc": "输入消息开始聊天 · 支持粘贴图片或 @ 引用文件",
+  "sessionLoadFailed": "会话加载失败",
+  "sessionClosed": "会话已关闭",
+  "inputMessage": "输入消息...",
+  "authExpired": "登录已过期，请重新登录",
+  "connectingAgent": "正在连接 Agent...",
+  "agentNotConnected": "Agent 未连接",
+  "agentOffline": "Agent 尚未上线，请确保 acp-link 已启动并连接到服务器",
+  "status": {
+    "running": "Running",
+    "active": "Active",
+    "idle": "Idle",
+    "error": "Error"
+  },
+  "stats": {
+    "model": "Model",
+    "tokens": "Tokens",
+    "tools": "Tools",
+    "duration": "Duration"
+  },
+  "trace": {
+    "toolCall_one": "{{count}} 个工具调用",
+    "toolCall_other": "{{count}} 个工具调用",
+    "error": "Error",
+    "result": "Result",
+    "tool": "tool"
+  },
+  "permission": {
+    "title": "Permission Request",
+    "approve": "Approve",
+    "reject": "Reject"
+  },
+  "askUser": {
+    "question": "Question",
+    "questions": "Questions",
+    "otherPlaceholder": "其他...",
+    "send": "Send",
+    "submit": "Submit",
+    "skip": "Skip",
+    "submitAll": "Submit All"
+  },
+  "plan": {
+    "exitPlanMode": "Exit plan mode?",
+    "readyToCode": "Ready to code?",
+    "yes": "Yes",
+    "no": "No",
+    "yesAcceptEdits": "Yes, auto-accept edits",
+    "yesAcceptEditsDesc": "Approve plan and auto-accept file edits",
+    "yesManualApprove": "Yes, manually approve edits",
+    "yesManualApproveDesc": "Approve plan but confirm each edit",
+    "noKeepPlanning": "No, keep planning",
+    "noKeepPlanningDesc": "Provide feedback to refine the plan",
+    "feedbackPlaceholder": "告诉智能体需要修改什么...",
+    "submit": "Submit"
+  },
+  "errorPrefix": "Error: {{message}}",
+  "unknownError": "Unknown error",
+  "sessionInterrupted": "Session interrupted",
+  "sessionStatus": "Session {{status}}",
+  "timeJustNow": "just now",
+  "timeMinAgo": "{{count}}min ago",
+  "timeHoursAgo": "{{count}}h ago",
+  "timeDaysAgo": "{{count}}d ago",
+  "sessionInfo": "会话信息"
+}

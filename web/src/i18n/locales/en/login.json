@@ -1,0 +1,17 @@
+{
+  "signUp": "Create Account",
+  "signIn": "Sign In",
+  "signUpSubtitle": "Create an account to manage your Agents",
+  "signInSubtitle": "Sign in to manage your Agents",
+  "name": "Name",
+  "namePlaceholder": "Your name",
+  "email": "Email",
+  "password": "Password",
+  "passwordPlaceholder": "At least 8 characters",
+  "pleaseWait": "Please wait...",
+  "alreadyHaveAccount": "Already have an account?",
+  "noAccount": "Don't have an account?",
+  "signUpFailed": "Sign up failed",
+  "signInFailed": "Sign in failed",
+  "unknownError": "Unknown error"
+}

@@ -1,5 +1,5 @@
-import { getEventBus } from "../transport/event-bus";
 import { v4 as uuid } from "uuid";
+import { eventService } from "../services/event-service";
 
 /**
  * Extract plain text from various message payload formats.
@@ -68,7 +68,7 @@ export function normalizePayload(type: string, payload: unknown): Record<string,
   if (p.approved !== undefined) normalized.approved = p.approved;
   if (p.updated_input) normalized.updated_input = p.updated_input;
 
-  // Preserve message field for backward compat
+  // permission_request 事件可能携带 message 字段
   if (p.message) normalized.message = p.message;
 
   if (type === "task_state") {
@@ -87,7 +87,7 @@ export function publishSessionEvent(
   payload: unknown,
   direction: "inbound" | "outbound",
 ) {
-  const bus = getEventBus(sessionId);
+  const bus = eventService.getBus(sessionId);
   const eventId = uuid();
 
   const normalized = normalizePayload(type, payload);

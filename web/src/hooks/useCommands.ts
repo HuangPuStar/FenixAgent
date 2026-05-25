@@ -1,39 +1,28 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ACPClient } from "../acp/client";
 import type { AvailableCommand } from "../acp/types";
 
 export interface UseCommandsResult {
-  /** List of available slash commands from the agent */
   commands: AvailableCommand[];
-  /** Whether any commands are available */
   hasCommands: boolean;
 }
 
 /**
  * Hook to manage available commands state.
- * Follows the same pattern as useModels — event-driven with immediate callback.
+ * Uses event-driven updates via ACPState EventEmitter.
  */
 export function useCommands(client: ACPClient): UseCommandsResult {
-  const [commands, setCommands] = useState<AvailableCommand[]>(
-    client.availableCommands,
-  );
+  const [commands, setCommands] = useState<AvailableCommand[]>(client.state.availableCommands);
 
   useEffect(() => {
-    const handleCommandsChanged = (newCommands: AvailableCommand[]) => {
-      setCommands(newCommands);
-    };
-
-    client.setAvailableCommandsChangedHandler(handleCommandsChanged);
-
+    const handler = (newCommands: AvailableCommand[]) => setCommands(newCommands);
+    client.state.on("availableCommandsChange", handler);
     return () => {
-      client.setAvailableCommandsChangedHandler(() => {});
+      client.state.off("availableCommandsChange", handler);
     };
   }, [client]);
 
-  const hasCommands = useMemo(
-    () => commands.length > 0,
-    [commands],
-  );
+  const hasCommands = useMemo(() => commands.length > 0, [commands]);
 
   return { commands, hasCommands };
 }

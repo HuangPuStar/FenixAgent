@@ -4,6 +4,7 @@ export interface Environment {
   description: string | null;
   workspace_path: string;
   agent_name: string | null;
+  agent_config_id: string | null;
   status: string;
   machine_name: string | null;
   branch: string | null;
@@ -16,6 +17,9 @@ export interface Environment {
   instance_id?: string | null;
   instances?: EnvironmentInstance[];
   instances_count?: number;
+  worker_type?: string;
+  channel_group_id?: string;
+  directory?: string;
 }
 
 export interface EnvironmentInstance {
@@ -77,7 +81,7 @@ export interface CreateEnvironmentRequest {
   name: string;
   description?: string;
   workspacePath: string;
-  agentName?: string;
+  agentConfigId?: string;
   autoStart?: boolean;
 }
 
@@ -85,7 +89,7 @@ export interface UpdateEnvironmentRequest {
   name?: string;
   description?: string;
   workspacePath?: string;
-  agentName?: string;
+  agentConfigId?: string | null;
   autoStart?: boolean;
 }
 

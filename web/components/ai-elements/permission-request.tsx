@@ -1,9 +1,10 @@
 "use client";
 
+import { CheckIcon, ShieldAlertIcon, XIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { PermissionOption } from "../../src/acp/types";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
-import { ShieldAlertIcon, CheckIcon, XIcon } from "lucide-react";
-import type { PermissionOption } from "../../src/acp/types";
 
 // Get button variant based on option kind
 function getButtonVariant(kind: PermissionOption["kind"]): "default" | "destructive" | "outline" | "secondary" {
@@ -42,6 +43,7 @@ export interface ToolPermissionButtonsProps {
 }
 
 export function ToolPermissionButtons({ requestId, options, onRespond, className }: ToolPermissionButtonsProps) {
+  const { t } = useTranslation("components");
   const handleOptionClick = (option: PermissionOption) => {
     onRespond(requestId, option.optionId, option.kind);
   };
@@ -50,9 +52,7 @@ export function ToolPermissionButtons({ requestId, options, onRespond, className
     <div className={cn("p-3 border-t border-warning-border/30 bg-warning-bg/50", className)}>
       <div className="flex items-center gap-2 mb-2">
         <ShieldAlertIcon className="size-4 text-warning-text" />
-        <span className="text-xs font-medium text-warning-text">
-          Permission Required
-        </span>
+        <span className="text-xs font-medium text-warning-text">{t("permissionRequest.title")}</span>
       </div>
       <div className="flex flex-wrap gap-2">
         {options.map((option) => (
@@ -71,4 +71,3 @@ export function ToolPermissionButtons({ requestId, options, onRespond, className
     </div>
   );
 }
-

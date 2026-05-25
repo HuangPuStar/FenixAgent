@@ -1,8 +1,5 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
-import { Hono } from "hono";
-
-// Instead of mocking the middleware module (which has complex dependencies),
-// we build the route handler inline and inject a mock middleware.
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import Elysia from "elysia";
 
 // Inline the toResponse logic from instances.ts
 function toResponse(inst: any) {
@@ -18,18 +15,20 @@ function toResponse(inst: any) {
 }
 
 // Mock service functions
-const mockSpawnInstance = mock<(userId: string) => Promise<{
-  id: string;
-  userId: string;
-  port: number;
-  pid: number;
-  status: "running";
-  command: string;
-  error: null;
-  apiKey: string;
-  createdAt: Date;
-  instanceNumber: number;
-}>>(async (userId: string) => ({
+const mockSpawnInstance = mock<
+  (userId: string) => Promise<{
+    id: string;
+    userId: string;
+    port: number;
+    pid: number;
+    status: "running";
+    command: string;
+    error: null;
+    apiKey: string;
+    createdAt: Date;
+    instanceNumber: number;
+  }>
+>(async (userId: string) => ({
   id: "inst_abc123",
   userId,
   port: 8888,
@@ -42,18 +41,20 @@ const mockSpawnInstance = mock<(userId: string) => Promise<{
   instanceNumber: 1,
 }));
 
-const mockListInstances = mock<(userId: string) => Array<{
-  id: string;
-  userId: string;
-  port: number;
-  pid: number;
-  status: "running" | "stopped";
-  command: string;
-  error: null;
-  apiKey: string;
-  createdAt: Date;
-  instanceNumber: number;
-}>>((_userId: string) => [
+const mockListInstances = mock<
+  (userId: string) => Array<{
+    id: string;
+    userId: string;
+    port: number;
+    pid: number;
+    status: "running" | "stopped";
+    command: string;
+    error: null;
+    apiKey: string;
+    createdAt: Date;
+    instanceNumber: number;
+  }>
+>((_ctx: any) => [
   {
     id: "inst_abc123",
     userId: "test-user-id",
@@ -80,56 +81,61 @@ const mockListInstances = mock<(userId: string) => Array<{
   },
 ]);
 
-type StopInstanceResult =
-  | { ok: true }
-  | { ok: false; error: "Instance not found" | "Not your instance" | string };
+type StopInstanceResult = { ok: true } | { ok: false; error: "Instance not found" | "Not your instance" | string };
 
-const mockStopInstance = mock<(id: string, userId: string) => StopInstanceResult>(() => ({ ok: true }));
+const mockStopInstance = mock<(id: string, userId: string) => Promise<StopInstanceResult>>(async () => ({ ok: true }));
+
+function request(app: Elysia, path: string, init?: RequestInit) {
+  return app.handle(new Request(`http://localhost${path}`, init));
+}
 
 // Build the route inline with mock auth
 function createInstanceApp() {
-  const app = new Hono();
+  const app = new Elysia().state({ user: null as { id: string } | null }).onBeforeHandle(({ store }) => {
+    store.user = { id: "test-user-id" };
+  });
 
-  // Mock sessionAuth
-  const sessionAuth = async (c: any, next: any) => {
-    c.set("user", { id: "test-user-id", email: "test@test.com", name: "Test" });
-    await next();
-  };
-
-  app.post("/web/instances", sessionAuth, async (c) => {
-    const user = c.get("user")!;
+  app.post("/web/instances", async ({ store }) => {
+    const user = store.user!;
     try {
       const inst = await mockSpawnInstance(user.id);
-      return c.json(toResponse(inst), 201);
+      return new Response(JSON.stringify(toResponse(inst)), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
     } catch (err: any) {
-      return c.json({ error: { type: "spawn_failed", message: err.message } }, 500);
+      return new Response(JSON.stringify({ error: { type: "spawn_failed", message: err.message } }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
   });
 
-  app.get("/web/instances", sessionAuth, async (c) => {
-    const user = c.get("user")!;
+  app.get("/web/instances", ({ store }) => {
+    const user = store.user!;
     const insts = mockListInstances(user.id);
-    return c.json(insts.map(toResponse), 200);
+    return insts.map(toResponse);
   });
 
-  app.delete("/web/instances/:id", sessionAuth, async (c) => {
-    const user = c.get("user")!;
-    const id = c.req.param("id")!;
-    const result = mockStopInstance(id, user.id);
+  app.delete("/web/instances/:id", async ({ store, params }) => {
+    const user = store.user!;
+    const id = params.id;
+    const result = await mockStopInstance(id, user.id);
     if (!result.ok) {
-      const statusCode = result.error === "Instance not found" ? 404
-        : result.error === "Not your instance" ? 403
-        : 400;
-      return c.json({ error: { type: "bad_request", message: result.error } }, statusCode);
+      const statusCode = result.error === "Instance not found" ? 404 : result.error === "Not your instance" ? 403 : 400;
+      return new Response(JSON.stringify({ error: { type: "bad_request", message: result.error } }), {
+        status: statusCode,
+        headers: { "Content-Type": "application/json" },
+      });
     }
-    return c.json({ ok: true });
+    return { ok: true };
   });
 
   return app;
 }
 
 describe("Instance Routes", () => {
-  let app: Hono;
+  let app: any;
 
   beforeEach(() => {
     mockSpawnInstance.mockClear();
@@ -139,7 +145,7 @@ describe("Instance Routes", () => {
   });
 
   test("POST /web/instances — creates instance successfully", async () => {
-    const res = await app.request("/web/instances", { method: "POST" });
+    const res = await request(app, "/web/instances", { method: "POST" });
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.id).toBe("inst_abc123");
@@ -152,7 +158,7 @@ describe("Instance Routes", () => {
   test("POST /web/instances — spawn failure returns 500", async () => {
     mockSpawnInstance.mockRejectedValueOnce(new Error("No available port"));
 
-    const res = await app.request("/web/instances", { method: "POST" });
+    const res = await request(app, "/web/instances", { method: "POST" });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error.type).toBe("spawn_failed");
@@ -160,7 +166,7 @@ describe("Instance Routes", () => {
   });
 
   test("GET /web/instances — lists user instances", async () => {
-    const res = await app.request("/web/instances");
+    const res = await request(app, "/web/instances");
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toHaveLength(2);
@@ -172,14 +178,14 @@ describe("Instance Routes", () => {
   test("GET /web/instances — returns empty array when no instances", async () => {
     mockListInstances.mockReturnValueOnce([]);
 
-    const res = await app.request("/web/instances");
+    const res = await request(app, "/web/instances");
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual([]);
   });
 
   test("DELETE /web/instances/:id — stops instance successfully", async () => {
-    const res = await app.request("/web/instances/inst_abc123", { method: "DELETE" });
+    const res = await request(app, "/web/instances/inst_abc123", { method: "DELETE" });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -187,32 +193,32 @@ describe("Instance Routes", () => {
   });
 
   test("DELETE /web/instances/:id — returns 404 for not found", async () => {
-    mockStopInstance.mockReturnValueOnce({ ok: false, error: "Instance not found" });
+    mockStopInstance.mockResolvedValueOnce({ ok: false, error: "Instance not found" });
 
-    const res = await app.request("/web/instances/inst_nonexistent", { method: "DELETE" });
+    const res = await request(app, "/web/instances/inst_nonexistent", { method: "DELETE" });
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error.type).toBe("bad_request");
   });
 
   test("DELETE /web/instances/:id — returns 403 for non-owner", async () => {
-    mockStopInstance.mockReturnValueOnce({ ok: false, error: "Not your instance" });
+    mockStopInstance.mockResolvedValueOnce({ ok: false, error: "Not your instance" });
 
-    const res = await app.request("/web/instances/inst_other", { method: "DELETE" });
+    const res = await request(app, "/web/instances/inst_other", { method: "DELETE" });
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error.message).toBe("Not your instance");
   });
 
   test("POST /web/instances — response includes instance_number", async () => {
-    const res = await app.request("/web/instances", { method: "POST" });
+    const res = await request(app, "/web/instances", { method: "POST" });
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.instance_number).toBe(1);
   });
 
   test("GET /web/instances — each item includes instance_number", async () => {
-    const res = await app.request("/web/instances");
+    const res = await request(app, "/web/instances");
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body[0].instance_number).toBe(1);

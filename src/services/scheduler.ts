@@ -1,17 +1,21 @@
-import { eq } from "drizzle-orm";
 import schedule from "node-schedule";
-import { db } from "../db";
-import { scheduledTask } from "../db/schema";
 import { error, log } from "../logger";
+import { scheduledTaskRepo } from "../repositories/task";
 import { createExecutionLog, executeTaskById, getTaskById } from "./task";
 
-interface ScheduledJob {
-  taskId: string;
-  job: schedule.Job;
+// 可替换的 scheduleJob 实现（测试时覆盖）
+export type ScheduleJobFn = (config: schedule.Spec, handler: () => void) => schedule.Job | null;
+export let scheduleJobImpl: ScheduleJobFn = (config, handler) =>
+  schedule.scheduleJob(config as schedule.RecurrenceSpecObjLit, handler);
+
+export function setScheduleJobImpl(fn: ScheduleJobFn) {
+  scheduleJobImpl = fn;
 }
 
+import type { ScheduledJobEntry } from "../types/store";
+
 const runningTasks = new Set<string>();
-const activeJobs = new Map<string, ScheduledJob>();
+const activeJobs = new Map<string, ScheduledJobEntry>();
 
 function toInvocationDate(invocation: unknown): Date | null {
   if (!invocation) {
@@ -21,12 +25,11 @@ function toInvocationDate(invocation: unknown): Date | null {
     return invocation;
   }
   if (typeof invocation === "object" && invocation !== null) {
-    const maybeToDate = (invocation as { toDate?: () => Date; toJSDate?: () => Date });
-    if (typeof maybeToDate.toDate === "function") {
-      return maybeToDate.toDate();
+    if ("toDate" in invocation && typeof invocation.toDate === "function") {
+      return (invocation as { toDate: () => Date }).toDate();
     }
-    if (typeof maybeToDate.toJSDate === "function") {
-      return maybeToDate.toJSDate();
+    if ("toJSDate" in invocation && typeof invocation.toJSDate === "function") {
+      return (invocation as { toJSDate: () => Date }).toJSDate();
     }
   }
   return null;
@@ -34,24 +37,20 @@ function toInvocationDate(invocation: unknown): Date | null {
 
 async function executeTask(taskId: string): Promise<void> {
   if (runningTasks.has(taskId)) {
-    const task = await getTaskById(taskId);
-    if (!task) {
-      log(`[Scheduler] Task ${taskId} not found while skipping concurrent run`);
-      return;
+    try {
+      // 并行写入日志和更新状态（两操作无依赖）
+      await Promise.all([
+        createExecutionLog({
+          taskId,
+          status: "skipped",
+          triggeredBy: "cron",
+          skipReason: "previous_run_still_active",
+        }),
+        scheduledTaskRepo.update(taskId, { lastStatus: "skipped", updatedAt: new Date() }),
+      ]);
+    } catch (err) {
+      error(`[Scheduler] Failed to record skipped execution for task ${taskId}:`, err);
     }
-
-    await createExecutionLog({
-      taskId,
-      status: "skipped",
-      triggeredBy: "cron",
-      environmentId: task.environmentId,
-      taskSnapshot: task.task,
-      skipReason: "previous_run_still_active",
-    });
-
-    await db.update(scheduledTask)
-      .set({ lastStatus: "skipped", updatedAt: new Date() })
-      .where(eq(scheduledTask.id, taskId));
 
     log(`[Scheduler] Task ${taskId} is already running, skipped`);
     return;
@@ -62,15 +61,17 @@ async function executeTask(taskId: string): Promise<void> {
   try {
     const task = await getTaskById(taskId);
     if (!task) {
-      log(`[Scheduler] Task ${taskId} not found, skipping`);
+      log(`[Scheduler] Task ${taskId} not found, removing stale job`);
+      unscheduleTask(taskId);
       return;
     }
     if (!task.enabled) {
-      log(`[Scheduler] Task ${taskId} is disabled, skipping`);
+      log(`[Scheduler] Task ${taskId} is disabled, skipping and unscheduling`);
+      unscheduleTask(taskId);
       return;
     }
 
-    await executeTaskById(taskId, "cron");
+    await executeTaskById(taskId, "cron", task);
   } catch (err) {
     error(`[Scheduler] Unexpected error executing task ${taskId}:`, err);
   } finally {
@@ -78,14 +79,14 @@ async function executeTask(taskId: string): Promise<void> {
   }
 }
 
-export function scheduleTask(task: { id: string; cron: string; timezone?: string | null; enabled?: boolean }): void {
+export function scheduleTask(task: { id: string; cron: string; timezone?: string | null; enabled?: boolean }): boolean {
   if (activeJobs.has(task.id)) {
     unscheduleTask(task.id);
   }
 
   if (!task.enabled) {
     log(`[Scheduler] Task ${task.id} is disabled, not scheduling`);
-    return;
+    return true;
   }
 
   const handler = () => {
@@ -96,24 +97,23 @@ export function scheduleTask(task: { id: string; cron: string; timezone?: string
   };
 
   const job = task.timezone
-    ? schedule.scheduleJob({ rule: task.cron, tz: task.timezone }, handler)
-    : schedule.scheduleJob({ rule: task.cron }, handler);
+    ? scheduleJobImpl({ rule: task.cron, tz: task.timezone }, handler)
+    : scheduleJobImpl({ rule: task.cron }, handler);
 
   if (!job) {
     error(`[Scheduler] Invalid cron expression "${task.cron}" for task ${task.id}, job not created`);
-    return;
+    return false;
   }
 
   activeJobs.set(task.id, { taskId: task.id, job });
   const nextRunAt = toInvocationDate(job.nextInvocation());
 
-  db.update(scheduledTask)
-    .set({ nextRunAt, updatedAt: new Date() })
-    .where(eq(scheduledTask.id, task.id))
-    .then(() => {})
-    .catch(() => {});
+  scheduledTaskRepo.update(task.id, { nextRunAt, updatedAt: new Date() }).catch((err) => {
+    error(`[Scheduler] Failed to update nextRunAt for task ${task.id}:`, err);
+  });
 
   log(`[Scheduler] Scheduled task ${task.id} with cron "${task.cron}" (tz: ${task.timezone ?? "server-local"})`);
+  return true;
 }
 
 export function unscheduleTask(taskId: string): void {
@@ -123,23 +123,34 @@ export function unscheduleTask(taskId: string): void {
     activeJobs.delete(taskId);
     log(`[Scheduler] Unscheduled task ${taskId}`);
   }
+  // 清理残留的运行标记（任务可能在执行中被删除）
+  runningTasks.delete(taskId);
 }
 
-export function rescheduleTask(task: { id: string; cron: string; timezone?: string | null; enabled?: boolean }): void {
+export function rescheduleTask(task: {
+  id: string;
+  cron: string;
+  timezone?: string | null;
+  enabled?: boolean;
+}): boolean {
   unscheduleTask(task.id);
-  scheduleTask(task);
-  log(`[Scheduler] Rescheduled task ${task.id}`);
+  return scheduleTask(task);
 }
 
 export async function startScheduler(): Promise<void> {
   try {
-    const tasks = await db.select().from(scheduledTask)
-      .where(eq(scheduledTask.enabled, true));
+    const tasks = await scheduledTaskRepo.listEnabled();
     log(`[Scheduler] Starting scheduler, found ${tasks.length} enabled tasks`);
+    let failed = 0;
     for (const task of tasks) {
-      scheduleTask(task);
+      const ok = scheduleTask(task);
+      if (!ok) failed++;
     }
-    log("[Scheduler] Scheduler started successfully");
+    if (failed > 0) {
+      log(`[Scheduler] Scheduler started with ${failed} failed job(s) (invalid cron expression)`);
+    } else {
+      log("[Scheduler] Scheduler started successfully");
+    }
   } catch (err) {
     error("[Scheduler] Failed to start scheduler:", err);
   }
@@ -148,7 +159,11 @@ export async function startScheduler(): Promise<void> {
 export function stopScheduler(): void {
   const count = activeJobs.size;
   for (const [, entry] of activeJobs) {
-    entry.job.cancel();
+    try {
+      entry.job.cancel();
+    } catch (err) {
+      error(`[Scheduler] Failed to cancel job ${entry.taskId}:`, err);
+    }
   }
   activeJobs.clear();
   runningTasks.clear();

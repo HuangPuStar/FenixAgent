@@ -1,19 +1,22 @@
+import { Link, useRouterState } from "@tanstack/react-router";
+import type { LucideIcon } from "lucide-react";
 import {
-  Monitor,
-  Bot,
-  Cpu,
-  MessageSquare,
-  Settings,
-  Plug,
-  Clock,
-  Radio,
-  KeyRound,
-  Workflow,
   BookOpen,
+  Bot,
   ChevronsLeft,
   ChevronsRight,
+  Clock,
+  Cpu,
+  KeyRound,
+  MessageSquare,
+  Monitor,
+  Plug,
+  Settings,
+  Users,
+  Workflow,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { OrgSwitcher } from "../OrgSwitcher";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -22,14 +25,13 @@ import type { LucideIcon } from "lucide-react";
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
-  currentPage: string;
-  onNavigate: (page: string) => void;
 }
 
 interface NavEntry {
   id: string;
   label: string;
   icon: LucideIcon;
+  to?: string;
 }
 
 interface NavGroup {
@@ -38,43 +40,63 @@ interface NavGroup {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Navigation definition                                              */
+/*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "控制台",
-    items: [
-      { id: "dashboard", label: "概览", icon: Monitor },
-      { id: "workflow", label: "智能体编排", icon: Workflow },
-      { id: "environments", label: "智能体", icon: Bot },
-      { id: "models", label: "模型", icon: Cpu },
-      { id: "session", label: "会话", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "配置",
-    items: [
-      { id: "skills", label: "技能", icon: Settings },
-      { id: "knowledge-bases", label: "知识库", icon: BookOpen },
-      { id: "mcp", label: "MCP", icon: Plug },
-      { id: "tasks", label: "定时任务", icon: Clock },
-      { id: "channels", label: "消息渠道", icon: Radio },
-      { id: "apikeys", label: "API Key", icon: KeyRound },
-    ],
-  },
+const CONFIG_PAGES = [
+  "models",
+  "agents",
+  "skills",
+  "knowledge-bases",
+  "mcp",
+  "tasks",
+  "workflow",
+  "environments",
+  "organizations",
+  "apikeys",
+  "login",
+  "agent",
 ];
+
+function getActiveNavId(pathname: string): string {
+  const segment = pathname.replace(/^\//, "").split("/")[0];
+  if (!segment) return "dashboard";
+  if (CONFIG_PAGES.includes(segment)) return segment;
+  return "session";
+}
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function Sidebar({
-  collapsed,
-  onToggle,
-  currentPage,
-  onNavigate,
-}: SidebarProps) {
+export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const currentPage = getActiveNavId(pathname);
+  const { t } = useTranslation("sidebar");
+
+  const navGroups: NavGroup[] = [
+    {
+      label: t("console"),
+      items: [
+        { id: "dashboard", label: t("overview"), icon: Monitor, to: "/" },
+        { id: "workflow", label: t("workflow"), icon: Workflow, to: "/workflow" },
+        { id: "environments", label: t("agents"), icon: Bot, to: "/environments" },
+        { id: "models", label: t("models"), icon: Cpu, to: "/models" },
+        { id: "session", label: t("sessions"), icon: MessageSquare },
+      ],
+    },
+    {
+      label: t("config"),
+      items: [
+        { id: "skills", label: t("skills"), icon: Settings, to: "/skills" },
+        { id: "knowledge-bases", label: t("knowledge"), icon: BookOpen, to: "/knowledge-bases" },
+        { id: "mcp", label: t("mcp"), icon: Plug, to: "/mcp" },
+        { id: "tasks", label: t("tasks"), icon: Clock, to: "/tasks" },
+        { id: "apikeys", label: t("apiKeys"), icon: KeyRound, to: "/apikeys" },
+      ],
+    },
+  ];
+
   return (
     <aside
       className={[
@@ -82,7 +104,9 @@ export function Sidebar({
         "border-r border-border-subtle bg-surface-0",
         "transition-[width,min-width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
         "z-20",
-        collapsed ? "w-[var(--sidebar-collapsed)] min-w-[var(--sidebar-collapsed)]" : "w-[var(--sidebar-width)] min-w-[var(--sidebar-width)]",
+        collapsed
+          ? "w-[var(--sidebar-collapsed)] min-w-[var(--sidebar-collapsed)]"
+          : "w-[var(--sidebar-width)] min-w-[var(--sidebar-width)]",
       ].join(" ")}
     >
       {/* ---- Brand ---- */}
@@ -94,7 +118,6 @@ export function Sidebar({
           "bg-gradient-to-b from-surface-1 to-surface-0",
         ].join(" ")}
       >
-        {/* Icon */}
         <div
           className={[
             "w-7 h-7 rounded-lg flex-shrink-0",
@@ -107,7 +130,6 @@ export function Sidebar({
           X
         </div>
 
-        {/* Text */}
         <span
           className={[
             "text-sm font-bold tracking-[0.02em] text-text-bright",
@@ -119,7 +141,6 @@ export function Sidebar({
           XAgent
         </span>
 
-        {/* Toggle button */}
         <button
           type="button"
           onClick={onToggle}
@@ -131,21 +152,16 @@ export function Sidebar({
             "transition-all duration-150",
             "hover:bg-surface-hover hover:text-text-primary",
           ].join(" ")}
-          title={collapsed ? "展开侧栏" : "收起侧栏"}
+          title={collapsed ? t("expand") : t("collapse")}
         >
-          {collapsed ? (
-            <ChevronsRight className="w-4 h-4" />
-          ) : (
-            <ChevronsLeft className="w-4 h-4" />
-          )}
+          {collapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
         </button>
       </div>
 
       {/* ---- Navigation ---- */}
       <nav className="flex-1 py-2 overflow-y-auto overflow-x-hidden">
-        {NAV_GROUPS.map((group) => (
+        {navGroups.map((group) => (
           <div key={group.label}>
-            {/* Section label */}
             <div
               className={[
                 "text-[11px] font-semibold uppercase tracking-[0.06em]",
@@ -155,43 +171,15 @@ export function Sidebar({
                 collapsed && "text-center px-2 text-[0px] pt-3 pb-1.5",
               ].join(" ")}
             >
-              {collapsed ? (
-                <span className="block w-4 h-px bg-border-default mx-auto mt-1" />
-              ) : (
-                group.label
-              )}
+              {collapsed ? <span className="block w-4 h-px bg-border-default mx-auto mt-1" /> : group.label}
             </div>
 
-            {/* Items */}
             {group.items.map((item) => {
               const isActive = item.id === currentPage;
-
               const Icon = item.icon;
 
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onNavigate(item.id)}
-                  title={collapsed ? item.label : undefined}
-                  className={[
-                    "relative flex items-center w-full",
-                    "text-[13px] font-medium cursor-pointer",
-                    "transition-all duration-150",
-                    "whitespace-nowrap overflow-hidden select-none",
-                    // default
-                    "text-text-secondary",
-                    // spacing – collapsed vs expanded
-                    collapsed
-                      ? "justify-center gap-0 px-0 py-2 mx-1.5 rounded-lg"
-                      : "gap-2.5 px-3 py-2 mx-2 rounded-[var(--radius)]",
-                    // active
-                    isActive
-                      ? "bg-brand-subtle text-brand-light"
-                      : "hover:bg-surface-hover hover:text-text-primary",
-                  ].join(" ")}
-                >
-                  {/* Active indicator bar */}
+              const content = (
+                <>
                   {isActive && (
                     <span
                       className={[
@@ -201,9 +189,7 @@ export function Sidebar({
                       ].join(" ")}
                     />
                   )}
-
                   <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-
                   <span
                     className={[
                       "overflow-hidden transition-opacity duration-200",
@@ -212,12 +198,102 @@ export function Sidebar({
                   >
                     {item.label}
                   </span>
+                </>
+              );
+
+              const className = [
+                "relative flex items-center w-full",
+                "text-[13px] font-medium cursor-pointer",
+                "transition-all duration-150",
+                "whitespace-nowrap overflow-hidden select-none",
+                "text-text-secondary",
+                collapsed
+                  ? "justify-center gap-0 px-0 py-2 mx-1.5 rounded-lg"
+                  : "gap-2.5 px-3 py-2 mx-2 rounded-[var(--radius)]",
+                isActive ? "bg-brand-subtle text-brand-light" : "hover:bg-surface-hover hover:text-text-primary",
+              ].join(" ");
+
+              return item.to ? (
+                <Link key={item.id} to={item.to} className={className} title={collapsed ? item.label : undefined}>
+                  {content}
+                </Link>
+              ) : (
+                <button key={item.id} type="button" className={className} title={collapsed ? item.label : undefined}>
+                  {content}
                 </button>
               );
             })}
           </div>
         ))}
       </nav>
+
+      {/* ---- Bottom: Team section ---- */}
+      <div className={["border-t border-border-subtle", collapsed ? "px-0 py-2" : "px-2 py-2"].join(" ")}>
+        {!collapsed && (
+          <div className="px-1 mb-1.5">
+            <OrgSwitcher />
+          </div>
+        )}
+
+        <Link
+          to="/agent"
+          title={collapsed ? t("agentPanel") : undefined}
+          className={[
+            "relative flex items-center w-full",
+            "text-[13px] font-medium cursor-pointer",
+            "transition-all duration-150",
+            "whitespace-nowrap overflow-hidden select-none",
+            collapsed ? "justify-center gap-0 px-0 py-2 mx-0 rounded-lg" : "gap-2.5 px-3 py-2 rounded-[var(--radius)]",
+            pathname.startsWith("/agent")
+              ? "bg-brand-subtle text-brand-light"
+              : "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
+          ].join(" ")}
+        >
+          <Bot className="w-[18px] h-[18px] flex-shrink-0" />
+          <span
+            className={[
+              "overflow-hidden transition-opacity duration-200",
+              collapsed ? "opacity-0 w-0" : "opacity-100",
+            ].join(" ")}
+          >
+            {t("agentPanel")}
+          </span>
+        </Link>
+
+        <Link
+          to="/organizations"
+          title={collapsed ? t("organizations") : undefined}
+          className={[
+            "relative flex items-center w-full",
+            "text-[13px] font-medium cursor-pointer",
+            "transition-all duration-150",
+            "whitespace-nowrap overflow-hidden select-none",
+            collapsed ? "justify-center gap-0 px-0 py-2 mx-0 rounded-lg" : "gap-2.5 px-3 py-2 rounded-[var(--radius)]",
+            currentPage === "organizations"
+              ? "bg-brand-subtle text-brand-light"
+              : "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
+          ].join(" ")}
+        >
+          {currentPage === "organizations" && (
+            <span
+              className={[
+                "absolute top-1 bottom-1 w-[3px] rounded-r-[3px]",
+                "bg-brand",
+                collapsed ? "left-0" : "-left-2",
+              ].join(" ")}
+            />
+          )}
+          <Users className="w-[18px] h-[18px] flex-shrink-0" />
+          <span
+            className={[
+              "overflow-hidden transition-opacity duration-200",
+              collapsed ? "opacity-0 w-0" : "opacity-100",
+            ].join(" ")}
+          >
+            {t("organizations")}
+          </span>
+        </Link>
+      </div>
     </aside>
   );
 }

@@ -1,9 +1,15 @@
-import { Hono } from "hono";
-import { sessionAuth } from "../../auth/middleware";
-import { spawnInstance, listInstances, stopInstance, spawnInstanceFromEnvironment } from "../../services/instance";
+import Elysia from "elysia";
+import { authGuardPlugin } from "../../plugins/auth";
+import { InstanceInfoSchema, SpawnInstanceFromEnvironmentRequestSchema } from "../../schemas/instance.schema";
+import { getOwnedEnvironment } from "../../services/environment-core";
 import type { SpawnedInstance } from "../../services/instance";
+import { listInstances, spawnInstanceFromEnvironment, stopInstance } from "../../services/instance";
 
-const app = new Hono();
+const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
+  "instance-info": InstanceInfoSchema,
+  "instance-info-list": InstanceInfoSchema.array(),
+  "spawn-instance-request": SpawnInstanceFromEnvironmentRequestSchema,
+});
 
 function toResponse(inst: SpawnedInstance) {
   return {
@@ -19,52 +25,64 @@ function toResponse(inst: SpawnedInstance) {
   };
 }
 
-app.post("/instances", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  try {
-    const inst = await spawnInstance(user.id);
-    return c.json(toResponse(inst), 201);
-  } catch (err: any) {
-    return c.json({ error: { type: "spawn_failed", message: err.message } }, 500);
-  }
-});
+app.post(
+  "/instances/from-environment",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
+  async ({ store, body, error }: any) => {
+    const user = store.user!;
+    const authCtx = store.authContext!;
+    const b = body as { environmentId: string };
+    if (!b.environmentId) {
+      return error(400, { error: { type: "VALIDATION_ERROR", message: "environmentId is required" } });
+    }
+    // 验证 environment 归属当前团队
+    await getOwnedEnvironment(b.environmentId, authCtx.organizationId);
+    try {
+      const inst = await spawnInstanceFromEnvironment(user.id, b.environmentId);
+      return toResponse(inst);
+    } catch (err: unknown) {
+      const code = err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "";
+      const status =
+        code === "NOT_FOUND"
+          ? 404
+          : code === "FORBIDDEN"
+            ? 403
+            : code === "VALIDATION_ERROR"
+              ? 400
+              : code === "MAX_SESSIONS_REACHED"
+                ? 409
+                : 500;
+      return error(status, { error: { type: code || "spawn_failed", message: (err as Error).message } });
+    }
+  },
+  { sessionAuth: true, body: "spawn-instance-request" },
+);
 
-app.post("/instances/from-environment", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const body = await c.req.json();
-  const environmentId = body.environmentId;
-  if (!environmentId) {
-    return c.json({ error: { type: "VALIDATION_ERROR", message: "environmentId is required" } }, 400);
-  }
-  try {
-    const inst = await spawnInstanceFromEnvironment(user.id, environmentId);
-    return c.json(toResponse(inst), 201);
-  } catch (err: any) {
-    const status = err.message === "Environment not found" ? 404
-      : err.message === "Not your environment" ? 403
-      : err.message.startsWith("Workspace directory does not exist") ? 400
-      : 500;
-    return c.json({ error: { type: "spawn_failed", message: err.message } }, status);
-  }
-});
+app.get(
+  "/instances",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store, request: _request }: any) => {
+    const authCtx = store.authContext!;
+    const insts = listInstances(authCtx.organizationId);
+    return insts.map(toResponse);
+  },
+  { sessionAuth: true, response: "instance-info-list" },
+);
 
-app.get("/instances", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const insts = listInstances(user.id);
-  return c.json(insts.map(toResponse), 200);
-});
-
-app.delete("/instances/:id", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const id = c.req.param("id")!;
-  const result = stopInstance(id, user.id);
-  if (!result.ok) {
-    const statusCode = result.error === "Instance not found" ? 404
-      : result.error === "Not your instance" ? 403
-      : 400;
-    return c.json({ error: { type: "bad_request", message: result.error } }, statusCode);
-  }
-  return c.json({ ok: true });
-});
+app.delete(
+  "/instances/:id",
+  async ({ store, params, error, request: _request }) => {
+    const _user = store.user!;
+    const authCtx = store.authContext!;
+    const id = params.id;
+    const result = await stopInstance(id, authCtx.organizationId);
+    if (!result.ok) {
+      const statusCode = result.error === "Instance not found" ? 404 : result.error === "Not your instance" ? 403 : 400;
+      return error(statusCode, { error: { type: "bad_request", message: result.error } });
+    }
+    return { ok: true as const };
+  },
+  { sessionAuth: true },
+);
 
 export default app;

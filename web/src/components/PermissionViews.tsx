@@ -1,15 +1,16 @@
+import { Check, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import type { Question } from "../types";
-import { esc, cn, truncate } from "../lib/utils";
+import { useTranslation } from "react-i18next";
 import { Input } from "../../components/ui/input";
-import { TriangleAlert, Check } from "lucide-react";
+import { cn, esc, truncate } from "../lib/utils";
+import type { Question } from "../types";
 
 // ============================================================
 // PermissionPromptView — simple approve/reject for tool use
 // ============================================================
 
 export function PermissionPromptView({
-  requestId,
+  requestId: _requestId,
   toolName,
   toolInput,
   description,
@@ -23,6 +24,7 @@ export function PermissionPromptView({
   onApprove: () => void;
   onReject: () => void;
 }) {
+  const { t } = useTranslation("components");
   const inputStr = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput, null, 2);
 
   return (
@@ -31,7 +33,7 @@ export function PermissionPromptView({
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-warning-border/15 text-warning-text">
           <TriangleAlert className="h-3 w-3" />
         </span>
-        <span className="text-sm font-semibold text-warning-text">Permission Request</span>
+        <span className="text-sm font-semibold text-warning-text">{t("permissionViews.permissionRequest")}</span>
       </div>
       {description && <div className="mb-2 text-sm text-text-secondary">{esc(description)}</div>}
       <div className="mb-2 font-mono text-xs font-bold text-text-primary">{esc(toolName)}</div>
@@ -45,13 +47,13 @@ export function PermissionPromptView({
           onClick={onApprove}
           className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors"
         >
-          Approve
+          {t("permissionViews.approve")}
         </button>
         <button
           onClick={onReject}
           className="rounded-lg bg-status-error/20 px-4 py-2 text-sm font-medium text-status-error hover:bg-status-error/30 transition-colors"
         >
-          Reject
+          {t("permissionViews.reject")}
         </button>
       </div>
     </div>
@@ -74,6 +76,7 @@ export function AskUserPanelView({
   onSubmit: (answers: Record<string, unknown>) => void;
   onSkip: () => void;
 }) {
+  const { t } = useTranslation("components");
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [otherTexts, setOtherTexts] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState(0);
@@ -115,15 +118,14 @@ export function AskUserPanelView({
     return (
       <div className="rounded-xl border border-brand/30 bg-surface-1 p-4">
         <div className="mb-3 text-sm font-semibold text-text-primary">
-          {esc(description || q.question || "Question")}
+          {esc(description || q.question || t("permissionViews.question"))}
         </div>
         <div className="space-y-2">
           {(q.options || []).map((opt, j) => {
-            const isSelected = multiSelect
-              ? ((answers[0] as number[]) || []).includes(j)
-              : answers[0] === j;
+            const isSelected = multiSelect ? ((answers[0] as number[]) || []).includes(j) : answers[0] === j;
             return (
               <button
+                // biome-ignore lint/suspicious/noArrayIndexKey: static option list, position is stable
                 key={j}
                 onClick={() => handleSelect(0, j, multiSelect)}
                 className={cn(
@@ -142,19 +144,32 @@ export function AskUserPanelView({
             <Input
               type="text"
               value={otherTexts[0] || ""}
-              onChange={(e) => setOtherTexts({ ...otherTexts, [0]: e.target.value })}
-              placeholder="Other..."
+              onChange={(e) => setOtherTexts({ ...otherTexts, 0: e.target.value })}
+              placeholder={t("permissionViews.other")}
               className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
               onKeyDown={(e) => e.key === "Enter" && handleOtherSubmit(0)}
             />
-            <button onClick={() => handleOtherSubmit(0)} className="rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors">
-              Send
+            <button
+              onClick={() => handleOtherSubmit(0)}
+              className="rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
+            >
+              {t("permissionViews.send")}
             </button>
           </div>
         </div>
         <div className="mt-4 flex gap-2">
-          <button onClick={handleSubmit} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors">Submit</button>
-          <button onClick={onSkip} className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors">Skip</button>
+          <button
+            onClick={handleSubmit}
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors"
+          >
+            {t("permissionViews.submit")}
+          </button>
+          <button
+            onClick={onSkip}
+            className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
+          >
+            {t("permissionViews.skip")}
+          </button>
         </div>
       </div>
     );
@@ -165,11 +180,13 @@ export function AskUserPanelView({
 
   return (
     <div className="rounded-xl border border-brand/30 bg-surface-1 p-4">
-      <div className="mb-3 text-sm font-semibold text-text-primary">{esc(description || "Questions")}</div>
+      <div className="mb-3 text-sm font-semibold text-text-primary">
+        {esc(description || t("permissionViews.questions"))}
+      </div>
       <div className="mb-3 flex gap-1 overflow-x-auto">
         {questions.map((q, i) => (
           <button
-            key={i}
+            key={q.header || `Q${i + 1}`}
             onClick={() => setActiveTab(i)}
             className={cn(
               "rounded-md px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
@@ -190,14 +207,27 @@ export function AskUserPanelView({
           onSelect={handleSelect}
           onOtherTextChange={(qIdx, text) => setOtherTexts({ ...otherTexts, [qIdx]: text })}
           onOtherSubmit={handleOtherSubmit}
+          t={t}
         />
       )}
 
       <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-text-muted">{activeTab + 1} / {questions.length}</span>
+        <span className="text-xs text-text-muted">
+          {activeTab + 1} / {questions.length}
+        </span>
         <div className="flex gap-2">
-          <button onClick={handleSubmit} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors">Submit All</button>
-          <button onClick={onSkip} className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors">Skip</button>
+          <button
+            onClick={handleSubmit}
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors"
+          >
+            {t("permissionViews.submitAll")}
+          </button>
+          <button
+            onClick={onSkip}
+            className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
+          >
+            {t("permissionViews.skip")}
+          </button>
         </div>
       </div>
     </div>
@@ -205,7 +235,14 @@ export function AskUserPanelView({
 }
 
 function QuestionTab({
-  question, qIdx, answers, otherTexts, onSelect, onOtherTextChange, onOtherSubmit,
+  question,
+  qIdx,
+  answers,
+  otherTexts,
+  onSelect,
+  onOtherTextChange,
+  onOtherSubmit,
+  t,
 }: {
   question: Question;
   qIdx: number;
@@ -214,6 +251,7 @@ function QuestionTab({
   onSelect: (qIdx: number, oIdx: number, multiSelect: boolean) => void;
   onOtherTextChange: (qIdx: number, text: string) => void;
   onOtherSubmit: (qIdx: number) => void;
+  t: (key: string) => string;
 }) {
   const multiSelect = question.multiSelect || false;
 
@@ -222,11 +260,10 @@ function QuestionTab({
       <div className="mb-2 text-sm text-text-secondary">{esc(question.question)}</div>
       <div className="space-y-2">
         {(question.options || []).map((opt, j) => {
-          const isSelected = multiSelect
-            ? ((answers[qIdx] as number[]) || []).includes(j)
-            : answers[qIdx] === j;
+          const isSelected = multiSelect ? ((answers[qIdx] as number[]) || []).includes(j) : answers[qIdx] === j;
           return (
             <button
+              // biome-ignore lint/suspicious/noArrayIndexKey: static option list, position is stable
               key={j}
               onClick={() => onSelect(qIdx, j, multiSelect)}
               className={cn(
@@ -246,11 +283,16 @@ function QuestionTab({
             type="text"
             value={otherTexts[qIdx] || ""}
             onChange={(e) => onOtherTextChange(qIdx, e.target.value)}
-            placeholder="Other..."
+            placeholder={t("permissionViews.other")}
             className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
             onKeyDown={(e) => e.key === "Enter" && onOtherSubmit(qIdx)}
           />
-          <button onClick={() => onOtherSubmit(qIdx)} className="rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors">Send</button>
+          <button
+            onClick={() => onOtherSubmit(qIdx)}
+            className="rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
+          >
+            {t("permissionViews.send")}
+          </button>
         </div>
       </div>
     </div>
@@ -263,7 +305,7 @@ function QuestionTab({
 
 export function PlanPanelView({
   planContent,
-  description,
+  description: _description,
   onSubmit,
 }: {
   requestId: string;
@@ -271,9 +313,10 @@ export function PlanPanelView({
   description: string;
   onSubmit: (value: string, feedback?: string) => void;
 }) {
+  const { t } = useTranslation("components");
   const [selected, setSelected] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
-  const isEmpty = !planContent || !planContent.trim();
+  const isEmpty = !planContent?.trim();
 
   const handleSubmit = () => {
     if (!selected) return;
@@ -287,26 +330,50 @@ export function PlanPanelView({
           <Check className="h-3 w-3" strokeWidth={2.5} />
         </span>
         <span className="text-sm font-semibold text-text-primary">
-          {isEmpty ? "Exit plan mode?" : "Ready to code?"}
+          {isEmpty ? t("permissionViews.exitPlanMode") : t("permissionViews.readyToCode")}
         </span>
       </div>
       {!isEmpty && (
         <div
           className="mb-4 max-h-64 overflow-auto rounded-lg bg-tool-card p-4 text-sm text-text-secondary"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering sanitized plan content
           dangerouslySetInnerHTML={{ __html: formatPlanContent(planContent) }}
         />
       )}
       <div className="space-y-2">
         {isEmpty ? (
           <>
-            <PlanOption selected={selected === "yes-default"} onClick={() => setSelected("yes-default")} label="Yes" />
-            <PlanOption selected={selected === "no"} onClick={() => setSelected("no")} label="No" />
+            <PlanOption
+              selected={selected === "yes-default"}
+              onClick={() => setSelected("yes-default")}
+              label={t("permissionViews.yes")}
+            />
+            <PlanOption
+              selected={selected === "no"}
+              onClick={() => setSelected("no")}
+              label={t("permissionViews.no")}
+            />
           </>
         ) : (
           <>
-            <PlanOption selected={selected === "yes-accept-edits"} onClick={() => setSelected("yes-accept-edits")} label="Yes, auto-accept edits" desc="Approve plan and auto-accept file edits" />
-            <PlanOption selected={selected === "yes-default"} onClick={() => setSelected("yes-default")} label="Yes, manually approve edits" desc="Approve plan but confirm each edit" />
-            <PlanOption selected={selected === "no"} onClick={() => setSelected("no")} label="No, keep planning" desc="Provide feedback to refine the plan" />
+            <PlanOption
+              selected={selected === "yes-accept-edits"}
+              onClick={() => setSelected("yes-accept-edits")}
+              label={t("permissionViews.yesAutoAccept")}
+              desc={t("permissionViews.yesAutoAcceptDesc")}
+            />
+            <PlanOption
+              selected={selected === "yes-default"}
+              onClick={() => setSelected("yes-default")}
+              label={t("permissionViews.yesManualApprove")}
+              desc={t("permissionViews.yesManualApproveDesc")}
+            />
+            <PlanOption
+              selected={selected === "no"}
+              onClick={() => setSelected("no")}
+              label={t("permissionViews.noKeepPlanning")}
+              desc={t("permissionViews.noKeepPlanningDesc")}
+            />
           </>
         )}
       </div>
@@ -314,7 +381,7 @@ export function PlanPanelView({
         <textarea
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
-          placeholder="告诉智能体需要修改什么..."
+          placeholder={t("permissionViews.planFeedbackPlaceholder")}
           className="mt-3 w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
           rows={3}
         />
@@ -325,27 +392,41 @@ export function PlanPanelView({
           disabled={!selected}
           className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light disabled:opacity-50 transition-colors"
         >
-          Submit
+          {t("permissionViews.submit")}
         </button>
       </div>
     </div>
   );
 }
 
-function PlanOption({ selected, onClick, label, desc }: { selected: boolean; onClick: () => void; label: string; desc?: string }) {
+function PlanOption({
+  selected,
+  onClick,
+  label,
+  desc,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  label: string;
+  desc?: string;
+}) {
   return (
     <button
       onClick={onClick}
       className={cn(
         "w-full rounded-lg border px-4 py-2.5 text-left text-sm transition-colors",
-        selected ? "border-brand bg-brand/10 text-text-primary" : "border-border bg-surface-2 text-text-secondary hover:border-border-light",
+        selected
+          ? "border-brand bg-brand/10 text-text-primary"
+          : "border-border bg-surface-2 text-text-secondary hover:border-border-light",
       )}
     >
       <div className="flex items-center gap-2">
-        <span className={cn(
-          "flex h-4 w-4 items-center justify-center rounded-full border text-[10px] transition-colors",
-          selected ? "border-brand bg-brand text-white" : "border-border",
-        )}>
+        <span
+          className={cn(
+            "flex h-4 w-4 items-center justify-center rounded-full border text-[10px] transition-colors",
+            selected ? "border-brand bg-brand text-white" : "border-border",
+          )}
+        >
           {selected && "\u2713"}
         </span>
         <span className="font-medium">{label}</span>
@@ -357,8 +438,10 @@ function PlanOption({ selected, onClick, label, desc }: { selected: boolean; onC
 
 function formatPlanContent(content: string): string {
   let html = esc(content);
-  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _l, code) =>
-    `<pre class="my-2 overflow-x-auto rounded-lg bg-tool-card p-3 font-mono text-xs">${code.trim()}</pre>`
+  html = html.replace(
+    /```(\w*)\n?([\s\S]*?)```/g,
+    (_, _l, code) =>
+      `<pre class="my-2 overflow-x-auto rounded-lg bg-tool-card p-3 font-mono text-xs">${code.trim()}</pre>`,
   );
   html = html.replace(/`([^`]+)`/g, '<code class="rounded bg-tool-card px-1.5 py-0.5 font-mono text-xs">$1</code>');
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");

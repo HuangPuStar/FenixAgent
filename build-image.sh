@@ -44,20 +44,12 @@ else
   docker buildx use "$BUILDER"
 fi
 
-# Temporarily swap .dockerignore to include web/dist for cross-platform build
-cp "${SCRIPT_DIR}/.dockerignore" "${SCRIPT_DIR}/.dockerignore.bak"
-cp "${SCRIPT_DIR}/.dockerignore.amd64" "${SCRIPT_DIR}/.dockerignore"
-trap 'mv "${SCRIPT_DIR}/.dockerignore.bak" "${SCRIPT_DIR}/.dockerignore" 2>/dev/null' EXIT
-
 docker buildx build \
   --platform "$PLATFORM" \
   --tag "${IMAGE_NAME}:${IMAGE_TAG}" \
   --load \
-  --file Dockerfile.amd64 \
+  --file Dockerfile \
   .
-
-# Restore original .dockerignore
-mv "${SCRIPT_DIR}/.dockerignore.bak" "${SCRIPT_DIR}/.dockerignore"
 
 echo "=> Compressing to ${OUTPUT_FILE}..."
 docker save "${IMAGE_NAME}:${IMAGE_TAG}" | gzip > "${OUTPUT_FILE}"

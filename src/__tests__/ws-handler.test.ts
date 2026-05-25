@@ -1,30 +1,15 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
 // Mock config before imports
-const mockConfig = {
-  port: 3000,
-  host: "0.0.0.0",
-  apiKeys: ["test-api-key"],
-  baseUrl: "http://localhost:3000",
-  pollTimeout: 8,
-  heartbeatInterval: 20,
-  jwtExpiresIn: 3600,
-  disconnectTimeout: 300,
-};
 
-mock.module("../config", () => ({
-  config: mockConfig,
-  getBaseUrl: () => "http://localhost:3000",
-}));
-
-import { storeReset } from "../store";
-import { getEventBus, removeEventBus, getAllEventBuses } from "../transport/event-bus";
+import { resetAllRepos } from "../repositories";
+import { getAllEventBuses, getEventBus, removeEventBus } from "../transport/event-bus";
 import {
-  ingestBridgeMessage,
-  handleWebSocketOpen,
-  handleWebSocketMessage,
-  handleWebSocketClose,
   closeAllConnections,
+  handleWebSocketClose,
+  handleWebSocketMessage,
+  handleWebSocketOpen,
+  ingestBridgeMessage,
 } from "../transport/ws-handler";
 
 // Minimal WSContext mock
@@ -40,7 +25,7 @@ function createMockWs(readyState = 1) {
 
 describe("ws-handler", () => {
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
     for (const [key] of getAllEventBuses()) {
       removeEventBus(key);
     }
@@ -214,8 +199,11 @@ describe("ws-handler", () => {
       bus.subscribe((e) => events.push(e));
 
       const ws = createMockWs();
-      const data = JSON.stringify({ type: "user", message: { role: "user", content: "hello" } }) + "\n" +
-        JSON.stringify({ type: "assistant", message: { role: "assistant", content: "hi" } }) + "\n";
+      const data =
+        JSON.stringify({ type: "user", message: { role: "user", content: "hello" } }) +
+        "\n" +
+        JSON.stringify({ type: "assistant", message: { role: "assistant", content: "hi" } }) +
+        "\n";
       handleWebSocketMessage(ws, "s1", data);
       expect(events).toHaveLength(2);
     });
@@ -240,7 +228,7 @@ describe("ws-handler", () => {
       // After close, publishing events should not cause errors
       const bus = getEventBus("s3");
       expect(() =>
-        bus.publish({ id: "e1", sessionId: "s3", type: "user", payload: {}, direction: "outbound" })
+        bus.publish({ id: "e1", sessionId: "s3", type: "user", payload: {}, direction: "outbound" }),
       ).not.toThrow();
     });
   });

@@ -1,104 +1,170 @@
-import { log, error as logError } from "../../logger";
-import { Hono } from "hono";
+import Elysia from "elysia";
+import { error as logError } from "../../logger";
+import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
+import { requireOrgScope } from "../../plugins/require-team-scope";
+import { environmentRepo, sessionRepo } from "../../repositories";
 import {
-  createSession,
-  getSession,
-  updateSessionTitle,
-  archiveSession,
-  resolveExistingSessionId,
-} from "../../services/session";
-import { createWorkItem } from "../../services/work-dispatch";
-import { apiKeyAuth, acceptCliHeaders } from "../../auth/middleware";
+  type CreateSessionRequest,
+  CreateSessionRequestSchema,
+  type SendEventsRequest,
+  SendEventsRequestSchema,
+  UpdateSessionRequestSchema,
+} from "../../schemas/v1-session.schema";
+import { archiveSession, createSession, getSession, resolveExistingSessionId } from "../../services/session";
 import { publishSessionEvent } from "../../services/transport";
+import { createWorkItem } from "../../services/work-dispatch";
 
-const app = new Hono();
+const app = new Elysia({ name: "v1-sessions", prefix: "/v1/sessions" }).use(authGuardPlugin).model({
+  "create-session-request": CreateSessionRequestSchema,
+  "update-session-request": UpdateSessionRequestSchema,
+  "send-events-request": SendEventsRequestSchema,
+});
+
+/**
+ * 校验 session 归属当前认证 team。
+ * 解析链路：sessionId → sessionRecord.environmentId → environment.organizationId。
+ * 返回 undefined 表示通过，否则返回错误响应。
+ */
+async function requireSessionScope(
+  authContext: AuthContext | null,
+  sessionId: string,
+  _error: (code: number, body: unknown) => Response,
+): Promise<Response | undefined> {
+  const sessionRecord = await sessionRepo.getById(sessionId);
+  if (!sessionRecord?.environmentId) {
+    // session 无 environment 绑定（轻量存根）— 允许访问
+    return;
+  }
+  const env = await environmentRepo.getById(sessionRecord.environmentId);
+  if (!env) return;
+  return requireOrgScope(authContext, env.organizationId);
+}
 
 /** POST /v1/sessions — Create session */
-app.post("/", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const body = await c.req.json();
-  const username = (c.get as any)("username") as string | undefined;
-  const session = createSession({ ...body, username });
-
-  // Create work item if environment is specified
-  if (body.environment_id) {
-    try {
-      await createWorkItem(body.environment_id, session.id);
-    } catch (err) {
-      logError(`[RCS] Failed to create work item: ${(err as Error).message}`);
+app.post(
+  "/",
+  async ({ store, body, error }) => {
+    const authContext = store.authContext;
+    if (!authContext) {
+      return error(403, { error: { type: "forbidden", message: "No organization context" } });
     }
-  }
+    const b = body as CreateSessionRequest;
+    // biome-ignore lint/suspicious/noExplicitAny: store may contain optional username field
+    const username = (store as any).username as string | undefined;
+    const session = await createSession({ ...b, username, userId: authContext.userId });
 
-  // Publish initial events if provided
-  if (body.events && Array.isArray(body.events)) {
-    for (const evt of body.events) {
-      publishSessionEvent(session.id, evt.type || "init", evt, "outbound");
+    // Create work item if environment is specified
+    if (b.environment_id) {
+      // 校验 environment 归属
+      const env = await environmentRepo.getById(b.environment_id);
+      if (env) {
+        const denied = requireOrgScope(authContext, env.organizationId);
+        if (denied) return denied;
+      }
+      try {
+        await createWorkItem(b.environment_id, session.id);
+      } catch (err) {
+        logError(`[RCS] Failed to create work item: ${(err as Error).message}`);
+      }
     }
-  }
 
-  return c.json(session, 200);
-});
+    // Publish initial events if provided
+    if (b.events && Array.isArray(b.events)) {
+      for (const evt of b.events) {
+        const evtType = typeof evt.type === "string" ? evt.type : "init";
+        publishSessionEvent(session.id, evtType, evt, "outbound");
+      }
+    }
+
+    return session;
+  },
+  { apiKeyAuth: true, body: "create-session-request" },
+);
 
 /** GET /v1/sessions/:id — Get session */
-app.get("/:id", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const sessionId = resolveExistingSessionId(c.req.param("id")!) ?? c.req.param("id")!;
-  const session = getSession(sessionId);
-  if (!session) {
-    return c.json({ error: { type: "not_found", message: "Session not found" } }, 404);
-  }
-  return c.json(session, 200);
-});
+app.get(
+  "/:id",
+  async ({ store, params, error }) => {
+    const authContext = store.authContext;
+    const sessionId = (await resolveExistingSessionId(params.id)) ?? params.id;
+    const session = await getSession(sessionId);
+    if (!session) {
+      return error(404, { error: { type: "not_found", message: "Session not found" } });
+    }
+    const denied = await requireSessionScope(authContext, sessionId, error);
+    if (denied) return denied;
+    return session;
+  },
+  { apiKeyAuth: true },
+);
 
-/** PATCH /v1/sessions/:id — Update session title */
-app.patch("/:id", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const sessionId = resolveExistingSessionId(c.req.param("id")!) ?? c.req.param("id")!;
-  const existing = getSession(sessionId);
-  if (!existing) {
-    return c.json({ error: { type: "not_found", message: "Session not found" } }, 404);
-  }
-  const body = await c.req.json();
-  if (body.title) {
-    updateSessionTitle(sessionId, body.title);
-  }
-  const session = getSession(sessionId);
-  return c.json(session, 200);
-});
+/** PATCH /v1/sessions/:id — Update session title (no-op, title managed by Agent) */
+app.patch(
+  "/:id",
+  async ({ store, params, error }) => {
+    const authContext = store.authContext;
+    const sessionId = (await resolveExistingSessionId(params.id)) ?? params.id;
+    const session = await getSession(sessionId);
+    if (!session) {
+      return error(404, { error: { type: "not_found", message: "Session not found" } });
+    }
+    const denied = await requireSessionScope(authContext, sessionId, error);
+    if (denied) return denied;
+    return session;
+  },
+  { apiKeyAuth: true, body: "update-session-request" },
+);
 
 /** POST /v1/sessions/:id/archive — Archive session */
-app.post("/:id/archive", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const sessionId = resolveExistingSessionId(c.req.param("id")!) ?? c.req.param("id")!;
-  const session = getSession(sessionId);
-  if (!session) {
-    return c.json({ error: { type: "not_found", message: "Session not found" } }, 404);
-  }
+app.post(
+  "/:id/archive",
+  async ({ store, params, error }) => {
+    const authContext = store.authContext;
+    const sessionId = (await resolveExistingSessionId(params.id)) ?? params.id;
+    const session = await getSession(sessionId);
+    if (!session) {
+      return error(404, { error: { type: "not_found", message: "Session not found" } });
+    }
+    const denied = await requireSessionScope(authContext, sessionId, error);
+    if (denied) return denied;
 
-  try {
-    archiveSession(sessionId);
-  } catch {
-    return c.json({ status: "ok" }, 409);
-  }
+    try {
+      await archiveSession(sessionId);
+    } catch {
+      return { status: "ok" };
+    }
 
-  return c.json({ status: "ok" }, 200);
-});
+    return { status: "ok" };
+  },
+  { apiKeyAuth: true },
+);
 
 /** POST /v1/sessions/:id/events — Send event to session */
-app.post("/:id/events", acceptCliHeaders, apiKeyAuth, async (c) => {
-  const sessionId = resolveExistingSessionId(c.req.param("id")!) ?? c.req.param("id")!;
-  const session = getSession(sessionId);
-  if (!session) {
-    return c.json({ error: { type: "not_found", message: "Session not found" } }, 404);
-  }
-  const body = await c.req.json();
+app.post(
+  "/:id/events",
+  async ({ store, params, body, error }) => {
+    const authContext = store.authContext;
+    const sessionId = (await resolveExistingSessionId(params.id)) ?? params.id;
+    const session = await getSession(sessionId);
+    if (!session) {
+      return error(404, { error: { type: "not_found", message: "Session not found" } });
+    }
+    const denied = await requireSessionScope(authContext, sessionId, error);
+    if (denied) return denied;
 
-  const events = body.events
-    ? Array.isArray(body.events) ? body.events : [body.events]
-    : Array.isArray(body) ? body : [body];
-  const published = [];
-  for (const evt of events) {
-    const result = publishSessionEvent(sessionId, evt.type || "message", evt, "inbound");
-    published.push(result);
-  }
+    const b = body as SendEventsRequest;
 
-  return c.json({ status: "ok", events: published.length }, 200);
-});
+    const events = b.events ? (Array.isArray(b.events) ? b.events : [b.events]) : [];
+    const published = [];
+    for (const evt of events) {
+      const evtType = typeof evt.type === "string" ? evt.type : "message";
+      const result = publishSessionEvent(sessionId, evtType, evt, "inbound");
+      published.push(result);
+    }
+
+    return { status: "ok", events: published.length };
+  },
+  { apiKeyAuth: true, body: "send-events-request" },
+);
 
 export default app;

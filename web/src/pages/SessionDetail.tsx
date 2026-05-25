@@ -1,39 +1,41 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import {
-  apiFetchSession,
-  apiSendControl,
-} from "../api/client";
-import type { Session } from "../types";
-import { isClosedSessionStatus, cn } from "../lib/utils";
-import { ArrowLeft, Info, Cpu, Hash, Wrench, Clock } from "lucide-react";
-import { RCSChatAdapter } from "../lib/rcs-chat-adapter";
-import type { ThreadEntry, PendingPermission } from "../lib/types";
-import { TaskPanel } from "../components/TaskPanel";
+import { ArrowLeft, Clock, Cpu, Hash, Info, Wrench } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { controlApi, sessionApi } from "@/src/api/sdk";
+import { ACPMain } from "../../components/ACPMain";
 import { ContextPanel } from "../../components/ContextPanel";
-import {
-  PermissionPromptView,
-  AskUserPanelView,
-  PlanPanelView,
-} from "../components/PermissionViews";
-
+import { ChatInput } from "../../components/chat/ChatInput";
 // Unified chat components
 import { ChatView } from "../../components/chat/ChatView";
-import { ChatInput } from "../../components/chat/ChatInput";
 import { TooltipProvider } from "../../components/ui/tooltip";
-
 // ACP chat components
-import { ACPClient, DisconnectRequestedError } from "../acp/client";
-import type { ConnectionState } from "../acp/types";
+import { type ACPClient, DisconnectRequestedError } from "../acp/client";
 import { createRelayClient } from "../acp/relay-client";
-import { ACPMain } from "../../components/ACPMain";
-import { toast } from "sonner";
+import type { ConnectionState } from "../acp/types";
+import { AskUserPanelView, PermissionPromptView, PlanPanelView } from "../components/PermissionViews";
+import { TaskPanel } from "../components/TaskPanel";
+import { RCSChatAdapter } from "../lib/rcs-chat-adapter";
+import type { PendingPermission, ThreadEntry } from "../lib/types";
+import { cn, isClosedSessionStatus } from "../lib/utils";
+import type { Session } from "../types";
 
 interface SessionDetailProps {
   sessionId: string;
+  agentId?: string;
   initialCwd?: string;
 }
 
-export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
+export function SessionDetail({ sessionId, agentId, initialCwd }: SessionDetailProps) {
+  // If agentId is provided (from environment enter), skip REST API and go directly to ACP
+  if (agentId) {
+    return <ACPSessionDetail sessionId={sessionId} agentId={agentId} initialCwd={initialCwd} />;
+  }
+  return <SessionDetailInner sessionId={sessionId} initialCwd={initialCwd} />;
+}
+
+function SessionDetailInner({ sessionId, initialCwd }: { sessionId: string; initialCwd?: string }) {
+  const { t } = useTranslation("sessions");
   const [session, setSession] = useState<Session | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -73,7 +75,7 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
   }, [adapter]);
 
   // Load session data and initialize adapter
-  const [retryKey, setRetryKey] = useState(0);
+  const [_retryKey, setRetryKey] = useState(0);
   useEffect(() => {
     let cancelled = false;
 
@@ -81,10 +83,14 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
       setError("");
 
       try {
-        const sess = await apiFetchSession(sessionId);
+        const { data: sess, error: sessErr } = await sessionApi.get({ id: sessionId });
         if (cancelled) return;
-        setSession(sess);
-        setSessionStatus(sess.status);
+        if (sessErr || !sess) {
+          setError(sessErr?.message ?? "Failed to load session");
+          return;
+        }
+        setSession(sess as Session);
+        setSessionStatus((sess as Session).status);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Failed to load session");
@@ -102,7 +108,7 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
     return () => {
       cancelled = true;
     };
-  }, [sessionId, adapter, retryKey]);
+  }, [sessionId, adapter]);
 
   const closed = isClosedSessionStatus(sessionStatus);
 
@@ -123,11 +129,12 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
     const estimatedTokens = Math.round(totalChars / 4);
     // Duration from entries
     const duration = session?.created_at ? Date.now() / 1000 - session.created_at : 0;
-    const durationStr = duration > 3600
-      ? `${Math.floor(duration / 3600)}h ${Math.floor((duration % 3600) / 60)}m`
-      : duration > 60
-        ? `${Math.floor(duration / 60)}m`
-        : `${Math.round(duration)}s`;
+    const durationStr =
+      duration > 3600
+        ? `${Math.floor(duration / 3600)}h ${Math.floor((duration % 3600) / 60)}m`
+        : duration > 60
+          ? `${Math.floor(duration / 60)}m`
+          : `${Math.round(duration)}s`;
 
     return { toolCalls, estimatedTokens, userMessages: userMessages.length, durationStr };
   }, [entries, session?.created_at]);
@@ -195,18 +202,17 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
   );
 
   const handleSubmitAnswers = useCallback(
-    async (
-      requestId: string,
-      answers: Record<string, unknown>,
-      questions: import("../types").Question[],
-    ) => {
+    async (requestId: string, answers: Record<string, unknown>, questions: import("../types").Question[]) => {
       try {
-        await apiSendControl(sessionId, {
-          type: "permission_response",
-          approved: true,
-          request_id: requestId,
-          updated_input: { questions, answers },
-        });
+        await controlApi.control(
+          { id: sessionId },
+          {
+            type: "permission_response",
+            approved: true,
+            request_id: requestId,
+            updated_input: { questions, answers },
+          },
+        );
       } catch (err) {
         console.error("Failed to submit answers:", err);
       }
@@ -219,25 +225,29 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
     async (requestId: string, value: string, feedback?: string) => {
       try {
         if (value === "no") {
-          await apiSendControl(sessionId, {
-            type: "permission_response",
-            approved: false,
-            request_id: requestId,
-            ...(feedback ? { message: feedback } : {}),
-          });
+          await controlApi.control(
+            { id: sessionId },
+            {
+              type: "permission_response",
+              approved: false,
+              request_id: requestId,
+              ...(feedback ? { message: feedback } : {}),
+            },
+          );
         } else {
           const modeMap: Record<string, string> = {
             "yes-accept-edits": "acceptEdits",
             "yes-default": "default",
           };
-          await apiSendControl(sessionId, {
-            type: "permission_response",
-            approved: true,
-            request_id: requestId,
-            updated_permissions: [
-              { type: "setMode", mode: modeMap[value] || "default", destination: "session" },
-            ],
-          });
+          await controlApi.control(
+            { id: sessionId },
+            {
+              type: "permission_response",
+              approved: true,
+              request_id: requestId,
+              updated_permissions: [{ type: "setMode", mode: modeMap[value] || "default", destination: "session" }],
+            },
+          );
         }
       } catch (err) {
         console.error("Failed to submit plan response:", err);
@@ -257,10 +267,10 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
               onClick={() => setRetryKey((k) => k + 1)}
               className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 transition-colors"
             >
-              重试
+              {t("retry")}
             </button>
             <a href="/ctrl/" className="text-sm text-text-muted hover:text-brand transition-colors">
-              &larr; 返回仪表盘
+              &larr; {t("backToDashboard")}
             </a>
           </div>
         </div>
@@ -271,7 +281,7 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
   if (!session) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-text-muted">Loading session...</div>
+        <div className="text-text-muted">{t("loadingSession")}</div>
       </div>
     );
   }
@@ -286,8 +296,12 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
         <h1 className="sr-only">{session.title || session.id}</h1>
         {/* Session Header — Nexus Indigo style */}
-        <div className="border-b border-border-subtle bg-surface-1 px-4 py-3"
-          style={{ background: 'radial-gradient(ellipse 60% 50% at 50% -10%, rgba(99, 102, 241, 0.03), transparent), var(--color-surface-1)' }}
+        <div
+          className="border-b border-border-subtle bg-surface-1 px-4 py-3"
+          style={{
+            background:
+              "radial-gradient(ellipse 60% 50% at 50% -10%, rgba(99, 102, 241, 0.03), transparent), var(--color-surface-1)",
+          }}
         >
           <div>
             {/* Back button */}
@@ -296,7 +310,7 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
               className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-brand transition-colors no-underline mb-2"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              <span className="font-display">返回</span>
+              <span className="font-display">{t("back")}</span>
             </a>
 
             {/* Title + Status row */}
@@ -305,39 +319,47 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
                 <h2 className="font-display text-lg font-semibold text-text-primary tracking-tight">
                   {session.agent_name
                     ? `${session.agent_name} / ${session.id.slice(0, 12)}`
-                    : (session.title || session.id)}
+                    : session.title || session.id}
                 </h2>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                   {/* Status pulse dot + label */}
                   {sessionStatus && (
                     <span className="session-status-badge inline-flex items-center gap-1.5">
-                      <span className={cn(
-                        "session-status-dot inline-block h-2 w-2 rounded-full",
-                        sessionStatus === "running" || sessionStatus === "active"
-                          ? "bg-status-running animate-[pulse-subtle_2s_ease-in-out_infinite]"
-                          : sessionStatus === "error"
-                            ? "bg-status-error"
-                            : "bg-text-muted",
-                      )} />
-                      <span className={cn(
-                        "text-[11px] font-medium font-display",
-                        sessionStatus === "running" || sessionStatus === "active"
-                          ? "text-status-running"
-                          : sessionStatus === "error"
-                            ? "text-status-error"
-                            : "text-text-muted",
-                      )}>
-                        {sessionStatus === "running" ? "Running" :
-                         sessionStatus === "active" ? "Active" :
-                         sessionStatus === "idle" ? "Idle" :
-                         sessionStatus === "error" ? "Error" :
-                         sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
+                      <span
+                        className={cn(
+                          "session-status-dot inline-block h-2 w-2 rounded-full",
+                          sessionStatus === "running" || sessionStatus === "active"
+                            ? "bg-status-running animate-[pulse-subtle_2s_ease-in-out_infinite]"
+                            : sessionStatus === "error"
+                              ? "bg-status-error"
+                              : "bg-text-muted",
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "text-[11px] font-medium font-display",
+                          sessionStatus === "running" || sessionStatus === "active"
+                            ? "text-status-running"
+                            : sessionStatus === "error"
+                              ? "text-status-error"
+                              : "text-text-muted",
+                        )}
+                      >
+                        {sessionStatus === "running"
+                          ? t("status.running")
+                          : sessionStatus === "active"
+                            ? t("status.active")
+                            : sessionStatus === "idle"
+                              ? t("status.idle")
+                              : sessionStatus === "error"
+                                ? t("status.error")
+                                : sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)}
                       </span>
                     </span>
                   )}
                   {session.created_at && (
                     <span className="text-[11px] text-text-muted font-display">
-                      Started {formatRelativeTime(session.created_at)}
+                      {t("started", { time: formatRelativeTime(session.created_at) })}
                     </span>
                   )}
                 </div>
@@ -346,7 +368,7 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
                 <button
                   onClick={() => setShowMeta(!showMeta)}
                   className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-text-muted hover:bg-surface-2 hover:text-text-secondary transition-colors"
-                  title="Session info"
+                  title={t("sessionInfo")}
                 >
                   <Info className="h-3.5 w-3.5" />
                 </button>
@@ -363,25 +385,25 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 session-stats-row">
               <SessionStatCard
                 icon={<Cpu className="h-3.5 w-3.5" />}
-                label="Model"
+                label={t("stats.model")}
                 value={session.agent_name || "default"}
                 colorClass="bg-brand-subtle text-brand-light"
               />
               <SessionStatCard
                 icon={<Hash className="h-3.5 w-3.5" />}
-                label="Tokens"
+                label={t("stats.tokens")}
                 value={stats.estimatedTokens > 0 ? `~${stats.estimatedTokens.toLocaleString()}` : "—"}
                 colorClass="bg-[rgba(52,211,153,0.12)] text-accent-green"
               />
               <SessionStatCard
                 icon={<Wrench className="h-3.5 w-3.5" />}
-                label="Tools"
+                label={t("stats.tools")}
                 value={String(stats.toolCalls)}
                 colorClass="bg-[rgba(34,211,238,0.12)] text-cyan"
               />
               <SessionStatCard
                 icon={<Clock className="h-3.5 w-3.5" />}
-                label="Duration"
+                label={t("stats.duration")}
                 value={stats.durationStr}
                 colorClass="bg-[rgba(251,191,36,0.12)] text-accent-yellow"
               />
@@ -389,9 +411,14 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
 
             {showMeta && (
               <div className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-muted space-y-1 font-mono">
-                <div><span className="text-text-secondary font-sans font-medium">Session</span> {session.id}</div>
+                <div>
+                  <span className="text-text-secondary font-sans font-medium">{t("session")}</span> {session.id}
+                </div>
                 {session.environment_id && (
-                  <div><span className="text-text-secondary font-sans font-medium">Environment</span> {session.environment_id}</div>
+                  <div>
+                    <span className="text-text-secondary font-sans font-medium">{t("environment")}</span>{" "}
+                    {session.environment_id}
+                  </div>
                 )}
               </div>
             )}
@@ -405,8 +432,8 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
             <ChatView
               entries={entries}
               isLoading={isLoading}
-              emptyTitle="开始对话"
-              emptyDescription="输入消息开始聊天 · 支持粘贴图片或 @ 引用文件"
+              emptyTitle={t("startConversation")}
+              emptyDescription={t("startConversationDesc")}
             />
 
             {/* Unified Permission Panel — above input */}
@@ -433,8 +460,8 @@ export function SessionDetail({ sessionId, initialCwd }: SessionDetailProps) {
               isLoading={isLoading}
               onInterrupt={handleInterrupt}
               disabled={closed || !!error || !session}
-              placeholder={error ? "会话加载失败" : closed ? "会话已关闭" : "输入消息..."}
-              sessionId={sessionId}
+              placeholder={error ? t("sessionLoadFailed") : closed ? t("sessionClosed") : t("inputMessage")}
+              envId={sessionId}
             />
           </div>
 
@@ -472,9 +499,7 @@ function SessionStatCard({
 }) {
   return (
     <div className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-surface-1 px-3 py-2 transition-transform duration-150 ease-in-out hover:-translate-y-px hover:shadow-card">
-      <div className={cn("flex items-center justify-center h-7 w-7 rounded-md", colorClass)}>
-        {icon}
-      </div>
+      <div className={cn("flex items-center justify-center h-7 w-7 rounded-md", colorClass)}>{icon}</div>
       <div className="min-w-0">
         <div className="text-[10px] font-display font-semibold uppercase tracking-wider text-text-muted">{label}</div>
         <div className="text-sm font-display font-medium text-text-primary truncate">{value}</div>
@@ -510,7 +535,11 @@ function PermissionEventView({
   request: PendingPermission;
   onApprove: () => void;
   onReject: () => void;
-  onSubmitAnswers: (requestId: string, answers: Record<string, unknown>, questions: import("../types").Question[]) => void;
+  onSubmitAnswers: (
+    requestId: string,
+    answers: Record<string, unknown>,
+    questions: import("../types").Question[],
+  ) => void;
   onSubmitPlan: (requestId: string, value: string, feedback?: string) => void;
 }) {
   const toolName = request.toolName;
@@ -558,7 +587,16 @@ function PermissionEventView({
 // ACP Session Detail — renders ACP relay chat in session page
 // ============================================================
 
-function ACPSessionDetail({ sessionId, agentId, initialCwd }: { sessionId: string; agentId: string; initialCwd?: string }) {
+function ACPSessionDetail({
+  sessionId,
+  agentId,
+  initialCwd,
+}: {
+  sessionId: string;
+  agentId: string;
+  initialCwd?: string;
+}) {
+  const { t } = useTranslation("sessions");
   const [client, setClient] = useState<ACPClient | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
   const [error, setError] = useState<string | null>(null);
@@ -573,7 +611,7 @@ function ACPSessionDetail({ sessionId, agentId, initialCwd }: { sessionId: strin
     });
 
     relayClient.setAuthFailureHandler(() => {
-      toast.error("登录已过期，请重新登录");
+      toast.error(t("authExpired"));
       window.location.href = "/ctrl/login";
     });
 
@@ -592,7 +630,7 @@ function ACPSessionDetail({ sessionId, agentId, initialCwd }: { sessionId: strin
       setClient(null);
       setConnectionState("disconnected");
     };
-  }, [agentId]);
+  }, [agentId, t, sessionId]);
 
   const showChat = client && connectionState === "connected";
 
@@ -604,7 +642,7 @@ function ACPSessionDetail({ sessionId, agentId, initialCwd }: { sessionId: strin
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <div className="animate-spin h-8 w-8 border-2 border-brand border-t-transparent rounded-full mx-auto mb-3" />
-              <p className="text-text-muted text-sm">正在连接 Agent...</p>
+              <p className="text-text-muted text-sm">{t("connectingAgent")}</p>
             </div>
           </div>
         )}
@@ -620,15 +658,13 @@ function ACPSessionDetail({ sessionId, agentId, initialCwd }: { sessionId: strin
         {(connectionState === "error" || connectionState === "disconnected") && !showChat && (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center max-w-md">
-              <p className="font-medium mb-2">Agent 未连接</p>
-              <p className="text-text-muted text-sm mb-4">
-                {error || "Agent 尚未上线，请确保 acp-link 已启动并连接到服务器"}
-              </p>
+              <p className="font-medium mb-2">{t("agentNotConnected")}</p>
+              <p className="text-text-muted text-sm mb-4">{error || t("agentOffline")}</p>
               <a
                 href="/ctrl/"
                 className="inline-block rounded-md bg-brand px-4 py-2 text-sm text-white hover:bg-brand/90 transition-colors no-underline"
               >
-                返回仪表盘
+                {t("backToDashboard")}
               </a>
             </div>
           </div>

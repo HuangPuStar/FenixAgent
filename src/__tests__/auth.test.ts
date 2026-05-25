@@ -1,59 +1,8 @@
-import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 
-// Mock config before importing modules that depend on it
-const mockConfig = {
-  port: 3000,
-  host: "0.0.0.0",
-  apiKeys: ["test-key-1", "test-key-2"],
-  baseUrl: "",
-  pollTimeout: 8,
-  heartbeatInterval: 20,
-  jwtExpiresIn: 3600,
-  disconnectTimeout: 300,
-};
-
-mock.module("../config", () => ({
-  config: mockConfig,
-  getBaseUrl: () => "http://localhost:3000",
-}));
-
-import { validateApiKey, hashApiKey } from "../auth/api-key";
 import { generateWorkerJwt, verifyWorkerJwt } from "../auth/jwt";
 import { issueToken, resolveToken } from "../auth/token";
-import { storeReset } from "../store";
-
-// ---------- api-key ----------
-
-describe("validateApiKey", () => {
-  test("validates a configured API key", () => {
-    expect(validateApiKey("test-key-1")).toBe(true);
-    expect(validateApiKey("test-key-2")).toBe(true);
-  });
-
-  test("rejects unknown key", () => {
-    expect(validateApiKey("unknown-key")).toBe(false);
-  });
-
-  test("rejects undefined", () => {
-    expect(validateApiKey(undefined)).toBe(false);
-  });
-
-  test("rejects empty string", () => {
-    expect(validateApiKey("")).toBe(false);
-  });
-});
-
-describe("hashApiKey", () => {
-  test("produces consistent SHA-256 hex", () => {
-    const hash = hashApiKey("my-key");
-    expect(hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(hashApiKey("my-key")).toBe(hash);
-  });
-
-  test("different keys produce different hashes", () => {
-    expect(hashApiKey("key-a")).not.toBe(hashApiKey("key-b"));
-  });
-});
+import { resetAllRepos } from "../repositories";
 
 // ---------- jwt ----------
 
@@ -134,27 +83,27 @@ describe("JWT", () => {
 
 describe("issueToken / resolveToken", () => {
   beforeEach(() => {
-    storeReset();
+    resetAllRepos();
   });
 
-  test("issues and resolves a token", () => {
-    const { token, expires_in } = issueToken("alice");
+  test("issues and resolves a token", async () => {
+    const { token, expires_in } = await issueToken("alice");
     expect(token).toMatch(/^rct_\d+_[0-9a-f]+$/);
     expect(expires_in).toBe(86400);
-    expect(resolveToken(token)).toBe("alice");
+    expect(await resolveToken(token)).toBe("alice");
   });
 
-  test("returns null for unknown token", () => {
-    expect(resolveToken("nonexistent")).toBeNull();
+  test("returns null for unknown token", async () => {
+    expect(await resolveToken("nonexistent")).toBeNull();
   });
 
-  test("returns null for undefined token", () => {
-    expect(resolveToken(undefined)).toBeNull();
+  test("returns null for undefined token", async () => {
+    expect(await resolveToken(undefined)).toBeNull();
   });
 
-  test("tokens are unique", () => {
-    const t1 = issueToken("alice").token;
-    const t2 = issueToken("alice").token;
+  test("tokens are unique", async () => {
+    const t1 = (await issueToken("alice")).token;
+    const t2 = (await issueToken("alice")).token;
     expect(t1).not.toBe(t2);
   });
 });

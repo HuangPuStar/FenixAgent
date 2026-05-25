@@ -1,35 +1,31 @@
-import { Hono } from "hono";
-import { upgradeWebSocket } from "hono/bun";
-import { sessionAuth } from "../../auth/middleware";
-import { validateApiKeyAndGetUser } from "../../auth/api-key-service";
+import Elysia from "elysia";
+import { v4 as uuid } from "uuid";
 import { auth } from "../../auth/better-auth";
-import { config } from "../../config";
-import { db } from "../../db";
-import { user } from "../../db/schema";
-import { eq } from "drizzle-orm";
-import {
-  handleAcpWsOpen,
-  handleAcpWsMessage,
-  handleAcpWsClose,
-} from "../../transport/acp-ws-handler";
-import {
-  handleRelayOpen,
-  handleRelayMessage,
-  handleRelayClose,
-} from "../../transport/acp-relay-handler";
-import {
-  storeListAcpAgentsByUserId,
-  storeGetEnvironment,
-} from "../../store";
 import { log, error as logError } from "../../logger";
-
-const app = new Hono();
+import { authGuardPlugin, lookupUserById } from "../../plugins/auth";
+import { environmentRepo } from "../../repositories";
+import { getEnvironmentBySecret } from "../../services/environment";
+import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
+import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
+import type { WsConnection } from "../../transport/ws-types";
 
 /** Maximum WebSocket message size: 10 MB */
 const MAX_WS_MESSAGE_SIZE = 10 * 1024 * 1024;
 
+/** Adapt Elysia WS to WsConnection interface */
+// biome-ignore lint/suspicious/noExplicitAny: Elysia WS type not directly compatible with WsConnection
+function adaptWs(ws: any): WsConnection {
+  return {
+    send: (data: string) => ws.send(data),
+    close: (code?: number, reason?: string) => ws.close(code, reason),
+    get readyState() {
+      return ws.readyState;
+    },
+  };
+}
+
 /** Response shape for an ACP agent */
-function toAcpAgentResponse(env: NonNullable<ReturnType<typeof storeGetEnvironment>>) {
+function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environmentRepo.getById>>>) {
   return {
     id: env.id,
     agent_name: env.machineName,
@@ -40,197 +36,168 @@ function toAcpAgentResponse(env: NonNullable<ReturnType<typeof storeGetEnvironme
   };
 }
 
-/**
- * Find or create the system user for legacy global API key fallback.
- * Mirrors the logic in auth/middleware.ts ensureSystemUser.
- */
-async function ensureSystemUser(): Promise<{ id: string; email: string; name: string } | null> {
-  const rows = await db.select().from(user).where(eq(user.email, "system@rcs.local")).limit(1);
-  if (rows.length > 0) {
-    return { id: rows[0].id, email: rows[0].email, name: rows[0].name };
+/** Resolve userId from token (two-level auth) */
+async function resolveTokenAuth(token: string | undefined): Promise<{ userId: string; envId?: string } | null> {
+  if (!token) return null;
+
+  // 0. Environment secret match
+  const envRecord = await getEnvironmentBySecret(token);
+  if (envRecord) {
+    if (envRecord.userId) {
+      return { userId: envRecord.userId, envId: envRecord.id };
+    }
   }
 
-  const anyUser = await db.select().from(user).limit(1);
-  if (anyUser.length > 0) {
-    return { id: anyUser[0].id, email: anyUser[0].email, name: anyUser[0].name };
-  }
-
+  // 1. better-auth API Key verification
   try {
-    const result = await (auth.api.signUpEmail as any)({
-      email: "system@rcs.local",
-      password: "system",
-      name: "System",
-    });
-    if (result.user) {
-      const { createApiKey } = await import("../../auth/api-key-service");
-      await createApiKey(result.user.id, "legacy-auto");
-      return { id: result.user.id, email: result.user.email, name: result.user.name };
+    // biome-ignore lint/suspicious/noExplicitAny: better-auth API type mismatch
+    const result = await (auth.api as any).verifyApiKey({ body: { key: token } });
+    if (result.valid && result.key) {
+      const apiKeyMeta = result.key as { userId: string };
+      const userRow = await lookupUserById(apiKeyMeta.userId);
+      if (userRow) {
+        return { userId: userRow.id };
+      }
     }
   } catch {
-    // signUpEmail may fail if user was created concurrently
+    // verifyApiKey may throw for invalid keys
   }
 
   return null;
 }
 
-/** GET /acp/agents — List current user's ACP agents */
-app.get("/agents", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const agents = storeListAcpAgentsByUserId(user.id);
-  return c.json(agents.map((a) => toAcpAgentResponse(a)));
-});
+const app = new Elysia({ name: "acp", prefix: "/acp" })
+  .use(authGuardPlugin)
 
-/** WS /acp/ws — WebSocket endpoint for acp-link connections */
-app.get(
-  "/ws",
-  upgradeWebSocket(async (c) => {
-    // Authenticate via API key
-    const authHeader = c.req.header("Authorization");
-    const queryToken = c.req.query("token");
-    const token = authHeader?.replace("Bearer ", "") || queryToken;
+  /** GET /acp/agents — List current user's team ACP agents */
+  .get(
+    "/agents",
+    async ({ store }) => {
+      const authCtx = store.authContext;
+      const orgId = authCtx?.organizationId ?? store.user!.id;
+      const teamEnvs = await environmentRepo.listByOrganizationId(orgId);
+      const acpEnvs = teamEnvs.filter((e) => e.workerType === "acp");
+      return acpEnvs.map((a) => toAcpAgentResponse(a));
+    },
+    { sessionAuth: true },
+  )
 
-    if (!token) {
-      log("[ACP-WS] Upgrade rejected: missing token");
-      return {
-        onOpen(_evt: any, ws: any) {
-          ws.close(4003, "unauthorized");
-        },
-      };
-    }
+  /** WS /acp/ws — WebSocket endpoint for acp-link connections */
+  .ws("/ws", {
+    async open(ws) {
+      // Authenticate via API key
+      const url = new URL(ws.data.request.url);
+      const authHeader = ws.data.request.headers.get("Authorization");
+      const queryToken = url.searchParams.get("token");
+      const token = authHeader?.replace("Bearer ", "") || queryToken || undefined;
 
-    let userId: string | undefined;
-    let envId: string | undefined;
+      const conn = adaptWs(ws);
 
-    // 0. Try environment.secret match (highest priority)
-    const { storeGetEnvironmentBySecret } = await import("../../store");
-    const envRecord = storeGetEnvironmentBySecret(token);
-    if (envRecord) {
-      userId = envRecord.userId ?? undefined;
-      envId = envRecord.id;
-    }
-
-    // 1. Try per-user API Key (SQLite)
-    if (!userId) {
-      const keyInfo = await validateApiKeyAndGetUser(token);
-      if (keyInfo) {
-        const [userRow] = await db.select().from(user).where(eq(user.id, keyInfo.userId)).limit(1);
-        if (userRow) {
-          userId = userRow.id;
-        }
+      if (!token) {
+        log("[ACP-WS] Upgrade rejected: missing token");
+        conn.close(4003, "unauthorized");
+        return;
       }
-    }
 
-    // 2. Fallback: legacy global API Key (RCS_API_KEYS env var)
-    if (!userId && config.apiKeys.length > 0 && config.apiKeys.includes(token)) {
-      const systemUser = await ensureSystemUser();
-      if (systemUser) {
-        userId = systemUser.id;
+      const authResult = await resolveTokenAuth(token);
+      if (!authResult) {
+        log("[ACP-WS] Upgrade rejected: invalid API key");
+        conn.close(4003, "unauthorized");
+        return;
       }
-    }
 
-    if (!userId) {
-      log("[ACP-WS] Upgrade rejected: invalid API key");
-      return {
-        onOpen(_evt: any, ws: any) {
-          ws.close(4003, "unauthorized");
-        },
-      };
-    }
+      const wsId = `acp_ws_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      (ws.data as any).__acpWsId = wsId;
+      log(`[ACP-WS] Upgrade accepted: wsId=${wsId} userId=${authResult.userId}`);
+      handleAcpWsOpen(conn, wsId, authResult.userId, authResult.envId);
+    },
+    message(ws, data) {
+      // Elysia's parseMessage auto-parses JSON strings into objects;
+      // pass the already-parsed object directly to avoid redundant stringify→parse.
+      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
+        logError(`[ACP-WS] Message too large: ${data.length} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const wsId = (ws.data as any).__acpWsId as string | undefined;
+      if (wsId) {
+        handleAcpWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
+      }
+    },
+    close(ws, code, reason) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const wsId = (ws.data as any).__acpWsId as string | undefined;
+      if (wsId) {
+        handleAcpWsClose(adaptWs(ws), wsId, code, reason);
+      }
+    },
+  })
 
-    // Generate unique wsId for this connection
-    const { v4: uuid } = await import("uuid");
-    const wsId = `acp_ws_${uuid().replace(/-/g, "")}`;
+  /** WS /acp/relay/:agentId — WebSocket relay for frontend to interact with an agent */
+  .ws("/relay/:agentId", {
+    async open(ws) {
+      // Authenticate via better-auth session
+      const session = await auth.api.getSession({ headers: ws.data.request.headers });
+      if (!session?.user) {
+        log("[ACP-Relay] Upgrade rejected: not authenticated");
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
 
-    log(`[ACP-WS] Upgrade accepted: wsId=${wsId} userId=${userId}`);
-    return {
-      onOpen(_evt: any, ws: any) {
-        handleAcpWsOpen(ws, wsId, userId, envId);
-      },
-      onMessage(evt: any, ws: any) {
-        const data =
-          typeof evt.data === "string"
-            ? evt.data
-            : new TextDecoder().decode(evt.data as ArrayBuffer);
-        if (data.length > MAX_WS_MESSAGE_SIZE) {
-          logError(`[ACP-WS] Message too large on wsId=${wsId}: ${data.length} bytes`);
-          ws.close(1009, "message too large");
-          return;
-        }
-        handleAcpWsMessage(ws, wsId, data);
-      },
-      onClose(evt: any, ws: any) {
-        const closeEvt = evt as unknown as CloseEvent;
-        handleAcpWsClose(ws, wsId, closeEvt?.code, closeEvt?.reason);
-      },
-      onError(evt: any, ws: any) {
-        logError(`[ACP-WS] Error on wsId=${wsId}:`, evt);
-        handleAcpWsClose(ws, wsId, 1006, "websocket error");
-      },
-    };
-  }),
-);
+      const userId = session.user.id;
+      const agentId = ws.data.params.agentId;
+      const sessionId = ws.data.query?.sessionId as string | undefined;
 
-/** WS /acp/relay/:agentId — WebSocket relay for frontend to interact with an agent */
-app.get(
-  "/relay/:agentId",
-  upgradeWebSocket(async (c) => {
-    // Authenticate via better-auth session (cookie-based)
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+      // Verify agent belongs to this user's team
+      const env = await environmentRepo.getById(agentId);
+      if (!env) {
+        log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not found`);
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+      // 验证团队归属：env.organizationId 或 env.userId 必须匹配
+      const { loadOrgContext } = await import("../../services/org-context");
+      const authCtx = await loadOrgContext({ id: userId }, ws.data.request);
+      if (!authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
+        log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not owned by user ${userId}'s team`);
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
 
-    if (!session?.user) {
-      log("[ACP-Relay] Upgrade rejected: not authenticated");
-      return {
-        onOpen(_evt: any, ws: any) {
-          ws.close(4003, "unauthorized");
-        },
-      };
-    }
+      const relayWsId = `relay_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      (ws.data as any).__relayWsId = relayWsId;
 
-    const userId = session.user.id;
-    const agentId = c.req.param("agentId")!;
-    const sessionId = c.req.query("sessionId");
-
-    // Verify agent belongs to this user
-    const env = storeGetEnvironment(agentId);
-    if (!env || env.userId !== userId) {
-      log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not found or not owned by user ${userId}`);
-      return {
-        onOpen(_evt: any, ws: any) {
-          ws.close(4003, "unauthorized");
-        },
-      };
-    }
-
-    const { v4: uuid } = await import("uuid");
-    const relayWsId = `relay_${uuid().replace(/-/g, "")}`;
-
-    log(`[ACP-Relay] Upgrade accepted: relayWsId=${relayWsId} agentId=${agentId}`);
-    return {
-      onOpen(_evt: any, ws: any) {
-        handleRelayOpen(ws, relayWsId, agentId, userId, sessionId);
-      },
-      onMessage(evt: any, ws: any) {
-        const data =
-          typeof evt.data === "string"
-            ? evt.data
-            : new TextDecoder().decode(evt.data as ArrayBuffer);
-        if (data.length > MAX_WS_MESSAGE_SIZE) {
-          logError(`[ACP-Relay] Message too large on relayWsId=${relayWsId}: ${data.length} bytes`);
-          ws.close(1009, "message too large");
-          return;
-        }
-        handleRelayMessage(ws, relayWsId, data);
-      },
-      onClose(evt: any, ws: any) {
-        const closeEvt = evt as unknown as CloseEvent;
-        handleRelayClose(ws, relayWsId, closeEvt?.code, closeEvt?.reason);
-      },
-      onError(evt: any, ws: any) {
-        logError(`[ACP-Relay] Error on relayWsId=${relayWsId}:`, evt);
-        handleRelayClose(ws, relayWsId, 1006, "websocket error");
-      },
-    };
-  }),
-);
+      log(`[ACP-Relay] Upgrade accepted: relayWsId=${relayWsId} agentId=${agentId}`);
+      handleRelayOpen(adaptWs(ws), relayWsId, agentId, userId, sessionId);
+    },
+    message(ws, data) {
+      // Elysia's parseMessage auto-parses JSON strings into objects;
+      // pass the already-parsed object directly to avoid redundant stringify→parse.
+      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
+        logError(`[ACP-Relay] Message too large: ${data.length} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
+      if (relayWsId) {
+        const payload =
+          typeof data === "object" && data !== null ? (data as Record<string, unknown>) : (data as string);
+        handleRelayMessage(adaptWs(ws), relayWsId, payload);
+      } else {
+        logError(`[ACP-Relay-WS] No relayWsId on ws.data`);
+      }
+    },
+    close(ws, code, reason) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
+      if (relayWsId) {
+        handleRelayClose(adaptWs(ws), relayWsId, code, reason);
+      }
+    },
+  });
 
 export default app;

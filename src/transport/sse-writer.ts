@@ -1,32 +1,35 @@
-import { log, error as logError } from "../logger";
-import type { Context } from "hono";
+import { log } from "../logger";
+import { toClientPayload } from "./client-payload";
 import type { SessionEvent } from "./event-bus";
 import { getEventBus } from "./event-bus";
-import { toClientPayload } from "./client-payload";
 
 export interface SSEWriter {
   send(event: SessionEvent): void;
   close(): void;
 }
 
-export function createSSEWriter(c: Context): SSEWriter {
-  const stream = new ReadableStream({
+export function createSSEWriter(request: Request): SSEWriter {
+  const _stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      c.req.raw.signal.addEventListener("abort", () => {
+      request.signal.addEventListener("abort", () => {
         controller.close();
       });
 
       // Store encoder and controller for later use
-      (c as any)._sseEncoder = encoder;
-      (c as any)._sseController = controller;
+      // biome-ignore lint/suspicious/noExplicitAny: custom request property for SSE state
+      (request as any)._sseEncoder = encoder;
+      // biome-ignore lint/suspicious/noExplicitAny: custom request property for SSE state
+      (request as any)._sseController = controller;
     },
   });
 
   return {
     send(event: SessionEvent) {
-      const encoder = (c as any)._sseEncoder as TextEncoder;
-      const controller = (c as any)._sseController as ReadableStreamDefaultController;
+      // biome-ignore lint/suspicious/noExplicitAny: custom request property for SSE state
+      const encoder = (request as any)._sseEncoder as TextEncoder;
+      // biome-ignore lint/suspicious/noExplicitAny: custom request property for SSE state
+      const controller = (request as any)._sseController as ReadableStreamDefaultController;
       if (!encoder || !controller) return;
       const data = JSON.stringify({
         type: event.type,
@@ -38,14 +41,15 @@ export function createSSEWriter(c: Context): SSEWriter {
       controller.enqueue(encoder.encode(msg));
     },
     close() {
-      const controller = (c as any)._sseController as ReadableStreamDefaultController;
+      // biome-ignore lint/suspicious/noExplicitAny: custom request property for SSE state
+      const controller = (request as any)._sseController as ReadableStreamDefaultController;
       controller?.close();
     },
   };
 }
 
 /** Create SSE response stream for a session */
-export function createSSEStream(c: Context, sessionId: string, fromSeqNum = 0) {
+export function createSSEStream(request: Request, sessionId: string, fromSeqNum = 0) {
   const bus = getEventBus(sessionId);
 
   const stream = new ReadableStream({
@@ -78,7 +82,9 @@ export function createSSEStream(c: Context, sessionId: string, fromSeqNum = 0) {
           seqNum: event.seqNum,
         });
         try {
-          log(`[RC-DEBUG] SSE -> web: sessionId=${sessionId} type=${event.type} dir=${event.direction} seq=${event.seqNum}`);
+          log(
+            `[RC-DEBUG] SSE -> web: sessionId=${sessionId} type=${event.type} dir=${event.direction} seq=${event.seqNum}`,
+          );
           controller.enqueue(encoder.encode(`id: ${event.seqNum}\nevent: message\ndata: ${data}\n\n`));
         } catch {
           unsub();
@@ -96,7 +102,7 @@ export function createSSEStream(c: Context, sessionId: string, fromSeqNum = 0) {
       }, 15000);
 
       // Cleanup on abort
-      c.req.raw.signal.addEventListener("abort", () => {
+      request.signal.addEventListener("abort", () => {
         unsub();
         clearInterval(keepalive);
         try {
@@ -129,9 +135,7 @@ function toWorkerClientPayload(event: SessionEvent): Record<string, unknown> {
   }
 
   const normalized =
-    event.payload && typeof event.payload === "object"
-      ? (event.payload as Record<string, unknown>)
-      : undefined;
+    event.payload && typeof event.payload === "object" ? (event.payload as Record<string, unknown>) : undefined;
   const raw =
     normalized?.raw && typeof normalized.raw === "object" && !Array.isArray(normalized.raw)
       ? (normalized.raw as Record<string, unknown>)
@@ -173,7 +177,7 @@ function toWorkerClientFrame(event: SessionEvent): string {
 }
 
 /** Create CCR worker SSE stream (client_event frames, outbound events only). */
-export function createWorkerEventStream(c: Context, sessionId: string, fromSeqNum = 0) {
+export function createWorkerEventStream(request: Request, sessionId: string, fromSeqNum = 0) {
   const bus = getEventBus(sessionId);
 
   const stream = new ReadableStream({
@@ -181,9 +185,7 @@ export function createWorkerEventStream(c: Context, sessionId: string, fromSeqNu
       const encoder = new TextEncoder();
 
       if (fromSeqNum > 0) {
-        const missed = bus
-          .getEventsSince(fromSeqNum)
-          .filter((event) => event.direction === "outbound");
+        const missed = bus.getEventsSince(fromSeqNum).filter((event) => event.direction === "outbound");
         for (const event of missed) {
           controller.enqueue(encoder.encode(toWorkerClientFrame(event)));
         }
@@ -211,7 +213,7 @@ export function createWorkerEventStream(c: Context, sessionId: string, fromSeqNu
         }
       }, 15000);
 
-      c.req.raw.signal.addEventListener("abort", () => {
+      request.signal.addEventListener("abort", () => {
         unsub();
         clearInterval(keepalive);
         try {

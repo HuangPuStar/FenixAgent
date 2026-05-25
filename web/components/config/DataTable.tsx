@@ -1,29 +1,22 @@
-import { useState, useMemo, useEffect } from "react";
-import { ChevronRight, ChevronDown, Search } from "lucide-react";
 import {
-  useReactTable,
+  type ColumnDef,
+  type ExpandedState,
+  flexRender,
   getCoreRowModel,
-  getSortedRowModel,
+  getExpandedRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
-  getExpandedRowModel,
-  flexRender,
-  type ColumnDef,
+  getSortedRowModel,
+  type OnChangeFn,
   type SortingState,
-  type ExpandedState,
+  useReactTable,
 } from "@tanstack/react-table";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "../ui/table";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
-import { Button } from "../ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
 export interface Column<T> {
   key: string;
@@ -49,7 +42,7 @@ export interface DataTableProps<T> {
   emptyMessage?: string;
   pageSize?: number;
   expandedState?: ExpandedState;
-  onExpandedChange?: (expanded: ExpandedState) => void;
+  onExpandedChange?: OnChangeFn<ExpandedState>;
 }
 
 export function filterData<T>(data: T[], columns: Column<T>[], search: string): T[] {
@@ -61,7 +54,7 @@ export function filterData<T>(data: T[], columns: Column<T>[], search: string): 
       .some((col) => {
         const val = (row as Record<string, unknown>)[col.key];
         return val != null && String(val).toLowerCase().includes(q);
-      })
+      }),
   );
 }
 
@@ -151,6 +144,7 @@ function buildColumnDefs<T>(
   if (actions) {
     defs.push({
       id: "actions",
+      size: 120,
       header: "操作",
       cell: ({ row }) => (
         <div className="table-row-actions opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -186,7 +180,7 @@ export function DataTable<T>({
     return buildInitialExpandedState(data, rowKey);
   });
   const expanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded;
-  const setExpanded = onExpandedChange ?? setInternalExpanded;
+  const setExpanded: OnChangeFn<ExpandedState> = onExpandedChange ?? setInternalExpanded;
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -195,11 +189,12 @@ export function DataTable<T>({
       const next: ExpandedState = {};
       data.forEach((row, index) => {
         const rowId = rowKey ? rowKey(row) : String(index);
-        next[rowId] = prev[rowId] !== undefined ? prev[rowId] : true;
+        next[rowId] =
+          (prev as Record<string, boolean>)[rowId] !== undefined ? (prev as Record<string, boolean>)[rowId] : true;
       });
       return next;
     });
-  }, [data, rowKey, defaultExpandAll]);
+  }, [data, rowKey, defaultExpandAll, setExpanded]);
 
   const globalFilterFn = useMemo(() => {
     return (row: { original: T }, _columnId: string, filterValue: string) => {
@@ -218,7 +213,7 @@ export function DataTable<T>({
     data,
     columns: useMemo(
       () => buildColumnDefs(columns, !!selectable, expandableRow, actions),
-      [columns, selectable, expandableRow, actions]
+      [columns, selectable, expandableRow, actions],
     ),
     state: {
       sorting,
@@ -237,9 +232,7 @@ export function DataTable<T>({
     getPaginationRowModel: getPaginationRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     globalFilterFn,
-    getRowId: rowKey
-      ? (row) => rowKey(row as T)
-      : (row, index) => String(index),
+    getRowId: rowKey ? (row) => rowKey(row as T) : (_row, index) => String(index),
     enableGlobalFilter: searchable,
     manualPagination: false,
     autoResetPageIndex: true,
@@ -249,7 +242,7 @@ export function DataTable<T>({
     if (!onSelectionChange) return;
     const selectedRows = table.getSelectedRowModel().rows.map((r) => r.original);
     onSelectionChange(selectedRows);
-  }, [rowSelection, onSelectionChange, table]);
+  }, [onSelectionChange, table]);
 
   const colSpan = columns.length + (selectable ? 1 : 0) + (actions ? 1 : 0) + (expandableRow ? 1 : 0);
 
@@ -267,7 +260,7 @@ export function DataTable<T>({
         </div>
       )}
       <div className="rounded-md border overflow-hidden">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="border-b bg-muted/50">
@@ -304,43 +297,59 @@ export function DataTable<T>({
                 const rowId = row.id;
                 const isExpanded = row.getIsExpanded();
                 return (
-                  <Collapsible key={rowId} open={isExpanded} onOpenChange={() => row.toggleExpanded()} asChild>
-                    <>
-                      <TableRow className="group border-b hover:bg-surface-hover transition-colors relative table-row-hover">
-                        {row.getVisibleCells().map((cell) => {
-                          if (cell.column.id === "expand" && expandableRow) {
-                            return (
-                              <TableCell key={cell.id} className="w-10 px-2 py-2">
-                                <CollapsibleTrigger asChild>
-                                  <button className="p-0.5 rounded hover:bg-muted">
-                                    <span className={`inline-flex transition-transform duration-200 ${isExpanded ? "rotate-0" : "-rotate-0"}`}>
-                                      {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                    </span>
-                                  </button>
-                                </CollapsibleTrigger>
-                              </TableCell>
-                            );
-                          }
+                  <Fragment key={rowId}>
+                    <TableRow
+                      className={`group border-b hover:bg-surface-hover transition-colors relative table-row-hover${expandableRow ? " cursor-pointer" : ""}`}
+                      onClick={
+                        expandableRow
+                          ? (e) => {
+                              const target = e.target as HTMLElement;
+                              if (
+                                target.closest(
+                                  "button, a, input, select, [role='checkbox'], [data-radix-collection-item]",
+                                )
+                              )
+                                return;
+                              row.toggleExpanded();
+                            }
+                          : undefined
+                      }
+                    >
+                      {row.getVisibleCells().map((cell) => {
+                        if (cell.column.id === "expand" && expandableRow) {
                           return (
-                            <TableCell key={cell.id} className="px-3 py-2">
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            <TableCell key={cell.id} className="w-10 px-2 py-2">
+                              <button className="p-0.5 rounded hover:bg-muted" onClick={() => row.toggleExpanded()}>
+                                <span
+                                  className={`inline-flex transition-transform duration-200 ${isExpanded ? "rotate-0" : "-rotate-0"}`}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </span>
+                              </button>
                             </TableCell>
                           );
-                        })}
-                      </TableRow>
-                      {expandableRow && (
-                        <TableRow className="border-b">
-                          <TableCell colSpan={colSpan} className="p-0">
-                            <CollapsibleContent>
-                              <div className="px-6 py-3 bg-surface-2/50 border-t border-border-light">
-                                {expandableRow(row.original)}
-                              </div>
-                            </CollapsibleContent>
+                        }
+                        return (
+                          <TableCell key={cell.id} className="px-3 py-2">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
-                        </TableRow>
-                      )}
-                    </>
-                  </Collapsible>
+                        );
+                      })}
+                    </TableRow>
+                    {expandableRow && isExpanded && (
+                      <TableRow className="border-b">
+                        <TableCell colSpan={colSpan} className="p-0 whitespace-normal overflow-hidden">
+                          <div className="px-6 py-3 bg-surface-2/50 border-t border-border-light">
+                            {expandableRow(row.original)}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
                 );
               })
             )}
@@ -350,11 +359,22 @@ export function DataTable<T>({
       {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            第 {(table.getState().pagination.pageIndex) * pageSize + 1}-{Math.min((table.getState().pagination.pageIndex + 1) * pageSize, table.getFilteredRowModel().rows.length)} 条，共 {table.getFilteredRowModel().rows.length} 条
+            第 {table.getState().pagination.pageIndex * pageSize + 1}-
+            {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, table.getFilteredRowModel().rows.length)}{" "}
+            条，共 {table.getFilteredRowModel().rows.length} 条
           </span>
           <div className="flex gap-1">
-            <Button size="sm" variant="outline" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>上一页</Button>
-            <Button size="sm" variant="outline" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>下一页</Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!table.getCanPreviousPage()}
+              onClick={() => table.previousPage()}
+            >
+              上一页
+            </Button>
+            <Button size="sm" variant="outline" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>
+              下一页
+            </Button>
           </div>
         </div>
       )}

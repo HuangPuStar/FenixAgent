@@ -3,9 +3,9 @@
  * Checks that native <button> and overflow-y-auto patterns have been replaced
  * with shadcn <Button> and <ScrollArea>.
  */
-import { describe, test, expect } from "bun:test";
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const webRoot = resolve(__dirname, "..", "..");
 
@@ -40,9 +40,7 @@ describe("Task 6: Business component atomization", () => {
       test(`${file} imports Button from ui/button`, () => {
         const src = readComponent(file);
         // At least one of these patterns should be present
-        const hasButtonImport =
-          src.includes('import { Button }') ||
-          src.includes('import { Button,');
+        const hasButtonImport = src.includes("import { Button }") || src.includes("import { Button,");
 
         // File should not have plain <button (with space after, to avoid matching <Button)
         // Allow hidden file inputs <input type="file"> and native <textarea>
@@ -59,8 +57,7 @@ describe("Task 6: Business component atomization", () => {
       test(`${file} uses ScrollArea instead of overflow-y-auto`, () => {
         const src = readComponent(file);
         // Should import ScrollArea
-        const hasScrollAreaImport =
-          src.includes("ScrollArea") && src.includes("scroll-area");
+        const hasScrollAreaImport = src.includes("ScrollArea") && src.includes("scroll-area");
         expect(hasScrollAreaImport).toBe(true);
       });
     }
@@ -79,7 +76,7 @@ describe("Task 6: Business component atomization", () => {
   describe("StatusBadge uses shadcn Badge", () => {
     test("StatusBadge imports and uses Badge component", () => {
       const src = readComponent("components/config/StatusBadge.tsx");
-      expect(src).toContain("from \"../ui/badge\"");
+      expect(src).toContain('from "../ui/badge"');
       expect(src).toContain("<Badge");
     });
   });
@@ -87,7 +84,7 @@ describe("Task 6: Business component atomization", () => {
   describe("PermissionPanel uses shadcn Button", () => {
     test("PermissionPanel imports Button", () => {
       const src = readComponent("components/chat/PermissionPanel.tsx");
-      expect(src).toContain("from \"../ui/button\"");
+      expect(src).toContain('from "../ui/button"');
       expect(src).toContain("<Button");
     });
   });

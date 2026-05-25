@@ -1,5 +1,5 @@
-import * as React from "react";
 import { CalendarIcon } from "lucide-react";
+import * as React from "react";
 import { cn } from "../../src/lib/utils";
 import { Button } from "./button";
 import { Calendar } from "./calendar";
@@ -13,13 +13,7 @@ interface DatePickerProps {
   className?: string;
 }
 
-function DatePicker({
-  value,
-  onChange,
-  placeholder = "选择日期",
-  disabled,
-  className,
-}: DatePickerProps) {
+function DatePicker({ value, onChange, placeholder = "选择日期", disabled, className }: DatePickerProps) {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -28,11 +22,7 @@ function DatePicker({
         <Button
           variant="outline"
           disabled={disabled}
-          className={cn(
-            "w-full justify-start text-left font-normal",
-            !value && "text-muted-foreground",
-            className
-          )}
+          className={cn("w-full justify-start text-left font-normal", !value && "text-muted-foreground", className)}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
           {value ? value.toLocaleDateString("zh-CN") : placeholder}
@@ -53,5 +43,5 @@ function DatePicker({
   );
 }
 
-export { DatePicker };
 export type { DatePickerProps };
+export { DatePicker };

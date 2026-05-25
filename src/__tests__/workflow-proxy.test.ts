@@ -1,51 +1,31 @@
-import { describe, expect, mock, test, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { setConfig } from "../config";
+import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { setTestOrgContext } from "../services/org-context";
 
-// Mock config before any imports that use it
-mock.module("../config", () => ({
-  config: {
-    port: 3000,
-    host: "0.0.0.0",
-    apiKeys: [],
-    baseUrl: "http://localhost:3000",
-    pollTimeout: 8,
-    heartbeatInterval: 20,
-    wsIdleTimeout: 255,
-    wsKeepaliveInterval: 20,
-    disconnectTimeout: 120,
-    jwtExpiresIn: 3600,
-    acpxGUrl: "http://localhost:8848",
-  },
-  getBaseUrl: () => "http://localhost:3000",
-}));
+setConfig({ acpxGUrl: "http://localhost:8848" });
 
-// Mock better-auth so sessionAuth (which dynamically imports it) returns a valid session
-let authenticated = true;
-mock.module("../auth/better-auth", () => ({
-  auth: {
-    api: {
-      getSession: async () => {
-        if (!authenticated) return null;
-        return {
-          user: { id: "test-user", email: "test@test.com", name: "Test" },
-          session: { id: "sess_test", userId: "test-user", token: "tok" },
-        };
-      },
-    },
-  },
-}));
+import Elysia from "elysia";
+import { workflowApiApp, workflowStaticApp } from "../routes/web/workflow-proxy";
 
-import { Hono } from "hono";
-import { workflowStaticApp, workflowApiApp } from "../routes/web/workflow-proxy";
-
-// Save original fetch
 const originalFetch = globalThis.fetch;
+
+function elysiaRequest(app: any, path: string, init?: RequestInit) {
+  return app.handle(new Request(`http://localhost${path}`, init));
+}
 
 describe("Workflow Proxy", () => {
   beforeEach(() => {
-    authenticated = true;
+    setTestAuth({
+      user: { id: "test-user", email: "test@test.com", name: "Test" },
+      authContext: { organizationId: "test-team", userId: "test-user", role: "owner" },
+    });
+    setTestOrgContext({ organizationId: "test-team", userId: "test-user", role: "owner" });
   });
 
   afterEach(() => {
+    resetTestAuth();
+    setTestOrgContext(null);
     globalThis.fetch = originalFetch;
   });
 
@@ -59,9 +39,8 @@ describe("Workflow Proxy", () => {
       return fakeResponse;
     }) as any;
 
-    const app = new Hono();
-    app.route("/workflow-ui", workflowStaticApp);
-    const res = await app.request("/workflow-ui/style.css");
+    const app = new Elysia().use(workflowStaticApp);
+    const res = await elysiaRequest(app, "/workflow-ui/style.css");
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("body{color:red}");
   });
@@ -76,9 +55,8 @@ describe("Workflow Proxy", () => {
       return fakeResponse;
     }) as any;
 
-    const app = new Hono();
-    app.route("/api/v1", workflowApiApp);
-    const res = await app.request("/api/v1/workflows");
+    const app = new Elysia().use(workflowApiApp);
+    const res = await elysiaRequest(app, "/api/v1/workflows");
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toEqual({ workflows: [] });
@@ -97,29 +75,25 @@ describe("Workflow Proxy", () => {
       return fakeResponse;
     }) as any;
 
-    const app = new Hono();
-    app.route("/api/v1", workflowApiApp);
-    const res = await app.request("/api/v1/workflows", {
+    const app = new Elysia().use(workflowApiApp);
+    const res = await elysiaRequest(app, "/api/v1/workflows", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "test-workflow" }),
     });
     expect(res.status).toBe(201);
-    // Body is forwarded as ReadableStream (request.body)
     expect(capturedInit.body).toBeDefined();
   });
 
   test("unauthenticated request returns 401", async () => {
-    authenticated = false;
+    resetTestAuth();
 
-    const app = new Hono();
-    app.route("/workflow-ui", workflowStaticApp);
-    const res1 = await app.request("/workflow-ui/");
+    const app = new Elysia().use(workflowStaticApp);
+    const res1 = await elysiaRequest(app, "/workflow-ui/");
     expect(res1.status).toBe(401);
 
-    const app2 = new Hono();
-    app2.route("/api/v1", workflowApiApp);
-    const res2 = await app2.request("/api/v1/workflows");
+    const app2 = new Elysia().use(workflowApiApp);
+    const res2 = await elysiaRequest(app2, "/api/v1/workflows");
     expect(res2.status).toBe(401);
   });
 
@@ -128,9 +102,8 @@ describe("Workflow Proxy", () => {
       throw new Error("ECONNREFUSED");
     }) as any;
 
-    const app = new Hono();
-    app.route("/workflow-ui", workflowStaticApp);
-    const res = await app.request("/workflow-ui/");
+    const app = new Elysia().use(workflowStaticApp);
+    const res = await elysiaRequest(app, "/workflow-ui/");
     expect(res.status).toBe(502);
     const data = await res.json();
     expect(data.error.type).toBe("bad_gateway");

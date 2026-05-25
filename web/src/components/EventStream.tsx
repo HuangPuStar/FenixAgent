@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
-import type { SessionEvent, EventPayload } from "../types";
-import { esc, truncate, cn, extractEventText, isConversationClearedStatus } from "../lib/utils";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Input } from "../../components/ui/input";
+import { cn, esc, extractEventText, isConversationClearedStatus, truncate } from "../lib/utils";
+import type { EventPayload, SessionEvent } from "../types";
 
 // ============================================================
 // Tool Trace State
@@ -46,7 +47,10 @@ function clearActiveHost(state: ToolTraceState): ToolTraceState {
   return { ...state, activeHostId: null };
 }
 
-function addTraceEntry(state: ToolTraceState, entryKind: "use" | "result"): {
+function addTraceEntry(
+  state: ToolTraceState,
+  entryKind: "use" | "result",
+): {
   state: ToolTraceState;
   host: TraceHost;
   createdHost: TraceHost | null;
@@ -155,11 +159,36 @@ const SPINNER_FRAMES = ["·", "✢", "✱", "✶", "✻", "✽"];
 const SPINNER_CYCLE = [...SPINNER_FRAMES, ...SPINNER_FRAMES.slice().reverse()];
 
 const SPINNER_VERBS = [
-  "Accomplishing", "Baking", "Calculating", "Clauding", "Cogitating", "Computing",
-  "Considering", "Contemplating", "Cooking", "Crafting", "Creating", "Crunching",
-  "Deliberating", "Doing", "Effecting", "Generating", "Hatching", "Ideating",
-  "Imagining", "Inferring", "Manifesting", "Mulling", "Pondering", "Processing",
-  "Ruminating", "Simmering", "Synthesizing", "Thinking", "Tinkering", "Working",
+  "Accomplishing",
+  "Baking",
+  "Calculating",
+  "Clauding",
+  "Cogitating",
+  "Computing",
+  "Considering",
+  "Contemplating",
+  "Cooking",
+  "Crafting",
+  "Creating",
+  "Crunching",
+  "Deliberating",
+  "Doing",
+  "Effecting",
+  "Generating",
+  "Hatching",
+  "Ideating",
+  "Imagining",
+  "Inferring",
+  "Manifesting",
+  "Mulling",
+  "Pondering",
+  "Processing",
+  "Ruminating",
+  "Simmering",
+  "Synthesizing",
+  "Thinking",
+  "Tinkering",
+  "Working",
 ];
 
 // ============================================================
@@ -170,7 +199,11 @@ interface EventStreamProps {
   messages: DisplayMessage[];
   onApprovePermission: (requestId: string) => void;
   onRejectPermission: (requestId: string) => void;
-  onSubmitAnswers: (requestId: string, answers: Record<string, unknown>, questions: import("../types").Question[]) => void;
+  onSubmitAnswers: (
+    requestId: string,
+    answers: Record<string, unknown>,
+    questions: import("../types").Question[],
+  ) => void;
   onSubmitPlanResponse: (requestId: string, value: string, feedback?: string) => void;
 }
 
@@ -187,24 +220,46 @@ export function EventStream({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, []);
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
       <div className="mx-auto max-w-5xl space-y-3">
-        {messages.map((msg, i) => (
-          <MessageRow key={i} message={msg} {...{ onApprovePermission, onRejectPermission, onSubmitAnswers, onSubmitPlanResponse }} />
-        ))}
+        {messages.map((msg, i) => {
+          const msgKey =
+            "requestId" in msg
+              ? (msg as { requestId: string }).requestId
+              : "traceId" in msg
+                ? (msg as { traceId: string }).traceId
+                : i;
+          return (
+            <MessageRow
+              key={msgKey}
+              message={msg}
+              {...{ onApprovePermission, onRejectPermission, onSubmitAnswers, onSubmitPlanResponse }}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function MessageRow({ message, onApprovePermission, onRejectPermission, onSubmitAnswers, onSubmitPlanResponse }: {
+function MessageRow({
+  message,
+  onApprovePermission,
+  onRejectPermission,
+  onSubmitAnswers,
+  onSubmitPlanResponse,
+}: {
   message: DisplayMessage;
   onApprovePermission: (requestId: string) => void;
   onRejectPermission: (requestId: string) => void;
-  onSubmitAnswers: (requestId: string, answers: Record<string, unknown>, questions: import("../types").Question[]) => void;
+  onSubmitAnswers: (
+    requestId: string,
+    answers: Record<string, unknown>,
+    questions: import("../types").Question[],
+  ) => void;
   onSubmitPlanResponse: (requestId: string, value: string, feedback?: string) => void;
 }) {
   switch (message.kind) {
@@ -272,6 +327,7 @@ function formatAssistantContent(content: string): string {
 }
 
 function AssistantBubble({ content, traceEntries }: { content: string; traceEntries: TraceEntry[] }) {
+  const { t } = useTranslation("sessions");
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -280,6 +336,7 @@ function AssistantBubble({ content, traceEntries }: { content: string; traceEntr
         {content && (
           <div
             className="rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5 text-sm text-text-primary"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering sanitized assistant content
             dangerouslySetInnerHTML={{ __html: formatAssistantContent(content) }}
           />
         )}
@@ -290,12 +347,13 @@ function AssistantBubble({ content, traceEntries }: { content: string; traceEntr
               className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
             >
               <span className={cn("transition-transform", expanded && "rotate-90")}>›</span>
-              <span>{traceEntries.length} tool {traceEntries.length === 1 ? "call" : "calls"}</span>
+              <span>{t("trace.toolCall", { count: traceEntries.length })}</span>
             </button>
             {expanded && (
               <div className="mt-1 space-y-1 pl-2">
                 {traceEntries.map((entry, i) => (
-                  <ToolCard key={i} entry={entry} />
+                  // biome-ignore lint/suspicious/noArrayIndexKey: entries may lack unique id
+                  <ToolCard key={`${entry.entryKind}-${entry.toolName ?? ""}-${i}`} entry={entry} />
                 ))}
               </div>
             )}
@@ -307,6 +365,7 @@ function AssistantBubble({ content, traceEntries }: { content: string; traceEntr
 }
 
 function ToolCard({ entry }: { entry: TraceEntry }) {
+  const { t } = useTranslation("sessions");
   const [expanded, setExpanded] = useState(false);
 
   if (entry.entryKind === "use") {
@@ -318,7 +377,7 @@ function ToolCard({ entry }: { entry: TraceEntry }) {
       >
         <div className="flex items-center gap-2 px-3 py-2 text-xs">
           <span className="text-brand">▶</span>
-          <span className="font-medium text-text-primary">{entry.toolName || "tool"}</span>
+          <span className="font-medium text-text-primary">{entry.toolName || t("trace.tool")}</span>
         </div>
         {expanded && (
           <pre className="border-t border-border px-3 py-2 text-xs text-text-secondary overflow-x-auto">
@@ -339,12 +398,8 @@ function ToolCard({ entry }: { entry: TraceEntry }) {
       onClick={() => setExpanded(!expanded)}
     >
       <div className="flex items-center gap-2 px-3 py-2 text-xs">
-        <span className={entry.isError ? "text-status-error" : "text-status-active"}>
-          {entry.isError ? "✕" : "✓"}
-        </span>
-        <span className="font-medium text-text-primary">
-          {entry.isError ? "Error" : "Result"}
-        </span>
+        <span className={entry.isError ? "text-status-error" : "text-status-active"}>{entry.isError ? "✕" : "✓"}</span>
+        <span className="font-medium text-text-primary">{entry.isError ? t("trace.error") : t("trace.result")}</span>
       </div>
       {expanded && (
         <pre className="border-t border-border px-3 py-2 text-xs text-text-secondary overflow-x-auto">
@@ -358,15 +413,13 @@ function ToolCard({ entry }: { entry: TraceEntry }) {
 function SystemBubble({ content }: { content: string }) {
   return (
     <div className="flex justify-center">
-      <div className="rounded-full bg-surface-2 px-4 py-1.5 text-xs text-text-muted">
-        {esc(content)}
-      </div>
+      <div className="rounded-full bg-surface-2 px-4 py-1.5 text-xs text-text-muted">{esc(content)}</div>
     </div>
   );
 }
 
 function PermissionPrompt({
-  requestId,
+  requestId: _requestId,
   toolName,
   toolInput,
   description,
@@ -380,11 +433,12 @@ function PermissionPrompt({
   onApprove: () => void;
   onReject: () => void;
 }) {
+  const { t } = useTranslation("sessions");
   const inputStr = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput, null, 2);
 
   return (
     <div className="rounded-xl border border-status-warning/30 bg-surface-1 p-4">
-      <div className="mb-2 text-sm font-semibold text-status-warning">Permission Request</div>
+      <div className="mb-2 text-sm font-semibold text-status-warning">{t("permission.title")}</div>
       {description && <div className="mb-2 text-sm text-text-secondary">{esc(description)}</div>}
       <div className="mb-2 font-mono text-xs font-bold text-text-primary">{esc(toolName)}</div>
       {toolName !== "AskUserQuestion" && (
@@ -397,13 +451,13 @@ function PermissionPrompt({
           onClick={onApprove}
           className="rounded-lg bg-status-active/20 px-4 py-2 text-sm font-medium text-status-active hover:bg-status-active/30 transition-colors"
         >
-          Approve
+          {t("permission.approve")}
         </button>
         <button
           onClick={onReject}
           className="rounded-lg bg-status-error/20 px-4 py-2 text-sm font-medium text-status-error hover:bg-status-error/30 transition-colors"
         >
-          Reject
+          {t("permission.reject")}
         </button>
       </div>
     </div>
@@ -422,8 +476,10 @@ function AskUserPanel({
   onSubmit: (answers: Record<string, unknown>) => void;
   onSkip: () => void;
 }) {
+  const { t } = useTranslation("sessions");
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [otherTexts, setOtherTexts] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState(0);
 
   const handleSelect = (qIdx: number, oIdx: number, multiSelect: boolean) => {
     if (multiSelect) {
@@ -466,15 +522,14 @@ function AskUserPanel({
     return (
       <div className="rounded-xl border border-brand/30 bg-surface-1 p-4">
         <div className="mb-3 text-sm font-semibold text-text-primary">
-          {esc(description || q.question || "Question")}
+          {esc(description || q.question || t("askUser.question"))}
         </div>
         <div className="space-y-2">
           {(q.options || []).map((opt, j) => {
-            const isSelected = multiSelect
-              ? ((answers[0] as number[]) || []).includes(j)
-              : selectedIdx === j;
+            const isSelected = multiSelect ? ((answers[0] as number[]) || []).includes(j) : selectedIdx === j;
             return (
               <button
+                // biome-ignore lint/suspicious/noArrayIndexKey: static option list, position is stable
                 key={j}
                 onClick={() => handleSelect(0, j, multiSelect)}
                 className={cn(
@@ -493,8 +548,8 @@ function AskUserPanel({
             <Input
               type="text"
               value={otherTexts[0] || ""}
-              onChange={(e) => setOtherTexts({ ...otherTexts, [0]: e.target.value })}
-              placeholder="Other..."
+              onChange={(e) => setOtherTexts({ ...otherTexts, 0: e.target.value })}
+              placeholder={t("askUser.otherPlaceholder")}
               className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
               onKeyDown={(e) => e.key === "Enter" && handleOtherSubmit(0)}
             />
@@ -502,7 +557,7 @@ function AskUserPanel({
               onClick={() => handleOtherSubmit(0)}
               className="rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
             >
-              Send
+              {t("askUser.send")}
             </button>
           </div>
         </div>
@@ -511,13 +566,13 @@ function AskUserPanel({
             onClick={handleSubmit}
             className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors"
           >
-            Submit
+            {t("askUser.submit")}
           </button>
           <button
             onClick={onSkip}
             className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
           >
-            Skip
+            {t("askUser.skip")}
           </button>
         </div>
       </div>
@@ -525,21 +580,17 @@ function AskUserPanel({
   }
 
   // Multiple questions — tab layout
-  const [activeTab, setActiveTab] = useState(0);
-
   return (
     <div className="rounded-xl border border-brand/30 bg-surface-1 p-4">
-      <div className="mb-3 text-sm font-semibold text-text-primary">{esc(description || "Questions")}</div>
+      <div className="mb-3 text-sm font-semibold text-text-primary">{esc(description || t("askUser.questions"))}</div>
       <div className="mb-3 flex gap-1 overflow-x-auto">
         {questions.map((q, i) => (
           <button
-            key={i}
+            key={q.header || `Q${i + 1}`}
             onClick={() => setActiveTab(i)}
             className={cn(
               "rounded-md px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
-              activeTab === i
-                ? "bg-brand/20 text-brand"
-                : "text-text-muted hover:bg-surface-2",
+              activeTab === i ? "bg-brand/20 text-brand" : "text-text-muted hover:bg-surface-2",
             )}
           >
             {q.header || `Q${i + 1}`}
@@ -558,19 +609,21 @@ function AskUserPanel({
         />
       )}
       <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-text-muted">{activeTab + 1} / {questions.length}</span>
+        <span className="text-xs text-text-muted">
+          {activeTab + 1} / {questions.length}
+        </span>
         <div className="flex gap-2">
           <button
             onClick={handleSubmit}
             className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light transition-colors"
           >
-            Submit All
+            {t("askUser.submitAll")}
           </button>
           <button
             onClick={onSkip}
             className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
           >
-            Skip
+            {t("askUser.skip")}
           </button>
         </div>
       </div>
@@ -595,6 +648,7 @@ function QuestionTab({
   onOtherTextChange: (qIdx: number, text: string) => void;
   onOtherSubmit: (qIdx: number) => void;
 }) {
+  const { t } = useTranslation("sessions");
   const multiSelect = question.multiSelect || false;
 
   return (
@@ -602,11 +656,10 @@ function QuestionTab({
       <div className="mb-2 text-sm text-text-secondary">{esc(question.question)}</div>
       <div className="space-y-2">
         {(question.options || []).map((opt, j) => {
-          const isSelected = multiSelect
-            ? ((answers[qIdx] as number[]) || []).includes(j)
-            : answers[qIdx] === j;
+          const isSelected = multiSelect ? ((answers[qIdx] as number[]) || []).includes(j) : answers[qIdx] === j;
           return (
             <button
+              // biome-ignore lint/suspicious/noArrayIndexKey: static option list, position is stable
               key={j}
               onClick={() => onSelect(qIdx, j, multiSelect)}
               className={cn(
@@ -626,7 +679,7 @@ function QuestionTab({
             type="text"
             value={otherTexts[qIdx] || ""}
             onChange={(e) => onOtherTextChange(qIdx, e.target.value)}
-            placeholder="Other..."
+            placeholder={t("askUser.otherPlaceholder")}
             className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
             onKeyDown={(e) => e.key === "Enter" && onOtherSubmit(qIdx)}
           />
@@ -634,7 +687,7 @@ function QuestionTab({
             onClick={() => onOtherSubmit(qIdx)}
             className="rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
           >
-            Send
+            {t("askUser.send")}
           </button>
         </div>
       </div>
@@ -644,7 +697,7 @@ function QuestionTab({
 
 function PlanPanel({
   planContent,
-  description,
+  description: _description,
   onSubmit,
 }: {
   requestId: string;
@@ -652,9 +705,10 @@ function PlanPanel({
   description: string;
   onSubmit: (value: string, feedback?: string) => void;
 }) {
+  const { t } = useTranslation("sessions");
   const [selected, setSelected] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
-  const isEmpty = !planContent || !planContent.trim();
+  const isEmpty = !planContent?.trim();
 
   const handleSubmit = () => {
     if (!selected) return;
@@ -664,39 +718,44 @@ function PlanPanel({
   return (
     <div className="rounded-xl border border-brand/30 bg-surface-1 p-4">
       <div className="mb-3 text-sm font-semibold text-text-primary">
-        {isEmpty ? "Exit plan mode?" : "Ready to code?"}
+        {isEmpty ? t("plan.exitPlanMode") : t("plan.readyToCode")}
       </div>
       {!isEmpty && (
         <div
           className="mb-4 max-h-64 overflow-auto rounded-lg bg-tool-card p-4 text-sm text-text-secondary prose prose-invert"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering sanitized plan content
           dangerouslySetInnerHTML={{ __html: formatPlanContent(planContent) }}
         />
       )}
       <div className="space-y-2">
         {isEmpty ? (
           <>
-            <PlanOption selected={selected === "yes-default"} onClick={() => setSelected("yes-default")} label="Yes" />
-            <PlanOption selected={selected === "no"} onClick={() => setSelected("no")} label="No" />
+            <PlanOption
+              selected={selected === "yes-default"}
+              onClick={() => setSelected("yes-default")}
+              label={t("plan.yes")}
+            />
+            <PlanOption selected={selected === "no"} onClick={() => setSelected("no")} label={t("plan.no")} />
           </>
         ) : (
           <>
             <PlanOption
               selected={selected === "yes-accept-edits"}
               onClick={() => setSelected("yes-accept-edits")}
-              label="Yes, auto-accept edits"
-              desc="Approve plan and auto-accept file edits"
+              label={t("plan.yesAcceptEdits")}
+              desc={t("plan.yesAcceptEditsDesc")}
             />
             <PlanOption
               selected={selected === "yes-default"}
               onClick={() => setSelected("yes-default")}
-              label="Yes, manually approve edits"
-              desc="Approve plan but confirm each edit"
+              label={t("plan.yesManualApprove")}
+              desc={t("plan.yesManualApproveDesc")}
             />
             <PlanOption
               selected={selected === "no"}
               onClick={() => setSelected("no")}
-              label="No, keep planning"
-              desc="Provide feedback to refine the plan"
+              label={t("plan.noKeepPlanning")}
+              desc={t("plan.noKeepPlanningDesc")}
             />
           </>
         )}
@@ -705,7 +764,7 @@ function PlanPanel({
         <textarea
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
-          placeholder="告诉智能体需要修改什么..."
+          placeholder={t("plan.feedbackPlaceholder")}
           className="mt-3 w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
           rows={3}
         />
@@ -716,7 +775,7 @@ function PlanPanel({
           disabled={!selected}
           className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light disabled:opacity-50 transition-colors"
         >
-          Submit
+          {t("plan.submit")}
         </button>
       </div>
     </div>
@@ -789,7 +848,17 @@ function LoadingIndicator({ verb }: { verb: string }) {
 // Event Processing Hook
 // ============================================================
 
-export { type DisplayMessage, type TraceEntry, type UserMessage, type AssistantMessage, type SystemMessage, type PermissionMessage, type AskUserMessage, type PlanMessage, type LoadingMessage };
+export type {
+  AskUserMessage,
+  AssistantMessage,
+  DisplayMessage,
+  LoadingMessage,
+  PermissionMessage,
+  PlanMessage,
+  SystemMessage,
+  TraceEntry,
+  UserMessage,
+};
 
 export function useEventProcessor() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -833,8 +902,8 @@ export function useEventProcessor() {
           // Process tool results
           for (const block of toolResultBlocks) {
             addToolTraceEntry("result", {
-              content: block.content as string || "",
-              output: block.content as string || "",
+              content: (block.content as string) || "",
+              output: (block.content as string) || "",
               is_error: !!block.is_error,
             });
           }
@@ -860,7 +929,7 @@ export function useEventProcessor() {
         const text = extractEventText(payload as Record<string, unknown>);
         const toolUseBlocks = getEmbeddedToolBlocks(payload, "tool_use");
 
-        if (text && text.trim()) {
+        if (text?.trim()) {
           const result = addAssistantHost(traceStateRef.current, text);
           traceStateRef.current = result.state;
           setMessages((prev) => [
@@ -894,7 +963,10 @@ export function useEventProcessor() {
         addToolTraceEntry("use", payload as Record<string, unknown> as { tool_name: string; tool_input: unknown });
         break;
       case "tool_result":
-        addToolTraceEntry("result", payload as Record<string, unknown> as { content: string; output: string; is_error: boolean });
+        addToolTraceEntry(
+          "result",
+          payload as Record<string, unknown> as { content: string; output: string; is_error: boolean },
+        );
         break;
       case "control_request":
       case "permission_request": {
@@ -908,7 +980,7 @@ export function useEventProcessor() {
               {
                 kind: "ask_user",
                 requestId: payload.request_id || event.id || "",
-                questions: (toolInput as Record<string, unknown>).questions as import("../types").Question[] || [],
+                questions: ((toolInput as Record<string, unknown>).questions as import("../types").Question[]) || [],
                 description: req.description || "",
               },
             ]);
@@ -956,7 +1028,10 @@ export function useEventProcessor() {
         removeLoading();
         setMessages((prev) => [
           ...prev,
-          { kind: "system", content: `Error: ${(typeof payload.message === "string" ? payload.message : "") || payload.content || "Unknown error"}` },
+          {
+            kind: "system",
+            content: `Error: ${(typeof payload.message === "string" ? payload.message : "") || payload.content || "Unknown error"}`,
+          },
         ]);
         break;
       case "session_status":
@@ -979,7 +1054,7 @@ export function useEventProcessor() {
     }
   };
 
-  function processReplayEvent(type: string, payload: EventPayload, direction: string, event: SessionEvent) {
+  function processReplayEvent(type: string, payload: EventPayload, _direction: string, _event: SessionEvent) {
     switch (type) {
       case "user": {
         const text = extractEventText(payload as Record<string, unknown>);
@@ -991,7 +1066,7 @@ export function useEventProcessor() {
       }
       case "assistant": {
         const text = extractEventText(payload as Record<string, unknown>);
-        if (text && text.trim()) {
+        if (text?.trim()) {
           const result = addAssistantHost(traceStateRef.current, text);
           traceStateRef.current = result.state;
           setMessages((prev) => [
@@ -1016,29 +1091,26 @@ export function useEventProcessor() {
     const result = addTraceEntry(traceStateRef.current, entryKind);
     traceStateRef.current = result.state;
 
-    const entry: TraceEntry = entryKind === "use"
-      ? {
-          entryKind: "use",
-          toolName: (payload.tool_name as string) || (payload.name as string) || "tool",
-          toolInput: payload.tool_input || payload.input,
-        }
-      : {
-          entryKind: "result",
-          content: (payload.content as string) || "",
-          output: (payload.output as string) || (payload.content as string) || "",
-          isError: !!payload.is_error,
-        };
+    const entry: TraceEntry =
+      entryKind === "use"
+        ? {
+            entryKind: "use",
+            toolName: (payload.tool_name as string) || (payload.name as string) || "tool",
+            toolInput: payload.tool_input || payload.input,
+          }
+        : {
+            entryKind: "result",
+            content: (payload.content as string) || "",
+            output: (payload.output as string) || (payload.content as string) || "",
+            isError: !!payload.is_error,
+          };
 
     // Add entry to the last assistant message
     setMessages((prev) => {
       for (let i = prev.length - 1; i >= 0; i--) {
         if (prev[i].kind === "assistant") {
           const msg = prev[i] as AssistantMessage;
-          return [
-            ...prev.slice(0, i),
-            { ...msg, traceEntries: [...msg.traceEntries, entry] },
-            ...prev.slice(i + 1),
-          ];
+          return [...prev.slice(0, i), { ...msg, traceEntries: [...msg.traceEntries, entry] }, ...prev.slice(i + 1)];
         }
       }
       return prev;

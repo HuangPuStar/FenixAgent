@@ -1,8 +1,8 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
-  getAutomationStateSnapshot,
-  getAutomationStateEventPayload,
   automationStatesEqual,
+  getAutomationStateEventPayload,
+  getAutomationStateSnapshot,
 } from "../services/automationState";
 import type { AutomationStateResponse } from "../types/api";
 

@@ -1,108 +1,94 @@
-import { Hono } from "hono";
-import type { Next } from "hono";
-import { sessionAuth, uuidAuth, getUuidFromRequest } from "../../auth/middleware";
-import {
-  storeGetSession,
-  storeGetEnvironment,
-  storeListSessionsByUserId,
-} from "../../store";
-import { getEventBus } from "../../transport/event-bus";
-import { resolveExistingWebSessionId, resolveOwnedWebSessionId } from "../../services/session";
+import Elysia from "elysia";
+import { authGuardPlugin } from "../../plugins/auth";
+import { environmentRepo } from "../../repositories";
+import { sessionRepo } from "../../repositories/session";
+import { SessionHistorySchema } from "../../schemas/session.schema";
+import { eventService } from "../../services/event-service";
 
-const app = new Hono();
-
-function toSessionResponse(row: { id: string; environmentId: string | null; title: string | null; status: string; source: string; permissionMode: string | null; workerEpoch: number; username: string | null; createdAt: Date; updatedAt: Date }) {
-  const env = row.environmentId ? storeGetEnvironment(row.environmentId) : null;
-  return {
-    id: row.id,
-    environment_id: row.environmentId,
-    agent_name: env?.agentName ?? null,
-    title: row.title,
-    status: row.status,
-    source: row.source,
-    permission_mode: row.permissionMode,
-    worker_epoch: row.workerEpoch,
-    username: row.username,
-    created_at: row.createdAt.getTime() / 1000,
-    updated_at: row.updatedAt.getTime() / 1000,
-  };
-}
-
-function toSessionSummary(row: { id: string; title: string | null; status: string; username: string | null; updatedAt: Date }) {
-  return {
-    id: row.id,
-    title: row.title,
-    status: row.status,
-    username: row.username,
-    updated_at: row.updatedAt.getTime() / 1000,
-  };
-}
-
-/** GET /web/sessions — List sessions owned by the current user */
-app.get("/sessions", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const sessions = storeListSessionsByUserId(user.id).map(toSessionResponse);
-  return c.json(sessions, 200);
+const app = new Elysia({ name: "web-sessions" }).use(authGuardPlugin).model({
+  "session-history": SessionHistorySchema,
 });
 
-/** GET /web/sessions/all — List session summaries owned by the current user */
-app.get("/sessions/all", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const sessions = storeListSessionsByUserId(user.id).map(toSessionSummary);
-  return c.json(sessions, 200);
-});
+/** GET /web/sessions — List sessions for the current team */
+app.get(
+  "/sessions",
+  async ({ store, request: _request }) => {
+    const authCtx = store.authContext!;
+    // 获取团队所有 environmentId，再过滤 session
+    const teamEnvs = await environmentRepo.listByOrganizationId(authCtx.organizationId);
+    const teamEnvIds = new Set(teamEnvs.map((e) => e.id));
+    const allSessions = await sessionRepo.listAll();
+    const rows = allSessions.filter((s) => s.environmentId && teamEnvIds.has(s.environmentId));
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title ?? null,
+      status: r.status,
+      environment_id: r.environmentId ?? null,
+      agent_name: r.username ?? null,
+      source: r.source ?? null,
+      created_at: Math.floor(r.createdAt.getTime() / 1000),
+      updated_at: Math.floor(r.updatedAt.getTime() / 1000),
+    }));
+  },
+  { sessionAuth: true },
+);
 
-/** GET /web/sessions/:id — Session detail */
-app.get("/sessions/:id", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const sessionId = c.req.param("id")!;
-  const session = storeGetSession(sessionId);
-  if (!session) {
-    return c.json({ error: { type: "not_found", message: "Session not found" } }, 404);
-  }
-  if (session.userId && session.userId !== user.id) {
-    return c.json({ error: { type: "forbidden", message: "Not your session" } }, 403);
-  }
-  return c.json(toSessionResponse(session), 200);
-});
-
-/** GET /web/sessions/:id/history — Session event history
- *  Supports both sessionAuth (cookie) and uuidAuth (?uuid=) */
-app.get("/sessions/:id/history", async (c, next: Next) => {
-  // Try sessionAuth first, fall back to uuidAuth
-  const uuid = getUuidFromRequest(c);
-  if (uuid) {
-    return uuidAuth(c, next);
-  }
-  return sessionAuth(c, next);
-}, async (c) => {
-  const sessionId = c.req.param("id")!;
-
-  // Resolve via uuid ownership or session ownership
-  let resolvedId: string | null = null;
-  const uuid = c.get("uuid");
-  const user = c.get("user");
-
-  if (uuid) {
-    resolvedId = resolveOwnedWebSessionId(sessionId, uuid);
-  } else if (user && user.id) {
-    const session = storeGetSession(sessionId);
-    if (session && (!session.userId || session.userId === user.id)) {
-      resolvedId = sessionId;
+/** GET /web/sessions/:id — Get session detail */
+app.get(
+  "/sessions/:id",
+  async ({ store, params, error, request: _request }) => {
+    const authCtx = store.authContext!;
+    const row = await sessionRepo.getById(params.id);
+    if (!row) {
+      return error(404, { error: { type: "not_found", message: `Session '${params.id}' not found` } });
     }
-  }
+    // 验证 session 的 environment 属于当前团队
+    if (row.environmentId) {
+      const env = await environmentRepo.getById(row.environmentId);
+      if (!env || env.organizationId !== authCtx.organizationId) {
+        return error(404, { error: { type: "not_found", message: `Session '${params.id}' not found` } });
+      }
+    }
+    return {
+      id: row.id,
+      title: row.title ?? null,
+      status: row.status,
+      environment_id: row.environmentId ?? null,
+      agent_name: row.username ?? null,
+      source: row.source ?? null,
+      created_at: Math.floor(row.createdAt.getTime() / 1000),
+      updated_at: Math.floor(row.updatedAt.getTime() / 1000),
+    };
+  },
+  { sessionAuth: true },
+);
 
-  if (!resolvedId) {
-    resolvedId = resolveExistingWebSessionId(sessionId);
-  }
-
-  if (!resolvedId) {
-    return c.json({ error: { type: "not_found", message: "Session not found" } }, 404);
-  }
-
-  const bus = getEventBus(resolvedId);
-  const events = bus.getEventsSince(0);
-  return c.json({ events }, 200);
-});
+/** GET /web/sessions/:id/history — Session event history (EventBus)
+ *  Session 元数据已下沉到 Agent，此处仅保留事件流查询 */
+app.get(
+  "/sessions/:id/history",
+  async ({ store, params, error, request: _request }) => {
+    const authCtx = store.authContext!;
+    const sessionId = params.id;
+    // 验证 session 属于当前团队
+    const row = await sessionRepo.getById(sessionId);
+    if (!row) {
+      return error(404, { error: { type: "not_found", message: "Session not found" } });
+    }
+    if (row.environmentId) {
+      const env = await environmentRepo.getById(row.environmentId);
+      if (!env || env.organizationId !== authCtx.organizationId) {
+        return error(404, { error: { type: "not_found", message: "Session not found" } });
+      }
+    }
+    const bus = eventService.getBus(sessionId);
+    if (!bus) {
+      return error(404, { error: { type: "not_found", message: "Session event bus not found" } });
+    }
+    const events = bus.getEventsSince(0);
+    return { events };
+  },
+  { sessionAuth: true },
+);
 
 export default app;

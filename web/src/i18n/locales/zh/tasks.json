@@ -1,0 +1,106 @@
+{
+  "title": "定时任务",
+  "subtitle": "绑定 Environment，定时执行 Agent 任务。",
+  "newTask": "新建任务",
+  "searchPlaceholder": "搜索任务名称或 Environment",
+  "emptyMessage": "暂无定时任务",
+  "columns": {
+    "name": "名称",
+    "cron": "Cron 表达式",
+    "environment": "Environment",
+    "status": "状态",
+    "lastRun": "上次执行",
+    "nextRun": "下次执行",
+    "lastResult": "最近结果"
+  },
+  "actions": {
+    "edit": "编辑",
+    "logs": "日志",
+    "executeNow": "立即执行",
+    "disable": "禁用",
+    "enable": "启用",
+    "delete": "删除"
+  },
+  "form": {
+    "editTitle": "编辑任务",
+    "createTitle": "新建任务",
+    "name": "名称",
+    "description": "描述",
+    "cronExpression": "Cron 表达式",
+    "quickSelect": "快捷选择",
+    "cronHelp": "格式：分 时 日 月 周（例如：0 9 * * * = 每天早 9 点，*/5 * * * * = 每 5 分钟）",
+    "environment": "Environment",
+    "selectEnvironment": "选择 Environment",
+    "taskContent": "任务内容",
+    "taskPlaceholder": "例如：检查 /workspace 目录下的所有 .ts 文件，找出未使用的 imports 并输出到 report.md。支持自然语言描述复杂任务。",
+    "timeoutMinutes": "超时时间（分钟）",
+    "enabledStatus": "启用状态",
+    "enabledHint": "关闭后定时任务将暂停，但仍可通过\"立即执行\"手动运行。"
+  },
+  "cronPresets": {
+    "every5min": "每 5 分钟",
+    "hourly": "每小时",
+    "daily9am": "每天早 9 点",
+    "weekday9am": "工作日早 9 点",
+    "monthly1st": "每月 1 号"
+  },
+  "validation": {
+    "nameRequired": "任务名称不能为空",
+    "environmentRequired": "请选择 Environment",
+    "taskRequired": "任务内容不能为空",
+    "cronRequired": "cron 表达式不能为空",
+    "cronFormat": "cron 表达式必须为 5 字段（分 时 日 月 周）",
+    "timeoutRange": "timeoutMinutes 必须在 1-180 之间"
+  },
+  "lastResult": {
+    "skipped": "已跳过",
+    "timeout": "超时",
+    "failed": "失败",
+    "success": "成功"
+  },
+  "logs": {
+    "title": "执行历史",
+    "totalRecords": "共 {{count}} 条记录",
+    "pageInfo": "第 {{current}} 页 / 共 {{total}} 页",
+    "prevPage": "上一页",
+    "nextPage": "下一页",
+    "clearLogs": "清空日志",
+    "executionRecords": "执行记录",
+    "scrollHint": "记录过多时可在此区域内滚动查看",
+    "noHistory": "暂无执行历史",
+    "viewDirectory": "查看目录",
+    "runDirectory": "运行目录",
+    "directoryHint": "点击上方「查看目录」加载内容",
+    "noDirectoryContent": "暂无目录内容",
+    "clearTitle": "清空日志",
+    "clearDescription": "确认清空当前任务的执行历史？"
+  },
+  "confirm": {
+    "deleteTitle": "删除任务",
+    "deleteDescription": "确认删除任务「{{name}}」？"
+  },
+  "toast": {
+    "loadTasksFailed": "加载任务失败: {{error}}",
+    "loadEnvsFailed": "加载环境失败: {{error}}",
+    "loadPageFailed": "加载任务页面失败: {{error}}",
+    "loadLogsFailed": "加载执行历史失败: {{error}}",
+    "saveFailed": "保存失败: {{error}}",
+    "taskUpdated": "任务已更新",
+    "taskCreated": "任务已创建",
+    "toggleFailed": "操作失败: {{error}}",
+    "disabled": "已禁用 \"{{name}}\"",
+    "enabled": "已启用 \"{{name}}\"",
+    "triggerFailed": "触发失败: {{error}}",
+    "triggerSuccess": "已触发，状态: {{status}}，耗时: {{duration}}，目录: {{directory}}",
+    "noWorkspacePath": "当前日志没有可查看的 workspacePath",
+    "noEnvSession": "找不到对应的 Environment 会话",
+    "viewDirFailed": "查看目录失败: {{error}}",
+    "deleteFailed": "删除失败: {{error}}",
+    "taskDeleted": "任务已删除",
+    "clearLogsFailed": "清空失败: {{error}}",
+    "logsCleared": "执行历史已清空"
+  },
+  "misc": {
+    "unknown": "未知"
+  }
+}

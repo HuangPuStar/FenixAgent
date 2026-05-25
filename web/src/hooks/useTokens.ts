@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 
 export interface TokenEntry {
   id: string;
@@ -73,34 +73,43 @@ export function useTokens() {
     setActiveTokenIdState(id);
     try {
       localStorage.setItem(ACTIVE_TOKEN_KEY, id);
-	  location.reload(); // Reload to ensure api client picks up new token from localStorage
+      location.reload(); // Reload to ensure api client picks up new token from localStorage
     } catch {
       // ignore
     }
   }, []);
 
-  const addToken = useCallback((token: string, label: string): string | null => {
-    const trimmed = token.trim();
-    if (!trimmed) return "Token is required";
-    const entry: TokenEntry = { id: generateId(), token: trimmed, label: label.trim() || trimmed.slice(0, 8) };
-    const next = [...tokens, entry];
-    persistTokens(next);
-    return null;
-  }, [tokens, persistTokens]);
+  const addToken = useCallback(
+    (token: string, label: string): string | null => {
+      const trimmed = token.trim();
+      if (!trimmed) return "Token is required";
+      const entry: TokenEntry = { id: generateId(), token: trimmed, label: label.trim() || trimmed.slice(0, 8) };
+      const next = [...tokens, entry];
+      persistTokens(next);
+      return null;
+    },
+    [tokens, persistTokens],
+  );
 
-  const removeToken = useCallback((id: string) => {
-    if (id === DEFAULT_ID) return; // Cannot remove default
-    const next = tokens.filter((t) => t.id !== id);
-    persistTokens(next);
-    if (activeTokenId === id) {
-      setActiveTokenId(DEFAULT_ID);
-    }
-  }, [tokens, persistTokens, activeTokenId, setActiveTokenId]);
+  const removeToken = useCallback(
+    (id: string) => {
+      if (id === DEFAULT_ID) return; // Cannot remove default
+      const next = tokens.filter((t) => t.id !== id);
+      persistTokens(next);
+      if (activeTokenId === id) {
+        setActiveTokenId(DEFAULT_ID);
+      }
+    },
+    [tokens, persistTokens, activeTokenId, setActiveTokenId],
+  );
 
-  const updateToken = useCallback((id: string, label: string) => {
-    const next = tokens.map((t) => t.id === id ? { ...t, label } : t);
-    persistTokens(next);
-  }, [tokens, persistTokens]);
+  const updateToken = useCallback(
+    (id: string, label: string) => {
+      const next = tokens.map((t) => (t.id === id ? { ...t, label } : t));
+      persistTokens(next);
+    },
+    [tokens, persistTokens],
+  );
 
   const activeToken = tokens.find((t) => t.id === activeTokenId) ?? tokens[0] ?? null;
   const activeLabel = activeToken?.label ?? "Default";

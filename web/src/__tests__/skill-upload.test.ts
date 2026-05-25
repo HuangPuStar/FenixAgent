@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../lib/skill-upload";
 
 function createUploadFile(path: string, content: string) {
@@ -43,23 +43,27 @@ describe("validateUploadBatch", () => {
   });
 
   test("缺少 SKILL.md 返回错误", () => {
-    expect(validateUploadBatch([
-      { skillName: "broken", fileCount: 1, hasSkillMd: false, files: [] },
-    ])).toBe("以下目录缺少 SKILL.md：broken");
+    expect(validateUploadBatch([{ skillName: "broken", fileCount: 1, hasSkillMd: false, files: [] }])).toBe(
+      "以下目录缺少 SKILL.md：broken",
+    );
   });
 
   test("混合有效和无效目录时允许继续导入有效项", () => {
-    expect(validateUploadBatch([
-      { skillName: "skill-a", fileCount: 1, hasSkillMd: true, files: [] },
-      { skillName: "broken", fileCount: 1, hasSkillMd: false, files: [] },
-    ])).toBeNull();
+    expect(
+      validateUploadBatch([
+        { skillName: "skill-a", fileCount: 1, hasSkillMd: true, files: [] },
+        { skillName: "broken", fileCount: 1, hasSkillMd: false, files: [] },
+      ]),
+    ).toBeNull();
   });
 
   test("重复 skill 名返回错误", () => {
-    expect(validateUploadBatch([
-      { skillName: "skill-a", fileCount: 1, hasSkillMd: true, files: [] },
-      { skillName: "Skill-A", fileCount: 1, hasSkillMd: true, files: [] },
-    ])).toContain("本次上传批次包含重复 skill 名");
+    expect(
+      validateUploadBatch([
+        { skillName: "skill-a", fileCount: 1, hasSkillMd: true, files: [] },
+        { skillName: "Skill-A", fileCount: 1, hasSkillMd: true, files: [] },
+      ]),
+    ).toContain("本次上传批次包含重复 skill 名");
   });
 });
 
@@ -83,9 +87,7 @@ describe("buildSkillUploadFormData", () => {
   });
 
   test("未传策略时不追加 conflictStrategy", () => {
-    const items = parseSkillUploadFiles([
-      createUploadFile("skill-a/SKILL.md", "# A"),
-    ]);
+    const items = parseSkillUploadFiles([createUploadFile("skill-a/SKILL.md", "# A")]);
 
     const formData = buildSkillUploadFormData(items);
     expect(formData.get("conflictStrategy")).toBeNull();
@@ -93,13 +95,21 @@ describe("buildSkillUploadFormData", () => {
 
   test("构建 FormData 时跳过缺少 SKILL.md 的目录", () => {
     const formData = buildSkillUploadFormData([
-      { skillName: "skill-a", fileCount: 1, hasSkillMd: true, files: [{ relativePath: "SKILL.md", file: createUploadFile("skill-a/SKILL.md", "# A") }] },
-      { skillName: "broken", fileCount: 1, hasSkillMd: false, files: [{ relativePath: "readme.md", file: createUploadFile("broken/readme.md", "x") }] },
+      {
+        skillName: "skill-a",
+        fileCount: 1,
+        hasSkillMd: true,
+        files: [{ relativePath: "SKILL.md", file: createUploadFile("skill-a/SKILL.md", "# A") }],
+      },
+      {
+        skillName: "broken",
+        fileCount: 1,
+        hasSkillMd: false,
+        files: [{ relativePath: "readme.md", file: createUploadFile("broken/readme.md", "x") }],
+      },
     ]);
 
-    expect(JSON.parse(String(formData.get("manifest")))).toEqual([
-      { skillName: "skill-a", relativePath: "SKILL.md" },
-    ]);
+    expect(JSON.parse(String(formData.get("manifest")))).toEqual([{ skillName: "skill-a", relativePath: "SKILL.md" }]);
     expect((formData.getAll("files") as File[]).map((file) => file.name)).toEqual(["SKILL.md"]);
   });
 });

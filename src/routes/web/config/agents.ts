@@ -1,343 +1,264 @@
-import { Hono } from "hono";
-import { sessionAuth } from "../../../auth/middleware";
-import { getSection, setTopLevelField, getConfig, modifySection } from "../../../services/config";
+import Elysia from "elysia";
+import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import {
-  InvalidKnowledgeBindingError,
-  listAgentKnowledgeBindings,
-  resolveAgentKnowledgePolicy,
-  syncAgentKnowledgeBindings,
   type AgentKnowledgeConfig,
-  type AgentKnowledgePolicy,
+  InvalidKnowledgeBindingError,
+  listAgentKnowledgeBindingsById,
+  syncAgentKnowledgeBindingsById,
 } from "../../../services/agent-knowledge";
+import {
+  AGENT_SETTABLE_FIELDS,
+  isBuiltInAgent,
+  normalizeKnowledgeConfig,
+  toolsToPermission,
+  validateAgentData,
+} from "../../../services/config/agent-config";
+import * as configPg from "../../../services/config-pg";
+import {
+  configError,
+  configNotFound,
+  configSuccess,
+  configValidationError,
+  isValidResourceName,
+} from "../../../services/config-utils";
 
-const BUILT_IN_AGENTS = new Set(["build", "plan", "general", "explore", "title", "summary", "compaction"]);
-
-// ── Permission 类型定义 ──
-type PermissionAction = "ask" | "allow" | "deny";
-type RuleBasedPermission = PermissionAction | Record<string, PermissionAction>;
-type TogglePermission = PermissionAction;
-
-type PermissionObjectConfig = {
-  read?: RuleBasedPermission;
-  edit?: RuleBasedPermission;
-  glob?: RuleBasedPermission;
-  grep?: RuleBasedPermission;
-  list?: RuleBasedPermission;
-  bash?: RuleBasedPermission;
-  task?: RuleBasedPermission;
-  external_directory?: RuleBasedPermission;
-  lsp?: RuleBasedPermission;
-  skill?: RuleBasedPermission;
-  todowrite?: TogglePermission;
-  question?: TogglePermission;
-  webfetch?: TogglePermission;
-  websearch?: TogglePermission;
-  codesearch?: TogglePermission;
-  doom_loop?: TogglePermission;
-};
-
-type PermissionConfig = PermissionAction | PermissionObjectConfig;
-
-type AgentConfig = Record<string, unknown> & {
-  knowledge?: AgentKnowledgeConfig | null;
-};
-
-const AGENT_SETTABLE_FIELDS = new Set([
-  "model", "prompt", "steps", "mode", "permission",
-  "variant", "temperature", "top_p", "disable", "hidden", "color", "description",
-  "knowledge",
-]);
-
-function isValidAgentName(name: string): boolean {
-  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name)
-      && name.length >= 1 && name.length <= 64
-      && !name.includes("--");
-}
-
-function isValidMode(mode: string): boolean {
-  return ["primary", "subagent", "all"].includes(mode);
-}
-
-function isValidSteps(steps: number): boolean {
-  return Number.isInteger(steps) && steps >= 1 && steps <= 200;
-}
-
-/** 将旧 tools 格式转换为 permission 格式 */
-function toolsToPermission(tools: Record<string, boolean>): PermissionObjectConfig {
-  const result: Record<string, PermissionAction> = {};
-  for (const [key, val] of Object.entries(tools)) {
-    result[key] = val ? "allow" : "deny";
-  }
-  return result as PermissionObjectConfig;
-}
-
-function validateAgentData(data: Record<string, unknown>): string | null {
-  if (data.mode !== undefined && !isValidMode(data.mode as string)) return "INVALID_MODE";
-  if (data.steps !== undefined && !isValidSteps(data.steps as number)) return "INVALID_STEPS";
-  if (data.temperature !== undefined) {
-    const t = data.temperature as number;
-    if (typeof t !== "number" || t < 0 || t > 2) return "INVALID_TEMPERATURE";
-  }
-  if (data.top_p !== undefined) {
-    const p = data.top_p as number;
-    if (typeof p !== "number" || p < 0 || p > 1) return "INVALID_TOP_P";
-  }
-  if (data.color !== undefined) {
-    const c = data.color as string;
-    const PRESET_COLORS = ["primary", "secondary", "accent", "success", "warning", "error", "info"];
-    const isHex = /^#[0-9a-fA-F]{6}$/.test(c);
-    if (typeof c !== "string" || (!isHex && !PRESET_COLORS.includes(c))) return "INVALID_COLOR";
-  }
-  if (data.permission !== undefined && data.permission !== null) {
-    if (typeof data.permission === "string") return "INVALID_PERMISSION";
-    if (typeof data.permission !== "object" || Array.isArray(data.permission)) return "INVALID_PERMISSION";
-  }
-  if (data.knowledge !== undefined) {
-    const error = validateKnowledgeConfig(data.knowledge);
-    if (error) return error;
-  }
-  return null;
-}
-
-function normalizeKnowledgePolicy(value: AgentKnowledgePolicy | null | undefined) {
-  const policy = resolveAgentKnowledgePolicy(value);
+/** 将 PG 行数据映射为前端兼容的 agent 字段 */
+function _pgRowToAgentFields(
+  row: typeof configPg extends { listAgentConfigs: (ctx: AuthContext) => Promise<(infer T)[]> } ? T : never,
+) {
+  const r = row as Record<string, unknown>;
+  // tools → permission 兼容转换：PG 中不再有 tools，但保留接口
+  const permission = (r.permission ?? null) as unknown;
   return {
-    searchFirst: policy.searchFirst,
-    maxResults: policy.maxResults,
-    defaultNamespaces: policy.defaultNamespaces,
+    name: r.name as string,
+    model: (r.model as string) ?? null,
+    mode: (r.mode as string) ?? null,
+    description: (r.description as string) ?? null,
+    color: (r.color as string) ?? null,
+    disable: (r.disable as boolean) ?? false,
+    hidden: (r.hidden as boolean) ?? false,
+    steps: (r.steps as number) ?? null,
+    variant: (r.variant as string) ?? null,
+    temperature: (r.temperature as number) ?? null,
+    top_p: (r.topP as number) ?? null,
+    prompt: (r.prompt as string) ?? null,
+    permission,
+    knowledge: (r.knowledge as unknown) ?? null,
   };
 }
 
-function normalizeKnowledgeConfig(value: unknown): AgentKnowledgeConfig | null {
-  if (value == null) return null;
-  const input = value as AgentKnowledgeConfig;
-  return {
-    knowledgeBaseIds: Array.from(
-      new Set(
-        (Array.isArray(input.knowledgeBaseIds) ? input.knowledgeBaseIds : [])
-          .filter((item): item is string => typeof item === "string")
-          .map((item) => item.trim())
-          .filter(Boolean),
-      ),
-    ),
-    policy: normalizeKnowledgePolicy(input.policy),
-  };
+async function handleList(ctx: AuthContext) {
+  const agents = await configPg.listAgentConfigs(ctx);
+  const uc = await configPg.getUserConfig(ctx);
+  const defaultAgent = uc.defaultAgent ?? null;
+  const list = await Promise.all(
+    agents.map(async (a) => ({
+      id: a.id,
+      name: a.name,
+      builtIn: isBuiltInAgent(a.name),
+      model: a.model ?? null,
+      mode: a.mode ?? null,
+      description: a.description ?? null,
+      color: a.color ?? null,
+      knowledgeBaseCount: (await listAgentKnowledgeBindingsById(a.id)).length,
+      skillIds: await configPg.listAgentSkillIds(a.id),
+    })),
+  );
+  return configSuccess({ default_agent: defaultAgent, agents: list });
 }
 
-function validateKnowledgeConfig(value: unknown): string | null {
-  if (value == null) return null;
-  if (typeof value !== "object") return "INVALID_KNOWLEDGE";
+async function handleGet(ctx: AuthContext, name: string) {
+  const agent = await configPg.getAgentConfig(ctx, name);
+  if (!agent) return configNotFound(`Agent '${name}' not found`);
 
-  const config = value as Record<string, unknown>;
-  if (!Array.isArray(config.knowledgeBaseIds)) {
-    return "INVALID_KNOWLEDGE_BASE_IDS";
-  }
-  if (config.knowledgeBaseIds.some((item) => typeof item !== "string" || item.trim().length === 0)) {
-    return "INVALID_KNOWLEDGE_BASE_IDS";
-  }
-
-  if (config.policy !== undefined && config.policy !== null) {
-    if (typeof config.policy !== "object") {
-      return "INVALID_KNOWLEDGE_POLICY";
-    }
-    const policy = config.policy as Record<string, unknown>;
-    if (policy.searchFirst !== undefined && typeof policy.searchFirst !== "boolean") {
-      return "INVALID_KNOWLEDGE_SEARCH_FIRST";
-    }
-    if (
-      policy.maxResults !== undefined
-      && (!Number.isInteger(policy.maxResults) || (policy.maxResults as number) < 1 || (policy.maxResults as number) > 20)
-    ) {
-      return "INVALID_KNOWLEDGE_MAX_RESULTS";
-    }
-    if (
-      policy.defaultNamespaces !== undefined
-      && (
-        !Array.isArray(policy.defaultNamespaces)
-        || policy.defaultNamespaces.some((item) => typeof item !== "string" || item.trim().length === 0)
-      )
-    ) {
-      return "INVALID_KNOWLEDGE_DEFAULT_NAMESPACES";
-    }
-  }
-
-  return null;
-}
-
-async function handleList() {
-  const agents = (await getSection<Record<string, AgentConfig>>("agent")) ?? {};
-  const config = await getConfig();
-  const defaultAgent = config.default_agent as string | undefined;
-  const list = await Promise.all(Object.entries(agents).map(async ([name, cfg]) => ({
-    name,
-    builtIn: BUILT_IN_AGENTS.has(name),
-    model: cfg.model ?? null,
-    mode: cfg.mode ?? null,
-    description: cfg.description ?? null,
-    color: cfg.color ?? null,
-    knowledgeBaseCount: (await listAgentKnowledgeBindings(name)).length,
-  })));
-  return { success: true, data: { default_agent: defaultAgent ?? null, agents: list } };
-}
-
-async function handleGet(name: string) {
-  const agents = (await getSection<Record<string, AgentConfig>>("agent")) ?? {};
-  const agent = agents[name];
-  if (!agent) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
-
-  // tools → permission 兼容转换：有 tools 无 permission 时自动转换
   let permission = agent.permission ?? null;
-  if (agent.tools && !agent.permission) {
-    const tools = typeof agent.tools === "object" && agent.tools !== null ? agent.tools as Record<string, boolean> : {};
-    permission = toolsToPermission(tools);
+  // tools→permission 兼容：旧数据可能只有 tools 没有 permission
+  const tools = (agent as Record<string, unknown>).tools;
+  if (permission == null && tools && typeof tools === "object" && !Array.isArray(tools)) {
+    permission = toolsToPermission(tools as Record<string, boolean>);
   }
 
-  return {
-    success: true,
-    data: {
-      name,
-      builtIn: BUILT_IN_AGENTS.has(name),
-      model: agent.model ?? null,
-      prompt: agent.prompt ?? null,
-      steps: agent.steps ?? null,
-      mode: agent.mode ?? null,
-      permission,
-      variant: agent.variant ?? null,
-      temperature: agent.temperature ?? null,
-      top_p: agent.top_p ?? null,
-      disable: agent.disable ?? false,
-      hidden: agent.hidden ?? false,
-      color: agent.color ?? null,
-      description: agent.description ?? null,
-      knowledge: normalizeKnowledgeConfig(agent.knowledge ?? null),
-    },
-  };
-}
+  const skillIds = await configPg.listAgentSkillIds(agent.id);
 
-async function handleSet(userId: string, name: string, data: Record<string, unknown>) {
-  const validation = validateAgentData(data);
-  if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
-
-  // 白名单过滤：只写入允许的字段
-  const filtered: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (AGENT_SETTABLE_FIELDS.has(key)) {
-      filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
-    }
-  }
-
-  let notFound = false;
-  await modifySection<Record<string, AgentConfig>>("agent", (agents) => {
-    const current = agents ?? {};
-    if (!current[name]) {
-      notFound = true;
-      return current;
-    }
-    const agent = { ...current[name] };
-    // 写入时清除 tools 字段，始终用 permission
-    delete agent.tools;
-    // 逐字段合并：permission 为 null 时删除 key（清除权限），其余正常覆盖
-    for (const [key, value] of Object.entries(filtered)) {
-      if (key === "permission" && value == null) {
-        delete agent.permission;
-      } else if (key === "knowledge" && value == null) {
-        delete agent.knowledge;
-      } else {
-        agent[key] = value;
-      }
-    }
-    current[name] = agent;
-    return current;
+  return configSuccess({
+    name,
+    builtIn: isBuiltInAgent(name),
+    model: agent.model ?? null,
+    prompt: agent.prompt ?? null,
+    steps: agent.steps ?? null,
+    mode: agent.mode ?? null,
+    permission,
+    variant: agent.variant ?? null,
+    temperature: agent.temperature ?? null,
+    top_p: agent.topP ?? null,
+    disable: agent.disable ?? false,
+    hidden: agent.hidden ?? false,
+    color: agent.color ?? null,
+    description: agent.description ?? null,
+    knowledge: normalizeKnowledgeConfig(agent.knowledge ?? null),
+    skillIds,
   });
-
-  if (notFound) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
-  await syncAgentKnowledgeBindings(userId, name, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
-  return { success: true, data: { name, ...filtered } };
 }
 
-async function handleCreate(userId: string, name: string, data: Record<string, unknown>) {
-  if (!isValidAgentName(name)) {
-    return { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid agent name: must be 1-64 lowercase alphanumeric chars with single hyphens" } };
-  }
+async function handleSet(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   const validation = validateAgentData(data);
-  if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
+  if (validation) return configValidationError(validation);
 
   // 白名单过滤
   const filtered: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
-    if (AGENT_SETTABLE_FIELDS.has(key)) {
+    if (AGENT_SETTABLE_FIELDS.includes(key as (typeof AGENT_SETTABLE_FIELDS)[number])) {
       filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
     }
   }
-  // null permission 不写入配置文件（undefined 同理），避免产生 "permission": null
+
+  // 检查 agent 是否存在
+  const existing = await configPg.getAgentConfig(ctx, name);
+  if (!existing) return configNotFound(`Agent '${name}' not found`);
+
+  // 清除 null 值字段，映射 snake_case → camelCase
+  const updateData: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filtered)) {
+    if (key === "permission" && value == null) {
+      updateData[key] = null;
+    } else if (key === "knowledge" && value == null) {
+      updateData[key] = null;
+    } else if (key === "top_p") {
+      updateData.topP = value;
+    } else {
+      updateData[key] = value;
+    }
+  }
+
+  await configPg.updateAgentConfig(ctx, name, updateData);
+  const updatedAgent = await configPg.getAgentConfig(ctx, name);
+  if (updatedAgent) {
+    await syncAgentKnowledgeBindingsById(
+      ctx.organizationId,
+      updatedAgent.id,
+      filtered.knowledge as AgentKnowledgeConfig | null | undefined,
+    );
+    if (data.skillIds !== undefined) {
+      await configPg.syncAgentSkills(updatedAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
+    }
+  }
+  return configSuccess({ name, ...filtered });
+}
+
+async function handleCreate(ctx: AuthContext, name: string, data: Record<string, unknown>) {
+  if (!isValidResourceName(name)) {
+    return configValidationError("Invalid agent name: must be 1-64 lowercase alphanumeric chars with single hyphens");
+  }
+  const validation = validateAgentData(data);
+  if (validation) return configValidationError(validation);
+
+  // 白名单过滤
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (AGENT_SETTABLE_FIELDS.includes(key as (typeof AGENT_SETTABLE_FIELDS)[number])) {
+      filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
+    }
+  }
   if (filtered.permission == null) delete filtered.permission;
 
-  let alreadyExists = false;
-  await modifySection<Record<string, AgentConfig>>("agent", (agents) => {
-    const current = agents ?? {};
-    if (current[name]) {
-      alreadyExists = true;
-      return current;
+  // 映射 snake_case → camelCase for PG storage
+  const pgData: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filtered)) {
+    if (key === "top_p") {
+      pgData.topP = value;
+    } else {
+      pgData[key] = value;
     }
-    current[name] = filtered;
-    return current;
-  });
-  if (alreadyExists) return { success: false, error: { code: "ALREADY_EXISTS", message: `Agent '${name}' already exists` } };
-  await syncAgentKnowledgeBindings(userId, name, filtered.knowledge as AgentKnowledgeConfig | null | undefined);
-  return { success: true, data: { name } };
-}
-
-async function handleDelete(name: string) {
-  if (BUILT_IN_AGENTS.has(name)) {
-    return { success: false, error: { code: "FORBIDDEN", message: `Cannot delete built-in agent '${name}'` } };
   }
-  let notFound = false;
-  await modifySection<Record<string, Record<string, unknown>>>("agent", (agents) => {
-    const current = agents ?? {};
-    if (!current[name]) {
-      notFound = true;
-      return current;
-    }
-    delete current[name];
-    return current;
-  });
-  if (notFound) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
-  return { success: true };
-}
 
-async function handleSetDefault(name: string) {
-  const agents = (await getSection<Record<string, AgentConfig>>("agent")) ?? {};
-  if (!agents[name]) return { success: false, error: { code: "NOT_FOUND", message: `Agent '${name}' not found` } };
-  await setTopLevelField("default_agent", name);
-  return { success: true, data: { default_agent: name } };
-}
+  // 检查是否已存在
+  const existing = await configPg.getAgentConfig(ctx, name);
+  if (existing) return configError("ALREADY_EXISTS", `Agent '${name}' already exists`);
 
-const app = new Hono();
-
-app.post("/config/agents", sessionAuth, async (c) => {
-  const user = c.get("user")!;
-  const body = await c.req.json<{ action: string; name?: string; data?: Record<string, unknown> }>().catch((): { action: string; name?: string; data?: Record<string, unknown> } => ({ action: "" }));
-  const { action, name, data } = body;
-  try {
-    switch (action) {
-      case "list": return c.json(await handleList());
-      case "get": return c.json(await handleGet(name!));
-      case "set": return c.json(await handleSet(user.id, name!, data!));
-      case "create": return c.json(await handleCreate(user.id, name!, data!));
-      case "delete": return c.json(await handleDelete(name!));
-      case "set_default": return c.json(await handleSetDefault(name!));
-      default: return c.json({ success: false, error: { code: "VALIDATION_ERROR", message: `Unknown action '${action}'` } }, 400);
+  await configPg.createAgentConfig(ctx, name, pgData);
+  const createdAgent = await configPg.getAgentConfig(ctx, name);
+  if (createdAgent) {
+    await syncAgentKnowledgeBindingsById(
+      ctx.organizationId,
+      createdAgent.id,
+      filtered.knowledge as AgentKnowledgeConfig | null | undefined,
+    );
+    if (data.skillIds !== undefined) {
+      await configPg.syncAgentSkills(createdAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
     }
-  } catch (error) {
-    if (
-      error instanceof InvalidKnowledgeBindingError
-      || (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "INVALID_KNOWLEDGE_BINDINGS")
-    ) {
-      const message = error instanceof Error ? error.message : "知识库绑定无效";
-      return c.json({ success: false, error: { code: "INVALID_KNOWLEDGE_BINDINGS", message } }, 400);
-    }
-    throw error;
   }
+  return configSuccess({ name });
+}
+
+async function handleDelete(ctx: AuthContext, name: string) {
+  if (isBuiltInAgent(name)) {
+    return configError("FORBIDDEN", `Cannot delete built-in agent '${name}'`);
+  }
+  const deleted = await configPg.deleteAgentConfig(ctx, name);
+  if (!deleted) return configNotFound(`Agent '${name}' not found`);
+  return configSuccess(null);
+}
+
+async function handleSetDefault(ctx: AuthContext, name: string) {
+  const agent = await configPg.getAgentConfig(ctx, name);
+  if (!agent) return configNotFound(`Agent '${name}' not found`);
+  await configPg.setUserConfig(ctx, { defaultAgent: name });
+  return configSuccess({ default_agent: name });
+}
+
+import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
+
+const app = new Elysia({ name: "web-config-agents" }).use(authGuardPlugin).model({
+  "config-body": ConfigBodySchema,
 });
+
+app.post(
+  "/config/agents",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = (body as ConfigBody) ?? {};
+    const { action, name, data } = {
+      action: b.action ?? "",
+      name: b.name,
+      data: b.data as Record<string, unknown> | undefined,
+    };
+    // get/set/create/delete/set_default 都需要 name
+    if (action !== "list" && !name) {
+      return error(400, configValidationError("Missing 'name' field"));
+    }
+    try {
+      switch (action) {
+        case "list":
+          return await handleList(authCtx);
+        case "get":
+          return await handleGet(authCtx, name!);
+        case "set":
+          return await handleSet(authCtx, name!, data!);
+        case "create":
+          return await handleCreate(authCtx, name!, data!);
+        case "delete":
+          return await handleDelete(authCtx, name!);
+        case "set_default":
+          return await handleSetDefault(authCtx, name!);
+        default:
+          return error(400, configValidationError(`Unknown action '${action}'`));
+      }
+    } catch (error_) {
+      if (
+        error_ instanceof InvalidKnowledgeBindingError ||
+        (typeof error_ === "object" &&
+          error_ !== null &&
+          "code" in error_ &&
+          (error_ as { code?: string }).code === "INVALID_KNOWLEDGE_BINDINGS")
+      ) {
+        const message = error_ instanceof Error ? error_.message : "知识库绑定无效";
+        return error(400, configError("INVALID_KNOWLEDGE_BINDINGS", message));
+      }
+      throw error_;
+    }
+  },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "Agent 配置管理" } },
+);
 
 export default app;

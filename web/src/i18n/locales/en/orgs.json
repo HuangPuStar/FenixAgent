@@ -1,0 +1,75 @@
+{
+  "title": "Organizations",
+  "subtitle": "Manage your organizations and team members",
+  "myOrgs": "My Organizations",
+  "noOrgs": "No organizations yet",
+  "selectOrg": "Select an organization to view details",
+  "roles": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "member": "Member"
+  },
+  "edit": "Edit",
+  "cancel": "Cancel",
+  "save": "Save",
+  "saving": "Saving...",
+  "create": "Create",
+  "creating": "Creating...",
+  "members": "Members ({{count}})",
+  "inviteMember": "Add Member",
+  "noMembers": "No members yet",
+  "table": {
+    "user": "User",
+    "role": "Role",
+    "actions": "Actions"
+  },
+  "dangerZone": {
+    "title": "Danger Zone",
+    "description": "Deleting the organization will also delete all associated resources. This action cannot be undone.",
+    "deleteOrg": "Delete Organization",
+    "cannotDeleteLast": "You cannot delete the last organization. Please create a new one first."
+  },
+  "createDialog": {
+    "title": "Create Organization",
+    "name": "Name",
+    "namePlaceholder": "Organization name",
+    "slug": "Slug",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional"
+  },
+  "inviteDialog": {
+    "title": "Add Member",
+    "email": "Email",
+    "emailPlaceholder": "Enter email address",
+    "role": "Role",
+    "invite": "Add",
+    "inviting": "Adding..."
+  },
+  "deleteDialog": {
+    "title": "Confirm Delete Organization",
+    "description": "You are about to delete organization \"{{name}}\". All associated resources will be permanently deleted. This action cannot be undone.",
+    "confirmDelete": "Confirm Delete",
+    "deleting": "Deleting..."
+  },
+  "editName": {
+    "placeholder": "Organization name"
+  },
+  "toast": {
+    "loadDetailFailed": "Failed to load organization details",
+    "createSuccess": "Organization created",
+    "createFailed": "Failed to create organization",
+    "updateSuccess": "Organization info updated",
+    "updateFailed": "Update failed",
+    "inviteSent": "Member added",
+    "inviteFailed": "Failed to add member",
+    "removeSuccess": "Member removed",
+    "removeFailed": "Failed to remove member",
+    "roleUpdated": "Role updated",
+    "roleUpdateFailed": "Failed to update role",
+    "deleteSuccess": "Organization deleted",
+    "deleteFailed": "Failed to delete organization"
+  },
+  "error": {
+    "operationFailed": "Operation failed"
+  }
+}

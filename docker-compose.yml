@@ -1,4 +1,25 @@
+# 开发环境 — 只启动周围基础设施，本地用 bun run dev 跑 RCS
+# Usage: docker compose up
+
 services:
+    postgres:
+        image: postgres:16-alpine
+        container_name: mothership-postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: rcs
+            POSTGRES_PASSWORD: rcs
+            POSTGRES_DB: rcs
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U rcs"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+
     openviking:
         image: ghcr.io/volcengine/openviking:v0.3.14
         container_name: mothership-openviking
@@ -12,66 +33,67 @@ services:
             - ./deploy/openviking/ov.conf:/app/.openviking/ov.conf
             - openviking-data:/app/data
         healthcheck:
-            test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:1933/health || exit 1"]
+            test:
+                [
+                    "CMD-SHELL",
+                    "curl -fsS http://127.0.0.1:1933/health || exit 1",
+                ]
             interval: 30s
             timeout: 5s
             retries: 5
             start_period: 20s
 
-    rcs:
-        # image: rcs:latest
-        build:
-            context: .
-            dockerfile: Dockerfile
-        container_name: mothership-beta
+    rustfs:
+        image: rustfs/rustfs:latest
+        container_name: mothership-rustfs
         restart: unless-stopped
         ports:
-            - "3001:3000"
+            - "9000:9000"
+            - "9001:9001"
         environment:
-            RCS_HOST: 0.0.0.0
-            RCS_PORT: 3000
-            RCS_BASE_URL: http://localhost:3000
-            RCS_API_KEYS: 8198625e-f6e0-4402-a278-b1910408c160
-            # RCS server database path inside the container.
-            RCS_DB_PATH: /app/data/rcs.db
-            ACPX_G_URL: http://localhost:8848
-            RCS_KNOWLEDGE_PROVIDER: ${RCS_KNOWLEDGE_PROVIDER:-}
-            RCS_KNOWLEDGE_BASE_URL: ${RCS_KNOWLEDGE_BASE_URL:-}
-            RCS_KNOWLEDGE_API_KEY: ${RCS_KNOWLEDGE_API_KEY:-}
-            OPENCODE_DISABLE_AUTOUPDATE: "1"
-            OPENCODE_DISABLE_TELEMETRY: "1"
+            RUSTFS_VOLUMES: /data/rustfs{0..1}
+            RUSTFS_ADDRESS: 0.0.0.0:9000
+            RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+            RUSTFS_CONSOLE_ENABLE: "true"
+            RUSTFS_ACCESS_KEY: rustfsadmin
+            RUSTFS_SECRET_KEY: rustfsadmin@123
+            RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
         volumes:
-            # SQLite 数据库及其他 RCS 运行时数据
-            - rcs-data:/app/data
-            # OpenCode 全局配置：直接注入宿主机配置文件
-            - ~/.config/opencode/opencode.json:/root/.config/opencode/opencode.json
-            # Skill 技能目录：直接注入宿主机 skills
-            - ~/.agents/skills:/root/.agents/skills
-            # OpenCode 运行时状态，如认证/会话缓存，位于 ~/.local/share/opencode
-            - rcs-opencode-data:/root/.local/share/opencode
-            # Agent 工作目录，环境的 workspacePath 应指向 /workspaces 下的路径
-            - rcs-workspaces:/workspaces
-            # acpx-g workflow 模板文件，宿主机修改后容器内即时生效
-            - ./workflow:/app/workflow
+            - rustfs-data:/data
+        depends_on:
+            rustfs-setup:
+                condition: service_completed_successfully
         healthcheck:
-            test:
-                [
-                    "CMD",
-                    "bun",
-                    "-e",
-                    "fetch('http://127.0.0.1:3000/health').then((r) => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))",
-                ]
-            interval: 30s
+            test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/health"]
+            interval: 15s
             timeout: 5s
             retries: 3
-            start_period: 20s
+            start_period: 10s
+
+    rustfs-setup:
+        image: alpine:latest
+        container_name: mothership-rustfs-setup
+        user: root
+        volumes:
+            - rustfs-data:/data
+        command: chown -R 10001:10001 /data
+
+    rustfs-init:
+        image: minio/mc:latest
+        container_name: mothership-rustfs-init
+        depends_on:
+            rustfs:
+                condition: service_healthy
+        entrypoint: >
+          /bin/sh -c "
+            mc alias set rustfs http://rustfs:9000 rustfsadmin rustfsadmin@123 &&
+            mc mb --ignore-existing rustfs/rcs-sessions &&
+            mc mb --ignore-existing rustfs/rcs-assets &&
+            mc admin config set rustfs api cors_allow_origin='*' &&
+              echo 'Buckets created, CORS configured.'
+          "
 
 volumes:
-    # RCS SQLite 持久化数据
-    rcs-data:
-    # OpenCode 认证/缓存/状态持久化
-    rcs-opencode-data:
-    # 容器内 Agent 工作空间持久化
-    rcs-workspaces:
-    # OpenViking 数据持久化
+    postgres-data:
     openviking-data:
+    rustfs-data:

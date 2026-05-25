@@ -1,22 +1,17 @@
 import type { SetStateAction } from "react";
 import { v4 as uuidv4 } from "uuid";
-import {
-  apiFetchSession,
-  apiFetchSessionHistory,
-  apiSendEvent,
-  apiSendControl,
-  apiInterrupt,
-} from "../api/client";
-import type { SessionEvent, EventPayload } from "../types";
+import { getUuid } from "@/src/api/helpers";
+import { controlApi, sessionApi } from "@/src/api/sdk";
+import type { EventPayload, SessionEvent } from "../types";
 import type {
+  AssistantMessageEntry,
+  PendingPermission,
   ThreadEntry,
   ToolCallData,
+  ToolCallEntry,
   ToolCallStatus,
   UserMessageEntry,
-  AssistantMessageEntry,
-  ToolCallEntry,
   UserMessageImage,
-  PendingPermission,
 } from "./types";
 
 // SSE Event Bus — 复用自 rcs-transport.ts，仅保留连接管理
@@ -34,7 +29,10 @@ class SSEBus {
   connect(sessionId: string): void {
     this.disconnect();
     const uuid = getUuid();
-    const url = `/web/sessions/${sessionId}/events?uuid=${encodeURIComponent(uuid)}`;
+    const activeOrgId = localStorage.getItem("active_org_id");
+    const params = new URLSearchParams({ uuid: uuid });
+    if (activeOrgId) params.set("activeOrganizationId", activeOrgId);
+    const url = `/web/sessions/${sessionId}/events?${params}`;
     const es = new EventSource(url);
     this.eventSource = es;
 
@@ -65,7 +63,7 @@ export const sseBus = new SSEBus();
 // RCS Chat Adapter — 将 SSE 事件转为 ThreadEntry
 // =============================================================================
 
-function mapToolStatus(status: string): ToolCallStatus {
+function _mapToolStatus(status: string): ToolCallStatus {
   if (status === "completed") return "complete";
   if (status === "failed") return "error";
   return "running";
@@ -97,15 +95,11 @@ function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function normalizeToolName(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : null;
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
 function stableStringify(value: unknown): string {
@@ -130,18 +124,14 @@ export function normalizeRcsToolCall(
     return { title, rawInput: input, wrappedByRcs: false };
   }
 
-  const nestedTitle = normalizeToolName(input.tool_name)
-    ?? normalizeToolName(input.name)
-    ?? normalizeToolName(input.tool);
+  const nestedTitle =
+    normalizeToolName(input.tool_name) ?? normalizeToolName(input.name) ?? normalizeToolName(input.tool);
   if (!nestedTitle) {
     return { title, rawInput: input, wrappedByRcs: false };
   }
 
-  const nestedInput = asRecord(input.tool_input)
-    ?? asRecord(input.input)
-    ?? asRecord(input.arguments)
-    ?? asRecord(input.args)
-    ?? input;
+  const nestedInput =
+    asRecord(input.tool_input) ?? asRecord(input.input) ?? asRecord(input.arguments) ?? asRecord(input.args) ?? input;
 
   return {
     title: nestedTitle,
@@ -150,11 +140,7 @@ export function normalizeRcsToolCall(
   };
 }
 
-function findToolCallBySignature(
-  entries: ThreadEntry[],
-  title: string,
-  rawInput: Record<string, unknown>,
-): number {
+function findToolCallBySignature(entries: ThreadEntry[], title: string, rawInput: Record<string, unknown>): number {
   const signature = `${title}::${stableStringify(rawInput)}`;
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
@@ -204,7 +190,9 @@ export class RCSChatAdapter {
 
   /** 加载历史事件并转为 ThreadEntry */
   async loadHistory(): Promise<void> {
-    const { events } = await apiFetchSessionHistory(this.sessionId);
+    const { data: historyData, error: histErr } = await sessionApi.history({ id: this.sessionId });
+    if (histErr) throw new Error(histErr.message);
+    const events = historyData?.events;
     if (!events || events.length === 0) return;
 
     this.toolCallAliases.clear();
@@ -237,7 +225,7 @@ export class RCSChatAdapter {
         const text = extractEventText(payload);
         const toolParts: ThreadEntry[] = [];
 
-        const msg = payload.message as Record<string, unknown> | undefined;
+        const msg = (payload as Record<string, unknown>).message as Record<string, unknown> | undefined;
         if (msg && typeof msg === "object" && Array.isArray(msg.content)) {
           for (const block of msg.content as Array<Record<string, unknown>>) {
             if (block.type === "tool_use") {
@@ -279,11 +267,7 @@ export class RCSChatAdapter {
           (p.tool_name as string) || "tool",
           (p.tool_input as Record<string, unknown>) || {},
         );
-        const duplicateIndex = findToolCallBySignature(
-          historyEntries,
-          normalized.title,
-          normalized.rawInput,
-        );
+        const duplicateIndex = findToolCallBySignature(historyEntries, normalized.title, normalized.rawInput);
         if (duplicateIndex >= 0 && normalized.wrappedByRcs) {
           const duplicateEntry = historyEntries[duplicateIndex];
           if (duplicateEntry?.type === "tool_call") {
@@ -360,7 +344,10 @@ export class RCSChatAdapter {
             if (lastChunk?.type === "message") {
               return [
                 ...prev.slice(0, -1),
-                { ...lastEntry, chunks: [...lastEntry.chunks.slice(0, -1), { type: "message", text: lastChunk.text + content }] },
+                {
+                  ...lastEntry,
+                  chunks: [...lastEntry.chunks.slice(0, -1), { type: "message", text: lastChunk.text + content }],
+                },
               ];
             }
             return [
@@ -370,7 +357,7 @@ export class RCSChatAdapter {
           }
 
           // Create new AssistantMessage
-          if (content && content.trim()) {
+          if (content?.trim()) {
             const newEntry: AssistantMessageEntry = {
               type: "assistant_message",
               id: `assistant-${Date.now()}`,
@@ -430,13 +417,13 @@ export class RCSChatAdapter {
             return prev.map((entry, index) =>
               index === existingIndex && entry.type === "tool_call"
                 ? {
-                  type: "tool_call",
-                  toolCall: {
-                    ...entry.toolCall,
-                    status: "running",
-                    rawInput: normalized.rawInput,
-                  },
-                }
+                    type: "tool_call",
+                    toolCall: {
+                      ...entry.toolCall,
+                      status: "running",
+                      rawInput: normalized.rawInput,
+                    },
+                  }
                 : entry,
             );
           }
@@ -466,7 +453,14 @@ export class RCSChatAdapter {
           const entry = prev[idx] as ToolCallEntry;
           return prev.map((e, i) =>
             i === idx
-              ? { type: "tool_call", toolCall: { ...entry.toolCall, status: "complete" as ToolCallStatus, rawOutput: { output: p.content || p.output || "" } } }
+              ? {
+                  type: "tool_call",
+                  toolCall: {
+                    ...entry.toolCall,
+                    status: "complete" as ToolCallStatus,
+                    rawOutput: { output: p.content || p.output || "" },
+                  },
+                }
               : e,
           );
         });
@@ -493,7 +487,14 @@ export class RCSChatAdapter {
               if (entry.toolCall.status === "running") {
                 return prev.map((e, i) =>
                   i === realIdx
-                    ? { type: "tool_call", toolCall: { ...entry.toolCall, status: "waiting_for_confirmation" as ToolCallStatus, permissionRequest: { requestId, options: [] } } }
+                    ? {
+                        type: "tool_call",
+                        toolCall: {
+                          ...entry.toolCall,
+                          status: "waiting_for_confirmation" as ToolCallStatus,
+                          permissionRequest: { requestId, options: [] },
+                        },
+                      }
                     : e,
                 );
               }
@@ -555,22 +556,28 @@ export class RCSChatAdapter {
     this.setEntries((prev) => [...prev, userEntry]);
 
     // Send to backend
-    await apiSendEvent(this.sessionId, {
-      type: "user",
-      uuid: uuidv4(),
-      content: text,
-      message: { content: text },
-    });
+    await controlApi.sendEvent(
+      { id: this.sessionId },
+      {
+        type: "user",
+        uuid: uuidv4(),
+        content: text,
+        message: { content: text },
+      },
+    );
   }
 
   /** 响应权限请求 */
   async respondPermission(requestId: string, approved: boolean, extra?: Record<string, unknown>): Promise<void> {
-    await apiSendControl(this.sessionId, {
-      type: "permission_response",
-      approved,
-      request_id: requestId,
-      ...extra,
-    });
+    await controlApi.control(
+      { id: this.sessionId },
+      {
+        type: "permission_response",
+        approved,
+        request_id: requestId,
+        ...extra,
+      },
+    );
 
     // Update tool call status
     this.setEntries((prev) =>
@@ -603,6 +610,11 @@ export class RCSChatAdapter {
       }),
     );
 
-    await apiInterrupt(this.sessionId);
+    await controlApi.control(
+      { id: this.sessionId },
+      {
+        type: "interrupt",
+      },
+    );
   }
 }

@@ -1,12 +1,26 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { buildModelOptions } from "@/components/config/ModelConfigDialog";
 import type { ModelEntry } from "../types/config";
 
 describe("buildModelOptions", () => {
   test("maps available models to value/label pairs", () => {
     const available: ModelEntry[] = [
-      { id: "gpt-4", provider: "openai", label: "GPT-4", fullId: "openai/gpt-4" },
-      { id: "claude-3", provider: "anthropic", label: "Claude 3", fullId: "anthropic/claude-3" },
+      {
+        id: "gpt-4",
+        provider: "openai",
+        label: "GPT-4",
+        fullId: "openai/gpt-4",
+        contextLimit: null,
+        outputLimit: null,
+      },
+      {
+        id: "claude-3",
+        provider: "anthropic",
+        label: "Claude 3",
+        fullId: "anthropic/claude-3",
+        contextLimit: null,
+        outputLimit: null,
+      },
     ];
     const result = buildModelOptions(available);
     expect(result).toEqual([
@@ -21,9 +35,7 @@ describe("buildModelOptions", () => {
   });
 
   test("handles null/undefined fields gracefully", () => {
-    const available = [
-      { id: "test", provider: "p", label: "Test", fullId: "p/test" },
-    ] as ModelEntry[];
+    const available = [{ id: "test", provider: "p", label: "Test", fullId: "p/test" }] as ModelEntry[];
     const result = buildModelOptions(available);
     expect(result).toEqual([{ value: "p/test", label: "Test (p)" }]);
   });

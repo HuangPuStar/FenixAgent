@@ -1,9 +1,8 @@
-export { DataTable } from "./DataTable";
-export type { Column, DataTableProps } from "./DataTable";
-export { filterData, sortData, paginateData } from "./DataTable";
-export { ConfirmDialog } from "./ConfirmDialog";
-export { FormDialog } from "./FormDialog";
-export type { FormDialogFormConfig } from "./FormDialog";
 export { BatchActionBar } from "./BatchActionBar";
-export { StatusBadge, getBadgeVariant } from "./StatusBadge";
+export { ConfirmDialog } from "./ConfirmDialog";
+export type { Column, DataTableProps } from "./DataTable";
+export { DataTable, filterData, paginateData, sortData } from "./DataTable";
 export { EmptyState } from "./EmptyState";
+export type { FormDialogFormConfig } from "./FormDialog";
+export { FormDialog } from "./FormDialog";
+export { getBadgeVariant, StatusBadge } from "./StatusBadge";

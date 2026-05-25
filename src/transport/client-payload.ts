@@ -6,8 +6,7 @@ import type { SessionEvent } from "./event-bus";
  */
 export function toClientPayload(event: SessionEvent): Record<string, unknown> {
   const payload = event.payload as Record<string, unknown> | null;
-  const messageUuid =
-    typeof payload?.uuid === "string" && payload.uuid ? payload.uuid : event.id;
+  const messageUuid = typeof payload?.uuid === "string" && payload.uuid ? payload.uuid : event.id;
 
   if (event.type === "user" || event.type === "user_message") {
     return {

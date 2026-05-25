@@ -1,0 +1,47 @@
+{
+  "title": "消息渠道",
+  "newBinding": "新建绑定",
+  "loadBindingsFailed": "加载绑定列表失败",
+  "updateBindingFailed": "更新绑定状态失败",
+  "deleteBindingFailed": "删除绑定失败",
+  "bindingDeleted": "绑定已删除",
+  "selectPlatformAndAgent": "请选择平台和 Agent",
+  "createBindingFailed": "创建绑定失败",
+  "unknownError": "未知错误",
+  "bindingCreated": "绑定创建成功",
+  "hermes": {
+    "title": "Hermes Gateway",
+    "connected": "已连接",
+    "reconnecting": "重连中",
+    "notConfigured": "未配置",
+    "address": "地址",
+    "platforms": "平台",
+    "lastConnected": "最后连接"
+  },
+  "columns": {
+    "platform": "平台",
+    "chatId": "聊天 ID",
+    "all": "全部",
+    "agent": "Agent",
+    "enabled": "启用"
+  },
+  "table": {
+    "searchPlaceholder": "搜索绑定...",
+    "emptyMessage": "暂无绑定"
+  },
+  "actions": {
+    "delete": "删除"
+  },
+  "dialog": {
+    "title": "新建通道绑定",
+    "platform": "平台",
+    "platformPlaceholder": "选择平台",
+    "chatId": "聊天 ID（可选，留空匹配全部）",
+    "chatIdPlaceholder": "如 oc_xxx，留空表示匹配该平台所有消息",
+    "agent": "Agent",
+    "agentPlaceholder": "选择 Agent",
+    "cancel": "取消",
+    "create": "创建",
+    "creating": "创建中..."
+  }
+}

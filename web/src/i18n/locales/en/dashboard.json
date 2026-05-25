@@ -1,0 +1,57 @@
+{
+  "title": "Dashboard",
+  "subtitle": "Real-time monitoring of AI Agent control panel",
+  "loading": "Loading dashboard...",
+  "system_running": "System Running",
+  "stat_cards": {
+    "agents": "Agents",
+    "sessions": "Sessions",
+    "models": "Models",
+    "availability": "Availability",
+    "tasks": "Scheduled Tasks",
+    "trend_active": "{{count}} Active",
+    "trend_in_progress": "{{count}} In Progress",
+    "trend_configured": "Configured",
+    "trend_healthy": "Healthy",
+    "trend_enabled": "{{count}} Enabled"
+  },
+  "topology": {
+    "title": "Agent Topology",
+    "online": "Online",
+    "offline": "Offline",
+    "more": "+{{count}} more",
+    "status_running": "Running",
+    "status_idle": "Idle",
+    "status_error": "Error",
+    "status_offline": "Offline",
+    "empty": "No agents yet — go to the Agents page to create one"
+  },
+  "health": {
+    "title": "System Health",
+    "agents_online": "Agents Online",
+    "sessions_active": "Sessions Active",
+    "config_enabled": "Config Enabled Rate"
+  },
+  "recent": {
+    "title": "Recent Activity",
+    "quick_stats": "Quick Stats",
+    "no_activity": "No recent activity",
+    "no_startup": "System just started, no activity yet"
+  },
+  "quick_stats": {
+    "agent_config": "Agent Config",
+    "skills": "Skills",
+    "mcp_servers": "MCP Servers",
+    "session_archive": "Session Archive",
+    "scheduled_tasks": "Scheduled Tasks"
+  },
+  "timeline": {
+    "agents_active": "{{count}} agents active",
+    "sessions_in_progress": "{{count}} sessions in progress",
+    "tasks_registered": "{{count}} scheduled tasks registered",
+    "models_available": "{{count}} models available",
+    "time_now": "Now",
+    "time_system": "System",
+    "time_config": "Config"
+  }
+}

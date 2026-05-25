@@ -64,7 +64,9 @@ function inferSnippet(item: Record<string, unknown>): string {
 }
 
 function normalizeSearchItems(
-  result: Array<Record<string, unknown>> | { items?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> },
+  result:
+    | Array<Record<string, unknown>>
+    | { items?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> },
 ): Array<Record<string, unknown>> {
   if (Array.isArray(result)) {
     return result;
@@ -96,9 +98,7 @@ async function requestJson<T>(
       signal: controller.signal,
     });
     const contentType = response.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json")
-      ? await response.json()
-      : await response.text();
+    const payload = contentType.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) {
       throw normalizeProviderError(payload, response.status);
     }
@@ -118,7 +118,9 @@ function normalizeProviderError(payload: unknown, status?: number): Error {
     const record = payload as Record<string, unknown>;
     const message =
       (typeof record.message === "string" && record.message) ||
-      (record.error && typeof record.error === "object" && typeof (record.error as Record<string, unknown>).message === "string"
+      (record.error &&
+      typeof record.error === "object" &&
+      typeof (record.error as Record<string, unknown>).message === "string"
         ? ((record.error as Record<string, unknown>).message as string)
         : "");
     if (message) {
@@ -228,7 +230,7 @@ export class OpenVikingKnowledgeProvider implements KnowledgeProvider {
         inferKnowledgeBaseRemoteId(remoteId),
       sourceName: String(result.sourceName ?? input.sourceName ?? input.url ?? input.filePath ?? "resource"),
       sourceType: String(result.sourceType ?? (input.url ? "url" : "upload")),
-      source: typeof result.source_path === "string" ? result.source_path : input.url ?? input.filePath ?? null,
+      source: typeof result.source_path === "string" ? result.source_path : (input.url ?? input.filePath ?? null),
       status: normalizeStatus(result.status ?? "processing", "resource"),
       lastError: Array.isArray(result.errors) && result.errors.length > 0 ? String(result.errors[0]) : null,
     };
@@ -244,22 +246,22 @@ export class OpenVikingKnowledgeProvider implements KnowledgeProvider {
       user: input.remoteUserId,
     };
     const payload = await requestJson<
-      Array<Record<string, unknown>> | { items?: Array<Record<string, unknown>> } | { result?: Array<Record<string, unknown>> }
-    >(
-      `/api/v1/fs/ls?uri=${encodeURIComponent(input.knowledgeBaseRemoteId)}&recursive=true`,
-      undefined,
-      identity,
-    );
+      | Array<Record<string, unknown>>
+      | { items?: Array<Record<string, unknown>> }
+      | { result?: Array<Record<string, unknown>> }
+    >(`/api/v1/fs/ls?uri=${encodeURIComponent(input.knowledgeBaseRemoteId)}&recursive=true`, undefined, identity);
     const result = extractResult<Array<Record<string, unknown>> | { items?: Array<Record<string, unknown>> }>(payload);
-    const items = Array.isArray(result) ? result : result.items ?? [];
-    return items.map((item) => ({
-      remoteId: String(item.uri ?? item.remoteId ?? item.id ?? ""),
-      sourceName: String(item.name ?? item.sourceName ?? inferTitleFromUri(String(item.uri ?? "resource"))),
-      sourceType: item.isDir ? "directory" : "resource",
-      source: typeof item.uri === "string" ? item.uri : null,
-      status: RESOURCE_STATUS_READY,
-      lastError: null,
-    })).filter((item) => item.remoteId.length > 0);
+    const items = Array.isArray(result) ? result : (result.items ?? []);
+    return items
+      .map((item) => ({
+        remoteId: String(item.uri ?? item.remoteId ?? item.id ?? ""),
+        sourceName: String(item.name ?? item.sourceName ?? inferTitleFromUri(String(item.uri ?? "resource"))),
+        sourceType: item.isDir ? "directory" : "resource",
+        source: typeof item.uri === "string" ? item.uri : null,
+        status: RESOURCE_STATUS_READY,
+        lastError: null,
+      }))
+      .filter((item) => item.remoteId.length > 0);
   }
 
   async deleteResource(input: {
@@ -294,42 +296,49 @@ export class OpenVikingKnowledgeProvider implements KnowledgeProvider {
     query: string;
     topK: number;
   }): Promise<KnowledgeSearchResult[]> {
-    const nestedResults = await Promise.all(input.knowledgeBases.map(async (knowledgeBase) => {
-      const targetUri = knowledgeBase.remoteId;
-      const identity = {
-        account: knowledgeBase.remoteAccountId,
-        user: knowledgeBase.remoteUserId,
-      };
-      const payload = await requestJson<
-        | Array<Record<string, unknown>>
-        | { items?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> }
-        | { result?: Array<Record<string, unknown>> | { items?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> } }
-      >(
-        "/api/v1/search/search",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: input.query,
-            limit: input.topK,
-            target_uri: targetUri,
-          }),
-        },
-        identity,
-      );
-      const result = extractResult<
-        Array<Record<string, unknown>> | { items?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> }
-      >(payload);
-      const items = normalizeSearchItems(result);
-      return items.map((item) => ({
-        title: String(item.title ?? item.name ?? inferTitleFromUri(String(item.uri ?? targetUri))),
-        snippet: inferSnippet(item),
-        source: String(item.source ?? item.uri ?? targetUri),
-        score: Number(item.score ?? item.distance ?? 0),
-        knowledgeBaseId: targetUri,
-        resourceId: item.resourceId ? String(item.resourceId) : (item.uri ? String(item.uri) : null),
-      }));
-    }));
+    const nestedResults = await Promise.all(
+      input.knowledgeBases.map(async (knowledgeBase) => {
+        const targetUri = knowledgeBase.remoteId;
+        const identity = {
+          account: knowledgeBase.remoteAccountId,
+          user: knowledgeBase.remoteUserId,
+        };
+        const payload = await requestJson<
+          | Array<Record<string, unknown>>
+          | { items?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> }
+          | {
+              result?:
+                | Array<Record<string, unknown>>
+                | { items?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> };
+            }
+        >(
+          "/api/v1/search/search",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: input.query,
+              limit: input.topK,
+              target_uri: targetUri,
+            }),
+          },
+          identity,
+        );
+        const result = extractResult<
+          | Array<Record<string, unknown>>
+          | { items?: Array<Record<string, unknown>>; resources?: Array<Record<string, unknown>> }
+        >(payload);
+        const items = normalizeSearchItems(result);
+        return items.map((item) => ({
+          title: String(item.title ?? item.name ?? inferTitleFromUri(String(item.uri ?? targetUri))),
+          snippet: inferSnippet(item),
+          source: String(item.source ?? item.uri ?? targetUri),
+          score: Number(item.score ?? item.distance ?? 0),
+          knowledgeBaseId: targetUri,
+          resourceId: item.resourceId ? String(item.resourceId) : item.uri ? String(item.uri) : null,
+        }));
+      }),
+    );
 
     return nestedResults
       .flat()

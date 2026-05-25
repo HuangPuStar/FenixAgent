@@ -1,0 +1,52 @@
+{
+  "loading": "加载中...",
+  "save": "保存",
+  "cancel": "取消",
+  "delete": "删除",
+  "confirm": "确认",
+  "edit": "编辑",
+  "create": "创建",
+  "close": "关闭",
+  "search": "搜索",
+  "submit": "提交",
+  "enable": "启用",
+  "disable": "禁用",
+  "connecting": "正在连接控制面板...",
+  "not_found": "页面未找到",
+  "back_home": "返回首页",
+  "status": {
+    "active": "活跃",
+    "running": "运行中",
+    "idle": "空闲",
+    "inactive": "离线",
+    "offline": "离线",
+    "error": "错误",
+    "online": "在线",
+    "requires_action": "待操作",
+    "archived": "已归档",
+    "disconnected": "已断开"
+  },
+  "theme": {
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
+  },
+  "language": {
+    "switch": "语言",
+    "en": "English",
+    "zh": "中文"
+  },
+  "errors": {
+    "unknown": "未知错误",
+    "network": "网络错误，请重试",
+    "forbidden": "无权访问",
+    "not_found": "资源未找到",
+    "unauthorized": "请先登录"
+  },
+  "time": {
+    "just_now": "刚刚",
+    "minutes_ago": "{{count}} 分钟前",
+    "hours_ago": "{{count}} 小时前",
+    "days_ago": "{{count}} 天前"
+  }
+}

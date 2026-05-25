@@ -1,0 +1,74 @@
+{
+  "retry": "Retry",
+  "backToDashboard": "Back to dashboard",
+  "back": "Back",
+  "loadingSession": "Loading session...",
+  "started": "Started {{time}}",
+  "session": "Session",
+  "environment": "Environment",
+  "startConversation": "Start a conversation",
+  "startConversationDesc": "Type a message to start chatting · Supports pasting images or @ to reference files",
+  "sessionLoadFailed": "Session failed to load",
+  "sessionClosed": "Session closed",
+  "inputMessage": "Type a message...",
+  "authExpired": "Session expired, please log in again",
+  "connectingAgent": "Connecting to Agent...",
+  "agentNotConnected": "Agent not connected",
+  "agentOffline": "The Agent is not online. Make sure acp-link is started and connected to the server",
+  "status": {
+    "running": "Running",
+    "active": "Active",
+    "idle": "Idle",
+    "error": "Error"
+  },
+  "stats": {
+    "model": "Model",
+    "tokens": "Tokens",
+    "tools": "Tools",
+    "duration": "Duration"
+  },
+  "trace": {
+    "toolCall_one": "{{count}} tool call",
+    "toolCall_other": "{{count}} tool calls",
+    "error": "Error",
+    "result": "Result",
+    "tool": "tool"
+  },
+  "permission": {
+    "title": "Permission Request",
+    "approve": "Approve",
+    "reject": "Reject"
+  },
+  "askUser": {
+    "question": "Question",
+    "questions": "Questions",
+    "otherPlaceholder": "Other...",
+    "send": "Send",
+    "submit": "Submit",
+    "skip": "Skip",
+    "submitAll": "Submit All"
+  },
+  "plan": {
+    "exitPlanMode": "Exit plan mode?",
+    "readyToCode": "Ready to code?",
+    "yes": "Yes",
+    "no": "No",
+    "yesAcceptEdits": "Yes, auto-accept edits",
+    "yesAcceptEditsDesc": "Approve plan and auto-accept file edits",
+    "yesManualApprove": "Yes, manually approve edits",
+    "yesManualApproveDesc": "Approve plan but confirm each edit",
+    "noKeepPlanning": "No, keep planning",
+    "noKeepPlanningDesc": "Provide feedback to refine the plan",
+    "feedbackPlaceholder": "Tell the agent what to change...",
+    "submit": "Submit"
+  },
+  "errorPrefix": "Error: {{message}}",
+  "unknownError": "Unknown error",
+  "sessionInterrupted": "Session interrupted",
+  "sessionStatus": "Session {{status}}",
+  "timeJustNow": "just now",
+  "timeMinAgo": "{{count}}min ago",
+  "timeHoursAgo": "{{count}}h ago",
+  "timeDaysAgo": "{{count}}d ago",
+  "sessionInfo": "Session info"
+}

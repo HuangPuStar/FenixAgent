@@ -1,21 +1,41 @@
-import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import imageCompression from "browser-image-compression";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ACPClient } from "../src/acp/client";
-import type { SessionUpdate, PermissionRequestPayload, PermissionOption, ContentBlock, ImageContent } from "../src/acp/types";
-import type { ThreadEntry, ToolCallStatus, ToolCallData, UserMessageImage, UserMessageEntry, AssistantMessageEntry, ToolCallEntry, ChatInputMessage, PendingPermission, PlanDisplayEntry } from "../src/lib/types";
-import { ChatView } from "./chat/ChatView";
-import { ChatInput } from "./chat/ChatInput";
-import { PermissionPanel } from "./chat/PermissionPanel";
-import { ContextPanel } from "./ContextPanel";
-import { ModelSelectorPopover } from "./model-selector";
+import type {
+  ContentBlock,
+  ImageContent,
+  PermissionOption,
+  PermissionRequestPayload,
+  SessionMode,
+  SessionUpdate,
+} from "../src/acp/types";
 import { useCommands } from "../src/hooks/useCommands";
+import { useModes } from "../src/hooks/useModes";
+import type {
+  AssistantMessageEntry,
+  ChatInputMessage,
+  PendingPermission,
+  PlanDisplayEntry,
+  ThreadEntry,
+  ToolCallData,
+  ToolCallEntry,
+  ToolCallStatus,
+  UserMessageEntry,
+  UserMessageImage,
+} from "../src/lib/types";
+import { ContextPanel } from "./ContextPanel";
+import { ChatInput } from "./chat/ChatInput";
+import { ChatView } from "./chat/ChatView";
+import { PermissionPanel } from "./chat/PermissionPanel";
+import { ModelSelectorPopover } from "./model-selector";
 
 // Image compression options
 // Claude API has a 5MB limit, so we target 2MB to be safe
 const IMAGE_COMPRESSION_OPTIONS = {
-  maxSizeMB: 2,           // Max output size in MB
+  maxSizeMB: 2, // Max output size in MB
   maxWidthOrHeight: 2048, // Max dimension (scales proportionally, no cropping)
-  useWebWorker: true,     // Non-blocking compression
+  useWebWorker: true, // Non-blocking compression
   fileType: "image/jpeg" as const, // Convert to JPEG for better compression
 };
 
@@ -45,14 +65,10 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mimeType });
 }
 
-import { Plus, Shield, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Plus, Shield } from "lucide-react";
 import { Button } from "./ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "./ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 // =============================================================================
 // Type Definitions - imported from shared types module
@@ -64,67 +80,56 @@ interface ChatInterfaceProps {
   cwd?: string;
   cwdReady?: boolean;
   readonly?: boolean;
+  hideContextPanel?: boolean;
   rcsSessionId?: string;
   onSessionCreated?: (sessionId: string) => void;
+  scenePrompt?: string;
 }
 
 // =============================================================================
-// Permission Mode Selector
+// Session Mode Selector (dynamic from agent)
 // =============================================================================
 
-const PERMISSION_MODES = [
-  { value: "default", label: "默认", description: "手动审批权限请求" },
-  { value: "acceptEdits", label: "自动接受编辑", description: "自动允许文件编辑操作" },
-  { value: "bypassPermissions", label: "跳过权限", description: "跳过所有权限检查" },
-  { value: "plan", label: "规划模式", description: "仅规划，不执行工具" },
-  { value: "dontAsk", label: "不询问", description: "不弹出询问，自动拒绝" },
-  { value: "auto", label: "自动判断", description: "AI 自动判断是否批准" },
-] as const;
-
-function PermissionModeSelector({
-  mode,
+function SessionModeSelector({
+  modes,
+  currentModeId,
   onModeChange,
 }: {
-  mode: string;
-  onModeChange: (mode: string) => void;
+  modes: SessionMode[];
+  currentModeId: string | null;
+  onModeChange: (modeId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const current = PERMISSION_MODES.find((m) => m.value === mode) ?? PERMISSION_MODES[0];
+  const current = modes.find((m) => m.id === currentModeId) ?? modes[0];
+
+  if (modes.length === 0) return null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 text-muted-foreground hover:text-foreground h-7 px-2"
-        >
+        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground h-7 px-2">
           <Shield className="h-3 w-3" />
-          <span className="max-w-24 truncate">{current.label}</span>
-          {open ? (
-            <ChevronUp className="h-3 w-3" />
-          ) : (
-            <ChevronDown className="h-3 w-3" />
-          )}
+          <span className="max-w-24 truncate">{current?.name ?? "默认"}</span>
+          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-1" align="start">
-        {PERMISSION_MODES.map((m) => (
+        {modes.map((m) => (
           <button
-            key={m.value}
+            key={m.id}
             type="button"
             onClick={() => {
-              onModeChange(m.value);
+              onModeChange(m.id);
               setOpen(false);
             }}
             className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left hover:bg-surface-2 transition-colors"
           >
             <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center">
-              {mode === m.value && <Check className="h-3.5 w-3.5 text-brand" />}
+              {currentModeId === m.id && <Check className="h-3.5 w-3.5 text-brand" />}
             </span>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-text-primary">{m.label}</div>
-              <div className="text-xs text-text-muted">{m.description}</div>
+              <div className="text-sm font-medium text-text-primary">{m.name}</div>
+              {m.description && <div className="text-xs text-text-muted">{m.description}</div>}
             </div>
           </button>
         ))}
@@ -163,29 +168,30 @@ export interface ChatInterfaceHandle {
   newSession: () => void;
 }
 
-export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface({ client, agentId, cwd, cwdReady = true, readonly, rcsSessionId, onSessionCreated }, ref) {
+export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
+  { client, agentId, cwd, cwdReady = true, readonly, hideContextPanel, rcsSessionId, onSessionCreated, scenePrompt },
+  ref,
+) {
+  const { t } = useTranslation("components");
   // Flat list of entries (like Zed's entries: Vec<AgentThreadEntry>)
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  const scenePromptUsedRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [permissionMode, setPermissionMode] = useState(() => localStorage.getItem("acp_permission_mode") || "default");
-  const permissionModeRef = useRef(permissionMode);
   // Reference: Zed's supports_images() checks prompt_capabilities.image
   const [supportsImages, setSupportsImages] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
   const { commands: availableCommands } = useCommands(client);
+  const { availableModes, currentModeId, setMode } = useModes(client);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
+    scenePromptUsedRef.current = false;
   }, [activeSessionId]);
-
-  useEffect(() => {
-    permissionModeRef.current = permissionMode;
-  }, [permissionMode]);
 
   const resetThreadState = useCallback(() => {
     setEntries([]);
@@ -196,23 +202,28 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const storageKey = agentId ? `acp_last_session_${agentId}` : null;
 
   const requestCreateSession = useCallback(async () => {
-    await client.createSession(cwd, permissionModeRef.current);
+    await client.createSession(cwd);
   }, [client, cwd]);
 
-  const activateSession = useCallback((sessionId: string, options?: { resetEntries?: boolean }) => {
-    const shouldResetEntries = options?.resetEntries ?? true;
-    if (shouldResetEntries) {
-      setEntries([]);
-      setIsLoading(false);
-    }
-    setActiveSessionId(sessionId);
-    setSessionReady(true);
-    setSupportsImages(client.supportsImages);
-    if (storageKey) {
-      try { localStorage.setItem(storageKey, sessionId); } catch {}
-    }
-    console.log("[ChatInterface] Active session:", sessionId, "supportsImages:", client.supportsImages);
-  }, [client, storageKey]);
+  const activateSession = useCallback(
+    (sessionId: string, options?: { resetEntries?: boolean }) => {
+      const shouldResetEntries = options?.resetEntries ?? true;
+      if (shouldResetEntries) {
+        setEntries([]);
+        setIsLoading(false);
+      }
+      setActiveSessionId(sessionId);
+      setSessionReady(true);
+      setSupportsImages(client.supportsImages);
+      if (storageKey) {
+        try {
+          localStorage.setItem(storageKey, sessionId);
+        } catch {}
+      }
+      console.log("[ChatInterface] Active session:", sessionId, "supportsImages:", client.supportsImages);
+    },
+    [client, storageKey],
+  );
 
   // =============================================================================
   // Permission Request Handler
@@ -295,10 +306,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               ...prev.slice(0, -1),
               {
                 ...lastEntry,
-                chunks: [
-                  ...lastEntry.chunks.slice(0, -1),
-                  { type: "message", text: lastChunk.text + text },
-                ],
+                chunks: [...lastEntry.chunks.slice(0, -1), { type: "message", text: lastChunk.text + text }],
               },
             ];
           }
@@ -340,10 +348,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               ...prev.slice(0, -1),
               {
                 ...lastEntry,
-                chunks: [
-                  ...lastEntry.chunks.slice(0, -1),
-                  { type: "thought", text: lastChunk.text + text },
-                ],
+                chunks: [...lastEntry.chunks.slice(0, -1), { type: "thought", text: lastChunk.text + text }],
               },
             ];
           }
@@ -486,18 +491,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         }
 
         // Find last plan entry
-        const lastPlanIndex = prev.reduce(
-          (acc, entry, i) => (entry.type === "plan" ? i : acc),
-          -1,
-        );
+        const lastPlanIndex = prev.reduce((acc, entry, i) => (entry.type === "plan" ? i : acc), -1);
 
         if (lastPlanIndex >= 0) {
           // Update existing plan in place
-          return prev.map((entry, index) =>
-            index === lastPlanIndex
-              ? { ...entry, entries: update.entries }
-              : entry,
-          );
+          return prev.map((entry, index) => (index === lastPlanIndex ? { ...entry, entries: update.entries } : entry));
         }
 
         // Create new plan entry
@@ -570,7 +568,20 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       client.setPermissionRequestHandler(() => {});
       client.setErrorMessageHandler(() => {});
     };
-  }, [activateSession, client, handlePermissionRequest, handleSessionUpdate, resetThreadState]);
+  }, [activateSession, client, handlePermissionRequest, handleSessionUpdate, resetThreadState, onSessionCreated]);
+
+  // Broadcast stats to AgentAppShell via custom event (for top-level StatusHeader)
+  useEffect(() => {
+    const modelName = client.modelState
+      ? (client.modelState.availableModels.find((m) => m.modelId === client.modelState!.currentModelId)?.name ??
+        client.modelState.currentModelId)
+      : undefined;
+    window.dispatchEvent(
+      new CustomEvent("chat:stats", {
+        detail: { agentName: agentId, modelName, entries },
+      }),
+    );
+  }, [entries, agentId, client.modelState]);
 
   // =============================================================================
   // User Actions
@@ -600,9 +611,15 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // 3. Create new session (like Zed's initial_state -> connection.new_session())
     // The session_created handler will set sessionReady=true when ready
     requestCreateSession();
-  }, [cwdReady, isLoading, resetThreadState, requestCreateSession]);
+  }, [cwdReady, isLoading, resetThreadState, requestCreateSession, client.cancel]);
 
-  useImperativeHandle(ref, () => ({ newSession: handleNewSession }), [handleNewSession]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      newSession: handleNewSession,
+    }),
+    [handleNewSession],
+  );
 
   // Cancel handler - matches Zed's cancel() logic in acp_thread.rs
   // 1. Mark all pending/running/waiting_for_confirmation tool calls as canceled
@@ -618,8 +635,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
         // Check if status should be canceled (matches Zed's logic)
         const shouldCancel =
-          entry.toolCall.status === "running" ||
-          entry.toolCall.status === "waiting_for_confirmation";
+          entry.toolCall.status === "running" || entry.toolCall.status === "waiting_for_confirmation";
 
         if (!shouldCancel) return entry;
 
@@ -641,42 +657,45 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // Wait for prompt_complete with stopReason="cancelled" from the agent
   };
 
-  const handlePermissionResponse = useCallback((requestId: string, optionId: string | null, optionKind: PermissionOption["kind"] | null) => {
-    console.log("[ChatInterface] Permission response:", { requestId, optionId, optionKind });
-    client.respondToPermission(requestId, optionId);
+  const handlePermissionResponse = useCallback(
+    (requestId: string, optionId: string | null, optionKind: PermissionOption["kind"] | null) => {
+      console.log("[ChatInterface] Permission response:", { requestId, optionId, optionKind });
+      client.respondToPermission(requestId, optionId);
 
-    // Determine new status based on option kind
-    const isRejected = optionKind === "reject_once" || optionKind === "reject_always" || optionId === null;
+      // Determine new status based on option kind
+      const isRejected = optionKind === "reject_once" || optionKind === "reject_always" || optionId === null;
 
-    // Update the tool call status in entries
-    setEntries((prev) =>
-      prev.map((entry) => {
-        if (entry.type !== "tool_call") return entry;
-        if (entry.toolCall.permissionRequest?.requestId !== requestId) return entry;
+      // Update the tool call status in entries
+      setEntries((prev) =>
+        prev.map((entry) => {
+          if (entry.type !== "tool_call") return entry;
+          if (entry.toolCall.permissionRequest?.requestId !== requestId) return entry;
 
-        // For standalone permission requests, mark as complete immediately when approved
-        // For regular tool calls, mark as running (agent will update to complete later)
-        let newStatus: ToolCallStatus;
-        if (isRejected) {
-          newStatus = "rejected";
-        } else if (entry.toolCall.isStandalonePermission) {
-          newStatus = "complete";
-        } else {
-          newStatus = "running";
-        }
+          // For standalone permission requests, mark as complete immediately when approved
+          // For regular tool calls, mark as running (agent will update to complete later)
+          let newStatus: ToolCallStatus;
+          if (isRejected) {
+            newStatus = "rejected";
+          } else if (entry.toolCall.isStandalonePermission) {
+            newStatus = "complete";
+          } else {
+            newStatus = "running";
+          }
 
-        return {
-          type: "tool_call",
-          toolCall: {
-            ...entry.toolCall,
-            status: newStatus,
-            permissionRequest: undefined,
-            isStandalonePermission: undefined,
-          },
-        };
-      }),
-    );
-  }, [client]);
+          return {
+            type: "tool_call",
+            toolCall: {
+              ...entry.toolCall,
+              status: newStatus,
+              permissionRequest: undefined,
+              isStandalonePermission: undefined,
+            },
+          };
+        }),
+      );
+    },
+    [client],
+  );
 
   // =============================================================================
   // Render
@@ -684,7 +703,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   // Collect pending permissions from tool call entries
   const pendingPermissions: PendingPermission[] = entries
-    .filter((e): e is ToolCallEntry => e.type === "tool_call" && e.toolCall.status === "waiting_for_confirmation" && !!e.toolCall.permissionRequest)
+    .filter(
+      (e): e is ToolCallEntry =>
+        e.type === "tool_call" && e.toolCall.status === "waiting_for_confirmation" && !!e.toolCall.permissionRequest,
+    )
     .map((e) => ({
       requestId: e.toolCall.permissionRequest!.requestId,
       toolName: e.toolCall.title,
@@ -694,120 +716,134 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }));
 
   // Handle permission respond for unified PermissionPanel
-  const handlePermissionPanelRespond = useCallback((requestId: string, approved: boolean) => {
-    // Find the matching permission request to get the real optionId
-    const perm = pendingPermissions.find((p) => p.requestId === requestId);
-    let optionId: string | null = null;
-    let optionKind: PermissionOption["kind"] | null = null;
+  const handlePermissionPanelRespond = useCallback(
+    (requestId: string, approved: boolean) => {
+      // Find the matching permission request to get the real optionId
+      const perm = pendingPermissions.find((p) => p.requestId === requestId);
+      let optionId: string | null = null;
+      let optionKind: PermissionOption["kind"] | null = null;
 
-    if (perm?.options && perm.options.length > 0) {
-      if (approved) {
-        // Pick the first allow option (prefer allow_once, then allow_always)
-        const allowOpt = perm.options.find((o) => o.kind === "allow_once") ?? perm.options.find((o) => o.kind === "allow_always");
-        if (allowOpt) {
-          optionId = allowOpt.optionId;
-          optionKind = allowOpt.kind;
-        }
-      } else {
-        // Pick the first reject option
-        const rejectOpt = perm.options.find((o) => o.kind === "reject_once") ?? perm.options.find((o) => o.kind === "reject_always");
-        if (rejectOpt) {
-          optionId = rejectOpt.optionId;
-          optionKind = rejectOpt.kind;
+      if (perm?.options && perm.options.length > 0) {
+        if (approved) {
+          // Pick the first allow option (prefer allow_once, then allow_always)
+          const allowOpt =
+            perm.options.find((o) => o.kind === "allow_once") ?? perm.options.find((o) => o.kind === "allow_always");
+          if (allowOpt) {
+            optionId = allowOpt.optionId;
+            optionKind = allowOpt.kind;
+          }
+        } else {
+          // Pick the first reject option
+          const rejectOpt =
+            perm.options.find((o) => o.kind === "reject_once") ?? perm.options.find((o) => o.kind === "reject_always");
+          if (rejectOpt) {
+            optionId = rejectOpt.optionId;
+            optionKind = rejectOpt.kind;
+          }
         }
       }
-    }
 
-    // Fallback: if no matching option found, use null (cancelled)
-    if (!optionId) {
-      optionKind = approved ? "allow_once" : "reject_once";
-    }
+      // Fallback: if no matching option found, use null (cancelled)
+      if (!optionId) {
+        optionKind = approved ? "allow_once" : "reject_once";
+      }
 
-    handlePermissionResponse(requestId, optionId, optionKind);
-  }, [handlePermissionResponse, pendingPermissions]);
+      handlePermissionResponse(requestId, optionId, optionKind);
+    },
+    [handlePermissionResponse, pendingPermissions],
+  );
 
   // Handle ChatInput submit — convert ChatInputMessage to ContentBlock[]
-  const handleChatInputSubmit = useCallback(async (message: ChatInputMessage) => {
-    const text = message.text.trim();
-    const images = message.images || [];
+  const handleChatInputSubmit = useCallback(
+    async (message: ChatInputMessage) => {
+      const text = message.text.trim();
+      const images = message.images || [];
 
-    if ((!text && images.length === 0) || isLoading || !sessionReady) return;
+      if ((!text && images.length === 0) || isLoading || !sessionReady) return;
 
-    const contentBlocks: ContentBlock[] = [];
+      const contentBlocks: ContentBlock[] = [];
 
-    if (text) {
-      contentBlocks.push({ type: "text", text });
-    }
-
-    // Convert images to ContentBlock
-    const userImages: UserMessageImage[] = [];
-
-    for (const img of images) {
-      try {
-        const dataUrl = `data:${img.mimeType};base64,${img.data}`;
-        let blob: Blob;
-        if (dataUrl.startsWith("data:")) {
-          blob = dataUrlToBlob(dataUrl);
-        } else {
-          const response = await fetch(dataUrl);
-          blob = await response.blob();
-        }
-
-        let finalBlob: Blob = blob;
-        let finalMimeType = img.mimeType;
-
-        if (blob.size > 2 * 1024 * 1024) {
-          const imageFile = new File([blob], "image.jpg", { type: blob.type });
-          finalBlob = await imageCompression(imageFile, IMAGE_COMPRESSION_OPTIONS);
-          finalMimeType = "image/jpeg";
-        }
-
-        const base64Data = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            const commaIndex = result.indexOf(",");
-            resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
-          };
-          reader.onerror = () => reject(new Error("FileReader error: " + reader.error?.message));
-          reader.readAsDataURL(finalBlob);
-        });
-
-        const imageContent: ImageContent = {
-          type: "image",
-          mimeType: finalMimeType,
-          data: base64Data,
-        };
-        contentBlocks.push(imageContent);
-
-        userImages.push({
-          mimeType: finalMimeType,
-          data: base64Data,
-        });
-      } catch (error) {
-        console.error("[ChatInterface] Failed to process image:", error);
+      if (text) {
+        contentBlocks.push({ type: "text", text });
       }
-    }
 
-    if (contentBlocks.length === 0) return;
+      // Convert images to ContentBlock
+      const userImages: UserMessageImage[] = [];
 
-    // Add user message entry
-    const userEntry: UserMessageEntry = {
-      type: "user_message",
-      id: `user-${Date.now()}`,
-      content: text,
-      images: userImages.length > 0 ? userImages : undefined,
-    };
-    setEntries((prev) => [...prev, userEntry]);
-    setIsLoading(true);
+      for (const img of images) {
+        try {
+          const dataUrl = `data:${img.mimeType};base64,${img.data}`;
+          let blob: Blob;
+          if (dataUrl.startsWith("data:")) {
+            blob = dataUrlToBlob(dataUrl);
+          } else {
+            const response = await fetch(dataUrl);
+            blob = await response.blob();
+          }
 
-    try {
-      await client.sendPrompt(contentBlocks);
-    } catch (error) {
-      console.error("[ChatInterface] Failed to send prompt:", error);
-      setIsLoading(false);
-    }
-  }, [isLoading, sessionReady, client]);
+          let finalBlob: Blob = blob;
+          let finalMimeType = img.mimeType;
+
+          if (blob.size > 2 * 1024 * 1024) {
+            const imageFile = new File([blob], "image.jpg", { type: blob.type });
+            finalBlob = await imageCompression(imageFile, IMAGE_COMPRESSION_OPTIONS);
+            finalMimeType = "image/jpeg";
+          }
+
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              const commaIndex = result.indexOf(",");
+              resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+            };
+            reader.onerror = () => reject(new Error(`FileReader error: ${reader.error?.message}`));
+            reader.readAsDataURL(finalBlob);
+          });
+
+          const imageContent: ImageContent = {
+            type: "image",
+            mimeType: finalMimeType,
+            data: base64Data,
+          };
+          contentBlocks.push(imageContent);
+
+          userImages.push({
+            mimeType: finalMimeType,
+            data: base64Data,
+          });
+        } catch (error) {
+          console.error("[ChatInterface] Failed to process image:", error);
+        }
+      }
+
+      if (contentBlocks.length === 0) return;
+
+      // 注入场景提示词（仅第一条消息，隐藏不显示）
+      if (scenePrompt && !scenePromptUsedRef.current) {
+        contentBlocks.unshift({ type: "text", text: scenePrompt });
+        scenePromptUsedRef.current = true;
+      }
+
+      // Add user message entry
+      const userEntry: UserMessageEntry = {
+        type: "user_message",
+        id: `user-${Date.now()}`,
+        content: text,
+        images: userImages.length > 0 ? userImages : undefined,
+      };
+      setEntries((prev) => [...prev, userEntry]);
+      setIsLoading(true);
+
+      try {
+        await client.sendPrompt(contentBlocks);
+      } catch (error) {
+        console.error("[ChatInterface] Failed to send prompt:", error);
+        setIsLoading(false);
+      }
+    },
+    [isLoading, sessionReady, client, scenePrompt],
+  );
 
   return (
     <div className="flex h-full">
@@ -822,13 +858,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           emptyTitle={sessionReady ? "开始对话" : undefined}
           emptyDescription={sessionReady ? "输入消息开始与 ACP agent 聊天" : undefined}
           sessionId={rcsSessionId ?? activeSessionId ?? undefined}
+          envId={agentId}
         />
 
         {/* Permission panel — fixed above input */}
-        <PermissionPanel
-          requests={pendingPermissions}
-          onRespond={handlePermissionPanelRespond}
-        />
+        <PermissionPanel requests={pendingPermissions} onRespond={handlePermissionPanelRespond} />
 
         {/* Error banner */}
         {errorMessage && (
@@ -849,60 +883,59 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
         {/* Model selector + New thread + ChatInput */}
         {!readonly && (
-        <div className="flex-shrink-0">
-          <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 pb-1 flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              <PermissionModeSelector mode={permissionMode} onModeChange={(m: string) => { setPermissionMode(m); localStorage.setItem("acp_permission_mode", m); }} />
-              <ModelSelectorPopover client={client} />
+          <div className="flex-shrink-0">
+            <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 pb-1 flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <SessionModeSelector modes={availableModes} currentModeId={currentModeId} onModeChange={setMode} />
+                <ModelSelectorPopover client={client} />
+              </div>
+              {entries.length > 0 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-text-muted hover:text-brand font-display gap-1"
+                      onClick={handleNewSession}
+                    >
+                      <Plus className="h-3 w-3" />
+                      新会话
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("chatInterface.newThread")}</TooltipContent>
+                </Tooltip>
+              )}
             </div>
-            {entries.length > 0 && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-text-muted hover:text-brand font-display gap-1"
-                    onClick={handleNewSession}
-                  >
-                    <Plus className="h-3 w-3" />
-                    新会话
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>New Thread</TooltipContent>
-              </Tooltip>
-            )}
+            <ChatInput
+              onSubmit={handleChatInputSubmit}
+              isLoading={isLoading}
+              onInterrupt={handleCancel}
+              disabled={!sessionReady}
+              placeholder={sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
+              supportsImages={supportsImages}
+              commands={availableCommands.length > 0 ? availableCommands : undefined}
+              envId={agentId}
+            />
           </div>
-          <ChatInput
-            onSubmit={handleChatInputSubmit}
-            isLoading={isLoading}
-            onInterrupt={handleCancel}
-            disabled={!sessionReady}
-            placeholder={sessionReady ? "给智能体发送消息…" : "等待会话..."}
-            supportsImages={supportsImages}
-            commands={availableCommands.length > 0 ? availableCommands : undefined}
-            sessionId={rcsSessionId ?? activeSessionId}
-          />
-        </div>
         )}
         {readonly && (
-        <div className="flex-shrink-0">
-          <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 py-3 text-center">
-            <span className="text-xs text-text-muted">只读模式 — 无法发送消息</span>
+          <div className="flex-shrink-0">
+            <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 py-3 text-center">
+              <span className="text-xs text-text-muted">{t("chatInterface.readonlyMode")}</span>
+            </div>
           </div>
-        </div>
         )}
       </div>
 
       {/* Context Panel */}
-      {!readonly && (
+      {!readonly && !hideContextPanel && (
         <ContextPanel
           entries={entries}
           agentName={agentId}
           modelName={
             client.modelState
-              ? client.modelState.availableModels.find(
-                  (m) => m.modelId === client.modelState!.currentModelId,
-                )?.name ?? client.modelState.currentModelId
+              ? (client.modelState.availableModels.find((m) => m.modelId === client.modelState!.currentModelId)?.name ??
+                client.modelState.currentModelId)
               : undefined
           }
           collapsed={!contextPanelOpen}

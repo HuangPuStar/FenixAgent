@@ -1,0 +1,106 @@
+{
+  "title": "Scheduled Tasks",
+  "subtitle": "Bind Environment, execute Agent tasks on schedule.",
+  "newTask": "New Task",
+  "searchPlaceholder": "Search task name or Environment",
+  "emptyMessage": "No scheduled tasks",
+  "columns": {
+    "name": "Name",
+    "cron": "Cron Expression",
+    "environment": "Environment",
+    "status": "Status",
+    "lastRun": "Last Run",
+    "nextRun": "Next Run",
+    "lastResult": "Last Result"
+  },
+  "actions": {
+    "edit": "Edit",
+    "logs": "Logs",
+    "executeNow": "Execute Now",
+    "disable": "Disable",
+    "enable": "Enable",
+    "delete": "Delete"
+  },
+  "form": {
+    "editTitle": "Edit Task",
+    "createTitle": "New Task",
+    "name": "Name",
+    "description": "Description",
+    "cronExpression": "Cron Expression",
+    "quickSelect": "Quick Select",
+    "cronHelp": "Format: min hour day month weekday (e.g. 0 9 * * * = every day at 9am, */5 * * * * = every 5 minutes)",
+    "environment": "Environment",
+    "selectEnvironment": "Select Environment",
+    "taskContent": "Task Content",
+    "taskPlaceholder": "e.g. Check all .ts files in /workspace, find unused imports and output to report.md. Supports natural language descriptions for complex tasks.",
+    "timeoutMinutes": "Timeout (minutes)",
+    "enabledStatus": "Enabled Status",
+    "enabledHint": "When disabled, the scheduled task will pause, but can still be run manually via \"Execute Now\"."
+  },
+  "cronPresets": {
+    "every5min": "Every 5 minutes",
+    "hourly": "Hourly",
+    "daily9am": "Every day at 9am",
+    "weekday9am": "Weekdays at 9am",
+    "monthly1st": "1st of every month"
+  },
+  "validation": {
+    "nameRequired": "Task name is required",
+    "environmentRequired": "Please select an Environment",
+    "taskRequired": "Task content is required",
+    "cronRequired": "Cron expression is required",
+    "cronFormat": "Cron expression must have 5 fields (min hour day month weekday)",
+    "timeoutRange": "timeoutMinutes must be between 1-180"
+  },
+  "lastResult": {
+    "skipped": "Skipped",
+    "timeout": "Timeout",
+    "failed": "Failed",
+    "success": "Success"
+  },
+  "logs": {
+    "title": "Execution History",
+    "totalRecords": "{{count}} records",
+    "pageInfo": "Page {{current}} / {{total}}",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "clearLogs": "Clear Logs",
+    "executionRecords": "Execution Records",
+    "scrollHint": "Scroll within this area when there are many records",
+    "noHistory": "No execution history",
+    "viewDirectory": "View Directory",
+    "runDirectory": "Run Directory",
+    "directoryHint": "Click \"View Directory\" above to load content",
+    "noDirectoryContent": "No directory content",
+    "clearTitle": "Clear Logs",
+    "clearDescription": "Are you sure you want to clear the execution history for this task?"
+  },
+  "confirm": {
+    "deleteTitle": "Delete Task",
+    "deleteDescription": "Are you sure you want to delete task \"{{name}}\"?"
+  },
+  "toast": {
+    "loadTasksFailed": "Failed to load tasks: {{error}}",
+    "loadEnvsFailed": "Failed to load environments: {{error}}",
+    "loadPageFailed": "Failed to load tasks page: {{error}}",
+    "loadLogsFailed": "Failed to load execution history: {{error}}",
+    "saveFailed": "Save failed: {{error}}",
+    "taskUpdated": "Task updated",
+    "taskCreated": "Task created",
+    "toggleFailed": "Operation failed: {{error}}",
+    "disabled": "Disabled \"{{name}}\"",
+    "enabled": "Enabled \"{{name}}\"",
+    "triggerFailed": "Trigger failed: {{error}}",
+    "triggerSuccess": "Triggered, status: {{status}}, duration: {{duration}}, directory: {{directory}}",
+    "noWorkspacePath": "This log has no viewable workspacePath",
+    "noEnvSession": "Cannot find the corresponding Environment session",
+    "viewDirFailed": "Failed to view directory: {{error}}",
+    "deleteFailed": "Delete failed: {{error}}",
+    "taskDeleted": "Task deleted",
+    "clearLogsFailed": "Clear failed: {{error}}",
+    "logsCleared": "Execution history cleared"
+  },
+  "misc": {
+    "unknown": "Unknown"
+  }
+}

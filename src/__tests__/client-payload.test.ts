@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { toClientPayload } from "../transport/client-payload";
 import type { SessionEvent } from "../transport/event-bus";
 

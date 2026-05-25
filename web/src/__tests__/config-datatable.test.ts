@@ -1,7 +1,16 @@
-import { describe, test, expect } from "bun:test";
-import { filterData, sortData, paginateData, buildInitialExpandedState, type Column } from "../../components/config/DataTable";
+import { describe, expect, test } from "bun:test";
+import {
+  buildInitialExpandedState,
+  type Column,
+  filterData,
+  paginateData,
+  sortData,
+} from "../../components/config/DataTable";
 
-interface Row { name: string; age: number }
+interface Row {
+  name: string;
+  age: number;
+}
 
 const columns: Column<Row>[] = [
   { key: "name", header: "Name", sortable: true, filterable: true },
@@ -71,14 +80,11 @@ describe("DataTable TanStack integration helpers", () => {
   });
 
   test("sortData handles mixed types gracefully", () => {
-    interface Mixed { val: string | number }
-    const mixedCols: Column<Mixed>[] = [{ key: "val", header: "Val", sortable: true }];
-    const mixedData: Mixed[] = [
-      { val: 42 },
-      { val: "alpha" },
-      { val: 10 },
-      { val: "beta" },
-    ];
+    interface Mixed {
+      val: string | number;
+    }
+    const _mixedCols: Column<Mixed>[] = [{ key: "val", header: "Val", sortable: true }];
+    const mixedData: Mixed[] = [{ val: 42 }, { val: "alpha" }, { val: 10 }, { val: "beta" }];
     const sorted = sortData(mixedData, "val", "asc");
     expect(sorted[0].val).toBe(10);
     expect(sorted[3].val).toBe("beta");
@@ -115,11 +121,7 @@ describe("buildInitialExpandedState", () => {
   });
 
   test("uses index as key when no rowKey provided", () => {
-    const rows = [
-      { name: "a" },
-      { name: "b" },
-      { name: "c" },
-    ];
+    const rows = [{ name: "a" }, { name: "b" }, { name: "c" }];
     const result = buildInitialExpandedState(rows);
     expect(result).toEqual({ "0": true, "1": true, "2": true });
   });

@@ -1,120 +1,31 @@
-import { Hono } from "hono";
-import { sessionAuth } from "../../../auth/middleware";
-import { getSection, modifySection } from "../../../services/config";
+import Elysia from "elysia";
+import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
+import {
+  countToolsByServer,
+  deleteToolsByServer,
+  isValidMcpName,
+  listToolsByServer,
+  replaceToolsForServer,
+  toServerInfo,
+  validateMcpConfig,
+} from "../../../services/config/mcp-server";
+import type { McpRemoteConfig, McpServerConfig } from "../../../services/config/types";
+import * as configPg from "../../../services/config-pg";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
-import { db } from "../../../db";
-import { mcpTool } from "../../../db/schema";
-import { eq, and } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
-
-// 内部类型定义（与前端 web/src/types/config.ts 对齐）
-type McpLocalConfig = {
-  type: "local";
-  command: string[];
-  environment?: Record<string, string>;
-  enabled?: boolean;
-  timeout?: number;
-};
-
-type McpRemoteConfig = {
-  type: "remote";
-  url: string;
-  enabled?: boolean;
-  headers?: Record<string, string>;
-  oauth?: { clientId?: string; clientSecret?: string; scope?: string; redirectUri?: string } | false;
-  timeout?: number;
-};
-
-type McpDisabledConfig = { enabled: false };
-
-type McpServerConfig = McpLocalConfig | McpRemoteConfig | McpDisabledConfig;
-
-type McpRecord = Record<string, McpServerConfig>;
-
-// 服务器名称校验：1-64 字符，小写字母/数字/连字符
-function isValidMcpName(name: string): boolean {
-  return typeof name === "string"
-    && name.length >= 1 && name.length <= 64
-    && !/--/.test(name)
-    && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name);
-}
-
-// 配置校验：验证 McpServerConfig 结构
-function validateMcpConfig(config: unknown): string | null {
-  if (typeof config !== "object" || config === null) return "INVALID_CONFIG";
-  const cfg = config as Record<string, unknown>;
-
-  // 禁用变体
-  if ("enabled" in cfg && cfg.enabled === false && Object.keys(cfg).length === 1) return null;
-
-  // 必须有 type 字段
-  if (!("type" in cfg) || typeof cfg.type !== "string") return "INVALID_CONFIG_TYPE";
-  const type = cfg.type as string;
-
-  if (type === "local") {
-    if (!Array.isArray(cfg.command) || cfg.command.length === 0 || !cfg.command.every((c: unknown) => typeof c === "string")) {
-      return "INVALID_COMMAND";
-    }
-    if (cfg.environment !== undefined && (typeof cfg.environment !== "object" || cfg.environment === null)) {
-      return "INVALID_ENVIRONMENT";
-    }
-    if (cfg.timeout !== undefined && (typeof cfg.timeout !== "number" || cfg.timeout <= 0)) {
-      return "INVALID_TIMEOUT";
-    }
-  } else if (type === "remote") {
-    if (typeof cfg.url !== "string" || cfg.url.length === 0) return "INVALID_URL";
-    if (cfg.headers !== undefined && (typeof cfg.headers !== "object" || cfg.headers === null)) {
-      return "INVALID_HEADERS";
-    }
-    if (cfg.timeout !== undefined && (typeof cfg.timeout !== "number" || cfg.timeout <= 0)) {
-      return "INVALID_TIMEOUT";
-    }
-  } else {
-    return "INVALID_CONFIG_TYPE";
-  }
-  return null;
-}
-
-// 从 McpServerConfig 提取列表摘要信息
-function toServerInfo(name: string, config: McpServerConfig) {
-  if ("enabled" in config && config.enabled === false && !("type" in config)) {
-    return { name, type: "disabled" as const, enabled: false, summary: "已禁用" };
-  }
-  if (config.type === "local") {
-    return {
-      name,
-      type: "local" as const,
-      enabled: config.enabled !== false,
-      summary: (config.command as string[])[0] ?? "",
-      timeout: config.timeout,
-    };
-  }
-  // remote
-  return {
-    name,
-    type: "remote" as const,
-    enabled: config.enabled !== false,
-    summary: (config as McpRemoteConfig).url ?? "",
-    timeout: (config as McpRemoteConfig).timeout,
-  };
-}
 
 // --- Action Handlers ---
 
-async function handleList() {
-  const mcp = (await getSection<McpRecord>("mcp")) ?? {};
-  const servers = Object.entries(mcp).map(([name, config]) => toServerInfo(name, config));
+async function handleList(ctx: AuthContext) {
+  const servers = await configPg.listMcpServers(ctx);
 
-  // 附加 toolsCount
   const serversWithCount = await Promise.all(
     servers.map(async (s) => {
       try {
-        const tools = await db.select({ id: mcpTool.id })
-          .from(mcpTool)
-          .where(eq(mcpTool.serverName, s.name));
-        return { ...s, toolsCount: tools.length };
+        const toolsCount = await countToolsByServer(ctx.organizationId, s.name);
+        return { ...toServerInfo(s.name, s), toolsCount };
       } catch {
-        return { ...s, toolsCount: 0 };
+        return { ...toServerInfo(s.name, s), toolsCount: 0 };
       }
     }),
   );
@@ -122,68 +33,54 @@ async function handleList() {
   return { success: true, data: { servers: serversWithCount } };
 }
 
-async function handleGet(name: string) {
-  const mcp = (await getSection<McpRecord>("mcp")) ?? {};
-  const config = mcp[name];
-  if (!config) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
-  return { success: true, data: { name, config } };
+async function handleGet(ctx: AuthContext, name: string) {
+  const s = await configPg.getMcpServer(ctx, name);
+  if (!s) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+  return { success: true, data: { name, config: s.config } };
 }
 
-async function handleCreate(name: string, config: McpServerConfig) {
+async function handleCreate(ctx: AuthContext, name: string, config: McpServerConfig) {
   if (!isValidMcpName(name)) {
-    return { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid server name: must be 1-64 lowercase alphanumeric chars with single hyphens" } };
+    return {
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid server name: must be 1-64 lowercase alphanumeric chars with single hyphens",
+      },
+    };
   }
   const validation = validateMcpConfig(config);
   if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
 
-  let alreadyExists = false;
-  await modifySection<McpRecord>("mcp", (mcp) => {
-    const current = mcp ?? {};
-    if (current[name]) {
-      alreadyExists = true;
-      return current;
-    }
-    current[name] = config;
-    return current;
-  });
-  if (alreadyExists) return { success: false, error: { code: "ALREADY_EXISTS", message: `MCP server '${name}' already exists` } };
+  const existing = await configPg.getMcpServer(ctx, name);
+  if (existing)
+    return { success: false, error: { code: "ALREADY_EXISTS", message: `MCP server '${name}' already exists` } };
+
+  const cfgType =
+    typeof config === "object" && config !== null && "type" in config
+      ? ((config as unknown as Record<string, unknown>).type as string)
+      : "local";
+  await configPg.createMcpServer(ctx, name, cfgType, config as McpServerConfig);
   return { success: true, data: { name } };
 }
 
-async function handleUpdate(name: string, config: McpServerConfig) {
+async function handleUpdate(ctx: AuthContext, name: string, config: McpServerConfig) {
   const validation = validateMcpConfig(config);
   if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
 
-  let notFound = false;
-  await modifySection<McpRecord>("mcp", (mcp) => {
-    const current = mcp ?? {};
-    if (!current[name]) {
-      notFound = true;
-      return current;
-    }
-    current[name] = config;
-    return current;
-  });
-  if (notFound) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+  const existing = await configPg.getMcpServer(ctx, name);
+  if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+
+  await configPg.updateMcpServer(ctx, name, config as McpServerConfig);
   return { success: true, data: { name } };
 }
 
-async function handleDelete(name: string) {
-  let notFound = false;
-  await modifySection<McpRecord>("mcp", (mcp) => {
-    const current = mcp ?? {};
-    if (!current[name]) {
-      notFound = true;
-      return current;
-    }
-    delete current[name];
-    return current;
-  });
-  if (notFound) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+async function handleDelete(ctx: AuthContext, name: string) {
+  const deleted = await configPg.deleteMcpServer(ctx, name);
+  if (!deleted) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
-  // 同时删除该服务器的 tools 缓存
   try {
-    await db.delete(mcpTool).where(eq(mcpTool.serverName, name));
+    await deleteToolsByServer(ctx.organizationId, name);
   } catch {
     // ignore db errors on cleanup
   }
@@ -191,57 +88,43 @@ async function handleDelete(name: string) {
   return { success: true };
 }
 
-async function handleEnable(name: string) {
-  let result: "ok" | "not_found" | "no_original_config" = "ok" as typeof result;
-  await modifySection<McpRecord>("mcp", (mcp) => {
-    const current = mcp ?? {};
-    const config = current[name];
-    if (!config) {
-      result = "not_found";
-      return current;
-    }
-    if ("enabled" in config && config.enabled === false && !("type" in config)) {
-      result = "no_original_config";
-      return current;
-    }
-    (config as Record<string, unknown>).enabled = true;
-    current[name] = config;
-    return current;
-  });
-  if (result === "not_found") return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
-  if (result === "no_original_config") return { success: false, error: { code: "VALIDATION_ERROR", message: `Cannot enable '${name}': original config lost, please recreate` } };
+async function handleEnable(ctx: AuthContext, name: string) {
+  const existing = await configPg.getMcpServer(ctx, name);
+  if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+
+  const config = existing.config as Record<string, unknown>;
+  if (!("type" in config)) {
+    return {
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: `Cannot enable '${name}': original config lost, please recreate` },
+    };
+  }
+
+  await configPg.setMcpServerEnabled(ctx, name, true);
   return { success: true, data: { name, enabled: true } };
 }
 
-async function handleDisable(name: string) {
-  let notFound = false;
-  await modifySection<McpRecord>("mcp", (mcp) => {
-    const current = mcp ?? {};
-    const config = current[name];
-    if (!config) {
-      notFound = true;
-      return current;
-    }
-    (config as Record<string, unknown>).enabled = false;
-    current[name] = config;
-    return current;
-  });
-  if (notFound) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+async function handleDisable(ctx: AuthContext, name: string) {
+  const existing = await configPg.getMcpServer(ctx, name);
+  if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+
+  await configPg.setMcpServerEnabled(ctx, name, false);
   return { success: true, data: { name, enabled: false } };
 }
 
-async function handleTest(name: string) {
-  const mcp = (await getSection<McpRecord>("mcp")) ?? {};
-  const config = mcp[name];
-  if (!config) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+async function handleTest(ctx: AuthContext, name: string) {
+  const s = await configPg.getMcpServer(ctx, name);
+  if (!s) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
-  // remote: 使用 MCP SDK 连接
-  if ("type" in config && config.type === "remote") {
-    const remote = config as McpRemoteConfig;
+  const config = s.config as Record<string, unknown>;
+
+  // remote
+  if (config.type === "remote") {
+    const remote = config as unknown as McpRemoteConfig;
     const timeout = remote.timeout ?? 10000;
     const headers: Record<string, string> = { ...remote.headers };
     if (remote.oauth && typeof remote.oauth === "object" && remote.oauth.clientId) {
-      headers["Authorization"] = `Bearer ${remote.oauth.clientId}`;
+      headers.Authorization = `Bearer ${remote.oauth.clientId}`;
     }
     const result = await inspectRemoteMcpServer(remote.url, headers, timeout);
     if (result.reachable && result.protocol) {
@@ -259,13 +142,16 @@ async function handleTest(name: string) {
       };
     }
     if (result.reachable) {
-      return { success: true, data: { name, reachable: true, protocol: false, message: result.message ?? "非 MCP 协议" } };
+      return {
+        success: true,
+        data: { name, reachable: true, protocol: false, message: result.message ?? "非 MCP 协议" },
+      };
     }
     return { success: true, data: { name, reachable: false, protocol: false, message: result.message ?? "连接失败" } };
   }
 
-  // local: 检查命令是否可执行
-  if ("type" in config && config.type === "local") {
+  // local
+  if (config.type === "local") {
     const cmd = (config.command as string[])[0];
     try {
       const proc = Bun.spawn(["which", cmd], { stdout: "pipe", stderr: "pipe" });
@@ -279,11 +165,15 @@ async function handleTest(name: string) {
     }
   }
 
-  return { success: false, error: { code: "VALIDATION_ERROR", message: `Cannot test '${name}': unsupported config type` } };
+  return {
+    success: false,
+    error: { code: "VALIDATION_ERROR", message: `Cannot test '${name}': unsupported config type` },
+  };
 }
 
 async function handleTestUrl(url: string, headers?: Record<string, string>, timeout?: number) {
-  if (!url || typeof url !== "string") return { success: false, error: { code: "VALIDATION_ERROR", message: "URL is required" } };
+  if (!url || typeof url !== "string")
+    return { success: false, error: { code: "VALIDATION_ERROR", message: "URL is required" } };
   const ms = timeout ?? 10000;
   const result = await inspectRemoteMcpServer(url, headers, ms);
   if (result.reachable && result.protocol) {
@@ -305,20 +195,20 @@ async function handleTestUrl(url: string, headers?: Record<string, string>, time
   return { success: true, data: { reachable: false, protocol: false, message: result.message ?? "连接失败" } };
 }
 
-async function handleInspect(name: string) {
-  const mcp = (await getSection<McpRecord>("mcp")) ?? {};
-  const config = mcp[name];
-  if (!config) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+async function handleInspect(ctx: AuthContext, name: string) {
+  const s = await configPg.getMcpServer(ctx, name);
+  if (!s) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
-  if (!("type" in config) || config.type !== "remote") {
+  const config = s.config as Record<string, unknown>;
+  if (config.type !== "remote") {
     return { success: false, error: { code: "VALIDATION_ERROR", message: "Inspect only supports remote MCP servers" } };
   }
 
-  const remote = config as McpRemoteConfig;
+  const remote = config as unknown as McpRemoteConfig;
   const timeout = remote.timeout ?? 10000;
   const headers: Record<string, string> = { ...remote.headers };
   if (remote.oauth && typeof remote.oauth === "object" && remote.oauth.clientId) {
-    headers["Authorization"] = `Bearer ${remote.oauth.clientId}`;
+    headers.Authorization = `Bearer ${remote.oauth.clientId}`;
   }
 
   const result = await inspectRemoteMcpServer(remote.url, headers, timeout);
@@ -326,20 +216,7 @@ async function handleInspect(name: string) {
     return { success: false, error: { code: "VALIDATION_ERROR", message: result.message ?? "无法连接到 MCP 服务器" } };
   }
 
-  // 删除旧记录，插入新记录
-  await db.delete(mcpTool).where(eq(mcpTool.serverName, name));
-  const now = new Date();
-  if (result.tools.length > 0) {
-    const rows = result.tools.map((t) => ({
-      id: randomUUID(),
-      serverName: name,
-      toolName: t.name,
-      description: t.description ?? null,
-      inputSchema: t.inputSchema ? JSON.stringify(t.inputSchema) : null,
-      inspectedAt: now,
-    }));
-    await db.insert(mcpTool).values(rows);
-  }
+  await replaceToolsForServer(ctx.organizationId, name, result.tools);
 
   return {
     success: true,
@@ -353,10 +230,8 @@ async function handleInspect(name: string) {
   };
 }
 
-async function handleListTools(name: string) {
-  const tools = await db.select()
-    .from(mcpTool)
-    .where(eq(mcpTool.serverName, name));
+async function handleListTools(ctx: AuthContext, name: string) {
+  const tools = await listToolsByServer(ctx.organizationId, name);
 
   return {
     success: true,
@@ -374,32 +249,62 @@ async function handleListTools(name: string) {
 }
 
 // --- 路由注册 ---
-const app = new Hono();
-
-app.post("/config/mcp", sessionAuth, async (c) => {
-  const body = await c.req.json<{ action: string; name?: string; config?: unknown; url?: string; headers?: Record<string, string>; timeout?: number }>()
-    .catch((): { action: string; name?: string; config?: unknown; url?: string; headers?: Record<string, string>; timeout?: number } => ({ action: "" }));
-  const { action, name, config, url, headers, timeout } = body;
-
-  try {
-    switch (action) {
-      case "list":       return c.json(await handleList());
-      case "get":        return c.json(await handleGet(name!));
-      case "create":     return c.json(await handleCreate(name!, config as McpServerConfig));
-      case "update":     return c.json(await handleUpdate(name!, config as McpServerConfig));
-      case "delete":     return c.json(await handleDelete(name!));
-      case "enable":     return c.json(await handleEnable(name!));
-      case "disable":    return c.json(await handleDisable(name!));
-      case "test":       return c.json(await handleTest(name!));
-      case "test_url":   return c.json(await handleTestUrl(url!, headers, timeout));
-      case "inspect":    return c.json(await handleInspect(name!));
-      case "list_tools": return c.json(await handleListTools(name!));
-      default: return c.json({ success: false, error: { code: "VALIDATION_ERROR", message: `Unknown action '${action}'` } }, 400);
-    }
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Unknown error";
-    return c.json({ success: false, error: { code: "CONFIG_READ_ERROR", message } }, 500);
-  }
+const app = new Elysia({ name: "web-config-mcp" }).use(authGuardPlugin).model({
+  "config-body": ConfigBodySchema,
 });
+
+app.post(
+  "/config/mcp",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = body as ConfigBody;
+    const { action, name, config, url, headers, timeout } = {
+      action: b.action ?? "",
+      name: b.name as string | undefined,
+      config: (b.config ?? b.data) as McpServerConfig | undefined,
+      url: b.url as string | undefined,
+      headers: b.headers as Record<string, string> | undefined,
+      timeout: b.timeout as number | undefined,
+    };
+
+    try {
+      switch (action) {
+        case "list":
+          return await handleList(authCtx);
+        case "get":
+          return await handleGet(authCtx, name!);
+        case "create":
+          return await handleCreate(authCtx, name!, config as McpServerConfig);
+        case "set":
+        case "update":
+          return await handleUpdate(authCtx, name!, config as McpServerConfig);
+        case "delete":
+          return await handleDelete(authCtx, name!);
+        case "enable":
+          return await handleEnable(authCtx, name!);
+        case "disable":
+          return await handleDisable(authCtx, name!);
+        case "test":
+          return await handleTest(authCtx, name!);
+        case "test_url":
+          return await handleTestUrl(url!, headers, timeout);
+        case "inspect":
+          return await handleInspect(authCtx, name!);
+        case "list_tools":
+          return await handleListTools(authCtx, name!);
+        default:
+          return error(400, {
+            success: false,
+            error: { code: "VALIDATION_ERROR", message: `Unknown action '${action}'` },
+          });
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      return error(500, { success: false, error: { code: "CONFIG_READ_ERROR", message } });
+    }
+  },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "MCP 服务器配置管理" } },
+);
 
 export default app;

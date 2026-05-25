@@ -1,0 +1,100 @@
+{
+  "title": "智能体",
+  "loading": "加载智能体列表...",
+  "tabs": {
+    "environments": "智能体",
+    "subagents": "智能体模板"
+  },
+  "viewToggle": {
+    "tableView": "列表视图",
+    "cardView": "卡片视图"
+  },
+  "actions": {
+    "create": "创建智能体",
+    "edit": "编辑",
+    "viewSecret": "查看 Secret",
+    "restartInstance": "重启实例",
+    "stopInstance": "停止实例",
+    "delete": "删除",
+    "retry": "重试"
+  },
+  "status": {
+    "running": "运行中",
+    "idle": "空闲",
+    "warning": "警告",
+    "error": "错误"
+  },
+  "relativeTime": {
+    "notActive": "未活跃",
+    "justNow": "刚刚活跃",
+    "secondsAgo": "{{count}} 秒前活跃",
+    "minutesAgo": "{{count}} 分钟前活跃",
+    "hoursAgo": "{{count}} 小时前活跃",
+    "daysAgo": "{{count}} 天前活跃"
+  },
+  "empty": {
+    "createFirst": "创建第一个智能体",
+    "createHint": "选择 Agent 类型，即可开始对话",
+    "noActive": "暂无活跃环境"
+  },
+  "card": {
+    "sessions": "会话",
+    "instances": "实例",
+    "autoStart": "自启",
+    "instanceCount": "实例 x{{count}}"
+  },
+  "table": {
+    "instanceLabel": "实例 {{number}}"
+  },
+  "buttons": {
+    "starting": "启动中...",
+    "startAndEnter": "启动并进入",
+    "enterChat": "进入对话",
+    "newInstance": "新建实例",
+    "stop": "停止"
+  },
+  "form": {
+    "editTitle": "编辑智能体",
+    "createTitle": "创建智能体",
+    "name": "名称",
+    "description": "描述",
+    "agentName": "关联 Agent",
+    "selectAgent": "选择 Agent（可选）",
+    "autoStartLabel": "服务器启动时自动运行",
+    "cancel": "取消",
+    "saving": "保存中...",
+    "update": "更新",
+    "create": "创建"
+  },
+  "validation": {
+    "nameKebab": "名称必须为 kebab-case 格式（小写字母、数字、连字符）"
+  },
+  "secret": {
+    "title": "智能体 Secret",
+    "warning": "请立即保存此 Secret，关闭后将无法再次查看",
+    "copied": "已复制!",
+    "copy": "复制",
+    "close": "关闭"
+  },
+  "confirm": {
+    "deleteTitle": "确认删除",
+    "deleteDescription": "确定要删除此智能体吗？此操作不可撤销。",
+    "stopTitle": "确认停止实例",
+    "stopDescription": "确定要停止智能体「{{name}}」的运行实例吗？正在进行的对话将被中断。"
+  },
+  "toast": {
+    "operationFailed": "操作失败: {{error}}",
+    "enterFailed": "进入智能体失败: {{error}}",
+    "enterInstanceFailed": "进入实例失败: {{error}}",
+    "spawnFailed": "创建实例失败: {{error}}",
+    "stopFailed": "停止实例失败: {{error}}",
+    "refreshFailed": "刷新智能体失败: {{error}}",
+    "updateFailed": "更新失败",
+    "createFailed": "创建失败",
+    "enterAgentFailed": "进入失败"
+  },
+  "envList": {
+    "acpAgent": "ACP Agent",
+    "agent": "智能体"
+  }
+}
