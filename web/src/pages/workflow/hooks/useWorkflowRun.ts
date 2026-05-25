@@ -10,7 +10,7 @@ import {
   type PendingApproval,
   workflowEngineApi,
 } from "../../../api/workflow-engine";
-import { type WorkflowSSEEvent } from "../../../api/workflow-sse";
+import type { WorkflowSSEEvent } from "../../../api/workflow-sse";
 import {
   buildRunSummary,
   clearWorkflowEvents,

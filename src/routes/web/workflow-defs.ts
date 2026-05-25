@@ -6,7 +6,6 @@
 
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 import {
   createWorkflowDef,
   deleteWorkflowDef,
@@ -22,6 +21,7 @@ import {
   setLatestVersion,
   updateWorkflowMeta,
 } from "../../repositories/workflow-def";
+import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
 const app = new Elysia({ name: "web-workflow-defs" }).use(authGuardPlugin);
 
