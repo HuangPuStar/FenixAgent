@@ -272,11 +272,47 @@ PostgreSQL + Drizzle ORM（`drizzle-orm/postgres-js`），Schema 在 `src/db/sch
 
 表分类：better-auth 核心表（user/session/account/verification）、organization 插件（organization/member/invitation）、api-key 插件（apikey）、自定义表（mcpTool/scheduledTask/taskExecutionLog/shareLink/shareEventSnapshot/environment）、配置表（provider/model/agentConfig/mcpServer/skill/userConfig）、知识库（knowledgeBase/knowledgeResource/agentKnowledgeBinding）、Workflow（workflow/workflowVersion/workflowRun/workflowEvent/workflowSnapshot/workflowNodeOutput）、IM 通道（imChannel/imChannelRoute/channelBinding）
 
-**开发流程**：修改 `schema.ts` → `bunx drizzle-kit generate` → `bunx drizzle-kit push`（开发）或 `migrate`（生产）
+### Schema 变更流程
+
+1. 修改 `src/db/schema.ts`
+2. `bunx drizzle-kit generate --name <描述>` — 生成迁移 SQL 到 `drizzle/` 目录
+3. `bun run db:push` — 开发环境验证（直接同步 schema 到数据库，无追踪记录）
+4. 确认无误后提交 `drizzle/` 目录下的迁移文件
+
+### 生产迁移
+
+- **迁移入口**：`scripts/migrate.ts`（使用 `drizzle-orm/postgres-js/migrator` 直接执行，不依赖 `drizzle-kit` CLI）
+- **Docker 构建**：`bun build scripts/migrate.ts --target=bun` 打包为独立 `migrate.js`，生产镜像包含 `migrate.js` + `drizzle/` 目录
+- **执行方式**：`bun migrate.js`，生产环境首选；`docker-compose.prod.yml` 的 `rcs-migrate` 服务自动执行
+- **幂等性**：已执行的迁移自动跳过（通过 `drizzle.__drizzle_migrations` 追踪表）
+
+### 迁移追踪机制
+
+- 追踪表：`drizzle` schema 下的 `__drizzle_migrations`（注意不是 `public` schema）
+- 匹配依据：迁移 SQL 文件内容的 SHA-256 哈希值（非 tag 名）
+- `db:push` 不写追踪记录，`migrate` 会写入
+
+### 数据库开发铁律
 
 - **禁止手写 SQL 迁移**，会导致快照不一致
+- **禁止在生产环境使用 `db:push`**，必须通过 `migrate.js` 执行迁移
+- **禁止在生产数据库上运行 `drizzle-kit push`**
+- **新增迁移文件后必须提交 `drizzle/` 整个目录**（含 `meta/_journal.json`、`meta/*_snapshot.json`、`*.sql`）
 - 索引命名：`idx_<表名>_org_<字段>` 格式
 - `drizzle-kit generate` 可能需要 TTY 交互，非 TTY 用 `expect` 驱动
+
+### 从 db:push 切换到 migrate
+
+如果现有数据库是用 `db:push` 创建的，需要手动补追踪记录才能切换到 `migrate` 模式：
+
+```sql
+-- 1. 获取迁移 SQL 文件的 SHA-256 哈希
+-- 在项目目录执行：bun -e "import crypto from 'node:crypto'; import fs from 'node:fs'; const sql = fs.readFileSync('./drizzle/0000_xxx.sql').toString(); console.log(crypto.createHash('sha256').update(sql).digest('hex'))"
+
+-- 2. 插入追踪记录（注意 schema 是 drizzle，不是 public）
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at)
+VALUES ('<sha256哈希值>', <journal中的when时间戳>);
+```
 
 ## 测试策略
 
