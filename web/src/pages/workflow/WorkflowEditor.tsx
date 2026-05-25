@@ -50,8 +50,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { agentApi } from "@/src/api/sdk";
-import { ensureMetaAgent } from "../../api/meta-agent";
+import { useWorkflowMetaAgent } from "./hooks/useWorkflowMetaAgent";
 import { workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
@@ -124,58 +123,17 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Meta Agent Chat ──
-  const [chatOpen, setChatOpen] = useState(() => {
-    const saved = localStorage.getItem("wf-editor:chat-open");
-    return saved === "true";
-  });
-  const [metaAgentId, setMetaAgentId] = useState<string | null>(null);
+  const {
+    scenePrompt,
+    chatOpen,
+    setChatOpen,
+    metaAgentId,
+    agentList,
+    agentOverrideOpen,
+    setAgentOverrideOpen,
+  } = useWorkflowMetaAgent({ workflowId, meta });
 
   const { pushWorkflowError, pushWorkflowRunStatus, clearWorkflowEvents } = useWorkflowEvents();
-
-  const scenePrompt = useMemo(() => {
-    if (!workflowId) return;
-    const lines = [
-      t("editor.workflow_context"),
-      `- ${t("editor.workflow_id")}: ${workflowId}`,
-      `- ${t("editor.workflow_name")}: ${meta.name || t("editor.workflow_unnamed")}`,
-      `- ${t("editor.workflow_desc_label")}: ${meta.description || t("editor.workflow_no_desc")}`,
-      `- ${t("editor.workflow_draft_path")}: .agents/workflows/${workflowId}/draft.yaml`,
-      t("editor.workflow_read_prompt"),
-    ];
-    return lines.join("\n");
-  }, [workflowId, meta.name, meta.description, t]);
-
-  useEffect(() => {
-    localStorage.setItem("wf-editor:chat-open", String(chatOpen));
-    if (chatOpen && !metaAgentId) {
-      ensureMetaAgent()
-        .then((res) => setMetaAgentId(res.environmentId))
-        .catch((err) => console.error("Meta Agent failed:", err));
-    }
-  }, [chatOpen, metaAgentId]);
-
-  // ── Agent 配置联动 ──
-  const [agentList, setAgentList] = useState<Array<{ name: string; model: string | null; description: string | null }>>(
-    [],
-  );
-  const [agentOverrideOpen, setAgentOverrideOpen] = useState(false);
-
-  useEffect(() => {
-    agentApi
-      .list()
-      .then(({ data }) => {
-        if (Array.isArray(data)) {
-          setAgentList(
-            data.map((a) => ({
-              name: a.name,
-              model: a.model ?? null,
-              description: a.description ?? null,
-            })),
-          );
-        }
-      })
-      .catch((err: unknown) => console.error("Failed to load agent list:", err));
-  }, []);
 
   const isRunMode = activeRunId !== null;
   const dagStatus = runSnapshot?.dag_status;
