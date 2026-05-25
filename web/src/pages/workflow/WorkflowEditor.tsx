@@ -1,8 +1,6 @@
 import {
-  addEdge,
   Background,
   BackgroundVariant,
-  type Connection,
   Controls,
   type Edge,
   MiniMap,
@@ -15,9 +13,8 @@ import {
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
 import {
   AlertTriangle,
@@ -50,8 +47,6 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useWorkflowMetaAgent } from "./hooks/useWorkflowMetaAgent";
-import { workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
   type DAGSnapshot,
@@ -60,20 +55,24 @@ import {
   type RunSummary,
   workflowEngineApi,
 } from "../../api/workflow-engine";
-import { buildRunSummary, useWorkflowEvents } from "../../lib/use-workflow-events";
+import { useWorkflowEvents } from "../../lib/use-workflow-events";
 import { ChatPanel } from "../agent-panel/ChatPanel";
+import { useWorkflowCanvas } from "./hooks/useWorkflowCanvas";
+import { useWorkflowMetaAgent } from "./hooks/useWorkflowMetaAgent";
+import { useWorkflowPersistence } from "./hooks/useWorkflowPersistence";
+import { useWorkflowRun } from "./hooks/useWorkflowRun";
 import { autoLayout } from "./layout";
 import { nodeTypes } from "./nodes";
+import { DAG_STATUS_CFG, dedupEvents } from "./utils";
 import {
   createStartNode,
   defaultMeta,
-  flowToYaml,
-  nextNodeId,
-  resetNodeCounter,
   START_NODE_ID,
   type WfMeta,
   yamlToFlow,
 } from "./yaml-utils";
+import { workflowDefApi } from "../../api/workflow-defs";
+import { toast } from "sonner";
 import "./workflow.css";
 
 const PALETTE_ITEMS = [
@@ -103,14 +102,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [yamlText, setYamlText] = useState("");
   const [readOnly, setReadOnly] = useState(false);
 
-  // dryRun / run 状态
-  const [dryRunResult, setDryRunResult] = useState<{
-    valid: boolean;
-    issues: Array<{ type: string; message: string; field?: string }>;
-  } | null>(null);
-  const [running, setRunning] = useState(false);
-
-  // ── 运行模式状态 ──
+  // ── 运行模式状态（顶层持有，传给 Run hook） ──
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [runSnapshot, setRunSnapshot] = useState<DAGSnapshot | null>(null);
   const [runEvents, setRunEvents] = useState<DAGEvent[]>([]);
@@ -118,9 +110,12 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
   const [selectedNodeOutput, setSelectedNodeOutput] = useState<NodeOutput | null>(null);
   const [nodeOutputLoading, setNodeOutputLoading] = useState(false);
-  const [runRightTab, setRunRightTab] = useState<"events" | "output">("events");
   const [rightTab, setRightTab] = useState<"config" | "run" | "versions">("config");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Refs ──
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingConnectSource = useRef<string | null>(null);
+  const didConnect = useRef(false);
 
   // ── Meta Agent Chat ──
   const {
@@ -133,24 +128,117 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setAgentOverrideOpen,
   } = useWorkflowMetaAgent({ workflowId, meta });
 
-  const { pushWorkflowError, pushWorkflowRunStatus, clearWorkflowEvents } = useWorkflowEvents();
+  // ── Persistence hook ──
+  const {
+    syncYaml,
+    handleImportYaml,
+    handleExportYaml,
+    handleFileImport,
+    handleSaveDraft,
+    handlePublish,
+    saveStatus,
+    publishing,
+    lastSavedYaml,
+    setLastSavedYaml,
+  } = useWorkflowPersistence({
+    workflowId,
+    meta,
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    fitView,
+    yamlOpen,
+    yamlText,
+    setYamlText,
+    setSelectedNode,
+    setMeta,
+    setDryRunResult: () => {}, // placeholder, will be overridden by run hook
+    setYamlOpen,
+  });
 
-  const isRunMode = activeRunId !== null;
-  const dagStatus = runSnapshot?.dag_status;
-  const isRunDone = dagStatus ? ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(dagStatus) : false;
+  // ── Canvas hook ──
+  const {
+    onSelectionChange: canvasOnSelectionChange,
+    onConnect,
+    onConnectStart,
+    onConnectEnd,
+    handleNodesDelete,
+    addNode,
+    onDragOver,
+    onDrop,
+    handleAutoLayout,
+    handleNew,
+    updateNodeData,
+    handleIdChange,
+  } = useWorkflowCanvas({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    setMeta,
+    setSelectedNode,
+    readOnly,
+    activeRunId,
+    selectedNode,
+    screenToFlowPosition,
+    fitView,
+    pendingConnectSource,
+    didConnect,
+    setDryRunResult: () => {}, // placeholder
+    setYamlText,
+    setSelectedRunNodeId,
+  });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingConnectSource = useRef<string | null>(null);
-  const nodeCallbacksRef = useRef<{
-    onViewOutput: (nodeId: string) => void;
-    onRerunFrom: (fromNodeId: string) => void;
-  }>({ onViewOutput: () => {}, onRerunFrom: () => {} });
-  const didConnect = useRef(false);
+  // ── Run hook ──
+  const {
+    handleDryRun,
+    handleRun,
+    handleCancelRun,
+    handleApprove,
+    handleBackToEdit,
+    handleRerunFrom,
+    handleViewNodeOutput,
+    handleRefreshDraft,
+    dryRunResult,
+    running,
+    isRunMode,
+    isRunDone,
+    dagStatus,
+    runRightTab,
+    setRunRightTab,
+    updateNodesFromSnapshot,
+    loadRunData,
+    clearDryRunResult,
+  } = useWorkflowRun({
+    workflowId,
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    activeRunId,
+    setActiveRunId,
+    runSnapshot,
+    setRunSnapshot,
+    setRunEvents,
+    setRunApprovals,
+    selectedRunNodeId,
+    setSelectedRunNodeId,
+    selectedNodeOutput,
+    setSelectedNodeOutput,
+    nodeOutputLoading,
+    setNodeOutputLoading,
+    syncYaml,
+    fitView,
+    rightTab,
+    setRightTab,
+    setMeta,
+    lastSavedYaml,
+    setLastSavedYaml,
+  });
 
-  // 保存/发布状态
-  const [_lastSavedYaml, setLastSavedYaml] = useState("");
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [publishing, setPublishing] = useState(false);
+  // ── Derived state ──
+  const onSelectionChange: OnSelectionChangeFunc = canvasOnSelectionChange;
 
   // 加载已保存的工作流草稿
   useEffect(() => {
@@ -196,7 +284,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         if (abort) return;
         if (snap) {
           setRunSnapshot(snap);
-          updateNodesFromSnapshotRef.current(snap);
+          updateNodesFromSnapshot(snap);
         }
         if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
       } catch (err) {
@@ -206,619 +294,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     return () => {
       abort = true;
     };
-  }, [runId, t]);
-
-  // ── Selection ──
-  const onSelectionChange: OnSelectionChangeFunc = useCallback(
-    ({ nodes: selNodes }) => {
-      setSelectedNode(selNodes[0] ?? null);
-      if (activeRunId && selNodes[0] && selNodes[0].id !== START_NODE_ID) {
-        setSelectedRunNodeId(selNodes[0].id);
-      }
-    },
-    [activeRunId],
-  );
-
-  // ── Connection ──
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      didConnect.current = true;
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...connection,
-            type: "smoothstep",
-            animated: connection.source !== START_NODE_ID,
-            id: `e-${connection.source}-${connection.target}`,
-          },
-          eds,
-        ),
-      );
-    },
-    [setEdges],
-  );
-
-  // ── Drag-to-create ──
-  const onConnectStart = useCallback((_event: MouseEvent | TouchEvent) => {
-    pendingConnectSource.current = null;
-    didConnect.current = false;
-  }, []);
-
-  const onConnectEnd = useCallback(
-    (event: MouseEvent | TouchEvent) => {
-      const sourceId = pendingConnectSource.current;
-      pendingConnectSource.current = null;
-
-      if (!sourceId || readOnly || didConnect.current) return;
-      didConnect.current = false;
-
-      const sourceNode = nodes.find((n) => n.id === sourceId);
-      if (!sourceNode) return;
-
-      const newType = sourceId === START_NODE_ID ? "shell" : (sourceNode.type ?? "shell");
-      const newId = nextNodeId(newType);
-      const position = screenToFlowPosition({
-        x: (event as MouseEvent).clientX,
-        y: (event as MouseEvent).clientY,
-      });
-
-      const newNode: Node = { id: newId, type: newType, position, data: {} };
-      setNodes((nds) => [...nds, newNode]);
-      setEdges((eds) => [
-        ...eds,
-        {
-          id: `e-${sourceId}-${newId}`,
-          source: sourceId,
-          target: newId,
-          type: "smoothstep",
-          animated: sourceId !== START_NODE_ID,
-        },
-      ]);
-    },
-    [nodes, readOnly, screenToFlowPosition, setNodes, setEdges],
-  );
-
-  // ── Prevent deleting start node ──
-  const handleNodesDelete = useCallback(
-    (deleted: Node[]) => {
-      const filtered = deleted.filter((n) => n.id !== START_NODE_ID);
-      if (filtered.length === 0) return;
-      setNodes((nds) => nds.filter((n) => !filtered.some((d) => d.id === n.id)));
-    },
-    [setNodes],
-  );
-
-  // ── Sync YAML ──
-  const syncYaml = useCallback(() => {
-    const y = flowToYaml(nodes, edges, meta);
-    setYamlText(y);
-    return y;
-  }, [nodes, edges, meta]);
-
-  // ── Add node at position ──
-  const addNode = useCallback(
-    (type: string, position?: { x: number; y: number }) => {
-      const id = nextNodeId(type);
-      const newNode: Node = {
-        id,
-        type,
-        position: position ?? { x: 300 + Math.random() * 200, y: 100 + Math.random() * 200 },
-        data: {},
-      };
-      setNodes((nds) => [...nds, newNode]);
-    },
-    [setNodes],
-  );
-
-  // ── DnD: drag from palette ──
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-  }, []);
-
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-      const type = event.dataTransfer.getData("application/workflow-node");
-      if (!type) return;
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-      addNode(type, position);
-    },
-    [screenToFlowPosition, addNode],
-  );
-
-  // ── Auto layout ──
-  const handleAutoLayout = useCallback(() => {
-    const laid = autoLayout(nodes, edges);
-    setNodes(laid);
-    setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
-  }, [nodes, edges, setNodes, fitView]);
-
-  // ── New workflow ──
-  const handleNew = useCallback(() => {
-    setNodes([createStartNode()]);
-    setEdges([]);
-    setSelectedNode(null);
-    setMeta({ ...defaultMeta });
-    setYamlText("");
-    setDryRunResult(null);
-    resetNodeCounter();
-  }, [setNodes, setEdges]);
-
-  // ── Import YAML ──
-  const handleImportYaml = useCallback(() => {
-    if (yamlOpen) {
-      const text = yamlText.trim();
-      if (!text) return;
-      try {
-        const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(text);
-        setNodes(newNodes);
-        setEdges(newEdges);
-        setMeta(newMeta);
-        setSelectedNode(null);
-        setDryRunResult(null);
-        setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
-      } catch (err) {
-        console.error(err);
-        toast.error(`${t("editor.import_yaml_failed")}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    } else {
-      syncYaml();
-      setYamlOpen(true);
-    }
-  }, [yamlOpen, yamlText, setNodes, setEdges, syncYaml, fitView, t]);
-
-  // ── Export YAML ──
-  const handleExportYaml = useCallback(() => {
-    const y = syncYaml();
-    const blob = new Blob([y], { type: "text/yaml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${meta.name || "workflow"}.yaml`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [syncYaml, meta.name]);
-
-  // ── Import from file ──
-  const handleFileImport = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const text = ev.target?.result as string;
-        try {
-          const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(text);
-          setNodes(newNodes);
-          setEdges(newEdges);
-          setMeta(newMeta);
-          setSelectedNode(null);
-          setYamlText(text);
-          setDryRunResult(null);
-          setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
-        } catch (err) {
-          console.error(err);
-          toast.error(`${t("editor.import_file_failed")}: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      };
-      reader.readAsText(file);
-      e.target.value = "";
-    },
-    [setNodes, setEdges, fitView, t],
-  );
-
-  // ── Save Draft ──
-  const handleSaveDraft = useCallback(async () => {
-    if (!workflowId) return;
-    const y = syncYaml();
-    setSaveStatus("saving");
-    try {
-      await workflowDefApi.save(workflowId, y);
-      setLastSavedYaml(y);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2000);
-    } catch (err) {
-      console.error(err);
-      pushWorkflowError("save", (err as Error).message);
-      toast.error(`${t("editor.save_failed")}: ${(err as Error).message}`);
-      setSaveStatus("idle");
-    }
-  }, [syncYaml, workflowId, t]);
-
-  // ── Publish ──
-  const handlePublish = useCallback(async () => {
-    if (!workflowId) return;
-    const y = syncYaml();
-    setSaveStatus("saving");
-    try {
-      await workflowDefApi.save(workflowId, y);
-      setLastSavedYaml(y);
-      setSaveStatus("idle");
-    } catch (err) {
-      console.error(err);
-      toast.error(`${t("editor.save_failed")}: ${(err as Error).message}`);
-      setSaveStatus("idle");
-      return;
-    }
-
-    setPublishing(true);
-    try {
-      const result = await workflowDefApi.publish(workflowId);
-      toast.success(t("editor.published_as", { version: result.version }));
-    } catch (err) {
-      console.error(err);
-      pushWorkflowError("publish", (err as Error).message);
-      toast.error(`${t("editor.publish_failed")}: ${(err as Error).message}`);
-    } finally {
-      setPublishing(false);
-    }
-  }, [syncYaml, workflowId, t]);
-
-  // ── Cmd+S shortcut ──
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault();
-        handleSaveDraft();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [handleSaveDraft]);
-
-  // ── Dry Run ──
-  const handleDryRun = useCallback(async () => {
-    const y = syncYaml();
-    setRunning(true);
-    setDryRunResult(null);
-    try {
-      const result = await workflowEngineApi.dryRun(y);
-      setDryRunResult(result);
-    } catch (err) {
-      console.error(err);
-      pushWorkflowError("validation", (err as Error).message);
-      setDryRunResult({ valid: false, issues: [{ type: "error", message: (err as Error).message }] });
-    } finally {
-      setRunning(false);
-    }
-  }, [syncYaml]);
-
-  // ── Run mode helpers ──
-
-  /** 将 snapshot 的节点状态同步到编辑器节点（同时注入节点操作回调） */
-  const updateNodesFromSnapshot = useCallback(
-    (snap: DAGSnapshot) => {
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.id === START_NODE_ID) return n;
-          const state = snap.node_states[n.id];
-          if (!state)
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                _runStatus: undefined,
-                _exitCode: undefined,
-                _onViewOutput: undefined,
-                _onRerunFrom: undefined,
-              },
-            };
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              _runStatus: state.status,
-              _exitCode: state.exit_code,
-              _onViewOutput: nodeCallbacksRef.current.onViewOutput,
-              _onRerunFrom: nodeCallbacksRef.current.onRerunFrom,
-            },
-          };
-        }),
-      );
-    },
-    [setNodes],
-  );
-
-  // Keep a stable ref to updateNodesFromSnapshot for use in useEffect deps
-  const updateNodesFromSnapshotRef = useRef(updateNodesFromSnapshot);
-  updateNodesFromSnapshotRef.current = updateNodesFromSnapshot;
-
-  // ── Refresh draft from server ──
-  const handleRefreshDraft = useCallback(async () => {
-    if (!workflowId) return;
-    if (isRunMode && !isRunDone) return;
-    try {
-      const wf = await workflowDefApi.get(workflowId);
-      if (wf.draftYaml) {
-        const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
-        setNodes(newNodes);
-        setEdges(newEdges);
-        setMeta(newMeta);
-        setLastSavedYaml(wf.draftYaml);
-        if (activeRunId) {
-          try {
-            const snap = await workflowEngineApi.getRunStatus(activeRunId);
-            if (snap) updateNodesFromSnapshot(snap);
-          } catch (err) {
-            console.error(`${t("editor.restore_run_failed")}:`, err);
-          }
-        }
-        setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
-      }
-    } catch (err) {
-      console.error(`${t("editor.refresh_failed")}:`, err);
-    }
-  }, [workflowId, isRunMode, isRunDone, activeRunId, setNodes, setEdges, fitView, updateNodesFromSnapshot, t]);
-
-  /** 加载运行快照和事件 */
-  const loadRunData = useCallback(
-    async (runId: string) => {
-      try {
-        const [snap, evts] = await Promise.all([
-          workflowEngineApi.getRunStatus(runId),
-          workflowEngineApi.getEvents(runId),
-        ]);
-        if (snap) {
-          setRunSnapshot(snap);
-          updateNodesFromSnapshot(snap);
-          pushWorkflowRunStatus(buildRunSummary(snap));
-        }
-        if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
-      } catch (err) {
-        console.error(err);
-      }
-    },
-    [updateNodesFromSnapshot],
-  );
-
-  // 轮询运行中的工作流（setTimeout 链式，防止请求重叠导致数据闪烁）
-  useEffect(() => {
-    if (!activeRunId || !runSnapshot) return;
-    const status = runSnapshot.dag_status;
-    if (["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(status)) return;
-    let cancelled = false;
-    const poll = async () => {
-      if (cancelled) return;
-      await loadRunData(activeRunId);
-      if (!cancelled) pollRef.current = setTimeout(poll, 2000);
-    };
-    pollRef.current = setTimeout(poll, 2000);
-    return () => {
-      cancelled = true;
-      if (pollRef.current) clearTimeout(pollRef.current);
-    };
-  }, [activeRunId, runSnapshot, loadRunData]);
-
-  // SUSPENDED 时加载审批列表
-  useEffect(() => {
-    if (!activeRunId || !runSnapshot || runSnapshot.dag_status !== "SUSPENDED") {
-      setRunApprovals([]);
-      return;
-    }
-    workflowEngineApi
-      .getPendingApprovals(activeRunId)
-      .then((list) => setRunApprovals(Array.isArray(list) ? list : []))
-      .catch((err) => console.error(err));
-  }, [activeRunId, runSnapshot]);
-
-  // 选中节点 → 加载输出
-  useEffect(() => {
-    if (!activeRunId || !selectedRunNodeId) return;
-    setNodeOutputLoading(true);
-    setSelectedNodeOutput(null);
-    setRunRightTab("output");
-    workflowEngineApi
-      .getOutput(activeRunId, selectedRunNodeId)
-      .then((out) => setSelectedNodeOutput(out ?? null))
-      .catch((err) => console.error(err))
-      .finally(() => setNodeOutputLoading(false));
-  }, [activeRunId, selectedRunNodeId]);
-
-  // ── Run workflow（自动保存再执行，结果内联显示） ──
-  const handleRun = useCallback(async () => {
-    const y = syncYaml();
-    setRunning(true);
-    setDryRunResult(null);
-    clearWorkflowEvents();
-
-    if (workflowId) {
-      try {
-        await workflowDefApi.save(workflowId, y);
-      } catch (err) {
-        console.error(`${t("editor.auto_save_failed")}:`, err);
-      }
-    }
-
-    // 所有节点标记为 RUNNING（等待 API 返回）
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.id === START_NODE_ID ? n : { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } },
-      ),
-    );
-
-    try {
-      const result = await workflowEngineApi.run(y, undefined, workflowId);
-      setActiveRunId(result.runId);
-      setRunSnapshot(null);
-      setRunEvents([]);
-      setRunApprovals([]);
-      setSelectedRunNodeId(null);
-      setSelectedNodeOutput(null);
-      setRightTab("run");
-      await loadRunData(result.runId);
-    } catch (err) {
-      console.error(err);
-      pushWorkflowError("run", (err as Error).message);
-      toast.error(`${t("editor.run_failed")}: ${(err as Error).message}`);
-    } finally {
-      setRunning(false);
-    }
-  }, [syncYaml, workflowId, setNodes, loadRunData, t]);
-
-  // ── Cancel run ──
-  const handleCancelRun = useCallback(async () => {
-    if (!activeRunId) return;
-    try {
-      await workflowEngineApi.cancel(activeRunId);
-      await loadRunData(activeRunId);
-    } catch (err) {
-      console.error(err);
-      toast.error((err as Error).message);
-    }
-  }, [activeRunId, loadRunData]);
-
-  // ── Approve ──
-  const handleApprove = useCallback(
-    async (approval: PendingApproval) => {
-      if (!activeRunId) return;
-      try {
-        await workflowEngineApi.approve(activeRunId, approval.nodeId, approval.approvalToken);
-        await loadRunData(activeRunId);
-        const list = await workflowEngineApi.getPendingApprovals(activeRunId);
-        setRunApprovals(Array.isArray(list) ? list : []);
-      } catch (err) {
-        console.error(err);
-        toast.error((err as Error).message);
-      }
-    },
-    [activeRunId, loadRunData],
-  );
-
-  // ── Back to edit ──
-  const handleBackToEdit = useCallback(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    setActiveRunId(null);
-    setRunSnapshot(null);
-    setRunEvents([]);
-    setRunApprovals([]);
-    setSelectedRunNodeId(null);
-    setSelectedNodeOutput(null);
-    setRightTab("config");
-    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })));
-  }, [setNodes]);
-
-  // ── Rerun from selected node ──
-  const handleRerunFrom = useCallback(
-    async (fromNodeId: string) => {
-      if (!activeRunId) return;
-      const y = syncYaml();
-      setRunning(true);
-      // 目标节点及下游标记为 RUNNING（等待 API 返回）
-      setNodes((nds) => {
-        // BFS 找下游
-        const downstream = new Set<string>();
-        const adjMap = new Map<string, string[]>();
-        for (const e of edges) {
-          if (e.source === START_NODE_ID) continue;
-          const list = adjMap.get(e.source) ?? [];
-          list.push(e.target);
-          adjMap.set(e.source, list);
-        }
-        const q = [fromNodeId];
-        while (q.length > 0) {
-          const cur = q.shift()!;
-          for (const next of adjMap.get(cur) ?? []) {
-            if (!downstream.has(next)) {
-              downstream.add(next);
-              q.push(next);
-            }
-          }
-        }
-        return nds.map((n) => {
-          if (n.id === START_NODE_ID) return n;
-          const isTarget = n.id === fromNodeId || downstream.has(n.id);
-          if (isTarget) return { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } };
-          return n;
-        });
-      });
-
-      try {
-        const result = await workflowEngineApi.rerunFrom(activeRunId, y, fromNodeId, workflowId);
-        setActiveRunId(result.runId);
-        setRunSnapshot(null);
-        setRunEvents([]);
-        setRunApprovals([]);
-        setSelectedRunNodeId(null);
-        setSelectedNodeOutput(null);
-        setRightTab("run");
-        await loadRunData(result.runId);
-      } catch (err) {
-        console.error(err);
-        toast.error(`${t("editor.rerun_failed")}: ${(err as Error).message}`);
-      } finally {
-        setRunning(false);
-      }
-    },
-    [activeRunId, syncYaml, workflowId, edges, setNodes, loadRunData, t],
-  );
-
-  // ── View node output (from node button click) ──
-  const handleViewNodeOutput = useCallback(
-    async (nodeId: string) => {
-      if (!activeRunId) return;
-      setSelectedRunNodeId(nodeId);
-      setRunRightTab("output");
-      setNodeOutputLoading(true);
-      setSelectedNodeOutput(null);
-      // 确保运行面板打开
-      setRightTab("run");
-      try {
-        const out = await workflowEngineApi.getOutput(activeRunId, nodeId);
-        setSelectedNodeOutput(out ?? null);
-      } catch (err) {
-        console.error(err);
-        setSelectedNodeOutput(null);
-      } finally {
-        setNodeOutputLoading(false);
-      }
-    },
-    [activeRunId],
-  );
-
-  // 保持 ref 同步
-  nodeCallbacksRef.current.onViewOutput = handleViewNodeOutput;
-  nodeCallbacksRef.current.onRerunFrom = handleRerunFrom;
-
-  // ── Update selected node data ──
-  const updateNodeData = useCallback(
-    (updates: Record<string, unknown>) => {
-      if (!selectedNode) return;
-      setNodes((nds) => nds.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...updates } } : n)));
-      setSelectedNode((prev) => (prev ? { ...prev, data: { ...prev.data, ...updates } } : null));
-    },
-    [selectedNode, setNodes],
-  );
-
-  // ── Change node ID ──
-  const handleIdChange = useCallback(
-    (newId: string) => {
-      if (!selectedNode || newId === selectedNode.id || !newId.trim()) return;
-      if (newId === START_NODE_ID) return;
-      if (nodes.some((n) => n.id === newId)) {
-        toast.error(t("editor.node_id_exists"));
-        return;
-      }
-      const oldId = selectedNode.id;
-      const newNode: Node = { ...selectedNode, id: newId };
-      const newEdges = edges.map((e) => ({
-        ...e,
-        source: e.source === oldId ? newId : e.source,
-        target: e.target === oldId ? newId : e.target,
-        id:
-          e.source === oldId || e.target === oldId
-            ? `e-${e.source === oldId ? newId : e.source}-${e.target === oldId ? newId : e.target}`
-            : e.id,
-      }));
-      setNodes((nds) => [...nds.filter((n) => n.id !== oldId), newNode]);
-      setEdges(newEdges);
-      setSelectedNode(newNode);
-    },
-    [selectedNode, nodes, edges, setNodes, setEdges, t],
-  );
+  }, [runId, t, updateNodesFromSnapshot]);
 
   // ── Update meta ──
   const updateMeta = useCallback((updates: Partial<WfMeta>) => {
@@ -1122,7 +598,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                 : t("editor.validate_fail", { count: dryRunResult.issues.length })}
               <button
                 type="button"
-                onClick={() => setDryRunResult(null)}
+                onClick={() => clearDryRunResult()}
                 style={{
                   marginLeft: "auto",
                   background: "none",
@@ -2149,16 +1625,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   );
 }
 
-// ── 事件去重 ──
-function dedupEvents(events: DAGEvent[]): DAGEvent[] {
-  const seen = new Set<string>();
-  return events.filter((e) => {
-    if (seen.has(e.event_id)) return false;
-    seen.add(e.event_id);
-    return true;
-  });
-}
-
 // ── 版本管理面板 ──
 
 function VersionPanel({
@@ -2668,17 +2134,6 @@ function relativeTime(t: (key: string, opts?: Record<string, unknown>) => string
   if (diff < 604800) return t("runs.relative_days", { count: Math.floor(diff / 86400) });
   return new Date(iso).toLocaleDateString();
 }
-
-// ── DAG 状态样式 ──
-const DAG_STATUS_CFG: Record<string, { color: string; bg: string; labelKey: string }> = {
-  PENDING: { color: "#94a3b8", bg: "#f1f5f9", labelKey: "editor.dag_status_pending" },
-  RUNNING: { color: "#3b82f6", bg: "#eff6ff", labelKey: "editor.dag_status_running" },
-  SUSPENDED: { color: "#f59e0b", bg: "#fffbeb", labelKey: "editor.dag_status_suspended" },
-  SUCCESS: { color: "#22c55e", bg: "#f0fdf4", labelKey: "editor.dag_status_success" },
-  FAILED: { color: "#ef4444", bg: "#fef2f2", labelKey: "editor.dag_status_failed" },
-  CANCELLED: { color: "#94a3b8", bg: "#f8fafc", labelKey: "editor.dag_status_cancelled" },
-  ERROR: { color: "#ef4444", bg: "#fef2f2", labelKey: "editor.dag_status_error" },
-};
 
 // ── 事件渲染辅助 ──
 
