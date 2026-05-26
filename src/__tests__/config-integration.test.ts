@@ -1,37 +1,7 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-
-// Mock auth
-// Mock config-pg service
-mock.module("../services/config-pg", () => ({
-  listProviders: async () => [],
-  getProvider: async () => null,
-  upsertProvider: async () => "prov-id",
-  deleteProvider: async () => true,
-  addModel: async () => {},
-  updateModel: async () => {},
-  removeModel: async () => {},
-  getUserConfig: async () => ({ defaultAgent: null, currentModel: null, smallModel: null, permission: null }),
-  setUserConfig: async () => {},
-  listAgentConfigs: async () => [],
-  getAgentConfig: async () => null,
-  createAgentConfig: async () => {},
-  updateAgentConfig: async () => {},
-  deleteAgentConfig: async () => [],
-  listMcpServers: async () => [],
-  getMcpServer: async () => null,
-  createMcpServer: async () => {},
-  updateMcpServer: async () => {},
-  deleteMcpServer: async () => [],
-  setMcpServerEnabled: async () => [],
-  listSkills: async () => [],
-  getSkill: async () => null,
-  upsertSkill: async () => "skill-id",
-  deleteSkill: async () => true,
-  listAgentSkillIds: async () => [],
-  syncAgentSkills: async () => {},
-}));
+import { resetAllStubs, stubConfigPg } from "../test-utils/helpers";
 
 const configRoute = (await import("../routes/web/config/index")).default;
 
@@ -41,6 +11,35 @@ function request(path: string, init?: RequestInit) {
 
 describe("Config Route Integration", () => {
   beforeEach(() => {
+    resetAllStubs();
+    stubConfigPg({
+      listProviders: async () => [],
+      getProvider: async () => null,
+      upsertProvider: async () => "prov-id",
+      deleteProvider: async () => true,
+      addModel: async () => {},
+      updateModel: async () => {},
+      removeModel: async () => {},
+      getUserConfig: async () => ({ defaultAgent: null, currentModel: null, smallModel: null, permission: null }),
+      setUserConfig: async () => {},
+      listAgentConfigs: async () => [],
+      getAgentConfig: async () => null,
+      createAgentConfig: async () => {},
+      updateAgentConfig: async () => {},
+      deleteAgentConfig: async () => [],
+      listMcpServers: async () => [],
+      getMcpServer: async () => null,
+      createMcpServer: async () => {},
+      updateMcpServer: async () => {},
+      deleteMcpServer: async () => [],
+      setMcpServerEnabled: async () => [],
+      listSkills: async () => [],
+      getSkill: async () => null,
+      upsertSkill: async () => "skill-id",
+      deleteSkill: async () => true,
+      listAgentSkillIds: async () => [],
+      syncAgentSkills: async () => {},
+    });
     setTestAuth({
       user: { id: "test-user", email: "test@test.com", name: "Test" },
       authContext: { organizationId: "test-team", userId: "test-user", role: "owner" },

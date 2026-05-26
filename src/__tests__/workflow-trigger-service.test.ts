@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { setConfig } from "../config";
+import { resetAllStubs } from "../test-utils/helpers";
 
 // mock repository
 const mockRepo = {
@@ -15,14 +17,14 @@ mock.module("../repositories/workflow-trigger", () => ({
   workflowTriggerRepo: mockRepo,
 }));
 
-// mock config
-mock.module("../config", () => ({
-  config: { baseUrl: "http://localhost:3000" },
-  getBaseUrl: () => "http://localhost:3000",
-}));
-
 describe("workflow-trigger-service", () => {
+  beforeEach(() => {
+    resetAllStubs();
+    setConfig({ baseUrl: "http://localhost:3000" });
+  });
+
   afterEach(() => {
+    setConfig({ baseUrl: "" });
     mockRepo.getByHash.mockClear();
     mockRepo.getById.mockClear();
     mockRepo.create.mockClear();
