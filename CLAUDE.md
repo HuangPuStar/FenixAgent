@@ -318,21 +318,65 @@ VALUES ('<sha256哈希值>', <journal中的when时间戳>);
 
 ### 后端测试 (Bun test)
 
-路径 `src/__tests__/*.test.ts`，单元测试为主。Mock 使用 `mock.module()`。
+路径 `src/__tests__/*.test.ts`。Mock 通过 `src/test-utils/setup-mocks.ts` 集中注册（`bunfig.toml` preload），测试文件通过 stub API 配置行为。
 
-**Mock 注意事项**：
+#### Mock 白名单
 
-1. `mock.module()` 必须在 import 之前调用
-2. mock 全局生效，多文件 mock 同一模块可能互相污染（`SyntaxError: Export named 'xxx' not found`）
-3. mock 中间件链时须同时 mock `../db` 和 `../auth/better-auth`
-4. `src/store.ts` 纯内存 Map，测试直接 `storeReset()` 清理
-5. 禁止直接连接数据库的集成测试，用 mock 替代
+以下模块允许被 mock（在 `setup-mocks.ts` 中集中注册）：
+
+- `../db` — 数据库连接
+- `../services/config-pg` — 数据库 CRUD 操作
+- `../auth/better-auth` — 认证服务
+- `../auth/api-key-service` — API Key 服务
+
+**禁止在测试文件中调用 `mock.module()`。** 测试文件通过 `stubXxx()` 函数配置行为。
+
+#### 测试分层
+
+| 层级 | 对象 | Mock | 命名 |
+|------|------|------|------|
+| L1 | 纯函数/工具函数 | 无 | `<功能>.test.ts` |
+| L2 | 业务逻辑 | `stubConfigPg` / `stubAuthApi` | `<模块>-<功能>.test.ts` |
+| L3 | 路由集成 | stub + `setTestAuth` + `setTestOrgContext` | `route-<路由>.test.ts` |
+| 前端 | 关键用户流程 | mock fetch / MSW | `<功能>-flow.test.ts` |
+
+#### Stub 使用规范
+
+```ts
+import { resetAllStubs, stubConfigPg } from "../test-utils/helpers";
+
+beforeEach(() => {
+  resetAllStubs();        // 必须先 reset
+  stubConfigPg({ ... });  // 再配置需要的 stub
+});
+```
+
+- `beforeEach` 重置，不用 `afterEach`
+- 未配置的 stub 访问时抛出明确错误
+- 新增 mock 白名单模块：1) 在 `src/test-utils/stubs/` 新建 stub 文件；2) 在 `setup-mocks.ts` 注册；3) 更新本白名单
+
+#### 测试编写规则
+
+- 每个测试独立，不依赖执行顺序
+- 每个 test 上方一行中文注释
+- L3 路由测试不重复 L2 的逻辑细节
+- 前端只测关键流程，不写类型检查测试
+
+#### Mock 注意事项
+
+1. ~~`mock.module()` 必须在 import 之前调用~~ — 已废弃，统一使用 `setup-mocks.ts` + stub API
+2. `src/store.ts` 纯内存 Map，测试直接 `storeReset()` 清理
+3. 禁止直接连接数据库的集成测试，用 stub 替代
+4. 禁止在测试文件中调用 `mock.module()`，统一使用 `src/test-utils/` 下的 stub 注册表
+5. `bunfig.toml` 的 preload 确保所有测试在执行前加载 mock 注册
 
 ### 前端测试 (Bun test)
 
 路径 `web/src/__tests__/`，React Testing Library + ReactDOMServer。文件路径用 `import.meta.dirname` 构建（不用相对路径字符串）。
 
 注释规范：每个 `test(...)` 上方补一行中文注释。
+
+**前端测试规则**：只测关键流程（表单提交、数据操作、导航路由、状态联动），不写类型检查测试和纯 UI 结构断言。Mock API 使用 `fetch` mock 或 MSW，不用 `mock.module()`。命名 `<功能>-flow.test.ts`。
 
 ### tsconfig
 
