@@ -12,6 +12,26 @@ import { getDbStub } from "./stubs/db-stub";
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type AnyFn = (...args: any[]) => any;
 
+/**
+ * 创建带惰性包装函数的 mock 对象。
+ * 每个属性通过 Object.defineProperty 注册，getter 返回一个函数，
+ * 调用时才查找 stub 注册表。
+ */
+function createLazyMock(keys: readonly string[], getStub: (name: string) => any) {
+  const obj: Record<string, unknown> = {};
+  for (const key of keys) {
+    Object.defineProperty(obj, key, {
+      enumerable: true,
+      configurable: true,
+      get:
+        () =>
+        (...args: unknown[]) =>
+          (getStub(key) as AnyFn)(...args),
+    });
+  }
+  return obj;
+}
+
 // ── config-pg 导出名称 ──
 
 const CONFIG_PG_KEYS = [
@@ -46,21 +66,7 @@ const CONFIG_PG_KEYS = [
   "upsertSkill",
 ] as const;
 
-mock.module("../services/config-pg", () => {
-  const obj: Record<string, unknown> = {};
-  for (const key of CONFIG_PG_KEYS) {
-    Object.defineProperty(obj, key, {
-      enumerable: true,
-      configurable: true,
-      // 惰性包装：getter 返回一个函数，调用时才查找 stub
-      get:
-        () =>
-        (...args: unknown[]) =>
-          (getConfigPgStub(key) as AnyFn)(...args),
-    });
-  }
-  return obj;
-});
+mock.module("../services/config-pg", () => createLazyMock(CONFIG_PG_KEYS, getConfigPgStub));
 
 // ── auth.api 方法名称 ──
 
@@ -76,17 +82,7 @@ const AUTH_API_KEYS = [
 ] as const;
 
 mock.module("../auth/better-auth", () => {
-  const apiObj: Record<string, unknown> = {};
-  for (const key of AUTH_API_KEYS) {
-    Object.defineProperty(apiObj, key, {
-      enumerable: true,
-      configurable: true,
-      get:
-        () =>
-        (...args: unknown[]) =>
-          (getAuthApiStub(key) as AnyFn)(...args),
-    });
-  }
+  const apiObj = createLazyMock(AUTH_API_KEYS, getAuthApiStub);
   return {
     auth: {
       api: apiObj,
@@ -99,20 +95,7 @@ mock.module("../auth/better-auth", () => {
 
 const API_KEY_SERVICE_KEYS = ["createApiKey", "hashApiKey"] as const;
 
-mock.module("../auth/api-key-service", () => {
-  const obj: Record<string, unknown> = {};
-  for (const key of API_KEY_SERVICE_KEYS) {
-    Object.defineProperty(obj, key, {
-      enumerable: true,
-      configurable: true,
-      get:
-        () =>
-        (...args: unknown[]) =>
-          (getApiKeyServiceStub(key) as AnyFn)(...args),
-    });
-  }
-  return obj;
-});
+mock.module("../auth/api-key-service", () => createLazyMock(API_KEY_SERVICE_KEYS, getApiKeyServiceStub));
 
 // ── raw db ──
 
@@ -135,3 +118,6 @@ mock.module("../db", () => {
   });
   return obj;
 });
+
+// ── 以下模块按批次添加：只有当所有使用该模块的测试文件都已迁移到 stub 注册表后才能注册 ──
+// 添加前须确认：没有任何未迁移的测试会通过被测代码间接导入这些模块
