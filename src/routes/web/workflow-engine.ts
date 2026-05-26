@@ -29,38 +29,41 @@ app.post(
 
     try {
       switch (action) {
-        // 执行工作流
+        // 执行工作流（异步启动，立即返回 runId）
         case "run": {
           const yaml = payload.yaml as string;
           const params = payload.params as Record<string, unknown> | undefined;
           const workflowId = payload.workflowId as string | undefined;
+          const { runId, result } = engine.runAsync(yaml, params);
+          // 发布 run_started SSE 事件（runId 已知）
           if (workflowId) {
-            publishWorkflowEvent(workflowId, "workflow.run_started", { runId: undefined });
+            publishWorkflowEvent(workflowId, "workflow.run_started", { runId });
           }
-          const result = await engine.run(yaml, params);
-          // 回写 workflowId 到该 run 的所有快照
+          // 后台收尾：回写 workflowId + 发布终止 SSE 事件
           if (workflowId) {
-            await db
-              .update(workflowSnapshot)
-              .set({ workflowId })
-              .where(
-                and(
-                  eq(workflowSnapshot.runId, result.runId),
-                  eq(workflowSnapshot.organizationId, authCtx.organizationId),
-                ),
-              );
+            result.then(
+              async (r) => {
+                await db
+                  .update(workflowSnapshot)
+                  .set({ workflowId })
+                  .where(
+                    and(eq(workflowSnapshot.runId, runId), eq(workflowSnapshot.organizationId, authCtx.organizationId)),
+                  );
+                publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
+                  runId,
+                  dagStatus: r.status,
+                });
+              },
+              (err) => {
+                console.error("[workflow-engine] run background error:", err);
+                publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
+                  runId,
+                  dagStatus: "ERROR",
+                });
+              },
+            );
           }
-          // run 是同步阻塞的，返回时 DAG 已完成（或挂起）
-          if (workflowId && result.status) {
-            const terminalStatuses = ["SUCCESS", "FAILED", "CANCELLED", "ERROR"];
-            if (terminalStatuses.includes(result.status)) {
-              publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
-                runId: result.runId,
-                dagStatus: result.status,
-              });
-            }
-          }
-          return { success: true, data: result };
+          return { success: true, data: { runId, status: "RUNNING" } };
         }
 
         // 干运行：校验 + 展示执行计划

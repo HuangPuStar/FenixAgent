@@ -190,17 +190,19 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   );
 
   useEffect(() => {
-    if (!activeRunId || !runSnapshot) return;
-    const status = runSnapshot.dag_status;
-    if (["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(status)) return;
+    if (!activeRunId) return;
+    if (runSnapshot) {
+      const status = runSnapshot.dag_status;
+      if (["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(status)) return;
+    }
     let cancelled = false;
     const poll = async () => {
       if (cancelled) return;
       await loadRunData(activeRunId);
-      if (!cancelled) pollRef.current = setTimeout(poll, 10_000);
+      if (!cancelled) pollRef.current = setTimeout(poll, 2_000);
     };
-    // SSE 作为主要状态更新机制，轮询 10s 作为兜底
-    pollRef.current = setTimeout(poll, 10_000);
+    // 引擎异步执行，轮询 2s 获取实时快照
+    pollRef.current = setTimeout(poll, 2_000);
     return () => {
       cancelled = true;
       if (pollRef.current) clearTimeout(pollRef.current);

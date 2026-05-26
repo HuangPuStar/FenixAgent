@@ -65,8 +65,11 @@ export interface WorkflowEngine {
   /** 校验 WorkflowDef */
   validate(def: WorkflowDef): ValidationResult;
 
-  /** 执行工作流 */
+  /** 执行工作流（阻塞，返回最终结果） */
   run(yaml: string, params?: Record<string, unknown>): Promise<DAGRunResult>;
+
+  /** 异步启动工作流，立即返回 runId 和结果 Promise */
+  runAsync(yaml: string, params?: Record<string, unknown>): { runId: string; result: Promise<DAGRunResult> };
 
   /** 干运行 — 校验 + 展示执行计划，不实际执行 */
   dryRun(yaml: string): DryRunResult;
@@ -153,7 +156,27 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
   }
 
   async function run(yaml: string, params: Record<string, unknown> = {}): Promise<DAGRunResult> {
-    // 1. 解析 + 校验
+    const { runId, context } = await prepareRun(yaml, params);
+
+    let result: DAGRunResult | undefined;
+    try {
+      const scheduler = new DAGScheduler(context);
+      result = await scheduler.run();
+      return result;
+    } finally {
+      if (result?.status !== "SUSPENDED") {
+        activeRuns.delete(runId);
+      }
+    }
+  }
+
+  function runAsync(
+    yaml: string,
+    params: Record<string, unknown> = {},
+  ): { runId: string; result: Promise<DAGRunResult> } {
+    const runId = `run_${nanoid(10)}`;
+
+    // 同步：解析 + 校验（失败直接抛）
     const def = parse(yaml, defaultCwd);
     const validation = validate(def);
     if (!validation.valid) {
@@ -166,10 +189,6 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       });
     }
 
-    // 2. 生成 runId
-    const runId = `run_${nanoid(10)}`;
-
-    // 2.5 用 YAML params 定义的 default 值填充未传入的参数
     const resolvedParams = { ...params };
     if (validation.def.params) {
       for (const [key, schema] of Object.entries(validation.def.params)) {
@@ -179,18 +198,83 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       }
     }
 
-    // 3. Secrets 解析
+    // 后台执行，返回 Promise 供调用方订阅完成事件
+    const resultPromise = (async (): Promise<DAGRunResult> => {
+      let secrets: Record<string, string> = {};
+      if (def.secrets && def.secrets.length > 0) {
+        secrets = await secretsResolver.resolve(def.secrets);
+      }
+
+      const cancellation = new CancellationManager();
+      const baseDir = defaultCwd ?? process.cwd();
+      const registry = buildRegistry(runId, baseDir);
+
+      const context: SchedulerContext = {
+        runId,
+        workflowDef: validation.def,
+        storage,
+        params: resolvedParams,
+        secrets,
+        nodeExecutor: registry,
+        cancellation,
+      };
+
+      activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
+
+      let result: DAGRunResult | undefined;
+      try {
+        const scheduler = new DAGScheduler(context);
+        result = await scheduler.run();
+        return result;
+      } catch (err) {
+        console.error(`[workflow-engine] runAsync ${runId} failed:`, err);
+        throw err;
+      } finally {
+        if (result?.status !== "SUSPENDED") {
+          activeRuns.delete(runId);
+        }
+      }
+    })();
+
+    return { runId, result: resultPromise };
+  }
+
+  async function prepareRun(
+    yaml: string,
+    params: Record<string, unknown> = {},
+  ): Promise<{ runId: string; context: SchedulerContext }> {
+    const def = parse(yaml, defaultCwd);
+    const validation = validate(def);
+    if (!validation.valid) {
+      const errors = validation.issues
+        .filter((i) => i.type === "error")
+        .map((i) => i.message)
+        .join("; ");
+      throw new WorkflowError(`Workflow validation failed: ${errors}`, WorkflowErrorCode.VALIDATION_ERROR, {
+        issues: validation.issues,
+      });
+    }
+
+    const runId = `run_${nanoid(10)}`;
+
+    const resolvedParams = { ...params };
+    if (validation.def.params) {
+      for (const [key, schema] of Object.entries(validation.def.params)) {
+        if (!(key in resolvedParams) && schema.default !== undefined) {
+          resolvedParams[key] = schema.default;
+        }
+      }
+    }
+
     let secrets: Record<string, string> = {};
     if (def.secrets && def.secrets.length > 0) {
       secrets = await secretsResolver.resolve(def.secrets);
     }
 
-    // 4. 构建 CancellationManager + Registry
     const cancellation = new CancellationManager();
     const baseDir = defaultCwd ?? process.cwd();
     const registry = buildRegistry(runId, baseDir);
 
-    // 5. 构建调度上下文
     const context: SchedulerContext = {
       runId,
       workflowDef: validation.def,
@@ -201,21 +285,9 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       cancellation,
     };
 
-    // 6. 存储活跃运行
     activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
 
-    let result: DAGRunResult | undefined;
-    try {
-      // 7. 执行
-      const scheduler = new DAGScheduler(context);
-      result = await scheduler.run();
-      return result;
-    } finally {
-      // SUSPENDED 状态保留 activeRun，等待 approveNode 恢复
-      if (result?.status !== "SUSPENDED") {
-        activeRuns.delete(runId);
-      }
-    }
+    return { runId, context };
   }
 
   function dryRun(yaml: string): DryRunResult {
@@ -580,6 +652,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     parse,
     validate,
     run,
+    runAsync,
     dryRun,
     cancel,
     approveNode,
