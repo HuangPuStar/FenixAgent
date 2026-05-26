@@ -1,27 +1,21 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
-// mock better-auth 在 import 前注册
-mock.module("../auth/better-auth", () => ({
-  auth: {
-    api: {
-      listMembers: mock(async () => []),
-      listOrganizations: mock(async () => []),
-      createOrganization: mock(async () => ({ id: "org_auto", name: "Personal" })),
-    },
-    handler: mock(() => new Response()),
-  },
-}));
-
+import { resetAllStubs, stubAuthApi } from "../test-utils/helpers";
 import { clearOrgCache, setTestOrgContext } from "../services/org-context";
 
 describe("loadOrgContext", () => {
   beforeEach(() => {
+    resetAllStubs();
     setTestOrgContext(null);
     clearOrgCache();
   });
 
   // 无组织时不应自动创建
   test("loadOrgContext returns null when user has no organizations (no auto-create)", async () => {
+    stubAuthApi({
+      listMembers: async () => [],
+      listOrganizations: async () => [],
+    });
     const { loadOrgContext } = await import("../services/org-context");
     const req = new Request("http://localhost/web/test");
     const user = { id: "user_no_org" };
@@ -31,9 +25,11 @@ describe("loadOrgContext", () => {
 
   // 有 activeOrgId 且用户是成员时返回正确的 AuthContext
   test("loadOrgContext returns context when activeOrgId matches membership", async () => {
+    stubAuthApi({
+      listMembers: async () => [{ userId: "user_1", role: "owner" }],
+      listOrganizations: async () => [],
+    });
     const { loadOrgContext } = await import("../services/org-context");
-    const { auth } = await import("../auth/better-auth");
-    (auth.api.listMembers as any).mockImplementationOnce(async () => [{ userId: "user_1", role: "owner" }]);
     const req = new Request("http://localhost/web/test", {
       headers: { "x-active-org-id": "org_1" },
     });
@@ -48,17 +44,20 @@ describe("loadOrgContext", () => {
 
 describe("org-context cache", () => {
   beforeEach(() => {
+    resetAllStubs();
     setTestOrgContext(null);
     clearOrgCache();
   });
 
   // 缓存命中时不再查 DB
   test("cache hit returns cached context without DB call", async () => {
+    stubAuthApi({
+      listMembers: async () => [{ userId: "user_cache", role: "admin" }],
+      listOrganizations: async () => [],
+    });
     const { loadOrgContext } = await import("../services/org-context");
-    const { auth } = await import("../auth/better-auth");
 
     // 第一次调用：查 DB
-    (auth.api.listMembers as any).mockImplementationOnce(async () => [{ userId: "user_cache", role: "admin" }]);
     const req = new Request("http://localhost/web/test", {
       headers: { "x-active-org-id": "org_cached" },
     });
