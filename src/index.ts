@@ -14,6 +14,7 @@ import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import { environmentRepo } from "./repositories";
 import acpRoutes from "./routes/acp";
+import hooksRoutes from "./routes/hooks";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v1Environments from "./routes/v1/environments";
 import v1EnvironmentsWork from "./routes/v1/environments.work";
@@ -167,6 +168,8 @@ const app = new Elysia()
   .use(workflowStaticApp)
   // MCP routes
   .use(knowledgeMcpRoutes)
+  // Webhook trigger routes (no auth)
+  .use(hooksRoutes)
   // ACP protocol routes
   .use(acpRoutes);
 
