@@ -31,9 +31,9 @@ describe("EnvironmentsPage.tsx UX checks", () => {
     expect(src).toContain("secretCopied");
   });
 
-  // Secret copy shows "已复制!" text
+  // Secret copy shows i18n feedback text
   test("secret copy button shows feedback text", () => {
-    expect(src).toContain("已复制!");
+    expect(src).toContain('t("secret.copied")');
   });
 
   // Branded loading spinner

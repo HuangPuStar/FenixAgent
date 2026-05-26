@@ -13,6 +13,7 @@ import { workflowSnapshot } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
 import { getTeamEngine } from "../../services/workflow";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
+import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
 const app = new Elysia({ name: "web-workflow-engine" }).use(authGuardPlugin);
 
@@ -33,6 +34,9 @@ app.post(
           const yaml = payload.yaml as string;
           const params = payload.params as Record<string, unknown> | undefined;
           const workflowId = payload.workflowId as string | undefined;
+          if (workflowId) {
+            publishWorkflowEvent(workflowId, "workflow.run_started", { runId: undefined });
+          }
           const result = await engine.run(yaml, params);
           // 回写 workflowId 到该 run 的所有快照
           if (workflowId) {
@@ -46,6 +50,16 @@ app.post(
                 ),
               );
           }
+          // run 是同步阻塞的，返回时 DAG 已完成（或挂起）
+          if (workflowId && result.status) {
+            const terminalStatuses = ["SUCCESS", "FAILED", "CANCELLED", "ERROR"];
+            if (terminalStatuses.includes(result.status)) {
+              publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
+                runId: result.runId,
+                dagStatus: result.status,
+              });
+            }
+          }
           return { success: true, data: result };
         }
 
@@ -53,13 +67,28 @@ app.post(
         case "dryRun": {
           const yaml = payload.yaml as string;
           const result = engine.dryRun(yaml);
+          const dryRunWorkflowId = payload.workflowId as string | undefined;
+          if (dryRunWorkflowId) {
+            publishWorkflowEvent(dryRunWorkflowId, "workflow.dry_run_completed", {
+              valid: result.valid,
+              issues: result.issues,
+            });
+          }
           return { success: true, data: result };
         }
 
         // 取消运行
         case "cancel": {
           const runId = payload.runId as string;
+          const cancelWorkflowId = payload.workflowId as string | undefined;
           await engine.cancel(runId);
+          if (cancelWorkflowId) {
+            publishWorkflowEvent(cancelWorkflowId, "workflow.run_cancelled", { runId });
+            publishWorkflowEvent(cancelWorkflowId, "workflow.run_status_changed", {
+              runId,
+              dagStatus: "CANCELLED",
+            });
+          }
           return { success: true };
         }
 
@@ -70,6 +99,13 @@ app.post(
           const token = payload.token as string;
           const data = payload.data as unknown;
           await engine.approveNode(runId, nodeId, token, data);
+          const approveWorkflowId = payload.workflowId as string | undefined;
+          if (approveWorkflowId) {
+            publishWorkflowEvent(approveWorkflowId, "workflow.run_status_changed", {
+              runId,
+              dagStatus: "RUNNING",
+            });
+          }
           return { success: true };
         }
 
@@ -124,6 +160,9 @@ app.post(
           const fromNodeId = payload.fromNodeId as string;
           const yaml = payload.yaml as string;
           const workflowId = payload.workflowId as string | undefined;
+          if (workflowId) {
+            publishWorkflowEvent(workflowId, "workflow.run_started", { runId: undefined });
+          }
           const result = await engine.rerunFrom(prevRunId, yaml, fromNodeId);
           // 回写 workflowId 到新 run 的快照
           if (workflowId) {
@@ -136,6 +175,15 @@ app.post(
                   eq(workflowSnapshot.organizationId, authCtx.organizationId),
                 ),
               );
+          }
+          if (workflowId && result.status) {
+            const terminalStatuses = ["SUCCESS", "FAILED", "CANCELLED", "ERROR"];
+            if (terminalStatuses.includes(result.status)) {
+              publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
+                runId: result.runId,
+                dagStatus: result.status,
+              });
+            }
           }
           return { success: true, data: result };
         }

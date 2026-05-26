@@ -4,6 +4,7 @@ mock.module("../db", () => ({ db: {} }));
 mock.module("../auth/better-auth", () => ({
   auth: {
     api: {
+      listApiKeys: mock(() => Promise.resolve([])),
       createApiKey: mock(() =>
         Promise.resolve({
           key: "rcs_test_meta_api_key_1234567890",

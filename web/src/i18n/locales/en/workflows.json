@@ -231,6 +231,7 @@
     "refresh_failed": "Failed to refresh workflow",
     "auto_save_failed": "Auto-save failed",
     "rerun_failed": "Rerun failed",
+    "run_failed": "Run failed",
     "load_run_data_failed": "Failed to load run data",
     "meta_agent_failed": "Failed to start Meta Agent",
     "load_agents_failed": "Failed to load agent list",

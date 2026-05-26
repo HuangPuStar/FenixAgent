@@ -36,7 +36,7 @@ mock.module("../services/config-pg", () => ({
 const configRoute = (await import("../routes/web/config/index")).default;
 
 function request(path: string, init?: RequestInit) {
-  return configRoute.handle(new Request(`http://localhost${path}`, init));
+  return configRoute.handle(new Request(`http://localhost${path.replace(/^\/web/, "")}`, init));
 }
 
 describe("Config Route Integration", () => {

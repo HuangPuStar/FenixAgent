@@ -231,6 +231,7 @@
     "refresh_failed": "刷新工作流失败",
     "auto_save_failed": "自动保存失败",
     "rerun_failed": "重跑失败",
+    "run_failed": "运行失败",
     "load_run_data_failed": "加载运行数据失败",
     "meta_agent_failed": "启动 Meta Agent 失败",
     "load_agents_failed": "加载 agent 列表失败",

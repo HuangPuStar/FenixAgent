@@ -11,8 +11,8 @@ coverage
 src/utils/vendor/
 
 # AI tool runtime directories
-.agents/
-!.agents/skills/**/*
+.agents/*
+!.agents/skills/
 .claude/
 .omx/
 .docs/task/

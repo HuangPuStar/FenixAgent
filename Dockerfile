@@ -16,11 +16,15 @@ RUN bun build src/index.ts --target=bun --sourcemap=external --outdir dist
 
 ############### migration image ###############
 
-FROM deps AS migrate
-COPY drizzle.config.ts ./
-COPY src/db/schema.ts ./src/db/schema.ts
+FROM deps AS migrate-build
+COPY scripts/migrate.ts ./scripts/migrate.ts
+RUN bun build scripts/migrate.ts --target=bun --outdir /tmp/migrate-bundle
+
+FROM oven/bun:1 AS migrate
+WORKDIR /app
+COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY drizzle ./drizzle
-CMD ["bunx", "drizzle-kit", "migrate"]
+CMD ["bun", "migrate.js"]
 
 ############### production image ###############
 
@@ -59,6 +63,8 @@ RUN printf '#!/bin/sh\nargs="";\nfor a in "$@"; do\n  case "$a" in\n    -y|--yes
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/web/dist ./web/dist
+COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
+COPY drizzle ./drizzle
 
 RUN mkdir -p /root/.config/opencode /root/.local/share/opencode /app/data /app/workflow /app/workspaces 
 RUN mkdir -p /app/data/skills

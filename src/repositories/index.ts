@@ -52,8 +52,8 @@ import { workItemRepo } from "./work-item";
 
 /** 重置所有内存仓储（仅用于测试） */
 export function resetAllRepos(): void {
-  sessionRepo.reset();
-  tokenRepo.reset();
-  workItemRepo.reset();
-  sessionWorkerRepo.reset();
+  if (typeof sessionRepo?.reset === "function") sessionRepo.reset();
+  if (typeof tokenRepo?.reset === "function") tokenRepo.reset();
+  if (typeof workItemRepo?.reset === "function") workItemRepo.reset();
+  if (typeof sessionWorkerRepo?.reset === "function") sessionWorkerRepo.reset();
 }

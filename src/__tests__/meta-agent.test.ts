@@ -9,6 +9,20 @@ const mockCreateAgentConfig = mock<(ctx: any, name: string, data: any) => Promis
 const mockWriteMetaSkillFile = mock<() => Promise<string>>();
 const mockCreateApiKey = mock<(userId: string, label: string, organizationId: string, options?: any) => Promise<any>>();
 
+mock.module("../auth/better-auth", () => ({
+  auth: {
+    api: {
+      listApiKeys: mock(() => Promise.resolve([])),
+      deleteApiKey: mock(() => Promise.resolve()),
+      createApiKey: mock(() =>
+        Promise.resolve({
+          key: "rcs_test_meta_key_123",
+        }),
+      ),
+    },
+  },
+}));
+
 mock.module("../auth/api-key-service", () => ({
   createApiKey: mockCreateApiKey,
   hashApiKey: (key: string) => `hash_${key}`,

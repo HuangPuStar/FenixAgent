@@ -36,6 +36,8 @@ mock.module("../services/config-pg", () => ({
     _agentStore[name] = existing;
   },
   deleteAgentConfig: async () => [],
+  listAgentSkillIds: async () => [] as string[],
+  syncAgentSkills: async () => {},
   getUserConfig: async (_ctx: any) => ({ ..._userConfig }),
   setUserConfig: async (_ctx: any, patch: any) => {
     if (patch.defaultAgent !== undefined) _userConfig.defaultAgent = patch.defaultAgent;
@@ -77,7 +79,7 @@ describe("Permission 更新流程验证", () => {
 
   test("更新嵌套 permission（含 skill 规则）", async () => {
     const res = await agentsRoute.handle(
-      new Request("http://localhost/web/config/agents", {
+      new Request("http://localhost/config/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -94,7 +96,7 @@ describe("Permission 更新流程验证", () => {
 
   test("GET 返回更新后的 permission", async () => {
     await agentsRoute.handle(
-      new Request("http://localhost/web/config/agents", {
+      new Request("http://localhost/config/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -105,7 +107,7 @@ describe("Permission 更新流程验证", () => {
       }),
     );
     const getRes = await agentsRoute.handle(
-      new Request("http://localhost/web/config/agents", {
+      new Request("http://localhost/config/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get", name: "demo" }),
@@ -117,7 +119,7 @@ describe("Permission 更新流程验证", () => {
 
   test("不发送 permission 时旧值保留", async () => {
     await agentsRoute.handle(
-      new Request("http://localhost/web/config/agents", {
+      new Request("http://localhost/config/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", name: "demo", data: { model: "gpt-4o" } }),
@@ -128,7 +130,7 @@ describe("Permission 更新流程验证", () => {
 
   test("发送空对象覆盖旧 permission", async () => {
     await agentsRoute.handle(
-      new Request("http://localhost/web/config/agents", {
+      new Request("http://localhost/config/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", name: "demo", data: { permission: {} } }),

@@ -25,7 +25,8 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "check:deps": "bun run scripts/check-deps.ts"
+    "check:deps": "bun run scripts/check-deps.ts",
+    "postinstall": "mkdir -p node_modules/@fenix && ln -sf ../../packages/sdk node_modules/@fenix/sdk 2>/dev/null || true"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.192",

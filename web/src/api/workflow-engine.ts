@@ -173,7 +173,7 @@ export const workflowEngineApi = {
 
   /** 崩溃恢复 */
   async recover(runId: string, yaml: string): Promise<DAGRunResult> {
-    return _sdkEngineApi.recover(runId).then(({ data, error }) => {
+    return _sdkEngineApi.recover(runId, { yaml }).then(({ data, error }) => {
       if (error) throw new Error(error.message);
       return data as DAGRunResult;
     });
@@ -181,7 +181,7 @@ export const workflowEngineApi = {
 
   /** 从指定节点重新运行（保留上游输出，目标及下游重新执行） */
   async rerunFrom(runId: string, yaml: string, fromNodeId: string, workflowId?: string): Promise<DAGRunResult> {
-    return _sdkEngineApi.rerunFrom(runId, fromNodeId).then(({ data, error }) => {
+    return _sdkEngineApi.rerunFrom(runId, { yaml, fromNodeId, workflowId }).then(({ data, error }) => {
       if (error) throw new Error(error.message);
       return data as DAGRunResult;
     });

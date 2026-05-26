@@ -44,7 +44,7 @@ describe("BaseApi.get — 成功响应", () => {
       ),
     ) as unknown as typeof fetch;
 
-    const result = await api["get"]<{ id: string; name: string }>("/web/environments");
+    const result = await api._get<{ id: string; name: string }>("/web/environments");
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.id).toBe("1");
@@ -63,7 +63,7 @@ describe("BaseApi.get — 成功响应", () => {
       ),
     ) as unknown as typeof fetch;
 
-    const result = await api["get"]<{ status: string; version: string }>("/health");
+    const result = await api._get<{ status: string; version: string }>("/health");
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.version).toBe("1.0");

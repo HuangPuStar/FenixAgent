@@ -52,7 +52,7 @@ describe("Models Config Route", () => {
 
   test("get action — 无配置", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -76,14 +76,14 @@ describe("Models Config Route", () => {
       ]),
     });
     await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "refresh" }),
       }),
     );
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -105,14 +105,14 @@ describe("Models Config Route", () => {
     _userConfig.currentModel = "a";
     _providers.set("test", { id: "prov-test", name: "test", models: new Map([["model-1", { displayName: "M1" }]]) });
     await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "refresh" }),
       }),
     );
     const _res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -120,7 +120,7 @@ describe("Models Config Route", () => {
     );
     _providers.delete("test");
     const res2 = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -132,7 +132,7 @@ describe("Models Config Route", () => {
 
   test("set action — 设置主模型", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: { model: "claude-opus-4-7" } }),
@@ -146,7 +146,7 @@ describe("Models Config Route", () => {
 
   test("set action — 设置轻量模型", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: { small_model: "gpt-4o-mini" } }),
@@ -160,7 +160,7 @@ describe("Models Config Route", () => {
 
   test("set action — 同时设置", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: { model: "a", small_model: "b" } }),
@@ -174,7 +174,7 @@ describe("Models Config Route", () => {
 
   test("set action — 空数据返回 VALIDATION_ERROR", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: {} }),
@@ -195,7 +195,7 @@ describe("Models Config Route", () => {
       ]),
     });
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "refresh" }),
@@ -208,7 +208,7 @@ describe("Models Config Route", () => {
 
   test("未知 action 返回验证错误", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "invalid" }),
@@ -221,7 +221,7 @@ describe("Models Config Route", () => {
 
   test("get action — 无 permission 返回 null", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -235,7 +235,7 @@ describe("Models Config Route", () => {
   test("get action — permission 为对象时透传", async () => {
     _userConfig.permission = { bash: "allow", read: { "*.env": "deny" } };
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -249,7 +249,7 @@ describe("Models Config Route", () => {
   test("get action — permission 为字符串时透传", async () => {
     _userConfig.permission = "ask";
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -262,7 +262,7 @@ describe("Models Config Route", () => {
 
   test("set action — 单独设置 permission 对象", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: { permission: { bash: "deny" } } }),
@@ -276,7 +276,7 @@ describe("Models Config Route", () => {
 
   test("set action — 单独设置 permission 字符串", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: { permission: "allow" } }),
@@ -290,7 +290,7 @@ describe("Models Config Route", () => {
 
   test("set action — 同时设置 model 和 permission", async () => {
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: { model: "gpt-4o", permission: { edit: "deny" } } }),
@@ -307,7 +307,7 @@ describe("Models Config Route", () => {
   test("set action — permission 为 null 时清除", async () => {
     _userConfig.permission = { bash: "allow" };
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: { permission: null } }),
@@ -322,7 +322,7 @@ describe("Models Config Route", () => {
   test("set action invalidates available model cache", async () => {
     _providers.set("p1", { id: "prov-p1", name: "p1", models: new Map([["old-model", { displayName: "Old" }]]) });
     await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -330,14 +330,14 @@ describe("Models Config Route", () => {
     );
     _providers.set("p1", { id: "prov-p1", name: "p1", models: new Map([["new-model", { displayName: "New" }]]) });
     await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", data: { model: "new-model" } }),
       }),
     );
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),
@@ -355,14 +355,14 @@ describe("Models Config Route", () => {
       models: new Map([["big-model", { displayName: "Big", limitConfig: { context: 200000, output: 8192 } }]]),
     });
     await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "refresh" }),
       }),
     );
     const res = await modelsRoute.handle(
-      new Request("http://localhost/web/config/models", {
+      new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get" }),

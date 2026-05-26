@@ -86,7 +86,7 @@ const mcpRoute = (await import("../routes/web/config/mcp")).default;
 
 function postRequest(body: Record<string, unknown>) {
   return mcpRoute.handle(
-    new Request("http://localhost/web/config/mcp", {
+    new Request("http://localhost/config/mcp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

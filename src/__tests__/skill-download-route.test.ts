@@ -26,7 +26,7 @@ const skill = { id: "skill-1", organizationId: "org-1", name: "demo" };
 
 function requestUrl(name: string, token?: string): string {
   const query = token === undefined ? "" : `?token=${token}`;
-  return `http://localhost/web/skills/${encodeURIComponent(name)}/download${query}`;
+  return `http://localhost/skills/${encodeURIComponent(name)}/download${query}`;
 }
 
 describe("skill download route", () => {

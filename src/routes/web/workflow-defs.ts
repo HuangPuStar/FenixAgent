@@ -21,6 +21,7 @@ import {
   setLatestVersion,
   updateWorkflowMeta,
 } from "../../repositories/workflow-def";
+import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
 const app = new Elysia({ name: "web-workflow-defs" }).use(authGuardPlugin);
 
@@ -52,6 +53,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and yaml are required" } });
           }
           await saveDraft(workflowId, authCtx, yaml);
+          publishWorkflowEvent(workflowId, "workflow.draft_updated", { yaml });
           return { success: true };
         }
 
@@ -61,6 +63,9 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           }
           const vRow = await publishVersion(workflowId, authCtx);
+          publishWorkflowEvent(workflowId, "workflow.version_published", {
+            version: vRow?.version,
+          });
           return { success: true, data: vRow };
         }
 

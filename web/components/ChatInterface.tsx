@@ -12,6 +12,7 @@ import type {
 } from "../src/acp/types";
 import { useCommands } from "../src/hooks/useCommands";
 import { useModes } from "../src/hooks/useModes";
+import { flushContext } from "../src/lib/context-queue";
 import type {
   AssistantMessageEntry,
   ChatInputMessage,
@@ -823,6 +824,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       if (scenePrompt && !scenePromptUsedRef.current) {
         contentBlocks.unshift({ type: "text", text: scenePrompt });
         scenePromptUsedRef.current = true;
+      }
+
+      // 注入上下文队列（flush 后清空）
+      const contextBlock = flushContext();
+      if (contextBlock) {
+        contentBlocks.unshift({ type: "text", text: contextBlock });
       }
 
       // Add user message entry

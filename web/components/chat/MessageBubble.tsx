@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { isVisibleContentBlock } from "../../src/lib/context-queue";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../../src/lib/types";
 import { cn, esc } from "../../src/lib/utils";
 import { MessageResponse } from "../ai-elements/message";
@@ -100,28 +101,33 @@ export function AssistantBubble({ entry, isStreaming, envId }: AssistantBubblePr
       {/* 内容 — 无卡片背景，直接排版 */}
       <div className="flex-1 min-w-0 space-y-4">
         {/* Sender label deleted, we don't need it  */}
-        {entry.chunks.map((chunk, i) => {
-          if (chunk.type === "thought") {
-            const isLastChunk = i === entry.chunks.length - 1;
-            const isThoughtStreaming = isStreaming && isLastChunk;
+        {entry.chunks
+          .filter((chunk) => {
+            if (chunk.type === "thought") return true;
+            return isVisibleContentBlock({ type: "text", text: chunk.text });
+          })
+          .map((chunk, i) => {
+            if (chunk.type === "thought") {
+              const isLastChunk = i === entry.chunks.length - 1;
+              const isThoughtStreaming = isStreaming && isLastChunk;
+              return (
+                // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
+                <Reasoning key={i} isStreaming={isThoughtStreaming}>
+                  <ReasoningTrigger />
+                  <ReasoningContent>
+                    <div className="text-sm text-text-secondary leading-relaxed">{chunk.text}</div>
+                  </ReasoningContent>
+                </Reasoning>
+              );
+            }
+            // 普通消息块 — 直接输出，无包裹卡片
             return (
               // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
-              <Reasoning key={i} isStreaming={isThoughtStreaming}>
-                <ReasoningTrigger />
-                <ReasoningContent>
-                  <div className="text-sm text-text-secondary leading-relaxed">{chunk.text}</div>
-                </ReasoningContent>
-              </Reasoning>
+              <div key={i} className="message-content text-text-primary leading-[1.75]">
+                <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
+              </div>
             );
-          }
-          // 普通消息块 — 直接输出，无包裹卡片
-          return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
-            <div key={i} className="message-content text-text-primary leading-[1.75]">
-              <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
-            </div>
-          );
-        })}
+          })}
       </div>
     </div>
   );

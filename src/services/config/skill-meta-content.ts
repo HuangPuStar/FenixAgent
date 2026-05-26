@@ -115,6 +115,77 @@ nodes:                       # 必填，节点数组
 - 不要删除 __start__ 节点
 - 修改前先备份当前内容（可选）
 - 如果用户需求不明确，主动询问细节
+
+## API 调用
+
+你可以通过 CLI 工具调用后端 API 来操作工作流。所有请求需要携带环境变量 \`$USER_META_API_KEY\` 作为 Bearer token。
+
+### 保存草稿
+
+当用户确认修改后，将 YAML 写入 draft.yaml 文件，然后调用保存接口：
+
+\`\`\`bash
+curl -X POST http://localhost:3000/web/workflow-defs \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"save","workflowId":"<workflowId>","yaml":"<yaml_content>"}'
+\`\`\`
+
+保存成功后，前端画布会自动刷新。
+
+### 运行工作流
+
+\`\`\`bash
+curl -X POST http://localhost:3000/web/workflow-engine \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"run","yaml":"<yaml_content>","workflowId":"<workflowId>"}'
+\`\`\`
+
+运行会阻塞到完成。前端会自动切换到运行视图并显示进度。
+
+### 干运行（验证）
+
+\`\`\`bash
+curl -X POST http://localhost:3000/web/workflow-engine \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"dryRun","yaml":"<yaml_content>","workflowId":"<workflowId>"}'
+\`\`\`
+
+### 查询运行状态
+
+\`\`\`bash
+curl -X POST http://localhost:3000/web/workflow-engine \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"getRunStatus","runId":"<runId>"}'
+\`\`\`
+
+### 取消运行
+
+\`\`\`bash
+curl -X POST http://localhost:3000/web/workflow-engine \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"cancel","runId":"<runId>","workflowId":"<workflowId>"}'
+\`\`\`
+
+### 发布版本
+
+\`\`\`bash
+curl -X POST http://localhost:3000/web/workflow-defs \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"publish","workflowId":"<workflowId>"}'
+\`\`\`
+
+### 工作流操作建议
+
+1. **修改后保存**：先修改 YAML 文件，再调用 save API，前端会自动刷新
+2. **先验证再运行**：建议先 dryRun 验证，通过后再 run
+3. **告知用户操作结果**：API 返回 success:true 表示成功，前端会自动更新
+4. **workflowId 从 scenePrompt 中获取**：会话开始时的上下文信息中包含 workflowId
 `;
 
 /** Skill 文件在文件系统上的目录 */

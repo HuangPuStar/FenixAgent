@@ -13,7 +13,7 @@ services:
                 condition: service_healthy
         environment:
             DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
-        command: ["bun", "--bun", "node_modules/.bin/drizzle-kit", "migrate"]
+        command: ["bun", "migrate.js"]
 
     rcs:
         build:

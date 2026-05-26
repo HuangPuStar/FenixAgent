@@ -2,11 +2,14 @@ import { BaseApi } from "../base";
 import type { ApiResult } from "../result";
 
 export class WorkflowEngineApi extends BaseApi {
-  async run(workflowId: string, body?: Record<string, unknown>): Promise<ApiResult<{ runId: string }>> {
-    return this.post("/web/workflow-engine", { action: "run", workflowId, ...body });
+  async run(
+    yaml: string,
+    opts?: { params?: Record<string, unknown>; workflowId?: string },
+  ): Promise<ApiResult<{ runId: string }>> {
+    return this.post("/web/workflow-engine", { action: "run", yaml, ...opts });
   }
-  async dryRun(workflowId: string, body?: Record<string, unknown>): Promise<ApiResult<unknown>> {
-    return this.post("/web/workflow-engine", { action: "dryRun", workflowId, ...body });
+  async dryRun(yaml: string): Promise<ApiResult<unknown>> {
+    return this.post("/web/workflow-engine", { action: "dryRun", yaml });
   }
   async cancel(runId: string): Promise<ApiResult<{ success: boolean }>> {
     return this.post("/web/workflow-engine", { action: "cancel", runId });
@@ -34,10 +37,13 @@ export class WorkflowEngineApi extends BaseApi {
   async listRuns(workflowId?: string): Promise<ApiResult<unknown>> {
     return this.post("/web/workflow-engine", { action: "listRuns", workflowId });
   }
-  async recover(runId: string): Promise<ApiResult<unknown>> {
-    return this.post("/web/workflow-engine", { action: "recover", runId });
+  async recover(runId: string, opts?: { yaml?: string }): Promise<ApiResult<unknown>> {
+    return this.post("/web/workflow-engine", { action: "recover", runId, ...opts });
   }
-  async rerunFrom(runId: string, nodeId: string): Promise<ApiResult<unknown>> {
-    return this.post("/web/workflow-engine", { action: "rerunFrom", runId, nodeId });
+  async rerunFrom(
+    runId: string,
+    opts?: { yaml?: string; fromNodeId?: string; workflowId?: string },
+  ): Promise<ApiResult<unknown>> {
+    return this.post("/web/workflow-engine", { action: "rerunFrom", runId, ...opts });
   }
 }

@@ -26,7 +26,7 @@ mock.module("../repositories", () => ({
   },
 }));
 
-mock.module("./session", () => ({
+mock.module("../services/session", () => ({
   findOrCreateForEnvironment: mock(async () => ({ id: "ses_1" })),
 }));
 

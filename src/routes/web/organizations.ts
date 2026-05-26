@@ -22,7 +22,10 @@ interface OrgApi {
   }) => Promise<unknown>;
   deleteOrganization: (opts: { body: { organizationId: string }; headers: Headers }) => Promise<void>;
   setActiveOrganization: (opts: { body: { organizationId: string }; headers: Headers }) => Promise<void>;
-  removeMember: (opts: { body: { memberIdOrEmail: string; organizationId?: string }; headers: Headers }) => Promise<void>;
+  removeMember: (opts: {
+    body: { memberIdOrEmail: string; organizationId?: string };
+    headers: Headers;
+  }) => Promise<void>;
   addMember: (opts: {
     body: { userId: string; role: string; organizationId: string };
     headers: Headers;
