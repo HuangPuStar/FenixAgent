@@ -8,6 +8,13 @@
       "when": 1779438755397,
       "tag": "0000_worthless_maverick",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779764608861,
+      "tag": "0001_workflow_trigger",
+      "breakpoints": true
     }
   ]
 }

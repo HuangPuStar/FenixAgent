@@ -725,3 +725,29 @@ export const userConfig = pgTable("user_config", {
   permission: jsonb("permission"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ────────────────────────────────────────────
+// Workflow Trigger（外部触发器）
+// ────────────────────────────────────────────
+
+export const workflowTrigger = pgTable(
+  "workflow_trigger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: text("organization_id").notNull(),
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(() => workflow.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 30 }).notNull().default("webhook"),
+    publicHash: varchar("public_hash", { length: 64 }).notNull().unique(),
+    secret: varchar("secret"),
+    config: jsonb("config"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    hashIdx: uniqueIndex("idx_workflow_trigger_hash").on(table.publicHash),
+    orgWorkflowIdx: index("idx_workflow_trigger_org_workflow").on(table.organizationId, table.workflowId),
+  }),
+);
