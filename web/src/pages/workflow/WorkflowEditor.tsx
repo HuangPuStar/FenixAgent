@@ -27,6 +27,7 @@ import {
   FilePlus,
   Globe,
   LayoutGrid,
+  Link,
   List,
   Lock,
   MessageSquare,
@@ -51,6 +52,7 @@ import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-ss
 import { MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigPanel } from "./components/NodeConfigPanel";
 import { RunStatusPanel } from "./components/RunStatusPanel";
+import { TriggerPanel } from "./components/TriggerPanel";
 import { VersionPanel } from "./components/VersionPanel";
 import { YamlSlidePanel } from "./components/YamlSlidePanel";
 import { useWorkflowCanvas } from "./hooks/useWorkflowCanvas";
@@ -98,7 +100,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
   const [selectedNodeOutput, setSelectedNodeOutput] = useState<NodeOutput | null>(null);
   const [nodeOutputLoading, setNodeOutputLoading] = useState(false);
-  const [rightTab, setRightTab] = useState<"config" | "run" | "versions">("config");
+  const [rightTab, setRightTab] = useState<"config" | "run" | "versions" | "triggers">("config");
 
   // ── Refs ──
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -466,6 +468,14 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                   >
                     <Rocket size={15} />
                   </button>
+                  <button
+                    type="button"
+                    className={`wf-toolbar-btn ${rightTab === "triggers" ? "active" : ""}`}
+                    onClick={() => setRightTab(rightTab === "triggers" ? "config" : "triggers")}
+                    data-tooltip={t("editor.tab_triggers")}
+                  >
+                    <Link size={15} />
+                  </button>
                 </>
               )}
               <button
@@ -647,6 +657,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             { key: "config" as const, label: t("editor.tab_config") },
             { key: "run" as const, label: t("editor.tab_run") },
             { key: "versions" as const, label: t("editor.tab_versions") },
+            { key: "triggers" as const, label: t("editor.tab_triggers") },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -727,6 +738,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             onPublish={handlePublish}
             publishing={publishing}
           />
+        )}
+
+        {/* ── 触发器 Tab ── */}
+        {rightTab === "triggers" && (
+          <TriggerPanel workflowId={workflowId} onClose={() => setRightTab("config")} />
         )}
       </aside>
 
