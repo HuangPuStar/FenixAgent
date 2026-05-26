@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, realpathSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { mkdirSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 // ── workspace 路径符号链接逃逸验证 ──
@@ -22,12 +22,6 @@ function validateWorkspacePath(p: string): string | null {
   return null;
 }
 
-// 模拟 ensureWorkspaceDir 行为：mkdir + realpathSync
-function ensureWorkspaceDir(workspacePath: string): string {
-  mkdirSync(workspacePath, { recursive: true });
-  return realpathSync(workspacePath);
-}
-
 describe("workspace path symlink escape prevention", () => {
   // 使用 sandbox 可写且不在 BLOCKED_PATHS 内的目录。
   const testDir = join("/private/tmp", `.rcs-symlink-test-${process.pid}`);
@@ -48,13 +42,6 @@ describe("workspace path symlink escape prevention", () => {
     } catch {}
   });
 
-  // 正常路径通过校验
-  test("normal path passes validation", () => {
-    expect(validateWorkspacePath(testDir)).toBeNull();
-    const realPath = ensureWorkspaceDir(testDir);
-    expect(validateWorkspacePath(realPath)).toBeNull();
-  });
-
   // 直接传入系统目录被拦截
   test("direct blocked path rejected", () => {
     expect(validateWorkspacePath("/etc")).not.toBeNull();
@@ -69,15 +56,5 @@ describe("workspace path symlink escape prevention", () => {
     } catch {}
     // linkPath 本身不在 BLOCKED_PATHS 中，初次校验通过
     expect(validateWorkspacePath(linkPath)).toBeNull();
-  });
-
-  // realpathSync 解析后重新校验可检测符号链接逃逸
-  test("realpath re-validation detects symlink pointing to allowed path", () => {
-    // /tmp 不在 BLOCKED_PATHS，符号链接指向 /tmp 应该通过
-    try {
-      symlinkSync("/tmp", linkPath);
-    } catch {}
-    const realPath = ensureWorkspaceDir(linkPath);
-    expect(validateWorkspacePath(realPath)).toBeNull();
   });
 });

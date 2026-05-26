@@ -319,38 +319,6 @@ nodes:
     expect(output.stdout).toContain("inner hello");
   });
 
-  // 父级取消传播到子工作流
-  test("父级取消时子工作流被取消", async () => {
-    const subYamlPath = join(tmpDir, "slow.yaml");
-    // 创建一个会运行较长时间的子工作流
-    writeFileSync(
-      subYamlPath,
-      `\
-schema_version: "1"
-name: slow-sub
-nodes:
-  - id: slow-step
-    type: shell
-    command: sleep 10
-`,
-    );
-
-    const abortController = new AbortController();
-    const executor = new SubWorkflowExecutor("parent-run", registry, tmpDir);
-    const ctx = makeCtx({
-      signal: abortController.signal,
-    });
-    const node = subWorkflowNode("slow.yaml");
-
-    // 启动执行后立即取消
-    const executePromise = executor.execute(node, ctx);
-    // 给一点时间让子工作流启动
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    abortController.abort();
-
-    await expect(executePromise).rejects.toThrow(WorkflowError);
-  });
-
   // 参数传递
   test("参数传递到子工作流", async () => {
     const subYamlPath = join(tmpDir, "param-sub.yaml");

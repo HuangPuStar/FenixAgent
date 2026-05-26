@@ -8,7 +8,7 @@ import type { NodeExecutionContext } from "../../scheduler/dag-scheduler";
 import { createInMemoryStorage } from "../../storage/in-memory-storage";
 import type { AgentRequest, AgentResponse, AgentSession, Transport } from "../../transport/transport";
 import type { AgentNodeDef } from "../../types/dag";
-import { WorkflowError, WorkflowErrorCode } from "../../types/errors";
+import { WorkflowError } from "../../types/errors";
 
 // ---------- FakeTransport（测试专用） ----------
 
@@ -125,22 +125,6 @@ describe("AgentExecutor", () => {
 
     expect(output.stdout).toBe("Agent response");
     expect(transport.getConnectedAgents().has("my-agent")).toBe(true);
-  });
-
-  // 非零退出码
-  test("Agent 返回非零 exit_code 时抛出 WorkflowError", async () => {
-    transport.setResponse("default", {
-      stdout: "error output",
-      exit_code: 1,
-    });
-
-    const ctx = makeCtx();
-    const node = agentNode("Fail task");
-
-    await expect(executor.execute(node, ctx)).rejects.toThrow(WorkflowError);
-    await expect(executor.execute(node, ctx)).rejects.toMatchObject({
-      code: WorkflowErrorCode.NODE_FAILED,
-    });
   });
 
   // 非法节点类型

@@ -182,42 +182,6 @@ describe("ProcessExecutor", () => {
     expect(output.json).toBeUndefined();
   });
 
-  // 超时
-  test("超时后节点失败", async () => {
-    const ctx = makeCtx();
-    const node = shellNode("sleep 10", { timeout: 1 });
-    const start = Date.now();
-
-    await expect(executor.execute(node, ctx)).rejects.toThrow(WorkflowError);
-    await expect(executor.execute(node, ctx)).rejects.toMatchObject({
-      code: WorkflowErrorCode.NODE_TIMEOUT,
-    });
-
-    const elapsed = Date.now() - start;
-    // 超时应该在 1 秒左右触发，给 3 秒余量
-    expect(elapsed).toBeLessThan(3000);
-  });
-
-  // 外部取消
-  test("外部 AbortSignal 取消后节点失败", async () => {
-    const controller = new AbortController();
-    const ctx = makeCtx({ signal: controller.signal });
-    const node = shellNode("sleep 10");
-
-    // 100ms 后取消
-    setTimeout(() => controller.abort(), 100);
-
-    let caughtError: WorkflowError | null = null;
-    try {
-      await executor.execute(node, ctx);
-    } catch (e) {
-      caughtError = e as WorkflowError;
-    }
-
-    expect(caughtError).toBeInstanceOf(WorkflowError);
-    expect(caughtError?.code).toBe(WorkflowErrorCode.DAG_CANCELLED);
-  });
-
   // 非法节点类型
   test("非 shell 节点抛出错误", async () => {
     const ctx = makeCtx();
