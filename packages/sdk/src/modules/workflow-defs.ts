@@ -41,4 +41,34 @@ export class WorkflowDefApi extends BaseApi {
   async recoverApply(workflowIds: string[]): Promise<ApiResult<unknown[]>> {
     return this.post("/web/workflow-defs", { action: "recoverApply", workflowIds });
   }
+
+  // ── Trigger ──
+
+  async createTrigger(
+    workflowId: string,
+    type?: string,
+    config?: Record<string, unknown>,
+  ): Promise<ApiResult<unknown>> {
+    return this.post("/web/workflow-defs", { action: "createTrigger", workflowId, type: type ?? "webhook", config });
+  }
+
+  async listTriggers(workflowId: string): Promise<ApiResult<unknown[]>> {
+    return this.post("/web/workflow-defs", { action: "listTriggers", workflowId });
+  }
+
+  async deleteTrigger(triggerId: string): Promise<ApiResult<unknown>> {
+    return this.post("/web/workflow-defs", { action: "deleteTrigger", triggerId });
+  }
+
+  async regenerateTriggerHash(triggerId: string): Promise<ApiResult<unknown>> {
+    return this.post("/web/workflow-defs", { action: "regenerateHash", triggerId });
+  }
+
+  async enableTrigger(triggerId: string): Promise<ApiResult<unknown>> {
+    return this.post("/web/workflow-defs", { action: "enableTrigger", triggerId });
+  }
+
+  async disableTrigger(triggerId: string): Promise<ApiResult<unknown>> {
+    return this.post("/web/workflow-defs", { action: "disableTrigger", triggerId });
+  }
 }

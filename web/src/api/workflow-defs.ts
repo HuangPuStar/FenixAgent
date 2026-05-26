@@ -35,6 +35,20 @@ export interface VersionYamlResponse {
   yaml: string;
 }
 
+export interface TriggerItem {
+  id: string;
+  workflowId: string;
+  type: string;
+  publicHash: string;
+  maskedHash: string;
+  webhookUrl: string | null;
+  secret: string | null;
+  config: Record<string, unknown> | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── API Client ──
 
 import { workflowDefApi as _sdkDefApi } from "./sdk";
@@ -133,6 +147,50 @@ export const workflowDefApi = {
   /** 恢复版本到草稿 */
   async restoreToDraft(workflowId: string, version: number): Promise<void> {
     const { error } = await _sdkDefApi.restoreToDraft(workflowId, version);
+    if (error) throw new Error(error.message);
+  },
+
+  // ── Triggers ──
+
+  /** 创建 webhook trigger */
+  async createTrigger(workflowId: string, type?: string, config?: Record<string, unknown>): Promise<TriggerItem> {
+    return _sdkDefApi.createTrigger(workflowId, type, config).then(({ data, error }) => {
+      if (error) throw new Error(error.message);
+      return data as TriggerItem;
+    });
+  },
+
+  /** 列出 workflow 的所有 trigger */
+  async listTriggers(workflowId: string): Promise<TriggerItem[]> {
+    return _sdkDefApi.listTriggers(workflowId).then(({ data, error }) => {
+      if (error) throw new Error(error.message);
+      return Array.isArray(data) ? (data as TriggerItem[]) : [];
+    });
+  },
+
+  /** 删除 trigger */
+  async deleteTrigger(triggerId: string): Promise<void> {
+    const { error } = await _sdkDefApi.deleteTrigger(triggerId);
+    if (error) throw new Error(error.message);
+  },
+
+  /** 重新生成 hash */
+  async regenerateTriggerHash(triggerId: string): Promise<TriggerItem> {
+    return _sdkDefApi.regenerateTriggerHash(triggerId).then(({ data, error }) => {
+      if (error) throw new Error(error.message);
+      return data as TriggerItem;
+    });
+  },
+
+  /** 启用 trigger */
+  async enableTrigger(triggerId: string): Promise<void> {
+    const { error } = await _sdkDefApi.enableTrigger(triggerId);
+    if (error) throw new Error(error.message);
+  },
+
+  /** 禁用 trigger */
+  async disableTrigger(triggerId: string): Promise<void> {
+    const { error } = await _sdkDefApi.disableTrigger(triggerId);
     if (error) throw new Error(error.message);
   },
 };

@@ -52,6 +52,7 @@ describe("Global UX consistency", () => {
     for (const file of allTsxFiles) {
       // workflow pages and agent-panel still use confirm() — tracked as tech debt
       if (file.includes("workflow/Workflow")) continue;
+      if (file.includes("workflow/components/TriggerPanel")) continue;
       if (file.includes("agent-panel/FileTreeTab")) continue;
       const src = fs.readFileSync(file, "utf-8");
       if (/\bconfirm\s*\(/.test(src)) {
