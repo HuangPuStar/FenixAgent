@@ -193,7 +193,10 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     if (!activeRunId) return;
     if (runSnapshot) {
       const status = runSnapshot.dag_status;
-      if (["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(status)) return;
+      if (["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(status)) {
+        setRunning(false);
+        return;
+      }
     }
     let cancelled = false;
     const poll = async () => {
@@ -207,6 +210,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       cancelled = true;
       if (pollRef.current) clearTimeout(pollRef.current);
     };
+    // biome-ignore lint/correctness/useExhaustiveDependencies: setRunning is a stable setState reference
   }, [activeRunId, runSnapshot, loadRunData]);
 
   useEffect(() => {
@@ -262,11 +266,11 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setSelectedNodeOutput(null);
       setRightTab("run");
       await loadRunData(result.runId);
+      // running 保持 true，轮询检测到终止状态时重置
     } catch (err) {
       console.error(err);
       pushWorkflowError("run", (err as Error).message);
       toast.error(`${t("editor.run_failed")}: ${(err as Error).message}`);
-    } finally {
       setRunning(false);
     }
   }, [
@@ -313,6 +317,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
 
   const handleBackToEdit = useCallback(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
+    setRunning(false);
     setActiveRunId(null);
     setRunSnapshot(null);
     setRunEvents([]);
@@ -334,6 +339,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
 
   const handleBackToList = useCallback(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
+    setRunning(false);
     setActiveRunId(null);
     setRunSnapshot(null);
     setRunEvents([]);
