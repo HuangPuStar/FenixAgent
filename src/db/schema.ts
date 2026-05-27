@@ -727,6 +727,38 @@ export const userConfig = pgTable("user_config", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+
+// ────────────────────────────────────────────
+// Workflow Job（看板 Job 实体）
+// ────────────────────────────────────────────
+
+export const workflowJob = pgTable(
+  "workflow_job",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: text("organization_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(() => workflow.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    params: jsonb("params"),
+    status: varchar("status", { length: 20 }).notNull().default("ready"),
+    lastRunId: varchar("last_run_id"),
+    lastDagStatus: varchar("last_dag_status", { length: 20 }),
+    runCount: integer("run_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgIdx: index("idx_workflow_job_org").on(table.organizationId),
+    statusIdx: index("idx_workflow_job_status").on(table.organizationId, table.status),
+    workflowIdx: index("idx_workflow_job_workflow").on(table.workflowId),
+  }),
+);
+
 // ────────────────────────────────────────────
 // Workflow Trigger（外部触发器）
 // ────────────────────────────────────────────

@@ -15,6 +15,13 @@
       "when": 1779764608861,
       "tag": "0001_workflow_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779873131359,
+      "tag": "0002_workflow-job",
+      "breakpoints": true
     }
   ]
 }
