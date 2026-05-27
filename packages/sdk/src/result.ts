@@ -6,6 +6,8 @@ export interface ApiError {
   message: string;
   /** HTTP 状态码 */
   status?: number;
+  /** 服务端随错误返回的结构化上下文 */
+  data?: unknown;
 }
 
 /** API 成功响应 */
@@ -31,6 +33,6 @@ export function ok<T>(data: T): ApiOk<T> {
 }
 
 /** 构造失败结果 */
-export function err(code: string, message: string, status?: number): ApiErr {
-  return { ok: false, error: { code, message, status } };
+export function err(code: string, message: string, status?: number, data?: unknown): ApiErr {
+  return { ok: false, error: { code, message, status, ...(data !== undefined ? { data } : {}) } };
 }

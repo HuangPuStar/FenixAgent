@@ -50,7 +50,7 @@
     "batchDeleteDescription": "确定要删除选中的 {{count}} 个技能吗？{{workspaceHint}}",
     "batchDeleteHint": "此操作不可逆。",
     "overwriteTitle": "确认覆盖冲突技能",
-    "overwriteDescription": "覆盖会整目录替换已有技能内容，旧文件会被删除。确定继续吗？",
+    "overwriteDescription": "覆盖会整目录替换以下技能内容：{{names}}。旧文件会被删除，确定继续吗？",
     "overwriteConfirm": "确认覆盖"
   },
   "conflict": {

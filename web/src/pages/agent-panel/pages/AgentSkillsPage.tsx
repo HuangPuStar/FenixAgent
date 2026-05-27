@@ -171,8 +171,9 @@ export function AgentSkillsPage() {
 
   const handleUploadSelection = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
-    setUploadItems(parseSkillUploadFiles(files));
-    setUploadError(validateUploadBatch(parseSkillUploadFiles(files)));
+    const items = parseSkillUploadFiles(files);
+    setUploadItems(items);
+    setUploadError(validateUploadBatch(items));
     setConflicts([]);
     setConflictStrategy(null);
   };
@@ -252,6 +253,7 @@ export function AgentSkillsPage() {
       </div>
     );
   }
+  const overwriteConflictNames = conflicts.map((conflict) => conflict.name).join(", ");
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -477,7 +479,7 @@ export function AgentSkillsPage() {
         open={overwriteConfirmOpen}
         onOpenChange={setOverwriteConfirmOpen}
         title={t("confirm.overwriteTitle")}
-        description={t("confirm.overwriteDescription")}
+        description={t("confirm.overwriteDescription", { names: overwriteConflictNames })}
         variant="destructive"
         confirmLabel={t("confirm.overwriteConfirm")}
         onConfirm={() => void handleUploadSubmit("overwrite")}
