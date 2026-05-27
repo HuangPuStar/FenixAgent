@@ -143,7 +143,11 @@
       "notTextFile": "Cannot preview binary file",
       "fetchFailed": "Failed to load file content",
       "noFileSelected": "Select a file to preview",
-      "modifiedAt": "Modified"
+      "modifiedAt": "Modified",
+      "unsupportedType": "This file type cannot be previewed",
+      "fileSize": "File size",
+      "fileType": "File type",
+      "pdfLoadFailed": "Failed to load PDF"
     }
   },
   "tool": {

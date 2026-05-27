@@ -143,7 +143,11 @@
       "notTextFile": "无法预览二进制文件",
       "fetchFailed": "加载文件内容失败",
       "noFileSelected": "选择文件以预览",
-      "modifiedAt": "修改时间"
+      "modifiedAt": "修改时间",
+      "unsupportedType": "此文件类型不支持预览",
+      "fileSize": "文件大小",
+      "fileType": "文件类型",
+      "pdfLoadFailed": "加载 PDF 失败"
     }
   },
   "tool": {
