@@ -1,0 +1,146 @@
+import { Loader, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { WorkflowJob } from "../../api/workflow-jobs";
+import { workflowJobsApi } from "../../api/workflow-jobs";
+import { KanbanColumn } from "./components/KanbanColumn";
+import { KanbanJobDialog } from "./components/KanbanJobDialog";
+
+const COMPLETED_COLLAPSE_LIMIT = 10;
+
+export function WorkflowKanban() {
+  const { t } = useTranslation("kanban");
+  const [jobs, setJobs] = useState<WorkflowJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editJob, setEditJob] = useState<WorkflowJob | null>(null);
+
+  const loadJobs = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await workflowJobsApi.list();
+      setJobs(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
+
+  // SSE 实时更新
+  useEffect(() => {
+    const es = workflowJobsApi.createEventSource();
+    es.onmessage = () => {
+      loadJobs();
+    };
+    return () => es.close();
+  }, [loadJobs]);
+
+  const grouped = useMemo(() => {
+    const ready = jobs.filter((j) => j.status === "ready");
+    const running = jobs.filter((j) => j.status === "running");
+    const suspended = jobs.filter((j) => j.status === "suspended");
+    const completed = jobs.filter((j) => j.status === "completed");
+    return { ready, running, suspended, completed };
+  }, [jobs]);
+
+  const completedToShow = showAllCompleted ? grouped.completed : grouped.completed.slice(0, COMPLETED_COLLAPSE_LIMIT);
+  const hasMoreCompleted = grouped.completed.length > COMPLETED_COLLAPSE_LIMIT;
+
+  const handleEditParams = useCallback((job: WorkflowJob) => {
+    setEditJob(job);
+    setDialogOpen(true);
+  }, []);
+
+  const handleDialogClose = useCallback(() => {
+    setDialogOpen(false);
+    setEditJob(null);
+  }, []);
+
+  if (loading && jobs.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader className="h-6 w-6 animate-spin text-text-secondary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-text-secondary text-sm p-6">
+        {t("load_failed", { error })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-surface-base flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => {
+            setEditJob(null);
+            setDialogOpen(true);
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand text-white text-xs font-medium hover:bg-brand-dark transition-colors"
+        >
+          + {t("dialog_create_title")}
+        </button>
+        <button
+          type="button"
+          onClick={loadJobs}
+          className="flex items-center gap-1 px-2 py-1 rounded-md border border-border text-text-secondary text-xs hover:bg-surface-hover transition-colors"
+        >
+          <RefreshCw size={12} /> {t("refresh")}
+        </button>
+      </div>
+
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <KanbanColumn titleKey="col_ready" jobs={grouped.ready} onRefresh={loadJobs} onEditParams={handleEditParams} />
+        <KanbanColumn titleKey="col_running" jobs={grouped.running} onRefresh={loadJobs} onEditParams={handleEditParams} />
+        <KanbanColumn
+          titleKey="col_suspended"
+          jobs={grouped.suspended}
+          onRefresh={loadJobs}
+          onEditParams={handleEditParams}
+        />
+        <div className="flex flex-col min-w-[260px] flex-1">
+          <KanbanColumn
+            titleKey="col_completed"
+            jobs={completedToShow}
+            onRefresh={loadJobs}
+            onEditParams={handleEditParams}
+          />
+          {hasMoreCompleted && !showAllCompleted && (
+            <button
+              type="button"
+              onClick={() => setShowAllCompleted(true)}
+              className="text-xs text-brand hover:underline py-2 text-center flex-shrink-0"
+            >
+              {t("completed_show_more", { count: grouped.completed.length - COMPLETED_COLLAPSE_LIMIT })}
+            </button>
+          )}
+          {showAllCompleted && hasMoreCompleted && (
+            <button
+              type="button"
+              onClick={() => setShowAllCompleted(false)}
+              className="text-xs text-brand hover:underline py-2 text-center flex-shrink-0"
+            >
+              {t("completed_show_less")}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <KanbanJobDialog open={dialogOpen} onClose={handleDialogClose} editJob={editJob} onRefresh={loadJobs} />
+    </div>
+  );
+}
