@@ -72,81 +72,92 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
     ? t(`status_${(job.lastDagStatus ?? "failed").toLowerCase()}`)
     : t(`status_${job.status}`);
 
-  return (
-    <div className={`rounded-lg border p-3 text-xs space-y-1.5 transition-shadow hover:shadow-sm ${style.bg}`}>
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-medium text-text-primary truncate text-[13px]">{job.workflowName ?? job.workflowId}</span>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button" className="p-0.5 rounded hover:bg-black/5 flex-shrink-0" disabled={loading}>
-              <MoreHorizontal size={14} className="text-text-secondary" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[120px]">
-            {job.status === "ready" && (
-              <>
-                <DropdownMenuItem onClick={() => handleAction(() => workflowJobsApi.run(job.id))}>
-                  <Play size={13} className="mr-1.5" /> {t("card_run")}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onEditParams(job)}>{t("card_edit_params")}</DropdownMenuItem>
-              </>
-            )}
-            {job.status === "running" && (
-              <DropdownMenuItem onClick={() => handleAction(() => workflowJobsApi.cancel(job.id))}>
-                <Pause size={13} className="mr-1.5" /> {t("card_cancel")}
-              </DropdownMenuItem>
-            )}
-            {job.status === "suspended" && (
-              <DropdownMenuItem
-                onClick={() =>
-                  handleAction(async () => {
-                    const approvals = await workflowJobsApi.getPendingApprovals(job.id);
-                    if (approvals.length > 0) {
-                      await workflowJobsApi.approve(job.id, approvals[0].nodeId, approvals[0].approvalToken);
-                    }
-                  })
+  const primaryAction =
+    job.status === "ready" || job.status === "completed"
+      ? {
+          icon: Play,
+          label: t(job.status === "ready" ? "card_run" : "card_rerun"),
+          action: () => workflowJobsApi.run(job.id),
+        }
+      : job.status === "running"
+        ? { icon: Pause, label: t("card_cancel"), action: () => workflowJobsApi.cancel(job.id) }
+        : job.status === "suspended"
+          ? {
+              icon: CheckCircle2,
+              label: t("card_approve"),
+              action: async () => {
+                const approvals = await workflowJobsApi.getPendingApprovals(job.id);
+                if (approvals.length > 0) {
+                  await workflowJobsApi.approve(job.id, approvals[0].nodeId, approvals[0].approvalToken);
                 }
-              >
-                <CheckCircle2 size={13} className="mr-1.5" /> {t("card_approve")}
-              </DropdownMenuItem>
-            )}
-            {job.status === "completed" && (
-              <DropdownMenuItem onClick={() => handleAction(() => workflowJobsApi.run(job.id))}>
-                <Play size={13} className="mr-1.5" /> {t("card_rerun")}
-              </DropdownMenuItem>
-            )}
-            {(job.status === "ready" || job.status === "completed") && (
-              <DropdownMenuItem
-                className="text-red-600"
-                onClick={() => handleAction(() => workflowJobsApi.delete(job.id))}
-              >
-                <Trash2 size={13} className="mr-1.5" /> {t("card_delete")}
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              },
+            }
+          : null;
+
+  const PrimaryIcon = primaryAction?.icon;
+
+  return (
+    <div className={`rounded-lg border text-xs transition-shadow hover:shadow-sm ${style.bg}`}>
+      <div className="p-3 space-y-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <span className="font-medium text-text-primary truncate text-[13px]">
+            {job.workflowName ?? job.workflowId}
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="p-0.5 rounded hover:bg-black/5 flex-shrink-0" disabled={loading}>
+                <MoreHorizontal size={14} className="text-text-secondary" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[120px]">
+              {job.status === "ready" && (
+                <DropdownMenuItem onClick={() => onEditParams(job)}>{t("card_edit_params")}</DropdownMenuItem>
+              )}
+              {(job.status === "ready" || job.status === "completed") && (
+                <DropdownMenuItem
+                  className="text-red-600"
+                  onClick={() => handleAction(() => workflowJobsApi.delete(job.id))}
+                >
+                  <Trash2 size={13} className="mr-1.5" /> {t("card_delete")}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div className="text-text-secondary truncate" title={paramsSummary(job.params, t)}>
+          {paramsSummary(job.params, t)}
+        </div>
+
+        <div className={`flex items-center gap-1.5 font-medium ${style.color}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+          {statusLabel}
+        </div>
+
+        <div className="text-text-secondary flex items-center gap-1">
+          {job.userName && <span>{t("card_created_by", { name: job.userName })}</span>}
+          <span>·</span>
+          <span>{relativeTime(job.createdAt, t)}</span>
+          {job.runCount > 1 && (
+            <>
+              <span>·</span>
+              <span>{t("card_run_count", { count: job.runCount })}</span>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="text-text-secondary truncate" title={paramsSummary(job.params, t)}>
-        {paramsSummary(job.params, t)}
-      </div>
-
-      <div className={`flex items-center gap-1.5 font-medium ${style.color}`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-        {statusLabel}
-      </div>
-
-      <div className="text-text-secondary flex items-center gap-1">
-        {job.userName && <span>{t("card_created_by", { name: job.userName })}</span>}
-        <span>·</span>
-        <span>{relativeTime(job.createdAt, t)}</span>
-        {job.runCount > 1 && (
-          <>
-            <span>·</span>
-            <span>{t("card_run_count", { count: job.runCount })}</span>
-          </>
-        )}
-      </div>
+      {primaryAction && PrimaryIcon && (
+        <button
+          type="button"
+          onClick={() => handleAction(primaryAction.action)}
+          disabled={loading}
+          className={`w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium border-t transition-colors ${style.color} hover:bg-black/5 disabled:opacity-50`}
+        >
+          <PrimaryIcon size={13} />
+          {primaryAction.label}
+        </button>
+      )}
     </div>
   );
 }

@@ -82,7 +82,7 @@ export function WorkflowKanban() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-2 border-b bg-surface-base flex-shrink-0">
         <button
           type="button"
