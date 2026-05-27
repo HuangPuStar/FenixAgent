@@ -415,7 +415,7 @@ export function TreeItem({
   const truncated = (nodeState?.childrenIds?.length ?? 0) - state.visibleChildren.length;
 
   return (
-    <div role="treeitem" aria-expanded={state.expanded} tabIndex={0} data-slot="tree-item">
+    <div role="treeitem" aria-expanded={state.expanded} tabIndex={0} data-slot="tree-item" data-node-id={nodeId}>
       {/* Node row */}
       <div
         className={cn(
