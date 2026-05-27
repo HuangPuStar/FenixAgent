@@ -1,4 +1,16 @@
-import { AlertTriangle, ChevronRight, Inbox, Loader, Plus, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Inbox,
+  KanbanSquare,
+  Loader,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
@@ -10,6 +22,7 @@ interface WorkflowListProps {
 
 export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListProps) {
   const { t } = useTranslation("workflows");
+  const navigate = useNavigate();
   const [workflows, setWorkflows] = useState<WorkflowDefItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -472,6 +485,27 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
                   }}
                 >
                   <ChevronRight size={13} />
+                </button>
+                <button
+                  type="button"
+                  title={t("kanban:add_to_kanban")}
+                  onClick={() => {
+                    void navigate({ to: "/agent/workflow", search: { tab: "kanban" } });
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 26,
+                    height: 26,
+                    border: "none",
+                    background: "none",
+                    borderRadius: 4,
+                    color: "#6b7280",
+                    cursor: "pointer",
+                  }}
+                >
+                  <KanbanSquare size={13} />
                 </button>
                 <button
                   type="button"

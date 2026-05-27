@@ -10,6 +10,7 @@ import commonEN from "./locales/en/common.json";
 import componentsEN from "./locales/en/components.json";
 import dashboardEN from "./locales/en/dashboard.json";
 import environmentsEN from "./locales/en/environments.json";
+import kanbanEN from "./locales/en/kanban.json";
 import knowledgeEN from "./locales/en/knowledge.json";
 import loginEN from "./locales/en/login.json";
 import mcpEN from "./locales/en/mcp.json";
@@ -28,6 +29,7 @@ import commonZH from "./locales/zh/common.json";
 import componentsZH from "./locales/zh/components.json";
 import dashboardZH from "./locales/zh/dashboard.json";
 import environmentsZH from "./locales/zh/environments.json";
+import kanbanZH from "./locales/zh/kanban.json";
 import knowledgeZH from "./locales/zh/knowledge.json";
 import loginZH from "./locales/zh/login.json";
 import mcpZH from "./locales/zh/mcp.json";
@@ -58,6 +60,7 @@ export const NS = {
   KNOWLEDGE: "knowledge",
   AGENT_PANEL: "agentPanel",
   COMPONENTS: "components",
+  KANBAN: "kanban",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];
@@ -86,6 +89,7 @@ i18n
         [NS.KNOWLEDGE]: knowledgeEN,
         [NS.COMPONENTS]: componentsEN,
         [NS.WORKFLOWS]: workflowsEN,
+        [NS.KANBAN]: kanbanEN,
       },
       zh: {
         [NS.COMMON]: commonZH,
@@ -106,6 +110,7 @@ i18n
         [NS.KNOWLEDGE]: knowledgeZH,
         [NS.COMPONENTS]: componentsZH,
         [NS.WORKFLOWS]: workflowsZH,
+        [NS.KANBAN]: kanbanZH,
       },
     },
     fallbackLng: "en",
@@ -127,6 +132,7 @@ i18n
       NS.KNOWLEDGE,
       NS.COMPONENTS,
       NS.WORKFLOWS,
+      NS.KANBAN,
     ],
     interpolation: { escapeValue: false },
     detection: {
