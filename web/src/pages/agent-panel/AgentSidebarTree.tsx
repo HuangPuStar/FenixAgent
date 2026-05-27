@@ -360,7 +360,6 @@ export function AgentSidebarTree({
                   <Bot className="w-4 h-4 flex-shrink-0" />
                 )}
                 <span className="truncate">{agent.name}</span>
-                {instances.length > 0 && <span className="agent-tree-instance-count">{instances.length}</span>}
               </button>
 
               {/* 右侧操作按钮 */}
