@@ -16,6 +16,8 @@ import webTasks from "./tasks";
 import webUserFile from "./user-file";
 import webWorkflowDefs from "./workflow-defs";
 import webWorkflowEngine from "./workflow-engine";
+import webWorkflowJobs from "./workflow-jobs";
+import webWorkflowJobsSse from "./workflow-jobs-sse";
 import webWorkflowSse from "./workflow-sse";
 
 const webApp = new Elysia({ name: "web", prefix: "/web" })
@@ -36,6 +38,8 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webUserFile)
   .use(webWorkflowDefs)
   .use(webWorkflowEngine)
+  .use(webWorkflowJobs)
+  .use(webWorkflowJobsSse)
   .use(webWorkflowSse);
 
 export default webApp;
