@@ -2,9 +2,14 @@ import { CheckCircle2, MoreHorizontal, Pause, Play, Trash2 } from "lucide-react"
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { DagStatus, JobStatus, WorkflowJob } from "../../../api/workflow-jobs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { DagStatus, WorkflowJob } from "../../../api/workflow-jobs";
 import { workflowJobsApi } from "../../../api/workflow-jobs";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface KanbanCardProps {
   job: WorkflowJob;
@@ -46,9 +51,11 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
   const [loading, setLoading] = useState(false);
 
   const isTerminal = job.status === "completed";
-  const style = isTerminal ? dagStatusStyle(job.lastDagStatus ?? "FAILED") : STATUS_STYLES[job.status] ?? STATUS_STYLES.ready;
+  const style = isTerminal
+    ? dagStatusStyle(job.lastDagStatus ?? "FAILED")
+    : (STATUS_STYLES[job.status] ?? STATUS_STYLES.ready);
 
-  const handleAction = async (action: () => Promise<void>) => {
+  const handleAction = async (action: () => Promise<unknown>) => {
     setLoading(true);
     try {
       await action();
@@ -81,9 +88,7 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
                 <DropdownMenuItem onClick={() => handleAction(() => workflowJobsApi.run(job.id))}>
                   <Play size={13} className="mr-1.5" /> {t("card_run")}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onEditParams(job)}>
-                  {t("card_edit_params")}
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onEditParams(job)}>{t("card_edit_params")}</DropdownMenuItem>
               </>
             )}
             {job.status === "running" && (
@@ -111,7 +116,10 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
               </DropdownMenuItem>
             )}
             {(job.status === "ready" || job.status === "completed") && (
-              <DropdownMenuItem className="text-red-600" onClick={() => handleAction(() => workflowJobsApi.delete(job.id))}>
+              <DropdownMenuItem
+                className="text-red-600"
+                onClick={() => handleAction(() => workflowJobsApi.delete(job.id))}
+              >
                 <Trash2 size={13} className="mr-1.5" /> {t("card_delete")}
               </DropdownMenuItem>
             )}

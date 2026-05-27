@@ -94,7 +94,9 @@ export async function updateJobParams(
   const result = await db
     .update(workflowJob)
     .set({ params, updatedAt: new Date() })
-    .where(and(eq(workflowJob.id, jobId), eq(workflowJob.organizationId, organizationId), eq(workflowJob.status, "ready")))
+    .where(
+      and(eq(workflowJob.id, jobId), eq(workflowJob.organizationId, organizationId), eq(workflowJob.status, "ready")),
+    )
     .returning();
   return result.length > 0;
 }

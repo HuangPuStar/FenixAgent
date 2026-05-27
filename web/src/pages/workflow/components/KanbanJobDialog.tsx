@@ -2,13 +2,13 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { WorkflowJob } from "../../../api/workflow-jobs";
-import { workflowJobsApi } from "../../../api/workflow-jobs";
-import { workflowDefApi } from "../../../api/sdk";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { workflowDefApi } from "../../../api/sdk";
+import type { WorkflowJob } from "../../../api/workflow-jobs";
+import { workflowJobsApi } from "../../../api/workflow-jobs";
 
 interface ParamDef {
   type?: "string" | "number" | "boolean" | "object";
@@ -49,7 +49,7 @@ export function KanbanJobDialog({ open, onClose, editJob, onRefresh }: KanbanJob
       .then(({ data, error }) => {
         if (error) throw new Error(error.message);
         setWorkflows(
-          (data ?? []).map((wf: Record<string, unknown>) => ({
+          (Array.isArray(data) ? data : []).map((wf: Record<string, unknown>) => ({
             id: wf.id as string,
             name: wf.name as string,
             description: wf.description as string | null,

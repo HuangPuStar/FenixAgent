@@ -727,7 +727,6 @@ export const userConfig = pgTable("user_config", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-
 // ────────────────────────────────────────────
 // Workflow Job（看板 Job 实体）
 // ────────────────────────────────────────────

@@ -31,9 +31,7 @@ export function KanbanColumn({ titleKey, jobs, onRefresh, onEditParams }: Kanban
             <span className="text-[11px]">{t(`empty_${titleKey.replace("col_", "")}`)}</span>
           </div>
         ) : (
-          jobs.map((job) => (
-            <KanbanCard key={job.id} job={job} onRefresh={onRefresh} onEditParams={onEditParams} />
-          ))
+          jobs.map((job) => <KanbanCard key={job.id} job={job} onRefresh={onRefresh} onEditParams={onEditParams} />)
         )}
       </div>
     </div>

@@ -105,7 +105,12 @@ export function WorkflowKanban() {
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <KanbanColumn titleKey="col_ready" jobs={grouped.ready} onRefresh={loadJobs} onEditParams={handleEditParams} />
-        <KanbanColumn titleKey="col_running" jobs={grouped.running} onRefresh={loadJobs} onEditParams={handleEditParams} />
+        <KanbanColumn
+          titleKey="col_running"
+          jobs={grouped.running}
+          onRefresh={loadJobs}
+          onEditParams={handleEditParams}
+        />
         <KanbanColumn
           titleKey="col_suspended"
           jobs={grouped.suspended}
