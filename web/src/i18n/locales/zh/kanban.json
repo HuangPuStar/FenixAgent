@@ -46,6 +46,7 @@
   "dialog_save": "保存",
   "dialog_creating": "创建中...",
   "dialog_saving": "保存中...",
+  "dialog_loading_params": "加载参数中...",
   "dialog_load_params_failed": "加载参数失败",
   "dialog_create_failed": "创建失败",
   "dialog_save_failed": "保存失败",

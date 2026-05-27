@@ -46,6 +46,7 @@
   "dialog_save": "Save",
   "dialog_creating": "Creating...",
   "dialog_saving": "Saving...",
+  "dialog_loading_params": "Loading parameters...",
   "dialog_load_params_failed": "Failed to load params",
   "dialog_create_failed": "Create failed",
   "dialog_save_failed": "Save failed",

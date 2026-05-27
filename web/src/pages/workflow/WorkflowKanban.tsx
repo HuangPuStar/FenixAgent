@@ -1,4 +1,4 @@
-import { Loader, RefreshCw } from "lucide-react";
+import { Loader, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WorkflowJob } from "../../api/workflow-jobs";
@@ -67,15 +67,15 @@ export function WorkflowKanban() {
 
   if (loading && jobs.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader className="h-6 w-6 animate-spin text-text-secondary" />
+      <div className="flex h-full items-center justify-center">
+        <Loader className="h-5 w-5 animate-spin text-text-muted" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center text-text-secondary text-sm p-6">
+      <div className="flex h-full items-center justify-center text-text-muted text-sm p-6">
         {t("load_failed", { error })}
       </div>
     );
@@ -83,27 +83,31 @@ export function WorkflowKanban() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-surface-base flex-shrink-0">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle bg-surface-1 flex-shrink-0">
         <button
           type="button"
           onClick={() => {
             setEditJob(null);
             setDialogOpen(true);
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand text-white text-xs font-medium hover:bg-brand-dark transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-light transition-colors active:scale-[0.98]"
         >
-          + {t("dialog_create_title")}
+          <Plus size={13} />
+          {t("dialog_create_title")}
         </button>
         <button
           type="button"
           onClick={loadJobs}
-          className="flex items-center gap-1 px-2 py-1 rounded-md border border-border text-text-secondary text-xs hover:bg-surface-hover transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-text-secondary text-xs hover:bg-surface-hover transition-colors"
         >
-          <RefreshCw size={12} /> {t("refresh")}
+          <RefreshCw size={12} />
+          {t("refresh")}
         </button>
       </div>
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* Board */}
+      <div className="flex flex-1 min-h-0 overflow-hidden bg-surface-0">
         <KanbanColumn titleKey="col_ready" jobs={grouped.ready} onRefresh={loadJobs} onEditParams={handleEditParams} />
         <KanbanColumn
           titleKey="col_running"
@@ -128,7 +132,7 @@ export function WorkflowKanban() {
             <button
               type="button"
               onClick={() => setShowAllCompleted(true)}
-              className="text-xs text-brand hover:underline py-2 text-center flex-shrink-0"
+              className="text-[11px] text-brand hover:text-brand-light py-2 text-center flex-shrink-0 transition-colors"
             >
               {t("completed_show_more", { count: grouped.completed.length - COMPLETED_COLLAPSE_LIMIT })}
             </button>
@@ -137,7 +141,7 @@ export function WorkflowKanban() {
             <button
               type="button"
               onClick={() => setShowAllCompleted(false)}
-              className="text-xs text-brand hover:underline py-2 text-center flex-shrink-0"
+              className="text-[11px] text-brand hover:text-brand-light py-2 text-center flex-shrink-0 transition-colors"
             >
               {t("completed_show_less")}
             </button>

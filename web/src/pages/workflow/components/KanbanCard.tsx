@@ -17,15 +17,32 @@ interface KanbanCardProps {
   onEditParams: (job: WorkflowJob) => void;
 }
 
-const STATUS_STYLES: Record<string, { dot: string; color: string; bg: string }> = {
-  ready: { dot: "bg-slate-400", color: "text-slate-600", bg: "bg-slate-50" },
-  running: { dot: "bg-blue-500 animate-pulse", color: "text-blue-600", bg: "bg-blue-50" },
-  suspended: { dot: "bg-amber-500", color: "text-amber-600", bg: "bg-amber-50" },
+const ACCENT: Record<string, string> = {
+  ready: "border-l-slate-400",
+  running: "border-l-emerald-500",
+  suspended: "border-l-amber-400",
 };
 
-function dagStatusStyle(status: DagStatus) {
-  if (status === "SUCCESS") return { dot: "bg-emerald-500", color: "text-emerald-600", bg: "bg-emerald-50" };
-  return { dot: "bg-red-500", color: "text-red-600", bg: "bg-red-50" };
+const DOT: Record<string, string> = {
+  ready: "bg-slate-400",
+  running: "bg-emerald-500",
+  suspended: "bg-amber-400",
+};
+
+const LABEL: Record<string, string> = {
+  ready: "text-text-secondary",
+  running: "text-emerald-600",
+  suspended: "text-amber-600",
+};
+
+function dagAccent(s: DagStatus) {
+  return s === "SUCCESS" ? "border-l-emerald-400" : "border-l-red-400";
+}
+function dagDot(s: DagStatus) {
+  return s === "SUCCESS" ? "bg-emerald-400" : "bg-red-400";
+}
+function dagLabel(s: DagStatus) {
+  return s === "SUCCESS" ? "text-emerald-600" : "text-red-600";
 }
 
 function relativeTime(iso: string, t: (k: string, o?: Record<string, unknown>) => string): string {
@@ -51,9 +68,15 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
   const [loading, setLoading] = useState(false);
 
   const isTerminal = job.status === "completed";
-  const style = isTerminal
-    ? dagStatusStyle(job.lastDagStatus ?? "FAILED")
-    : (STATUS_STYLES[job.status] ?? STATUS_STYLES.ready);
+  const isRunning = job.status === "running";
+
+  const accent = isTerminal ? dagAccent(job.lastDagStatus ?? "FAILED") : (ACCENT[job.status] ?? ACCENT.ready);
+  const dot = isTerminal ? dagDot(job.lastDagStatus ?? "FAILED") : (DOT[job.status] ?? DOT.ready);
+  const labelColor = isTerminal ? dagLabel(job.lastDagStatus ?? "FAILED") : (LABEL[job.status] ?? LABEL.ready);
+
+  const statusLabel = isTerminal
+    ? t(`status_${(job.lastDagStatus ?? "failed").toLowerCase()}`)
+    : t(`status_${job.status}`);
 
   const handleAction = async (action: () => Promise<unknown>) => {
     setLoading(true);
@@ -67,10 +90,6 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
       setLoading(false);
     }
   };
-
-  const statusLabel = isTerminal
-    ? t(`status_${(job.lastDagStatus ?? "failed").toLowerCase()}`)
-    : t(`status_${job.status}`);
 
   const primaryAction =
     job.status === "ready" || job.status === "completed"
@@ -97,16 +116,23 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
   const PrimaryIcon = primaryAction?.icon;
 
   return (
-    <div className={`rounded-lg border text-xs transition-shadow hover:shadow-sm ${style.bg}`}>
+    <div
+      className={`group rounded-lg border border-border-subtle border-l-[3px] bg-surface-elevated transition-all duration-200 hover:border-border hover:-translate-y-0.5 hover:shadow-elevated ${accent}`}
+    >
       <div className="p-3 space-y-1.5">
+        {/* Name + menu */}
         <div className="flex items-start justify-between gap-2">
-          <span className="font-medium text-text-primary truncate text-[13px]">
+          <span className="font-medium text-text-primary truncate text-[13px] leading-tight">
             {job.workflowName ?? job.workflowId}
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button" className="p-0.5 rounded hover:bg-black/5 flex-shrink-0" disabled={loading}>
-                <MoreHorizontal size={14} className="text-text-secondary" />
+              <button
+                type="button"
+                className="p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-hover flex-shrink-0"
+                disabled={loading}
+              >
+                <MoreHorizontal size={14} className="text-text-muted" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[120px]">
@@ -125,16 +151,25 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
           </DropdownMenu>
         </div>
 
-        <div className="text-text-secondary truncate" title={paramsSummary(job.params, t)}>
+        {/* Params */}
+        <div
+          className="text-text-muted truncate text-[11px] font-mono leading-relaxed"
+          title={paramsSummary(job.params, t)}
+        >
           {paramsSummary(job.params, t)}
         </div>
 
-        <div className={`flex items-center gap-1.5 font-medium ${style.color}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+        {/* Status */}
+        <div className={`flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase ${labelColor}`}>
+          <span className="relative flex h-2 w-2">
+            {isRunning && <span className={`absolute inset-0 rounded-full ${dot} animate-ping opacity-30`} />}
+            <span className={`relative rounded-full h-2 w-2 ${dot}`} />
+          </span>
           {statusLabel}
         </div>
 
-        <div className="text-text-secondary flex items-center gap-1">
+        {/* Meta */}
+        <div className="text-text-dim text-[11px] flex items-center gap-1 leading-relaxed">
           {job.userName && <span>{t("card_created_by", { name: job.userName })}</span>}
           <span>·</span>
           <span>{relativeTime(job.createdAt, t)}</span>
@@ -147,14 +182,15 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
         </div>
       </div>
 
+      {/* Primary action */}
       {primaryAction && PrimaryIcon && (
         <button
           type="button"
           onClick={() => handleAction(primaryAction.action)}
           disabled={loading}
-          className={`w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium border-t transition-colors ${style.color} hover:bg-black/5 disabled:opacity-50`}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium border-t border-border-subtle text-text-secondary hover:text-brand hover:bg-brand-subtle transition-colors disabled:opacity-50"
         >
-          <PrimaryIcon size={13} />
+          <PrimaryIcon size={12} />
           {primaryAction.label}
         </button>
       )}
