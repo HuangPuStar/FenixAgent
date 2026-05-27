@@ -230,7 +230,6 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
     formSkillIds,
     agentName,
     knowledgeOptions,
-    onOpenChange,
     t,
   ]);
 
@@ -247,14 +246,13 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
         ? (envsData as { id: string; agent_config_id?: string; instances_count?: number }[])
         : [];
       const matchedEnv = envs.find((e) => e.agent_config_id === matchedAgent.id);
-      if (!matchedEnv || !(matchedEnv.instances_count ?? 0 > 0)) return [];
+      if (!matchedEnv || (matchedEnv.instances_count ?? 0) <= 0) return [];
 
       const { data: instData } = await envApi.listInstances({ id: matchedEnv.id });
-      const instances = (instData as { instances?: { id: string; status: string; environment_id: string }[] } | null)
-        ?.instances ?? [];
+      const instances = (instData as { instances?: { id: string; status: string }[] } | null)?.instances ?? [];
       return instances
         .filter((inst) => inst.status === "running" || inst.status === "starting")
-        .map((inst) => ({ id: inst.id, environmentId: inst.environment_id }));
+        .map((inst) => ({ id: inst.id, environmentId: matchedEnv.id }));
     } catch (err) {
       console.error("Failed to get running instances:", err);
       return [];
