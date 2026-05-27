@@ -267,5 +267,12 @@
     "toolCalls": "Tool Calls",
     "noToolCalls": "No tool calls",
     "pendingConfirmation": "Pending"
+  },
+  "tree": {
+    "showMore": "+{{count}} more",
+    "loading": "Loading...",
+    "loadError": "Failed to load",
+    "retry": "Retry",
+    "empty": "No items"
   }
 }

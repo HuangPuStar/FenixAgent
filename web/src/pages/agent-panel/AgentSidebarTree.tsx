@@ -1,5 +1,5 @@
-import { Bot, ChevronDown, ChevronRight, Loader2, Plus, RotateCw, Settings, Square, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Bot, Loader2, Plus, RotateCw, Settings, Square, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import type { NodeState, TreeNodeData } from "@/components/ui/tree";
+import { Tree } from "@/components/ui/tree";
 import { agentApi, envApi, instanceApi } from "@/src/api/sdk";
 import { useOrg } from "../../contexts/OrgContext";
 import { NS } from "../../i18n";
@@ -28,10 +30,17 @@ interface AgentConfigItem {
   color: string | null;
 }
 
-interface AgentTreeNode {
+interface AgentExtra {
   agent: AgentConfigItem;
-  environment: Environment | null;
-  instances: EnvironmentInstance[];
+  environmentId: string | null;
+}
+
+interface InstanceExtra {
+  agentId: string;
+  environmentId: string;
+  instanceNumber: number;
+  status: string;
+  instanceId: string;
 }
 
 interface AgentSidebarTreeProps {
@@ -50,139 +59,180 @@ export function AgentSidebarTree({
   const { t } = useTranslation(NS.AGENT_PANEL);
   const { org } = useOrg();
   const orgId = org?.id;
-  const [treeNodes, setTreeNodes] = useState<AgentTreeNode[]>([]);
-  const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>({});
+
+  const agentExtrasRef = useRef<Map<string, AgentExtra>>(new Map());
+  const instanceExtrasRef = useRef<Map<string, InstanceExtra>>(new Map());
   const [loading, setLoading] = useState(true);
   const [enteringAgentId, setEnteringAgentId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [restartingIds, setRestartingIds] = useState<Set<string>>(new Set());
   const [stoppingIds, setStoppingIds] = useState<Set<string>>(new Set());
+
+  // 多实例重启弹窗
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
-  const [restartTargetNode, setRestartTargetNode] = useState<AgentTreeNode | null>(null);
+  const [restartTargetAgentId, setRestartTargetAgentId] = useState<string | null>(null);
   const [selectedRestartInstances, setSelectedRestartInstances] = useState<Set<string>>(new Set());
-  const [deleteTargetNode, setDeleteTargetNode] = useState<AgentTreeNode | null>(null);
+
+  // 删除智能体弹窗
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTargetAgentId, setDeleteTargetAgentId] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [{ data: agentsResult }, { data: envsData }] = await Promise.all([agentApi.list(), envApi.list()]);
-
-      const rawAgents = (agentsResult as unknown as { agents?: AgentConfigItem[] } | null)?.agents;
-      const agents = Array.isArray(rawAgents) ? rawAgents : [];
-      const envs = Array.isArray(envsData) ? (envsData as Environment[]) : [];
-
-      // 过滤内置智能体
-      const userAgents = agents.filter((a) => !a.builtIn);
-
-      // 建立 agentConfigId → environment 映射
-      const envByConfigId = new Map<string, Environment>();
-      for (const env of envs) {
-        if (env.agent_config_id) {
-          envByConfigId.set(env.agent_config_id, env);
-        }
-      }
-
-      // 构建 tree nodes
-      const nodes: AgentTreeNode[] = userAgents.map((agent) => ({
-        agent,
-        environment: envByConfigId.get(agent.id) ?? null,
-        instances: [],
-      }));
-
-      // 加载有活跃实例的 environment 的 instances
-      const activeEnvs = envs.filter((e) => (e.instances_count ?? 0) > 0);
-      if (activeEnvs.length > 0) {
-        const results = await Promise.allSettled(activeEnvs.map((env) => envApi.listInstances({ id: env.id })));
-        const instMap: Record<string, EnvironmentInstance[]> = {};
-        activeEnvs.forEach((env, i) => {
-          const r = results[i];
-          if (r.status === "fulfilled") {
-            const instData = r.value.data as { instances?: EnvironmentInstance[] } | null;
-            instMap[env.id] = instData?.instances ?? [];
-          }
-        });
-
-        for (const node of nodes) {
-          if (node.environment) {
-            node.instances = instMap[node.environment.id] ?? [];
-          }
-        }
-      }
-
-      setTreeNodes(nodes);
-    } catch (err) {
-      console.error("Failed to load agent tree:", err);
-    } finally {
-      setLoading(false);
-    }
+  const getInstanceStatus = useCallback((status: string) => {
+    if (status === "running") return "running";
+    if (status === "starting") return "starting";
+    if (status === "error") return "error";
+    return "stopped";
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: orgId triggers reload on org switch
-  useEffect(() => {
-    setLoading(true);
-    loadData();
-    const interval = setInterval(loadData, 15_000);
-    return () => clearInterval(interval);
-  }, [loadData, orgId]);
+  // 加载根级 agents
+  const loadAgents = useCallback(async () => {
+    const [{ data: agentsResult }, { data: envsData }] = await Promise.all([agentApi.list(), envApi.list()]);
+    const rawAgents = (agentsResult as unknown as { agents?: AgentConfigItem[] } | null)?.agents;
+    const agents = Array.isArray(rawAgents) ? rawAgents : [];
+    const envs = Array.isArray(envsData) ? (envsData as Environment[]) : [];
 
-  // 监听配置变更事件，agents 变更时立即刷新
-  useConfigChangeListener(
-    (module) => {
-      if (module === "agents") loadData();
+    const userAgents = agents.filter((a) => !a.builtIn);
+
+    const envByConfigId = new Map<string, Environment>();
+    for (const env of envs) {
+      if (env.agent_config_id) {
+        envByConfigId.set(env.agent_config_id, env);
+      }
+    }
+
+    const extras = new Map<string, AgentExtra>();
+    for (const agent of userAgents) {
+      const env = envByConfigId.get(agent.id);
+      extras.set(agent.id, { agent, environmentId: env?.id ?? null });
+    }
+    agentExtrasRef.current = extras;
+
+    return userAgents.map((agent) => {
+      const env = envByConfigId.get(agent.id);
+      const hasInstances = (env?.instances_count ?? 0) > 0;
+      return {
+        id: agent.id,
+        label: agent.name,
+        icon: Bot,
+        hasChildren: hasInstances || env !== undefined,
+        badge: hasInstances ? env!.instances_count : undefined,
+      } satisfies TreeNodeData;
+    });
+  }, []);
+
+  // 加载指定 agent 的 instances
+  const loadInstances = useCallback(
+    async (agentId: string) => {
+      const extra = agentExtrasRef.current.get(agentId);
+      if (!extra?.environmentId) return [];
+
+      const { data: instData } = await envApi.listInstances({ id: extra.environmentId });
+      const instances = (instData as { instances?: EnvironmentInstance[] } | null)?.instances ?? [];
+
+      for (const inst of instances) {
+        instanceExtrasRef.current.set(inst.id, {
+          agentId,
+          environmentId: extra.environmentId,
+          instanceNumber: inst.instance_number,
+          status: inst.status,
+          instanceId: inst.id,
+        });
+      }
+
+      return instances.map((inst) => ({
+        id: inst.id,
+        label: t("instanceN", { number: inst.instance_number }),
+        hasChildren: false,
+      })) satisfies TreeNodeData[];
     },
-    [loadData],
+    [t],
   );
 
-  const getInstanceStatus = (instance: EnvironmentInstance) => {
-    if (instance.status === "running") return "running";
-    if (instance.status === "starting") return "starting";
-    if (instance.status === "error") return "error";
-    return "stopped";
-  };
+  const getChildren = useCallback(
+    async (parentId: string | null): Promise<TreeNodeData[]> => {
+      try {
+        if (parentId === null) {
+          const agents = await loadAgents();
+          setLoading(false);
+          return agents;
+        }
+        if (agentExtrasRef.current.has(parentId)) {
+          return loadInstances(parentId);
+        }
+        return [];
+      } catch (err) {
+        console.error("[AgentSidebarTree] Failed to load children:", err);
+        if (parentId === null) setLoading(false);
+        return [];
+      }
+    },
+    [loadAgents, loadInstances],
+  );
 
-  // 进入智能体：如果没有 environment 则自动创建
+  // 进入智能体
   const handleEnterAgent = useCallback(
-    async (node: AgentTreeNode, opts?: { instanceNumber?: number; spawnNew?: boolean }) => {
-      const { agent, environment } = node;
-      const { instanceNumber, spawnNew } = opts ?? {};
+    async (agentId: string, opts?: { instanceId?: string; spawnNew?: boolean }) => {
+      const extra = agentExtrasRef.current.get(agentId);
+      if (!extra) return;
+      const { agent, environmentId: existingEnvId } = extra;
       setEnteringAgentId(agent.id);
       try {
-        let envId = environment?.id;
+        let envId = existingEnvId;
 
-        // 没有 environment，自动创建
         if (!envId) {
           const { data: newEnv } = await envApi.create({
             name: agent.name,
             agentConfigId: agent.id,
             autoStart: true,
           });
-          envId = (newEnv as unknown as Environment | null)?.id;
+          envId = (newEnv as unknown as Environment | null)?.id ?? null;
           if (!envId) {
             toast.error(t("enterInstanceFailed", { message: "Failed to create environment" }));
             return;
           }
-          // 刷新数据以关联新建的 environment
-          await loadData();
+          agentExtrasRef.current.set(agentId, { ...extra, environmentId: envId });
+          setRefreshKey((k) => k + 1);
         }
 
-        if (spawnNew) {
-          // 新建实例：先 spawn，再 enter 指定 instance_number
+        if (opts?.spawnNew) {
           const { data: spawnResult } = await instanceApi.spawn({ environmentId: envId });
           const spawned = spawnResult as { instance_number?: number } | null;
           const newInstanceNumber = spawned?.instance_number;
           if (newInstanceNumber !== undefined) {
             const { data: result } = await envApi.enter({ id: envId }, { instance_number: newInstanceNumber });
-            const enterResult = result as { session_id?: string; instance_id?: string; environment_id?: string } | null;
+            const enterResult = result as {
+              session_id?: string;
+              instance_id?: string;
+              environment_id?: string;
+            } | null;
             onSelectInstance(
               enterResult?.instance_id ?? "",
               enterResult?.environment_id ?? envId,
               enterResult?.session_id ?? null,
             );
           }
-        } else {
-          // 进入已有实例
+        } else if (opts?.instanceId) {
+          const instExtra = instanceExtrasRef.current.get(opts.instanceId);
+          const instanceNumber = instExtra?.instanceNumber;
           const body = instanceNumber !== undefined ? { instance_number: instanceNumber } : {};
           const { data: result } = await envApi.enter({ id: envId }, body);
-          const enterResult = result as { session_id?: string; instance_id?: string; environment_id?: string } | null;
+          const enterResult = result as {
+            session_id?: string;
+            instance_id?: string;
+            environment_id?: string;
+          } | null;
+          onSelectInstance(
+            enterResult?.instance_id ?? "",
+            enterResult?.environment_id ?? envId,
+            enterResult?.session_id ?? null,
+          );
+        } else {
+          const { data: result } = await envApi.enter({ id: envId }, {});
+          const enterResult = result as {
+            session_id?: string;
+            instance_id?: string;
+            environment_id?: string;
+          } | null;
           onSelectInstance(
             enterResult?.instance_id ?? "",
             enterResult?.environment_id ?? envId,
@@ -190,8 +240,7 @@ export function AgentSidebarTree({
           );
         }
 
-        // 刷新列表以展示新实例
-        loadData();
+        setRefreshKey((k) => k + 1);
       } catch (err) {
         console.error("Failed to enter instance:", err);
         toast.error(
@@ -203,22 +252,19 @@ export function AgentSidebarTree({
         setEnteringAgentId(null);
       }
     },
-    [onSelectInstance, t, loadData],
+    [onSelectInstance, t],
   );
 
-  const getRunningInstances = useCallback((node: AgentTreeNode) => {
-    return node.instances.filter((inst) => inst.status === "running" || inst.status === "starting");
-  }, []);
-
+  // 重启单个实例
   const handleRestartInstance = useCallback(
-    async (node: AgentTreeNode, instance: EnvironmentInstance) => {
-      const envId = node.environment?.id;
-      if (!envId) return;
-      setRestartingIds((prev) => new Set(prev).add(instance.id));
+    async (instanceId: string) => {
+      const instExtra = instanceExtrasRef.current.get(instanceId);
+      if (!instExtra) return;
+      setRestartingIds((prev) => new Set(prev).add(instanceId));
       try {
-        await instanceApi.delete({ id: instance.id });
-        await instanceApi.spawn({ environmentId: envId });
-        await loadData();
+        await instanceApi.delete({ id: instanceId });
+        await instanceApi.spawn({ environmentId: instExtra.environmentId });
+        setRefreshKey((k) => k + 1);
         toast.success(t("restartSuccess"));
       } catch (err) {
         console.error("Failed to restart instance:", err);
@@ -226,20 +272,21 @@ export function AgentSidebarTree({
       } finally {
         setRestartingIds((prev) => {
           const next = new Set(prev);
-          next.delete(instance.id);
+          next.delete(instanceId);
           return next;
         });
       }
     },
-    [t, loadData],
+    [t],
   );
 
+  // 停止单个实例
   const handleStopInstance = useCallback(
     async (instanceId: string) => {
       setStoppingIds((prev) => new Set(prev).add(instanceId));
       try {
         await instanceApi.delete({ id: instanceId });
-        await loadData();
+        setRefreshKey((k) => k + 1);
         toast.success(t("stopSuccess"));
       } catch (err) {
         console.error("Failed to stop instance:", err);
@@ -252,65 +299,228 @@ export function AgentSidebarTree({
         });
       }
     },
-    [t, loadData],
+    [t],
   );
 
+  // 重启 agent 所有运行中实例
   const handleRestartAgent = useCallback(
-    (node: AgentTreeNode) => {
-      const running = getRunningInstances(node);
-      if (running.length === 0) {
+    (agentId: string) => {
+      const runningIds: string[] = [];
+      for (const [id, extra] of instanceExtrasRef.current) {
+        if (extra.agentId === agentId && (extra.status === "running" || extra.status === "starting")) {
+          runningIds.push(id);
+        }
+      }
+      if (runningIds.length === 0) {
         toast.info(t("noInstancesToRestart"));
         return;
       }
-      if (running.length === 1) {
-        handleRestartInstance(node, running[0]);
+      if (runningIds.length === 1) {
+        handleRestartInstance(runningIds[0]);
         return;
       }
-      setRestartTargetNode(node);
-      setSelectedRestartInstances(new Set(running.map((i) => i.id)));
+      setRestartTargetAgentId(agentId);
+      setSelectedRestartInstances(new Set(runningIds));
       setRestartDialogOpen(true);
     },
-    [getRunningInstances, handleRestartInstance, t],
+    [handleRestartInstance, t],
   );
 
   const handleRestartConfirm = useCallback(async () => {
-    if (!restartTargetNode) return;
-    const running = getRunningInstances(restartTargetNode);
-    const targets = running.filter((inst) => selectedRestartInstances.has(inst.id));
+    if (!restartTargetAgentId) return;
     setRestartDialogOpen(false);
-    for (const inst of targets) {
-      await handleRestartInstance(restartTargetNode, inst);
+    for (const instId of selectedRestartInstances) {
+      await handleRestartInstance(instId);
     }
-    setRestartTargetNode(null);
-  }, [restartTargetNode, getRunningInstances, selectedRestartInstances, handleRestartInstance]);
+    setRestartTargetAgentId(null);
+  }, [restartTargetAgentId, selectedRestartInstances, handleRestartInstance]);
 
-  const handleDeleteAgent = useCallback((node: AgentTreeNode) => {
-    setDeleteTargetNode(node);
+  // 删除智能体
+  const handleDeleteAgent = useCallback((agentId: string) => {
+    setDeleteTargetAgentId(agentId);
     setDeleteDialogOpen(true);
   }, []);
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteTargetNode) return;
+    if (!deleteTargetAgentId) return;
     setDeleteDialogOpen(false);
+    const extra = agentExtrasRef.current.get(deleteTargetAgentId);
     try {
       // 先停止所有运行中的实例
-      const running = getRunningInstances(deleteTargetNode);
-      await Promise.all(running.map((inst) => instanceApi.delete({ id: inst.id })));
+      const runningIds: string[] = [];
+      for (const [id, instExtra] of instanceExtrasRef.current) {
+        if (instExtra.agentId === deleteTargetAgentId) {
+          runningIds.push(id);
+        }
+      }
+      await Promise.all(runningIds.map((id) => instanceApi.delete({ id })));
 
-      const { error } = await agentApi.delete(deleteTargetNode.agent.name);
+      const agentName = extra?.agent.name ?? "";
+      const { error } = await agentApi.delete(agentName);
       if (error) {
         toast.error(t("deleteFailed", { message: error.message }));
         return;
       }
       toast.success(t("deleteSuccess"));
-      await loadData();
+      setRefreshKey((k) => k + 1);
     } catch (err) {
       console.error("Failed to delete agent:", err);
       toast.error(t("deleteFailed", { message: (err as Error).message }));
     } finally {
-      setDeleteTargetNode(null);
+      setDeleteTargetAgentId(null);
     }
-  }, [deleteTargetNode, getRunningInstances, t, loadData]);
+  }, [deleteTargetAgentId, t]);
+
+  // 选中回调
+  const handleSelect = useCallback(
+    (nodeId: string | null, _node: TreeNodeData) => {
+      if (!nodeId) return;
+      if (agentExtrasRef.current.has(nodeId)) {
+        handleEnterAgent(nodeId);
+        return;
+      }
+      const instExtra = instanceExtrasRef.current.get(nodeId);
+      if (instExtra) {
+        handleEnterAgent(instExtra.agentId, { instanceId: nodeId });
+      }
+    },
+    [handleEnterAgent],
+  );
+
+  // 轮询刷新
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshKey((k) => k + 1);
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: orgId 变化时需要重置加载状态
+  useEffect(() => {
+    setLoading(true);
+    setRefreshKey((k) => k + 1);
+  }, [orgId]);
+
+  useConfigChangeListener((module) => {
+    if (module === "agents") setRefreshKey((k) => k + 1);
+  }, []);
+
+  // agent 行操作按钮：重启、删除、设置
+  const renderActions = useCallback(
+    (node: TreeNodeData, _state: NodeState) => {
+      if (agentExtrasRef.current.has(node.id)) {
+        const isEntering = enteringAgentId === node.id;
+        const isRestarting = [...instanceExtrasRef.current.values()]
+          .filter((e) => e.agentId === node.id)
+          .some((e) => restartingIds.has(e.instanceId));
+        return (
+          <>
+            {isEntering && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <button
+              type="button"
+              className="agent-tree-action-btn agent-tree-hover-action"
+              disabled={isRestarting}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRestartAgent(node.id);
+              }}
+              title={t("restartAgent")}
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${isRestarting ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              type="button"
+              className="agent-tree-action-btn agent-tree-hover-action text-red-400 hover:text-red-500"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteAgent(node.id);
+              }}
+              title={t("deleteAgent")}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              className="agent-tree-action-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditAgent?.(node.label);
+              }}
+              title={t("agentConfig")}
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+          </>
+        );
+      }
+
+      // instance 行：重启 + 停止按钮
+      const instExtra = instanceExtrasRef.current.get(node.id);
+      if (instExtra) {
+        const isRestarting = restartingIds.has(node.id);
+        const isStopping = stoppingIds.has(node.id);
+        return (
+          <>
+            <button
+              type="button"
+              className="agent-tree-action-btn"
+              disabled={isRestarting}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRestartInstance(node.id);
+              }}
+              title={t("restart")}
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${isRestarting ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              type="button"
+              className="agent-tree-action-btn"
+              disabled={isStopping}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleStopInstance(node.id);
+              }}
+              title={t("stop")}
+            >
+              <Square className="w-3.5 h-3.5" />
+            </button>
+          </>
+        );
+      }
+
+      return null;
+    },
+    [
+      enteringAgentId,
+      restartingIds,
+      stoppingIds,
+      handleRestartAgent,
+      handleDeleteAgent,
+      handleRestartInstance,
+      handleStopInstance,
+      onEditAgent,
+      t,
+    ],
+  );
+
+  // 自定义 label：instance 行显示 status dot
+  const renderLabel = useCallback(
+    (node: TreeNodeData, _state: NodeState) => {
+      const instExtra = instanceExtrasRef.current.get(node.id);
+      if (instExtra) {
+        const status = getInstanceStatus(instExtra.status);
+        return (
+          <span className="flex items-center gap-2">
+            <span className={`status-dot ${status}`} />
+            <span className="truncate">{node.label}</span>
+          </span>
+        );
+      }
+      return <>{node.label}</>;
+    },
+    [getInstanceStatus],
+  );
 
   if (loading) {
     return (
@@ -320,7 +530,7 @@ export function AgentSidebarTree({
     );
   }
 
-  if (treeNodes.length === 0) {
+  if (agentExtrasRef.current.size === 0) {
     return (
       <div className="px-4 py-4 text-center">
         <Bot className="h-8 w-8 mx-auto mb-2 text-text-muted opacity-30" />
@@ -339,6 +549,17 @@ export function AgentSidebarTree({
     );
   }
 
+  // 获取重启弹窗需要的运行中实例列表
+  const restartTargetInstances = restartTargetAgentId
+    ? [...instanceExtrasRef.current.entries()]
+        .filter(([, e]) => e.agentId === restartTargetAgentId && (e.status === "running" || e.status === "starting"))
+        .map(([id, e]) => ({ id, ...e }))
+    : [];
+
+  const deleteTargetName = deleteTargetAgentId
+    ? (agentExtrasRef.current.get(deleteTargetAgentId)?.agent.name ?? "")
+    : "";
+
   return (
     <div className="flex-1 overflow-y-auto py-2">
       <div className="flex items-center justify-between px-4 pt-1 pb-2">
@@ -354,135 +575,14 @@ export function AgentSidebarTree({
           </button>
         )}
       </div>
-      {treeNodes.map((node, idx) => {
-        const { agent, instances } = node;
-        const collapsed = !expandedAgents[agent.id];
-        const isEntering = enteringAgentId === agent.id;
-        const runningInstances = getRunningInstances(node);
-        const isRestarting = runningInstances.some((inst) => restartingIds.has(inst.id));
-        return (
-          <div key={agent.id} className={idx > 0 ? "mt-1.5" : ""}>
-            <div className="agent-tree-env-header">
-              {/* 左侧 chevron：展开/折叠 */}
-              <button
-                type="button"
-                className="agent-tree-chevron"
-                onClick={() =>
-                  setExpandedAgents((prev) => ({
-                    ...prev,
-                    [agent.id]: !prev[agent.id],
-                  }))
-                }
-              >
-                {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-
-              {/* 点击名字区域：进入默认实例 */}
-              <button
-                type="button"
-                disabled={isEntering}
-                onClick={() => handleEnterAgent(node)}
-                className="flex items-center gap-1 flex-1 min-w-0 bg-transparent border-none cursor-pointer text-inherit p-0 text-left"
-              >
-                {isEntering ? (
-                  <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
-                ) : (
-                  <Bot className="w-4 h-4 flex-shrink-0" />
-                )}
-                <span className="truncate">{agent.name}</span>
-              </button>
-
-              {/* 右侧操作按钮：设置始终可见，重启/删除 hover 显示 */}
-              <div className="agent-tree-actions">
-                <button
-                  type="button"
-                  className="agent-tree-action-btn agent-tree-hover-action"
-                  disabled={isRestarting}
-                  onClick={() => handleRestartAgent(node)}
-                  title={t("restartAgent")}
-                >
-                  <RotateCw className={`w-3.5 h-3.5 ${isRestarting ? "animate-spin" : ""}`} />
-                </button>
-                <button
-                  type="button"
-                  className="agent-tree-action-btn agent-tree-hover-action text-red-400 hover:text-red-500"
-                  onClick={() => handleDeleteAgent(node)}
-                  title={t("deleteAgent")}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="agent-tree-action-btn"
-                  onClick={() => onEditAgent?.(agent.name)}
-                  title={t("agentConfig")}
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* 展开的实例列表 */}
-            {!collapsed && (
-              <div className="agent-tree-env-body">
-                {instances.length > 0
-                  ? instances.map((inst) => {
-                      const isInstRestarting = restartingIds.has(inst.id);
-                      const isInstStopping = stoppingIds.has(inst.id);
-                      return (
-                        <div
-                          key={inst.id}
-                          className={`agent-tree-instance ${selectedInstanceId === inst.id ? "selected" : ""}`}
-                          onClick={() => handleEnterAgent(node, { instanceNumber: inst.instance_number })}
-                        >
-                          <span className={`status-dot ${getInstanceStatus(inst)}`} />
-                          <span className="truncate">{t("instanceN", { number: inst.instance_number })}</span>
-                          <div className="agent-tree-instance-actions">
-                            <button
-                              type="button"
-                              className="agent-tree-action-btn"
-                              disabled={isInstRestarting}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRestartInstance(node, inst);
-                              }}
-                              title={t("restart")}
-                            >
-                              <RotateCw className={`w-3.5 h-3.5 ${isInstRestarting ? "animate-spin" : ""}`} />
-                            </button>
-                            <button
-                              type="button"
-                              className="agent-tree-action-btn"
-                              disabled={isInstStopping}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStopInstance(inst.id);
-                              }}
-                              title={t("stop")}
-                            >
-                              <Square className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  : null}
-                {/* 新实例按钮在底部 */}
-                <button
-                  type="button"
-                  disabled={isEntering}
-                  onClick={() => handleEnterAgent(node, { spawnNew: true })}
-                  title={t("newInstance")}
-                  className="agent-tree-new-instance"
-                >
-                  <Plus className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>{t("newInstance")}</span>
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
+      <Tree
+        key={refreshKey}
+        getChildren={getChildren}
+        selectedId={selectedInstanceId}
+        onSelect={handleSelect}
+        renderActions={renderActions}
+        renderLabel={renderLabel}
+      />
 
       {/* 多实例重启选择弹窗 */}
       <AlertDialog open={restartDialogOpen} onOpenChange={setRestartDialogOpen}>
@@ -491,17 +591,17 @@ export function AgentSidebarTree({
             <AlertDialogTitle>{t("restartTitle")}</AlertDialogTitle>
             <AlertDialogDescription>{t("restartDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
-          {restartTargetNode && (
+          {restartTargetAgentId && (
             <div className="space-y-2 max-h-48 overflow-y-auto">
               <label className="flex items-center gap-2 px-2 py-1 text-sm font-medium">
                 <Checkbox
                   checked={
-                    getRunningInstances(restartTargetNode).length > 0 &&
-                    getRunningInstances(restartTargetNode).every((inst) => selectedRestartInstances.has(inst.id))
+                    restartTargetInstances.length > 0 &&
+                    restartTargetInstances.every((inst) => selectedRestartInstances.has(inst.id))
                   }
                   onCheckedChange={(checked) => {
                     if (checked) {
-                      setSelectedRestartInstances(new Set(getRunningInstances(restartTargetNode).map((i) => i.id)));
+                      setSelectedRestartInstances(new Set(restartTargetInstances.map((i) => i.id)));
                     } else {
                       setSelectedRestartInstances(new Set());
                     }
@@ -509,7 +609,7 @@ export function AgentSidebarTree({
                 />
                 {t("selectAll")}
               </label>
-              {getRunningInstances(restartTargetNode).map((inst) => (
+              {restartTargetInstances.map((inst) => (
                 <label key={inst.id} className="flex items-center gap-2 px-2 py-1 text-sm">
                   <Checkbox
                     checked={selectedRestartInstances.has(inst.id)}
@@ -522,7 +622,7 @@ export function AgentSidebarTree({
                       });
                     }}
                   />
-                  {t("instanceN", { number: inst.instance_number })}
+                  {t("instanceN", { number: inst.instanceNumber })}
                 </label>
               ))}
             </div>
@@ -541,9 +641,7 @@ export function AgentSidebarTree({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("deleteAgent")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("deleteAgentConfirm", { name: deleteTargetNode?.agent.name ?? "" })}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t("deleteAgentConfirm", { name: deleteTargetName })}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("restartLater")}</AlertDialogCancel>

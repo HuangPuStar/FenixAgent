@@ -267,5 +267,12 @@
     "toolCalls": "工具调用",
     "noToolCalls": "暂无工具调用",
     "pendingConfirmation": "待确认"
+  },
+  "tree": {
+    "showMore": "+{{count}} 更多",
+    "loading": "加载中…",
+    "loadError": "加载失败",
+    "retry": "重试",
+    "empty": "暂无内容"
   }
 }
