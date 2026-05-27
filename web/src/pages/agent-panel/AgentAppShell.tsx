@@ -75,7 +75,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
       if (pageId === "dashboard") {
         void navigate({ to: "/" });
       } else if (pageId === "apikeys") {
-        void navigate({ to: "/apikeys" });
+        void navigate({ to: "/agent/apikeys" });
       } else {
         void navigate({ to: `/${pageId}` });
       }

@@ -8,8 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { agentApi, kbApi, modelApi, skillConfigApi } from "@/src/api/sdk";
 import { PermissionTab } from "../../components/PermissionTab";
-import { dispatchConfigChange } from "../../lib/config-events";
-import type { KnowledgeBaseInfo } from "../../types/knowledge";
 import {
   buildAgentPayload,
   buildKnowledgeFormState,
@@ -18,6 +16,8 @@ import {
   getDefaultKnowledgeFormState,
   isValidStepsInput,
 } from "../../lib/agent-utils";
+import { dispatchConfigChange } from "../../lib/config-events";
+import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
 interface AgentConfigDialogProps {
   open: boolean;

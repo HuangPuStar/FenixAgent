@@ -21,7 +21,7 @@
     "lint:fix": "biome check --write src/ web/src/ web/components/ packages/",
     "format": "biome format --write src/ web/src/ web/components/ packages/",
     "format:check": "biome format src/ web/src/ web/components/ packages/",
-    "precheck": "biome format --write src/ web/src/ web/components/ packages/ && biome check --write --linter-enabled=false src/ web/src/ web/components/ packages/ && tsc --noEmit && (cd web && tsc --noEmit) && biome check src/ web/src/ web/components/ packages/",
+    "precheck": "biome format --write src/ web/src/ web/components/ packages/ scripts/ docs/.vitepress/ && biome check --write --linter-enabled=false src/ web/src/ web/components/ packages/ scripts/ docs/.vitepress/ && tsc --noEmit && (cd web && tsc --noEmit) && biome check src/ web/src/ web/components/ packages/ scripts/ docs/.vitepress/",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",

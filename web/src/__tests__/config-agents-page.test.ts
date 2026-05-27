@@ -9,7 +9,7 @@ import {
   getFullAgentColumnKeys,
   isValidAgentNameInput,
   isValidStepsInput,
-} from "../pages/AgentsPage";
+} from "../lib/agent-utils";
 
 describe("DEFAULT_AGENT_MODE", () => {
   test("新建 Agent 默认模式为 primary", () => {

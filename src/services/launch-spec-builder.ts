@@ -99,6 +99,7 @@ function resolveModelConfig(modelRef: string | null | undefined, providers: Agen
 export interface BuildLaunchSpecInput {
   organizationId: string;
   userId: string;
+  environmentId?: string;
   agentName: string;
   agentConfigId?: string | null;
   agentPrompt?: string | null;
