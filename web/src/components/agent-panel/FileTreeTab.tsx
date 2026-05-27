@@ -61,7 +61,6 @@ function parsedToTreeNodeData(node: ParsedNode): TreeNodeData {
   return {
     id: node.path,
     label: node.name,
-    icon: node.isDir ? Folder : File,
     hasChildren: node.isDir && node.children.length > 0,
   };
 }
