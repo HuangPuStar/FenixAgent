@@ -270,6 +270,8 @@ export interface TreeProps {
   defaultSelectedId?: string | null;
   onSelect?: (nodeId: string | null, node: TreeNodeData) => void;
   onToggle?: (nodeId: string, expanded: boolean) => void;
+  renderActions?: (node: TreeNodeData, state: NodeState) => ReactNode;
+  renderLabel?: (node: TreeNodeData, state: NodeState) => ReactNode;
   className?: string;
   children?: ReactNode;
 }
@@ -282,6 +284,8 @@ export function Tree({
   defaultSelectedId,
   onSelect,
   onToggle,
+  renderActions,
+  renderLabel,
   className,
   children,
 }: TreeProps) {
@@ -327,7 +331,11 @@ export function Tree({
     ],
   );
 
-  const childContent = children ?? state.rootIds.map((id) => <TreeItem key={id} nodeId={id} />);
+  const childContent =
+    children ??
+    state.rootIds.map((id) => (
+      <TreeItem key={id} nodeId={id} renderActions={renderActions} renderLabel={renderLabel} />
+    ));
 
   return (
     <TreeContext.Provider value={ctx}>
