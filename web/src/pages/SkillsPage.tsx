@@ -331,6 +331,7 @@ export function SkillsPage() {
       render: (row) => <span className="text-sm text-text-secondary line-clamp-1">{row.description || "—"}</span>,
     },
   ];
+  const overwriteConflictNames = conflicts.map((conflict) => conflict.name).join(", ");
 
   if (loading) {
     return (
@@ -607,7 +608,7 @@ export function SkillsPage() {
         open={overwriteConfirmOpen}
         onOpenChange={setOverwriteConfirmOpen}
         title={t("confirm.overwriteTitle")}
-        description={t("confirm.overwriteDescription")}
+        description={t("confirm.overwriteDescription", { names: overwriteConflictNames })}
         variant="destructive"
         confirmLabel={t("confirm.overwriteConfirm")}
         onConfirm={() => void handleUploadSubmit("overwrite")}

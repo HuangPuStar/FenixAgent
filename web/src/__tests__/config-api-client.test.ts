@@ -103,18 +103,19 @@ describe("config SDK modules", () => {
     expect(call[1].body).toBe(formData);
   });
 
-  // 测试 upload skills 409 错误返回 error 含 code
-  test("skillConfigApi.upload 409 error returns error with code", async () => {
+  // 测试标准错误响应会保留顶层 data，供调用方读取结构化错误上下文。
+  test("standard error response preserves top-level data", async () => {
     fetchMock.status = 409;
     fetchMock.body = {
       success: false,
-      error: { code: "SKILL_CONFLICT", message: "检测到同名技能冲突" },
+      error: { code: "CONFLICT", message: "Conflict" },
+      data: { reason: "duplicate", retryable: false },
     };
-    const { skillConfigApi } = await import("../api/sdk");
-    const formData = new FormData();
-    formData.append("manifest", "[]");
-    const { error } = await skillConfigApi.upload(formData);
+    const { providerApi } = await import("../api/sdk");
+    const { error } = await providerApi.get("demo");
+
     expect(error).not.toBeNull();
-    expect(error?.code).toBe("SKILL_CONFLICT");
+    expect(error?.code).toBe("CONFLICT");
+    expect(error?.data).toEqual({ reason: "duplicate", retryable: false });
   });
 });

@@ -11,7 +11,6 @@ function makeFile(name: string): UploadSkillFile {
 }
 
 function installMocks() {
-  const calls: string[] = [];
   const configPg = {
     getSkill: mock(async () => null),
     upsertSkill: mock(async () => "skill-id"),
@@ -22,12 +21,8 @@ function installMocks() {
     assertValidSkillName: (name: string) => name.trim(),
     getSkillSourceDir: (skillRoot: string, name: string) => `${skillRoot}/${name}`,
     getSkillArchivePath: (skillRoot: string, name: string) => `${skillRoot}/${name}.zip`,
-    buildSkillArchive: mock(async () => {
-      calls.push("build");
-    }),
-    deleteSkillArchive: mock(async () => {
-      calls.push("delete-archive");
-    }),
+    buildSkillArchive: mock(async () => {}),
+    deleteSkillArchive: mock(async () => {}),
     createSkillValidationError: (msg: string) => {
       const e = new Error(msg) as Error & { code: string };
       e.code = "TEST";
@@ -69,7 +64,7 @@ function installMocks() {
 
   _deps.configPg = configPg as any;
   _deps.skillFs = skillFs as any;
-  return { calls, configPg, skillFs };
+  return { configPg, skillFs };
 }
 
 beforeEach(() => {
@@ -141,9 +136,9 @@ describe("skill archive lifecycle", () => {
     expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${root}/two`, `${root}/two.zip`);
   });
 
-  // overwrite 回滚时先清理 attempted archive，再恢复旧 source 并重建旧 archive。
+  // overwrite 回滚时清理 attempted archive，恢复旧 source 并重建旧 archive。
   test("importSkillDirectories rebuilds archive after overwrite rollback", async () => {
-    const { calls, configPg, skillFs } = installMocks();
+    const { configPg, skillFs } = installMocks();
     configPg.getSkill.mockImplementationOnce(
       async () => ({ name: "demo", enabled: true, contentPath: `${root}/demo/SKILL.md` }) as unknown as null,
     );
@@ -156,6 +151,7 @@ describe("skill archive lifecycle", () => {
 
     expect(skillFs.deleteSkillArchive).toHaveBeenCalledWith(root, "demo");
     expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${root}/demo`, `${root}/demo.zip`);
-    expect(calls).toEqual(["delete-archive", "build"]);
+    expect(skillFs.restoreFromBackup).toHaveBeenCalledWith(new Map([["demo", "/tmp/backup/demo"]]), root);
+    expect(skillFs.cleanupBackupDir).toHaveBeenCalledWith("/tmp/backup");
   });
 });

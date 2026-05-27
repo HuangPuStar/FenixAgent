@@ -50,7 +50,7 @@
     "batchDeleteDescription": "Are you sure you want to delete the selected {{count}} skills? {{workspaceHint}}",
     "batchDeleteHint": "This action is irreversible.",
     "overwriteTitle": "Confirm Overwrite Conflicting Skills",
-    "overwriteDescription": "Overwriting will replace existing skill content for the entire directory, and old files will be deleted. Are you sure you want to continue?",
+    "overwriteDescription": "Overwriting will replace existing skill content for these directories: {{names}}. Old files will be deleted. Are you sure you want to continue?",
     "overwriteConfirm": "Confirm Overwrite"
   },
   "conflict": {

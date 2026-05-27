@@ -50,6 +50,7 @@ export class BaseApi {
           errorObj.code ?? errorObj.type ?? "UNKNOWN_ERROR",
           errorObj.message ?? "Unknown error",
           response.status,
+          "data" in json ? (json as { data?: unknown }).data : undefined,
         );
       }
     }
