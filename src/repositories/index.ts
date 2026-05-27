@@ -44,6 +44,15 @@ export {
   setLatestVersion,
   updateWorkflowMeta,
 } from "./workflow-def";
+export type { JobStatus, WorkflowJobListItem, WorkflowJobRow } from "./workflow-job";
+export {
+  createJob,
+  deleteJob,
+  getJob,
+  listJobs,
+  updateJobParams,
+  updateJobStatus,
+} from "./workflow-job";
 export type { IWorkflowTriggerRepo, WorkflowTriggerInsert, WorkflowTriggerRow } from "./workflow-trigger";
 export { workflowTriggerRepo } from "./workflow-trigger";
 
