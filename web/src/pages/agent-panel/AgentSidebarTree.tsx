@@ -59,6 +59,8 @@ export function AgentSidebarTree({
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
   const [restartTargetNode, setRestartTargetNode] = useState<AgentTreeNode | null>(null);
   const [selectedRestartInstances, setSelectedRestartInstances] = useState<Set<string>>(new Set());
+  const [deleteTargetNode, setDeleteTargetNode] = useState<AgentTreeNode | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -282,27 +284,33 @@ export function AgentSidebarTree({
     setRestartTargetNode(null);
   }, [restartTargetNode, getRunningInstances, selectedRestartInstances, handleRestartInstance]);
 
-  const handleDeleteAgent = useCallback(
-    async (node: AgentTreeNode) => {
-      try {
-        // 先停止所有运行中的实例
-        const running = getRunningInstances(node);
-        await Promise.all(running.map((inst) => instanceApi.delete({ id: inst.id })));
+  const handleDeleteAgent = useCallback((node: AgentTreeNode) => {
+    setDeleteTargetNode(node);
+    setDeleteDialogOpen(true);
+  }, []);
 
-        const { error } = await agentApi.delete(node.agent.name);
-        if (error) {
-          toast.error(t("deleteFailed", { message: error.message }));
-          return;
-        }
-        toast.success(t("deleteSuccess"));
-        await loadData();
-      } catch (err) {
-        console.error("Failed to delete agent:", err);
-        toast.error(t("deleteFailed", { message: (err as Error).message }));
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTargetNode) return;
+    setDeleteDialogOpen(false);
+    try {
+      // 先停止所有运行中的实例
+      const running = getRunningInstances(deleteTargetNode);
+      await Promise.all(running.map((inst) => instanceApi.delete({ id: inst.id })));
+
+      const { error } = await agentApi.delete(deleteTargetNode.agent.name);
+      if (error) {
+        toast.error(t("deleteFailed", { message: error.message }));
+        return;
       }
-    },
-    [t, loadData, getRunningInstances],
-  );
+      toast.success(t("deleteSuccess"));
+      await loadData();
+    } catch (err) {
+      console.error("Failed to delete agent:", err);
+      toast.error(t("deleteFailed", { message: (err as Error).message }));
+    } finally {
+      setDeleteTargetNode(null);
+    }
+  }, [deleteTargetNode, getRunningInstances, t, loadData]);
 
   if (loading) {
     return (
@@ -523,6 +531,24 @@ export function AgentSidebarTree({
             <AlertDialogCancel>{t("restartLater")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleRestartConfirm} disabled={selectedRestartInstances.size === 0}>
               {t("restartConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 删除智能体确认弹窗 */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("deleteAgent")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("deleteAgentConfirm", { name: deleteTargetNode?.agent.name ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("restartLater")}</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-500 hover:bg-red-600 focus:ring-red-500" onClick={handleDeleteConfirm}>
+              {t("deleteAgent")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
