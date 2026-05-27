@@ -19,6 +19,7 @@ import sessionsEN from "./locales/en/sessions.json";
 import sidebarEN from "./locales/en/sidebar.json";
 import skillsEN from "./locales/en/skills.json";
 import tasksEN from "./locales/en/tasks.json";
+import kanbanEN from "./locales/en/kanban.json";
 import workflowsEN from "./locales/en/workflows.json";
 import agentPanelZH from "./locales/zh/agentPanel.json";
 import agentsZH from "./locales/zh/agents.json";
@@ -37,6 +38,7 @@ import sessionsZH from "./locales/zh/sessions.json";
 import sidebarZH from "./locales/zh/sidebar.json";
 import skillsZH from "./locales/zh/skills.json";
 import tasksZH from "./locales/zh/tasks.json";
+import kanbanZH from "./locales/zh/kanban.json";
 import workflowsZH from "./locales/zh/workflows.json";
 
 export const NS = {
@@ -58,6 +60,7 @@ export const NS = {
   KNOWLEDGE: "knowledge",
   AGENT_PANEL: "agentPanel",
   COMPONENTS: "components",
+  KANBAN: "kanban",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];
@@ -86,6 +89,7 @@ i18n
         [NS.KNOWLEDGE]: knowledgeEN,
         [NS.COMPONENTS]: componentsEN,
         [NS.WORKFLOWS]: workflowsEN,
+        [NS.KANBAN]: kanbanEN,
       },
       zh: {
         [NS.COMMON]: commonZH,
@@ -106,6 +110,7 @@ i18n
         [NS.KNOWLEDGE]: knowledgeZH,
         [NS.COMPONENTS]: componentsZH,
         [NS.WORKFLOWS]: workflowsZH,
+        [NS.KANBAN]: kanbanZH,
       },
     },
     fallbackLng: "en",
@@ -127,6 +132,7 @@ i18n
       NS.KNOWLEDGE,
       NS.COMPONENTS,
       NS.WORKFLOWS,
+      NS.KANBAN,
     ],
     interpolation: { escapeValue: false },
     detection: {
