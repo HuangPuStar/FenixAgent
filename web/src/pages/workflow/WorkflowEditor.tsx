@@ -51,6 +51,7 @@ import {
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
 import { MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigPanel } from "./components/NodeConfigPanel";
+import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
 import { TriggerPanel } from "./components/TriggerPanel";
 import { VersionPanel } from "./components/VersionPanel";
@@ -101,6 +102,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [selectedNodeOutput, setSelectedNodeOutput] = useState<NodeOutput | null>(null);
   const [nodeOutputLoading, setNodeOutputLoading] = useState(false);
   const [rightTab, setRightTab] = useState<"config" | "run" | "versions" | "triggers">("config");
+  const [paramsDialogOpen, setParamsDialogOpen] = useState(false);
 
   // ── Refs ──
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -218,6 +220,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setMeta,
     lastSavedYaml,
     setLastSavedYaml,
+    meta,
   });
 
   // ── Workflow SSE 实时事件 ──
@@ -318,6 +321,27 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
 
   const sd = selectedNode?.data as Record<string, unknown> | undefined;
   const nodeType = selectedNode?.type ?? "shell";
+
+  // ── 运行按钮：检查是否需要参数输入 ──
+  const workflowParams = meta.params as Record<string, Record<string, unknown>> | undefined;
+  const hasParams = workflowParams && Object.keys(workflowParams).length > 0;
+
+  const onRunClick = useCallback(() => {
+    console.log("[RunButton] meta.params:", JSON.stringify(meta.params), "hasParams:", hasParams);
+    if (hasParams) {
+      setParamsDialogOpen(true);
+    } else {
+      handleRun();
+    }
+  }, [hasParams, handleRun, meta.params]);
+
+  const onParamsSubmit = useCallback(
+    (values: Record<string, unknown>) => {
+      setParamsDialogOpen(false);
+      handleRun(values);
+    },
+    [handleRun],
+  );
 
   return (
     <div className="wf-editor-container">
@@ -510,7 +534,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               <button
                 type="button"
                 className="wf-toolbar-btn"
-                onClick={handleRun}
+                onClick={onRunClick}
                 disabled={running}
                 data-tooltip={t("editor.tooltip_run")}
                 style={running ? { opacity: 0.5 } : undefined}
@@ -760,6 +784,17 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         metaAgentId={metaAgentId}
         scenePrompt={scenePrompt}
       />
+
+      {/* 运行参数输入对话框 */}
+      {hasParams && (
+        <RunParamsDialog
+          open={paramsDialogOpen}
+          onOpenChange={setParamsDialogOpen}
+          // biome-ignore lint/suspicious/noExplicitAny: meta.params is user-defined JSON
+          params={workflowParams as any}
+          onSubmit={onParamsSubmit}
+        />
+      )}
     </div>
   );
 }

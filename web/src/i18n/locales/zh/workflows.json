@@ -322,6 +322,15 @@
     "history_loading": "加载中...",
     "history_untitled": "新对话"
   },
+  "run_params": {
+    "title": "运行参数",
+    "description": "此工作流在运行前需要输入参数。",
+    "required_placeholder": "必填",
+    "optional_placeholder": "可选",
+    "cancel": "取消",
+    "submit": "运行",
+    "all_optional_hint": "所有参数均有默认值，可直接运行。"
+  },
   "page": {
     "back_to_list": "返回列表",
     "editor": "编辑器",
