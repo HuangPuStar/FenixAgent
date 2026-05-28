@@ -31,6 +31,8 @@ export interface NodeExecutionContext {
   resolvedInputs: Record<string, unknown>;
   signal: AbortSignal;
   storage: StorageAdapter;
+  /** 收集本次运行启动的 Environment ID */
+  spawnedEnvIds?: Set<string>;
 }
 
 /** 节点执行器接口 — 各节点类型实现此接口 */
@@ -66,6 +68,8 @@ export interface SchedulerContext {
   initialNodeStates?: Map<string, NodeStatus>;
   /** 恢复时注入的初始节点输出 */
   initialNodeOutputs?: Map<string, NodeOutput>;
+  /** 收集本次运行启动的 Environment ID（由 Transport 层通过回调注入） */
+  spawnedEnvIds?: Set<string>;
 }
 
 // ---------- 调度结果 ----------
@@ -74,6 +78,8 @@ export interface DAGRunResult {
   runId: string;
   status: DAGStatus;
   summary: RunSummary;
+  /** 本次运行期间启动的 Environment ID 列表 */
+  spawnedEnvIds?: string[];
 }
 
 // ---------- DAGScheduler ----------
@@ -220,13 +226,23 @@ export class DAGScheduler {
       await this.createSnapshot(finalStatus, snapshotEventId);
 
       const summary = this.buildSummary(finalStatus, completedAt);
-      return { runId: this.ctx.runId, status: finalStatus, summary };
+      return {
+        runId: this.ctx.runId,
+        status: finalStatus,
+        summary,
+        spawnedEnvIds: this.ctx.spawnedEnvIds ? [...this.ctx.spawnedEnvIds] : [],
+      };
     } catch (_error) {
       // 未预期的异常 → ERROR 状态
       const completedAt = new Date().toISOString();
       await this.emitEvent("dag.cancelled");
       const summary = this.buildSummary("ERROR", completedAt);
-      return { runId: this.ctx.runId, status: "ERROR", summary };
+      return {
+        runId: this.ctx.runId,
+        status: "ERROR",
+        summary,
+        spawnedEnvIds: this.ctx.spawnedEnvIds ? [...this.ctx.spawnedEnvIds] : [],
+      };
     }
   }
 
@@ -282,6 +298,7 @@ export class DAGScheduler {
         resolvedInputs,
         signal: this.ctx.cancellation.signal,
         storage: this.ctx.storage,
+        spawnedEnvIds: this.ctx.spawnedEnvIds,
       };
 
       // 执行节点（执行器内部发射 node.started / node.completed 事件）
@@ -346,10 +363,6 @@ export class DAGScheduler {
       case "agent": {
         resolved.prompt = resolveTemplate(node.prompt, evalContext);
         if (node.agent) resolved.agent = resolveTemplate(node.agent, evalContext);
-        if (node.skill) resolved.skill = resolveTemplate(node.skill, evalContext);
-        if (node.model) resolved.model = resolveTemplate(node.model, evalContext);
-        if (node.temperature !== undefined) resolved.temperature = node.temperature;
-        if (node.steps !== undefined) resolved.steps = node.steps;
         break;
       }
       case "api": {

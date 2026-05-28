@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { agentApi } from "@/src/api/sdk";
+import { envApi } from "@/src/api/sdk";
 import { ensureMetaAgent } from "../../../api/meta-agent";
 import type { WfMeta } from "../yaml-utils";
 
@@ -14,7 +14,7 @@ export interface UseWorkflowMetaAgentReturn {
   chatOpen: boolean;
   setChatOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   metaAgentId: string | null;
-  agentList: Array<{ name: string; model: string | null; description: string | null }>;
+  agentList: Array<{ name: string; description: string | null }>;
   agentOverrideOpen: boolean;
   setAgentOverrideOpen: (open: boolean) => void;
 }
@@ -50,30 +50,23 @@ export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentP
     }
   }, [chatOpen, metaAgentId]);
 
-  const [agentList, setAgentList] = useState<Array<{ name: string; model: string | null; description: string | null }>>(
-    [],
-  );
+  const [agentList, setAgentList] = useState<Array<{ name: string; description: string | null }>>([]);
   const [agentOverrideOpen, setAgentOverrideOpen] = useState(false);
 
   useEffect(() => {
-    agentApi
+    envApi
       .list()
       .then((result) => {
-        if (result.ok && result.data) {
-          // 后端返回 { default_agent, agents: [...] }，agents 在 .data.agents 中
-          const agents = result.data.agents ?? result.data;
-          if (Array.isArray(agents)) {
-            setAgentList(
-              agents.map((a: Record<string, unknown>) => ({
-                name: a.name as string,
-                model: (a.model as string) ?? null,
-                description: (a.description as string) ?? null,
-              })),
-            );
-          }
+        if (result.ok && Array.isArray(result.data)) {
+          setAgentList(
+            result.data.map((env) => ({
+              name: env.name,
+              description: env.description ?? null,
+            })),
+          );
         }
       })
-      .catch((err: unknown) => console.error("Failed to load agent list:", err));
+      .catch((err: unknown) => console.error("Failed to load environment list:", err));
   }, []);
 
   return {

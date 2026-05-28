@@ -11,7 +11,7 @@ import Elysia from "elysia";
 import { db } from "../../db";
 import { workflowSnapshot } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
-import { getTeamEngine } from "../../services/workflow";
+import { cleanupSpawnedEnvironments, getTeamEngine } from "../../services/workflow";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
@@ -39,30 +39,42 @@ app.post(
           if (workflowId) {
             publishWorkflowEvent(workflowId, "workflow.run_started", { runId });
           }
-          // 后台收尾：回写 workflowId + 发布终止 SSE 事件
-          if (workflowId) {
-            result.then(
-              async (r) => {
-                await db
-                  .update(workflowSnapshot)
-                  .set({ workflowId })
-                  .where(
-                    and(eq(workflowSnapshot.runId, runId), eq(workflowSnapshot.organizationId, authCtx.organizationId)),
-                  );
-                publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
-                  runId,
-                  dagStatus: r.status,
-                });
-              },
-              (err) => {
-                console.error("[workflow-engine] run background error:", err);
+          // 后台收尾：回写 workflowId + 发布终止 SSE 事件 + 清理环境实例
+          result.then(
+            async (r) => {
+              try {
+                if (workflowId) {
+                  await db
+                    .update(workflowSnapshot)
+                    .set({ workflowId })
+                    .where(
+                      and(
+                        eq(workflowSnapshot.runId, runId),
+                        eq(workflowSnapshot.organizationId, authCtx.organizationId),
+                      ),
+                    );
+                  publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
+                    runId,
+                    dagStatus: r.status,
+                  });
+                }
+              } finally {
+                // 清理本次运行启动的环境实例
+                if (r.spawnedEnvIds && r.spawnedEnvIds.length > 0) {
+                  await cleanupSpawnedEnvironments(new Set(r.spawnedEnvIds), authCtx.organizationId);
+                }
+              }
+            },
+            async (err) => {
+              console.error("[workflow-engine] run background error:", err);
+              if (workflowId) {
                 publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
                   runId,
                   dagStatus: "ERROR",
                 });
-              },
-            );
-          }
+              }
+            },
+          );
           return { success: true, data: { runId, status: "RUNNING" } };
         }
 

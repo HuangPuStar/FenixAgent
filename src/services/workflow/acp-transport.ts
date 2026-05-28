@@ -2,35 +2,33 @@
  * ACP Transport 实现 — 将 workflow-engine 的 Transport 接口桥接到 RCS 的 ACP WebSocket 基础设施。
  *
  * 工作流程：
- * 1. connect() 检查 agent 在线状态，发送 session/create 创建会话
- * 2. execute() 发送 user 消息，通过 EventBus 收集 assistant 响应
- * 3. 等待 prompt_complete 信号后拼接输出并返回 AgentResponse
+ * 1. connect() 通过 EnvironmentResolver 解析环境名称为 envId，必要时启动实例
+ * 2. connect() 发送 session/create 创建会话
+ * 3. execute() 发送 user 消息，通过 EventBus 收集完整会话流（assistant/tool_call/tool_result）
+ * 4. 等待 prompt_complete 信号后拼接输出并返回 AgentResponse
  */
 
-import type { AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
+import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { nanoid } from "nanoid";
 import { log } from "../../logger";
 import { findAcpConnectionByAgentId, sendToAgentWs } from "../../transport/acp-ws-handler";
 import type { SessionEvent } from "../../transport/event-bus";
 import { getAcpEventBus } from "../../transport/event-bus";
 
-// ---------- Agent Name 解析 ----------
+// ---------- EnvironmentResolver 注入 ----------
 
-/**
- * 将 agentConfig name 解析为在线的 Environment ID。
- *
- * Agent 节点的 `agent` 字段是 agentConfig 的 name（如 "build"），
- * 但 ACP 连接的 agentId 是 Environment ID（如 "env_xxx"）。
- * 此回调通过 DB 查询建立映射：agentConfig.name → agentConfig.id → Environment → ACP 连接。
- */
-export type AgentNameResolver = (agentName: string) => Promise<string | null>;
+/** Environment name → envId + ensureRunning 的回调 */
+export interface EnvironmentResolver {
+  /** 解析环境名称为 envId，如果环境不在线则自动启动 */
+  resolve(name: string): Promise<{ envId: string; started: boolean }>;
+}
 
-/** 全局 agent name 解析器，由 createAcpTransport 时注入 */
-let _agentNameResolver: AgentNameResolver | null = null;
+/** 全局 Environment 解析器，由 createAcpTransport 时注入 */
+let _environmentResolver: EnvironmentResolver | null = null;
 
-/** 设置 agent name 解析器（per-engine 调用时注入） */
-export function setAgentNameResolver(resolver: AgentNameResolver | null): void {
-  _agentNameResolver = resolver;
+/** 设置 Environment 解析器（per-engine 调用时注入） */
+export function setEnvironmentResolver(resolver: EnvironmentResolver | null): void {
+  _environmentResolver = resolver;
 }
 
 // ---------- 常量 ----------
@@ -47,6 +45,7 @@ const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
 interface SessionUpdateMessage {
   role: string;
   content?: string;
+  tool_name?: string;
   [key: string]: unknown;
 }
 
@@ -101,6 +100,7 @@ class AcpAgentSession implements AgentSession {
   async execute(request: AgentRequest): Promise<AgentResponse> {
     const startTime = Date.now();
     const chunks: string[] = [];
+    const collectedMessages: AgentMessage[] = [];
 
     if (request.signal?.aborted) {
       throw new DOMException("Request aborted", "AbortError");
@@ -108,7 +108,6 @@ class AcpAgentSession implements AgentSession {
 
     const bus = getAcpEventBus(this.agentId);
     // cleanupFn 在 subscribe 后设置，finally 中作为安全网调用
-    // 使用独立变量避免 TypeScript 对 Promise settle 后变量收窄为 never
     let cleanupFn: (() => void) | null = null;
 
     try {
@@ -136,8 +135,42 @@ class AcpAgentSession implements AgentSession {
           switch (type) {
             case "session_update": {
               const message = getPayloadField<SessionUpdateMessage>(event, "message");
-              if (message?.role === "assistant" && typeof message.content === "string") {
-                chunks.push(message.content);
+              if (!message) break;
+
+              switch (message.role) {
+                case "assistant": {
+                  if (typeof message.content === "string") {
+                    chunks.push(message.content);
+                  }
+                  collectedMessages.push({
+                    role: "assistant",
+                    content: message.content ?? "",
+                  });
+                  break;
+                }
+                case "tool_call": {
+                  collectedMessages.push({
+                    role: "tool_call",
+                    content: message.content ?? "",
+                    tool_name: message.tool_name,
+                  });
+                  break;
+                }
+                case "tool_result": {
+                  collectedMessages.push({
+                    role: "tool_result",
+                    content: message.content ?? "",
+                    tool_name: message.tool_name,
+                  });
+                  break;
+                }
+                case "user": {
+                  collectedMessages.push({
+                    role: "user",
+                    content: message.content ?? "",
+                  });
+                  break;
+                }
               }
               break;
             }
@@ -157,6 +190,7 @@ class AcpAgentSession implements AgentSession {
                 tokens: metadata?.tokens,
                 model: metadata?.model,
                 latency_ms: latencyMs,
+                messages: collectedMessages,
               });
               break;
             }
@@ -168,7 +202,6 @@ class AcpAgentSession implements AgentSession {
               innerUnsub();
               abortCleanup?.();
               clearTimeout(timeoutTimer);
-              // 提取 agent 错误详情，拼接到 stdout 中以便上层读取
               const errorMsg =
                 getPayloadField<string>(event, "message") ?? getPayloadField<string>(event, "error") ?? "";
               const existingChunks = chunks.join("");
@@ -181,6 +214,7 @@ class AcpAgentSession implements AgentSession {
                 stdout: stderr,
                 exit_code: 1,
                 latency_ms: Date.now() - startTime,
+                messages: collectedMessages,
               });
               break;
             }
@@ -206,39 +240,12 @@ class AcpAgentSession implements AgentSession {
           abortCleanup = () => request.signal?.removeEventListener("abort", onAbort);
         }
 
-        // 构建并发送 user 消息
+        // 构建并发送 user 消息（精简版：只传 prompt）
         const userMsg: Record<string, unknown> = {
           type: "user",
           session_id: this.sessionId,
           content: request.prompt,
         };
-        if (request.skill) {
-          userMsg.skill = request.skill;
-        }
-        if (request.cwd) {
-          userMsg.cwd = request.cwd;
-        }
-        if (request.model) {
-          userMsg.model = request.model;
-        }
-        if (request.temperature !== undefined) {
-          userMsg.temperature = request.temperature;
-        }
-        if (request.steps !== undefined) {
-          userMsg.steps = request.steps;
-        }
-        if (request.permission !== undefined) {
-          userMsg.permission = request.permission;
-        }
-        if (request.knowledge !== undefined) {
-          userMsg.knowledge = request.knowledge;
-        }
-        if (request.system_prompt) {
-          userMsg.system_prompt = request.system_prompt;
-        }
-        if (request.skills && request.skills.length > 0) {
-          userMsg.skills = request.skills;
-        }
 
         const sent = sendToAgentWs(this.agentId, userMsg);
         if (!sent) {
@@ -256,8 +263,6 @@ class AcpAgentSession implements AgentSession {
       });
     } finally {
       // 安全网：确保任何路径（包括意外异常）都清理订阅
-      // cleanupFn 在正常 settle 路径中被设为 null，因此不会重复取消订阅
-      // TypeScript CFA 将 cleanupFn 收窄为 never，需要断言绕过
       (cleanupFn as (() => void) | null)?.();
     }
   }
@@ -269,29 +274,35 @@ class AcpAgentSession implements AgentSession {
 class AcpTransport implements Transport {
   /**
    * 连接到指定 agent，创建 ACP 会话。
-   * @param agentId - agent 环境 ID（如 env_xxx）或 agentConfig name（如 "build"）
-   * @param options.cwd - 可选的工作目录，传递给 session/create
+   * @param agentId - Environment name（如 "my-agent"），通过 EnvironmentResolver 解析为 envId
+   * @param options.spawnedEnvIds - 收集启动的环境 ID（由调度器传入）
    */
-  async connect(agentId: string, options?: { cwd?: string }): Promise<AgentSession> {
+  async connect(agentId: string, options?: { cwd?: string; spawnedEnvIds?: Set<string> }): Promise<AgentSession> {
+    // 通过 EnvironmentResolver 解析环境名称
     let resolvedId = agentId;
 
-    // 先尝试直接按 Environment ID 查找
-    let conn = findAcpConnectionByAgentId(resolvedId);
-
-    // 直接查不到时，尝试通过 agentConfig name 解析为 Environment ID
-    if (!conn && _agentNameResolver) {
-      const envId = await _agentNameResolver(agentId);
-      if (envId) {
-        conn = findAcpConnectionByAgentId(envId);
-        if (conn) {
-          resolvedId = envId;
-          log(`[ACP-Transport] Resolved agent "${agentId}" → env "${envId}"`);
-        }
+    if (_environmentResolver) {
+      const { envId, started } = await _environmentResolver.resolve(agentId);
+      resolvedId = envId;
+      if (started) {
+        log(`[ACP-Transport] Started environment "${agentId}" → env "${envId}"`);
+        // 记录到 spawnedEnvIds，供 workflow 结束后统一销毁
+        options?.spawnedEnvIds?.add(envId);
+      } else {
+        log(`[ACP-Transport] Resolved environment "${agentId}" → env "${envId}" (already online)`);
+      }
+    } else {
+      // 无 resolver 时直接按 agentId 查找（向后兼容）
+      const conn = findAcpConnectionByAgentId(resolvedId);
+      if (!conn) {
+        throw new Error(`Agent not found or offline: ${agentId}`);
       }
     }
 
+    // 确认连接存在
+    const conn = findAcpConnectionByAgentId(resolvedId);
     if (!conn) {
-      throw new Error(`Agent not found or offline: ${agentId}`);
+      throw new Error(`Agent not found or offline after resolve: ${agentId} → ${resolvedId}`);
     }
 
     // 生成关联 ID 用于匹配 session/create 响应
@@ -309,7 +320,6 @@ class AcpTransport implements Transport {
           const type = getPayloadType(event);
 
           if (type === "session/create") {
-            // 匹配关联 ID：检查 payload 中的 id 字段
             const responseId = getPayloadField<string>(event, "id");
             if (responseId !== correlationId) return;
 
@@ -323,7 +333,6 @@ class AcpTransport implements Transport {
             resolve(newSessionId);
           }
 
-          // agent 断连
           if (type === "agent_disconnect") {
             reject(new Error("Agent disconnected during session creation"));
           }
@@ -334,9 +343,6 @@ class AcpTransport implements Transport {
           type: "session/create",
           id: correlationId,
         };
-        if (options?.cwd) {
-          createMsg.cwd = options.cwd;
-        }
 
         const sent = sendToAgentWs(resolvedId, createMsg);
         if (!sent) {

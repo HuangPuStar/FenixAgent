@@ -110,8 +110,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const didConnect = useRef(false);
 
   // ── Meta Agent Chat ──
-  const { scenePrompt, chatOpen, setChatOpen, metaAgentId, agentList, agentOverrideOpen, setAgentOverrideOpen } =
-    useWorkflowMetaAgent({ workflowId, meta });
+  const { scenePrompt, chatOpen, setChatOpen, metaAgentId, agentList } = useWorkflowMetaAgent({ workflowId, meta });
 
   // ── Persistence hook ──
   const {
@@ -724,8 +723,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             setSelectedNode={setSelectedNode}
             updateNodeData={updateNodeData}
             agentList={agentList}
-            agentOverrideOpen={agentOverrideOpen}
-            setAgentOverrideOpen={setAgentOverrideOpen}
             meta={meta}
             updateMeta={updateMeta}
           />
