@@ -217,6 +217,7 @@ export class PythonExecutor implements NodeExecutor {
         await this.emitEvent(ctx, "node.failed", node, {
           error: `Python exited with code ${exitCode}`,
           exit_code: exitCode,
+          stdout: stdoutStr,
         });
         throw new WorkflowError(`Python exited with code ${exitCode}`, WorkflowErrorCode.NODE_FAILED, {
           node_id: node.id,

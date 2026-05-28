@@ -313,6 +313,14 @@ export class DAGScheduler {
       // 节点失败（执行器内部已发射 node.failed 事件，此处不再重复）
       this.nodeStates.set(nodeId, "FAILED");
 
+      // 保存失败输出，使前端能查看错误详情
+      const failureOutput = this.extractFailureOutput(error);
+      if (failureOutput) {
+        this.nodeOutputs.set(nodeId, failureOutput);
+        this.lastEventId = `evt_${nanoid(10)}`;
+        await this.saveSnapshotAfterNode(nodeId, failureOutput);
+      }
+
       // BFS 错误传播：标记下游为 SKIPPED
       await this.propagateFailure(nodeId);
     }
@@ -446,6 +454,27 @@ export class DAGScheduler {
     }
   }
 
+  /** 从执行器抛出的错误中提取失败输出 */
+  private extractFailureOutput(error: unknown): NodeOutput | null {
+    if (error instanceof WorkflowError && error.details) {
+      const stdout = (error.details.stdout as string) ?? error.message;
+      const exitCode = (error.details.exit_code as number) ?? 1;
+      return {
+        stdout,
+        exit_code: exitCode,
+        size: Buffer.byteLength(stdout),
+      };
+    }
+    if (error instanceof Error) {
+      return {
+        stdout: error.message,
+        exit_code: 1,
+        size: Buffer.byteLength(error.message),
+      };
+    }
+    return null;
+  }
+
   /** 计算最终 DAG 状态 */
   private computeFinalStatus(): DAGStatus {
     if (this.ctx.cancellation.cancelled) {
@@ -531,7 +560,11 @@ export class DAGScheduler {
   private async createSnapshot(status: DAGStatus, lastEventId: string): Promise<void> {
     const nodeStates: DAGSnapshot["node_states"] = {};
     for (const [id, s] of this.nodeStates) {
-      nodeStates[id] = { status: s };
+      const output = this.nodeOutputs.get(id);
+      nodeStates[id] = {
+        status: s,
+        ...(output?.exit_code != null ? { exit_code: output.exit_code } : {}),
+      };
     }
 
     const snapshot: DAGSnapshot = {
@@ -551,7 +584,11 @@ export class DAGScheduler {
 
     const nodeStates: DAGSnapshot["node_states"] = {};
     for (const [id, s] of this.nodeStates) {
-      nodeStates[id] = { status: s };
+      const nodeOutput = this.nodeOutputs.get(id);
+      nodeStates[id] = {
+        status: s,
+        ...(nodeOutput?.exit_code != null ? { exit_code: nodeOutput.exit_code } : {}),
+      };
     }
 
     const snapshot: DAGSnapshot = {

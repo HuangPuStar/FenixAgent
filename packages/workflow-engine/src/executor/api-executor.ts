@@ -73,7 +73,7 @@ export class ApiExecutor extends RemoteExecutorBase {
         );
       }
       const msg = error instanceof Error ? error.message : String(error);
-      await this.emitNodeFailed(node.id, node.type, ctx, msg);
+      await this.emitNodeFailed(node.id, node.type, ctx, msg, undefined, { stdout: msg });
       throw new WorkflowError(`API request failed: ${msg}`, WorkflowErrorCode.NODE_FAILED, { node_id: node.id });
     }
 
@@ -85,7 +85,7 @@ export class ApiExecutor extends RemoteExecutorBase {
 
     // 非 2xx → 失败
     if (!response.ok) {
-      await this.emitNodeFailed(node.id, node.type, ctx, `HTTP ${response.status}`, exitCode);
+      await this.emitNodeFailed(node.id, node.type, ctx, `HTTP ${response.status}`, exitCode, { stdout });
       throw new WorkflowError(`HTTP request failed with status ${response.status}`, WorkflowErrorCode.NODE_FAILED, {
         node_id: node.id,
         exit_code: exitCode,

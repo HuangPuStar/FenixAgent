@@ -23,6 +23,10 @@ export interface AgentResolvedConfig {
   temperature: number | null;
   permission: unknown;
   knowledge: unknown;
+  /** agent 系统提示词 */
+  prompt?: string | null;
+  /** agent 关联的 skill name 列表 */
+  skills?: string[];
 }
 
 /** AgentExecutor 构造选项 */
@@ -134,6 +138,8 @@ export class AgentExecutor implements NodeExecutor {
       steps: mergedConfig.steps ?? undefined,
       permission: mergedConfig.permission ?? undefined,
       knowledge: mergedConfig.knowledge ?? undefined,
+      system_prompt: mergedConfig.prompt ?? undefined,
+      skills: mergedConfig.skills,
     };
 
     // 执行请求
@@ -143,11 +149,15 @@ export class AgentExecutor implements NodeExecutor {
 
     // 非零退出码 → 失败
     if (response.exit_code !== 0) {
+      const errorMessage = response.stdout
+        ? `Agent exited with code ${response.exit_code}: ${response.stdout.slice(0, 500)}`
+        : `Agent exited with code ${response.exit_code}`;
       await this.emitEvent(ctx, "node.failed", node, {
-        error: `Agent exited with code ${response.exit_code}`,
+        error: errorMessage,
         exit_code: response.exit_code,
+        stdout: response.stdout,
       });
-      throw new WorkflowError(`Agent exited with code ${response.exit_code}`, WorkflowErrorCode.NODE_FAILED, {
+      throw new WorkflowError(errorMessage, WorkflowErrorCode.NODE_FAILED, {
         node_id: node.id,
         exit_code: response.exit_code,
         stdout: response.stdout,
@@ -188,6 +198,8 @@ export class AgentExecutor implements NodeExecutor {
         steps: node.steps ?? null,
         permission: null,
         knowledge: null,
+        prompt: null,
+        skills: undefined,
       };
     }
 
@@ -200,6 +212,8 @@ export class AgentExecutor implements NodeExecutor {
         steps: node.steps ?? null,
         permission: null,
         knowledge: null,
+        prompt: null,
+        skills: undefined,
       };
     }
 
@@ -209,6 +223,8 @@ export class AgentExecutor implements NodeExecutor {
       steps: node.steps ?? config.steps,
       permission: config.permission,
       knowledge: config.knowledge,
+      prompt: config.prompt,
+      skills: config.skills,
     };
   }
 

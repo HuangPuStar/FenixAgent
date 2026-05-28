@@ -14,6 +14,25 @@ import { findAcpConnectionByAgentId, sendToAgentWs } from "../../transport/acp-w
 import type { SessionEvent } from "../../transport/event-bus";
 import { getAcpEventBus } from "../../transport/event-bus";
 
+// ---------- Agent Name 解析 ----------
+
+/**
+ * 将 agentConfig name 解析为在线的 Environment ID。
+ *
+ * Agent 节点的 `agent` 字段是 agentConfig 的 name（如 "build"），
+ * 但 ACP 连接的 agentId 是 Environment ID（如 "env_xxx"）。
+ * 此回调通过 DB 查询建立映射：agentConfig.name → agentConfig.id → Environment → ACP 连接。
+ */
+export type AgentNameResolver = (agentName: string) => Promise<string | null>;
+
+/** 全局 agent name 解析器，由 createAcpTransport 时注入 */
+let _agentNameResolver: AgentNameResolver | null = null;
+
+/** 设置 agent name 解析器（per-engine 调用时注入） */
+export function setAgentNameResolver(resolver: AgentNameResolver | null): void {
+  _agentNameResolver = resolver;
+}
+
 // ---------- 常量 ----------
 
 /** 等待 session/create 响应的超时时间（30s） */
@@ -149,8 +168,17 @@ class AcpAgentSession implements AgentSession {
               innerUnsub();
               abortCleanup?.();
               clearTimeout(timeoutTimer);
+              // 提取 agent 错误详情，拼接到 stdout 中以便上层读取
+              const errorMsg =
+                getPayloadField<string>(event, "message") ?? getPayloadField<string>(event, "error") ?? "";
+              const existingChunks = chunks.join("");
+              const stderr = errorMsg
+                ? existingChunks
+                  ? `${existingChunks}\n\n[Error] ${errorMsg}`
+                  : `[Error] ${errorMsg}`
+                : existingChunks;
               resolve({
-                stdout: chunks.join(""),
+                stdout: stderr,
                 exit_code: 1,
                 latency_ms: Date.now() - startTime,
               });
@@ -205,6 +233,12 @@ class AcpAgentSession implements AgentSession {
         if (request.knowledge !== undefined) {
           userMsg.knowledge = request.knowledge;
         }
+        if (request.system_prompt) {
+          userMsg.system_prompt = request.system_prompt;
+        }
+        if (request.skills && request.skills.length > 0) {
+          userMsg.skills = request.skills;
+        }
 
         const sent = sendToAgentWs(this.agentId, userMsg);
         if (!sent) {
@@ -235,19 +269,34 @@ class AcpAgentSession implements AgentSession {
 class AcpTransport implements Transport {
   /**
    * 连接到指定 agent，创建 ACP 会话。
-   * @param agentId - agent 环境 ID（如 env_xxx）
+   * @param agentId - agent 环境 ID（如 env_xxx）或 agentConfig name（如 "build"）
    * @param options.cwd - 可选的工作目录，传递给 session/create
    */
   async connect(agentId: string, options?: { cwd?: string }): Promise<AgentSession> {
-    // 检查 agent 在线状态
-    const conn = findAcpConnectionByAgentId(agentId);
+    let resolvedId = agentId;
+
+    // 先尝试直接按 Environment ID 查找
+    let conn = findAcpConnectionByAgentId(resolvedId);
+
+    // 直接查不到时，尝试通过 agentConfig name 解析为 Environment ID
+    if (!conn && _agentNameResolver) {
+      const envId = await _agentNameResolver(agentId);
+      if (envId) {
+        conn = findAcpConnectionByAgentId(envId);
+        if (conn) {
+          resolvedId = envId;
+          log(`[ACP-Transport] Resolved agent "${agentId}" → env "${envId}"`);
+        }
+      }
+    }
+
     if (!conn) {
       throw new Error(`Agent not found or offline: ${agentId}`);
     }
 
     // 生成关联 ID 用于匹配 session/create 响应
     const correlationId = nanoid(12);
-    const bus = getAcpEventBus(agentId);
+    const bus = getAcpEventBus(resolvedId);
     let unsub: (() => void) | null = null;
 
     const sessionId = await Promise.race<string>([
@@ -270,7 +319,7 @@ class AcpTransport implements Transport {
               return;
             }
 
-            log(`[ACP-Transport] Session created: sessionId=${newSessionId} agentId=${agentId}`);
+            log(`[ACP-Transport] Session created: sessionId=${newSessionId} agentId=${resolvedId}`);
             resolve(newSessionId);
           }
 
@@ -289,19 +338,19 @@ class AcpTransport implements Transport {
           createMsg.cwd = options.cwd;
         }
 
-        const sent = sendToAgentWs(agentId, createMsg);
+        const sent = sendToAgentWs(resolvedId, createMsg);
         if (!sent) {
           reject(new Error("Agent not found or offline"));
           return;
         }
 
-        log(`[ACP-Transport] Sent session/create: agentId=${agentId} correlationId=${correlationId}`);
+        log(`[ACP-Transport] Sent session/create: agentId=${resolvedId} correlationId=${correlationId}`);
       }),
     ]).finally(() => {
       unsub?.();
     });
 
-    return new AcpAgentSession(agentId, sessionId);
+    return new AcpAgentSession(resolvedId, sessionId);
   }
 
   /** 检查 Transport 是否可用 */

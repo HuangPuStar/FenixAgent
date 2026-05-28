@@ -22,6 +22,10 @@ export interface AgentRequest {
   permission?: unknown;
   /** 知识库配置（来自 agent config） */
   knowledge?: unknown;
+  /** 系统提示词（来自 agent config） */
+  system_prompt?: string;
+  /** agent 关联的 skill name 列表 */
+  skills?: string[];
 }
 
 /** Agent 响应结果 */

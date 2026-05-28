@@ -55,10 +55,12 @@ export abstract class RemoteExecutorBase implements NodeExecutor {
     ctx: NodeExecutionContext,
     error: string,
     exitCode?: number,
+    extra?: Record<string, unknown>,
   ): Promise<void> {
     await this.emitEvent(ctx, "node.failed", nodeId, nodeType, {
       error,
       ...(exitCode !== undefined ? { exit_code: exitCode } : {}),
+      ...extra,
     });
   }
 
