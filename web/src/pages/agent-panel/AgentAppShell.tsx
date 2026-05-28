@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ThreadEntry } from "../../../src/lib/types";
 import { StatusHeader } from "../../components/agent-panel/StatusHeader";
-import { AgentCreateDialog } from "./AgentCreateDialog";
+import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { ChatPanel } from "./ChatPanel";
@@ -114,7 +114,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
           )}
         </div>
       </div>
-      <AgentCreateDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      <AgentFormDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} mode="create" />
     </div>
   );
 }

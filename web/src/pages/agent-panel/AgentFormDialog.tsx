@@ -18,38 +18,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { agentApi, envApi, instanceApi, kbApi, modelApi, skillConfigApi } from "@/src/api/sdk";
 import { PermissionTab } from "../../components/PermissionTab";
+import { NS } from "../../i18n";
 import {
   buildAgentPayload,
   buildKnowledgeFormState,
   DEFAULT_AGENT_MODE,
   filterKnowledgeBaseIds,
   getDefaultKnowledgeFormState,
+  isValidAgentNameInput,
   isValidStepsInput,
 } from "../../lib/agent-utils";
 import { dispatchConfigChange } from "../../lib/config-events";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
-interface AgentConfigDialogProps {
+interface AgentFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  agentName: string;
+  mode: "create" | "edit";
+  defaultName?: string;
+  onSuccess?: () => void;
+  agentName?: string;
 }
 
-export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfigDialogProps) {
+export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSuccess, agentName }: AgentFormDialogProps) {
+  const isEdit = mode === "edit";
   const { t } = useTranslation("agents");
-  const { t: tAgentPanel } = useTranslation("agentPanel");
+  const { t: tAgentPanel } = useTranslation(NS.AGENT_PANEL);
+
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
   const [skillOptions, setSkillOptions] = useState<{ id: string; name: string; description: string }[]>([]);
-  const [loading, setLoading] = useState(false);
 
+  const [formName, setFormName] = useState("");
   const [formModel, setFormModel] = useState("");
   const [formMode, setFormMode] = useState(DEFAULT_AGENT_MODE);
   const [formSteps, setFormSteps] = useState("50");
   const [formPrompt, setFormPrompt] = useState("");
   const [formSaving, setFormSaving] = useState(false);
-  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
-  const [restarting, setRestarting] = useState(false);
   const [formDescription, setFormDescription] = useState("");
   const [formVariant, setFormVariant] = useState("");
   const [formTemperature, setFormTemperature] = useState("");
@@ -64,12 +69,15 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission" | "skills">("basic");
 
+  const [loading, setLoading] = useState(false);
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+
   useEffect(() => {
-    if (!open || !agentName) return;
+    if (!open) return;
+    if (isEdit && !agentName) return;
 
-    setLoading(true);
     setActiveTab("basic");
-
     const knowledgeDefaults = getDefaultKnowledgeFormState();
     setFormKnowledgeBaseIds(knowledgeDefaults.knowledgeBaseIds);
     setFormKnowledgeSearchFirst(knowledgeDefaults.searchFirst);
@@ -77,134 +85,220 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
     setFormPermission(null);
     setFormSkillIds([]);
 
-    Promise.all([agentApi.get(agentName), modelApi.get(), kbApi.list(), skillConfigApi.list()])
-      .then(([agentResult, modelsResult, kbResult, skillsResult]) => {
-        const agentError = agentResult.error;
-        if (agentError) {
-          console.error("Failed to load agent config:", agentError);
-          toast.error(t("knowledge.loadError", { message: agentError.message }));
-          return;
-        }
-        const d = agentResult.data as unknown as Record<string, unknown>;
-        setFormModel((d.model as string) || "");
-        setFormMode((d.mode as string) || DEFAULT_AGENT_MODE);
-        setFormSteps(String(d.steps ?? 50));
-        setFormPrompt(String(d.prompt ?? ""));
-        setFormDescription(String(d.description ?? ""));
-        setFormVariant(String(d.variant ?? ""));
-        setFormTemperature(d.temperature !== null && d.temperature !== undefined ? String(d.temperature) : "");
-        setFormTopP(d.top_p !== null && d.top_p !== undefined ? String(d.top_p) : "");
-        setFormColor(String(d.color ?? ""));
-        setFormHidden(Boolean(d.hidden));
-        setFormDisable(Boolean(d.disable));
+    if (isEdit) {
+      setLoading(true);
+      Promise.all([agentApi.get(agentName!), modelApi.get(), kbApi.list(), skillConfigApi.list()])
+        .then(([agentResult, modelsResult, kbResult, skillsResult]) => {
+          if (agentResult.error) {
+            console.error("Failed to load agent config:", agentResult.error);
+            toast.error(t("knowledge.loadError", { message: agentResult.error.message }));
+            return;
+          }
+          const d = agentResult.data as unknown as Record<string, unknown>;
+          setFormModel((d.model as string) || "");
+          setFormMode((d.mode as string) || DEFAULT_AGENT_MODE);
+          setFormSteps(String(d.steps ?? 50));
+          setFormPrompt(String(d.prompt ?? ""));
+          setFormDescription(String(d.description ?? ""));
+          setFormVariant(String(d.variant ?? ""));
+          setFormTemperature(d.temperature !== null && d.temperature !== undefined ? String(d.temperature) : "");
+          setFormTopP(d.top_p !== null && d.top_p !== undefined ? String(d.top_p) : "");
+          setFormColor(String(d.color ?? ""));
+          setFormHidden(Boolean(d.hidden));
+          setFormDisable(Boolean(d.disable));
 
-        const knowledgeState = buildKnowledgeFormState(d as Parameters<typeof buildKnowledgeFormState>[0]);
-        setFormKnowledgeBaseIds(knowledgeState.knowledgeBaseIds);
-        setFormKnowledgeSearchFirst(knowledgeState.searchFirst);
-        setFormKnowledgeMaxResults(knowledgeState.maxResults);
+          const knowledgeState = buildKnowledgeFormState(d as Parameters<typeof buildKnowledgeFormState>[0]);
+          setFormKnowledgeBaseIds(knowledgeState.knowledgeBaseIds);
+          setFormKnowledgeSearchFirst(knowledgeState.searchFirst);
+          setFormKnowledgeMaxResults(knowledgeState.maxResults);
 
-        setFormPermission(
-          d.permission
-            ? typeof d.permission === "string"
-              ? (d.permission as unknown as Record<string, unknown>)
-              : (d.permission as unknown as Record<string, unknown>)
-            : null,
-        );
-        setFormSkillIds(Array.isArray(d.skillIds) ? (d.skillIds as string[]) : []);
+          setFormPermission(
+            d.permission
+              ? typeof d.permission === "string"
+                ? (d.permission as unknown as Record<string, unknown>)
+                : (d.permission as unknown as Record<string, unknown>)
+              : null,
+          );
+          setFormSkillIds(Array.isArray(d.skillIds) ? (d.skillIds as string[]) : []);
 
-        const modelsData = modelsResult.data as unknown as Record<string, unknown> | null;
-        const available = modelsData?.available;
+          const modelsData = modelsResult.data as unknown as Record<string, unknown> | null;
+          const available = modelsData?.available;
+          const models = Array.isArray(available) ? (available as Array<{ fullId: string }>).map((m) => m.fullId) : [];
+          setModelOptions(models);
+
+          const kbData = kbResult.data;
+          setKnowledgeOptions(Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : []);
+
+          const skillsData = skillsResult.data as unknown as Record<string, unknown> | null;
+          const skillsRaw = skillsData?.skills;
+          const skills = Array.isArray(skillsRaw)
+            ? (skillsRaw as Array<{ id: string; name: string; description?: string }>).map((s) => ({
+                id: s.id,
+                name: s.name,
+                description: s.description ?? "",
+              }))
+            : [];
+          setSkillOptions(skills);
+        })
+        .catch((err) => {
+          console.error("Failed to load agent config:", err);
+          toast.error(t("knowledge.loadError", { message: (err as Error).message }));
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setFormName(defaultName ?? "");
+      setFormSteps("50");
+      setFormPrompt("");
+      setFormDescription("");
+      setFormVariant("");
+      setFormTemperature("");
+      setFormTopP("");
+      setFormColor("");
+      setFormHidden(false);
+      setFormDisable(false);
+
+      modelApi.get().then(({ data, error }) => {
+        if (error) return;
+        const available = (data as unknown as Record<string, unknown>)?.available;
         const models = Array.isArray(available) ? (available as Array<{ fullId: string }>).map((m) => m.fullId) : [];
         setModelOptions(models);
+        setFormModel(models[0] || "");
+      });
 
-        const kbData = kbResult.data;
-        const kbList = Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : [];
-        setKnowledgeOptions(kbList);
+      kbApi.list().then(({ data, error }) => {
+        if (error) return;
+        setKnowledgeOptions(Array.isArray(data) ? (data as unknown as KnowledgeBaseInfo[]) : []);
+      });
 
-        const skillsData = skillsResult.data as unknown as Record<string, unknown> | null;
-        const skillsRaw = skillsData?.skills;
-        const skills = Array.isArray(skillsRaw)
-          ? (skillsRaw as Array<{ id: string; name: string; description?: string }>).map((s) => ({
-              id: s.id,
-              name: s.name,
-              description: s.description ?? "",
-            }))
-          : [];
-        setSkillOptions(skills);
-      })
-      .catch((err) => {
-        console.error("Failed to load agent config:", err);
-        toast.error(t("knowledge.loadError", { message: (err as Error).message }));
-      })
-      .finally(() => setLoading(false));
-  }, [open, agentName, t]);
+      skillConfigApi.list().then(({ data, error }) => {
+        if (error) return;
+        const skills = (data as unknown as Record<string, unknown>)?.skills;
+        setSkillOptions(
+          Array.isArray(skills)
+            ? (skills as Array<{ id: string; name: string; description?: string }>).map((s) => ({
+                id: s.id,
+                name: s.name,
+                description: s.description ?? "",
+              }))
+            : [],
+        );
+      });
+    }
+  }, [open, isEdit, agentName, defaultName, t]);
 
-  const handleSave = useCallback(async () => {
+  const validateForm = useCallback((): boolean => {
+    if (!isEdit) {
+      const name = formName.trim();
+      if (!isValidAgentNameInput(name)) {
+        toast.error(t("form.nameValidationError"));
+        return false;
+      }
+    }
     if (!isValidStepsInput(formSteps)) {
       toast.error(t("form.stepsValidationError"));
-      return;
+      return false;
     }
     if (formTemperature !== "") {
       const tv = parseFloat(formTemperature);
       if (Number.isNaN(tv) || tv < 0 || tv > 2) {
         toast.error(t("form.temperatureValidationError"));
-        return;
+        return false;
       }
     }
     if (formTopP !== "") {
       const p = parseFloat(formTopP);
       if (Number.isNaN(p) || p < 0 || p > 1) {
         toast.error(t("form.topPValidationError"));
-        return;
+        return false;
       }
     }
     const knowledgeMaxResults = parseInt(formKnowledgeMaxResults, 10);
     if (Number.isNaN(knowledgeMaxResults) || knowledgeMaxResults < 1 || knowledgeMaxResults > 20) {
       toast.error(t("knowledge.maxResultsValidationError"));
-      return;
+      return false;
     }
+    return true;
+  }, [isEdit, formName, formSteps, formTemperature, formTopP, formKnowledgeMaxResults, t]);
+
+  const handleSave = useCallback(async () => {
+    if (!validateForm()) return;
     setFormSaving(true);
     try {
-      let latestKnowledgeOptions = knowledgeOptions;
-      const { data: kbData } = await kbApi.list();
-      if (kbData) {
-        latestKnowledgeOptions = (Array.isArray(kbData) ? kbData : []) as unknown as typeof knowledgeOptions;
-        setKnowledgeOptions(latestKnowledgeOptions);
+      if (isEdit) {
+        let latestKnowledgeOptions = knowledgeOptions;
+        const { data: kbData } = await kbApi.list();
+        if (kbData) {
+          latestKnowledgeOptions = (Array.isArray(kbData) ? kbData : []) as unknown as typeof knowledgeOptions;
+          setKnowledgeOptions(latestKnowledgeOptions);
+        }
+        const validKnowledgeBaseIds = filterKnowledgeBaseIds(formKnowledgeBaseIds, latestKnowledgeOptions);
+        if (validKnowledgeBaseIds.length !== formKnowledgeBaseIds.length) {
+          setFormKnowledgeBaseIds(validKnowledgeBaseIds);
+        }
+        const data: Record<string, unknown> = {
+          ...buildAgentPayload({
+            model: formModel,
+            mode: formMode,
+            steps: formSteps,
+            prompt: formPrompt,
+            description: formDescription,
+            variant: formVariant,
+            temperature: formTemperature,
+            topP: formTopP,
+            color: formColor,
+            hidden: formHidden,
+            disable: formDisable,
+            permission: formPermission,
+            knowledge: {
+              knowledgeBaseIds: validKnowledgeBaseIds,
+              searchFirst: formKnowledgeSearchFirst,
+              maxResults: formKnowledgeMaxResults,
+            },
+          }),
+          skillIds: formSkillIds,
+        };
+        const { error } = await agentApi.set(agentName!, data);
+        if (error) {
+          toast.error(t("save.errorGeneric", { message: error.message }));
+          return;
+        }
+        toast.success(t("save.successUpdate"));
+        dispatchConfigChange("agents");
+        setRestartDialogOpen(true);
+      } else {
+        const name = formName.trim();
+        const { error } = await agentApi.create(name, {
+          ...buildAgentPayload({
+            model: formModel,
+            mode: formMode,
+            steps: formSteps,
+            prompt: formPrompt,
+            description: formDescription,
+            variant: formVariant,
+            temperature: formTemperature,
+            topP: formTopP,
+            color: formColor,
+            hidden: formHidden,
+            disable: formDisable,
+            permission: formPermission,
+            knowledge: {
+              knowledgeBaseIds: formKnowledgeBaseIds,
+              searchFirst: formKnowledgeSearchFirst,
+              maxResults: formKnowledgeMaxResults,
+            },
+          }),
+          skillIds: formSkillIds,
+        });
+        if (error) {
+          console.error(t("save.errorGeneric", { message: "" }), error);
+          toast.error(t("save.errorGeneric", { message: error.message }));
+        } else {
+          toast.success(t("save.successCreate"));
+          onOpenChange(false);
+          onSuccess?.();
+          dispatchConfigChange("agents");
+        }
       }
-      const validKnowledgeBaseIds = filterKnowledgeBaseIds(formKnowledgeBaseIds, latestKnowledgeOptions);
-      if (validKnowledgeBaseIds.length !== formKnowledgeBaseIds.length) {
-        setFormKnowledgeBaseIds(validKnowledgeBaseIds);
-      }
-      const data: Record<string, unknown> = {
-        ...buildAgentPayload({
-          model: formModel,
-          mode: formMode,
-          steps: formSteps,
-          prompt: formPrompt,
-          description: formDescription,
-          variant: formVariant,
-          temperature: formTemperature,
-          topP: formTopP,
-          color: formColor,
-          hidden: formHidden,
-          disable: formDisable,
-          permission: formPermission,
-          knowledge: {
-            knowledgeBaseIds: validKnowledgeBaseIds,
-            searchFirst: formKnowledgeSearchFirst,
-            maxResults: formKnowledgeMaxResults,
-          },
-        }),
-        skillIds: formSkillIds,
-      };
-      const { error } = await agentApi.set(agentName, data);
-      if (error) {
-        toast.error(t("save.errorGeneric", { message: error.message }));
-        return;
-      }
-      toast.success(t("save.successUpdate"));
-      dispatchConfigChange("agents");
-      setRestartDialogOpen(true);
     } catch (e) {
       console.error(t("save.errorGeneric", { message: "" }), e);
       toast.error(t("save.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
@@ -212,6 +306,9 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
       setFormSaving(false);
     }
   }, [
+    validateForm,
+    isEdit,
+    formName,
     formModel,
     formMode,
     formSteps,
@@ -230,10 +327,13 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
     formSkillIds,
     agentName,
     knowledgeOptions,
+    onOpenChange,
+    onSuccess,
     t,
   ]);
 
   const getRunningInstanceIds = useCallback(async () => {
+    if (!agentName) return [];
     try {
       const { data: agentsResult } = await agentApi.list();
       const rawAgents = (agentsResult as unknown as { agents?: { id: string; name: string }[] } | null)?.agents;
@@ -280,11 +380,16 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
 
   if (!open) return null;
 
+  const title = isEdit ? t("dialog.editTitle") : t("dialog.createTitle");
+  const confirmLabel = formSaving ? "..." : isEdit ? t("actions.save") : t("dialog.createConfirm");
+  const dialogKey = isEdit ? agentName : "__new__";
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-surface-0 rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col border border-border-subtle">
+        {/* 头部 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle flex-shrink-0">
-          <h3 className="text-lg font-semibold text-text-bright">{t("dialog.editTitle")}</h3>
+          <h3 className="text-lg font-semibold text-text-bright">{title}</h3>
           <button
             type="button"
             onClick={() => onOpenChange(false)}
@@ -294,49 +399,42 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
           </button>
         </div>
 
-        {loading ? (
+        {isEdit && loading ? (
           <div className="flex items-center justify-center py-12 text-text-muted text-sm">
             {t("knowledge.loadError", { message: "" }).replace(": {{message}}", "")}...
           </div>
         ) : (
           <>
+            {/* Tabs */}
             <div className="flex gap-1 rounded-lg bg-surface-2 p-1 m-6 mb-0 flex-shrink-0">
-              <button
-                type="button"
-                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "basic" ? "bg-surface-1 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"}`}
-                onClick={() => setActiveTab("basic")}
-              >
-                {t("dialog.tabs.basic")}
-              </button>
-              <button
-                type="button"
-                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "knowledge" ? "bg-surface-1 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"}`}
-                onClick={() => setActiveTab("knowledge")}
-              >
-                {t("dialog.tabs.knowledge")}
-              </button>
-              <button
-                type="button"
-                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "permission" ? "bg-surface-1 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"}`}
-                onClick={() => setActiveTab("permission")}
-              >
-                {t("dialog.tabs.permission")}
-              </button>
-              <button
-                type="button"
-                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "skills" ? "bg-surface-1 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"}`}
-                onClick={() => setActiveTab("skills")}
-              >
-                {t("dialog.tabs.skills")}
-              </button>
+              {(["basic", "knowledge", "permission", "skills"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === tab ? "bg-surface-1 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"}`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {t(`dialog.tabs.${tab}`)}
+                </button>
+              ))}
             </div>
 
+            {/* 内容 */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {activeTab === "basic" && (
                 <div className="space-y-4">
                   <div>
                     <Label>{t("form.name")}</Label>
-                    <Input value={agentName} disabled className="mt-1" />
+                    {isEdit ? (
+                      <Input value={agentName} disabled className="mt-1" />
+                    ) : (
+                      <Input
+                        value={formName}
+                        onChange={(e) => setFormName(e.target.value)}
+                        placeholder={t("form.namePlaceholder")}
+                        className="mt-1"
+                      />
+                    )}
                   </div>
                   <div>
                     <Label>{t("form.model")}</Label>
@@ -532,8 +630,8 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
               )}
               {activeTab === "permission" && (
                 <PermissionTab
-                  key={agentName}
-                  agentName={agentName}
+                  key={dialogKey}
+                  agentName={isEdit ? agentName! : formName}
                   permission={formPermission}
                   onPermissionChange={setFormPermission}
                 />
@@ -583,47 +681,51 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
               )}
             </div>
 
+            {/* 底部 */}
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-border-subtle flex-shrink-0">
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 {t("dialog.cancel") ?? "Cancel"}
               </Button>
               <Button onClick={handleSave} disabled={formSaving}>
-                {formSaving ? "..." : t("actions.save")}
+                {confirmLabel}
               </Button>
             </div>
           </>
         )}
       </div>
 
-      <AlertDialog
-        open={restartDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRestartDialogOpen(false);
-            onOpenChange(false);
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tAgentPanel("configSavedRestartTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{tAgentPanel("configSavedRestartDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setRestartDialogOpen(false);
-                onOpenChange(false);
-              }}
-            >
-              {tAgentPanel("restartLater")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleRestartAfterSave} disabled={restarting}>
-              {restarting ? tAgentPanel("restarting") : tAgentPanel("restart")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* 编辑后重启确认 */}
+      {isEdit && (
+        <AlertDialog
+          open={restartDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRestartDialogOpen(false);
+              onOpenChange(false);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{tAgentPanel("configSavedRestartTitle")}</AlertDialogTitle>
+              <AlertDialogDescription>{tAgentPanel("configSavedRestartDescription")}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setRestartDialogOpen(false);
+                  onOpenChange(false);
+                }}
+              >
+                {tAgentPanel("restartLater")}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleRestartAfterSave} disabled={restarting}>
+                {restarting ? tAgentPanel("restarting") : tAgentPanel("restart")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
