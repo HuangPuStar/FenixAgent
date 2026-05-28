@@ -55,7 +55,7 @@ async function simulateExecute(
 
         if (type === "prompt_complete" || type === "error") {
           // 清理并完成
-          innerUnsub?.();
+          (innerUnsub as (() => void) | null)?.();
           innerUnsub = null;
           resolve();
         }
@@ -81,14 +81,14 @@ async function simulateExecute(
 
       // 设置超时（10s 足够测试用）
       setTimeout(() => {
-        innerUnsub?.();
+        (innerUnsub as (() => void) | null)?.();
         innerUnsub = null;
         reject(new Error("超时"));
       }, 10_000);
     });
   } finally {
     // 安全网：确保任何路径都清理订阅
-    innerUnsub?.();
+    (innerUnsub as (() => void) | null)?.();
   }
 }
 
