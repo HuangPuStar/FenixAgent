@@ -26,7 +26,8 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "check:deps": "bun run scripts/check-deps.ts",
-    "postinstall": "mkdir -p node_modules/@fenix && ln -sf ../../packages/sdk node_modules/@fenix/sdk 2>/dev/null || true"
+    "postinstall": "mkdir -p node_modules/@fenix && ln -sf ../../packages/sdk node_modules/@fenix/sdk 2>/dev/null || true",
+    "prepare": "husky"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.192",
@@ -115,6 +116,7 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^6.0.2",
     "drizzle-kit": "^0.31.10",
+    "husky": "^9.1.7",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tailwindcss": "^4.3.0",
