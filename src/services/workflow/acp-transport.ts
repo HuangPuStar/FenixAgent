@@ -85,16 +85,19 @@ class AcpAgentSession implements AgentSession {
     }
 
     const bus = getAcpEventBus(this.agentId);
-    // 先创建一个空订阅占位，确保 finally 中可以安全调用
-    const unsub = bus.subscribe(() => {});
+    let innerUnsub: (() => void) | null = null;
 
     try {
-      unsub(); // 立即释放占位订阅
-
       return await new Promise<AgentResponse>((resolve, reject) => {
         let abortCleanup: (() => void) | null = null;
 
-        const innerUnsub = bus.subscribe((event: SessionEvent) => {
+        const cleanup = () => {
+          innerUnsub?.();
+          innerUnsub = null;
+          abortCleanup?.();
+        };
+
+        innerUnsub = bus.subscribe((event: SessionEvent) => {
           if (event.direction !== "inbound") return;
 
           const type = getPayloadType(event);
@@ -113,8 +116,7 @@ class AcpAgentSession implements AgentSession {
             case "prompt_complete": {
               const metadata = getPayloadField<PromptCompleteMetadata>(event, "metadata");
               const latencyMs = Date.now() - startTime;
-              innerUnsub();
-              abortCleanup?.();
+              cleanup();
               resolve({
                 stdout: chunks.join(""),
                 exit_code: 0,
@@ -126,8 +128,7 @@ class AcpAgentSession implements AgentSession {
             }
 
             case "error": {
-              innerUnsub();
-              abortCleanup?.();
+              cleanup();
               resolve({
                 stdout: chunks.join(""),
                 exit_code: 1,
@@ -141,7 +142,7 @@ class AcpAgentSession implements AgentSession {
         // 监听 AbortSignal
         if (request.signal) {
           const onAbort = () => {
-            innerUnsub();
+            cleanup();
             reject(new DOMException("Request aborted", "AbortError"));
           };
           request.signal.addEventListener("abort", onAbort, { once: true });
@@ -163,8 +164,7 @@ class AcpAgentSession implements AgentSession {
 
         const sent = sendToAgentWs(this.agentId, userMsg);
         if (!sent) {
-          innerUnsub();
-          abortCleanup?.();
+          cleanup();
           reject(new Error("Agent not found or offline"));
           return;
         }
@@ -172,7 +172,9 @@ class AcpAgentSession implements AgentSession {
         log(`[ACP-Transport] Sent user message: sessionId=${this.sessionId} promptLength=${request.prompt.length}`);
       });
     } finally {
-      unsub();
+      // 安全网：确保任何路径（包括意外异常）都清理订阅
+      // cleanup() 会将 innerUnsub 置 null，因此不会重复取消订阅
+      innerUnsub?.();
     }
   }
 }
