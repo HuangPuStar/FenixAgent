@@ -58,15 +58,19 @@ export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentP
   useEffect(() => {
     agentApi
       .list()
-      .then(({ data }) => {
-        if (Array.isArray(data)) {
-          setAgentList(
-            data.map((a) => ({
-              name: a.name,
-              model: a.model ?? null,
-              description: a.description ?? null,
-            })),
-          );
+      .then((result) => {
+        if (result.ok && result.data) {
+          // 后端返回 { default_agent, agents: [...] }，agents 在 .data.agents 中
+          const agents = result.data.agents ?? result.data;
+          if (Array.isArray(agents)) {
+            setAgentList(
+              agents.map((a: Record<string, unknown>) => ({
+                name: a.name as string,
+                model: (a.model as string) ?? null,
+                description: (a.description as string) ?? null,
+              })),
+            );
+          }
         }
       })
       .catch((err: unknown) => console.error("Failed to load agent list:", err));
