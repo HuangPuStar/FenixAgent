@@ -19,6 +19,9 @@ import { getAcpEventBus } from "../../transport/event-bus";
 /** 等待 session/create 响应的超时时间（30s） */
 const SESSION_CREATE_TIMEOUT_MS = 30_000;
 
+/** 等待 agent 执行响应的默认超时时间（10 分钟） */
+const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
+
 // ---------- 类型 ----------
 
 /** session_update 消息中的 message 字段 */
@@ -37,9 +40,9 @@ interface PromptCompleteMetadata {
 
 // ---------- 辅助函数 ----------
 
-/** 创建超时 Promise，超时时抛出 AbortError */
-function createTimeoutPromise(ms: number, label: string): Promise<never> {
-  return new Promise<never>((_, reject) => {
+/** 创建超时 Promise，超时时 reject 一个 AbortError */
+function createTimeoutPromise<T>(ms: number, label: string): Promise<T> {
+  return new Promise<T>((_, reject) => {
     const timer = setTimeout(() => {
       reject(new DOMException(`${label} timed out after ${ms}ms`, "AbortError"));
     }, ms);
@@ -85,14 +88,24 @@ class AcpAgentSession implements AgentSession {
     }
 
     const bus = getAcpEventBus(this.agentId);
-    // 先创建一个空订阅占位，确保 finally 中可以安全调用
-    const unsub = bus.subscribe(() => {});
+    // cleanupFn 在 subscribe 后设置，finally 中作为安全网调用
+    // 使用独立变量避免 TypeScript 对 Promise settle 后变量收窄为 never
+    let cleanupFn: (() => void) | null = null;
 
     try {
-      unsub(); // 立即释放占位订阅
-
       return await new Promise<AgentResponse>((resolve, reject) => {
         let abortCleanup: (() => void) | null = null;
+        let settled = false;
+
+        // 执行超时定时器
+        const timeoutTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanupFn = null;
+          abortCleanup?.();
+          reject(new DOMException(`Agent execute timed out after ${DEFAULT_EXECUTE_TIMEOUT_MS}ms`, "AbortError"));
+        }, DEFAULT_EXECUTE_TIMEOUT_MS);
+        if (typeof timeoutTimer.unref === "function") timeoutTimer.unref();
 
         const innerUnsub = bus.subscribe((event: SessionEvent) => {
           if (event.direction !== "inbound") return;
@@ -111,10 +124,14 @@ class AcpAgentSession implements AgentSession {
             }
 
             case "prompt_complete": {
-              const metadata = getPayloadField<PromptCompleteMetadata>(event, "metadata");
-              const latencyMs = Date.now() - startTime;
+              if (settled) return;
+              settled = true;
+              cleanupFn = null;
               innerUnsub();
               abortCleanup?.();
+              clearTimeout(timeoutTimer);
+              const metadata = getPayloadField<PromptCompleteMetadata>(event, "metadata");
+              const latencyMs = Date.now() - startTime;
               resolve({
                 stdout: chunks.join(""),
                 exit_code: 0,
@@ -126,8 +143,12 @@ class AcpAgentSession implements AgentSession {
             }
 
             case "error": {
+              if (settled) return;
+              settled = true;
+              cleanupFn = null;
               innerUnsub();
               abortCleanup?.();
+              clearTimeout(timeoutTimer);
               resolve({
                 stdout: chunks.join(""),
                 exit_code: 1,
@@ -138,10 +159,19 @@ class AcpAgentSession implements AgentSession {
           }
         });
 
+        // 设置清理函数供 finally 安全网使用
+        cleanupFn = () => {
+          innerUnsub();
+        };
+
         // 监听 AbortSignal
         if (request.signal) {
           const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanupFn = null;
             innerUnsub();
+            clearTimeout(timeoutTimer);
             reject(new DOMException("Request aborted", "AbortError"));
           };
           request.signal.addEventListener("abort", onAbort, { once: true });
@@ -160,11 +190,30 @@ class AcpAgentSession implements AgentSession {
         if (request.cwd) {
           userMsg.cwd = request.cwd;
         }
+        if (request.model) {
+          userMsg.model = request.model;
+        }
+        if (request.temperature !== undefined) {
+          userMsg.temperature = request.temperature;
+        }
+        if (request.steps !== undefined) {
+          userMsg.steps = request.steps;
+        }
+        if (request.permission !== undefined) {
+          userMsg.permission = request.permission;
+        }
+        if (request.knowledge !== undefined) {
+          userMsg.knowledge = request.knowledge;
+        }
 
         const sent = sendToAgentWs(this.agentId, userMsg);
         if (!sent) {
+          if (settled) return;
+          settled = true;
+          cleanupFn = null;
           innerUnsub();
           abortCleanup?.();
+          clearTimeout(timeoutTimer);
           reject(new Error("Agent not found or offline"));
           return;
         }
@@ -172,7 +221,10 @@ class AcpAgentSession implements AgentSession {
         log(`[ACP-Transport] Sent user message: sessionId=${this.sessionId} promptLength=${request.prompt.length}`);
       });
     } finally {
-      unsub();
+      // 安全网：确保任何路径（包括意外异常）都清理订阅
+      // cleanupFn 在正常 settle 路径中被设为 null，因此不会重复取消订阅
+      // TypeScript CFA 将 cleanupFn 收窄为 never，需要断言绕过
+      (cleanupFn as (() => void) | null)?.();
     }
   }
 }
@@ -198,7 +250,7 @@ class AcpTransport implements Transport {
     const bus = getAcpEventBus(agentId);
     let unsub: (() => void) | null = null;
 
-    const sessionId = await Promise.race([
+    const sessionId = await Promise.race<string>([
       createTimeoutPromise(SESSION_CREATE_TIMEOUT_MS, "session/create"),
 
       new Promise<string>((resolve, reject) => {
