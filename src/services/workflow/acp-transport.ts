@@ -39,7 +39,6 @@ export function setChannelFactory(factory: ChannelFactory | null): void {
 
 // ---------- 常量 ----------
 
-const SESSION_CREATE_TIMEOUT_MS = 30_000;
 const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
 
 // ---------- 类型 ----------
@@ -56,15 +55,6 @@ interface PromptCompleteMetadata {
 }
 
 // ---------- 辅助函数 ----------
-
-function createTimeoutPromise<T>(ms: number, label: string): Promise<T> {
-  return new Promise<T>((_, reject) => {
-    const timer = setTimeout(() => {
-      reject(new DOMException(`${label} timed out after ${ms}ms`, "AbortError"));
-    }, ms);
-    if (typeof timer.unref === "function") timer.unref();
-  });
-}
 
 function getField<T>(obj: unknown, field: string): T | undefined {
   if (obj && typeof obj === "object" && field in obj) {
@@ -228,39 +218,9 @@ class AcpTransport implements Transport {
 
     const channel = await _channelFactory(agentId, { spawnedEnvIds: options?.spawnedEnvIds });
 
-    // session/create 流程
-    const correlationId = nanoid(12);
-    const sessionId = await Promise.race<string>([
-      createTimeoutPromise(SESSION_CREATE_TIMEOUT_MS, "session/create"),
-
-      new Promise<string>((resolve, reject) => {
-        const unsub = channel.onMessage((msg) => {
-          const type = getField<string>(msg, "type") ?? "";
-
-          if (type === "session/create") {
-            const responseId = getField<string>(msg, "id");
-            if (responseId !== correlationId) return;
-
-            const newSessionId = getField<string>(msg, "session_id");
-            if (!newSessionId) {
-              reject(new Error("session/create response missing session_id"));
-              return;
-            }
-            unsub();
-            resolve(newSessionId);
-          }
-
-          if (type === "error") {
-            unsub();
-            reject(new Error(getField<string>(msg, "message") ?? "session/create error"));
-          }
-        });
-
-        channel.send({ type: "session/create", id: correlationId });
-        log(`[ACP-Transport] Sent session/create: agent=${agentId} correlationId=${correlationId}`);
-      }),
-    ]);
-
+    // relay 模式下 acp-link connect 后已自动就绪，不需要 session/create
+    const sessionId = nanoid(12);
+    log(`[ACP-Transport] Connected: agent=${agentId} sessionId=${sessionId}`);
     return new AcpAgentSession(channel, sessionId);
   }
 
