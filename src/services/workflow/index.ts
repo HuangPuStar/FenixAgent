@@ -9,7 +9,7 @@
 
 import type { AgentResolvedConfig, Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { agentConfig } from "../../db/schema";
 import { createAcpTransport } from "./acp-transport";
@@ -28,9 +28,12 @@ function getTransport(): Transport {
 /** 创建 resolveAgentConfig 回调：按 name 查询 agentConfig 表 */
 function createAgentConfigResolver(organizationId: string): (name: string) => Promise<AgentResolvedConfig | null> {
   return async (name: string) => {
-    const rows = await db.select().from(agentConfig).where(eq(agentConfig.organizationId, organizationId)).limit(100);
+    const [row] = await db
+      .select()
+      .from(agentConfig)
+      .where(and(eq(agentConfig.organizationId, organizationId), eq(agentConfig.name, name)))
+      .limit(1);
 
-    const row = rows.find((r) => r.name === name);
     if (!row) return null;
 
     return {
@@ -57,4 +60,14 @@ export function getTeamEngine(organizationId: string): WorkflowEngine {
     engines.set(organizationId, engine);
   }
   return engine;
+}
+
+/** 移除指定 team 的 WorkflowEngine 实例（释放内存） */
+export function removeTeamEngine(organizationId: string): boolean {
+  return engines.delete(organizationId);
+}
+
+/** 清理所有缓存的 engine 实例 */
+export function clearAllEngines(): void {
+  engines.clear();
 }
