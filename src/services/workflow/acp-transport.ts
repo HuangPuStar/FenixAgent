@@ -1,64 +1,62 @@
 /**
- * ACP Transport 实现 — 将 workflow-engine 的 Transport 接口桥接到 RCS 的 ACP WebSocket 基础设施。
+ * ACP Transport 实现 — workflow-engine Transport 接口的薄包装。
  *
- * 工作流程：
- * 1. connect() 通过 EnvironmentResolver 解析环境名称为 envId，必要时启动实例
- * 2. connect() 发送 session/create 创建会话
- * 3. execute() 发送 user 消息，通过 EventBus 收集完整会话流（assistant/tool_call/tool_result）
- * 4. 等待 prompt_complete 信号后拼接输出并返回 AgentResponse
+ * 职责：
+ * - 仅负责 ACP 协议（session/create、发 user 消息、收响应）
+ * - 不关心底层是 relay / WebSocket / EventBus
+ * - 底层通信由注入的 SessionFactory 回调提供
+ *
+ * 分层：
+ * - workflow/index.ts（服务层）：负责环境解析、实例启动、relay 连接
+ * - acp-transport.ts（本文件）：仅封装 ACP 协议流程
  */
 
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { nanoid } from "nanoid";
 import { log } from "../../logger";
-import { findAcpConnectionByAgentId, sendToAgentWs } from "../../transport/acp-ws-handler";
-import type { SessionEvent } from "../../transport/event-bus";
-import { getAcpEventBus } from "../../transport/event-bus";
 
-// ---------- EnvironmentResolver 注入 ----------
+// ---------- 消息通道抽象 ----------
 
-/** Environment name → envId + ensureRunning 的回调 */
-export interface EnvironmentResolver {
-  /** 解析环境名称为 envId，如果环境不在线则自动启动 */
-  resolve(name: string): Promise<{ envId: string; started: boolean }>;
+/** 底层消息收发通道 — 不依赖具体实现 */
+export interface AgentChannel {
+  /** 发送消息到 agent */
+  send(message: unknown): void;
+  /** 订阅来自 agent 的消息，返回取消订阅函数 */
+  onMessage(handler: (msg: Record<string, unknown>) => void): () => void;
 }
 
-/** 全局 Environment 解析器，由 createAcpTransport 时注入 */
-let _environmentResolver: EnvironmentResolver | null = null;
+/** 创建消息通道的工厂 — 由 RCS 服务层注入 */
+export type ChannelFactory = (envName: string, options?: { spawnedEnvIds?: Set<string> }) => Promise<AgentChannel>;
 
-/** 设置 Environment 解析器（per-engine 调用时注入） */
-export function setEnvironmentResolver(resolver: EnvironmentResolver | null): void {
-  _environmentResolver = resolver;
+// ---------- 注入点 ----------
+
+let _channelFactory: ChannelFactory | null = null;
+
+/** 注入通道工厂（由服务层调用） */
+export function setChannelFactory(factory: ChannelFactory | null): void {
+  _channelFactory = factory;
 }
 
 // ---------- 常量 ----------
 
-/** 等待 session/create 响应的超时时间（30s） */
 const SESSION_CREATE_TIMEOUT_MS = 30_000;
-
-/** 等待 agent 执行响应的默认超时时间（10 分钟） */
 const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
 
 // ---------- 类型 ----------
 
-/** session_update 消息中的 message 字段 */
 interface SessionUpdateMessage {
   role: string;
   content?: string;
   tool_name?: string;
-  [key: string]: unknown;
 }
 
-/** prompt_complete 消息中可能携带的元数据 */
 interface PromptCompleteMetadata {
   model?: string;
   tokens?: { input: number; output: number };
-  [key: string]: unknown;
 }
 
 // ---------- 辅助函数 ----------
 
-/** 创建超时 Promise，超时时 reject 一个 AbortError */
 function createTimeoutPromise<T>(ms: number, label: string): Promise<T> {
   return new Promise<T>((_, reject) => {
     const timer = setTimeout(() => {
@@ -68,53 +66,21 @@ function createTimeoutPromise<T>(ms: number, label: string): Promise<T> {
   });
 }
 
-/** 轮询等待 agent 的 ACP 连接上线（ensureRunning 后 acp-link 需要时间连接注册） */
-function waitForAgentOnline(agentId: string, timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const interval = 500;
-    const start = Date.now();
-
-    const check = () => {
-      if (findAcpConnectionByAgentId(agentId)) {
-        resolve();
-        return;
-      }
-      if (Date.now() - start >= timeoutMs) {
-        reject(new Error(`Agent '${agentId}' did not come online within ${timeoutMs}ms after startup`));
-        return;
-      }
-      setTimeout(check, interval);
-    };
-    check();
-  });
-}
-
-/** 从 SessionEvent 的 payload 中提取 type 字段 */
-function getPayloadType(event: SessionEvent): string {
-  const payload = event.payload;
-  if (payload && typeof payload === "object" && "type" in payload) {
-    return String((payload as Record<string, unknown>).type);
-  }
-  return "";
-}
-
-/** 从 SessionEvent 的 payload 中提取指定字段 */
-function getPayloadField<T>(event: SessionEvent, field: string): T | undefined {
-  const payload = event.payload;
-  if (payload && typeof payload === "object" && field in payload) {
-    return (payload as Record<string, unknown>)[field] as T;
+function getField<T>(obj: unknown, field: string): T | undefined {
+  if (obj && typeof obj === "object" && field in obj) {
+    return (obj as Record<string, unknown>)[field] as T;
   }
 }
 
 // ---------- AcpAgentSession ----------
 
-/** 基于 ACP WebSocket 的 Agent 会话实现 */
+/** 基于 AgentChannel 的 Agent 会话 — 只做 ACP 协议 */
 class AcpAgentSession implements AgentSession {
   private readonly sessionId: string;
-  private readonly agentId: string;
+  private readonly channel: AgentChannel;
 
-  constructor(agentId: string, sessionId: string) {
-    this.agentId = agentId;
+  constructor(channel: AgentChannel, sessionId: string) {
+    this.channel = channel;
     this.sessionId = sessionId;
   }
 
@@ -127,8 +93,6 @@ class AcpAgentSession implements AgentSession {
       throw new DOMException("Request aborted", "AbortError");
     }
 
-    const bus = getAcpEventBus(this.agentId);
-    // cleanupFn 在 subscribe 后设置，finally 中作为安全网调用
     let cleanupFn: (() => void) | null = null;
 
     try {
@@ -136,7 +100,6 @@ class AcpAgentSession implements AgentSession {
         let abortCleanup: (() => void) | null = null;
         let settled = false;
 
-        // 执行超时定时器
         const timeoutTimer = setTimeout(() => {
           if (settled) return;
           settled = true;
@@ -146,52 +109,38 @@ class AcpAgentSession implements AgentSession {
         }, DEFAULT_EXECUTE_TIMEOUT_MS);
         if (typeof timeoutTimer.unref === "function") timeoutTimer.unref();
 
-        const innerUnsub = bus.subscribe((event: SessionEvent) => {
-          if (event.direction !== "inbound") return;
-
-          const type = getPayloadType(event);
-          const eventSessionId = getPayloadField<string>(event, "session_id");
-          if (eventSessionId !== this.sessionId) return;
+        const unsub = this.channel.onMessage((msg) => {
+          const type = getField<string>(msg, "type") ?? "";
+          const msgSessionId = getField<string>(msg, "session_id");
+          if (msgSessionId && msgSessionId !== this.sessionId) return;
 
           switch (type) {
             case "session_update": {
-              const message = getPayloadField<SessionUpdateMessage>(event, "message");
+              const message = getField<SessionUpdateMessage>(msg, "message");
               if (!message) break;
 
               switch (message.role) {
-                case "assistant": {
-                  if (typeof message.content === "string") {
-                    chunks.push(message.content);
-                  }
-                  collectedMessages.push({
-                    role: "assistant",
-                    content: message.content ?? "",
-                  });
+                case "assistant":
+                  if (typeof message.content === "string") chunks.push(message.content);
+                  collectedMessages.push({ role: "assistant", content: message.content ?? "" });
                   break;
-                }
-                case "tool_call": {
+                case "tool_call":
                   collectedMessages.push({
                     role: "tool_call",
                     content: message.content ?? "",
                     tool_name: message.tool_name,
                   });
                   break;
-                }
-                case "tool_result": {
+                case "tool_result":
                   collectedMessages.push({
                     role: "tool_result",
                     content: message.content ?? "",
                     tool_name: message.tool_name,
                   });
                   break;
-                }
-                case "user": {
-                  collectedMessages.push({
-                    role: "user",
-                    content: message.content ?? "",
-                  });
+                case "user":
+                  collectedMessages.push({ role: "user", content: message.content ?? "" });
                   break;
-                }
               }
               break;
             }
@@ -200,17 +149,16 @@ class AcpAgentSession implements AgentSession {
               if (settled) return;
               settled = true;
               cleanupFn = null;
-              innerUnsub();
+              unsub();
               abortCleanup?.();
               clearTimeout(timeoutTimer);
-              const metadata = getPayloadField<PromptCompleteMetadata>(event, "metadata");
-              const latencyMs = Date.now() - startTime;
+              const metadata = getField<PromptCompleteMetadata>(msg, "metadata");
               resolve({
                 stdout: chunks.join(""),
                 exit_code: 0,
                 tokens: metadata?.tokens,
                 model: metadata?.model,
-                latency_ms: latencyMs,
+                latency_ms: Date.now() - startTime,
                 messages: collectedMessages,
               });
               break;
@@ -220,17 +168,16 @@ class AcpAgentSession implements AgentSession {
               if (settled) return;
               settled = true;
               cleanupFn = null;
-              innerUnsub();
+              unsub();
               abortCleanup?.();
               clearTimeout(timeoutTimer);
-              const errorMsg =
-                getPayloadField<string>(event, "message") ?? getPayloadField<string>(event, "error") ?? "";
-              const existingChunks = chunks.join("");
+              const errorMsg = getField<string>(msg, "message") ?? getField<string>(msg, "error") ?? "";
+              const existing = chunks.join("");
               const stderr = errorMsg
-                ? existingChunks
-                  ? `${existingChunks}\n\n[Error] ${errorMsg}`
+                ? existing
+                  ? `${existing}\n\n[Error] ${errorMsg}`
                   : `[Error] ${errorMsg}`
-                : existingChunks;
+                : existing;
               resolve({
                 stdout: stderr,
                 exit_code: 1,
@@ -242,18 +189,14 @@ class AcpAgentSession implements AgentSession {
           }
         });
 
-        // 设置清理函数供 finally 安全网使用
-        cleanupFn = () => {
-          innerUnsub();
-        };
+        cleanupFn = () => unsub();
 
-        // 监听 AbortSignal
         if (request.signal) {
           const onAbort = () => {
             if (settled) return;
             settled = true;
             cleanupFn = null;
-            innerUnsub();
+            unsub();
             clearTimeout(timeoutTimer);
             reject(new DOMException("Request aborted", "AbortError"));
           };
@@ -261,29 +204,15 @@ class AcpAgentSession implements AgentSession {
           abortCleanup = () => request.signal?.removeEventListener("abort", onAbort);
         }
 
-        // 构建并发送 user 消息（精简版：只传 prompt）
-        const userMsg: Record<string, unknown> = {
+        this.channel.send({
           type: "user",
           session_id: this.sessionId,
           content: request.prompt,
-        };
-
-        const sent = sendToAgentWs(this.agentId, userMsg);
-        if (!sent) {
-          if (settled) return;
-          settled = true;
-          cleanupFn = null;
-          innerUnsub();
-          abortCleanup?.();
-          clearTimeout(timeoutTimer);
-          reject(new Error("Agent not found or offline"));
-          return;
-        }
+        });
 
         log(`[ACP-Transport] Sent user message: sessionId=${this.sessionId} promptLength=${request.prompt.length}`);
       });
     } finally {
-      // 安全网：确保任何路径（包括意外异常）都清理订阅
       (cleanupFn as (() => void) | null)?.();
     }
   }
@@ -291,99 +220,50 @@ class AcpAgentSession implements AgentSession {
 
 // ---------- AcpTransport ----------
 
-/** ACP Transport 实现 — 通过 WebSocket 与 acp-link Agent 通信 */
 class AcpTransport implements Transport {
-  /**
-   * 连接到指定 agent，创建 ACP 会话。
-   * @param agentId - Environment name（如 "my-agent"），通过 EnvironmentResolver 解析为 envId
-   * @param options.spawnedEnvIds - 收集启动的环境 ID（由调度器传入）
-   */
   async connect(agentId: string, options?: { cwd?: string; spawnedEnvIds?: Set<string> }): Promise<AgentSession> {
-    // 通过 EnvironmentResolver 解析环境名称
-    let resolvedId = agentId;
-
-    if (_environmentResolver) {
-      const { envId, started } = await _environmentResolver.resolve(agentId);
-      resolvedId = envId;
-      if (started) {
-        log(`[ACP-Transport] Started environment "${agentId}" → env "${envId}", waiting for ACP connection...`);
-        // 记录到 spawnedEnvIds，供 workflow 结束后统一销毁
-        options?.spawnedEnvIds?.add(envId);
-        // 等待 acp-link 进程连接注册到 WebSocket（最多 60s）
-        await waitForAgentOnline(envId, 300_000);
-        log(`[ACP-Transport] Environment "${agentId}" → env "${envId}" is now online`);
-      } else {
-        log(`[ACP-Transport] Resolved environment "${agentId}" → env "${envId}" (already online)`);
-      }
-    } else {
-      // 无 resolver 时直接按 agentId 查找（向后兼容）
-      const conn = findAcpConnectionByAgentId(resolvedId);
-      if (!conn) {
-        throw new Error(`Agent not found or offline: ${agentId}`);
-      }
+    if (!_channelFactory) {
+      throw new Error("No channel factory configured for ACP Transport");
     }
 
-    // 确认连接存在
-    const conn = findAcpConnectionByAgentId(resolvedId);
-    if (!conn) {
-      throw new Error(`Agent not found or offline after resolve: ${agentId} → ${resolvedId}`);
-    }
+    const channel = await _channelFactory(agentId, { spawnedEnvIds: options?.spawnedEnvIds });
 
-    // 生成关联 ID 用于匹配 session/create 响应
+    // session/create 流程
     const correlationId = nanoid(12);
-    const bus = getAcpEventBus(resolvedId);
-    let unsub: (() => void) | null = null;
-
     const sessionId = await Promise.race<string>([
       createTimeoutPromise(SESSION_CREATE_TIMEOUT_MS, "session/create"),
 
       new Promise<string>((resolve, reject) => {
-        unsub = bus.subscribe((event: SessionEvent) => {
-          if (event.direction !== "inbound") return;
-
-          const type = getPayloadType(event);
+        const unsub = channel.onMessage((msg) => {
+          const type = getField<string>(msg, "type") ?? "";
 
           if (type === "session/create") {
-            const responseId = getPayloadField<string>(event, "id");
+            const responseId = getField<string>(msg, "id");
             if (responseId !== correlationId) return;
 
-            const newSessionId = getPayloadField<string>(event, "session_id");
+            const newSessionId = getField<string>(msg, "session_id");
             if (!newSessionId) {
               reject(new Error("session/create response missing session_id"));
               return;
             }
-
-            log(`[ACP-Transport] Session created: sessionId=${newSessionId} agentId=${resolvedId}`);
+            unsub();
             resolve(newSessionId);
           }
 
-          if (type === "agent_disconnect") {
-            reject(new Error("Agent disconnected during session creation"));
+          if (type === "error") {
+            unsub();
+            reject(new Error(getField<string>(msg, "message") ?? "session/create error"));
           }
         });
 
-        // 发送 session/create 消息
-        const createMsg: Record<string, unknown> = {
-          type: "session/create",
-          id: correlationId,
-        };
-
-        const sent = sendToAgentWs(resolvedId, createMsg);
-        if (!sent) {
-          reject(new Error("Agent not found or offline"));
-          return;
-        }
-
-        log(`[ACP-Transport] Sent session/create: agentId=${resolvedId} correlationId=${correlationId}`);
+        channel.send({ type: "session/create", id: correlationId });
+        log(`[ACP-Transport] Sent session/create: agent=${agentId} correlationId=${correlationId}`);
       }),
-    ]).finally(() => {
-      unsub?.();
-    });
+    ]);
 
-    return new AcpAgentSession(resolvedId, sessionId);
+    return new AcpAgentSession(channel, sessionId);
   }
 
-  /** 检查 Transport 是否可用 */
   isReady(): boolean {
     return true;
   }
@@ -391,7 +271,6 @@ class AcpTransport implements Transport {
 
 // ---------- 工厂函数 ----------
 
-/** 创建 ACP Transport 实例 */
 export function createAcpTransport(): Transport {
   return new AcpTransport();
 }
