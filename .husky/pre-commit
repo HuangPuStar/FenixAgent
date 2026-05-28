@@ -7,3 +7,4 @@ if [ -n "$FILES" ]; then
   npx biome check --write --linter-enabled=false $FILES
   git add $FILES
 fi
+
