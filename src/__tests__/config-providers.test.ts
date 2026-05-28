@@ -37,7 +37,12 @@ function setupStubs() {
       if (!p) return null;
       return {
         ...p,
-        models: [...p.models.entries()].map(([modelId, m]) => ({ id: "model-uuid", providerId: p.id, modelId, ...m })),
+        models: [...p.models.entries()].map(([modelId, m]) => ({
+          id: "model-uuid",
+          providerId: p.id,
+          modelId,
+          ...m,
+        })),
       };
     },
     upsertProvider: async (_ctx: any, name: string, data: any) => {
@@ -100,7 +105,11 @@ function setupStubs() {
 function _getProviderStore() {
   const result: Record<string, any> = {};
   for (const [name, p] of _providers) {
-    const provider: Record<string, any> = { name: p.name, npm: p.npm, displayName: p.displayName };
+    const provider: Record<string, any> = {
+      name: p.name,
+      npm: p.npm,
+      displayName: p.displayName,
+    };
     if (p.baseUrl || p.apiKey) {
       provider.options = {
         ...(p.baseUrl ? { baseURL: p.baseUrl } : {}),
@@ -138,9 +147,17 @@ describe("Providers Config Route", () => {
     setupStubs();
     setTestAuth({
       user: { id: "test-user", email: "test@test.com", name: "Test" },
-      authContext: { organizationId: "test-team", userId: "test-user", role: "owner" },
+      authContext: {
+        organizationId: "test-team",
+        userId: "test-user",
+        role: "owner",
+      },
     });
-    setTestOrgContext({ organizationId: "test-team", userId: "test-user", role: "owner" });
+    setTestOrgContext({
+      organizationId: "test-team",
+      userId: "test-user",
+      role: "owner",
+    });
     _providers = new Map();
   });
 
@@ -175,7 +192,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "OpenAI",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: "https://api.openai.com",
       apiKey: "sk-open-abcdef",
       extraOptions: null,
@@ -202,7 +219,7 @@ describe("Providers Config Route", () => {
     expect(json.data.providers[1]).toMatchObject({
       id: "OpenAI",
       name: "OpenAI",
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       configured: true,
       modelCount: 0,
     });
@@ -217,13 +234,24 @@ describe("Providers Config Route", () => {
       baseUrl: "https://api.anthropic.com",
       apiKey: "sk-ant-1234",
       extraOptions: null,
-      models: new Map([["qwen3.6-plus", { displayName: "Qwen3.6 Plus", limitConfig: { context: 1000000 } }]]),
+      models: new Map([
+        [
+          "qwen3.6-plus",
+          {
+            displayName: "Qwen3.6 Plus",
+            limitConfig: { context: 1000000 },
+          },
+        ],
+      ]),
     });
     const res = await providersRoute.handle(
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get", name: "bailian-token-plan" }),
+        body: JSON.stringify({
+          action: "get",
+          name: "bailian-token-plan",
+        }),
       }),
     );
     const json = await res.json();
@@ -291,7 +319,11 @@ describe("Providers Config Route", () => {
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", name: "bailian-token-plan", data: { baseURL: "https://new.api.com" } }),
+        body: JSON.stringify({
+          action: "set",
+          name: "bailian-token-plan",
+          data: { baseURL: "https://new.api.com" },
+        }),
       }),
     );
     const json = await res.json();
@@ -330,7 +362,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: null,
       apiKey: "y",
       extraOptions: null,
@@ -378,7 +410,9 @@ describe("Providers Config Route", () => {
       async () =>
         ({
           ok: true,
-          json: async () => ({ data: [{ id: "model-a" }, { id: "model-b" }] }),
+          json: async () => ({
+            data: [{ id: "model-a" }, { id: "model-b" }],
+          }),
         }) as Response,
     );
 
@@ -460,7 +494,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: null,
       apiKey: "sk-test",
       extraOptions: null,
@@ -495,7 +529,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -505,7 +539,11 @@ describe("Providers Config Route", () => {
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_model", name: "openai", data: { name: "test" } }),
+        body: JSON.stringify({
+          action: "add_model",
+          name: "openai",
+          data: { name: "test" },
+        }),
       }),
     );
     const json = await res.json();
@@ -518,7 +556,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -528,7 +566,11 @@ describe("Providers Config Route", () => {
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_model", name: "openai", data: { modelId: "gpt-4o" } }),
+        body: JSON.stringify({
+          action: "add_model",
+          name: "openai",
+          data: { modelId: "gpt-4o" },
+        }),
       }),
     );
     const json = await res.json();
@@ -541,7 +583,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -555,7 +597,10 @@ describe("Providers Config Route", () => {
           action: "update_model",
           name: "openai",
           modelId: "gpt-4o",
-          data: { name: "GPT-4o Updated", cost: { input: 2.5, output: 10 } },
+          data: {
+            name: "GPT-4o Updated",
+            cost: { input: 2.5, output: 10 },
+          },
         }),
       }),
     );
@@ -563,7 +608,9 @@ describe("Providers Config Route", () => {
     expect(json.success).toBe(true);
     const p = _providers.get("openai")!;
     expect(p.models.get("gpt-4o")!.displayName).toBe("GPT-4o Updated");
-    expect(p.models.get("gpt-4o")!.limitConfig).toEqual({ context: 128000 });
+    expect(p.models.get("gpt-4o")!.limitConfig).toEqual({
+      context: 128000,
+    });
   });
 
   test("update_model — 模型不存在", async () => {
@@ -571,7 +618,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -581,7 +628,12 @@ describe("Providers Config Route", () => {
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update_model", name: "openai", modelId: "nonexistent", data: {} }),
+        body: JSON.stringify({
+          action: "update_model",
+          name: "openai",
+          modelId: "nonexistent",
+          data: {},
+        }),
       }),
     );
     const json = await res.json();
@@ -594,7 +646,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -607,7 +659,11 @@ describe("Providers Config Route", () => {
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "remove_model", name: "openai", modelId: "gpt-3.5" }),
+        body: JSON.stringify({
+          action: "remove_model",
+          name: "openai",
+          modelId: "gpt-3.5",
+        }),
       }),
     );
     const json = await res.json();
@@ -622,7 +678,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -632,7 +688,11 @@ describe("Providers Config Route", () => {
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "remove_model", name: "openai", modelId: "ghost" }),
+        body: JSON.stringify({
+          action: "remove_model",
+          name: "openai",
+          modelId: "ghost",
+        }),
       }),
     );
     const json = await res.json();
@@ -645,7 +705,11 @@ describe("Providers Config Route", () => {
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_model", name: "ghost", data: { modelId: "m1" } }),
+        body: JSON.stringify({
+          action: "add_model",
+          name: "ghost",
+          data: { modelId: "m1" },
+        }),
       }),
     );
     const json = await res.json();
@@ -661,9 +725,17 @@ describe("Provider Test action - edge cases", () => {
     _providers = new Map();
     setTestAuth({
       user: { id: "test-user", email: "test@test.com", name: "Test" },
-      authContext: { organizationId: "test-team", userId: "test-user", role: "owner" },
+      authContext: {
+        organizationId: "test-team",
+        userId: "test-user",
+        role: "owner",
+      },
     });
-    setTestOrgContext({ organizationId: "test-team", userId: "test-user", role: "owner" });
+    setTestOrgContext({
+      organizationId: "test-team",
+      userId: "test-user",
+      role: "owner",
+    });
   });
 
   test("test non-existent provider returns NOT_FOUND", async () => {
@@ -687,9 +759,17 @@ describe("Provider atomic write", () => {
     _providers = new Map();
     setTestAuth({
       user: { id: "test-user", email: "test@test.com", name: "Test" },
-      authContext: { organizationId: "test-team", userId: "test-user", role: "owner" },
+      authContext: {
+        organizationId: "test-team",
+        userId: "test-user",
+        role: "owner",
+      },
     });
-    setTestOrgContext({ organizationId: "test-team", userId: "test-user", role: "owner" });
+    setTestOrgContext({
+      organizationId: "test-team",
+      userId: "test-user",
+      role: "owner",
+    });
   });
 
   test("concurrent set operations don't lose data", async () => {
@@ -719,14 +799,22 @@ describe("Provider atomic write", () => {
         new Request("http://localhost/config/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "set", name: "provider-a", data: { apiKey: "new-key-a" } }),
+          body: JSON.stringify({
+            action: "set",
+            name: "provider-a",
+            data: { apiKey: "new-key-a" },
+          }),
         }),
       ),
       providersRoute.handle(
         new Request("http://localhost/config/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "set", name: "provider-b", data: { apiKey: "new-key-b" } }),
+          body: JSON.stringify({
+            action: "set",
+            name: "provider-b",
+            data: { apiKey: "new-key-b" },
+          }),
         }),
       ),
     ]);

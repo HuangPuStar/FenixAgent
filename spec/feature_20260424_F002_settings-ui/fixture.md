@@ -1,6 +1,6 @@
 # Fixture: opencode 配置数据模型参考
 
-> 基于 opencode 标准规范 (https://opencode.ai/config.json) 和实际 opencode.json 文件
+> 基于 opencode 标准规范 (<https://opencode.ai/config.json>) 和实际 opencode.json 文件
 
 ## 1. 配置文件路径
 
@@ -247,7 +247,7 @@ interface AgentListResponse {
       }
     },
     "openai": {
-      "npm": "@ai-sdk/openai",
+      "npm": "@ai-sdk/openai-compatible",
       "name": "OpenAI",
       "options": {
         "apiKey": "sk-proj-abc..."

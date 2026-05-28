@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -377,67 +378,66 @@ export function AgentModelsPage() {
               key={provider.id}
               className="group rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm"
             >
-              <div className="px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={toggleSelect}
-                    className="rounded border-border"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-sm font-medium text-text-bright">{provider.id}</span>
-                      {provider.name && provider.name !== provider.id && (
-                        <span className="text-xs text-text-secondary">{provider.name}</span>
-                      )}
-                      {(() => {
-                        const opt = NPM_OPTIONS.find((o) => o.npm === provider.npm);
-                        return (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-secondary">
-                            {opt ? getNpmLabel(opt) : provider.npm || "—"}
+              <CollapsibleTrigger asChild>
+                <div className="px-4 py-3 cursor-pointer group/trigger">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={toggleSelect}
+                      onClick={(e) => e.stopPropagation()}
+                      className="rounded border-border"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-medium text-text-bright">{provider.id}</span>
+                        {provider.name && provider.name !== provider.id && (
+                          <span className="text-xs text-text-secondary">{provider.name}</span>
+                        )}
+                        {(() => {
+                          const opt = NPM_OPTIONS.find((o) => o.npm === provider.npm);
+                          return (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-secondary">
+                              {opt ? getNpmLabel(opt) : provider.npm || "—"}
+                            </span>
+                          );
+                        })()}
+                        {provider.keyHint && (
+                          <span className="font-mono text-xs text-text-muted bg-surface-2 px-2 py-0.5 rounded">
+                            ***{provider.keyHint}
                           </span>
-                        );
-                      })()}
-                      {provider.keyHint && (
-                        <span className="font-mono text-xs text-text-muted bg-surface-2 px-2 py-0.5 rounded">
-                          ***{provider.keyHint}
+                        )}
+                        <StatusBadge status={provider.configured ? "configured" : "unconfigured"} />
+                        <span
+                          className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-xs font-medium ${provider.modelCount > 0 ? "bg-brand-subtle text-brand dark:text-brand-light" : "bg-surface-2 text-text-muted"}`}
+                        >
+                          {provider.modelCount}
                         </span>
-                      )}
-                      <StatusBadge status={provider.configured ? "configured" : "unconfigured"} />
-                      <span
-                        className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-xs font-medium ${provider.modelCount > 0 ? "bg-brand-subtle text-brand dark:text-brand-light" : "bg-surface-2 text-text-muted"}`}
-                      >
-                        {provider.modelCount}
-                      </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      onClick={() => handleTest(provider.id)}
-                      disabled={testing === provider.id}
+                    <div
+                      className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {testing === provider.id ? t("actions.testing") : t("actions.test")}
-                    </Button>
-                    <Button size="xs" variant="outline" onClick={() => handleOpenEdit(provider)}>
-                      {t("actions.edit")}
-                    </Button>
-                    <Button size="xs" variant="destructive" onClick={() => handleDelete(provider.id)}>
-                      {t("actions.delete")}
-                    </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => handleTest(provider.id)}
+                        disabled={testing === provider.id}
+                      >
+                        {testing === provider.id ? t("actions.testing") : t("actions.test")}
+                      </Button>
+                      <Button size="xs" variant="outline" onClick={() => handleOpenEdit(provider)}>
+                        {t("actions.edit")}
+                      </Button>
+                      <Button size="xs" variant="destructive" onClick={() => handleDelete(provider.id)}>
+                        {t("actions.delete")}
+                      </Button>
+                    </div>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-text-muted transition-transform duration-200 group-data-[state=open]/trigger:rotate-180" />
                   </div>
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-xs text-text-muted hover:text-text-primary px-2 py-1 rounded hover:bg-surface-hover"
-                    >
-                      {t("columns.models")} ({models.length})
-                    </button>
-                  </CollapsibleTrigger>
                 </div>
-              </div>
+              </CollapsibleTrigger>
               <CollapsibleContent>
                 <div className="px-4 pb-3 space-y-2 border-t border-border-subtle pt-3">
                   {models.length === 0 ? (

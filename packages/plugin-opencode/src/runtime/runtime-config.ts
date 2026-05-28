@@ -60,7 +60,7 @@ function toProviderPackage(protocol: AgentLaunchSpec["model"]["protocol"]): stri
     case "anthropic":
       return "@ai-sdk/anthropic";
     default:
-      return "@ai-sdk/openai";
+      return "@ai-sdk/openai-compatible";
   }
 }
 

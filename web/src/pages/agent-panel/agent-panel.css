@@ -6,8 +6,8 @@
 :root {
   --agent-sidebar-width: 220px;
   --agent-sidebar-collapsed: 60px;
-  --agent-artifacts-width: 480px;
-  --agent-artifacts-min: 360px;
+  --agent-artifacts-width: 360px;
+  --agent-artifacts-min: 280px;
   --agent-artifacts-max: 700px;
 }
 
