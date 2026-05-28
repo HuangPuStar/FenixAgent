@@ -57,20 +57,23 @@ export function AgentApiKeysPage() {
       toast.error(t("validation.nameRequired"));
       return;
     }
+    if (formSaving) return;
     setFormSaving(true);
-    const { data, error } = await apiKeyApi.create({ name: formName.trim() });
-    if (error) {
-      console.error(error);
-      toast.error(t("toast.createFailed"));
+    try {
+      const { data, error } = await apiKeyApi.create({ name: formName.trim() });
+      if (error) {
+        console.error(error);
+        toast.error(t("toast.createFailed"));
+        return;
+      }
+      if (data?.key) {
+        setNewKeyValue(data.key);
+      }
+      toast.success(t("toast.created"));
+      loadKeys();
+    } finally {
       setFormSaving(false);
-      return;
     }
-    if (data?.key) {
-      setNewKeyValue(data.key);
-    }
-    toast.success(t("toast.created"));
-    loadKeys();
-    setFormSaving(false);
   };
 
   const handleDelete = async () => {

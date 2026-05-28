@@ -39,7 +39,7 @@ interface OrgApi {
     body: { name: string; prefix: string; expiresIn: number | null; metadata: unknown };
     headers: Headers;
   }) => Promise<unknown>;
-  deleteApiKey: (opts: { body: { id: string }; headers: Headers }) => Promise<void>;
+  deleteApiKey: (opts: { body: { keyId: string }; headers: Headers }) => Promise<void>;
   updateApiKey: (opts: { body: { id: string; name?: string }; headers: Headers }) => Promise<void>;
 }
 
@@ -279,7 +279,7 @@ app.post(
       }
       case "delete": {
         if (!b.id) return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "id required" } });
-        await api.deleteApiKey({ body: { id: b.id }, headers: request.headers });
+        await api.deleteApiKey({ body: { keyId: b.id }, headers: request.headers });
         return { success: true, data: { deleted: true } };
       }
       case "update": {
