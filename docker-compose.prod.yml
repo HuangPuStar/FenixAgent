@@ -3,6 +3,7 @@
 
 services:
     rcs-migrate:
+        # image: ghcr.io/huangpustar/fenixagent:main
         build:
             context: .
             dockerfile: Dockerfile
@@ -16,10 +17,11 @@ services:
         command: ["bun", "migrate.js"]
 
     rcs:
+        # image: ghcr.io/huangpustar/fenixagent:main
         build:
             context: .
             dockerfile: Dockerfile
-        container_name: fenix-beta
+        container_name: fenix
         restart: unless-stopped
         depends_on:
             postgres:

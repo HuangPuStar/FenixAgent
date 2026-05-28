@@ -1,5 +1,5 @@
 # 开发环境 — 只启动周围基础设施，本地用 bun run dev 跑 RCS
-# Usage: docker compose up
+# Usage: docker compose up -d
 
 services:
     postgres:
@@ -21,7 +21,7 @@ services:
             retries: 5
 
     openviking:
-        image: ghcr.io/volcengine/openviking:v0.3.14
+        image: openviking/openviking:v0.3.14
         container_name: fenix-openviking
         profiles:
             - openviking
