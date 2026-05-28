@@ -322,6 +322,15 @@
     "history_loading": "Loading...",
     "history_untitled": "New conversation"
   },
+  "run_params": {
+    "title": "Run Parameters",
+    "description": "This workflow requires input parameters before running.",
+    "required_placeholder": "Required",
+    "optional_placeholder": "Optional",
+    "cancel": "Cancel",
+    "submit": "Run",
+    "all_optional_hint": "All parameters have defaults — you can leave them unchanged."
+  },
   "page": {
     "back_to_list": "Back to list",
     "editor": "Editor",
