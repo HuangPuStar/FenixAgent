@@ -68,6 +68,27 @@ function createTimeoutPromise<T>(ms: number, label: string): Promise<T> {
   });
 }
 
+/** 轮询等待 agent 的 ACP 连接上线（ensureRunning 后 acp-link 需要时间连接注册） */
+function waitForAgentOnline(agentId: string, timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const interval = 500;
+    const start = Date.now();
+
+    const check = () => {
+      if (findAcpConnectionByAgentId(agentId)) {
+        resolve();
+        return;
+      }
+      if (Date.now() - start >= timeoutMs) {
+        reject(new Error(`Agent '${agentId}' did not come online within ${timeoutMs}ms after startup`));
+        return;
+      }
+      setTimeout(check, interval);
+    };
+    check();
+  });
+}
+
 /** 从 SessionEvent 的 payload 中提取 type 字段 */
 function getPayloadType(event: SessionEvent): string {
   const payload = event.payload;
@@ -285,9 +306,12 @@ class AcpTransport implements Transport {
       const { envId, started } = await _environmentResolver.resolve(agentId);
       resolvedId = envId;
       if (started) {
-        log(`[ACP-Transport] Started environment "${agentId}" → env "${envId}"`);
+        log(`[ACP-Transport] Started environment "${agentId}" → env "${envId}", waiting for ACP connection...`);
         // 记录到 spawnedEnvIds，供 workflow 结束后统一销毁
         options?.spawnedEnvIds?.add(envId);
+        // 等待 acp-link 进程连接注册到 WebSocket（最多 60s）
+        await waitForAgentOnline(envId, 60_000);
+        log(`[ACP-Transport] Environment "${agentId}" → env "${envId}" is now online`);
       } else {
         log(`[ACP-Transport] Resolved environment "${agentId}" → env "${envId}" (already online)`);
       }
