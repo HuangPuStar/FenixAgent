@@ -310,7 +310,7 @@ class AcpTransport implements Transport {
         // 记录到 spawnedEnvIds，供 workflow 结束后统一销毁
         options?.spawnedEnvIds?.add(envId);
         // 等待 acp-link 进程连接注册到 WebSocket（最多 60s）
-        await waitForAgentOnline(envId, 60_000);
+        await waitForAgentOnline(envId, 300_000);
         log(`[ACP-Transport] Environment "${agentId}" → env "${envId}" is now online`);
       } else {
         log(`[ACP-Transport] Resolved environment "${agentId}" → env "${envId}" (already online)`);
