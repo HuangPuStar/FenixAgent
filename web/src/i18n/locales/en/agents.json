@@ -18,6 +18,7 @@
   "actions": {
     "setDefault": "Set Default",
     "edit": "Edit",
+    "save": "Save",
     "delete": "Delete"
   },
   "batchDelete": "Batch Delete",

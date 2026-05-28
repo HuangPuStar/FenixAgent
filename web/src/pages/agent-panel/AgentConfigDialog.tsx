@@ -588,7 +588,7 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
                 {t("dialog.cancel") ?? "Cancel"}
               </Button>
               <Button onClick={handleSave} disabled={formSaving}>
-                {formSaving ? "..." : t("actions.edit")}
+                {formSaving ? "..." : t("actions.save")}
               </Button>
             </div>
           </>

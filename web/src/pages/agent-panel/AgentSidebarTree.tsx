@@ -216,6 +216,10 @@ export function AgentSidebarTree({
       try {
         await instanceApi.delete({ id: instance.id });
         await instanceApi.spawn({ environmentId: envId });
+
+        // 通知 ChatPanel 重新连接
+        window.dispatchEvent(new CustomEvent("agent:reconnect", { detail: { envId } }));
+
         await loadData();
         toast.success(t("restartSuccess"));
       } catch (err) {
@@ -360,7 +364,6 @@ export function AgentSidebarTree({
                   <Bot className="w-4 h-4 flex-shrink-0" />
                 )}
                 <span className="truncate">{agent.name}</span>
-                {instances.length > 0 && <span className="agent-tree-instance-count">{instances.length}</span>}
               </button>
 
               {/* 右侧操作按钮 */}

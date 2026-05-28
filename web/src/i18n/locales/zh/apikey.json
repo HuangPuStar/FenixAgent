@@ -1,35 +1,36 @@
 {
-  "title": "API Key",
-  "back": "返回",
-  "loading": "加载中...",
-  "createdNotice": {
-    "title": "API Key 已创建",
-    "copyHint": "请立即复制此 Key，之后将无法再查看。",
-    "copy": "复制",
-    "copied": "已复制!",
-    "close": "关闭"
+  "title": "API 密钥",
+  "subtitle": "管理用于智能体认证的 API 密钥",
+  "btn": {
+    "create": "创建密钥",
+    "revoke": "吊销"
   },
-  "createForm": {
-    "title": "创建新 Key",
-    "labelPlaceholder": "标签（可选）",
-    "create": "创建"
+  "searchPlaceholder": "搜索密钥...",
+  "emptyMessage": "暂无 API 密钥，点击上方按钮创建。",
+  "column": {
+    "created": "创建时间",
+    "expires": "过期时间"
   },
-  "keyList": {
-    "empty": "暂无 API Key。请在上方创建一个以连接你的 Agent。",
-    "unnamed": "未命名",
-    "edit": "编辑",
-    "save": "保存",
-    "delete": "删除"
+  "dialog": {
+    "createTitle": "创建 API 密钥",
+    "keyCreated": "新的 API 密钥已创建，请立即复制——之后将无法再查看。",
+    "keyWarning": "请务必立即复制此密钥，之后将无法再次查看。"
   },
-  "cancel": "取消",
-  "deleteDialog": {
-    "title": "确认删除",
-    "description": "确定要删除此 API Key 吗？使用该 Key 的 Agent 将无法继续连接。此操作不可撤销。"
+  "form": {
+    "name": "名称"
+  },
+  "confirm": {
+    "revokeTitle": "吊销 API 密钥",
+    "revokeDescription": "确定要吊销此 API 密钥吗？使用该密钥的智能体将无法继续连接。此操作不可撤销。"
+  },
+  "validation": {
+    "nameRequired": "请输入密钥名称"
   },
   "toast": {
-    "loadFailed": "加载 API Key 失败",
-    "createFailed": "创建 Key 失败",
-    "deleteFailed": "删除 Key 失败",
-    "updateLabelFailed": "更新标签失败"
+    "loadFailed": "加载 API 密钥失败",
+    "createFailed": "创建 API 密钥失败",
+    "created": "API 密钥已创建",
+    "deleteFailed": "吊销 API 密钥失败",
+    "deleted": "API 密钥已吊销"
   }
 }

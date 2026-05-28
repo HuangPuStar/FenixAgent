@@ -68,6 +68,7 @@ export function ACPMain({
       });
   }, [agentId, initialCwd]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: client 变更时需重置 bootstrap 状态，否则新连接不会加载会话
   useEffect(() => {
     bootstrappedRef.current = false;
     setBootstrapAttempt(0);
@@ -75,7 +76,7 @@ export function ACPMain({
       clearTimeout(bootstrapRetryTimerRef.current);
       bootstrapRetryTimerRef.current = null;
     }
-  }, []);
+  }, [client]);
 
   // When capabilities arrive via ACP event (not React getter), bump bootstrap attempt once.
   // This avoids the infinite loop caused by depending on a getter that returns true on every render.

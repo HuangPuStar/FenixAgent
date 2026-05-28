@@ -18,6 +18,7 @@
   "actions": {
     "setDefault": "设为默认",
     "edit": "编辑",
+    "save": "保存",
     "delete": "删除"
   },
   "batchDelete": "批量删除",
