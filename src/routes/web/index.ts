@@ -21,6 +21,7 @@ import webWorkflowJobs from "./workflow-jobs";
 import webWorkflowJobsLogs from "./workflow-jobs-logs";
 import webWorkflowJobsSse from "./workflow-jobs-sse";
 import webWorkflowSse from "./workflow-sse";
+import webWorkflowStats from "./workflow-stats";
 
 const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webAuth)
@@ -43,6 +44,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webWorkflowJobs)
   .use(webWorkflowJobsSse)
   .use(webWorkflowJobsLogs)
+  .use(webWorkflowStats)
   .use(webWorkflowBoards)
   .use(webWorkflowSse);
 
