@@ -7,7 +7,6 @@
 export type { DryRunResult, WorkflowEngine, WorkflowEngineOptions } from "./engine/workflow-engine";
 // 引擎门面
 export { createWorkflowEngine } from "./engine/workflow-engine";
-export type { AgentExecutorOptions, AgentResolvedConfig } from "./executor/agent-executor";
 export { AgentExecutor } from "./executor/agent-executor";
 export { ApiExecutor } from "./executor/api-executor";
 export type { PendingApproval } from "./executor/awaitable-executor";
@@ -42,7 +41,7 @@ export { createInMemoryStorage } from "./storage/in-memory-storage";
 // 存储接口 + 内存实现
 export type { StorageAdapter } from "./storage/storage-adapter";
 // Transport 接口
-export type { AgentRequest, AgentResponse, AgentSession, Transport } from "./transport/transport";
+export type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "./transport/transport";
 // DAG 类型
 export type {
   AgentNodeDef,

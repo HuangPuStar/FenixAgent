@@ -158,15 +158,18 @@ function parseNode(raw: unknown, index: number): NodeDef {
           WorkflowErrorCode.INVALID_YAML,
         );
       }
+      if (!("agent" in n) || typeof n.agent !== "string" || !n.agent) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): agent node requires 'agent' (environment name)`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
       return {
         ...base,
         type: "agent",
         prompt: n.prompt as string,
-        agent: typeof n.agent === "string" ? n.agent : undefined,
-        skill: typeof n.skill === "string" ? n.skill : undefined,
-        model: typeof n.model === "string" ? n.model : undefined,
-        temperature: typeof n.temperature === "number" ? n.temperature : undefined,
-        steps: typeof n.steps === "number" ? n.steps : undefined,
+        agent: n.agent as string,
+        output_messages: typeof n.output_messages === "number" ? n.output_messages : undefined,
       };
     }
     case "api": {

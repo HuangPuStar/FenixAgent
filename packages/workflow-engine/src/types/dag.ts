@@ -49,18 +49,15 @@ export interface PythonNodeDef extends BaseNodeDef {
   inputs?: Record<string, string>;
 }
 
-/** Agent 节点 — 调用 AI Agent */
+/** Agent 节点 — 复用在线 Environment */
 export interface AgentNodeDef extends BaseNodeDef {
   type: "agent";
+  /** 环境名称（对应 Environment.name） */
+  agent: string;
+  /** 发送给 agent 的 prompt */
   prompt: string;
-  agent?: string;
-  skill?: string;
-  /** 节点级模型覆盖（覆盖 agent config 的 model） */
-  model?: string;
-  /** 节点级温度覆盖 */
-  temperature?: number;
-  /** 节点级最大步数覆盖 */
-  steps?: number;
+  /** 回传给下游的最后 N 条原始消息（默认 0 = 只传简化 stdout） */
+  output_messages?: number;
   retry?: RetryConfig;
 }
 

@@ -486,6 +486,26 @@ export function evaluateExpression(ast: ASTNode, context: EvalContext, depth = 0
 }
 
 /**
+ * 将模板表达式的求值结果转为字符串。
+ * - 原始值直接 String()
+ * - 对象优先取 simplified / stdout 字段（工作流节点输出的常见结构）
+ * - 兜底 JSON.stringify
+ */
+function stringifyTemplateValue(val: unknown): string {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "string") return val;
+  if (typeof val === "number" || typeof val === "boolean") return String(val);
+  if (typeof val === "object") {
+    const obj = val as Record<string, unknown>;
+    // ���作流节点输出：优先取 simplified（agent 节点），其次 stdout
+    if (typeof obj.simplified === "string") return obj.simplified;
+    if (typeof obj.stdout === "string") return obj.stdout;
+    return JSON.stringify(val);
+  }
+  return String(val);
+}
+
+/**
  * 解析模板字符串，将 `${{ expr }}` 替换为求值结果
  * 非表达式文本原样保留，null 值替换为空字符串
  */
@@ -517,7 +537,7 @@ export function resolveTemplate(template: string, context: EvalContext): string 
       const expr = template.slice(i + 3, j).trim();
       const ast = parseExpression(expr);
       const val = evaluateExpression(ast, context);
-      result.push(val === null || val === undefined ? "" : String(val));
+      result.push(val === null || val === undefined ? "" : stringifyTemplateValue(val));
       lastEnd = j + 2;
       i = j + 1; // for loop 会 +1
     }

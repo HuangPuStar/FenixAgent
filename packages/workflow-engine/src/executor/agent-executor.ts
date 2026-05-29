@@ -1,11 +1,11 @@
 /**
- * Agent 节点执行器 — 通过 Transport 接口与 AI Agent 通信。
+ * Agent 节点执行器 — 通过 Transport 接口与 Environment 的 Agent 通信。
  *
  * 职责：
  * - 类型守卫：仅处理 'agent' 节点
- * - 从 resolvedInputs 读取已解析的 prompt/agent/skill/model/temperature/steps
- * - Transport 连接：connect → execute → 收集响应
- * - 重试：默认 2 次指数退避（不同于 ShellNode 的 0 次）
+ * - Transport 连接：connect(envName) → execute(prompt) → 收集会话流
+ * - 输出：简化 stdout + 完整 messages
+ * - 重试：默认 2 次指数退避
  * - 事件发射：node.started / node.completed / node.failed / node.retrying
  */
 
@@ -16,21 +16,6 @@ import type { AgentNodeDef, NodeDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { NodeOutput } from "../types/execution";
 
-/** 从宿主层获取的 agent 配置 */
-export interface AgentResolvedConfig {
-  model: string | null;
-  steps: number | null;
-  temperature: number | null;
-  permission: unknown;
-  knowledge: unknown;
-}
-
-/** AgentExecutor 构造选项 */
-export interface AgentExecutorOptions {
-  /** 注入的 agent 配置解析回调（方案 A） */
-  resolveAgentConfig?: (agentName: string) => Promise<AgentResolvedConfig | null>;
-}
-
 // ---------- 常量 ----------
 
 const DEFAULT_RETRY_DELAY_MS = 1000;
@@ -39,10 +24,7 @@ const DEFAULT_RETRY_DELAY_MS = 1000;
 
 /** Agent 节点执行器 */
 export class AgentExecutor implements NodeExecutor {
-  constructor(
-    private transport: Transport,
-    private options?: AgentExecutorOptions,
-  ) {}
+  constructor(private transport: Transport) {}
 
   async execute(node: NodeDef, ctx: NodeExecutionContext): Promise<NodeOutput> {
     if (node.type !== "agent") {
@@ -53,22 +35,14 @@ export class AgentExecutor implements NodeExecutor {
     }
 
     const agentNode = node as AgentNodeDef;
-
-    // 从 resolvedInputs 读取已解析的模板值（scheduler 已处理）
     const resolvedPrompt = (ctx.resolvedInputs.prompt as string) ?? agentNode.prompt;
-    const resolvedAgent = (ctx.resolvedInputs.agent as string | undefined) ?? agentNode.agent;
-    const resolvedSkill = (ctx.resolvedInputs.skill as string | undefined) ?? agentNode.skill;
+    const resolvedAgent = (ctx.resolvedInputs.agent as string) ?? agentNode.agent;
 
-    // 合并 agent config + 节点级覆盖
-    const mergedConfig = await this.resolveAndMergeConfig(agentNode);
-
-    // 重试配置：默认 2 次（ShellNode 默认 0 次）
     const retryConfig = agentNode.retry ?? { count: 2, delay: DEFAULT_RETRY_DELAY_MS, backoff: "exponential" };
     const maxAttempts = (retryConfig.count ?? 2) + 1;
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // 重试时发射 node.retrying 事件
       if (attempt > 0) {
         const baseDelay = retryConfig.delay ?? DEFAULT_RETRY_DELAY_MS;
         const multiplier = retryConfig.backoff === "exponential" ? 2 ** (attempt - 1) : 1;
@@ -85,16 +59,14 @@ export class AgentExecutor implements NodeExecutor {
       }
 
       try {
-        return await this.executeOnce(agentNode, ctx, resolvedPrompt, resolvedAgent, resolvedSkill, mergedConfig);
+        return await this.executeOnce(agentNode, ctx, resolvedPrompt, resolvedAgent);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
-        // AbortError（取消）不重试
         if (error instanceof DOMException && error.name === "AbortError") {
           throw new WorkflowError("Node cancelled", WorkflowErrorCode.DAG_CANCELLED, { node_id: node.id });
         }
 
-        // 最后一次失败直接抛出
         if (attempt === maxAttempts - 1) {
           throw lastError;
         }
@@ -104,68 +76,70 @@ export class AgentExecutor implements NodeExecutor {
     throw lastError ?? new WorkflowError("All retry attempts exhausted", WorkflowErrorCode.NODE_FAILED);
   }
 
-  /** 单次执行：connect → execute → 收集输出 */
+  /** 单次执行：connect → execute → 收集会话流 */
   private async executeOnce(
     node: AgentNodeDef,
     ctx: NodeExecutionContext,
     resolvedPrompt: string,
-    resolvedAgent: string | undefined,
-    resolvedSkill: string | undefined,
-    mergedConfig: Partial<AgentResolvedConfig>,
+    resolvedAgent: string,
   ): Promise<NodeOutput> {
-    // 发射 node.started 事件
     await this.emitEvent(ctx, "node.started", node, {
       inputs: ctx.resolvedInputs,
       agent: resolvedAgent,
-      skill: resolvedSkill,
     });
 
-    // 连接 Transport
-    const session = await this.transport.connect(resolvedAgent ?? "default");
+    // 连接 Transport（resolvedAgent 是环境名称，Transport 层负责解析为 envId）
+    const session = await this.transport.connect(resolvedAgent, {
+      spawnedEnvIds: ctx.spawnedEnvIds,
+    });
 
-    // 构建请求
     const request: AgentRequest = {
       prompt: resolvedPrompt,
-      agent: resolvedAgent,
-      skill: resolvedSkill,
       signal: ctx.signal,
-      model: mergedConfig.model ?? undefined,
-      temperature: mergedConfig.temperature ?? undefined,
-      steps: mergedConfig.steps ?? undefined,
-      permission: mergedConfig.permission ?? undefined,
-      knowledge: mergedConfig.knowledge ?? undefined,
     };
 
-    // 执行请求
     const response = await session.execute(request);
 
     const outputSize = Buffer.byteLength(response.stdout);
 
-    // 非零退出码 → 失败
     if (response.exit_code !== 0) {
+      const errorMessage = response.stdout
+        ? `Agent exited with code ${response.exit_code}: ${response.stdout.slice(0, 500)}`
+        : `Agent exited with code ${response.exit_code}`;
       await this.emitEvent(ctx, "node.failed", node, {
-        error: `Agent exited with code ${response.exit_code}`,
+        error: errorMessage,
         exit_code: response.exit_code,
+        stdout: response.stdout,
       });
-      throw new WorkflowError(`Agent exited with code ${response.exit_code}`, WorkflowErrorCode.NODE_FAILED, {
+      throw new WorkflowError(errorMessage, WorkflowErrorCode.NODE_FAILED, {
         node_id: node.id,
         exit_code: response.exit_code,
         stdout: response.stdout,
       });
     }
 
-    // 尝试解析 JSON
-    let json: unknown;
+    // 构建 json 输出：简化文本 + 完整会话流
+    const outputMessages = node.output_messages ?? 0;
+    const json = {
+      simplified: response.stdout,
+      ...(response.messages.length > 0 ? { messages: response.messages } : {}),
+      ...(outputMessages > 0 && response.messages.length > 0
+        ? { last_messages: response.messages.slice(-outputMessages) }
+        : {}),
+    };
+
+    // 尝试解析 stdout 为 JSON
+    let parsedJson: unknown;
     try {
-      json = JSON.parse(response.stdout);
+      parsedJson = JSON.parse(response.stdout);
     } catch {
-      // stdout 不是合法 JSON，json 留 undefined
+      // stdout 不是合法 JSON
     }
 
-    // 发射 node.completed 事件（含 token 统计）
     await this.emitEvent(ctx, "node.completed", node, {
       exit_code: response.exit_code,
       output_size: outputSize,
+      message_count: response.messages.length,
       tokens: response.tokens,
       model: response.model,
       latency_ms: response.latency_ms,
@@ -173,42 +147,9 @@ export class AgentExecutor implements NodeExecutor {
 
     return {
       stdout: response.stdout,
-      json,
+      json: parsedJson ?? json,
       exit_code: response.exit_code,
       size: outputSize,
-    };
-  }
-
-  /** 解析 agent config 并合并节点级覆盖 */
-  private async resolveAndMergeConfig(node: AgentNodeDef): Promise<Partial<AgentResolvedConfig>> {
-    if (!node.agent || !this.options?.resolveAgentConfig) {
-      return {
-        model: node.model ?? null,
-        temperature: node.temperature ?? null,
-        steps: node.steps ?? null,
-        permission: null,
-        knowledge: null,
-      };
-    }
-
-    const config = await this.options.resolveAgentConfig(node.agent);
-
-    if (!config) {
-      return {
-        model: node.model ?? null,
-        temperature: node.temperature ?? null,
-        steps: node.steps ?? null,
-        permission: null,
-        knowledge: null,
-      };
-    }
-
-    return {
-      model: node.model ?? config.model,
-      temperature: node.temperature ?? config.temperature,
-      steps: node.steps ?? config.steps,
-      permission: config.permission,
-      knowledge: config.knowledge,
     };
   }
 
