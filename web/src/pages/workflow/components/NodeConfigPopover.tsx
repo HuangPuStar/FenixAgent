@@ -1,4 +1,5 @@
 import type { Node } from "@xyflow/react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { NodeConfigCard } from "./NodeConfigCard";
@@ -31,12 +32,19 @@ export function NodeConfigPopover({
   agentList,
 }: NodeConfigPopoverProps) {
   const { t } = useTranslation("workflows");
+  const anchorRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (selectedNode) {
+      anchorRef.current = document.querySelector(`[data-node-id="${selectedNode.id}"]`) as HTMLElement | null;
+    }
+  }, [selectedNode]);
 
   if (!selectedNode) return null;
 
   return (
     <Popover open={open} onOpenChange={onOpenChange} modal={false}>
-      <PopoverAnchor />
+      <PopoverAnchor virtualRef={anchorRef} />
       <PopoverContent side="right" align="start" sideOffset={8} collisionPadding={16} className="wf-node-popover">
         <div className="wf-popover-header">
           <span className="wf-popover-title">{selectedNode.id}</span>
