@@ -28,6 +28,16 @@ export type { ITokenRepo, TokenRecord } from "./token";
 export { tokenRepo } from "./token";
 export type { IWorkItemRepo, WorkItemRecord } from "./work-item";
 export { workItemRepo } from "./work-item";
+export type { WorkflowBoardRow } from "./workflow-board";
+export {
+  createBoard,
+  deleteBoard,
+  ensureDefaultBoard,
+  getBoard,
+  getDefaultBoard,
+  listBoards,
+  updateBoard,
+} from "./workflow-board";
 export type { AuthCtx as WorkflowAuthCtx, WorkflowDefRow, WorkflowVersionRow } from "./workflow-def";
 export {
   createWorkflowDef,
