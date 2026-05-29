@@ -1,3 +1,6 @@
+/**
+ * @deprecated 使用 NodeConfigCard + NodeConfigPopover 或 WorkflowMetaCard + WorkflowMetaPopover 替代
+ */
 import type { Node } from "@xyflow/react";
 import { Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
