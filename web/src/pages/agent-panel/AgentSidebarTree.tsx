@@ -336,36 +336,49 @@ export function AgentSidebarTree({
         const isRestarting = runningInstances.some((inst) => restartingIds.has(inst.id));
         const initial = agent.name.charAt(0).toUpperCase();
         const avatarBg = agent.color || "var(--color-brand)";
-        const runningCount = runningInstances.length;
 
         return (
-          <div key={agent.id} className="agent-card-wrapper">
-            {/* 卡片主体：点击进入智能体 */}
-            <button type="button" disabled={isEntering} className="agent-card" onClick={() => handleEnterAgent(node)}>
-              {/* 左侧头像 */}
-              <div className="agent-card-avatar" style={{ background: avatarBg }}>
+          <div key={agent.id} className="relative mx-2">
+            {/* 卡片主体 */}
+            <button
+              type="button"
+              disabled={isEntering}
+              onClick={() => handleEnterAgent(node)}
+              className={[
+                "flex items-center gap-2.5 w-full p-2.5",
+                "border border-border-subtle rounded-[10px] bg-surface-1",
+                "cursor-pointer text-left font-[inherit]",
+                "transition-all duration-150",
+                "hover:bg-surface-hover hover:border-border-default hover:shadow-sm",
+                "disabled:opacity-60 disabled:cursor-not-allowed",
+              ].join(" ")}
+            >
+              {/* 头像 */}
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
+                style={{ background: avatarBg }}
+              >
                 {isEntering ? (
-                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
                 ) : (
                   <span className="text-white font-bold text-sm">{initial}</span>
                 )}
               </div>
 
-              {/* 中间文字 */}
-              <div className="agent-card-info">
-                <div className="agent-card-name-row">
-                  <span className="agent-card-name">{agent.name}</span>
-                  {runningCount > 0 && <span className="agent-card-badge">{runningCount}</span>}
+              {/* 名称 + 描述 */}
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-semibold text-text-primary truncate">{agent.name}</div>
+                <div className="text-[11px] text-text-dim truncate mt-0.5">
+                  {agent.description || agent.model || t("agentDefaultDesc")}
                 </div>
-                <span className="agent-card-desc">{agent.description || agent.model || t("agentDefaultDesc")}</span>
               </div>
             </button>
 
             {/* 悬浮操作栏 */}
-            <div className="agent-card-actions">
+            <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"
-                className="agent-card-action-btn"
+                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
                 onClick={() =>
                   setExpandedAgents((prev) => ({
                     ...prev,
@@ -378,7 +391,7 @@ export function AgentSidebarTree({
               </button>
               <button
                 type="button"
-                className="agent-card-action-btn"
+                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
                 disabled={isRestarting}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -390,7 +403,7 @@ export function AgentSidebarTree({
               </button>
               <button
                 type="button"
-                className="agent-card-action-btn"
+                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
                   onEditAgent?.(agent.name);
@@ -403,7 +416,7 @@ export function AgentSidebarTree({
 
             {/* 展开的实例列表 */}
             {!collapsed && (
-              <div className="agent-card-instances">
+              <div className="mt-1 py-0.5">
                 {instances.length > 0
                   ? instances.map((inst) => {
                       const isInstRestarting = restartingIds.has(inst.id);
@@ -411,15 +424,20 @@ export function AgentSidebarTree({
                       return (
                         <div
                           key={inst.id}
-                          className={`agent-card-instance ${selectedInstanceId === inst.id ? "selected" : ""}`}
+                          className={[
+                            "flex items-center gap-2 px-3 py-1.5 ml-2 text-[13px] rounded-md cursor-pointer transition-colors",
+                            selectedInstanceId === inst.id
+                              ? "bg-brand-subtle text-brand"
+                              : "text-text-primary hover:bg-surface-hover",
+                          ].join(" ")}
                           onClick={() => handleEnterAgent(node, { instanceNumber: inst.instance_number })}
                         >
                           <span className={`status-dot ${getInstanceStatus(inst)}`} />
                           <span className="truncate">{t("instanceN", { number: inst.instance_number })}</span>
-                          <div className="agent-card-instance-actions">
+                          <div className="ml-auto flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             <button
                               type="button"
-                              className="agent-tree-action-btn"
+                              className="flex items-center justify-center w-5.5 h-5.5 border-none rounded bg-transparent text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
                               disabled={isInstRestarting}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -431,7 +449,7 @@ export function AgentSidebarTree({
                             </button>
                             <button
                               type="button"
-                              className="agent-tree-action-btn"
+                              className="flex items-center justify-center w-5.5 h-5.5 border-none rounded bg-transparent text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
                               disabled={isInstStopping}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -451,9 +469,9 @@ export function AgentSidebarTree({
                   disabled={isEntering}
                   onClick={() => handleEnterAgent(node, { spawnNew: true })}
                   title={t("newInstance")}
-                  className="agent-card-new-instance"
+                  className="flex items-center gap-1.5 px-3 py-1 ml-2 text-[13px] text-text-dim cursor-pointer border-none rounded-md bg-transparent hover:bg-surface-hover hover:text-text-secondary transition-colors whitespace-nowrap"
                 >
-                  <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+                  <Plus className="w-3.5 h-3.5 shrink-0" />
                   <span>{t("newInstance")}</span>
                 </button>
               </div>
