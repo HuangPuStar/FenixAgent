@@ -478,6 +478,13 @@
   z-index: 5;
 }
 
+.wf-run-popover-anchor {
+  position: absolute;
+  bottom: 12px;
+  right: 52px;
+  z-index: 5;
+}
+
 .wf-meta-trigger-btn {
   display: flex;
   align-items: center;

@@ -3,7 +3,6 @@ import {
   BackgroundVariant,
   Controls,
   type Edge,
-  MiniMap,
   type Node,
   type OnSelectionChangeFunc,
   Panel,
@@ -40,6 +39,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { workflowDefApi } from "../../api/workflow-defs";
 import {
@@ -426,22 +426,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           className={readOnly ? "wf-canvas-readonly" : ""}
         >
           <Controls position="bottom-left" showInteractive={!readOnly} />
-          <MiniMap
-            position="bottom-right"
-            nodeColor={(n) => {
-              const colorMap: Record<string, string> = {
-                start: "#6366f1",
-                agent: "#22c55e",
-                api: "#8b5cf6",
-                audit: "#f59e0b",
-                workflow: "#ec4899",
-                loop: "#06b6d4",
-              };
-              return colorMap[n.type ?? ""] ?? "#3b82f6";
-            }}
-            maskColor="rgba(0,0,0,0.08)"
-            style={{ borderRadius: 8 }}
-          />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#d1d5db" />
 
           {/* 节点面板 */}
@@ -611,20 +595,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               >
                 <MessageSquare size={15} />
               </button>
-              <button
-                type="button"
-                className={`wf-toolbar-btn ${runSheetOpen ? "active" : ""}`}
-                onClick={() => {
-                  setRunSheetOpen(!runSheetOpen);
-                  if (!runSheetOpen) {
-                    setVersionsSheetOpen(false);
-                    setTriggersSheetOpen(false);
-                  }
-                }}
-                data-tooltip={t("editor.tooltip_run_history")}
-              >
-                <List size={15} />
-              </button>
             </div>
           </Panel>
         </ReactFlow>
@@ -766,13 +736,29 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         />
       </div>
 
-      {/* 运行状态 Sheet */}
-      <Sheet open={runSheetOpen} onOpenChange={setRunSheetOpen}>
-        <SheetContent side="right" style={{ width: 360, maxWidth: 360, padding: 0 }}>
-          <SheetHeader>
-            <SheetTitle>{t("editor.run_history")}</SheetTitle>
-          </SheetHeader>
-          <div className="wf-sheet-body">
+      {/* 运行日志 Popover（右下角） */}
+      <div className="wf-run-popover-anchor">
+        <Popover open={runSheetOpen} onOpenChange={setRunSheetOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={`wf-meta-trigger-btn ${runSheetOpen ? "active" : ""}`}
+              title={t("editor.tooltip_run_history")}
+            >
+              <List size={14} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            side="top"
+            align="end"
+            sideOffset={8}
+            collisionPadding={16}
+            className="wf-meta-popover"
+            style={{ width: 360, maxHeight: 520 }}
+          >
+            <div className="wf-popover-header">
+              <span className="wf-popover-title">{t("editor.run_history")}</span>
+            </div>
             <RunStatusPanel
               activeRunId={activeRunId}
               runSnapshot={runSnapshot}
@@ -806,9 +792,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               setSelectedNodeOutput={setSelectedNodeOutput}
               updateNodesFromSnapshot={updateNodesFromSnapshot}
             />
-          </div>
-        </SheetContent>
-      </Sheet>
+          </PopoverContent>
+        </Popover>
+      </div>
 
       {/* 版本管理 Sheet */}
       <Sheet open={versionsSheetOpen} onOpenChange={setVersionsSheetOpen}>
