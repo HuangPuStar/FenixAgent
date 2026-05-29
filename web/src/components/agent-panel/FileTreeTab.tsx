@@ -122,7 +122,7 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
   );
 
   const handleSelect = useCallback(
-    (nodeId: string | null, node: TreeNodeData) => {
+    (nodeId: string | null, _node: TreeNodeData) => {
       if (!nodeId) return;
       const parsed = findNodeByPath(treeDataRef.current, nodeId);
       const isDir = parsed?.isDir ?? false;
@@ -418,13 +418,7 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
         >
           <FilePlus className="h-3.5 w-3.5" />
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          style={{ display: "none" }}
-          onChange={handleFileInputChange}
-        />
+        <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileInputChange} />
         <input
           ref={folderInputRef}
           type="file"

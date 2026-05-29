@@ -1,5 +1,5 @@
-import { stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { stat } from "node:fs/promises";
 import Elysia from "elysia";
 import { NotFoundError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
@@ -165,7 +165,7 @@ app.get(
     if (!resolved) return error(404, { error: { type: "not_found", message: "Path not found" } });
 
     try {
-      const info = await stat(resolved);
+      const info = await stat(resolved.resolved);
       if (!info.isDirectory())
         return error(400, { error: { type: "validation_error", message: "Path is not a directory" } });
     } catch {
@@ -178,7 +178,7 @@ app.get(
 
     // 使用系统 zip 命令流式打包，零内存占用
     const zipProcess = spawn("zip", ["-r", "-q", "-", "."], {
-      cwd: resolved,
+      cwd: resolved.resolved,
       stdio: ["ignore", "pipe", "ignore"],
     });
 
