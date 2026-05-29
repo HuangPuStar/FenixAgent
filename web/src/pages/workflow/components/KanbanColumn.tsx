@@ -29,7 +29,7 @@ export function KanbanColumn({ titleKey, jobs, onRefresh, onEditParams, onViewLo
       </div>
 
       {/* Card list */}
-      <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
+      <div className="flex-1 overflow-y-auto space-y-px">
         {jobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-6 text-text-dim">
             <Inbox size={16} className="mb-1 opacity-40" />

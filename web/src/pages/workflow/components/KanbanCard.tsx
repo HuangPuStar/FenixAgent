@@ -1,13 +1,7 @@
-import { CheckCircle2, MoreHorizontal, Pause, Play, ScrollText, Trash2 } from "lucide-react";
+import { CheckCircle2, Pause, Play, ScrollText, Trash2, X as XIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type { DagStatus, WorkflowJob } from "../../../api/workflow-jobs";
 import { workflowJobsApi } from "../../../api/workflow-jobs";
 
@@ -123,44 +117,13 @@ export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanC
     <div
       className={`group border border-border-subtle border-l-[3px] bg-surface-elevated transition-colors hover:border-border ${accent}`}
     >
-      <div className="px-2.5 py-2 space-y-1">
-        {/* Name + menu */}
-        <div className="flex items-center justify-between gap-1.5">
-          <span className="font-medium text-text-primary truncate text-[11px] leading-tight">
-            {job.workflowName ?? job.workflowId}
-          </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-hover flex-shrink-0"
-                disabled={loading}
-              >
-                <MoreHorizontal size={12} className="text-text-muted" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[120px]">
-              {(job.status === "running" || job.status === "completed" || job.status === "suspended") && (
-                <DropdownMenuItem onClick={() => onViewLogs(job)}>
-                  <ScrollText size={13} className="mr-1.5" /> {t("logs_view")}
-                </DropdownMenuItem>
-              )}
-              {job.status === "ready" && (
-                <DropdownMenuItem onClick={() => onEditParams(job)}>{t("card_edit_params")}</DropdownMenuItem>
-              )}
-              {(job.status === "ready" || job.status === "completed") && (
-                <DropdownMenuItem
-                  className="text-red-600"
-                  onClick={() => handleAction(() => workflowJobsApi.delete(job.id))}
-                >
-                  <Trash2 size={13} className="mr-1.5" /> {t("card_delete")}
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+      <div className="px-2 py-1.5 space-y-0.5">
+        {/* Name */}
+        <span className="font-medium text-text-primary truncate text-[11px] leading-tight block">
+          {job.workflowName ?? job.workflowId}
+        </span>
 
-        {/* Params + Status row */}
+        {/* Params + Status */}
         <div className="flex items-center justify-between gap-2">
           <div className="text-text-muted truncate text-[10px] font-mono" title={paramsSummary(job.params, t)}>
             {paramsSummary(job.params, t)}
@@ -168,35 +131,67 @@ export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanC
           <div
             className={`flex items-center gap-1 text-[10px] font-semibold uppercase whitespace-nowrap ${labelColor}`}
           >
-            {isRunning && <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot} animate-pulse`} />}
-            {!isRunning && <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot}`} />}
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot} ${isRunning ? "animate-pulse" : ""}`} />
             {statusLabel}
           </div>
         </div>
 
-        {/* Meta */}
-        <div className="text-text-dim text-[10px] flex items-center gap-1">
-          {job.userName && <span>{t("card_created_by", { name: job.userName })}</span>}
-          <span>·</span>
-          <span>{relativeTime(job.createdAt, t)}</span>
-          {job.runCount > 1 && (
-            <>
-              <span>·</span>
-              <span>{t("card_run_count", { count: job.runCount })}</span>
-            </>
-          )}
+        {/* Meta + inline actions */}
+        <div className="flex items-center justify-between gap-1">
+          <div className="text-text-dim text-[10px] flex items-center gap-1 truncate">
+            {job.userName && <span>{t("card_created_by", { name: job.userName })}</span>}
+            <span>·</span>
+            <span>{relativeTime(job.createdAt, t)}</span>
+          </div>
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            {/* View logs — running/completed/suspended */}
+            {(job.status === "running" || job.status === "completed" || job.status === "suspended") && (
+              <button
+                type="button"
+                onClick={() => onViewLogs(job)}
+                title={t("logs_view")}
+                className="p-0.5 text-text-dim hover:text-brand"
+              >
+                <ScrollText size={11} />
+              </button>
+            )}
+            {/* Edit params — ready */}
+            {job.status === "ready" && (
+              <button
+                type="button"
+                onClick={() => onEditParams(job)}
+                title={t("card_edit_params")}
+                className="p-0.5 text-text-dim hover:text-brand"
+              >
+                <Play size={11} />
+              </button>
+            )}
+            {/* Delete — ready/completed */}
+            {(job.status === "ready" || job.status === "completed") && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(t("delete_confirm"))) handleAction(() => workflowJobsApi.delete(job.id));
+                }}
+                title={t("card_delete")}
+                className="p-0.5 text-text-dim hover:text-red-500"
+              >
+                <Trash2 size={11} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Primary action */}
+      {/* Primary action bar — only for run/cancel/approve */}
       {primaryAction && PrimaryIcon && (
         <button
           type="button"
           onClick={() => handleAction(primaryAction.action)}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-1 py-1 text-[10px] font-medium border-t border-border-subtle text-text-secondary hover:text-brand hover:bg-brand-subtle transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-1 py-0.5 text-[10px] font-medium border-t border-border-subtle text-text-secondary hover:text-brand hover:bg-brand-subtle transition-colors disabled:opacity-50"
         >
-          <PrimaryIcon size={12} />
+          <PrimaryIcon size={10} />
           {primaryAction.label}
         </button>
       )}
