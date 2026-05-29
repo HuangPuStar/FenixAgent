@@ -12,6 +12,7 @@ export type DagStatus = "SUCCESS" | "FAILED" | "CANCELLED" | "ERROR";
 
 export interface WorkflowJob {
   id: string;
+  boardId: string;
   organizationId: string;
   userId: string;
   workflowId: string;
@@ -58,12 +59,12 @@ async function postAction(action: string, extra: Record<string, unknown> = {}): 
 // ── API ──
 
 export const workflowJobsApi = {
-  async create(workflowId: string, params?: Record<string, unknown>): Promise<WorkflowJob> {
-    return postAction("create", { workflowId, params }) as Promise<WorkflowJob>;
+  async create(boardId: string, workflowId: string, params?: Record<string, unknown>): Promise<WorkflowJob> {
+    return postAction("create", { boardId, workflowId, params }) as Promise<WorkflowJob>;
   },
 
-  async list(): Promise<WorkflowJob[]> {
-    const data = await postAction("list");
+  async list(boardId?: string): Promise<WorkflowJob[]> {
+    const data = await postAction("list", boardId ? { boardId } : {});
     return Array.isArray(data) ? data : [];
   },
 
