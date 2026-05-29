@@ -72,7 +72,7 @@ export function CodePreview({ content, filePath }: CodePreviewProps) {
       `}</style>
       {/* eslint-disable-next-line react/no-danger */}
       <pre
-        className="shiki-preview font-mono"
+        className="shiki-preview font-mono whitespace-nowrap"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki 输出的可信 HTML
         dangerouslySetInnerHTML={{ __html: html ?? "" }}
       />
