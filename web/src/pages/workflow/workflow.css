@@ -411,3 +411,99 @@
 }
 
 /* ── Meta Agent Chat 侧边栏（白色简洁面板，复用 ChatPanel 原生样式） ── */
+
+/* ── Node Config Popover ── */
+.wf-node-popover {
+  width: 320px;
+  max-height: 480px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  padding: 0;
+  background: #fff;
+}
+
+.wf-meta-popover {
+  width: 320px;
+  max-height: 520px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  padding: 0;
+  background: #fff;
+}
+
+.wf-popover-header {
+  padding: 8px 14px;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  border-radius: 12px 12px 0 0;
+}
+
+.wf-popover-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.wf-popover-type {
+  font-size: 10px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 1px 6px;
+  border-radius: 99;
+}
+
+.wf-popover-body {
+  padding: 4px 0;
+}
+
+/* ── Meta Popover Anchor (bottom-right) ── */
+.wf-meta-popover-anchor {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 5;
+}
+
+.wf-meta-trigger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.9);
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(4px);
+}
+
+.wf-meta-trigger-btn:hover {
+  background: #fff;
+  color: #374151;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Workflow Sheet ── */
+.wf-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
