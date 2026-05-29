@@ -38,7 +38,6 @@ export interface RunStatusPanelProps {
   setRunApprovals: (approvals: PendingApproval[]) => void;
   setSelectedNodeOutput: (output: NodeOutput | null) => void;
   updateNodesFromSnapshot: (snap: DAGSnapshot) => void;
-  setRightTab: (tab: "config" | "run" | "versions") => void;
 }
 
 export function RunStatusPanel({
@@ -67,7 +66,6 @@ export function RunStatusPanel({
   setRunApprovals,
   setSelectedNodeOutput,
   updateNodesFromSnapshot,
-  setRightTab,
 }: RunStatusPanelProps) {
   const { t } = useTranslation("workflows");
 
@@ -95,7 +93,7 @@ export function RunStatusPanel({
             console.error(`${t("editor.load_run_data_failed")}:`, err);
           }
         }}
-        onClose={() => setRightTab("config")}
+        onClose={handleBackToList}
       />
     );
   }
