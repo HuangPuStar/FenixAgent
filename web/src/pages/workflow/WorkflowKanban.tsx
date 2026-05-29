@@ -1,4 +1,4 @@
-import { Loader, RefreshCw } from "lucide-react";
+import { Loader, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WorkflowJob } from "../../api/workflow-jobs";
@@ -92,12 +92,26 @@ export function WorkflowKanban() {
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle bg-surface-1 flex-shrink-0">
-        <BoardSelector
-          currentUserId={currentUserId}
-          selectedBoardId={boardId}
-          onSelect={setBoardId}
-          onBoardsChange={loadJobs}
-        />
+        <div className="flex items-center gap-2">
+          <BoardSelector
+            currentUserId={currentUserId}
+            selectedBoardId={boardId}
+            onSelect={setBoardId}
+            onBoardsChange={loadJobs}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setEditJob(null);
+              setDialogOpen(true);
+            }}
+            disabled={!boardId}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-light transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus size={13} />
+            {t("dialog_create_title")}
+          </button>
+        </div>
         <button
           type="button"
           onClick={loadJobs}
