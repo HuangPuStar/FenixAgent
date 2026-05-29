@@ -1,4 +1,4 @@
-import { Download, File, FilePlus, Folder, FolderOpen, RefreshCw, Upload } from "lucide-react";
+import { Download, File, FilePlus, Folder, FolderInput, FolderOpen, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -74,7 +74,9 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
   const [selectedDir, setSelectedDir] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [selectedIsDir, setSelectedIsDir] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const loadTree = useCallback(async () => {
     if (!envId) return;
@@ -123,14 +125,17 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
     (nodeId: string | null, node: TreeNodeData) => {
       if (!nodeId) return;
       const parsed = findNodeByPath(treeDataRef.current, nodeId);
-      if (parsed?.isDir) {
+      const isDir = parsed?.isDir ?? false;
+      setSelectedIsDir(isDir);
+      if (isDir) {
         setSelectedDir(nodeId);
+        setSelectedFile(nodeId);
       } else {
         const parentDir = nodeId.substring(0, nodeId.lastIndexOf("/"));
         setSelectedDir(parentDir || null);
         setSelectedFile(nodeId);
       }
-      if (node.hasChildren === false || node.hasChildren === undefined) {
+      if (!isDir) {
         onPreviewFile(nodeId);
       }
     },
@@ -241,23 +246,29 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
     [envId, selectedDir, loadTree, t],
   );
 
-  // 按钮上传
+  // 按钮上传文件
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileInputChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!envId) return;
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
+  // 按钮上传文件夹
+  const handleFolderUploadClick = useCallback(() => {
+    folderInputRef.current?.click();
+  }, []);
+
+  const uploadFiles = useCallback(
+    async (files: File[], relativePaths?: string[]) => {
+      if (!envId || files.length === 0) return;
 
       setUploading(true);
       try {
         const targetDir = selectedDir || "user";
         const formData = new FormData();
-        for (const file of Array.from(files)) {
+        for (const file of files) {
           formData.append("files", file);
+        }
+        if (relativePaths && relativePaths.length > 0) {
+          formData.append("relativePaths", JSON.stringify(relativePaths));
         }
         const { error: uploadErr } = await fileApi.upload({ id: envId, path: targetDir }, formData);
         if (uploadErr) {
@@ -270,27 +281,59 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
         toast.error(t("fileTree.uploadFailed"));
       } finally {
         setUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
     [envId, selectedDir, loadTree, t],
   );
 
-  // 下载
+  const handleFileInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      await uploadFiles(Array.from(files));
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    },
+    [uploadFiles],
+  );
+
+  const handleFolderInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      // webkitRelativePath 保留了文件夹的相对路径结构
+      const relativePaths = Array.from(files).map((f) => f.webkitRelativePath || f.name);
+      await uploadFiles(Array.from(files), relativePaths);
+      if (folderInputRef.current) folderInputRef.current.value = "";
+    },
+    [uploadFiles],
+  );
+
+  // 下载：文件直接下载，目录打包为 zip
   const handleDownload = useCallback(async () => {
     if (!envId || !selectedFile) return;
     try {
-      const url = `/web/environments/${envId}/user/${selectedFile}?preview=true`;
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = selectedFile.split("/").pop() || "file";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      if (selectedIsDir) {
+        const url = `/web/environments/${envId}/user-file/download-zip?path=${encodeURIComponent(selectedFile)}`;
+        const a = document.createElement("a");
+        a.href = url;
+        const dirName = selectedFile.split("/").filter(Boolean).pop() || "download";
+        a.download = `${dirName}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        const url = `/web/environments/${envId}/user/${selectedFile}?preview=true`;
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = selectedFile.split("/").pop() || "file";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     } catch {
       toast.error(t("fileTree.downloadFailed"));
     }
-  }, [envId, selectedFile, t]);
+  }, [envId, selectedFile, selectedIsDir, t]);
 
   // 新建空文件
   const handleNewFile = useCallback(async () => {
@@ -350,10 +393,19 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
         </button>
         <button
           type="button"
+          onClick={handleFolderUploadClick}
+          disabled={uploading || !envId}
+          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          title={t("fileTree.uploadFolder")}
+        >
+          <FolderInput className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
           onClick={handleDownload}
           disabled={!selectedFile || !envId}
           className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.download")}
+          title={selectedIsDir ? t("fileTree.downloadZip") : t("fileTree.download")}
         >
           <Download className="h-3.5 w-3.5" />
         </button>
@@ -372,6 +424,16 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
           multiple
           style={{ display: "none" }}
           onChange={handleFileInputChange}
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
+          multiple
+          style={{ display: "none" }}
+          onChange={handleFolderInputChange}
+          // @ts-expect-error webkitdirectory is non-standard but widely supported
+          webkitdirectory=""
+          directory=""
         />
       </div>
 

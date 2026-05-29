@@ -134,8 +134,10 @@
     "download": "下载",
     "newFile": "新建文件",
     "newFileName": "新文件名",
+    "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
+    "downloadZip": "下载 ZIP",
     "downloadFailed": "下载失败",
     "contextMenu": {
       "reference": "引用到聊天",

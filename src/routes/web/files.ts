@@ -118,7 +118,7 @@ app.get(
   { sessionAuth: true },
 );
 
-// POST /:id/user/* — Upload files
+// POST /:id/user/* — Upload files (支持文件夹上传，通过 relativePaths 字段传递相对路径)
 app.post(
   "/:id/user/*",
   async ({ store, params, request, error }) => {
@@ -135,7 +135,7 @@ app.post(
     if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
 
     const { resolved } = result;
-    const { mkdir } = await import("node:fs/promises");
+    const { mkdir, writeFile: writeFileAsync } = await import("node:fs/promises");
     await mkdir(resolved, { recursive: true });
 
     const formData = await request.formData();
@@ -143,18 +143,35 @@ app.post(
     if (!files || files.length === 0)
       return error(400, { error: { type: "validation_error", message: "No files provided" } });
 
+    // 解析相对路径数组（文件夹上传时由前端传入）
+    const rawPaths = formData.get("relativePaths");
+    let relativePaths: string[] = [];
+    if (rawPaths && typeof rawPaths === "string") {
+      try {
+        relativePaths = JSON.parse(rawPaths);
+      } catch {
+        relativePaths = [];
+      }
+    }
+
     const uploaded: Array<{ name: string; path: string; size: number }> = [];
-    const { writeFile: writeFileAsync } = await import("node:fs/promises");
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]!;
       const buffer = Buffer.from(await file.arrayBuffer());
       if (buffer.length > 50 * 1024 * 1024) {
         return error(413, { error: { type: "validation_error", message: `File ${file.name} exceeds 50MB limit` } });
       }
-      const destPath = join(resolved, file.name);
+
+      // 如果有对应的相对路径，保留目录结构；否则直接用文件名
+      const relPath = relativePaths[i] || file.name;
+      const destPath = join(resolved, relPath);
+      const destDir = destPath.substring(0, destPath.lastIndexOf("/"));
+      await mkdir(destDir, { recursive: true });
       await writeFileAsync(destPath, buffer);
+
       uploaded.push({
         name: file.name,
-        path: `user/${dirPath ? `${dirPath.replace(/^user\/?/, "")}/` : ""}${file.name}`.replace("user//", "user/"),
+        path: `user/${dirPath ? `${dirPath.replace(/^user\/?/, "")}/` : ""}${relPath}`.replace("user//", "user/"),
         size: buffer.length,
       });
     }

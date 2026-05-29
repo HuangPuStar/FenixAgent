@@ -134,8 +134,10 @@
     "download": "Download",
     "newFile": "New File",
     "newFileName": "New file name",
+    "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
+    "downloadZip": "Download ZIP",
     "downloadFailed": "Download failed",
     "contextMenu": {
       "reference": "Reference in chat",

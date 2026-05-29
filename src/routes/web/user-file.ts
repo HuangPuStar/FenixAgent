@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import Elysia from "elysia";
 import { NotFoundError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
@@ -145,6 +146,46 @@ app.delete(
     return { deleted, failed };
   },
   { sessionAuth: true, body: "batch-delete-request" },
+);
+
+// GET /:id/user-file/download-zip — 打包下载目录为 zip
+app.get(
+  "/:id/user-file/download-zip",
+  async ({ store, params, query, error, set }) => {
+    const authCtx = store.authContext!;
+    const env = await requireEnv(params.id, authCtx.organizationId, error);
+    if (env instanceof Response) return env;
+
+    const path = (query as Record<string, string | undefined>)?.path;
+    if (!path) return error(400, { error: { type: "validation_error", message: "path query parameter required" } });
+    if (!isUserPath(path))
+      return error(400, { error: { type: "validation_error", message: "Only user/ paths are allowed" } });
+
+    const resolved = await resolveWorkspacePath(params.id, path);
+    if (!resolved) return error(404, { error: { type: "not_found", message: "Path not found" } });
+
+    try {
+      const info = await stat(resolved);
+      if (!info.isDirectory())
+        return error(400, { error: { type: "validation_error", message: "Path is not a directory" } });
+    } catch {
+      return error(404, { error: { type: "not_found", message: "Path not found" } });
+    }
+
+    const dirName = path.split("/").filter(Boolean).pop() || "download";
+    set.headers["Content-Type"] = "application/zip";
+    set.headers["Content-Disposition"] = `attachment; filename="${dirName}.zip"`;
+
+    // 使用系统 zip 命令流式打包，零内存占用
+    const zipProcess = spawn("zip", ["-r", "-q", "-", "."], {
+      cwd: resolved,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+
+    // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch
+    return new Response(zipProcess.stdout as any);
+  },
+  { sessionAuth: true },
 );
 
 export default app;
