@@ -780,6 +780,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setChatOpen={setChatOpen}
         metaAgentId={metaAgentId}
         scenePrompt={scenePrompt}
+        onPromptComplete={handleRefreshDraft}
       />
 
       {/* 运行参数输入对话框 */}

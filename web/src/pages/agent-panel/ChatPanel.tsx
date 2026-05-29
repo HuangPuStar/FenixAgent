@@ -15,6 +15,7 @@ interface ChatPanelProps {
   hideSidebar?: boolean;
   onClientChange?: (client: ACPClient | null) => void;
   scenePrompt?: string;
+  onPromptComplete?: () => void;
 }
 
 export function ChatPanel({
@@ -24,6 +25,7 @@ export function ChatPanel({
   hideSidebar,
   onClientChange,
   scenePrompt,
+  onPromptComplete,
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [client, setClient] = useState<ACPClient | null>(null);
@@ -122,6 +124,7 @@ export function ChatPanel({
           hideSidebar={hideSidebar}
           rcsSessionId={sessionId ?? undefined}
           scenePrompt={scenePrompt}
+          onPromptComplete={onPromptComplete}
         />
       </TooltipProvider>
     );

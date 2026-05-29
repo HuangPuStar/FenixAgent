@@ -10,9 +10,16 @@ interface MetaAgentPanelProps {
   setChatOpen: (open: boolean) => void;
   metaAgentId: string | null;
   scenePrompt: string | undefined;
+  onPromptComplete?: () => void;
 }
 
-export function MetaAgentPanel({ chatOpen, setChatOpen, metaAgentId, scenePrompt }: MetaAgentPanelProps) {
+export function MetaAgentPanel({
+  chatOpen,
+  setChatOpen,
+  metaAgentId,
+  scenePrompt,
+  onPromptComplete,
+}: MetaAgentPanelProps) {
   const { t } = useTranslation("workflows");
   const [client, setClient] = useState<ACPClient | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -269,7 +276,13 @@ export function MetaAgentPanel({ chatOpen, setChatOpen, metaAgentId, scenePrompt
 
       {/* 聊天区域 */}
       <div style={{ flex: 1, overflow: "hidden" }}>
-        <ChatPanel agentId={metaAgentId} hideSidebar scenePrompt={scenePrompt} onClientChange={setClient} />
+        <ChatPanel
+          agentId={metaAgentId}
+          hideSidebar
+          scenePrompt={scenePrompt}
+          onClientChange={setClient}
+          onPromptComplete={onPromptComplete}
+        />
       </div>
     </div>
   );

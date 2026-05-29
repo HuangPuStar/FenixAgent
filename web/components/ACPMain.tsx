@@ -17,6 +17,7 @@ interface ACPMainProps {
   hideSidebar?: boolean;
   rcsSessionId?: string;
   scenePrompt?: string;
+  onPromptComplete?: () => void;
 }
 
 /**
@@ -31,6 +32,7 @@ export function ACPMain({
   hideSidebar,
   rcsSessionId,
   scenePrompt,
+  onPromptComplete,
 }: ACPMainProps) {
   const { t } = useTranslation("components");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -262,6 +264,7 @@ export function ACPMain({
           rcsSessionId={rcsSessionId}
           scenePrompt={scenePrompt}
           onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
+          onPromptComplete={onPromptComplete}
         />
       </div>
     </div>
