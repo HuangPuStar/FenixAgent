@@ -17,11 +17,11 @@ export function KanbanColumn({ titleKey, jobs, onRefresh, onEditParams, onViewLo
   return (
     <div className="flex flex-col min-w-[260px] flex-1 border-r border-border-subtle last:border-r-0">
       {/* Column header — uppercase section label */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-subtle flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold tracking-widest uppercase text-text-dim">{t(titleKey)}</span>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle flex-shrink-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold tracking-widest uppercase text-text-dim">{t(titleKey)}</span>
           {jobs.length > 0 && (
-            <span className="text-[10px] font-semibold text-brand bg-brand-subtle rounded-full px-1.5 py-px leading-none">
+            <span className="text-[10px] font-semibold text-brand bg-brand-subtle rounded-none px-1.5 py-px leading-none">
               {jobs.length}
             </span>
           )}
@@ -29,10 +29,10 @@ export function KanbanColumn({ titleKey, jobs, onRefresh, onEditParams, onViewLo
       </div>
 
       {/* Card list */}
-      <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5">
+      <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
         {jobs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-text-dim">
-            <Inbox size={20} className="mb-1.5 opacity-40" />
+          <div className="flex flex-col items-center justify-center py-6 text-text-dim">
+            <Inbox size={16} className="mb-1 opacity-40" />
             <span className="text-[11px] tracking-wide">{t(`empty_${titleKey.replace("col_", "")}`)}</span>
           </div>
         ) : (

@@ -121,22 +121,22 @@ export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanC
 
   return (
     <div
-      className={`group rounded-lg border border-border-subtle border-l-[3px] bg-surface-elevated transition-all duration-200 hover:border-border hover:-translate-y-0.5 hover:shadow-elevated ${accent}`}
+      className={`group border border-border-subtle border-l-[3px] bg-surface-elevated transition-colors hover:border-border ${accent}`}
     >
-      <div className="p-3 space-y-1.5">
+      <div className="px-2.5 py-2 space-y-1">
         {/* Name + menu */}
-        <div className="flex items-start justify-between gap-2">
-          <span className="font-medium text-text-primary truncate text-[13px] leading-tight">
+        <div className="flex items-center justify-between gap-1.5">
+          <span className="font-medium text-text-primary truncate text-[11px] leading-tight">
             {job.workflowName ?? job.workflowId}
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-hover flex-shrink-0"
+                className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-hover flex-shrink-0"
                 disabled={loading}
               >
-                <MoreHorizontal size={14} className="text-text-muted" />
+                <MoreHorizontal size={12} className="text-text-muted" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[120px]">
@@ -160,25 +160,22 @@ export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanC
           </DropdownMenu>
         </div>
 
-        {/* Params */}
-        <div
-          className="text-text-muted truncate text-[11px] font-mono leading-relaxed"
-          title={paramsSummary(job.params, t)}
-        >
-          {paramsSummary(job.params, t)}
-        </div>
-
-        {/* Status */}
-        <div className={`flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase ${labelColor}`}>
-          <span className="relative flex h-2 w-2">
-            {isRunning && <span className={`absolute inset-0 rounded-full ${dot} animate-ping opacity-30`} />}
-            <span className={`relative rounded-full h-2 w-2 ${dot}`} />
-          </span>
-          {statusLabel}
+        {/* Params + Status row */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-text-muted truncate text-[10px] font-mono" title={paramsSummary(job.params, t)}>
+            {paramsSummary(job.params, t)}
+          </div>
+          <div
+            className={`flex items-center gap-1 text-[10px] font-semibold uppercase whitespace-nowrap ${labelColor}`}
+          >
+            {isRunning && <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot} animate-pulse`} />}
+            {!isRunning && <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot}`} />}
+            {statusLabel}
+          </div>
         </div>
 
         {/* Meta */}
-        <div className="text-text-dim text-[11px] flex items-center gap-1 leading-relaxed">
+        <div className="text-text-dim text-[10px] flex items-center gap-1">
           {job.userName && <span>{t("card_created_by", { name: job.userName })}</span>}
           <span>·</span>
           <span>{relativeTime(job.createdAt, t)}</span>
@@ -197,7 +194,7 @@ export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanC
           type="button"
           onClick={() => handleAction(primaryAction.action)}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium border-t border-border-subtle text-text-secondary hover:text-brand hover:bg-brand-subtle transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-1 py-1 text-[10px] font-medium border-t border-border-subtle text-text-secondary hover:text-brand hover:bg-brand-subtle transition-colors disabled:opacity-50"
         >
           <PrimaryIcon size={12} />
           {primaryAction.label}

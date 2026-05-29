@@ -99,8 +99,8 @@ export function WorkflowKanban() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle bg-surface-1 flex-shrink-0">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-3 py-1 border-b border-border-subtle bg-surface-1 flex-shrink-0">
+        <div className="flex items-center gap-1.5">
           <BoardSelector
             currentUserId={currentUserId}
             selectedBoardId={boardId}
@@ -114,7 +114,7 @@ export function WorkflowKanban() {
               setDialogOpen(true);
             }}
             disabled={!boardId}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-light transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 px-2 py-1 bg-brand text-white text-[10px] font-medium hover:bg-brand-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={13} />
             {t("dialog_create_title")}
@@ -123,7 +123,7 @@ export function WorkflowKanban() {
         <button
           type="button"
           onClick={loadJobs}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-text-secondary text-xs hover:bg-surface-hover transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-text-secondary text-[10px] hover:bg-surface-hover transition-colors"
         >
           <RefreshCw size={12} />
           {t("refresh")}
