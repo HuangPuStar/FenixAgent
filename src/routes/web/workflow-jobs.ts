@@ -53,7 +53,8 @@ app.post(
 
         // 列出所有 Job
         case "list": {
-          const jobs = await listJobs(authCtx.organizationId);
+          const boardId = payload.boardId as string | undefined;
+          const jobs = await listJobs(authCtx.organizationId, boardId);
           return { success: true, data: jobs };
         }
 

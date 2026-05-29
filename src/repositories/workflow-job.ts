@@ -67,7 +67,12 @@ export async function getJob(jobId: string, organizationId: string): Promise<Wor
 }
 
 /** 列出组织的所有 Job（含工作流名称和创建人） */
-export async function listJobs(organizationId: string): Promise<WorkflowJobListItem[]> {
+export async function listJobs(organizationId: string, boardId?: string): Promise<WorkflowJobListItem[]> {
+  const conditions = [eq(workflowJob.organizationId, organizationId)];
+  if (boardId) {
+    conditions.push(eq(workflowJob.boardId, boardId));
+  }
+
   const rows = await db
     .select({
       job: workflowJob,
@@ -77,7 +82,7 @@ export async function listJobs(organizationId: string): Promise<WorkflowJobListI
     .from(workflowJob)
     .innerJoin(workflow, eq(workflowJob.workflowId, workflow.id))
     .leftJoin(user, eq(workflowJob.userId, user.id))
-    .where(eq(workflowJob.organizationId, organizationId))
+    .where(and(...conditions))
     .orderBy(desc(workflowJob.updatedAt));
 
   return rows.map((r) => ({
