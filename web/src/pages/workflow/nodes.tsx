@@ -139,6 +139,7 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
 
   return (
     <div
+      data-node-id={id}
       style={{
         background: "#fff",
         borderRadius: 8,
