@@ -48,7 +48,7 @@
 }
 
 .wf-prop-section {
-  padding: 8px 16px;
+  padding: 12px 16px;
 }
 
 .wf-prop-section + .wf-prop-section {
@@ -61,18 +61,18 @@
   color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .wf-prop-field {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .wf-prop-field label {
   display: block;
   font-size: 13px;
   color: #6b7280;
-  margin-bottom: 3px;
+  margin-bottom: 5px;
   font-weight: 500;
 }
 
@@ -80,7 +80,7 @@
 .wf-prop-field select,
 .wf-prop-field textarea {
   width: 100%;
-  padding: 6px 10px;
+  padding: 8px 10px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 13px;
