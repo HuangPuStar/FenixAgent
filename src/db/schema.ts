@@ -727,14 +727,40 @@ export const userConfig = pgTable("user_config", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─────────────────────────���──────────────────
+// Workflow Board（看板面板）
+// ────────────────────────────────────────────
+
+export const workflowBoard = pgTable(
+  "workflow_board",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: text("organization_id").notNull(),
+    name: varchar("name", { length: 100 }).notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgNameIdx: uniqueIndex("idx_workflow_board_org_name").on(table.organizationId, table.name),
+    orgIdx: index("idx_workflow_board_org").on(table.organizationId),
+  }),
+);
+
 // ────────────────────────────────────────────
 // Workflow Job（看板 Job 实体）
-// ────────────────────────────────────────────
+// ────────────────────���───────────────────────
 
 export const workflowJob = pgTable(
   "workflow_job",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    boardId: uuid("board_id")
+      .notNull()
+      .references(() => workflowBoard.id, { onDelete: "cascade" }),
     organizationId: text("organization_id").notNull(),
     userId: text("user_id")
       .notNull()
@@ -752,6 +778,7 @@ export const workflowJob = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    boardIdx: index("idx_workflow_job_board").on(table.boardId),
     orgIdx: index("idx_workflow_job_org").on(table.organizationId),
     statusIdx: index("idx_workflow_job_status").on(table.organizationId, table.status),
     workflowIdx: index("idx_workflow_job_workflow").on(table.workflowId),

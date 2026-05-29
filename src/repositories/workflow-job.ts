@@ -12,6 +12,7 @@ import { user, workflow, workflowJob } from "../db/schema";
 
 export interface WorkflowJobRow {
   id: string;
+  boardId: string;
   organizationId: string;
   userId: string;
   workflowId: string;
@@ -38,11 +39,12 @@ export type JobStatus = "ready" | "running" | "suspended" | "completed";
 export async function createJob(
   organizationId: string,
   userId: string,
-  data: { workflowId: string; version: number; params?: Record<string, unknown> },
+  data: { boardId: string; workflowId: string; version: number; params?: Record<string, unknown> },
 ): Promise<WorkflowJobRow> {
   const [row] = await db
     .insert(workflowJob)
     .values({
+      boardId: data.boardId,
       organizationId,
       userId,
       workflowId: data.workflowId,

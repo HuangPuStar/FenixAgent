@@ -34,15 +34,19 @@ app.post(
         // 创建 Job
         case "create": {
           const workflowId = payload.workflowId as string;
+          const boardId = payload.boardId as string;
           const params = payload.params as Record<string, unknown> | undefined;
           if (!workflowId) {
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+          }
+          if (!boardId) {
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "boardId is required" } });
           }
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
           if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
           const version = wf.latestVersion ?? 0;
 
-          const job = await createJob(authCtx.organizationId, authCtx.userId, { workflowId, version, params });
+          const job = await createJob(authCtx.organizationId, authCtx.userId, { boardId, workflowId, version, params });
           publishJobEvent(authCtx.organizationId, "job.created", { jobId: job.id });
           return { success: true, data: job };
         }
