@@ -17,6 +17,7 @@ import {
   updateJobStatus,
 } from "../../repositories/workflow-job";
 import { getTeamEngine } from "../../services/workflow";
+import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { publishJobEvent } from "../../services/workflow/workflow-job-events";
 
 const app = new Elysia({ name: "web-workflow-jobs" }).use(authGuardPlugin);
@@ -217,6 +218,47 @@ app.post(
           await updateJobStatus(jobId, authCtx.organizationId, { status: "running" });
           publishJobEvent(authCtx.organizationId, "job.started", { jobId });
           return { success: true };
+        }
+
+        // 获取节点输出
+        case "getOutputs": {
+          const jobId = payload.jobId as string;
+          if (!jobId) return error(400, { error: { type: "VALIDATION_ERROR", message: "jobId is required" } });
+          const job = await getJob(jobId, authCtx.organizationId);
+          if (!job) return error(404, { error: { type: "NOT_FOUND", message: "Job not found" } });
+          if (!job.lastRunId) return { success: true, data: [] };
+
+          const storage = createPgStorageAdapter(authCtx.organizationId);
+
+          const events = await storage.getEvents(job.lastRunId);
+          const nodeIds = [...new Set(events.filter((e) => e.node_id).map((e) => e.node_id!))];
+
+          const outputs = await Promise.all(
+            nodeIds.map(async (nodeId) => {
+              const output = await storage.getOutput(job.lastRunId!, nodeId);
+              const nodeEvents = events.filter((e) => e.node_id === nodeId);
+              const started = nodeEvents.find((e) => e.type === "node.started");
+              const completed = nodeEvents.find((e) => e.type === "node.completed" || e.type === "node.failed");
+              return {
+                nodeId,
+                nodeType: started?.node_type ?? null,
+                stdout: output?.stdout ?? "",
+                json: output?.json ?? null,
+                exitCode: output?.exit_code ?? 0,
+                status: completed
+                  ? completed.type === "node.completed"
+                    ? "completed"
+                    : "failed"
+                  : started
+                    ? "running"
+                    : "pending",
+                startedAt: started?.timestamp ?? null,
+                completedAt: completed?.timestamp ?? null,
+              };
+            }),
+          );
+
+          return { success: true, data: outputs };
         }
 
         default:
