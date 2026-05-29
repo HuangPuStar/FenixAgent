@@ -1,8 +1,10 @@
-import { Loader, Plus, RefreshCw } from "lucide-react";
+import { Loader, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WorkflowJob } from "../../api/workflow-jobs";
 import { workflowJobsApi } from "../../api/workflow-jobs";
+import { useSession } from "../../lib/auth-client";
+import { BoardSelector } from "./components/BoardSelector";
 import { KanbanColumn } from "./components/KanbanColumn";
 import { KanbanJobDialog } from "./components/KanbanJobDialog";
 
@@ -10,18 +12,22 @@ const COMPLETED_COLLAPSE_LIMIT = 10;
 
 export function WorkflowKanban() {
   const { t } = useTranslation("kanban");
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id ?? "";
   const [jobs, setJobs] = useState<WorkflowJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editJob, setEditJob] = useState<WorkflowJob | null>(null);
+  const [boardId, setBoardId] = useState<string | null>(null);
 
   const loadJobs = useCallback(async () => {
+    if (!boardId) return;
     try {
       setLoading(true);
       setError(null);
-      const data = await workflowJobsApi.list();
+      const data = await workflowJobsApi.list(boardId);
       setJobs(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
@@ -29,7 +35,7 @@ export function WorkflowKanban() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [boardId]);
 
   useEffect(() => {
     loadJobs();
@@ -85,17 +91,12 @@ export function WorkflowKanban() {
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle bg-surface-1 flex-shrink-0">
-        <button
-          type="button"
-          onClick={() => {
-            setEditJob(null);
-            setDialogOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-light transition-colors active:scale-[0.98]"
-        >
-          <Plus size={13} />
-          {t("dialog_create_title")}
-        </button>
+        <BoardSelector
+          currentUserId={currentUserId}
+          selectedBoardId={boardId}
+          onSelect={setBoardId}
+          onBoardsChange={loadJobs}
+        />
         <button
           type="button"
           onClick={loadJobs}
@@ -149,7 +150,13 @@ export function WorkflowKanban() {
         </div>
       </div>
 
-      <KanbanJobDialog open={dialogOpen} onClose={handleDialogClose} editJob={editJob} onRefresh={loadJobs} />
+      <KanbanJobDialog
+        open={dialogOpen}
+        onClose={handleDialogClose}
+        editJob={editJob}
+        onRefresh={loadJobs}
+        boardId={boardId}
+      />
     </div>
   );
 }

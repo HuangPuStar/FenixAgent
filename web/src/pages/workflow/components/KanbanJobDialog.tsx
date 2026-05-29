@@ -27,9 +27,10 @@ interface KanbanJobDialogProps {
   onClose: () => void;
   editJob: WorkflowJob | null;
   onRefresh: () => void;
+  boardId: string | null;
 }
 
-export function KanbanJobDialog({ open, onClose, editJob, onRefresh }: KanbanJobDialogProps) {
+export function KanbanJobDialog({ open, onClose, editJob, onRefresh, boardId }: KanbanJobDialogProps) {
   const { t } = useTranslation("kanban");
   const isEdit = !!editJob;
 
@@ -117,7 +118,7 @@ export function KanbanJobDialog({ open, onClose, editJob, onRefresh }: KanbanJob
         await workflowJobsApi.updateParams(editJob.id, paramValues);
         toast.success(t("dialog_save"));
       } else {
-        await workflowJobsApi.create(selectedId, paramValues);
+        await workflowJobsApi.create(boardId!, selectedId, paramValues);
         toast.success(t("dialog_create"));
       }
       onRefresh();
@@ -128,7 +129,7 @@ export function KanbanJobDialog({ open, onClose, editJob, onRefresh }: KanbanJob
     } finally {
       setSaving(false);
     }
-  }, [editJob, isEdit, selectedId, paramValues, onRefresh, onClose, t]);
+  }, [boardId, editJob, isEdit, selectedId, paramValues, onRefresh, onClose, t]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
