@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { envApi } from "../../../../src/api/sdk";
 import type { ThreadEntry } from "../../../../src/lib/types";
 import { StatusHeader } from "../../../components/agent-panel/StatusHeader";
 import { useContextQueue } from "../../../lib/use-context-queue";
@@ -29,6 +30,8 @@ function ChatWithSessionRoute() {
     return saved === "true";
   });
 
+  const [envName, setEnvName] = useState<string | null>(null);
+
   const [stats, setStats] = useState<{ agentName?: string; modelName?: string; entries: ThreadEntry[] }>({
     entries: [],
   });
@@ -38,6 +41,15 @@ function ChatWithSessionRoute() {
     window.addEventListener("chat:stats", handler);
     return () => window.removeEventListener("chat:stats", handler);
   }, []);
+
+  // 加载 environment 名称
+  useEffect(() => {
+    if (!agentId) return;
+    envApi
+      .get({ id: agentId })
+      .then(({ data }) => setEnvName(data?.name ?? null))
+      .catch(() => setEnvName(null));
+  }, [agentId]);
 
   useEffect(() => {
     localStorage.setItem("agent-panel:artifacts-collapsed", String(artifactsCollapsed));
@@ -51,7 +63,7 @@ function ChatWithSessionRoute() {
         </div>
       }
     >
-      <StatusHeader agentName={stats.agentName} modelName={stats.modelName} entries={stats.entries} />
+      <StatusHeader agentName={envName || stats.agentName} modelName={stats.modelName} entries={stats.entries} />
       <div className="agent-panel-content">
         <div className="agent-chat-area">
           <ChatPanel agentId={agentId} sessionId={sessionId} />

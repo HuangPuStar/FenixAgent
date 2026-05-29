@@ -11,8 +11,6 @@ export function StatusHeader({ agentName, modelName, entries = [] }: StatusHeade
   const stats = useMemo(() => computeStats(entries), [entries]);
   const displayName = useMemo(() => {
     if (!agentName) return "\u2014";
-    if (agentName.startsWith("env_")) return agentName.length > 14 ? `${agentName.slice(0, 14)}\u2026` : agentName;
-    if (agentName.length > 18) return `${agentName.slice(0, 16)}\u2026`;
     return agentName;
   }, [agentName]);
 
