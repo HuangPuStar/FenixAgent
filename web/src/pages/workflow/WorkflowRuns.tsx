@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, Inbox, Loader, RefreshCw, Search, Square } from "lucide-react";
+import { AlertTriangle, ArrowRight, Inbox, RefreshCw, Search, Square } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -34,12 +34,7 @@ function StatusBadge({ status }: { status: string }) {
       className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full"
       style={{ color: cfg.color, background: cfg.bg }}
     >
-      {isRunning && (
-        <span
-          className="w-1.5 h-1.5 rounded-full animate-pulse"
-          style={{ background: cfg.color }}
-        />
-      )}
+      {isRunning && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: cfg.color }} />}
       {t(STATUS_LABEL_KEYS[status] ?? status)}
     </span>
   );
@@ -203,9 +198,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
             >
               <div>
                 <div className="font-medium text-text-primary">{r.workflow_name}</div>
-                <div className="text-[10px] text-text-secondary font-mono mt-0.5">
-                  {r.run_id.substring(0, 16)}...
-                </div>
+                <div className="text-[10px] text-text-secondary font-mono mt-0.5">{r.run_id.substring(0, 16)}...</div>
               </div>
               <StatusBadge status={r.status} />
               <div className="font-mono text-text-secondary">
@@ -213,9 +206,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                 <span>/{r.node_summary.total}</span>
               </div>
               <div className="text-text-secondary">{relativeTime(r.started_at, t)}</div>
-              <div className="font-mono text-text-secondary">
-                {formatDuration(r.started_at, r.completed_at)}
-              </div>
+              <div className="font-mono text-text-secondary">{formatDuration(r.started_at, r.completed_at)}</div>
               <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                 {r.status === "RUNNING" && (
                   <button

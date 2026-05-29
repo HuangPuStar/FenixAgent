@@ -1,10 +1,10 @@
-import { AlertTriangle, Clock, Inbox, Loader, RefreshCw, RotateCcw, Star } from "lucide-react";
+import { AlertTriangle, Clock, Inbox, RefreshCw, RotateCcw, Star } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { SkeletonVersionRows } from "./components/SkeletonRows";
 import { type WorkflowDefItem, type WorkflowVersionItem, workflowDefApi } from "../../api/workflow-defs";
+import { SkeletonVersionRows } from "./components/SkeletonRows";
 
 interface WorkflowVersionsProps {
   workflowId: string;
@@ -214,8 +214,8 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
         title={confirmAction?.type === "setLatest" ? t("versions.set_latest") : t("versions.restore_to_draft")}
         description={
           confirmAction?.type === "setLatest"
-            ? t("versions.set_latest_confirm", { version: confirmAction.version })
-            : t("versions.restore_confirm", { version: confirmAction.version })
+            ? t("versions.set_latest_confirm", { version: confirmAction?.version ?? 0 })
+            : t("versions.restore_confirm", { version: confirmAction?.version ?? 0 })
         }
         variant={confirmAction?.type === "restore" ? "destructive" : "default"}
         onConfirm={() => {

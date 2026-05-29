@@ -120,9 +120,7 @@ export function RunStatusPanel({
               background: DAG_STATUS_CFG[dagStatus!]?.bg ?? "var(--color-surface-2)",
             }}
           >
-            {dagStatus === "RUNNING" && (
-              <span className="w-[5px] h-[5px] rounded-full bg-brand animate-pulse" />
-            )}
+            {dagStatus === "RUNNING" && <span className="w-[5px] h-[5px] rounded-full bg-brand animate-pulse" />}
             {DAG_STATUS_CFG[dagStatus!] ? t(DAG_STATUS_CFG[dagStatus!].labelKey) : dagStatus}
           </span>
         )}
@@ -248,9 +246,7 @@ export function RunStatusPanel({
                         })}
                       </span>
                     </div>
-                    {evt.node_id && (
-                      <span className="text-text-secondary font-mono text-[9px]">{evt.node_id}</span>
-                    )}
+                    {evt.node_id && <span className="text-text-secondary font-mono text-[9px]">{evt.node_id}</span>}
                     {evt.metadata && Object.keys(evt.metadata).length > 0 && (
                       <div className="text-text-secondary text-[9px] mt-px font-mono">
                         {formatMeta(t, evt.type, evt.metadata)}

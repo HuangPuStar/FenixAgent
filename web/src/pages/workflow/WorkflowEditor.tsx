@@ -17,7 +17,6 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
 import {
-  AlertTriangle,
   Bot,
   CheckCircle,
   Code,
@@ -38,7 +37,6 @@ import {
   ShieldCheck,
   Terminal,
   Upload,
-  X,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -201,7 +199,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     runRightTab,
     setRunRightTab,
     updateNodesFromSnapshot,
-    clearDryRunResult,
     handleWorkflowEvent,
   } = useWorkflowRun({
     workflowId,
@@ -619,7 +616,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             </div>
           </Panel>
         </ReactFlow>
-
 
         {/* YAML 滑出面板 */}
         <YamlSlidePanel
