@@ -107,7 +107,7 @@ export const workflowEngineApi = {
   async run(yaml: string, params?: Record<string, unknown>, workflowId?: string): Promise<DAGRunResult> {
     return _sdkEngineApi
       .run(yaml, { params, workflowId })
-      .then(({ data, error }: { data: unknown; error: unknown }) => {
+      .then(({ data, error }: { data?: unknown; error?: unknown }) => {
         if (error) throw new Error((error as { message?: string }).message);
         return data as DAGRunResult;
       });
@@ -115,7 +115,7 @@ export const workflowEngineApi = {
 
   /** 校验 + 执行计划（不执行） */
   async dryRun(yaml: string): Promise<DryRunResult> {
-    return _sdkEngineApi.dryRun(yaml).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkEngineApi.dryRun(yaml).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as DryRunResult;
     });
@@ -129,7 +129,7 @@ export const workflowEngineApi = {
 
   /** 获取运行状态快照 */
   async getRunStatus(runId: string): Promise<DAGSnapshot | null> {
-    return _sdkEngineApi.getRunStatus(runId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkEngineApi.getRunStatus(runId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as DAGSnapshot | null;
     });
@@ -137,7 +137,7 @@ export const workflowEngineApi = {
 
   /** 获取事件流 */
   async getEvents(runId: string, _nodeId?: string): Promise<DAGEvent[]> {
-    return _sdkEngineApi.getEvents(runId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkEngineApi.getEvents(runId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return (data ?? []) as DAGEvent[];
     });
@@ -145,7 +145,7 @@ export const workflowEngineApi = {
 
   /** 获取节点输出 */
   async getOutput(runId: string, nodeId: string): Promise<NodeOutput | null> {
-    return _sdkEngineApi.getOutput(runId, nodeId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkEngineApi.getOutput(runId, nodeId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as NodeOutput | null;
     });
@@ -153,7 +153,7 @@ export const workflowEngineApi = {
 
   /** 获取待审批列表 */
   async getPendingApprovals(runId: string): Promise<PendingApproval[]> {
-    return _sdkEngineApi.getPendingApprovals(runId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkEngineApi.getPendingApprovals(runId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return (data ?? []) as PendingApproval[];
     });
@@ -167,7 +167,7 @@ export const workflowEngineApi = {
 
   /** 列出运行记录 */
   async listRuns(): Promise<RunSummary[]> {
-    return _sdkEngineApi.listRuns().then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkEngineApi.listRuns().then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return (data ?? []) as RunSummary[];
     });
@@ -175,7 +175,7 @@ export const workflowEngineApi = {
 
   /** 崩溃恢复 */
   async recover(runId: string, yaml: string): Promise<DAGRunResult> {
-    return _sdkEngineApi.recover(runId, { yaml }).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkEngineApi.recover(runId, { yaml }).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as DAGRunResult;
     });
@@ -185,7 +185,7 @@ export const workflowEngineApi = {
   async rerunFrom(runId: string, yaml: string, fromNodeId: string, workflowId?: string): Promise<DAGRunResult> {
     return _sdkEngineApi
       .rerunFrom(runId, { yaml, fromNodeId, workflowId })
-      .then(({ data, error }: { data: unknown; error: unknown }) => {
+      .then(({ data, error }: { data?: unknown; error?: unknown }) => {
         if (error) throw new Error((error as { message?: string }).message);
         return data as DAGRunResult;
       });

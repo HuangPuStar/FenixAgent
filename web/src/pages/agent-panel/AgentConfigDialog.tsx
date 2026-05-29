@@ -127,7 +127,7 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
         // Load machine options
         registryApi
           .list({ status: "online" })
-          .then(({ data: mData, error: mError }: { data: unknown; error: unknown }) => {
+          .then(({ data: mData, error: mError }: { data?: unknown; error?: unknown }) => {
             if (mError) return;
             const listData = mData as { data?: Array<{ id: string; agentName: string; machineInfo: unknown }> };
             if (listData.data && Array.isArray(listData.data)) {

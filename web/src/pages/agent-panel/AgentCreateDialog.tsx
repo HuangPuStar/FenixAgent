@@ -75,7 +75,7 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
     setActiveTab("basic");
     setFormMachineId("");
 
-    modelApi.get().then(({ data, error }: { data: unknown; error: unknown }) => {
+    modelApi.get().then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) return;
       const available = (data as unknown as Record<string, unknown>)?.available;
       const models = Array.isArray(available) ? (available as Array<{ fullId: string }>).map((m) => m.fullId) : [];
@@ -83,12 +83,12 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
       setFormModel(models[0] || "");
     });
 
-    kbApi.list().then(({ data, error }: { data: unknown; error: unknown }) => {
+    kbApi.list().then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) return;
       setKnowledgeOptions(Array.isArray(data) ? (data as unknown as KnowledgeBaseInfo[]) : []);
     });
 
-    skillConfigApi.list().then(({ data, error }: { data: unknown; error: unknown }) => {
+    skillConfigApi.list().then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) return;
       const skills = (data as unknown as Record<string, unknown>)?.skills;
       setSkillOptions(
@@ -102,7 +102,7 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
       );
     });
 
-    registryApi.list({ status: "online" }).then(({ data, error }: { data: unknown; error: unknown }) => {
+    registryApi.list({ status: "online" }).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) return;
       const machineData = data as {
         data?: Array<{ id: string; agentName: string; machineInfo: unknown; labels: unknown }>;

@@ -135,7 +135,7 @@ export function PermissionTab({ agentName: _agentName, permission, onPermissionC
     setSkillLoading(true);
     skillConfigApi
       .list()
-      .then(({ data }: { data: unknown }) => {
+      .then(({ data }: { data?: unknown }) => {
         if (!cancelled) {
           const skills = Array.isArray(data) ? data : [];
           const names = skills.map((s: Record<string, unknown>) => String(s.name ?? ""));

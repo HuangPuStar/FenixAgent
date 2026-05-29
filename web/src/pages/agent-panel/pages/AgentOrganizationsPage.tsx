@@ -111,7 +111,7 @@ export function AgentOrganizationsPage() {
     setLoading(true);
     orgApi
       .get(selectedOrgId)
-      .then(({ data, error }: { data: unknown; error: unknown }) => {
+      .then(({ data, error }: { data?: unknown; error?: unknown }) => {
         if (error) {
           console.error(error);
           toast.error(t("toast.loadDetailFailed"));

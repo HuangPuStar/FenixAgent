@@ -58,7 +58,7 @@ export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentP
   useEffect(() => {
     agentApi
       .list()
-      .then(({ data }: { data: unknown }) => {
+      .then(({ data }: { data?: unknown }) => {
         if (Array.isArray(data)) {
           setAgentList(
             data.map((a) => ({

@@ -58,7 +58,7 @@ import { workflowDefApi as _sdkDefApi } from "./sdk";
 export const workflowDefApi = {
   /** 创建工作流 */
   async create(name: string, description?: string): Promise<WorkflowDefItem> {
-    return _sdkDefApi.create({ name, description }).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.create({ name, description }).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as WorkflowDefItem;
     });
@@ -72,7 +72,7 @@ export const workflowDefApi = {
 
   /** 发布版本 */
   async publish(workflowId: string): Promise<WorkflowVersionItem> {
-    return _sdkDefApi.publish(workflowId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.publish(workflowId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as WorkflowVersionItem;
     });
@@ -80,7 +80,7 @@ export const workflowDefApi = {
 
   /** 列出工作流 */
   async list(): Promise<WorkflowDefItem[]> {
-    return _sdkDefApi.list().then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.list().then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return (data ?? []) as WorkflowDefItem[];
     });
@@ -88,7 +88,7 @@ export const workflowDefApi = {
 
   /** 获取单个工作流（含草稿内容） */
   async get(workflowId: string): Promise<WorkflowDefItem> {
-    return _sdkDefApi.get(workflowId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.get(workflowId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as WorkflowDefItem;
     });
@@ -96,7 +96,7 @@ export const workflowDefApi = {
 
   /** 获取版本历史 */
   async getVersions(workflowId: string): Promise<WorkflowVersionItem[]> {
-    return _sdkDefApi.getVersions(workflowId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.getVersions(workflowId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return (data ?? []) as WorkflowVersionItem[];
     });
@@ -104,7 +104,7 @@ export const workflowDefApi = {
 
   /** 获取特定版本 YAML */
   async getVersion(workflowId: string, version: number): Promise<VersionYamlResponse> {
-    return _sdkDefApi.getVersion(workflowId, version).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.getVersion(workflowId, version).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as VersionYamlResponse;
     });
@@ -124,7 +124,7 @@ export const workflowDefApi = {
 
   /** 更新元数据 */
   async updateMeta(workflowId: string, data: { name?: string; description?: string }): Promise<WorkflowDefItem> {
-    return _sdkDefApi.updateMeta(workflowId, data).then(({ data: d, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.updateMeta(workflowId, data).then(({ data: d, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return d as WorkflowDefItem;
     });
@@ -156,7 +156,7 @@ export const workflowDefApi = {
   async createTrigger(workflowId: string, type?: string, config?: Record<string, unknown>): Promise<TriggerItem> {
     return _sdkDefApi
       .createTrigger(workflowId, type, config)
-      .then(({ data, error }: { data: unknown; error: unknown }) => {
+      .then(({ data, error }: { data?: unknown; error?: unknown }) => {
         if (error) throw new Error((error as { message?: string }).message);
         return data as TriggerItem;
       });
@@ -164,7 +164,7 @@ export const workflowDefApi = {
 
   /** 列出 workflow 的所有 trigger */
   async listTriggers(workflowId: string): Promise<TriggerItem[]> {
-    return _sdkDefApi.listTriggers(workflowId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.listTriggers(workflowId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return Array.isArray(data) ? (data as TriggerItem[]) : [];
     });
@@ -178,7 +178,7 @@ export const workflowDefApi = {
 
   /** 重新生成 hash */
   async regenerateTriggerHash(triggerId: string): Promise<TriggerItem> {
-    return _sdkDefApi.regenerateTriggerHash(triggerId).then(({ data, error }: { data: unknown; error: unknown }) => {
+    return _sdkDefApi.regenerateTriggerHash(triggerId).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
       return data as TriggerItem;
     });
