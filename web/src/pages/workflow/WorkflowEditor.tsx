@@ -726,7 +726,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           agentList={agentList}
         />
 
-        {/* 工作流元数据 Popover（右下角锚点） */}
+        {/* 工作流元数据 Popover（右下角齿轮） */}
         <WorkflowMetaPopover
           open={metaPopoverOpen}
           onOpenChange={setMetaPopoverOpen}
@@ -734,66 +734,66 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           meta={meta}
           updateMeta={updateMeta}
         />
-      </div>
 
-      {/* 运行日志 Popover（右下角） */}
-      <div className="wf-run-popover-anchor">
-        <Popover open={runSheetOpen} onOpenChange={setRunSheetOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className={`wf-meta-trigger-btn ${runSheetOpen ? "active" : ""}`}
-              title={t("editor.tooltip_run_history")}
+        {/* 运行日志 Popover（右下角，齿轮左侧） */}
+        <div className="wf-run-popover-anchor">
+          <Popover open={runSheetOpen} onOpenChange={setRunSheetOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={`wf-meta-trigger-btn ${runSheetOpen ? "active" : ""}`}
+                title={t("editor.tooltip_run_history")}
+              >
+                <List size={14} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="end"
+              sideOffset={8}
+              collisionPadding={16}
+              className="wf-meta-popover"
+              style={{ width: 360, maxHeight: 520 }}
             >
-              <List size={14} />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            side="top"
-            align="end"
-            sideOffset={8}
-            collisionPadding={16}
-            className="wf-meta-popover"
-            style={{ width: 360, maxHeight: 520 }}
-          >
-            <div className="wf-popover-header">
-              <span className="wf-popover-title">{t("editor.run_history")}</span>
-            </div>
-            <RunStatusPanel
-              activeRunId={activeRunId}
-              runSnapshot={runSnapshot}
-              dagStatus={dagStatus}
-              isRunMode={isRunMode}
-              isRunDone={isRunDone}
-              running={running}
-              runEvents={runEvents}
-              runApprovals={runApprovals}
-              runRightTab={runRightTab}
-              setRunRightTab={setRunRightTab}
-              selectedRunNodeId={selectedRunNodeId}
-              setSelectedRunNodeId={setSelectedRunNodeId}
-              selectedNodeOutput={selectedNodeOutput}
-              nodeOutputLoading={nodeOutputLoading}
-              handleCancelRun={handleCancelRun}
-              handleBackToEdit={() => {
-                handleBackToEdit();
-                setRunSheetOpen(false);
-              }}
-              handleBackToList={() => {
-                handleBackToList();
-                setRunSheetOpen(false);
-              }}
-              handleApprove={handleApprove}
-              handleRerunFrom={handleRerunFrom}
-              setActiveRunId={setActiveRunId}
-              setRunSnapshot={setRunSnapshot}
-              setRunEvents={setRunEvents}
-              setRunApprovals={setRunApprovals}
-              setSelectedNodeOutput={setSelectedNodeOutput}
-              updateNodesFromSnapshot={updateNodesFromSnapshot}
-            />
-          </PopoverContent>
-        </Popover>
+              <div className="wf-popover-header">
+                <span className="wf-popover-title">{t("editor.run_history")}</span>
+              </div>
+              <RunStatusPanel
+                activeRunId={activeRunId}
+                runSnapshot={runSnapshot}
+                dagStatus={dagStatus}
+                isRunMode={isRunMode}
+                isRunDone={isRunDone}
+                running={running}
+                runEvents={runEvents}
+                runApprovals={runApprovals}
+                runRightTab={runRightTab}
+                setRunRightTab={setRunRightTab}
+                selectedRunNodeId={selectedRunNodeId}
+                setSelectedRunNodeId={setSelectedRunNodeId}
+                selectedNodeOutput={selectedNodeOutput}
+                nodeOutputLoading={nodeOutputLoading}
+                handleCancelRun={handleCancelRun}
+                handleBackToEdit={() => {
+                  handleBackToEdit();
+                  setRunSheetOpen(false);
+                }}
+                handleBackToList={() => {
+                  handleBackToList();
+                  setRunSheetOpen(false);
+                }}
+                handleApprove={handleApprove}
+                handleRerunFrom={handleRerunFrom}
+                setActiveRunId={setActiveRunId}
+                setRunSnapshot={setRunSnapshot}
+                setRunEvents={setRunEvents}
+                setRunApprovals={setRunApprovals}
+                setSelectedNodeOutput={setSelectedNodeOutput}
+                updateNodesFromSnapshot={updateNodesFromSnapshot}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {/* 版本管理 Sheet */}
