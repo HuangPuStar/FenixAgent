@@ -58,9 +58,10 @@ export function ACPMain({
     setCwdReady(false);
     envApi
       .get({ id: agentId })
-      .then(({ data, error }) => {
-        if (error) throw new Error(error.message ?? "加载环境失败");
-        setCwd(data.workspace_path?.replace(/\/+$/, ""));
+      .then(({ data, error }: { data: unknown; error: unknown }) => {
+        if (error) throw new Error((error as { message?: string }).message ?? "加载环境失败");
+        const envData = data as { workspace_path?: string };
+        setCwd(envData.workspace_path?.replace(/\/+$/, ""));
         setCwdReady(true);
       })
       .catch(() => {

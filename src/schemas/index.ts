@@ -207,30 +207,6 @@ export {
   type UpdateTaskRequest,
   UpdateTaskRequestSchema,
 } from "./task.schema";
-// V1 Environment
-export {
-  type BridgeRegistrationRequest,
-  BridgeRegistrationRequestSchema,
-  type BridgeRegistrationResponse,
-  BridgeRegistrationResponseSchema,
-} from "./v1-environment.schema";
-// V1 Session
-export {
-  type CreateSessionRequest,
-  CreateSessionRequestSchema,
-  type SendEventsRequest,
-  SendEventsRequestSchema,
-  type UpdateSessionRequest,
-  UpdateSessionRequestSchema,
-  type V1ArchiveSessionResponse,
-  V1ArchiveSessionResponseSchema,
-  type V1CreateSessionResponse,
-  V1CreateSessionResponseSchema,
-  type V1GetSessionResponse,
-  V1GetSessionResponseSchema,
-  type V1SendEventsResponse,
-  V1SendEventsResponseSchema,
-} from "./v1-session.schema";
 // V2 Code Session
 export {
   type CodeSessionBridgeResponse,

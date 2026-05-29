@@ -8,7 +8,7 @@ import type { WsConnection } from "./ws-types";
 const connections = new Map<string, AcpConnectionEntry>();
 
 const SERVER_KEEPALIVE_INTERVAL_MS = config.wsKeepaliveInterval * 1000;
-const CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
+const _CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
 
 export function sendToWs(ws: WsConnection, msg: object): void {
   if (ws.readyState !== 1) return;
@@ -24,7 +24,7 @@ export function handleAcpWsOpen(
   ws: WsConnection,
   wsId: string,
   userId: string,
-  boundEnvId?: string | null,
+  _boundEnvId?: string | null,
   isMachine?: boolean,
 ): void {
   if (isMachine) {
@@ -181,7 +181,6 @@ export async function handleAcpWsMessage(
       handleRegister(wsId, msg).catch((err) => {
         logError("[ACP-WS] Error in register handler:", err);
       });
-      continue;
     }
 
     // 未识别的消息类型静默忽略（不再走 EventBus 发布）

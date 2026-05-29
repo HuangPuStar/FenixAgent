@@ -7,18 +7,17 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { agentApi, kbApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
-import { PermissionTab } from "../../components/PermissionTab";
-import { dispatchConfigChange } from "../../lib/config-events";
-import type { KnowledgeBaseInfo } from "../../types/knowledge";
 import {
-  type AgentKnowledgeFormState,
   buildAgentPayload,
   buildKnowledgeFormState,
   DEFAULT_AGENT_MODE,
   filterKnowledgeBaseIds,
   getDefaultKnowledgeFormState,
   isValidStepsInput,
-} from "../AgentsPage";
+} from "@/src/lib/agent-utils";
+import { PermissionTab } from "../../components/PermissionTab";
+import { dispatchConfigChange } from "../../lib/config-events";
+import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
 interface AgentConfigDialogProps {
   open: boolean;
@@ -126,17 +125,20 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
         setSkillOptions(skills);
 
         // Load machine options
-        registryApi.list({ status: "online" }).then(({ data: mData, error: mError }) => {
-          if (mError) return;
-          if (mData && Array.isArray(mData.data)) {
-            const options = mData.data.map((m) => ({
-              id: m.id,
-              agentName: m.agentName,
-              machineInfo: m.machineInfo as Record<string, unknown> | null,
-            }));
-            setMachineOptions(options);
-          }
-        });
+        registryApi
+          .list({ status: "online" })
+          .then(({ data: mData, error: mError }: { data: unknown; error: unknown }) => {
+            if (mError) return;
+            const listData = mData as { data?: Array<{ id: string; agentName: string; machineInfo: unknown }> };
+            if (listData.data && Array.isArray(listData.data)) {
+              const options = listData.data.map((m: { id: string; agentName: string; machineInfo: unknown }) => ({
+                id: m.id,
+                agentName: m.agentName,
+                machineInfo: m.machineInfo as Record<string, unknown> | null,
+              }));
+              setMachineOptions(options);
+            }
+          });
       })
       .catch((err) => {
         console.error("Failed to load agent config:", err);

@@ -224,8 +224,13 @@ export async function updateHeartbeat(machineId: string): Promise<void> {
 
 /** 服务启动时调用：将所有 online 状态的 machine 重置为 offline（服务重启后 WS 连接均已断开） */
 export async function resetAllMachinesOffline(): Promise<void> {
-  const result = await db.update(machine).set({ status: "offline", updatedAt: new Date() }).where(eq(machine.status, "online"));
-  if (result.rowCount && result.rowCount > 0) {
-    log(`[registry] Reset ${result.rowCount} machines to offline after restart`);
+  const result = await db
+    .update(machine)
+    .set({ status: "offline", updatedAt: new Date() })
+    .where(eq(machine.status, "online"));
+  // biome-ignore lint/suspicious/noExplicitAny: Drizzle RowList doesn't expose rowCount in type
+  const count = (result as any).rowCount;
+  if (count > 0) {
+    log(`[registry] Reset ${count} machines to offline after restart`);
   }
 }

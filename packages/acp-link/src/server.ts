@@ -340,7 +340,13 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 if (result === "started") {
                   console.log("[acp-client] sending session_started");
                   const caps = sessionMgr.getCapabilities?.() ?? {};
-                  ws.send(JSON.stringify({ type: "session_started", session_id: msg.session_id, payload: { capabilities: caps } }));
+                  ws.send(
+                    JSON.stringify({
+                      type: "session_started",
+                      session_id: msg.session_id,
+                      payload: { capabilities: caps },
+                    }),
+                  );
                 } else if (result === "queued") {
                   ws.send(JSON.stringify({ type: "session_queued", session_id: msg.session_id }));
                 } else {

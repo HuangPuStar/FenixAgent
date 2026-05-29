@@ -3,11 +3,9 @@
  *
  * 所有模块类无状态，可以安全复用单例。
  * 前端通过 `import { envApi, sessionApi } from "@/src/api/sdk"` 使用。
-  RegistryApi,
  */
 
 import {
-  RegistryApi,
   AgentApi,
   ApiKeyApi,
   AuthApi,
@@ -21,8 +19,8 @@ import {
   MetaAgentApi,
   ModelApi,
   OrganizationApi,
-  RegistryApi,
   ProviderApi,
+  RegistryApi,
   S3FileApi,
   SessionApi,
   SkillConfigApi,

@@ -100,7 +100,7 @@ function openMachineRelay(
     if (!e || e.ws.readyState !== 1) return;
 
     switch (type) {
-      case "session_started":
+      case "session_started": {
         e.sessionStarted = true;
         // 开始转发缓冲消息
         for (const buffered of e.outboundBuffer) {
@@ -115,6 +115,7 @@ function openMachineRelay(
         const caps = (payload as Record<string, unknown>)?.capabilities ?? {};
         sendToRelayWs(ws, { type: "status", payload: { connected: true, capabilities: caps } });
         break;
+      }
       case "session_data":
         // 解包 payload 转发到前端 relay WS
         sendToRelayWs(ws, payload as object);
@@ -216,7 +217,7 @@ export async function handleRelayMessage(
 }
 
 /** Called from onClose — cleans up relay connection */
-export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: number, reason?: string): void {
+export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: number, _reason?: string): void {
   const entry = manager.get(relayWsId);
   if (!entry) return;
 
@@ -282,7 +283,7 @@ export async function findRunningInstanceByEnvironment(
 ): Promise<SpawnedInstance | undefined> {
   const { findMachineConnectionByAgentId } = await import("../acp-ws-handler");
   const entry = await findMachineConnectionByAgentId(environmentId);
-  if (!entry) return undefined;
+  if (!entry) return;
   return {
     id: entry.machineId!,
     userId: entry.userId,

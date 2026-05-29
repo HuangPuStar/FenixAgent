@@ -105,16 +105,18 @@ import { workflowEngineApi as _sdkEngineApi } from "./sdk";
 export const workflowEngineApi = {
   /** 执行工作流（同步，会阻塞到完成或 SUSPENDED） */
   async run(yaml: string, params?: Record<string, unknown>, workflowId?: string): Promise<DAGRunResult> {
-    return _sdkEngineApi.run(yaml, { params, workflowId }).then(({ data, error }) => {
-      if (error) throw new Error(error.message);
-      return data as DAGRunResult;
-    });
+    return _sdkEngineApi
+      .run(yaml, { params, workflowId })
+      .then(({ data, error }: { data: unknown; error: unknown }) => {
+        if (error) throw new Error((error as { message?: string }).message);
+        return data as DAGRunResult;
+      });
   },
 
   /** 校验 + 执行计划（不执行） */
   async dryRun(yaml: string): Promise<DryRunResult> {
-    return _sdkEngineApi.dryRun(yaml).then(({ data, error }) => {
-      if (error) throw new Error(error.message);
+    return _sdkEngineApi.dryRun(yaml).then(({ data, error }: { data: unknown; error: unknown }) => {
+      if (error) throw new Error((error as { message?: string }).message);
       return data as DryRunResult;
     });
   },
@@ -122,37 +124,37 @@ export const workflowEngineApi = {
   /** 取消运行 */
   async cancel(runId: string): Promise<void> {
     const { error } = await _sdkEngineApi.cancel(runId);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error((error as { message?: string }).message);
   },
 
   /** 获取运行状态快照 */
   async getRunStatus(runId: string): Promise<DAGSnapshot | null> {
-    return _sdkEngineApi.getRunStatus(runId).then(({ data, error }) => {
-      if (error) throw new Error(error.message);
+    return _sdkEngineApi.getRunStatus(runId).then(({ data, error }: { data: unknown; error: unknown }) => {
+      if (error) throw new Error((error as { message?: string }).message);
       return data as DAGSnapshot | null;
     });
   },
 
   /** 获取事件流 */
   async getEvents(runId: string, _nodeId?: string): Promise<DAGEvent[]> {
-    return _sdkEngineApi.getEvents(runId).then(({ data, error }) => {
-      if (error) throw new Error(error.message);
+    return _sdkEngineApi.getEvents(runId).then(({ data, error }: { data: unknown; error: unknown }) => {
+      if (error) throw new Error((error as { message?: string }).message);
       return (data ?? []) as DAGEvent[];
     });
   },
 
   /** 获取节点输出 */
   async getOutput(runId: string, nodeId: string): Promise<NodeOutput | null> {
-    return _sdkEngineApi.getOutput(runId, nodeId).then(({ data, error }) => {
-      if (error) throw new Error(error.message);
+    return _sdkEngineApi.getOutput(runId, nodeId).then(({ data, error }: { data: unknown; error: unknown }) => {
+      if (error) throw new Error((error as { message?: string }).message);
       return data as NodeOutput | null;
     });
   },
 
   /** 获取待审批列表 */
   async getPendingApprovals(runId: string): Promise<PendingApproval[]> {
-    return _sdkEngineApi.getPendingApprovals(runId).then(({ data, error }) => {
-      if (error) throw new Error(error.message);
+    return _sdkEngineApi.getPendingApprovals(runId).then(({ data, error }: { data: unknown; error: unknown }) => {
+      if (error) throw new Error((error as { message?: string }).message);
       return (data ?? []) as PendingApproval[];
     });
   },
@@ -160,30 +162,32 @@ export const workflowEngineApi = {
   /** 审批通过 */
   async approve(runId: string, nodeId: string, token: string, data?: unknown): Promise<void> {
     const { error } = await _sdkEngineApi.approve(runId, nodeId, token, data as unknown as Record<string, unknown>);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error((error as { message?: string }).message);
   },
 
   /** 列出运行记录 */
   async listRuns(): Promise<RunSummary[]> {
-    return _sdkEngineApi.listRuns().then(({ data, error }) => {
-      if (error) throw new Error(error.message);
+    return _sdkEngineApi.listRuns().then(({ data, error }: { data: unknown; error: unknown }) => {
+      if (error) throw new Error((error as { message?: string }).message);
       return (data ?? []) as RunSummary[];
     });
   },
 
   /** 崩溃恢复 */
   async recover(runId: string, yaml: string): Promise<DAGRunResult> {
-    return _sdkEngineApi.recover(runId, { yaml }).then(({ data, error }) => {
-      if (error) throw new Error(error.message);
+    return _sdkEngineApi.recover(runId, { yaml }).then(({ data, error }: { data: unknown; error: unknown }) => {
+      if (error) throw new Error((error as { message?: string }).message);
       return data as DAGRunResult;
     });
   },
 
   /** 从指定节点重新运行（保留上游输出，目标及下游重新执行） */
   async rerunFrom(runId: string, yaml: string, fromNodeId: string, workflowId?: string): Promise<DAGRunResult> {
-    return _sdkEngineApi.rerunFrom(runId, { yaml, fromNodeId, workflowId }).then(({ data, error }) => {
-      if (error) throw new Error(error.message);
-      return data as DAGRunResult;
-    });
+    return _sdkEngineApi
+      .rerunFrom(runId, { yaml, fromNodeId, workflowId })
+      .then(({ data, error }: { data: unknown; error: unknown }) => {
+        if (error) throw new Error((error as { message?: string }).message);
+        return data as DAGRunResult;
+      });
   },
 };

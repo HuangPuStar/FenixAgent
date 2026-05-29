@@ -38,7 +38,7 @@ export function AgentSidebarTree({
 }: AgentSidebarTreeProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const { org } = useOrg();
-  const orgId = org?.id;
+  const _orgId = org?.id;
   const [treeNodes, setTreeNodes] = useState<AgentTreeNode[]>([]);
   const [collapsedAgents, setCollapsedAgents] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -103,8 +103,7 @@ export function AgentSidebarTree({
     loadData();
     const interval = setInterval(loadData, 15_000);
     return () => clearInterval(interval);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: orgId triggers reload on org switch
-  }, [loadData, orgId]);
+  }, [loadData]);
 
   // 监听配置变更事件，agents 变更时立即刷新
   useConfigChangeListener(

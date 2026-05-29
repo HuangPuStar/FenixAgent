@@ -10,6 +10,8 @@ function makeEnv(skillDir: string): Env {
     NODE_ENV: "test",
     RCS_HOST: "0.0.0.0",
     RCS_PORT: 3000,
+    RCS_CORS_ORIGIN: "*",
+    RCS_TRUSTED_ORIGINS: "",
     RCS_BASE_URL: "",
     RCS_VERSION: "0.1.0",
     SKILL_DIR: skillDir,

@@ -111,13 +111,13 @@ export function AgentOrganizationsPage() {
     setLoading(true);
     orgApi
       .get(selectedOrgId)
-      .then(({ data, error }) => {
+      .then(({ data, error }: { data: unknown; error: unknown }) => {
         if (error) {
           console.error(error);
           toast.error(t("toast.loadDetailFailed"));
           return;
         }
-        setDetail(data);
+        setDetail(data as OrgDetail);
       })
       .finally(() => setLoading(false));
   }, [selectedOrgId, t]);

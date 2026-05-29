@@ -11,7 +11,6 @@ import { errorPlugin } from "./plugins/error-handler";
 import { loggerPlugin } from "./plugins/logger";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
-import { environmentRepo } from "./repositories";
 import acpRoutes from "./routes/acp";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";

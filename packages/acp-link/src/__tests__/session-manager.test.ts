@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { SessionManager } from "../client/session-manager";
 
 describe("SessionManager", () => {

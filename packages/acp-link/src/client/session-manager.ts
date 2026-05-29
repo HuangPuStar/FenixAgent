@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 
+// biome-ignore lint/suspicious/noExplicitAny: event callback signatures vary by event type
 type SessionEventCallback = (...args: any[]) => void;
 
 export class SessionManager {
@@ -40,24 +41,33 @@ export class SessionManager {
       if (this.currentAcpSessionId) {
         try {
           const response = await this.sharedConnection.listSessions({});
-          const existing = response.sessions.find((s: { sessionId: string }) => s.sessionId === this.currentAcpSessionId);
+          const existing = response.sessions.find(
+            (s: { sessionId: string }) => s.sessionId === this.currentAcpSessionId,
+          );
           if (existing) {
             this.emit(sessionId, "session_data", { type: "session_created", payload: existing });
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       return "started";
     }
 
     if (this.initPromise) {
-      try { await this.initPromise; return "started"; }
-      catch { return "error"; }
+      try {
+        await this.initPromise;
+        return "started";
+      } catch {
+        return "error";
+      }
     }
 
     try {
       console.log("[session-manager] spawning opencode...");
       const proc = spawn(this.agentName, ["acp"], {
-        cwd: this.cwd, stdio: ["pipe", "pipe", "inherit"],
+        cwd: this.cwd,
+        stdio: ["pipe", "pipe", "inherit"],
         env: { ...process.env },
       });
 
@@ -75,14 +85,14 @@ export class SessionManager {
 
       const connection = new acp.ClientSideConnection(
         (_agent) => ({
-          requestPermission: async (_p) => ({ outcome: "approved" as const }),
+          requestPermission: async (_p) => ({ outcome: { outcome: "selected" as const, optionId: "allow" } }),
           sessionUpdate: async (params) => {
             if (this.activeRelayId) {
               this.emit(this.activeRelayId, "session_data", { type: "session_update", payload: params });
             }
           },
           readTextFile: async (_p) => ({ content: "" }),
-          writeTextFile: async (_p) => {},
+          writeTextFile: async (_p) => ({}),
         }),
         stream,
       );
@@ -137,7 +147,10 @@ export class SessionManager {
           break;
         case "new_session":
           try {
-            const r = await this.sharedConnection.newSession({ cwd: (payload.cwd as string) ?? this.cwd, mcpServers: [] });
+            const r = await this.sharedConnection.newSession({
+              cwd: (payload.cwd as string) ?? this.cwd,
+              mcpServers: [],
+            });
             this.currentAcpSessionId = r.sessionId;
             this.emit(sessionId, "session_data", { type: "session_created", payload: r });
           } catch (err) {
@@ -159,9 +172,13 @@ export class SessionManager {
           }
           console.log("[session-manager] prompt, acpSession:", this.currentAcpSessionId);
           // 与 server 模式 handlePrompt 一致：await 结果并发送 prompt_complete
-          this.sharedConnection.prompt({ sessionId: this.currentAcpSessionId!, prompt: blocks })
+          this.sharedConnection
+            .prompt({ sessionId: this.currentAcpSessionId!, prompt: blocks })
             .then((result) => {
-              console.log("[session-manager] prompt completed, stopReason:", (result as any).stopReason);
+              console.log(
+                "[session-manager] prompt completed, stopReason:",
+                (result as unknown as Record<string, unknown>).stopReason,
+              );
               this.emit(sessionId, "session_data", { type: "prompt_complete", payload: result });
             })
             .catch((err) => {
@@ -180,8 +197,14 @@ export class SessionManager {
             this.emit(sessionId, "session_error", "No active session");
             break;
           }
-          this.sharedConnection.unstable_setSessionModel({ sessionId: this.currentAcpSessionId, modelId: (payload.modelId as string) ?? "" })
-            .then(() => this.emit(sessionId, "session_data", { type: "model_changed", payload: { modelId: payload.modelId } }))
+          this.sharedConnection
+            .unstable_setSessionModel({
+              sessionId: this.currentAcpSessionId,
+              modelId: (payload.modelId as string) ?? "",
+            })
+            .then(() =>
+              this.emit(sessionId, "session_data", { type: "model_changed", payload: { modelId: payload.modelId } }),
+            )
             .catch(() => {});
           break;
         case "set_session_mode":
@@ -189,13 +212,17 @@ export class SessionManager {
             this.emit(sessionId, "session_error", "No active session");
             break;
           }
-          this.sharedConnection.setSessionMode({ sessionId: this.currentAcpSessionId, modeId: (payload.modeId as string) ?? "" })
-            .then(() => this.emit(sessionId, "session_data", { type: "mode_changed", payload: { modeId: payload.modeId } }))
+          this.sharedConnection
+            .setSessionMode({ sessionId: this.currentAcpSessionId, modeId: (payload.modeId as string) ?? "" })
+            .then(() =>
+              this.emit(sessionId, "session_data", { type: "mode_changed", payload: { modeId: payload.modeId } }),
+            )
             .catch(() => {});
           break;
         case "resume_session":
           try {
             // 与 server 模式 handleResumeSession 一致：unstable_resumeSession + cwd
+            // biome-ignore lint/suspicious/noExplicitAny: unstable_resumeSession not in SDK types
             const r = await (this.sharedConnection as any).unstable_resumeSession({
               sessionId: (payload.sessionId as string) ?? "",
               cwd: this.cwd,
@@ -217,8 +244,13 @@ export class SessionManager {
           break;
         case "load_session":
           try {
-            const r = await this.sharedConnection.loadSession({ sessionId: (payload.sessionId as string) ?? "", cwd: this.cwd, mcpServers: [] });
-            this.currentAcpSessionId = r.sessionId ?? (payload.sessionId as string);
+            const targetSid = (payload.sessionId as string) ?? "";
+            const r = await this.sharedConnection.loadSession({
+              sessionId: targetSid,
+              cwd: this.cwd,
+              mcpServers: [],
+            });
+            this.currentAcpSessionId = targetSid;
             this.emit(sessionId, "session_data", { type: "session_loaded", payload: r });
           } catch (err) {
             console.error("[session-manager] loadSession failed:", String(err));
@@ -236,12 +268,20 @@ export class SessionManager {
     return true;
   }
 
-  endSession(_sessionId: string): void { /* shared proc, don't kill */ }
-  getAliveSessionIds(): string[] { return this.sharedProc && !this.sharedProc.killed ? ["shared"] : []; }
-  hasSession(_s: string): boolean { return this.sharedProc !== null && !this.sharedProc.killed; }
+  endSession(_sessionId: string): void {
+    /* shared proc, don't kill */
+  }
+  getAliveSessionIds(): string[] {
+    return this.sharedProc && !this.sharedProc.killed ? ["shared"] : [];
+  }
+  hasSession(_s: string): boolean {
+    return this.sharedProc !== null && !this.sharedProc.killed;
+  }
 
   stopAll(): void {
-    if (this.sharedProc) { this.sharedProc.kill("SIGTERM"); }
+    if (this.sharedProc) {
+      this.sharedProc.kill("SIGTERM");
+    }
     this.sharedProc = null;
     this.sharedConnection = null;
     this.initPromise = null;

@@ -55,7 +55,7 @@ function createMockWs(readyState = 1): WsConnection {
   return ws;
 }
 
-function createMachineEntry(overrides: Partial<AcpConnectionEntry> = {}): AcpConnectionEntry {
+function _createMachineEntry(overrides: Partial<AcpConnectionEntry> = {}): AcpConnectionEntry {
   const ws = createMockWs();
   return {
     agentId: null,
@@ -76,7 +76,7 @@ function createMachineEntry(overrides: Partial<AcpConnectionEntry> = {}): AcpCon
 
 describe("findMachineConnectionById", () => {
   test("找到在线 machine 连接", async () => {
-    const { findMachineConnectionById, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsOpen } = await import("../transport/acp-ws-handler");
 
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_001", "user_1", null, true);
@@ -136,9 +136,8 @@ describe("handleAcpWsMessage — session 消息转发", () => {
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_s1", "user_s", null, true);
 
-    let receivedSessionId: string | undefined;
-    let receivedType: string | undefined;
-    let receivedPayload: unknown;
+    let _receivedSessionId: string | undefined;
+    let _receivedType: string | undefined;
 
     // 通过直接注入 onSessionMessage 测试回调机制
     // handleAcpWsMessage 会检查 entry.onSessionMessage

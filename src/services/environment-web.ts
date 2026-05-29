@@ -10,7 +10,10 @@ import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "./e
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "./environment-core";
 
 // Instance 模型已删除，返回空 Map 替代 groupActiveInstancesByEnvironment
-function groupActiveInstancesByEnvironment(): Map<string, Array<{ id: string; instanceNumber: number; status: string; sessionId: string | null; port: number; createdAt: Date }>> {
+function groupActiveInstancesByEnvironment(): Map<
+  string,
+  Array<{ id: string; instanceNumber: number; status: string; sessionId: string | null; port: number; createdAt: Date }>
+> {
   return new Map();
 }
 

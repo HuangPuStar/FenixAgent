@@ -2,7 +2,6 @@ import Elysia from "elysia";
 import { ValidationError as AppValidationError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
 import {
-  CreateEnvironmentRequestSchema,
   EnterEnvironmentRequestSchema,
   EnvironmentInfoSchema,
   EnvironmentListResponseSchema,
@@ -159,7 +158,6 @@ app.post(
   },
   { sessionAuth: true, body: "enter-environment-request" },
 );
-
 
 /** DELETE /web/environments/:id — Delete environment */
 app.delete(
