@@ -53,5 +53,8 @@
   "deleteAgent": "删除智能体",
   "deleteAgentConfirm": "确定要删除智能体 \"{{name}}\" 吗？此操作不可撤销。",
   "deleteSuccess": "智能体已删除",
-  "deleteFailed": "删除智能体失败: {{message}}"
+  "deleteFailed": "删除智能体失败: {{message}}",
+  "agentDefaultDesc": "智能体",
+  "expandInstances": "展开实例",
+  "collapseInstances": "收起实例"
 }

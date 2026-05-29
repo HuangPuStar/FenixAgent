@@ -328,69 +328,93 @@ export function AgentSidebarTree({
           </button>
         )}
       </div>
-      {treeNodes.map((node, idx) => {
+      {treeNodes.map((node) => {
         const { agent, instances } = node;
         const collapsed = !expandedAgents[agent.id];
         const isEntering = enteringAgentId === agent.id;
         const runningInstances = getRunningInstances(node);
         const isRestarting = runningInstances.some((inst) => restartingIds.has(inst.id));
+        const initial = agent.name.charAt(0).toUpperCase();
+        const avatarBg = agent.color || "var(--color-brand)";
+        const runningCount = runningInstances.length;
+
         return (
-          <div key={agent.id} className={idx > 0 ? "mt-1.5" : ""}>
-            <div className="agent-tree-env-header">
-              {/* 左侧 chevron：展开/折叠 */}
+          <div key={agent.id} className="agent-card-wrapper">
+            {/* 卡片主体：点击进入智能体 */}
+            <button
+              type="button"
+              disabled={isEntering}
+              className="agent-card"
+              onClick={() => handleEnterAgent(node)}
+            >
+              {/* 左侧头像 */}
+              <div className="agent-card-avatar" style={{ background: avatarBg }}>
+                {isEntering ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                ) : (
+                  <span className="text-white font-bold text-lg">{initial}</span>
+                )}
+              </div>
+
+              {/* 中间文字 */}
+              <div className="agent-card-info">
+                <div className="agent-card-name-row">
+                  <span className="agent-card-name">{agent.name}</span>
+                  {runningCount > 0 && (
+                    <span className="agent-card-badge">
+                      {runningCount}
+                    </span>
+                  )}
+                </div>
+                <span className="agent-card-desc">
+                  {agent.description || agent.model || t("agentDefaultDesc")}
+                </span>
+              </div>
+            </button>
+
+            {/* 悬浮操作栏 */}
+            <div className="agent-card-actions">
               <button
                 type="button"
-                className="agent-tree-chevron"
+                className="agent-card-action-btn"
                 onClick={() =>
                   setExpandedAgents((prev) => ({
                     ...prev,
                     [agent.id]: !prev[agent.id],
                   }))
                 }
+                title={collapsed ? t("expandInstances") : t("collapseInstances")}
               >
                 {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               </button>
-
-              {/* 点击名字区域：进入默认实例 */}
               <button
                 type="button"
-                disabled={isEntering}
-                onClick={() => handleEnterAgent(node)}
-                className="flex items-center gap-1 flex-1 min-w-0 bg-transparent border-none cursor-pointer text-inherit p-0 text-left"
+                className="agent-card-action-btn"
+                disabled={isRestarting}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRestartAgent(node);
+                }}
+                title={t("restartAgent")}
               >
-                {isEntering ? (
-                  <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
-                ) : (
-                  <Bot className="w-4 h-4 flex-shrink-0" />
-                )}
-                <span className="truncate">{agent.name}</span>
+                <RotateCw className={`w-3.5 h-3.5 ${isRestarting ? "animate-spin" : ""}`} />
               </button>
-
-              {/* 右侧操作按钮 */}
-              <div className="agent-tree-actions">
-                <button
-                  type="button"
-                  className="agent-tree-action-btn"
-                  disabled={isRestarting}
-                  onClick={() => handleRestartAgent(node)}
-                  title={t("restartAgent")}
-                >
-                  <RotateCw className={`w-3.5 h-3.5 ${isRestarting ? "animate-spin" : ""}`} />
-                </button>
-                <button
-                  type="button"
-                  className="agent-tree-action-btn"
-                  onClick={() => onEditAgent?.(agent.name)}
-                  title={t("agentConfig")}
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <button
+                type="button"
+                className="agent-card-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditAgent?.(agent.name);
+                }}
+                title={t("agentConfig")}
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             {/* 展开的实例列表 */}
             {!collapsed && (
-              <div className="agent-tree-env-body">
+              <div className="agent-card-instances">
                 {instances.length > 0
                   ? instances.map((inst) => {
                       const isInstRestarting = restartingIds.has(inst.id);
@@ -398,12 +422,12 @@ export function AgentSidebarTree({
                       return (
                         <div
                           key={inst.id}
-                          className={`agent-tree-instance ${selectedInstanceId === inst.id ? "selected" : ""}`}
+                          className={`agent-card-instance ${selectedInstanceId === inst.id ? "selected" : ""}`}
                           onClick={() => handleEnterAgent(node, { instanceNumber: inst.instance_number })}
                         >
                           <span className={`status-dot ${getInstanceStatus(inst)}`} />
                           <span className="truncate">{t("instanceN", { number: inst.instance_number })}</span>
-                          <div className="agent-tree-instance-actions">
+                          <div className="agent-card-instance-actions">
                             <button
                               type="button"
                               className="agent-tree-action-btn"
@@ -433,13 +457,12 @@ export function AgentSidebarTree({
                       );
                     })
                   : null}
-                {/* 新实例按钮在底部 */}
                 <button
                   type="button"
                   disabled={isEntering}
                   onClick={() => handleEnterAgent(node, { spawnNew: true })}
                   title={t("newInstance")}
-                  className="agent-tree-new-instance"
+                  className="agent-card-new-instance"
                 >
                   <Plus className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>{t("newInstance")}</span>
