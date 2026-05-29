@@ -311,8 +311,8 @@ file-tree-container {
 }
 
 .agent-artifacts-tree-pane {
-  width: 35%;
-  min-width: 120px;
+  width: 200px;
+  min-width: 200px;
   overflow: hidden;
   border-right: 1px solid var(--color-border-subtle);
 }

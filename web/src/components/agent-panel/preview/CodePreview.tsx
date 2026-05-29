@@ -18,7 +18,7 @@ export function CodePreview({ content, filePath }: CodePreviewProps) {
       const lang = getShikiLanguage(filePath) ?? "text";
       const result = await codeToHtml(content, {
         lang,
-        theme: "github-dark-default",
+        theme: "github-light-default",
       });
       setHtml(result);
     } catch {
@@ -65,7 +65,7 @@ export function CodePreview({ content, filePath }: CodePreviewProps) {
           left: 0;
           width: 2.5em;
           text-align: right;
-          color: rgba(255, 255, 255, 0.25);
+          color: rgba(0, 0, 0, 0.25);
           user-select: none;
           font-variant-numeric: tabular-nums;
         }
