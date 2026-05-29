@@ -1,6 +1,9 @@
 import type { Node } from "@xyflow/react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+
+type Measurable = { getBoundingClientRect(): DOMRect };
+
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { NodeConfigCard } from "./NodeConfigCard";
 
@@ -32,11 +35,11 @@ export function NodeConfigPopover({
   agentList,
 }: NodeConfigPopoverProps) {
   const { t } = useTranslation("workflows");
-  const anchorRef = useRef<HTMLElement | null>(null);
+  const anchorRef = useRef<Measurable>(null!);
 
   useEffect(() => {
     if (selectedNode) {
-      anchorRef.current = document.querySelector(`[data-node-id="${selectedNode.id}"]`) as HTMLElement | null;
+      anchorRef.current = document.querySelector(`[data-node-id="${selectedNode.id}"]`)!;
     }
   }, [selectedNode]);
 

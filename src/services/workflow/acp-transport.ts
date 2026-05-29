@@ -17,7 +17,6 @@
  */
 
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
-import { nanoid } from "nanoid";
 import { log } from "../../logger";
 
 // ---------- 消息通道抽象 ----------

@@ -1,4 +1,4 @@
-import { CheckCircle2, Pause, Play, ScrollText, Trash2, X as XIcon } from "lucide-react";
+import { CheckCircle2, Pause, Play, ScrollText, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";

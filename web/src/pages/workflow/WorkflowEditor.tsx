@@ -709,6 +709,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                 setRunApprovals={setRunApprovals}
                 setSelectedNodeOutput={setSelectedNodeOutput}
                 updateNodesFromSnapshot={updateNodesFromSnapshot}
+                setRightTab={() => setRunSheetOpen(false)}
               />
             </PopoverContent>
           </Popover>

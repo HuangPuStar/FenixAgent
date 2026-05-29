@@ -341,12 +341,7 @@ export function AgentSidebarTree({
         return (
           <div key={agent.id} className="agent-card-wrapper">
             {/* 卡片主体：点击进入智能体 */}
-            <button
-              type="button"
-              disabled={isEntering}
-              className="agent-card"
-              onClick={() => handleEnterAgent(node)}
-            >
+            <button type="button" disabled={isEntering} className="agent-card" onClick={() => handleEnterAgent(node)}>
               {/* 左侧头像 */}
               <div className="agent-card-avatar" style={{ background: avatarBg }}>
                 {isEntering ? (
@@ -360,15 +355,9 @@ export function AgentSidebarTree({
               <div className="agent-card-info">
                 <div className="agent-card-name-row">
                   <span className="agent-card-name">{agent.name}</span>
-                  {runningCount > 0 && (
-                    <span className="agent-card-badge">
-                      {runningCount}
-                    </span>
-                  )}
+                  {runningCount > 0 && <span className="agent-card-badge">{runningCount}</span>}
                 </div>
-                <span className="agent-card-desc">
-                  {agent.description || agent.model || t("agentDefaultDesc")}
-                </span>
+                <span className="agent-card-desc">{agent.description || agent.model || t("agentDefaultDesc")}</span>
               </div>
             </button>
 
