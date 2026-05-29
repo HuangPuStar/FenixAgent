@@ -71,7 +71,8 @@ export function WorkflowKanban() {
     setEditJob(null);
   }, []);
 
-  if (loading && jobs.length === 0) {
+  // boardId 未选择时只渲染 toolbar（让 BoardSelector 触发 onSelect）
+  if (loading && jobs.length === 0 && boardId) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader className="h-5 w-5 animate-spin text-text-muted" />
