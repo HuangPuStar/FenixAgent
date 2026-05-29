@@ -14,6 +14,7 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
 import {
   AlertTriangle,
@@ -232,6 +233,26 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setLastSavedYaml,
     meta,
   });
+
+  // ── 保存状态 toast ──
+  useEffect(() => {
+    if (saveStatus === "saved") {
+      toast.success(t("editor.saved"), { duration: 1500 });
+    }
+  }, [saveStatus, t]);
+
+  // ── DryRun 结果 toast ──
+  useEffect(() => {
+    if (!dryRunResult) return;
+    if (dryRunResult.valid) {
+      toast.success(t("editor.validate_pass"), { duration: 2000 });
+    } else {
+      toast.error(t("editor.validate_fail", { count: dryRunResult.issues.length }), {
+        description: dryRunResult.issues.map((i) => `${i.type === "error" ? "❌" : "⚠️"} ${i.message}`).join("\n"),
+        duration: 5000,
+      });
+    }
+  }, [dryRunResult, t]);
 
   // ── Workflow SSE 实时事件 ──
   useEffect(() => {
@@ -599,104 +620,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           </Panel>
         </ReactFlow>
 
-        {/* 保存状态指示器 */}
-        {saveStatus === "saving" && (
-          <div
-            style={{
-              position: "absolute",
-              top: 52,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#eff6ff",
-              border: "1px solid #93c5fd",
-              borderRadius: 8,
-              padding: "6px 12px",
-              fontSize: 11,
-              color: "#1d4ed8",
-              zIndex: 10,
-            }}
-          >
-            {t("editor.saving")}
-          </div>
-        )}
-        {saveStatus === "saved" && (
-          <div
-            style={{
-              position: "absolute",
-              top: 52,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#f0fdf4",
-              border: "1px solid #86efac",
-              borderRadius: 8,
-              padding: "6px 12px",
-              fontSize: 11,
-              color: "#166534",
-              zIndex: 10,
-            }}
-          >
-            {t("editor.saved")}
-          </div>
-        )}
-
-        {/* DryRun 结果提示 */}
-        {dryRunResult && (
-          <div
-            style={{
-              position: "absolute",
-              top: 52,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 10,
-              background: dryRunResult.valid ? "#f0fdf4" : "#fef2f2",
-              border: `1px solid ${dryRunResult.valid ? "#86efac" : "#fca5a5"}`,
-              borderRadius: 8,
-              padding: "8px 14px",
-              fontSize: 12,
-              color: dryRunResult.valid ? "#166534" : "#991b1b",
-              maxWidth: 480,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontWeight: 600,
-                marginBottom: dryRunResult.issues.length ? 4 : 0,
-              }}
-            >
-              {dryRunResult.valid ? <CheckCircle size={13} /> : <AlertTriangle size={13} />}
-              {dryRunResult.valid
-                ? t("editor.validate_pass")
-                : t("editor.validate_fail", { count: dryRunResult.issues.length })}
-              <button
-                type="button"
-                onClick={() => clearDryRunResult()}
-                style={{
-                  marginLeft: "auto",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                  color: "inherit",
-                }}
-              >
-                <X size={12} />
-              </button>
-            </div>
-            {dryRunResult.issues.length > 0 && (
-              <ul style={{ margin: 0, paddingLeft: 16 }}>
-                {dryRunResult.issues.map((issue, i) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: issues may duplicate type+message
-                  <li key={`${issue.type}-${issue.message}-${i}`}>
-                    {issue.type === "error" ? "❌" : "⚠️"} {issue.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
 
         {/* YAML 滑出面板 */}
         <YamlSlidePanel
