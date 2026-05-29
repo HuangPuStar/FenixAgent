@@ -5,6 +5,7 @@ import type { WorkflowJob } from "../../api/workflow-jobs";
 import { workflowJobsApi } from "../../api/workflow-jobs";
 import { useSession } from "../../lib/auth-client";
 import { BoardSelector } from "./components/BoardSelector";
+import { JobLogsSheet } from "./components/JobLogsSheet";
 import { KanbanColumn } from "./components/KanbanColumn";
 import { KanbanJobDialog } from "./components/KanbanJobDialog";
 
@@ -20,6 +21,8 @@ export function WorkflowKanban() {
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editJob, setEditJob] = useState<WorkflowJob | null>(null);
+  const [logsJob, setLogsJob] = useState<WorkflowJob | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
   const [boardId, setBoardId] = useState<string | null>(null);
 
   const loadJobs = useCallback(async () => {
@@ -69,6 +72,11 @@ export function WorkflowKanban() {
   const handleDialogClose = useCallback(() => {
     setDialogOpen(false);
     setEditJob(null);
+  }, []);
+
+  const handleViewLogs = useCallback((job: WorkflowJob) => {
+    setLogsJob(job);
+    setLogsOpen(true);
   }, []);
 
   // boardId 未选择时只渲染 toolbar（让 BoardSelector 触发 onSelect）
@@ -124,18 +132,26 @@ export function WorkflowKanban() {
 
       {/* Board */}
       <div className="flex flex-1 min-h-0 overflow-hidden bg-surface-0">
-        <KanbanColumn titleKey="col_ready" jobs={grouped.ready} onRefresh={loadJobs} onEditParams={handleEditParams} />
+        <KanbanColumn
+          titleKey="col_ready"
+          jobs={grouped.ready}
+          onRefresh={loadJobs}
+          onEditParams={handleEditParams}
+          onViewLogs={handleViewLogs}
+        />
         <KanbanColumn
           titleKey="col_running"
           jobs={grouped.running}
           onRefresh={loadJobs}
           onEditParams={handleEditParams}
+          onViewLogs={handleViewLogs}
         />
         <KanbanColumn
           titleKey="col_suspended"
           jobs={grouped.suspended}
           onRefresh={loadJobs}
           onEditParams={handleEditParams}
+          onViewLogs={handleViewLogs}
         />
         <div className="flex flex-col min-w-[260px] flex-1">
           <KanbanColumn
@@ -143,6 +159,7 @@ export function WorkflowKanban() {
             jobs={completedToShow}
             onRefresh={loadJobs}
             onEditParams={handleEditParams}
+            onViewLogs={handleViewLogs}
           />
           {hasMoreCompleted && !showAllCompleted && (
             <button
@@ -171,6 +188,15 @@ export function WorkflowKanban() {
         editJob={editJob}
         onRefresh={loadJobs}
         boardId={boardId}
+      />
+
+      <JobLogsSheet
+        job={logsJob}
+        open={logsOpen}
+        onClose={() => {
+          setLogsOpen(false);
+          setLogsJob(null);
+        }}
       />
     </div>
   );

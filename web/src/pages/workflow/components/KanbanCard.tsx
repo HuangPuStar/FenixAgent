@@ -1,4 +1,4 @@
-import { CheckCircle2, MoreHorizontal, Pause, Play, Trash2 } from "lucide-react";
+import { CheckCircle2, MoreHorizontal, Pause, Play, ScrollText, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ interface KanbanCardProps {
   job: WorkflowJob;
   onRefresh: () => void;
   onEditParams: (job: WorkflowJob) => void;
+  onViewLogs: (job: WorkflowJob) => void;
 }
 
 const ACCENT: Record<string, string> = {
@@ -63,7 +64,7 @@ function paramsSummary(params: Record<string, unknown> | null, t: (k: string) =>
   return remaining > 0 ? `${entries} +${remaining}` : entries;
 }
 
-export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
+export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanCardProps) {
   const { t } = useTranslation("kanban");
   const [loading, setLoading] = useState(false);
 
@@ -136,6 +137,11 @@ export function KanbanCard({ job, onRefresh, onEditParams }: KanbanCardProps) {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[120px]">
+              {(job.status === "running" || job.status === "completed" || job.status === "suspended") && (
+                <DropdownMenuItem onClick={() => onViewLogs(job)}>
+                  <ScrollText size={13} className="mr-1.5" /> {t("logs_view")}
+                </DropdownMenuItem>
+              )}
               {job.status === "ready" && (
                 <DropdownMenuItem onClick={() => onEditParams(job)}>{t("card_edit_params")}</DropdownMenuItem>
               )}

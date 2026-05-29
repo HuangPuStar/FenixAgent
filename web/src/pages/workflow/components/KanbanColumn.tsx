@@ -8,9 +8,10 @@ interface KanbanColumnProps {
   jobs: WorkflowJob[];
   onRefresh: () => void;
   onEditParams: (job: WorkflowJob) => void;
+  onViewLogs: (job: WorkflowJob) => void;
 }
 
-export function KanbanColumn({ titleKey, jobs, onRefresh, onEditParams }: KanbanColumnProps) {
+export function KanbanColumn({ titleKey, jobs, onRefresh, onEditParams, onViewLogs }: KanbanColumnProps) {
   const { t } = useTranslation("kanban");
 
   return (
@@ -35,7 +36,15 @@ export function KanbanColumn({ titleKey, jobs, onRefresh, onEditParams }: Kanban
             <span className="text-[11px] tracking-wide">{t(`empty_${titleKey.replace("col_", "")}`)}</span>
           </div>
         ) : (
-          jobs.map((job) => <KanbanCard key={job.id} job={job} onRefresh={onRefresh} onEditParams={onEditParams} />)
+          jobs.map((job) => (
+            <KanbanCard
+              key={job.id}
+              job={job}
+              onRefresh={onRefresh}
+              onEditParams={onEditParams}
+              onViewLogs={onViewLogs}
+            />
+          ))
         )}
       </div>
     </div>
