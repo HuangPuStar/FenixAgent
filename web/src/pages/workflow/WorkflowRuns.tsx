@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type DAGStatus, type RunSummary, workflowEngineApi } from "../../api/workflow-engine";
+import { SkeletonTable } from "./components/SkeletonRows";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
   PENDING: { color: "#94a3b8", bg: "#f1f5f9" },
@@ -161,10 +162,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
 
       {/* 内容 */}
       {loading ? (
-        <div className="text-center py-10 text-text-secondary text-[13px]">
-          <Loader size={20} className="animate-spin inline-block" />
-          <p className="mt-2">{t("runs.loading")}</p>
-        </div>
+        <SkeletonTable cols="2fr 1fr 80px 120px 80px 80px" rows={6} />
       ) : error ? (
         <div className="text-center py-10">
           <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />

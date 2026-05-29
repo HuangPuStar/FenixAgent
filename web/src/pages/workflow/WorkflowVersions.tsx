@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { SkeletonVersionRows } from "./components/SkeletonRows";
 import { type WorkflowDefItem, type WorkflowVersionItem, workflowDefApi } from "../../api/workflow-defs";
 
 interface WorkflowVersionsProps {
@@ -128,10 +129,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
       {/* 内容 */}
       {loading ? (
-        <div className="text-center py-10 text-text-muted text-[13px]">
-          <Loader size={20} className="animate-spin inline-block" />
-          <p className="mt-2">{t("versions.loading")}</p>
-        </div>
+        <SkeletonVersionRows rows={3} />
       ) : error ? (
         <div className="text-center py-10">
           <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
