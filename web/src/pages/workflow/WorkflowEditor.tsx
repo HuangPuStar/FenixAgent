@@ -397,7 +397,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   );
 
   return (
-    <div className="wf-editor-container">
+    <div className="flex w-full h-full bg-surface-0">
       <input
         ref={fileInputRef}
         type="file"
@@ -412,7 +412,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         </div>
       )}
 
-      <div className="wf-canvas-wrapper">
+      <div className="flex-1 relative overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={edges}
