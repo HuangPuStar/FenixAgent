@@ -103,7 +103,7 @@ export function RunStatusPanel({
       {/* 运行状态头 */}
       <div
         style={{
-          padding: "8px 12px",
+          padding: "10px 12px",
           borderBottom: "1px solid #e5e7eb",
           display: "flex",
           alignItems: "center",
@@ -117,8 +117,8 @@ export function RunStatusPanel({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 22,
-            height: 22,
+            width: 26,
+            height: 26,
             border: "none",
             background: "#f3f4f6",
             borderRadius: 4,
@@ -127,18 +127,18 @@ export function RunStatusPanel({
             flexShrink: 0,
           }}
         >
-          <ArrowLeft size={12} />
+          <ArrowLeft size={14} />
         </button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>{t("editor.run_result")}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{t("editor.run_result")}</span>
         {runSnapshot && (
           <span
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: 3,
-              padding: "1px 7px",
+              padding: "2px 8px",
               borderRadius: 99,
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: 500,
               color: DAG_STATUS_CFG[dagStatus!]?.color ?? "#6b7280",
               background: DAG_STATUS_CFG[dagStatus!]?.bg ?? "#f3f4f6",
@@ -147,8 +147,8 @@ export function RunStatusPanel({
             {dagStatus === "RUNNING" && (
               <span
                 style={{
-                  width: 5,
-                  height: 5,
+                  width: 6,
+                  height: 6,
                   borderRadius: "50%",
                   background: "#3b82f6",
                   animation: "wf-pulse 1.5s ease-in-out infinite",
@@ -167,8 +167,8 @@ export function RunStatusPanel({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
                 border: "none",
                 background: "#fef2f2",
                 borderRadius: 4,
@@ -176,7 +176,7 @@ export function RunStatusPanel({
                 cursor: "pointer",
               }}
             >
-              <Square size={11} />
+              <Square size={13} />
             </button>
           )}
           {isRunDone && (
@@ -187,8 +187,8 @@ export function RunStatusPanel({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
                 border: "none",
                 background: "#f3f4f6",
                 borderRadius: 4,
@@ -196,7 +196,7 @@ export function RunStatusPanel({
                 cursor: "pointer",
               }}
             >
-              <Edit3 size={11} />
+              <Edit3 size={13} />
             </button>
           )}
         </div>
@@ -204,25 +204,25 @@ export function RunStatusPanel({
 
       {/* 审批卡片 */}
       {dagStatus === "SUSPENDED" && runApprovals.length > 0 && (
-        <div style={{ padding: 10, borderBottom: "1px solid #fbbf24", background: "#fffbeb" }}>
+        <div style={{ padding: 12, borderBottom: "1px solid #fbbf24", background: "#fffbeb" }}>
           <div
             style={{
-              fontSize: 11,
+              fontSize: 13,
               fontWeight: 600,
               color: "#92400e",
-              marginBottom: 6,
+              marginBottom: 8,
               display: "flex",
               alignItems: "center",
               gap: 4,
             }}
           >
-            <ShieldCheck size={12} /> {t("editor.waiting_approval")}
+            <ShieldCheck size={14} /> {t("editor.waiting_approval")}
           </div>
           {runApprovals.map((a) => (
-            <div key={a.nodeId} style={{ fontSize: 10, color: "#78350f", marginBottom: 6 }}>
+            <div key={a.nodeId} style={{ fontSize: 12, color: "#78350f", marginBottom: 8 }}>
               <div style={{ fontWeight: 500, marginBottom: 2 }}>{t("editor.approval_node", { nodeId: a.nodeId })}</div>
               {a.displayData != null && typeof a.displayData === "object" && (
-                <div style={{ color: "#92400e", marginBottom: 3 }}>
+                <div style={{ color: "#92400e", marginBottom: 4 }}>
                   {String(((a.displayData as Record<string, unknown>).message as string) ?? "")}
                 </div>
               )}
@@ -230,12 +230,12 @@ export function RunStatusPanel({
                 type="button"
                 onClick={() => handleApprove(a)}
                 style={{
-                  padding: "2px 8px",
+                  padding: "3px 10px",
                   border: "1px solid #f59e0b",
                   borderRadius: 4,
                   background: "#f59e0b",
                   color: "#fff",
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: 500,
                   cursor: "pointer",
                 }}
@@ -251,9 +251,9 @@ export function RunStatusPanel({
       {runSnapshot && (
         <div
           style={{
-            padding: "4px 12px",
+            padding: "6px 12px",
             borderBottom: "1px solid #f3f4f6",
-            fontSize: 10,
+            fontSize: 12,
             color: "#4b5563",
             display: "flex",
             justifyContent: "space-between",
@@ -265,7 +265,7 @@ export function RunStatusPanel({
               total: Object.keys(runSnapshot.node_states).length,
             })}
           </span>
-          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 9 }}>{activeRunId?.substring(0, 16)}...</span>
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 11 }}>{activeRunId?.substring(0, 16)}...</span>
         </div>
       )}
 
@@ -276,10 +276,10 @@ export function RunStatusPanel({
           onClick={() => setRunRightTab("events")}
           style={{
             flex: 1,
-            padding: "7px 0",
+            padding: "8px 0",
             border: "none",
             background: "none",
-            fontSize: 11,
+            fontSize: 13,
             fontWeight: runRightTab === "events" ? 600 : 400,
             color: runRightTab === "events" ? "#111827" : "#4b5563",
             borderBottom: runRightTab === "events" ? "2px solid #3b82f6" : "2px solid transparent",
@@ -297,10 +297,10 @@ export function RunStatusPanel({
           onClick={() => setRunRightTab("output")}
           style={{
             flex: 1,
-            padding: "7px 0",
+            padding: "8px 0",
             border: "none",
             background: "none",
-            fontSize: 11,
+            fontSize: 13,
             fontWeight: runRightTab === "output" ? 600 : 400,
             color: runRightTab === "output" ? "#111827" : "#4b5563",
             borderBottom: runRightTab === "output" ? "2px solid #3b82f6" : "2px solid transparent",
@@ -313,7 +313,7 @@ export function RunStatusPanel({
 
       {/* 事件列表 */}
       {runRightTab === "events" && (
-        <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
+        <div style={{ flex: 1, overflowY: "auto", fontSize: 13 }}>
           {(() => {
             const filtered = selectedRunNodeId ? runEvents.filter((e) => e.node_id === selectedRunNodeId) : runEvents;
             return filtered.length === 0 ? (
@@ -325,10 +325,10 @@ export function RunStatusPanel({
                 <div
                   key={evt.event_id}
                   style={{
-                    padding: "5px 12px",
+                    padding: "6px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     display: "flex",
-                    gap: 5,
+                    gap: 6,
                     alignItems: "flex-start",
                     cursor: evt.node_id ? "pointer" : "default",
                   }}
@@ -338,9 +338,9 @@ export function RunStatusPanel({
                 >
                   <EventIcon type={evt.type} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
                       <span style={{ fontWeight: 500, color: "#374151" }}>{formatEventType(t, evt.type)}</span>
-                      <span style={{ color: "#6b7280", fontSize: 9, flexShrink: 0 }}>
+                      <span style={{ color: "#6b7280", fontSize: 11, flexShrink: 0 }}>
                         {new Date(evt.timestamp).toLocaleTimeString("zh-CN", {
                           hour: "2-digit",
                           minute: "2-digit",
@@ -349,7 +349,7 @@ export function RunStatusPanel({
                       </span>
                     </div>
                     {evt.node_id && (
-                      <span style={{ color: "#4b5563", fontFamily: "ui-monospace, monospace", fontSize: 9 }}>
+                      <span style={{ color: "#4b5563", fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
                         {evt.node_id}
                       </span>
                     )}
@@ -357,8 +357,8 @@ export function RunStatusPanel({
                       <div
                         style={{
                           color: "#4b5563",
-                          fontSize: 9,
-                          marginTop: 1,
+                          fontSize: 11,
+                          marginTop: 2,
                           fontFamily: "ui-monospace, monospace",
                         }}
                       >
@@ -375,12 +375,12 @@ export function RunStatusPanel({
 
       {/* 节点输出 */}
       {runRightTab === "output" && (
-        <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
+        <div style={{ flex: 1, overflowY: "auto", fontSize: 13 }}>
           {!selectedRunNodeId ? (
             <div style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>{t("editor.click_node_output")}</div>
           ) : nodeOutputLoading ? (
             <div style={{ padding: 20, textAlign: "center", color: "#4b5563" }}>
-              <Loader size={14} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+              <Loader size={16} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
             </div>
           ) : !selectedNodeOutput ? (
             <div style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>{t("editor.no_output")}</div>
@@ -388,7 +388,7 @@ export function RunStatusPanel({
             <>
               <div
                 style={{
-                  padding: "6px 12px",
+                  padding: "8px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   display: "flex",
                   alignItems: "center",
@@ -396,7 +396,7 @@ export function RunStatusPanel({
                   gap: 6,
                 }}
               >
-                <span style={{ fontSize: 10, color: "#6b7280", fontFamily: "ui-monospace, monospace" }}>
+                <span style={{ fontSize: 12, color: "#6b7280", fontFamily: "ui-monospace, monospace" }}>
                   {selectedRunNodeId}
                 </span>
                 <button
@@ -407,18 +407,18 @@ export function RunStatusPanel({
                     display: "flex",
                     alignItems: "center",
                     gap: 3,
-                    padding: "2px 8px",
+                    padding: "3px 10px",
                     border: "1px solid #3b82f6",
                     borderRadius: 4,
                     background: "#eff6ff",
                     color: "#3b82f6",
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: 500,
                     cursor: running ? "not-allowed" : "pointer",
                     opacity: running ? 0.5 : 1,
                   }}
                 >
-                  <RefreshCw size={10} /> {t("editor.rerun_from_here")}
+                  <RefreshCw size={12} /> {t("editor.rerun_from_here")}
                 </button>
               </div>
               <NodeOutputView output={selectedNodeOutput} />
