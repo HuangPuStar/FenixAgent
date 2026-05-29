@@ -76,5 +76,16 @@
   "board_delete_confirm": "Delete board \"{{name}}\" and all its jobs?",
   "board_default_name": "Default Board",
   "board_owner_badge": "Owner",
-  "board_cannot_delete_default": "Cannot delete the default board"
+  "board_cannot_delete_default": "Cannot delete the default board",
+  "logs_title": "Logs",
+  "logs_view": "View Logs",
+  "logs_no_run": "No run data available",
+  "logs_loading": "Loading logs...",
+  "logs_node_pending": "Pending",
+  "logs_node_running": "Running",
+  "logs_node_completed": "Completed",
+  "logs_node_failed": "Failed",
+  "logs_no_output": "No output",
+  "logs_summary": "{{completed}}/{{total}} nodes",
+  "logs_duration": "{{duration}}"
 }

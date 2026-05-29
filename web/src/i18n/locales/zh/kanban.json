@@ -76,5 +76,16 @@
   "board_delete_confirm": "删除看板「{{name}}」及其所有 Job？",
   "board_default_name": "默认看板",
   "board_owner_badge": "所有者",
-  "board_cannot_delete_default": "无法删除默认看板"
+  "board_cannot_delete_default": "无法删除默认看板",
+  "logs_title": "日志",
+  "logs_view": "查看日志",
+  "logs_no_run": "暂无运行数据",
+  "logs_loading": "加载日志中...",
+  "logs_node_pending": "等待中",
+  "logs_node_running": "运行中",
+  "logs_node_completed": "已完成",
+  "logs_node_failed": "失败",
+  "logs_no_output": "无输出",
+  "logs_summary": "{{completed}}/{{total}} 节点",
+  "logs_duration": "{{duration}}"
 }
