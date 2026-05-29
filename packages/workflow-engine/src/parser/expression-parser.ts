@@ -517,7 +517,7 @@ export function resolveTemplate(template: string, context: EvalContext): string 
       const expr = template.slice(i + 3, j).trim();
       const ast = parseExpression(expr);
       const val = evaluateExpression(ast, context);
-      result.push(val === null || val === undefined ? "" : String(val));
+      result.push(val === null || val === undefined ? "" : typeof val === "object" ? JSON.stringify(val) : String(val));
       lastEnd = j + 2;
       i = j + 1; // for loop 会 +1
     }
