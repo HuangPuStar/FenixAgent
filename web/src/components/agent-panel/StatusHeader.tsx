@@ -55,7 +55,10 @@ export function StatusHeader({ agentName, modelName, entries = [] }: StatusHeade
           {formatTokenCount(stats.estimatedTokens)}/200k
         </span>
         <div className="w-20 h-1.5 rounded-full bg-surface-3 overflow-hidden flex">
-          <div className="h-full bg-brand transition-[width] duration-500 ease rounded-full" style={{ width: `${inputPercent}%` }} />
+          <div
+            className="h-full bg-brand transition-[width] duration-500 ease rounded-full"
+            style={{ width: `${inputPercent}%` }}
+          />
           <div
             className="h-full bg-accent-green transition-[width] duration-500 ease rounded-full"
             style={{ width: `${outputPercent}%` }}
