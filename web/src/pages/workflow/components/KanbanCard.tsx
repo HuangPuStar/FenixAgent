@@ -58,7 +58,10 @@ function paramsSummary(params: Record<string, unknown> | null, t: (k: string) =>
   if (!params || Object.keys(params).length === 0) return t("no_params");
   const entries = Object.entries(params)
     .slice(0, 2)
-    .map(([k, v]) => `${k}=${String(v).substring(0, 15)}`)
+    .map(([k, v]) => {
+      const display = typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
+      return `${k}=${display.substring(0, 15)}`;
+    })
     .join(", ");
   const remaining = Object.keys(params).length - 2;
   return remaining > 0 ? `${entries} +${remaining}` : entries;
@@ -86,7 +89,7 @@ export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanC
       onRefresh();
     } catch (err) {
       console.error(err);
-      toast.error((err as Error).message);
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
