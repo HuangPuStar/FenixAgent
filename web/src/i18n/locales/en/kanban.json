@@ -61,5 +61,20 @@
   "approve_failed": "Approve failed",
   "load_failed": "Load failed: {{error}}",
   "add_to_kanban": "Add to Kanban",
-  "refresh": "Refresh"
+  "refresh": "Refresh",
+  "board_selector_placeholder": "Select board...",
+  "board_create": "New Board",
+  "board_create_title": "Create Board",
+  "board_create_placeholder": "Board name",
+  "board_create_confirm": "Create",
+  "board_create_creating": "Creating...",
+  "board_rename": "Rename",
+  "board_rename_title": "Rename Board",
+  "board_rename_placeholder": "Board name",
+  "board_rename_confirm": "Save",
+  "board_delete": "Delete Board",
+  "board_delete_confirm": "Delete board \"{{name}}\" and all its jobs?",
+  "board_default_name": "Default Board",
+  "board_owner_badge": "Owner",
+  "board_cannot_delete_default": "Cannot delete the default board"
 }

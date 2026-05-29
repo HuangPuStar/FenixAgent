@@ -61,5 +61,20 @@
   "approve_failed": "审批失败",
   "load_failed": "加载失败: {{error}}",
   "add_to_kanban": "添加到看板",
-  "refresh": "刷新"
+  "refresh": "刷新",
+  "board_selector_placeholder": "选择看板...",
+  "board_create": "新建看板",
+  "board_create_title": "创建看板",
+  "board_create_placeholder": "看板名称",
+  "board_create_confirm": "创建",
+  "board_create_creating": "创建中...",
+  "board_rename": "重命名",
+  "board_rename_title": "重命名看板",
+  "board_rename_placeholder": "看板名称",
+  "board_rename_confirm": "保存",
+  "board_delete": "删除看板",
+  "board_delete_confirm": "删除看板「{{name}}」及其所有 Job？",
+  "board_default_name": "默认看板",
+  "board_owner_badge": "所有者",
+  "board_cannot_delete_default": "无法删除默认看板"
 }
