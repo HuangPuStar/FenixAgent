@@ -41,8 +41,7 @@ export interface UseWorkflowRunParams {
   setNodeOutputLoading: (loading: boolean) => void;
   syncYaml: () => string;
   fitView: (opts?: { padding?: number; duration?: number }) => void;
-  rightTab: string;
-  setRightTab: (tab: "config" | "run" | "versions") => void;
+  openRunSheet: () => void;
   setMeta: (fn: (prev: import("../yaml-utils").WfMeta) => import("../yaml-utils").WfMeta) => void;
   lastSavedYaml: string;
   setLastSavedYaml: (yaml: string) => void;
@@ -93,7 +92,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setNodeOutputLoading,
     syncYaml,
     fitView,
-    setRightTab,
+    openRunSheet,
     setMeta,
     lastSavedYaml: _lastSavedYaml,
     setLastSavedYaml,
@@ -280,7 +279,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         setRunApprovals([]);
         setSelectedRunNodeId(null);
         setSelectedNodeOutput(null);
-        setRightTab("run");
+        openRunSheet();
         await loadRunData(result.runId);
         // running 保持 true，轮询检测到终止状态时重置
       } catch (err) {
@@ -300,7 +299,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setRunApprovals,
       setSelectedRunNodeId,
       setSelectedNodeOutput,
-      setRightTab,
+      openRunSheet,
       loadRunData,
       resolveDefaultParams,
       t,
@@ -343,7 +342,6 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals([]);
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
-    setRightTab("config");
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })));
   }, [
     setActiveRunId,
@@ -352,7 +350,6 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals,
     setSelectedRunNodeId,
     setSelectedNodeOutput,
-    setRightTab,
     setNodes,
   ]);
 
@@ -416,7 +413,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         setRunApprovals([]);
         setSelectedRunNodeId(null);
         setSelectedNodeOutput(null);
-        setRightTab("run");
+        openRunSheet();
         await loadRunData(result.runId);
       } catch (err) {
         console.error(err);
@@ -437,7 +434,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setRunApprovals,
       setSelectedRunNodeId,
       setSelectedNodeOutput,
-      setRightTab,
+      openRunSheet,
       loadRunData,
       t,
     ],
@@ -450,7 +447,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setRunRightTab("output");
       setNodeOutputLoading(true);
       setSelectedNodeOutput(null);
-      setRightTab("run");
+      openRunSheet();
       try {
         const out = await workflowEngineApi.getOutput(activeRunId, nodeId);
         setSelectedNodeOutput(out ?? null);
@@ -461,7 +458,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         setNodeOutputLoading(false);
       }
     },
-    [activeRunId, setSelectedRunNodeId, setNodeOutputLoading, setSelectedNodeOutput, setRightTab],
+    [activeRunId, setSelectedRunNodeId, setNodeOutputLoading, setSelectedNodeOutput, openRunSheet],
   );
 
   nodeCallbacksRef.current.onViewOutput = handleViewNodeOutput;
