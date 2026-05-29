@@ -1,5 +1,4 @@
 import type { Node } from "@xyflow/react";
-import { Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { START_NODE_ID } from "../yaml-utils";
 import { InputsEditor } from "./InputsEditor";
@@ -32,22 +31,7 @@ export function NodeConfigCard({
 
   return (
     <div className="wf-popover-body">
-      {readOnly && (
-        <div
-          style={{
-            padding: "4px 12px",
-            background: "#fefce8",
-            borderBottom: "1px solid #fde68a",
-            fontSize: 10,
-            color: "#92400e",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-        >
-          <Lock size={10} /> {t("editor.readonly")}
-        </div>
-      )}
+      {/* 开始节点 */}
       {isStartNode ? (
         <div className="wf-prop-section">
           <div className="wf-prop-section-title">{t("editor.start_node_title")}</div>
@@ -58,6 +42,7 @@ export function NodeConfigCard({
         </div>
       ) : (
         <>
+          {/* 节点基本信息 */}
           <div className="wf-prop-section">
             <div className="wf-prop-section-title">{t("editor.basic_info")}</div>
             <div className="wf-prop-field">
@@ -95,6 +80,7 @@ export function NodeConfigCard({
             </div>
           </div>
 
+          {/* 节点配置（按类型） */}
           <div className="wf-prop-section">
             <div className="wf-prop-section-title">{t("editor.config")}</div>
 
@@ -376,6 +362,7 @@ export function NodeConfigCard({
             )}
           </div>
 
+          {/* 高级配置 */}
           <div className="wf-prop-section">
             <div className="wf-prop-section-title">{t("editor.advanced")}</div>
             <div className="wf-prop-field">
