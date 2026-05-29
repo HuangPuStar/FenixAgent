@@ -50,6 +50,7 @@ export function CodePreview({ content, filePath }: CodePreviewProps) {
           line-height: 1.6;
           padding: 16px;
           margin: 0;
+          white-space: nowrap;
           background: transparent !important;
         }
         .shiki-preview .line {

@@ -314,7 +314,7 @@ export function AgentSidebarTree({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto py-2">
+    <div className="flex-1 overflow-y-auto py-2 space-y-2">
       <div className="flex items-center justify-between px-4 pt-1 pb-2">
         <span className="agent-tree-section-title">{t("agents")}</span>
         {onCreateAgent && (
