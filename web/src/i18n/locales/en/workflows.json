@@ -331,8 +331,23 @@
     "tab_workflows": "Workflows",
     "tab_kanban": "Kanban",
     "tab_runs": "Run History",
+    "tab_stats": "Statistics",
     "breadcrumb_back": "Workflows",
     "breadcrumb_edit": "Edit",
     "breadcrumb_versions": "Versions"
-  }
+  },
+  "stats_total_runs": "Total Runs",
+  "stats_success_rate": "Success Rate",
+  "stats_avg_duration": "Avg Duration",
+  "stats_total_tokens": "Tokens",
+  "stats_input": "Input",
+  "stats_output": "Output",
+  "stats_7d": "7 Days",
+  "stats_30d": "30 Days",
+  "stats_all": "All",
+  "stats_trend_title": "Run Trend",
+  "stats_tokens_title": "Token Consumption",
+  "stats_failed_title": "Recent Failures",
+  "stats_no_data": "No data available",
+  "stats_loading": "Loading statistics..."
 }
