@@ -49,9 +49,9 @@ describe("WorkflowEditor trigger integration", () => {
     expect(src).toContain("./components/TriggerPanel");
   });
 
-  // 测试 editor 包含 triggers tab 类型
-  test("editor includes triggers in rightTab type", () => {
-    expect(src).toContain('"triggers"');
+  // 测试 editor 包含 triggers sheet 状态
+  test("editor includes triggers sheet state", () => {
+    expect(src).toContain("triggersSheetOpen");
   });
 
   // 测试 editor 包含 triggers tab header
