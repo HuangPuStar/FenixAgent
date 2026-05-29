@@ -130,6 +130,13 @@
   "fileTree": {
     "refresh": "Refresh",
     "emptyState": "No files in workspace",
+    "upload": "Upload",
+    "download": "Download",
+    "newFile": "New File",
+    "newFileName": "New file name",
+    "uploadSuccess": "Uploaded {{count}} file(s)",
+    "uploadFailed": "Upload failed",
+    "downloadFailed": "Download failed",
     "contextMenu": {
       "reference": "Reference in chat",
       "rename": "Rename",

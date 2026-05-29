@@ -130,6 +130,13 @@
   "fileTree": {
     "refresh": "刷新",
     "emptyState": "工作区暂无文件",
+    "upload": "上传",
+    "download": "下载",
+    "newFile": "新建文件",
+    "newFileName": "新文件名",
+    "uploadSuccess": "已上传 {{count}} 个文件",
+    "uploadFailed": "上传失败",
+    "downloadFailed": "下载失败",
     "contextMenu": {
       "reference": "引用到聊天",
       "rename": "重命名",

@@ -1,6 +1,7 @@
-import { File, Folder, FolderOpen, RefreshCw } from "lucide-react";
+import { Download, File, FilePlus, Folder, FolderOpen, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
 import { fileApi, userFileApi } from "@/src/api/sdk";
@@ -70,6 +71,10 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const treeDataRef = useRef<ParsedNode[]>([]);
+  const [selectedDir, setSelectedDir] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTree = useCallback(async () => {
     if (!envId) return;
@@ -117,7 +122,14 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
   const handleSelect = useCallback(
     (nodeId: string | null, node: TreeNodeData) => {
       if (!nodeId) return;
-      // 只对文件触发预览，目录的点击只是选中
+      const parsed = findNodeByPath(treeDataRef.current, nodeId);
+      if (parsed?.isDir) {
+        setSelectedDir(nodeId);
+      } else {
+        const parentDir = nodeId.substring(0, nodeId.lastIndexOf("/"));
+        setSelectedDir(parentDir || null);
+        setSelectedFile(nodeId);
+      }
       if (node.hasChildren === false || node.hasChildren === undefined) {
         onPreviewFile(nodeId);
       }
@@ -213,20 +225,87 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
 
-      const targetSubdir = "user";
+      const targetSubdir = selectedDir || "user";
       try {
         const formData = new FormData();
         for (const file of files) {
           formData.append("files", file);
         }
         await fileApi.upload({ id: envId, path: targetSubdir }, formData);
+        toast.success(t("fileTree.uploadSuccess", { count: files.length }));
         await loadTree();
-      } catch (err) {
-        console.error("Upload failed:", err);
+      } catch {
+        toast.error(t("fileTree.uploadFailed"));
       }
     },
-    [envId, loadTree],
+    [envId, selectedDir, loadTree, t],
   );
+
+  // 按钮上传
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!envId) return;
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+
+      setUploading(true);
+      try {
+        const targetDir = selectedDir || "user";
+        const formData = new FormData();
+        for (const file of Array.from(files)) {
+          formData.append("files", file);
+        }
+        const { error: uploadErr } = await fileApi.upload({ id: envId, path: targetDir }, formData);
+        if (uploadErr) {
+          toast.error(t("fileTree.uploadFailed"));
+        } else {
+          toast.success(t("fileTree.uploadSuccess", { count: files.length }));
+          await loadTree();
+        }
+      } catch {
+        toast.error(t("fileTree.uploadFailed"));
+      } finally {
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [envId, selectedDir, loadTree, t],
+  );
+
+  // 下载
+  const handleDownload = useCallback(async () => {
+    if (!envId || !selectedFile) return;
+    try {
+      const url = `/web/environments/${envId}/user/${selectedFile}?preview=true`;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = selectedFile.split("/").pop() || "file";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      toast.error(t("fileTree.downloadFailed"));
+    }
+  }, [envId, selectedFile, t]);
+
+  // 新建空文件
+  const handleNewFile = useCallback(async () => {
+    if (!envId) return;
+    const name = window.prompt(t("fileTree.newFileName"));
+    if (!name) return;
+    const parentDir = selectedDir || "user";
+    const fullPath = `${parentDir}/${name}`;
+    const { error: writeErr } = await fileApi.writeFile({ id: envId, path: fullPath }, { content: "" });
+    if (writeErr) {
+      console.error("New file failed:", writeErr);
+    } else {
+      await loadTree();
+    }
+  }, [envId, selectedDir, loadTree, t]);
 
   // 自定义 label：目录用 FolderOpen 图标，文件用 File 图标（通过 icon prop 已处理）
   // 但目录展开时切换为 FolderOpen
@@ -250,7 +329,7 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* 工具栏 */}
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-border flex-shrink-0">
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border flex-shrink-0">
         <button
           type="button"
           onClick={loadTree}
@@ -260,6 +339,40 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         </button>
+        <button
+          type="button"
+          onClick={handleUploadClick}
+          disabled={uploading || !envId}
+          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          title={t("fileTree.upload")}
+        >
+          <Upload className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={!selectedFile || !envId}
+          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          title={t("fileTree.download")}
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={handleNewFile}
+          disabled={!envId}
+          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          title={t("fileTree.newFile")}
+        >
+          <FilePlus className="h-3.5 w-3.5" />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          style={{ display: "none" }}
+          onChange={handleFileInputChange}
+        />
       </div>
 
       {/* 文件树 */}
@@ -312,6 +425,25 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
               onClick={handleNewFolder}
             >
               {t("fileTree.contextMenu.newFolder")}
+            </button>
+          )}
+          {contextMenu.isDir && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors text-text-primary hover:bg-surface-2"
+              onClick={() => {
+                if (!envId) return;
+                const name = window.prompt(t("fileTree.newFileName"));
+                if (!name) return;
+                const fullPath = `${contextMenu.path}/${name}`;
+                fileApi.writeFile({ id: envId, path: fullPath }, { content: "" }).then(({ error: writeErr }) => {
+                  if (writeErr) console.error("New file failed:", writeErr);
+                  else loadTree();
+                });
+                setContextMenu(null);
+              }}
+            >
+              {t("fileTree.newFile")}
             </button>
           )}
         </div>
