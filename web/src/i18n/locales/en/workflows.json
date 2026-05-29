@@ -284,6 +284,7 @@
     "inputs_value_placeholder": "Expression",
     "inputs_add": "Add Input",
     "tab_triggers": "Triggers",
+    "meta_settings": "Workflow Settings",
     "trigger_title": "Webhook Triggers",
     "trigger_create": "Create Webhook",
     "trigger_creating": "Creating...",

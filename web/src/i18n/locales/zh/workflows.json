@@ -284,6 +284,7 @@
     "inputs_value_placeholder": "表达式",
     "inputs_add": "添加 Input",
     "tab_triggers": "触发器",
+    "meta_settings": "工作流设置",
     "trigger_title": "Webhook 触发器",
     "trigger_create": "创建 Webhook",
     "trigger_creating": "创建中...",
