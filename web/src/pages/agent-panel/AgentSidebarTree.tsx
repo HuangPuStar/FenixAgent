@@ -347,7 +347,7 @@ export function AgentSidebarTree({
                 {isEntering ? (
                   <Loader2 className="w-5 h-5 animate-spin text-white" />
                 ) : (
-                  <span className="text-white font-bold text-lg">{initial}</span>
+                  <span className="text-white font-bold text-sm">{initial}</span>
                 )}
               </div>
 
