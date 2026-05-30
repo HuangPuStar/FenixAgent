@@ -15,8 +15,7 @@ import {
   sanitizeResponse,
   updateWebEnvironment,
 } from "../../services/environment";
-import { enterEnvironment } from "../../services/environment-web";
-import { spawnInstanceFromEnvironment } from "../../transport/relay";
+import { enterEnvironment, spawnInstanceFromEnvironment } from "../../services/instance";
 
 const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model({
   "environment-info": EnvironmentInfoSchema,
