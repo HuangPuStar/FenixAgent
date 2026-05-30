@@ -24,7 +24,7 @@ export function handleAcpWsOpen(
   ws: WsConnection,
   wsId: string,
   userId: string,
-  _boundEnvId?: string | null,
+  boundEnvId?: string | null,
   isMachine?: boolean,
 ): void {
   if (isMachine) {
@@ -48,9 +48,65 @@ export function handleAcpWsOpen(
     return;
   }
 
-  // 非 machine 连接不再支持 — ACP agent 直连模型已废弃
-  log(`[ACP-WS] Non-machine connection rejected: wsId=${wsId}`);
-  ws.close(4003, "ACP agent connections no longer supported; use machine registration");
+  // 本地 acp-link 回连（旧架构路径）
+  if (boundEnvId) {
+    log(`[ACP-WS] Local acp-link connection opened: wsId=${wsId} boundEnvId=${boundEnvId}`);
+    import("../services/environment-acp").then(({ handleAcpConnect }) => {
+      handleAcpConnect(boundEnvId).catch(() => {});
+    });
+
+    const keepalive = setInterval(() => {
+      const entry = connections.get(wsId);
+      if (!entry || entry.ws.readyState !== 1) {
+        clearInterval(keepalive);
+        return;
+      }
+      const silenceMs = Date.now() - entry.lastClientActivity;
+      if (silenceMs > _CLIENT_ACTIVITY_TIMEOUT_MS) {
+        log(`[ACP-WS] Client inactive for ${Math.round(silenceMs / 1000)}s, closing dead connection`);
+        try {
+          entry.ws.close(1000, "client inactive");
+        } catch {
+          clearInterval(keepalive);
+        }
+        return;
+      }
+      sendToWs(entry.ws, { type: "keep_alive" });
+    }, SERVER_KEEPALIVE_INTERVAL_MS);
+
+    connections.set(wsId, {
+      agentId: boundEnvId,
+      boundEnvId,
+      userId,
+      unsub: null,
+      keepalive,
+      ws,
+      openTime: Date.now(),
+      lastClientActivity: Date.now(),
+      capabilities: null,
+      isMachine: false,
+      machineId: null,
+      wsId,
+    });
+
+    // 订阅 EventBus 转发 outbound 消息
+    import("./event-bus").then(({ getAcpEventBus }) => {
+      const bus = getAcpEventBus(boundEnvId);
+      const unsub = bus.subscribe((event) => {
+        const entry = connections.get(wsId);
+        if (!entry || entry.ws.readyState !== 1) return;
+        if (event.direction !== "outbound") return;
+        sendToWs(entry.ws, event.payload as object);
+      });
+      const entry = connections.get(wsId);
+      if (entry) entry.unsub = unsub;
+    });
+    return;
+  }
+
+  // 既非 machine 也非 boundEnvId — 拒绝
+  log(`[ACP-WS] Unidentified connection rejected: wsId=${wsId}`);
+  ws.close(4003, "Unidentified connection; provide either boundEnvId or registry secret");
 }
 
 /** Handle machine register message — WS registration for machine */
@@ -181,6 +237,21 @@ export async function handleAcpWsMessage(
       handleRegister(wsId, msg).catch((err) => {
         logError("[ACP-WS] Error in register handler:", err);
       });
+      continue;
+    }
+
+    // 本地 acp-link 连接的消息处理
+    if (!entry.isMachine && entry.agentId) {
+      if (msg.type === "identify") {
+        const agentId = msg.agent_id as string;
+        if (agentId) {
+          entry.agentId = agentId;
+          entry.boundEnvId = agentId;
+          sendToWs(entry.ws, { type: "identified", agent_id: agentId });
+          log(`[ACP-WS] Agent identified: wsId=${wsId} agentId=${agentId}`);
+        }
+        continue;
+      }
     }
 
     // 未识别的消息类型静默忽略（不再走 EventBus 发布）
