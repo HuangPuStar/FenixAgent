@@ -165,6 +165,9 @@ async function openLocalRelay(
   });
   entry.unsub = unsub;
 
+  // 通知前端连接就绪（ACPClient 期望收到 status 消息才会 resolve connect promise）
+  sendToRelayWs(ws, { type: "status", payload: { connected: true } });
+
   log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId}`);
 }
 
