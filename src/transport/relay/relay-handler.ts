@@ -1,3 +1,4 @@
+import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import { log, error as logError } from "../../logger";
 import type { EnvironmentRecord } from "../../repositories/environment";
 import { environmentRepo } from "../../repositories/environment";
@@ -6,6 +7,12 @@ import type { AcpConnectionEntry, RelayConnectionEntry } from "../../types/store
 import { findMachineConnectionById, sendToWs, setAgentMachineCache } from "../acp-ws-handler";
 import type { WsConnection } from "../ws-types";
 import { RelayConnectionManager, sendToRelayWs } from "./connection-manager";
+
+/** OpencodeRelayHandle extends EngineRelayHandle with onMessage/ready */
+type FullRelayHandle = EngineRelayHandle & {
+  onMessage?: (listener: (message: { type: string; payload?: unknown }) => void) => () => void;
+  ready?: Promise<void>;
+};
 
 const manager = new RelayConnectionManager();
 
@@ -115,14 +122,17 @@ async function openLocalRelay(
   relayWsId: string,
   agentId: string,
   userId: string,
-  _sessionId: string,
+  sessionId: string,
   _env: EnvironmentRecord,
 ): Promise<void> {
   const { ensureRunning } = await import("../../services/instance");
 
+  // 1. 确保实例运行
+  let instanceId: string;
   try {
     const result = await ensureRunning(userId, agentId);
-    log(`[ACP-Relay] Local instance ${result.status}: instanceId=${result.instance.id} envId=${agentId}`);
+    instanceId = result.instance.id;
+    log(`[ACP-Relay] Local instance ${result.status}: instanceId=${instanceId} envId=${agentId}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     sendToRelayWs(ws, { type: "error", payload: { message: `Failed to start local instance: ${msg}` } });
@@ -130,6 +140,37 @@ async function openLocalRelay(
     return;
   }
 
+  // WS 已关闭则放弃
+  if (ws.readyState !== 1) return;
+
+  // 2. 通过 CoreRuntimeFacade 连接 relay handle（先不加入 manager，避免空窗期路由错误）
+  let handle: EngineRelayHandle;
+  try {
+    const { getCoreRuntime } = await import("../../services/core-bootstrap");
+    const facade = getCoreRuntime();
+    handle = await facade.connectInstanceRelay({ instanceId, sessionId });
+
+    const full = handle as FullRelayHandle;
+    if (full.ready) await full.ready;
+
+    // WS 在 await 期间关闭 → 清理 handle 并放弃
+    if (ws.readyState !== 1) {
+      try {
+        handle.close(1000, "ws closed during setup");
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logError("[ACP-Relay] Failed to connect instance relay:", err);
+    sendToRelayWs(ws, { type: "error", payload: { message: `Relay connect failed: ${msg}` } });
+    ws.close(1011, "relay connect failed");
+    return;
+  }
+
+  // 3. 所有异步工作完成，一次性创建完整 entry 并加入 manager
   const relayKeepalive = setInterval(() => {
     const entry = manager.get(relayWsId);
     if (!entry || entry.ws.readyState !== 1) {
@@ -146,29 +187,37 @@ async function openLocalRelay(
     keepalive: relayKeepalive,
     ws,
     openTime: Date.now(),
-    instanceId: null,
-    relayHandle: null,
+    instanceId,
+    relayHandle: handle,
     relayUnsub: null,
+    sessionId,
     outboundBuffer: [],
     sessionStarted: true,
   };
   manager.add(relayWsId, entry);
 
-  // 订阅 EventBus 转发 outbound 消息到前端
-  const { getAcpEventBus } = await import("../event-bus");
-  const bus = getAcpEventBus(agentId);
-  const unsub = bus.subscribe((event) => {
-    if (event.direction !== "outbound") return;
-    const e = manager.get(relayWsId);
-    if (!e || e.ws.readyState !== 1) return;
-    sendToRelayWs(e.ws, event.payload as object);
-  });
-  entry.unsub = unsub;
+  // 4. 注册 onMessage（flush relay handle 内部缓冲的消息）
+  const full = handle as FullRelayHandle;
+  if (full.onMessage) {
+    entry.relayUnsub = full.onMessage((message) => {
+      if (message.type === "status") return; // 由本层发送 status
+      if (message.type === "relay_closed") {
+        sendToRelayWs(ws, {
+          type: "error",
+          payload: { message: "Agent connection lost" },
+        });
+        ws.close(1011, "relay handle closed");
+        return;
+      }
+      const e = manager.get(relayWsId);
+      if (!e || e.ws.readyState !== 1) return;
+      sendToRelayWs(e.ws, message);
+    });
+  }
 
-  // 通知前端连接就绪（ACPClient 期望收到 status 消息才会 resolve connect promise）
+  // 5. 通知前端连接就绪
   sendToRelayWs(ws, { type: "status", payload: { connected: true } });
-
-  log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId}`);
+  log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
 }
 
 function openMachineRelay(
@@ -200,6 +249,7 @@ function openMachineRelay(
     instanceId: machineConn.machineId, // 复用 instanceId 字段存 machineId
     relayHandle: null,
     relayUnsub: null,
+    sessionId,
     outboundBuffer: [],
     sessionStarted: false, // 等待 session_started 确认
   };
@@ -315,40 +365,40 @@ export async function handleRelayMessage(
   }
   if (parsed.type === "keep_alive") return;
 
-  // 本地路径：通过 EventBus 发布 inbound 消息
-  if (!entry.instanceId) {
-    const { getAcpEventBus } = await import("../event-bus");
-    const bus = getAcpEventBus(entry.agentId);
-    bus.publish({
-      id: `relay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      sessionId: entry.agentId,
-      type: (parsed.type as string) ?? "unknown",
-      direction: "inbound",
-      payload: parsed,
-    });
+  // 本地路径：通过 CoreRuntimeFacade relay handle 发送
+  if (entry.relayHandle) {
+    if (!entry.sessionStarted && parsed.type !== "list_sessions") {
+      entry.outboundBuffer.push(parsed);
+      return;
+    }
+    try {
+      entry.relayHandle.send(parsed as { type: string; payload?: unknown });
+    } catch (err) {
+      logError("[ACP-Relay] relay handle send error:", err);
+    }
     return;
   }
 
   // 远端 machine 路径：通过 machine WS 转发
-  const machineConn = findMachineConnectionById(entry.instanceId);
-  if (!machineConn) {
-    sendToRelayWs(ws, { type: "error", payload: { message: "Machine offline" } });
+  if (entry.instanceId) {
+    const machineConn = findMachineConnectionById(entry.instanceId);
+    if (!machineConn) {
+      sendToRelayWs(ws, { type: "error", payload: { message: "Machine offline" } });
+      return;
+    }
+
+    if (!entry.sessionStarted && parsed.type !== "list_sessions") {
+      entry.outboundBuffer.push(parsed);
+      return;
+    }
+
+    sendToWs(machineConn.ws, {
+      type: "session_data",
+      session_id: relayWsId,
+      payload: parsed,
+    });
     return;
   }
-
-  // list_sessions 不缓冲 — 直接转发，机器端 SessionManager 会处理
-  // 其他消息在 session_started 前缓冲
-  if (!entry.sessionStarted && parsed.type !== "list_sessions") {
-    entry.outboundBuffer.push(parsed);
-    return;
-  }
-
-  // 通过 machine WS 发送 session_data
-  sendToWs(machineConn.ws, {
-    type: "session_data",
-    session_id: relayWsId,
-    payload: parsed,
-  });
 }
 
 /** Called from onClose — cleans up relay connection */
@@ -361,10 +411,21 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
     `[ACP-Relay] Connection closed: relayWsId=${relayWsId} agentId=${entry.agentId} code=${code ?? "none"} duration=${duration}s`,
   );
 
-  // 发送 session_end 到 machine WS
-  const machineId = entry.instanceId;
-  if (machineId) {
-    const machineConn = findMachineConnectionById(machineId);
+  // 关闭 relay handle（本地路径）
+  if (entry.relayHandle && entry.instanceId) {
+    if (!manager.hasOtherRelayForInstance(entry.instanceId, relayWsId)) {
+      try {
+        entry.relayHandle.close(1000, "relay disconnected");
+      } catch {
+        /* ignore */
+      }
+    }
+    entry.relayUnsub?.();
+  }
+
+  // 发送 session_end 到 machine WS（远端路径）
+  if (entry.instanceId && !entry.relayHandle) {
+    const machineConn = findMachineConnectionById(entry.instanceId);
     if (machineConn) {
       sendToWs(machineConn.ws, { type: "session_end", session_id: relayWsId });
     }
@@ -452,6 +513,14 @@ export function closeAllRelayConnections(): void {
     try {
       clearInterval(entry.keepalive!);
       entry.unsub?.();
+      entry.relayUnsub?.();
+      if (entry.relayHandle) {
+        try {
+          entry.relayHandle.close(1001, "server_shutdown");
+        } catch {
+          /* ignore */
+        }
+      }
       if (entry.ws.readyState === 1) {
         entry.ws.close(1001, "server_shutdown");
       }
@@ -466,7 +535,7 @@ export function closeAllRelayConnections(): void {
 /** machine 断连后标记所有关联 relay entry 为 pendingReconnect */
 export function handleMachineDisconnected(machineId: string): void {
   for (const [relayWsId, entry] of manager.entries()) {
-    if (entry.instanceId === machineId) {
+    if (entry.instanceId === machineId && !entry.relayHandle) {
       entry.pendingReconnect = true;
       entry.machineWsId = undefined;
       log(`[ACP-Relay] Machine ${machineId} disconnected, relay ${relayWsId} pending reconnect`);

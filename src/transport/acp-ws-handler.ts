@@ -274,6 +274,12 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
   if (entry.isMachine) {
     const reasonStr = reason ?? undefined;
     handleMachineDisconnect(entry, reasonStr).catch(() => {});
+
+    if (entry.machineId) {
+      import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
+        handleMachineDisconnected(entry.machineId!);
+      });
+    }
   }
 
   connections.delete(wsId);
