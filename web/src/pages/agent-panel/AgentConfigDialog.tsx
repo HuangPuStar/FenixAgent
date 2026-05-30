@@ -1,23 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { agentApi, envApi, instanceApi, kbApi, modelApi, skillConfigApi } from "@/src/api/sdk";
-import { PermissionTab } from "../../components/PermissionTab";
+import { agentApi, kbApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
 import {
   buildAgentPayload,
   buildKnowledgeFormState,
@@ -25,7 +14,8 @@ import {
   filterKnowledgeBaseIds,
   getDefaultKnowledgeFormState,
   isValidStepsInput,
-} from "../../lib/agent-utils";
+} from "@/src/lib/agent-utils";
+import { PermissionTab } from "../../components/PermissionTab";
 import { dispatchConfigChange } from "../../lib/config-events";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
@@ -37,19 +27,20 @@ interface AgentConfigDialogProps {
 
 export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfigDialogProps) {
   const { t } = useTranslation("agents");
-  const { t: tAgentPanel } = useTranslation("agentPanel");
   const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [machineOptions, setMachineOptions] = useState<
+    Array<{ id: string; agentName: string; machineInfo: Record<string, unknown> | null }>
+  >([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
   const [skillOptions, setSkillOptions] = useState<{ id: string; name: string; description: string }[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [formModel, setFormModel] = useState("");
+  const [formMachineId, setFormMachineId] = useState("");
   const [formMode, setFormMode] = useState(DEFAULT_AGENT_MODE);
   const [formSteps, setFormSteps] = useState("50");
   const [formPrompt, setFormPrompt] = useState("");
   const [formSaving, setFormSaving] = useState(false);
-  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
-  const [restarting, setRestarting] = useState(false);
   const [formDescription, setFormDescription] = useState("");
   const [formVariant, setFormVariant] = useState("");
   const [formTemperature, setFormTemperature] = useState("");
@@ -86,6 +77,7 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
           return;
         }
         const d = agentResult.data as unknown as Record<string, unknown>;
+        setFormMachineId((d.machineId as string) || "");
         setFormModel((d.model as string) || "");
         setFormMode((d.mode as string) || DEFAULT_AGENT_MODE);
         setFormSteps(String(d.steps ?? 50));
@@ -131,6 +123,22 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
             }))
           : [];
         setSkillOptions(skills);
+
+        // Load machine options
+        registryApi
+          .list({ status: "online" })
+          .then(({ data: mData, error: mError }: { data?: unknown; error?: unknown }) => {
+            if (mError) return;
+            const listData = mData as { data?: Array<{ id: string; agentName: string; machineInfo: unknown }> };
+            if (listData.data && Array.isArray(listData.data)) {
+              const options = listData.data.map((m: { id: string; agentName: string; machineInfo: unknown }) => ({
+                id: m.id,
+                agentName: m.agentName,
+                machineInfo: m.machineInfo as Record<string, unknown> | null,
+              }));
+              setMachineOptions(options);
+            }
+          });
       })
       .catch((err) => {
         console.error("Failed to load agent config:", err);
@@ -176,6 +184,7 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
         setFormKnowledgeBaseIds(validKnowledgeBaseIds);
       }
       const data: Record<string, unknown> = {
+        machineId: formMachineId,
         ...buildAgentPayload({
           model: formModel,
           mode: formMode,
@@ -203,8 +212,8 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
         return;
       }
       toast.success(t("save.successUpdate"));
+      onOpenChange(false);
       dispatchConfigChange("agents");
-      setRestartDialogOpen(true);
     } catch (e) {
       console.error(t("save.errorGeneric", { message: "" }), e);
       toast.error(t("save.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
@@ -213,6 +222,7 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
     }
   }, [
     formModel,
+    formMachineId,
     formMode,
     formSteps,
     formPrompt,
@@ -230,53 +240,9 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
     formSkillIds,
     agentName,
     knowledgeOptions,
+    onOpenChange,
     t,
   ]);
-
-  const getRunningInstanceIds = useCallback(async () => {
-    try {
-      const { data: agentsResult } = await agentApi.list();
-      const rawAgents = (agentsResult as unknown as { agents?: { id: string; name: string }[] } | null)?.agents;
-      const agents = Array.isArray(rawAgents) ? rawAgents : [];
-      const matchedAgent = agents.find((a) => a.name === agentName);
-      if (!matchedAgent) return [];
-
-      const { data: envsData } = await envApi.list();
-      const envs = Array.isArray(envsData)
-        ? (envsData as { id: string; agent_config_id?: string; instances_count?: number }[])
-        : [];
-      const matchedEnv = envs.find((e) => e.agent_config_id === matchedAgent.id);
-      if (!matchedEnv || (matchedEnv.instances_count ?? 0) <= 0) return [];
-
-      const { data: instData } = await envApi.listInstances({ id: matchedEnv.id });
-      const instances = (instData as { instances?: { id: string; status: string }[] } | null)?.instances ?? [];
-      return instances
-        .filter((inst) => inst.status === "running" || inst.status === "starting")
-        .map((inst) => ({ id: inst.id, environmentId: matchedEnv.id }));
-    } catch (err) {
-      console.error("Failed to get running instances:", err);
-      return [];
-    }
-  }, [agentName]);
-
-  const handleRestartAfterSave = useCallback(async () => {
-    setRestarting(true);
-    try {
-      const runningInstances = await getRunningInstanceIds();
-      for (const inst of runningInstances) {
-        await instanceApi.delete({ id: inst.id });
-        await instanceApi.spawn({ environmentId: inst.environmentId });
-      }
-      toast.success(tAgentPanel("restartSuccess"));
-    } catch (err) {
-      console.error("Failed to restart:", err);
-      toast.error(tAgentPanel("restartFailed", { message: (err as Error).message }));
-    } finally {
-      setRestarting(false);
-      setRestartDialogOpen(false);
-      onOpenChange(false);
-    }
-  }, [getRunningInstanceIds, tAgentPanel, onOpenChange]);
 
   if (!open) return null;
 
@@ -337,6 +303,30 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
                   <div>
                     <Label>{t("form.name")}</Label>
                     <Input value={agentName} disabled className="mt-1" />
+                  </div>
+                  <div>
+                    <Label>
+                      {t("form.machine")} <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={formMachineId} onValueChange={setFormMachineId}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder={t("form.machinePlaceholder")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {machineOptions.map((m) => {
+                          const mi = m.machineInfo as Record<string, string> | null;
+                          const ip = mi?.ip ?? "";
+                          const os = mi?.os ?? "";
+                          const mac = mi?.mac ?? "";
+                          const label = `${m.agentName} (${os} / ${ip} / ${mac})`;
+                          return (
+                            <SelectItem key={m.id} value={m.id}>
+                              {label}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label>{t("form.model")}</Label>
@@ -594,36 +584,6 @@ export function AgentConfigDialog({ open, onOpenChange, agentName }: AgentConfig
           </>
         )}
       </div>
-
-      <AlertDialog
-        open={restartDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRestartDialogOpen(false);
-            onOpenChange(false);
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tAgentPanel("configSavedRestartTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{tAgentPanel("configSavedRestartDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setRestartDialogOpen(false);
-                onOpenChange(false);
-              }}
-            >
-              {tAgentPanel("restartLater")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleRestartAfterSave} disabled={restarting}>
-              {restarting ? tAgentPanel("restarting") : tAgentPanel("restart")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

@@ -35,6 +35,7 @@ function makeEnv(skillDir: string): Env {
     RCS_S3_PRESIGN_EXPIRES: 3600,
     RCS_S3_PRESIGN_UPLOAD_EXPIRES: 600,
     RCS_DISABLE_SIGNUP: false,
+    REGISTRY_SECRET: "",
     ACPX_G_URL: "http://localhost:8848",
   };
 }

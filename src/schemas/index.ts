@@ -103,19 +103,6 @@ export {
   FileWriteResultSchema,
   WriteFileRequestSchema,
 } from "./file.schema";
-// Instances
-export {
-  type DeleteInstanceResponse,
-  DeleteInstanceResponseSchema,
-  type InstanceInfo,
-  InstanceInfoSchema,
-  type InstanceListResponse,
-  InstanceListResponseSchema,
-  type InstanceStatus,
-  InstanceStatusSchema,
-  type SpawnInstanceFromEnvironmentRequest,
-  SpawnInstanceFromEnvironmentRequestSchema,
-} from "./instance.schema";
 // Knowledge
 export {
   type CreateKnowledgeBaseRequest,
@@ -140,6 +127,25 @@ export {
   type UploadKnowledgeResourcesResponse,
   UploadKnowledgeResourcesResponseSchema,
 } from "./knowledge.schema";
+// Registry
+export {
+  type EventQuery,
+  EventQuerySchema,
+  type Machine,
+  type MachineDetail,
+  type MachineDetailResponse,
+  MachineDetailResponseSchema,
+  MachineDetailSchema,
+  type MachineListResponse,
+  MachineListResponseSchema,
+  type MachineQuery,
+  MachineQuerySchema,
+  MachineSchema,
+  type RegistryEvent,
+  type RegistryEventListResponse,
+  RegistryEventListResponseSchema,
+  RegistryEventSchema,
+} from "./registry.schema";
 // S3 Files
 export {
   type S3DeleteBody,

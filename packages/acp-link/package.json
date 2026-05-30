@@ -1,7 +1,7 @@
 {
   "name": "acp-link",
   "version": "2.0.0",
-  "description": "ACP stdio-to-WebSocket bridge — spawns an ACP agent and exposes it via WebSocket",
+  "description": "ACP stdio-to-WebSocket bridge \u2014 spawns an ACP agent and exposes it via WebSocket",
   "author": "claude-code-best",
   "type": "module",
   "main": "./src/server.ts",
@@ -22,7 +22,13 @@
   "scripts": {
     "build": "tsc",
     "dev": "bun run src/cli/bin.ts ccb-bun -- --acp",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "compile:mac-arm64": "bun build --compile --target=bun-darwin-arm64 src/cli/bin.ts --outfile dist/acp-link-darwin-arm64",
+    "compile:mac-x64": "bun build --compile --target=bun-darwin-x64 src/cli/bin.ts --outfile dist/acp-link-darwin-x64",
+    "compile:linux-x64": "bun build --compile --target=bun-linux-x64 src/cli/bin.ts --outfile dist/acp-link-linux-x64",
+    "compile:linux-arm64": "bun build --compile --target=bun-linux-arm64 src/cli/bin.ts --outfile dist/acp-link-linux-arm64",
+    "compile:windows-x64": "bun build --compile --target=bun-windows-x64 src/cli/bin.ts --outfile dist/acp-link-windows-x64.exe",
+    "compile:all": "bun run compile:mac-arm64 && bun run compile:mac-x64 && bun run compile:linux-x64 && bun run compile:linux-arm64 && bun run compile:windows-x64"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",

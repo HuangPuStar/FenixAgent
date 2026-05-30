@@ -1,24 +1,16 @@
-import { v4 as uuid } from "uuid";
 import { config } from "../config";
 import { log, error as logError } from "../logger";
-import {
-  handleAcpConnect,
-  handleAcpDisconnect,
-  handleAcpIdentify,
-  handleAcpRegister,
-  touchEnvironmentPoll,
-} from "../services/environment";
+import { touchEnvironmentPoll } from "../services/environment";
+import { disconnectMachine, registerMachine } from "../services/registry";
 import type { AcpConnectionEntry } from "../types/store";
-import type { SessionEvent } from "./event-bus";
-import { getAcpEventBus } from "./event-bus";
 import type { WsConnection } from "./ws-types";
 
 const connections = new Map<string, AcpConnectionEntry>();
 
 const SERVER_KEEPALIVE_INTERVAL_MS = config.wsKeepaliveInterval * 1000;
-const CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
+const _CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
 
-function sendToWs(ws: WsConnection, msg: object): void {
+export function sendToWs(ws: WsConnection, msg: object): void {
   if (ws.readyState !== 1) return;
   try {
     ws.send(`${JSON.stringify(msg)}\n`);
@@ -28,183 +20,109 @@ function sendToWs(ws: WsConnection, msg: object): void {
 }
 
 /** Called from onOpen — initializes connection tracking */
-export function handleAcpWsOpen(ws: WsConnection, wsId: string, userId: string, boundEnvId?: string | null): void {
-  log(`[ACP-WS] Connection opened: wsId=${wsId} userId=${userId}${boundEnvId ? ` boundEnvId=${boundEnvId}` : ""}`);
-
-  if (boundEnvId) {
-    handleAcpConnect(boundEnvId).catch(() => {});
-  }
-
-  const keepalive = setInterval(() => {
-    const entry = connections.get(wsId);
-    if (!entry || entry.ws.readyState !== 1) {
-      clearInterval(keepalive);
-      return;
-    }
-    const silenceMs = Date.now() - entry.lastClientActivity;
-    if (silenceMs > CLIENT_ACTIVITY_TIMEOUT_MS) {
-      log(`[ACP-WS] Client inactive for ${Math.round(silenceMs / 1000)}s, closing dead connection`);
-      try {
-        entry.ws.close(1000, "client inactive");
-      } catch {
-        clearInterval(keepalive);
-      }
-      return;
-    }
-    sendToWs(entry.ws, { type: "keep_alive" });
-  }, SERVER_KEEPALIVE_INTERVAL_MS);
-
-  connections.set(wsId, {
-    agentId: boundEnvId || null,
-    boundEnvId: boundEnvId || null,
-    userId,
-    unsub: null,
-    keepalive,
-    ws,
-    openTime: Date.now(),
-    lastClientActivity: Date.now(),
-    capabilities: null,
-  });
-
-  if (boundEnvId) {
-    const bus = getAcpEventBus(boundEnvId);
-    const unsub = bus.subscribe((event: SessionEvent) => {
-      const entry = connections.get(wsId);
-      if (!entry || entry.ws.readyState !== 1) return;
-      if (event.direction !== "outbound") return;
-      sendToWs(entry.ws, event.payload as object);
+export function handleAcpWsOpen(
+  ws: WsConnection,
+  wsId: string,
+  userId: string,
+  _boundEnvId?: string | null,
+  isMachine?: boolean,
+): void {
+  if (isMachine) {
+    // machine 连接不订阅 ACP event bus、不调用 handleAcpConnect
+    // 心跳由 registry-heartbeat 服务管理，不在 onOpen 阶段启动
+    log(`[ACP-WS] Machine connection opened: wsId=${wsId}`);
+    connections.set(wsId, {
+      agentId: null,
+      boundEnvId: null,
+      userId,
+      unsub: null,
+      keepalive: null,
+      ws,
+      openTime: Date.now(),
+      lastClientActivity: Date.now(),
+      capabilities: null,
+      isMachine: true,
+      machineId: null,
+      wsId,
     });
-    const entry = connections.get(wsId);
-    if (entry) entry.unsub = unsub;
+    return;
   }
+
+  // 非 machine 连接不再支持 — ACP agent 直连模型已废弃
+  log(`[ACP-WS] Non-machine connection rejected: wsId=${wsId}`);
+  ws.close(4003, "ACP agent connections no longer supported; use machine registration");
 }
 
-/** Handle register message — WS registration for ACP agent */
-async function handleRegister(wsId: string, msg: Record<string, unknown>): Promise<void> {
+/** Handle machine register message — WS registration for machine */
+async function handleMachineRegister(wsId: string, msg: Record<string, unknown>): Promise<void> {
   const entry = connections.get(wsId);
   if (!entry) return;
 
-  if (entry.agentId) {
-    if (entry.agentId === entry.boundEnvId) {
-      log(`[ACP-WS] Register after bound: agentId=${entry.agentId}, acknowledging`);
-      sendToWs(entry.ws, { type: "registered", agent_id: entry.agentId });
-      return;
-    }
-    sendToWs(entry.ws, { type: "error", message: "Already registered" });
+  if (entry.machineId) {
+    // 已注册，返回已有 machineId
+    sendToWs(entry.ws, { type: "registered", machine_id: entry.machineId });
     return;
   }
 
   const agentName = (msg.agent_name as string) || "unknown";
-  const capabilities = msg.capabilities as Record<string, unknown> | undefined;
-  const maxSessions = typeof msg.max_sessions === "number" ? msg.max_sessions : 1;
-  const directory = (msg.directory as string) || undefined;
+  const machineInfo = msg.machine_info as Record<string, unknown> | undefined;
+  const labels = Array.isArray(msg.labels) ? (msg.labels as string[]) : [];
+  const heartbeatIntervalMs = typeof msg.heartbeat_interval_ms === "number" ? msg.heartbeat_interval_ms : 30000;
+  const tenantId = (msg.tenant_id as string) || null;
+  const userId = (msg.user_id as string) || null;
 
+  process.stderr.write(`[ACP-WS] handleMachineRegister called, agent=${agentName}\n`);
   try {
-    const result = await handleAcpRegister({
-      wsId,
-      userId: entry.userId,
+    const result = await registerMachine({
       agentName,
-      capabilities,
-      maxSessions,
-      directory,
-      boundEnvId: entry.boundEnvId,
+      machineInfo: machineInfo ?? null,
+      labels,
+      heartbeatIntervalMs,
+      tenantId,
+      userId,
     });
 
-    entry.agentId = result.envId;
-    entry.capabilities = capabilities || null;
+    entry.machineId = result.id;
+    log(`[ACP-WS] Machine registered: id=${result.id} agent=${agentName}`);
 
-    // unbound 环境需要新建 EventBus 订阅；bound 环境在 onOpen 时已订阅
-    if (result.isNew) {
-      const bus = getAcpEventBus(result.envId);
-      const unsub = bus.subscribe((event: SessionEvent) => {
-        if (entry.ws.readyState !== 1) return;
-        if (event.direction !== "outbound") return;
-        sendToWs(entry.ws, event.payload as object);
-      });
-      entry.unsub = unsub;
-    }
-
-    log(
-      `[ACP-WS] ${result.isNew ? "Agent registered" : "Bound agent registered"}: agentId=${result.envId} userId=${entry.userId} name=${agentName}`,
-    );
-    sendToWs(entry.ws, { type: "registered", agent_id: result.envId });
+    sendToWs(entry.ws, {
+      type: "registered",
+      machine_id: result.id,
+    });
   } catch (err) {
-    logError("[ACP-WS] Error in register handler:", err);
-    sendToWs(entry.ws, { type: "error", message: "Registration failed" });
+    console.error("[ACP-WS] Machine register error:", err);
+    logError("[ACP-WS] Machine register error:", err);
+    sendToWs(entry.ws, { type: "error", message: "Machine registration failed" });
   }
 }
 
-/** Handle identify message — binds WS to an existing agent registered via REST */
-async function handleIdentify(wsId: string, msg: Record<string, unknown>): Promise<void> {
+/** Handle machine disconnection — updates status and writes event */
+async function handleMachineDisconnect(entry: AcpConnectionEntry, reason?: string): Promise<void> {
+  if (!entry.machineId) return;
+
+  try {
+    await disconnectMachine(entry.machineId, reason ?? "connection closed");
+    log(`[ACP-WS] Machine disconnected: id=${entry.machineId} reason=${reason ?? "(none)"}`);
+  } catch (err) {
+    logError("[ACP-WS] Machine disconnect error:", err);
+  }
+}
+
+/** Handle register message — all connections are machine connections */
+async function handleRegister(wsId: string, msg: Record<string, unknown>): Promise<void> {
   const entry = connections.get(wsId);
   if (!entry) return;
 
-  if (entry.agentId) {
-    if (entry.agentId === entry.boundEnvId) {
-      log(`[ACP-WS] Identify after bound: agentId=${entry.agentId}, acknowledging`);
-      sendToWs(entry.ws, { type: "identified", agent_id: entry.agentId });
-      return;
-    }
-    sendToWs(entry.ws, { type: "error", message: "Already identified" });
-    return;
-  }
-
-  // unbound 情况下必须提供 agent_id
-  const agentId = (msg.agent_id as string) || "";
-  if (!entry.boundEnvId && !agentId) {
-    sendToWs(entry.ws, { type: "error", message: "Missing agent_id" });
-    return;
-  }
-
-  try {
-    const result = await handleAcpIdentify({
-      agentId,
-      userId: entry.userId,
-      boundEnvId: entry.boundEnvId,
-    });
-
-    entry.agentId = result.envId;
-    entry.capabilities = result.capabilities;
-
-    // bound 环境在 onOpen 时未订阅（identify 场景需要单独订阅）
-    if (entry.boundEnvId && !entry.unsub) {
-      const bus = getAcpEventBus(entry.boundEnvId);
-      const unsub = bus.subscribe((event: SessionEvent) => {
-        if (entry.ws.readyState !== 1) return;
-        if (event.direction !== "outbound") return;
-        sendToWs(entry.ws, event.payload as object);
-      });
-      entry.unsub = unsub;
-    } else if (!entry.boundEnvId) {
-      const bus = getAcpEventBus(result.envId);
-      const unsub = bus.subscribe((event: SessionEvent) => {
-        if (entry.ws.readyState !== 1) return;
-        if (event.direction !== "outbound") return;
-        sendToWs(entry.ws, event.payload as object);
-      });
-      entry.unsub = unsub;
-    }
-
-    log(
-      `[ACP-WS] ${entry.boundEnvId ? "Bound agent identified" : "Agent identified"}: agentId=${result.envId} userId=${entry.userId}`,
-    );
-    sendToWs(entry.ws, { type: "identified", agent_id: result.envId });
-  } catch (err: unknown) {
-    logError("[ACP-WS] Error in identify handler:", err);
-    const errorObj = err instanceof Error ? err : typeof err === "object" ? err : null;
-    const code = (errorObj as Record<string, unknown> | null)?.code as string | undefined;
-    const message =
-      code === "NOT_FOUND"
-        ? "Agent not found"
-        : code === "FORBIDDEN"
-          ? "Agent not owned by you"
-          : "Identification failed";
-    sendToWs(entry.ws, { type: "error", message });
-  }
+  // 所有连接均为 machine 连接，走 machine 注册流程
+  await handleMachineRegister(wsId, msg);
 }
 
 /** Called from onMessage — processes NDJSON lines or pre-parsed objects */
-export function handleAcpWsMessage(_ws: WsConnection, wsId: string, data: string | Record<string, unknown>): void {
+export async function handleAcpWsMessage(
+  _ws: WsConnection,
+  wsId: string,
+  data: string | Record<string, unknown>,
+): Promise<void> {
   const entry = connections.get(wsId);
   if (!entry) return;
 
@@ -232,35 +150,40 @@ export function handleAcpWsMessage(_ws: WsConnection, wsId: string, data: string
       continue;
     }
 
+    if (msg.type === "heartbeat") {
+      if (entry.isMachine && entry.machineId) {
+        const { handleHeartbeat } = await import("../services/registry-heartbeat");
+        handleHeartbeat(entry.machineId).catch((err) => {
+          logError("[ACP-WS] Heartbeat handling error:", err);
+        });
+      }
+      continue;
+    }
+
+    // machine 连接：session 生命周期消息转发到 relay 层
+    const SESSION_MSG_TYPES = [
+      "session_started",
+      "session_data",
+      "session_ended",
+      "session_error",
+      "session_queued",
+      "session_resumed",
+    ];
+    if (entry.isMachine && SESSION_MSG_TYPES.includes(msg.type as string)) {
+      const sessionId = msg.session_id as string | undefined;
+      if (sessionId && entry.onSessionMessage) {
+        entry.onSessionMessage(sessionId, msg.type as string, (msg as Record<string, unknown>).payload);
+      }
+      continue;
+    }
+
     if (msg.type === "register") {
       handleRegister(wsId, msg).catch((err) => {
         logError("[ACP-WS] Error in register handler:", err);
       });
-      continue;
     }
 
-    if (msg.type === "identify") {
-      handleIdentify(wsId, msg).catch((err) => {
-        logError("[ACP-WS] Error in identify handler:", err);
-      });
-      continue;
-    }
-
-    if (!entry.agentId) {
-      sendToWs(entry.ws, { type: "error", message: "Not registered. Send register message first." });
-      continue;
-    }
-
-    touchEnvironmentPoll(entry.agentId).catch(() => {});
-
-    const bus = getAcpEventBus(entry.agentId);
-    bus.publish({
-      id: uuid(),
-      sessionId: entry.agentId,
-      type: (msg.type as string) || "acp_message",
-      payload: msg,
-      direction: "inbound",
-    });
+    // 未识别的消息类型静默忽略（不再走 EventBus 发布）
   }
 }
 
@@ -277,38 +200,78 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
   if (entry.unsub) entry.unsub();
   if (entry.keepalive) clearInterval(entry.keepalive);
 
-  if (entry.agentId) {
-    handleAcpDisconnect(entry.agentId, !!entry.boundEnvId).catch(() => {});
-
-    const bus = getAcpEventBus(entry.agentId);
-    bus.publish({
-      id: uuid(),
-      sessionId: entry.agentId,
-      type: "agent_disconnect",
-      payload: { agentId: entry.agentId },
-      direction: "inbound",
-    });
+  // machine 连接断连处理
+  if (entry.isMachine) {
+    const reasonStr = reason ?? undefined;
+    handleMachineDisconnect(entry, reasonStr).catch(() => {});
   }
 
   connections.delete(wsId);
 }
 
-/** Find an active ACP connection by agent ID */
-export function findAcpConnectionByAgentId(agentId: string): AcpConnectionEntry | null {
+/** agentId (environment.id) → machineId 缓存，供同步 sendToAgentWs 使用 */
+const agentMachineCache = new Map<string, string>();
+
+/** 通过 machineId 查找在线的 machine WebSocket 连接 */
+export function findMachineConnectionById(machineId: string): AcpConnectionEntry | null {
   for (const entry of connections.values()) {
-    if (entry.agentId === agentId && entry.ws.readyState === 1) {
+    if (entry.isMachine && entry.machineId === machineId && entry.ws.readyState === 1) {
       return entry;
     }
   }
   return null;
 }
 
-/** Send a JSON message directly to an agent's WebSocket connection */
+/** 通过 agentId 查找在线的 machine WebSocket 连接（异步，含 DB 查询）。结果会缓存到 agentMachineCache。 */
+export async function findMachineConnectionByAgentId(agentId: string): Promise<AcpConnectionEntry | null> {
+  // 1. 先查缓存
+  const cachedMachineId = agentMachineCache.get(agentId);
+  if (cachedMachineId) {
+    return findMachineConnectionById(cachedMachineId);
+  }
+  // 2. 查 environment → agentConfig → machineId
+  const { environmentRepo } = await import("../repositories/environment");
+  const env = await environmentRepo.getById(agentId);
+  if (!env?.agentConfigId) return null;
+  const { getAgentConfigById } = await import("../services/config/agent-config");
+  const agentCfg = await getAgentConfigById(env.agentConfigId);
+  if (!agentCfg?.machineId) return null;
+  // 3. 缓存并查找连接
+  agentMachineCache.set(agentId, agentCfg.machineId);
+  return findMachineConnectionById(agentCfg.machineId);
+}
+
+/** 导出 agentMachineCache 供 relay-handler 预热和查询 */
+export function getAgentMachineCache(): Map<string, string> {
+  return agentMachineCache;
+}
+
+/** 设置 agentMachineCache 条目（供 relay-handler 预热） */
+export function setAgentMachineCache(agentId: string, machineId: string): void {
+  agentMachineCache.set(agentId, machineId);
+}
+
+/** 向 agent 对应的远端 machine 发送消息（兼容层，保留同步签名）。
+ * 优先使用 agentMachineCache；cache miss 时遍历连接做 best-effort 发送。
+ * 返回 true 表示消息已发送到至少一个 machine WS。 */
 export function sendToAgentWs(agentId: string, msg: object): boolean {
-  const entry = findAcpConnectionByAgentId(agentId);
-  if (!entry) return false;
-  sendToWs(entry.ws, msg);
-  return true;
+  // 1. 优先走缓存
+  const cachedMachineId = agentMachineCache.get(agentId);
+  if (cachedMachineId) {
+    const entry = findMachineConnectionById(cachedMachineId);
+    if (entry) {
+      sendToWs(entry.ws, {
+        type: "session_data",
+        session_id: `auto_${agentId}`,
+        payload: msg,
+      });
+      return true;
+    }
+    // machineId 缓存命中但连接已断，清除过期缓存
+    agentMachineCache.delete(agentId);
+  }
+  // 2. cache miss — 无法确定 agent 对应哪台 machine，返回 false
+  return false;
 }
 
 /** Gracefully close all ACP WebSocket connections */
@@ -323,8 +286,8 @@ export function closeAllAcpConnections(): void {
       if (entry.ws.readyState === 1) {
         entry.ws.close(1001, "server_shutdown");
       }
-      if (entry.agentId) {
-        handleAcpDisconnect(entry.agentId, !!entry.boundEnvId).catch(() => {});
+      if (entry.isMachine && entry.machineId) {
+        disconnectMachine(entry.machineId, "server_shutdown").catch(() => {});
       }
     } catch {
       // ignore errors during shutdown

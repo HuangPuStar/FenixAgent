@@ -23,6 +23,7 @@ const AGENT_SETTABLE_FIELDS = [
   "hidden",
   "color",
   "description",
+  "machineId",
   "knowledge",
 ] as const;
 

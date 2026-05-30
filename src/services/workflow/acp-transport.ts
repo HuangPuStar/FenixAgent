@@ -10,9 +10,9 @@
 import type { AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { nanoid } from "nanoid";
 import { log } from "../../logger";
-import { findAcpConnectionByAgentId, sendToAgentWs } from "../../transport/acp-ws-handler";
 import type { SessionEvent } from "../../transport/event-bus";
 import { getAcpEventBus } from "../../transport/event-bus";
+import { sendToAgentWs } from "../../transport/relay";
 
 // ---------- 常量 ----------
 
@@ -188,7 +188,8 @@ class AcpTransport implements Transport {
    */
   async connect(agentId: string, options?: { cwd?: string }): Promise<AgentSession> {
     // 检查 agent 在线状态
-    const conn = findAcpConnectionByAgentId(agentId);
+    const { findMachineConnectionByAgentId } = await import("../../transport/acp-ws-handler");
+    const conn = await findMachineConnectionByAgentId(agentId);
     if (!conn) {
       throw new Error(`Agent not found or offline: ${agentId}`);
     }

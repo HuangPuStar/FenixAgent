@@ -1,10 +1,10 @@
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
 import { auth } from "../../auth/better-auth";
+import { validateEnv } from "../../env";
 import { log, error as logError } from "../../logger";
-import { authGuardPlugin, lookupUserById } from "../../plugins/auth";
+import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
-import { getEnvironmentBySecret } from "../../services/environment";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
 import type { WsConnection } from "../../transport/ws-types";
@@ -36,36 +36,6 @@ function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environme
   };
 }
 
-/** Resolve userId from token (two-level auth) */
-async function resolveTokenAuth(token: string | undefined): Promise<{ userId: string; envId?: string } | null> {
-  if (!token) return null;
-
-  // 0. Environment secret match
-  const envRecord = await getEnvironmentBySecret(token);
-  if (envRecord) {
-    if (envRecord.userId) {
-      return { userId: envRecord.userId, envId: envRecord.id };
-    }
-  }
-
-  // 1. better-auth API Key verification
-  try {
-    // biome-ignore lint/suspicious/noExplicitAny: better-auth API type mismatch
-    const result = await (auth.api as any).verifyApiKey({ body: { key: token } });
-    if (result.valid && result.key) {
-      const apiKeyMeta = result.key as { userId: string };
-      const userRow = await lookupUserById(apiKeyMeta.userId);
-      if (userRow) {
-        return { userId: userRow.id };
-      }
-    }
-  } catch {
-    // verifyApiKey may throw for invalid keys
-  }
-
-  return null;
-}
-
 const app = new Elysia({ name: "acp", prefix: "/acp" })
   .use(authGuardPlugin)
 
@@ -85,32 +55,21 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
   /** WS /acp/ws — WebSocket endpoint for acp-link connections */
   .ws("/ws", {
     async open(ws) {
-      // Authenticate via API key
       const url = new URL(ws.data.request.url);
-      const authHeader = ws.data.request.headers.get("Authorization");
-      const queryToken = url.searchParams.get("token");
-      const token = authHeader?.replace("Bearer ", "") || queryToken || undefined;
+      const secret = url.searchParams.get("secret");
+      const registrySecret = validateEnv().REGISTRY_SECRET;
 
-      const conn = adaptWs(ws);
-
-      if (!token) {
-        log("[ACP-WS] Upgrade rejected: missing token");
-        conn.close(4003, "unauthorized");
-        return;
-      }
-
-      const authResult = await resolveTokenAuth(token);
-      if (!authResult) {
-        log("[ACP-WS] Upgrade rejected: invalid API key");
-        conn.close(4003, "unauthorized");
+      if (!secret || !registrySecret || secret !== registrySecret) {
+        log("[ACP-WS] Upgrade rejected: invalid or missing registry secret");
+        adaptWs(ws).close(4003, "unauthorized");
         return;
       }
 
       const wsId = `acp_ws_${uuid().replace(/-/g, "")}`;
-      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension
       (ws.data as any).__acpWsId = wsId;
-      log(`[ACP-WS] Upgrade accepted: wsId=${wsId} userId=${authResult.userId}`);
-      handleAcpWsOpen(conn, wsId, authResult.userId, authResult.envId);
+      log(`[ACP-WS] Machine upgrade accepted: wsId=${wsId} secret matched`);
+      handleAcpWsOpen(adaptWs(ws), wsId, "__machine__", null, true);
     },
     message(ws, data) {
       // Elysia's parseMessage auto-parses JSON strings into objects;

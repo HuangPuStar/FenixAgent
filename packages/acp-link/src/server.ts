@@ -1,7 +1,9 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import os from "node:os";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import type { ServerWebSocket } from "bun";
+import { SessionManager } from "./client/session-manager.js";
 import type {
   AgentCapabilities,
   ContentBlock,
@@ -21,6 +23,11 @@ export interface ServerConfig {
   args: string[];
   cwd: string;
   env?: Record<string, string>;
+  rcsUrl?: string;
+  rcsSecret?: string;
+  tenantId?: string;
+  userId?: string;
+  labels?: string[];
 }
 
 export interface AcpServerHandle {
@@ -213,6 +220,185 @@ function decodeClientMessage(message: Record<string, unknown>): ProxyMessage {
 
 export function decodeClientWsMessage(data: unknown): ProxyMessage {
   return decodeClientMessage(decodeJsonWsMessage(data));
+}
+
+// ---------------------------------------------------------------------------
+// Registry helpers: build register message for RCS client mode
+// ---------------------------------------------------------------------------
+
+export function buildRegisterMessage(config: ServerConfig): object {
+  let ip = "127.0.0.1";
+  let mac = "";
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const entries of Object.values(interfaces)) {
+      if (!entries) continue;
+      for (const info of entries) {
+        if (!info.internal && info.family === "IPv4") {
+          ip = info.address;
+          if (info.mac) mac = info.mac;
+          break;
+        }
+      }
+      if (mac) break;
+    }
+  } catch {
+    // fallback to 127.0.0.1
+  }
+
+  return {
+    type: "register",
+    agent_name: config.command,
+    max_sessions: 5,
+    capabilities: { streaming: true },
+    machine_info: {
+      hostname: os.hostname(),
+      ip,
+      mac,
+      os: os.platform(),
+      arch: os.arch(),
+    },
+    labels: config.labels ?? [],
+    heartbeat_interval_ms: 30000,
+    tenant_id: config.tenantId ?? null,
+    user_id: config.userId ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Client mode: connects to RCS registry as WebSocket client
+// ---------------------------------------------------------------------------
+
+export function createAcpClient(config: ServerConfig): { close: () => void } {
+  if (!config.rcsUrl) {
+    throw new Error("rcsUrl is required for client mode");
+  }
+
+  const sessionMgr = new SessionManager(config.command, 5);
+  const url = `${config.rcsUrl}/acp/ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
+  let ws: WebSocket | null = null;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let reconnectAttempt = 0;
+  const MAX_RECONNECT_MS = 30_000; // 最大重连间隔
+  let manualClose = false;
+
+  function setupSessionCallbacks(): void {
+    sessionMgr.on("session_data", (sessionId: string, payload: unknown) => {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "session_data", session_id: sessionId, payload }));
+      }
+    });
+    sessionMgr.on("session_ended", (sessionId: string, exitCode: number) => {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "session_ended", session_id: sessionId, reason: `exit code ${exitCode}` }));
+      }
+    });
+    sessionMgr.on("session_error", (sessionId: string, error: string) => {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error }));
+      }
+    });
+  }
+
+  setupSessionCallbacks();
+
+  function connect(): void {
+    if (manualClose) return;
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      reconnectAttempt = 0;
+      ws!.send(JSON.stringify(buildRegisterMessage(config)));
+
+      // 重连后：为所有存活的子进程发送 session_resumed
+      for (const sessionId of sessionMgr.getAliveSessionIds()) {
+        ws!.send(JSON.stringify({ type: "session_resumed", session_id: sessionId }));
+      }
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data as string);
+        switch (msg.type) {
+          case "registered":
+            console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
+            heartbeatTimer = setInterval(() => {
+              if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: "heartbeat" }));
+              }
+            }, 30000);
+            break;
+          case "session_start":
+            console.log("[acp-client] session_start msg, starting...");
+            // 保存 agent prompt（Phase 2 恢复：原 Instance 链路通过 AgentLaunchSpec 传递）
+            if (msg.agent_prompt) {
+              sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
+            }
+            sessionMgr.startSession(msg.session_id).then((result) => {
+              console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
+              if (ws && ws.readyState === 1) {
+                if (result === "started") {
+                  console.log("[acp-client] sending session_started");
+                  const caps = sessionMgr.getCapabilities?.() ?? {};
+                  ws.send(
+                    JSON.stringify({
+                      type: "session_started",
+                      session_id: msg.session_id,
+                      payload: { capabilities: caps },
+                    }),
+                  );
+                } else if (result === "queued") {
+                  ws.send(JSON.stringify({ type: "session_queued", session_id: msg.session_id }));
+                } else {
+                  ws.send(JSON.stringify({ type: "session_error", session_id: msg.session_id, error: "spawn failed" }));
+                }
+              } else {
+                console.log("[acp-client] ws not ready, state:", ws?.readyState);
+              }
+            });
+            break;
+          case "session_data":
+            sessionMgr.sendData(msg.session_id, msg.payload);
+            break;
+          case "session_end":
+            sessionMgr.endSession(msg.session_id);
+            break;
+          default:
+            console.log(`[acp-client] received: ${msg.type}`);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    ws.onclose = () => {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+      if (manualClose) return;
+      // 指数退避重连（不断连不杀子进程）
+      const delay = Math.min(1000 * 2 ** reconnectAttempt, MAX_RECONNECT_MS);
+      reconnectAttempt++;
+      console.log(`[acp-client] disconnected, reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
+      setTimeout(connect, delay);
+    };
+
+    ws.onerror = () => {
+      // ws.onclose 会触发
+    };
+  }
+
+  connect();
+
+  return {
+    close: () => {
+      manualClose = true;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      sessionMgr.stopAll();
+      ws?.close();
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -833,6 +1019,27 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 // ---------------------------------------------------------------------------
 
 export async function startServer(config: ServerConfig): Promise<void> {
+  if (config.rcsUrl) {
+    console.log();
+    console.log("  \u{1F680} ACP Client Mode (Registry)");
+    console.log();
+    console.log(`  RCS URL:   ${config.rcsUrl}`);
+    console.log(`  Agent:     ${config.command} ${config.args.join(" ")}`);
+    console.log(`  Labels:    ${config.labels?.join(",") ?? "(none)"}`);
+    console.log();
+    console.log("  Press Ctrl+C to stop");
+    console.log();
+    const handle = createAcpClient(config);
+    const shutdown = () => {
+      handle.close();
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    await new Promise<void>(() => {});
+    return;
+  }
+
   const handle = createAcpServer(config);
 
   const displayUrl = `ws://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}/ws`;

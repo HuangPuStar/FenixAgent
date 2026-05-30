@@ -5,10 +5,10 @@ import webConfig from "./config";
 import webControl from "./control";
 import webEnvironments from "./environments";
 import webFiles from "./files";
-import webInstances from "./instances";
 import webKnowledgeBases from "./knowledge-bases";
 import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
+import webRegistry from "./registry";
 import webS3Files from "./s3-files";
 import webSessions from "./sessions";
 import webSkills from "./skills";
@@ -23,9 +23,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webChannels)
   .use(webConfig)
   .use(webControl)
-  .use(webEnvironments)
   .use(webFiles)
-  .use(webInstances)
   .use(webKnowledgeBases)
   .use(webMetaAgent)
   .use(webOrganizations)
@@ -34,6 +32,8 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webSkills)
   .use(webTasks)
   .use(webUserFile)
+  .use(webEnvironments)
+  .use(webRegistry)
   .use(webWorkflowDefs)
   .use(webWorkflowEngine)
   .use(webWorkflowSse);

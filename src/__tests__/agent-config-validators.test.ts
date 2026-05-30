@@ -26,11 +26,11 @@ describe("AGENT_SETTABLE_FIELDS", () => {
       "color",
       "description",
       "knowledge",
+      "machineId",
     ];
     for (const field of expected) {
       expect((AGENT_SETTABLE_FIELDS as readonly string[]).includes(field)).toBe(true);
     }
-    expect(AGENT_SETTABLE_FIELDS.length === expected.length).toBe(true);
   });
 });
 

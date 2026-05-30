@@ -1,5 +1,4 @@
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import swagger from "@elysiajs/swagger";
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
@@ -12,9 +11,7 @@ import { errorPlugin } from "./plugins/error-handler";
 import { loggerPlugin } from "./plugins/logger";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
-import { environmentRepo } from "./repositories";
 import acpRoutes from "./routes/acp";
-import hooksRoutes from "./routes/hooks";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";
 import sessionIngress from "./routes/v2/session-ingress";
@@ -26,9 +23,7 @@ import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import { closeCache } from "./services/cache";
 import { getCoreRuntime } from "./services/core-bootstrap";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
-import { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment, stopAllInstances } from "./services/instance";
 import { startScheduler, stopScheduler } from "./services/scheduler";
-import { resolveWorkspacePath } from "./services/workspace-resolver";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
 
@@ -65,30 +60,12 @@ try {
   // pkill not available or no matching processes — ignore
 }
 
-// Auto-start instances for all environments on server boot
-(async () => {
-  const envs = await environmentRepo.listAll();
-  for (const env of envs) {
-    if (!env.userId) continue;
-    if (!env.organizationId) continue;
-    if (!env.autoStart) continue;
-    const cwd = resolveWorkspacePath(env.organizationId, env.userId, env.id);
-    if (!existsSync(cwd)) {
-      console.log(`[RCS] Skipping environment ${env.name}: workspace directory does not exist (${cwd})`);
-      continue;
-    }
-    const existing = findRunningInstanceByEnvironment(env.id);
-    if (existing) continue;
-    try {
-      await spawnInstanceFromEnvironment(env.userId, env.id);
-      console.log(`[RCS] Auto-started instance for environment: ${env.name} (${env.id})`);
-    } catch (err: unknown) {
-      console.error(
-        `[RCS] Failed to auto-start instance for ${env.name}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-})();
+// Auto-start 逻辑已废弃：Instance 本地 spawn 不再支持，远端 machine agent 由 relay 按需启动
+
+// 定期巡检：将无活跃 WS 连接的 machine 标为 offline（处理服务重启、网络分区等场景）
+import("./services/registry-heartbeat").then(({ startMachineSweep }) => {
+  startMachineSweep(60_000);
+});
 
 const app = new Elysia()
   .use(corsPlugin)
@@ -149,9 +126,9 @@ const app = new Elysia()
   .use(authPlugin)
   // Static files under /ctrl
   .use(ctrlStaticPlugin)
-  .use(sessionIngress)
   // v2 routes
   .use(v2CodeSessions)
+  .use(sessionIngress)
   .use(v2Worker)
   .use(v2WorkerEvents)
   .use(v2WorkerEventsStream)
@@ -161,8 +138,6 @@ const app = new Elysia()
   .use(workflowStaticApp)
   // MCP routes
   .use(knowledgeMcpRoutes)
-  // Webhook trigger routes (no auth)
-  .use(hooksRoutes)
   // ACP protocol routes
   .use(acpRoutes);
 
@@ -190,7 +165,6 @@ async function gracefulShutdown(signal: string) {
   await hermesClient?.stop();
   closeAllAcpConnections();
   closeAllRelayConnections();
-  await stopAllInstances();
   stopScheduler();
   await closeCache();
   await pgClient.end();

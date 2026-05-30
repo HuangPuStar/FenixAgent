@@ -63,3 +63,5 @@ docs/.vitepress/cache/.superpowers/
 
 .superpowers
 .tanstack
+docker/acp-link/acp-link-*
+packages/sdk/sdk

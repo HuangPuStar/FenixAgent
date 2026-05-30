@@ -1,9 +1,7 @@
 import { log, error as logError } from "../logger";
 import { eventService } from "../services/event-service";
-import { sendToAgentWs } from "../transport/acp-ws-handler";
-import { sendToInstanceRelay } from "../transport/relay";
+import { findRunningInstanceByEnvironment, sendToAgentWs, sendToInstanceRelay } from "../transport/relay";
 import { findBindingForMessage } from "./channel-binding";
-import { findRunningInstanceByEnvironment } from "./instance";
 
 // --- Types ---
 
@@ -228,10 +226,10 @@ export class HermesClient {
     }
 
     log(`[Hermes] Found binding: agentId=${match.binding.agentId} matchType=${match.matchType}`);
-    this.routeToAgent(match.binding.agentId, msg);
+    await this.routeToAgent(match.binding.agentId, msg);
   }
 
-  private routeToAgent(agentId: string, hermesMsg: HermesInboundMessage): void {
+  private async routeToAgent(agentId: string, hermesMsg: HermesInboundMessage): Promise<void> {
     const acpMsg = {
       type: "prompt",
       payload: {
@@ -253,7 +251,7 @@ export class HermesClient {
     this.ensureOutboundRouting(hermesMsg.data.source.platform, hermesMsg.data.source.chat_id, agentId, replyTo);
 
     // Try spawned instance first
-    const instance = findRunningInstanceByEnvironment(agentId);
+    const instance = await findRunningInstanceByEnvironment(agentId);
     log(`[Hermes] findRunningInstanceByEnvironment(${agentId}) => ${instance ? instance.id : "null"}`);
     if (instance) {
       const sent = sendToInstanceRelay(instance.id, JSON.stringify(acpMsg));

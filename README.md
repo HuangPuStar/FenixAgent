@@ -75,3 +75,92 @@ bun run typecheck
 # 运行测试
 bun test
 ```
+
+## acp-link 独立部署
+
+acp-link 是 ACP stdio-to-WebSocket 桥接器，部署在远端机器上，负责将 opencode 等 ACP Agent 子进程桥接到 RCS。
+
+### 架构
+
+```
+RCS (Server)                             远端 Machine
+┌──────────────────┐                   ┌─────────────────────┐
+│ /acp/ws          │◀──── WS ────────│ acp-link (client)    │
+│ /acp/relay/:id   │                   │   └── spawn opencode │
+└──────────────────┘                   └─────────────────────┘
+```
+
+### 部署方式
+
+#### 方式一：Docker（推荐，Linux）
+
+```bash
+# 构建镜像
+docker build -f docker/machine-agent/Dockerfile -t fenix-machine .
+
+# 启动，自动向 RCS 注册
+docker run -d \
+  -e ANTHROPIC_API_KEY=sk-xxx \
+  -e ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
+  fenix-machine \
+  --rcs-url ws://<rcs-host>:3000 \
+  --rcs-secret your-secret \
+  --labels production,gpu \
+  -- opencode acp
+```
+
+多机验收测试（同时启动两台）：
+```bash
+ANTHROPIC_API_KEY=sk-xxx ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
+REGISTRY_SECRET=test-secret-2026 \
+docker compose -f docker-compose.machines.yml up -d --build
+```
+
+#### 方式二：直接运行二进制（macOS / Windows / Linux）
+
+无需安装 Bun 或 Node.js。预编译二进制位于 `docker/acp-link/`，或自行编译：
+
+```bash
+# 编译（在开发机上）
+cd packages/acp-link
+bun run compile:mac-arm64      # macOS Apple Silicon
+bun run compile:mac-x64        # macOS Intel
+bun run compile:linux-x64      # Linux x64
+bun run compile:linux-arm64    # Linux ARM64
+bun run compile:windows-x64    # Windows x64
+
+# 全平台
+bun run compile:all
+```
+
+将编译产物拷贝到目标机器，直接运行：
+
+```bash
+# macOS
+./acp-link-darwin-arm64 \
+  --rcs-url ws://10.0.0.1:3000 \
+  --rcs-secret your-secret \
+  --labels production \
+  -- opencode acp
+
+# Windows
+acp-link-windows-x64.exe \
+  --rcs-url ws://10.0.0.1:3000 \
+  --rcs-secret your-secret \
+  --labels production \
+  -- opencode acp
+```
+
+目标机器需要预装 opencode（`bun install -g opencode-ai`）及运行时依赖（Python3、git、ripgrep）。
+
+### CLI 参数
+
+| 参数 | 环境变量 | 说明 |
+|------|---------|------|
+| `--rcs-url` | `RCS_URL` | RCS 注册中心地址，如 `ws://10.0.0.1:3000` |
+| `--rcs-secret` | `RCS_SECRET` | 注册密钥，需与 RCS 侧 `REGISTRY_SECRET` 一致 |
+| `--labels` | — | 机器标签，逗号分隔，用于 Agent 绑定 |
+| `--tenant-id` | `RCS_TENANT_ID` | 租户 ID（可选） |
+| `--user-id` | `RCS_USER_ID` | 用户 ID（可选） |
+
+RCS 服务端需配置 `REGISTRY_SECRET` 环境变量，与各 machine 的 `--rcs-secret` 保持一致。

@@ -24,6 +24,14 @@ export interface AcpConnectionEntry {
   openTime: number;
   lastClientActivity: number;
   capabilities: Record<string, unknown> | null;
+  /** 标记此连接为 machine 注册连接（非 ACP agent 连接） */
+  isMachine: boolean;
+  /** machine 注册成功后分配的 ID（mach_xxx），注册完成前为 null */
+  machineId: string | null;
+  /** 连接自身的 wsId（与 connections Map 的 key 一致），方便 entry 反查自身 */
+  wsId: string;
+  /** relay 层设置的回调，machine 连接收到 session 消息时调用 */
+  onSessionMessage?: (sessionId: string, type: string, payload: unknown) => void;
 }
 
 // ────────────────────────────────────────────
@@ -43,6 +51,12 @@ export interface RelayConnectionEntry {
   relayHandle: EngineRelayHandle | null;
   relayUnsub: (() => void) | null;
   outboundBuffer: Record<string, unknown>[];
+  /** 等待 session_started 确认后才能转发消息 */
+  sessionStarted?: boolean;
+  /** machine 断连后标记为待重连，保持 relay WS 连接不关 */
+  pendingReconnect?: boolean;
+  /** machine 连接的 wsId，用于断连后恢复 onSessionMessage 回调 */
+  machineWsId?: string;
 }
 
 /** RelayConnectionEntry + wsId for managed connections */
@@ -62,19 +76,6 @@ export interface WsSessionCleanupEntry {
   ws: WsConnection;
   openTime: number;
   lastClientActivity: number;
-}
-
-// ────────────────────────────────────────────
-// Instance Supplement
-// Extracted from: src/services/instance.ts
-// ────────────────────────────────────────────
-
-/** RCS business fields not tracked by core RuntimeInstanceSnapshot */
-export interface InstanceSupplement {
-  userId: string;
-  environmentId: string;
-  instanceNumber: number;
-  organizationId: string;
 }
 
 // ────────────────────────────────────────────

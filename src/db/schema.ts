@@ -506,6 +506,7 @@ export const agentConfig = pgTable(
     color: varchar("color"),
     description: text("description"),
     knowledge: jsonb("knowledge"),
+    machineId: text("machine_id").references(() => machine.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -750,5 +751,49 @@ export const workflowTrigger = pgTable(
   (table) => ({
     hashIdx: uniqueIndex("idx_workflow_trigger_hash").on(table.publicHash),
     orgWorkflowIdx: index("idx_workflow_trigger_org_workflow").on(table.organizationId, table.workflowId),
+  }),
+);
+
+// ────────────────────────────────────────────
+// Registry Center（注册中心）
+// ────────────────────────────────────────────
+
+export const machine = pgTable(
+  "machine",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id"),
+    userId: text("user_id"),
+    agentName: varchar("agent_name").notNull(),
+    status: varchar("status").default("online").notNull(),
+    machineInfo: jsonb("machine_info"),
+    labels: jsonb("labels"),
+    maxSessions: integer("max_sessions").default(5),
+    heartbeatIntervalMs: integer("heartbeat_interval_ms").default(30000),
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    registeredAt: timestamp("registered_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgIdx: index("idx_machine_org").on(table.organizationId),
+    statusIdx: index("idx_machine_status").on(table.status),
+  }),
+);
+
+export const registryEvent = pgTable(
+  "registry_event",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machine.id, { onDelete: "cascade" }),
+    type: varchar("type").notNull(),
+    detail: jsonb("detail"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    machineIdx: index("idx_registry_event_machine").on(table.machineId),
+    typeIdx: index("idx_registry_event_type").on(table.type),
   }),
 );

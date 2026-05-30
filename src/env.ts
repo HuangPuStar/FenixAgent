@@ -54,6 +54,9 @@ const envSchema = z.object({
   HERMES_PLATFORMS: z.string().optional(),
 
   // ── 可选：Workflow ──
+
+  // ── 可选：注册中心 ──
+  REGISTRY_SECRET: z.string().default(""),
   ACPX_G_URL: z.string().default("http://localhost:8848"),
 
   // ── 可选：Redis 缓存 ──

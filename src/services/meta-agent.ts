@@ -10,11 +10,11 @@
 
 import { auth } from "../auth/better-auth";
 import type { AuthContext } from "../plugins/auth";
+import { spawnInstanceFromEnvironment } from "../transport/relay";
 import { createAgentConfig, getAgentConfig } from "./config/agent-config";
 import { upsertSkill } from "./config/skill";
 import { META_SKILL_DESCRIPTION, META_SKILL_NAME, writeMetaSkillFile } from "./config/skill-meta-content";
 import { createWebEnvironment, listEnvironmentsWithInstances } from "./environment-web";
-import { spawnInstanceFromEnvironment } from "./instance";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
 const META_AGENT_CONFIG_NAME = "meta";

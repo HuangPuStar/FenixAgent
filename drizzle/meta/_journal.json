@@ -15,6 +15,13 @@
       "when": 1779764608861,
       "tag": "0001_workflow_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "8",
+      "when": 1750000000000,
+      "tag": "0001_add-link-instance-and-registry-event",
+      "breakpoints": true
     }
   ]
 }

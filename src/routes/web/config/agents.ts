@@ -96,6 +96,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     color: agent.color ?? null,
     description: agent.description ?? null,
     knowledge: normalizeKnowledgeConfig(agent.knowledge ?? null),
+    machineId: agent.machineId ?? null,
     skillIds,
   });
 }

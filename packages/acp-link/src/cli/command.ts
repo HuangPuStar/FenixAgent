@@ -23,6 +23,36 @@ export const command = buildCommand({
         brief: "Host to bind to (use 0.0.0.0 for remote access)",
         default: "localhost",
       },
+      "rcs-url": {
+        kind: "parsed",
+        parse: String,
+        brief: "RCS registry URL (e.g. wss://rcs.example.com). When set, acp-link runs in client mode",
+        optional: true,
+      },
+      "rcs-secret": {
+        kind: "parsed",
+        parse: String,
+        brief: "Shared secret for RCS authentication (must match RCS REGISTRY_SECRET)",
+        optional: true,
+      },
+      "tenant-id": {
+        kind: "parsed",
+        parse: String,
+        brief: "Tenant ID for machine visibility scoping",
+        optional: true,
+      },
+      "user-id": {
+        kind: "parsed",
+        parse: String,
+        brief: "User ID for machine visibility scoping",
+        optional: true,
+      },
+      labels: {
+        kind: "parsed",
+        parse: String,
+        brief: "Comma-separated labels for the machine (e.g. production,gpu)",
+        optional: true,
+      },
     },
     positional: {
       kind: "array",
@@ -39,6 +69,11 @@ export const command = buildCommand({
     flags: {
       port: number;
       host: string;
+      "rcs-url"?: string;
+      "rcs-secret"?: string;
+      "tenant-id"?: string;
+      "user-id"?: string;
+      labels?: string;
     },
     ...args: readonly string[]
   ) {
@@ -61,6 +96,16 @@ export const command = buildCommand({
       command: command!,
       args: [...agentArgs],
       cwd,
+      rcsUrl: flags["rcs-url"] || process.env.RCS_URL,
+      rcsSecret: flags["rcs-secret"] || process.env.RCS_SECRET,
+      tenantId: flags["tenant-id"] || process.env.RCS_TENANT_ID,
+      userId: flags["user-id"] || process.env.RCS_USER_ID,
+      labels: flags.labels
+        ? flags.labels
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined,
     });
   },
 });

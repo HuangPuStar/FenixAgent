@@ -6,14 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { agentApi, kbApi, modelApi, skillConfigApi } from "@/src/api/sdk";
-import { PermissionTab } from "../../components/PermissionTab";
+import { agentApi, kbApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
 import {
   DEFAULT_AGENT_MODE,
   getDefaultKnowledgeFormState,
   isValidAgentNameInput,
   isValidStepsInput,
-} from "../../lib/agent-utils";
+} from "@/src/lib/agent-utils";
+import { PermissionTab } from "../../components/PermissionTab";
 import { dispatchConfigChange } from "../../lib/config-events";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
@@ -27,11 +27,15 @@ interface AgentCreateDialogProps {
 export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }: AgentCreateDialogProps) {
   const { t } = useTranslation("agents");
   const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [machineOptions, setMachineOptions] = useState<
+    Array<{ id: string; agentName: string; machineInfo: Record<string, unknown> | null }>
+  >([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
   const [skillOptions, setSkillOptions] = useState<{ id: string; name: string; description: string }[]>([]);
 
   const [formName, setFormName] = useState("");
   const [formModel, setFormModel] = useState("");
+  const [formMachineId, setFormMachineId] = useState("");
   const [formMode, setFormMode] = useState(DEFAULT_AGENT_MODE);
   const [formSteps, setFormSteps] = useState("50");
   const [formPrompt, setFormPrompt] = useState("");
@@ -69,8 +73,9 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
     setFormPermission(null);
     setFormSkillIds([]);
     setActiveTab("basic");
+    setFormMachineId("");
 
-    modelApi.get().then(({ data, error }) => {
+    modelApi.get().then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) return;
       const available = (data as unknown as Record<string, unknown>)?.available;
       const models = Array.isArray(available) ? (available as Array<{ fullId: string }>).map((m) => m.fullId) : [];
@@ -78,12 +83,12 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
       setFormModel(models[0] || "");
     });
 
-    kbApi.list().then(({ data, error }) => {
+    kbApi.list().then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) return;
       setKnowledgeOptions(Array.isArray(data) ? (data as unknown as KnowledgeBaseInfo[]) : []);
     });
 
-    skillConfigApi.list().then(({ data, error }) => {
+    skillConfigApi.list().then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) return;
       const skills = (data as unknown as Record<string, unknown>)?.skills;
       setSkillOptions(
@@ -96,12 +101,32 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
           : [],
       );
     });
+
+    registryApi.list({ status: "online" }).then(({ data, error }: { data?: unknown; error?: unknown }) => {
+      if (error) return;
+      const machineData = data as {
+        data?: Array<{ id: string; agentName: string; machineInfo: unknown; labels: unknown }>;
+      };
+      if (machineData.data && Array.isArray(machineData.data)) {
+        setMachineOptions(
+          machineData.data.map((m) => ({
+            id: m.id,
+            agentName: m.agentName,
+            machineInfo: m.machineInfo as Record<string, unknown> | null,
+          })),
+        );
+      }
+    });
   }, [open, defaultName]);
 
   const handleSave = useCallback(async () => {
     const name = formName.trim();
     if (!isValidAgentNameInput(name)) {
       toast.error(t("form.nameValidationError"));
+      return;
+    }
+    if (!formMachineId) {
+      toast.error(t("form.machineValidationError"));
       return;
     }
     if (!isValidStepsInput(formSteps)) {
@@ -129,6 +154,7 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
     }
     setFormSaving(true);
     const { error } = await agentApi.create(name, {
+      machineId: formMachineId,
       model: formModel || undefined,
       mode: formMode,
       steps: parseInt(formSteps, 10),
@@ -160,6 +186,7 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
   }, [
     formName,
     formModel,
+    formMachineId,
     formMode,
     formSteps,
     formPrompt,
@@ -240,6 +267,30 @@ export function AgentCreateDialog({ open, onOpenChange, defaultName, onSuccess }
                   onChange={(e) => setFormName(e.target.value)}
                   placeholder={t("form.namePlaceholder")}
                 />
+              </div>
+              <div>
+                <Label>
+                  {t("form.machine")} <span className="text-red-500">*</span>
+                </Label>
+                <Select value={formMachineId} onValueChange={setFormMachineId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("form.machinePlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {machineOptions.map((m) => {
+                      const mi = m.machineInfo as Record<string, string> | null;
+                      const ip = mi?.ip ?? "";
+                      const os = mi?.os ?? "";
+                      const mac = mi?.mac ?? "";
+                      const label = `${m.agentName} (${os} / ${ip} / ${mac})`;
+                      return (
+                        <SelectItem key={m.id} value={m.id}>
+                          {label}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>{t("form.model")}</Label>

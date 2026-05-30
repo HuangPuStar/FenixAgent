@@ -20,6 +20,7 @@ import {
   ModelApi,
   OrganizationApi,
   ProviderApi,
+  RegistryApi,
   S3FileApi,
   SessionApi,
   SkillConfigApi,
@@ -52,6 +53,7 @@ export const apiKeyApi = new ApiKeyApi();
 export const workflowEngineApi = new WorkflowEngineApi();
 export const workflowDefApi = new WorkflowDefApi();
 export const metaAgentApi = new MetaAgentApi();
+export const registryApi = new RegistryApi();
 export const authApi = new AuthApi();
 
 // ── V2 模块（一般前端不直接使用，保留导出） ──

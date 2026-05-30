@@ -9,6 +9,7 @@ export { InstanceApi } from "./instance";
 export { KnowledgeBaseApi } from "./knowledge";
 export { MetaAgentApi } from "./meta-agent";
 export { ApiKeyApi, OrganizationApi } from "./organization";
+export { type MachineListResponse, type MachineRecord, RegistryApi } from "./registry";
 export { S3FileApi } from "./s3-file";
 export { ControlApi, SessionApi } from "./session";
 export { TaskApi } from "./task";

@@ -1,14 +1,21 @@
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { agentConfig, environment } from "../db/schema";
+import { agentConfig, environment, machine } from "../db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
 import type { EnvironmentUpdateParams } from "../repositories";
 import { environmentRepo } from "../repositories";
 import * as configPg from "./config-pg";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "./environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "./environment-core";
-import { groupActiveInstancesByEnvironment } from "./instance";
+
+// Instance 模型已删除，返回空 Map 替代 groupActiveInstancesByEnvironment
+function groupActiveInstancesByEnvironment(): Map<
+  string,
+  Array<{ id: string; instanceNumber: number; status: string; sessionId: string | null; port: number; createdAt: Date }>
+> {
+  return new Map();
+}
 
 export type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams };
 
@@ -21,10 +28,20 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
     throw new ValidationError("name 必须为 kebab-case 格式（小写字母、数字、连字符）");
   }
 
-  // Agent 配置校验：可选，提供时需验证存在性
+  // Agent 配置校验：可选，提供时需验证存在性，并自动填充 machineName
+  let machineName: string | undefined;
   if (params.agentConfigId) {
     const agent = await configPg.getAgentConfigById(params.agentConfigId, organizationId);
     if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
+    // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName
+    if (agent.machineId) {
+      const m = await db
+        .select({ agentName: machine.agentName })
+        .from(machine)
+        .where(eq(machine.id, agent.machineId))
+        .limit(1);
+      machineName = m[0]?.agentName ?? undefined;
+    }
   }
 
   // 预生成 environment ID（workspace 路径运行时实时计算）
@@ -45,6 +62,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
       organizationId: organizationId ?? userId,
       autoStart: autoStart !== false,
       agentConfigId: params.agentConfigId ?? null,
+      machineName,
     });
   } catch (err: unknown) {
     if (
@@ -139,4 +157,15 @@ export async function listEnvironmentsWithInstances(organizationId: string) {
     });
   }
   return results;
+}
+
+/** Phase 2: enterEnvironment 不再 spawn 本地实例，直接返回 environment 信息（relay 连接负责启动远端 agent） */
+export async function enterEnvironment(_userId: string, envId: string, _instanceNumber?: number) {
+  const env = await environmentRepo.getById(envId);
+  if (!env) throw new NotFoundError("环境不存在");
+  return {
+    environment_id: envId,
+    instance_id: envId, // 复用 envId 作为 instance_id，兼容前端
+    session_id: null,
+  };
 }
