@@ -129,7 +129,7 @@ export class ACPClient {
 
     // Protocol error → reject pending + forward
     this.protocol.on("error", (payload) => {
-      const errorMsg = payload?.message || JSON.stringify(payload);
+      const errorMsg = payload?.message || JSON.stringify(payload) || "Unknown error";
       this.pending.rejectAll(new Error(errorMsg));
       if (this.connecting) {
         this.connecting = false;

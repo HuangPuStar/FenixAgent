@@ -250,7 +250,6 @@ export async function handleAcpWsMessage(
           sendToWs(entry.ws, { type: "identified", agent_id: agentId });
           log(`[ACP-WS] Agent identified: wsId=${wsId} agentId=${agentId}`);
         }
-        continue;
       }
     }
 

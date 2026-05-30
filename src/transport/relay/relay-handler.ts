@@ -105,7 +105,7 @@ export async function handleRelayOpen(
 }
 
 async function resolveAgentPrompt(env: EnvironmentRecord): Promise<string | undefined> {
-  if (!env.agentConfigId) return undefined;
+  if (!env.agentConfigId) return;
   const agentCfg = await getAgentConfigById(env.agentConfigId);
   return (agentCfg?.prompt as string) ?? undefined;
 }
@@ -115,8 +115,8 @@ async function openLocalRelay(
   relayWsId: string,
   agentId: string,
   userId: string,
-  sessionId: string,
-  env: EnvironmentRecord,
+  _sessionId: string,
+  _env: EnvironmentRecord,
 ): Promise<void> {
   const { ensureRunning } = await import("../../services/instance");
 
