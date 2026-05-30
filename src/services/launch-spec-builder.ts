@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { getBaseUrl } from "../config";
-import { log } from "../logger";
+import { log, error as logError } from "../logger";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import type { AgentFullConfig } from "./config-pg";
 import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
-import { getSkillArchivePath } from "./skill-fs";
+import { getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
 function inferProtocol(npm?: string | null): "openai" | "anthropic" {
   if (npm?.includes("anthropic")) return "anthropic";
@@ -153,22 +153,34 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     }
   }
 
-  const skills = fullConfig.skills.flatMap((s) => {
-    const archivePath = getSkillArchivePath(getGlobalSkillsDir(), s.name);
+  const skillRoot = getGlobalSkillsDir();
+  const skills: { name: string; url: string }[] = [];
+  for (const s of fullConfig.skills) {
+    const archivePath = getSkillArchivePath(skillRoot, s.name);
     if (!existsSync(archivePath)) {
-      log(`[launch-spec-builder] Skill archive missing, skipping: ${s.name}`);
-      return [];
+      const sourceDir = getSkillSourceDir(skillRoot, s.name);
+      if (existsSync(sourceDir)) {
+        log(`[launch-spec-builder] Skill archive missing, rebuilding: ${s.name}`);
+        try {
+          const { buildSkillArchive } = await import("./skill-fs");
+          await buildSkillArchive(sourceDir, archivePath);
+        } catch (err) {
+          logError(`[launch-spec-builder] Failed to rebuild skill archive for ${s.name}:`, err);
+          continue;
+        }
+      } else {
+        logError(`[launch-spec-builder] Skill source directory missing: ${s.name} (path: ${sourceDir})`);
+        continue;
+      }
     }
-    return [
-      {
-        name: s.name,
-        url: buildSkillDownloadUrl(
-          { id: s.id, organizationId: s.organizationId, name: s.name },
-          { expiresInSeconds: 3600 },
-        ),
-      },
-    ];
-  });
+    skills.push({
+      name: s.name,
+      url: buildSkillDownloadUrl(
+        { id: s.id, organizationId: s.organizationId, name: s.name },
+        { expiresInSeconds: 3600 },
+      ),
+    });
+  }
 
   const knowledgeBindings = agentConfigId ? await listAgentKnowledgeBindingsById(agentConfigId) : [];
   if (knowledgeBindings.length > 0) {
