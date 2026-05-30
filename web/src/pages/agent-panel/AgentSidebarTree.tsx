@@ -338,7 +338,7 @@ export function AgentSidebarTree({
         const avatarBg = agent.color || "var(--color-brand)";
 
         return (
-          <div key={agent.id} className="relative mx-2">
+          <div key={agent.id} className="group relative mx-2">
             {/* 卡片主体 */}
             <button
               type="button"
@@ -425,7 +425,7 @@ export function AgentSidebarTree({
                         <div
                           key={inst.id}
                           className={[
-                            "flex items-center gap-2 px-3 py-1.5 ml-2 text-[13px] rounded-md cursor-pointer transition-colors",
+                            "group flex items-center gap-2 px-3 py-1.5 ml-2 text-[13px] rounded-md cursor-pointer transition-colors",
                             selectedInstanceId === inst.id
                               ? "bg-brand-subtle text-brand"
                               : "text-text-primary hover:bg-surface-hover",
