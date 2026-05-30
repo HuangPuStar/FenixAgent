@@ -41,16 +41,16 @@ export interface UseWorkflowRunParams {
   setNodeOutputLoading: (loading: boolean) => void;
   syncYaml: () => string;
   fitView: (opts?: { padding?: number; duration?: number }) => void;
-  rightTab: string;
-  setRightTab: (tab: "config" | "run" | "versions") => void;
+  openRunSheet: () => void;
   setMeta: (fn: (prev: import("../yaml-utils").WfMeta) => import("../yaml-utils").WfMeta) => void;
   lastSavedYaml: string;
   setLastSavedYaml: (yaml: string) => void;
+  meta: import("../yaml-utils").WfMeta;
 }
 
 export interface UseWorkflowRunReturn {
   handleDryRun: () => Promise<void>;
-  handleRun: () => Promise<void>;
+  handleRun: (params?: Record<string, unknown>) => Promise<void>;
   handleCancelRun: () => Promise<void>;
   handleApprove: (approval: PendingApproval) => Promise<void>;
   handleBackToEdit: () => void;
@@ -92,10 +92,11 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setNodeOutputLoading,
     syncYaml,
     fitView,
-    setRightTab,
+    openRunSheet,
     setMeta,
     lastSavedYaml: _lastSavedYaml,
     setLastSavedYaml,
+    meta,
   } = params;
 
   const { t } = useTranslation("workflows");
@@ -235,57 +236,75 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       .finally(() => setNodeOutputLoading(false));
   }, [activeRunId, selectedRunNodeId, setSelectedNodeOutput, setNodeOutputLoading]);
 
-  const handleRun = useCallback(async () => {
-    const y = syncYaml();
-    setRunning(true);
-    setDryRunResult(null);
-    clearWorkflowEvents();
-
-    if (workflowId) {
-      try {
-        await workflowDefApi.save(workflowId, y);
-      } catch (err) {
-        console.error(`${t("editor.auto_save_failed")}:`, err);
+  /** 解析 meta.params 中的默认值，生成运行时 params */
+  const resolveDefaultParams = useCallback((): Record<string, unknown> | undefined => {
+    const paramsDef = meta.params as Record<string, Record<string, unknown>> | undefined;
+    if (!paramsDef || Object.keys(paramsDef).length === 0) return;
+    const resolved: Record<string, unknown> = {};
+    for (const [key, def] of Object.entries(paramsDef)) {
+      if (def && typeof def === "object" && "default" in def && def.default !== undefined) {
+        resolved[key] = def.default;
       }
     }
+    return Object.keys(resolved).length > 0 ? resolved : undefined;
+  }, [meta.params]);
 
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.id === START_NODE_ID ? n : { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } },
-      ),
-    );
+  const handleRun = useCallback(
+    async (params?: Record<string, unknown>) => {
+      const y = syncYaml();
+      setRunning(true);
+      setDryRunResult(null);
+      clearWorkflowEvents();
 
-    try {
-      const result = await workflowEngineApi.run(y, undefined, workflowId);
-      setActiveRunId(result.runId);
-      setRunSnapshot(null);
-      setRunEvents([]);
-      setRunApprovals([]);
-      setSelectedRunNodeId(null);
-      setSelectedNodeOutput(null);
-      setRightTab("run");
-      await loadRunData(result.runId);
-      // running 保持 true，轮询检测到终止状态时重置
-    } catch (err) {
-      console.error(err);
-      pushWorkflowError("run", (err as Error).message);
-      toast.error(`${t("editor.run_failed")}: ${(err as Error).message}`);
-      setRunning(false);
-    }
-  }, [
-    syncYaml,
-    workflowId,
-    setNodes,
-    setActiveRunId,
-    setRunSnapshot,
-    setRunEvents,
-    setRunApprovals,
-    setSelectedRunNodeId,
-    setSelectedNodeOutput,
-    setRightTab,
-    loadRunData,
-    t,
-  ]);
+      if (workflowId) {
+        try {
+          await workflowDefApi.save(workflowId, y);
+        } catch (err) {
+          console.error(`${t("editor.auto_save_failed")}:`, err);
+        }
+      }
+
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === START_NODE_ID ? n : { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } },
+        ),
+      );
+
+      try {
+        const runParams = params ?? resolveDefaultParams();
+        const result = await workflowEngineApi.run(y, runParams, workflowId);
+        setActiveRunId(result.runId);
+        setRunSnapshot(null);
+        setRunEvents([]);
+        setRunApprovals([]);
+        setSelectedRunNodeId(null);
+        setSelectedNodeOutput(null);
+        openRunSheet();
+        await loadRunData(result.runId);
+        // running 保持 true，轮询检测到终止状态时重置
+      } catch (err) {
+        console.error(err);
+        pushWorkflowError("run", (err as Error).message);
+        toast.error(`${t("editor.run_failed")}: ${(err as Error).message}`);
+        setRunning(false);
+      }
+    },
+    [
+      syncYaml,
+      workflowId,
+      setNodes,
+      setActiveRunId,
+      setRunSnapshot,
+      setRunEvents,
+      setRunApprovals,
+      setSelectedRunNodeId,
+      setSelectedNodeOutput,
+      openRunSheet,
+      loadRunData,
+      resolveDefaultParams,
+      t,
+    ],
+  );
 
   const handleCancelRun = useCallback(async () => {
     if (!activeRunId) return;
@@ -323,7 +342,6 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals([]);
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
-    setRightTab("config");
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })));
   }, [
     setActiveRunId,
@@ -332,7 +350,6 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals,
     setSelectedRunNodeId,
     setSelectedNodeOutput,
-    setRightTab,
     setNodes,
   ]);
 
@@ -396,7 +413,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         setRunApprovals([]);
         setSelectedRunNodeId(null);
         setSelectedNodeOutput(null);
-        setRightTab("run");
+        openRunSheet();
         await loadRunData(result.runId);
       } catch (err) {
         console.error(err);
@@ -417,7 +434,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setRunApprovals,
       setSelectedRunNodeId,
       setSelectedNodeOutput,
-      setRightTab,
+      openRunSheet,
       loadRunData,
       t,
     ],
@@ -430,7 +447,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setRunRightTab("output");
       setNodeOutputLoading(true);
       setSelectedNodeOutput(null);
-      setRightTab("run");
+      openRunSheet();
       try {
         const out = await workflowEngineApi.getOutput(activeRunId, nodeId);
         setSelectedNodeOutput(out ?? null);
@@ -441,7 +458,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         setNodeOutputLoading(false);
       }
     },
-    [activeRunId, setSelectedRunNodeId, setNodeOutputLoading, setSelectedNodeOutput, setRightTab],
+    [activeRunId, setSelectedRunNodeId, setNodeOutputLoading, setSelectedNodeOutput, openRunSheet],
   );
 
   nodeCallbacksRef.current.onViewOutput = handleViewNodeOutput;

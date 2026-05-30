@@ -1,0 +1,10 @@
+# 格式化暂存文件 + import 排序
+FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.json' '*.css' | grep -v 'node_modules' | grep -v 'routeTree.gen.ts' | tr '\n' ' ')
+
+if [ -n "$FILES" ]; then
+  echo "husky: formatting staged files..."
+  npx biome format --write $FILES
+  npx biome check --write --linter-enabled=false $FILES
+  git add $FILES
+fi
+

@@ -53,5 +53,8 @@
   "deleteAgent": "Delete Agent",
   "deleteAgentConfirm": "Are you sure you want to delete agent \"{{name}}\"? This action cannot be undone.",
   "deleteSuccess": "Agent deleted",
-  "deleteFailed": "Failed to delete agent: {{message}}"
+  "deleteFailed": "Failed to delete agent: {{message}}",
+  "agentDefaultDesc": "Agent",
+  "expandInstances": "Expand instances",
+  "collapseInstances": "Collapse instances"
 }

@@ -1,7 +1,9 @@
-import { AlertTriangle, ArrowRight, Inbox, Loader, RefreshCw, Search, Square } from "lucide-react";
+import { AlertTriangle, ArrowRight, Inbox, RefreshCw, Search, Square } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { type DAGStatus, type RunSummary, workflowEngineApi } from "../../api/workflow-engine";
+import { SkeletonTable } from "./components/SkeletonRows";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
   PENDING: { color: "#94a3b8", bg: "#f1f5f9" },
@@ -29,29 +31,10 @@ function StatusBadge({ status }: { status: string }) {
   const isRunning = status === "RUNNING";
   return (
     <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        fontSize: 11,
-        fontWeight: 500,
-        color: cfg.color,
-        background: cfg.bg,
-        padding: "2px 8px",
-        borderRadius: 99,
-      }}
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full"
+      style={{ color: cfg.color, background: cfg.bg }}
     >
-      {isRunning && (
-        <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: cfg.color,
-            animation: "wf-pulse 1.5s ease-in-out infinite",
-          }}
-        />
-      )}
+      {isRunning && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: cfg.color }} />}
       {t(STATUS_LABEL_KEYS[status] ?? status)}
     </span>
   );
@@ -125,75 +108,46 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
       loadRuns();
     } catch (err) {
       console.error(err);
-      alert((err as Error).message);
+      toast.error(t("runs.cancel"), { description: (err as Error).message });
     }
   };
 
   return (
-    <div style={{ padding: "24px 32px", height: "100%", overflowY: "auto" }}>
+    <div className="h-full overflow-y-auto p-6">
       {/* 顶部标题栏 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <h1 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: 0 }}>{t("runs.title")}</h1>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-base font-semibold text-text-primary m-0">{t("runs.title")}</h1>
         <button
           type="button"
           onClick={loadRuns}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px",
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            background: "#fff",
-            fontSize: 12,
-            color: "#374151",
-            cursor: "pointer",
-          }}
+          className="flex items-center gap-1.5 px-2.5 py-1 border border-border-subtle rounded-md bg-surface-1 text-xs text-text-secondary cursor-pointer hover:bg-surface-hover transition-colors"
         >
           <RefreshCw size={13} /> {t("runs.refresh")}
         </button>
       </div>
 
       {/* 搜索和筛选 */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flex: 1,
-            maxWidth: 260,
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            padding: "5px 10px",
-            background: "#fff",
-          }}
-        >
-          <Search size={13} style={{ color: "#4b5563", flexShrink: 0 }} />
+      <div className="flex gap-2.5 mb-4 items-center">
+        <div className="flex items-center gap-1.5 flex-1 max-w-[260px] border border-border-subtle rounded-md px-2.5 py-1.5 bg-surface-1">
+          <Search size={13} className="text-text-secondary shrink-0" />
           <input
             placeholder={t("runs.search_placeholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ border: "none", outline: "none", fontSize: 12, width: "100%", background: "transparent" }}
+            className="border-none outline-none text-xs w-full bg-transparent text-text-primary"
           />
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div className="flex gap-1">
           {["all", "RUNNING", "SUSPENDED", "SUCCESS", "FAILED"].map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => setStatusFilter(s)}
-              style={{
-                padding: "4px 10px",
-                border: "1px solid",
-                borderColor: statusFilter === s ? "#3b82f6" : "#e5e7eb",
-                borderRadius: 6,
-                background: statusFilter === s ? "#eff6ff" : "#fff",
-                color: statusFilter === s ? "#3b82f6" : "#6b7280",
-                fontSize: 11,
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
+              className={`px-2.5 py-1 border rounded-md text-[11px] font-medium cursor-pointer transition-colors ${
+                statusFilter === s
+                  ? "border-brand bg-brand-subtle text-brand"
+                  : "border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-hover"
+              }`}
             >
               {s === "all" ? t("runs.filter_all") : t(STATUS_LABEL_KEYS[s] ?? s)}
             </button>
@@ -203,54 +157,30 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
 
       {/* 内容 */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 40, color: "#4b5563", fontSize: 13 }}>
-          <Loader size={20} style={{ animation: "spin 1s linear infinite", display: "inline-block" }} />
-          <p style={{ marginTop: 8 }}>{t("runs.loading")}</p>
-        </div>
+        <SkeletonTable cols="2fr 1fr 80px 120px 80px 80px" rows={6} />
       ) : error ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <AlertTriangle size={32} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
-          <p style={{ fontSize: 13, color: "#374151" }}>{t("runs.load_failed", { error })}</p>
+        <div className="text-center py-10">
+          <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
+          <p className="text-[13px] text-text-secondary">{t("runs.load_failed", { error })}</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
+        <div className="text-center py-10">
           {statusFilter !== "all" || searchQuery ? (
-            <Search size={32} style={{ color: "#374151", margin: "0 auto 8px" }} />
+            <Search size={32} className="text-text-secondary mx-auto mb-2" />
           ) : (
-            <Inbox size={32} style={{ color: "#374151", margin: "0 auto 8px" }} />
+            <Inbox size={32} className="text-text-secondary mx-auto mb-2" />
           )}
-          <p style={{ fontSize: 13, color: "#4b5563", fontWeight: 500 }}>
+          <p className="text-[13px] text-text-secondary font-medium">
             {statusFilter !== "all" || searchQuery ? t("runs.no_match") : t("runs.no_runs")}
           </p>
-          <p style={{ fontSize: 11, color: "#374151", marginTop: 4 }}>
+          <p className="text-[11px] text-text-dim mt-1">
             {statusFilter !== "all" || searchQuery ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
           </p>
         </div>
       ) : (
-        <div
-          style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 8,
-            overflow: "hidden",
-            background: "#fff",
-          }}
-        >
+        <div className="border border-border-subtle rounded-lg overflow-hidden bg-surface-1">
           {/* 表头 */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "2fr 1fr 80px 120px 80px 80px",
-              gap: 8,
-              padding: "8px 16px",
-              background: "#f9fafb",
-              borderBottom: "1px solid #e5e7eb",
-              fontSize: 11,
-              fontWeight: 600,
-              color: "#374151",
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
-            }}
-          >
+          <div className="grid grid-cols-[2fr_1fr_80px_120px_80px_80px] gap-2 px-4 py-2 bg-surface-2 border-b border-border-subtle text-[11px] font-semibold text-text-muted uppercase tracking-wide">
             <span>{t("runs.table_workflow")}</span>
             <span>{t("runs.table_status")}</span>
             <span>{t("runs.table_nodes")}</span>
@@ -264,53 +194,26 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
             <div
               key={r.run_id}
               onClick={() => onSelectRun?.(r.run_id)}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 80px 120px 80px 80px",
-                gap: 8,
-                padding: "10px 16px",
-                borderBottom: "1px solid #f3f4f6",
-                cursor: "pointer",
-                transition: "background 0.1s",
-                fontSize: 12,
-                alignItems: "center",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+              className="grid grid-cols-[2fr_1fr_80px_120px_80px_80px] gap-2 px-4 py-2.5 border-b border-border-subtle cursor-pointer transition-colors text-xs items-center hover:bg-surface-hover"
             >
               <div>
-                <div style={{ fontWeight: 500, color: "#111827" }}>{r.workflow_name}</div>
-                <div style={{ fontSize: 10, color: "#4b5563", fontFamily: "ui-monospace, monospace", marginTop: 1 }}>
-                  {r.run_id.substring(0, 16)}...
-                </div>
+                <div className="font-medium text-text-primary">{r.workflow_name}</div>
+                <div className="text-[10px] text-text-secondary font-mono mt-0.5">{r.run_id.substring(0, 16)}...</div>
               </div>
               <StatusBadge status={r.status} />
-              <div style={{ fontFamily: "ui-monospace, monospace", color: "#374151" }}>
-                <span style={{ color: "#22c55e" }}>{r.node_summary.completed}</span>
-                <span style={{ color: "#374151" }}>/{r.node_summary.total}</span>
+              <div className="font-mono text-text-secondary">
+                <span className="text-status-running">{r.node_summary.completed}</span>
+                <span>/{r.node_summary.total}</span>
               </div>
-              <div style={{ color: "#374151" }}>{relativeTime(r.started_at, t)}</div>
-              <div style={{ fontFamily: "ui-monospace, monospace", color: "#374151" }}>
-                {formatDuration(r.started_at, r.completed_at)}
-              </div>
-              <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
+              <div className="text-text-secondary">{relativeTime(r.started_at, t)}</div>
+              <div className="font-mono text-text-secondary">{formatDuration(r.started_at, r.completed_at)}</div>
+              <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                 {r.status === "RUNNING" && (
                   <button
                     type="button"
                     title={t("runs.cancel")}
                     onClick={() => handleCancel(r.run_id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 26,
-                      height: 26,
-                      border: "none",
-                      background: "none",
-                      borderRadius: 4,
-                      color: "#ef4444",
-                      cursor: "pointer",
-                    }}
+                    className="flex items-center justify-center w-6 h-6 border-none bg-transparent rounded text-status-error cursor-pointer hover:bg-surface-hover transition-colors"
                   >
                     <Square size={13} />
                   </button>
@@ -319,18 +222,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                   type="button"
                   title={t("runs.view_details")}
                   onClick={() => onSelectRun?.(r.run_id, r.workflow_id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 26,
-                    height: 26,
-                    border: "none",
-                    background: "none",
-                    borderRadius: 4,
-                    color: "#374151",
-                    cursor: "pointer",
-                  }}
+                  className="flex items-center justify-center w-6 h-6 border-none bg-transparent rounded text-text-secondary cursor-pointer hover:bg-surface-hover transition-colors"
                 >
                   <ArrowRight size={13} />
                 </button>
@@ -341,7 +233,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
       )}
 
       {runs.length > 0 && (
-        <div style={{ marginTop: 12, fontSize: 11, color: "#4b5563", textAlign: "center" }}>
+        <div className="mt-3 text-[11px] text-text-secondary text-center">
           {t("runs.total_records", { count: runs.length })}
         </div>
       )}

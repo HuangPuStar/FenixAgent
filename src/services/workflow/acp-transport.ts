@@ -1,259 +1,268 @@
 /**
- * ACP Transport 实现 — 将 workflow-engine 的 Transport 接口桥接到 RCS 的 ACP WebSocket 基础设施。
+ * ACP Transport 实现 — workflow-engine Transport 接口的薄包装。
  *
- * 工作流程：
- * 1. connect() 检查 agent 在线状态，发送 session/create 创建会话
- * 2. execute() 发送 user 消息，通过 EventBus 收集 assistant 响应
- * 3. 等待 prompt_complete 信号后拼接输出并返回 AgentResponse
+ * 职责：
+ * - 仅负责 ACP 协议（new_session → prompt → session_update 流 → prompt_complete）
+ * - 不关心底层是 relay / WebSocket / EventBus
+ * - 底层通信由注入的 ChannelFactory 回调提供
+ *
+ * ACP 协议流程（relay 模式）：
+ * 1. relay 连接建立（由 ChannelFactory 完成），acp-link 自动发 connect → status
+ * 2. 发 new_session → 等待 session_created（获得真实 sessionId）
+ * 3. 发 prompt → 接收 session_update 流 → 等待 prompt_complete
+ *
+ * 分层：
+ * - workflow/index.ts（服务层）：负责环境解析、实例启动、relay 连接
+ * - acp-transport.ts（本文件）：仅封装 ACP 协议流程
  */
 
-import type { AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
-import { nanoid } from "nanoid";
+import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { log } from "../../logger";
-import type { SessionEvent } from "../../transport/event-bus";
-import { getAcpEventBus } from "../../transport/event-bus";
-import { sendToAgentWs } from "../../transport/relay";
+
+// ---------- 消息通道抽象 ----------
+
+/** 底层消息收发通道 — 不依赖具体实现 */
+export interface AgentChannel {
+  /** 发送消息到 agent */
+  send(message: unknown): void;
+  /** 订阅来自 agent 的消息，返回取消订阅函数 */
+  onMessage(handler: (msg: Record<string, unknown>) => void): () => void;
+}
+
+/** 创建消息通道的工厂 — 由 RCS 服务层注入 */
+export type ChannelFactory = (envName: string, options?: { spawnedEnvIds?: Set<string> }) => Promise<AgentChannel>;
+
+// ---------- 注入点 ----------
+
+let _channelFactory: ChannelFactory | null = null;
+
+/** 注入通道工厂（由服务层调用） */
+export function setChannelFactory(factory: ChannelFactory | null): void {
+  _channelFactory = factory;
+}
 
 // ---------- 常量 ----------
 
-/** 等待 session/create 响应的超时时间（30s） */
-const SESSION_CREATE_TIMEOUT_MS = 30_000;
-
-// ---------- 类型 ----------
-
-/** session_update 消息中的 message 字段 */
-interface SessionUpdateMessage {
-  role: string;
-  content?: string;
-  [key: string]: unknown;
-}
-
-/** prompt_complete 消息中可能携带的元数据 */
-interface PromptCompleteMetadata {
-  model?: string;
-  tokens?: { input: number; output: number };
-  [key: string]: unknown;
-}
+const NEW_SESSION_TIMEOUT_MS = 30_000;
+const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
 
 // ---------- 辅助函数 ----------
 
-/** 创建超时 Promise，超时时抛出 AbortError */
-function createTimeoutPromise(ms: number, label: string): Promise<never> {
-  return new Promise<never>((_, reject) => {
-    const timer = setTimeout(() => {
-      reject(new DOMException(`${label} timed out after ${ms}ms`, "AbortError"));
-    }, ms);
-    if (typeof timer.unref === "function") timer.unref();
-  });
-}
-
-/** 从 SessionEvent 的 payload 中提取 type 字段 */
-function getPayloadType(event: SessionEvent): string {
-  const payload = event.payload;
-  if (payload && typeof payload === "object" && "type" in payload) {
-    return String((payload as Record<string, unknown>).type);
-  }
-  return "";
-}
-
-/** 从 SessionEvent 的 payload 中提取指定字段 */
-function getPayloadField<T>(event: SessionEvent, field: string): T | undefined {
-  const payload = event.payload;
-  if (payload && typeof payload === "object" && field in payload) {
-    return (payload as Record<string, unknown>)[field] as T;
+function getField<T>(obj: unknown, field: string): T | undefined {
+  if (obj && typeof obj === "object" && field in obj) {
+    return (obj as Record<string, unknown>)[field] as T;
   }
 }
 
 // ---------- AcpAgentSession ----------
 
-/** 基于 ACP WebSocket 的 Agent 会话实现 */
+/** 基于 AgentChannel 的 Agent 会话 — 只做 ACP 协议 */
 class AcpAgentSession implements AgentSession {
   private readonly sessionId: string;
-  private readonly agentId: string;
+  private readonly channel: AgentChannel;
 
-  constructor(agentId: string, sessionId: string) {
-    this.agentId = agentId;
+  constructor(channel: AgentChannel, sessionId: string) {
+    this.channel = channel;
     this.sessionId = sessionId;
   }
 
   async execute(request: AgentRequest): Promise<AgentResponse> {
     const startTime = Date.now();
     const chunks: string[] = [];
+    const collectedMessages: AgentMessage[] = [];
 
     if (request.signal?.aborted) {
       throw new DOMException("Request aborted", "AbortError");
     }
 
-    const bus = getAcpEventBus(this.agentId);
-    // 先创建一个空订阅占位，确保 finally 中可以安全调用
-    const unsub = bus.subscribe(() => {});
+    let cleanupFn: (() => void) | null = null;
 
     try {
-      unsub(); // 立即释放占位订阅
-
       return await new Promise<AgentResponse>((resolve, reject) => {
         let abortCleanup: (() => void) | null = null;
+        let settled = false;
 
-        const innerUnsub = bus.subscribe((event: SessionEvent) => {
-          if (event.direction !== "inbound") return;
+        const timeoutTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanupFn = null;
+          abortCleanup?.();
+          reject(new DOMException(`Agent execute timed out after ${DEFAULT_EXECUTE_TIMEOUT_MS}ms`, "AbortError"));
+        }, DEFAULT_EXECUTE_TIMEOUT_MS);
+        if (typeof timeoutTimer.unref === "function") timeoutTimer.unref();
 
-          const type = getPayloadType(event);
-          const eventSessionId = getPayloadField<string>(event, "session_id");
-          if (eventSessionId !== this.sessionId) return;
+        const unsub = this.channel.onMessage((msg) => {
+          const type = getField<string>(msg, "type") ?? "";
 
           switch (type) {
+            // { type: "session_update", payload: { sessionId, update: { sessionUpdate, ... } } }
             case "session_update": {
-              const message = getPayloadField<SessionUpdateMessage>(event, "message");
-              if (message?.role === "assistant" && typeof message.content === "string") {
-                chunks.push(message.content);
+              const payload = getField<Record<string, unknown>>(msg, "payload");
+              if (!payload) break;
+
+              const update = getField<Record<string, unknown>>(payload, "update");
+              if (!update) break;
+
+              const sessionUpdate = getField<string>(update, "sessionUpdate") ?? "";
+
+              switch (sessionUpdate) {
+                case "agent_message_chunk": {
+                  const content = getField<Record<string, unknown>>(update, "content");
+                  const text = getField<string>(content, "text") ?? "";
+                  if (text) chunks.push(text);
+                  collectedMessages.push({ role: "assistant", content: text });
+                  break;
+                }
+                case "tool_call": {
+                  const title = getField<string>(update, "title") ?? "";
+                  const status = getField<string>(update, "status") ?? "";
+                  collectedMessages.push({
+                    role: "tool_call",
+                    content: `${title} (${status})`,
+                    tool_name: title,
+                  });
+                  break;
+                }
+                case "user_message_chunk": {
+                  const content = getField<Record<string, unknown>>(update, "content");
+                  const text = getField<string>(content, "text") ?? "";
+                  if (text) collectedMessages.push({ role: "user", content: text });
+                  break;
+                }
               }
               break;
             }
 
+            // { type: "prompt_complete", payload: { stopReason, usage?: { totalTokens, inputTokens, outputTokens } } }
             case "prompt_complete": {
-              const metadata = getPayloadField<PromptCompleteMetadata>(event, "metadata");
-              const latencyMs = Date.now() - startTime;
-              innerUnsub();
+              if (settled) return;
+              settled = true;
+              cleanupFn = null;
+              unsub();
               abortCleanup?.();
+              clearTimeout(timeoutTimer);
+
+              const payload = getField<Record<string, unknown>>(msg, "payload");
+              const usage = getField<Record<string, number>>(payload, "usage");
               resolve({
                 stdout: chunks.join(""),
                 exit_code: 0,
-                tokens: metadata?.tokens,
-                model: metadata?.model,
-                latency_ms: latencyMs,
+                tokens: usage ? { input: usage.inputTokens ?? 0, output: usage.outputTokens ?? 0 } : undefined,
+                latency_ms: Date.now() - startTime,
+                messages: collectedMessages,
               });
               break;
             }
 
+            // { type: "error", payload: { message: string } }
             case "error": {
-              innerUnsub();
+              if (settled) return;
+              settled = true;
+              cleanupFn = null;
+              unsub();
               abortCleanup?.();
+              clearTimeout(timeoutTimer);
+
+              const payload = getField<Record<string, unknown>>(msg, "payload");
+              const errorMsg = getField<string>(payload, "message") ?? "";
+              const existing = chunks.join("");
+              const stderr = errorMsg
+                ? existing
+                  ? `${existing}\n\n[Error] ${errorMsg}`
+                  : `[Error] ${errorMsg}`
+                : existing;
               resolve({
-                stdout: chunks.join(""),
+                stdout: stderr,
                 exit_code: 1,
                 latency_ms: Date.now() - startTime,
+                messages: collectedMessages,
               });
               break;
             }
           }
         });
 
-        // 监听 AbortSignal
+        cleanupFn = () => unsub();
+
         if (request.signal) {
           const onAbort = () => {
-            innerUnsub();
+            if (settled) return;
+            settled = true;
+            cleanupFn = null;
+            unsub();
+            clearTimeout(timeoutTimer);
             reject(new DOMException("Request aborted", "AbortError"));
           };
           request.signal.addEventListener("abort", onAbort, { once: true });
           abortCleanup = () => request.signal?.removeEventListener("abort", onAbort);
         }
 
-        // 构建并发送 user 消息
-        const userMsg: Record<string, unknown> = {
-          type: "user",
-          session_id: this.sessionId,
-          content: request.prompt,
-        };
-        if (request.skill) {
-          userMsg.skill = request.skill;
-        }
-        if (request.cwd) {
-          userMsg.cwd = request.cwd;
-        }
+        // 发送 prompt 消息：{ type: "prompt", payload: { content: [{ type: "text", text: "..." }] } }
+        this.channel.send({
+          type: "prompt",
+          payload: {
+            content: [{ type: "text", text: request.prompt }],
+          },
+        });
 
-        const sent = sendToAgentWs(this.agentId, userMsg);
-        if (!sent) {
-          innerUnsub();
-          abortCleanup?.();
-          reject(new Error("Agent not found or offline"));
-          return;
-        }
-
-        log(`[ACP-Transport] Sent user message: sessionId=${this.sessionId} promptLength=${request.prompt.length}`);
+        log(`[ACP-Transport] Sent prompt: sessionId=${this.sessionId} promptLength=${request.prompt.length}`);
       });
     } finally {
-      unsub();
+      (cleanupFn as (() => void) | null)?.();
     }
   }
 }
 
 // ---------- AcpTransport ----------
 
-/** ACP Transport 实现 — 通过 WebSocket 与 acp-link Agent 通信 */
 class AcpTransport implements Transport {
-  /**
-   * 连接到指定 agent，创建 ACP 会话。
-   * @param agentId - agent 环境 ID（如 env_xxx）
-   * @param options.cwd - 可选的工作目录，传递给 session/create
-   */
-  async connect(agentId: string, options?: { cwd?: string }): Promise<AgentSession> {
-    // 检查 agent 在线状态
-    const { findMachineConnectionByAgentId } = await import("../../transport/acp-ws-handler");
-    const conn = await findMachineConnectionByAgentId(agentId);
-    if (!conn) {
-      throw new Error(`Agent not found or offline: ${agentId}`);
+  async connect(agentId: string, options?: { cwd?: string; spawnedEnvIds?: Set<string> }): Promise<AgentSession> {
+    if (!_channelFactory) {
+      throw new Error("No channel factory configured for ACP Transport");
     }
 
-    // 生成关联 ID 用于匹配 session/create 响应
-    const correlationId = nanoid(12);
-    const bus = getAcpEventBus(agentId);
-    let unsub: (() => void) | null = null;
+    const channel = await _channelFactory(agentId, { spawnedEnvIds: options?.spawnedEnvIds });
 
-    const sessionId = await Promise.race([
-      createTimeoutPromise(SESSION_CREATE_TIMEOUT_MS, "session/create"),
+    // ACP 协议：发 new_session → 等待 session_created
+    const sessionId = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        unsub();
+        reject(new DOMException(`new_session timed out after ${NEW_SESSION_TIMEOUT_MS}ms`, "AbortError"));
+      }, NEW_SESSION_TIMEOUT_MS);
+      if (typeof timeout.unref === "function") timeout.unref();
 
-      new Promise<string>((resolve, reject) => {
-        unsub = bus.subscribe((event: SessionEvent) => {
-          if (event.direction !== "inbound") return;
+      const unsub = channel.onMessage((msg) => {
+        const type = getField<string>(msg, "type") ?? "";
 
-          const type = getPayloadType(event);
-
-          if (type === "session/create") {
-            // 匹配关联 ID：检查 payload 中的 id 字段
-            const responseId = getPayloadField<string>(event, "id");
-            if (responseId !== correlationId) return;
-
-            const newSessionId = getPayloadField<string>(event, "session_id");
-            if (!newSessionId) {
-              reject(new Error("session/create response missing session_id"));
-              return;
-            }
-
-            log(`[ACP-Transport] Session created: sessionId=${newSessionId} agentId=${agentId}`);
-            resolve(newSessionId);
+        if (type === "session_created") {
+          clearTimeout(timeout);
+          unsub();
+          const payload = getField<Record<string, unknown>>(msg, "payload");
+          const sid = getField<string>(payload, "sessionId");
+          if (!sid) {
+            reject(new Error("session_created response missing sessionId"));
+            return;
           }
-
-          // agent 断连
-          if (type === "agent_disconnect") {
-            reject(new Error("Agent disconnected during session creation"));
-          }
-        });
-
-        // 发送 session/create 消息
-        const createMsg: Record<string, unknown> = {
-          type: "session/create",
-          id: correlationId,
-        };
-        if (options?.cwd) {
-          createMsg.cwd = options.cwd;
+          resolve(sid);
         }
 
-        const sent = sendToAgentWs(agentId, createMsg);
-        if (!sent) {
-          reject(new Error("Agent not found or offline"));
-          return;
+        if (type === "error") {
+          clearTimeout(timeout);
+          unsub();
+          const payload = getField<Record<string, unknown>>(msg, "payload");
+          reject(new Error(getField<string>(payload, "message") ?? "new_session error"));
         }
+      });
 
-        log(`[ACP-Transport] Sent session/create: agentId=${agentId} correlationId=${correlationId}`);
-      }),
-    ]).finally(() => {
-      unsub?.();
+      // 发送 new_session 消息
+      channel.send({ type: "new_session", payload: { cwd: options?.cwd } });
+      log(`[ACP-Transport] Sent new_session: agent=${agentId}`);
     });
 
-    return new AcpAgentSession(agentId, sessionId);
+    log(`[ACP-Transport] Session created: agent=${agentId} sessionId=${sessionId}`);
+    return new AcpAgentSession(channel, sessionId);
   }
 
-  /** 检查 Transport 是否可用 */
   isReady(): boolean {
     return true;
   }
@@ -261,7 +270,6 @@ class AcpTransport implements Transport {
 
 // ---------- 工厂函数 ----------
 
-/** 创建 ACP Transport 实例 */
 export function createAcpTransport(): Transport {
   return new AcpTransport();
 }

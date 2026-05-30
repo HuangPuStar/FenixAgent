@@ -17,14 +17,14 @@ import {
 import { useTranslation } from "react-i18next";
 
 const NODE_COLORS: Record<string, { main: string; light: string; headerText: string }> = {
-  start: { main: "#6366f1", light: "#eef2ff", headerText: "#fff" },
-  shell: { main: "#3b82f6", light: "#eff6ff", headerText: "#fff" },
-  python: { main: "#0ea5e9", light: "#f0f9ff", headerText: "#fff" },
-  agent: { main: "#22c55e", light: "#f0fdf4", headerText: "#fff" },
-  api: { main: "#8b5cf6", light: "#f5f3ff", headerText: "#fff" },
-  audit: { main: "#f59e0b", light: "#fffbeb", headerText: "#fff" },
-  workflow: { main: "#ec4899", light: "#fdf2f8", headerText: "#fff" },
-  loop: { main: "#06b6d4", light: "#ecfeff", headerText: "#fff" },
+  start: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
+  shell: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
+  python: { main: "#818cf8", light: "rgba(129,140,248,0.08)", headerText: "#fff" },
+  agent: { main: "#10b981", light: "rgba(16,185,129,0.08)", headerText: "#fff" },
+  api: { main: "#818cf8", light: "rgba(129,140,248,0.08)", headerText: "#fff" },
+  audit: { main: "#f59e0b", light: "rgba(245,158,11,0.08)", headerText: "#fff" },
+  workflow: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
+  loop: { main: "#818cf8", light: "rgba(129,140,248,0.08)", headerText: "#fff" },
 };
 
 const NODE_ICONS: Record<string, React.ReactNode> = {
@@ -51,9 +51,9 @@ const NODE_LABEL_KEYS: Record<string, string> = {
 
 const RUN_STATUS_COLORS: Record<string, { color: string; bg: string }> = {
   PENDING: { color: "#94a3b8", bg: "#f1f5f9" },
-  RUNNING: { color: "#3b82f6", bg: "#eff6ff" },
-  COMPLETED: { color: "#22c55e", bg: "#f0fdf4" },
-  FAILED: { color: "#ef4444", bg: "#fef2f2" },
+  RUNNING: { color: "#6366f1", bg: "rgba(99,102,241,0.08)" },
+  COMPLETED: { color: "#10b981", bg: "rgba(16,185,129,0.08)" },
+  FAILED: { color: "#ef4444", bg: "rgba(239,68,68,0.08)" },
   CANCELLED: { color: "#94a3b8", bg: "#f8fafc" },
   SKIPPED: { color: "#d1d5db", bg: "#f9fafb" },
 };
@@ -68,19 +68,13 @@ const RUN_STATUS_KEYS: Record<string, string> = {
 };
 
 function StatusDot({ status }: { status: string }) {
-  if (status === "RUNNING")
-    return <Loader size={11} style={{ color: "#fff", animation: "wf-spin 1s linear infinite" }} />;
-  if (status === "COMPLETED") return <CheckCircle size={11} style={{ color: "#fff" }} />;
-  if (status === "FAILED") return <XCircle size={11} style={{ color: "#fff" }} />;
+  if (status === "RUNNING") return <Loader size={11} className="text-white animate-spin" />;
+  if (status === "COMPLETED") return <CheckCircle size={11} className="text-white" />;
+  if (status === "FAILED") return <XCircle size={11} className="text-white" />;
   return (
     <span
-      style={{
-        width: 7,
-        height: 7,
-        borderRadius: "50%",
-        background: status === "PENDING" ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)",
-        display: "inline-block",
-      }}
+      className="w-[7px] h-[7px] rounded-full inline-block"
+      style={{ background: status === "PENDING" ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)" }}
     />
   );
 }
@@ -130,103 +124,78 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   const isTerminal = runStatus === "COMPLETED" || runStatus === "FAILED";
   const showActions = isTerminal && !isStart;
 
-  const borderColor = statusColors ? statusColors.color : selected ? colors.main : "#e5e7eb";
+  const borderColor = statusColors ? statusColors.color : selected ? colors.main : "var(--color-border-subtle)";
   const boxShadow = statusColors
     ? `0 0 0 2px ${statusColors.color}20`
     : selected
       ? `0 0 0 3px ${colors.main}30`
-      : "0 1px 3px rgba(0,0,0,0.08)";
+      : "var(--shadow-card)";
 
   return (
     <div
+      data-node-id={id}
+      className="bg-surface-1 overflow-hidden transition-[border-color,box-shadow] duration-150"
       style={{
-        background: "#fff",
         borderRadius: 8,
         minWidth: isStart ? 120 : 180,
         maxWidth: isStart ? 140 : 240,
         fontSize: 12,
-        overflow: "hidden",
         border: `2px solid ${borderColor}`,
         boxShadow,
-        transition: "border-color 0.15s, box-shadow 0.15s",
       }}
     >
       {!isStart && (
         <Handle
           type="target"
           position={Position.Top}
-          style={{ background: colors.main, width: 8, height: 8, border: "2px solid #fff" }}
+          className="!w-2 !h-2 !border-2 !border-white transition-transform duration-150 hover:scale-140"
+          style={{ background: colors.main }}
         />
       )}
 
       <div
+        className="flex items-center gap-1.5 font-semibold"
         style={{
           background: colors.main,
           color: colors.headerText,
           padding: "5px 10px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: isStart ? "center" : undefined,
-          gap: 5,
-          fontWeight: 600,
           letterSpacing: 0.3,
+          justifyContent: isStart ? "center" : undefined,
         }}
       >
         {icon}
-        <span style={{ flex: 1 }}>{label}</span>
+        <span className="flex-1">{label}</span>
         {statusColors && !isStart && <StatusDot status={runStatus!} />}
       </div>
 
       {!isStart && (
-        <div style={{ background: statusColors?.bg ?? colors.light, padding: "6px 10px" }}>
+        <div className="px-2.5 py-1.5" style={{ background: statusColors?.bg ?? colors.light }}>
           {d.description ? (
-            <div
-              style={{
-                color: "#6b7280",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                fontSize: 11,
-                marginBottom: preview ? 2 : 0,
-              }}
-            >
+            <div className="text-text-secondary whitespace-nowrap overflow-hidden text-ellipsis text-[11px] mb-0.5">
               {String(d.description)}
             </div>
           ) : null}
           {preview ? (
-            <div
-              style={{
-                color: "#374151",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                fontSize: 11,
-                fontFamily: "ui-monospace, monospace",
-              }}
-            >
+            <div className="text-text-primary whitespace-nowrap overflow-hidden text-ellipsis text-[11px] font-mono">
               {preview.substring(0, 40)}
             </div>
           ) : !d.description ? (
-            <div style={{ color: "#9ca3af", fontSize: 11, fontStyle: "italic" }}>{t("nodes.not_configured")}</div>
+            <div className="text-text-muted text-[11px] italic">{t("nodes.not_configured")}</div>
           ) : null}
         </div>
       )}
 
       {statusColors && !isStart && (
         <div
+          className="flex items-center gap-1 text-[10px] font-medium"
           style={{
             padding: "3px 10px",
             background: statusColors.bg,
             borderTop: `1px solid ${statusColors.color}20`,
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            fontSize: 10,
             color: statusColors.color,
-            fontWeight: 500,
           }}
         >
-          <span style={{ flex: 1 }}>{statusLabel}</span>
+          <span className="flex-1">{statusLabel}</span>
           {exitCode != null && <span>exit: {exitCode}</span>}
           {showActions && onViewOutput && (
             <button
@@ -236,19 +205,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                 onViewOutput(id);
               }}
               title={t("nodes.view_output")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 18,
-                height: 18,
-                border: `1px solid ${statusColors.color}40`,
-                borderRadius: 3,
-                background: "#fff",
-                color: statusColors.color,
-                cursor: "pointer",
-                padding: 0,
-              }}
+              className="flex items-center justify-center w-[18px] h-[18px] rounded-sm bg-surface-1 cursor-pointer p-0 hover:brightness-95 transition-all"
+              style={{ border: `1px solid ${statusColors.color}40`, color: statusColors.color }}
             >
               <Eye size={10} />
             </button>
@@ -261,19 +219,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                 onRerunFrom(id);
               }}
               title={t("nodes.rerun_from")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 18,
-                height: 18,
-                border: `1px solid ${statusColors.color}40`,
-                borderRadius: 3,
-                background: "#fff",
-                color: statusColors.color,
-                cursor: "pointer",
-                padding: 0,
-              }}
+              className="flex items-center justify-center w-[18px] h-[18px] rounded-sm bg-surface-1 cursor-pointer p-0 hover:brightness-95 transition-all"
+              style={{ border: `1px solid ${statusColors.color}40`, color: statusColors.color }}
             >
               <ArrowRight size={9} />
             </button>
@@ -284,7 +231,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ background: colors.main, width: 8, height: 8, border: "2px solid #fff" }}
+        className="!w-2 !h-2 !border-2 !border-white transition-transform duration-150 hover:scale-140"
+        style={{ background: colors.main }}
       />
     </div>
   );

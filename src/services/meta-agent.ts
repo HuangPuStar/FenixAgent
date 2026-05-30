@@ -19,7 +19,9 @@ import { createWebEnvironment, listEnvironmentsWithInstances } from "./environme
 export const META_ENVIRONMENT_NAME = "meta-agent";
 const META_AGENT_CONFIG_NAME = "meta";
 const META_KEY_LABEL = "Meta Agent";
-const _META_KEY_EXPIRY_MS = 3600_000; // 1 小时
+
+/** orgId → apiKey 明文缓存，避免重复创建 */
+const metaApiKeyCache = new Map<string, string>();
 
 export interface EnsureMetaResult {
   environmentId: string;
@@ -62,8 +64,11 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
   return agentConfig.id;
 }
 
-/** 为 meta agent 获取或创建 API key。先删除所有同名旧 key，再创建唯一一个。 */
+/** 为 meta agent 获取或创建 API key。同一进程内缓存明文，避免重复创建。 */
 async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<string> {
+  const cached = metaApiKeyCache.get(ctx.organizationId);
+  if (cached) return cached;
+
   // 删除所有同名旧 key，避免累积
   // biome-ignore lint/suspicious/noExplicitAny: better-auth listApiKeys return type is untyped
   const listResult: any = await (auth.api as any).listApiKeys({ headers });
@@ -89,7 +94,9 @@ async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
     },
     headers,
   });
-  return result?.key ?? result?.fullKey ?? "";
+  const apiKey = result?.key ?? result?.fullKey ?? "";
+  metaApiKeyCache.set(ctx.organizationId, apiKey);
+  return apiKey;
 }
 
 /** 查找或创建 meta environment + spawn 实例 */

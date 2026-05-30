@@ -1,7 +1,12 @@
-import { AlertTriangle, ChevronRight, Inbox, Loader, Plus, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronRight, Inbox, Plus, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
+import { SkeletonTable } from "./components/SkeletonRows";
 
 interface WorkflowListProps {
   onEditWorkflow: (workflowId: string) => void;
@@ -18,6 +23,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
   const [createName, setCreateName] = useState("");
   const [createDesc, setCreateDesc] = useState("");
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<WorkflowDefItem | null>(null);
 
   // 恢复相关
   const [recoverableIds, setRecoverableIds] = useState<string[]>([]);
@@ -59,25 +65,24 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
       onEditWorkflow(wf.id);
     } catch (err) {
       console.error(err);
-      alert(`${t("list.create_error")}: ${(err as Error).message}`);
+      toast.error(t("list.create_error"), { description: (err as Error).message });
     } finally {
       setCreating(false);
     }
   }, [createName, createDesc, onEditWorkflow, t]);
 
-  const handleDelete = useCallback(
-    async (wf: WorkflowDefItem) => {
-      if (!confirm(t("list.delete_confirm", { name: wf.name }))) return;
-      try {
-        await workflowDefApi.delete(wf.id);
-        loadList();
-      } catch (err) {
-        console.error(err);
-        alert(`${t("list.delete_failed")}: ${(err as Error).message}`);
-      }
-    },
-    [loadList, t],
-  );
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      await workflowDefApi.delete(deleteTarget.id);
+      loadList();
+    } catch (err) {
+      console.error(err);
+      toast.error(t("list.delete_failed"), { description: (err as Error).message });
+    } finally {
+      setDeleteTarget(null);
+    }
+  }, [deleteTarget, loadList, t]);
 
   const handleScanRecover = useCallback(async () => {
     try {
@@ -87,7 +92,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
       setShowRecoverPanel(true);
     } catch (err) {
       console.error(err);
-      alert(`${t("list.scan_failed")}: ${(err as Error).message}`);
+      toast.error(t("list.scan_failed"), { description: (err as Error).message });
     }
   }, [t]);
 
@@ -100,7 +105,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
       loadList();
     } catch (err) {
       console.error(err);
-      alert(`${t("list.recover_failed")}: ${(err as Error).message}`);
+      toast.error(t("list.recover_failed"), { description: (err as Error).message });
     } finally {
       setRecovering(false);
     }
@@ -116,44 +121,22 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
   }
 
   return (
-    <div style={{ padding: "24px 32px", height: "100%", overflowY: "auto" }}>
+    <div className="h-full overflow-y-auto p-6">
       {/* 标题栏 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <h1 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: 0 }}>{t("list.title")}</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-base font-semibold text-text-primary m-0">{t("list.title")}</h1>
+        <div className="flex gap-2">
           <button
             type="button"
             onClick={handleScanRecover}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px",
-              border: "1px solid #e5e7eb",
-              borderRadius: 6,
-              background: "#fff",
-              fontSize: 12,
-              color: "#374151",
-              cursor: "pointer",
-            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 border border-border-subtle rounded-md bg-surface-1 text-xs text-text-secondary cursor-pointer hover:bg-surface-hover transition-colors"
           >
             <RotateCcw size={13} /> {t("list.scan_recover")}
           </button>
           <button
             type="button"
             onClick={loadList}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px",
-              border: "1px solid #e5e7eb",
-              borderRadius: 6,
-              background: "#fff",
-              fontSize: 12,
-              color: "#374151",
-              cursor: "pointer",
-            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 border border-border-subtle rounded-md bg-surface-1 text-xs text-text-secondary cursor-pointer hover:bg-surface-hover transition-colors"
           >
             <RefreshCw size={13} /> {t("list.refresh")}
           </button>
@@ -161,44 +144,20 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
       </div>
 
       {/* 搜索栏 */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flex: 1,
-            maxWidth: 260,
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            padding: "5px 10px",
-            background: "#fff",
-          }}
-        >
-          <Search size={13} style={{ color: "#9ca3af", flexShrink: 0 }} />
+      <div className="flex gap-2.5 mb-4 items-center">
+        <div className="flex items-center gap-1.5 flex-1 max-w-[260px] border border-border-subtle rounded-md px-2.5 py-1.5 bg-surface-1">
+          <Search size={13} className="text-text-muted shrink-0" />
           <input
             placeholder={t("list.search_placeholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ border: "none", outline: "none", fontSize: 12, width: "100%", background: "transparent" }}
+            className="border-none outline-none text-xs w-full bg-transparent text-text-primary"
           />
         </div>
         <button
           type="button"
           onClick={() => setShowCreateDialog(true)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "6px 12px",
-            border: "none",
-            borderRadius: 6,
-            background: "#3b82f6",
-            color: "#fff",
-            fontSize: 12,
-            fontWeight: 500,
-            cursor: "pointer",
-          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 border-none rounded-md bg-brand text-white text-xs font-medium cursor-pointer hover:bg-brand-light transition-colors"
         >
           <Plus size={14} /> {t("list.create")}
         </button>
@@ -206,28 +165,16 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
 
       {/* 恢复面板 */}
       {showRecoverPanel && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 12,
-            border: "1px solid #f59e0b",
-            borderRadius: 8,
-            background: "#fffbeb",
-            fontSize: 12,
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 8, color: "#92400e" }}>
+        <div className="mb-4 p-3 border border-warning-border rounded-lg bg-warning-bg text-xs">
+          <div className="font-semibold mb-2 text-warning-text">
             {t("list.recoverable_title", { count: recoverableIds.length })}
           </div>
           {recoverableIds.length === 0 ? (
-            <p style={{ color: "#9ca3af" }}>{t("list.no_recoverable")}</p>
+            <p className="text-text-muted">{t("list.no_recoverable")}</p>
           ) : (
             <>
               {recoverableIds.map((id) => (
-                <label
-                  key={id}
-                  style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, cursor: "pointer" }}
-                >
+                <label key={id} className="flex items-center gap-1.5 mb-1 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedRecoverIds.has(id)}
@@ -240,23 +187,14 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
                       });
                     }}
                   />
-                  <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 11 }}>{id}</span>
+                  <span className="font-mono text-[11px]">{id}</span>
                 </label>
               ))}
               <button
                 type="button"
                 onClick={handleRecoverApply}
                 disabled={recovering || selectedRecoverIds.size === 0}
-                style={{
-                  marginTop: 8,
-                  padding: "4px 10px",
-                  border: "none",
-                  borderRadius: 4,
-                  background: "#f59e0b",
-                  color: "#fff",
-                  fontSize: 11,
-                  cursor: recovering ? "not-allowed" : "pointer",
-                }}
+                className="mt-2 px-2.5 py-1 border-none rounded bg-warning-border text-white text-[11px] cursor-pointer disabled:opacity-50"
               >
                 {recovering ? t("list.recovering") : t("list.recover_selected", { count: selectedRecoverIds.size })}
               </button>
@@ -265,14 +203,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
           <button
             type="button"
             onClick={() => setShowRecoverPanel(false)}
-            style={{
-              marginTop: 4,
-              background: "none",
-              border: "none",
-              color: "#92400e",
-              cursor: "pointer",
-              fontSize: 11,
-            }}
+            className="mt-1 bg-transparent border-none text-warning-text cursor-pointer text-[11px]"
           >
             {t("list.close")}
           </button>
@@ -280,146 +211,80 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
       )}
 
       {/* 新建对话框 */}
-      {showCreateDialog && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0,0,0,0.3)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: 8,
-              padding: 24,
-              width: 380,
-              boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-            }}
-          >
-            <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 600 }}>{t("list.create_title")}</h3>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", fontSize: 12, color: "#374151", marginBottom: 4 }}>
-                {t("list.name_label")}
-              </label>
+      <Dialog
+        open={showCreateDialog}
+        onOpenChange={(open) => {
+          setShowCreateDialog(open);
+          if (!open) {
+            setCreateName("");
+            setCreateDesc("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("list.create_title")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">{t("list.name_label")}</label>
               <input
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
                 placeholder="my-workflow"
-                style={{
-                  width: "100%",
-                  padding: "6px 10px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 6,
-                  fontSize: 13,
-                  outline: "none",
-                }}
+                className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               />
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 12, color: "#374151", marginBottom: 4 }}>
-                {t("list.desc_label")}
-              </label>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">{t("list.desc_label")}</label>
               <textarea
                 value={createDesc}
                 onChange={(e) => setCreateDesc(e.target.value)}
                 placeholder={t("list.desc_placeholder")}
                 rows={2}
-                style={{
-                  width: "100%",
-                  padding: "6px 10px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 6,
-                  fontSize: 13,
-                  outline: "none",
-                  resize: "vertical",
-                }}
+                className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm outline-none resize-y focus:border-brand focus:ring-1 focus:ring-brand"
               />
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreateDialog(false);
-                  setCreateName("");
-                  setCreateDesc("");
-                }}
-                style={{
-                  padding: "6px 12px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 6,
-                  background: "#fff",
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                {t("list.cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={creating || !createName.trim()}
-                style={{
-                  padding: "6px 12px",
-                  border: "none",
-                  borderRadius: 6,
-                  background: "#3b82f6",
-                  color: "#fff",
-                  fontSize: 12,
-                  cursor: creating ? "not-allowed" : "pointer",
-                }}
-              >
-                {creating ? t("list.creating") : t("list.create_and_edit")}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setShowCreateDialog(false);
+                setCreateName("");
+                setCreateDesc("");
+              }}
+            >
+              {t("list.cancel")}
+            </Button>
+            <Button size="sm" onClick={handleCreate} disabled={creating || !createName.trim()}>
+              {creating ? t("list.creating") : t("list.create_and_edit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 内容 */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 40, color: "#9ca3af", fontSize: 13 }}>
-          <Loader size={20} style={{ animation: "spin 1s linear infinite", display: "inline-block" }} />
-          <p style={{ marginTop: 8 }}>{t("list.loading")}</p>
-        </div>
+        <SkeletonTable cols="2fr 100px 120px 80px" rows={4} />
       ) : error ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <AlertTriangle size={32} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
-          <p style={{ fontSize: 13, color: "#6b7280" }}>{t("list.load_failed", { error })}</p>
+        <div className="text-center py-10">
+          <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
+          <p className="text-[13px] text-text-secondary">{t("list.load_failed", { error })}</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <Inbox size={32} style={{ color: "#d1d5db", margin: "0 auto 8px" }} />
-          <p style={{ fontSize: 13, color: "#9ca3af", fontWeight: 500 }}>
+        <div className="text-center py-10">
+          <Inbox size={32} className="text-text-muted mx-auto mb-2" />
+          <p className="text-[13px] text-text-muted font-medium">
             {searchQuery ? t("list.no_match") : t("list.no_workflows")}
           </p>
-          <p style={{ fontSize: 11, color: "#d1d5db", marginTop: 4 }}>{t("list.no_workflows_hint")}</p>
+          <p className="text-[11px] text-text-dim mt-1">{t("list.no_workflows_hint")}</p>
         </div>
       ) : (
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+        <div className="border border-border-subtle rounded-lg overflow-hidden bg-surface-1">
           {/* 表头 */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "2fr 100px 120px 80px",
-              gap: 8,
-              padding: "8px 16px",
-              background: "#f9fafb",
-              borderBottom: "1px solid #e5e7eb",
-              fontSize: 11,
-              fontWeight: 600,
-              color: "#6b7280",
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
-            }}
-          >
+          <div className="grid grid-cols-[2fr_100px_120px_80px] gap-2 px-4 py-2 bg-surface-2 border-b border-border-subtle text-[11px] font-semibold text-text-muted uppercase tracking-wide">
             <span>{t("list.table_name")}</span>
             <span>{t("list.table_version")}</span>
             <span>{t("list.table_modified")}</span>
@@ -431,64 +296,30 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
             <div
               key={wf.id}
               onClick={() => onEditWorkflow(wf.id)}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 100px 120px 80px",
-                gap: 8,
-                padding: "10px 16px",
-                borderBottom: "1px solid #f3f4f6",
-                cursor: "pointer",
-                transition: "background 0.1s",
-                fontSize: 12,
-                alignItems: "center",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+              className="grid grid-cols-[2fr_100px_120px_80px] gap-2 px-4 py-2.5 border-b border-border-subtle cursor-pointer transition-colors text-xs items-center hover:bg-surface-hover"
             >
               <div>
-                <div style={{ fontWeight: 500, color: "#111827" }}>{wf.name}</div>
-                {wf.description && <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>{wf.description}</div>}
+                <div className="font-medium text-text-primary">{wf.name}</div>
+                {wf.description && <div className="text-[10px] text-text-muted mt-0.5">{wf.description}</div>}
               </div>
-              <div style={{ color: wf.latestVersion ? "#22c55e" : "#9ca3af", fontFamily: "ui-monospace, monospace" }}>
+              <div className={wf.latestVersion ? "text-status-running font-mono" : "text-text-muted font-mono"}>
                 {wf.latestVersion ? `v${wf.latestVersion}` : t("list.not_published")}
               </div>
-              <div style={{ color: "#6b7280" }}>{relativeTime(wf.updatedAt)}</div>
-              <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
+              <div className="text-text-secondary">{relativeTime(wf.updatedAt)}</div>
+              <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   title={t("list.version_history")}
                   onClick={() => onViewVersions(wf.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 26,
-                    height: 26,
-                    border: "none",
-                    background: "none",
-                    borderRadius: 4,
-                    color: "#6b7280",
-                    cursor: "pointer",
-                  }}
+                  className="flex items-center justify-center w-6 h-6 border-none bg-transparent rounded hover:bg-surface-hover text-text-muted cursor-pointer transition-colors"
                 >
                   <ChevronRight size={13} />
                 </button>
                 <button
                   type="button"
                   title={t("list.delete")}
-                  onClick={() => handleDelete(wf)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 26,
-                    height: 26,
-                    border: "none",
-                    background: "none",
-                    borderRadius: 4,
-                    color: "#ef4444",
-                    cursor: "pointer",
-                  }}
+                  onClick={() => setDeleteTarget(wf)}
+                  className="flex items-center justify-center w-6 h-6 border-none bg-transparent rounded hover:bg-surface-hover hover:text-status-error text-text-muted cursor-pointer transition-colors"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -499,10 +330,21 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
       )}
 
       {workflows.length > 0 && (
-        <div style={{ marginTop: 12, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
+        <div className="mt-3 text-[11px] text-text-muted text-center">
           {t("list.total_workflows", { count: workflows.length })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={t("list.delete")}
+        description={t("list.delete_confirm", { name: deleteTarget?.name ?? "" })}
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

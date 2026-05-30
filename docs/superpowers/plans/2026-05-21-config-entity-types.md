@@ -36,6 +36,7 @@
 ### Task 1: Create shared config type definitions
 
 **Files:**
+
 - Create: `src/services/config/types.ts`
 
 This task creates the central type definition file that all config services and routes will import from. The types mirror what already exists in `web/src/types/config.ts` but are defined on the backend side as the canonical source.
@@ -284,6 +285,7 @@ Expected: No errors in `src/services/config/types.ts`. Other existing errors are
 ### Task 2: Update config service functions to use typed interfaces
 
 **Files:**
+
 - Modify: `src/services/config/provider.ts`
 - Modify: `src/services/config/model.ts`
 - Modify: `src/services/config/skill.ts`
@@ -567,6 +569,7 @@ Expected: No new type errors introduced. The `provider.ts`, `model.ts`, and `ski
 ### Task 3: Update agent-config service with typed interfaces
 
 **Files:**
+
 - Modify: `src/services/config/agent-config.ts`
 
 - [ ] **Step 1: Update `src/services/config/agent-config.ts`**
@@ -824,6 +827,7 @@ Expected: No new type errors in `agent-config.ts`.
 ### Task 4: Update MCP server service with typed interfaces
 
 **Files:**
+
 - Modify: `src/services/config/mcp-server.ts`
 
 - [ ] **Step 1: Update `src/services/config/mcp-server.ts`**
@@ -1076,6 +1080,7 @@ Expected: No new type errors in `mcp-server.ts`.
 ### Task 5: Update user-config service with typed PermissionConfig
 
 **Files:**
+
 - Modify: `src/services/config/user-config.ts`
 
 - [ ] **Step 1: Update `src/services/config/user-config.ts`**
@@ -1141,6 +1146,7 @@ Expected: No new type errors.
 ### Task 6: Update barrel files to re-export types
 
 **Files:**
+
 - Modify: `src/services/config/index.ts`
 - Modify: `src/services/config-pg.ts`
 
@@ -1282,6 +1288,7 @@ Expected: No new type errors.
 ### Task 7: Update route handlers to use typed interfaces
 
 **Files:**
+
 - Modify: `src/routes/web/config/mcp.ts`
 
 - [ ] **Step 1: Update `src/routes/web/config/mcp.ts`**
@@ -1316,6 +1323,7 @@ Expected: No new type errors in the route files.
 ### Task 8: Add type guard utilities and unit tests
 
 **Files:**
+
 - Create: `src/__tests__/config-types.test.ts`
 
 - [ ] **Step 1: Create test file with type guard validation tests**
@@ -1436,7 +1444,7 @@ describe("ProviderUpsertData type", () => {
   test("accepts partial provider data", () => {
     const data: ProviderUpsertData = {
       displayName: "OpenAI",
-      npm: "@ai-sdk/openai",
+      npm: "@ai-sdk/openai-compatible",
       baseUrl: "https://api.openai.com/v1",
       apiKey: "sk-xxx",
       extraOptions: { organization: "org-123" },

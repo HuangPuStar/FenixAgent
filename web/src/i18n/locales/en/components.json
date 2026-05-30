@@ -130,6 +130,15 @@
   "fileTree": {
     "refresh": "Refresh",
     "emptyState": "No files in workspace",
+    "upload": "Upload",
+    "download": "Download",
+    "newFile": "New File",
+    "newFileName": "New file name",
+    "uploadFolder": "Upload Folder",
+    "uploadSuccess": "Uploaded {{count}} file(s)",
+    "uploadFailed": "Upload failed",
+    "downloadZip": "Download ZIP",
+    "downloadFailed": "Download failed",
     "contextMenu": {
       "reference": "Reference in chat",
       "rename": "Rename",
@@ -143,7 +152,11 @@
       "notTextFile": "Cannot preview binary file",
       "fetchFailed": "Failed to load file content",
       "noFileSelected": "Select a file to preview",
-      "modifiedAt": "Modified"
+      "modifiedAt": "Modified",
+      "unsupportedType": "This file type cannot be previewed",
+      "fileSize": "File size",
+      "fileType": "File type",
+      "pdfLoadFailed": "Failed to load PDF"
     }
   },
   "tool": {

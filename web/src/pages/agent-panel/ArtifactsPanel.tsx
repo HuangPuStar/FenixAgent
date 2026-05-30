@@ -17,7 +17,7 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
 
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem("agent-panel:artifacts-width");
-    return saved ? Number(saved) : 480;
+    return saved ? Number(saved) : 360;
   });
 
   const resizingRef = useRef(false);
@@ -38,7 +38,7 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
       const handleMouseMove = (ev: MouseEvent) => {
         if (!resizingRef.current) return;
         const delta = startXRef.current - ev.clientX;
-        const newWidth = Math.min(700, Math.max(360, startWidthRef.current + delta));
+        const newWidth = Math.min(700, Math.max(280, startWidthRef.current + delta));
         setWidth(newWidth);
       };
 

@@ -3,7 +3,6 @@ import {
   BackgroundVariant,
   Controls,
   type Edge,
-  MiniMap,
   type Node,
   type OnSelectionChangeFunc,
   Panel,
@@ -15,9 +14,9 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
 import {
-  AlertTriangle,
   Bot,
   CheckCircle,
   Code,
@@ -38,8 +37,9 @@ import {
   ShieldCheck,
   Terminal,
   Upload,
-  X,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
@@ -50,10 +50,12 @@ import {
 } from "../../api/workflow-engine";
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
 import { MetaAgentPanel } from "./components/MetaAgentPanel";
-import { NodeConfigPanel } from "./components/NodeConfigPanel";
+import { NodeConfigPopover } from "./components/NodeConfigPopover";
+import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
 import { TriggerPanel } from "./components/TriggerPanel";
 import { VersionPanel } from "./components/VersionPanel";
+import { WorkflowMetaPopover } from "./components/WorkflowMetaPopover";
 import { YamlSlidePanel } from "./components/YamlSlidePanel";
 import { useWorkflowCanvas } from "./hooks/useWorkflowCanvas";
 import { useWorkflowMetaAgent } from "./hooks/useWorkflowMetaAgent";
@@ -100,7 +102,14 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
   const [selectedNodeOutput, setSelectedNodeOutput] = useState<NodeOutput | null>(null);
   const [nodeOutputLoading, setNodeOutputLoading] = useState(false);
-  const [rightTab, setRightTab] = useState<"config" | "run" | "versions" | "triggers">("config");
+  const [runSheetOpen, setRunSheetOpen] = useState(false);
+  const [versionsSheetOpen, setVersionsSheetOpen] = useState(false);
+  const [triggersSheetOpen, setTriggersSheetOpen] = useState(false);
+  const [paramsDialogOpen, setParamsDialogOpen] = useState(false);
+
+  // ── Popover 状态 ──
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [metaPopoverOpen, setMetaPopoverOpen] = useState(false);
 
   // ── Refs ──
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,8 +117,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const didConnect = useRef(false);
 
   // ── Meta Agent Chat ──
-  const { scenePrompt, chatOpen, setChatOpen, metaAgentId, agentList, agentOverrideOpen, setAgentOverrideOpen } =
-    useWorkflowMetaAgent({ workflowId, meta });
+  const { scenePrompt, chatOpen, setChatOpen, metaAgentId, agentList } = useWorkflowMetaAgent({ workflowId, meta });
 
   // ── Persistence hook ──
   const {
@@ -191,7 +199,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     runRightTab,
     setRunRightTab,
     updateNodesFromSnapshot,
-    clearDryRunResult,
     handleWorkflowEvent,
   } = useWorkflowRun({
     workflowId,
@@ -213,12 +220,36 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setNodeOutputLoading,
     syncYaml,
     fitView,
-    rightTab,
-    setRightTab,
+    openRunSheet: () => {
+      setRunSheetOpen(true);
+      setVersionsSheetOpen(false);
+      setTriggersSheetOpen(false);
+    },
     setMeta,
     lastSavedYaml,
     setLastSavedYaml,
+    meta,
   });
+
+  // ── 保存状态 toast ──
+  useEffect(() => {
+    if (saveStatus === "saved") {
+      toast.success(t("editor.saved"), { duration: 1500 });
+    }
+  }, [saveStatus, t]);
+
+  // ── DryRun 结果 toast ──
+  useEffect(() => {
+    if (!dryRunResult) return;
+    if (dryRunResult.valid) {
+      toast.success(t("editor.validate_pass"), { duration: 2000 });
+    } else {
+      toast.error(t("editor.validate_fail", { count: dryRunResult.issues.length }), {
+        description: dryRunResult.issues.map((i) => `${i.type === "error" ? "❌" : "⚠️"} ${i.message}`).join("\n"),
+        duration: 5000,
+      });
+    }
+  }, [dryRunResult, t]);
 
   // ── Workflow SSE 实时事件 ──
   useEffect(() => {
@@ -247,6 +278,28 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
 
   // ── Derived state ──
   const onSelectionChange: OnSelectionChangeFunc = canvasOnSelectionChange;
+
+  // ── 节点点击处理 ──
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (popoverOpen) {
+        setPopoverOpen(false);
+        setSelectedNode(null);
+      } else {
+        setSelectedNode(node);
+        setPopoverOpen(true);
+      }
+    },
+    [popoverOpen],
+  );
+
+  // ── 画布移动时关闭 popover ──
+  const handleMoveStart = useCallback(() => {
+    if (popoverOpen) {
+      setPopoverOpen(false);
+      setSelectedNode(null);
+    }
+  }, [popoverOpen]);
 
   // 加载已保存的工作流草稿
   useEffect(() => {
@@ -283,7 +336,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setRunApprovals([]);
         setSelectedRunNodeId(null);
         setSelectedNodeOutput(null);
-        setRightTab("run");
+        setRunSheetOpen(true);
 
         const [snap, evts] = await Promise.all([
           workflowEngineApi.getRunStatus(runId),
@@ -319,8 +372,29 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const sd = selectedNode?.data as Record<string, unknown> | undefined;
   const nodeType = selectedNode?.type ?? "shell";
 
+  // ── 运行按钮：检查是否需要参数输入 ──
+  const workflowParams = meta.params as Record<string, Record<string, unknown>> | undefined;
+  const hasParams = workflowParams && Object.keys(workflowParams).length > 0;
+
+  const onRunClick = useCallback(() => {
+    console.log("[RunButton] meta.params:", JSON.stringify(meta.params), "hasParams:", hasParams);
+    if (hasParams) {
+      setParamsDialogOpen(true);
+    } else {
+      handleRun();
+    }
+  }, [hasParams, handleRun, meta.params]);
+
+  const onParamsSubmit = useCallback(
+    (values: Record<string, unknown>) => {
+      setParamsDialogOpen(false);
+      handleRun(values);
+    },
+    [handleRun],
+  );
+
   return (
-    <div className="wf-editor-container">
+    <div className="flex w-full h-full bg-surface-0">
       <input
         ref={fileInputRef}
         type="file"
@@ -330,18 +404,26 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       />
 
       {readOnly && (
-        <div className="wf-readonly-badge">
+        <div className="wf-readonly-badge" style={{ right: 12 }}>
           <Lock size={12} /> {t("editor.readonly_mode")}
         </div>
       )}
 
-      <div className="wf-canvas-wrapper">
+      <div className="flex-1 relative overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={edges}
           onNodesChange={readOnly ? undefined : onNodesChange}
           onEdgesChange={readOnly ? undefined : onEdgesChange}
-          onNodesDelete={handleNodesDelete}
+          onNodesDelete={(deleted) => {
+            handleNodesDelete(deleted);
+            if (selectedNode && deleted.some((n) => n.id === selectedNode.id)) {
+              setPopoverOpen(false);
+              setSelectedNode(null);
+            }
+          }}
+          onNodeClick={handleNodeClick}
+          onMoveStart={handleMoveStart}
           onSelectionChange={onSelectionChange}
           onConnect={readOnly ? undefined : onConnect}
           onConnectStart={readOnly ? undefined : (onConnectStart as unknown as typeof undefined)}
@@ -362,22 +444,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           className={readOnly ? "wf-canvas-readonly" : ""}
         >
           <Controls position="bottom-left" showInteractive={!readOnly} />
-          <MiniMap
-            position="bottom-right"
-            nodeColor={(n) => {
-              const colorMap: Record<string, string> = {
-                start: "#6366f1",
-                agent: "#22c55e",
-                api: "#8b5cf6",
-                audit: "#f59e0b",
-                workflow: "#ec4899",
-                loop: "#06b6d4",
-              };
-              return colorMap[n.type ?? ""] ?? "#3b82f6";
-            }}
-            maskColor="rgba(0,0,0,0.08)"
-            style={{ borderRadius: 8 }}
-          />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#d1d5db" />
 
           {/* 节点面板 */}
@@ -470,16 +536,28 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                   </button>
                   <button
                     type="button"
-                    className={`wf-toolbar-btn ${rightTab === "versions" ? "active" : ""}`}
-                    onClick={() => setRightTab(rightTab === "versions" ? "config" : "versions")}
+                    className={`wf-toolbar-btn ${versionsSheetOpen ? "active" : ""}`}
+                    onClick={() => {
+                      setVersionsSheetOpen(!versionsSheetOpen);
+                      if (!versionsSheetOpen) {
+                        setRunSheetOpen(false);
+                        setTriggersSheetOpen(false);
+                      }
+                    }}
                     data-tooltip={t("editor.tooltip_versions")}
                   >
                     <Rocket size={15} />
                   </button>
                   <button
                     type="button"
-                    className={`wf-toolbar-btn ${rightTab === "triggers" ? "active" : ""}`}
-                    onClick={() => setRightTab(rightTab === "triggers" ? "config" : "triggers")}
+                    className={`wf-toolbar-btn ${triggersSheetOpen ? "active" : ""}`}
+                    onClick={() => {
+                      setTriggersSheetOpen(!triggersSheetOpen);
+                      if (!triggersSheetOpen) {
+                        setRunSheetOpen(false);
+                        setVersionsSheetOpen(false);
+                      }
+                    }}
                     data-tooltip={t("editor.tab_triggers")}
                   >
                     <Link size={15} />
@@ -510,7 +588,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               <button
                 type="button"
                 className="wf-toolbar-btn"
-                onClick={handleRun}
+                onClick={onRunClick}
                 disabled={running}
                 data-tooltip={t("editor.tooltip_run")}
                 style={running ? { opacity: 0.5 } : undefined}
@@ -535,116 +613,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               >
                 <MessageSquare size={15} />
               </button>
-              <button
-                type="button"
-                className={`wf-toolbar-btn ${rightTab === "run" ? "active" : ""}`}
-                onClick={() => setRightTab(rightTab === "run" ? "config" : "run")}
-                data-tooltip={t("editor.tooltip_run_history")}
-              >
-                <List size={15} />
-              </button>
             </div>
           </Panel>
         </ReactFlow>
-
-        {/* 保存状态指示器 */}
-        {saveStatus === "saving" && (
-          <div
-            style={{
-              position: "absolute",
-              top: 52,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#eff6ff",
-              border: "1px solid #93c5fd",
-              borderRadius: 8,
-              padding: "6px 12px",
-              fontSize: 11,
-              color: "#1d4ed8",
-              zIndex: 10,
-            }}
-          >
-            {t("editor.saving")}
-          </div>
-        )}
-        {saveStatus === "saved" && (
-          <div
-            style={{
-              position: "absolute",
-              top: 52,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#f0fdf4",
-              border: "1px solid #86efac",
-              borderRadius: 8,
-              padding: "6px 12px",
-              fontSize: 11,
-              color: "#166534",
-              zIndex: 10,
-            }}
-          >
-            {t("editor.saved")}
-          </div>
-        )}
-
-        {/* DryRun 结果提示 */}
-        {dryRunResult && (
-          <div
-            style={{
-              position: "absolute",
-              top: 52,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 10,
-              background: dryRunResult.valid ? "#f0fdf4" : "#fef2f2",
-              border: `1px solid ${dryRunResult.valid ? "#86efac" : "#fca5a5"}`,
-              borderRadius: 8,
-              padding: "8px 14px",
-              fontSize: 12,
-              color: dryRunResult.valid ? "#166534" : "#991b1b",
-              maxWidth: 480,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontWeight: 600,
-                marginBottom: dryRunResult.issues.length ? 4 : 0,
-              }}
-            >
-              {dryRunResult.valid ? <CheckCircle size={13} /> : <AlertTriangle size={13} />}
-              {dryRunResult.valid
-                ? t("editor.validate_pass")
-                : t("editor.validate_fail", { count: dryRunResult.issues.length })}
-              <button
-                type="button"
-                onClick={() => clearDryRunResult()}
-                style={{
-                  marginLeft: "auto",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                  color: "inherit",
-                }}
-              >
-                <X size={12} />
-              </button>
-            </div>
-            {dryRunResult.issues.length > 0 && (
-              <ul style={{ margin: 0, paddingLeft: 16 }}>
-                {dryRunResult.issues.map((issue, i) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: issues may duplicate type+message
-                  <li key={`${issue.type}-${issue.message}-${i}`}>
-                    {issue.type === "error" ? "❌" : "⚠️"} {issue.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
 
         {/* YAML 滑出面板 */}
         <YamlSlidePanel
@@ -655,103 +626,124 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           readOnly={readOnly}
           handleImportYaml={handleImportYaml}
         />
+
+        {/* 节点配置 Popover */}
+        <NodeConfigPopover
+          open={popoverOpen}
+          onOpenChange={(open) => {
+            setPopoverOpen(open);
+            if (!open) setSelectedNode(null);
+          }}
+          selectedNode={selectedNode}
+          sd={sd}
+          nodeType={nodeType}
+          readOnly={readOnly}
+          handleIdChange={handleIdChange}
+          setNodes={setNodes}
+          setSelectedNode={setSelectedNode}
+          updateNodeData={updateNodeData}
+          agentList={agentList}
+        />
+
+        {/* 工作流元数据 Popover（右下角齿轮） */}
+        <WorkflowMetaPopover
+          open={metaPopoverOpen}
+          onOpenChange={setMetaPopoverOpen}
+          readOnly={readOnly}
+          meta={meta}
+          updateMeta={updateMeta}
+        />
+
+        {/* 运行日志 Popover（右下角，齿轮左侧） */}
+        <div className="wf-run-popover-anchor">
+          <Popover open={runSheetOpen} onOpenChange={setRunSheetOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={`wf-meta-trigger-btn ${runSheetOpen ? "active" : ""}`}
+                title={t("editor.tooltip_run_history")}
+              >
+                <List size={14} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="end"
+              sideOffset={8}
+              collisionPadding={16}
+              className="wf-meta-popover"
+              style={{ width: 360, maxHeight: 520 }}
+            >
+              <div className="wf-popover-header">
+                <span className="wf-popover-title">{t("editor.run_history")}</span>
+              </div>
+              <RunStatusPanel
+                activeRunId={activeRunId}
+                runSnapshot={runSnapshot}
+                dagStatus={dagStatus}
+                isRunMode={isRunMode}
+                isRunDone={isRunDone}
+                running={running}
+                runEvents={runEvents}
+                runApprovals={runApprovals}
+                runRightTab={runRightTab}
+                setRunRightTab={setRunRightTab}
+                selectedRunNodeId={selectedRunNodeId}
+                setSelectedRunNodeId={setSelectedRunNodeId}
+                selectedNodeOutput={selectedNodeOutput}
+                nodeOutputLoading={nodeOutputLoading}
+                handleCancelRun={handleCancelRun}
+                handleBackToEdit={() => {
+                  handleBackToEdit();
+                  setRunSheetOpen(false);
+                }}
+                handleBackToList={() => {
+                  handleBackToList();
+                  setRunSheetOpen(false);
+                }}
+                handleApprove={handleApprove}
+                handleRerunFrom={handleRerunFrom}
+                setActiveRunId={setActiveRunId}
+                setRunSnapshot={setRunSnapshot}
+                setRunEvents={setRunEvents}
+                setRunApprovals={setRunApprovals}
+                setSelectedNodeOutput={setSelectedNodeOutput}
+                updateNodesFromSnapshot={updateNodesFromSnapshot}
+                setRightTab={() => setRunSheetOpen(false)}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
-      {/* 右侧统一面板（配置 / 运行 / 版本 tabs） */}
-      <aside className="wf-prop-panel" style={{ width: 300, minWidth: 300 }}>
-        {/* Tab 头 */}
-        <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb" }}>
-          {[
-            { key: "config" as const, label: t("editor.tab_config") },
-            { key: "run" as const, label: t("editor.tab_run") },
-            { key: "versions" as const, label: t("editor.tab_versions") },
-            { key: "triggers" as const, label: t("editor.tab_triggers") },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setRightTab(tab.key)}
-              style={{
-                flex: 1,
-                padding: "8px 0",
-                border: "none",
-                background: "none",
-                fontSize: 11,
-                fontWeight: rightTab === tab.key ? 600 : 400,
-                color: rightTab === tab.key ? "#111827" : "#9ca3af",
-                borderBottom: rightTab === tab.key ? "2px solid #3b82f6" : "2px solid transparent",
-                cursor: "pointer",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+      {/* 版本管理 Sheet */}
+      <Sheet open={versionsSheetOpen} onOpenChange={setVersionsSheetOpen}>
+        <SheetContent side="right" style={{ width: 360, maxWidth: 360, padding: 0 }}>
+          <SheetHeader>
+            <SheetTitle>{t("editor.version_management")}</SheetTitle>
+          </SheetHeader>
+          <div className="wf-sheet-body">
+            <VersionPanel
+              workflowId={workflowId}
+              onClose={() => setVersionsSheetOpen(false)}
+              onPublish={handlePublish}
+              publishing={publishing}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
-        {/* ── 配置 Tab ── */}
-        {rightTab === "config" && (
-          <NodeConfigPanel
-            readOnly={readOnly}
-            selectedNode={selectedNode}
-            sd={sd}
-            nodeType={nodeType}
-            handleIdChange={handleIdChange}
-            setNodes={setNodes}
-            setSelectedNode={setSelectedNode}
-            updateNodeData={updateNodeData}
-            agentList={agentList}
-            agentOverrideOpen={agentOverrideOpen}
-            setAgentOverrideOpen={setAgentOverrideOpen}
-            meta={meta}
-            updateMeta={updateMeta}
-          />
-        )}
-
-        {/* ── 运行 Tab ── */}
-        {rightTab === "run" && (
-          <RunStatusPanel
-            activeRunId={activeRunId}
-            runSnapshot={runSnapshot}
-            dagStatus={dagStatus}
-            isRunMode={isRunMode}
-            isRunDone={isRunDone}
-            running={running}
-            runEvents={runEvents}
-            runApprovals={runApprovals}
-            runRightTab={runRightTab}
-            setRunRightTab={setRunRightTab}
-            selectedRunNodeId={selectedRunNodeId}
-            setSelectedRunNodeId={setSelectedRunNodeId}
-            selectedNodeOutput={selectedNodeOutput}
-            nodeOutputLoading={nodeOutputLoading}
-            handleCancelRun={handleCancelRun}
-            handleBackToEdit={handleBackToEdit}
-            handleBackToList={handleBackToList}
-            handleApprove={handleApprove}
-            handleRerunFrom={handleRerunFrom}
-            setActiveRunId={setActiveRunId}
-            setRunSnapshot={setRunSnapshot}
-            setRunEvents={setRunEvents}
-            setRunApprovals={setRunApprovals}
-            setSelectedNodeOutput={setSelectedNodeOutput}
-            updateNodesFromSnapshot={updateNodesFromSnapshot}
-            setRightTab={setRightTab}
-          />
-        )}
-
-        {/* ── 版本 Tab ── */}
-        {rightTab === "versions" && (
-          <VersionPanel
-            workflowId={workflowId}
-            onClose={() => setRightTab("config")}
-            onPublish={handlePublish}
-            publishing={publishing}
-          />
-        )}
-
-        {/* ── 触发器 Tab ── */}
-        {rightTab === "triggers" && <TriggerPanel workflowId={workflowId} onClose={() => setRightTab("config")} />}
-      </aside>
+      {/* 触发器 Sheet */}
+      <Sheet open={triggersSheetOpen} onOpenChange={setTriggersSheetOpen}>
+        <SheetContent side="right" style={{ width: 360, maxWidth: 360, padding: 0 }}>
+          <SheetHeader>
+            <SheetTitle>{t("editor.trigger_title")}</SheetTitle>
+          </SheetHeader>
+          <div className="wf-sheet-body">
+            <TriggerPanel workflowId={workflowId} onClose={() => setTriggersSheetOpen(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Meta Agent Chat 侧边栏 */}
       <MetaAgentPanel
@@ -759,7 +751,19 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setChatOpen={setChatOpen}
         metaAgentId={metaAgentId}
         scenePrompt={scenePrompt}
+        onPromptComplete={handleRefreshDraft}
       />
+
+      {/* 运行参数输入对话框 */}
+      {hasParams && (
+        <RunParamsDialog
+          open={paramsDialogOpen}
+          onOpenChange={setParamsDialogOpen}
+          // biome-ignore lint/suspicious/noExplicitAny: meta.params is user-defined JSON
+          params={workflowParams as any}
+          onSubmit={onParamsSubmit}
+        />
+      )}
     </div>
   );
 }

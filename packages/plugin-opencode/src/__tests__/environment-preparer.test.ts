@@ -61,7 +61,10 @@ describe("environment-preparer", () => {
     const workspace = await createWorkspace();
     try {
       const config = buildOpencodeRuntimeConfig(createLaunchSpec(), [
-        { name: "code-review", path: join(workspace, ".opencode", "skills", "code-review") },
+        {
+          name: "code-review",
+          path: join(workspace, ".opencode", "skills", "code-review"),
+        },
       ]);
 
       const configPath = await writeOpencodeConfig(workspace, config);
@@ -73,7 +76,7 @@ describe("environment-preparer", () => {
       expect(parsed.agent.general.prompt).toBe("You are helpful");
       expect(parsed.agent.general.model).toBe("openai/gpt-4.1");
       expect(parsed.model).toBe("openai/gpt-4.1");
-      expect(parsed.provider.openai.npm).toBe("@ai-sdk/openai");
+      expect(parsed.provider.openai.npm).toBe("@ai-sdk/openai-compatible");
       expect(parsed.provider.openai.options.baseURL).toBe("https://api.openai.com/v1");
       expect(parsed.provider.openai.models["gpt-4.1"].name).toBe("gpt-4.1");
     } finally {

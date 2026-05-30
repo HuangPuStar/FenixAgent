@@ -43,8 +43,6 @@ export interface WorkflowEngineOptions {
   envFile?: string;
   /** 默认工作目录（子流程 ref 解析基准） */
   defaultCwd?: string;
-  /** Agent 配置解析回调（方案 A：注入依赖，不耦合数据库） */
-  resolveAgentConfig?: (agentName: string) => Promise<import("../executor/agent-executor").AgentResolvedConfig | null>;
 }
 
 /** dryRun 结果 */
@@ -132,12 +130,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     registry.register("python", new PythonExecutor());
     registry.register("api", new ApiExecutor());
     if (transport) {
-      registry.register(
-        "agent",
-        new AgentExecutor(transport, {
-          resolveAgentConfig: options.resolveAgentConfig,
-        }),
-      );
+      registry.register("agent", new AgentExecutor(transport));
     }
     registry.register("audit", new AuditExecutor(hmacSecret));
     registry.register("workflow", new SubWorkflowExecutor(runId, registry, baseDir));
@@ -217,6 +210,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         secrets,
         nodeExecutor: registry,
         cancellation,
+        spawnedEnvIds: new Set<string>(),
       };
 
       activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
@@ -283,6 +277,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       secrets,
       nodeExecutor: registry,
       cancellation,
+      spawnedEnvIds: new Set<string>(),
     };
 
     activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
@@ -393,6 +388,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       cancellation: activeRun.cancellation,
       initialNodeStates: nodeStates,
       initialNodeOutputs: nodeOutputs,
+      spawnedEnvIds: new Set<string>(),
     };
 
     const scheduler = new DAGScheduler(context);
@@ -529,6 +525,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         secrets,
         nodeExecutor: registry,
         cancellation,
+        spawnedEnvIds: new Set<string>(),
       };
 
       result = await recoverRun(context);
@@ -635,6 +632,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         cancellation,
         initialNodeStates: nodeStates,
         initialNodeOutputs: nodeOutputs,
+        spawnedEnvIds: new Set<string>(),
       };
 
       const scheduler = new DAGScheduler(context);

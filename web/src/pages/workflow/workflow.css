@@ -2,21 +2,6 @@
    Workflow UI — React Flow Editor Styles
    ============================================================ */
 
-/* ── Editor layout: canvas + right panel ── */
-.wf-editor-container {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  background: #f9fafb;
-}
-
-/* Canvas area (React Flow fills this) */
-.wf-canvas-wrapper {
-  flex: 1;
-  position: relative;
-  overflow: hidden;
-}
-
 /* ── Right Property Panel ── */
 .wf-prop-panel {
   width: 280px;
@@ -48,7 +33,7 @@
 }
 
 .wf-prop-section {
-  padding: 8px 16px;
+  padding: 12px 16px;
 }
 
 .wf-prop-section + .wf-prop-section {
@@ -56,23 +41,23 @@
 }
 
 .wf-prop-section-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .wf-prop-field {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .wf-prop-field label {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   color: #6b7280;
-  margin-bottom: 3px;
+  margin-bottom: 5px;
   font-weight: 500;
 }
 
@@ -80,10 +65,10 @@
 .wf-prop-field select,
 .wf-prop-field textarea {
   width: 100%;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: #111827;
   background: #fff;
   outline: none;
@@ -108,7 +93,7 @@
 .wf-prop-hint {
   padding: 16px;
   color: #9ca3af;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.8;
 }
 
@@ -411,3 +396,106 @@
 }
 
 /* ── Meta Agent Chat 侧边栏（白色简洁面板，复用 ChatPanel 原生样式） ── */
+
+/* ── Node Config Popover ── */
+.wf-node-popover {
+  width: 320px;
+  max-height: 480px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  padding: 0;
+  background: #fff;
+}
+
+.wf-meta-popover {
+  width: 320px;
+  max-height: 520px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  padding: 0;
+  background: #fff;
+}
+
+.wf-popover-header {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  border-radius: 12px 12px 0 0;
+}
+
+.wf-popover-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.wf-popover-type {
+  font-size: 12px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 99;
+}
+
+.wf-popover-body {
+  padding: 4px 0;
+}
+
+/* ── Meta Popover Anchor (bottom-right) ── */
+.wf-meta-popover-anchor {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 5;
+}
+
+.wf-run-popover-anchor {
+  position: absolute;
+  bottom: 12px;
+  right: 52px;
+  z-index: 5;
+}
+
+.wf-meta-trigger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.9);
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(4px);
+}
+
+.wf-meta-trigger-btn:hover {
+  background: #fff;
+  color: #374151;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Workflow Sheet ── */
+.wf-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}

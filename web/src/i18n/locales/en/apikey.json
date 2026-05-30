@@ -1,35 +1,36 @@
 {
-  "title": "API Key",
-  "back": "Back",
-  "loading": "Loading...",
-  "createdNotice": {
-    "title": "API Key Created",
-    "copyHint": "Please copy this Key now. You will not be able to view it again later.",
-    "copy": "Copy",
-    "copied": "Copied!",
-    "close": "Close"
+  "title": "API Keys",
+  "subtitle": "Manage API keys for agent authentication",
+  "btn": {
+    "create": "Create Key",
+    "revoke": "Revoke"
   },
-  "createForm": {
-    "title": "Create New Key",
-    "labelPlaceholder": "Label (optional)",
-    "create": "Create"
+  "searchPlaceholder": "Search keys...",
+  "emptyMessage": "No API keys yet. Create one to get started.",
+  "column": {
+    "created": "Created",
+    "expires": "Expires"
   },
-  "keyList": {
-    "empty": "No API Keys yet. Create one above to connect your Agent.",
-    "unnamed": "Unnamed",
-    "edit": "Edit",
-    "save": "Save",
-    "delete": "Delete"
+  "dialog": {
+    "createTitle": "Create API Key",
+    "keyCreated": "Your new API key has been created. Copy it now — you won't be able to see it again.",
+    "keyWarning": "Make sure to copy this key now. You will not be able to view it again."
   },
-  "cancel": "Cancel",
-  "deleteDialog": {
-    "title": "Confirm Delete",
-    "description": "Are you sure you want to delete this API Key? Agents using this Key will no longer be able to connect. This action cannot be undone."
+  "form": {
+    "name": "Name"
+  },
+  "confirm": {
+    "revokeTitle": "Revoke API Key",
+    "revokeDescription": "Are you sure you want to revoke this API Key? Agents using it will no longer be able to connect. This action cannot be undone."
+  },
+  "validation": {
+    "nameRequired": "Please enter a name for the key"
   },
   "toast": {
     "loadFailed": "Failed to load API Keys",
-    "createFailed": "Failed to create Key",
-    "deleteFailed": "Failed to delete Key",
-    "updateLabelFailed": "Failed to update label"
+    "createFailed": "Failed to create API Key",
+    "created": "API Key created",
+    "deleteFailed": "Failed to revoke API Key",
+    "deleted": "API Key revoked"
   }
 }

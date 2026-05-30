@@ -38,6 +38,7 @@
 ### Task 1: 创建 Core Bootstrap 模块
 
 **Files:**
+
 - 创建: `src/services/core-bootstrap.ts`
 - 依赖: `packages/core/src/facade/core-runtime.ts`, `packages/plugin-opencode/src/plugin.ts`
 
@@ -96,6 +97,7 @@ git commit -m "feat: 创建 core-bootstrap 模块，初始化 CoreRuntimeFacade 
 ### Task 2: 创建 Launch Spec Builder
 
 **Files:**
+
 - 创建: `src/services/launch-spec-builder.ts`
 - 依赖: `packages/plugin-sdk/src/agent-launch-spec.ts`, `src/services/config-pg.ts`
 
@@ -300,6 +302,7 @@ git commit -m "feat: 创建 launch-spec-builder，从 RCS 配置组装 AgentLaun
 ### Task 3: 重写 instance.ts 为 Core Adapter
 
 **Files:**
+
 - 重写: `src/services/instance.ts`
 - 依赖: Task 1 (`core-bootstrap.ts`), Task 2 (`launch-spec-builder.ts`)
 
@@ -869,6 +872,7 @@ git commit -m "refactor: 重写 instance.ts 为 Core adapter，委托 launch/sto
 ### Task 4: 更新 Transport 层
 
 **Files:**
+
 - 修改: `src/transport/acp-relay-handler.ts`
 
 relay handler 当前从 `../services/instance` 的 `findRunningInstanceByEnvironment` 和 `findInstanceBySessionId` 查找实例。新代码的接口保持不变，所以 relay handler 只需要处理 `stopInstance` 变成 async 的情况。
@@ -876,6 +880,7 @@ relay handler 当前从 `../services/instance` 的 `findRunningInstanceByEnviron
 - [ ] **Step 1: 检查 relay handler 中对 instance 的使用**
 
 `acp-relay-handler.ts` 第 9 行：
+
 ```typescript
 import { findRunningInstanceByEnvironment, findInstanceBySessionId } from "../services/instance";
 ```
@@ -908,11 +913,13 @@ git commit -m "refactor: relay handler 适配 core adapter"
 ### Task 5: 更新 Hermes Client
 
 **Files:**
+
 - 修改: `src/services/hermes-client.ts`
 
 - [ ] **Step 1: 更新 hermes-client 中的实例查找**
 
 当前代码：
+
 ```typescript
 import { findRunningInstanceByEnvironment } from "./instance";
 ```
@@ -930,6 +937,7 @@ import { findRunningInstanceByEnvironment } from "./instance";
 ### Task 6: 更新路由层
 
 **Files:**
+
 - 修改: `src/routes/web/environments.ts`
 - 修改: `src/routes/web/instances.ts`
 
@@ -938,11 +946,13 @@ import { findRunningInstanceByEnvironment } from "./instance";
 `stopInstance` 从同步变为异步（返回 `Promise`），需要加 `await`。
 
 当前代码：
+
 ```typescript
 const result = stopInstance(id, user.id);
 ```
 
 改为：
+
 ```typescript
 const result = await stopInstance(id, user.id);
 ```
@@ -983,11 +993,13 @@ git commit -m "refactor: 路由层适配 core adapter 的 async API"
 ### Task 7: 更新 src/index.ts 启动和关闭逻辑
 
 **Files:**
+
 - 修改: `src/index.ts`
 
 - [ ] **Step 1: 更新 import 和初始化**
 
 替换旧的 import：
+
 ```typescript
 // 旧
 import { stopAllInstances, spawnInstanceFromEnvironment, findRunningInstanceByEnvironment } from "./services/instance";
@@ -998,6 +1010,7 @@ import { getCoreRuntime } from "./services/core-bootstrap";
 ```
 
 在启动阶段，调用 `getCoreRuntime()` 确保 core runtime 初始化：
+
 ```typescript
 // 在 initDb() 之后添加：
 getCoreRuntime();
@@ -1044,6 +1057,7 @@ git commit -m "refactor: 启动时初始化 core runtime，graceful shutdown 使
 ### Task 8: 更新测试
 
 **Files:**
+
 - 重写: `src/__tests__/instance-service.test.ts`
 - 修改: `src/__tests__/instance-routes.test.ts`
 
@@ -1100,7 +1114,7 @@ mock.module("../services/config-pg", () => ({
   getAgentConfigById: mock(async (_id: string) => ({ name: "test-agent", id: _id })),
   getAgentFullConfig: mock(async () => ({
     agentConfig: { name: "test-agent", model: "openai/gpt-4", prompt: "test prompt" },
-    providers: [{ name: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "sk-test", npm: "@ai-sdk/openai" }],
+    providers: [{ name: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "sk-test", npm: "@ai-sdk/openai-compatible" }],
     skills: [],
     mcpServers: [],
   })),
@@ -1241,6 +1255,7 @@ git commit -m "test: 更新 instance 测试适配 core adapter"
 运行: `cd /Users/konghayao/code/pazhou/remote-control-server && bun run dev 2>&1 &`
 
 等待 3 秒后检查日志，确保：
+
 - Database initialized
 - Core runtime initialized
 - 无 unhandled rejection

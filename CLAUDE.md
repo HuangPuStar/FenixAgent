@@ -515,7 +515,29 @@ Biome v2.4.15，space indent 2，lineWidth 120。`noExplicitAny: warn`，`noNonN
 
 ### Git 提交风格
 
-Angular 风格（`feat:` / `fix:` / `refactor:` / `test:` 等前缀），中文标题。
+Angular 风格（`feat:` / `fix:` / `refactor:` / `test:` / `chore:` / `docs:` / `style:` 等前缀），中文标题。
+
+**提交规范：**
+
+1. 每个提交保持单一职责，一个提交只做一件事
+2. 作用域用括号标注，如 `feat(workflow):`、`fix(agent-panel):`、`chore(deps):`
+3. 标题简短明确（不超过 80 字符），详细说明放在正文
+4. 提交正文格式示例：
+   ```
+   feat(workflow): 新增看板页面和 Board 管理
+
+   - 添加 WorkflowKanban、BoardSelector 组件
+   - 后端 workflow-boards 路由和 repository
+   - i18n kanban 命名空间中英双语
+
+   Co-authored-by: GLM <glm@zhipuai.cn>
+   ```
+5. **Co-authored-by**：使用 AI 辅助编写的提交必须根据实际使用的模型附加 Co-authored-by，放在正文末尾。常见映射：
+   - GLM（智谱）→ `Co-authored-by: GLM <glm@zhipuai.cn>`
+   - Claude（Anthropic）→ `Co-authored-by: Claude <claude@anthropic.com>`
+   - GPT（OpenAI）→ `Co-authored-by: GPT <gpt@openai.com>`
+   - Gemini（Google）→ `Co-authored-by: Gemini <gemini@google.com>`
+6. 大分支合并前用 `squash merge` 或 `rebase` 压缩提交，按功能模块拆分为 5-15 个有意义的提交，不要保留大量琐碎的中间提交
 
 ### React 组件模式
 

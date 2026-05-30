@@ -5,6 +5,7 @@
  * 复用 transport/event-bus 的 EventBus 实例管理。
  */
 
+import { nanoid } from "nanoid";
 import { type EventBus, getEventBus, removeEventBus } from "../../transport/event-bus";
 
 /** Workflow SSE 事件类型 */
@@ -41,7 +42,7 @@ export function publishWorkflowEvent(
 ): void {
   const bus = getWorkflowEventBus(workflowId);
   bus.publish({
-    id: `wf_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `wf_evt_${nanoid(12)}`,
     sessionId: workflowBusKey(workflowId),
     type,
     payload: { type, workflowId, ...extra },

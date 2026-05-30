@@ -1,7 +1,6 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import { AgentConfigDialog } from "./AgentConfigDialog";
-import { AgentCreateDialog } from "./AgentCreateDialog";
+import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
 import "./agent-panel.css";
 
@@ -58,10 +57,11 @@ export function AgentPanelLayout() {
       <div className="agent-panel-body">
         <Outlet />
       </div>
-      <AgentCreateDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
-      <AgentConfigDialog
+      <AgentFormDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} mode="create" />
+      <AgentFormDialog
         open={configDialog.open}
         onOpenChange={(open) => setConfigDialog((prev) => ({ ...prev, open }))}
+        mode="edit"
         agentName={configDialog.agentName}
       />
     </div>

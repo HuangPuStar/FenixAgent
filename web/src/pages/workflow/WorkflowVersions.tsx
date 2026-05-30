@@ -1,7 +1,10 @@
-import { AlertTriangle, Clock, Inbox, Loader, RefreshCw, RotateCcw, Star } from "lucide-react";
+import { AlertTriangle, Clock, Inbox, RefreshCw, RotateCcw, Star } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { type WorkflowDefItem, type WorkflowVersionItem, workflowDefApi } from "../../api/workflow-defs";
+import { SkeletonVersionRows } from "./components/SkeletonRows";
 
 interface WorkflowVersionsProps {
   workflowId: string;
@@ -16,6 +19,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
   const [error, setError] = useState<string | null>(null);
   const [viewingVersion, setViewingVersion] = useState<number | null>(null);
   const [viewingYaml, setViewingYaml] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: "setLatest" | "restore"; version: number } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -41,13 +45,13 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
   const handleSetLatest = useCallback(
     async (version: number) => {
-      if (!confirm(t("versions.set_latest_confirm", { version }))) return;
+      setConfirmAction(null);
       try {
         await workflowDefApi.setLatest(workflowId, version);
         loadData();
       } catch (err) {
         console.error(err);
-        alert(`${t("versions.operation_failed")}: ${(err as Error).message}`);
+        toast.error(t("versions.operation_failed"), { description: (err as Error).message });
       }
     },
     [workflowId, loadData, t],
@@ -55,13 +59,13 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
   const handleRestoreToDraft = useCallback(
     async (version: number) => {
-      if (!confirm(t("versions.restore_confirm", { version }))) return;
+      setConfirmAction(null);
       try {
         await workflowDefApi.restoreToDraft(workflowId, version);
-        alert(t("versions.restore_success"));
+        toast.success(t("versions.restore_success"));
       } catch (err) {
         console.error(err);
-        alert(`${t("versions.restore_failed")}: ${(err as Error).message}`);
+        toast.error(t("versions.restore_failed"), { description: (err as Error).message });
       }
     },
     [workflowId, t],
@@ -80,7 +84,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
         setViewingYaml(result.yaml);
       } catch (err) {
         console.error(err);
-        alert(`${t("versions.yaml_load_failed")}: ${(err as Error).message}`);
+        toast.error(t("versions.yaml_load_failed"), { description: (err as Error).message });
       }
     },
     [workflowId, viewingVersion, t],
@@ -96,27 +100,16 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
   }
 
   return (
-    <div style={{ padding: "24px 32px", height: "100%", overflowY: "auto" }}>
+    <div className="h-full overflow-y-auto p-6">
       {/* 标题 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <h1 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: 0 }}>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-base font-semibold text-text-primary m-0">
           {wf ? t("versions.title", { name: wf.name }) : t("versions.title", { name: "" })}
         </h1>
         <button
           type="button"
           onClick={loadData}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px",
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            background: "#fff",
-            fontSize: 12,
-            color: "#374151",
-            cursor: "pointer",
-          }}
+          className="flex items-center gap-1.5 px-2.5 py-1 border border-border-subtle rounded-md bg-surface-1 text-xs text-text-secondary cursor-pointer hover:bg-surface-hover transition-colors"
         >
           <RefreshCw size={13} /> {t("versions.refresh")}
         </button>
@@ -124,19 +117,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
       {/* 当前状态 */}
       {wf && (
-        <div
-          style={{
-            padding: "10px 16px",
-            background: "#f9fafb",
-            borderRadius: 8,
-            border: "1px solid #e5e7eb",
-            marginBottom: 16,
-            fontSize: 12,
-            color: "#6b7280",
-            display: "flex",
-            gap: 16,
-          }}
-        >
+        <div className="p-2.5 bg-surface-2 rounded-lg border border-border-subtle mb-4 text-xs text-text-secondary flex gap-4">
           <span>
             {t("versions.latest_label", {
               value: wf.latestVersion ? `v${wf.latestVersion}` : t("versions.latest_not_set"),
@@ -148,96 +129,54 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
       {/* 内容 */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 40, color: "#9ca3af", fontSize: 13 }}>
-          <Loader size={20} style={{ animation: "spin 1s linear infinite", display: "inline-block" }} />
-          <p style={{ marginTop: 8 }}>{t("versions.loading")}</p>
-        </div>
+        <SkeletonVersionRows rows={3} />
       ) : error ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <AlertTriangle size={32} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
-          <p style={{ fontSize: 13, color: "#6b7280" }}>{t("versions.load_failed", { error })}</p>
+        <div className="text-center py-10">
+          <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
+          <p className="text-[13px] text-text-secondary">{t("versions.load_failed", { error })}</p>
         </div>
       ) : versions.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <Inbox size={32} style={{ color: "#d1d5db", margin: "0 auto 8px" }} />
-          <p style={{ fontSize: 13, color: "#9ca3af", fontWeight: 500 }}>{t("versions.no_versions")}</p>
-          <p style={{ fontSize: 11, color: "#d1d5db", marginTop: 4 }}>{t("versions.no_versions_hint")}</p>
+        <div className="text-center py-10">
+          <Inbox size={32} className="text-text-muted mx-auto mb-2" />
+          <p className="text-[13px] text-text-muted font-medium">{t("versions.no_versions")}</p>
+          <p className="text-[11px] text-text-dim mt-1">{t("versions.no_versions_hint")}</p>
         </div>
       ) : (
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+        <div className="border border-border-subtle rounded-lg overflow-hidden bg-surface-1">
           {versions.map((v) => {
             const isLatest = wf?.latestVersion === v.version;
             const isViewing = viewingVersion === v.version;
 
             return (
-              <div key={v.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+              <div key={v.id} className="border-b border-border-subtle">
                 <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "12px 16px",
-                    fontSize: 12,
-                    cursor: "pointer",
-                  }}
+                  className="flex items-center gap-3 px-4 py-3 text-xs cursor-pointer hover:bg-surface-hover transition-colors"
                   onClick={() => handleViewYaml(v.version)}
                 >
                   {/* 版本号 */}
-                  <div
-                    style={{
-                      fontFamily: "ui-monospace, monospace",
-                      fontWeight: 600,
-                      color: "#111827",
-                      minWidth: 40,
-                    }}
-                  >
-                    v{v.version}
-                  </div>
+                  <div className="font-mono font-semibold text-text-primary min-w-[40px]">v{v.version}</div>
 
                   {/* latest 标记 */}
                   {isLatest && (
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 3,
-                        fontSize: 10,
-                        fontWeight: 500,
-                        color: "#22c55e",
-                        background: "#f0fdf4",
-                        padding: "1px 6px",
-                        borderRadius: 99,
-                      }}
-                    >
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-status-running bg-surface-2 px-1.5 py-px rounded-full">
                       <Star size={10} /> {t("versions.latest")}
                     </span>
                   )}
 
                   {/* 时间 */}
-                  <span style={{ color: "#9ca3af", fontSize: 11 }}>
-                    <Clock size={10} style={{ marginRight: 3, verticalAlign: -1 }} />
+                  <span className="text-text-muted text-[11px]">
+                    <Clock size={10} className="mr-0.5 align-[-1px]" />
                     {relativeTime(v.createdAt)}
                   </span>
 
                   {/* 操作 */}
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                  <div className="ml-auto flex gap-1" onClick={(e) => e.stopPropagation()}>
                     {!isLatest && (
                       <button
                         type="button"
                         title={t("versions.set_latest")}
-                        onClick={() => handleSetLatest(v.version)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 3,
-                          padding: "3px 8px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 4,
-                          background: "#fff",
-                          fontSize: 10,
-                          color: "#6b7280",
-                          cursor: "pointer",
-                        }}
+                        onClick={() => setConfirmAction({ type: "setLatest", version: v.version })}
+                        className="flex items-center gap-1 px-2 py-0.5 border border-border-subtle rounded text-[10px] text-text-secondary bg-surface-1 cursor-pointer hover:bg-surface-hover transition-colors"
                       >
                         <Star size={10} /> {t("versions.set_latest")}
                       </button>
@@ -245,19 +184,8 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
                     <button
                       type="button"
                       title={t("versions.restore_to_draft")}
-                      onClick={() => handleRestoreToDraft(v.version)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 3,
-                        padding: "3px 8px",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 4,
-                        background: "#fff",
-                        fontSize: 10,
-                        color: "#6b7280",
-                        cursor: "pointer",
-                      }}
+                      onClick={() => setConfirmAction({ type: "restore", version: v.version })}
+                      className="flex items-center gap-1 px-2 py-0.5 border border-border-subtle rounded text-[10px] text-text-secondary bg-surface-1 cursor-pointer hover:bg-surface-hover transition-colors"
                     >
                       <RotateCcw size={10} /> {t("versions.restore_to_draft")}
                     </button>
@@ -266,22 +194,8 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
                 {/* YAML 展开区域 */}
                 {isViewing && viewingYaml !== null && (
-                  <div style={{ padding: "0 16px 12px" }}>
-                    <pre
-                      style={{
-                        background: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 6,
-                        padding: 10,
-                        fontSize: 11,
-                        fontFamily: "ui-monospace, monospace",
-                        color: "#374151",
-                        maxHeight: 300,
-                        overflow: "auto",
-                        margin: 0,
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
+                  <div className="px-4 pb-3">
+                    <pre className="bg-surface-2 border border-border-subtle rounded-md p-2.5 text-[11px] font-mono text-text-secondary max-h-[300px] overflow-auto m-0 whitespace-pre-wrap">
                       {viewingYaml}
                     </pre>
                   </div>
@@ -291,6 +205,24 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+        title={confirmAction?.type === "setLatest" ? t("versions.set_latest") : t("versions.restore_to_draft")}
+        description={
+          confirmAction?.type === "setLatest"
+            ? t("versions.set_latest_confirm", { version: confirmAction?.version ?? 0 })
+            : t("versions.restore_confirm", { version: confirmAction?.version ?? 0 })
+        }
+        variant={confirmAction?.type === "restore" ? "destructive" : "default"}
+        onConfirm={() => {
+          if (confirmAction?.type === "setLatest") handleSetLatest(confirmAction.version);
+          else if (confirmAction?.type === "restore") handleRestoreToDraft(confirmAction.version);
+        }}
+      />
     </div>
   );
 }

@@ -103,80 +103,33 @@ export function RunStatusPanel({
   return (
     <>
       {/* 运行状态头 */}
-      <div
-        style={{
-          padding: "8px 12px",
-          borderBottom: "1px solid #e5e7eb",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
+      <div className="px-3 py-2 border-b border-border-subtle flex items-center gap-1.5">
         <button
           type="button"
           onClick={handleBackToList}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            border: "none",
-            background: "#f3f4f6",
-            borderRadius: 4,
-            color: "#374151",
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
+          className="flex items-center justify-center w-[22px] h-[22px] border-none bg-surface-2 rounded text-text-secondary cursor-pointer shrink-0 hover:bg-surface-hover transition-colors"
         >
           <ArrowLeft size={12} />
         </button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>{t("editor.run_result")}</span>
+        <span className="text-xs font-semibold text-text-primary">{t("editor.run_result")}</span>
         {runSnapshot && (
           <span
+            className="inline-flex items-center gap-1 px-1.5 py-px rounded-full text-[10px] font-medium"
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 3,
-              padding: "1px 7px",
-              borderRadius: 99,
-              fontSize: 10,
-              fontWeight: 500,
-              color: DAG_STATUS_CFG[dagStatus!]?.color ?? "#6b7280",
-              background: DAG_STATUS_CFG[dagStatus!]?.bg ?? "#f3f4f6",
+              color: DAG_STATUS_CFG[dagStatus!]?.color ?? "var(--color-text-secondary)",
+              background: DAG_STATUS_CFG[dagStatus!]?.bg ?? "var(--color-surface-2)",
             }}
           >
-            {dagStatus === "RUNNING" && (
-              <span
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  background: "#3b82f6",
-                  animation: "wf-pulse 1.5s ease-in-out infinite",
-                }}
-              />
-            )}
+            {dagStatus === "RUNNING" && <span className="w-[5px] h-[5px] rounded-full bg-brand animate-pulse" />}
             {DAG_STATUS_CFG[dagStatus!] ? t(DAG_STATUS_CFG[dagStatus!].labelKey) : dagStatus}
           </span>
         )}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+        <div className="ml-auto flex gap-1">
           {!isRunDone && (
             <button
               type="button"
               onClick={handleCancelRun}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 24,
-                height: 24,
-                border: "none",
-                background: "#fef2f2",
-                borderRadius: 4,
-                color: "#ef4444",
-                cursor: "pointer",
-              }}
+              className="flex items-center justify-center w-6 h-6 border-none rounded text-status-error cursor-pointer hover:bg-surface-hover transition-colors bg-red-50"
             >
               <Square size={11} />
             </button>
@@ -185,18 +138,7 @@ export function RunStatusPanel({
             <button
               type="button"
               onClick={handleBackToEdit}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 24,
-                height: 24,
-                border: "none",
-                background: "#f3f4f6",
-                borderRadius: 4,
-                color: "#6b7280",
-                cursor: "pointer",
-              }}
+              className="flex items-center justify-center w-6 h-6 border-none bg-surface-2 rounded text-text-secondary cursor-pointer hover:bg-surface-hover transition-colors"
             >
               <Edit3 size={11} />
             </button>
@@ -206,41 +148,22 @@ export function RunStatusPanel({
 
       {/* 审批卡片 */}
       {dagStatus === "SUSPENDED" && runApprovals.length > 0 && (
-        <div style={{ padding: 10, borderBottom: "1px solid #fbbf24", background: "#fffbeb" }}>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: "#92400e",
-              marginBottom: 6,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
+        <div className="p-2.5 border-b border-warning-border bg-warning-bg">
+          <div className="text-[11px] font-semibold text-warning-text mb-1.5 flex items-center gap-1">
             <ShieldCheck size={12} /> {t("editor.waiting_approval")}
           </div>
           {runApprovals.map((a) => (
-            <div key={a.nodeId} style={{ fontSize: 10, color: "#78350f", marginBottom: 6 }}>
-              <div style={{ fontWeight: 500, marginBottom: 2 }}>{t("editor.approval_node", { nodeId: a.nodeId })}</div>
+            <div key={a.nodeId} className="text-[10px] text-amber-800 mb-1.5">
+              <div className="font-medium mb-0.5">{t("editor.approval_node", { nodeId: a.nodeId })}</div>
               {a.displayData != null && typeof a.displayData === "object" && (
-                <div style={{ color: "#92400e", marginBottom: 3 }}>
+                <div className="text-warning-text mb-1">
                   {String(((a.displayData as Record<string, unknown>).message as string) ?? "")}
                 </div>
               )}
               <button
                 type="button"
                 onClick={() => handleApprove(a)}
-                style={{
-                  padding: "2px 8px",
-                  border: "1px solid #f59e0b",
-                  borderRadius: 4,
-                  background: "#f59e0b",
-                  color: "#fff",
-                  fontSize: 10,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
+                className="px-2 py-0.5 border border-warning-border rounded bg-warning-border text-white text-[10px] font-medium cursor-pointer hover:opacity-90 transition-opacity"
               >
                 {t("editor.approve")}
               </button>
@@ -251,42 +174,27 @@ export function RunStatusPanel({
 
       {/* 进度条 */}
       {runSnapshot && (
-        <div
-          style={{
-            padding: "4px 12px",
-            borderBottom: "1px solid #f3f4f6",
-            fontSize: 10,
-            color: "#4b5563",
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
+        <div className="px-3 py-1 border-b border-border-subtle text-[10px] text-text-secondary flex justify-between">
           <span>
             {t("editor.progress_nodes", {
               completed: Object.values(runSnapshot.node_states).filter((s) => s.status === "COMPLETED").length,
               total: Object.keys(runSnapshot.node_states).length,
             })}
           </span>
-          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 9 }}>{activeRunId?.substring(0, 16)}...</span>
+          <span className="font-mono text-[9px]">{activeRunId?.substring(0, 16)}...</span>
         </div>
       )}
 
       {/* 事件/输出子 Tab */}
-      <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb" }}>
+      <div className="flex border-b border-border-subtle">
         <button
           type="button"
           onClick={() => setRunRightTab("events")}
-          style={{
-            flex: 1,
-            padding: "7px 0",
-            border: "none",
-            background: "none",
-            fontSize: 11,
-            fontWeight: runRightTab === "events" ? 600 : 400,
-            color: runRightTab === "events" ? "#111827" : "#4b5563",
-            borderBottom: runRightTab === "events" ? "2px solid #3b82f6" : "2px solid transparent",
-            cursor: "pointer",
-          }}
+          className={`flex-1 py-[7px] border-none bg-transparent text-[11px] cursor-pointer transition-colors ${
+            runRightTab === "events"
+              ? "font-semibold text-text-primary border-b-2 border-brand"
+              : "font-normal text-text-secondary border-b-2 border-transparent"
+          }`}
         >
           {t("editor.events_tab", {
             count: selectedRunNodeId
@@ -297,17 +205,11 @@ export function RunStatusPanel({
         <button
           type="button"
           onClick={() => setRunRightTab("output")}
-          style={{
-            flex: 1,
-            padding: "7px 0",
-            border: "none",
-            background: "none",
-            fontSize: 11,
-            fontWeight: runRightTab === "output" ? 600 : 400,
-            color: runRightTab === "output" ? "#111827" : "#4b5563",
-            borderBottom: runRightTab === "output" ? "2px solid #3b82f6" : "2px solid transparent",
-            cursor: "pointer",
-          }}
+          className={`flex-1 py-[7px] border-none bg-transparent text-[11px] cursor-pointer transition-colors ${
+            runRightTab === "output"
+              ? "font-semibold text-text-primary border-b-2 border-brand"
+              : "font-normal text-text-secondary border-b-2 border-transparent"
+          }`}
         >
           {selectedRunNodeId ? t("editor.output_tab_selected", { nodeId: selectedRunNodeId }) : t("editor.output_tab")}
         </button>
@@ -315,34 +217,28 @@ export function RunStatusPanel({
 
       {/* 事件列表 */}
       {runRightTab === "events" && (
-        <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
+        <div className="flex-1 overflow-y-auto text-[11px]">
           {(() => {
             const filtered = selectedRunNodeId ? runEvents.filter((e) => e.node_id === selectedRunNodeId) : runEvents;
             return filtered.length === 0 ? (
-              <div style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>
+              <div className="py-5 text-center text-text-secondary">
                 {selectedRunNodeId ? t("editor.no_events_for_node") : t("editor.no_events")}
               </div>
             ) : (
               filtered.map((evt) => (
                 <div
                   key={evt.event_id}
-                  style={{
-                    padding: "5px 12px",
-                    borderBottom: "1px solid #f3f4f6",
-                    display: "flex",
-                    gap: 5,
-                    alignItems: "flex-start",
-                    cursor: evt.node_id ? "pointer" : "default",
-                  }}
+                  className="px-3 py-[5px] border-b border-border-subtle flex gap-1.5 items-start"
+                  style={{ cursor: evt.node_id ? "pointer" : "default" }}
                   onClick={() => {
                     if (evt.node_id) setSelectedRunNodeId(evt.node_id);
                   }}
                 >
                   <EventIcon type={evt.type} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
-                      <span style={{ fontWeight: 500, color: "#374151" }}>{formatEventType(t, evt.type)}</span>
-                      <span style={{ color: "#6b7280", fontSize: 9, flexShrink: 0 }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between mb-px">
+                      <span className="font-medium text-text-secondary">{formatEventType(t, evt.type)}</span>
+                      <span className="text-text-muted text-[9px] shrink-0">
                         {new Date(evt.timestamp).toLocaleTimeString("zh-CN", {
                           hour: "2-digit",
                           minute: "2-digit",
@@ -350,20 +246,9 @@ export function RunStatusPanel({
                         })}
                       </span>
                     </div>
-                    {evt.node_id && (
-                      <span style={{ color: "#4b5563", fontFamily: "ui-monospace, monospace", fontSize: 9 }}>
-                        {evt.node_id}
-                      </span>
-                    )}
+                    {evt.node_id && <span className="text-text-secondary font-mono text-[9px]">{evt.node_id}</span>}
                     {evt.metadata && Object.keys(evt.metadata).length > 0 && (
-                      <div
-                        style={{
-                          color: "#4b5563",
-                          fontSize: 9,
-                          marginTop: 1,
-                          fontFamily: "ui-monospace, monospace",
-                        }}
-                      >
+                      <div className="text-text-secondary text-[9px] mt-px font-mono">
                         {formatMeta(t, evt.type, evt.metadata)}
                       </div>
                     )}
@@ -377,48 +262,24 @@ export function RunStatusPanel({
 
       {/* 节点输出 */}
       {runRightTab === "output" && (
-        <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }}>
+        <div className="flex-1 overflow-y-auto text-[11px]">
           {!selectedRunNodeId ? (
-            <div style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>{t("editor.click_node_output")}</div>
+            <div className="py-5 text-center text-text-secondary">{t("editor.click_node_output")}</div>
           ) : nodeOutputLoading ? (
-            <div style={{ padding: 20, textAlign: "center", color: "#4b5563" }}>
-              <Loader size={14} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+            <div className="py-5 text-center text-text-secondary">
+              <Loader size={14} className="animate-spin inline-block" />
             </div>
           ) : !selectedNodeOutput ? (
-            <div style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>{t("editor.no_output")}</div>
+            <div className="py-5 text-center text-text-secondary">{t("editor.no_output")}</div>
           ) : (
             <>
-              <div
-                style={{
-                  padding: "6px 12px",
-                  borderBottom: "1px solid #f3f4f6",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 6,
-                }}
-              >
-                <span style={{ fontSize: 10, color: "#6b7280", fontFamily: "ui-monospace, monospace" }}>
-                  {selectedRunNodeId}
-                </span>
+              <div className="px-3 py-1.5 border-b border-border-subtle flex items-center justify-between gap-1.5">
+                <span className="text-[10px] text-text-muted font-mono">{selectedRunNodeId}</span>
                 <button
                   type="button"
                   onClick={() => handleRerunFrom(selectedRunNodeId)}
                   disabled={running}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 3,
-                    padding: "2px 8px",
-                    border: "1px solid #3b82f6",
-                    borderRadius: 4,
-                    background: "#eff6ff",
-                    color: "#3b82f6",
-                    fontSize: 10,
-                    fontWeight: 500,
-                    cursor: running ? "not-allowed" : "pointer",
-                    opacity: running ? 0.5 : 1,
-                  }}
+                  className="flex items-center gap-1 px-2 py-0.5 border border-brand rounded bg-brand-subtle text-brand text-[10px] font-medium cursor-pointer disabled:opacity-50 hover:bg-surface-hover transition-colors"
                 >
                   <RefreshCw size={10} /> {t("editor.rerun_from_here")}
                 </button>

@@ -1,8 +1,12 @@
+/**
+ * @deprecated 使用 NodeConfigCard + NodeConfigPopover 或 WorkflowMetaCard + WorkflowMetaPopover 替代
+ */
 import type { Node } from "@xyflow/react";
-import { ChevronRight, Lock, Plus, Trash2 } from "lucide-react";
+import { Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { WfMeta } from "../yaml-utils";
 import { START_NODE_ID } from "../yaml-utils";
+import { InputsEditor } from "./InputsEditor";
 
 export interface NodeConfigPanelProps {
   readOnly: boolean;
@@ -13,121 +17,9 @@ export interface NodeConfigPanelProps {
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>;
   updateNodeData: (patch: Record<string, unknown>) => void;
-  agentList: Array<{ name: string; model?: string | null; description?: string | null }>;
-  agentOverrideOpen: boolean;
-  setAgentOverrideOpen: (open: boolean) => void;
+  agentList: Array<{ name: string; description: string | null }>;
   meta: WfMeta;
   updateMeta: (updates: Partial<WfMeta>) => void;
-}
-
-function InputsEditor({
-  value,
-  onChange,
-  readOnly,
-  keyPlaceholder,
-  valuePlaceholder,
-  addLabel,
-}: {
-  value: Record<string, string> | undefined;
-  onChange: (val: Record<string, string> | undefined) => void;
-  readOnly: boolean;
-  keyPlaceholder: string;
-  valuePlaceholder: string;
-  addLabel: string;
-}) {
-  const entries = Object.entries(value ?? {});
-
-  const updateEntry = (index: number, field: "key" | "value", newValue: string) => {
-    const updated = { ...value };
-    const oldKey = entries[index][0];
-    if (field === "key") {
-      delete updated[oldKey];
-      updated[newValue] = entries[index][1];
-    } else {
-      updated[oldKey] = newValue;
-    }
-    onChange(updated);
-  };
-
-  const removeEntry = (index: number) => {
-    const updated = { ...value };
-    delete updated[entries[index][0]];
-    if (Object.keys(updated).length === 0) {
-      onChange(undefined);
-    } else {
-      onChange(updated);
-    }
-  };
-
-  const addEntry = () => {
-    const updated = { ...value, "": "" };
-    onChange(updated);
-  };
-
-  return (
-    <div>
-      {entries.map(([k, v], i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: index needed to keep input focus stable when key is being edited
-        <div key={`${k}-${i}`} style={{ display: "flex", gap: 4, marginBottom: 4, alignItems: "center" }}>
-          <input
-            value={k}
-            onChange={(e) => updateEntry(i, "key", e.target.value)}
-            placeholder={keyPlaceholder}
-            readOnly={readOnly}
-            style={{ width: "30%" }}
-          />
-          <input
-            value={v}
-            onChange={(e) => updateEntry(i, "value", e.target.value)}
-            placeholder={valuePlaceholder}
-            readOnly={readOnly}
-            style={{ flex: 1 }}
-          />
-          {!readOnly && (
-            <button
-              type="button"
-              onClick={() => removeEntry(i)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 24,
-                height: 24,
-                border: "none",
-                background: "none",
-                color: "#9ca3af",
-                cursor: "pointer",
-                borderRadius: 4,
-                padding: 0,
-                flexShrink: 0,
-              }}
-            >
-              <Trash2 size={13} />
-            </button>
-          )}
-        </div>
-      ))}
-      {!readOnly && (
-        <button
-          type="button"
-          onClick={addEntry}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            border: "none",
-            background: "none",
-            color: "#6b7280",
-            cursor: "pointer",
-            fontSize: 11,
-            padding: 0,
-          }}
-        >
-          <Plus size={12} /> {addLabel}
-        </button>
-      )}
-    </div>
-  );
 }
 
 export function NodeConfigPanel({
@@ -140,8 +32,6 @@ export function NodeConfigPanel({
   setSelectedNode,
   updateNodeData,
   agentList,
-  agentOverrideOpen,
-  setAgentOverrideOpen,
   meta,
   updateMeta,
 }: NodeConfigPanelProps) {
@@ -333,6 +223,22 @@ export function NodeConfigPanel({
             {nodeType === "agent" && (
               <>
                 <div className="wf-prop-field">
+                  <label>{t("editor.agent_env")}</label>
+                  <select
+                    value={String(sd?.agent ?? "")}
+                    onChange={(e) => updateNodeData({ agent: e.target.value || undefined })}
+                    disabled={readOnly}
+                  >
+                    <option value="">{t("editor.agent_select_env")}</option>
+                    {agentList.map((a) => (
+                      <option key={a.name} value={a.name}>
+                        {a.name}
+                        {a.description ? ` - ${a.description}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="wf-prop-field">
                   <label>{t("editor.agent_prompt")}</label>
                   <textarea
                     value={String(sd?.prompt ?? "")}
@@ -343,116 +249,18 @@ export function NodeConfigPanel({
                   />
                 </div>
                 <div className="wf-prop-field">
-                  <label>{t("editor.agent_name")}</label>
-                  <select
-                    value={String(sd?.agent ?? "")}
-                    onChange={(e) => updateNodeData({ agent: e.target.value })}
-                    disabled={readOnly}
-                  >
-                    <option value="">{t("editor.agent_default")}</option>
-                    {agentList.map((a) => (
-                      <option key={a.name} value={a.name}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                  {sd?.agent != null &&
-                    (() => {
-                      const found = agentList.find((a) => a.name === String(sd.agent));
-                      if (!found) return null;
-                      return (
-                        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
-                          {found.model && (
-                            <span>
-                              {t("editor.agent_model")}: {String(found.model)}
-                            </span>
-                          )}
-                          {found.model && found.description && <span> · </span>}
-                          {found.description && <span>{String(found.description)}</span>}
-                        </div>
-                      );
-                    })()}
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.agent_skill")}</label>
+                  <label>{t("editor.agent_output_messages")}</label>
                   <input
-                    value={String(sd?.skill ?? "")}
-                    onChange={(e) => updateNodeData({ skill: e.target.value })}
-                    placeholder="skill-name"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={sd?.output_messages != null ? String(sd.output_messages) : ""}
+                    onChange={(e) =>
+                      updateNodeData({ output_messages: e.target.value ? Number(e.target.value) : undefined })
+                    }
+                    placeholder="0"
                     readOnly={readOnly}
                   />
-                </div>
-                <div className="wf-prop-field">
-                  <button
-                    type="button"
-                    onClick={() => setAgentOverrideOpen(!agentOverrideOpen)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 11,
-                      color: "#6b7280",
-                      padding: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <ChevronRight
-                      size={11}
-                      style={{
-                        transform: agentOverrideOpen ? "rotate(90deg)" : "rotate(0deg)",
-                        transition: "transform 0.15s",
-                      }}
-                    />
-                    {t("editor.agent_override")}
-                  </button>
-                  {agentOverrideOpen && (
-                    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div>
-                        <label style={{ fontSize: 10, color: "#9ca3af" }}>{t("editor.agent_model_label")}</label>
-                        <input
-                          value={String(sd?.model ?? "")}
-                          onChange={(e) => updateNodeData({ model: e.target.value || undefined })}
-                          placeholder={t("editor.agent_fallback_hint")}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 10, color: "#9ca3af" }}>{t("editor.agent_temperature")}</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max="2"
-                          value={sd?.temperature != null ? String(sd.temperature) : ""}
-                          onChange={(e) =>
-                            updateNodeData({
-                              temperature: e.target.value ? Number(e.target.value) : undefined,
-                            })
-                          }
-                          placeholder={t("editor.agent_fallback_hint")}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 10, color: "#9ca3af" }}>{t("editor.agent_max_steps")}</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="200"
-                          value={sd?.steps != null ? String(sd.steps) : ""}
-                          onChange={(e) =>
-                            updateNodeData({
-                              steps: e.target.value ? Number(e.target.value) : undefined,
-                            })
-                          }
-                          placeholder={t("editor.agent_fallback_hint")}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
               </>
             )}

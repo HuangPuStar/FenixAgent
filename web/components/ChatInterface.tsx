@@ -85,6 +85,7 @@ interface ChatInterfaceProps {
   rcsSessionId?: string;
   onSessionCreated?: (sessionId: string) => void;
   scenePrompt?: string;
+  onPromptComplete?: () => void;
 }
 
 // =============================================================================
@@ -170,7 +171,18 @@ export interface ChatInterfaceHandle {
 }
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
-  { client, agentId, cwd, cwdReady = true, readonly, hideContextPanel, rcsSessionId, onSessionCreated, scenePrompt },
+  {
+    client,
+    agentId,
+    cwd,
+    cwdReady = true,
+    readonly,
+    hideContextPanel,
+    rcsSessionId,
+    onSessionCreated,
+    scenePrompt,
+    onPromptComplete,
+  },
   ref,
 ) {
   const { t } = useTranslation("components");
@@ -550,6 +562,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
         errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
       }
+
+      onPromptComplete?.();
     });
 
     client.setPermissionRequestHandler(handlePermissionRequest);
@@ -571,7 +585,15 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       client.setPermissionRequestHandler(() => {});
       client.setErrorMessageHandler(() => {});
     };
-  }, [activateSession, client, handlePermissionRequest, handleSessionUpdate, resetThreadState, onSessionCreated]);
+  }, [
+    activateSession,
+    client,
+    handlePermissionRequest,
+    handleSessionUpdate,
+    resetThreadState,
+    onSessionCreated,
+    onPromptComplete,
+  ]);
 
   // Broadcast stats to AgentAppShell via custom event (for top-level StatusHeader)
   useEffect(() => {

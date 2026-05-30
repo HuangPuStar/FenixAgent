@@ -6,8 +6,8 @@
 :root {
   --agent-sidebar-width: 220px;
   --agent-sidebar-collapsed: 60px;
-  --agent-artifacts-width: 480px;
-  --agent-artifacts-min: 360px;
+  --agent-artifacts-width: 360px;
+  --agent-artifacts-min: 280px;
   --agent-artifacts-max: 700px;
 }
 
@@ -223,125 +223,7 @@ file-tree-container {
   color: var(--color-text-dim);
 }
 
-/* 智能体名称（可点击折叠） */
-.agent-tree-env-header {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  user-select: none;
-  border: none;
-  border-radius: 6px;
-  margin: 0 4px;
-  background: none;
-  width: calc(100% - 8px);
-  transition:
-    background 150ms,
-    color 150ms;
-}
-
-.agent-tree-env-header:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
-}
-
-/* 实例数量徽标 */
-.agent-tree-instance-count {
-  margin-left: auto;
-  padding: 0 5px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-text-dim);
-  background: var(--color-surface-2);
-  border-radius: 8px;
-  line-height: 18px;
-  flex-shrink: 0;
-}
-
-/* 实例列表容器 */
-.agent-tree-env-body {
-  padding: 1px 0 2px;
-}
-
-/* 单个实例行 */
-.agent-tree-instance {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 12px 5px 28px;
-  font-size: 14px;
-  color: var(--color-text-primary);
-  cursor: pointer;
-  transition:
-    background 150ms,
-    color 150ms;
-  border-radius: 6px;
-  margin: 1px 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.agent-tree-instance:hover {
-  background: var(--color-surface-hover);
-}
-
-.agent-tree-instance.selected {
-  background: var(--color-brand-subtle);
-  color: var(--color-brand-light);
-}
-
-/* "新建实例" 按钮 */
-.agent-tree-new-instance {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px 4px 28px;
-  margin: 1px 6px;
-  font-size: 13px;
-  color: var(--color-text-dim);
-  cursor: pointer;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  transition:
-    background 150ms,
-    color 150ms;
-  white-space: nowrap;
-  width: calc(100% - 12px);
-}
-
-.agent-tree-new-instance:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
-}
-
-/* 智能体行操作按钮 */
-.agent-tree-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* hover 时才显示的操作按钮（重启、删除） */
-.agent-tree-hover-action {
-  opacity: 0;
-  transition: opacity 150ms;
-}
-
-.agent-tree-env-header:hover .agent-tree-hover-action {
-  opacity: 1;
-}
-
+/* 实例行操作按钮（复用于卡片内） */
 .agent-tree-action-btn {
   display: flex;
   align-items: center;
@@ -367,45 +249,6 @@ file-tree-container {
 .agent-tree-action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* 实例行操作按钮（hover 显示） */
-.agent-tree-instance-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 150ms;
-}
-
-.agent-tree-instance:hover .agent-tree-instance-actions {
-  opacity: 1;
-}
-
-/* chevron 可点击区域 */
-.agent-tree-chevron {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--color-text-dim);
-  cursor: pointer;
-  transition:
-    background 150ms,
-    color 150ms;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.agent-tree-chevron:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
 }
 
 /* ---------- 状态指示灯 ---------- */
@@ -468,8 +311,8 @@ file-tree-container {
 }
 
 .agent-artifacts-tree-pane {
-  width: 35%;
-  min-width: 120px;
+  width: 200px;
+  min-width: 200px;
   overflow: hidden;
   border-right: 1px solid var(--color-border-subtle);
 }

@@ -26,7 +26,8 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "check:deps": "bun run scripts/check-deps.ts",
-    "postinstall": "mkdir -p node_modules/@fenix && ln -sf ../../packages/sdk node_modules/@fenix/sdk 2>/dev/null || true"
+    "postinstall": "mkdir -p node_modules/@fenix && ln -sf ../../packages/sdk node_modules/@fenix/sdk 2>/dev/null || true",
+    "prepare": "husky"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.192",
@@ -94,6 +95,7 @@
     "react-i18next": "^17.0.8",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.11.1",
+    "recharts": "^3.8.1",
     "remark-gfm": "^4.0.1",
     "shiki": "^4.1.0",
     "sonner": "^2.0.7",
@@ -115,6 +117,7 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^6.0.2",
     "drizzle-kit": "^0.31.10",
+    "husky": "^9.1.7",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tailwindcss": "^4.3.0",

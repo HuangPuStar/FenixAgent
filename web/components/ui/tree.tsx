@@ -384,6 +384,9 @@ export function TreeItem({
   const handleRowClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     ctx.select(nodeId);
+    if (hasChildrenIndicator) {
+      ctx.toggle(nodeId);
+    }
   };
 
   const handleChevronClick = (e: React.MouseEvent) => {

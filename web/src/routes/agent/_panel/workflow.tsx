@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { History, Loader, Pencil } from "lucide-react";
+import { BarChart3, History, KanbanSquare, Loader, Pencil } from "lucide-react";
 import { lazy, Suspense, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,12 +9,19 @@ const WorkflowList = lazy(() =>
 const WorkflowRuns = lazy(() =>
   import("../../../pages/workflow/WorkflowRuns").then((m) => ({ default: m.WorkflowRuns })),
 );
+const WorkflowKanban = lazy(() =>
+  import("../../../pages/workflow/WorkflowKanban").then((m) => ({ default: m.WorkflowKanban })),
+);
+const WorkflowStats = lazy(() =>
+  import("../../../pages/workflow/WorkflowStats").then((m) => ({ default: m.WorkflowStats })),
+);
 
 function WorkflowTabPage() {
   const { t } = useTranslation("workflows");
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { tab?: string };
-  const activeTab = search.tab === "runs" ? "runs" : "list";
+  const activeTab =
+    search.tab === "kanban" ? "kanban" : search.tab === "runs" ? "runs" : search.tab === "stats" ? "stats" : "list";
 
   const onEditWorkflow = useCallback(
     (workflowId: string) => {
@@ -51,7 +58,9 @@ function WorkflowTabPage() {
 
   const tabs = [
     { id: "list" as const, label: t("page.tab_workflows"), icon: Pencil },
+    { id: "kanban" as const, label: t("page.tab_kanban"), icon: KanbanSquare },
     { id: "runs" as const, label: t("page.tab_runs"), icon: History },
+    { id: "stats" as const, label: t("page.tab_stats"), icon: BarChart3 },
   ];
 
   return (
@@ -64,7 +73,15 @@ function WorkflowTabPage() {
             <Link
               key={tab.id}
               to="/agent/workflow"
-              search={tab.id === "runs" ? { tab: "runs" } : {}}
+              search={
+                tab.id === "runs"
+                  ? { tab: "runs" }
+                  : tab.id === "kanban"
+                    ? { tab: "kanban" }
+                    : tab.id === "stats"
+                      ? { tab: "stats" }
+                      : {}
+              }
               className={`flex items-center gap-1.5 px-3.5 h-full text-xs font-medium border-b-2 transition-colors ${
                 isActive ? "text-brand border-brand" : "text-text-secondary border-transparent hover:text-text-primary"
               }`}
@@ -76,7 +93,11 @@ function WorkflowTabPage() {
         })}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        {activeTab === "list" ? (
+        {activeTab === "kanban" ? (
+          <WorkflowKanban />
+        ) : activeTab === "stats" ? (
+          <WorkflowStats />
+        ) : activeTab === "list" ? (
           <WorkflowList onEditWorkflow={onEditWorkflow} onViewVersions={onViewVersions} />
         ) : (
           <WorkflowRuns onSelectRun={onSelectRun} />

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { agentApi } from "@/src/api/sdk";
+import { envApi } from "@/src/api/sdk";
 import { ensureMetaAgent } from "../../../api/meta-agent";
 import type { WfMeta } from "../yaml-utils";
 
@@ -14,7 +14,7 @@ export interface UseWorkflowMetaAgentReturn {
   chatOpen: boolean;
   setChatOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   metaAgentId: string | null;
-  agentList: Array<{ name: string; model: string | null; description: string | null }>;
+  agentList: Array<{ name: string; description: string | null }>;
   agentOverrideOpen: boolean;
   setAgentOverrideOpen: (open: boolean) => void;
 }
@@ -50,26 +50,23 @@ export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentP
     }
   }, [chatOpen, metaAgentId]);
 
-  const [agentList, setAgentList] = useState<Array<{ name: string; model: string | null; description: string | null }>>(
-    [],
-  );
+  const [agentList, setAgentList] = useState<Array<{ name: string; description: string | null }>>([]);
   const [agentOverrideOpen, setAgentOverrideOpen] = useState(false);
 
   useEffect(() => {
-    agentApi
+    envApi
       .list()
-      .then(({ data }: { data?: unknown }) => {
-        if (Array.isArray(data)) {
+      .then((result) => {
+        if (result.ok && Array.isArray(result.data)) {
           setAgentList(
-            data.map((a) => ({
-              name: a.name,
-              model: a.model ?? null,
-              description: a.description ?? null,
+            result.data.map((env) => ({
+              name: env.name,
+              description: env.description ?? null,
             })),
           );
         }
       })
-      .catch((err: unknown) => console.error("Failed to load agent list:", err));
+      .catch((err: unknown) => console.error("Failed to load environment list:", err));
   }, []);
 
   return {

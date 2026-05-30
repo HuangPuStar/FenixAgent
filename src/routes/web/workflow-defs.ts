@@ -233,6 +233,35 @@ app.post(
           return { success: true };
         }
 
+        case "getParamDefs": {
+          const workflowId = payload.workflowId as string;
+          const version = payload.version as number | undefined;
+          if (!workflowId) {
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+          }
+
+          let targetVersion = version;
+          if (targetVersion === undefined) {
+            const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+            if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+            targetVersion = wf.latestVersion ?? 0;
+          }
+
+          const yaml = await getVersionYaml(workflowId, targetVersion);
+          if (!yaml) return error(404, { error: { type: "NOT_FOUND", message: "Version not found" } });
+
+          let params: Record<string, unknown> = {};
+          try {
+            const { parseWorkflowYaml } = await import("@fenix/workflow-engine");
+            const def = parseWorkflowYaml(yaml);
+            params = (def.params as Record<string, unknown>) ?? {};
+          } catch {
+            // YAML 解析失败，返回空 params
+          }
+
+          return { success: true, data: { version: targetVersion, params } };
+        }
+
         default:
           return error(400, { error: { type: "VALIDATION_ERROR", message: `Unknown action: ${action}` } });
       }
