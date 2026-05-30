@@ -328,35 +328,65 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               }
             }, 30000);
             break;
-          case "session_start":
-            console.log("[acp-client] session_start msg, starting...");
-            // 保存 agent prompt（Phase 2 恢复：原 Instance 链路通过 AgentLaunchSpec 传递）
-            if (msg.agent_prompt) {
-              sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
-            }
-            sessionMgr.startSession(msg.session_id).then((result) => {
-              console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
-              if (ws && ws.readyState === 1) {
-                if (result === "started") {
-                  console.log("[acp-client] sending session_started");
-                  const caps = sessionMgr.getCapabilities?.() ?? {};
-                  ws.send(
-                    JSON.stringify({
-                      type: "session_started",
-                      session_id: msg.session_id,
-                      payload: { capabilities: caps },
-                    }),
-                  );
-                } else if (result === "queued") {
-                  ws.send(JSON.stringify({ type: "session_queued", session_id: msg.session_id }));
-                } else {
-                  ws.send(JSON.stringify({ type: "session_error", session_id: msg.session_id, error: "spawn failed" }));
-                }
-              } else {
-                console.log("[acp-client] ws not ready, state:", ws?.readyState);
+          case "session_start": {
+            const sessionId = msg.session_id as string;
+            const launchSpec = msg.launch_spec;
+
+            if (launchSpec) {
+              console.log(`[acp-client] session_start with launch_spec for ${sessionId}`);
+              if (msg.agent_prompt) {
+                sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
               }
-            });
+              sessionMgr.startSession(sessionId, launchSpec as Record<string, unknown>).then((result) => {
+                console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
+                if (ws && ws.readyState === 1) {
+                  if (result === "started") {
+                    const caps = sessionMgr.getCapabilities?.() ?? {};
+                    ws.send(
+                      JSON.stringify({
+                        type: "session_started",
+                        session_id: sessionId,
+                        payload: { capabilities: caps },
+                      }),
+                    );
+                  } else if (result === "queued") {
+                    ws.send(JSON.stringify({ type: "session_queued", session_id: sessionId }));
+                  } else {
+                    ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }));
+                  }
+                } else {
+                  console.log("[acp-client] ws not ready, state:", ws?.readyState);
+                }
+              });
+            } else {
+              console.log("[acp-client] session_start (legacy) for", sessionId);
+              if (msg.agent_prompt) {
+                sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
+              }
+              sessionMgr.startSession(sessionId).then((result) => {
+                console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
+                if (ws && ws.readyState === 1) {
+                  if (result === "started") {
+                    const caps = sessionMgr.getCapabilities?.() ?? {};
+                    ws.send(
+                      JSON.stringify({
+                        type: "session_started",
+                        session_id: sessionId,
+                        payload: { capabilities: caps },
+                      }),
+                    );
+                  } else if (result === "queued") {
+                    ws.send(JSON.stringify({ type: "session_queued", session_id: sessionId }));
+                  } else {
+                    ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }));
+                  }
+                } else {
+                  console.log("[acp-client] ws not ready, state:", ws?.readyState);
+                }
+              });
+            }
             break;
+          }
           case "session_data":
             sessionMgr.sendData(msg.session_id, msg.payload);
             break;

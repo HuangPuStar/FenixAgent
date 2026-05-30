@@ -11,6 +11,54 @@ const manager = new RelayConnectionManager();
 
 const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
 
+async function buildAndSendSessionStart(
+  ws: WsConnection,
+  sessionId: string,
+  agentId: string,
+  userId: string,
+  agentPrompt: string | undefined,
+  env: EnvironmentRecord,
+): Promise<void> {
+  let payload: Record<string, unknown> = { agent_prompt: agentPrompt };
+
+  if (env.agentConfigId) {
+    try {
+      const { buildLaunchSpec } = await import("../../services/launch-spec-builder");
+      const { getAgentFullConfig, getAgentConfigById: getAgentCfg } = await import("../../services/config-pg");
+      const agentCfg = await getAgentCfg(env.agentConfigId);
+      if (agentCfg) {
+        const fullConfig = await getAgentFullConfig(
+          { organizationId: env.organizationId ?? "", userId: env.userId ?? "", role: "owner" },
+          agentCfg.id,
+        );
+        const spec = await buildLaunchSpec({
+          organizationId: env.organizationId ?? userId,
+          userId: env.userId ?? userId,
+          environmentId: agentId,
+          agentName: agentCfg.name,
+          agentConfigId: env.agentConfigId,
+          agentPrompt: agentPrompt ?? null,
+          modelRef:
+            typeof (fullConfig.agentConfig as Record<string, unknown>)?.model === "string"
+              ? ((fullConfig.agentConfig as Record<string, unknown>).model as string)
+              : null,
+          fullConfig,
+          environmentSecret: env.secret,
+          extraEnv: {
+            USER_META_API_KEY: env.secret,
+            USER_META_BASE_URL: (await import("../../config")).getBaseUrl(),
+          },
+        });
+        payload = { launch_spec: spec, agent_prompt: agentPrompt };
+      }
+    } catch (err) {
+      logError("[ACP-Relay] Failed to build launch spec for remote machine:", err);
+    }
+  }
+
+  sendToWs(ws, { type: "session_start", session_id: sessionId, ...payload });
+}
+
 // ────────────────────────────────────────────
 // Relay open / close / message handlers
 // ────────────────────────────────────────────
@@ -49,7 +97,7 @@ export async function handleRelayOpen(
     }
     setAgentMachineCache(agentId, machineId);
     const agentPrompt = await resolveAgentPrompt(env);
-    openMachineRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, machineConn, agentPrompt);
+    openMachineRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, machineConn, agentPrompt, env);
   } else {
     // 本地路径（默认 machine）
     await openLocalRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, env);
@@ -127,7 +175,8 @@ function openMachineRelay(
   userId: string,
   sessionId: string,
   machineConn: AcpConnectionEntry,
-  agentPrompt?: string,
+  agentPrompt: string | undefined,
+  env: EnvironmentRecord,
 ): void {
   const relayKeepalive = setInterval(() => {
     const entry = manager.get(relayWsId);
@@ -205,8 +254,8 @@ function openMachineRelay(
     }
   };
 
-  // 发送 session_start 到 machine WS（携带 agentPrompt 以恢复 Phase 2 删除的 Instance 链路）
-  sendToWs(machineConn.ws, { type: "session_start", session_id: sessionId, agent_prompt: agentPrompt });
+  // 发送 session_start 到 machine WS（携带完整 launch spec）
+  buildAndSendSessionStart(machineConn.ws, sessionId, agentId, userId, agentPrompt, env);
 
   // 超时处理：10s 内未收到 session_started 或 session_queued，则失败
   const spawnTimeout = setTimeout(() => {
