@@ -312,8 +312,22 @@ export async function handleRelayMessage(
   }
   if (parsed.type === "keep_alive") return;
 
-  // 获取 machine 连接
-  const machineConn = findMachineConnectionById(entry.instanceId ?? "");
+  // 本地路径：通过 EventBus 发布 inbound 消息
+  if (!entry.instanceId) {
+    const { getAcpEventBus } = await import("../event-bus");
+    const bus = getAcpEventBus(entry.agentId);
+    bus.publish({
+      id: `relay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      sessionId: entry.agentId,
+      type: (parsed.type as string) ?? "unknown",
+      direction: "inbound",
+      payload: parsed,
+    });
+    return;
+  }
+
+  // 远端 machine 路径：通过 machine WS 转发
+  const machineConn = findMachineConnectionById(entry.instanceId);
   if (!machineConn) {
     sendToRelayWs(ws, { type: "error", payload: { message: "Machine offline" } });
     return;
