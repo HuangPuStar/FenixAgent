@@ -15,7 +15,7 @@ const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
 // Relay open / close / message handlers
 // ────────────────────────────────────────────
 
-/** Called from onOpen — finds Environment → AgentConfig → machineId → machine WS */
+/** Called from onOpen — routes to local spawn or remote machine based on machineId */
 export async function handleRelayOpen(
   ws: WsConnection,
   relayWsId: string,
@@ -25,33 +25,99 @@ export async function handleRelayOpen(
 ): Promise<void> {
   log(`[ACP-Relay] Relay connection opened: relayWsId=${relayWsId} agentId=${agentId}`);
 
-  // 查 Environment → AgentConfig → machineId → machine WS 连接
   const env = await environmentRepo.getById(agentId);
-  if (!env?.agentConfigId) {
-    sendToRelayWs(ws, { type: "error", message: "Agent not found or not bound to a machine" });
-    ws.close(4004, "agent not bound to machine");
+  if (!env) {
+    sendToRelayWs(ws, { type: "error", payload: { message: "Environment not found" } });
+    ws.close(4004, "environment not found");
     return;
   }
+
+  // 查 agentConfig 获取 machineId
+  let machineId: string | null = null;
+  if (env.agentConfigId) {
+    const agentCfg = await getAgentConfigById(env.agentConfigId);
+    machineId = agentCfg?.machineId ?? null;
+  }
+
+  if (machineId) {
+    // 远端 machine 路径
+    const machineConn = findMachineConnectionById(machineId);
+    if (!machineConn) {
+      sendToRelayWs(ws, { type: "error", payload: { message: "Machine offline" } });
+      ws.close(4004, "machine offline");
+      return;
+    }
+    setAgentMachineCache(agentId, machineId);
+    const agentPrompt = await resolveAgentPrompt(env);
+    openMachineRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, machineConn, agentPrompt);
+  } else {
+    // 本地路径（默认 machine）
+    await openLocalRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, env);
+  }
+}
+
+async function resolveAgentPrompt(env: EnvironmentRecord): Promise<string | undefined> {
+  if (!env.agentConfigId) return undefined;
   const agentCfg = await getAgentConfigById(env.agentConfigId);
-  if (!agentCfg?.machineId) {
-    sendToRelayWs(ws, { type: "error", message: "Agent not bound to a machine" });
-    ws.close(4004, "agent not bound to machine");
+  return (agentCfg?.prompt as string) ?? undefined;
+}
+
+async function openLocalRelay(
+  ws: WsConnection,
+  relayWsId: string,
+  agentId: string,
+  userId: string,
+  sessionId: string,
+  env: EnvironmentRecord,
+): Promise<void> {
+  const { ensureRunning } = await import("../../services/instance");
+
+  try {
+    const result = await ensureRunning(userId, agentId);
+    log(`[ACP-Relay] Local instance ${result.status}: instanceId=${result.instance.id} envId=${agentId}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRelayWs(ws, { type: "error", payload: { message: `Failed to start local instance: ${msg}` } });
+    ws.close(1011, "spawn failed");
     return;
   }
-  const machineConn = findMachineConnectionById(agentCfg.machineId);
-  if (!machineConn) {
-    sendToRelayWs(ws, { type: "error", message: "Agent not found or offline" });
-    ws.close(4004, "agent not found");
-    return;
-  }
 
-  // 预热 agentMachineCache（供后续 sendToAgentWs 同步调用）
-  setAgentMachineCache(agentId, agentCfg.machineId);
+  const relayKeepalive = setInterval(() => {
+    const entry = manager.get(relayWsId);
+    if (!entry || entry.ws.readyState !== 1) {
+      clearInterval(relayKeepalive);
+      return;
+    }
+    sendToRelayWs(entry.ws, { type: "keep_alive" });
+  }, RELAY_KEEPALIVE_INTERVAL_MS);
 
-  // 提取 agent prompt，传给 SessionManager（Phase 2 删除了 Instance 链路，需要在这里恢复）
-  const agentPrompt = (agentCfg.prompt as string) ?? undefined;
+  const entry: RelayConnectionEntry = {
+    agentId,
+    userId,
+    unsub: null,
+    keepalive: relayKeepalive,
+    ws,
+    openTime: Date.now(),
+    instanceId: null,
+    relayHandle: null,
+    relayUnsub: null,
+    outboundBuffer: [],
+    sessionStarted: true,
+  };
+  manager.add(relayWsId, entry);
 
-  openMachineRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, machineConn, agentPrompt);
+  // 订阅 EventBus 转发 outbound 消息到前端
+  const { getAcpEventBus } = await import("../event-bus");
+  const bus = getAcpEventBus(agentId);
+  const unsub = bus.subscribe((event) => {
+    if (event.direction !== "outbound") return;
+    const e = manager.get(relayWsId);
+    if (!e || e.ws.readyState !== 1) return;
+    sendToRelayWs(e.ws, event.payload as object);
+  });
+  entry.unsub = unsub;
+
+  log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId}`);
 }
 
 function openMachineRelay(
@@ -123,7 +189,10 @@ function openMachineRelay(
       case "session_ended":
       case "session_error":
         // 关闭前端 relay WS
-        sendToRelayWs(ws, { type: "error", message: (payload as Record<string, unknown>)?.error || "Session ended" });
+        sendToRelayWs(ws, {
+          type: "error",
+          payload: { message: ((payload as Record<string, unknown>)?.error as string) || "Session ended" },
+        });
         ws.close(1000, type);
         break;
       case "session_queued":
@@ -144,7 +213,7 @@ function openMachineRelay(
     const e = manager.get(relayWsId);
     if (e && !e.sessionStarted) {
       log(`[ACP-Relay] session_start timeout for ${relayWsId}`);
-      sendToRelayWs(ws, { type: "error", message: "Agent spawn timeout" });
+      sendToRelayWs(ws, { type: "error", payload: { message: "Agent spawn timeout" } });
       ws.close(1011, "spawn timeout");
       // 通知 machine 清理可能已 spawn 的 agent 子进程
       sendToWs(machineConn.ws, { type: "session_end", session_id: sessionId });
@@ -197,7 +266,7 @@ export async function handleRelayMessage(
   // 获取 machine 连接
   const machineConn = findMachineConnectionById(entry.instanceId ?? "");
   if (!machineConn) {
-    sendToRelayWs(ws, { type: "error", message: "Machine offline" });
+    sendToRelayWs(ws, { type: "error", payload: { message: "Machine offline" } });
     return;
   }
 
@@ -276,78 +345,8 @@ export function sendToAgentWs(agentId: string, msg: object): boolean {
   return false;
 }
 
-/** 兼容层：通过 environmentId 查找对应 machine 在线状态，返回虚拟 SpawnedInstance */
-export async function findRunningInstanceByEnvironment(
-  environmentId: string,
-  _userId?: string,
-): Promise<SpawnedInstance | undefined> {
-  const { findMachineConnectionByAgentId } = await import("../acp-ws-handler");
-  const entry = await findMachineConnectionByAgentId(environmentId);
-  if (!entry) return;
-  return {
-    id: entry.machineId!,
-    userId: entry.userId,
-    port: 0,
-    pid: null,
-    status: entry.ws.readyState === 1 ? "running" : "stopped",
-    command: "",
-    error: null,
-    apiKey: "",
-    createdAt: new Date(entry.openTime),
-    environmentId,
-    instanceNumber: 1,
-  };
-}
-
-/** 兼容层：通过 machine WS 请求远端 spawn agent 子进程 */
-export async function spawnInstanceFromEnvironment(
-  userId: string,
-  environmentId: string,
-  _prefetchedEnv?: EnvironmentRecord,
-  _extraEnv?: Record<string, string>,
-): Promise<SpawnedInstance> {
-  const { findMachineConnectionByAgentId } = await import("../acp-ws-handler");
-  const entry = await findMachineConnectionByAgentId(environmentId);
-  if (!entry) {
-    const { NotFoundError } = await import("../../errors");
-    throw new NotFoundError("No online machine for this environment");
-  }
-
-  const sessionId = `auto_${environmentId}_${Date.now()}`;
-  sendToWs(entry.ws, { type: "session_start", session_id: sessionId });
-
-  // 等待 session_started（超时 30s）
-  const started = await new Promise<boolean>((resolve) => {
-    const timeout = setTimeout(() => resolve(false), 30000);
-    const origCb = entry.onSessionMessage;
-    entry.onSessionMessage = (msgSessionId, type) => {
-      if (msgSessionId === sessionId && type === "session_started") {
-        clearTimeout(timeout);
-        resolve(true);
-      }
-      origCb?.(msgSessionId, type, undefined);
-    };
-  });
-
-  if (!started) {
-    const { AppError } = await import("../../errors");
-    throw new AppError("Remote agent spawn timeout", "SPAWN_TIMEOUT", 504);
-  }
-
-  return {
-    id: entry.machineId!,
-    userId,
-    port: 0,
-    pid: null,
-    status: "running",
-    command: "",
-    error: null,
-    apiKey: "",
-    createdAt: new Date(),
-    environmentId,
-    instanceNumber: 1,
-  };
-}
+/** 兼容层：委托到 instance.ts 的本地 spawn */
+export { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment } from "../../services/instance";
 
 /** 关闭指定 machine 的 relay */
 export function closeInstanceRelay(instanceId: string): void {
