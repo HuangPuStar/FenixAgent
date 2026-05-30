@@ -196,8 +196,8 @@ async function gracefulShutdown(signal: string) {
   console.log(`\n[RCS] Received ${signal}, shutting down...`);
   const hermesClient = getHermesClient();
   await hermesClient?.stop();
-  closeAllAcpConnections();
   closeAllRelayConnections();
+  closeAllAcpConnections();
   await stopAllInstances();
   stopScheduler();
   await closeCache();
