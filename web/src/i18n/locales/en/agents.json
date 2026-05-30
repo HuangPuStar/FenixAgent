@@ -45,6 +45,7 @@
     "nameValidationError": "Name can only contain lowercase letters, numbers, and single hyphens, length 1-64",
     "machine": "Machine",
     "machinePlaceholder": "Select an online machine",
+    "machineLocal": "Local (Default)",
     "machineValidationError": "Machine is required",
     "model": "Model",
     "modelPlaceholder": "Select model",

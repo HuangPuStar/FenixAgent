@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { agentApi, envApi, instanceApi, kbApi, modelApi, skillConfigApi } from "@/src/api/sdk";
+import { agentApi, envApi, instanceApi, kbApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
 import { PermissionTab } from "../../components/PermissionTab";
 import { NS } from "../../i18n";
 import {
@@ -48,6 +48,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
   const [skillOptions, setSkillOptions] = useState<{ id: string; name: string; description: string }[]>([]);
+  const [machineOptions, setMachineOptions] = useState<{ id: string; agentName: string; hostname: string }[]>([]);
 
   const [formName, setFormName] = useState("");
   const [formModel, setFormModel] = useState("");
@@ -67,6 +68,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formKnowledgeMaxResults, setFormKnowledgeMaxResults] = useState("5");
   const [formPermission, setFormPermission] = useState<Record<string, unknown> | null>(null);
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
+  const [formMachineId, setFormMachineId] = useState<string>("local");
   const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission" | "skills" | "more">("basic");
 
   const [loading, setLoading] = useState(false);
@@ -84,6 +86,18 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setFormKnowledgeMaxResults(knowledgeDefaults.maxResults);
     setFormPermission(null);
     setFormSkillIds([]);
+    setFormMachineId("local");
+
+    // 加载在线机器列表
+    registryApi.list({ status: "online", limit: 100 }).then(({ data, error }) => {
+      if (error) return;
+      const machines =
+        (data as { data?: { id: string; agentName: string; machineInfo: { hostname?: string } | null }[] } | null)
+          ?.data ?? [];
+      setMachineOptions(
+        machines.map((m) => ({ id: m.id, agentName: m.agentName, hostname: m.machineInfo?.hostname ?? "" })),
+      );
+    });
 
     if (isEdit) {
       setLoading(true);
@@ -106,6 +120,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormColor(String(d.color ?? ""));
           setFormHidden(Boolean(d.hidden));
           setFormDisable(Boolean(d.disable));
+          setFormMachineId((d.machineId as string) || "local");
 
           const knowledgeState = buildKnowledgeFormState(d as Parameters<typeof buildKnowledgeFormState>[0]);
           setFormKnowledgeBaseIds(knowledgeState.knowledgeBaseIds);
@@ -256,6 +271,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             },
           }),
           skillIds: formSkillIds,
+          machineId: formMachineId === "local" ? null : formMachineId,
         };
         const { error } = await agentApi.set(agentName!, data);
         if (error) {
@@ -288,6 +304,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             },
           }),
           skillIds: formSkillIds,
+          machineId: formMachineId === "local" ? null : formMachineId,
         });
         if (error) {
           console.error(t("save.errorGeneric", { message: "" }), error);
@@ -325,6 +342,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     formKnowledgeSearchFirst,
     formKnowledgeMaxResults,
     formSkillIds,
+    formMachineId,
     agentName,
     knowledgeOptions,
     onOpenChange,
@@ -446,6 +464,22 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                         {modelOptions.map((m) => (
                           <SelectItem key={m} value={m}>
                             {m}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t("form.machine")}</Label>
+                    <Select value={formMachineId} onValueChange={setFormMachineId}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder={t("form.machinePlaceholder")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="local">{t("form.machineLocal")}</SelectItem>
+                        {machineOptions.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.hostname || m.agentName} ({m.id.slice(0, 8)})
                           </SelectItem>
                         ))}
                       </SelectContent>
