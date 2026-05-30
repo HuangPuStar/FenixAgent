@@ -66,6 +66,19 @@ export {
   type SkillSourceInfo,
   SkillSourceInfoSchema,
 } from "./config.schema";
+// Instances
+export {
+  type DeleteInstanceResponse,
+  DeleteInstanceResponseSchema,
+  type InstanceInfo,
+  InstanceInfoSchema,
+  type InstanceListResponse,
+  InstanceListResponseSchema,
+  InstanceStatusSchema,
+  type InstanceStatus,
+  type SpawnInstanceFromEnvironmentRequest,
+  SpawnInstanceFromEnvironmentRequestSchema,
+} from "./instance.schema";
 // Environments
 export {
   type CreateEnvironmentRequest,
