@@ -44,6 +44,7 @@ export function handleAcpWsOpen(
       isMachine: true,
       machineId: null,
       wsId,
+      sessionMessageListeners: new Map(),
     });
     return;
   }
@@ -227,8 +228,15 @@ export async function handleAcpWsMessage(
     ];
     if (entry.isMachine && SESSION_MSG_TYPES.includes(msg.type as string)) {
       const sessionId = msg.session_id as string | undefined;
-      if (sessionId && entry.onSessionMessage) {
-        entry.onSessionMessage(sessionId, msg.type as string, (msg as Record<string, unknown>).payload);
+      if (sessionId) {
+        const listener = entry.sessionMessageListeners?.get(sessionId);
+        if (listener) {
+          listener(sessionId, msg.type as string, (msg as Record<string, unknown>).payload);
+        }
+        // 兼容旧 onSessionMessage 回调
+        if (entry.onSessionMessage) {
+          entry.onSessionMessage(sessionId, msg.type as string, (msg as Record<string, unknown>).payload);
+        }
       }
       continue;
     }

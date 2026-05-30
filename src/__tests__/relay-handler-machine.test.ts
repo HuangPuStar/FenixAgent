@@ -125,7 +125,7 @@ describe("handleRelayMessage", () => {
 
 describe("兼容层函数导出验证", () => {
   test("sendToAgentWs 已导出且可调用", async () => {
-    const { sendToAgentWs } = await import("../transport/relay/relay-handler");
+    const { sendToAgentWs } = await import("../transport/relay");
     expect(typeof sendToAgentWs).toBe("function");
     const result = sendToAgentWs("env_nonexistent", { type: "test" });
     expect(result).toBe(false);

@@ -87,11 +87,13 @@ export async function handleRelayOpen(
     return;
   }
 
-  // 查 agentConfig 获取 machineId
+  // 查 agentConfig 获取 machineId 和 agentPrompt（两条路径共用）
   let machineId: string | null = null;
+  let agentPrompt: string | undefined;
   if (env.agentConfigId) {
     const agentCfg = await getAgentConfigById(env.agentConfigId);
     machineId = agentCfg?.machineId ?? null;
+    agentPrompt = (agentCfg?.prompt as string) ?? undefined;
   }
 
   if (machineId) {
@@ -103,18 +105,11 @@ export async function handleRelayOpen(
       return;
     }
     setAgentMachineCache(agentId, machineId);
-    const agentPrompt = await resolveAgentPrompt(env);
     openMachineRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, machineConn, agentPrompt, env);
   } else {
     // 本地路径（默认 machine）
-    await openLocalRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, env);
+    await openLocalRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, env, agentPrompt);
   }
-}
-
-async function resolveAgentPrompt(env: EnvironmentRecord): Promise<string | undefined> {
-  if (!env.agentConfigId) return;
-  const agentCfg = await getAgentConfigById(env.agentConfigId);
-  return (agentCfg?.prompt as string) ?? undefined;
 }
 
 async function openLocalRelay(
@@ -124,6 +119,7 @@ async function openLocalRelay(
   userId: string,
   sessionId: string,
   _env: EnvironmentRecord,
+  agentPrompt?: string,
 ): Promise<void> {
   const { ensureRunning } = await import("../../services/instance");
 
@@ -215,8 +211,8 @@ async function openLocalRelay(
     });
   }
 
-  // 5. 通知前端连接就绪
-  sendToRelayWs(ws, { type: "status", payload: { connected: true } });
+  // 5. 通知前端连接就绪（携带 agent_prompt）
+  sendToRelayWs(ws, { type: "status", payload: { connected: true, agent_prompt: agentPrompt ?? null } });
   log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
 }
 
@@ -255,15 +251,8 @@ function openMachineRelay(
   };
   manager.add(relayWsId, entry);
 
-  // 设置 machine 连接的 onSessionMessage 回调（保留旧回调链，支持多 relay 共存）
-  const prevOnMsg = machineConn.onSessionMessage;
-  machineConn.onSessionMessage = (msgSessionId: string, type: string, payload: unknown) => {
-    // session_ended / session_error 通知所有 relay（共享 opencode 进程退出影响所有 relay）
-    // session_started / session_data 只发给当前 relay（避免重复）
-    if (type === "session_ended" || type === "session_error") {
-      prevOnMsg?.(msgSessionId, type, payload);
-    }
-    // 再处理当前 relay
+  // 注册 per-session 消息回调（替代旧的链式 onSessionMessage 覆盖）
+  const sessionCallback = (_msgSessionId: string, type: string, payload: unknown) => {
     const e = manager.get(relayWsId);
     if (!e || e.ws.readyState !== 1) return;
 
@@ -285,12 +274,10 @@ function openMachineRelay(
         break;
       }
       case "session_data":
-        // 解包 payload 转发到前端 relay WS
         sendToRelayWs(ws, payload as object);
         break;
       case "session_ended":
       case "session_error":
-        // 关闭前端 relay WS
         sendToRelayWs(ws, {
           type: "error",
           payload: { message: ((payload as Record<string, unknown>)?.error as string) || "Session ended" },
@@ -307,6 +294,12 @@ function openMachineRelay(
     }
   };
 
+  // 初始化 sessionMessageListeners（如果不存在）
+  if (!machineConn.sessionMessageListeners) {
+    machineConn.sessionMessageListeners = new Map();
+  }
+  machineConn.sessionMessageListeners.set(sessionId, sessionCallback);
+
   // 发送 session_start 到 machine WS（携带完整 launch spec）
   buildAndSendSessionStart(machineConn.ws, sessionId, agentId, userId, agentPrompt, env);
 
@@ -317,20 +310,21 @@ function openMachineRelay(
       log(`[ACP-Relay] session_start timeout for ${relayWsId}`);
       sendToRelayWs(ws, { type: "error", payload: { message: "Agent spawn timeout" } });
       ws.close(1011, "spawn timeout");
-      // 通知 machine 清理可能已 spawn 的 agent 子进程
       sendToWs(machineConn.ws, { type: "session_end", session_id: sessionId });
+      machineConn.sessionMessageListeners?.delete(sessionId);
+      machineConn.sessionMessageListeners?.delete(`_timeout_${sessionId}`);
       manager.remove(relayWsId);
     }
   }, 10000);
 
-  // 成功后清除超时
-  const origOnMsg = machineConn.onSessionMessage;
-  machineConn.onSessionMessage = (msgSessionId, type, payload) => {
+  // session_started/session_queued/session_error 清除超时
+  const timeoutClearCallback = (_msgSessionId: string, type: string, _payload: unknown) => {
     if (type === "session_started" || type === "session_queued" || type === "session_error") {
       clearTimeout(spawnTimeout);
+      machineConn.sessionMessageListeners?.delete(`_timeout_${sessionId}`);
     }
-    origOnMsg?.(msgSessionId, type, payload);
   };
+  machineConn.sessionMessageListeners.set(`_timeout_${sessionId}`, timeoutClearCallback);
 
   log(
     `[ACP-Relay] Machine relay established: relayWsId=${relayWsId} → machineId=${machineConn.machineId} sessionId=${sessionId}`,
@@ -375,6 +369,8 @@ export async function handleRelayMessage(
       entry.relayHandle.send(parsed as { type: string; payload?: unknown });
     } catch (err) {
       logError("[ACP-Relay] relay handle send error:", err);
+      sendToRelayWs(ws, { type: "error", payload: { message: "Agent connection error" } });
+      ws.close(1011, "relay send failed");
     }
     return;
   }
@@ -394,7 +390,7 @@ export async function handleRelayMessage(
 
     sendToWs(machineConn.ws, {
       type: "session_data",
-      session_id: relayWsId,
+      session_id: entry.sessionId,
       payload: parsed,
     });
     return;
@@ -412,8 +408,8 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
   );
 
   // 关闭 relay handle（本地路径）
-  if (entry.relayHandle && entry.instanceId) {
-    if (!manager.hasOtherRelayForInstance(entry.instanceId, relayWsId)) {
+  if (entry.relayHandle) {
+    if (entry.instanceId && !manager.hasOtherRelayForInstance(entry.instanceId, relayWsId)) {
       try {
         entry.relayHandle.close(1000, "relay disconnected");
       } catch {
@@ -423,11 +419,13 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
     entry.relayUnsub?.();
   }
 
-  // 发送 session_end 到 machine WS（远端路径）
+  // 发送 session_end 到 machine WS（远端路径）并清理 sessionMessageListeners
   if (entry.instanceId && !entry.relayHandle) {
     const machineConn = findMachineConnectionById(entry.instanceId);
     if (machineConn) {
-      sendToWs(machineConn.ws, { type: "session_end", session_id: relayWsId });
+      sendToWs(machineConn.ws, { type: "session_end", session_id: entry.sessionId });
+      machineConn.sessionMessageListeners?.delete(entry.sessionId);
+      machineConn.sessionMessageListeners?.delete(`_timeout_${entry.sessionId}`);
     }
   }
 
@@ -437,40 +435,6 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
 // ────────────────────────────────────────────
 // Compatibility layer (signatures unchanged)
 // ────────────────────────────────────────────
-
-/** 本地 SpawnedInstance 类型定义（instance.ts 删除后的最小化版本） */
-export interface SpawnedInstance {
-  id: string;
-  userId: string;
-  port: number;
-  pid: number | null;
-  status: string;
-  command: string;
-  error: string | null;
-  apiKey: string;
-  createdAt: Date;
-  environmentId: string;
-  instanceNumber: number;
-}
-
-/** 兼容层：向 agent 对应的远端 machine 发送消息（同步签名） */
-export function sendToAgentWs(agentId: string, msg: object): boolean {
-  const { findMachineConnectionById: findById, getAgentMachineCache } = require("../acp-ws-handler");
-  const cache = getAgentMachineCache?.() as Map<string, string> | undefined;
-  const machineId = cache?.get(agentId);
-  if (machineId) {
-    const entry = findById(machineId);
-    if (entry) {
-      sendToWs(entry.ws, {
-        type: "session_data",
-        session_id: `auto_${agentId}`,
-        payload: msg,
-      });
-      return true;
-    }
-  }
-  return false;
-}
 
 /** 兼容层：委托到 instance.ts 的本地 spawn */
 export { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment } from "../../services/instance";
