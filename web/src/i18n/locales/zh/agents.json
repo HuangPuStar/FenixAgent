@@ -32,10 +32,11 @@
     "createTitle": "新建Agent",
     "createConfirm": "创建",
     "tabs": {
-      "basic": "基础配置",
+      "basic": "基础",
       "knowledge": "知识库",
       "permission": "权限配置",
-      "skills": "技能"
+      "skills": "技能",
+      "more": "更多"
     }
   },
   "form": {

@@ -32,10 +32,11 @@
     "createTitle": "New Agent",
     "createConfirm": "Create",
     "tabs": {
-      "basic": "Basic Config",
+      "basic": "Basic",
       "knowledge": "Knowledge Base",
       "permission": "Permissions",
-      "skills": "Skills"
+      "skills": "Skills",
+      "more": "More"
     }
   },
   "form": {
