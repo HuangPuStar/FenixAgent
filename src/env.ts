@@ -56,7 +56,7 @@ const envSchema = z.object({
   // ── 可选：Workflow ──
 
   // ── 可选：注册中心 ──
-  REGISTRY_SECRET: z.string().default(""),
+  REGISTRY_SECRET: z.string().default("rcs-registry-secret"),
   ACPX_G_URL: z.string().default("http://localhost:8848"),
 
   // ── 可选：Redis 缓存 ──
