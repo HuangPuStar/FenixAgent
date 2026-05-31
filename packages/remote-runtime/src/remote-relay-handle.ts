@@ -11,8 +11,8 @@ export class RemoteRelayHandle implements EngineRelayHandle {
     private instanceId: string,
     private sessionId: string,
   ) {
-    this.unsubSession = transport.onSessionMessage((instId, sessId, msg) => {
-      if (instId !== instanceId || sessId !== sessionId) return;
+    this.unsubSession = transport.onSessionMessage((instId, _sessId, msg) => {
+      if (instId !== instanceId) return;
       // acp-link 的 relay 消息格式：{ type: "relay", payload: { type: "session_created", payload: {...} } }
       // 真正的 ACP 消息嵌套在 payload 中
       const inner = msg.payload as Record<string, unknown> | undefined;
