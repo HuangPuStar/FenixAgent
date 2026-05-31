@@ -18,7 +18,8 @@ set -euo pipefail
 RCS_HOST="${RCS_HOST:-localhost}"
 RCS_PORT="${RCS_PORT:-3000}"
 RCS_SECRET="${RCS_SECRET:-rcs-registry-secret}"
-RCS_URL="${RCS_URL:-}"                # 完整 WS URL，设置后忽略 RCS_HOST/RCS_PORT
+RCS_URL="${RCS_URL:-}"                # WS base URL (scheme://host:port)，设置后忽略 RCS_HOST/RCS_PORT
+                                      # /acp/ws 路径由 acp-link 内部自动拼接
 TENANT_ID="${RCS_TENANT_ID:-}"
 USER_ID="${RCS_USER_ID:-}"
 LABELS="${RCS_LABELS:-remote-runtime}"
@@ -37,7 +38,7 @@ if [ $# -eq 0 ]; then
   echo "环境变量:"
   echo "  RCS_HOST            RCS 地址 (默认 localhost)"
   echo "  RCS_PORT            RCS 端口 (默认 3000)"
-  echo "  RCS_URL             完整 WS URL，如 wss://rcs.example.com (设置后忽略 HOST/PORT)"
+  echo "  RCS_URL             WS base URL (scheme://host:port)，如 wss://rcs.example.com (设置后忽略 HOST/PORT)"
   echo "  RCS_SECRET          注册密钥 (默认 rcs-registry-secret)"
   echo "  RCS_TENANT_ID       组织 ID (必填)"
   echo "  RCS_USER_ID         用户 ID (可选)"

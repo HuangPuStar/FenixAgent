@@ -134,11 +134,19 @@ async function openLocalRelay(
   };
   manager.add(relayWsId, entry);
 
-  // 4. 注册 onMessage（flush relay handle 内部缓冲的消息）
+  // 4. 先发送 relay 层的 status（携带 agent_prompt），再注册 onMessage
+  //    确保前端先收到连接就绪信号，再收到 agent 的 capabilities
+  sendToRelayWs(ws, { type: "status", payload: { connected: true, agent_prompt: agentPrompt ?? null } });
+  log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
+
   const full = handle as FullRelayHandle;
   if (full.onMessage) {
     entry.relayUnsub = full.onMessage((message) => {
-      if (message.type === "status") return; // 由本层发送 status
+      // 转发 agent 的 status（含 capabilities），使前端能检测 session/list 等能力
+      if (message.type === "status") {
+        sendToRelayWs(ws, message);
+        return;
+      }
       if (message.type === "relay_closed") {
         sendToRelayWs(ws, {
           type: "error",
@@ -152,10 +160,6 @@ async function openLocalRelay(
       sendToRelayWs(e.ws, message);
     });
   }
-
-  // 5. 通知前端连接就绪（携带 agent_prompt）
-  sendToRelayWs(ws, { type: "status", payload: { connected: true, agent_prompt: agentPrompt ?? null } });
-  log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
 }
 
 /** Called from onMessage — forwards frontend messages */
