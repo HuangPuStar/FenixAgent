@@ -3,9 +3,9 @@
  */
 
 /**
- * 当前 core 仅支持本地 node。
+ * 当前 core 支持本地 node 和远程 node。
  */
-export type CoreNodeMode = "local";
+export type CoreNodeMode = "local" | "remote";
 
 /**
  * Core 层关心的 node 在线状态。

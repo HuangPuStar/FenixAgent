@@ -11,8 +11,8 @@ export type RuntimeClock = () => Date;
  * 与实例关联的 runtime 缓存条目。
  */
 export interface RuntimeInstanceRuntimeEntry {
-  /** 该实例绑定的 engine plugin 定义。 */
-  plugin: EnginePlugin;
+  /** 该实例绑定的 engine plugin 定义。remote node 下为 null。 */
+  plugin: EnginePlugin | null;
   /** 该实例对应的 engine runtime 句柄。 */
   runtime: EngineRuntime;
   /** 当前缓存的 relay 连接；尚未连接时为空。 */
