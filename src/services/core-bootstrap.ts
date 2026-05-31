@@ -26,6 +26,8 @@ function defaultCreateFacade(): CoreRuntimeFacade {
       },
     ],
     onInstanceStarted(instanceId, runtime, updateMetadata) {
+      // 远程实例没有 getInstanceState，跳过 metadata 写入
+      if (typeof (runtime as OpencodeRuntime).getInstanceState !== "function") return;
       const opencode = runtime as OpencodeRuntime;
       const state = opencode.getInstanceState(instanceId);
       if (state) {
