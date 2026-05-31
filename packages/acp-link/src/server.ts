@@ -2,6 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import type {
   AgentCapabilities,
@@ -301,6 +303,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   }
 
   const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
+  const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd());
   const url = `${config.rcsUrl}/acp/ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
   let ws: WebSocket | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -342,7 +345,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       }
     };
 
-    ws.onmessage = (event) => {
+    ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data as string);
         switch (msg.type) {
@@ -414,10 +417,110 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             break;
           }
           case "session_data":
-            sessionMgr.sendData(msg.session_id, msg.payload);
+            // 优先走 InstanceManager，否则走旧 SessionManager
+            if (instanceMgr.hasInstance(msg.session_id)) {
+              handleInstanceRelay(instanceMgr, msg.session_id, msg.payload, ws!);
+            } else {
+              sessionMgr.sendData(msg.session_id, msg.payload);
+            }
             break;
           case "session_end":
-            sessionMgr.endSession(msg.session_id);
+            if (instanceMgr.hasInstance(msg.session_id)) {
+              instanceMgr.stop(msg.session_id);
+            } else {
+              sessionMgr.endSession(msg.session_id);
+            }
+            break;
+          case "prepare": {
+            const instId = msg.instance_id as string;
+            const launchSpec = msg.launch_spec as AgentLaunchSpec;
+            try {
+              await instanceMgr.prepare(instId, launchSpec);
+              ws!.send(
+                JSON.stringify({
+                  type: "prepare_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "ok",
+                }),
+              );
+            } catch (err) {
+              ws!.send(
+                JSON.stringify({
+                  type: "prepare_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "error",
+                  message: (err as Error).message,
+                }),
+              );
+            }
+            break;
+          }
+          case "start": {
+            const instId = msg.instance_id as string;
+            try {
+              const result = await instanceMgr.start(instId);
+              ws!.send(
+                JSON.stringify({
+                  type: "start_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "ok",
+                  capabilities: result.capabilities,
+                }),
+              );
+            } catch (err) {
+              ws!.send(
+                JSON.stringify({
+                  type: "start_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "error",
+                  message: (err as Error).message,
+                }),
+              );
+            }
+            break;
+          }
+          case "stop": {
+            const instId = msg.instance_id as string;
+            try {
+              await instanceMgr.stop(instId);
+              ws!.send(
+                JSON.stringify({
+                  type: "stop_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "ok",
+                }),
+              );
+            } catch (err) {
+              ws!.send(
+                JSON.stringify({
+                  type: "stop_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "error",
+                  message: (err as Error).message,
+                }),
+              );
+            }
+            break;
+          }
+          case "relay": {
+            const instId = msg.instance_id as string;
+            const sessId = msg.session_id as string;
+            const relayPayload = msg.payload as Record<string, unknown>;
+            if (instanceMgr.hasInstance(instId)) {
+              await handleInstanceRelayMessage(instanceMgr, instId, sessId, relayPayload, ws!);
+            } else {
+              // fallback: 转发给旧 SessionManager
+              sessionMgr.sendData(sessId, { type: "session_data", payload: relayPayload });
+            }
+            break;
+          }
+          case "relay_close":
             break;
           default:
             console.log(`[acp-client] received: ${msg.type}`);
@@ -455,6 +558,90 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       ws?.close();
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// InstanceManager relay helpers
+// ---------------------------------------------------------------------------
+
+async function handleInstanceRelayMessage(
+  instanceMgr: InstanceManager,
+  instanceId: string,
+  sessionId: string,
+  payload: Record<string, unknown>,
+  ws: WebSocket,
+): Promise<void> {
+  const conn = instanceMgr.getConnection(instanceId);
+  if (!conn) {
+    ws.send(
+      JSON.stringify({
+        type: "relay",
+        instance_id: instanceId,
+        session_id: sessionId,
+        payload: { type: "error", payload: { message: "Instance not connected" } },
+      }),
+    );
+    return;
+  }
+
+  const type = payload.type as string;
+  try {
+    switch (type) {
+      case "new_session": {
+        const cwd = (payload.payload as Record<string, unknown>)?.cwd as string | undefined;
+        const r = await conn.newSession({ cwd: cwd ?? process.cwd(), mcpServers: [] });
+        ws.send(
+          JSON.stringify({
+            type: "relay",
+            instance_id: instanceId,
+            session_id: sessionId,
+            payload: { type: "session_created", payload: r },
+          }),
+        );
+        break;
+      }
+      case "prompt": {
+        const content = (payload.payload as Record<string, unknown>)?.content as acp.ContentBlock[];
+        const result = await conn.prompt({ sessionId, prompt: content ?? [] });
+        ws.send(
+          JSON.stringify({
+            type: "relay",
+            instance_id: instanceId,
+            session_id: sessionId,
+            payload: { type: "prompt_complete", payload: result },
+          }),
+        );
+        break;
+      }
+      case "cancel": {
+        await conn.cancel({ sessionId });
+        break;
+      }
+      default:
+        console.log(`[instance-manager] unhandled relay type: ${type}`);
+    }
+  } catch (err) {
+    console.error(`[instance-manager] relay error: ${(err as Error).message}`);
+    ws.send(
+      JSON.stringify({
+        type: "relay",
+        instance_id: instanceId,
+        session_id: sessionId,
+        payload: { type: "error", payload: { message: (err as Error).message } },
+      }),
+    );
+  }
+}
+
+function handleInstanceRelay(instanceMgr: InstanceManager, instanceId: string, payload: unknown, ws: WebSocket): void {
+  // session_data 转发到 InstanceManager 的 connection
+  const conn = instanceMgr.getConnection(instanceId);
+  if (!conn) return;
+
+  // session_data 类型的消息直接由 handleInstanceRelayMessage 异步处理
+  handleInstanceRelayMessage(instanceMgr, instanceId, instanceId, payload as Record<string, unknown>, ws).catch((err) =>
+    console.error(`[instance-manager] handleInstanceRelay error: ${(err as Error).message}`),
+  );
 }
 
 // ---------------------------------------------------------------------------
