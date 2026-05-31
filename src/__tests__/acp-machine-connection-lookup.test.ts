@@ -24,7 +24,11 @@ mock.module("../services/registry", () => ({
 
 // Mock registry-heartbeat
 mock.module("../services/registry-heartbeat", () => ({
+  startHeartbeat: mock(() => {}),
   handleHeartbeat: mock(async () => {}),
+  stopHeartbeat: mock(() => {}),
+  startMachineSweep: mock(() => {}),
+  stopMachineSweep: mock(() => {}),
 }));
 
 // Mock environment service
