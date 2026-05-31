@@ -1,7 +1,11 @@
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { createEnginePlugin, type OpencodeRuntime } from "@fenix/opencode";
+import { createRemoteRuntime, createWsRemoteTransport, type RemoteTransport } from "@fenix/remote-runtime";
 
 let facade: CoreRuntimeFacade | null = null;
+
+// 缓存远程 transport 实例
+const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
   return createCoreRuntime({
@@ -23,6 +27,15 @@ function defaultCreateFacade(): CoreRuntimeFacade {
           token: state.token ?? "",
         });
       }
+    },
+    runtimeResolver(_engineType, node) {
+      if (node.mode === "remote") {
+        const cached = remoteTransports.get(node.id);
+        if (cached) {
+          return createRemoteRuntime({ transport: cached });
+        }
+      }
+      return null;
     },
   });
 }
@@ -53,4 +66,39 @@ export function setCoreRuntimeFactory(fn: (() => CoreRuntimeFacade) | null) {
 /** 重置单例（仅用于测试）。 */
 export function resetCoreRuntime(): void {
   facade = null;
+}
+
+/**
+ * 远程 machine 注册成功后，动态注册 remote node 到 core。
+ */
+export function registerRemoteNode(
+  machineId: string,
+  ws: {
+    readyState: number;
+    send(data: string): void;
+    onmessage: ((event: { data: string | Buffer }) => void) | null;
+  },
+): void {
+  const runtime = getCoreRuntime();
+
+  const transport = createWsRemoteTransport(ws as import("@fenix/remote-runtime").WsConnectionLike);
+  remoteTransports.set(machineId, transport);
+
+  const existing = runtime.getNode(machineId);
+  if (existing) return;
+
+  runtime.registerNode({
+    id: machineId,
+    mode: "remote",
+    engineTypes: ["opencode"],
+    status: "online",
+    metadata: { machineId },
+  });
+}
+
+/**
+ * 远程 machine 断连后，清理 transport 缓存。
+ */
+export function unregisterRemoteNode(machineId: string): void {
+  remoteTransports.delete(machineId);
 }

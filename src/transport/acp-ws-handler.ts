@@ -1,5 +1,6 @@
 import { config } from "../config";
 import { log, error as logError } from "../logger";
+import { registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import type { AcpConnectionEntry } from "../types/store";
@@ -141,6 +142,9 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
 
     entry.machineId = result.id;
     log(`[ACP-WS] Machine registered: id=${result.id} agent=${agentName}`);
+
+    // 注册远程 node 到 core runtime
+    registerRemoteNode(result.id, entry.ws);
 
     sendToWs(entry.ws, {
       type: "registered",
@@ -284,6 +288,7 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
     handleMachineDisconnect(entry, reasonStr).catch(() => {});
 
     if (entry.machineId) {
+      unregisterRemoteNode(entry.machineId);
       import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
         handleMachineDisconnected(entry.machineId!);
       });
