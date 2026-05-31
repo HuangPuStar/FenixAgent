@@ -9,6 +9,7 @@ import {
   writeOpencodeConfig,
 } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
 import { resolveExecutable } from "./resolve-executable";
 
 interface InstanceState {
@@ -18,11 +19,14 @@ interface InstanceState {
   process: ChildProcess | null;
   connection: acp.ClientSideConnection | null;
   capabilities: Record<string, unknown> | null;
+  sessionState: AcpSessionState;
+  dispatcher: AcpDispatcher | null;
 }
 
 /**
  * 远程实例管理器。
  * 处理 prepare（装配环境）→ start（spawn agent）→ stop（清理）的完整生命周期。
+ * 每个 instance 维护独立的 AcpSessionState + AcpDispatcher 用于 ACP 消息分发。
  */
 export class InstanceManager {
   private instances = new Map<string, InstanceState>();
@@ -48,12 +52,17 @@ export class InstanceManager {
       process: null,
       connection: null,
       capabilities: null,
+      sessionState: createAcpSessionState(),
+      dispatcher: null,
     });
 
     console.log(`[instance-manager] prepared: ${instanceId} at ${workspace}`);
   }
 
-  async start(instanceId: string): Promise<{ capabilities: Record<string, unknown> }> {
+  async start(
+    instanceId: string,
+    send: (type: string, payload?: unknown) => void,
+  ): Promise<{ capabilities: Record<string, unknown> }> {
     const state = this.instances.get(instanceId);
     if (!state) throw new Error(`Instance ${instanceId} not prepared`);
 
@@ -99,6 +108,20 @@ export class InstanceManager {
     state.connection = connection;
     state.capabilities = (initResult.agentCapabilities as Record<string, unknown>) ?? {};
 
+    // 创建 dispatcher，绑定 send 回调和 session state
+    state.sessionState.connection = connection;
+    state.sessionState.agentCapabilities = initResult.agentCapabilities
+      ? {
+          _meta: initResult.agentCapabilities._meta,
+          loadSession: initResult.agentCapabilities.loadSession,
+          mcpCapabilities: initResult.agentCapabilities.mcpCapabilities,
+          promptCapabilities: initResult.agentCapabilities.promptCapabilities,
+          sessionCapabilities: initResult.agentCapabilities.sessionCapabilities,
+        }
+      : null;
+    state.sessionState.promptCapabilities = initResult.agentCapabilities?.promptCapabilities ?? null;
+    state.dispatcher = new AcpDispatcher(state.sessionState, send);
+
     console.log(`[instance-manager] started: ${instanceId}, capabilities:`, Object.keys(state.capabilities));
 
     return { capabilities: state.capabilities };
@@ -113,6 +136,7 @@ export class InstanceManager {
     }
     state.process = null;
     state.connection = null;
+    state.dispatcher = null;
 
     this.instances.delete(instanceId);
     console.log(`[instance-manager] stopped: ${instanceId}`);
@@ -120,6 +144,10 @@ export class InstanceManager {
 
   getConnection(instanceId: string): acp.ClientSideConnection | null {
     return this.instances.get(instanceId)?.connection ?? null;
+  }
+
+  getDispatcher(instanceId: string): AcpDispatcher | null {
+    return this.instances.get(instanceId)?.dispatcher ?? null;
   }
 
   hasInstance(instanceId: string): boolean {

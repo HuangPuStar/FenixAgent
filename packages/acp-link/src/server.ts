@@ -417,9 +417,17 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             break;
           }
           case "session_data":
-            // 优先走 InstanceManager，否则走旧 SessionManager
+            // 优先走 InstanceManager AcpDispatcher，否则走旧 SessionManager
             if (instanceMgr.hasInstance(msg.session_id)) {
-              handleInstanceRelay(instanceMgr, msg.session_id, msg.payload, ws!);
+              const dispatcher = instanceMgr.getDispatcher(msg.session_id);
+              if (dispatcher) {
+                try {
+                  const acpMsg = decodeClientMessage(msg.payload as Record<string, unknown>);
+                  await dispatcher.dispatch(acpMsg);
+                } catch {
+                  // ignore parse errors for legacy session_data
+                }
+              }
             } else {
               sessionMgr.sendData(msg.session_id, msg.payload);
             }
@@ -460,7 +468,20 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
           case "start": {
             const instId = msg.instance_id as string;
             try {
-              const result = await instanceMgr.start(instId);
+              // send 回调：dispatcher 的 ACP 回复通过 relay 消息发回 RCS
+              const relaySend = (type: string, payload?: unknown) => {
+                if (ws && ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "relay",
+                      instance_id: instId,
+                      session_id: instId,
+                      payload: { type, payload },
+                    }),
+                  );
+                }
+              };
+              const result = await instanceMgr.start(instId, relaySend);
               ws!.send(
                 JSON.stringify({
                   type: "start_result",
@@ -513,9 +534,25 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const sessId = msg.session_id as string;
             const relayPayload = msg.payload as Record<string, unknown>;
             if (instanceMgr.hasInstance(instId)) {
-              await handleInstanceRelayMessage(instanceMgr, instId, sessId, relayPayload, ws!);
+              const dispatcher = instanceMgr.getDispatcher(instId);
+              if (dispatcher) {
+                try {
+                  // relayPayload 就是前端发的完整 ACP 消息：{ type: "prompt", payload: {...} }
+                  // decodeClientMessage 会做格式校验
+                  const acpMsg = decodeClientMessage(relayPayload);
+                  await dispatcher.dispatch(acpMsg);
+                } catch (err) {
+                  ws!.send(
+                    JSON.stringify({
+                      type: "relay",
+                      instance_id: instId,
+                      session_id: sessId,
+                      payload: { type: "error", payload: { message: (err as Error).message } },
+                    }),
+                  );
+                }
+              }
             } else {
-              // fallback: 转发给旧 SessionManager
               sessionMgr.sendData(sessId, { type: "session_data", payload: relayPayload });
             }
             break;
@@ -558,90 +595,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       ws?.close();
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// InstanceManager relay helpers
-// ---------------------------------------------------------------------------
-
-async function handleInstanceRelayMessage(
-  instanceMgr: InstanceManager,
-  instanceId: string,
-  sessionId: string,
-  payload: Record<string, unknown>,
-  ws: WebSocket,
-): Promise<void> {
-  const conn = instanceMgr.getConnection(instanceId);
-  if (!conn) {
-    ws.send(
-      JSON.stringify({
-        type: "relay",
-        instance_id: instanceId,
-        session_id: sessionId,
-        payload: { type: "error", payload: { message: "Instance not connected" } },
-      }),
-    );
-    return;
-  }
-
-  const type = payload.type as string;
-  try {
-    switch (type) {
-      case "new_session": {
-        const cwd = (payload.payload as Record<string, unknown>)?.cwd as string | undefined;
-        const r = await conn.newSession({ cwd: cwd ?? process.cwd(), mcpServers: [] });
-        ws.send(
-          JSON.stringify({
-            type: "relay",
-            instance_id: instanceId,
-            session_id: sessionId,
-            payload: { type: "session_created", payload: r },
-          }),
-        );
-        break;
-      }
-      case "prompt": {
-        const content = (payload.payload as Record<string, unknown>)?.content as acp.ContentBlock[];
-        const result = await conn.prompt({ sessionId, prompt: content ?? [] });
-        ws.send(
-          JSON.stringify({
-            type: "relay",
-            instance_id: instanceId,
-            session_id: sessionId,
-            payload: { type: "prompt_complete", payload: result },
-          }),
-        );
-        break;
-      }
-      case "cancel": {
-        await conn.cancel({ sessionId });
-        break;
-      }
-      default:
-        console.log(`[instance-manager] unhandled relay type: ${type}`);
-    }
-  } catch (err) {
-    console.error(`[instance-manager] relay error: ${(err as Error).message}`);
-    ws.send(
-      JSON.stringify({
-        type: "relay",
-        instance_id: instanceId,
-        session_id: sessionId,
-        payload: { type: "error", payload: { message: (err as Error).message } },
-      }),
-    );
-  }
-}
-
-function handleInstanceRelay(instanceMgr: InstanceManager, instanceId: string, payload: unknown, ws: WebSocket): void {
-  // session_data 转发到 InstanceManager 的 connection
-  const conn = instanceMgr.getConnection(instanceId);
-  if (!conn) return;
-
-  // session_data 类型的消息直接由 handleInstanceRelayMessage 异步处理
-  handleInstanceRelayMessage(instanceMgr, instanceId, instanceId, payload as Record<string, unknown>, ws).catch((err) =>
-    console.error(`[instance-manager] handleInstanceRelay error: ${(err as Error).message}`),
-  );
 }
 
 // ---------------------------------------------------------------------------
