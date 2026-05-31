@@ -45,15 +45,17 @@ test("RemoteRelayHandle: close sends relay_close message", () => {
   );
 });
 
-// onMessage 接收 session 消息
+// onMessage 接收 session 消息（payload 内嵌真正的 ACP 消息）
 test("RemoteRelayHandle: onMessage receives session messages from transport", () => {
   const { handle, transport } = createHandleAndTransport();
   const received: Array<{ type: string; payload?: unknown }> = [];
   handle.onMessage((msg) => received.push(msg));
 
   transport.simulateSessionMessage("inst_1", "sess_1", {
-    type: "session_update",
-    payload: { text: "hi" },
+    type: "relay",
+    instance_id: "inst_1",
+    session_id: "sess_1",
+    payload: { type: "session_update", payload: { text: "hi" } },
   });
   expect(received).toEqual([{ type: "session_update", payload: { text: "hi" } }]);
 });
