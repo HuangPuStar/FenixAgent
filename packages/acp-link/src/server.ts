@@ -274,7 +274,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     throw new Error("rcsUrl is required for client mode");
   }
 
-  const sessionMgr = new SessionManager(config.command, 5);
+  const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
   const url = `${config.rcsUrl}/acp/ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
   let ws: WebSocket | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
