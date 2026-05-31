@@ -5,7 +5,8 @@
       "@fenix/core": ["./packages/core/src/index.ts"],
       "@fenix/opencode": ["./packages/plugin-opencode/src/index.ts"],
       "@fenix/workflow-engine": ["./packages/workflow-engine/src/index.ts"],
-      "@fenix/sdk": ["./packages/sdk/src/index.ts"]
+      "@fenix/sdk": ["./packages/sdk/src/index.ts"],
+      "@fenix/remote-runtime": ["./packages/remote-runtime/src/index.ts"]
     },
     "target": "ES2022",
     "module": "ES2022",
