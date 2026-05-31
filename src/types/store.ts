@@ -6,6 +6,7 @@
  */
 
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+import type { RemoteTransport } from "@fenix/remote-runtime";
 import type { WsConnection } from "../transport/ws-types";
 
 // ────────────────────────────────────────────
@@ -34,6 +35,8 @@ export interface AcpConnectionEntry {
   sessionMessageListeners?: Map<string, (sessionId: string, type: string, payload: unknown) => void>;
   /** relay 层设置的回调，machine 连接收到 session 消息时调用 */
   onSessionMessage?: (sessionId: string, type: string, payload: unknown) => void;
+  /** 远程 transport 实例（由 registerRemoteNode 设置），用于将消息路由到 core remote-runtime */
+  remoteTransport?: RemoteTransport;
 }
 
 // ────────────────────────────────────────────

@@ -143,8 +143,8 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     entry.machineId = result.id;
     log(`[ACP-WS] Machine registered: id=${result.id} agent=${agentName}`);
 
-    // 注册远程 node 到 core runtime
-    registerRemoteNode(result.id, entry.ws);
+    // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
+    registerRemoteNode(result.id, entry.ws, entry);
 
     sendToWs(entry.ws, {
       type: "registered",
@@ -219,6 +219,15 @@ export async function handleAcpWsMessage(
         });
       }
       continue;
+    }
+
+    // machine 连接：新协议消息（prepare_result/start_result/stop_result/relay）路由到 remote transport
+    if (entry.isMachine && entry.remoteTransport) {
+      const REMOTE_PROTOCOL_TYPES = ["prepare_result", "start_result", "stop_result", "relay"];
+      if (REMOTE_PROTOCOL_TYPES.includes(msg.type as string)) {
+        entry.remoteTransport.injectMessage(msg as unknown as import("@fenix/remote-runtime").TransportMessage);
+        continue;
+      }
     }
 
     // machine 连接：session 生命周期消息转发到 relay 层

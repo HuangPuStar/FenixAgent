@@ -7,6 +7,7 @@ import {
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
 import type { WsConnection } from "../transport/ws-types";
+import type { AcpConnectionEntry } from "../types/store";
 
 let facade: CoreRuntimeFacade | null = null;
 
@@ -76,14 +77,18 @@ export function resetCoreRuntime(): void {
 
 /**
  * 远程 machine 注册成功后，动态注册 remote node 到 core。
+ * @param acpEntry 对应的 AcpConnectionEntry，用于在消息路由时注入到 transport
  */
-export function registerRemoteNode(machineId: string, ws: WsConnection): void {
+export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry: AcpConnectionEntry): void {
   const runtime = getCoreRuntime();
 
-  // Bun WS 实际支持 onmessage，但 WsConnection 接口未声明；运行时安全断言
+  // WsConnection 没有 onmessage，通过 injectMessage 由 handleAcpWsMessage 路由
   const wsLike = ws as unknown as WsConnectionLike;
   const transport = createWsRemoteTransport(wsLike);
   remoteTransports.set(machineId, transport);
+
+  // 把 transport 挂到 entry 上，供 handleAcpWsMessage 路由消息
+  acpEntry.remoteTransport = transport;
 
   const existing = runtime.getNode(machineId);
   if (existing) return;
