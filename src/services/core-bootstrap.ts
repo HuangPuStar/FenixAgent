@@ -1,6 +1,12 @@
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { createEnginePlugin, type OpencodeRuntime } from "@fenix/opencode";
-import { createRemoteRuntime, createWsRemoteTransport, type RemoteTransport } from "@fenix/remote-runtime";
+import {
+  createRemoteRuntime,
+  createWsRemoteTransport,
+  type RemoteTransport,
+  type WsConnectionLike,
+} from "@fenix/remote-runtime";
+import type { WsConnection } from "../transport/ws-types";
 
 let facade: CoreRuntimeFacade | null = null;
 
@@ -71,17 +77,12 @@ export function resetCoreRuntime(): void {
 /**
  * 远程 machine 注册成功后，动态注册 remote node 到 core。
  */
-export function registerRemoteNode(
-  machineId: string,
-  ws: {
-    readyState: number;
-    send(data: string): void;
-    onmessage: ((event: { data: string | Buffer }) => void) | null;
-  },
-): void {
+export function registerRemoteNode(machineId: string, ws: WsConnection): void {
   const runtime = getCoreRuntime();
 
-  const transport = createWsRemoteTransport(ws as import("@fenix/remote-runtime").WsConnectionLike);
+  // Bun WS 实际支持 onmessage，但 WsConnection 接口未声明；运行时安全断言
+  const wsLike = ws as unknown as WsConnectionLike;
+  const transport = createWsRemoteTransport(wsLike);
   remoteTransports.set(machineId, transport);
 
   const existing = runtime.getNode(machineId);
