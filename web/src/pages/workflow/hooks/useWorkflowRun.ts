@@ -102,6 +102,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   const { t } = useTranslation("workflows");
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isSubmittingRef = useRef(false);
   const nodeCallbacksRef = useRef<{
     onViewOutput: (nodeId: string) => void;
     onRerunFrom: (fromNodeId: string) => void;
@@ -251,6 +252,8 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
 
   const handleRun = useCallback(
     async (params?: Record<string, unknown>) => {
+      if (isSubmittingRef.current) return;
+      isSubmittingRef.current = true;
       const y = syncYaml();
       setRunning(true);
       setDryRunResult(null);
@@ -287,6 +290,8 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         pushWorkflowError("run", (err as Error).message);
         toast.error(`${t("editor.run_failed")}: ${(err as Error).message}`);
         setRunning(false);
+      } finally {
+        isSubmittingRef.current = false;
       }
     },
     [
@@ -342,6 +347,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals([]);
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
+    setDryRunResult(null);
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })));
   }, [
     setActiveRunId,
@@ -350,6 +356,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals,
     setSelectedRunNodeId,
     setSelectedNodeOutput,
+    setDryRunResult,
     setNodes,
   ]);
 
@@ -362,6 +369,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals([]);
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
+    setDryRunResult(null);
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })));
   }, [
     setActiveRunId,
@@ -370,12 +378,18 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals,
     setSelectedRunNodeId,
     setSelectedNodeOutput,
+    setDryRunResult,
     setNodes,
   ]);
 
   const handleRerunFrom = useCallback(
     async (fromNodeId: string) => {
-      if (!activeRunId) return;
+      if (!activeRunId || isSubmittingRef.current) return;
+      isSubmittingRef.current = true;
+      if (pollRef.current) {
+        clearTimeout(pollRef.current);
+        pollRef.current = null;
+      }
       const y = syncYaml();
       setRunning(true);
       setNodes((nds) => {
@@ -420,6 +434,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         toast.error(`${t("editor.rerun_failed")}: ${(err as Error).message}`);
       } finally {
         setRunning(false);
+        isSubmittingRef.current = false;
       }
     },
     [

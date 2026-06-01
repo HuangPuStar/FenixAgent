@@ -304,6 +304,13 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   // 加载已保存的工作流草稿
   useEffect(() => {
     if (!workflowId) return;
+    // workflowId 切换时清理旧运行状态
+    setActiveRunId(null);
+    setRunSnapshot(null);
+    setRunEvents([]);
+    setRunApprovals([]);
+    setSelectedRunNodeId(null);
+    setSelectedNodeOutput(null);
     (async () => {
       try {
         const wf = await workflowDefApi.get(workflowId);
