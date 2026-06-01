@@ -12,43 +12,8 @@
     {
       "idx": 1,
       "version": "7",
-      "when": 1779764608861,
-      "tag": "0001_workflow_trigger",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "8",
-      "when": 1750000000000,
-      "tag": "0001_add-link-instance-and-registry-event",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1779873131359,
-      "tag": "0002_workflow-job",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1780017511647,
-      "tag": "0003_workflow-board",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1780225166376,
-      "tag": "0005_registry-backfill",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1780225743277,
-      "tag": "0006_provider-protocol",
+      "when": 1780278196881,
+      "tag": "0001_auto-generated",
       "breakpoints": true
     }
   ]
