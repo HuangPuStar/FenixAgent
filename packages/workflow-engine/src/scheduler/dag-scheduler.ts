@@ -156,8 +156,10 @@ export class DAGScheduler {
       );
     }
 
-    // 发射 dag.started 事件
-    const startEventId = await this.emitEvent("dag.started");
+    // 发射 dag.started 事件（携带 params 供 rerunFrom/recover 恢复）
+    const startEventId = await this.emitEvent("dag.started", undefined, {
+      params: this.ctx.params,
+    });
     await this.createSnapshot("RUNNING", startEventId);
 
     try {

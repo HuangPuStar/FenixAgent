@@ -502,6 +502,28 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       });
     }
 
+    // 从 dag.started 事件中恢复 params
+    let recoveredParams: Record<string, unknown> = {};
+    try {
+      const startEvents = await storage.getEvents(runId, { types: ["dag.started"] });
+      const paramsFromEvent = startEvents[0]?.metadata?.params;
+      if (paramsFromEvent && typeof paramsFromEvent === "object") {
+        recoveredParams = paramsFromEvent as Record<string, unknown>;
+      }
+    } catch {
+      // 事件读取失败时不阻塞 recover
+    }
+
+    // 合并 params：先填充 YAML 中定义的默认值，再覆盖恢复的 params
+    const resolvedParams: Record<string, unknown> = { ...recoveredParams };
+    if (validation.def.params) {
+      for (const [key, schema] of Object.entries(validation.def.params)) {
+        if (!(key in resolvedParams) && schema.default !== undefined) {
+          resolvedParams[key] = schema.default;
+        }
+      }
+    }
+
     // Secrets 解析
     let secrets: Record<string, string> = {};
     if (validation.def.secrets && validation.def.secrets.length > 0) {
@@ -513,7 +535,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     const cancellation = new CancellationManager();
 
     // 存储为活跃运行
-    activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: {}, secrets });
+    activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
 
     let result: DAGRunResult | undefined;
     try {
@@ -521,7 +543,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         runId,
         workflowDef: validation.def,
         storage,
-        params: {},
+        params: resolvedParams,
         secrets,
         nodeExecutor: registry,
         cancellation,
@@ -606,6 +628,18 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       }
     }
 
+    // 从上一次运行的 dag.started 事件中恢复 params
+    let prevParams: Record<string, unknown> = {};
+    try {
+      const startEvents = await storage.getEvents(prevRunId, { types: ["dag.started"] });
+      const paramsFromEvent = startEvents[0]?.metadata?.params;
+      if (paramsFromEvent && typeof paramsFromEvent === "object") {
+        prevParams = paramsFromEvent as Record<string, unknown>;
+      }
+    } catch {
+      // 事件读取失败时不阻塞 rerun，使用空 params
+    }
+
     // 生成新 runId，用新调度器执行
     const newRunId = `run_${nanoid(10)}`;
     const baseDir = defaultCwd ?? process.cwd();
@@ -618,7 +652,17 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       secrets = await secretsResolver.resolve(validation.def.secrets);
     }
 
-    activeRuns.set(newRunId, { cancellation, workflowDef: validation.def, params: {}, secrets });
+    // 合并 params：先填充 YAML 中定义的默认值，再覆盖上一次运行的 params
+    const resolvedParams: Record<string, unknown> = { ...prevParams };
+    if (validation.def.params) {
+      for (const [key, schema] of Object.entries(validation.def.params)) {
+        if (!(key in resolvedParams) && schema.default !== undefined) {
+          resolvedParams[key] = schema.default;
+        }
+      }
+    }
+
+    activeRuns.set(newRunId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
 
     let result: DAGRunResult | undefined;
     try {
@@ -626,7 +670,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         runId: newRunId,
         workflowDef: validation.def,
         storage,
-        params: {},
+        params: resolvedParams,
         secrets,
         nodeExecutor: registry,
         cancellation,
