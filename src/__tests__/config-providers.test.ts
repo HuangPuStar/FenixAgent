@@ -10,7 +10,7 @@ let _providers: Map<
     id: string;
     name: string;
     displayName: string | null;
-    npm: string | null;
+    protocol: "openai" | "anthropic";
     baseUrl: string | null;
     apiKey: string | null;
     extraOptions: Record<string, unknown> | null;
@@ -25,7 +25,7 @@ function setupStubs() {
         id: p.id,
         name: p.name,
         displayName: p.displayName,
-        npm: p.npm,
+        protocol: p.protocol,
         baseUrl: p.baseUrl,
         apiKey: p.apiKey,
         extraOptions: p.extraOptions,
@@ -50,7 +50,7 @@ function setupStubs() {
       if (existing) {
         Object.assign(existing, {
           displayName: data.displayName ?? existing.displayName,
-          npm: data.npm ?? existing.npm,
+          protocol: data.protocol ?? existing.protocol,
           baseUrl: data.baseUrl ?? existing.baseUrl,
           apiKey: data.apiKey ?? existing.apiKey,
           extraOptions: data.extraOptions ?? existing.extraOptions,
@@ -62,7 +62,7 @@ function setupStubs() {
         id,
         name,
         displayName: data.displayName ?? null,
-        npm: data.npm ?? null,
+        protocol: data.protocol ?? "openai",
         baseUrl: data.baseUrl ?? null,
         apiKey: data.apiKey ?? null,
         extraOptions: data.extraOptions ?? null,
@@ -105,11 +105,7 @@ function setupStubs() {
 function _getProviderStore() {
   const result: Record<string, any> = {};
   for (const [name, p] of _providers) {
-    const provider: Record<string, any> = {
-      name: p.name,
-      npm: p.npm,
-      displayName: p.displayName,
-    };
+    const provider: Record<string, any> = { name: p.name, protocol: p.protocol, displayName: p.displayName };
     if (p.baseUrl || p.apiKey) {
       provider.options = {
         ...(p.baseUrl ? { baseURL: p.baseUrl } : {}),
@@ -130,7 +126,9 @@ function _getProviderStore() {
 
 const providersRoute = (await import("../routes/web/config/providers")).default;
 
-function createFetchMock(handler: () => Promise<Response> | Response): typeof fetch {
+function createFetchMock(
+  handler: (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => Promise<Response> | Response,
+): typeof fetch {
   return Object.assign(handler, {
     preconnect: () => {},
   }) as typeof fetch;
@@ -177,9 +175,9 @@ describe("Providers Config Route", () => {
   test("list action — 有配置（嵌套结构）", async () => {
     _providers.set("bailian-token-plan", {
       id: "prov-bailian",
-      name: "ali",
+      name: "bailian-token-plan",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: "https://api.anthropic.com",
       apiKey: "sk-ant-1234567890",
       extraOptions: null,
@@ -190,9 +188,9 @@ describe("Providers Config Route", () => {
     });
     _providers.set("openai", {
       id: "prov-openai",
-      name: "OpenAI",
+      name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: "https://api.openai.com",
       apiKey: "sk-open-abcdef",
       extraOptions: null,
@@ -209,18 +207,16 @@ describe("Providers Config Route", () => {
     expect(json.success).toBe(true);
     expect(json.data.providers).toHaveLength(2);
     expect(json.data.providers[0]).toMatchObject({
-      id: "ali",
-      name: "ali",
-      npm: "@ai-sdk/openai-compatible",
-      configured: true,
+      id: "bailian-token-plan",
+      name: "",
+      protocol: "openai",
       keyHint: "***7890",
       modelCount: 2,
     });
     expect(json.data.providers[1]).toMatchObject({
-      id: "OpenAI",
-      name: "OpenAI",
-      npm: "@ai-sdk/openai-compatible",
-      configured: true,
+      id: "openai",
+      name: "",
+      protocol: "openai",
       modelCount: 0,
     });
   });
@@ -228,9 +224,9 @@ describe("Providers Config Route", () => {
   test("get action — 存在", async () => {
     _providers.set("bailian-token-plan", {
       id: "prov-bailian",
-      name: "ali",
+      name: "bailian-token-plan",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: "https://api.anthropic.com",
       apiKey: "sk-ant-1234",
       extraOptions: null,
@@ -257,11 +253,57 @@ describe("Providers Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.id).toBe("bailian-token-plan");
-    expect(json.data.name).toBe("ali");
-    expect(json.data.npm).toBe("@ai-sdk/openai-compatible");
+    expect(json.data.name).toBe("");
+    expect(json.data.protocol).toBe("openai");
     expect(json.data.keyHint).toBe("***1234");
     expect(json.data.models).toHaveLength(1);
     expect(json.data.models[0].id).toBe("qwen3.6-plus");
+  });
+
+  test("get action — 短 key 返回固定 7 位掩码", async () => {
+    _providers.set("short-key-provider", {
+      id: "prov-short",
+      name: "short-key-provider",
+      displayName: null,
+      protocol: "openai",
+      baseUrl: null,
+      apiKey: "abc",
+      extraOptions: null,
+      models: new Map(),
+    });
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", name: "short-key-provider" }),
+      }),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.keyHint).toBe("*******");
+  });
+
+  test("get action — 空 key 返回固定 7 位掩码", async () => {
+    _providers.set("empty-key-provider", {
+      id: "prov-empty",
+      name: "empty-key-provider",
+      displayName: null,
+      protocol: "openai",
+      baseUrl: null,
+      apiKey: null,
+      extraOptions: null,
+      models: new Map(),
+    });
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", name: "empty-key-provider" }),
+      }),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.keyHint).toBe("*******");
   });
 
   test("get action — 不存在", async () => {
@@ -288,7 +330,7 @@ describe("Providers Config Route", () => {
           data: {
             apiKey: "sk-test",
             baseURL: "http://localhost:11434",
-            npm: "@ai-sdk/openai-compatible",
+            protocol: "openai",
             name: "Ollama",
           },
         }),
@@ -299,7 +341,7 @@ describe("Providers Config Route", () => {
     expect(json.data.id).toBe("ollama");
     const p = _providers.get("ollama");
     expect(p).toBeDefined();
-    expect(p!.npm).toBe("@ai-sdk/openai-compatible");
+    expect(p!.protocol).toBe("openai");
     expect(p!.apiKey).toBe("sk-test");
     expect(p!.baseUrl).toBe("http://localhost:11434");
   });
@@ -307,9 +349,9 @@ describe("Providers Config Route", () => {
   test("set action — 更新已有 provider 保留 models", async () => {
     _providers.set("bailian-token-plan", {
       id: "prov-bailian",
-      name: "ali",
+      name: "bailian-token-plan",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: "https://api.anthropic.com",
       apiKey: "old",
       extraOptions: null,
@@ -352,7 +394,7 @@ describe("Providers Config Route", () => {
       id: "prov-anthropic",
       name: "anthropic",
       displayName: null,
-      npm: "@ai-sdk/anthropic",
+      protocol: "anthropic",
       baseUrl: null,
       apiKey: "x",
       extraOptions: null,
@@ -362,7 +404,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: null,
       apiKey: "y",
       extraOptions: null,
@@ -394,27 +436,69 @@ describe("Providers Config Route", () => {
     expect(json.error.code).toBe("NOT_FOUND");
   });
 
-  test("test action — 连接成功", async () => {
-    _providers.set("anthropic", {
-      id: "prov-anthropic",
-      name: "anthropic",
+  test("test action — openai 协议通过 models 接口验证", async () => {
+    _providers.set("openai", {
+      id: "prov-openai",
+      name: "openai",
       displayName: null,
-      npm: "@ai-sdk/anthropic",
-      baseUrl: "https://api.example.com",
+      protocol: "openai",
+      baseUrl: "https://api.example.com/",
       apiKey: "test-key",
       extraOptions: null,
       models: new Map(),
     });
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = createFetchMock(
-      async () =>
-        ({
-          ok: true,
-          json: async () => ({
-            data: [{ id: "model-a" }, { id: "model-b" }],
-          }),
-        }) as Response,
+    let requestUrl = "";
+    let requestMethod = "";
+    globalThis.fetch = createFetchMock(async (input, init) => {
+      requestUrl = typeof input === "string" ? input : input.toString();
+      requestMethod = init?.method ?? "GET";
+      return {
+        ok: true,
+        json: async () => ({ data: [{ id: "model-a" }, { id: "model-b" }] }),
+      } as Response;
+    });
+
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test", name: "openai" }),
+      }),
     );
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.models).toEqual(["model-a", "model-b"]);
+    expect(requestMethod).toBe("GET");
+    expect(requestUrl).toBe("https://api.example.com/v1/models");
+
+    globalThis.fetch = originalFetch;
+  });
+
+  test("test action — anthropic 优先通过 models 接口验证", async () => {
+    _providers.set("anthropic", {
+      id: "prov-anthropic",
+      name: "anthropic",
+      displayName: null,
+      protocol: "anthropic",
+      baseUrl: "https://api.example.com/",
+      apiKey: "test-key",
+      extraOptions: null,
+      models: new Map(),
+    });
+    const originalFetch = globalThis.fetch;
+    let requestUrl = "";
+    let requestMethod = "";
+    let requestHeaders: RequestInit["headers"];
+    globalThis.fetch = createFetchMock(async (input, init) => {
+      requestUrl = typeof input === "string" ? input : input.toString();
+      requestMethod = init?.method ?? "GET";
+      requestHeaders = init?.headers;
+      return {
+        ok: true,
+        json: async () => ({ data: [{ id: "claude-3-5-haiku-20241022" }, { id: "claude-3-7-sonnet-20250219" }] }),
+      } as Response;
+    });
 
     const res = await providersRoute.handle(
       new Request("http://localhost/config/providers", {
@@ -425,7 +509,180 @@ describe("Providers Config Route", () => {
     );
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.data.models).toEqual(["model-a", "model-b"]);
+    expect(json.data.models).toEqual(["claude-3-5-haiku-20241022", "claude-3-7-sonnet-20250219"]);
+    expect(requestMethod).toBe("GET");
+    expect(requestUrl).toBe("https://api.example.com/v1/models");
+    expect(requestHeaders).toMatchObject({
+      "x-api-key": "test-key",
+      "anthropic-version": "2023-06-01",
+    });
+
+    globalThis.fetch = originalFetch;
+  });
+
+  test("test action — anthropic models 404 时提示改用模型测试", async () => {
+    _providers.set("anthropic", {
+      id: "prov-anthropic",
+      name: "anthropic",
+      displayName: null,
+      protocol: "anthropic",
+      baseUrl: "https://api.example.com",
+      apiKey: "test-key",
+      extraOptions: null,
+      models: new Map([["claude-3-7-sonnet", { displayName: "Claude 3.7 Sonnet" }]]),
+    });
+    const originalFetch = globalThis.fetch;
+    const requestMethods: string[] = [];
+    globalThis.fetch = createFetchMock(async (_input, init) => {
+      requestMethods.push(init?.method ?? "GET");
+      return {
+        ok: false,
+        status: 404,
+        text: async () => "not found",
+      } as Response;
+    });
+
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test", name: "anthropic" }),
+      }),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("PROVIDER_TEST_LIST_HTTP_ERROR");
+    expect(json.data).toEqual({
+      protocol: "anthropic",
+      status: 404,
+      detail: "not found",
+      hint: "configure_model_then_test_model",
+    });
+    expect(requestMethods).toEqual(["GET"]);
+
+    globalThis.fetch = originalFetch;
+  });
+
+  test("test action — anthropic models 非 404/405 时直接失败", async () => {
+    _providers.set("anthropic", {
+      id: "prov-anthropic",
+      name: "anthropic",
+      displayName: null,
+      protocol: "anthropic",
+      baseUrl: "https://api.example.com",
+      apiKey: "bad-key",
+      extraOptions: null,
+      models: new Map(),
+    });
+    const originalFetch = globalThis.fetch;
+    const requestMethods: string[] = [];
+    globalThis.fetch = createFetchMock(async (_input, init) => {
+      requestMethods.push(init?.method ?? "GET");
+      return {
+        ok: false,
+        status: 401,
+        text: async () => "unauthorized",
+      } as Response;
+    });
+
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test", name: "anthropic" }),
+      }),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("PROVIDER_TEST_LIST_HTTP_ERROR");
+    expect(json.data).toEqual({
+      protocol: "anthropic",
+      status: 401,
+      detail: "unauthorized",
+    });
+    expect(requestMethods).toEqual(["GET"]);
+
+    globalThis.fetch = originalFetch;
+  });
+
+  test("test_model action — anthropic 通过 messages 返回文本", async () => {
+    _providers.set("anthropic", {
+      id: "prov-anthropic",
+      name: "anthropic",
+      displayName: null,
+      protocol: "anthropic",
+      baseUrl: "https://api.example.com/",
+      apiKey: "test-key",
+      extraOptions: null,
+      models: new Map([["claude-3-7-sonnet", { displayName: "Claude 3.7 Sonnet" }]]),
+    });
+    const originalFetch = globalThis.fetch;
+    let requestUrl = "";
+    let requestMethod = "";
+    let requestBody = "";
+    globalThis.fetch = createFetchMock(async (input, init) => {
+      requestUrl = typeof input === "string" ? input : input.toString();
+      requestMethod = init?.method ?? "GET";
+      requestBody = typeof init?.body === "string" ? init.body : "";
+      return {
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "hello from anthropic" }] }),
+      } as Response;
+    });
+
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test_model", name: "anthropic", modelId: "claude-3-7-sonnet" }),
+      }),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.ok).toBe(true);
+    expect(json.data.content).toBe("hello from anthropic");
+    expect(requestMethod).toBe("POST");
+    expect(requestUrl).toBe("https://api.example.com/v1/messages");
+    expect(JSON.parse(requestBody)).toMatchObject({
+      model: "claude-3-7-sonnet",
+      messages: [{ role: "user", content: "hello" }],
+    });
+
+    globalThis.fetch = originalFetch;
+  });
+
+  test("test_model action — openai 通过 chat completions 返回文本", async () => {
+    _providers.set("openai", {
+      id: "prov-openai",
+      name: "openai",
+      displayName: null,
+      protocol: "openai",
+      baseUrl: "https://api.example.com",
+      apiKey: "test-key",
+      extraOptions: null,
+      models: new Map([["gpt-4o-mini", { displayName: "GPT-4o Mini" }]]),
+    });
+    const originalFetch = globalThis.fetch;
+    let requestUrl = "";
+    globalThis.fetch = createFetchMock(async (input) => {
+      requestUrl = typeof input === "string" ? input : input.toString();
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "hello from openai" } }] }),
+      } as Response;
+    });
+
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test_model", name: "openai", modelId: "gpt-4o-mini" }),
+      }),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.content).toBe("hello from openai");
+    expect(requestUrl).toBe("https://api.example.com/v1/chat/completions");
 
     globalThis.fetch = originalFetch;
   });
@@ -435,7 +692,7 @@ describe("Providers Config Route", () => {
       id: "prov-anthropic",
       name: "anthropic",
       displayName: null,
-      npm: "@ai-sdk/anthropic",
+      protocol: "anthropic",
       baseUrl: "https://api.example.com",
       apiKey: "bad-key",
       extraOptions: null,
@@ -455,7 +712,13 @@ describe("Providers Config Route", () => {
     );
     const json = await res.json();
     expect(json.success).toBe(false);
-    expect(json.error.code).toBe("CONFIG_READ_ERROR");
+    expect(json.error.code).toBe("CONFIG_TEST_REQUEST_FAILED");
+    expect(json.data).toEqual({
+      target: "provider",
+      protocol: "anthropic",
+      reason: "request_failed",
+      detail: "Network error",
+    });
 
     globalThis.fetch = originalFetch;
   });
@@ -471,6 +734,44 @@ describe("Providers Config Route", () => {
     const json = await res.json();
     expect(json.success).toBe(false);
     expect(json.error.code).toBe("NOT_FOUND");
+  });
+
+  test("test action — openai 响应缺少 data 数组时失败", async () => {
+    _providers.set("openai", {
+      id: "prov-openai",
+      name: "openai",
+      displayName: null,
+      protocol: "openai",
+      baseUrl: "https://api.example.com",
+      apiKey: "test-key",
+      extraOptions: null,
+      models: new Map(),
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = createFetchMock(
+      async () =>
+        ({
+          ok: true,
+          json: async () => ({ object: "list" }),
+        }) as Response,
+    );
+
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test", name: "openai" }),
+      }),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("PROVIDER_TEST_LIST_RESPONSE_INVALID");
+    expect(json.data).toEqual({
+      protocol: "openai",
+      reason: "missing_data_array",
+    });
+
+    globalThis.fetch = originalFetch;
   });
 
   // 未知 action 被 Elysia body schema 验证拦截
@@ -494,7 +795,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: null,
       apiKey: "sk-test",
       extraOptions: null,
@@ -529,7 +830,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -556,7 +857,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -583,7 +884,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -618,7 +919,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -646,7 +947,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -678,7 +979,7 @@ describe("Providers Config Route", () => {
       id: "prov-openai",
       name: "openai",
       displayName: null,
-      npm: "@ai-sdk/openai-compatible",
+      protocol: "openai",
       baseUrl: null,
       apiKey: null,
       extraOptions: null,
@@ -775,9 +1076,9 @@ describe("Provider atomic write", () => {
   test("concurrent set operations don't lose data", async () => {
     _providers.set("provider-a", {
       id: "prov-a",
-      name: "A",
+      name: "provider-a",
       displayName: null,
-      npm: null,
+      protocol: "openai",
       baseUrl: "http://a",
       apiKey: "key-a",
       extraOptions: null,
@@ -785,9 +1086,9 @@ describe("Provider atomic write", () => {
     });
     _providers.set("provider-b", {
       id: "prov-b",
-      name: "B",
+      name: "provider-b",
       displayName: null,
-      npm: null,
+      protocol: "openai",
       baseUrl: "http://b",
       apiKey: "key-b",
       extraOptions: null,

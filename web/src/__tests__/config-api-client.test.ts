@@ -21,7 +21,7 @@ describe("config SDK modules", () => {
   test("providerApi.list returns providers array", async () => {
     fetchMock.body = {
       success: true,
-      data: { providers: [{ name: "openai", configured: true, keyHint: "sk-...abc", baseURL: "" }] },
+      data: { providers: [{ name: "openai", protocol: "openai", keyHint: "sk-...abc", baseURL: "" }] },
     };
     const { providerApi } = await import("../api/sdk");
     const { data, error } = await providerApi.list();

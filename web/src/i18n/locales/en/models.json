@@ -10,19 +10,9 @@
   "loadModelConfigError": "Failed to load model config: {{message}}",
   "loadModelsError": "Failed to load model data",
   "unknownError": "Unknown error",
-  "npmOptions": {
-    "openaiCompatible": "OpenAI Compatible",
-    "openai": "OpenAI",
-    "anthropic": "Anthropic",
-    "google": "Google",
-    "deepseek": "DeepSeek",
-    "mistral": "Mistral",
-    "cohere": "Cohere",
-    "fireworks": "Fireworks",
-    "togetherai": "Together AI",
-    "perplexity": "Perplexity",
-    "xai": "xAI",
-    "custom": "Custom"
+  "protocolOptions": {
+    "openai": "OpenAI Compatible",
+    "anthropic": "Anthropic"
   },
   "columns": {
     "id": "ID",
@@ -71,8 +61,6 @@
     "displayName": "Display Name",
     "displayNamePlaceholder": "e.g. Alibaba Bailian",
     "protocol": "Protocol",
-    "sdkPackage": "SDK Package:",
-    "customNpmPlaceholder": "e.g. @ai-sdk/your-provider",
     "apiKey": "API Key",
     "apiKeyEditPlaceholder": "Leave empty to keep unchanged",
     "apiKeyCreatePlaceholder": "Enter API Key",
@@ -82,11 +70,23 @@
   "testDialog": {
     "failTitle": "Connection Test Failed — {{name}}",
     "successTitle": "Connection Test Successful — {{name}}",
+    "modelFailTitle": "Model Test Failed — {{modelId}}",
+    "modelSuccessTitle": "Model Test Successful — {{modelId}}",
     "modelsFound": "Found {{count}} available models",
     "added": "Added",
     "addModelSuccess": "Model {{modelId}} added",
     "addModelError": "Add failed: {{message}}",
-    "testError": "Test failed"
+    "testError": "Test failed",
+    "errors": {
+      "providerListHttp": "{{protocol}} model list request failed (HTTP {{status}})",
+      "providerListMissingData": "{{protocol}} model list response is invalid: missing data array",
+      "providerListMissingModelId": "{{protocol}} model list response is invalid: no valid model IDs found",
+      "modelMessageHttp": "{{protocol}} model message test failed (HTTP {{status}})",
+      "modelMessageEmpty": "{{protocol}} model message test succeeded, but no readable text was returned",
+      "requestTimeout": "Test request timed out",
+      "requestFailed": "Test request failed",
+      "configureModelThenTest": "This provider may not expose a model listing API. Please configure a model manually, then validate it with model testing."
+    }
   },
   "modelSubrow": {
     "emptyMessage": "No models yet. Click the button below to add",
@@ -128,6 +128,10 @@
       "confirmDesc": "This action is irreversible. Are you sure you want to delete model \"{{id}}\"?",
       "success": "Model deleted",
       "error": "Delete failed: {{message}}"
+    },
+    "testModel": {
+      "success": "Model {{id}} test succeeded: {{content}}",
+      "error": "Model {{id}} test failed: {{message}}"
     }
   }
 }

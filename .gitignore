@@ -59,7 +59,8 @@ ov.conf
 
 # VitePress
 docs/.vitepress/dist/
-docs/.vitepress/cache/.superpowers/
+docs/.vitepress/cache/
+docs/.vitepress/.temp/
 
 .superpowers
 .tanstack

@@ -133,8 +133,7 @@ export interface OpenCodeConfig {
 export interface ProviderInfo {
   id: string;
   name: string;
-  npm: string | null;
-  configured: boolean;
+  protocol: "openai" | "anthropic";
   keyHint: string | null;
   baseURL: string | null;
   modelCount: number;
@@ -152,7 +151,7 @@ export interface ProviderModel {
 export interface ProviderDetail {
   id: string;
   name: string;
-  npm: string | null;
+  protocol: "openai" | "anthropic";
   keyHint: string | null;
   baseURL: string | null;
   options: Record<string, unknown>;

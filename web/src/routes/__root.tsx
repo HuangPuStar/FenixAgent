@@ -54,7 +54,7 @@ function RootComponent() {
     <ThemeProvider defaultTheme="system">
       <OrgProvider>
         <Outlet />
-        <Toaster richColors position="top-right" />
+        <Toaster richColors closeButton position="top-right" />
       </OrgProvider>
     </ThemeProvider>
   );

@@ -12,6 +12,7 @@ const ConfigActionValues = [
   "enable",
   "disable",
   "test",
+  "test_model",
   "test_url",
   "add_model",
   "update_model",
@@ -51,8 +52,7 @@ export const ConfigBodySchema = z.object({
 export const ProviderInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
-  npm: z.string().nullable(),
-  configured: z.boolean(),
+  protocol: z.enum(["openai", "anthropic"]),
   keyHint: z.string().nullable(),
   baseURL: z.string().nullable(),
   modelCount: z.number(),
@@ -61,7 +61,7 @@ export const ProviderInfoSchema = z.object({
 export const ProviderDetailSchema = z.object({
   id: z.string(),
   name: z.string(),
-  npm: z.string().nullable(),
+  protocol: z.enum(["openai", "anthropic"]),
   keyHint: z.string().nullable(),
   baseURL: z.string().nullable(),
   options: z.record(z.string(), z.unknown()),

@@ -242,8 +242,7 @@
     "primaryModel": "Primary Model",
     "primaryModelPlaceholder": "Select primary model",
     "lightweightModel": "Lightweight Model",
-    "lightweightModelPlaceholder": "Select lightweight model",
-    "manualInputPlaceholder": "Or enter model ID manually"
+    "lightweightModelPlaceholder": "Select lightweight model"
   },
   "acpConnect": {
     "server": "Server",

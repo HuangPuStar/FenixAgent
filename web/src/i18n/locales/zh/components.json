@@ -242,8 +242,7 @@
     "primaryModel": "主模型",
     "primaryModelPlaceholder": "选择主模型",
     "lightweightModel": "轻量模型",
-    "lightweightModelPlaceholder": "选择轻量模型",
-    "manualInputPlaceholder": "或手动输入模型 ID"
+    "lightweightModelPlaceholder": "选择轻量模型"
   },
   "acpConnect": {
     "server": "服务器",

@@ -109,14 +109,14 @@ export interface ModelEntry {
 }
 export interface ProviderDetail extends Indexable {
   name: string;
-  configured: boolean;
+  protocol: "openai" | "anthropic";
   keyHint?: string;
   baseURL?: string;
   models?: ModelEntry[];
 }
 export interface ProviderInfo extends Indexable {
   name: string;
-  configured: boolean;
+  protocol: "openai" | "anthropic";
   keyHint?: string;
   baseURL?: string;
 }

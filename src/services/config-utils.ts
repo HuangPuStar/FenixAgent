@@ -34,10 +34,10 @@ export function isValidResourceName(name: string): boolean {
   );
 }
 
-/** 从 apiKey 字段生成 keyHint：取尾 4 位，前缀 *** */
+/** 从 apiKey 字段生成 keyHint：短 key 或空 key 统一返回固定 7 位掩码。 */
 export function toKeyHint(apiKey: string | undefined | null): string | null {
   const realKey = resolveApiKey(apiKey);
-  if (!realKey || realKey.length < 4) return null;
+  if (!realKey || realKey.length < 4) return "*******";
   return `***${realKey.slice(-4)}`;
 }
 

@@ -1,5 +1,6 @@
 <script setup>
 import { useData } from "vitepress";
+import DefaultTheme from "vitepress/theme";
 
 // biome-ignore lint/correctness/useHookAtTopLevel: VitePress useData, not React
 const { frontmatter } = useData();

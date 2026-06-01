@@ -66,7 +66,7 @@ export type ProviderExtraOptions = Record<string, unknown>;
 /** Data shape accepted by upsertProvider */
 export interface ProviderUpsertData {
   displayName?: string;
-  npm?: string;
+  protocol?: "openai" | "anthropic";
   baseUrl?: string;
   apiKey?: string;
   extraOptions?: ProviderExtraOptions;

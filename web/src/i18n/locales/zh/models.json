@@ -10,19 +10,9 @@
   "loadModelConfigError": "加载模型配置失败: {{message}}",
   "loadModelsError": "加载模型数据失败",
   "unknownError": "未知错误",
-  "npmOptions": {
-    "openaiCompatible": "OpenAI 兼容",
-    "openai": "OpenAI",
-    "anthropic": "Anthropic",
-    "google": "Google",
-    "deepseek": "DeepSeek",
-    "mistral": "Mistral",
-    "cohere": "Cohere",
-    "fireworks": "Fireworks",
-    "togetherai": "Together AI",
-    "perplexity": "Perplexity",
-    "xai": "xAI",
-    "custom": "自定义"
+  "protocolOptions": {
+    "openai": "OpenAI 兼容",
+    "anthropic": "Anthropic"
   },
   "columns": {
     "id": "ID",
@@ -71,8 +61,6 @@
     "displayName": "显示名称",
     "displayNamePlaceholder": "例如 阿里百炼",
     "protocol": "协议",
-    "sdkPackage": "SDK 包:",
-    "customNpmPlaceholder": "例如 @ai-sdk/your-provider",
     "apiKey": "API Key",
     "apiKeyEditPlaceholder": "留空表示不修改",
     "apiKeyCreatePlaceholder": "输入 API Key",
@@ -82,11 +70,23 @@
   "testDialog": {
     "failTitle": "连接测试失败 — {{name}}",
     "successTitle": "连接测试成功 — {{name}}",
+    "modelFailTitle": "模型测试失败 — {{modelId}}",
+    "modelSuccessTitle": "模型测试成功 — {{modelId}}",
     "modelsFound": "发现 {{count}} 个可用模型",
     "added": "已添加",
     "addModelSuccess": "模型 {{modelId}} 已添加",
     "addModelError": "添加失败: {{message}}",
-    "testError": "测试失败"
+    "testError": "测试失败",
+    "errors": {
+      "providerListHttp": "{{protocol}} 模型列表请求失败 (HTTP {{status}})",
+      "providerListMissingData": "{{protocol}} 模型列表响应格式不正确：缺少 data 数组",
+      "providerListMissingModelId": "{{protocol}} 模型列表响应格式不正确：未找到有效模型 ID",
+      "modelMessageHttp": "{{protocol}} 模型消息测试失败 (HTTP {{status}})",
+      "modelMessageEmpty": "{{protocol}} 模型消息测试成功，但未返回可读文本内容",
+      "requestTimeout": "测试请求超时",
+      "requestFailed": "测试请求失败",
+      "configureModelThenTest": "该提供商可能没有提供模型查询接口，请先手动配置模型，再通过模型测试验证消息调用。"
+    }
   },
   "modelSubrow": {
     "emptyMessage": "暂无模型，点击下方按钮添加",
@@ -128,6 +128,10 @@
       "confirmDesc": "此操作不可逆。确定要删除模型 \"{{id}}\" 吗？",
       "success": "模型已删除",
       "error": "删除失败: {{message}}"
+    },
+    "testModel": {
+      "success": "模型 {{id}} 测试成功：{{content}}",
+      "error": "模型 {{id}} 测试失败: {{message}}"
     }
   }
 }

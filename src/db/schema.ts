@@ -4,6 +4,7 @@ import {
   integer,
   jsonb,
   numeric,
+  pgEnum,
   pgTable,
   text,
   timestamp,
@@ -11,6 +12,8 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+
+export const providerProtocolEnum = pgEnum("provider_protocol", ["openai", "anthropic"]);
 
 // better-auth tables — primary keys stay as text (better-auth generates IDs internally)
 export const user = pgTable("user", {
@@ -447,7 +450,7 @@ export const provider = pgTable(
     organizationId: text("organization_id").notNull(),
     name: varchar("name").notNull(),
     displayName: varchar("display_name"),
-    npm: varchar("npm"),
+    protocol: providerProtocolEnum("protocol").notNull().default("openai"),
     baseUrl: text("base_url"),
     apiKey: text("api_key"),
     extraOptions: jsonb("extra_options"),

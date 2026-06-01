@@ -4,8 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
-import { ModelConfigDialog } from "@/components/config/ModelConfigDialog";
-import { StatusBadge } from "@/components/config/StatusBadge";
+import { ModelConfigDialog, mergeModelConfigUpdate } from "@/components/config/ModelConfigDialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,14 +18,23 @@ import type { ModelConfig, ProviderInfo, ProviderModel } from "../../../types/co
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-const NPM_OPTIONS = [
-  { id: "openai-compatible", labelKey: "npmOptions.openaiCompatible", npm: "@ai-sdk/openai-compatible" },
-  { id: "anthropic", labelKey: "npmOptions.anthropic", npm: "@ai-sdk/anthropic" },
-  { id: "deepseek", labelKey: "npmOptions.deepseek", npm: "@ai-sdk/deepseek" },
+type TestDialogError = {
+  code: string;
+  message: string;
+  data?: unknown;
+};
+
+const PROTOCOL_OPTIONS = [
+  { id: "openai", labelKey: "protocolOptions.openai" },
+  { id: "anthropic", labelKey: "protocolOptions.anthropic" },
 ];
 
 const INPUT_MODALITY_OPTIONS = ["text", "image", "audio", "video", "pdf"] as const;
 const OUTPUT_MODALITY_OPTIONS = ["text", "image"] as const;
+
+function getErrorDataRecord(data: unknown): Record<string, unknown> {
+  return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
+}
 
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
@@ -40,14 +48,19 @@ export function AgentModelsPage() {
   const [selected, setSelected] = useState<ProviderInfo[]>([]);
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [testResult, setTestResult] = useState<
-    { name: string; models: string[]; warning?: string } | { name: string; error: string } | null
+    | { kind: "provider"; name: string; models: string[]; warning?: string }
+    | { kind: "provider"; name: string; error: TestDialogError }
+    | { kind: "model"; providerName: string; modelId: string; content: string }
+    | { kind: "model"; providerName: string; modelId: string; error: TestDialogError }
+    | null
   >(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [testingModelKey, setTestingModelKey] = useState<string | null>(null);
   const [addedModelIds, setAddedModelIds] = useState<Set<string>>(new Set());
   const [formName, setFormName] = useState("");
   const [formApiKey, setFormApiKey] = useState("");
   const [formBaseURL, setFormBaseURL] = useState("");
-  const [formNpm, setFormNpm] = useState("openai-compatible");
+  const [formProtocol, setFormProtocol] = useState<"openai" | "anthropic">("openai");
   const [formDisplayName, setFormDisplayName] = useState("");
   const [formSaving, setFormSaving] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
@@ -70,7 +83,43 @@ export function AgentModelsPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [deleteModelConfirm, setDeleteModelConfirm] = useState<{ providerId: string; modelId: string } | null>(null);
 
-  const getNpmLabel = (opt: (typeof NPM_OPTIONS)[number]) => t(opt.labelKey);
+  const getProtocolLabel = (opt: (typeof PROTOCOL_OPTIONS)[number]) => t(opt.labelKey);
+
+  const formatTestError = (error: TestDialogError) => {
+    const errorData = getErrorDataRecord(error.data);
+    const protocol = errorData.protocol === "anthropic" ? "anthropic" : "openai";
+    const protocolLabel = t(`protocolOptions.${protocol}`);
+    const status = typeof errorData.status === "number" ? errorData.status : undefined;
+    const detail = typeof errorData.detail === "string" && errorData.detail ? `: ${errorData.detail}` : "";
+    const reason = typeof errorData.reason === "string" ? errorData.reason : undefined;
+    const hint =
+      errorData.hint === "configure_model_then_test_model"
+        ? `\n\n${t("testDialog.errors.configureModelThenTest")}`
+        : "";
+
+    switch (error.code) {
+      case "PROVIDER_TEST_LIST_HTTP_ERROR":
+        return `${t("testDialog.errors.providerListHttp", { protocol: protocolLabel, status: status ?? "-" })}${detail}${hint}`;
+      case "PROVIDER_TEST_LIST_RESPONSE_INVALID":
+        if (reason === "missing_model_id") {
+          return t("testDialog.errors.providerListMissingModelId", { protocol: protocolLabel });
+        }
+        return t("testDialog.errors.providerListMissingData", { protocol: protocolLabel });
+      case "MODEL_TEST_MESSAGE_HTTP_ERROR":
+        return `${t("testDialog.errors.modelMessageHttp", { protocol: protocolLabel, status: status ?? "-" })}${detail}`;
+      case "MODEL_TEST_MESSAGE_RESPONSE_INVALID":
+        return t("testDialog.errors.modelMessageEmpty", { protocol: protocolLabel });
+      case "CONFIG_TEST_REQUEST_FAILED":
+        if (reason === "timeout") {
+          return t("testDialog.errors.requestTimeout");
+        }
+        return detail
+          ? `${t("testDialog.errors.requestFailed")}: ${String(errorData.detail)}`
+          : t("testDialog.errors.requestFailed");
+      default:
+        return error.message || t("unknownError");
+    }
+  };
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -117,7 +166,7 @@ export function AgentModelsPage() {
     setFormName("");
     setFormApiKey("");
     setFormBaseURL("");
-    setFormNpm("openai-compatible");
+    setFormProtocol("openai");
     setFormDisplayName("");
     setDialogOpen(true);
   };
@@ -127,8 +176,7 @@ export function AgentModelsPage() {
     setFormName(provider.id);
     setFormApiKey("");
     setFormBaseURL(provider.baseURL ?? "");
-    const matchOpt = NPM_OPTIONS.find((o) => o.npm === provider.npm);
-    setFormNpm(matchOpt ? matchOpt.id : "openai-compatible");
+    setFormProtocol(provider.protocol);
     setFormDisplayName(provider.name !== provider.id ? provider.name : "");
     setDialogOpen(true);
   };
@@ -140,11 +188,10 @@ export function AgentModelsPage() {
     }
     setFormSaving(true);
     try {
-      const npmPackage = NPM_OPTIONS.find((o) => o.id === formNpm)?.npm ?? "@ai-sdk/openai-compatible";
       const data: Record<string, unknown> = {};
       if (formApiKey) data.apiKey = formApiKey;
       if (formBaseURL) data.baseURL = formBaseURL;
-      if (npmPackage) data.npm = npmPackage;
+      data.protocol = formProtocol;
       if (formDisplayName) data.name = formDisplayName;
       await providerApi.set(formName, data);
       toast.success(editingProvider ? t("saveProvider.successUpdate") : t("saveProvider.successCreate"));
@@ -163,22 +210,34 @@ export function AgentModelsPage() {
     setTesting(name);
     try {
       const { data: result, error: testErr } = await providerApi.test(name);
-      if (testErr) throw new Error(testErr.message);
+      if (testErr) {
+        setTestResult({ kind: "provider", name, error: testErr });
+        return;
+      }
       const r = result as unknown as Record<string, unknown>;
       const modelIds = Array.isArray(r?.models)
         ? (r.models as unknown as Array<{ id?: string }>).map((m: { id?: string }) => m.id ?? String(m))
         : [];
-      setTestResult({ name, models: modelIds, warning: (r?.warning ?? undefined) as string | undefined });
+      setTestResult({
+        kind: "provider",
+        name,
+        models: modelIds,
+        warning: (r?.warning ?? undefined) as string | undefined,
+      });
       setAddedModelIds(new Set((providerModels[name] ?? []).map((m) => m.id)));
     } catch (e) {
-      setTestResult({ name, error: e instanceof Error ? e.message : t("unknownError") });
+      setTestResult({
+        kind: "provider",
+        name,
+        error: { code: "UNKNOWN_ERROR", message: e instanceof Error ? e.message : t("unknownError") },
+      });
     } finally {
       setTesting(null);
     }
   };
 
   const handleAddFromTest = async (modelId: string) => {
-    if (!testResult || "error" in testResult) return;
+    if (!testResult || testResult.kind !== "provider" || "error" in testResult) return;
     const { error } = await providerApi.addModel(testResult.name, { modelId, name: modelId });
     if (error) {
       console.error(error);
@@ -189,6 +248,29 @@ export function AgentModelsPage() {
     toast.success(t("testDialog.addModelSuccess", { modelId }));
     dispatchConfigChange("models");
     loadAll();
+  };
+
+  const handleTestModel = async (providerId: string, modelId: string) => {
+    const key = `${providerId}:${modelId}`;
+    setTestingModelKey(key);
+    try {
+      const { data, error } = await providerApi.testModel(providerId, modelId);
+      if (error) {
+        setTestResult({ kind: "model", providerName: providerId, modelId, error });
+        return;
+      }
+      const result = data as unknown as { content?: string };
+      setTestResult({ kind: "model", providerName: providerId, modelId, content: result.content ?? "" });
+    } catch (e) {
+      setTestResult({
+        kind: "model",
+        providerName: providerId,
+        modelId,
+        error: { code: "UNKNOWN_ERROR", message: e instanceof Error ? e.message : t("unknownError") },
+      });
+    } finally {
+      setTestingModelKey(null);
+    }
   };
 
   const handleDelete = (name: string) => {
@@ -289,7 +371,7 @@ export function AgentModelsPage() {
           return;
         }
       } else {
-        const { error } = await providerApi.updateModel(modelProviderId, { modelId: mfId, ...data });
+        const { error } = await providerApi.updateModel(modelProviderId, mfId, data);
         if (error) {
           toast.error(t("modelSubrow.saveModel.errorGeneric", { message: error.message }));
           return;
@@ -352,6 +434,9 @@ export function AgentModelsPage() {
               currentModel={modelConfig?.current.model ?? null}
               currentSmallModel={modelConfig?.current.small_model ?? null}
               available={modelConfig?.available ?? []}
+              onConfigChange={(update) =>
+                setModelConfig((current) => (current ? mergeModelConfigUpdate(current, update) : current))
+              }
             />
             <Button onClick={handleOpenCreate}>{t("createButton")}</Button>
           </div>
@@ -385,7 +470,7 @@ export function AgentModelsPage() {
                       type="checkbox"
                       checked={isSelected}
                       onChange={toggleSelect}
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
                       className="rounded border-border"
                     />
                     <div className="flex-1 min-w-0">
@@ -395,46 +480,59 @@ export function AgentModelsPage() {
                           <span className="text-xs text-text-secondary">{provider.name}</span>
                         )}
                         {(() => {
-                          const opt = NPM_OPTIONS.find((o) => o.npm === provider.npm);
+                          const opt = PROTOCOL_OPTIONS.find((o) => o.id === provider.protocol);
                           return (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-secondary">
-                              {opt ? getNpmLabel(opt) : provider.npm || "—"}
+                              {opt ? getProtocolLabel(opt) : provider.protocol}
                             </span>
                           );
                         })()}
                         {provider.keyHint && (
                           <span className="font-mono text-xs text-text-muted bg-surface-2 px-2 py-0.5 rounded">
-                            ***{provider.keyHint}
+                            {provider.keyHint}
                           </span>
                         )}
-                        <StatusBadge status={provider.configured ? "configured" : "unconfigured"} />
-                        <span
-                          className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-xs font-medium ${provider.modelCount > 0 ? "bg-brand-subtle text-brand dark:text-brand-light" : "bg-surface-2 text-text-muted"}`}
-                        >
-                          {provider.modelCount}
-                        </span>
                       </div>
                     </div>
-                    <div
-                      className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
                         size="xs"
                         variant="outline"
-                        onClick={() => handleTest(provider.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleTest(provider.id);
+                        }}
                         disabled={testing === provider.id}
                       >
                         {testing === provider.id ? t("actions.testing") : t("actions.test")}
                       </Button>
-                      <Button size="xs" variant="outline" onClick={() => handleOpenEdit(provider)}>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenEdit(provider);
+                        }}
+                      >
                         {t("actions.edit")}
                       </Button>
-                      <Button size="xs" variant="destructive" onClick={() => handleDelete(provider.id)}>
+                      <Button
+                        size="xs"
+                        variant="destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDelete(provider.id);
+                        }}
+                      >
                         {t("actions.delete")}
                       </Button>
                     </div>
-                    <ChevronDown className="h-4 w-4 shrink-0 text-text-muted transition-transform duration-200 group-data-[state=open]/trigger:rotate-180" />
+                    <div className="flex items-center gap-2 text-xs text-text-muted px-2 py-1 rounded">
+                      <span>
+                        {t("columns.models")} ({models.length})
+                      </span>
+                      <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/trigger:rotate-180" />
+                    </div>
                   </div>
                 </div>
               </CollapsibleTrigger>
@@ -446,12 +544,13 @@ export function AgentModelsPage() {
                     models.map((m) => {
                       const limit = (m.limit as Record<string, number | undefined>) ?? {};
                       const cost = (m.cost as Record<string, number | undefined>) ?? {};
+                      const modelTesting = testingModelKey === `${provider.id}:${m.id}`;
                       return (
                         <div
                           key={m.id}
-                          className="flex items-center gap-3 rounded-md border border-border-light bg-surface-0 px-3 py-2"
+                          className="flex flex-wrap items-center gap-3 rounded-md border border-border-light bg-surface-0 px-3 py-2"
                         >
-                          <div className="flex-1 min-w-0">
+                          <div className="min-w-0 flex-1 basis-0">
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-xs font-medium text-text-bright">{m.id}</span>
                               {m.name && m.name !== m.id && (
@@ -468,16 +567,26 @@ export function AgentModelsPage() {
                               ) : null}
                             </div>
                           </div>
-                          <Button size="xs" variant="outline" onClick={() => openEditModel(provider.id, m)}>
-                            {t("actions.edit")}
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="destructive"
-                            onClick={() => setDeleteModelConfirm({ providerId: provider.id, modelId: m.id })}
-                          >
-                            {t("actions.delete")}
-                          </Button>
+                          <div className="ml-auto flex shrink-0 items-center gap-2">
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={() => handleTestModel(provider.id, m.id)}
+                              disabled={modelTesting}
+                            >
+                              {modelTesting ? t("actions.testing") : t("actions.test")}
+                            </Button>
+                            <Button size="xs" variant="outline" onClick={() => openEditModel(provider.id, m)}>
+                              {t("actions.edit")}
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="destructive"
+                              onClick={() => setDeleteModelConfirm({ providerId: provider.id, modelId: m.id })}
+                            >
+                              {t("actions.delete")}
+                            </Button>
+                          </div>
                         </div>
                       );
                     })
@@ -530,24 +639,18 @@ export function AgentModelsPage() {
           </div>
           <div>
             <label className="text-sm font-medium text-text-primary">{t("form.protocol")}</label>
-            <Select value={formNpm} onValueChange={setFormNpm}>
+            <Select value={formProtocol} onValueChange={(value) => setFormProtocol(value as "openai" | "anthropic")}>
               <SelectTrigger className="mt-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {NPM_OPTIONS.map((opt) => (
+                {PROTOCOL_OPTIONS.map((opt) => (
                   <SelectItem key={opt.id} value={opt.id}>
-                    {getNpmLabel(opt)}
+                    {getProtocolLabel(opt)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-text-muted mt-1">
-              {t("form.sdkPackage")}{" "}
-              <code className="font-mono bg-surface-2 px-1 rounded">
-                {NPM_OPTIONS.find((o) => o.id === formNpm)?.npm ?? ""}
-              </code>
-            </p>
           </div>
           <div>
             <label className="text-sm font-medium text-text-primary">{t("form.apiKey")}</label>
@@ -692,21 +795,29 @@ export function AgentModelsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {testResult && "error" in testResult
-                ? t("testDialog.failTitle", { name: testResult.name })
-                : t("testDialog.successTitle", { name: testResult?.name ?? "" })}
+              {testResult?.kind === "provider" &&
+                ("error" in testResult
+                  ? t("testDialog.failTitle", { name: testResult.name })
+                  : t("testDialog.successTitle", { name: testResult.name }))}
+              {testResult?.kind === "model" &&
+                ("error" in testResult
+                  ? t("testDialog.modelFailTitle", { modelId: testResult.modelId })
+                  : t("testDialog.modelSuccessTitle", { modelId: testResult.modelId }))}
             </DialogTitle>
-            <DialogDescription>
-              {testResult && "error" in testResult
-                ? (testResult as { error: string }).error
-                : t("testDialog.modelsFound", {
-                    count: (testResult as { models: string[] } | null)?.models?.length ?? 0,
-                  })}
+            <DialogDescription className="whitespace-pre-line">
+              {testResult?.kind === "provider" &&
+                ("error" in testResult
+                  ? formatTestError(testResult.error)
+                  : t("testDialog.modelsFound", {
+                      count: testResult.models.length,
+                    }))}
+              {testResult?.kind === "model" &&
+                ("error" in testResult ? formatTestError(testResult.error) : testResult.content)}
             </DialogDescription>
           </DialogHeader>
-          {testResult && !("error" in testResult) && testResult.models.length > 0 && (
+          {testResult?.kind === "provider" && !("error" in testResult) && testResult.models.length > 0 && (
             <div className="max-h-72 overflow-y-auto grid gap-1.5">
-              {(testResult as { models: string[] }).models.map((m) => {
+              {testResult.models.map((m) => {
                 const added = addedModelIds.has(m);
                 return (
                   <div

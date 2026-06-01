@@ -8,8 +8,13 @@ import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
 import { getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
-function inferProtocol(npm?: string | null): "openai" | "anthropic" {
-  if (npm?.includes("anthropic")) return "anthropic";
+type LaunchModelProtocol = ModelConfig["protocol"];
+
+function toLaunchModelProtocol(protocol: string | null | undefined, providerName: string): LaunchModelProtocol {
+  if (protocol === "openai" || protocol === "anthropic") return protocol;
+  log(
+    `[launch-spec-builder] Provider '${providerName}' protocol '${protocol ?? "unknown"}' is not supported; using openai`,
+  );
   return "openai";
 }
 
@@ -89,7 +94,7 @@ function resolveModelConfig(modelRef: string | null | undefined, providers: Agen
 
   return {
     provider: providerName,
-    protocol: inferProtocol(prov.npm),
+    protocol: toLaunchModelProtocol(prov.protocol, providerName),
     baseUrl: prov.baseUrl || "",
     apiKey: prov.apiKey || "",
     model: modelId,

@@ -8,6 +8,13 @@ import { invalidateAvailableCache } from "./models";
 
 type ProviderBody = { action: string; name?: string; modelId?: string; data?: Record<string, unknown> };
 
+type TestErrorCode =
+  | "PROVIDER_TEST_LIST_HTTP_ERROR"
+  | "PROVIDER_TEST_LIST_RESPONSE_INVALID"
+  | "MODEL_TEST_MESSAGE_HTTP_ERROR"
+  | "MODEL_TEST_MESSAGE_RESPONSE_INVALID"
+  | "CONFIG_TEST_REQUEST_FAILED";
+
 const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
 });
@@ -16,9 +23,8 @@ async function handleList(ctx: AuthContext) {
   const providers = await configPg.listProviders(ctx);
   const list = providers.map((p) => ({
     id: p.name,
-    name: p.name,
-    npm: p.npm ?? null,
-    configured: !!p.apiKey,
+    name: p.displayName ?? "",
+    protocol: p.protocol,
     keyHint: toKeyHint(p.apiKey),
     baseURL: p.baseUrl ?? null,
     modelCount: p.modelCount,
@@ -40,8 +46,8 @@ async function handleGet(ctx: AuthContext, name: string) {
 
   return configSuccess({
     id: name,
-    name: p.name,
-    npm: p.npm ?? null,
+    name: p.displayName ?? "",
+    protocol: p.protocol,
     keyHint: toKeyHint(p.apiKey),
     baseURL: p.baseUrl ?? null,
     options: {
@@ -64,11 +70,13 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   // 分解 data 为 PG 字段
   const apiKey = data.apiKey as string | undefined;
   const baseUrl = data.baseURL as string | undefined;
-  const npm = (data.npm as string) ?? existing?.npm ?? "@ai-sdk/openai-compatible";
+  const rawProtocol = data.protocol;
+  const protocol =
+    rawProtocol === "anthropic" || rawProtocol === "openai" ? rawProtocol : (existing?.protocol ?? "openai");
   const displayName = (data.name as string) ?? existing?.displayName ?? undefined;
 
   // 收集 extraOptions：data 中除已知字段外的其他 options
-  const knownKeys = new Set(["npm", "name", "baseURL", "apiKey", "models", "options"]);
+  const knownKeys = new Set(["protocol", "name", "baseURL", "apiKey", "models", "options"]);
   const extraOptions: Record<string, unknown> = {};
   if (typeof data.options === "object" && data.options !== null) {
     for (const [k, v] of Object.entries(data.options as Record<string, unknown>)) {
@@ -85,7 +93,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
 
   await configPg.upsertProvider(ctx, name, {
     displayName,
-    npm,
+    protocol,
     baseUrl,
     apiKey,
     extraOptions: Object.keys(extraOptions).length > 0 ? extraOptions : undefined,
@@ -108,7 +116,232 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   }
 
   invalidateAvailableCache();
-  return configSuccess({ id: name, keyHint: toKeyHint(apiKey ?? existing?.apiKey) });
+  return configSuccess({
+    id: name,
+    name: displayName,
+    protocol,
+    keyHint: toKeyHint(apiKey ?? existing?.apiKey),
+  });
+}
+
+/**
+ * 规范化 provider base URL，避免尾部 `/` 导致路径重复拼接。
+ */
+function normalizeProviderBaseUrl(baseUrl: string | null | undefined, protocol: "openai" | "anthropic"): string {
+  const fallback = protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com";
+  return (baseUrl ?? fallback).replace(/\/+$/, "");
+}
+
+/**
+ * 在 provider base URL 后补齐协议约定的 `/v1` 前缀。
+ */
+function withVersionedBaseUrl(baseUrl: string): string {
+  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+}
+
+/**
+ * 将上游响应体裁剪成可展示的简短细节，避免错误弹窗被大段 HTML 或 JSON 淹没。
+ */
+async function readErrorDetail(res: Response): Promise<string | undefined> {
+  try {
+    const detail = (await res.text()).trim().slice(0, 200);
+    return detail || undefined;
+  } catch {
+    return;
+  }
+}
+
+/**
+ * 统一返回测试相关的结构化错误，供前端按 code 做本地化渲染。
+ */
+function configTestError(code: TestErrorCode, data?: Record<string, unknown>) {
+  return configError(code, code, data);
+}
+
+/**
+ * 将超时和普通网络异常区分开，前端可据此给出更准确提示。
+ */
+function getTestFailureReason(error: unknown): { reason: "timeout" | "request_failed"; detail?: string } {
+  if (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  ) {
+    return { reason: "timeout" };
+  }
+
+  if (error instanceof Error && error.message) {
+    return { reason: "request_failed", detail: error.message };
+  }
+
+  return { reason: "request_failed" };
+}
+
+async function testOpenAICompatibleProvider(baseUrl: string, apiKey: string, signal: AbortSignal) {
+  const res = await fetch(`${withVersionedBaseUrl(baseUrl)}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal,
+  });
+
+  if (!res.ok) {
+    return configTestError("PROVIDER_TEST_LIST_HTTP_ERROR", {
+      protocol: "openai",
+      status: res.status,
+      detail: await readErrorDetail(res),
+    });
+  }
+
+  const json = (await res.json()) as { data?: Array<{ id?: string }> };
+  if (!Array.isArray(json.data)) {
+    return configTestError("PROVIDER_TEST_LIST_RESPONSE_INVALID", {
+      protocol: "openai",
+      reason: "missing_data_array",
+    });
+  }
+
+  const models = json.data
+    .map((model) => model.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (models.length === 0) {
+    return configTestError("PROVIDER_TEST_LIST_RESPONSE_INVALID", {
+      protocol: "openai",
+      reason: "missing_model_id",
+    });
+  }
+
+  return configSuccess({ models });
+}
+
+async function testAnthropicProvider(baseUrl: string, apiKey: string, signal: AbortSignal) {
+  const res = await fetch(`${withVersionedBaseUrl(baseUrl)}/models`, {
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    signal,
+  });
+
+  if (!res.ok) {
+    return configTestError("PROVIDER_TEST_LIST_HTTP_ERROR", {
+      protocol: "anthropic",
+      status: res.status,
+      detail: await readErrorDetail(res),
+      hint: res.status === 404 || res.status === 405 ? "configure_model_then_test_model" : undefined,
+    });
+  }
+
+  const json = (await res.json()) as { data?: Array<{ id?: string }> };
+  if (!Array.isArray(json.data)) {
+    return configTestError("PROVIDER_TEST_LIST_RESPONSE_INVALID", {
+      protocol: "anthropic",
+      reason: "missing_data_array",
+    });
+  }
+
+  const models = json.data
+    .map((model) => model.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (models.length === 0) {
+    return configTestError("PROVIDER_TEST_LIST_RESPONSE_INVALID", {
+      protocol: "anthropic",
+      reason: "missing_model_id",
+    });
+  }
+
+  return configSuccess({ models });
+}
+
+function extractMessageText(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .flatMap((part) => {
+      if (typeof part === "string") return [part];
+      if (typeof part === "object" && part !== null && "text" in part && typeof part.text === "string") {
+        return [part.text];
+      }
+      return [];
+    })
+    .join("\n")
+    .trim();
+}
+
+async function testProviderModelMessage(
+  provider: NonNullable<Awaited<ReturnType<typeof configPg.getProvider>>>,
+  modelId: string,
+  signal: AbortSignal,
+) {
+  const apiKey = resolveApiKey(provider.apiKey) ?? "";
+  const baseUrl = normalizeProviderBaseUrl(provider.baseUrl, provider.protocol);
+
+  if (provider.protocol === "anthropic") {
+    const res = await fetch(`${withVersionedBaseUrl(baseUrl)}/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        max_tokens: 32,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+      signal,
+    });
+
+    if (!res.ok) {
+      return configTestError("MODEL_TEST_MESSAGE_HTTP_ERROR", {
+        protocol: "anthropic",
+        status: res.status,
+        detail: await readErrorDetail(res),
+      });
+    }
+
+    const json = (await res.json()) as { content?: unknown };
+    const content = extractMessageText(json.content);
+    if (!content) {
+      return configTestError("MODEL_TEST_MESSAGE_RESPONSE_INVALID", {
+        protocol: "anthropic",
+        reason: "empty_text",
+      });
+    }
+    return configSuccess({ ok: true, content });
+  }
+
+  const res = await fetch(`${withVersionedBaseUrl(baseUrl)}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: modelId,
+      messages: [{ role: "user", content: "hello" }],
+      max_tokens: 32,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    return configTestError("MODEL_TEST_MESSAGE_HTTP_ERROR", {
+      protocol: "openai",
+      status: res.status,
+      detail: await readErrorDetail(res),
+    });
+  }
+
+  const json = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
+  };
+  const content = extractMessageText(json.choices?.[0]?.message?.content);
+  if (!content) {
+    return configTestError("MODEL_TEST_MESSAGE_RESPONSE_INVALID", {
+      protocol: "openai",
+      reason: "empty_text",
+    });
+  }
+  return configSuccess({ ok: true, content });
 }
 
 async function handleTest(ctx: AuthContext, name: string) {
@@ -116,34 +349,54 @@ async function handleTest(ctx: AuthContext, name: string) {
   if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
 
   const apiKey = resolveApiKey(p.apiKey) ?? "";
-  const baseURL = p.baseUrl ?? "https://api.anthropic.com";
+  const baseURL = normalizeProviderBaseUrl(p.baseUrl, p.protocol);
 
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
-    const modelsPath = baseURL.endsWith("/v1") ? "/models" : "/v1/models";
-    const res = await fetch(`${baseURL}${modelsPath}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, "x-api-key": apiKey },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        let detail = "";
-        try {
-          const body = await res.text();
-          detail = body.slice(0, 200);
-        } catch {}
-        return configError("CONFIG_READ_ERROR", `认证失败 (HTTP ${res.status})${detail ? `: ${detail}` : ""}`);
+    try {
+      if (p.protocol === "anthropic") {
+        return await testAnthropicProvider(baseURL, apiKey, controller.signal);
       }
-      return configSuccess({ models: [], warning: `API 可达，但模型列表接口返回 HTTP ${res.status}` });
+      return await testOpenAICompatibleProvider(baseURL, apiKey, controller.signal);
+    } finally {
+      clearTimeout(timer);
     }
-    const json = (await res.json()) as { data?: Array<{ id: string }> };
-    const models = (json.data ?? []).map((m) => m.id);
-    return configSuccess({ models });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Connection failed";
-    return configError("CONFIG_READ_ERROR", `Test failed: ${message}`);
+    const failure = getTestFailureReason(e);
+    return configTestError("CONFIG_TEST_REQUEST_FAILED", {
+      target: "provider",
+      protocol: p.protocol,
+      ...failure,
+    });
+  }
+}
+
+async function handleTestModel(ctx: AuthContext, providerName: string, modelId: string) {
+  if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
+
+  const p = await configPg.getProvider(ctx, providerName);
+  if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
+
+  const existingModel = p.models?.find((m) => m.modelId === modelId);
+  if (!existingModel) return configError("NOT_FOUND", `Model '${modelId}' not found`);
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      return await testProviderModelMessage(p, modelId, controller.signal);
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (e: unknown) {
+    const failure = getTestFailureReason(e);
+    return configTestError("CONFIG_TEST_REQUEST_FAILED", {
+      target: "model",
+      protocol: p.protocol,
+      modelId,
+      ...failure,
+    });
   }
 }
 
@@ -219,6 +472,8 @@ app.post(
           return await handleSet(authCtx, payload.name!, payload.data!);
         case "test":
           return await handleTest(authCtx, payload.name!);
+        case "test_model":
+          return await handleTestModel(authCtx, payload.name!, payload.modelId!);
         case "delete":
           return await handleDelete(authCtx, payload.name!);
         case "add_model":

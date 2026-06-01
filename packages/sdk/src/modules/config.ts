@@ -27,14 +27,17 @@ export class ProviderApi extends BaseApi {
   async test(name: string): Promise<ApiResult<{ success: boolean; error?: string }>> {
     return this.post("/web/config/providers", { action: "test", name });
   }
+  async testModel(name: string, modelId: string): Promise<ApiResult<{ ok: boolean; content: string }>> {
+    return this.post("/web/config/providers", { action: "test_model", name, modelId });
+  }
   async delete(name: string): Promise<ApiResult<boolean>> {
     return this.post("/web/config/providers", { action: "delete", name });
   }
   async addModel(name: string, modelData: Record<string, unknown>): Promise<ApiResult<ModelEntry>> {
     return this.post("/web/config/providers", { action: "add_model", name, data: modelData });
   }
-  async updateModel(name: string, modelData: Record<string, unknown>): Promise<ApiResult<ModelEntry>> {
-    return this.post("/web/config/providers", { action: "update_model", name, data: modelData });
+  async updateModel(name: string, modelId: string, modelData: Record<string, unknown>): Promise<ApiResult<ModelEntry>> {
+    return this.post("/web/config/providers", { action: "update_model", name, modelId, data: modelData });
   }
   async removeModel(name: string, modelId: string): Promise<ApiResult<boolean>> {
     return this.post("/web/config/providers", { action: "remove_model", name, modelId });

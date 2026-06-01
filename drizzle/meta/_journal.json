@@ -36,6 +36,20 @@
       "when": 1780017511647,
       "tag": "0003_workflow-board",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780225166376,
+      "tag": "0005_registry-backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780225743277,
+      "tag": "0006_provider-protocol",
+      "breakpoints": true
     }
   ]
 }

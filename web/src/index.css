@@ -209,6 +209,19 @@
   }
 }
 
+/* Sonner positions the close button outside the toast by default. Keep it inside
+   the right edge so it is easier to hit and does not float over nearby UI. */
+html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  padding-right: 42px;
+}
+
+html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-button] {
+  top: 50%;
+  right: 10px;
+  left: auto;
+  transform: translateY(-50%);
+}
+
 /* ============================================================
    Custom scrollbar
    ============================================================ */

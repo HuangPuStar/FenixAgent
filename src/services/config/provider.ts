@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { model, provider } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
@@ -21,26 +21,39 @@ export async function listProviders(ctx: AuthContext) {
       id: provider.id,
       name: provider.name,
       displayName: provider.displayName,
-      npm: provider.npm,
+      protocol: provider.protocol,
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
       extraOptions: provider.extraOptions,
       createdAt: provider.createdAt,
       updatedAt: provider.updatedAt,
-      modelCount: sql<number>`(SELECT COUNT(*) FROM ${model} WHERE ${model.providerId} = ${provider.id})`,
     })
     .from(provider)
     .where(eq(provider.organizationId, ctx.organizationId));
+
+  const providerIds = rows.map((r) => r.id);
+  const modelCounts =
+    providerIds.length > 0
+      ? await db
+          .select({
+            providerId: model.providerId,
+            count: sql<number>`COUNT(*)`,
+          })
+          .from(model)
+          .where(and(eq(model.organizationId, ctx.organizationId), inArray(model.providerId, providerIds)))
+          .groupBy(model.providerId)
+      : [];
+  const countByProviderId = new Map(modelCounts.map((r) => [r.providerId, Number(r.count)]));
 
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
     displayName: r.displayName,
-    npm: r.npm,
+    protocol: r.protocol,
     baseUrl: r.baseUrl,
     apiKey: r.apiKey,
     extraOptions: r.extraOptions,
-    modelCount: Number(r.modelCount),
+    modelCount: countByProviderId.get(r.id) ?? 0,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   }));
@@ -55,7 +68,10 @@ export async function getProvider(ctx: AuthContext, name: string) {
   if (rows.length === 0) return null;
   const p = rows[0];
 
-  const models = await db.select().from(model).where(eq(model.providerId, p.id));
+  const models = await db
+    .select()
+    .from(model)
+    .where(and(eq(model.organizationId, ctx.organizationId), eq(model.providerId, p.id)));
 
   return { ...p, models };
 }
@@ -63,7 +79,7 @@ export async function getProvider(ctx: AuthContext, name: string) {
 export async function upsertProvider(ctx: AuthContext, name: string, data: ProviderUpsertData) {
   const set = {
     displayName: data.displayName,
-    npm: data.npm,
+    protocol: data.protocol,
     baseUrl: data.baseUrl,
     apiKey: data.apiKey,
     extraOptions: data.extraOptions ?? undefined,
