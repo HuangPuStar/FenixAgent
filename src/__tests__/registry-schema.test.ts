@@ -56,7 +56,7 @@ describe("REGISTRY_SECRET 环境变量", () => {
     delete process.env.REGISTRY_SECRET;
     const { validateEnv } = await import("../env");
     const env = validateEnv();
-    expect(env.REGISTRY_SECRET).toBe("");
+    expect(env.REGISTRY_SECRET).toBe("rcs-registry-secret");
   });
 
   // REGISTRY_SECRET 可覆盖
