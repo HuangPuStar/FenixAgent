@@ -38,13 +38,22 @@ export interface CreateInstanceOrchestratorOptions {
     runtime: EngineRuntime,
     updateMetadata: (metadata: Record<string, unknown>) => void,
   ) => void;
+  /**
+   * 自定义 runtime 创建策略。
+   * 对 remote node 返回对应的 remote runtime；
+   * 不提供或返回 null 时 fallback 到 plugin.createRuntime()。
+   */
+  runtimeResolver?: (
+    engineType: string,
+    node: import("../types/core-node").CoreNode,
+  ) => EngineRuntime | null | Promise<EngineRuntime | null>;
 }
 
 /**
  * 创建 core 实例生命周期 orchestrator。
  */
 export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOptions): InstanceOrchestrator {
-  const { pluginRegistry, nodeRegistry, store, onInstanceStarted } = options;
+  const { pluginRegistry, nodeRegistry, store, onInstanceStarted, runtimeResolver } = options;
 
   /**
    * 把异常统一收敛为实例 `error` 状态，便于上层读取失败快照。
@@ -97,7 +106,6 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         );
       }
 
-      const plugin = pluginRegistry.require(request.engineType);
       const node = nodeRegistry.require(request.nodeId);
 
       if (node.status !== "online") {
@@ -116,9 +124,29 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         );
       }
 
+      const plugin = pluginRegistry.get(request.engineType);
+      // remote node 不需要 plugin，但 local node 需要
+      if (!plugin && node.mode !== "remote") {
+        pluginRegistry.require(request.engineType);
+      }
+
       let runtime: EngineRuntime;
       try {
-        runtime = plugin.createRuntime();
+        let resolved: EngineRuntime | null | undefined;
+        if (runtimeResolver) {
+          resolved = await runtimeResolver(request.engineType, node);
+        }
+        if (resolved) {
+          runtime = resolved;
+        } else if (plugin) {
+          runtime = plugin.createRuntime();
+        } else {
+          throw createCoreRuntimeError(
+            "PLUGIN_NOT_FOUND",
+            `No runtime resolver and no plugin for engine ${request.engineType} on remote node ${request.nodeId}`,
+            { engineType: request.engineType, nodeId: request.nodeId },
+          );
+        }
       } catch (error) {
         createErroredInstanceRecord(request, error);
         throw error;
@@ -131,7 +159,7 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         launchSpec: request.launchSpec,
       });
       store.attachRuntime(request.instanceId, {
-        plugin,
+        plugin: node.mode === "remote" ? null : plugin,
         runtime,
         relay: null,
       });

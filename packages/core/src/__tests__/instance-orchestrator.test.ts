@@ -227,6 +227,75 @@ describe("InstanceOrchestrator", () => {
     expect(runningContext.plugin.runtimeState.connectRelayCalls).toBe(1);
   });
 
+  // remote node 通过 runtimeResolver 获取 runtime
+  test("uses runtimeResolver for remote nodes", async () => {
+    const pluginRegistry = new EnginePluginRegistry();
+    const nodeRegistry = new CoreNodeRegistry();
+    const store = createRuntimeInstanceStore();
+
+    // 用现有的 fake plugin 的 runtime 作为 remote runtime
+    const fakePlugin = createFakeEnginePlugin();
+    const remoteRuntime = fakePlugin.createRuntime();
+
+    nodeRegistry.register({
+      id: "remote-machine-1",
+      mode: "remote",
+      engineTypes: ["fake-engine"],
+      status: "online",
+    });
+
+    const orchestrator = createInstanceOrchestrator({
+      pluginRegistry,
+      nodeRegistry,
+      store,
+      runtimeResolver: () => remoteRuntime,
+    });
+
+    const launched = await orchestrator.launch({
+      instanceId: "inst_remote",
+      engineType: "fake-engine",
+      nodeId: "remote-machine-1",
+      launchSpec: createLaunchSpec(),
+    });
+
+    expect(launched.status).toBe("running");
+    expect(launched.nodeId).toBe("remote-machine-1");
+
+    // remote node 的 runtime entry 中 plugin 应为 null
+    const runtimeEntry = store.getRuntimeEntry("inst_remote");
+    expect(runtimeEntry?.plugin).toBeNull();
+    expect(runtimeEntry?.runtime).toBe(remoteRuntime);
+  });
+
+  // remote node 没有提供 runtimeResolver 时应该报错
+  test("throws when remote node has no runtimeResolver and no plugin", async () => {
+    const pluginRegistry = new EnginePluginRegistry();
+    const nodeRegistry = new CoreNodeRegistry();
+    const store = createRuntimeInstanceStore();
+
+    nodeRegistry.register({
+      id: "remote-machine-2",
+      mode: "remote",
+      engineTypes: ["fake-engine"],
+      status: "online",
+    });
+
+    const orchestrator = createInstanceOrchestrator({
+      pluginRegistry,
+      nodeRegistry,
+      store,
+    });
+
+    await expect(
+      orchestrator.launch({
+        instanceId: "inst_remote_no_resolver",
+        engineType: "fake-engine",
+        nodeId: "remote-machine-2",
+        launchSpec: createLaunchSpec(),
+      }),
+    ).rejects.toMatchObject({ code: "PLUGIN_NOT_FOUND" });
+  });
+
   // relay/stop 失败时状态会被统一收敛到 error
   test("persists error state for relay and stop failures, and keeps stop idempotent", async () => {
     const relayErrorContext = createTestContext({

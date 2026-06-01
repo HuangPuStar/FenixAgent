@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { machine, registryEvent } from "../db/schema";
+import { agentConfig, machine, registryEvent } from "../db/schema";
 import { log } from "../logger";
 import type { AuthContext } from "../plugins/auth";
 
@@ -168,6 +168,7 @@ export async function registerMachine(params: {
       detail: { machine_info: params.machineInfo, labels: params.labels },
     });
 
+    await bindAgentConfigs(existingId, params.agentName, params.tenantId);
     return { id: existingId };
   }
 
@@ -193,6 +194,7 @@ export async function registerMachine(params: {
     detail: { machine_info: params.machineInfo, labels: params.labels },
   });
 
+  await bindAgentConfigs(id, params.agentName, params.tenantId);
   return { id };
 }
 
@@ -220,6 +222,16 @@ export async function markHeartbeatTimeout(machineId: string): Promise<void> {
 
 export async function updateHeartbeat(machineId: string): Promise<void> {
   await db.update(machine).set({ lastHeartbeatAt: new Date(), updatedAt: new Date() }).where(eq(machine.id, machineId));
+}
+
+/** 按 agentName 匹配 agentConfig 并绑定 machineId */
+async function bindAgentConfigs(machineId: string, agentName: string, tenantId: string | null): Promise<void> {
+  if (!tenantId) return;
+  const conditions = [eq(agentConfig.organizationId, tenantId), eq(agentConfig.name, agentName)];
+  await db
+    .update(agentConfig)
+    .set({ machineId, updatedAt: new Date() })
+    .where(and(...conditions));
 }
 
 /** 服务启动时调用：将所有 online 状态的 machine 重置为 offline（服务重启后 WS 连接均已断开） */

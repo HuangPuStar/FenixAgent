@@ -21,6 +21,7 @@ describe("RelayConnectionManager", () => {
       instanceId: null,
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     };
     manager.add(wsId, entry);
@@ -43,6 +44,7 @@ describe("RelayConnectionManager", () => {
       instanceId: null,
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     };
     manager.add(wsId, entry);
@@ -68,6 +70,7 @@ describe("RelayConnectionManager", () => {
       instanceId: null,
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     manager.add("b", {
@@ -80,6 +83,7 @@ describe("RelayConnectionManager", () => {
       instanceId: null,
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     manager.clear();
@@ -99,6 +103,7 @@ describe("RelayConnectionManager", () => {
       instanceId: "inst-1",
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     manager.add("r2", {
@@ -111,6 +116,7 @@ describe("RelayConnectionManager", () => {
       instanceId: "inst-2",
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     const found = manager.findByInstance("inst-1");
@@ -129,6 +135,7 @@ describe("RelayConnectionManager", () => {
       instanceId: null,
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     manager.add("r2", {
@@ -141,6 +148,7 @@ describe("RelayConnectionManager", () => {
       instanceId: null,
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     manager.add("r3", {
@@ -153,6 +161,7 @@ describe("RelayConnectionManager", () => {
       instanceId: null,
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     const found = manager.findByAgentId("a");
@@ -171,6 +180,7 @@ describe("RelayConnectionManager", () => {
       instanceId: "inst-1",
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     manager.add("r2", {
@@ -183,6 +193,7 @@ describe("RelayConnectionManager", () => {
       instanceId: "inst-1",
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     expect(manager.hasOtherRelayForInstance("inst-1", "r1")).toBe(true);
@@ -204,6 +215,7 @@ describe("RelayConnectionManager", () => {
       instanceId: null,
       relayHandle: null,
       relayUnsub: null,
+      sessionId: "ses-test",
       outboundBuffer: [],
     });
     expect(manager.size).toBe(1);

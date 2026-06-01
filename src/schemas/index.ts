@@ -103,6 +103,19 @@ export {
   FileWriteResultSchema,
   WriteFileRequestSchema,
 } from "./file.schema";
+// Instances
+export {
+  type DeleteInstanceResponse,
+  DeleteInstanceResponseSchema,
+  type InstanceInfo,
+  InstanceInfoSchema,
+  type InstanceListResponse,
+  InstanceListResponseSchema,
+  type InstanceStatus,
+  InstanceStatusSchema,
+  type SpawnInstanceFromEnvironmentRequest,
+  SpawnInstanceFromEnvironmentRequestSchema,
+} from "./instance.schema";
 // Knowledge
 export {
   type CreateKnowledgeBaseRequest,

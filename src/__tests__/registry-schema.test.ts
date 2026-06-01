@@ -51,7 +51,7 @@ describe("agentConfig 新增 machineId 外键列", () => {
 });
 
 describe("REGISTRY_SECRET 环境变量", () => {
-  function withRequiredEnv(): () => void {
+  function withRequiredEnv(): { restore: () => void } {
     const original = {
       DATABASE_URL: process.env.DATABASE_URL,
       RCS_API_KEYS: process.env.RCS_API_KEYS,
@@ -61,40 +61,42 @@ describe("REGISTRY_SECRET 环境变量", () => {
     process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
     process.env.RCS_API_KEYS = "test-key";
 
-    return () => {
-      for (const [key, value] of Object.entries(original)) {
-        if (value === undefined) {
-          delete process.env[key];
-        } else {
-          process.env[key] = value;
+    return {
+      restore: () => {
+        for (const [key, value] of Object.entries(original)) {
+          if (value === undefined) {
+            delete process.env[key];
+          } else {
+            process.env[key] = value;
+          }
         }
-      }
+      },
     };
   }
 
   // REGISTRY_SECRET 默认值为空字符串
   test("REGISTRY_SECRET 默认值", async () => {
-    const restoreEnv = withRequiredEnv();
+    const { restore } = withRequiredEnv();
+    delete process.env.REGISTRY_SECRET;
     try {
-      delete process.env.REGISTRY_SECRET;
       const { validateEnv } = await import("../env");
       const env = validateEnv();
-      expect(env.REGISTRY_SECRET).toBe("");
+      expect(env.REGISTRY_SECRET).toBe("rcs-registry-secret");
     } finally {
-      restoreEnv();
+      restore();
     }
   });
 
   // REGISTRY_SECRET 可覆盖
   test("REGISTRY_SECRET 可覆盖", async () => {
-    const restoreEnv = withRequiredEnv();
+    const { restore } = withRequiredEnv();
     try {
       process.env.REGISTRY_SECRET = "my-secret";
       const { validateEnv } = await import("../env");
       const env = validateEnv();
       expect(env.REGISTRY_SECRET).toBe("my-secret");
     } finally {
-      restoreEnv();
+      restore();
     }
   });
 });

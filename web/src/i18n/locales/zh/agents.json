@@ -32,10 +32,11 @@
     "createTitle": "新建Agent",
     "createConfirm": "创建",
     "tabs": {
-      "basic": "基础配置",
+      "basic": "基础",
       "knowledge": "知识库",
       "permission": "权限配置",
-      "skills": "技能"
+      "skills": "技能",
+      "more": "更多"
     }
   },
   "form": {
@@ -44,6 +45,7 @@
     "nameValidationError": "名称只能包含小写字母、数字和单连字符，长度 1-64",
     "machine": "机器",
     "machinePlaceholder": "选择一个在线的机器",
+    "machineLocal": "本地（默认）",
     "machineValidationError": "机器为必选项",
     "model": "模型",
     "modelPlaceholder": "选择模型",

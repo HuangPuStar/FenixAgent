@@ -2,7 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import type { ServerWebSocket } from "bun";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import type {
   AgentCapabilities,
@@ -13,6 +14,33 @@ import type {
   SessionModelState,
 } from "./types.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
+
+// ── WebSocket 抽象接口 ──────────────────────────────
+// 同时满足 Bun AcpWs 和 Node.js ws.WebSocket 的最小接口
+interface AcpWs {
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+  readonly readyState: number;
+  ping(): void;
+}
+
+// WebSocket readyState 常量（跨运行时通用）
+const WS_OPEN = 1;
+const WS_CLOSING = 2;
+const WS_CLOSED = 3;
+
+// 运行时检测
+const isBun = typeof (globalThis as any).Bun !== "undefined";
+
+// biome-ignore lint/suspicious/noExplicitAny: dynamic require for runtime adapter
+type AdapterFn = (port: number, host: string, cb: any) => { port: number; stop(): void };
+
+function getAdapter(): AdapterFn {
+  if (isBun) {
+    return require("./adapter-bun.js").startBunWsServer;
+  }
+  return require("./adapter-node.js").startNodeWsServer;
+}
 
 export { MAX_CLIENT_WS_PAYLOAD_BYTES } from "./ws-message.js";
 
@@ -274,7 +302,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     throw new Error("rcsUrl is required for client mode");
   }
 
-  const sessionMgr = new SessionManager(config.command, 5);
+  const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
+  const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd());
   const url = `${config.rcsUrl}/acp/ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
   let ws: WebSocket | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -316,7 +345,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       }
     };
 
-    ws.onmessage = (event) => {
+    ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data as string);
         switch (msg.type) {
@@ -328,40 +357,207 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               }
             }, 30000);
             break;
-          case "session_start":
-            console.log("[acp-client] session_start msg, starting...");
-            // 保存 agent prompt（Phase 2 恢复：原 Instance 链路通过 AgentLaunchSpec 传递）
-            if (msg.agent_prompt) {
-              sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
-            }
-            sessionMgr.startSession(msg.session_id).then((result) => {
-              console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
-              if (ws && ws.readyState === 1) {
-                if (result === "started") {
-                  console.log("[acp-client] sending session_started");
-                  const caps = sessionMgr.getCapabilities?.() ?? {};
-                  ws.send(
-                    JSON.stringify({
-                      type: "session_started",
-                      session_id: msg.session_id,
-                      payload: { capabilities: caps },
-                    }),
-                  );
-                } else if (result === "queued") {
-                  ws.send(JSON.stringify({ type: "session_queued", session_id: msg.session_id }));
-                } else {
-                  ws.send(JSON.stringify({ type: "session_error", session_id: msg.session_id, error: "spawn failed" }));
-                }
-              } else {
-                console.log("[acp-client] ws not ready, state:", ws?.readyState);
+          case "session_start": {
+            const sessionId = msg.session_id as string;
+            const launchSpec = msg.launch_spec;
+
+            if (launchSpec) {
+              console.log(`[acp-client] session_start with launch_spec for ${sessionId}`);
+              if (msg.agent_prompt) {
+                sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
               }
-            });
+              sessionMgr.startSession(sessionId, launchSpec as Record<string, unknown>).then((result) => {
+                console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
+                if (ws && ws.readyState === 1) {
+                  if (result === "started") {
+                    const caps = sessionMgr.getCapabilities?.() ?? {};
+                    ws.send(
+                      JSON.stringify({
+                        type: "session_started",
+                        session_id: sessionId,
+                        payload: { capabilities: caps },
+                      }),
+                    );
+                  } else if (result === "queued") {
+                    ws.send(JSON.stringify({ type: "session_queued", session_id: sessionId }));
+                  } else {
+                    ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }));
+                  }
+                } else {
+                  console.log("[acp-client] ws not ready, state:", ws?.readyState);
+                }
+              });
+            } else {
+              console.log("[acp-client] session_start (legacy) for", sessionId);
+              if (msg.agent_prompt) {
+                sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
+              }
+              sessionMgr.startSession(sessionId).then((result) => {
+                console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
+                if (ws && ws.readyState === 1) {
+                  if (result === "started") {
+                    const caps = sessionMgr.getCapabilities?.() ?? {};
+                    ws.send(
+                      JSON.stringify({
+                        type: "session_started",
+                        session_id: sessionId,
+                        payload: { capabilities: caps },
+                      }),
+                    );
+                  } else if (result === "queued") {
+                    ws.send(JSON.stringify({ type: "session_queued", session_id: sessionId }));
+                  } else {
+                    ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }));
+                  }
+                } else {
+                  console.log("[acp-client] ws not ready, state:", ws?.readyState);
+                }
+              });
+            }
             break;
+          }
           case "session_data":
-            sessionMgr.sendData(msg.session_id, msg.payload);
+            // 优先走 InstanceManager AcpDispatcher，否则走旧 SessionManager
+            if (instanceMgr.hasInstance(msg.session_id)) {
+              const dispatcher = instanceMgr.getDispatcher(msg.session_id);
+              if (dispatcher) {
+                try {
+                  const acpMsg = decodeClientMessage(msg.payload as Record<string, unknown>);
+                  await dispatcher.dispatch(acpMsg);
+                } catch {
+                  // ignore parse errors for legacy session_data
+                }
+              }
+            } else {
+              sessionMgr.sendData(msg.session_id, msg.payload);
+            }
             break;
           case "session_end":
-            sessionMgr.endSession(msg.session_id);
+            if (instanceMgr.hasInstance(msg.session_id)) {
+              instanceMgr.stop(msg.session_id);
+            } else {
+              sessionMgr.endSession(msg.session_id);
+            }
+            break;
+          case "prepare": {
+            const instId = msg.instance_id as string;
+            const launchSpec = msg.launch_spec as AgentLaunchSpec;
+            try {
+              await instanceMgr.prepare(instId, launchSpec);
+              ws!.send(
+                JSON.stringify({
+                  type: "prepare_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "ok",
+                }),
+              );
+            } catch (err) {
+              ws!.send(
+                JSON.stringify({
+                  type: "prepare_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "error",
+                  message: (err as Error).message,
+                }),
+              );
+            }
+            break;
+          }
+          case "start": {
+            const instId = msg.instance_id as string;
+            try {
+              // send 回调：dispatcher 的 ACP 回复通过 relay 消息发回 RCS
+              const relaySend = (type: string, payload?: unknown) => {
+                if (ws && ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "relay",
+                      instance_id: instId,
+                      session_id: instId,
+                      payload: { type, payload },
+                    }),
+                  );
+                }
+              };
+              const result = await instanceMgr.start(instId, relaySend);
+              ws!.send(
+                JSON.stringify({
+                  type: "start_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "ok",
+                  capabilities: result.capabilities,
+                }),
+              );
+            } catch (err) {
+              ws!.send(
+                JSON.stringify({
+                  type: "start_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "error",
+                  message: (err as Error).message,
+                }),
+              );
+            }
+            break;
+          }
+          case "stop": {
+            const instId = msg.instance_id as string;
+            try {
+              await instanceMgr.stop(instId);
+              ws!.send(
+                JSON.stringify({
+                  type: "stop_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "ok",
+                }),
+              );
+            } catch (err) {
+              ws!.send(
+                JSON.stringify({
+                  type: "stop_result",
+                  request_id: msg.request_id,
+                  instance_id: instId,
+                  status: "error",
+                  message: (err as Error).message,
+                }),
+              );
+            }
+            break;
+          }
+          case "relay": {
+            const instId = msg.instance_id as string;
+            const sessId = msg.session_id as string;
+            const relayPayload = msg.payload as Record<string, unknown>;
+            if (instanceMgr.hasInstance(instId)) {
+              const dispatcher = instanceMgr.getDispatcher(instId);
+              if (dispatcher) {
+                try {
+                  // relayPayload 就是前端发的完整 ACP 消息：{ type: "prompt", payload: {...} }
+                  // decodeClientMessage 会做格式校验
+                  const acpMsg = decodeClientMessage(relayPayload);
+                  await dispatcher.dispatch(acpMsg);
+                } catch (err) {
+                  ws!.send(
+                    JSON.stringify({
+                      type: "relay",
+                      instance_id: instId,
+                      session_id: sessId,
+                      payload: { type: "error", payload: { message: (err as Error).message } },
+                    }),
+                  );
+                }
+              }
+            } else {
+              sessionMgr.sendData(sessId, { type: "session_data", payload: relayPayload });
+            }
+            break;
+          }
+          case "relay_close":
             break;
           default:
             console.log(`[acp-client] received: ${msg.type}`);
@@ -402,7 +598,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 }
 
 // ---------------------------------------------------------------------------
-// Factory: creates a per-instance ACP WS server using Bun native API
+// Factory: creates a per-instance ACP WS server (auto-detects Bun / Node.js)
 // ---------------------------------------------------------------------------
 
 export function createAcpServer(config: ServerConfig): AcpServerHandle {
@@ -410,18 +606,18 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   const extraEnv = config.env ?? {};
 
   // Per-instance state — no module-level globals
-  const clients = new Map<ServerWebSocket, ClientState>();
+  const clients = new Map<AcpWs, ClientState>();
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   // --- Helpers (closures over local `clients`) ---
 
-  function send(ws: ServerWebSocket, type: string, payload?: unknown): void {
-    if (ws.readyState === WebSocket.OPEN) {
+  function send(ws: AcpWs, type: string, payload?: unknown): void {
+    if (ws.readyState === WS_OPEN) {
       ws.send(JSON.stringify({ type, payload }));
     }
   }
 
-  function createClient(ws: ServerWebSocket, clientState: ClientState): acp.Client {
+  function createClient(ws: AcpWs, clientState: ClientState): acp.Client {
     return {
       async requestPermission(params) {
         const requestId = generateRequestId();
@@ -464,7 +660,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   }
 
   function handlePermissionResponse(
-    ws: ServerWebSocket,
+    ws: AcpWs,
     payload: {
       requestId: string;
       outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string };
@@ -489,7 +685,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   // --- Agent lifecycle handlers ---
 
-  async function handleConnect(ws: ServerWebSocket): Promise<void> {
+  async function handleConnect(ws: AcpWs): Promise<void> {
     const state = clients.get(ws);
     if (!state) return;
 
@@ -589,7 +785,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  async function handleNewSession(ws: ServerWebSocket, params: { cwd?: string }): Promise<void> {
+  async function handleNewSession(ws: AcpWs, params: { cwd?: string }): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       console.warn("handleNewSession: not connected to agent");
@@ -623,7 +819,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  async function handleListSessions(ws: ServerWebSocket, params: { cwd?: string; cursor?: string }): Promise<void> {
+  async function handleListSessions(ws: AcpWs, params: { cwd?: string; cursor?: string }): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       console.warn("handleListSessions: not connected to agent");
@@ -667,7 +863,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  async function handleLoadSession(ws: ServerWebSocket, params: { sessionId: string; cwd?: string }): Promise<void> {
+  async function handleLoadSession(ws: AcpWs, params: { sessionId: string; cwd?: string }): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       console.warn("handleLoadSession: not connected to agent");
@@ -710,7 +906,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  async function handleResumeSession(ws: ServerWebSocket, params: { sessionId: string; cwd?: string }): Promise<void> {
+  async function handleResumeSession(ws: AcpWs, params: { sessionId: string; cwd?: string }): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       console.warn("handleResumeSession: not connected to agent");
@@ -753,7 +949,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  async function handlePrompt(ws: ServerWebSocket, params: { content: ContentBlock[] }): Promise<void> {
+  async function handlePrompt(ws: AcpWs, params: { content: ContentBlock[] }): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection || !state.sessionId) {
       send(ws, "error", { message: "No active session" });
@@ -774,7 +970,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  function handleDisconnect(ws: ServerWebSocket): void {
+  function handleDisconnect(ws: AcpWs): void {
     const state = clients.get(ws);
     if (!state) return;
 
@@ -788,7 +984,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     send(ws, "status", { connected: false });
   }
 
-  async function handleCancel(ws: ServerWebSocket): Promise<void> {
+  async function handleCancel(ws: AcpWs): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection || !state.sessionId) {
       console.warn("cancel requested but no active session");
@@ -806,7 +1002,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  async function handleSetSessionModel(ws: ServerWebSocket, params: { modelId: string }): Promise<void> {
+  async function handleSetSessionModel(ws: AcpWs, params: { modelId: string }): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection || !state.sessionId) {
       send(ws, "error", { message: "No active session" });
@@ -837,7 +1033,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  async function handleSetSessionMode(ws: ServerWebSocket, params: { modeId: string }): Promise<void> {
+  async function handleSetSessionMode(ws: AcpWs, params: { modeId: string }): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection || !state.sessionId) {
       send(ws, "error", { message: "No active session" });
@@ -867,7 +1063,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  async function dispatchClientMessage(ws: ServerWebSocket, data: ProxyMessage): Promise<void> {
+  async function dispatchClientMessage(ws: AcpWs, data: ProxyMessage): Promise<void> {
     console.log("[acp-server] dispatch:", data.type, "hasSession:", !!clients.get(ws)?.sessionId);
     switch (data.type) {
       case "connect":
@@ -911,77 +1107,61 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
-  // --- Bun native server ---
+  // --- Runtime-adaptive WS server ---
 
-  const server = Bun.serve({
-    port,
-    hostname: host,
-    fetch(req, server) {
-      const url = new URL(req.url);
-      if (url.pathname === "/health") {
-        return Response.json({ status: "ok" });
-      }
-      if (url.pathname === "/ws") {
-        if (server.upgrade(req)) {
+  const adapter = getAdapter();
+  const server = adapter(port, host, {
+    open(ws: AcpWs) {
+      console.log("client connected");
+      const state: ClientState = {
+        process: null,
+        connection: null,
+        sessionId: null,
+        pendingPermissions: new Map(),
+        agentCapabilities: null,
+        promptCapabilities: null,
+        modelState: null,
+        modeState: null,
+        isAlive: true,
+      };
+      clients.set(ws, state);
+    },
+    async message(ws: AcpWs, raw: unknown) {
+      try {
+        const data = decodeClientWsMessage(raw);
+        console.log(`[acp-server] received: type=${data.type}`);
+        await dispatchClientMessage(ws, data);
+      } catch (error) {
+        if (error instanceof WsPayloadTooLargeError) {
+          console.warn("message too large:", error.message);
+          ws.close(1009, "message too large");
           return;
         }
-        return new Response("WebSocket upgrade failed", { status: 500 });
+        console.error("message error:", (error as Error).message);
+        send(ws, "error", { message: `Error: ${(error as Error).message}` });
       }
-      return new Response("Not Found", { status: 404 });
     },
-    websocket: {
-      open(ws) {
-        console.log("client connected");
-        const state: ClientState = {
-          process: null,
-          connection: null,
-          sessionId: null,
-          pendingPermissions: new Map(),
-          agentCapabilities: null,
-          promptCapabilities: null,
-          modelState: null,
-          modeState: null,
-          isAlive: true,
-        };
-        clients.set(ws, state);
-      },
-      async message(ws, raw) {
-        try {
-          const data = decodeClientWsMessage(raw);
-          console.log(`[acp-server] received: type=${data.type}`);
-          await dispatchClientMessage(ws, data);
-        } catch (error) {
-          if (error instanceof WsPayloadTooLargeError) {
-            console.warn("message too large:", error.message);
-            ws.close(1009, "message too large");
-            return;
-          }
-          console.error("message error:", (error as Error).message);
-          send(ws, "error", { message: `Error: ${(error as Error).message}` });
-        }
-      },
-      close(ws) {
-        console.log("client disconnected");
-        const state = clients.get(ws);
-        if (state) {
-          cancelPendingPermissions(state);
-        }
-        handleDisconnect(ws);
-        clients.delete(ws);
-      },
-      pong(ws) {
-        const state = clients.get(ws);
-        if (state) {
-          state.isAlive = true;
-        }
-      },
+    close(ws: AcpWs) {
+      console.log("client disconnected");
+      const state = clients.get(ws);
+      if (state) {
+        cancelPendingPermissions(state);
+      }
+      handleDisconnect(ws);
+      clients.delete(ws);
+    },
+    pong(ws: AcpWs) {
+      const state = clients.get(ws);
+      if (state) {
+        state.isAlive = true;
+      }
     },
   });
 
   // Heartbeat: periodically ping all connected clients
   heartbeatTimer = setInterval(() => {
     for (const [ws, state] of clients) {
-      if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      if (ws.readyState === WS_CLOSED || ws.readyState === WS_CLOSING) {
         clients.delete(ws);
         continue;
       }

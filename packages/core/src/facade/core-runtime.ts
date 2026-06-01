@@ -55,6 +55,15 @@ export interface CreateCoreRuntimeOptions {
     runtime: EngineRuntime,
     updateMetadata: (metadata: Record<string, unknown>) => void,
   ) => void;
+  /**
+   * 自定义 runtime 创建策略。
+   * 对 remote node 返回对应的 remote runtime；
+   * 不提供或返回 null 时 fallback 到 plugin.createRuntime()。
+   */
+  runtimeResolver?: (
+    engineType: string,
+    node: import("../types/core-node").CoreNode,
+  ) => EngineRuntime | null | Promise<EngineRuntime | null>;
 }
 
 /**
@@ -69,6 +78,7 @@ export function createCoreRuntime(options?: CreateCoreRuntimeOptions): CoreRunti
     nodeRegistry,
     store: instanceStore,
     onInstanceStarted: options?.onInstanceStarted,
+    runtimeResolver: options?.runtimeResolver,
   });
 
   for (const plugin of options?.plugins ?? []) {

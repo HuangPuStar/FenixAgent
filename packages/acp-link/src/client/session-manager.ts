@@ -32,8 +32,8 @@ export class SessionManager {
     this.cwd = cwd;
   }
 
-  async startSession(sessionId: string): Promise<"started" | "queued" | "error"> {
-    console.log("[session-manager] startSession:", sessionId);
+  async startSession(sessionId: string, launchSpec?: Record<string, unknown>): Promise<"started" | "queued" | "error"> {
+    console.log("[session-manager] startSession:", sessionId, launchSpec ? "with launchSpec" : "");
     this.activeRelayId = sessionId;
 
     if (this.sharedConnection && this.sharedProc && !this.sharedProc.killed && this.sharedProc.exitCode === null) {
@@ -65,10 +65,14 @@ export class SessionManager {
 
     try {
       console.log("[session-manager] spawning opencode...");
+      const spawnEnv = launchSpec?.extraEnv
+        ? { ...process.env, ...(launchSpec.extraEnv as Record<string, string>) }
+        : { ...process.env };
+      const spawnCwd = (launchSpec?.cwd as string) ?? this.cwd;
       const proc = spawn(this.agentName, ["acp"], {
-        cwd: this.cwd,
+        cwd: spawnCwd,
         stdio: ["pipe", "pipe", "inherit"],
-        env: { ...process.env },
+        env: spawnEnv,
       });
 
       proc.on("exit", (code) => {

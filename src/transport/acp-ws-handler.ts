@@ -1,5 +1,6 @@
 import { config } from "../config";
 import { log, error as logError } from "../logger";
+import { registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import type { AcpConnectionEntry } from "../types/store";
@@ -24,7 +25,7 @@ export function handleAcpWsOpen(
   ws: WsConnection,
   wsId: string,
   userId: string,
-  _boundEnvId?: string | null,
+  boundEnvId?: string | null,
   isMachine?: boolean,
 ): void {
   if (isMachine) {
@@ -44,13 +45,70 @@ export function handleAcpWsOpen(
       isMachine: true,
       machineId: null,
       wsId,
+      sessionMessageListeners: new Map(),
     });
     return;
   }
 
-  // 非 machine 连接不再支持 — ACP agent 直连模型已废弃
-  log(`[ACP-WS] Non-machine connection rejected: wsId=${wsId}`);
-  ws.close(4003, "ACP agent connections no longer supported; use machine registration");
+  // 本地 acp-link 回连（旧架构路径）
+  if (boundEnvId) {
+    log(`[ACP-WS] Local acp-link connection opened: wsId=${wsId} boundEnvId=${boundEnvId}`);
+    import("../services/environment-acp").then(({ handleAcpConnect }) => {
+      handleAcpConnect(boundEnvId).catch(() => {});
+    });
+
+    const keepalive = setInterval(() => {
+      const entry = connections.get(wsId);
+      if (!entry || entry.ws.readyState !== 1) {
+        clearInterval(keepalive);
+        return;
+      }
+      const silenceMs = Date.now() - entry.lastClientActivity;
+      if (silenceMs > _CLIENT_ACTIVITY_TIMEOUT_MS) {
+        log(`[ACP-WS] Client inactive for ${Math.round(silenceMs / 1000)}s, closing dead connection`);
+        try {
+          entry.ws.close(1000, "client inactive");
+        } catch {
+          clearInterval(keepalive);
+        }
+        return;
+      }
+      sendToWs(entry.ws, { type: "keep_alive" });
+    }, SERVER_KEEPALIVE_INTERVAL_MS);
+
+    connections.set(wsId, {
+      agentId: boundEnvId,
+      boundEnvId,
+      userId,
+      unsub: null,
+      keepalive,
+      ws,
+      openTime: Date.now(),
+      lastClientActivity: Date.now(),
+      capabilities: null,
+      isMachine: false,
+      machineId: null,
+      wsId,
+    });
+
+    // 订阅 EventBus 转发 outbound 消息
+    import("./event-bus").then(({ getAcpEventBus }) => {
+      const bus = getAcpEventBus(boundEnvId);
+      const unsub = bus.subscribe((event) => {
+        const entry = connections.get(wsId);
+        if (!entry || entry.ws.readyState !== 1) return;
+        if (event.direction !== "outbound") return;
+        sendToWs(entry.ws, event.payload as object);
+      });
+      const entry = connections.get(wsId);
+      if (entry) entry.unsub = unsub;
+    });
+    return;
+  }
+
+  // 既非 machine 也非 boundEnvId — 拒绝
+  log(`[ACP-WS] Unidentified connection rejected: wsId=${wsId}`);
+  ws.close(4003, "Unidentified connection; provide either boundEnvId or registry secret");
 }
 
 /** Handle machine register message — WS registration for machine */
@@ -84,6 +142,9 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
 
     entry.machineId = result.id;
     log(`[ACP-WS] Machine registered: id=${result.id} agent=${agentName}`);
+
+    // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
+    registerRemoteNode(result.id, entry.ws, entry);
 
     sendToWs(entry.ws, {
       type: "registered",
@@ -160,6 +221,15 @@ export async function handleAcpWsMessage(
       continue;
     }
 
+    // machine 连接：新协议消息（prepare_result/start_result/stop_result/relay）路由到 remote transport
+    if (entry.isMachine && entry.remoteTransport) {
+      const REMOTE_PROTOCOL_TYPES = ["prepare_result", "start_result", "stop_result", "relay"];
+      if (REMOTE_PROTOCOL_TYPES.includes(msg.type as string)) {
+        entry.remoteTransport.injectMessage(msg as unknown as import("@fenix/remote-runtime").TransportMessage);
+        continue;
+      }
+    }
+
     // machine 连接：session 生命周期消息转发到 relay 层
     const SESSION_MSG_TYPES = [
       "session_started",
@@ -171,8 +241,15 @@ export async function handleAcpWsMessage(
     ];
     if (entry.isMachine && SESSION_MSG_TYPES.includes(msg.type as string)) {
       const sessionId = msg.session_id as string | undefined;
-      if (sessionId && entry.onSessionMessage) {
-        entry.onSessionMessage(sessionId, msg.type as string, (msg as Record<string, unknown>).payload);
+      if (sessionId) {
+        const listener = entry.sessionMessageListeners?.get(sessionId);
+        if (listener) {
+          listener(sessionId, msg.type as string, (msg as Record<string, unknown>).payload);
+        }
+        // 兼容旧 onSessionMessage 回调
+        if (entry.onSessionMessage) {
+          entry.onSessionMessage(sessionId, msg.type as string, (msg as Record<string, unknown>).payload);
+        }
       }
       continue;
     }
@@ -181,6 +258,20 @@ export async function handleAcpWsMessage(
       handleRegister(wsId, msg).catch((err) => {
         logError("[ACP-WS] Error in register handler:", err);
       });
+      continue;
+    }
+
+    // 本地 acp-link 连接的消息处理
+    if (!entry.isMachine && entry.agentId) {
+      if (msg.type === "identify") {
+        const agentId = msg.agent_id as string;
+        if (agentId) {
+          entry.agentId = agentId;
+          entry.boundEnvId = agentId;
+          sendToWs(entry.ws, { type: "identified", agent_id: agentId });
+          log(`[ACP-WS] Agent identified: wsId=${wsId} agentId=${agentId}`);
+        }
+      }
     }
 
     // 未识别的消息类型静默忽略（不再走 EventBus 发布）
@@ -204,6 +295,13 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
   if (entry.isMachine) {
     const reasonStr = reason ?? undefined;
     handleMachineDisconnect(entry, reasonStr).catch(() => {});
+
+    if (entry.machineId) {
+      unregisterRemoteNode(entry.machineId);
+      import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
+        handleMachineDisconnected(entry.machineId!);
+      });
+    }
   }
 
   connections.delete(wsId);

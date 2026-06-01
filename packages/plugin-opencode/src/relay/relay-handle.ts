@@ -147,6 +147,7 @@ export function createRelayHandle(
     console.log(`[RelayHandle] WS closed for instance ${input.instanceId}`);
     state = "closed";
     clearInterval(keepalive);
+    emit({ type: "relay_closed", payload: { code: "relay_disconnected" } });
     messageBuffer.length = 0;
     if (!readySettled) {
       readySettled = true;
@@ -157,6 +158,7 @@ export function createRelayHandle(
     console.error(`[RelayHandle] WS error for instance ${input.instanceId}`);
     state = "closed";
     clearInterval(keepalive);
+    emit({ type: "relay_closed", payload: { code: "relay_error" } });
     messageBuffer.length = 0;
     if (!readySettled) {
       readySettled = true;

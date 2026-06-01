@@ -324,7 +324,7 @@ function SidebarSessionList({
       setLoading(true);
       return;
     }
-    if (client.getState() === "connected" && client.supportsSessionList) {
+    if (client.getState() === "connected") {
       loadSessions();
     }
   }, [client, cwdReady, loadSessions]);

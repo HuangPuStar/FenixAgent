@@ -9,6 +9,12 @@ export class RelayConnectionManager {
   private shuttingDown = false;
 
   add(wsId: string, entry: RelayConnectionEntry): void {
+    const existing = this.connections.get(wsId);
+    if (existing) {
+      if (existing.keepalive) clearInterval(existing.keepalive);
+      if (existing.unsub) existing.unsub();
+      if (existing.relayUnsub) existing.relayUnsub();
+    }
     this.connections.set(wsId, entry);
   }
 

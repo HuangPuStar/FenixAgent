@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { agentApi, envApi, instanceApi, kbApi, modelApi, skillConfigApi } from "@/src/api/sdk";
+import { agentApi, envApi, instanceApi, kbApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
 import { PermissionTab } from "../../components/PermissionTab";
 import { NS } from "../../i18n";
 import {
@@ -48,6 +48,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
   const [skillOptions, setSkillOptions] = useState<{ id: string; name: string; description: string }[]>([]);
+  const [machineOptions, setMachineOptions] = useState<{ id: string; agentName: string; hostname: string }[]>([]);
 
   const [formName, setFormName] = useState("");
   const [formModel, setFormModel] = useState("");
@@ -67,7 +68,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formKnowledgeMaxResults, setFormKnowledgeMaxResults] = useState("5");
   const [formPermission, setFormPermission] = useState<Record<string, unknown> | null>(null);
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission" | "skills">("basic");
+  const [formMachineId, setFormMachineId] = useState<string>("local");
+  const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission" | "skills" | "more">("basic");
 
   const [loading, setLoading] = useState(false);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
@@ -84,6 +86,18 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setFormKnowledgeMaxResults(knowledgeDefaults.maxResults);
     setFormPermission(null);
     setFormSkillIds([]);
+    setFormMachineId("local");
+
+    // 加载在线机器列表
+    registryApi.list({ status: "online", limit: 100 }).then(({ data, error }) => {
+      if (error) return;
+      const machines =
+        (data as { data?: { id: string; agentName: string; machineInfo: { hostname?: string } | null }[] } | null)
+          ?.data ?? [];
+      setMachineOptions(
+        machines.map((m) => ({ id: m.id, agentName: m.agentName, hostname: m.machineInfo?.hostname ?? "" })),
+      );
+    });
 
     if (isEdit) {
       setLoading(true);
@@ -106,6 +120,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormColor(String(d.color ?? ""));
           setFormHidden(Boolean(d.hidden));
           setFormDisable(Boolean(d.disable));
+          setFormMachineId((d.machineId as string) || "local");
 
           const knowledgeState = buildKnowledgeFormState(d as Parameters<typeof buildKnowledgeFormState>[0]);
           setFormKnowledgeBaseIds(knowledgeState.knowledgeBaseIds);
@@ -256,6 +271,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             },
           }),
           skillIds: formSkillIds,
+          machineId: formMachineId === "local" ? null : formMachineId,
         };
         const { error } = await agentApi.set(agentName!, data);
         if (error) {
@@ -288,6 +304,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             },
           }),
           skillIds: formSkillIds,
+          machineId: formMachineId === "local" ? null : formMachineId,
         });
         if (error) {
           console.error(t("save.errorGeneric", { message: "" }), error);
@@ -325,6 +342,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     formKnowledgeSearchFirst,
     formKnowledgeMaxResults,
     formSkillIds,
+    formMachineId,
     agentName,
     knowledgeOptions,
     onOpenChange,
@@ -407,7 +425,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           <>
             {/* Tabs */}
             <div className="flex gap-1 rounded-lg bg-surface-2 p-1 m-6 mb-0 flex-shrink-0">
-              {(["basic", "knowledge", "permission", "skills"] as const).map((tab) => (
+              {(["basic", "knowledge", "permission", "skills", "more"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -451,117 +469,21 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>{t("form.mode")}</Label>
-                      <Select value={formMode} onValueChange={setFormMode}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="primary">primary</SelectItem>
-                          <SelectItem value="subagent">subagent</SelectItem>
-                          <SelectItem value="all">all</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>{t("form.steps")}</Label>
-                      <Input
-                        type="number"
-                        value={formSteps}
-                        onChange={(e) => setFormSteps(e.target.value)}
-                        min={1}
-                        max={200}
-                        className="mt-1"
-                      />
-                      <p className="text-xs text-text-muted mt-1">{t("form.stepsHint")}</p>
-                    </div>
-                  </div>
                   <div>
-                    <Label>{t("form.prompt")}</Label>
-                    <Textarea
-                      value={formPrompt}
-                      onChange={(e) => setFormPrompt(e.target.value)}
-                      rows={4}
-                      placeholder={t("form.promptPlaceholder")}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>{t("form.description")}</Label>
-                      <Input
-                        value={formDescription}
-                        onChange={(e) => setFormDescription(e.target.value)}
-                        placeholder={t("form.descriptionPlaceholder")}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>{t("form.variant")}</Label>
-                      <Input
-                        value={formVariant}
-                        onChange={(e) => setFormVariant(e.target.value)}
-                        placeholder={t("form.variantPlaceholder")}
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>{t("form.temperature")}</Label>
-                      <Input
-                        type="number"
-                        value={formTemperature}
-                        onChange={(e) => setFormTemperature(e.target.value)}
-                        min={0}
-                        max={2}
-                        step={0.1}
-                        placeholder={t("form.temperaturePlaceholder")}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>{t("form.topP")}</Label>
-                      <Input
-                        type="number"
-                        value={formTopP}
-                        onChange={(e) => setFormTopP(e.target.value)}
-                        min={0}
-                        max={1}
-                        step={0.1}
-                        placeholder={t("form.topPPPlaceholder")}
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>{t("form.color")}</Label>
-                    <div className="flex gap-2 mt-1">
-                      <Input
-                        type="color"
-                        value={formColor || "#000000"}
-                        onChange={(e) => setFormColor(e.target.value)}
-                        className="w-12 h-9 p-1 cursor-pointer"
-                      />
-                      <Input
-                        value={formColor}
-                        onChange={(e) => setFormColor(e.target.value)}
-                        placeholder={t("form.colorPlaceholder")}
-                        className="flex-1"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <label className="flex items-center gap-2 text-sm" title={t("form.hiddenTitle")}>
-                      <input type="checkbox" checked={formHidden} onChange={(e) => setFormHidden(e.target.checked)} />
-                      {t("form.hidden")}
-                    </label>
-                    <label className="flex items-center gap-2 text-sm" title={t("form.disableTitle")}>
-                      <input type="checkbox" checked={formDisable} onChange={(e) => setFormDisable(e.target.checked)} />
-                      {t("form.disable")}
-                    </label>
+                    <Label>{t("form.machine")}</Label>
+                    <Select value={formMachineId} onValueChange={setFormMachineId}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder={t("form.machinePlaceholder")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="local">{t("form.machineLocal")}</SelectItem>
+                        {machineOptions.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.hostname || m.agentName} ({m.id.slice(0, 8)})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               )}
@@ -676,6 +598,122 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                         })
                       )}
                     </div>
+                  </div>
+                </div>
+              )}
+              {activeTab === "more" && (
+                <div className="space-y-4">
+                  <div>
+                    <Label>{t("form.prompt")}</Label>
+                    <Textarea
+                      value={formPrompt}
+                      onChange={(e) => setFormPrompt(e.target.value)}
+                      rows={4}
+                      placeholder={t("form.promptPlaceholder")}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>{t("form.mode")}</Label>
+                      <Select value={formMode} onValueChange={setFormMode}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="primary">primary</SelectItem>
+                          <SelectItem value="subagent">subagent</SelectItem>
+                          <SelectItem value="all">all</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>{t("form.steps")}</Label>
+                      <Input
+                        type="number"
+                        value={formSteps}
+                        onChange={(e) => setFormSteps(e.target.value)}
+                        min={1}
+                        max={200}
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-text-muted mt-1">{t("form.stepsHint")}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>{t("form.description")}</Label>
+                      <Input
+                        value={formDescription}
+                        onChange={(e) => setFormDescription(e.target.value)}
+                        placeholder={t("form.descriptionPlaceholder")}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>{t("form.variant")}</Label>
+                      <Input
+                        value={formVariant}
+                        onChange={(e) => setFormVariant(e.target.value)}
+                        placeholder={t("form.variantPlaceholder")}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>{t("form.temperature")}</Label>
+                      <Input
+                        type="number"
+                        value={formTemperature}
+                        onChange={(e) => setFormTemperature(e.target.value)}
+                        min={0}
+                        max={2}
+                        step={0.1}
+                        placeholder={t("form.temperaturePlaceholder")}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>{t("form.topP")}</Label>
+                      <Input
+                        type="number"
+                        value={formTopP}
+                        onChange={(e) => setFormTopP(e.target.value)}
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        placeholder={t("form.topPPPlaceholder")}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>{t("form.color")}</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input
+                        type="color"
+                        value={formColor || "#000000"}
+                        onChange={(e) => setFormColor(e.target.value)}
+                        className="w-12 h-9 p-1 cursor-pointer"
+                      />
+                      <Input
+                        value={formColor}
+                        onChange={(e) => setFormColor(e.target.value)}
+                        placeholder={t("form.colorPlaceholder")}
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <label className="flex items-center gap-2 text-sm" title={t("form.hiddenTitle")}>
+                      <input type="checkbox" checked={formHidden} onChange={(e) => setFormHidden(e.target.checked)} />
+                      {t("form.hidden")}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm" title={t("form.disableTitle")}>
+                      <input type="checkbox" checked={formDisable} onChange={(e) => setFormDisable(e.target.checked)} />
+                      {t("form.disable")}
+                    </label>
                   </div>
                 </div>
               )}

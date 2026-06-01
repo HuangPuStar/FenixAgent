@@ -1,7 +1,18 @@
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { createEnginePlugin, type OpencodeRuntime } from "@fenix/opencode";
+import {
+  createRemoteRuntime,
+  createWsRemoteTransport,
+  type RemoteTransport,
+  type WsConnectionLike,
+} from "@fenix/remote-runtime";
+import type { WsConnection } from "../transport/ws-types";
+import type { AcpConnectionEntry } from "../types/store";
 
 let facade: CoreRuntimeFacade | null = null;
+
+// 缓存远程 transport 实例
+const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
   return createCoreRuntime({
@@ -15,6 +26,8 @@ function defaultCreateFacade(): CoreRuntimeFacade {
       },
     ],
     onInstanceStarted(instanceId, runtime, updateMetadata) {
+      // 远程实例没有 getInstanceState，跳过 metadata 写入
+      if (typeof (runtime as OpencodeRuntime).getInstanceState !== "function") return;
       const opencode = runtime as OpencodeRuntime;
       const state = opencode.getInstanceState(instanceId);
       if (state) {
@@ -23,6 +36,15 @@ function defaultCreateFacade(): CoreRuntimeFacade {
           token: state.token ?? "",
         });
       }
+    },
+    runtimeResolver(_engineType, node) {
+      if (node.mode === "remote") {
+        const cached = remoteTransports.get(node.id);
+        if (cached) {
+          return createRemoteRuntime({ transport: cached });
+        }
+      }
+      return null;
     },
   });
 }
@@ -53,4 +75,38 @@ export function setCoreRuntimeFactory(fn: (() => CoreRuntimeFacade) | null) {
 /** 重置单例（仅用于测试）。 */
 export function resetCoreRuntime(): void {
   facade = null;
+}
+
+/**
+ * 远程 machine 注册成功后，动态注册 remote node 到 core。
+ * @param acpEntry 对应的 AcpConnectionEntry，用于在消息路由时注入到 transport
+ */
+export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry: AcpConnectionEntry): void {
+  const runtime = getCoreRuntime();
+
+  // WsConnection 没有 onmessage，通过 injectMessage 由 handleAcpWsMessage 路由
+  const wsLike = ws as unknown as WsConnectionLike;
+  const transport = createWsRemoteTransport(wsLike);
+  remoteTransports.set(machineId, transport);
+
+  // 把 transport 挂到 entry 上，供 handleAcpWsMessage 路由消息
+  acpEntry.remoteTransport = transport;
+
+  const existing = runtime.getNode(machineId);
+  if (existing) return;
+
+  runtime.registerNode({
+    id: machineId,
+    mode: "remote",
+    engineTypes: ["opencode"],
+    status: "online",
+    metadata: { machineId },
+  });
+}
+
+/**
+ * 远程 machine 断连后，清理 transport 缓存。
+ */
+export function unregisterRemoteNode(machineId: string): void {
+  remoteTransports.delete(machineId);
 }

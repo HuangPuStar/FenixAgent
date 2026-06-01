@@ -163,13 +163,22 @@ export async function spawnInstanceFromEnvironment(
   const instanceId = `inst_${randomBytes(8).toString("hex")}`;
   const instanceNumber = getNextInstanceNumber(environmentId);
 
+  // 解析目标 node：有 machineId 时走远程，否则走本地
+  let nodeId = "local-default";
+  if (env.agentConfigId) {
+    const agentCfg = await getAgentConfigById(env.agentConfigId);
+    if (agentCfg?.machineId) {
+      nodeId = agentCfg.machineId;
+    }
+  }
+
   // 委托 core 执行 launch
   // port/token/pid 由 core-bootstrap 的 onInstanceStarted 回调写入 pluginMetadata
   const facade = getCoreRuntime();
   const snapshot = await facade.launchInstance({
     instanceId,
     engineType: "opencode",
-    nodeId: "local-default",
+    nodeId,
     launchSpec,
   });
 
