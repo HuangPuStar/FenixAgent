@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { config } from "../config";
 import { error as logError } from "../logger";
 import type { AuthContext } from "../plugins/auth";
-import * as _configPg from "./config-pg";
+import * as _configPg from "./config/index";
 import {
   assertValidSkillName as _assertValidSkillName,
   backupSkillDirs as _backupSkillDirs,

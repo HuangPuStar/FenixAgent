@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { environmentRepo } from "../repositories/environment";
 import { resolveExecutable } from "../utils/executable";
-import { getAgentConfigById } from "./config-pg";
+import { getAgentConfigById } from "./config/index";
 import { resolveWorkspacePath as computeWorkspacePath } from "./workspace-resolver";
 
 const SUMMARY_LIMIT = 2000;

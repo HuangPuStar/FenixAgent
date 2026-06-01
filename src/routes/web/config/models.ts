@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
-import * as configPg from "../../../services/config-pg";
+import * as configPg from "../../../services/config/index";
 import { configError, configSuccess } from "../../../services/config-utils";
 
 const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({

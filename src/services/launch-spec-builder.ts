@@ -4,7 +4,7 @@ import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugi
 import { getBaseUrl } from "../config";
 import { log, error as logError } from "../logger";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
-import type { AgentFullConfig } from "./config-pg";
+import type { AgentFullConfig } from "./config/index";
 import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
 import { getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
