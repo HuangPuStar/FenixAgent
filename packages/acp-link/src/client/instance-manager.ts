@@ -91,7 +91,9 @@ export class InstanceManager {
     const connection = new acp.ClientSideConnection(
       () => ({
         requestPermission: async () => ({ outcome: { outcome: "selected" as const, optionId: "allow" } }),
-        sessionUpdate: async () => {},
+        sessionUpdate: async (params) => {
+          send("session_update", params);
+        },
         readTextFile: async () => ({ content: "" }),
         writeTextFile: async () => ({}),
       }),
