@@ -264,6 +264,10 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
           await workflowDefApi.save(workflowId, y);
         } catch (err) {
           console.error(`${t("editor.auto_save_failed")}:`, err);
+          toast.error(`${t("editor.auto_save_failed")}: ${(err as Error).message}`);
+          setRunning(false);
+          isSubmittingRef.current = false;
+          return;
         }
       }
 
@@ -348,7 +352,18 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
     setDryRunResult(null);
-    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })));
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          _runStatus: undefined,
+          _exitCode: undefined,
+          _onViewOutput: undefined,
+          _onRerunFrom: undefined,
+        },
+      })),
+    );
   }, [
     setActiveRunId,
     setRunSnapshot,
@@ -370,7 +385,18 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
     setDryRunResult(null);
-    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, _runStatus: undefined, _exitCode: undefined } })));
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          _runStatus: undefined,
+          _exitCode: undefined,
+          _onViewOutput: undefined,
+          _onRerunFrom: undefined,
+        },
+      })),
+    );
   }, [
     setActiveRunId,
     setRunSnapshot,
@@ -391,6 +417,16 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         pollRef.current = null;
       }
       const y = syncYaml();
+      if (workflowId) {
+        try {
+          await workflowDefApi.save(workflowId, y);
+        } catch (err) {
+          console.error(`${t("editor.auto_save_failed")}:`, err);
+          toast.error(`${t("editor.auto_save_failed")}: ${(err as Error).message}`);
+          isSubmittingRef.current = false;
+          return;
+        }
+      }
       setRunning(true);
       setNodes((nds) => {
         const downstream = new Set<string>();
