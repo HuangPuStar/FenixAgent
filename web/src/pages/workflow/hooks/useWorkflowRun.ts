@@ -59,6 +59,9 @@ export interface UseWorkflowRunReturn {
   handleViewNodeOutput: (nodeId: string) => void;
   handleRefreshDraft: () => Promise<void>;
   dryRunResult: { valid: boolean; issues: Array<{ type: string; message: string; field?: string }> } | null;
+  setDryRunResult: (
+    result: { valid: boolean; issues: Array<{ type: string; message: string; field?: string }> } | null,
+  ) => void;
   running: boolean;
   isRunMode: boolean;
   isRunDone: boolean;
@@ -594,6 +597,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     handleViewNodeOutput,
     handleRefreshDraft,
     dryRunResult,
+    setDryRunResult,
     running,
     isRunMode,
     isRunDone,
