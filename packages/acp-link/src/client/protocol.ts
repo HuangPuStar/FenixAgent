@@ -1,25 +1,40 @@
-import type {
-  BrowserToolParams,
-  PermissionRequestPayload,
-  SessionUpdate,
-} from "../types.js";
 import {
-  type JsonRpcMessage,
-  isJsonRpcMessage,
-  isJsonRpcResponse,
-  isJsonRpcNotification,
-  isTransportMessage,
   ACP_METHOD,
+  isJsonRpcMessage,
+  isJsonRpcNotification,
+  isJsonRpcResponse,
+  isTransportMessage,
+  type JsonRpcMessage,
 } from "../json-rpc.js";
+import type { BrowserToolParams, PermissionRequestPayload, SessionUpdate } from "../types.js";
 import { EventEmitter } from "./emitter.js";
 
 export interface ProtocolEvents {
-  status: { connected: boolean; capabilities?: import("../types.js").AgentCapabilities; agentInfo?: { name?: string; version?: string } };
+  status: {
+    connected: boolean;
+    capabilities?: import("../types.js").AgentCapabilities;
+    agentInfo?: { name?: string; version?: string };
+  };
   error: { message: string };
-  session_created: { sessionId: string; promptCapabilities?: import("../types.js").PromptCapabilities; models?: import("../types.js").SessionModelState | null; modes?: import("../types.js").SessionModeState | null };
+  session_created: {
+    sessionId: string;
+    promptCapabilities?: import("../types.js").PromptCapabilities;
+    models?: import("../types.js").SessionModelState | null;
+    modes?: import("../types.js").SessionModeState | null;
+  };
   session_list: { sessions: import("../types.js").AgentSessionInfo[]; nextCursor?: string | null };
-  session_loaded: { sessionId: string; promptCapabilities?: import("../types.js").PromptCapabilities; models?: import("../types.js").SessionModelState | null; modes?: import("../types.js").SessionModeState | null };
-  session_resumed: { sessionId: string; promptCapabilities?: import("../types.js").PromptCapabilities; models?: import("../types.js").SessionModelState | null; modes?: import("../types.js").SessionModeState | null };
+  session_loaded: {
+    sessionId: string;
+    promptCapabilities?: import("../types.js").PromptCapabilities;
+    models?: import("../types.js").SessionModelState | null;
+    modes?: import("../types.js").SessionModeState | null;
+  };
+  session_resumed: {
+    sessionId: string;
+    promptCapabilities?: import("../types.js").PromptCapabilities;
+    models?: import("../types.js").SessionModelState | null;
+    modes?: import("../types.js").SessionModeState | null;
+  };
   session_update: { sessionId: string; update: SessionUpdate };
   prompt_complete: { stopReason: string; usage?: import("../types.js").PromptUsage };
   permission_request: PermissionRequestPayload;

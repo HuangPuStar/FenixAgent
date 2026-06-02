@@ -1,4 +1,11 @@
 import type * as acp from "@agentclientprotocol/sdk";
+import {
+  ACP_METHOD,
+  createErrorResponse,
+  createSuccessResponse,
+  isTransportMessage,
+  type JsonRpcRequest,
+} from "./json-rpc.js";
 import type {
   AgentCapabilities,
   ContentBlock,
@@ -6,15 +13,6 @@ import type {
   PromptCapabilities,
   SessionModelState,
 } from "./types.js";
-import {
-  type JsonRpcRequest,
-  isJsonRpcRequest,
-  isTransportMessage,
-  ACP_METHOD,
-  createSuccessResponse,
-  createNotification,
-  createErrorResponse,
-} from "./json-rpc.js";
 
 // Pending permission request
 interface PendingPermission {
@@ -63,7 +61,7 @@ function cancelPendingPermissions(state: AcpSessionState): void {
 export class AcpDispatcher {
   constructor(
     private state: AcpSessionState,
-    private send: (message: Record<string, unknown>) => void,
+    private send: (message: unknown) => void,
   ) {}
 
   /** 处理从 WS 收到的原始消息（可能是 JSON-RPC 或传输层消息） */
@@ -83,7 +81,14 @@ export class AcpDispatcher {
     switch (msg.type) {
       case "connect":
         if (this.state.connection) {
-          this.send({ type: "status", payload: { connected: true, agentInfo: { name: "remote-agent" }, capabilities: this.state.agentCapabilities } });
+          this.send({
+            type: "status",
+            payload: {
+              connected: true,
+              agentInfo: { name: "remote-agent" },
+              capabilities: this.state.agentCapabilities,
+            },
+          });
         }
         break;
       case "disconnect":
@@ -152,12 +157,14 @@ export class AcpDispatcher {
       this.state.sessionId = result.sessionId;
       this.state.modelState = result.models ?? null;
       this.state.modeState = result.modes ?? null;
-      this.send(createSuccessResponse(id, {
-        sessionId: result.sessionId,
-        promptCapabilities: this.state.promptCapabilities,
-        models: this.state.modelState,
-        modes: this.state.modeState,
-      }));
+      this.send(
+        createSuccessResponse(id, {
+          sessionId: result.sessionId,
+          promptCapabilities: this.state.promptCapabilities,
+          models: this.state.modelState,
+          modes: this.state.modeState,
+        }),
+      );
     } catch (error) {
       this.send(createErrorResponse(id, -32603, `Failed to create session: ${(error as Error).message}`));
     }
@@ -261,17 +268,19 @@ export class AcpDispatcher {
       });
       const MAX_SESSIONS = 20;
       const sessions = result.sessions.slice(0, MAX_SESSIONS);
-      this.send(createSuccessResponse(id, {
-        sessions: sessions.map((s: acp.SessionInfo) => ({
-          _meta: s._meta,
-          cwd: s.cwd,
-          sessionId: s.sessionId,
-          title: s.title,
-          updatedAt: s.updatedAt,
-        })),
-        nextCursor: result.nextCursor,
-        _meta: result._meta,
-      }));
+      this.send(
+        createSuccessResponse(id, {
+          sessions: sessions.map((s: acp.SessionInfo) => ({
+            _meta: s._meta,
+            cwd: s.cwd,
+            sessionId: s.sessionId,
+            title: s.title,
+            updatedAt: s.updatedAt,
+          })),
+          nextCursor: result.nextCursor,
+          _meta: result._meta,
+        }),
+      );
     } catch (error) {
       this.send(createErrorResponse(id, -32603, `Failed to list sessions: ${(error as Error).message}`));
     }
@@ -295,12 +304,14 @@ export class AcpDispatcher {
       this.state.sessionId = params.sessionId;
       this.state.modelState = result.models ?? null;
       this.state.modeState = result.modes ?? null;
-      this.send(createSuccessResponse(id, {
-        sessionId: params.sessionId,
-        promptCapabilities: this.state.promptCapabilities,
-        models: this.state.modelState,
-        modes: this.state.modeState,
-      }));
+      this.send(
+        createSuccessResponse(id, {
+          sessionId: params.sessionId,
+          promptCapabilities: this.state.promptCapabilities,
+          models: this.state.modelState,
+          modes: this.state.modeState,
+        }),
+      );
     } catch (error) {
       this.send(createErrorResponse(id, -32603, `Failed to load session: ${(error as Error).message}`));
     }
@@ -324,12 +335,14 @@ export class AcpDispatcher {
       this.state.sessionId = params.sessionId;
       this.state.modelState = result.models ?? null;
       this.state.modeState = result.modes ?? null;
-      this.send(createSuccessResponse(id, {
-        sessionId: params.sessionId,
-        promptCapabilities: this.state.promptCapabilities,
-        models: this.state.modelState,
-        modes: this.state.modeState,
-      }));
+      this.send(
+        createSuccessResponse(id, {
+          sessionId: params.sessionId,
+          promptCapabilities: this.state.promptCapabilities,
+          models: this.state.modelState,
+          modes: this.state.modeState,
+        }),
+      );
     } catch (error) {
       this.send(createErrorResponse(id, -32603, `Failed to resume session: ${(error as Error).message}`));
     }

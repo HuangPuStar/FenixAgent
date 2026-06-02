@@ -1,3 +1,4 @@
+import { ACP_METHOD, createRequest, createSuccessResponse, type JsonRpcRequest } from "../json-rpc.js";
 import type {
   ACPSettings,
   AvailableCommand,
@@ -15,12 +16,6 @@ import type {
   SessionModeState,
   SessionUpdate,
 } from "../types.js";
-import {
-  type JsonRpcRequest,
-  ACP_METHOD,
-  createRequest,
-  createSuccessResponse,
-} from "../json-rpc.js";
 import { ACPPending } from "./pending.js";
 import { ACPProtocol } from "./protocol.js";
 import { ACPState } from "./state.js";
@@ -327,7 +322,7 @@ export class ACPClient {
     this.sessionSwitchingHandler?.(request.sessionId);
     const req = createRequest(ACP_METHOD.SESSION_LOAD, request);
     return this.sendJsonRpcAndWait<string>(req, 60_000).then((result) => {
-      const r = result as { sessionId: string };
+      const r = result as unknown as { sessionId: string };
       this.sessionLoadedHandler?.(r.sessionId);
       return r.sessionId;
     });
@@ -340,7 +335,7 @@ export class ACPClient {
     this.sessionSwitchingHandler?.(request.sessionId);
     const req = createRequest(ACP_METHOD.SESSION_RESUME, request);
     return this.sendJsonRpcAndWait<string>(req, 30_000).then((result) => {
-      const r = result as { sessionId: string };
+      const r = result as unknown as { sessionId: string };
       this.sessionLoadedHandler?.(r.sessionId);
       return r.sessionId;
     });
@@ -493,7 +488,7 @@ export class ACPClient {
   // Internal helpers
   // ==========================================================================
 
-  private sendRaw(message: Record<string, unknown>): void {
+  private sendRaw(message: unknown): void {
     this.transport.send(JSON.stringify(message));
   }
 

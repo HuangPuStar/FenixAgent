@@ -5,22 +5,17 @@ import * as acp from "@agentclientprotocol/sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
-import type {
-  AgentCapabilities,
-  ContentBlock,
-  PromptCapabilities,
-  SessionModelState,
-} from "./types.js";
 import {
-  type JsonRpcRequest,
   ACP_METHOD,
-  createSuccessResponse,
-  createNotification,
   createErrorResponse,
+  createNotification,
+  createSuccessResponse,
   isJsonRpcMessage,
   isJsonRpcRequest,
   isTransportMessage,
+  type JsonRpcRequest,
 } from "./json-rpc.js";
+import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
 
 // ── WebSocket 抽象接口 ──────────────────────────────
@@ -112,14 +107,6 @@ function cancelPendingPermissions(clientState: ClientState): void {
     pending.resolve({ outcome: "cancelled" });
   }
   clientState.pendingPermissions.clear();
-}
-
-// ---------------------------------------------------------------------------
-// Pure validation helpers
-// ---------------------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +324,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             try {
               // send 回调：dispatcher 的 ACP 回复通过 relay 消息发回 RCS
               // payload 直接传入消息对象（JSON-RPC 或传输层消息）
-              const relaySend = (msgObj: Record<string, unknown>) => {
+              const relaySend = (msgObj: unknown) => {
                 if (ws && ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
@@ -476,7 +463,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   // --- Helpers (closures over local `clients`) ---
 
-  function sendMsg(ws: AcpWs, message: Record<string, unknown>): void {
+  function sendMsg(ws: AcpWs, message: unknown): void {
     if (ws.readyState === WS_OPEN) {
       ws.send(JSON.stringify(message));
     }
@@ -567,7 +554,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     // If already connected to a running agent, just resend status
     if (state.connection && state.process && !state.process.killed && state.process.exitCode === null) {
       console.log("agent already connected, resending status");
-      sendMsg(ws, { type: "status", payload: { connected: true, agentInfo: { name: command }, capabilities: state.agentCapabilities } });
+      sendMsg(ws, {
+        type: "status",
+        payload: { connected: true, agentInfo: { name: command }, capabilities: state.agentCapabilities },
+      });
       return;
     }
 
@@ -636,7 +626,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         `hasMcp=${!!state.agentCapabilities?.mcpCapabilities}`,
       );
 
-      sendMsg(ws, { type: "status", payload: { connected: true, agentInfo: initResult.agentInfo, capabilities: state.agentCapabilities } });
+      sendMsg(ws, {
+        type: "status",
+        payload: { connected: true, agentInfo: initResult.agentInfo, capabilities: state.agentCapabilities },
+      });
 
       connection.closed.then(() => {
         console.log("agent connection closed");
@@ -670,12 +663,15 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       state.modeState = result.modes ?? null;
       console.log("session created:", result.sessionId, "cwd:", sessionCwd);
 
-      sendMsg(ws, createSuccessResponse(id, {
-        sessionId: result.sessionId,
-        promptCapabilities: state.promptCapabilities,
-        models: state.modelState,
-        modes: state.modeState,
-      }));
+      sendMsg(
+        ws,
+        createSuccessResponse(id, {
+          sessionId: result.sessionId,
+          promptCapabilities: state.promptCapabilities,
+          models: state.modelState,
+          modes: state.modeState,
+        }),
+      );
     } catch (error) {
       console.error("session create failed:", (error as Error).message);
       sendMsg(ws, createErrorResponse(id, -32603, `Failed to create session: ${(error as Error).message}`));
@@ -705,17 +701,20 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       const sessions = result.sessions.slice(0, MAX_SESSIONS);
       console.log("sessions listed:", `total=${result.sessions.length}`, `returned=${sessions.length}`);
 
-      sendMsg(ws, createSuccessResponse(id, {
-        sessions: sessions.map((s: acp.SessionInfo) => ({
-          _meta: s._meta,
-          cwd: s.cwd,
-          sessionId: s.sessionId,
-          title: s.title,
-          updatedAt: s.updatedAt,
-        })),
-        nextCursor: result.nextCursor,
-        _meta: result._meta,
-      }));
+      sendMsg(
+        ws,
+        createSuccessResponse(id, {
+          sessions: sessions.map((s: acp.SessionInfo) => ({
+            _meta: s._meta,
+            cwd: s.cwd,
+            sessionId: s.sessionId,
+            title: s.title,
+            updatedAt: s.updatedAt,
+          })),
+          nextCursor: result.nextCursor,
+          _meta: result._meta,
+        }),
+      );
     } catch (error) {
       console.error("session list failed:", (error as Error).message);
       sendMsg(ws, createErrorResponse(id, -32603, `Failed to list sessions: ${(error as Error).message}`));
@@ -749,12 +748,15 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       state.modeState = result.modes ?? null;
       console.log("session loaded:", sessionId, "cwd:", sessionCwd);
 
-      sendMsg(ws, createSuccessResponse(id, {
-        sessionId,
-        promptCapabilities: state.promptCapabilities,
-        models: state.modelState,
-        modes: state.modeState,
-      }));
+      sendMsg(
+        ws,
+        createSuccessResponse(id, {
+          sessionId,
+          promptCapabilities: state.promptCapabilities,
+          models: state.modelState,
+          modes: state.modeState,
+        }),
+      );
     } catch (error) {
       console.error("session load failed:", (error as Error).message);
       sendMsg(ws, createErrorResponse(id, -32603, `Failed to load session: ${(error as Error).message}`));
@@ -788,12 +790,15 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       state.modeState = result.modes ?? null;
       console.log("session resumed:", sessionId, "cwd:", sessionCwd);
 
-      sendMsg(ws, createSuccessResponse(id, {
-        sessionId,
-        promptCapabilities: state.promptCapabilities,
-        models: state.modelState,
-        modes: state.modeState,
-      }));
+      sendMsg(
+        ws,
+        createSuccessResponse(id, {
+          sessionId,
+          promptCapabilities: state.promptCapabilities,
+          models: state.modelState,
+          modes: state.modeState,
+        }),
+      );
     } catch (error) {
       console.error("session resume failed:", (error as Error).message);
       sendMsg(ws, createErrorResponse(id, -32603, `Failed to resume session: ${(error as Error).message}`));

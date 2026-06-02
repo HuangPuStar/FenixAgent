@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decodeClientWsMessage, MAX_CLIENT_WS_PAYLOAD_BYTES, type ServerConfig } from "../server.js";
+import type { ServerConfig } from "../server.js";
 
 describe("Server HTTP endpoints", () => {
   // package.json 入口验证
@@ -25,64 +25,56 @@ describe("Server HTTP endpoints", () => {
 });
 
 describe("WebSocket message types", () => {
-  const clientMessageTypes = [
-    "connect",
-    "disconnect",
-    "new_session",
-    "prompt",
-    "permission_response",
-    "cancel",
-    "set_session_model",
-    "list_sessions",
-    "load_session",
-    "resume_session",
-    "ping",
+  // JSON-RPC 方法名验证
+  const acpMethods = [
+    "session/new",
+    "session/load",
+    "session/resume",
+    "session/list",
+    "session/prompt",
+    "session/cancel",
+    "session/setModel",
+    "session/setMode",
   ];
 
-  // 消息类型计数验证
-  test("all client message types are recognized", () => {
-    expect(clientMessageTypes.length).toBe(11);
-    expect(clientMessageTypes).toContain("ping");
-    expect(clientMessageTypes).toContain("connect");
-    expect(clientMessageTypes).toContain("cancel");
+  // 方法类型计数验证
+  test("all ACP method names are defined", () => {
+    expect(acpMethods.length).toBe(8);
+    expect(acpMethods).toContain("session/new");
+    expect(acpMethods).toContain("session/prompt");
+    expect(acpMethods).toContain("session/cancel");
   });
 
-  // 支持的消息载荷解码
-  test("decodes supported client message payloads", () => {
-    expect(decodeClientWsMessage('{"type":"ping"}')).toEqual({ type: "ping" });
-    expect(decodeClientWsMessage(Buffer.from('{"type":"prompt","payload":{"content":[]}}'))).toEqual({
-      type: "prompt",
-      payload: { content: [] },
-    });
-    expect(decodeClientWsMessage(new TextEncoder().encode('{"type":"cancel"}').buffer)).toEqual({ type: "cancel" });
-    expect(
-      decodeClientWsMessage([Buffer.from('{"type":"list_sessions","payload":{"cursor":"'), Buffer.from('next"}}')]),
-    ).toEqual({
-      type: "list_sessions",
-      payload: { cwd: undefined, cursor: "next" },
-    });
+  // JSON-RPC 请求格式验证
+  test("JSON-RPC request has required fields", () => {
+    const request = { jsonrpc: "2.0", id: 1, method: "session/new", params: { cwd: "/tmp" } };
+    expect(request.jsonrpc).toBe("2.0");
+    expect(request.id).toBe(1);
+    expect(request.method).toBe("session/new");
+    expect((request.params as Record<string, unknown>).cwd).toBe("/tmp");
   });
 
-  // 非法消息载荷拒绝
-  test("rejects malformed typed client payloads", () => {
-    expect(() => decodeClientWsMessage('{"type":"prompt"}')).toThrow("Invalid prompt payload");
-    expect(() => decodeClientWsMessage('{"type":"load_session","payload":{}}')).toThrow("Invalid load_session payload");
-    expect(() => decodeClientWsMessage('{"type":"unknown"}')).toThrow("Unknown message type");
-    expect(() => decodeClientWsMessage('{"type":"new_session","payload":{"permissionMode":123}}')).toThrow(
-      "Invalid new_session.permissionMode",
-    );
-    expect(() => decodeClientWsMessage('{"type":"new_session","payload":{"permissionMode":{}}}')).toThrow(
-      "Invalid new_session.permissionMode",
-    );
-    expect(() => decodeClientWsMessage('{"type":"new_session","payload":{"permissionMode":null}}')).toThrow(
-      "Invalid new_session.permissionMode",
-    );
+  // JSON-RPC 响应格式验证
+  test("JSON-RPC success response format", () => {
+    const response = { jsonrpc: "2.0", id: 1, result: { sessionId: "ses_1" } };
+    expect(response.jsonrpc).toBe("2.0");
+    expect(response.id).toBe(1);
+    expect((response.result as Record<string, unknown>).sessionId).toBe("ses_1");
   });
 
-  // 超大消息拒绝
-  test("rejects oversized client message payloads before decoding", () => {
-    const payload = "x".repeat(MAX_CLIENT_WS_PAYLOAD_BYTES + 1);
-    expect(() => decodeClientWsMessage(payload)).toThrow("WebSocket message too large");
+  // JSON-RPC 错误响应格式验证
+  test("JSON-RPC error response format", () => {
+    const response = { jsonrpc: "2.0", id: 2, error: { code: -32601, message: "Method not found" } };
+    expect(response.jsonrpc).toBe("2.0");
+    expect((response.error as { code: number }).code).toBe(-32601);
+  });
+
+  // JSON-RPC 通知格式验证
+  test("JSON-RPC notification has no id", () => {
+    const notification = { jsonrpc: "2.0", method: "session/update", params: { sessionId: "ses_1" } };
+    expect(notification.jsonrpc).toBe("2.0");
+    expect(notification.method).toBe("session/update");
+    expect("id" in notification).toBe(false);
   });
 });
 

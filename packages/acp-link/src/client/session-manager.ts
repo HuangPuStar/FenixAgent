@@ -2,14 +2,14 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import {
-  type JsonRpcRequest,
   ACP_METHOD,
-  createSuccessResponse,
-  createNotification,
   createErrorResponse,
+  createNotification,
+  createSuccessResponse,
   isJsonRpcMessage,
   isJsonRpcRequest,
   isTransportMessage,
+  type JsonRpcRequest,
 } from "../json-rpc.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: event callback signatures vary by event type
@@ -322,8 +322,7 @@ export class SessionManager {
             console.log("[session-manager] injected system prompt");
           }
           console.log("[session-manager] prompt (json-rpc), acpSession:", this.currentAcpSessionId);
-          this.sharedConnection!
-            .prompt({ sessionId: this.currentAcpSessionId!, prompt: blocks })
+          this.sharedConnection!.prompt({ sessionId: this.currentAcpSessionId!, prompt: blocks })
             .then((result) => {
               console.log(
                 "[session-manager] prompt completed, stopReason:",

@@ -57,7 +57,7 @@ export class InstanceManager {
 
   async start(
     instanceId: string,
-    send: (message: Record<string, unknown>) => void,
+    send: (message: unknown) => void,
   ): Promise<{ capabilities: Record<string, unknown> }> {
     const state = this.instances.get(instanceId);
     if (!state) throw new Error(`Instance ${instanceId} not prepared`);
