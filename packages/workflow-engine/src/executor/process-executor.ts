@@ -18,6 +18,7 @@ import type { NodeOutput } from "../types/execution";
 // ---------- 常量 ----------
 
 const MAX_STDERR_SIZE = 10 * 1024 * 1024; // 10MB
+const TRUNCATE_SIZE = 2000;
 const DEFAULT_TIMEOUT_MS = 300_000; // 5 分钟
 const DEFAULT_RETRY_DELAY_MS = 1000;
 
@@ -177,6 +178,7 @@ export class ProcessExecutor implements NodeExecutor {
     const stdoutReader = subprocess.stdout.getReader();
 
     // 收集 stderr（异步，有大小限制）
+    const stderrChunks: Uint8Array[] = [];
     let stderrSize = 0;
     let stderrExceeded = false;
     const stderrReader = subprocess.stderr.getReader();
@@ -185,6 +187,7 @@ export class ProcessExecutor implements NodeExecutor {
       while (true) {
         const { done, value } = await stderrReader.read();
         if (done) break;
+        stderrChunks.push(value);
         stderrSize += value.byteLength;
         if (stderrSize > MAX_STDERR_SIZE) {
           stderrExceeded = true;
@@ -235,19 +238,26 @@ export class ProcessExecutor implements NodeExecutor {
     }
 
     const stdoutStr = Buffer.concat(stdoutChunks).toString();
+    const stderrStr = Buffer.concat(stderrChunks).toString();
     const outputSize = Buffer.byteLength(stdoutStr);
 
     // 非零退出码 → 失败
     if (exitCode !== 0) {
+      const stderrTruncated = stderrStr.slice(0, TRUNCATE_SIZE);
+      const detail = stderrTruncated
+        ? `Process exited with code ${exitCode}: ${stderrTruncated}`
+        : `Process exited with code ${exitCode}`;
       await this.emitEvent(ctx, "node.failed", node, {
-        error: `Process exited with code ${exitCode}`,
+        error: detail,
         exit_code: exitCode,
-        stdout: stdoutStr,
+        stdout: stdoutStr.slice(0, TRUNCATE_SIZE),
+        stderr: stderrTruncated,
       });
-      throw new WorkflowError(`Process exited with code ${exitCode}`, WorkflowErrorCode.NODE_FAILED, {
+      throw new WorkflowError(detail, WorkflowErrorCode.NODE_FAILED, {
         node_id: node.id,
         exit_code: exitCode,
-        stdout: stdoutStr,
+        stdout: stdoutStr.slice(0, TRUNCATE_SIZE),
+        stderr: stderrTruncated,
       });
     }
 

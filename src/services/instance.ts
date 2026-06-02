@@ -6,9 +6,10 @@ import { log, error as logError } from "../logger";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
 import type { InstanceSupplement } from "../types/store";
-import type { AgentFullConfig } from "./config-pg";
-import { getAgentConfigById, getAgentFullConfig } from "./config-pg";
+import type { AgentFullConfig } from "./config/index";
+import { getAgentConfigById, getAgentFullConfig } from "./config/index";
 import { getCoreRuntime } from "./core-bootstrap";
+import { globalInstanceRegistry } from "./instance-registry";
 import { buildLaunchSpec } from "./launch-spec-builder";
 import { _sessionRepo } from "./session";
 
@@ -37,18 +38,10 @@ export interface EnsureRunningResult {
 }
 
 // ────────────────────────────────────────────
-// 补充映射：core 不维护的 RCS 业务字段
+// 实例注册表：封装 core 不维护的 RCS 业务字段
 // ────────────────────────────────────────────
 
-const supplements = new Map<string, InstanceSupplement>();
-const envInstanceCounters = new Map<string, number>();
-
-function getNextInstanceNumber(environmentId: string): number {
-  const current = envInstanceCounters.get(environmentId) ?? 0;
-  const next = current + 1;
-  envInstanceCounters.set(environmentId, next);
-  return next;
-}
+const registry = globalInstanceRegistry;
 
 function mapCoreStatus(status: import("@fenix/core").RuntimeInstanceStatus): SpawnedInstance["status"] {
   switch (status) {
@@ -96,7 +89,7 @@ function filterInstances(
 ): SpawnedInstance[] {
   const facade = getCoreRuntime();
   return facade.listInstances().flatMap((s) => {
-    const sup = supplements.get(s.instanceId);
+    const sup = registry.get(s.instanceId);
     if (!sup) return [];
     if (!predicate(s, sup)) return [];
     return [toSpawnedInstance(s, sup)];
@@ -161,7 +154,7 @@ export async function spawnInstanceFromEnvironment(
   });
 
   const instanceId = `inst_${randomBytes(8).toString("hex")}`;
-  const instanceNumber = getNextInstanceNumber(environmentId);
+  const instanceNumber = registry.nextInstanceNumber(environmentId);
 
   // 解析目标 node：有 machineId 时走远程，否则走本地
   let nodeId = "local-default";
@@ -188,7 +181,7 @@ export async function spawnInstanceFromEnvironment(
     instanceNumber,
     organizationId: env.organizationId ?? userId,
   };
-  supplements.set(instanceId, supplement);
+  registry.register(instanceId, supplement);
 
   return toSpawnedInstance(snapshot, supplement);
 }
@@ -228,7 +221,7 @@ export function groupActiveInstancesByEnvironment(): Map<string, SpawnedInstance
   const facade = getCoreRuntime();
   const result = new Map<string, SpawnedInstance[]>();
   for (const s of facade.listInstances()) {
-    const sup = supplements.get(s.instanceId);
+    const sup = registry.get(s.instanceId);
     if (!sup) continue;
     if (s.status === "stopped" || s.status === "error") continue;
     const inst = toSpawnedInstance(s, sup);
@@ -245,10 +238,10 @@ export function groupActiveInstancesByEnvironment(): Map<string, SpawnedInstance
 export function getInstance(id: string, userId?: string): SpawnedInstance | undefined {
   const facade = getCoreRuntime();
   const snapshot = facade.getInstance(id);
-  const sup = supplements.get(id);
+  const sup = registry.get(id);
   if (!snapshot) {
     // core 中不存在实例时清理残留 supplement 避免内存泄漏
-    if (sup) supplements.delete(id);
+    if (sup) registry.unregister(id);
     return;
   }
   if (!sup) return;
@@ -257,7 +250,7 @@ export function getInstance(id: string, userId?: string): SpawnedInstance | unde
 }
 
 export async function stopInstance(id: string, organizationId: string): Promise<{ ok: boolean; error?: string }> {
-  const sup = supplements.get(id);
+  const sup = registry.get(id);
   if (!sup) return { ok: false, error: "Instance not found" };
   if (sup.organizationId !== organizationId) return { ok: false, error: "Not your instance" };
 
@@ -265,22 +258,22 @@ export async function stopInstance(id: string, organizationId: string): Promise<
   const snapshot = facade.getInstance(id);
   if (!snapshot) {
     // core 中不存在实例时清理残留 supplement 避免内存泄漏
-    supplements.delete(id);
+    registry.unregister(id);
     return { ok: false, error: "Instance not found" };
   }
   if (snapshot.status === "stopped" || snapshot.status === "stopping") {
     // 已停止实例清理 supplement
-    supplements.delete(id);
+    registry.unregister(id);
     return { ok: false, error: "Already stopped" };
   }
 
   try {
     await facade.stopInstance(id);
-    supplements.delete(id);
+    registry.unregister(id);
     // 清理环境级计数器：无活跃实例时释放 Map 条目
     const remaining = getRunningInstancesByEnvironment(sup.environmentId);
     if (remaining.length === 0) {
-      envInstanceCounters.delete(sup.environmentId);
+      registry.deleteCounter(sup.environmentId);
     }
     log(`[Instance] Stopped instance ${id}`);
     return { ok: true };
@@ -305,8 +298,7 @@ export async function stopAllInstances(): Promise<void> {
       }
     }),
   );
-  supplements.clear();
-  envInstanceCounters.clear();
+  registry.clear();
 }
 
 export async function ensureRunning(userId: string, environmentId: string): Promise<EnsureRunningResult> {

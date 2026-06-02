@@ -13,7 +13,7 @@ import {
   toolsToPermission,
   validateAgentData,
 } from "../../../services/config/agent-config";
-import * as configPg from "../../../services/config-pg";
+import * as configPg from "../../../services/config/index";
 import {
   configError,
   configNotFound,

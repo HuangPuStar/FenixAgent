@@ -1,14 +1,38 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { getBaseUrl } from "../config";
 import { log, error as logError } from "../logger";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
-import type { AgentFullConfig } from "./config-pg";
+import type { AgentFullConfig } from "./config/index";
 import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
 import { getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
 type LaunchModelProtocol = ModelConfig["protocol"];
+
+/** 递归收集目录下所有文件的最晚修改时间 */
+function getLatestMtime(dir: string): number {
+  let latest = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      latest = Math.max(latest, getLatestMtime(fullPath));
+    } else if (entry.isFile()) {
+      latest = Math.max(latest, statSync(fullPath).mtimeMs);
+    }
+  }
+  return latest;
+}
+
+/** 判断 skill 源文件是否有更新，需要重建 archive */
+function isSkillStale(skillRoot: string, name: string): boolean {
+  const archivePath = getSkillArchivePath(skillRoot, name);
+  const sourceDir = getSkillSourceDir(skillRoot, name);
+  if (!existsSync(archivePath) || !existsSync(sourceDir)) return !existsSync(archivePath);
+  const archiveMtime = statSync(archivePath).mtimeMs;
+  return getLatestMtime(sourceDir) > archiveMtime;
+}
 
 function toLaunchModelProtocol(protocol: string | null | undefined, providerName: string): LaunchModelProtocol {
   if (protocol === "openai" || protocol === "anthropic") return protocol;
@@ -162,10 +186,10 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
   const skills: { name: string; url: string }[] = [];
   for (const s of fullConfig.skills) {
     const archivePath = getSkillArchivePath(skillRoot, s.name);
-    if (!existsSync(archivePath)) {
-      const sourceDir = getSkillSourceDir(skillRoot, s.name);
+    const sourceDir = getSkillSourceDir(skillRoot, s.name);
+    if (isSkillStale(skillRoot, s.name)) {
       if (existsSync(sourceDir)) {
-        log(`[launch-spec-builder] Skill archive missing, rebuilding: ${s.name}`);
+        log(`[launch-spec-builder] Skill archive stale, rebuilding: ${s.name}`);
         try {
           const { buildSkillArchive } = await import("./skill-fs");
           await buildSkillArchive(sourceDir, archivePath);

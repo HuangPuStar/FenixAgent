@@ -67,7 +67,7 @@ const CONFIG_PG_KEYS = [
   "upsertSkill",
 ] as const;
 
-mock.module("../services/config-pg", () =>
+mock.module("../services/config/index", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(CONFIG_PG_KEYS, getConfigPgStub as (name: string) => any),
 );

@@ -29,6 +29,8 @@ TEMPLATE_PATTERN = re.compile(r"\$\{\{\s*(.+?)\s*\}\}")
 NODES_REF_PATTERN = re.compile(r"\bnodes\.([a-zA-Z_]\w*)\b")
 # inputs 表达式合法前缀
 INPUTS_EXPR_VALID_PREFIXES = ("params.", "secrets.", "nodes.")
+# 匹配 nodes.<id>.output 引用（完整对象，非具体字段）
+OUTPUT_WHOLE_PATTERN = re.compile(r"^nodes\.([a-zA-Z_]\w*)\.output$")
 
 # ── 结果收集 ──
 
@@ -244,6 +246,23 @@ def validate_inputs(node: dict, r: Result, node_id: str, all_ids: set[str]):
                 r.error(f'{prefix}: inputs.{key} 引用了不存在的节点 "{ref_id}"')
             elif ref_id not in depends_on:
                 r.error(f"{prefix}: inputs.{key} 引用了 nodes.{ref_id} 但未在 depends_on 中声明（INPUTS_MISSING_DEPENDENCY）")
+
+        # 检查引用 nodes.<id>.output 整体对象时的提示
+        m = OUTPUT_WHOLE_PATTERN.match(expr)
+        if m:
+            ref_id = m.group(1)
+            if ref_id in all_ids:
+                if t == "shell":
+                    r.warn(
+                        f"{prefix}: inputs.{key} 引用 nodes.{ref_id}.output 整体对象 → "
+                        f"注入环境变量时会 JSON.stringify，命令中需 json.loads 解析。"
+                        f"可用 nodes.{ref_id}.output.<field> 引用具体字段避免序列化"
+                    )
+                elif t == "python":
+                    r.warn(
+                        f"{prefix}: inputs.{key} 引用 nodes.{ref_id}.output 整体对象 → "
+                        f"注入为 Python dict/list，直接使用即可，无需 json.loads"
+                    )
 
 
 def validate_env_field(node: dict, r: Result, node_id: str):

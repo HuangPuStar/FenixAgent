@@ -5,7 +5,7 @@ import { agentConfig, environment, machine } from "../db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
 import type { EnvironmentUpdateParams } from "../repositories";
 import { environmentRepo } from "../repositories";
-import * as configPg from "./config-pg";
+import * as configPg from "./config/index";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "./environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "./environment-core";
 import { groupActiveInstancesByEnvironment } from "./instance";

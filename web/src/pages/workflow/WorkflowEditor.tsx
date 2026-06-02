@@ -92,6 +92,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [yamlOpen, setYamlOpen] = useState(false);
   const [yamlText, setYamlText] = useState("");
+  const [yamlBaseText, setYamlBaseText] = useState("");
   const [readOnly, setReadOnly] = useState(false);
 
   // ── 运行模式状态（顶层持有，传给 Run hook） ──
@@ -131,6 +132,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     publishing,
     lastSavedYaml,
     setLastSavedYaml,
+    hasUnsavedChanges,
   } = useWorkflowPersistence({
     workflowId,
     meta,
@@ -146,6 +148,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setMeta,
     setDryRunResult: () => {}, // placeholder, will be overridden by run hook
     setYamlOpen,
+    readOnly: readOnly || activeRunId !== null,
   });
 
   // ── Canvas hook ──
@@ -169,7 +172,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setEdges,
     setMeta,
     setSelectedNode,
-    readOnly,
+    readOnly: readOnly || activeRunId !== null,
     activeRunId,
     selectedNode,
     screenToFlowPosition,
@@ -231,6 +234,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     meta,
   });
 
+  // ── 运行模式下画布自动只读 ──
+  const effectiveReadOnly = readOnly || isRunMode;
+
   // ── 保存状态 toast ──
   useEffect(() => {
     if (saveStatus === "saved") {
@@ -258,7 +264,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     connectWorkflowSSE(workflowId, (event) => {
       switch (event.type) {
         case "workflow.draft_updated":
-          handleRefreshDraft();
+          if (!hasUnsavedChanges) {
+            handleRefreshDraft();
+          }
           break;
         case "workflow.run_started":
         case "workflow.run_status_changed":
@@ -274,7 +282,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     return () => {
       disconnectWorkflowSSE();
     };
-  }, [workflowId, handleRefreshDraft, handleWorkflowEvent]);
+  }, [workflowId, handleRefreshDraft, handleWorkflowEvent, hasUnsavedChanges]);
 
   // ── Derived state ──
   const onSelectionChange: OnSelectionChangeFunc = canvasOnSelectionChange;
@@ -282,7 +290,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   // ── 节点点击处理 ──
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      if (popoverOpen) {
+      if (isRunMode) {
+        setSelectedNode(node);
+        return;
+      }
+      if (selectedNode?.id === node.id && popoverOpen) {
         setPopoverOpen(false);
         setSelectedNode(null);
       } else {
@@ -290,7 +302,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setPopoverOpen(true);
       }
     },
-    [popoverOpen],
+    [popoverOpen, selectedNode, isRunMode],
   );
 
   // ── 画布移动时关闭 popover ──
@@ -304,6 +316,19 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   // 加载已保存的工作流草稿
   useEffect(() => {
     if (!workflowId) return;
+    // workflowId 切换时清理所有旧状态
+    setActiveRunId(null);
+    setRunSnapshot(null);
+    setRunEvents([]);
+    setRunApprovals([]);
+    setSelectedRunNodeId(null);
+    setSelectedNodeOutput(null);
+    setPopoverOpen(false);
+    setSelectedNode(null);
+    setYamlOpen(false);
+    setRunSheetOpen(false);
+    setVersionsSheetOpen(false);
+    setTriggersSheetOpen(false);
     (async () => {
       try {
         const wf = await workflowDefApi.get(workflowId);
@@ -403,7 +428,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         style={{ display: "none" }}
       />
 
-      {readOnly && (
+      {effectiveReadOnly && (
         <div className="wf-readonly-badge" style={{ right: 12 }}>
           <Lock size={12} /> {t("editor.readonly_mode")}
         </div>
@@ -413,8 +438,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={readOnly ? undefined : onNodesChange}
-          onEdgesChange={readOnly ? undefined : onEdgesChange}
+          onNodesChange={effectiveReadOnly ? undefined : onNodesChange}
+          onEdgesChange={effectiveReadOnly ? undefined : onEdgesChange}
           onNodesDelete={(deleted) => {
             handleNodesDelete(deleted);
             if (selectedNode && deleted.some((n) => n.id === selectedNode.id)) {
@@ -425,29 +450,29 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           onNodeClick={handleNodeClick}
           onMoveStart={handleMoveStart}
           onSelectionChange={onSelectionChange}
-          onConnect={readOnly ? undefined : onConnect}
-          onConnectStart={readOnly ? undefined : (onConnectStart as unknown as typeof undefined)}
-          onConnectEnd={readOnly ? undefined : onConnectEnd}
+          onConnect={effectiveReadOnly ? undefined : onConnect}
+          onConnectStart={effectiveReadOnly ? undefined : (onConnectStart as unknown as typeof undefined)}
+          onConnectEnd={effectiveReadOnly ? undefined : onConnectEnd}
           onDragOver={onDragOver}
           onDrop={onDrop}
           nodeTypes={nodeTypes}
-          nodesDraggable={!readOnly}
-          nodesConnectable={!readOnly}
+          nodesDraggable={!effectiveReadOnly}
+          nodesConnectable={!effectiveReadOnly}
           elementsSelectable
-          deleteKeyCode={readOnly ? null : "Delete"}
+          deleteKeyCode={effectiveReadOnly ? null : "Delete"}
           fitView
           fitViewOptions={{ padding: 0.15 }}
           defaultEdgeOptions={{ type: "smoothstep", animated: true }}
           minZoom={0.2}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
-          className={readOnly ? "wf-canvas-readonly" : ""}
+          className={effectiveReadOnly ? "wf-canvas-readonly" : ""}
         >
-          <Controls position="bottom-left" showInteractive={!readOnly} />
+          <Controls position="bottom-left" showInteractive={!effectiveReadOnly} />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#d1d5db" />
 
           {/* 节点面板 */}
-          {!readOnly && (
+          {!effectiveReadOnly && (
             <Panel position="top-left" className="wf-panel-palette">
               <div className="wf-palette">
                 <div className="wf-palette-title">{t("editor.palette_drag_hint")}</div>
@@ -476,7 +501,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           {/* 工具栏 */}
           <Panel position="top-center" className="wf-panel-toolbar">
             <div className="wf-toolbar">
-              {!readOnly && (
+              {!effectiveReadOnly && (
                 <button
                   type="button"
                   className="wf-toolbar-btn"
@@ -527,12 +552,18 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                   <div className="wf-toolbar-divider" />
                   <button
                     type="button"
-                    className="wf-toolbar-btn"
+                    className={`wf-toolbar-btn ${saveStatus === "unsaved" ? "text-amber-500" : ""}`}
                     onClick={handleSaveDraft}
                     disabled={saveStatus === "saving"}
-                    data-tooltip={t("editor.tooltip_save")}
+                    data-tooltip={
+                      saveStatus === "saving"
+                        ? t("editor.saving")
+                        : saveStatus === "unsaved"
+                          ? t("editor.tooltip_save_unsaved")
+                          : t("editor.tooltip_save")
+                    }
                   >
-                    <Save size={15} />
+                    {saveStatus === "saving" ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
                   </button>
                   <button
                     type="button"
@@ -568,7 +599,10 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                 type="button"
                 className={`wf-toolbar-btn ${yamlOpen ? "active" : ""}`}
                 onClick={() => {
-                  if (!yamlOpen) syncYaml();
+                  if (!yamlOpen) {
+                    const y = syncYaml();
+                    setYamlBaseText(y);
+                  }
                   setYamlOpen(!yamlOpen);
                 }}
                 data-tooltip={t("editor.tooltip_yaml")}
@@ -623,8 +657,10 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           yamlText={yamlText}
           setYamlText={setYamlText}
           setYamlOpen={setYamlOpen}
-          readOnly={readOnly}
+          readOnly={effectiveReadOnly}
           handleImportYaml={handleImportYaml}
+          syncYaml={syncYaml}
+          hasEdits={yamlOpen && yamlText !== yamlBaseText}
         />
 
         {/* 节点配置 Popover */}
@@ -637,7 +673,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           selectedNode={selectedNode}
           sd={sd}
           nodeType={nodeType}
-          readOnly={readOnly}
+          readOnly={effectiveReadOnly}
           handleIdChange={handleIdChange}
           setNodes={setNodes}
           setSelectedNode={setSelectedNode}
@@ -649,7 +685,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         <WorkflowMetaPopover
           open={metaPopoverOpen}
           onOpenChange={setMetaPopoverOpen}
-          readOnly={readOnly}
+          readOnly={effectiveReadOnly}
           meta={meta}
           updateMeta={updateMeta}
         />

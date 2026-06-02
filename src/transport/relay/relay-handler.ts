@@ -18,6 +18,9 @@ const manager = new RelayConnectionManager();
 
 const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
 
+/** relay 设置期间（openLocalRelay 尚未完成）缓存前端消息 */
+const pendingRelayMessages = new Map<string, Array<Record<string, unknown>>>();
+
 // ────────────────────────────────────────────
 // Relay open / close / message handlers
 // ────────────────────────────────────────────
@@ -32,8 +35,18 @@ export async function handleRelayOpen(
 ): Promise<void> {
   log(`[ACP-Relay] Relay connection opened: relayWsId=${relayWsId} agentId=${agentId}`);
 
-  const env = await environmentRepo.getById(agentId);
+  // 在异步设置开始前注册 pending buffer，避免前端消息被丢弃
+  pendingRelayMessages.set(relayWsId, []);
+
+  let env: EnvironmentRecord | undefined;
+  try {
+    env = await environmentRepo.getById(agentId);
+  } catch (err) {
+    pendingRelayMessages.delete(relayWsId);
+    throw err;
+  }
   if (!env) {
+    pendingRelayMessages.delete(relayWsId);
     sendToRelayWs(ws, { type: "error", payload: { message: "Environment not found" } });
     ws.close(4004, "environment not found");
     return;
@@ -72,6 +85,7 @@ async function openLocalRelay(
     instanceId = result.instance.id;
     log(`[ACP-Relay] Local instance ${result.status}: instanceId=${instanceId} envId=${agentId}`);
   } catch (err) {
+    pendingRelayMessages.delete(relayWsId);
     const msg = err instanceof Error ? err.message : String(err);
     sendToRelayWs(ws, { type: "error", payload: { message: `Failed to start local instance: ${msg}` } });
     ws.close(1011, "spawn failed");
@@ -79,7 +93,10 @@ async function openLocalRelay(
   }
 
   // WS 已关闭则放弃
-  if (ws.readyState !== 1) return;
+  if (ws.readyState !== 1) {
+    pendingRelayMessages.delete(relayWsId);
+    return;
+  }
 
   // 2. 通过 CoreRuntimeFacade 连接 relay handle（先不加入 manager，避免空窗期路由错误）
   let handle: EngineRelayHandle;
@@ -93,6 +110,7 @@ async function openLocalRelay(
 
     // WS 在 await 期间关闭 → 清理 handle 并放弃
     if (ws.readyState !== 1) {
+      pendingRelayMessages.delete(relayWsId);
       try {
         handle.close(1000, "ws closed during setup");
       } catch {
@@ -101,6 +119,7 @@ async function openLocalRelay(
       return;
     }
   } catch (err) {
+    pendingRelayMessages.delete(relayWsId);
     const msg = err instanceof Error ? err.message : String(err);
     logError("[ACP-Relay] Failed to connect instance relay:", err);
     sendToRelayWs(ws, { type: "error", payload: { message: `Relay connect failed: ${msg}` } });
@@ -160,6 +179,20 @@ async function openLocalRelay(
       sendToRelayWs(e.ws, message);
     });
   }
+
+  // 5. 回放设置期间缓存的前端消息（connect、new_session 等）
+  const pending = pendingRelayMessages.get(relayWsId) ?? [];
+  pendingRelayMessages.delete(relayWsId);
+  if (pending.length > 0) {
+    log(`[ACP-Relay] Flushing ${pending.length} pending message(s) for relayWsId=${relayWsId}`);
+    for (const msg of pending) {
+      try {
+        entry.relayHandle!.send(msg as { type: string; payload?: unknown });
+      } catch (err) {
+        logError("[ACP-Relay] Failed to send buffered message:", err);
+      }
+    }
+  }
 }
 
 /** Called from onMessage — forwards frontend messages */
@@ -168,6 +201,27 @@ export async function handleRelayMessage(
   relayWsId: string,
   data: string | Record<string, unknown>,
 ): Promise<void> {
+  // relay 设置尚未完成时，缓存消息等待 flush
+  if (pendingRelayMessages.has(relayWsId)) {
+    let parsed: Record<string, unknown>;
+    if (typeof data === "string") {
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        return;
+      }
+    } else {
+      parsed = data;
+    }
+    if (parsed.type === "ping") {
+      sendToRelayWs(ws, { type: "pong" });
+      return;
+    }
+    if (parsed.type === "keep_alive") return;
+    pendingRelayMessages.get(relayWsId)!.push(parsed);
+    return;
+  }
+
   const entry = manager.get(relayWsId);
   if (!entry) return;
 
@@ -209,6 +263,9 @@ export async function handleRelayMessage(
 
 /** Called from onClose — cleans up relay connection */
 export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: number, _reason?: string): void {
+  // 清理 pending buffer（设置期间关闭的情况）
+  pendingRelayMessages.delete(relayWsId);
+
   const entry = manager.get(relayWsId);
   if (!entry) return;
 

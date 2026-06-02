@@ -1,4 +1,4 @@
-import * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk";
 import type {
   AgentCapabilities,
   ContentBlock,
@@ -14,9 +14,9 @@ interface PendingPermission {
   timeout: ReturnType<typeof setTimeout>;
 }
 
-const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
+const _PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
 
-function generateRequestId(): string {
+function _generateRequestId(): string {
   return `perm_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 

@@ -21,6 +21,7 @@ import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { NodeOutput } from "../types/execution";
 
 const MAX_STDERR_SIZE = 10 * 1024 * 1024;
+const TRUNCATE_SIZE = 2000;
 const DEFAULT_TIMEOUT_MS = 300_000;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 
@@ -161,12 +162,14 @@ export class PythonExecutor implements NodeExecutor {
 
       let stderrSize = 0;
       let stderrExceeded = false;
+      const stderrChunks: Uint8Array[] = [];
       const stderrReader = subprocess.stderr.getReader();
 
       const stderrPromise = (async () => {
         while (true) {
           const { done, value } = await stderrReader.read();
           if (done) break;
+          stderrChunks.push(value);
           stderrSize += value.byteLength;
           if (stderrSize > MAX_STDERR_SIZE) {
             stderrExceeded = true;
@@ -211,18 +214,25 @@ export class PythonExecutor implements NodeExecutor {
       }
 
       const stdoutStr = Buffer.concat(stdoutChunks).toString();
+      const stderrStr = Buffer.concat(stderrChunks).toString();
       const outputSize = Buffer.byteLength(stdoutStr);
 
       if (exitCode !== 0) {
+        const stderrTruncated = stderrStr.slice(0, TRUNCATE_SIZE);
+        const detail = stderrTruncated
+          ? `Python exited with code ${exitCode}: ${stderrTruncated}`
+          : `Python exited with code ${exitCode}`;
         await this.emitEvent(ctx, "node.failed", node, {
-          error: `Python exited with code ${exitCode}`,
+          error: detail,
           exit_code: exitCode,
-          stdout: stdoutStr,
+          stdout: stdoutStr.slice(0, TRUNCATE_SIZE),
+          stderr: stderrTruncated,
         });
-        throw new WorkflowError(`Python exited with code ${exitCode}`, WorkflowErrorCode.NODE_FAILED, {
+        throw new WorkflowError(detail, WorkflowErrorCode.NODE_FAILED, {
           node_id: node.id,
           exit_code: exitCode,
-          stdout: stdoutStr,
+          stdout: stdoutStr.slice(0, TRUNCATE_SIZE),
+          stderr: stderrTruncated,
         });
       }
 

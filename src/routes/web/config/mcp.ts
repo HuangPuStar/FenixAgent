@@ -1,6 +1,7 @@
 import Elysia from "elysia";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
+import * as configPg from "../../../services/config/index";
 import {
   countToolsByServer,
   deleteToolsByServer,
@@ -11,7 +12,6 @@ import {
   validateMcpConfig,
 } from "../../../services/config/mcp-server";
 import type { McpRemoteConfig, McpServerConfig } from "../../../services/config/types";
-import * as configPg from "../../../services/config-pg";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
 
 // --- Action Handlers ---
