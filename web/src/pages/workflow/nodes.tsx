@@ -148,7 +148,7 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   return (
     <div
       data-node-id={id}
-      className="bg-surface-1 overflow-hidden transition-[border-color,box-shadow] duration-150"
+      className="bg-surface-1 transition-[border-color,box-shadow] duration-150"
       style={{
         borderRadius: 8,
         minWidth: isStart ? 120 : 180,
@@ -175,6 +175,7 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
           padding: "5px 10px",
           letterSpacing: 0.3,
           justifyContent: isStart ? "center" : undefined,
+          borderRadius: "6px 6px 0 0",
         }}
       >
         {icon}
@@ -242,23 +243,30 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
         </div>
       )}
 
-      {/* 出入口 points — 仅非 start 节点 */}
-      {!isStart && (inputPoints.length > 0 || outputPoints.length > 0) && (
-        <div className="wf-points-container">
-          {inputPoints.map((param, i) => (
-            <div key={`in-${param}`} className="wf-point wf-point-in" style={{ top: `${36 + i * 18}px` }}>
+      {/* 入口 points — 顶部水平排列 */}
+      {!isStart &&
+        inputPoints.length > 0 &&
+        inputPoints.map((param, i) => {
+          const pct = inputPoints.length === 1 ? 50 : ((i + 1) / (inputPoints.length + 1)) * 100;
+          return (
+            <div key={`in-${param}`} className="wf-point wf-point-in" style={{ left: `${pct}%` }}>
               <div className="wf-point-dot wf-point-dot-in" />
               <span className="wf-point-label wf-point-label-in">{param}</span>
             </div>
-          ))}
-          {outputPoints.map((field, i) => (
-            <div key={`out-${field}`} className="wf-point wf-point-out" style={{ top: `${36 + i * 18}px` }}>
-              <span className="wf-point-label wf-point-label-out">{field}</span>
+          );
+        })}
+      {/* 出口 points — 底部水平排列 */}
+      {!isStart &&
+        outputPoints.length > 0 &&
+        outputPoints.map((field, i) => {
+          const pct = outputPoints.length === 1 ? 50 : ((i + 1) / (outputPoints.length + 1)) * 100;
+          return (
+            <div key={`out-${field}`} className="wf-point wf-point-out" style={{ left: `${pct}%` }}>
               <div className="wf-point-dot wf-point-dot-out" />
+              <span className="wf-point-label wf-point-label-out">{field}</span>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
 
       <Handle
         type="source"
