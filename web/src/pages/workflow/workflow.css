@@ -506,7 +506,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .wf-point-out {
@@ -543,6 +543,12 @@
   border-radius: 3px;
   white-space: nowrap;
   line-height: 1.4;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.wf-point:hover .wf-point-label {
+  opacity: 1;
 }
 
 .wf-point-label-out {
