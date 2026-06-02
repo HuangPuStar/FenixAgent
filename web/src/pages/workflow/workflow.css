@@ -313,13 +313,7 @@
   stroke-width: 2;
 }
 
-.react-flow__handle {
-  transition: transform 0.15s;
-}
 
-.react-flow__handle:hover {
-  transform: scale(1.4);
-}
 
 /* ── Animations ── */
 @keyframes wf-spin {
@@ -360,9 +354,6 @@
   pointer-events: none;
 }
 
-.wf-canvas-readonly .react-flow__handle {
-  opacity: 0.3;
-}
 
 .wf-prop-readonly-tag {
   display: inline-flex;
@@ -506,35 +497,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: auto;
+  pointer-events: none;
   z-index: 2;
   transform: translateX(-50%);
 }
 
 .wf-point-in {
-  top: -10px;
+  top: -6px;
 }
 
 .wf-point-out {
-  bottom: -10px;
+  bottom: -6px;
 }
 
-.wf-point-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  flex-shrink: 0;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
-}
-
-.wf-point-dot-out {
-  background: #10b981;
-}
-
-.wf-point-dot-in {
-  background: #f59e0b;
-}
 
 .wf-point-label {
   position: absolute;

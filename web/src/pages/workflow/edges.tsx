@@ -37,13 +37,12 @@ export function LogicEdge({
   );
 }
 
-/** 参数指引边 — 更细的点线曲线，偏移避免与 logic 边重叠 */
+/** 参数指引边 — 绿色点线曲线，连到对应参数 Handle */
 export function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }: EdgeProps) {
-  const offsetX = 12;
   const [edgePath] = getBezierPath({
-    sourceX: sourceX + offsetX,
+    sourceX,
     sourceY,
-    targetX: targetX + offsetX,
+    targetX,
     targetY,
     sourcePosition,
     targetPosition,
