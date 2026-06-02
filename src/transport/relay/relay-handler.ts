@@ -38,7 +38,7 @@ export async function handleRelayOpen(
   // 在异步设置开始前注册 pending buffer，避免前端消息被丢弃
   pendingRelayMessages.set(relayWsId, []);
 
-  let env: EnvironmentRecord | null;
+  let env: EnvironmentRecord | undefined;
   try {
     env = await environmentRepo.getById(agentId);
   } catch (err) {

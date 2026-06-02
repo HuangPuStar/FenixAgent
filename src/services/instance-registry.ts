@@ -14,13 +14,13 @@ import type { InstanceSupplement } from "../types/store";
  * - 纯内存存储，不解决重启问题
  */
 export class InstanceRegistry {
-  private entries = new Map<string, InstanceSupplement>();
+  private supplements = new Map<string, InstanceSupplement>();
   private envCounters = new Map<string, number>();
   private byEnvironment = new Map<string, Set<string>>();
 
   /** 注册实例补充信息 */
   register(instanceId: string, supplement: InstanceSupplement): void {
-    this.entries.set(instanceId, supplement);
+    this.supplements.set(instanceId, supplement);
     let set = this.byEnvironment.get(supplement.environmentId);
     if (!set) {
       set = new Set();
@@ -31,9 +31,9 @@ export class InstanceRegistry {
 
   /** 注销实例补充信息，同时清理 byEnvironment 索引 */
   unregister(instanceId: string): void {
-    const sup = this.entries.get(instanceId);
+    const sup = this.supplements.get(instanceId);
     if (!sup) return;
-    this.entries.delete(instanceId);
+    this.supplements.delete(instanceId);
     const set = this.byEnvironment.get(sup.environmentId);
     if (set) {
       set.delete(instanceId);
@@ -43,19 +43,19 @@ export class InstanceRegistry {
 
   /** 获取实例补充信息 */
   get(instanceId: string): InstanceSupplement | undefined {
-    return this.entries.get(instanceId);
+    return this.supplements.get(instanceId);
   }
 
   /** 检查实例是否已注册 */
   has(instanceId: string): boolean {
-    return this.entries.has(instanceId);
+    return this.supplements.has(instanceId);
   }
 
   /** 按环境 ID 获取所有实例的 [instanceId, supplement] 对 */
   getByEnvironment(environmentId: string): Array<[string, InstanceSupplement]> {
     const ids = this.byEnvironment.get(environmentId);
     if (!ids) return [];
-    return [...ids].map((id) => [id, this.entries.get(id)!] as [string, InstanceSupplement]).filter(([, s]) => s);
+    return [...ids].map((id) => [id, this.supplements.get(id)!] as [string, InstanceSupplement]).filter(([, s]) => s);
   }
 
   /**
@@ -85,19 +85,19 @@ export class InstanceRegistry {
 
   /** 清空所有注册信息、计数器和索引 */
   clear(): void {
-    this.entries.clear();
+    this.supplements.clear();
     this.envCounters.clear();
     this.byEnvironment.clear();
   }
 
   /** 返回所有注册条目的迭代器 */
   entries(): IterableIterator<[string, InstanceSupplement]> {
-    return this.entries.entries();
+    return this.supplements.entries();
   }
 
   /** 已注册实例总数 */
   get size(): number {
-    return this.entries.size;
+    return this.supplements.size;
   }
 
   /**
@@ -108,7 +108,7 @@ export class InstanceRegistry {
     const coreIds = new Set(listCoreInstances().map((i) => i.instanceId));
     // 收集需要移除的 ID，避免迭代中修改 Map
     const orphaned: string[] = [];
-    for (const [id] of this.entries) {
+    for (const [id] of this.supplements) {
       if (!coreIds.has(id)) {
         orphaned.push(id);
       }

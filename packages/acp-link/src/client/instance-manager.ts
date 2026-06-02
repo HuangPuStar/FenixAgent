@@ -2,12 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import {
-  buildOpencodeRuntimeConfig,
-  ensureWorkspaceRuntimeDirs,
-  installSkills,
-  writeOpencodeConfig,
-} from "@fenix/opencode";
+import { buildOpencodeRuntimeConfig, installSkills, writeOpencodeConfig } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
 import { resolveExecutable } from "./resolve-executable";

@@ -114,6 +114,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
   }, [syncYaml, workflowId, t]);
 
   // 自动保存：nodes/edges/meta 变化后 debounce 3s 自动保存
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nodes/edges/meta 故意作为触发器
   useEffect(() => {
     if (!workflowId || readOnly || lastSavedYaml === "") return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);

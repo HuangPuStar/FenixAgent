@@ -10,7 +10,7 @@ export function resolveExecutable(command: string): string {
       accessSync(candidate, constants.X_OK);
       return candidate;
     } catch {
-      continue;
+      // accessSync throws if not found/executable
     }
   }
 

@@ -8,7 +8,7 @@ export function YamlSlidePanel({
   setYamlOpen,
   readOnly,
   handleImportYaml,
-  syncYaml,
+  syncYaml: _syncYaml,
   hasEdits,
 }: {
   yamlOpen: boolean;

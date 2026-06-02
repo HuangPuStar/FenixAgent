@@ -371,7 +371,6 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals,
     setSelectedRunNodeId,
     setSelectedNodeOutput,
-    setDryRunResult,
     setNodes,
   ]);
 
@@ -404,7 +403,6 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunApprovals,
     setSelectedRunNodeId,
     setSelectedNodeOutput,
-    setDryRunResult,
     setNodes,
   ]);
 
