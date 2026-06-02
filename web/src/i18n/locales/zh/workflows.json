@@ -275,6 +275,7 @@
     "workflow_no_desc": "(无)",
     "workflow_draft_path": "草稿路径",
     "workflow_read_prompt": "请先读取草稿文件再响应用户请求。",
+    "workflow_api_prompt": "请通过 API 读取当前工作流草稿，使用 skill 中描述的 curl 命令。workflowId 已在上方提供。",
     "confirm_delete_latest": "确定将 latest 指向 v{{version}}？",
     "confirm_restore_draft": "将 v{{version}} 的内容恢复到草稿？当前草稿将被覆盖。",
     "type_shell": "Shell",

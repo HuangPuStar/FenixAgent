@@ -35,8 +35,7 @@ export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentP
       `- ${t("editor.workflow_id")}: ${workflowId}`,
       `- ${t("editor.workflow_name")}: ${meta.name || t("editor.workflow_unnamed")}`,
       `- ${t("editor.workflow_desc_label")}: ${meta.description || t("editor.workflow_no_desc")}`,
-      `- ${t("editor.workflow_draft_path")}: .agents/workflows/${workflowId}/draft.yaml`,
-      t("editor.workflow_read_prompt"),
+      t("editor.workflow_api_prompt"),
     ];
     return lines.join("\n");
   }, [workflowId, meta.name, meta.description, t]);

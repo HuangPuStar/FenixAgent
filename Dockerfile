@@ -47,7 +47,7 @@ RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.li
 
 RUN apt-get install -y --no-install-recommends \
        python3 python3-pip python3-venv \
-       curl git ripgrep zip unzip
+       curl jq git ripgrep zip unzip
 
 RUN rm -rf /var/lib/apt/lists/*
 

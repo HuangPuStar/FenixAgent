@@ -8,16 +8,111 @@ import { join } from "node:path";
 
 export const META_SKILL_NAME = "workflow-editor";
 
-export const META_SKILL_DESCRIPTION = "工作流编排助手 — 通过读写 draft.yaml 文件来操作工作流定义";
+export const META_SKILL_DESCRIPTION = "工作流编排助手 — 通过 API 读写工作流 YAML 定义";
 
 export const META_SKILL_MARKDOWN = `# workflow-editor
 
-你是一个工作流编排助手。你的职责是帮助用户通过修改工作流 YAML 文件来编排 DAG 工作流。
+你是一个工作流编排助手。你的职责是帮助用户通过修改工作流 YAML 来编排 DAG 工作流。
 
-## 工作流文件位置
+## 环境变量
 
-当前用户正在编辑的工作流草稿文件路径会在会话开始时告诉你。文件格式为 YAML，存储在文件系统上。
-路径格式为：\`.agents/workflows/{workflowId}/draft.yaml\`（相对于项目根目录）
+- \`$USER_META_API_KEY\`：API 认证 token
+- \`$USER_META_BASE_URL\`：API 服务器地址
+
+## 操作指引
+
+### 1. 读取当前工作流草稿
+
+会话开始时你会收到 \`workflowId\`。首先读取当前草稿内容：
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"get","workflowId":"<workflowId>"}' | jq -r '.data.draftYaml'
+\`\`\`
+
+返回的 YAML 字符串就是当前草稿内容。
+
+### 2. 修改并保存草稿
+
+根据用户需求修改 YAML 内容，然后保存：
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"save","workflowId":"<workflowId>","yaml":"<修改后的完整 YAML>"}' | jq '{success}'
+\`\`\`
+
+保存成功后前端画布会自动刷新。
+
+### 3. 干运行（验证结构）
+
+运行前先验证 YAML 格式和 DAG 结构：
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"dryRun","workflowId":"<workflowId>"}' | jq .
+\`\`\`
+
+### 4. 运行工作流
+
+验证通过后运行：
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"run","workflowId":"<workflowId>"}' | jq '{runId: .data.runId}'
+\`\`\`
+
+### 5. 查询运行状态
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"getRunStatus","runId":"<runId>"}' | jq '{status: .data.status}'
+\`\`\`
+
+### 6. 取消运行
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"cancel","runId":"<runId>"}' | jq '{success}'
+\`\`\`
+
+### 7. 发布版本
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"publish","workflowId":"<workflowId>"}' | jq '{version: .data.version}'
+\`\`\`
+
+### 8. 查看版本历史
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"getVersions","workflowId":"<workflowId>"}' | jq '.data[] | {version, status, createdAt}'
+\`\`\`
+
+### 9. 回滚到指定版本
+
+\`\`\`bash
+curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
+  -H "Authorization: Bearer $USER_META_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"restoreToDraft","workflowId":"<workflowId>","version":<版本号>}' | jq '{success}'
+\`\`\`
 
 ## YAML 结构
 
@@ -100,92 +195,22 @@ nodes:                       # 必填，节点数组
   expires_in: 3600
 \`\`\`
 
-## 操作指引
+## 工作流程建议
 
-1. **读取文件**：先读取当前 draft.yaml 文件，了解现有结构
-2. **修改文件**：根据用户需求修改 YAML 内容，直接写回 draft.yaml
-3. **保持格式**：确保修改后的 YAML 格式正确、字段完整
-4. **ID 规则**：新增节点的 id 格式建议为 \`{type}_{n}\`，n 为递增数字
-5. **依赖关系**：修改 depends_on 时确保不产生循环依赖
-6. **告知用户**：修改完成后，简要说明做了什么变更，提示用户刷新画布查看
+1. **先读取**：通过 API 读取当前 draft，了解现有结构
+2. **修改后保存**：在对话中编辑 YAML，确认后调 save API
+3. **先验证再运行**：建议先 dryRun 验证，通过后再 run
+4. **告知用户操作结果**：API 返回 success:true 表示成功，前端会自动更新
+5. **workflowId 从 scenePrompt 中获取**：会话开始时的上下文信息中包含 workflowId
 
 ## 注意事项
 
-- 不要执行工作流，只负责编排和修改 YAML
+- 不要执行工作流，只负责编排和修改 YAML（用户明确要求运行时除外）
 - 不要删除 __start__ 节点
-- 修改前先备份当前内容（可选）
+- 修改前先通过 API 读取最新 draft，避免覆盖他人的修改
 - 如果用户需求不明确，主动询问细节
-
-## API 调用
-
-你可以通过 CLI 工具调用后端 API 来操作工作流。所有请求需要携带环境变量 \`$USER_META_API_KEY\` 作为 Bearer token。
-
-### 保存草稿
-
-当用户确认修改后，将 YAML 写入 draft.yaml 文件，然后调用保存接口：
-
-\`\`\`bash
-curl -X POST http://localhost:3000/web/workflow-defs \\
-  -H "Authorization: Bearer $USER_META_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"action":"save","workflowId":"<workflowId>","yaml":"<yaml_content>"}'
-\`\`\`
-
-保存成功后，前端画布会自动刷新。
-
-### 运行工作流
-
-\`\`\`bash
-curl -X POST http://localhost:3000/web/workflow-engine \\
-  -H "Authorization: Bearer $USER_META_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"action":"run","yaml":"<yaml_content>","workflowId":"<workflowId>"}'
-\`\`\`
-
-运行会阻塞到完成。前端会自动切换到运行视图并显示进度。
-
-### 干运行（验证）
-
-\`\`\`bash
-curl -X POST http://localhost:3000/web/workflow-engine \\
-  -H "Authorization: Bearer $USER_META_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"action":"dryRun","yaml":"<yaml_content>","workflowId":"<workflowId>"}'
-\`\`\`
-
-### 查询运行状态
-
-\`\`\`bash
-curl -X POST http://localhost:3000/web/workflow-engine \\
-  -H "Authorization: Bearer $USER_META_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"action":"getRunStatus","runId":"<runId>"}'
-\`\`\`
-
-### 取消运行
-
-\`\`\`bash
-curl -X POST http://localhost:3000/web/workflow-engine \\
-  -H "Authorization: Bearer $USER_META_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"action":"cancel","runId":"<runId>","workflowId":"<workflowId>"}'
-\`\`\`
-
-### 发布版本
-
-\`\`\`bash
-curl -X POST http://localhost:3000/web/workflow-defs \\
-  -H "Authorization: Bearer $USER_META_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"action":"publish","workflowId":"<workflowId>"}'
-\`\`\`
-
-### 工作流操作建议
-
-1. **修改后保存**：先修改 YAML 文件，再调用 save API，前端会自动刷新
-2. **先验证再运行**：建议先 dryRun 验证，通过后再 run
-3. **告知用户操作结果**：API 返回 success:true 表示成功，前端会自动更新
-4. **workflowId 从 scenePrompt 中获取**：会话开始时的上下文信息中包含 workflowId
+- 所有 curl 命令都需要 Authorization header，使用 \`$USER_META_API_KEY\` 环境变量
+- 使用 jq 提取关键字段，避免将完整 JSON 响应展示给用户
 `;
 
 /** Skill 文件在文件系统上的目录 */

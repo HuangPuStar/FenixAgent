@@ -275,6 +275,7 @@
     "workflow_no_desc": "(None)",
     "workflow_draft_path": "Draft Path",
     "workflow_read_prompt": "Please read the draft file first before responding to user requests.",
+    "workflow_api_prompt": "Please read the current workflow draft via API using the curl commands described in your skill. The workflowId is provided above.",
     "confirm_delete_latest": "Are you sure you want to set latest to v{{version}}?",
     "confirm_restore_draft": "Restore v{{version}} content to draft? Current draft will be overwritten.",
     "type_shell": "Shell",
