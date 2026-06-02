@@ -57,6 +57,7 @@ import { TriggerPanel } from "./components/TriggerPanel";
 import { VersionPanel } from "./components/VersionPanel";
 import { WorkflowMetaPopover } from "./components/WorkflowMetaPopover";
 import { YamlSlidePanel } from "./components/YamlSlidePanel";
+import { edgeTypes } from "./edges";
 import { useWorkflowCanvas } from "./hooks/useWorkflowCanvas";
 import { useWorkflowMetaAgent } from "./hooks/useWorkflowMetaAgent";
 import { useWorkflowPersistence } from "./hooks/useWorkflowPersistence";
@@ -242,6 +243,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   useEffect(() => {
     setDryRunResultRef.current = setDryRunResult;
   });
+
 
   // ── 运行模式下画布自动只读 ──
   const effectiveReadOnly = readOnly || isRunMode;
@@ -464,13 +466,14 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           onDragOver={onDragOver}
           onDrop={onDrop}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           nodesDraggable={!effectiveReadOnly}
           nodesConnectable={!effectiveReadOnly}
           elementsSelectable
           deleteKeyCode={effectiveReadOnly ? null : "Delete"}
           fitView
           fitViewOptions={{ padding: 0.15 }}
-          defaultEdgeOptions={{ type: "smoothstep", animated: true }}
+          defaultEdgeOptions={{ type: "logic" }}
           minZoom={0.2}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}

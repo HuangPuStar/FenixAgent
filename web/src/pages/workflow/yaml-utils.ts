@@ -84,24 +84,57 @@ export function yamlToFlow(yamlStr: string): { nodes: Node[]; edges: Edge[]; met
     // 根节点（无 depends_on）连到 start
     if (depends.length === 0) {
       edges.push({
-        id: `e-${START_NODE_ID}-${raw.id}`,
+        id: `logic-${START_NODE_ID}-${raw.id}`,
         source: START_NODE_ID,
         target: raw.id,
-        type: "smoothstep",
-        animated: false,
+        type: "logic",
+        data: { hasCondition: false },
       });
     }
 
     for (const dep of depends) {
+      const condition = data.condition;
       edges.push({
-        id: `e-${dep}-${raw.id}`,
+        id: `logic-${dep}-${raw.id}`,
         source: dep,
         target: raw.id,
-        type: "smoothstep",
-        animated: true,
+        type: "logic",
+        data: { hasCondition: typeof condition === "string" && condition.length > 0 },
       });
     }
   });
+
+  // 注入 _outputFields 到被引用的节点
+  const dataFlowEdges = parseDataFlowEdges(nodes);
+  const outputFieldsMap = new Map<string, Set<string>>();
+  for (const df of dataFlowEdges) {
+    let set = outputFieldsMap.get(df.sourceNodeId);
+    if (!set) {
+      set = new Set();
+      outputFieldsMap.set(df.sourceNodeId, set);
+    }
+    set.add(df.sourceField);
+  }
+  for (const node of nodes) {
+    const fields = outputFieldsMap.get(node.id);
+    if (fields) {
+      node.data = { ...node.data, _outputFields: [...fields] };
+    }
+  }
+
+  // 解析参数指引边
+  for (const df of dataFlowEdges) {
+    edges.push({
+      id: `data-${df.sourceNodeId}.${df.sourceField}-${df.targetNodeId}.${df.targetParam}`,
+      source: df.sourceNodeId,
+      target: df.targetNodeId,
+      type: "dataFlow",
+      data: {
+        sourceField: df.sourceField,
+        targetParam: df.targetParam,
+      },
+    });
+  }
 
   return { nodes, edges, meta };
 }
@@ -109,6 +142,8 @@ export function yamlToFlow(yamlStr: string): { nodes: Node[]; edges: Edge[]; met
 export function flowToYaml(nodes: Node[], edges: Edge[], meta: WfMeta): string {
   const dependsMap = new Map<string, string[]>();
   for (const edge of edges) {
+    // 只处理逻辑边，跳过参数指引边
+    if (edge.type === "dataFlow") continue;
     if (edge.source === START_NODE_ID) continue;
     const deps = dependsMap.get(edge.target) || [];
     if (!deps.includes(edge.source)) deps.push(edge.source);
@@ -173,4 +208,34 @@ export function nextNodeId(type: string): string {
 
 export function resetNodeCounter(): void {
   nodeCounter = 0;
+}
+
+/** 参数指引边数据 */
+export interface DataFlowEdgeInfo {
+  sourceNodeId: string;
+  sourceField: string;
+  targetNodeId: string;
+  targetParam: string;
+}
+
+/** 从节点列表的 inputs 中解析出参数指引边 */
+export function parseDataFlowEdges(nodes: Array<{ id: string; data: Record<string, unknown> }>): DataFlowEdgeInfo[] {
+  const result: DataFlowEdgeInfo[] = [];
+  for (const node of nodes) {
+    if (node.id === START_NODE_ID) continue;
+    const inputs = node.data.inputs;
+    if (!inputs || typeof inputs !== "object") continue;
+    for (const [paramName, expr] of Object.entries(inputs as Record<string, string>)) {
+      if (typeof expr !== "string") continue;
+      const match = expr.match(/^nodes\.([a-zA-Z0-9_-]+)\.(.+)$/);
+      if (!match) continue;
+      result.push({
+        sourceNodeId: match[1],
+        sourceField: match[2],
+        targetNodeId: node.id,
+        targetParam: paramName,
+      });
+    }
+  }
+  return result;
 }
