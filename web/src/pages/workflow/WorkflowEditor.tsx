@@ -63,6 +63,7 @@ import { useWorkflowPersistence } from "./hooks/useWorkflowPersistence";
 import { useWorkflowRun } from "./hooks/useWorkflowRun";
 import { autoLayout } from "./layout";
 import { nodeTypes } from "./nodes";
+import { edgeTypes } from "./edges";
 import { dedupEvents } from "./utils";
 import { createStartNode, defaultMeta, START_NODE_ID, type WfMeta, yamlToFlow } from "./yaml-utils";
 import "./workflow.css";
@@ -456,13 +457,14 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           onDragOver={onDragOver}
           onDrop={onDrop}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           nodesDraggable={!effectiveReadOnly}
           nodesConnectable={!effectiveReadOnly}
           elementsSelectable
           deleteKeyCode={effectiveReadOnly ? null : "Delete"}
           fitView
           fitViewOptions={{ padding: 0.15 }}
-          defaultEdgeOptions={{ type: "smoothstep", animated: true }}
+          defaultEdgeOptions={{ type: "logic" }}
           minZoom={0.2}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
