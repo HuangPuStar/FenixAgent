@@ -13,103 +13,29 @@ This skill lets you operate the RCS platform by writing TypeScript scripts that 
 ## Quick Start
 
 1. Use the **Write** tool to create a temporary `.ts` file inside the user workspace's `user/` dir
-2. Write a script using direct `fetch` with API key auth
+2. Import API classes from the bundle and call methods directly
 3. Run with `bun`
 
 ```typescript
-const BASE = "http://localhost:3000";
+import { EnvironmentApi } from "./agent-platform-api.js";
 
-async function main() {
-  const res = await fetch(`${BASE}/web/environments`, {
-    headers: { Authorization: "Bearer rcs_xxx_..." },
-  });
-  const data = await res.json();
-  console.log(JSON.stringify(data, null, 2));
+const envApi = new EnvironmentApi();
+const result = await envApi.list();
+if (result.ok) {
+  console.log(JSON.stringify(result.data, null, 2));
+} else {
+  console.error(result.error);
 }
-
-await main();
 ```
 
 ## Authentication
 
-RCS has **3 separate auth mechanisms**. Which one to use depends on the route and context:
+The SDK bundle (`agent-platform-api.js`) runs inside **RCS-spawned acp-link processes**. RCS automatically sets two environment variables:
 
-| Auth mechanism | Routes | Method | Used when |
-|---|---|---|---|
-| **Session cookie** (`sessionAuth`) | `/web/*`, `/web/apiKeys` | Cookie `better-auth.session_token` | Web UI, browser-based usage |
-| **Environment secret** (`apiKeyAuth`) | `/v1/*`, `/v2/*`, `/acp/*` | `Authorization: Bearer env_secret_xxx` | acp-link/worker processes (RCS auto-injects) |
-| **better-auth API Key** (`apiKeyAuth`) | `/v1/*`, `/v2/*`, `/acp/*` | `Authorization: Bearer rcs_xxx` | Scripts, programmatic access |
+- `USER_META_BASE_URL` — API server base URL
+- `USER_META_API_KEY` — Bearer token for authentication
 
-⚠️ **Important**: `/web/*` routes only support session cookie auth. They do NOT accept API keys. To call web routes programmatically, you currently need a session cookie.
-
-### For acp-link internal use (bundle works here)
-
-The SDK bundle (`agent-platform-api.js`) is designed to run inside **RCS-spawned acp-link processes**. RCS automatically sets `USER_META_BASE_URL` and `USER_META_API_KEY` (= environment secret `env_secret_xxx`). The bundle intercepts `globalThis.fetch` to add the Bearer token. This works on routes with `apiKeyAuth` (`/v1/*`, `/v2/*`).
-
-### For external scripts — two options
-
-#### Option A: Create a better-auth API key (recommended for v1/v2 routes)
-
-Sign in once with the test account to create an API key, then use it:
-
-```typescript
-const BASE = "http://localhost:3000";
-
-async function createApiKey(): Promise<string> {
-  const login = await fetch(`${BASE}/api/auth/sign-in/email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: "admin@test.com", password: "admin123456" }),
-  });
-  const cookie = login.headers.get("set-cookie")!;
-
-  // Create API key with org metadata
-  const res = await fetch(`${BASE}/web/apiKeys`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify({ action: "create", name: "script-key" }),
-  });
-  const data = await res.json();
-  return data.data.key; // "rcs_..."
-}
-
-const API_KEY = await createApiKey();
-// Now use API_KEY on routes with apiKeyAuth: /v1/*, /v2/*
-const res = await fetch(`${BASE}/v1/environments/bridge`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
-  body: JSON.stringify({ machine_name: "test" }),
-});
-```
-
-#### Option B: Use session cookie (for `/web/*` routes)
-
-Since `/web/*` routes only support `sessionAuth`, you must use the session cookie:
-
-```typescript
-const BASE = "http://localhost:3000";
-
-async function api(path: string) {
-  const login = await fetch(`${BASE}/api/auth/sign-in/email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: "admin@test.com", password: "admin123456" }),
-  });
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { Cookie: login.headers.get("set-cookie")! },
-  });
-  return res.json();
-}
-
-const envs = await api("/web/environments");
-```
-
-### Auth notes
-
-- Test account: `admin@test.com` / `admin123456`
-- `RCS_API_KEYS` env var is for JWT signing only, NOT for Bearer auth
-- Environment secrets (`env_secret_xxx`) are auto-generated per environment, stored in `environment.secret` column
-- better-auth API keys (`rcs_xxx`) are created via `POST /web/apiKeys`
+The bundle intercepts `globalThis.fetch` to inject the `Authorization` header automatically. You do not need to handle authentication yourself — just call the API classes directly.
 
 ## Result Handling
 
