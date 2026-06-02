@@ -3,7 +3,10 @@
  * 仅在 Node.js 运行时下被加载。
  */
 
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
+import type { Duplex } from "node:stream";
+import type WebSocket from "ws";
 
 const require = createRequire(import.meta.url);
 const http = require("node:http");
@@ -22,7 +25,7 @@ export interface WsServerHandle {
 }
 
 export function startNodeWsServer(port: number, host: string, callbacks: WsServerCallbacks): WsServerHandle {
-  const httpServer = http.createServer((req: any, res: any) => {
+  const httpServer = http.createServer((req: IncomingMessage, res: ServerResponse) => {
     if (req.url === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
@@ -34,7 +37,7 @@ export function startNodeWsServer(port: number, host: string, callbacks: WsServe
 
   const wss = new WebSocketServer({ noServer: true });
 
-  httpServer.on("upgrade", (req: any, socket: any, head: any) => {
+  httpServer.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     if (req.url === "/ws") {
       wss.handleUpgrade(req, socket, head, (ws: unknown) => {
         wss.emit("connection", ws, req);
@@ -44,7 +47,7 @@ export function startNodeWsServer(port: number, host: string, callbacks: WsServe
     }
   });
 
-  wss.on("connection", (ws: any) => {
+  wss.on("connection", (ws: WebSocket) => {
     callbacks.open(ws);
 
     ws.on("message", (data: unknown) => {

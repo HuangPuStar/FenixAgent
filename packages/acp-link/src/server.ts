@@ -30,7 +30,7 @@ const WS_CLOSING = 2;
 const WS_CLOSED = 3;
 
 // 运行时检测
-const isBun = typeof (globalThis as any).Bun !== "undefined";
+const isBun = typeof (globalThis as Record<string, unknown>).Bun !== "undefined";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic require for runtime adapter
 type AdapterFn = (port: number, host: string, cb: any) => { port: number; stop(): void };
