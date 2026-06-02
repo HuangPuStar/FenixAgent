@@ -38,15 +38,7 @@ export function LogicEdge({
 }
 
 /** 参数指引边 — 更细的点线曲线 */
-export function DataFlowEdge({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-}: EdgeProps) {
+export function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition }: EdgeProps) {
   const [edgePath] = getBezierPath({
     sourceX,
     sourceY,

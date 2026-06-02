@@ -219,9 +219,7 @@ export interface DataFlowEdgeInfo {
 }
 
 /** 从节点列表的 inputs 中解析出参数指引边 */
-export function parseDataFlowEdges(
-  nodes: Array<{ id: string; data: Record<string, unknown> }>,
-): DataFlowEdgeInfo[] {
+export function parseDataFlowEdges(nodes: Array<{ id: string; data: Record<string, unknown> }>): DataFlowEdgeInfo[] {
   const result: DataFlowEdgeInfo[] = [];
   for (const node of nodes) {
     if (node.id === START_NODE_ID) continue;

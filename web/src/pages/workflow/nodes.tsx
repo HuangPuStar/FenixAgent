@@ -14,8 +14,8 @@ import {
   Terminal,
   XCircle,
 } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 const NODE_COLORS: Record<string, { main: string; light: string; headerText: string }> = {
   start: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
@@ -246,21 +246,13 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
       {!isStart && (inputPoints.length > 0 || outputPoints.length > 0) && (
         <div className="wf-points-container">
           {inputPoints.map((param, i) => (
-            <div
-              key={`in-${param}`}
-              className="wf-point wf-point-in"
-              style={{ top: `${36 + i * 18}px` }}
-            >
+            <div key={`in-${param}`} className="wf-point wf-point-in" style={{ top: `${36 + i * 18}px` }}>
               <div className="wf-point-dot wf-point-dot-in" />
               <span className="wf-point-label wf-point-label-in">{param}</span>
             </div>
           ))}
           {outputPoints.map((field, i) => (
-            <div
-              key={`out-${field}`}
-              className="wf-point wf-point-out"
-              style={{ top: `${36 + i * 18}px` }}
-            >
+            <div key={`out-${field}`} className="wf-point wf-point-out" style={{ top: `${36 + i * 18}px` }}>
               <span className="wf-point-label wf-point-label-out">{field}</span>
               <div className="wf-point-dot wf-point-dot-out" />
             </div>
