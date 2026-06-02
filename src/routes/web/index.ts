@@ -1,5 +1,6 @@
 import Elysia from "elysia";
 import webAuth from "./auth";
+import webBranding from "./branding";
 import webChannels from "./channels";
 import webConfig from "./config";
 import webControl from "./control";
@@ -24,6 +25,7 @@ import webWorkflowSse from "./workflow-sse";
 import webWorkflowStats from "./workflow-stats";
 
 const webApp = new Elysia({ name: "web", prefix: "/web" })
+  .use(webBranding)
   .use(webAuth)
   .use(webChannels)
   .use(webConfig)

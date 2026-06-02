@@ -2,6 +2,7 @@ import { LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
+import { getAppBrand } from "@/src/lib/app-brand";
 import { signOut, useSession } from "../../../src/lib/auth-client";
 import { OrgSwitcher } from "../../components/OrgSwitcher";
 import { AgentSidebarConfig, AgentSidebarQuickNav } from "./AgentSidebarConfig";
@@ -22,11 +23,12 @@ export function AgentSidebar({
   onCreateAgent,
   onEditAgent,
 }: AgentSidebarProps) {
-  const { t } = useTranslation(NS.AGENT_PANEL);
   const { t: tSidebar } = useTranslation(NS.SIDEBAR);
   const { data: session } = useSession();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const brand = getAppBrand();
 
   const userEmail = session?.user?.email ?? "";
   const avatarLetter = userEmail.charAt(0).toUpperCase() || "U";
@@ -58,19 +60,28 @@ export function AgentSidebar({
           "bg-gradient-to-b from-surface-1 to-surface-0",
         ].join(" ")}
       >
-        <div
-          className={[
-            "w-7 h-7 rounded-lg flex-shrink-0",
-            "flex items-center justify-center",
-            "bg-gradient-to-br from-brand to-brand-light",
-            "text-white font-bold text-sm",
-            "shadow-[0_2px_8px_rgba(99,102,241,0.25)]",
-          ].join(" ")}
-        >
-          F
-        </div>
+        {brand.logoUrl && !logoFailed ? (
+          <img
+            src={brand.logoUrl}
+            alt={brand.name}
+            className="w-7 h-7 rounded-lg flex-shrink-0 object-cover"
+            onError={() => setLogoFailed(true)}
+          />
+        ) : (
+          <div
+            className={[
+              "w-7 h-7 rounded-lg flex-shrink-0",
+              "flex items-center justify-center",
+              "bg-gradient-to-br from-brand to-brand-light",
+              "text-white font-bold text-sm",
+              "shadow-[0_2px_8px_rgba(99,102,241,0.25)]",
+            ].join(" ")}
+          >
+            {brand.monogram}
+          </div>
+        )}
         <span className="text-sm font-bold tracking-[0.02em] text-text-bright whitespace-nowrap overflow-hidden">
-          {t("brand")}
+          {brand.name}
         </span>
       </div>
 

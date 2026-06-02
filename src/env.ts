@@ -14,6 +14,8 @@ const envSchema = z.object({
   RCS_BASE_URL: z.string().default(""),
   RCS_VERSION: z.string().default("0.1.0"),
   SKILL_DIR: z.string().default("./data/skills"),
+  APP_BRAND_NAME: z.string().default("Fenix"),
+  APP_LOGO_PATH: z.string().default(""),
 
   // ── 可选：HTTP/WebSocket ──
   RCS_POLL_TIMEOUT: z.coerce.number().int().positive().default(8),
