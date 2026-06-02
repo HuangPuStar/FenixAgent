@@ -13,13 +13,23 @@ export class RemoteRelayHandle implements EngineRelayHandle {
   ) {
     this.unsubSession = transport.onSessionMessage((instId, _sessId, msg) => {
       if (instId !== instanceId) return;
-      // acp-link 的 relay 消息格式：{ type: "relay", payload: { type: "session_created", payload: {...} } }
-      // 真正的 ACP 消息嵌套在 payload 中
-      const inner = msg.payload as Record<string, unknown> | undefined;
-      if (inner && typeof inner.type === "string") {
+      const payload = msg.payload as Record<string, unknown> | undefined;
+      if (!payload || typeof payload !== "object") return;
+
+      // 传输层消息（status/error/pong 等）：直接透传
+      if (typeof payload.type === "string") {
         for (const listener of this.messageListeners) {
-          listener({ type: inner.type, payload: inner.payload });
+          listener({ type: payload.type, payload: payload.payload });
         }
+        return;
+      }
+
+      // JSON-RPC 消息：透传为 { type: "jsonrpc", payload } 格式
+      if (payload.jsonrpc === "2.0") {
+        for (const listener of this.messageListeners) {
+          listener(payload as unknown as EngineRelayMessage);
+        }
+        return;
       }
     });
   }

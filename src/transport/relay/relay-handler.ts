@@ -162,11 +162,11 @@ async function openLocalRelay(
   if (full.onMessage) {
     entry.relayUnsub = full.onMessage((message) => {
       // 转发 agent 的 status（含 capabilities），使前端能检测 session/list 等能力
-      if (message.type === "status") {
+      if ((message as Record<string, unknown>).type === "status") {
         sendToRelayWs(ws, message);
         return;
       }
-      if (message.type === "relay_closed") {
+      if ((message as Record<string, unknown>).type === "relay_closed") {
         sendToRelayWs(ws, {
           type: "error",
           payload: { message: "Agent connection lost" },
