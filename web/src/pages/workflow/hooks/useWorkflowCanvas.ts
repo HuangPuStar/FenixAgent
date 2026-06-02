@@ -90,9 +90,9 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
         addEdge(
           {
             ...connection,
-            type: "smoothstep",
-            animated: connection.source !== START_NODE_ID,
-            id: `e-${connection.source}-${connection.target}`,
+            type: "logic",
+            data: { hasCondition: false },
+            id: `logic-${connection.source}-${connection.target}`,
           },
           eds,
         ),
@@ -132,11 +132,11 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       setEdges((eds) => [
         ...eds,
         {
-          id: `e-${sourceId}-${newId}`,
+          id: `logic-${sourceId}-${newId}`,
           source: sourceId,
           target: newId,
-          type: "smoothstep",
-          animated: sourceId !== START_NODE_ID,
+          type: "logic",
+          data: { hasCondition: false },
         },
       ]);
     },
