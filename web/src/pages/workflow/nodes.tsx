@@ -260,12 +260,30 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
         </div>
       )}
 
+      {/* 上下 Handle — 逻辑边 */}
       <Handle
         type="source"
         position={Position.Bottom}
         className="!w-2 !h-2 !border-2 !border-white transition-transform duration-150 hover:scale-140"
         style={{ background: colors.main }}
       />
+      {/* 左右 Handle — 参数指引边（隐藏，仅供连线定位） */}
+      {!isStart && inputPoints.length > 0 && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="data-in"
+          className="!w-0 !h-0 !min-w-0 !min-h-0 !border-0 !p-0 !opacity-0 !pointer-events-none"
+        />
+      )}
+      {!isStart && outputPoints.length > 0 && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="data-out"
+          className="!w-0 !h-0 !min-w-0 !min-h-0 !border-0 !p-0 !opacity-0 !pointer-events-none"
+        />
+      )}
     </div>
   );
 }

@@ -128,6 +128,8 @@ export function yamlToFlow(yamlStr: string): { nodes: Node[]; edges: Edge[]; met
       id: `data-${df.sourceNodeId}.${df.sourceField}-${df.targetNodeId}.${df.targetParam}`,
       source: df.sourceNodeId,
       target: df.targetNodeId,
+      sourceHandle: "data-out",
+      targetHandle: "data-in",
       type: "dataFlow",
       data: {
         sourceField: df.sourceField,
