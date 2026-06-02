@@ -90,28 +90,35 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
     }
   }, [hasUnsavedChanges, saveStatus]);
 
-  const handleSaveDraft = useCallback(async (): Promise<boolean> => {
-    if (!workflowId) return false;
-    if (isSavingRef.current) return false;
-    isSavingRef.current = true;
-    const y = syncYaml();
-    setSaveStatus("saving");
-    try {
-      await workflowDefApi.save(workflowId, y);
-      setLastSavedYaml(y);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2000);
-      return true;
-    } catch (err) {
-      console.error(err);
-      pushWorkflowError("save", (err as Error).message);
-      toast.error(`${t("editor.save_failed")}: ${(err as Error).message}`);
-      setSaveStatus("unsaved");
-      return false;
-    } finally {
-      isSavingRef.current = false;
-    }
-  }, [syncYaml, workflowId, t]);
+  const handleSaveDraft = useCallback(
+    async (silent = false): Promise<boolean> => {
+      if (!workflowId) return false;
+      if (isSavingRef.current) return false;
+      isSavingRef.current = true;
+      const y = syncYaml();
+      setSaveStatus("saving");
+      try {
+        await workflowDefApi.save(workflowId, y);
+        setLastSavedYaml(y);
+        if (silent) {
+          setSaveStatus("idle");
+        } else {
+          setSaveStatus("saved");
+          setTimeout(() => setSaveStatus("idle"), 2000);
+        }
+        return true;
+      } catch (err) {
+        console.error(err);
+        pushWorkflowError("save", (err as Error).message);
+        toast.error(`${t("editor.save_failed")}: ${(err as Error).message}`);
+        setSaveStatus("unsaved");
+        return false;
+      } finally {
+        isSavingRef.current = false;
+      }
+    },
+    [syncYaml, workflowId, t],
+  );
 
   // 自动保存：nodes/edges/meta 变化后 debounce 3s 自动保存
   // biome-ignore lint/correctness/useExhaustiveDependencies: nodes/edges/meta 故意作为触发器
@@ -119,7 +126,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
     if (!workflowId || readOnly || lastSavedYaml === "") return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
-      handleSaveDraft();
+      handleSaveDraft(true);
     }, AUTO_SAVE_DELAY);
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
