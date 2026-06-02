@@ -1,6 +1,16 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
+import {
+  type JsonRpcRequest,
+  ACP_METHOD,
+  createSuccessResponse,
+  createNotification,
+  createErrorResponse,
+  isJsonRpcMessage,
+  isJsonRpcRequest,
+  isTransportMessage,
+} from "../json-rpc.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: event callback signatures vary by event type
 type SessionEventCallback = (...args: any[]) => void;
@@ -92,7 +102,7 @@ export class SessionManager {
           requestPermission: async (_p) => ({ outcome: { outcome: "selected" as const, optionId: "allow" } }),
           sessionUpdate: async (params) => {
             if (this.activeRelayId) {
-              this.emit(this.activeRelayId, "session_data", { type: "session_update", payload: params });
+              this.emit(this.activeRelayId, "session_data", createNotification(ACP_METHOD.SESSION_UPDATE, params));
             }
           },
           readTextFile: async (_p) => ({ content: "" }),
@@ -141,12 +151,28 @@ export class SessionManager {
       return true;
     }
 
+    // 传输层消息 — 直接忽略
+    if (isTransportMessage(rawPayload)) {
+      return true;
+    }
+
+    // JSON-RPC 请求
+    if (isJsonRpcMessage(rawPayload) && isJsonRpcRequest(rawPayload)) {
+      const msg = rawPayload as unknown as JsonRpcRequest;
+      await this.handleJsonRpc(sessionId, msg);
+      return true;
+    }
+
+    // 旧格式兼容：自定义 { type, payload } 消息
     const msg = rawPayload as Record<string, unknown>;
     const type = msg.type as string;
     const payload = (msg.payload ?? {}) as Record<string, unknown>;
 
     try {
       switch (type) {
+        case "session_data":
+          // 内嵌 payload — 可能是 JSON-RPC
+          return this.sendData(sessionId, payload);
         case "connect":
           break;
         case "new_session":
@@ -168,14 +194,12 @@ export class SessionManager {
             this.emit(sessionId, "session_data", { type: "session_created", payload: r });
           }
           const blocks = (payload.content as acp.ContentBlock[]) ?? [];
-          // 注入系统提示词（恢复 Phase 2 删除的 Instance AgentLaunchSpec prompt 链路）
           if (this.systemPrompt) {
             blocks.unshift({ type: "text" as const, text: this.systemPrompt });
             this.systemPrompt = null;
             console.log("[session-manager] injected system prompt");
           }
           console.log("[session-manager] prompt, acpSession:", this.currentAcpSessionId);
-          // 与 server 模式 handlePrompt 一致：await 结果并发送 prompt_complete
           this.sharedConnection
             .prompt({ sessionId: this.currentAcpSessionId!, prompt: blocks })
             .then((result) => {
@@ -225,7 +249,6 @@ export class SessionManager {
           break;
         case "resume_session":
           try {
-            // 与 server 模式 handleResumeSession 一致：unstable_resumeSession + cwd
             // biome-ignore lint/suspicious/noExplicitAny: unstable_resumeSession not in SDK types
             const r = await (this.sharedConnection as any).unstable_resumeSession({
               sessionId: (payload.sessionId as string) ?? "",
@@ -272,6 +295,113 @@ export class SessionManager {
     return true;
   }
 
+  private async handleJsonRpc(sessionId: string, msg: JsonRpcRequest): Promise<void> {
+    const { id, method, params } = msg;
+    const p = (params ?? {}) as Record<string, unknown>;
+
+    try {
+      switch (method) {
+        case ACP_METHOD.SESSION_NEW: {
+          const r = await this.sharedConnection!.newSession({
+            cwd: (p.cwd as string) ?? this.cwd,
+            mcpServers: [],
+          });
+          this.currentAcpSessionId = r.sessionId;
+          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          break;
+        }
+        case ACP_METHOD.SESSION_PROMPT: {
+          if (!this.currentAcpSessionId) {
+            const r = await this.sharedConnection!.newSession({ cwd: this.cwd, mcpServers: [] });
+            this.currentAcpSessionId = r.sessionId;
+          }
+          const blocks = (p.content as acp.ContentBlock[]) ?? [];
+          if (this.systemPrompt) {
+            blocks.unshift({ type: "text" as const, text: this.systemPrompt });
+            this.systemPrompt = null;
+            console.log("[session-manager] injected system prompt");
+          }
+          console.log("[session-manager] prompt (json-rpc), acpSession:", this.currentAcpSessionId);
+          this.sharedConnection!
+            .prompt({ sessionId: this.currentAcpSessionId!, prompt: blocks })
+            .then((result) => {
+              console.log(
+                "[session-manager] prompt completed, stopReason:",
+                (result as unknown as Record<string, unknown>).stopReason,
+              );
+              this.emit(sessionId, "session_data", createSuccessResponse(id, result));
+            })
+            .catch((err) => {
+              this.emit(sessionId, "session_data", createErrorResponse(id, -32603, String(err)));
+            });
+          break;
+        }
+        case ACP_METHOD.SESSION_CANCEL: {
+          if (this.currentAcpSessionId) {
+            await this.sharedConnection!.cancel({ sessionId: this.currentAcpSessionId });
+          }
+          this.emit(sessionId, "session_data", createSuccessResponse(id, { cancelled: true }));
+          break;
+        }
+        case ACP_METHOD.SESSION_SET_MODEL: {
+          if (!this.currentAcpSessionId) {
+            this.emit(sessionId, "session_data", createErrorResponse(id, -32000, "No active session"));
+            break;
+          }
+          await this.sharedConnection!.unstable_setSessionModel({
+            sessionId: this.currentAcpSessionId,
+            modelId: (p.modelId as string) ?? "",
+          });
+          this.emit(sessionId, "session_data", createSuccessResponse(id, { modelId: p.modelId }));
+          break;
+        }
+        case ACP_METHOD.SESSION_SET_MODE: {
+          if (!this.currentAcpSessionId) {
+            this.emit(sessionId, "session_data", createErrorResponse(id, -32000, "No active session"));
+            break;
+          }
+          await this.sharedConnection!.setSessionMode({
+            sessionId: this.currentAcpSessionId,
+            modeId: (p.modeId as string) ?? "",
+          });
+          this.emit(sessionId, "session_data", createSuccessResponse(id, { modeId: p.modeId }));
+          break;
+        }
+        case ACP_METHOD.SESSION_RESUME: {
+          // biome-ignore lint/suspicious/noExplicitAny: unstable_resumeSession not in SDK types
+          const r = await (this.sharedConnection as any).unstable_resumeSession({
+            sessionId: (p.sessionId as string) ?? "",
+            cwd: this.cwd,
+          });
+          this.currentAcpSessionId = r.sessionId ?? (p.sessionId as string);
+          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          break;
+        }
+        case ACP_METHOD.SESSION_LIST: {
+          const r = await this.sharedConnection!.listSessions({});
+          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          break;
+        }
+        case ACP_METHOD.SESSION_LOAD: {
+          const targetSid = (p.sessionId as string) ?? "";
+          const r = await this.sharedConnection!.loadSession({
+            sessionId: targetSid,
+            cwd: this.cwd,
+            mcpServers: [],
+          });
+          this.currentAcpSessionId = targetSid;
+          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          break;
+        }
+        default:
+          this.emit(sessionId, "session_data", createErrorResponse(id, -32601, `Method not found: ${method}`));
+      }
+    } catch (err) {
+      console.error("[session-manager] handleJsonRpc error:", err);
+      this.emit(sessionId, "session_data", createErrorResponse(id, -32603, String(err)));
+    }
+  }
+
   endSession(_sessionId: string): void {
     /* shared proc, don't kill */
   }
@@ -300,9 +430,6 @@ export class SessionManager {
   }
 
   private emit(sessionId: string, event: string, payload: unknown): void {
-    // 先将 payload 保存下来，然后通过 listeners 触发
-    // server.ts 的 setupSessionCallbacks 中 on("session_data", ...) 会收到这个事件
-    // 然后 ws.send({ type: "session_data", session_id: sessionId, payload })
     for (const cb of this.listeners.get(event) ?? []) {
       cb(sessionId, payload);
     }
