@@ -309,6 +309,10 @@ export async function ensureRunning(userId: string, environmentId: string): Prom
   const env = await environmentRepo.getById(environmentId);
   if (!env) throw new NotFoundError("Environment not found");
 
+  if (!env.autoStart) {
+    throw new AppError("Instance not running and autoStart is disabled", "AUTO_START_DISABLED", 409);
+  }
+
   // async gap 后重新检查：await 期间可能有并发请求新启了实例
   const currentRunning = getRunningInstancesByEnvironment(environmentId);
   if (currentRunning.length >= env.maxSessions) {
