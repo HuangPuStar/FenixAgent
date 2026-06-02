@@ -14,12 +14,6 @@ interface PendingPermission {
   timeout: ReturnType<typeof setTimeout>;
 }
 
-const _PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
-
-function _generateRequestId(): string {
-  return `perm_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-}
-
 export interface AcpSessionState {
   connection: acp.ClientSideConnection | null;
   sessionId: string | null;

@@ -244,7 +244,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setDryRunResultRef.current = setDryRunResult;
   });
 
-
   // ── 运行模式下画布自动只读 ──
   const effectiveReadOnly = readOnly || isRunMode;
 

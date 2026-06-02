@@ -158,8 +158,6 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
         boxShadow,
       }}
     >
-
-
       <div
         className="flex items-center gap-1.5 font-semibold"
         style={{
@@ -237,7 +235,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
       )}
 
       {/* 顶部：数据流入口 Handles + 逻辑边 Handle，一起水平分散 */}
-      {!isStart && inputPoints.length > 0 &&
+      {!isStart &&
+        inputPoints.length > 0 &&
         inputPoints.map((param, i) => {
           const total = inputPoints.length + 1;
           const p = total === 1 ? 50 : ((i + 1) / (total + 1)) * 100;
@@ -272,7 +271,14 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
             <div
               key={`label-in-${param}`}
               className="wf-point-label-overlay"
-              style={{ position: "absolute", top: -20, left: `${pct}%`, transform: "translateX(-50%)", pointerEvents: "none", zIndex: 3 }}
+              style={{
+                position: "absolute",
+                top: -20,
+                left: `${pct}%`,
+                transform: "translateX(-50%)",
+                pointerEvents: "none",
+                zIndex: 3,
+              }}
             >
               <span className="wf-point-label wf-point-label-in">{param}</span>
             </div>
@@ -302,7 +308,11 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
         className="!w-2 !h-2 !border-2 !border-white"
         style={{
           background: colors.main,
-          left: isStart ? "50%" : outputPoints.length === 0 ? "50%" : `${((outputPoints.length + 1) / (outputPoints.length + 2)) * 100}%`,
+          left: isStart
+            ? "50%"
+            : outputPoints.length === 0
+              ? "50%"
+              : `${((outputPoints.length + 1) / (outputPoints.length + 2)) * 100}%`,
         }}
       />
       {/* 出口标签 — 覆盖层 */}
@@ -313,7 +323,14 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
           return (
             <div
               key={`label-out-${field}`}
-              style={{ position: "absolute", bottom: -20, left: `${p}%`, transform: "translateX(-50%)", pointerEvents: "none", zIndex: 3 }}
+              style={{
+                position: "absolute",
+                bottom: -20,
+                left: `${p}%`,
+                transform: "translateX(-50%)",
+                pointerEvents: "none",
+                zIndex: 3,
+              }}
             >
               <span className="wf-point-label wf-point-label-out">{field}</span>
             </div>

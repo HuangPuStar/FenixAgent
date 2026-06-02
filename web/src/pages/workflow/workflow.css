@@ -313,8 +313,6 @@
   stroke-width: 2;
 }
 
-
-
 /* ── Animations ── */
 @keyframes wf-spin {
   from {
@@ -353,7 +351,6 @@
   font-weight: 600;
   pointer-events: none;
 }
-
 
 .wf-prop-readonly-tag {
   display: inline-flex;
@@ -509,7 +506,6 @@
 .wf-point-out {
   bottom: -6px;
 }
-
 
 .wf-point-label {
   position: absolute;
