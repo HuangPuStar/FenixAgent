@@ -120,10 +120,10 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
     [syncYaml, workflowId, t],
   );
 
-  // 自动保存：nodes/edges/meta 变化后 debounce 3s 自动保存
+  // 自动保存：有未保存变更时 debounce 3s 自动保存
   // biome-ignore lint/correctness/useExhaustiveDependencies: nodes/edges/meta 故意作为触发器
   useEffect(() => {
-    if (!workflowId || readOnly || lastSavedYaml === "") return;
+    if (!workflowId || readOnly || lastSavedYaml === "" || !hasUnsavedChanges) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       handleSaveDraft(true);
@@ -131,7 +131,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [nodes, edges, meta, workflowId, readOnly, lastSavedYaml, handleSaveDraft]);
+  }, [nodes, edges, meta, workflowId, readOnly, lastSavedYaml, handleSaveDraft, hasUnsavedChanges]);
 
   // beforeunload：未保存时阻止浏览器关闭
   useEffect(() => {
