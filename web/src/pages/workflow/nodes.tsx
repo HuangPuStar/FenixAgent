@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useMemo } from "react";
 
 const NODE_COLORS: Record<string, { main: string; light: string; headerText: string }> = {
   start: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
@@ -131,6 +132,19 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
       ? `0 0 0 3px ${colors.main}30`
       : "var(--shadow-card)";
 
+  // 入口：从当前节点的 inputs 字段解析
+  const inputPoints = useMemo(() => {
+    const inputs = d.inputs;
+    if (!inputs || typeof inputs !== "object") return [];
+    return Object.keys(inputs as Record<string, string>);
+  }, [d.inputs]);
+
+  // 出口：从内部注入的 _outputFields 解析
+  const outputPoints = useMemo(() => {
+    const fields = d._outputFields as string[] | undefined;
+    return fields ?? [];
+  }, [d._outputFields]);
+
   return (
     <div
       data-node-id={id}
@@ -225,6 +239,32 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
               <ArrowRight size={9} />
             </button>
           )}
+        </div>
+      )}
+
+      {/* 出入口 points — 仅非 start 节点 */}
+      {!isStart && (inputPoints.length > 0 || outputPoints.length > 0) && (
+        <div className="wf-points-container">
+          {inputPoints.map((param, i) => (
+            <div
+              key={`in-${param}`}
+              className="wf-point wf-point-in"
+              style={{ top: `${36 + i * 18}px` }}
+            >
+              <div className="wf-point-dot wf-point-dot-in" />
+              <span className="wf-point-label wf-point-label-in">{param}</span>
+            </div>
+          ))}
+          {outputPoints.map((field, i) => (
+            <div
+              key={`out-${field}`}
+              className="wf-point wf-point-out"
+              style={{ top: `${36 + i * 18}px` }}
+            >
+              <span className="wf-point-label wf-point-label-out">{field}</span>
+              <div className="wf-point-dot wf-point-dot-out" />
+            </div>
+          ))}
         </div>
       )}
 
