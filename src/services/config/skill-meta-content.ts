@@ -19,33 +19,54 @@ export const META_SKILL_MARKDOWN = `# workflow-editor
 - \`$USER_META_API_KEY\`：API 认证 token
 - \`$USER_META_BASE_URL\`：API 服务器地址
 
+## 获取 workflowId
+
+会话开始时会收到 scenePrompt，格式如下：
+
+\`\`\`
+[工作流上下文]
+- 工作流 ID: <workflowId>
+- 名称: <name>
+- 描述: <description>
+\`\`\`
+
+从中提取 \`工作流 ID\` 后面的值作为 \`workflowId\`，后续所有 API 调用都需要这个值。
+
 ## 操作指引
 
 ### 1. 读取当前工作流草稿
 
-会话开始时你会收到 \`workflowId\`。首先读取当前草稿内容：
+首先读取当前草稿内容：
 
 \`\`\`bash
 curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
   -H "Authorization: Bearer $USER_META_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"get","workflowId":"<workflowId>"}' | jq -r '.data.draftYaml'
+  -d '{"action":"get","workflowId":"'$WORKFLOW_ID'"}' | jq -r '.data.draftYaml'
 \`\`\`
 
-返回的 YAML 字符串就是当前草稿内容。
+返回的 YAML 字符串就是当前草稿内容。如果返回 \`null\` 说明草稿为空。
 
 ### 2. 修改并保存草稿
 
-根据用户需求修改 YAML 内容，然后保存：
+修改 YAML 后，**务必用临时文件传递 YAML 内容**（避免 JSON 转义问题）：
 
 \`\`\`bash
+# 先将 YAML 写入临时文件
+cat > /tmp/draft.yaml << 'YAML_EOF'
+<修改后的完整 YAML 内容>
+YAML_EOF
+
+# 用 jq 构建 JSON body，避免手动转义
+jq -n --arg yaml "$(cat /tmp/draft.yaml)" --arg wfId "$WORKFLOW_ID" \\
+  '{action:"save", workflowId:$wfId, yaml:$yaml}' |
 curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
   -H "Authorization: Bearer $USER_META_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"save","workflowId":"<workflowId>","yaml":"<修改后的完整 YAML>"}' | jq '{success}'
+  -d @- | jq '{success}'
 \`\`\`
 
-保存成功后前端画布会自动刷新。
+保存是**完整覆盖**，不是增量 patch。保存成功后前端画布会自动刷新。
 
 ### 3. 干运行（验证结构）
 
@@ -55,7 +76,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
 curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \\
   -H "Authorization: Bearer $USER_META_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"dryRun","workflowId":"<workflowId>"}' | jq .
+  -d '{"action":"dryRun","workflowId":"'$WORKFLOW_ID'"}' | jq '{valid: .data.valid, issues: .data.issues}'
 \`\`\`
 
 ### 4. 运行工作流
@@ -66,7 +87,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \\
 curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \\
   -H "Authorization: Bearer $USER_META_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"run","workflowId":"<workflowId>"}' | jq '{runId: .data.runId}'
+  -d '{"action":"run","workflowId":"'$WORKFLOW_ID'"}' | jq '{runId: .data.runId}'
 \`\`\`
 
 ### 5. 查询运行状态
@@ -93,7 +114,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \\
 curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
   -H "Authorization: Bearer $USER_META_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"publish","workflowId":"<workflowId>"}' | jq '{version: .data.version}'
+  -d '{"action":"publish","workflowId":"'$WORKFLOW_ID'"}' | jq '{version: .data.version}'
 \`\`\`
 
 ### 8. 查看版本历史
@@ -102,7 +123,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
 curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
   -H "Authorization: Bearer $USER_META_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"getVersions","workflowId":"<workflowId>"}' | jq '.data[] | {version, status, createdAt}'
+  -d '{"action":"getVersions","workflowId":"'$WORKFLOW_ID'"}' | jq '.data[] | {version, status, createdAt}'
 \`\`\`
 
 ### 9. 回滚到指定版本
@@ -111,8 +132,18 @@ curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
 curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \\
   -H "Authorization: Bearer $USER_META_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"restoreToDraft","workflowId":"<workflowId>","version":<版本号>}' | jq '{success}'
+  -d '{"action":"restoreToDraft","workflowId":"'$WORKFLOW_ID'","version":<版本号>}' | jq '{success}'
 \`\`\`
+
+### 错误处理
+
+API 返回格式：成功 \`{success:true, data:...}\`，失败 \`{success:false, error:{type,message}}\`。
+
+| 状态码 | 含义 | 处理方式 |
+|--------|------|----------|
+| 401 | 认证失败 | 检查 \`$USER_META_API_KEY\` 是否正确 |
+| 404 | 工作流不存在 | 检查 workflowId 是否正确 |
+| 400 | 请求参数错误 | 检查 JSON body 格式和必填字段 |
 
 ## YAML 结构
 
@@ -198,10 +229,10 @@ nodes:                       # 必填，节点数组
 ## 工作流程建议
 
 1. **先读取**：通过 API 读取当前 draft，了解现有结构
-2. **修改后保存**：在对话中编辑 YAML，确认后调 save API
+2. **修改后保存**：在对话中编辑 YAML，确认后用临时文件方式调 save API
 3. **先验证再运行**：建议先 dryRun 验证，通过后再 run
 4. **告知用户操作结果**：API 返回 success:true 表示成功，前端会自动更新
-5. **workflowId 从 scenePrompt 中获取**：会话开始时的上下文信息中包含 workflowId
+5. **workflowId 从 scenePrompt 中获取**：会话开始时的上下文信息中包含"工作流 ID"
 
 ## 注意事项
 
@@ -211,6 +242,7 @@ nodes:                       # 必填，节点数组
 - 如果用户需求不明确，主动询问细节
 - 所有 curl 命令都需要 Authorization header，使用 \`$USER_META_API_KEY\` 环境变量
 - 使用 jq 提取关键字段，避免将完整 JSON 响应展示给用户
+- 保存 YAML 时必须用临时文件 + jq 构建 JSON body，不要手动拼 JSON 字符串
 `;
 
 /** Skill 文件在文件系统上的目录 */
