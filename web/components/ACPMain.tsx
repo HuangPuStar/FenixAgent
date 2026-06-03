@@ -150,7 +150,19 @@ export function ACPMain({
         }
 
         bootstrappedRef.current = true;
-        const response = await client.listSessions(cwd ? { cwd } : undefined);
+        let response = await client.listSessions(cwd ? { cwd } : undefined);
+        if (cancelled) return;
+
+        // 远端节点的 cwd 可能与 agent 实际 workspace 不匹配，导致按 cwd 过滤返回空。
+        // 如果带 cwd 过滤无结果，fallback 到不过滤（返回所有 sessions）。
+        if (response.sessions.length === 0 && cwd) {
+          try {
+            const allSessions = await client.listSessions();
+            if (!cancelled) response = allSessions;
+          } catch {
+            // fallback 失败，继续用空结果
+          }
+        }
         if (cancelled) return;
 
         const latest = [...response.sessions].sort((a, b) => {
@@ -165,7 +177,7 @@ export function ACPMain({
           return;
         }
 
-        console.log("[ACPMain] No existing sessions found for cwd, creating new session");
+        console.log("[ACPMain] No existing sessions found, creating new session");
         chatRef.current?.newSession();
       } catch (error) {
         bootstrappedRef.current = false;
@@ -310,8 +322,19 @@ function SidebarSessionList({
     }
     setLoading(true);
     try {
+      let sessions: AgentSessionInfo[];
       const response = await client.listSessions(cwd ? { cwd } : undefined);
-      setSessions(response.sessions);
+      sessions = response.sessions;
+      // 远端节点的 cwd 可能与 agent 实际 workspace 不匹配，fallback 到不过滤
+      if (sessions.length === 0 && cwd) {
+        try {
+          const allResponse = await client.listSessions();
+          sessions = allResponse.sessions;
+        } catch {
+          // fallback 失败，保持空结果
+        }
+      }
+      setSessions(sessions);
     } catch (err) {
       console.warn("[SidebarSessionList] Failed to load:", err);
     } finally {

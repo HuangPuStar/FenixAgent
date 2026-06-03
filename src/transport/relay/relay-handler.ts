@@ -156,6 +156,7 @@ async function openLocalRelay(
   // 4. 先发送 relay 层的 status（携带 agent_prompt），再注册 onMessage
   //    确保前端先收到连接就绪信号，再收到 agent 的 capabilities
   sendToRelayWs(ws, { type: "status", payload: { connected: true, agent_prompt: agentPrompt ?? null } });
+  log("Relay → frontend status", { relayWsId, agentId, instanceId, connected: true });
   log(`Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
 
   const full = handle as FullRelayHandle;
@@ -163,10 +164,12 @@ async function openLocalRelay(
     entry.relayUnsub = full.onMessage((message) => {
       // 转发 agent 的 status（含 capabilities），使前端能检测 session/list 等能力
       if ((message as Record<string, unknown>).type === "status") {
+        log("Relay ← agent status", { relayWsId, agentId, instanceId, payload: JSON.stringify(message).slice(0, 300) });
         sendToRelayWs(ws, message);
         return;
       }
       if ((message as Record<string, unknown>).type === "relay_closed") {
+        log("Relay ← agent relay_closed", { relayWsId, agentId, instanceId });
         sendToRelayWs(ws, {
           type: "error",
           payload: { message: "Agent connection lost" },
@@ -187,11 +190,24 @@ async function openLocalRelay(
     log(`Flushing ${pending.length} pending message(s) for relayWsId=${relayWsId}`);
     for (const msg of pending) {
       try {
+        log("Relay → agent (pending flush)", { relayWsId, agentId, instanceId, msgType: msg.type });
         entry.relayHandle!.send(msg as { type: string; payload?: unknown });
       } catch (err) {
         logError("Failed to send buffered message:", err);
       }
     }
+  }
+
+  // 6. 对齐本地路径：补发 connect 触发 agent 回传 status（含 capabilities）
+  //    本地路径中 acp-link server handleConnect 会自动推送 capabilities，
+  //    远程路径依赖 dispatcher.handleTransportMessage("connect") 回传。
+  //    如果前端的 connect 在 agent start 完成前被 flush，dispatcher 未创建，
+  //    capabilities 不会回传。这里额外发一次确保前端一定能收到 capabilities。
+  try {
+    log("Relay → agent connect", { relayWsId, agentId, instanceId });
+    entry.relayHandle!.send({ type: "connect" });
+  } catch {
+    /* relay handle 可能还没 ready，忽略 */
   }
 }
 
@@ -253,6 +269,13 @@ export async function handleRelayMessage(
       return;
     }
     try {
+      log("Relay → agent", {
+        relayWsId,
+        agentId: entry.agentId,
+        instanceId: entry.instanceId,
+        msgType: parsed.type,
+        payload: JSON.stringify(parsed).slice(0, 300),
+      });
       entry.relayHandle.send(parsed as { type: string; payload?: unknown });
     } catch (err) {
       logError("relay handle send error:", err);
@@ -302,6 +325,7 @@ export { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment } from "
 export function closeInstanceRelay(instanceId: string): void {
   const entry = findMachineConnectionById(instanceId);
   if (!entry) return;
+  log("Relay → remote session_end", { instanceId });
   sendToWs(entry.ws, { type: "session_end", session_id: `auto_${instanceId}` });
 }
 
@@ -311,6 +335,11 @@ export function sendToInstanceRelay(instanceId: string, data: string): boolean {
   if (!entry) return false;
   try {
     const parsed = JSON.parse(data);
+    log("Relay → remote session_data", {
+      instanceId,
+      payloadType: parsed.type,
+      payload: JSON.stringify(parsed).slice(0, 300),
+    });
     sendToWs(entry.ws, {
       type: "session_data",
       session_id: `auto_${instanceId}`,
