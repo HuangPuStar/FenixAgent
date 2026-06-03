@@ -6,12 +6,7 @@ import { validateEnv } from "../../env";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
-import {
-  closeAllFileWsConnections,
-  handleFileWsClose,
-  handleFileWsMessage,
-  handleFileWsOpen,
-} from "../../transport/file-ws-handler";
+import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
 import type { WsConnection } from "../../transport/ws-types";
 
@@ -131,7 +126,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         handleFileWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
       }
     },
-    close(ws, code, reason) {
+    close(ws, _code, _reason) {
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const wsId = (ws.data as any).__fileWsId as string | undefined;
       if (wsId) {

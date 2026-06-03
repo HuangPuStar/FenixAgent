@@ -69,7 +69,7 @@ function resolveAndValidate(workspace: string, relativePath: string): string | n
   const resolved = resolve(baseDir, cleaned);
 
   // Path traversal check: resolved must start with baseDir
-  if (!resolved.startsWith(baseDir + "/") && resolved !== baseDir) {
+  if (!resolved.startsWith(`${baseDir}/`) && resolved !== baseDir) {
     return null;
   }
 
@@ -166,12 +166,12 @@ const MIME_TYPES: Record<string, string> = {
  * Check if a file is text by reading first 8KB and looking for null bytes.
  * Uses extension hint as a fast path.
  */
-async function isTextFile(filePath: string): Promise<boolean> {
+async function _isTextFile(filePath: string): Promise<boolean> {
   const ext = filePath.lastIndexOf(".") >= 0 ? filePath.slice(filePath.lastIndexOf(".")).toLowerCase() : "";
   if (TEXT_EXTENSIONS.has(ext)) return true;
 
   try {
-    const buffer = Buffer.alloc(8192);
+    const _buffer = Buffer.alloc(8192);
     const handle = await readFile(filePath);
     const chunk = handle.subarray(0, 8192);
     // Check for null bytes (binary indicator)
@@ -327,7 +327,7 @@ async function opUpload(
 
     const targetPath = resolve(dirPath, relPath);
     // Validate target stays within workspace
-    if (!targetPath.startsWith(dirPath + "/") && targetPath !== dirPath) {
+    if (!targetPath.startsWith(`${dirPath}/`) && targetPath !== dirPath) {
       throw new Error(`Invalid file path: ${relPath} escapes target directory`);
     }
 

@@ -96,7 +96,7 @@ export function handleFileWsRegister(wsId: string, msg: Record<string, unknown>)
 }
 
 /** Routes incoming NDJSON messages */
-export function handleFileWsMessage(ws: WsConnection, wsId: string, data: string | Record<string, unknown>): void {
+export function handleFileWsMessage(_ws: WsConnection, wsId: string, data: string | Record<string, unknown>): void {
   const entry = connections.get(wsId);
   if (!entry) return;
 
@@ -156,7 +156,7 @@ export function handleFileWsMessage(ws: WsConnection, wsId: string, data: string
 }
 
 /** Called on WS close — cleanup maps and reject pending requests */
-export function handleFileWsClose(ws: WsConnection, wsId: string): void {
+export function handleFileWsClose(_ws: WsConnection, wsId: string): void {
   const entry = connections.get(wsId);
   if (!entry) return;
 
@@ -172,10 +172,10 @@ export function handleFileWsClose(ws: WsConnection, wsId: string): void {
   }
 
   // Reject all pending requests associated with this connection
-  for (const [requestId, pending] of pendingRequests) {
+  for (const [_requestId, pending] of pendingRequests) {
     if (pending.wsId === wsId) {
       clearTimeout(pending.timer);
-      pendingRequests.delete(requestId);
+      pendingRequests.delete(_requestId);
       pending.reject(new Error(`Connection closed (wsId=${wsId})`));
     }
   }
@@ -238,7 +238,7 @@ export function closeAllFileWsConnections(): void {
   log(`file-ws graceful shutdown: ${connections.size} connection(s), ${pendingRequests.size} pending request(s)`);
 
   // Reject all pending requests
-  for (const [requestId, pending] of pendingRequests) {
+  for (const [_requestId, pending] of pendingRequests) {
     clearTimeout(pending.timer);
     pending.reject(new Error("server shutdown"));
   }

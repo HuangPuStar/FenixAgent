@@ -171,23 +171,23 @@ export function interceptConsole(): void {
   const originalWarn = console.warn;
   const originalError = console.error;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- console.log 接受任意参数
+  // biome-ignore lint/suspicious/noExplicitAny: console.log 接受任意参数
   console.log = (...args: any[]) => {
     if (isTest) return;
     consoleLogger.info(...args);
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: console.warn 接受任意参数
   console.warn = (...args: any[]) => {
     if (isTest) return;
     consoleLogger.warn(...args);
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: console.error 接受任意参数
   console.error = (...args: any[]) => {
     if (isTest) return;
     consoleLogger.error(...args);
   };
 
   // 保留原始引用，供内部需要真正 console 输出时使用
-  // biome-ignore lint/suspicious/noAssignInExpressions: 保留逃生通道
+  // biome-ignore lint/suspicious/noExplicitAny: globalThis 扩展属性
   (globalThis as any).__originalConsole = { log: originalLog, warn: originalWarn, error: originalError };
 }
