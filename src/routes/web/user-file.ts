@@ -14,6 +14,13 @@ import {
 } from "../../schemas/file.schema";
 import { getOwnedEnvironment } from "../../services/environment-core";
 import {
+  getRemoteMachineId,
+  remoteDeleteFile,
+  remoteMkdir,
+  remoteRename,
+  remoteTree,
+} from "../../services/remote-file-service";
+import {
   deleteFile,
   isUserPath,
   listPathsRecursive,
@@ -50,6 +57,18 @@ app.get(
     const authCtx = store.authContext!;
     const env = await requireEnv(params.id, authCtx.organizationId, error);
     if (env instanceof Response) return env;
+
+    const machineId = await getRemoteMachineId(params.id);
+    if (machineId) {
+      try {
+        const paths = await remoteTree(machineId, params.id);
+        return { paths };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Remote tree operation failed";
+        return error(503, { error: { type: "remote_error", message } });
+      }
+    }
+
     const resolved = await resolveWorkspacePath(params.id, ".");
     if (!resolved) return error(404, { error: { type: "not_found", message: "工作区不存在" } });
     const paths = await listPathsRecursive(resolved.workspaceDir);
@@ -68,6 +87,17 @@ app.post(
 
     if (!isUserPath(oldPath) || !isUserPath(newPath)) {
       return error(400, { error: { type: "validation_error", message: "Only user/ paths are allowed" } });
+    }
+
+    const machineId = await getRemoteMachineId(params.id);
+    if (machineId) {
+      try {
+        await remoteRename(machineId, params.id, oldPath, newPath);
+        return { oldPath, newPath };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Remote rename operation failed";
+        return error(503, { error: { type: "remote_error", message } });
+      }
     }
 
     const oldResolved = await resolveWorkspacePath(params.id, oldPath);
@@ -100,6 +130,17 @@ app.post(
       return error(400, { error: { type: "validation_error", message: "Only user/ paths are allowed" } });
     }
 
+    const machineId = await getRemoteMachineId(params.id);
+    if (machineId) {
+      try {
+        await remoteMkdir(machineId, params.id, path);
+        return { path };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Remote mkdir operation failed";
+        return error(503, { error: { type: "remote_error", message } });
+      }
+    }
+
     const resolved = await resolveWorkspacePath(params.id, path);
     if (!resolved) return error(400, { error: { type: "validation_error", message: "Invalid path" } });
 
@@ -116,6 +157,25 @@ app.delete(
     const authCtx = store.authContext!;
     await requireEnv(params.id, authCtx.organizationId, error);
     const { paths } = body as { paths: string[] };
+
+    const machineId = await getRemoteMachineId(params.id);
+    if (machineId) {
+      const deleted: string[] = [];
+      const failed: Array<{ path: string; error: string }> = [];
+      for (const p of paths) {
+        if (!isUserPath(p)) {
+          failed.push({ path: p, error: "Only user/ paths are allowed" });
+          continue;
+        }
+        try {
+          await remoteDeleteFile(machineId, params.id, p);
+          deleted.push(p);
+        } catch (e) {
+          failed.push({ path: p, error: e instanceof Error ? e.message : "Unknown error" });
+        }
+      }
+      return { deleted, failed };
+    }
 
     const deleted: string[] = [];
     const failed: Array<{ path: string; error: string }> = [];
@@ -155,6 +215,13 @@ app.get(
     const authCtx = store.authContext!;
     const env = await requireEnv(params.id, authCtx.organizationId, error);
     if (env instanceof Response) return env;
+
+    const machineId = await getRemoteMachineId(params.id);
+    if (machineId) {
+      return error(501, {
+        error: { type: "not_implemented", message: "远程环境暂不支持目录打包下载" },
+      });
+    }
 
     const path = (query as Record<string, string | undefined>)?.path;
     if (!path) return error(400, { error: { type: "validation_error", message: "path query parameter required" } });
