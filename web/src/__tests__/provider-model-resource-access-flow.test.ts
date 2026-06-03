@@ -93,14 +93,14 @@ describe("provider model resource access flow", () => {
   // ModelConfigDialog 优先提交 stableFullId，并展示来源组织
   test("model config dialog options prefer stableFullId", () => {
     expect(buildModelOptions([externalModel])).toEqual([
-      { value: "org-source/provider-external/shared-model", label: "Shared Model (openai / Source Team)" },
+      { value: "org-source/provider-external/shared-model", label: "Source Team/openai/shared-model" },
     ]);
   });
 
   // AgentFormDialog 模型选项同样优先提交 stableFullId
   test("agent form model options prefer stableFullId", () => {
     expect(mapModelOptions([externalModel])).toEqual([
-      { value: "org-source/provider-external/shared-model", label: "Source Team / openai/shared-model" },
+      { value: "org-source/provider-external/shared-model", label: "Source Team/openai/shared-model" },
     ]);
   });
 });

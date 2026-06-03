@@ -44,9 +44,8 @@ interface AgentFormDialogProps {
 
 export function mapModelOptions(available: ModelEntry[]): { value: string; label: string }[] {
   return available.map((model) => {
-    const source =
-      model.providerResourceAccess?.sourceOrganizationName ?? model.providerResourceAccess?.sourceOrganizationId;
-    const label = source ? `${source} / ${model.fullId}` : model.fullId;
+    const source = model.providerResourceAccess?.sourceOrganizationName;
+    const label = source ? `${source}/${model.fullId}` : model.fullId;
     return { value: model.stableFullId ?? model.fullId, label };
   });
 }
@@ -410,6 +409,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const title = isEdit ? t("dialog.editTitle") : t("dialog.createTitle");
   const confirmLabel = formSaving ? "..." : isEdit ? t("actions.save") : t("dialog.createConfirm");
   const dialogKey = isEdit ? agentName : "__new__";
+  const selectedModelLabel = modelOptions.find((option) => option.value === formModel)?.label;
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -467,7 +467,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                     <Label>{t("form.model")}</Label>
                     <Select value={formModel} onValueChange={setFormModel}>
                       <SelectTrigger className="mt-1">
-                        <SelectValue placeholder={t("form.modelPlaceholder")} />
+                        <SelectValue placeholder={t("form.modelPlaceholder")}>
+                          {selectedModelLabel ?? formModel}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {modelOptions.map((m) => (

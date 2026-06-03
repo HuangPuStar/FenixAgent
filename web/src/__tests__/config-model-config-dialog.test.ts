@@ -24,8 +24,8 @@ describe("buildModelOptions", () => {
     ];
     const result = buildModelOptions(available);
     expect(result).toEqual([
-      { value: "openai/gpt-4", label: "GPT-4 (openai)" },
-      { value: "anthropic/claude-3", label: "Claude 3 (anthropic)" },
+      { value: "openai/gpt-4", label: "openai/gpt-4" },
+      { value: "anthropic/claude-3", label: "anthropic/claude-3" },
     ]);
   });
 
@@ -52,7 +52,7 @@ describe("buildModelOptions", () => {
     ];
     const result = buildModelOptions(available);
     expect(result).toEqual([
-      { value: "org-source/provider-uid/shared-model", label: "Shared Model (openai / Source Team)" },
+      { value: "org-source/provider-uid/shared-model", label: "Source Team/openai/shared-model" },
     ]);
   });
 
@@ -64,6 +64,6 @@ describe("buildModelOptions", () => {
   test("handles null/undefined fields gracefully", () => {
     const available = [{ id: "test", provider: "p", label: "Test", fullId: "p/test" }] as ModelEntry[];
     const result = buildModelOptions(available);
-    expect(result).toEqual([{ value: "p/test", label: "Test (p)" }]);
+    expect(result).toEqual([{ value: "p/test", label: "p/test" }]);
   });
 });

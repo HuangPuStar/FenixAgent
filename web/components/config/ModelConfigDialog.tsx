@@ -11,9 +11,9 @@ import type { ModelConfig, ModelEntry } from "@/src/types/config";
 
 export function buildModelOptions(available: ModelEntry[]): { value: string; label: string }[] {
   return available.map((m) => {
-    const source = m.providerResourceAccess?.sourceOrganizationName ?? m.providerResourceAccess?.sourceOrganizationId;
-    const suffix = source ? `${m.provider} / ${source}` : m.provider;
-    return { value: m.stableFullId ?? m.fullId, label: `${m.label} (${suffix})` };
+    const source = m.providerResourceAccess?.sourceOrganizationName;
+    const label = source ? `${source}/${m.fullId}` : m.fullId;
+    return { value: m.stableFullId ?? m.fullId, label };
   });
 }
 

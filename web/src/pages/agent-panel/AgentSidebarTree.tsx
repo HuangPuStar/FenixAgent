@@ -13,10 +13,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { agentApi, envApi, instanceApi } from "@/src/api/sdk";
+import { agentApi, envApi, instanceApi, modelApi } from "@/src/api/sdk";
 import { useOrg } from "../../contexts/OrgContext";
 import { NS } from "../../i18n";
 import { useConfigChangeListener } from "../../lib/config-events";
+import type { ModelEntry } from "../../types/config";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 
 interface AgentConfigItem {
@@ -26,6 +27,16 @@ interface AgentConfigItem {
   model: string | null;
   description: string | null;
   color: string | null;
+}
+
+function buildModelLabelMap(available: ModelEntry[]): Map<string, string> {
+  return new Map(
+    available.map((model) => {
+      const source = model.providerResourceAccess?.sourceOrganizationName;
+      const label = source ? `${source}/${model.fullId}` : model.fullId;
+      return [model.stableFullId ?? model.fullId, label];
+    }),
+  );
 }
 
 interface AgentTreeNode {
@@ -59,14 +70,23 @@ export function AgentSidebarTree({
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
   const [restartTargetNode, setRestartTargetNode] = useState<AgentTreeNode | null>(null);
   const [selectedRestartInstances, setSelectedRestartInstances] = useState<Set<string>>(new Set());
+  const [modelLabelMap, setModelLabelMap] = useState<Map<string, string>>(new Map());
 
   const loadData = useCallback(async () => {
     try {
-      const [{ data: agentsResult }, { data: envsData }] = await Promise.all([agentApi.list(), envApi.list()]);
+      const [{ data: agentsResult }, { data: envsData }, { data: modelsData }] = await Promise.all([
+        agentApi.list(),
+        envApi.list(),
+        modelApi.get(),
+      ]);
 
       const rawAgents = (agentsResult as unknown as { agents?: AgentConfigItem[] } | null)?.agents;
       const agents = Array.isArray(rawAgents) ? rawAgents : [];
       const envs = Array.isArray(envsData) ? (envsData as Environment[]) : [];
+      const availableModels = Array.isArray((modelsData as { available?: ModelEntry[] } | null)?.available)
+        ? (((modelsData as { available?: ModelEntry[] } | null)?.available ?? []) as ModelEntry[])
+        : [];
+      setModelLabelMap(buildModelLabelMap(availableModels));
 
       // 过滤内置智能体
       const userAgents = agents.filter((a) => !a.builtIn);
@@ -367,7 +387,9 @@ export function AgentSidebarTree({
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-semibold text-text-primary truncate">{agent.name}</div>
                 <div className="text-[11px] text-text-dim truncate mt-0.5">
-                  {agent.description || agent.model || t("agentDefaultDesc")}
+                  {agent.description ||
+                    (agent.model ? (modelLabelMap.get(agent.model) ?? agent.model) : null) ||
+                    t("agentDefaultDesc")}
                 </div>
               </div>
             </button>
