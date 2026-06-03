@@ -212,11 +212,23 @@ export interface AgentDetail {
 
 // --- Skills ---
 
+export interface ResourceAccess {
+  ownership: "internal" | "external";
+  sourceOrganizationId: string;
+  sourceOrganizationName?: string;
+  resourceUid: string;
+  resourceKey: string;
+  manageable: boolean;
+  writable: boolean;
+  publicReadable?: boolean;
+}
+
 export interface SkillInfo {
   id: string;
   name: string;
   description: string;
   path: string;
+  resourceAccess?: ResourceAccess;
 }
 
 export interface SkillDetail {
@@ -225,6 +237,7 @@ export interface SkillDetail {
   content: string;
   path: string;
   metadata: Record<string, string>;
+  resourceAccess?: ResourceAccess;
 }
 
 export interface UploadManifestEntry {

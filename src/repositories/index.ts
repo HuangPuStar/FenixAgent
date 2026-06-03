@@ -16,6 +16,8 @@ export type {
   KnowledgeResourceRow,
 } from "./knowledge-base";
 export { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "./knowledge-base";
+export type { IOrganizationRepo } from "./organization";
+export { organizationRepo } from "./organization";
 export type {
   CreateResourcePermissionGrantInput,
   DeleteResourcePermissionGrantInput,

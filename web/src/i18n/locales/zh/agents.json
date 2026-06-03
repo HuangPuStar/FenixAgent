@@ -86,6 +86,14 @@
     "selectedCount": "已选择 {{count}} 个技能",
     "noOptions": "暂无可用技能"
   },
+  "resource": {
+    "internal": "内部",
+    "external": "外部",
+    "public": "公开",
+    "makePublic": "设为公开",
+    "makePrivate": "设为私有",
+    "readOnly": "只读"
+  },
   "save": {
     "successCreate": "Agent已创建",
     "successUpdate": "Agent已更新",

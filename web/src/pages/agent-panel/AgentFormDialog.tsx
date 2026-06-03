@@ -29,6 +29,8 @@ import {
   isValidStepsInput,
 } from "../../lib/agent-utils";
 import { dispatchConfigChange } from "../../lib/config-events";
+import { getSkillOptionValue, mapSkillOptions } from "../../lib/skill-resource-access";
+import type { ResourceAccess } from "../../types/config";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
 interface AgentFormDialogProps {
@@ -42,12 +44,14 @@ interface AgentFormDialogProps {
 
 export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSuccess, agentName }: AgentFormDialogProps) {
   const isEdit = mode === "edit";
-  const { t } = useTranslation("agents");
+  const { t } = useTranslation(NS.AGENTS);
   const { t: tAgentPanel } = useTranslation(NS.AGENT_PANEL);
 
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
-  const [skillOptions, setSkillOptions] = useState<{ id: string; name: string; description: string }[]>([]);
+  const [skillOptions, setSkillOptions] = useState<
+    { id: string; key: string; name: string; label: string; description: string; resourceAccess?: ResourceAccess }[]
+  >([]);
   const [machineOptions, setMachineOptions] = useState<{ id: string; agentName: string; hostname: string }[]>([]);
 
   const [formName, setFormName] = useState("");
@@ -147,11 +151,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           const skillsData = skillsResult.data as unknown as Record<string, unknown> | null;
           const skillsRaw = skillsData?.skills;
           const skills = Array.isArray(skillsRaw)
-            ? (skillsRaw as Array<{ id: string; name: string; description?: string }>).map((s) => ({
-                id: s.id,
-                name: s.name,
-                description: s.description ?? "",
-              }))
+            ? mapSkillOptions(
+                skillsRaw as Array<{ id: string; name: string; description?: string; resourceAccess?: ResourceAccess }>,
+              )
             : [];
           setSkillOptions(skills);
         })
@@ -190,11 +192,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         const skills = (data as unknown as Record<string, unknown>)?.skills;
         setSkillOptions(
           Array.isArray(skills)
-            ? (skills as Array<{ id: string; name: string; description?: string }>).map((s) => ({
-                id: s.id,
-                name: s.name,
-                description: s.description ?? "",
-              }))
+            ? mapSkillOptions(
+                skills as Array<{ id: string; name: string; description?: string; resourceAccess?: ResourceAccess }>,
+              )
             : [],
         );
       });
@@ -574,14 +574,15 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                         <p className="text-sm text-text-muted">{t("skills.noOptions")}</p>
                       ) : (
                         skillOptions.map((item) => {
-                          const checked = formSkillIds.includes(item.id);
+                          const value = getSkillOptionValue(item);
+                          const checked = formSkillIds.includes(value);
                           return (
                             <label
-                              key={item.id}
+                              key={item.key}
                               className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
                             >
                               <div>
-                                <p className="font-medium text-text-bright">{item.name}</p>
+                                <p className="font-medium text-text-bright">{item.label}</p>
                                 {item.description && <p className="text-xs text-text-muted">{item.description}</p>}
                               </div>
                               <input
@@ -589,7 +590,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                                 checked={checked}
                                 onChange={(e) => {
                                   setFormSkillIds((current) =>
-                                    e.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
+                                    e.target.checked ? [...current, value] : current.filter((id) => id !== value),
                                   );
                                 }}
                               />

@@ -7,12 +7,24 @@ import { FormDialog } from "@/components/config/FormDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { skillConfigApi } from "@/src/api/sdk";
+import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
+import {
+  canManageSkillSharing,
+  canWriteSkill,
+  getSkillKey,
+  getSkillLookupKey,
+  getSkillOptionLabel,
+  getSkillResourceBadgeKey,
+} from "../../../lib/skill-resource-access";
 import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../../../lib/skill-upload";
 import type {
+  ResourceAccess,
+  SkillDetail,
   SkillUploadConflictResponse,
   SkillUploadConflictStrategy,
   UploadSkillSummary,
@@ -20,7 +32,7 @@ import type {
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-type SkillInfo = { id: string; name: string; description: string };
+type SkillInfo = { id: string; name: string; description: string; resourceAccess?: ResourceAccess };
 type CreateMode = "text" | "upload";
 type SkillUploadResult = { imported: unknown[]; skipped: unknown[] };
 
@@ -46,7 +58,7 @@ function getUploadConflictData(error: unknown): SkillUploadConflictResponse | nu
 }
 
 function UploadItemCard({ item }: { item: UploadSkillSummary }) {
-  const { t } = useTranslation("skills");
+  const { t } = useTranslation(NS.SKILLS);
   return (
     <div
       className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors ${item.hasSkillMd ? "border-border-light bg-surface-1" : "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20"}`}
@@ -72,7 +84,7 @@ function UploadItemCard({ item }: { item: UploadSkillSummary }) {
 const directoryInputProps = { webkitdirectory: "", directory: "" } as Record<string, string>;
 
 export function AgentSkillsPage() {
-  const { t } = useTranslation("skills");
+  const { t } = useTranslation(NS.SKILLS);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -91,6 +103,7 @@ export function AgentSkillsPage() {
   const [_conflictStrategy, setConflictStrategy] = useState<SkillUploadConflictStrategy | null>(null);
   const [uploadPending, setUploadPending] = useState(false);
   const [overwriteConfirmOpen, setOverwriteConfirmOpen] = useState(false);
+  const editingReadOnly = editingSkill ? !canWriteSkill(editingSkill) : false;
 
   const resetUploadState = useCallback(() => {
     setUploadItems([]);
@@ -122,7 +135,12 @@ export function AgentSkillsPage() {
   const filteredSkills = useMemo(() => {
     if (!searchQuery.trim()) return skills;
     const q = searchQuery.toLowerCase();
-    return skills.filter((s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
+    return skills.filter(
+      (s) =>
+        getSkillOptionLabel(s).toLowerCase().includes(q) ||
+        s.name.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q),
+    );
   }, [skills, searchQuery]);
 
   const handleOpenCreate = (mode: CreateMode) => {
@@ -139,11 +157,11 @@ export function AgentSkillsPage() {
     setEditingSkill(skill);
     setCreateMode("text");
     resetUploadState();
-    const { data: detail, error } = await skillConfigApi.get(skill.name);
+    const { data: detail, error } = await skillConfigApi.get(getSkillLookupKey(skill));
     if (error) {
       toast.error(t("toast.loadDetailFailed"));
     } else {
-      const d = detail as unknown as Record<string, unknown>;
+      const d = detail as unknown as SkillDetail;
       setFormName((d?.name as string) ?? "");
       setFormDescription((d?.description as string) ?? "");
       setFormContent((d?.content as string) ?? "");
@@ -167,6 +185,29 @@ export function AgentSkillsPage() {
       dispatchConfigChange("skills");
     }
     setFormSaving(false);
+  };
+
+  const handleToggleSharing = async (skill: SkillInfo) => {
+    if (!canManageSkillSharing(skill)) return;
+    const { data: detail, error: detailError } = await skillConfigApi.get(getSkillLookupKey(skill));
+    if (detailError) {
+      toast.error(t("toast.loadDetailFailed"));
+      return;
+    }
+    const d = detail as unknown as SkillDetail;
+    const { error } = await skillConfigApi.set(skill.name, {
+      description: d.description ?? skill.description ?? "",
+      content: d.content ?? "",
+      metadata: d.metadata ?? {},
+      publicReadable: !skill.resourceAccess?.publicReadable,
+    });
+    if (error) {
+      toast.error(t("toast.saveFailedWith", { message: error.message }));
+      return;
+    }
+    toast.success(t("toast.skillUpdated"));
+    loadSkills();
+    dispatchConfigChange("skills");
   };
 
   const handleUploadSelection = (event: ChangeEvent<HTMLInputElement>) => {
@@ -271,34 +312,66 @@ export function AgentSkillsPage() {
       />
       <AgentCardList
         items={filteredSkills}
-        cardKey={(s) => s.id}
+        cardKey={getSkillKey}
         searchPlaceholder={t("search")}
-        searchFn={(s, q) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)}
+        searchFn={(s, q) =>
+          getSkillOptionLabel(s).toLowerCase().includes(q) ||
+          s.name.toLowerCase().includes(q) ||
+          s.description.toLowerCase().includes(q)
+        }
         emptyMessage={t("empty")}
         gridCols="grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-        renderCard={(skill) => (
-          <div className="group relative rounded-xl border border-border-light bg-surface-1 p-4 transition-all hover:border-border-active hover:shadow-md flex flex-col min-h-[140px]">
-            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
-                {t("btn.edit")}
-              </Button>
-              <Button size="xs" variant="destructive" onClick={() => handleDeleteClick(skill)}>
-                {t("btn.delete")}
-              </Button>
-            </div>
-            <div className="flex-1 min-w-0 pr-20">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand-subtle text-brand shrink-0">
-                  <Sparkles className="w-3.5 h-3.5" />
+        renderCard={(skill) => {
+          const writable = skill.resourceAccess?.writable !== false;
+          const manageable = skill.resourceAccess?.manageable === true;
+
+          return (
+            <div className="group relative rounded-xl border border-border-light bg-surface-1 p-4 transition-all hover:border-border-active hover:shadow-md flex flex-col min-h-[140px]">
+              {writable ? (
+                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
+                    {t("btn.edit")}
+                  </Button>
+                  <Button size="xs" variant="destructive" onClick={() => handleDeleteClick(skill)}>
+                    {t("btn.delete")}
+                  </Button>
                 </div>
-                <span className="font-mono text-sm font-semibold text-text-bright truncate">{skill.name}</span>
+              ) : (
+                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
+                    {t("btn.view")}
+                  </Button>
+                </div>
+              )}
+              <div className="flex-1 min-w-0 pr-20">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand-subtle text-brand shrink-0">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-mono text-sm font-semibold text-text-bright truncate">
+                    {getSkillOptionLabel(skill)}
+                  </span>
+                  <span className="inline-flex shrink-0 whitespace-nowrap rounded border border-border-subtle px-1.5 py-0.5 text-[10px] font-medium leading-none text-text-muted">
+                    {t(getSkillResourceBadgeKey(skill))}
+                  </span>
+                </div>
+                <p className="text-xs text-text-secondary line-clamp-3 mt-2 leading-relaxed">
+                  {skill.description || "—"}
+                </p>
+                {manageable && (
+                  <label className="mt-3 flex items-center gap-2 text-xs text-text-muted">
+                    <Switch
+                      checked={Boolean(skill.resourceAccess?.publicReadable)}
+                      onCheckedChange={() => void handleToggleSharing(skill)}
+                    />
+                    {skill.resourceAccess?.publicReadable ? t("resource.disableSharing") : t("resource.enableSharing")}
+                  </label>
+                )}
+                {!writable && <p className="mt-3 text-xs font-medium text-text-muted">{t("resource.readOnly")}</p>}
               </div>
-              <p className="text-xs text-text-secondary line-clamp-3 mt-2 leading-relaxed">
-                {skill.description || "—"}
-              </p>
             </div>
-          </div>
-        )}
+          );
+        }}
       />
 
       <FormDialog
@@ -307,11 +380,17 @@ export function AgentSkillsPage() {
           setDialogOpen(open);
           if (!open) resetUploadState();
         }}
-        title={editingSkill ? t("dialog.editTitle") : t("dialog.createTitle")}
+        title={
+          editingSkill ? (editingReadOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")
+        }
         onSubmit={handleDialogSubmit}
         submitLabel={editingSkill || createMode === "text" ? t("dialog.save") : t("dialog.startUpload")}
         loading={editingSkill || createMode === "text" ? formSaving : uploadPending}
-        disabled={!editingSkill && createMode === "upload" && uploadItems.filter((i) => i.hasSkillMd).length === 0}
+        disabled={
+          editingReadOnly ||
+          (!editingSkill && createMode === "upload" && uploadItems.filter((i) => i.hasSkillMd).length === 0)
+        }
+        hideSubmit={editingReadOnly}
         width="sm:max-w-4xl"
       >
         {!editingSkill ? (
@@ -435,6 +514,11 @@ export function AgentSkillsPage() {
           </Tabs>
         ) : (
           <div className="space-y-4">
+            {editingReadOnly && (
+              <p className="rounded-lg border border-border-subtle bg-surface-2 px-3 py-2 text-sm text-text-muted">
+                {t("resource.readOnly")}
+              </p>
+            )}
             <div>
               <label className="text-sm font-medium text-text-primary">{t("form.name")}</label>
               <Input
@@ -449,6 +533,7 @@ export function AgentSkillsPage() {
               <Textarea
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
+                disabled={editingReadOnly}
                 className="mt-1 min-h-[80px] text-sm"
                 placeholder={t("form.descriptionPlaceholder")}
               />
@@ -459,6 +544,7 @@ export function AgentSkillsPage() {
               <Textarea
                 value={formContent}
                 onChange={(e) => setFormContent(e.target.value)}
+                disabled={editingReadOnly}
                 className="min-h-[300px] font-mono text-sm"
                 placeholder={t("form.contentPlaceholder")}
               />

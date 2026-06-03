@@ -1,5 +1,6 @@
 import { AppError } from "../errors";
 import type { AuthContext } from "../plugins/auth";
+import { type IOrganizationRepo, organizationRepo } from "../repositories/organization";
 import {
   type IResourcePermissionRepo,
   type ResourcePermissionAccessibleRow,
@@ -8,16 +9,22 @@ import {
 } from "../repositories/resource-permission";
 import type { ResourceAccess, ResourceAccessInput } from "./config/types";
 
-export const _deps: { repo: IResourcePermissionRepo } = {
+export const _deps: { repo: IResourcePermissionRepo; organizationRepo: IOrganizationRepo } = {
+  organizationRepo,
   repo: resourcePermissionRepo,
 };
 
 export function _resetDeps() {
+  _deps.organizationRepo = organizationRepo;
   _deps.repo = resourcePermissionRepo;
 }
 
 export function setResourcePermissionRepoForTesting(repo: IResourcePermissionRepo) {
   _deps.repo = repo;
+}
+
+export function setOrganizationRepoForTesting(repo: IOrganizationRepo) {
+  _deps.organizationRepo = repo;
 }
 
 export function isManageable(ctx: AuthContext) {
@@ -29,11 +36,13 @@ export function buildResourceAccess(
   _resourceType: ResourcePermissionType,
   row: ResourceAccessInput,
   publicReadable?: boolean,
+  sourceOrganizationName?: string,
 ): ResourceAccess {
   const internal = row.organizationId === ctx.organizationId;
   return {
     ownership: internal ? "internal" : "external",
     sourceOrganizationId: row.organizationId,
+    sourceOrganizationName,
     resourceUid: row.id,
     resourceKey: `${row.organizationId}/${row.id}`,
     manageable: internal && isManageable(ctx),
@@ -60,10 +69,18 @@ export async function decorateResourceAccess<T extends ResourceAccessInput>(
 ): Promise<(T & { resourceAccess: ResourceAccess })[]> {
   const internalIds = rows.filter((row) => row.organizationId === ctx.organizationId).map((row) => row.id);
   const publicReadMap = await getPublicReadMap(ctx, resourceType, internalIds);
+  const organizationIds = [...new Set(rows.map((row) => row.organizationId))];
+  const organizationNameMap = await _deps.organizationRepo.listNamesByIds(organizationIds);
 
   return rows.map((row) => ({
     ...row,
-    resourceAccess: buildResourceAccess(ctx, resourceType, row, publicReadMap.get(row.id) ?? false),
+    resourceAccess: buildResourceAccess(
+      ctx,
+      resourceType,
+      row,
+      publicReadMap.get(row.id) ?? false,
+      organizationNameMap.get(row.organizationId),
+    ),
   }));
 }
 

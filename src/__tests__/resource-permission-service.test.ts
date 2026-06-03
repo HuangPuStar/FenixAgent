@@ -8,6 +8,7 @@ import {
   canReadResource,
   decorateResourceAccess,
   listReadableResourceRefs,
+  setOrganizationRepoForTesting,
   setPublicRead,
 } from "../services/resource-permission";
 import { resetAllStubs, stubResourcePermissionRepo } from "../test-utils/helpers";
@@ -41,6 +42,13 @@ describe("resource-permission service", () => {
   beforeEach(() => {
     resetAllStubs();
     _resetDeps();
+    setOrganizationRepoForTesting({
+      listNamesByIds: async () =>
+        new Map([
+          ["org_current", "Current Team"],
+          ["org_source", "Source Team"],
+        ]),
+    });
   });
 
   // owner 组织内资源可写、可管理，并带公开读取状态
@@ -64,6 +72,7 @@ describe("resource-permission service", () => {
     expect(row.resourceAccess).toEqual({
       ownership: "internal",
       sourceOrganizationId: "org_current",
+      sourceOrganizationName: "Current Team",
       resourceUid: "skill_1",
       resourceKey: "org_current/skill_1",
       manageable: true,
@@ -98,6 +107,7 @@ describe("resource-permission service", () => {
     expect(row.resourceAccess).toEqual({
       ownership: "external",
       sourceOrganizationId: "org_source",
+      sourceOrganizationName: "Source Team",
       resourceUid: "mcp_1",
       resourceKey: "org_source/mcp_1",
       manageable: false,

@@ -9,6 +9,7 @@
   },
   "btn": {
     "edit": "编辑",
+    "view": "查看",
     "delete": "删除",
     "createSkill": "+ 新建技能",
     "uploadSkill": "上传技能",
@@ -17,6 +18,7 @@
   },
   "dialog": {
     "editTitle": "编辑技能",
+    "detailTitle": "技能详情",
     "createTitle": "新建技能",
     "save": "保存",
     "startUpload": "开始上传",
@@ -32,6 +34,16 @@
     "contentPlaceholder": "输入 Markdown 内容...",
     "nameRequired": "名称不能为空",
     "contentRequired": "内容不能为空"
+  },
+  "resource": {
+    "internal": "私有",
+    "external": "共享",
+    "public": "公开",
+    "makePublic": "设为公开",
+    "makePrivate": "设为私有",
+    "enableSharing": "设为公开",
+    "disableSharing": "设为私有",
+    "readOnly": "只读"
   },
   "upload": {
     "selectFolder": "点击选择包含技能的文件夹",

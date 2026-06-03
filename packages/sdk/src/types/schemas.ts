@@ -74,6 +74,16 @@ export interface ConfigBody {
   name?: string;
   data?: Record<string, unknown>;
 }
+export interface ResourceAccess extends Indexable {
+  ownership: "internal" | "external";
+  sourceOrganizationId: string;
+  sourceOrganizationName?: string;
+  resourceUid: string;
+  resourceKey: string;
+  manageable: boolean;
+  writable: boolean;
+  publicReadable?: boolean;
+}
 export interface McpInspectResult extends Indexable {
   name: string;
   tools?: McpToolInfo[];
@@ -121,11 +131,17 @@ export interface ProviderInfo extends Indexable {
   baseURL?: string;
 }
 export interface SkillInfo extends Indexable {
+  id?: string;
   name: string;
   description?: string;
   enabled?: boolean;
   path?: string;
   source?: SkillSourceInfo;
+  resourceAccess?: ResourceAccess;
+}
+export interface SkillDetail extends SkillInfo {
+  content?: string;
+  metadata?: Record<string, string>;
 }
 export interface SkillSourceInfo {
   type: string;

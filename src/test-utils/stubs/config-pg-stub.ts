@@ -19,6 +19,7 @@ interface ConfigPgStubs {
   getMcpServer: StubFn;
   getProvider: StubFn;
   getSkill: StubFn;
+  getSkillByResourceKey: StubFn;
   getUserConfig: StubFn;
   listAgentConfigs: StubFn;
   listAgentSkillIds: StubFn;

@@ -86,6 +86,14 @@
     "selectedCount": "{{count}} skill(s) selected",
     "noOptions": "No skills available"
   },
+  "resource": {
+    "internal": "Internal",
+    "external": "External",
+    "public": "Public",
+    "makePublic": "Make public",
+    "makePrivate": "Make private",
+    "readOnly": "Read-only"
+  },
   "save": {
     "successCreate": "Agent created",
     "successUpdate": "Agent updated",

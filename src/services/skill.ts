@@ -5,9 +5,10 @@
  * 文件系统操作全部委托给 skill-fs.ts。
  */
 
-import { join } from "node:path";
-import { error as logError } from "@fenix/logger";
+import { dirname, join } from "node:path";
 import { config } from "../config";
+import { AppError } from "../errors";
+import { error as logError } from "@fenix/logger";
 import type { AuthContext } from "../plugins/auth";
 import * as _configPg from "./config/index";
 import {
@@ -128,32 +129,37 @@ export async function listSkills(ctx: AuthContext): Promise<SkillInfo[]> {
     enabled: true,
     description: r.description ?? "",
     path: r.contentPath ?? skillContentPath(r.name),
+    resourceAccess: r.resourceAccess,
   }));
 }
 
-export async function getSkill(ctx: AuthContext, name: string): Promise<SkillDetail | null> {
-  const safeName = _deps.skillFs.assertValidSkillName(name);
-  const meta = await _deps.configPg.getSkill(ctx, safeName);
+export async function getSkill(ctx: AuthContext, nameOrResourceKey: string): Promise<SkillDetail | null> {
+  const isResourceKey = nameOrResourceKey.includes("/");
+  const meta = isResourceKey
+    ? await _deps.configPg.getSkillByResourceKey(ctx, nameOrResourceKey)
+    : await _deps.configPg.getSkill(ctx, _deps.skillFs.assertValidSkillName(nameOrResourceKey));
   if (!meta) return null;
 
-  const contentPath = meta.contentPath ?? skillContentPath(safeName);
+  const contentPath = meta.contentPath ?? skillContentPath(meta.name);
   const detail = await _deps.skillFs.readSkillDetailFromMd(contentPath);
 
   return {
-    name: safeName,
+    name: meta.name,
     description: meta.description ?? detail?.metadata.description ?? "",
     content: detail?.content ?? "",
     enabled: true,
     path: contentPath,
     metadata: stripNameAndDescription(detail?.metadata ?? {}),
+    resourceAccess: meta.resourceAccess,
   };
 }
 
 export async function setSkill(
   ctx: AuthContext,
   name: string,
-  data: { description: string; content: string; metadata?: Record<string, string> },
+  data: { description: string; content: string; metadata?: Record<string, string>; publicReadable?: boolean },
 ): Promise<SkillInfo> {
+  const { publicReadable, ...skillData } = data;
   const safeName = _deps.skillFs.assertValidSkillName(name);
   const root = getGlobalSkillsDir();
   const skillDir = _deps.skillFs.getSkillSourceDir(root, safeName);
@@ -165,18 +171,31 @@ export async function setSkill(
     const contentPath = await _deps.skillFs.writeSkillMd(
       skillDir,
       safeName,
-      data.description,
-      data.content,
-      data.metadata,
+      skillData.description,
+      skillData.content,
+      skillData.metadata,
     );
     await _deps.skillFs.buildSkillArchive(skillDir, archivePath);
-    await _deps.configPg.upsertSkill(ctx, safeName, {
-      description: data.description,
-      contentPath,
-      metadata: data.metadata,
-    });
+    await _deps.configPg.upsertSkill(
+      ctx,
+      safeName,
+      {
+        description: skillData.description,
+        contentPath,
+        metadata: skillData.metadata,
+      },
+      { publicReadable },
+    );
+    const updatedMeta = await _deps.configPg.getSkill(ctx, safeName).catch(() => null);
 
-    return { name: safeName, enabled: true, description: data.description, path: contentPath };
+    return {
+      id: updatedMeta?.id,
+      name: safeName,
+      enabled: true,
+      description: skillData.description,
+      path: contentPath,
+      resourceAccess: updatedMeta?.resourceAccess,
+    };
   } catch (err) {
     await _deps.skillFs.cleanupWrittenSkills(root, [safeName]).catch((e) => {
       logError("[Skill] Failed to cleanup skill directory after setSkill failure:", e);
@@ -204,10 +223,16 @@ export async function setSkill(
 
 export async function deleteSkill(ctx: AuthContext, name: string): Promise<boolean> {
   const safeName = _deps.skillFs.assertValidSkillName(name);
+  const meta = await _deps.configPg.getSkill(ctx, safeName);
+  if (!meta) return false;
+  if (meta.resourceAccess?.writable === false) {
+    throw new AppError("External skill is read-only", "FORBIDDEN", 403);
+  }
+
   const deleted = await _deps.configPg.deleteSkill(ctx, safeName);
   if (!deleted) return false;
   const root = getGlobalSkillsDir();
-  const skillDir = _deps.skillFs.getSkillSourceDir(root, safeName);
+  const skillDir = meta.contentPath ? dirname(meta.contentPath) : _deps.skillFs.getSkillSourceDir(root, safeName);
   await _deps.skillFs.deleteSkillDir(skillDir).catch((e) => {
     logError(`[Skill] Failed to cleanup skill directory ${skillDir}:`, e);
   });

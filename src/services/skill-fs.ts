@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import type { ResourceAccess } from "./config/types";
 
 // ────────────────────────────────────────────
 // 类型
@@ -20,6 +21,7 @@ export interface SkillInfo {
   enabled: boolean;
   description: string;
   path: string;
+  resourceAccess?: ResourceAccess;
 }
 
 export interface SkillDetail {
@@ -29,6 +31,7 @@ export interface SkillDetail {
   enabled: boolean;
   path: string;
   metadata: Record<string, string>;
+  resourceAccess?: ResourceAccess;
 }
 
 export interface UploadSkillFile {

@@ -9,6 +9,7 @@
   },
   "btn": {
     "edit": "Edit",
+    "view": "View",
     "delete": "Delete",
     "createSkill": "+ New Skill",
     "uploadSkill": "Upload Skill",
@@ -17,6 +18,7 @@
   },
   "dialog": {
     "editTitle": "Edit Skill",
+    "detailTitle": "Skill Details",
     "createTitle": "New Skill",
     "save": "Save",
     "startUpload": "Start Upload",
@@ -32,6 +34,16 @@
     "contentPlaceholder": "Enter Markdown content...",
     "nameRequired": "Name cannot be empty",
     "contentRequired": "Content cannot be empty"
+  },
+  "resource": {
+    "internal": "Private",
+    "external": "Shared",
+    "public": "Public",
+    "makePublic": "Make public",
+    "makePrivate": "Make private",
+    "enableSharing": "Make public",
+    "disableSharing": "Make private",
+    "readOnly": "Read-only"
   },
   "upload": {
     "selectFolder": "Click to select a folder containing skills",

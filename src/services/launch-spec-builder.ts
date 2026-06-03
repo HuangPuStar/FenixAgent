@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
+import { dirname, join } from "node:path";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { getBaseUrl } from "../config";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
@@ -26,9 +26,7 @@ function getLatestMtime(dir: string): number {
 }
 
 /** 判断 skill 源文件是否有更新，需要重建 archive */
-function isSkillStale(skillRoot: string, name: string): boolean {
-  const archivePath = getSkillArchivePath(skillRoot, name);
-  const sourceDir = getSkillSourceDir(skillRoot, name);
+function isSkillStale(sourceDir: string, archivePath: string): boolean {
   if (!existsSync(archivePath) || !existsSync(sourceDir)) return !existsSync(archivePath);
   const archiveMtime = statSync(archivePath).mtimeMs;
   return getLatestMtime(sourceDir) > archiveMtime;
@@ -125,6 +123,17 @@ function resolveModelConfig(modelRef: string | null | undefined, providers: Agen
   };
 }
 
+function resolveSkillArchivePath(skillRoot: string, row: AgentFullConfig["skills"][number]) {
+  if (row.contentPath) {
+    const sourceDir = dirname(row.contentPath);
+    return { archivePath: `${sourceDir}.zip`, sourceDir };
+  }
+  return {
+    archivePath: getSkillArchivePath(skillRoot, row.name),
+    sourceDir: getSkillSourceDir(skillRoot, row.name),
+  };
+}
+
 export interface BuildLaunchSpecInput {
   organizationId: string;
   userId: string;
@@ -185,9 +194,8 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
   const skillRoot = getGlobalSkillsDir();
   const skills: { name: string; url: string }[] = [];
   for (const s of fullConfig.skills) {
-    const archivePath = getSkillArchivePath(skillRoot, s.name);
-    const sourceDir = getSkillSourceDir(skillRoot, s.name);
-    if (isSkillStale(skillRoot, s.name)) {
+    const { archivePath, sourceDir } = resolveSkillArchivePath(skillRoot, s);
+    if (isSkillStale(sourceDir, archivePath)) {
       if (existsSync(sourceDir)) {
         log(`[launch-spec-builder] Skill archive stale, rebuilding: ${s.name}`);
         try {

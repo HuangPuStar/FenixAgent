@@ -11,6 +11,7 @@ import type {
   ModelEntry,
   ProviderDetail,
   ProviderInfo,
+  SkillDetail,
   SkillInfo,
 } from "../types/schemas";
 
@@ -81,8 +82,8 @@ export class SkillConfigApi extends BaseApi {
   async list(): Promise<ApiResult<SkillInfo[]>> {
     return this.post<SkillInfo[]>("/web/config/skills", { action: "list" });
   }
-  async get(name: string): Promise<ApiResult<SkillInfo>> {
-    return this.post<SkillInfo>("/web/config/skills", { action: "get", name });
+  async get(name: string): Promise<ApiResult<SkillDetail>> {
+    return this.post<SkillDetail>("/web/config/skills", { action: "get", name });
   }
   async set(name: string, data: Record<string, unknown>): Promise<ApiResult<SkillInfo>> {
     return this.post<SkillInfo>("/web/config/skills", { action: "set", name, data });
