@@ -67,3 +67,4 @@ docs/.vitepress/.temp/
 docker/acp-link/acp-link-*
 packages/sdk/sdk
 .worktrees/
+packages/plugin-ccb/node_modules/
