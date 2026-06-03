@@ -1,13 +1,14 @@
 import { resetAuthStubs } from "./stubs/auth-stub";
 import { resetConfigPgStubs } from "./stubs/config-pg-stub";
 import { resetDbStub } from "./stubs/db-stub";
-import { resetModuleStubs } from "./stubs/module-stubs";
+import { resetEnvironmentRepoStub, resetModuleStubs } from "./stubs/module-stubs";
 
 export function resetAllStubs() {
   resetConfigPgStubs();
   resetAuthStubs();
   resetDbStub();
   resetModuleStubs();
+  resetEnvironmentRepoStub();
 }
 
 export { getApiKeyServiceStub, getAuthApiStub, stubApiKeyService, stubAuthApi } from "./stubs/auth-stub";
@@ -24,10 +25,14 @@ export {
   stubConfigSkillMetaContent,
   stubCoreBootstrap,
   stubEnvironmentCore,
+  stubEnvironmentRepo,
+  stubEnvironmentService,
   stubEnvironmentWeb,
   stubInstance,
   stubLaunchSpecBuilder,
   stubMcpInspector,
+  stubRegistry,
+  stubRegistryHeartbeat,
   stubRepositories,
   stubSession,
   stubWorkflowTriggerRepo,
