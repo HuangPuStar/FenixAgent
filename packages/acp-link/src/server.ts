@@ -419,12 +419,22 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
       if (manualClose) return;
+
+      // 提供有意义的断连原因提示
+      if (event.code === 4003) {
+        console.error(
+          `[acp-client] 认证失败: ${event.reason || "secret 不匹配"}，请检查 RCS_SECRET 与服务端 REGISTRY_SECRET 是否一致`,
+        );
+        manualClose = true;
+        return;
+      }
+
       // 指数退避重连（不断连不杀子进程）
       const delay = Math.min(1000 * 2 ** reconnectAttempt, MAX_RECONNECT_MS);
       reconnectAttempt++;
