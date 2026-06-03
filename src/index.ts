@@ -36,6 +36,7 @@ import { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment, stopAll
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { resolveWorkspacePath } from "./services/workspace-resolver";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
+import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
 
 await initDb();
@@ -225,6 +226,7 @@ async function gracefulShutdown(signal: string) {
   await hermesClient?.stop();
   closeAllRelayConnections();
   closeAllAcpConnections();
+  closeAllFileWsConnections();
   await stopAllInstances();
   stopScheduler();
   await closeCache();
