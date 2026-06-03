@@ -246,7 +246,9 @@ export async function handleRelayMessage(
 
   // 通过 CoreRuntimeFacade relay handle 发送（本地和远程统一）
   if (entry.relayHandle) {
-    if (!entry.sessionStarted && parsed.type !== "list_sessions") {
+    // JSON-RPC 消息（无 type 字段）直接放行，不受 sessionStarted 约束
+    const isJsonRpc = (parsed as Record<string, unknown>).jsonrpc === "2.0";
+    if (!entry.sessionStarted && !isJsonRpc && parsed.type !== "list_sessions") {
       entry.outboundBuffer.push(parsed);
       return;
     }

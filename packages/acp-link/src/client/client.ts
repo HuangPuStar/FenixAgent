@@ -10,6 +10,7 @@ import type {
   ListSessionsResponse,
   LoadSessionRequest,
   PermissionRequestPayload,
+  PromptCapabilities,
   PromptUsage,
   ResumeSessionRequest,
   SessionModelState,
@@ -271,7 +272,13 @@ export class ACPClient {
     const req = createRequest(ACP_METHOD.SESSION_NEW, { cwd: sessionCwd, permissionMode });
     this.sendJsonRpcAndTrack(req, 30_000)
       .then((result) => {
-        const r = result as { sessionId: string };
+        const r = result as {
+          sessionId: string;
+          promptCapabilities?: PromptCapabilities;
+          models?: SessionModelState | null;
+          modes?: SessionModeState | null;
+        };
+        this.state.initSession(r);
         this.sessionCreatedHandler?.(r.sessionId);
       })
       .catch(() => {});
@@ -281,7 +288,12 @@ export class ACPClient {
     if (!this.state.sessionId) throw new Error("No active session");
     const blocks: ContentBlock[] = typeof content === "string" ? [{ type: "text" as const, text: content }] : content;
     const req = createRequest(ACP_METHOD.SESSION_PROMPT, { content: blocks });
-    this.sendJsonRpcAndTrack(req, 120_000).catch(() => {});
+    this.sendJsonRpcAndTrack(req, 120_000)
+      .then((result) => {
+        const r = result as { stopReason?: string; usage?: PromptUsage };
+        this.promptCompleteHandler?.(r.stopReason ?? "end_turn", r.usage);
+      })
+      .catch(() => {});
   }
 
   cancel(): void {
@@ -289,16 +301,20 @@ export class ACPClient {
     this.sendRaw(req);
   }
 
-  setSessionModel(modelId: string): void {
+  setSessionModel(modelId: string): Promise<void> {
     if (!this.state.sessionId) throw new Error("No active session");
     const req = createRequest(ACP_METHOD.SESSION_SET_MODEL, { modelId });
-    this.sendRaw(req);
+    return this.sendJsonRpcAndWait<{ modelId: string }>(req, 30_000).then(() => {
+      this.state.updateCurrentModel(modelId);
+    });
   }
 
-  setSessionMode(modeId: string): void {
+  setSessionMode(modeId: string): Promise<void> {
     if (!this.state.sessionId) throw new Error("No active session");
     const req = createRequest(ACP_METHOD.SESSION_SET_MODE, { modeId });
-    this.sendRaw(req);
+    return this.sendJsonRpcAndWait<{ modeId: string }>(req, 30_000).then(() => {
+      this.state.updateCurrentMode(modeId);
+    });
   }
 
   respondToPermission(requestId: string, optionId: string | null): void {
@@ -322,7 +338,13 @@ export class ACPClient {
     this.sessionSwitchingHandler?.(request.sessionId);
     const req = createRequest(ACP_METHOD.SESSION_LOAD, request);
     return this.sendJsonRpcAndWait<string>(req, 60_000).then((result) => {
-      const r = result as unknown as { sessionId: string };
+      const r = result as unknown as {
+        sessionId: string;
+        promptCapabilities?: PromptCapabilities;
+        models?: SessionModelState | null;
+        modes?: SessionModeState | null;
+      };
+      this.state.initSession(r);
       this.sessionLoadedHandler?.(r.sessionId);
       return r.sessionId;
     });
@@ -335,7 +357,13 @@ export class ACPClient {
     this.sessionSwitchingHandler?.(request.sessionId);
     const req = createRequest(ACP_METHOD.SESSION_RESUME, request);
     return this.sendJsonRpcAndWait<string>(req, 30_000).then((result) => {
-      const r = result as unknown as { sessionId: string };
+      const r = result as unknown as {
+        sessionId: string;
+        promptCapabilities?: PromptCapabilities;
+        models?: SessionModelState | null;
+        modes?: SessionModeState | null;
+      };
+      this.state.initSession(r);
       this.sessionLoadedHandler?.(r.sessionId);
       return r.sessionId;
     });
