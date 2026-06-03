@@ -6,6 +6,7 @@ import {
   type RemoteTransport,
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
+import { log } from "../logger";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 
@@ -93,7 +94,11 @@ export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry
   acpEntry.remoteTransport = transport;
 
   const existing = runtime.getNode(machineId);
-  if (existing) return;
+  if (existing) {
+    // node 已存在（重连场景）：更新状态为 online
+    runtime.updateNodeStatus(machineId, "online");
+    return;
+  }
 
   runtime.registerNode({
     id: machineId,
@@ -105,8 +110,20 @@ export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry
 }
 
 /**
- * 远程 machine 断连后，清理 transport 缓存。
+ * 远程 machine 断连后，清理 transport 缓存并更新 node 状态为 offline。
+ * 同时删除该 machineId 下的所有活跃实例记录，使后续 ensureRunning 能重新 launch。
  */
 export function unregisterRemoteNode(machineId: string): void {
   remoteTransports.delete(machineId);
+  const runtime = getCoreRuntime();
+  const existing = runtime.getNode(machineId);
+  if (existing) {
+    runtime.updateNodeStatus(machineId, "offline");
+  }
+  // 删除该 machineId 下所有活跃实例，让 ensureRunning 重新 launch
+  for (const instance of runtime.listInstances()) {
+    if (instance.nodeId !== machineId) continue;
+    runtime.deleteInstance(instance.instanceId);
+    log(`[core-bootstrap] Deleted instance ${instance.instanceId} on disconnected machine ${machineId}`);
+  }
 }

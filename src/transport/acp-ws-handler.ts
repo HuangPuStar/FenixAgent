@@ -1,6 +1,6 @@
 import { config } from "../config";
 import { log, error as logError } from "../logger";
-import { registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
+import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import type { AcpConnectionEntry } from "../types/store";
@@ -298,6 +298,11 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
 
     if (entry.machineId) {
       unregisterRemoteNode(entry.machineId);
+      // 清理 RCS registry 中对应 machineId 的孤儿 supplement
+      import("../services/instance-registry").then(({ globalInstanceRegistry }) => {
+        const facade = getCoreRuntime();
+        globalInstanceRegistry.reconcile(() => facade.listInstances());
+      });
       import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
         handleMachineDisconnected(entry.machineId!);
       });

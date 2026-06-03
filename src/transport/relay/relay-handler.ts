@@ -355,11 +355,27 @@ export function closeAllRelayConnections(): void {
   log("[ACP-Relay] All connections closed");
 }
 
-/** machine 断连后清理关联的 relay entry（远程实例通过 core remote-runtime 管理，relay handle 会收到 relay_closed） */
+/** machine 断连后清理关联的 relay 连接：关闭前端 WS 让前端感知断连 */
 export function handleMachineDisconnected(machineId: string): void {
   for (const [relayWsId, entry] of manager.entries()) {
-    if (entry.instanceId === machineId && !entry.relayHandle) {
-      log(`[ACP-Relay] Machine ${machineId} disconnected, cleaning up relay ${relayWsId}`);
+    // 匹配条件：instanceId 等于 machineId（远程实例的 instanceId 即为 machineId）
+    if (entry.instanceId !== machineId) continue;
+    log(`[ACP-Relay] Machine ${machineId} disconnected, closing relay ${relayWsId}`);
+    try {
+      entry.relayHandle?.close(1011, "machine disconnected");
+    } catch {
+      /* ignore */
     }
+    entry.relayUnsub?.();
+    if (entry.ws.readyState === 1) {
+      sendToRelayWs(entry.ws, { type: "error", payload: { message: "Machine disconnected" } });
+      try {
+        entry.ws.close(1011, "machine disconnected");
+      } catch {
+        /* ignore */
+      }
+    }
+    clearInterval(entry.keepalive!);
+    manager.remove(relayWsId);
   }
 }
