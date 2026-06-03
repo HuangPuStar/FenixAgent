@@ -135,7 +135,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const wsId = (ws.data as any).__fileWsId as string | undefined;
       if (wsId) {
-        handleFileWsClose(adaptWs(ws), wsId, code, reason);
+        handleFileWsClose(adaptWs(ws), wsId);
       }
     },
   })

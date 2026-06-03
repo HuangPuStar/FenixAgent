@@ -1,5 +1,8 @@
+import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 import type { RemoteTransport } from "./remote-transport";
+
+const logger = createLogger("remote-relay");
 
 export class RemoteRelayHandle implements EngineRelayHandle {
   private _state: "open" | "closed" = "open";
@@ -18,6 +21,7 @@ export class RemoteRelayHandle implements EngineRelayHandle {
 
       // 传输层消息（status/error/pong 等）：直接透传
       if (typeof payload.type === "string") {
+        logger.info("← agent transport msg", { instanceId, type: payload.type, payload: payload.payload });
         for (const listener of this.messageListeners) {
           listener({ type: payload.type, payload: payload.payload });
         }
@@ -26,6 +30,7 @@ export class RemoteRelayHandle implements EngineRelayHandle {
 
       // JSON-RPC 消息：透传为 { type: "jsonrpc", payload } 格式
       if (payload.jsonrpc === "2.0") {
+        logger.info("← agent jsonrpc", { instanceId, method: payload.method, id: payload.id });
         for (const listener of this.messageListeners) {
           listener(payload as unknown as EngineRelayMessage);
         }
@@ -49,6 +54,7 @@ export class RemoteRelayHandle implements EngineRelayHandle {
     if (this._state !== "open") {
       throw new Error("RemoteRelayHandle is closed");
     }
+    logger.info("→ agent relay", { instanceId: this.instanceId, payload: JSON.stringify(message).slice(0, 300) });
     this.transport.send({
       type: "relay",
       instance_id: this.instanceId,
@@ -63,6 +69,7 @@ export class RemoteRelayHandle implements EngineRelayHandle {
     this.unsubSession?.();
     this.unsubSession = null;
     this.messageListeners.clear();
+    logger.info("→ agent relay_close", { instanceId: this.instanceId });
     this.transport.send({
       type: "relay_close",
       instance_id: this.instanceId,

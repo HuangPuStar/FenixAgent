@@ -166,6 +166,7 @@
       "name": "@fenix/remote-runtime",
       "version": "0.1.0",
       "dependencies": {
+        "@fenix/logger": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
       },
     },

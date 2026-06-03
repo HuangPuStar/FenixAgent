@@ -223,6 +223,12 @@ export async function handleAcpWsMessage(
     if (entry.isMachine && entry.remoteTransport) {
       const REMOTE_PROTOCOL_TYPES = ["prepare_result", "start_result", "stop_result", "relay"];
       if (REMOTE_PROTOCOL_TYPES.includes(msg.type as string)) {
+        log("ACP ← remote", {
+          type: msg.type,
+          machineId: entry.machineId,
+          instanceId: (msg as Record<string, unknown>).instance_id,
+          payload: JSON.stringify(msg).slice(0, 300),
+        });
         entry.remoteTransport.injectMessage(msg as unknown as import("@fenix/remote-runtime").TransportMessage);
         continue;
       }
@@ -239,6 +245,12 @@ export async function handleAcpWsMessage(
     ];
     if (entry.isMachine && SESSION_MSG_TYPES.includes(msg.type as string)) {
       const sessionId = msg.session_id as string | undefined;
+      log("ACP ← session", {
+        type: msg.type,
+        machineId: entry.machineId,
+        sessionId,
+        payload: JSON.stringify(msg).slice(0, 300),
+      });
       if (sessionId) {
         const listener = entry.sessionMessageListeners?.get(sessionId);
         if (listener) {
@@ -361,6 +373,12 @@ export function sendToAgentWs(agentId: string, msg: object): boolean {
   if (cachedMachineId) {
     const entry = findMachineConnectionById(cachedMachineId);
     if (entry) {
+      log("ACP → remote", {
+        agentId,
+        machineId: cachedMachineId,
+        payloadType: (msg as Record<string, unknown>).type,
+        msg,
+      });
       sendToWs(entry.ws, {
         type: "session_data",
         session_id: `auto_${agentId}`,

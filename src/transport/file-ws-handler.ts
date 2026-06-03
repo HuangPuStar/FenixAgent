@@ -22,6 +22,8 @@ interface PendingRequest {
   resolve: (result: { status: string; data?: unknown; error?: string }) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** Track which wsId this request was sent on, for cleanup on disconnect */
+  wsId: string;
 }
 
 /** requestId → PendingRequest */
@@ -167,21 +169,11 @@ export function handleFileWsClose(ws: WsConnection, wsId: string): void {
     if (indexed?.wsId === wsId) {
       machineFileWsIndex.delete(entry.machineId);
     }
-
-    // Reject all pending requests for this machine
-    for (const [requestId, pending] of pendingRequests) {
-      // Check if this pending request belongs to this machine's connection
-      // We identify by checking if the resolve hasn't been called yet
-      // Since we store requestId → pending, we need to check if ws matches
-      // Simpler: reject all pending requests that were sent on this wsId
-      // We'll track wsId in pending requests for this purpose
-    }
   }
 
   // Reject all pending requests associated with this connection
-  // Walk pending requests and reject those whose ws matches
   for (const [requestId, pending] of pendingRequests) {
-    if ((pending as PendingRequest & { _wsId?: string })._wsId === wsId) {
+    if (pending.wsId === wsId) {
       clearTimeout(pending.timer);
       pendingRequests.delete(requestId);
       pending.reject(new Error(`Connection closed (wsId=${wsId})`));
@@ -215,11 +207,11 @@ export function sendFileOpAndWait(
       reject(new Error(`file_op timeout: operation=${operation} requestId=${requestId}`));
     }, timeoutMs);
 
-    const pending: PendingRequest & { _wsId: string } = {
+    const pending: PendingRequest = {
       resolve,
       reject,
       timer,
-      _wsId: entry.wsId,
+      wsId: entry.wsId,
     };
 
     pendingRequests.set(requestId, pending);

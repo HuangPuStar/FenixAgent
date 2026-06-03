@@ -442,6 +442,7 @@ beforeEach(() => {
 12. **改动涉及字段废弃时必须全局搜索所有读取点**：废弃一个 DB 字段（如 `workspacePath`）时，必须 `grep` 全部 `.workspacePath` / `.directory` 的读取点，逐一确认已迁移到新逻辑。不能只改写入端不改读取端——写入空字符串后，所有未迁移的读取点会拿到空值导致路径错误
 13. **workspace 路径由 plugin 根据 ID 自行计算，RCS 服务端不传绝对路径**：`opencode-runtime.ts` 的 `resolveWorkspace` 用 `organizationId + userId + environmentId` 拼 `cwd`。RCS 服务端只需确保 `environmentId` 通过 `AgentLaunchSpec` 正确传递（`instance.ts → buildLaunchSpec → launchInstance → plugin.prepareEnvironment`），不传 `workspace` 绝对路径——服务端和 plugin 的文件系统可能不同
 14. **relay 层必须转发 agent 的 `status` 消息（含 capabilities）**：`relay-handler.ts` 的 `onMessage` 回调不能丢弃 agent 发来的 `status` 消息。该消息携带 `capabilities`（含 `sessionCapabilities.list`），前端依赖它来判断是否支持 `session/list`/`session/load` 等 ACP 能力。丢弃会导致 `ACPState.supportsSessionList` 始终为 `false`，前端永远不发送 `session/list`，chat history 无法加载。正确做法：先发 relay 自身的 `status`（带 `agent_prompt`），再注册 `onMessage` 并转发 agent 的 `status`（带 `capabilities`），确保前端依次收到连接就绪信号和能力信息
+15. **Skill DB 与文件系统必须同步**：Skill 存储分两层——PG 元数据（`skill` 表）+ 文件系统（`{SKILL_DIR}/<name>/SKILL.md` + `{SKILL_DIR}/<name>.zip`）。`launch-spec-builder.ts` 构建 launchSpec 时从 `getGlobalSkillsDir()` 读源文件和 archive，**不从 DB 读内容**。如果 DB 有记录但文件系统缺失源目录，`buildLaunchSpec` 会 `continue` 跳过该 skill（只打日志不报错），导致 skill 不下发。`src/services/skill.ts` 的 `setSkill` 会同时写文件系统和 DB，是正确的创建/更新入口。禁止绕过 `setSkill` 直接调用 `config/skill.ts` 的 `upsertSkill`（只写 DB 不写文件系统）来创建 skill，否则会出现 DB 与文件系统不一致。同样，`importSkillDirectories` 也是正确入口（文件系统 + DB + archive 三同步）
 
 ### API/路由约定
 

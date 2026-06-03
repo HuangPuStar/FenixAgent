@@ -215,7 +215,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
           console.log("[acp-client] ← RCS:", JSON.stringify(msg).slice(0, 500));
         }
         switch (msg.type) {
-          case "registered":
+          case "registered": {
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
             heartbeatTimer = setInterval(() => {
               if (ws && ws.readyState === 1) {
@@ -267,6 +267,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             };
             connectFileWs();
             break;
+          }
           case "session_start": {
             const sessionId = msg.session_id as string;
             const launchSpec = msg.launch_spec;

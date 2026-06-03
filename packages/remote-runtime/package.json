@@ -10,6 +10,7 @@
     }
   },
   "dependencies": {
+    "@fenix/logger": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*"
   },
   "scripts": {
