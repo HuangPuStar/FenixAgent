@@ -1,0 +1,2 @@
+DROP INDEX "idx_resource_permission_unique";--> statement-breakpoint
+ALTER TABLE "resource_permission" ADD CONSTRAINT "idx_resource_permission_unique" UNIQUE NULLS NOT DISTINCT("organization_id","resource_type","resource_id","principal_type","principal_id","action");

@@ -9,6 +9,7 @@ import { getApiKeyServiceStub, getAuthApiStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
 import { getEnvironmentRepoStub } from "./stubs/module-stubs";
+import { resourcePermissionRepoStub } from "./stubs/resource-permission-repo-stub";
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type AnyFn = (...args: any[]) => any;
@@ -51,6 +52,7 @@ const CONFIG_PG_KEYS = [
   "getMcpServer",
   "getProvider",
   "getSkill",
+  "getSkillByResourceKey",
   "getUserConfig",
   "listAgentConfigs",
   "listAgentSkillIds",
@@ -108,12 +110,18 @@ mock.module("../auth/api-key-service", () =>
 
 // ── raw db ──
 
-mock.module("../db", () => {
+function createDbMock() {
   const obj: Record<string, unknown> = {};
+  const dbProxy = new Proxy(
+    {},
+    {
+      get: (_target, prop) => getDbStub()[prop as string],
+    },
+  );
   Object.defineProperty(obj, "db", {
     enumerable: true,
     configurable: true,
-    get: () => getDbStub(),
+    get: () => dbProxy,
   });
   Object.defineProperty(obj, "client", {
     enumerable: true,
@@ -126,7 +134,16 @@ mock.module("../db", () => {
     get: () => async () => {},
   });
   return obj;
-});
+}
+
+mock.module("../db", createDbMock);
+mock.module("../../db", createDbMock);
+
+// ── resource-permission repository ──
+
+mock.module("../repositories/resource-permission", () => ({
+  resourcePermissionRepo: resourcePermissionRepoStub,
+}));
 
 // ── 以下模块按批次添加：只有当所有使用该模块的测试文件都已迁移到 stub 注册表后才能注册 ──
 // 添加前须确认：没有任何未迁移的测试会通过被测代码间接导入这些模块

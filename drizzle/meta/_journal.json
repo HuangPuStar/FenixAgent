@@ -15,6 +15,20 @@
       "when": 1780278196881,
       "tag": "0001_auto-generated",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780451324022,
+      "tag": "0002_resource_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780471533931,
+      "tag": "0003_resource_permission_nulls_not_distinct",
+      "breakpoints": true
     }
   ]
 }

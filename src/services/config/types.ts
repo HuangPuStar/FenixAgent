@@ -42,6 +42,29 @@ export interface PermissionObjectConfig {
 export type PermissionConfig = PermissionAction | PermissionObjectConfig;
 
 // ────────────────────────────────────────────
+// Resource Access
+// ────────────────────────────────────────────
+
+/** Unified resource ownership and access metadata. */
+export interface ResourceAccess {
+  ownership: "internal" | "external";
+  sourceOrganizationId: string;
+  sourceOrganizationName?: string;
+  resourceUid: string;
+  resourceKey: string;
+  manageable: boolean;
+  writable: boolean;
+  publicReadable?: boolean;
+}
+
+/** Minimal config row shape used to decorate resource access metadata. */
+export interface ResourceAccessInput {
+  id: string;
+  organizationId: string;
+  name?: string | null;
+}
+
+// ────────────────────────────────────────────
 // Agent Knowledge
 // ────────────────────────────────────────────
 
@@ -192,6 +215,25 @@ export interface SkillUpsertData {
   description?: string;
   contentPath?: string;
   metadata?: SkillMetadata;
+}
+
+/** Skill config row decorated with resource access metadata. */
+export interface SkillConfigRowWithAccess {
+  id: string;
+  userId: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  contentPath: string | null;
+  metadata: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  resourceAccess: ResourceAccess;
+}
+
+/** Additional options accepted by skill writes. */
+export interface SkillSetOptions {
+  publicReadable?: boolean;
 }
 
 // ────────────────────────────────────────────

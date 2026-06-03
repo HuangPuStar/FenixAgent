@@ -32,6 +32,7 @@ export { buildModelData, deleteProvider, getProvider, listProviders, upsertProvi
 export {
   deleteSkill,
   getSkill,
+  getSkillByResourceKey,
   listSkills,
   upsertSkill,
 } from "./skill";
@@ -48,7 +49,11 @@ export type {
   PermissionConfig,
   ProviderExtraOptions,
   ProviderUpsertData,
+  ResourceAccess,
+  ResourceAccessInput,
+  SkillConfigRowWithAccess,
   SkillMetadata,
+  SkillSetOptions,
   SkillUpsertData,
 } from "./types";
 export type { UserConfigData } from "./user-config";

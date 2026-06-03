@@ -16,6 +16,18 @@ export type {
   KnowledgeResourceRow,
 } from "./knowledge-base";
 export { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "./knowledge-base";
+export type {
+  CreateResourcePermissionGrantInput,
+  DeleteResourcePermissionGrantInput,
+  IResourcePermissionRepo,
+  ResourcePermissionAccessibleRow,
+  ResourcePermissionAction,
+  ResourcePermissionGrantRow,
+  ResourcePermissionOwnedRow,
+  ResourcePermissionPrincipalType,
+  ResourcePermissionType,
+} from "./resource-permission";
+export { resourcePermissionRepo } from "./resource-permission";
 export type { ISessionRepo, SessionCreateParams, SessionRecord } from "./session";
 export { sessionRepo } from "./session";
 export type { ISessionWorkerRepo, SessionWorkerRecord } from "./session-worker";
