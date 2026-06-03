@@ -4,6 +4,7 @@
  * POST /web/workflow-jobs — action 分发，管理看板 Job 的创建、查询、运行、审批、删除。
  */
 
+import { createLogger } from "@fenix/logger";
 import { WorkflowError } from "@fenix/workflow-engine";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
@@ -19,6 +20,8 @@ import {
 import { getTeamEngine } from "../../services/workflow";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { publishJobEvent } from "../../services/workflow/workflow-job-events";
+
+const logger = createLogger("wf-jobs");
 
 const app = new Elysia({ name: "web-workflow-jobs" }).use(authGuardPlugin);
 
@@ -149,7 +152,7 @@ app.post(
               publishJobEvent(authCtx.organizationId, "job.completed", { jobId, runId, dagStatus: r.status });
             },
             async (err) => {
-              console.error("[workflow-jobs] run error:", err);
+              logger.error("run error:", err);
               await updateJobStatus(jobId, authCtx.organizationId, {
                 status: "completed",
                 lastDagStatus: "ERROR",
@@ -270,7 +273,7 @@ app.post(
         const status = code === "RUN_NOT_FOUND" ? 404 : code === "VALIDATION_ERROR" ? 400 : 500;
         return error(status, { error: { type: code, message: err.message } });
       }
-      console.error("[workflow-jobs] Error:", err);
+      logger.error("Error:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }

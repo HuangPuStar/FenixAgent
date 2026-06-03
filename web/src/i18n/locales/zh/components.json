@@ -137,6 +137,10 @@
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
+    "dropToUpload": "释放文件以上传",
+    "uploadTo": "上传到: {{path}}",
+    "uploadingFile": "正在上传 {{name}}...",
+    "uploadingProgress": "{{percent}}%",
     "downloadZip": "下载 ZIP",
     "downloadFailed": "下载失败",
     "contextMenu": {

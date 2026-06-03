@@ -39,6 +39,9 @@ function makeEnv(skillDir: string): Env {
     RCS_DISABLE_SIGNUP: false,
     REGISTRY_SECRET: "",
     ACPX_G_URL: "http://localhost:8848",
+    RCS_ENGINE_TYPE: "opencode" as const,
+    RCS_CCB_COMMAND: "ccb",
+    RCS_CCB_ARGS: "--acp",
   };
 }
 

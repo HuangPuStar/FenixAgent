@@ -1,5 +1,5 @@
+import { log, error as logError } from "@fenix/logger";
 import { config } from "../config";
-import { log, error as logError } from "../logger";
 import { publishSessionEvent } from "../services/transport";
 import type { WsSessionCleanupEntry } from "../types/store";
 import { toClientPayload } from "./client-payload";

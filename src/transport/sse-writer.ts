@@ -1,4 +1,4 @@
-import { log } from "../logger";
+import { log } from "@fenix/logger";
 import { toClientPayload } from "./client-payload";
 import type { SessionEvent } from "./event-bus";
 import { getEventBus } from "./event-bus";

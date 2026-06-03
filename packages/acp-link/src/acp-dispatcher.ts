@@ -67,12 +67,14 @@ export class AcpDispatcher {
   /** 处理从 WS 收到的原始消息（可能是 JSON-RPC 或传输层消息） */
   async handleMessage(raw: unknown): Promise<void> {
     if (isTransportMessage(raw)) {
+      console.log("[acp-dispatcher] ← transport:", JSON.stringify(raw).slice(0, 500));
       await this.handleTransportMessage(raw as Record<string, unknown>);
       return;
     }
 
     const msg = raw as Record<string, unknown>;
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id !== undefined) {
+      console.log("[acp-dispatcher] ← rpc:", JSON.stringify(raw).slice(0, 500));
       await this.handleRequest(msg as unknown as JsonRpcRequest);
     }
   }
@@ -102,6 +104,7 @@ export class AcpDispatcher {
 
   private async handleRequest(msg: JsonRpcRequest): Promise<void> {
     const { id, method, params } = msg;
+    const _t0 = Date.now();
     try {
       switch (method) {
         case ACP_METHOD.SESSION_NEW:
@@ -131,7 +134,12 @@ export class AcpDispatcher {
         default:
           this.send(createErrorResponse(id, -32601, `Method not found: ${method}`));
       }
+      console.log("[acp-dispatcher] → rpc response:", JSON.stringify({ method, id, elapsed: Date.now() - _t0 }));
     } catch (error) {
+      console.error(
+        "[acp-dispatcher] ✗ rpc error:",
+        JSON.stringify({ method, id, elapsed: Date.now() - _t0, error: (error as Error).message }),
+      );
       this.send(createErrorResponse(id, -32603, (error as Error).message));
     }
   }

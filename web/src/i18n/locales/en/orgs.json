@@ -51,6 +51,9 @@
     "confirmDelete": "Confirm Delete",
     "deleting": "Deleting..."
   },
+  "orgId": "Organization ID",
+  "copyId": "Copy ID",
+  "copied": "Copied",
   "editName": {
     "placeholder": "Organization name"
   },

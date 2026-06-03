@@ -1,7 +1,7 @@
+import { log, error as logError } from "@fenix/logger";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { machine } from "../db/schema";
-import { log, error as logError } from "../logger";
 import { markHeartbeatTimeout, updateHeartbeat } from "./registry";
 
 type HeartbeatEntry = {

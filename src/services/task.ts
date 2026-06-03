@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { log, error as logError } from "../logger";
+import { log, error as logError } from "@fenix/logger";
 import type { ScheduledTaskInsert, ScheduledTaskRow, TaskExecutionLogRow } from "../repositories/task";
 import { scheduledTaskRepo, taskExecutionLogRepo } from "../repositories/task";
 import { parseJsonb } from "./config/jsonb";

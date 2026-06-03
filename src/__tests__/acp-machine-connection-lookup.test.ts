@@ -1,20 +1,11 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { setConfig } from "../config";
+import { resetAllStubs } from "../test-utils/helpers";
+import type { WsConnection } from "../transport/ws-types";
+import type { AcpConnectionEntry } from "../types/store";
 
-// Mock db to prevent accidental DB calls
-mock.module("../db", () => ({
-  db: {
-    select: mock(() => {
-      throw new Error("unexpected db call in test");
-    }),
-  },
-}));
-
-// Mock config
-mock.module("../config", () => ({
-  config: {
-    wsKeepaliveInterval: 30,
-  },
-}));
+// Mock config — setConfig 注入测试值
+setConfig({ wsKeepaliveInterval: 30 });
 
 // Mock registry services
 mock.module("../services/registry", () => ({
@@ -36,15 +27,18 @@ mock.module("../services/environment", () => ({
   touchEnvironmentPoll: mock(async () => {}),
 }));
 
-// Mock environment repo (used by findMachineConnectionByAgentId)
-mock.module("../repositories/environment", () => ({
-  environmentRepo: {
-    getById: mock(async () => null),
-  },
+// Mock core-bootstrap — acp-ws-handler 导入了 getCoreRuntime 等
+mock.module("../services/core-bootstrap", () => ({
+  getCoreRuntime: () => null,
+  registerRemoteNode: mock(() => {}),
+  unregisterRemoteNode: mock(() => {}),
 }));
 
-import type { WsConnection } from "../transport/ws-types";
-import type { AcpConnectionEntry } from "../types/store";
+// repositories/environment 已在 setup-mocks.ts 中通过 stub 注册表 mock
+
+beforeEach(() => {
+  resetAllStubs();
+});
 
 function createMockWs(readyState = 1): WsConnection {
   const messages: string[] = [];
@@ -140,18 +134,11 @@ describe("handleAcpWsMessage — session 消息转发", () => {
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_s1", "user_s", null, true);
 
-    let _receivedSessionId: string | undefined;
-    let _receivedType: string | undefined;
-
-    // 通过直接注入 onSessionMessage 测试回调机制
-    // handleAcpWsMessage 会检查 entry.onSessionMessage
-    const msg = {
+    // session_started 没有 onSessionMessage 回调 → message 被静默忽略，不抛异常
+    await handleAcpWsMessage(ws, "ws_s1", {
       type: "session_started",
       session_id: "ses_001",
-    };
-
-    // session_started 没有 onSessionMessage 回调 → message 被静默忽略，不抛异常
-    await handleAcpWsMessage(ws, "ws_s1", msg);
+    });
     // 不应该抛出异常
     expect(true).toBe(true);
   });

@@ -1,5 +1,5 @@
 import { Download, File, FilePlus, Folder, FolderInput, FolderOpen, RefreshCw, Upload } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { NodeState, TreeNodeData } from "@/components/ui/tree";
@@ -66,7 +66,14 @@ function parsedToTreeNodeData(node: ParsedNode): TreeNodeData {
   };
 }
 
-export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeTabProps) {
+export interface FileTreeTabHandle {
+  uploadFiles: (files: File[], onProgress?: (percent: number) => void) => Promise<void>;
+}
+
+export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(function FileTreeTab(
+  { envId, onPreviewFile, onReferenceFile },
+  ref,
+) {
   const { t } = useTranslation(NS.COMPONENTS);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -96,6 +103,48 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      uploadFiles: async (files: File[], onProgress?: (percent: number) => void) => {
+        if (!envId || files.length === 0) return;
+
+        const targetDir = selectedDir || "user";
+        const formData = new FormData();
+        for (const file of files) {
+          formData.append("files", file);
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const url = `/web/environments/${envId}/user/${targetDir}`;
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && onProgress) {
+              onProgress(Math.round((e.loaded / e.total) * 100));
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`Upload failed: ${xhr.status}`));
+            }
+          };
+
+          xhr.onerror = () => reject(new Error("Upload network error"));
+          xhr.open("POST", url);
+          xhr.withCredentials = true;
+          xhr.send(formData);
+        });
+
+        await loadTree();
+      },
+    }),
+    [envId, selectedDir, loadTree],
+  );
 
   // 从缓存的 ParsedNode 树中查找指定路径的子节点
   const findChildren = useCallback((parentPath: string | null): ParsedNode[] => {
@@ -506,7 +555,7 @@ export function FileTreeTab({ envId, onPreviewFile, onReferenceFile }: FileTreeT
       )}
     </div>
   );
-}
+});
 
 // 辅助函数：在解析树中查找指定路径的节点
 function findNodeByPath(nodes: ParsedNode[], path: string): ParsedNode | null {

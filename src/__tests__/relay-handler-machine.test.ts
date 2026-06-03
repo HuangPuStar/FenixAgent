@@ -1,33 +1,30 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb, stubEnvironmentRepo } from "../test-utils/helpers";
 
-// Mock DB — relay uses getAgentConfigById which queries db
+// Mock DB — relay uses getAgentConfigById which queries db (chain builder)
 const _dbRows: Array<Record<string, unknown>> = [];
-mock.module("../db", () => ({
-  db: {
-    select: mock(() => ({
-      from: mock(() => ({
-        where: mock(() => ({
-          limit: mock(() => _dbRows),
-        })),
-        leftJoin: mock(() => ({
-          where: mock(() => _dbRows),
-        })),
-      })),
-    })),
-  },
-}));
 // Helper for tests to set db return values
 function _setDbRows(rows: Array<Record<string, unknown>>) {
   _dbRows.length = 0;
   _dbRows.push(...rows);
 }
 
-// Mock environment repo
-mock.module("../repositories/environment", () => ({
-  environmentRepo: {
-    getById: mock(async () => null),
-  },
-}));
+beforeEach(() => {
+  resetAllStubs();
+  // 配置链式查询构建器 stub
+  stubDb({
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => _dbRows,
+        }),
+        leftJoin: () => ({
+          where: () => _dbRows,
+        }),
+      }),
+    }),
+  });
+});
 
 function createMockWs(readyState = 1) {
   const messages: string[] = [];
@@ -43,14 +40,15 @@ function createMockWs(readyState = 1) {
 
 describe("handleRelayOpen — single machine relay path", () => {
   test("agent 未绑定 machine 返回错误并关闭 WS", async () => {
+    stubEnvironmentRepo({
+      getById: mock(async () => ({
+        id: "env_001",
+        agentConfigId: null,
+      })),
+    });
+
     const { handleRelayOpen } = await import("../transport/relay/relay-handler");
     const ws = createMockWs();
-
-    const { environmentRepo } = await import("../repositories/environment");
-    (environmentRepo.getById as ReturnType<typeof mock>).mockResolvedValueOnce({
-      id: "env_001",
-      agentConfigId: null,
-    });
 
     await handleRelayOpen(ws as any, "relay_1", "env_001", "user_1");
 
@@ -62,14 +60,15 @@ describe("handleRelayOpen — single machine relay path", () => {
   });
 
   test("agentConfig 无 machineId 返回错误并关闭 WS", async () => {
+    stubEnvironmentRepo({
+      getById: mock(async () => ({
+        id: "env_001",
+        agentConfigId: "agc_001",
+      })),
+    });
+
     const { handleRelayOpen } = await import("../transport/relay/relay-handler");
     const ws = createMockWs();
-
-    const { environmentRepo } = await import("../repositories/environment");
-    (environmentRepo.getById as ReturnType<typeof mock>).mockResolvedValueOnce({
-      id: "env_001",
-      agentConfigId: "agc_001",
-    });
 
     _setDbRows([{ id: "agc_001", machineId: null }]);
 
@@ -82,14 +81,15 @@ describe("handleRelayOpen — single machine relay path", () => {
   });
 
   test("machine 离线返回错误并关闭 WS", async () => {
+    stubEnvironmentRepo({
+      getById: mock(async () => ({
+        id: "env_001",
+        agentConfigId: "agc_001",
+      })),
+    });
+
     const { handleRelayOpen } = await import("../transport/relay/relay-handler");
     const ws = createMockWs();
-
-    const { environmentRepo } = await import("../repositories/environment");
-    (environmentRepo.getById as ReturnType<typeof mock>).mockResolvedValueOnce({
-      id: "env_001",
-      agentConfigId: "agc_001",
-    });
 
     _setDbRows([{ id: "agc_001", machineId: "mach_nonexistent" }]);
 

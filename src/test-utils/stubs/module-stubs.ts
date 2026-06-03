@@ -54,6 +54,29 @@ export const workflowTriggerRepoRegistry = createStubRegistry("workflowTriggerRe
 // ../services/workflow-trigger — workflow trigger 服务，1 个测试文件使用
 export const workflowTriggerServiceRegistry = createStubRegistry("workflowTriggerService", false);
 
+// ../services/registry — 机器注册服务，1 个测试文件使用
+export const registryRegistry = createStubRegistry("registry", false);
+
+// ../services/registry-heartbeat — 心跳检测服务，1 个测试文件使用
+export const registryHeartbeatRegistry = createStubRegistry("registryHeartbeat", false);
+
+// ../services/environment — 环境服务，1 个测试文件使用
+export const environmentServiceRegistry = createStubRegistry("environmentService", false);
+
+// ../repositories/environment — 环境仓储（对象导出），1 个测试文件使用
+// biome-ignore lint/suspicious/noExplicitAny: repo stub 需要宽松类型
+let _environmentRepoStub: Record<string, any> | null = null;
+export function stubEnvironmentRepo(overrides: Record<string, unknown>) {
+  _environmentRepoStub = { ..._environmentRepoStub, ...overrides };
+}
+// biome-ignore lint/suspicious/noExplicitAny: repo stub 需要宽松类型
+export function getEnvironmentRepoStub(): Record<string, any> | null {
+  return _environmentRepoStub;
+}
+export function resetEnvironmentRepoStub() {
+  _environmentRepoStub = null;
+}
+
 // ── 便捷函数导出（对齐已有的 stub 命名风格）──
 
 export const stubRepositories = repositoriesRegistry.stub;
@@ -71,6 +94,9 @@ export const stubMcpInspector = mcpInspectorRegistry.stub;
 export const stubConfigMcpServer = configMcpServerRegistry.stub;
 export const stubWorkflowTriggerRepo = workflowTriggerRepoRegistry.stub;
 export const stubWorkflowTriggerService = workflowTriggerServiceRegistry.stub;
+export const stubRegistry = registryRegistry.stub;
+export const stubRegistryHeartbeat = registryHeartbeatRegistry.stub;
+export const stubEnvironmentService = environmentServiceRegistry.stub;
 
 // ── 重置函数 ──
 
@@ -90,4 +116,7 @@ export function resetModuleStubs() {
   configMcpServerRegistry.reset();
   workflowTriggerRepoRegistry.reset();
   workflowTriggerServiceRegistry.reset();
+  registryRegistry.reset();
+  registryHeartbeatRegistry.reset();
+  environmentServiceRegistry.reset();
 }

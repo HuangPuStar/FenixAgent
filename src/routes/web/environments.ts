@@ -1,3 +1,4 @@
+import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { ValidationError as AppValidationError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
@@ -16,6 +17,8 @@ import {
   updateWebEnvironment,
 } from "../../services/environment";
 import { enterEnvironment, listInstancesResponse, spawnInstanceFromEnvironment } from "../../services/instance";
+
+const logger = createLogger("env-route");
 
 const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model({
   "environment-info": EnvironmentInfoSchema,
@@ -69,8 +72,8 @@ app.post(
 
     if (b.autoStart && record.userId) {
       spawnInstanceFromEnvironment(record.userId, record.id)
-        .then(() => console.log(`[RCS] Auto-started instance for new environment: ${record.name}`))
-        .catch((err: unknown) => console.error(`[RCS] Failed to auto-start instance for ${record.name}:`, err));
+        .then(() => logger.info(`Auto-started instance for new environment: ${record.name}`))
+        .catch((err: unknown) => logger.error(`Failed to auto-start instance for ${record.name}:`, err));
     }
 
     return { ...sanitizeResponse(record), secret: record.secret };

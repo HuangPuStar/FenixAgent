@@ -1,4 +1,7 @@
+import { createLogger } from "@fenix/logger";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+
+const logger = createLogger("remote-transport");
 
 // ── 协议消息类型 ──────────────────────────────────
 
@@ -115,6 +118,7 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
         pendingRequests.set(requestId, { resolve, reject, timer });
 
         const outgoing: TransportMessage = { ...message, request_id: requestId };
+        logger.info("→ remote sendAndWait", { type: outgoing.type, requestId, instanceId: outgoing.instance_id });
         ws.send(JSON.stringify(outgoing));
       });
     },
@@ -127,10 +131,16 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
     },
 
     send(message) {
+      logger.info("→ remote send", { type: message.type, instanceId: message.instance_id });
       ws.send(JSON.stringify(message));
     },
 
     injectMessage(message) {
+      logger.info("← remote inject", {
+        type: message.type,
+        requestId: message.request_id,
+        instanceId: message.instance_id,
+      });
       handleMessage(message);
     },
   };

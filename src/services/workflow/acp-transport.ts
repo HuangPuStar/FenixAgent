@@ -16,8 +16,8 @@
  * - acp-transport.ts（本文件）：仅封装 ACP 协议流程
  */
 
+import { log } from "@fenix/logger";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
-import { log } from "../../logger";
 
 // ---------- 消息通道抽象 ----------
 

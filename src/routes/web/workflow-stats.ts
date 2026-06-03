@@ -4,6 +4,7 @@
  * POST /web/workflow-stats — action 分发，聚合查询工作流运行统计。
  */
 
+import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import {
@@ -12,6 +13,8 @@ import {
   getRecentFailedRuns,
   getStatsOverview,
 } from "../../repositories/workflow-stats";
+
+const logger = createLogger("wf-stats");
 
 const app = new Elysia({ name: "web-workflow-stats" }).use(authGuardPlugin);
 
@@ -50,7 +53,7 @@ app.post(
           return error(400, { error: { type: "VALIDATION_ERROR", message: `Unknown action: ${action}` } });
       }
     } catch (err: unknown) {
-      console.error("[workflow-stats] Error:", err);
+      logger.error("Error:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }
