@@ -1,3 +1,4 @@
+import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import {
@@ -6,6 +7,8 @@ import {
   RegistryEventListResponseSchema,
 } from "../../schemas/registry.schema";
 import { getMachine, listEvents, listMachines } from "../../services/registry";
+
+const logger = createLogger("registry");
 
 const app = new Elysia({ name: "web-registry" }).use(authGuardPlugin).model({
   "machine-list-response": MachineListResponseSchema,
@@ -42,7 +45,7 @@ app.get(
       });
       return { data: result.data, total: result.total };
     } catch (err: unknown) {
-      console.error(err);
+      logger.error("Failed to list machines", err);
       return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });
     }
   },
@@ -60,7 +63,7 @@ app.get(
       }
       return { data: result };
     } catch (err: unknown) {
-      console.error(err);
+      logger.error("Failed to get machine", err);
       return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });
     }
   },
@@ -78,7 +81,7 @@ app.get(
       const result = await listEvents(authCtx, params.id, { limit, offset });
       return { data: result.data, total: result.total };
     } catch (err: unknown) {
-      console.error(err);
+      logger.error("Failed to list machine events", err);
       return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });
     }
   },

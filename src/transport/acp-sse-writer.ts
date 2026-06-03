@@ -1,4 +1,4 @@
-import { log } from "../logger";
+import { log } from "@fenix/logger";
 import { getAcpEventBus } from "./event-bus";
 
 /** Create SSE response stream for an ACP channel group */

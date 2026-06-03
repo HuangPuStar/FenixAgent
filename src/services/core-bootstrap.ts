@@ -1,5 +1,6 @@
 import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
+import { log } from "@fenix/logger";
 import { createEnginePlugin as createOpencodePlugin, type OpencodeRuntime } from "@fenix/opencode";
 import {
   createRemoteRuntime,
@@ -8,7 +9,6 @@ import {
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
 import { validateEnv } from "../env";
-import { log } from "../logger";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 

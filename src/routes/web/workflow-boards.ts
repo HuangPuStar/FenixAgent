@@ -4,6 +4,7 @@
  * POST /web/workflow-boards — action ���发，管理看板面板的创建、查询、重命名、删除。
  */
 
+import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import {
@@ -14,6 +15,8 @@ import {
   listBoards,
   updateBoard,
 } from "../../repositories/workflow-board";
+
+const logger = createLogger("wf-boards");
 
 const app = new Elysia({ name: "web-workflow-boards" }).use(authGuardPlugin);
 
@@ -103,7 +106,7 @@ app.post(
           return error(400, { error: { type: "VALIDATION_ERROR", message: `Unknown action: ${action}` } });
       }
     } catch (err: unknown) {
-      console.error("[workflow-boards] Error:", err);
+      logger.error("Error:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }

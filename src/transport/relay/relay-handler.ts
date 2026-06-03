@@ -1,5 +1,5 @@
+import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import { log, error as logError } from "../../logger";
 import type { EnvironmentRecord } from "../../repositories/environment";
 import { environmentRepo } from "../../repositories/environment";
 import { getAgentConfigById } from "../../services/config/agent-config";
@@ -33,7 +33,7 @@ export async function handleRelayOpen(
   userId: string,
   sessionId?: string,
 ): Promise<void> {
-  log(`[ACP-Relay] Relay connection opened: relayWsId=${relayWsId} agentId=${agentId}`);
+  log(`Relay connection opened: relayWsId=${relayWsId} agentId=${agentId}`);
 
   // 在异步设置开始前注册 pending buffer，避免前端消息被丢弃
   pendingRelayMessages.set(relayWsId, []);
@@ -83,7 +83,7 @@ async function openLocalRelay(
   try {
     const result = await ensureRunning(userId, agentId);
     instanceId = result.instance.id;
-    log(`[ACP-Relay] Local instance ${result.status}: instanceId=${instanceId} envId=${agentId}`);
+    log(`Local instance ${result.status}: instanceId=${instanceId} envId=${agentId}`);
   } catch (err) {
     pendingRelayMessages.delete(relayWsId);
     const msg = err instanceof Error ? err.message : String(err);
@@ -121,7 +121,7 @@ async function openLocalRelay(
   } catch (err) {
     pendingRelayMessages.delete(relayWsId);
     const msg = err instanceof Error ? err.message : String(err);
-    logError("[ACP-Relay] Failed to connect instance relay:", err);
+    logError("Failed to connect instance relay:", err);
     sendToRelayWs(ws, { type: "error", payload: { message: `Relay connect failed: ${msg}` } });
     ws.close(1011, "relay connect failed");
     return;
@@ -156,7 +156,7 @@ async function openLocalRelay(
   // 4. 先发送 relay 层的 status（携带 agent_prompt），再注册 onMessage
   //    确保前端先收到连接就绪信号，再收到 agent 的 capabilities
   sendToRelayWs(ws, { type: "status", payload: { connected: true, agent_prompt: agentPrompt ?? null } });
-  log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
+  log(`Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
 
   const full = handle as FullRelayHandle;
   if (full.onMessage) {
@@ -184,12 +184,12 @@ async function openLocalRelay(
   const pending = pendingRelayMessages.get(relayWsId) ?? [];
   pendingRelayMessages.delete(relayWsId);
   if (pending.length > 0) {
-    log(`[ACP-Relay] Flushing ${pending.length} pending message(s) for relayWsId=${relayWsId}`);
+    log(`Flushing ${pending.length} pending message(s) for relayWsId=${relayWsId}`);
     for (const msg of pending) {
       try {
         entry.relayHandle!.send(msg as { type: string; payload?: unknown });
       } catch (err) {
-        logError("[ACP-Relay] Failed to send buffered message:", err);
+        logError("Failed to send buffered message:", err);
       }
     }
   }
@@ -230,7 +230,7 @@ export async function handleRelayMessage(
     try {
       parsed = JSON.parse(data);
     } catch {
-      logError("[ACP-Relay] parse error:", data.substring(0, 120));
+      logError("parse error:", data.substring(0, 120));
       return;
     }
   } else {
@@ -255,7 +255,7 @@ export async function handleRelayMessage(
     try {
       entry.relayHandle.send(parsed as { type: string; payload?: unknown });
     } catch (err) {
-      logError("[ACP-Relay] relay handle send error:", err);
+      logError("relay handle send error:", err);
       sendToRelayWs(ws, { type: "error", payload: { message: "Agent connection error" } });
       ws.close(1011, "relay send failed");
     }
@@ -273,7 +273,7 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
 
   const duration = Math.round((Date.now() - entry.openTime) / 1000);
   log(
-    `[ACP-Relay] Connection closed: relayWsId=${relayWsId} agentId=${entry.agentId} code=${code ?? "none"} duration=${duration}s`,
+    `Connection closed: relayWsId=${relayWsId} agentId=${entry.agentId} code=${code ?? "none"} duration=${duration}s`,
   );
 
   // 关闭 relay handle

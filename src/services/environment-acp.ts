@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { log } from "@fenix/logger";
 import { AppError, NotFoundError } from "../errors";
-import { log } from "../logger";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo, sessionRepo } from "../repositories";
 import type { RegisterEnvironmentRequest } from "../types/api";

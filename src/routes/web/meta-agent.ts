@@ -4,9 +4,12 @@
  * POST /web/meta-agent/ensure — 查找或创建 meta environment + spawn 实例
  */
 
+import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { ensureMetaEnvironment } from "../../services/meta-agent";
+
+const logger = createLogger("meta-agent");
 
 const app = new Elysia({ name: "web-meta-agent" }).use(authGuardPlugin);
 
@@ -23,7 +26,7 @@ app.post(
       const result = await ensureMetaEnvironment(authCtx, request);
       return { success: true, data: result };
     } catch (err: unknown) {
-      console.error("[meta-agent] ensure failed:", err);
+      logger.error("ensure failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }

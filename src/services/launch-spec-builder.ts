@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { getBaseUrl } from "../config";
-import { log, error as logError } from "../logger";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import type { AgentFullConfig } from "./config/index";
 import { getGlobalSkillsDir } from "./skill";

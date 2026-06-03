@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createLogger } from "../logger";
+import { createLogger } from "@fenix/logger";
 
 // 结构化日志：输出格式包含 level、module、message 字段
 describe("structured logger", () => {

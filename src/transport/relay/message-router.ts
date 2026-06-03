@@ -1,4 +1,4 @@
-import { log } from "../../logger";
+import { log } from "@fenix/logger";
 import { getAcpEventBus } from "../event-bus";
 
 /** Whether an outbound message should be intercepted (not forwarded to agent) */
