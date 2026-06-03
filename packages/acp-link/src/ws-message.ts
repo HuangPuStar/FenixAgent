@@ -7,12 +7,6 @@ export class WsPayloadTooLargeError extends Error {
   }
 }
 
-export interface JsonWsMessage {
-  type: string;
-  payload?: unknown;
-  [key: string]: unknown;
-}
-
 function assertPayloadSize(byteLength: number): void {
   if (byteLength > MAX_CLIENT_WS_PAYLOAD_BYTES) {
     throw new WsPayloadTooLargeError(byteLength);
@@ -44,10 +38,11 @@ function decodeWsText(data: unknown): string {
   throw new Error("Unsupported WebSocket message payload");
 }
 
-export function decodeJsonWsMessage(data: unknown): JsonWsMessage {
-  const parsed = JSON.parse(decodeWsText(data)) as unknown;
-  if (typeof parsed !== "object" || parsed === null || !("type" in parsed) || typeof parsed.type !== "string") {
+export function decodeJsonWsMessage(data: unknown): Record<string, unknown> {
+  const text = decodeWsText(data);
+  const parsed = JSON.parse(text) as unknown;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("Invalid WebSocket message payload");
   }
-  return parsed as JsonWsMessage;
+  return parsed as Record<string, unknown>;
 }

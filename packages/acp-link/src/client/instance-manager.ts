@@ -5,6 +5,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import { buildOpencodeRuntimeConfig, installSkills, writeOpencodeConfig } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
+import { ACP_METHOD, createNotification } from "../json-rpc.js";
 import { resolveExecutable } from "./resolve-executable";
 
 interface InstanceState {
@@ -56,7 +57,7 @@ export class InstanceManager {
 
   async start(
     instanceId: string,
-    send: (type: string, payload?: unknown) => void,
+    send: (message: unknown) => void,
   ): Promise<{ capabilities: Record<string, unknown> }> {
     const state = this.instances.get(instanceId);
     if (!state) throw new Error(`Instance ${instanceId} not prepared`);
@@ -87,7 +88,7 @@ export class InstanceManager {
       () => ({
         requestPermission: async () => ({ outcome: { outcome: "selected" as const, optionId: "allow" } }),
         sessionUpdate: async (params) => {
-          send("session_update", params);
+          send(createNotification(ACP_METHOD.SESSION_UPDATE, params));
         },
         readTextFile: async () => ({ content: "" }),
         writeTextFile: async () => ({}),

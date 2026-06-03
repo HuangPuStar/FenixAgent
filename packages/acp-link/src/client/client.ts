@@ -1,3 +1,4 @@
+import { ACP_METHOD, createRequest, createSuccessResponse, type JsonRpcRequest } from "../json-rpc.js";
 import type {
   ACPSettings,
   AvailableCommand,
@@ -9,8 +10,8 @@ import type {
   ListSessionsResponse,
   LoadSessionRequest,
   PermissionRequestPayload,
+  PromptCapabilities,
   PromptUsage,
-  ProxyMessage,
   ResumeSessionRequest,
   SessionModelState,
   SessionModeState,
@@ -120,7 +121,7 @@ export class ACPClient {
           this.connectReject = null;
         } else {
           // Reconnect completed — resend pending
-          this.pending.resendAll();
+          this.resendPending();
         }
       } else {
         this.stopHeartbeat();
@@ -142,17 +143,9 @@ export class ACPClient {
       }
     });
 
-    // Protocol events → pending.tryResolve
-    this.protocol.on("session_list", (payload) => {
-      this.pending.tryResolve("session_list", payload);
-    });
-    this.protocol.on("session_loaded", (payload) => {
-      this.pending.tryResolve("session_loaded", payload.sessionId);
-      this.sessionLoadedHandler?.(payload.sessionId);
-    });
-    this.protocol.on("session_resumed", (payload) => {
-      this.pending.tryResolve("session_resumed", payload.sessionId);
-      this.sessionLoadedHandler?.(payload.sessionId);
+    // JSON-RPC 响应 → pending.tryResolve
+    this.protocol.on("rpc_response", ({ id, result }) => {
+      this.pending.tryResolve(id, result);
     });
 
     // Protocol pong → heartbeat
@@ -165,9 +158,6 @@ export class ACPClient {
     });
 
     // Protocol business events → backward-compatible handlers
-    this.protocol.on("session_created", (payload) => {
-      this.sessionCreatedHandler?.(payload.sessionId);
-    });
     this.protocol.on("session_update", ({ sessionId, update }) => {
       this.sessionUpdateHandler?.(sessionId, update);
     });
@@ -279,45 +269,66 @@ export class ACPClient {
 
   createSession(cwd?: string, permissionMode?: string): void {
     const sessionCwd = cwd ?? this.settings.cwd;
-    this.sendRaw({ type: "new_session", payload: { cwd: sessionCwd, permissionMode } });
+    const req = createRequest(ACP_METHOD.SESSION_NEW, { cwd: sessionCwd, permissionMode });
+    this.sendJsonRpcAndTrack(req, 30_000)
+      .then((result) => {
+        const r = result as {
+          sessionId: string;
+          promptCapabilities?: PromptCapabilities;
+          models?: SessionModelState | null;
+          modes?: SessionModeState | null;
+        };
+        this.state.initSession(r);
+        this.sessionCreatedHandler?.(r.sessionId);
+      })
+      .catch(() => {});
   }
 
   sendPrompt(content: string | ContentBlock[]): void {
     if (!this.state.sessionId) throw new Error("No active session");
     const blocks: ContentBlock[] = typeof content === "string" ? [{ type: "text" as const, text: content }] : content;
-    this.sendRaw({ type: "prompt", payload: { content: blocks } });
+    const req = createRequest(ACP_METHOD.SESSION_PROMPT, { content: blocks });
+    this.sendJsonRpcAndTrack(req, 120_000)
+      .then((result) => {
+        const r = result as { stopReason?: string; usage?: PromptUsage };
+        this.promptCompleteHandler?.(r.stopReason ?? "end_turn", r.usage);
+      })
+      .catch(() => {});
   }
 
   cancel(): void {
-    this.sendRaw({ type: "cancel" });
+    const req = createRequest(ACP_METHOD.SESSION_CANCEL);
+    this.sendRaw(req);
   }
 
-  setSessionModel(modelId: string): void {
+  setSessionModel(modelId: string): Promise<void> {
     if (!this.state.sessionId) throw new Error("No active session");
-    this.sendRaw({ type: "set_session_model", payload: { modelId } });
+    const req = createRequest(ACP_METHOD.SESSION_SET_MODEL, { modelId });
+    return this.sendJsonRpcAndWait<{ modelId: string }>(req, 30_000).then(() => {
+      this.state.updateCurrentModel(modelId);
+    });
   }
 
-  setSessionMode(modeId: string): void {
+  setSessionMode(modeId: string): Promise<void> {
     if (!this.state.sessionId) throw new Error("No active session");
-    this.sendRaw({ type: "set_session_mode", payload: { modeId } });
+    const req = createRequest(ACP_METHOD.SESSION_SET_MODE, { modeId });
+    return this.sendJsonRpcAndWait<{ modeId: string }>(req, 30_000).then(() => {
+      this.state.updateCurrentMode(modeId);
+    });
   }
 
   respondToPermission(requestId: string, optionId: string | null): void {
     const outcome = optionId ? { outcome: "selected" as const, optionId } : { outcome: "cancelled" as const };
-    this.sendRaw({ type: "permission_response", payload: { requestId, outcome } });
+    const response = createSuccessResponse(requestId, { outcome });
+    this.sendRaw(response);
   }
 
   listSessions(request?: ListSessionsRequest): Promise<ListSessionsResponse> {
     if (!this.state.supportsSessionList) {
       throw new Error("Listing sessions is not supported by this agent");
     }
-    return this.pending.sendAndWait<ListSessionsResponse>(
-      (req) => this.sendRaw({ type: "list_sessions", payload: req }),
-      "list_sessions",
-      request,
-      "session_list",
-      30_000,
-    );
+    const req = createRequest(ACP_METHOD.SESSION_LIST, request ?? {});
+    return this.sendJsonRpcAndWait<ListSessionsResponse>(req, 30_000);
   }
 
   loadSession(request: LoadSessionRequest): Promise<string> {
@@ -325,13 +336,18 @@ export class ACPClient {
       throw new Error("Loading sessions is not supported by this agent");
     }
     this.sessionSwitchingHandler?.(request.sessionId);
-    return this.pending.sendAndWait<string>(
-      (req) => this.sendRaw({ type: "load_session", payload: req }),
-      "session_loaded",
-      request,
-      "session_loaded",
-      60_000,
-    );
+    const req = createRequest(ACP_METHOD.SESSION_LOAD, request);
+    return this.sendJsonRpcAndWait<string>(req, 60_000).then((result) => {
+      const r = result as unknown as {
+        sessionId: string;
+        promptCapabilities?: PromptCapabilities;
+        models?: SessionModelState | null;
+        modes?: SessionModeState | null;
+      };
+      this.state.initSession(r);
+      this.sessionLoadedHandler?.(r.sessionId);
+      return r.sessionId;
+    });
   }
 
   resumeSession(request: ResumeSessionRequest): Promise<string> {
@@ -339,13 +355,18 @@ export class ACPClient {
       throw new Error("Resuming sessions is not supported by this agent");
     }
     this.sessionSwitchingHandler?.(request.sessionId);
-    return this.pending.sendAndWait<string>(
-      (req) => this.sendRaw({ type: "resume_session", payload: req }),
-      "session_resumed",
-      request,
-      "session_resumed",
-      30_000,
-    );
+    const req = createRequest(ACP_METHOD.SESSION_RESUME, request);
+    return this.sendJsonRpcAndWait<string>(req, 30_000).then((result) => {
+      const r = result as unknown as {
+        sessionId: string;
+        promptCapabilities?: PromptCapabilities;
+        models?: SessionModelState | null;
+        modes?: SessionModeState | null;
+      };
+      this.state.initSession(r);
+      this.sessionLoadedHandler?.(r.sessionId);
+      return r.sessionId;
+    });
   }
 
   // ==========================================================================
@@ -495,8 +516,25 @@ export class ACPClient {
   // Internal helpers
   // ==========================================================================
 
-  private sendRaw(message: ProxyMessage): void {
+  private sendRaw(message: unknown): void {
     this.transport.send(JSON.stringify(message));
+  }
+
+  private sendJsonRpcAndWait<T>(req: JsonRpcRequest, timeout: number): Promise<T> {
+    const promise = this.pending.register<T>(req.id, req, timeout);
+    this.sendRaw(req as unknown as Record<string, unknown>);
+    return promise;
+  }
+
+  private sendJsonRpcAndTrack(req: JsonRpcRequest, timeout: number): Promise<unknown> {
+    return this.sendJsonRpcAndWait(req, timeout);
+  }
+
+  private resendPending(): void {
+    const pendingReqs = this.pending.getPendingRequests();
+    for (const { request } of pendingReqs) {
+      this.sendRaw(request as Record<string, unknown>);
+    }
   }
 
   private async handleBrowserToolCall(callId: string, params: BrowserToolParams): Promise<void> {

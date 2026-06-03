@@ -119,43 +119,16 @@ export class ACPState extends EventEmitter<StateEvents> {
       }
     };
 
-    const onSessionCreated = (payload: {
-      sessionId: string;
-      promptCapabilities?: PromptCapabilities;
-      models?: SessionModelState | null;
-      modes?: SessionModeState | null;
-    }) => {
-      this._sessionId = payload.sessionId;
-      this.emit("sessionIdChange", this._sessionId);
-      this.setPromptCapabilities(payload.promptCapabilities ?? null);
-      this.setModelState(payload.models ?? null);
-      this.setModeState(payload.modes ?? null);
+    const onSessionCreated = (payload: Parameters<ACPState["initSession"]>[0]) => {
+      this.initSession(payload);
     };
 
-    const onSessionLoaded = (payload: {
-      sessionId: string;
-      promptCapabilities?: PromptCapabilities;
-      models?: SessionModelState | null;
-      modes?: SessionModeState | null;
-    }) => {
-      this._sessionId = payload.sessionId;
-      this.emit("sessionIdChange", this._sessionId);
-      this.setPromptCapabilities(payload.promptCapabilities ?? null);
-      this.setModelState(payload.models ?? null);
-      this.setModeState(payload.modes ?? null);
+    const onSessionLoaded = (payload: Parameters<ACPState["initSession"]>[0]) => {
+      this.initSession(payload);
     };
 
-    const onSessionResumed = (payload: {
-      sessionId: string;
-      promptCapabilities?: PromptCapabilities;
-      models?: SessionModelState | null;
-      modes?: SessionModeState | null;
-    }) => {
-      this._sessionId = payload.sessionId;
-      this.emit("sessionIdChange", this._sessionId);
-      this.setPromptCapabilities(payload.promptCapabilities ?? null);
-      this.setModelState(payload.models ?? null);
-      this.setModeState(payload.modes ?? null);
+    const onSessionResumed = (payload: Parameters<ACPState["initSession"]>[0]) => {
+      this.initSession(payload);
     };
 
     const onSessionUpdate = ({ update }: { sessionId: string; update: SessionUpdate }) => {
@@ -198,6 +171,39 @@ export class ACPState extends EventEmitter<StateEvents> {
       protocol.off("model_changed", onModelChanged);
       protocol.off("mode_changed", onModeChanged);
     };
+  }
+
+  /**
+   * 从 JSON-RPC 响应中初始化 session 状态（sessionId + capabilities + models + modes）。
+   * 供 ACPClient 在收到 session/new、session/load、session/resume 响应时调用。
+   */
+  initSession(payload: {
+    sessionId: string;
+    promptCapabilities?: PromptCapabilities | null;
+    models?: SessionModelState | null;
+    modes?: SessionModeState | null;
+  }): void {
+    this._sessionId = payload.sessionId;
+    this.emit("sessionIdChange", this._sessionId);
+    this.setPromptCapabilities(payload.promptCapabilities ?? null);
+    this.setModelState(payload.models ?? null);
+    this.setModeState(payload.modes ?? null);
+  }
+
+  /** 更新当前 model 并发射 modelStateChange 事件 */
+  updateCurrentModel(modelId: string): void {
+    if (this._modelState) {
+      this._modelState = { ...this._modelState, currentModelId: modelId };
+      this.emit("modelStateChange", this._modelState);
+    }
+  }
+
+  /** 更新当前 mode 并发射 modeStateChange 事件 */
+  updateCurrentMode(modeId: string): void {
+    if (this._modeState) {
+      this._modeState = { ...this._modeState, currentModeId: modeId };
+      this.emit("modeStateChange", this._modeState);
+    }
   }
 
   /** 断开所有订阅，重置状态 */

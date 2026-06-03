@@ -1,15 +1,11 @@
 /**
- * ACP request/response 关联机制。
+ * 基于 JSON-RPC ID 的请求/响应关联。
  *
- * 同一 requestType 同时只能有一个 pending（隐式关联）。
- * 支持超时、重连后续传、永久断开时 reject all。
+ * 每个 pending 请求通过 JSON-RPC `id` 唯一标识。
+ * 支持超时、重连后重传、永久断开时 reject all。
  */
-// biome-ignore lint/suspicious/noExplicitAny: generic pending request/response requires erased types
+// biome-ignore lint/suspicious/noExplicitAny: generic pending requires erased types
 interface PendingEntry<T = any> {
-  requestType: string;
-  responseType: string;
-  // biome-ignore lint/suspicious/noExplicitAny: send function accepts any request shape
-  sendFn: (request: any) => void;
   // biome-ignore lint/suspicious/noExplicitAny: request shape is determined by caller
   request: any;
   // biome-ignore lint/suspicious/noExplicitAny: resolve value type varies by request
@@ -21,23 +17,19 @@ interface PendingEntry<T = any> {
 
 export class ACPPending {
   // biome-ignore lint/suspicious/noExplicitAny: pending map stores heterogeneously typed entries
-  private pending = new Map<string, PendingEntry<any>>();
+  private pending = new Map<number | string, PendingEntry<any>>();
 
   /**
-   * 注册 pending 请求并立即发送。
-   * 如果同 requestType 已有 pending，返回已有 promise（去重）。
+   * 注册 pending 请求。
+   * 如果同 id 已有 pending，返回已有 promise（去重）。
    */
-  sendAndWait<TResponse>(
-    // biome-ignore lint/suspicious/noExplicitAny: send function accepts any request shape
-    sendFn: (request: any) => void,
-    requestType: string,
+  register<TResponse>(
+    id: number | string,
     // biome-ignore lint/suspicious/noExplicitAny: request shape is determined by caller
     request: any,
-    responseType: string,
     timeout: number,
   ): Promise<TResponse> {
-    // 去重：已有同类型 pending 则复用
-    const existing = this.pending.get(requestType);
+    const existing = this.pending.get(id);
     if (existing) {
       return existing.promise as Promise<TResponse>;
     }
@@ -51,19 +43,14 @@ export class ACPPending {
     });
 
     const timer = setTimeout(() => {
-      const entry = this.pending.get(requestType);
+      const entry = this.pending.get(id);
       if (entry) {
-        this.pending.delete(requestType);
-        entry.reject(new Error(`${requestType} timed out`));
+        this.pending.delete(id);
+        entry.reject(new Error(`JSON-RPC request timed out: id=${id}`));
       }
     }, timeout);
 
-    sendFn(request);
-
-    this.pending.set(requestType, {
-      requestType,
-      responseType,
-      sendFn,
+    this.pending.set(id, {
       request,
       resolve: resolveFn,
       reject: rejectFn,
@@ -75,35 +62,27 @@ export class ACPPending {
   }
 
   /**
-   * 尝试用响应匹配 pending 请求。
+   * 用 JSON-RPC 响应的 id 匹配 pending 请求。
    * 返回 true 表示匹配成功（已 resolve）。
    */
   // biome-ignore lint/suspicious/noExplicitAny: response payload type varies by request
-  tryResolve(responseType: string, payload: any): boolean {
-    for (const [key, entry] of this.pending) {
-      if (entry.responseType === responseType) {
-        clearTimeout(entry.timer);
-        this.pending.delete(key);
-        entry.resolve(payload);
-        return true;
-      }
+  tryResolve(id: number | string, result: any): boolean {
+    const entry = this.pending.get(id);
+    if (entry) {
+      clearTimeout(entry.timer);
+      this.pending.delete(id);
+      entry.resolve(result);
+      return true;
     }
     return false;
   }
 
   /**
    * 重连后重新发送所有未完成的 pending 请求。
+   * 返回所有 pending 的请求数据，供调用方重新发送。
    */
-  resendAll(): void {
-    for (const [, entry] of this.pending) {
-      clearTimeout(entry.timer);
-      try {
-        entry.sendFn(entry.request);
-      } catch (err) {
-        this.pending.delete(entry.requestType);
-        entry.reject(err instanceof Error ? err : new Error(String(err)));
-      }
-    }
+  getPendingRequests(): Array<{ id: number | string; request: unknown }> {
+    return [...this.pending.entries()].map(([id, entry]) => ({ id, request: entry.request }));
   }
 
   /**

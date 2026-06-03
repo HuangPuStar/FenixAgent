@@ -1,10 +1,16 @@
 import type * as acp from "@agentclientprotocol/sdk";
+import {
+  ACP_METHOD,
+  createErrorResponse,
+  createSuccessResponse,
+  isTransportMessage,
+  type JsonRpcRequest,
+} from "./json-rpc.js";
 import type {
   AgentCapabilities,
   ContentBlock,
   PermissionResponsePayload,
   PromptCapabilities,
-  ProxyMessage,
   SessionModelState,
 } from "./types.js";
 
@@ -48,63 +54,85 @@ function cancelPendingPermissions(state: AcpSessionState): void {
 }
 
 /**
- * ACP 消息分发器。将前端 ACP 协议消息翻译成 ClientSideConnection SDK 调用，
- * 通过 send 回调将结果发回。server mode 和 client mode 的 relay 共用此逻辑。
+ * ACP 消息分发器。接收 JSON-RPC 请求，调用 ClientSideConnection SDK，
+ * 通过 send 回调返回 JSON-RPC 响应/通知。
+ * server mode 和 client mode 的 relay 共用此逻辑。
  */
 export class AcpDispatcher {
   constructor(
     private state: AcpSessionState,
-    private send: (type: string, payload?: unknown) => void,
+    private send: (message: unknown) => void,
   ) {}
 
-  async dispatch(message: ProxyMessage): Promise<void> {
-    switch (message.type) {
-      case "disconnect":
-        this.handleDisconnect();
-        break;
-      case "new_session":
-        await this.handleNewSession(message.payload ?? {});
-        break;
-      case "prompt":
-        await this.handlePrompt(message.payload);
-        break;
-      case "permission_response":
-        this.handlePermissionResponse(message.payload);
-        break;
-      case "cancel":
-        await this.handleCancel();
-        break;
-      case "set_session_model":
-        await this.handleSetSessionModel(message.payload);
-        break;
-      case "set_session_mode":
-        await this.handleSetSessionMode(message.payload);
-        break;
-      case "list_sessions":
-        await this.handleListSessions(message.payload ?? {});
-        break;
-      case "load_session":
-        await this.handleLoadSession(message.payload);
-        break;
-      case "resume_session":
-        await this.handleResumeSession(message.payload);
-        break;
+  /** 处理从 WS 收到的原始消息（可能是 JSON-RPC 或传输层消息） */
+  async handleMessage(raw: unknown): Promise<void> {
+    if (isTransportMessage(raw)) {
+      await this.handleTransportMessage(raw as Record<string, unknown>);
+      return;
+    }
+
+    const msg = raw as Record<string, unknown>;
+    if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id !== undefined) {
+      await this.handleRequest(msg as unknown as JsonRpcRequest);
+    }
+  }
+
+  private async handleTransportMessage(msg: Record<string, unknown>): Promise<void> {
+    switch (msg.type) {
       case "connect":
-        // connect 在远程模式下不需要（InstanceManager.start 已完成初始化）
-        // 直接回复当前状态
         if (this.state.connection) {
-          this.send("status", {
-            connected: true,
-            agentInfo: { name: "remote-agent" },
-            capabilities: this.state.agentCapabilities,
+          this.send({
+            type: "status",
+            payload: {
+              connected: true,
+              agentInfo: { name: "remote-agent" },
+              capabilities: this.state.agentCapabilities,
+            },
           });
         }
         break;
+      case "disconnect":
+        this.handleDisconnect();
+        break;
       case "ping":
-        this.send("pong");
+        this.send({ type: "pong" });
         break;
-      case "browser_tool_result":
-        break;
+    }
+  }
+
+  private async handleRequest(msg: JsonRpcRequest): Promise<void> {
+    const { id, method, params } = msg;
+    try {
+      switch (method) {
+        case ACP_METHOD.SESSION_NEW:
+          await this.handleNewSession(id, (params ?? {}) as Record<string, unknown>);
+          break;
+        case ACP_METHOD.SESSION_PROMPT:
+          await this.handlePrompt(id, params as { content: ContentBlock[] });
+          break;
+        case ACP_METHOD.SESSION_CANCEL:
+          await this.handleCancel(id);
+          break;
+        case ACP_METHOD.SESSION_SET_MODEL:
+          await this.handleSetSessionModel(id, params as { modelId: string });
+          break;
+        case ACP_METHOD.SESSION_SET_MODE:
+          await this.handleSetSessionMode(id, params as { modeId: string });
+          break;
+        case ACP_METHOD.SESSION_LIST:
+          await this.handleListSessions(id, (params ?? {}) as { cwd?: string; cursor?: string });
+          break;
+        case ACP_METHOD.SESSION_LOAD:
+          await this.handleLoadSession(id, params as { sessionId: string; cwd?: string });
+          break;
+        case ACP_METHOD.SESSION_RESUME:
+          await this.handleResumeSession(id, params as { sessionId: string; cwd?: string });
+          break;
+        default:
+          this.send(createErrorResponse(id, -32601, `Method not found: ${method}`));
+      }
+    } catch (error) {
+      this.send(createErrorResponse(id, -32603, (error as Error).message));
     }
   }
 
@@ -112,16 +140,16 @@ export class AcpDispatcher {
     cancelPendingPermissions(this.state);
     this.state.connection = null;
     this.state.sessionId = null;
-    this.send("status", { connected: false });
+    this.send({ type: "status", payload: { connected: false } });
   }
 
-  private async handleNewSession(params: { cwd?: string }): Promise<void> {
+  private async handleNewSession(id: number | string, params: Record<string, unknown>): Promise<void> {
     if (!this.state.connection) {
-      this.send("error", { message: "Not connected to agent" });
+      this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
     try {
-      const cwd = (params as Record<string, unknown>).cwd as string | undefined;
+      const cwd = params.cwd as string | undefined;
       const result = await this.state.connection.newSession({
         cwd: cwd ?? process.cwd(),
         mcpServers: [],
@@ -129,20 +157,22 @@ export class AcpDispatcher {
       this.state.sessionId = result.sessionId;
       this.state.modelState = result.models ?? null;
       this.state.modeState = result.modes ?? null;
-      this.send("session_created", {
-        ...result,
-        promptCapabilities: this.state.promptCapabilities,
-        models: this.state.modelState,
-        modes: this.state.modeState,
-      });
+      this.send(
+        createSuccessResponse(id, {
+          sessionId: result.sessionId,
+          promptCapabilities: this.state.promptCapabilities,
+          models: this.state.modelState,
+          modes: this.state.modeState,
+        }),
+      );
     } catch (error) {
-      this.send("error", { message: `Failed to create session: ${(error as Error).message}` });
+      this.send(createErrorResponse(id, -32603, `Failed to create session: ${(error as Error).message}`));
     }
   }
 
-  private async handlePrompt(params: { content: ContentBlock[] }): Promise<void> {
+  private async handlePrompt(id: number | string, params: { content: ContentBlock[] }): Promise<void> {
     if (!this.state.connection || !this.state.sessionId) {
-      this.send("error", { message: "No active session" });
+      this.send(createErrorResponse(id, -32000, "No active session"));
       return;
     }
     try {
@@ -150,37 +180,43 @@ export class AcpDispatcher {
         sessionId: this.state.sessionId,
         prompt: params.content as acp.ContentBlock[],
       });
-      this.send("prompt_complete", result);
+      this.send(createSuccessResponse(id, result));
     } catch (error) {
-      this.send("error", { message: `Prompt failed: ${(error as Error).message}` });
+      this.send(createErrorResponse(id, -32603, `Prompt failed: ${(error as Error).message}`));
     }
   }
 
-  private handlePermissionResponse(payload: PermissionResponsePayload): void {
+  /** 处理 JSON-RPC 响应形式的 permission_response（匹配 agent 发来的 requestPermission 的 id） */
+  handlePermissionResponse(id: number | string, payload: PermissionResponsePayload): void {
     const pending = this.state.pendingPermissions.get(payload.requestId);
     if (!pending) return;
     clearTimeout(pending.timeout);
     this.state.pendingPermissions.delete(payload.requestId);
     pending.resolve(payload.outcome);
+    this.send(createSuccessResponse(id, { acknowledged: true }));
   }
 
-  private async handleCancel(): Promise<void> {
-    if (!this.state.connection || !this.state.sessionId) return;
+  private async handleCancel(id: number | string): Promise<void> {
+    if (!this.state.connection || !this.state.sessionId) {
+      this.send(createSuccessResponse(id, { cancelled: false }));
+      return;
+    }
     cancelPendingPermissions(this.state);
     try {
       await this.state.connection.cancel({ sessionId: this.state.sessionId });
+      this.send(createSuccessResponse(id, { cancelled: true }));
     } catch (error) {
-      console.error("[AcpDispatcher] cancel failed:", (error as Error).message);
+      this.send(createErrorResponse(id, -32603, `Cancel failed: ${(error as Error).message}`));
     }
   }
 
-  private async handleSetSessionModel(params: { modelId: string }): Promise<void> {
+  private async handleSetSessionModel(id: number | string, params: { modelId: string }): Promise<void> {
     if (!this.state.connection || !this.state.sessionId) {
-      this.send("error", { message: "No active session" });
+      this.send(createErrorResponse(id, -32000, "No active session"));
       return;
     }
     if (!this.state.modelState) {
-      this.send("error", { message: "Model selection not supported" });
+      this.send(createErrorResponse(id, -32000, "Model selection not supported"));
       return;
     }
     try {
@@ -189,19 +225,19 @@ export class AcpDispatcher {
         modelId: params.modelId,
       });
       this.state.modelState = { ...this.state.modelState, currentModelId: params.modelId };
-      this.send("model_changed", { modelId: params.modelId });
+      this.send(createSuccessResponse(id, { modelId: params.modelId }));
     } catch (error) {
-      this.send("error", { message: `Failed to set model: ${(error as Error).message}` });
+      this.send(createErrorResponse(id, -32603, `Failed to set model: ${(error as Error).message}`));
     }
   }
 
-  private async handleSetSessionMode(params: { modeId: string }): Promise<void> {
+  private async handleSetSessionMode(id: number | string, params: { modeId: string }): Promise<void> {
     if (!this.state.connection || !this.state.sessionId) {
-      this.send("error", { message: "No active session" });
+      this.send(createErrorResponse(id, -32000, "No active session"));
       return;
     }
     if (!this.state.modeState) {
-      this.send("error", { message: "Mode selection not supported" });
+      this.send(createErrorResponse(id, -32000, "Mode selection not supported"));
       return;
     }
     try {
@@ -210,19 +246,19 @@ export class AcpDispatcher {
         modeId: params.modeId,
       });
       this.state.modeState = { ...this.state.modeState, currentModeId: params.modeId };
-      this.send("mode_changed", { modeId: params.modeId });
+      this.send(createSuccessResponse(id, { modeId: params.modeId }));
     } catch (error) {
-      this.send("error", { message: `Failed to set mode: ${(error as Error).message}` });
+      this.send(createErrorResponse(id, -32603, `Failed to set mode: ${(error as Error).message}`));
     }
   }
 
-  private async handleListSessions(params: { cwd?: string; cursor?: string }): Promise<void> {
+  private async handleListSessions(id: number | string, params: { cwd?: string; cursor?: string }): Promise<void> {
     if (!this.state.connection) {
-      this.send("error", { message: "Not connected to agent" });
+      this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
     if (!this.state.agentCapabilities?.sessionCapabilities?.list) {
-      this.send("error", { message: "Listing sessions is not supported by this agent" });
+      this.send(createErrorResponse(id, -32000, "Listing sessions is not supported by this agent"));
       return;
     }
     try {
@@ -232,29 +268,31 @@ export class AcpDispatcher {
       });
       const MAX_SESSIONS = 20;
       const sessions = result.sessions.slice(0, MAX_SESSIONS);
-      this.send("session_list", {
-        sessions: sessions.map((s: acp.SessionInfo) => ({
-          _meta: s._meta,
-          cwd: s.cwd,
-          sessionId: s.sessionId,
-          title: s.title,
-          updatedAt: s.updatedAt,
-        })),
-        nextCursor: result.nextCursor,
-        _meta: result._meta,
-      });
+      this.send(
+        createSuccessResponse(id, {
+          sessions: sessions.map((s: acp.SessionInfo) => ({
+            _meta: s._meta,
+            cwd: s.cwd,
+            sessionId: s.sessionId,
+            title: s.title,
+            updatedAt: s.updatedAt,
+          })),
+          nextCursor: result.nextCursor,
+          _meta: result._meta,
+        }),
+      );
     } catch (error) {
-      this.send("error", { message: `Failed to list sessions: ${(error as Error).message}` });
+      this.send(createErrorResponse(id, -32603, `Failed to list sessions: ${(error as Error).message}`));
     }
   }
 
-  private async handleLoadSession(params: { sessionId: string; cwd?: string }): Promise<void> {
+  private async handleLoadSession(id: number | string, params: { sessionId: string; cwd?: string }): Promise<void> {
     if (!this.state.connection) {
-      this.send("error", { message: "Not connected to agent" });
+      this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
     if (!this.state.agentCapabilities?.loadSession) {
-      this.send("error", { message: "Loading sessions is not supported" });
+      this.send(createErrorResponse(id, -32000, "Loading sessions is not supported"));
       return;
     }
     try {
@@ -266,24 +304,26 @@ export class AcpDispatcher {
       this.state.sessionId = params.sessionId;
       this.state.modelState = result.models ?? null;
       this.state.modeState = result.modes ?? null;
-      this.send("session_loaded", {
-        sessionId: params.sessionId,
-        promptCapabilities: this.state.promptCapabilities,
-        models: this.state.modelState,
-        modes: this.state.modeState,
-      });
+      this.send(
+        createSuccessResponse(id, {
+          sessionId: params.sessionId,
+          promptCapabilities: this.state.promptCapabilities,
+          models: this.state.modelState,
+          modes: this.state.modeState,
+        }),
+      );
     } catch (error) {
-      this.send("error", { message: `Failed to load session: ${(error as Error).message}` });
+      this.send(createErrorResponse(id, -32603, `Failed to load session: ${(error as Error).message}`));
     }
   }
 
-  private async handleResumeSession(params: { sessionId: string; cwd?: string }): Promise<void> {
+  private async handleResumeSession(id: number | string, params: { sessionId: string; cwd?: string }): Promise<void> {
     if (!this.state.connection) {
-      this.send("error", { message: "Not connected to agent" });
+      this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
     if (!this.state.agentCapabilities?.sessionCapabilities?.resume) {
-      this.send("error", { message: "Resuming sessions is not supported" });
+      this.send(createErrorResponse(id, -32000, "Resuming sessions is not supported"));
       return;
     }
     try {
@@ -295,14 +335,16 @@ export class AcpDispatcher {
       this.state.sessionId = params.sessionId;
       this.state.modelState = result.models ?? null;
       this.state.modeState = result.modes ?? null;
-      this.send("session_resumed", {
-        sessionId: params.sessionId,
-        promptCapabilities: this.state.promptCapabilities,
-        models: this.state.modelState,
-        modes: this.state.modeState,
-      });
+      this.send(
+        createSuccessResponse(id, {
+          sessionId: params.sessionId,
+          promptCapabilities: this.state.promptCapabilities,
+          models: this.state.modelState,
+          modes: this.state.modeState,
+        }),
+      );
     } catch (error) {
-      this.send("error", { message: `Failed to resume session: ${(error as Error).message}` });
+      this.send(createErrorResponse(id, -32603, `Failed to resume session: ${(error as Error).message}`));
     }
   }
 }

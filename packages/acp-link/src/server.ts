@@ -5,14 +5,17 @@ import * as acp from "@agentclientprotocol/sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
-import type {
-  AgentCapabilities,
-  ContentBlock,
-  PermissionResponsePayload,
-  PromptCapabilities,
-  ProxyMessage,
-  SessionModelState,
-} from "./types.js";
+import {
+  ACP_METHOD,
+  createErrorResponse,
+  createNotification,
+  createSuccessResponse,
+  isJsonRpcMessage,
+  isJsonRpcRequest,
+  isTransportMessage,
+  type JsonRpcRequest,
+} from "./json-rpc.js";
+import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
 
 // ── WebSocket 抽象接口 ──────────────────────────────
@@ -64,6 +67,7 @@ export interface AcpServerHandle {
 
 // Pending permission request
 interface PendingPermission {
+  jsonRpcId: number | string;
   resolve: (outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string }) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
@@ -90,9 +94,11 @@ const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
 // Heartbeat interval for WebSocket ping/pong (30 seconds)
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-// Generate unique request ID
-function generateRequestId(): string {
-  return `perm_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+// Generate unique permission request ID
+let _permId = 0;
+function generatePermRequestId(): string {
+  _permId += 1;
+  return `perm_${Date.now()}_${_permId}`;
 }
 
 function cancelPendingPermissions(clientState: ClientState): void {
@@ -101,153 +107,6 @@ function cancelPendingPermissions(clientState: ClientState): void {
     pending.resolve({ outcome: "cancelled" });
   }
   clientState.pendingPermissions.clear();
-}
-
-// ---------------------------------------------------------------------------
-// Pure validation / decoding (no module-level state)
-// ---------------------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function optionalStringField(payload: Record<string, unknown>, key: string, source: string): string | undefined {
-  if (!Object.hasOwn(payload, key)) return;
-  const value = payload[key];
-  if (typeof value === "string") return value;
-  throw new Error(`Invalid ${source}: expected a string`);
-}
-
-function payloadRecord(value: unknown, type: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new Error(`Invalid ${type} payload`);
-  }
-  return value;
-}
-
-function optionalPayloadRecord(value: unknown, type: string): Record<string, unknown> {
-  if (value === undefined) return {};
-  return payloadRecord(value, type);
-}
-
-function optionalRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {};
-}
-
-function decodeContentBlocks(value: unknown): ContentBlock[] {
-  if (!Array.isArray(value) || !value.every((block) => isRecord(block) && typeof block.type === "string")) {
-    throw new Error("Invalid prompt payload");
-  }
-  return value as ContentBlock[];
-}
-
-function decodePermissionResponsePayload(value: unknown): PermissionResponsePayload {
-  const payload = payloadRecord(value, "permission_response");
-  if (typeof payload.requestId !== "string" || !isRecord(payload.outcome)) {
-    throw new Error("Invalid permission_response payload");
-  }
-  if (payload.outcome.outcome === "cancelled") {
-    return { requestId: payload.requestId, outcome: { outcome: "cancelled" } };
-  }
-  if (payload.outcome.outcome === "selected" && typeof payload.outcome.optionId === "string") {
-    return {
-      requestId: payload.requestId,
-      outcome: { outcome: "selected", optionId: payload.outcome.optionId },
-    };
-  }
-  throw new Error("Invalid permission_response payload");
-}
-
-function decodeClientMessage(message: Record<string, unknown>): ProxyMessage {
-  if (typeof message.type !== "string") {
-    throw new Error("Invalid WebSocket message payload");
-  }
-
-  switch (message.type) {
-    case "connect":
-    case "disconnect":
-    case "cancel":
-    case "ping":
-      return { type: message.type };
-    case "new_session": {
-      const payload = optionalPayloadRecord(message.payload, "new_session");
-      return {
-        type: "new_session",
-        payload: {
-          cwd: optionalStringField(payload, "cwd", "new_session.cwd"),
-          permissionMode: optionalStringField(payload, "permissionMode", "new_session.permissionMode"),
-        },
-      };
-    }
-    case "prompt": {
-      const payload = payloadRecord(message.payload, "prompt");
-      return {
-        type: "prompt",
-        payload: { content: decodeContentBlocks(payload.content) },
-      };
-    }
-    case "permission_response":
-      return {
-        type: "permission_response",
-        payload: decodePermissionResponsePayload(message.payload),
-      };
-    case "set_session_model": {
-      const payload = payloadRecord(message.payload, "set_session_model");
-      if (typeof payload.modelId !== "string") {
-        throw new Error("Invalid set_session_model payload");
-      }
-      return {
-        type: "set_session_model",
-        payload: { modelId: payload.modelId },
-      };
-    }
-    case "set_session_mode": {
-      const payload = payloadRecord(message.payload, "set_session_mode");
-      if (typeof payload.modeId !== "string") {
-        throw new Error("Invalid set_session_mode payload");
-      }
-      return {
-        type: "set_session_mode",
-        payload: { modeId: payload.modeId },
-      };
-    }
-    case "list_sessions": {
-      const payload = optionalRecord(message.payload);
-      return {
-        type: "list_sessions",
-        payload: {
-          cwd: optionalString(payload.cwd),
-          cursor: optionalString(payload.cursor),
-        },
-      };
-    }
-    case "load_session":
-    case "resume_session": {
-      const payload = payloadRecord(message.payload, message.type);
-      if (typeof payload.sessionId !== "string") {
-        throw new Error(`Invalid ${message.type} payload`);
-      }
-      return {
-        type: message.type,
-        payload: {
-          sessionId: payload.sessionId,
-          cwd: optionalString(payload.cwd),
-        },
-      };
-    }
-    case "browser_tool_result":
-      return message as unknown as ProxyMessage;
-    default:
-      throw new Error(`Unknown message type: ${message.type}`);
-  }
-}
-
-export function decodeClientWsMessage(data: unknown): ProxyMessage {
-  return decodeClientMessage(decodeJsonWsMessage(data));
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +167,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   let ws: WebSocket | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempt = 0;
-  const MAX_RECONNECT_MS = 30_000; // 最大重连间隔
+  const MAX_RECONNECT_MS = 30_000;
   let manualClose = false;
 
   function setupSessionCallbacks(): void {
@@ -421,12 +280,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             if (instanceMgr.hasInstance(msg.session_id)) {
               const dispatcher = instanceMgr.getDispatcher(msg.session_id);
               if (dispatcher) {
-                try {
-                  const acpMsg = decodeClientMessage(msg.payload as Record<string, unknown>);
-                  await dispatcher.dispatch(acpMsg);
-                } catch {
-                  // ignore parse errors for legacy session_data
-                }
+                await dispatcher.handleMessage(msg.payload);
               }
             } else {
               sessionMgr.sendData(msg.session_id, msg.payload);
@@ -469,14 +323,15 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const instId = msg.instance_id as string;
             try {
               // send 回调：dispatcher 的 ACP 回复通过 relay 消息发回 RCS
-              const relaySend = (type: string, payload?: unknown) => {
+              // payload 直接传入消息对象（JSON-RPC 或传输层消息）
+              const relaySend = (msgObj: unknown) => {
                 if (ws && ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
                       type: "relay",
                       instance_id: instId,
                       session_id: instId,
-                      payload: { type, payload },
+                      payload: msgObj,
                     }),
                   );
                 }
@@ -532,28 +387,25 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
           case "relay": {
             const instId = msg.instance_id as string;
             const sessId = msg.session_id as string;
-            const relayPayload = msg.payload as Record<string, unknown>;
+            const relayPayload = msg.payload;
             if (instanceMgr.hasInstance(instId)) {
               const dispatcher = instanceMgr.getDispatcher(instId);
               if (dispatcher) {
                 try {
-                  // relayPayload 就是前端发的完整 ACP 消息：{ type: "prompt", payload: {...} }
-                  // decodeClientMessage 会做格式校验
-                  const acpMsg = decodeClientMessage(relayPayload);
-                  await dispatcher.dispatch(acpMsg);
+                  await dispatcher.handleMessage(relayPayload);
                 } catch (err) {
                   ws!.send(
                     JSON.stringify({
                       type: "relay",
                       instance_id: instId,
                       session_id: sessId,
-                      payload: { type: "error", payload: { message: (err as Error).message } },
+                      payload: createErrorResponse(null, -32603, (err as Error).message),
                     }),
                   );
                 }
               }
             } else {
-              sessionMgr.sendData(sessId, { type: "session_data", payload: relayPayload });
+              sessionMgr.sendData(sessId, relayPayload);
             }
             break;
           }
@@ -611,34 +463,40 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   // --- Helpers (closures over local `clients`) ---
 
-  function send(ws: AcpWs, type: string, payload?: unknown): void {
+  function sendMsg(ws: AcpWs, message: unknown): void {
     if (ws.readyState === WS_OPEN) {
-      ws.send(JSON.stringify({ type, payload }));
+      ws.send(JSON.stringify(message));
     }
   }
 
   function createClient(ws: AcpWs, clientState: ClientState): acp.Client {
     return {
       async requestPermission(params) {
-        const requestId = generateRequestId();
+        const permId = generatePermRequestId();
 
         const outcomePromise = new Promise<{ outcome: "cancelled" } | { outcome: "selected"; optionId: string }>(
           (resolve) => {
             const timeout = setTimeout(() => {
-              console.warn("permission request timed out:", requestId);
-              clientState.pendingPermissions.delete(requestId);
+              console.warn("permission request timed out:", permId);
+              clientState.pendingPermissions.delete(permId);
               resolve({ outcome: "cancelled" });
             }, PERMISSION_TIMEOUT_MS);
 
-            clientState.pendingPermissions.set(requestId, { resolve, timeout });
+            clientState.pendingPermissions.set(permId, { jsonRpcId: permId, resolve, timeout });
           },
         );
 
-        send(ws, "permission_request", {
-          requestId,
-          sessionId: params.sessionId,
-          options: params.options,
-          toolCall: params.toolCall,
+        // 发送 JSON-RPC 请求给客户端
+        sendMsg(ws, {
+          jsonrpc: "2.0",
+          id: permId,
+          method: ACP_METHOD.REQUEST_PERMISSION,
+          params: {
+            requestId: permId,
+            sessionId: params.sessionId,
+            options: params.options,
+            toolCall: params.toolCall,
+          },
         });
 
         const outcome = await outcomePromise;
@@ -646,7 +504,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       },
 
       async sessionUpdate(params) {
-        send(ws, "session_update", params);
+        sendMsg(ws, createNotification(ACP_METHOD.SESSION_UPDATE, params));
       },
 
       async readTextFile(_params) {
@@ -659,28 +517,32 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     };
   }
 
-  function handlePermissionResponse(
-    ws: AcpWs,
-    payload: {
-      requestId: string;
-      outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string };
-    },
-  ): void {
+  function handlePermissionResponse(ws: AcpWs, id: number | string, payload: Record<string, unknown>): void {
     const state = clients.get(ws);
     if (!state) {
       console.warn("permission response from unknown client");
       return;
     }
 
-    const pending = state.pendingPermissions.get(payload.requestId);
+    // payload 是 {requestId, outcome} 或直接 outcome
+    const requestId = (payload.requestId ?? id) as string;
+    const pending = state.pendingPermissions.get(requestId);
     if (!pending) {
-      console.warn("permission response for unknown request:", payload.requestId);
+      console.warn("permission response for unknown request:", requestId);
       return;
     }
 
     clearTimeout(pending.timeout);
-    state.pendingPermissions.delete(payload.requestId);
-    pending.resolve(payload.outcome);
+    state.pendingPermissions.delete(requestId);
+
+    const outcome = payload.outcome as Record<string, unknown>;
+    if (outcome?.outcome === "cancelled") {
+      pending.resolve({ outcome: "cancelled" });
+    } else if (outcome?.outcome === "selected" && typeof outcome.optionId === "string") {
+      pending.resolve({ outcome: "selected", optionId: outcome.optionId });
+    } else {
+      pending.resolve({ outcome: "cancelled" });
+    }
   }
 
   // --- Agent lifecycle handlers ---
@@ -692,10 +554,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     // If already connected to a running agent, just resend status
     if (state.connection && state.process && !state.process.killed && state.process.exitCode === null) {
       console.log("agent already connected, resending status");
-      send(ws, "status", {
-        connected: true,
-        agentInfo: { name: command },
-        capabilities: state.agentCapabilities,
+      sendMsg(ws, {
+        type: "status",
+        payload: { connected: true, agentInfo: { name: command }, capabilities: state.agentCapabilities },
       });
       return;
     }
@@ -765,36 +626,33 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         `hasMcp=${!!state.agentCapabilities?.mcpCapabilities}`,
       );
 
-      send(ws, "status", {
-        connected: true,
-        agentInfo: initResult.agentInfo,
-        capabilities: state.agentCapabilities,
+      sendMsg(ws, {
+        type: "status",
+        payload: { connected: true, agentInfo: initResult.agentInfo, capabilities: state.agentCapabilities },
       });
 
       connection.closed.then(() => {
         console.log("agent connection closed");
         state.connection = null;
         state.sessionId = null;
-        send(ws, "status", { connected: false });
+        sendMsg(ws, { type: "status", payload: { connected: false } });
       });
     } catch (error) {
       console.error("agent connect failed:", (error as Error).message);
-      send(ws, "error", {
-        message: `Failed to connect: ${(error as Error).message}`,
-      });
+      sendMsg(ws, { type: "error", payload: { message: `Failed to connect: ${(error as Error).message}` } });
     }
   }
 
-  async function handleNewSession(ws: AcpWs, params: { cwd?: string }): Promise<void> {
+  async function handleNewSession(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       console.warn("handleNewSession: not connected to agent");
-      send(ws, "error", { message: "Not connected to agent" });
+      sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
 
     try {
-      const sessionCwd = params.cwd || cwd;
+      const sessionCwd = (params.cwd as string) || cwd;
       const result = await state.connection.newSession({
         cwd: sessionCwd,
         mcpServers: [],
@@ -805,82 +663,80 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       state.modeState = result.modes ?? null;
       console.log("session created:", result.sessionId, "cwd:", sessionCwd);
 
-      send(ws, "session_created", {
-        ...result,
-        promptCapabilities: state.promptCapabilities,
-        models: state.modelState,
-        modes: state.modeState,
-      });
+      sendMsg(
+        ws,
+        createSuccessResponse(id, {
+          sessionId: result.sessionId,
+          promptCapabilities: state.promptCapabilities,
+          models: state.modelState,
+          modes: state.modeState,
+        }),
+      );
     } catch (error) {
       console.error("session create failed:", (error as Error).message);
-      send(ws, "error", {
-        message: `Failed to create session: ${(error as Error).message}`,
-      });
+      sendMsg(ws, createErrorResponse(id, -32603, `Failed to create session: ${(error as Error).message}`));
     }
   }
 
-  async function handleListSessions(ws: AcpWs, params: { cwd?: string; cursor?: string }): Promise<void> {
+  async function handleListSessions(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       console.warn("handleListSessions: not connected to agent");
-      send(ws, "error", { message: "Not connected to agent" });
+      sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
 
     if (!state.agentCapabilities?.sessionCapabilities?.list) {
-      send(ws, "error", {
-        message: "Listing sessions is not supported by this agent",
-      });
+      sendMsg(ws, createErrorResponse(id, -32000, "Listing sessions is not supported by this agent"));
       return;
     }
 
     try {
       const result = await state.connection.listSessions({
-        cwd: params.cwd,
-        cursor: params.cursor,
+        cwd: params.cwd as string | undefined,
+        cursor: params.cursor as string | undefined,
       });
 
       const MAX_SESSIONS = 20;
       const sessions = result.sessions.slice(0, MAX_SESSIONS);
       console.log("sessions listed:", `total=${result.sessions.length}`, `returned=${sessions.length}`);
 
-      send(ws, "session_list", {
-        sessions: sessions.map((s: acp.SessionInfo) => ({
-          _meta: s._meta,
-          cwd: s.cwd,
-          sessionId: s.sessionId,
-          title: s.title,
-          updatedAt: s.updatedAt,
-        })),
-        nextCursor: result.nextCursor,
-        _meta: result._meta,
-      });
+      sendMsg(
+        ws,
+        createSuccessResponse(id, {
+          sessions: sessions.map((s: acp.SessionInfo) => ({
+            _meta: s._meta,
+            cwd: s.cwd,
+            sessionId: s.sessionId,
+            title: s.title,
+            updatedAt: s.updatedAt,
+          })),
+          nextCursor: result.nextCursor,
+          _meta: result._meta,
+        }),
+      );
     } catch (error) {
       console.error("session list failed:", (error as Error).message);
-      send(ws, "error", {
-        message: `Failed to list sessions: ${(error as Error).message}`,
-      });
+      sendMsg(ws, createErrorResponse(id, -32603, `Failed to list sessions: ${(error as Error).message}`));
     }
   }
 
-  async function handleLoadSession(ws: AcpWs, params: { sessionId: string; cwd?: string }): Promise<void> {
+  async function handleLoadSession(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       console.warn("handleLoadSession: not connected to agent");
-      send(ws, "error", { message: "Not connected to agent" });
+      sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
 
     if (!state.agentCapabilities?.loadSession) {
-      send(ws, "error", {
-        message: "Loading sessions is not supported by this agent",
-      });
+      sendMsg(ws, createErrorResponse(id, -32000, "Loading sessions is not supported by this agent"));
       return;
     }
 
     try {
-      const sessionCwd = params.cwd || cwd;
-      const sessionId = params.sessionId;
+      const sessionCwd = (params.cwd as string) || cwd;
+      const sessionId = params.sessionId as string;
       const result = await state.connection.loadSession({
         sessionId,
         cwd: sessionCwd,
@@ -892,38 +748,37 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       state.modeState = result.modes ?? null;
       console.log("session loaded:", sessionId, "cwd:", sessionCwd);
 
-      send(ws, "session_loaded", {
-        sessionId,
-        promptCapabilities: state.promptCapabilities,
-        models: state.modelState,
-        modes: state.modeState,
-      });
+      sendMsg(
+        ws,
+        createSuccessResponse(id, {
+          sessionId,
+          promptCapabilities: state.promptCapabilities,
+          models: state.modelState,
+          modes: state.modeState,
+        }),
+      );
     } catch (error) {
       console.error("session load failed:", (error as Error).message);
-      send(ws, "error", {
-        message: `Failed to load session: ${(error as Error).message}`,
-      });
+      sendMsg(ws, createErrorResponse(id, -32603, `Failed to load session: ${(error as Error).message}`));
     }
   }
 
-  async function handleResumeSession(ws: AcpWs, params: { sessionId: string; cwd?: string }): Promise<void> {
+  async function handleResumeSession(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       console.warn("handleResumeSession: not connected to agent");
-      send(ws, "error", { message: "Not connected to agent" });
+      sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
 
     if (!state.agentCapabilities?.sessionCapabilities?.resume) {
-      send(ws, "error", {
-        message: "Resuming sessions is not supported by this agent",
-      });
+      sendMsg(ws, createErrorResponse(id, -32000, "Resuming sessions is not supported by this agent"));
       return;
     }
 
     try {
-      const sessionCwd = params.cwd || cwd;
-      const sessionId = params.sessionId;
+      const sessionCwd = (params.cwd as string) || cwd;
+      const sessionId = params.sessionId as string;
       // @ts-expect-error SDK type mismatch: unstable_resumeSession exists on Agent interface but not resolved
       const result = await state.connection.unstable_resumeSession({
         sessionId,
@@ -935,38 +790,40 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       state.modeState = result.modes ?? null;
       console.log("session resumed:", sessionId, "cwd:", sessionCwd);
 
-      send(ws, "session_resumed", {
-        sessionId,
-        promptCapabilities: state.promptCapabilities,
-        models: state.modelState,
-        modes: state.modeState,
-      });
+      sendMsg(
+        ws,
+        createSuccessResponse(id, {
+          sessionId,
+          promptCapabilities: state.promptCapabilities,
+          models: state.modelState,
+          modes: state.modeState,
+        }),
+      );
     } catch (error) {
       console.error("session resume failed:", (error as Error).message);
-      send(ws, "error", {
-        message: `Failed to resume session: ${(error as Error).message}`,
-      });
+      sendMsg(ws, createErrorResponse(id, -32603, `Failed to resume session: ${(error as Error).message}`));
     }
   }
 
-  async function handlePrompt(ws: AcpWs, params: { content: ContentBlock[] }): Promise<void> {
+  async function handlePrompt(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection || !state.sessionId) {
-      send(ws, "error", { message: "No active session" });
+      sendMsg(ws, createErrorResponse(id, -32000, "No active session"));
       return;
     }
 
     try {
+      const content = params.content as ContentBlock[];
       const result = await state.connection.prompt({
         sessionId: state.sessionId,
-        prompt: params.content as acp.ContentBlock[],
+        prompt: content as acp.ContentBlock[],
       });
 
       console.log("prompt completed, stopReason:", result.stopReason);
-      send(ws, "prompt_complete", result);
+      sendMsg(ws, createSuccessResponse(id, result));
     } catch (error) {
       console.error("prompt failed:", (error as Error).message);
-      send(ws, "error", { message: `Prompt failed: ${(error as Error).message}` });
+      sendMsg(ws, createErrorResponse(id, -32603, `Prompt failed: ${(error as Error).message}`));
     }
   }
 
@@ -981,13 +838,14 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     state.connection = null;
     state.sessionId = null;
 
-    send(ws, "status", { connected: false });
+    sendMsg(ws, { type: "status", payload: { connected: false } });
   }
 
-  async function handleCancel(ws: AcpWs): Promise<void> {
+  async function handleCancel(ws: AcpWs, id: number | string): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection || !state.sessionId) {
       console.warn("cancel requested but no active session");
+      sendMsg(ws, createSuccessResponse(id, { cancelled: false }));
       return;
     }
 
@@ -997,114 +855,133 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     try {
       await state.connection.cancel({ sessionId: state.sessionId });
       console.log("cancel sent, sessionId:", state.sessionId);
+      sendMsg(ws, createSuccessResponse(id, { cancelled: true }));
     } catch (error) {
       console.error("cancel failed:", (error as Error).message);
+      sendMsg(ws, createErrorResponse(id, -32603, `Cancel failed: ${(error as Error).message}`));
     }
   }
 
-  async function handleSetSessionModel(ws: AcpWs, params: { modelId: string }): Promise<void> {
+  async function handleSetSessionModel(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection || !state.sessionId) {
-      send(ws, "error", { message: "No active session" });
+      sendMsg(ws, createErrorResponse(id, -32000, "No active session"));
       return;
     }
 
     if (!state.modelState) {
-      send(ws, "error", {
-        message: "Model selection not supported by this agent",
-      });
+      sendMsg(ws, createErrorResponse(id, -32000, "Model selection not supported by this agent"));
       return;
     }
 
     try {
-      console.log("setting model, sessionId:", state.sessionId, "modelId:", params.modelId);
+      const modelId = params.modelId as string;
+      console.log("setting model, sessionId:", state.sessionId, "modelId:", modelId);
       await state.connection.unstable_setSessionModel({
         sessionId: state.sessionId,
-        modelId: params.modelId,
+        modelId,
       });
-      state.modelState = { ...state.modelState, currentModelId: params.modelId };
-      send(ws, "model_changed", { modelId: params.modelId });
-      console.log("model changed:", params.modelId);
+      state.modelState = { ...state.modelState, currentModelId: modelId };
+      sendMsg(ws, createSuccessResponse(id, { modelId }));
+      console.log("model changed:", modelId);
     } catch (error) {
       console.error("set model failed:", (error as Error).message);
-      send(ws, "error", {
-        message: `Failed to set model: ${(error as Error).message}`,
-      });
+      sendMsg(ws, createErrorResponse(id, -32603, `Failed to set model: ${(error as Error).message}`));
     }
   }
 
-  async function handleSetSessionMode(ws: AcpWs, params: { modeId: string }): Promise<void> {
+  async function handleSetSessionMode(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection || !state.sessionId) {
-      send(ws, "error", { message: "No active session" });
+      sendMsg(ws, createErrorResponse(id, -32000, "No active session"));
       return;
     }
 
     if (!state.modeState) {
-      send(ws, "error", {
-        message: "Mode selection not supported by this agent",
-      });
+      sendMsg(ws, createErrorResponse(id, -32000, "Mode selection not supported by this agent"));
       return;
     }
 
     try {
+      const modeId = params.modeId as string;
       await state.connection.setSessionMode({
         sessionId: state.sessionId,
-        modeId: params.modeId,
+        modeId,
       });
-      state.modeState = { ...state.modeState, currentModeId: params.modeId };
-      send(ws, "mode_changed", { modeId: params.modeId });
-      console.log("mode changed:", params.modeId);
+      state.modeState = { ...state.modeState, currentModeId: modeId };
+      sendMsg(ws, createSuccessResponse(id, { modeId }));
+      console.log("mode changed:", modeId);
     } catch (error) {
       console.error("set mode failed:", (error as Error).message);
-      send(ws, "error", {
-        message: `Failed to set mode: ${(error as Error).message}`,
-      });
+      sendMsg(ws, createErrorResponse(id, -32603, `Failed to set mode: ${(error as Error).message}`));
     }
   }
 
-  async function dispatchClientMessage(ws: AcpWs, data: ProxyMessage): Promise<void> {
-    console.log("[acp-server] dispatch:", data.type, "hasSession:", !!clients.get(ws)?.sessionId);
-    switch (data.type) {
-      case "connect":
-        await handleConnect(ws);
-        break;
-      case "disconnect":
-        handleDisconnect(ws);
-        break;
-      case "new_session":
-        await handleNewSession(ws, data.payload ?? {});
-        break;
-      case "prompt":
-        await handlePrompt(ws, data.payload);
-        break;
-      case "permission_response":
-        handlePermissionResponse(ws, data.payload);
-        break;
-      case "cancel":
-        await handleCancel(ws);
-        break;
-      case "set_session_model":
-        await handleSetSessionModel(ws, data.payload);
-        break;
-      case "set_session_mode":
-        await handleSetSessionMode(ws, data.payload);
-        break;
-      case "list_sessions":
-        await handleListSessions(ws, data.payload ?? {});
-        break;
-      case "load_session":
-        await handleLoadSession(ws, data.payload);
-        break;
-      case "resume_session":
-        await handleResumeSession(ws, data.payload);
-        break;
-      case "ping":
-        send(ws, "pong");
-        break;
-      case "browser_tool_result":
-        break;
+  async function dispatchIncomingMessage(ws: AcpWs, raw: unknown): Promise<void> {
+    const msg = decodeJsonWsMessage(raw) as Record<string, unknown>;
+
+    // 传输层消息
+    if (isTransportMessage(msg)) {
+      switch (msg.type) {
+        case "connect":
+          await handleConnect(ws);
+          break;
+        case "disconnect":
+          handleDisconnect(ws);
+          break;
+        case "ping":
+          sendMsg(ws, { type: "pong" });
+          break;
+      }
+      return;
     }
+
+    // JSON-RPC 请求
+    if (isJsonRpcMessage(msg) && isJsonRpcRequest(msg)) {
+      const rpc = msg as unknown as JsonRpcRequest;
+      const { id, method, params } = rpc;
+      const p = (params ?? {}) as Record<string, unknown>;
+
+      switch (method) {
+        case ACP_METHOD.SESSION_NEW:
+          await handleNewSession(ws, id, p);
+          break;
+        case ACP_METHOD.SESSION_PROMPT:
+          await handlePrompt(ws, id, p);
+          break;
+        case ACP_METHOD.SESSION_CANCEL:
+          await handleCancel(ws, id);
+          break;
+        case ACP_METHOD.SESSION_SET_MODEL:
+          await handleSetSessionModel(ws, id, p);
+          break;
+        case ACP_METHOD.SESSION_SET_MODE:
+          await handleSetSessionMode(ws, id, p);
+          break;
+        case ACP_METHOD.SESSION_LIST:
+          await handleListSessions(ws, id, p);
+          break;
+        case ACP_METHOD.SESSION_LOAD:
+          await handleLoadSession(ws, id, p);
+          break;
+        case ACP_METHOD.SESSION_RESUME:
+          await handleResumeSession(ws, id, p);
+          break;
+        default:
+          sendMsg(ws, createErrorResponse(id, -32601, `Method not found: ${method}`));
+      }
+      return;
+    }
+
+    // JSON-RPC 响应（permission_response 等）
+    if (isJsonRpcMessage(msg) && "result" in msg) {
+      const rpcResp = msg as { id: number | string; result: unknown };
+      const result = rpcResp.result as Record<string, unknown>;
+      handlePermissionResponse(ws, rpcResp.id, result);
+      return;
+    }
+
+    console.warn("[acp-server] Unknown message format:", msg);
   }
 
   // --- Runtime-adaptive WS server ---
@@ -1128,9 +1005,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     },
     async message(ws: AcpWs, raw: unknown) {
       try {
-        const data = decodeClientWsMessage(raw);
-        console.log(`[acp-server] received: type=${data.type}`);
-        await dispatchClientMessage(ws, data);
+        await dispatchIncomingMessage(ws, raw);
       } catch (error) {
         if (error instanceof WsPayloadTooLargeError) {
           console.warn("message too large:", error.message);
@@ -1138,7 +1013,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           return;
         }
         console.error("message error:", (error as Error).message);
-        send(ws, "error", { message: `Error: ${(error as Error).message}` });
+        sendMsg(ws, { type: "error", payload: { message: `Error: ${(error as Error).message}` } });
       }
     },
     close(ws: AcpWs) {
