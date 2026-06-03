@@ -19,6 +19,13 @@ export interface ManagedAcpLinkProcess {
   status: "running";
 }
 
+export interface AcpLinkProcessManagerConfig {
+  /** 要启动的可执行文件名，默认 "ccb" */
+  command: string;
+  /** 传给可执行文件的参数列表，默认 ["--acp"] */
+  args: string[];
+}
+
 export interface AcpLinkProcessManagerDependencies {
   resolveExecutable?: (command: string) => string;
 }
@@ -35,19 +42,26 @@ interface ProcessEntry {
 export class AcpLinkProcessManager {
   private readonly processes = new Map<string, ProcessEntry>();
   private readonly resolveExecutableImpl: (command: string) => string;
+  private readonly command: string;
+  private readonly args: string[];
 
-  constructor(dependencies: AcpLinkProcessManagerDependencies = {}) {
+  constructor(
+    config: AcpLinkProcessManagerConfig = { command: "ccb", args: ["--acp"] },
+    dependencies: AcpLinkProcessManagerDependencies = {},
+  ) {
+    this.command = config.command;
+    this.args = config.args;
     this.resolveExecutableImpl = dependencies.resolveExecutable ?? resolveExecutable;
   }
 
   async start(input: StartAcpLinkInput): Promise<ManagedAcpLinkProcess> {
-    const ccbExecutable = this.resolveExecutableImpl("claude");
+    const executable = this.resolveExecutableImpl(this.command);
 
     const handle = createAcpServer({
       port: input.port,
       host: DEFAULT_HOST,
-      command: ccbExecutable,
-      args: ["--acp"],
+      command: executable,
+      args: this.args,
       cwd: input.workspace,
       env: input.env,
     });

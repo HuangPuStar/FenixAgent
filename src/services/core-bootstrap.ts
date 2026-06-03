@@ -1,4 +1,4 @@
-import { type CcbRuntime, createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
+import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { createEnginePlugin as createOpencodePlugin, type OpencodeRuntime } from "@fenix/opencode";
 import {
@@ -18,8 +18,12 @@ let facade: CoreRuntimeFacade | null = null;
 const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
-  const engineType = validateEnv().RCS_ENGINE_TYPE;
-  const plugin = engineType === "ccb" ? createCcbPlugin() : createOpencodePlugin();
+  const env = validateEnv();
+  const engineType = env.RCS_ENGINE_TYPE;
+  const plugin =
+    engineType === "ccb"
+      ? createCcbPlugin({ command: env.RCS_CCB_COMMAND, args: env.RCS_CCB_ARGS.split(/\s+/).filter(Boolean) })
+      : createOpencodePlugin();
 
   return createCoreRuntime({
     plugins: [plugin],
