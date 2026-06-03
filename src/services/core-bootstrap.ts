@@ -1,11 +1,13 @@
+import { type CcbRuntime, createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
-import { createEnginePlugin, type OpencodeRuntime } from "@fenix/opencode";
+import { createEnginePlugin as createOpencodePlugin, type OpencodeRuntime } from "@fenix/opencode";
 import {
   createRemoteRuntime,
   createWsRemoteTransport,
   type RemoteTransport,
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
+import { validateEnv } from "../env";
 import { log } from "../logger";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
@@ -16,17 +18,22 @@ let facade: CoreRuntimeFacade | null = null;
 const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
+  const engineType = validateEnv().RCS_ENGINE_TYPE;
+  const plugin = engineType === "ccb" ? createCcbPlugin() : createOpencodePlugin();
+
   return createCoreRuntime({
-    plugins: [createEnginePlugin()],
+    plugins: [plugin],
     nodes: [
       {
         id: "local-default",
         mode: "local",
-        engineTypes: ["opencode"],
+        engineTypes: [engineType],
         status: "online",
       },
     ],
     onInstanceStarted(instanceId, runtime, updateMetadata) {
+      // ccb 引擎没有 getInstanceState，跳过
+      if (engineType === "ccb") return;
       // 远程实例没有 getInstanceState，跳过 metadata 写入
       if (typeof (runtime as OpencodeRuntime).getInstanceState !== "function") return;
       const opencode = runtime as OpencodeRuntime;
@@ -103,7 +110,7 @@ export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry
   runtime.registerNode({
     id: machineId,
     mode: "remote",
-    engineTypes: ["opencode"],
+    engineTypes: [validateEnv().RCS_ENGINE_TYPE],
     status: "online",
     metadata: { machineId },
   });

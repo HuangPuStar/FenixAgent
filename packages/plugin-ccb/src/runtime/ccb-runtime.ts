@@ -15,7 +15,7 @@ import { createPortAllocator, type PortAllocator } from "../process/port-allocat
 import { type CcbRelayHandle, createRelayHandle, type RelayHandleDependencies } from "../relay/relay-handle";
 import { prepareWorkspaceEnvironment } from "./environment-preparer";
 import { buildCcbRuntimeConfig, type CcbRuntimeConfig, type InstalledSkillReference } from "./runtime-config";
-import { installSkills, type SkillInstallerDependencies } from "./skill-installer";
+import { installSkills } from "./skill-installer";
 
 const RELAY_CONNECT_MAX_ATTEMPTS = 20;
 const RELAY_CONNECT_RETRY_DELAY_MS = 100;
@@ -54,7 +54,6 @@ export interface CcbRuntimeDependencies {
   processManager?: AcpLinkProcessManager;
   prepareWorkspaceEnvironment?: typeof prepareWorkspaceEnvironment;
   relayHandleDependencies?: RelayHandleDependencies;
-  skillInstallerDependencies?: SkillInstallerDependencies;
   installSkills?: typeof installSkills;
   prepareEnvironment?: (input: PrepareEnvironmentInput, state: RuntimeInstanceState) => Promise<void>;
   startInstance?: (input: StartInstanceInput, state: RuntimeInstanceState) => Promise<void>;
@@ -119,11 +118,7 @@ export function createCcbRuntime(dependencies: CcbRuntimeDependencies = {}): Ccb
       await mkdir(workspacePath, { recursive: true });
       await accessWorkspace(workspacePath, constants.R_OK | constants.W_OK);
 
-      const installedSkills = await installSkillsImpl(
-        workspacePath,
-        input.launchSpec.skills,
-        dependencies.skillInstallerDependencies,
-      );
+      const installedSkills = await installSkillsImpl(workspacePath, input.launchSpec.skills);
       const runtimeConfig = buildRuntimeConfig(input.launchSpec, installedSkills);
       await prepareWorkspace(
         workspacePath,
