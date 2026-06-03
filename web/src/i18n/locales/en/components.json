@@ -137,6 +137,10 @@
     "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
+    "dropToUpload": "Drop files to upload",
+    "uploadTo": "Upload to: {{path}}",
+    "uploadingFile": "Uploading {{name}}...",
+    "uploadingProgress": "{{percent}}%",
     "downloadZip": "Download ZIP",
     "downloadFailed": "Download failed",
     "contextMenu": {
