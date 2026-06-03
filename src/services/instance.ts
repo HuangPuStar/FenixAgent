@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { log, error as logError } from "@fenix/logger";
 import { getBaseUrl } from "../config";
+import { validateEnv } from "../env";
 import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
@@ -169,7 +170,7 @@ export async function spawnInstanceFromEnvironment(
   const facade = getCoreRuntime();
   const snapshot = await facade.launchInstance({
     instanceId,
-    engineType: "opencode",
+    engineType: validateEnv().RCS_ENGINE_TYPE,
     nodeId,
     launchSpec,
   });
