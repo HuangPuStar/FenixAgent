@@ -7,6 +7,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { encryptPassword } from "@/src/lib/password-crypto";
+import { authApi } from "@/src/api/sdk";
 
 interface ChangePasswordDialogProps {
   open: boolean;
@@ -49,9 +50,15 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
           encryptPassword(newPassword),
         ]);
 
-        // TODO: 调用后端API修改密码
-        // 示例：await authApi.changePassword({ oldPassword: encOldPassword, newPassword: encNewPassword });
-        console.log("Change password:", { encOldPassword, encNewPassword });
+        // 调用后端API修改密码
+        const response = await authApi.changePassword({
+          oldPassword: encOldPassword,
+          newPassword: encNewPassword,
+        });
+
+        if (response.ok === false) {
+          throw new Error(response.error?.message || t("unknownError"));
+        }
 
         toast.success(t("changePasswordSuccess"));
         onOpenChange(false);
