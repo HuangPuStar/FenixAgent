@@ -354,7 +354,7 @@ export function AgentSidebarTree({
               ].join(" ")}
             >
               {/* 头像 */}
-              <div
+              {/* <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
                 style={{ background: avatarBg }}
               >
@@ -363,7 +363,7 @@ export function AgentSidebarTree({
                 ) : (
                   <span className="text-white font-bold text-sm">{initial}</span>
                 )}
-              </div>
+              </div> */}
 
               {/* 名称 + 描述 */}
               <div className="flex-1 min-w-0">
