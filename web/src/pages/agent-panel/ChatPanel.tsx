@@ -32,7 +32,10 @@ export function ChatPanel({
   const clientRef = useRef<ACPClient | null>(null);
 
   useEffect(() => {
+    console.log('[ChatPanel Debug] useEffect triggered:', { agentId, sessionId });
+
     if (!agentId) {
+      console.log('[ChatPanel Debug] No agentId, cleaning up');
       setClient(null);
       setConnectionState("disconnected");
       setError(null);
@@ -41,13 +44,17 @@ export function ChatPanel({
     }
 
     const relayClient = createRelayClient(agentId, sessionId ?? undefined);
+    console.log('[ChatPanel Debug] Created relay client for agent:', agentId, 'session:', sessionId);
 
     relayClient.setConnectionStateHandler((state, err) => {
+      console.log('[ChatPanel Debug] Connection state changed:', { state, error: err });
       setConnectionState(state);
       setError(err || null);
     });
 
+    console.log('[ChatPanel Debug] Attempting to connect...');
     relayClient.connect().catch((e: unknown) => {
+      console.error('[ChatPanel Debug] Connection failed:', e);
       if (e instanceof DisconnectRequestedError) return;
       setError((e as Error).message);
       setConnectionState("error");
@@ -58,6 +65,7 @@ export function ChatPanel({
     onClientChange?.(relayClient);
 
     return () => {
+      console.log('[ChatPanel Debug] Cleanup: disconnecting');
       relayClient.disconnect();
       clientRef.current = null;
       setClient(null);

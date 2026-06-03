@@ -49,8 +49,10 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refreshOrgs = useCallback(async () => {
+    console.log('[OrgContext Debug] Refreshing orgs...');
     try {
       const { data: _list, error } = await orgApi.list();
+      console.log('[OrgContext Debug] Org list response:', { data: _list, error });
       if (error) {
         console.error("Failed to load org context:", error.message);
         return;
@@ -61,6 +63,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       const activeOrgId = localStorage.getItem(STORAGE_KEY);
       const current = list.find((o) => o.id === activeOrgId) || list[0];
       if (current) {
+        console.log('[OrgContext Debug] Setting active org:', current);
         setOrg(current);
         setRole(current.role ?? "");
         localStorage.setItem(STORAGE_KEY, current.id);

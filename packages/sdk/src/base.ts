@@ -70,9 +70,12 @@ export class BaseApi {
   protected async _get<T>(path: string, options?: RequestOptions): Promise<ApiResult<T>> {
     try {
       const url = this.replaceParams(path, options?.params) + this.buildQuery(options?.query);
+      console.log('[SDK Debug] GET request:', { url, path, params: options?.params, query: options?.query });
       const response = await fetch(url, { method: "GET", credentials: "include" });
+      console.log('[SDK Debug] GET response:', { url, status: response.status, ok: response.ok });
       return this.handleResponse<T>(response);
     } catch (e) {
+      console.error('[SDK Debug] GET error:', { path, error: e instanceof Error ? e.message : String(e) });
       return err("NETWORK_ERROR", e instanceof Error ? e.message : "Network request failed");
     }
   }
@@ -80,14 +83,17 @@ export class BaseApi {
   protected async post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<ApiResult<T>> {
     try {
       const url = this.replaceParams(path, options?.params) + this.buildQuery(options?.query);
+      console.log('[SDK Debug] POST request:', { url, path, body, params: options?.params, query: options?.query });
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
+      console.log('[SDK Debug] POST response:', { url, status: response.status, ok: response.ok });
       return this.handleResponse<T>(response);
     } catch (e) {
+      console.error('[SDK Debug] POST error:', { path, error: e instanceof Error ? e.message : String(e) });
       return err("NETWORK_ERROR", e instanceof Error ? e.message : "Network request failed");
     }
   }
@@ -95,14 +101,17 @@ export class BaseApi {
   protected async put<T>(path: string, body?: unknown, options?: RequestOptions): Promise<ApiResult<T>> {
     try {
       const url = this.replaceParams(path, options?.params) + this.buildQuery(options?.query);
+      console.log('[SDK Debug] PUT request:', { url, path, body, params: options?.params, query: options?.query });
       const response = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
+      console.log('[SDK Debug] PUT response:', { url, status: response.status, ok: response.ok });
       return this.handleResponse<T>(response);
     } catch (e) {
+      console.error('[SDK Debug] PUT error:', { path, error: e instanceof Error ? e.message : String(e) });
       return err("NETWORK_ERROR", e instanceof Error ? e.message : "Network request failed");
     }
   }
@@ -110,14 +119,17 @@ export class BaseApi {
   protected async patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<ApiResult<T>> {
     try {
       const url = this.replaceParams(path, options?.params) + this.buildQuery(options?.query);
+      console.log('[SDK Debug] PATCH request:', { url, path, body, params: options?.params, query: options?.query });
       const response = await fetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
+      console.log('[SDK Debug] PATCH response:', { url, status: response.status, ok: response.ok });
       return this.handleResponse<T>(response);
     } catch (e) {
+      console.error('[SDK Debug] PATCH error:', { path, error: e instanceof Error ? e.message : String(e) });
       return err("NETWORK_ERROR", e instanceof Error ? e.message : "Network request failed");
     }
   }
@@ -125,14 +137,17 @@ export class BaseApi {
   protected async del<T>(path: string, options?: RequestOptions & { body?: unknown }): Promise<ApiResult<T>> {
     try {
       const url = this.replaceParams(path, options?.params) + this.buildQuery(options?.query);
+      console.log('[SDK Debug] DELETE request:', { url, path, body: options?.body, params: options?.params, query: options?.query });
       const response = await fetch(url, {
         method: "DELETE",
         headers: options?.body !== undefined ? { "Content-Type": "application/json" } : undefined,
         credentials: "include",
         body: options?.body !== undefined ? JSON.stringify(options.body) : undefined,
       });
+      console.log('[SDK Debug] DELETE response:', { url, status: response.status, ok: response.ok });
       return this.handleResponse<T>(response);
     } catch (e) {
+      console.error('[SDK Debug] DELETE error:', { path, error: e instanceof Error ? e.message : String(e) });
       return err("NETWORK_ERROR", e instanceof Error ? e.message : "Network request failed");
     }
   }
@@ -140,13 +155,16 @@ export class BaseApi {
   protected async _upload<T>(path: string, formData: FormData, options?: RequestOptions): Promise<ApiResult<T>> {
     try {
       const url = this.replaceParams(path, options?.params) + this.buildQuery(options?.query);
+      console.log('[SDK Debug] UPLOAD request:', { url, path, params: options?.params, query: options?.query });
       const response = await fetch(url, {
         method: "POST",
         credentials: "include",
         body: formData,
       });
+      console.log('[SDK Debug] UPLOAD response:', { url, status: response.status, ok: response.ok });
       return this.handleResponse<T>(response);
     } catch (e) {
+      console.error('[SDK Debug] UPLOAD error:', { path, error: e instanceof Error ? e.message : String(e) });
       return err("NETWORK_ERROR", e instanceof Error ? e.message : "Network request failed");
     }
   }

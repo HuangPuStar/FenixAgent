@@ -13,5 +13,11 @@
   "noAccount": "没有账户？",
   "signUpFailed": "注册失败",
   "signInFailed": "登录失败",
-  "unknownError": "未知错误"
+  "unknownError": "未知错误",
+  "changePassword": "修改密码",
+  "oldPassword": "旧密码",
+  "newPassword": "新密码",
+  "confirmNewPassword": "确认新密码",
+  "passwordMismatch": "两次密码不一致",
+  "changePasswordSuccess": "密码修改成功"
 }

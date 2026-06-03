@@ -6,12 +6,12 @@ import type { ACPSettings } from "./types";
  * Uses cookie-based auth (better-auth session).
  */
 export function buildRelayUrl(agentId: string, sessionId?: string): string {
+  console.log('[RelayClient Debug] Building relay URL:', { agentId, sessionId, protocol: window.location.protocol, host: window.location.host });
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const base = `${protocol}//${window.location.host}/acp/relay/${agentId}`;
-  if (sessionId) {
-    return `${base}?sessionId=${encodeURIComponent(sessionId)}`;
-  }
-  return base;
+  const url = sessionId ? `${base}?sessionId=${encodeURIComponent(sessionId)}` : base;
+  console.log('[RelayClient Debug] Relay URL:', url);
+  return url;
 }
 
 /**
@@ -21,7 +21,9 @@ export function buildRelayUrl(agentId: string, sessionId?: string): string {
  * Authentication is handled via cookies (better-auth session).
  */
 export function createRelayClient(agentId: string, sessionId?: string): ACPClient {
+  console.log('[RelayClient Debug] Creating relay client:', { agentId, sessionId });
   const relayUrl = buildRelayUrl(agentId, sessionId);
   const settings: ACPSettings = { proxyUrl: relayUrl };
+  console.log('[RelayClient Debug] Relay settings:', settings);
   return new ACPClient(settings);
 }

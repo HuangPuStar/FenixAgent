@@ -13,5 +13,11 @@
   "noAccount": "Don't have an account?",
   "signUpFailed": "Sign up failed",
   "signInFailed": "Sign in failed",
-  "unknownError": "Unknown error"
+  "unknownError": "Unknown error",
+  "changePassword": "Change Password",
+  "oldPassword": "Old Password",
+  "newPassword": "New Password",
+  "confirmNewPassword": "Confirm New Password",
+  "passwordMismatch": "Passwords do not match",
+  "changePasswordSuccess": "Password changed successfully"
 }

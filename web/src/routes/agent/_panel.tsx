@@ -9,6 +9,7 @@ const AgentPanelLayout = lazy(() =>
 export const Route = createFileRoute("/agent/_panel")({
   component: () => {
     const { t } = useTranslation("agentPanel");
+    console.log('[AgentPanel Route Debug] Loading agent panel...');
     return (
       <Suspense
         fallback={

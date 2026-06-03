@@ -17,6 +17,7 @@
   "collapse": "Collapse sidebar",
   "expand": "Expand sidebar",
   "logout": "Sign Out",
+  "changePassword": "Change Password",
   "searchDev": "Global search coming soon",
   "agentPanel": "Agent Panel",
   "dashboard": "Dashboard"

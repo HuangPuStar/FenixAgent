@@ -18,16 +18,27 @@ function RootComponent() {
   const { t } = useTranslation("common");
 
   useEffect(() => {
+    console.log('[Auth Debug] Session state:', {
+      isPending,
+      hasSession: !!session,
+      session: session,
+      pathname,
+      timestamp: new Date().toISOString()
+    });
+
     if (isPending) return;
     if (!session && pathname !== "/login") {
+      console.log('[Auth Debug] Redirecting to login');
       void navigate({ to: "/login" });
     }
     if (session && pathname === "/login") {
+      console.log('[Auth Debug] Redirecting to agent panel');
       void navigate({ to: "/agent" });
     }
   }, [session, isPending, pathname, navigate]);
 
   if (isPending) {
+    console.log('[Auth Debug] Still pending, showing loading state');
     return (
       <ThemeProvider defaultTheme="system">
         <div className="flex h-screen flex-col items-center justify-center gap-4">

@@ -61,8 +61,10 @@ export function AgentSidebarTree({
   const [selectedRestartInstances, setSelectedRestartInstances] = useState<Set<string>>(new Set());
 
   const loadData = useCallback(async () => {
+    console.log('[AgentSidebarTree Debug] Loading agent tree data...');
     try {
       const [{ data: agentsResult }, { data: envsData }] = await Promise.all([agentApi.list(), envApi.list()]);
+      console.log('[AgentSidebarTree Debug] API responses:', { agentsResult, envsData });
 
       const rawAgents = (agentsResult as unknown as { agents?: AgentConfigItem[] } | null)?.agents;
       const agents = Array.isArray(rawAgents) ? rawAgents : [];
@@ -106,9 +108,10 @@ export function AgentSidebarTree({
         }
       }
 
+      console.log('[AgentSidebarTree Debug] Tree nodes loaded:', nodes);
       setTreeNodes(nodes);
     } catch (err) {
-      console.error("Failed to load agent tree:", err);
+      console.error("[AgentSidebarTree Debug] Failed to load agent tree:", err);
     } finally {
       setLoading(false);
     }

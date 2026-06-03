@@ -1,10 +1,11 @@
-import { LogOut } from "lucide-react";
+import { LogOut, Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { signOut, useSession } from "../../../src/lib/auth-client";
 import { OrgSwitcher } from "../../components/OrgSwitcher";
 import { AgentSidebarConfig, AgentSidebarQuickNav } from "./AgentSidebarConfig";
 import { AgentSidebarTree } from "./AgentSidebarTree";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 
 interface AgentSidebarProps {
   activeNav: string | null;
@@ -25,7 +26,10 @@ export function AgentSidebar({
   const { t: tSidebar } = useTranslation("sidebar");
   const { data: session } = useSession();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  console.log('[AgentSidebar Debug] Render:', { userEmail: session?.user?.email, activeNav });
 
   const userEmail = session?.user?.email ?? "";
   const avatarLetter = userEmail.charAt(0).toUpperCase() || "U";
@@ -137,6 +141,22 @@ export function AgentSidebar({
               </div>
               <button
                 type="button"
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  setChangePasswordOpen(true);
+                }}
+                className={[
+                  "flex items-center gap-2 w-full px-3 py-2",
+                  "text-[13px] text-text-default",
+                  "hover:bg-surface-elevated rounded-[var(--radius)] mx-0.5",
+                  "transition-colors duration-100",
+                ].join(" ")}
+              >
+                <Lock className="w-3.5 h-3.5" />
+                {tSidebar("changePassword")}
+              </button>
+              <button
+                type="button"
                 onClick={handleLogout}
                 className={[
                   "flex items-center gap-2 w-full px-3 py-2",
@@ -152,6 +172,7 @@ export function AgentSidebar({
           )}
         </div>
       </div>
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </aside>
   );
 }

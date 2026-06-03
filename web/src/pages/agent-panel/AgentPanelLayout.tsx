@@ -10,6 +10,8 @@ export function AgentPanelLayout() {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
 
+  console.log('[AgentPanelLayout Debug] Render:', { pathname });
+
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
     open: false,
@@ -24,6 +26,7 @@ export function AgentPanelLayout() {
 
   const handleNavigate = useCallback(
     (pageId: string) => {
+      console.log('[AgentPanelLayout Debug] Navigating to:', pageId);
       void navigate({ to: `/agent/${pageId}` as never });
     },
     [navigate],
@@ -31,6 +34,7 @@ export function AgentPanelLayout() {
 
   const handleSelectInstance = useCallback(
     (_instanceId: string, envId: string, sessionId: string | null) => {
+      console.log('[AgentPanelLayout Debug] Selecting instance:', { envId, sessionId });
       if (sessionId) {
         void navigate({
           to: "/agent/chat/$agentId/$sessionId",

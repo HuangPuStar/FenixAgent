@@ -27,17 +27,20 @@ export function LoginPage() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      console.log('[Login Debug] Form submit:', { email, isSignUp });
       setError("");
       setLoading(true);
 
       try {
         const encPassword = await encryptPassword(password);
+        console.log('[Login Debug] Attempting auth with encrypted password');
         if (isSignUp) {
           const res = await authClient.signUp.email({
             email,
             password: encPassword,
             name: name || email.split("@")[0],
           });
+          console.log('[Login Debug] Signup response:', res);
           if (res.error) {
             setError(res.error.message || t("signUpFailed"));
             return;
@@ -47,13 +50,16 @@ export function LoginPage() {
             email,
             password: encPassword,
           });
+          console.log('[Login Debug] Signin response:', res);
           if (res.error) {
             setError(res.error.message || t("signInFailed"));
             return;
           }
         }
+        console.log('[Login Debug] Auth success, navigating to /');
         await navigate({ to: "/" });
       } catch (err) {
+        console.error('[Login Debug] Auth error:', err);
         setError(err instanceof Error ? err.message : t("unknownError"));
       } finally {
         setLoading(false);
