@@ -275,7 +275,7 @@ export class AcpDispatcher {
     }
     try {
       const result = await this.state.connection.listSessions({
-        cwd: params.cwd,
+        cwd: this.workspace,
         cursor: params.cursor,
       });
       const MAX_SESSIONS = 20;
