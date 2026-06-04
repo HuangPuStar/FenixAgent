@@ -536,6 +536,19 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       resetThreadState();
     });
 
+    // 连接断开时强制退出 loading 状态，防止卡死
+    const connectionStateHandler = (state: string) => {
+      if (state === "error" || state === "disconnected") {
+        setIsLoading((prev) => {
+          if (prev) {
+            console.log("[ChatInterface] Connection lost while loading, forcing isLoading=false");
+          }
+          return false;
+        });
+      }
+    };
+    client.setConnectionStateHandler(connectionStateHandler);
+
     client.setSessionUpdateHandler((sessionId: string, update: SessionUpdate) => {
       handleSessionUpdate(sessionId, update);
     });
@@ -568,6 +581,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     return () => {
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      client.removeConnectionStateHandler(connectionStateHandler);
       client.setSessionCreatedHandler(() => {});
       client.setSessionLoadedHandler(() => {});
       client.setSessionSwitchingHandler(null);
