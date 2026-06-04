@@ -114,7 +114,7 @@ export function ThreadHistory({ client, cwd, onSelectSession }: ThreadHistoryPro
 
     try {
       const response = await client.listSessions(cwd ? { cwd } : undefined);
-      setSessions(response.sessions);
+      setSessions(Array.isArray(response?.sessions) ? response.sessions : []);
     } catch (err) {
       setError((err as Error).message);
     } finally {

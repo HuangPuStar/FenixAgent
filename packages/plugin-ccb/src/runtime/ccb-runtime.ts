@@ -14,7 +14,12 @@ import { AcpLinkProcessManager, type ManagedAcpLinkProcess } from "../process/ac
 import { createPortAllocator, type PortAllocator } from "../process/port-allocator";
 import { type CcbRelayHandle, createRelayHandle, type RelayHandleDependencies } from "../relay/relay-handle";
 import { prepareWorkspaceEnvironment } from "./environment-preparer";
-import { buildCcbRuntimeConfig, type CcbRuntimeConfig, type InstalledSkillReference } from "./runtime-config";
+import {
+  buildCcbMcpConfig,
+  buildCcbRuntimeConfig,
+  type CcbRuntimeConfig,
+  type InstalledSkillReference,
+} from "./runtime-config";
 import { installSkills } from "./skill-installer";
 
 const RELAY_CONNECT_MAX_ATTEMPTS = 20;
@@ -120,12 +125,8 @@ export function createCcbRuntime(dependencies: CcbRuntimeDependencies = {}): Ccb
 
       const installedSkills = await installSkillsImpl(workspacePath, input.launchSpec.skills);
       const runtimeConfig = buildRuntimeConfig(input.launchSpec, installedSkills);
-      await prepareWorkspace(
-        workspacePath,
-        runtimeConfig,
-        input.launchSpec.env ? { ...input.launchSpec.env } : {},
-        installedSkills,
-      );
+      const mcpConfig = buildCcbMcpConfig(input.launchSpec);
+      await prepareWorkspace(workspacePath, runtimeConfig, mcpConfig, input.launchSpec.agent.prompt, installedSkills);
 
       state.launchSpec = input.launchSpec;
       state.workspace = workspacePath;

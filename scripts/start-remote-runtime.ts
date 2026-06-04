@@ -13,6 +13,7 @@
  *   RCS_TENANT_ID       组织 ID (必填)
  *   RCS_USER_ID         用户 ID (可选)
  *   RCS_LABELS          节点标签，逗号分隔 (默认 remote-runtime)
+ *   AGENT_TYPE          Agent 类型: opencode (默认) 或 ccb (Claude Code)
  *
  * 工作区路径: workspace 根目录为启动目录 (cwd)，实例路径自动按
  *   {cwd}/{organizationId}/{userId}/{environmentId} 计算。
@@ -28,6 +29,7 @@ const RCS_URL = process.env.RCS_URL || "";
 const TENANT_ID = process.env.RCS_TENANT_ID || "";
 const USER_ID = process.env.RCS_USER_ID || "";
 const LABELS = process.env.RCS_LABELS || "remote-runtime";
+const AGENT_TYPE = (process.env.AGENT_TYPE || "opencode") as "opencode" | "ccb";
 // ──────────
 
 const args = process.argv.slice(2);
@@ -39,7 +41,7 @@ if (args.length === 0) {
   console.log("");
   console.log("示例:");
   console.log("  RCS_TENANT_ID=xxx bun start-remote-runtime.ts opencode acp");
-  console.log("  RCS_TENANT_ID=xxx bun start-remote-runtime.ts npx @anthropic-ai/claude-code --acp");
+  console.log("  AGENT_TYPE=ccb RCS_TENANT_ID=xxx bun start-remote-runtime.ts npx @anthropic-ai/claude-code --acp");
   console.log("");
   console.log("环境变量:");
   console.log("  RCS_URL             WS base URL (scheme://host:port)，如 wss://rcs.example.com");
@@ -49,6 +51,7 @@ if (args.length === 0) {
   console.log("  RCS_TENANT_ID       组织 ID (必填)");
   console.log("  RCS_USER_ID         用户 ID (可选)");
   console.log("  RCS_LABELS          节点标签，逗号分隔 (默认 remote-runtime)");
+  console.log("  AGENT_TYPE          Agent 类型: opencode (默认) 或 ccb (Claude Code)");
   process.exit(1);
 }
 
@@ -70,6 +73,7 @@ const [command, ...agentArgs] = args;
 console.log(`RCS 在线 (${wsUrl})`);
 console.log(`启动远程 Runtime 节点...`);
 console.log(`  Agent:        ${command} ${agentArgs.join(" ")}`);
+console.log(`  Agent Type:   ${AGENT_TYPE}`);
 console.log(`  Workspace:    ${process.cwd()} (cwd)`);
 console.log(`  Tenant:       ${TENANT_ID || "无"}`);
 console.log(`  Labels:       ${LABELS}`);
@@ -88,4 +92,5 @@ await startServer({
   labels: LABELS.split(",")
     .map((s) => s.trim())
     .filter(Boolean),
+  agentType: AGENT_TYPE,
 });

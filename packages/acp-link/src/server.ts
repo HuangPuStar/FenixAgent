@@ -4,8 +4,9 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { handleFileOp } from "./client/file-operations.js";
-import { InstanceManager } from "./client/instance-manager.js";
+import { type AgentType, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
+import { initRegistry } from "./client/workspace-registry.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -60,6 +61,8 @@ export interface ServerConfig {
   tenantId?: string;
   userId?: string;
   labels?: string[];
+  /** Agent 类型：opencode（默认）或 ccb（Claude Code） */
+  agentType?: AgentType;
 }
 
 export interface AcpServerHandle {
@@ -163,7 +166,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   }
 
   const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
-  const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd());
+  const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd(), config.args, config.agentType);
+
+  // 从磁盘加载 workspace 映射（acp-link 重启后恢复）
+  initRegistry(config.cwd || process.cwd()).catch((err) => {
+    console.error("[acp-client] Failed to load workspace registry:", err);
+  });
   const url = `${config.rcsUrl}/acp/ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
   let ws: WebSocket | null = null;
   let fileWs: WebSocket | null = null;

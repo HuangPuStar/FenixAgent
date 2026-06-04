@@ -1,4 +1,4 @@
-import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import type { AgentLaunchSpec, McpServerConfig } from "@fenix/plugin-sdk";
 
 export interface InstalledSkillReference {
   name: string;
@@ -6,8 +6,8 @@ export interface InstalledSkillReference {
 }
 
 /**
- * Claude Code 的 settings.json 格式。
- * 写入 workspace 下 .claude/settings.json。
+ * Claude Code 的 settings.local.json 格式。
+ * 写入 workspace 下 .claude/settings.local.json。
  */
 export interface CcbRuntimeConfig {
   env?: Record<string, string>;
@@ -18,6 +18,58 @@ export interface CcbRuntimeConfig {
     deny?: string[];
     defaultMode?: string;
   };
+}
+
+/**
+ * Claude Code 的 .mcp.json 格式。
+ * 写入 workspace 根目录 .mcp.json。
+ */
+export interface CcbMcpConfig {
+  mcpServers: Record<string, CcbMcpServerConfig>;
+}
+
+export interface CcbMcpStdioConfig {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+}
+
+export interface CcbMcpRemoteConfig {
+  url: string;
+  headers?: Record<string, string>;
+}
+
+export type CcbMcpServerConfig = CcbMcpStdioConfig | CcbMcpRemoteConfig;
+
+function isStreamableHttp(server: McpServerConfig): server is Extract<McpServerConfig, { type: "streamable-http" }> {
+  return server.type === "streamable-http";
+}
+
+/**
+ * 把 AgentLaunchSpec.mcpServers 转为 .mcp.json 格式。
+ */
+export function buildCcbMcpConfig(launchSpec: AgentLaunchSpec): CcbMcpConfig | null {
+  if (launchSpec.mcpServers.length === 0) return null;
+
+  const mcpServers: Record<string, CcbMcpServerConfig> = {};
+  for (const server of launchSpec.mcpServers) {
+    if (isStreamableHttp(server)) {
+      mcpServers[server.name] = {
+        url: server.url,
+        ...(server.headers ? { headers: server.headers } : {}),
+      };
+    } else {
+      mcpServers[server.name] = {
+        command: server.command,
+        ...(server.args ? { args: server.args } : {}),
+        ...(server.env ? { env: server.env } : {}),
+        ...(server.cwd ? { cwd: server.cwd } : {}),
+      };
+    }
+  }
+
+  return { mcpServers };
 }
 
 /**

@@ -156,7 +156,7 @@ export class AcpDispatcher {
     this.send({ type: "status", payload: { connected: false } });
   }
 
-  private async handleNewSession(id: number | string, params: Record<string, unknown>): Promise<void> {
+  private async handleNewSession(id: number | string, _params: Record<string, unknown>): Promise<void> {
     if (!this.state.connection) {
       this.send(createErrorResponse(id, -32000, "Not connected to agent"));
       return;

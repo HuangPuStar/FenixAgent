@@ -29,21 +29,13 @@ interface FileOpResult {
 }
 
 // ============================================================================
-// Workspace Cache
+// Workspace Registry (delegated to workspace-registry.ts)
 // ============================================================================
 
-/** environmentId → absolute workspace path */
-const workspaceCache = new Map<string, string>();
+import { getWorkspaceSync } from "./workspace-registry.js";
 
-/** Register env→workspace mapping (called by InstanceManager.prepare) */
-export function registerWorkspace(environmentId: string, workspace: string): void {
-  workspaceCache.set(environmentId, workspace);
-}
-
-/** Get workspace for an environment, or null */
-function getWorkspace(environmentId: string): string | null {
-  return workspaceCache.get(environmentId) ?? null;
-}
+// 重新导出供 instance-manager 使用
+export { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js";
 
 // ============================================================================
 // Path Safety
@@ -414,7 +406,7 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
   const { request_id, operation, params } = msg;
   const environmentId = params.environmentId as string;
 
-  const workspace = getWorkspace(environmentId);
+  const workspace = getWorkspaceSync(environmentId);
   if (!workspace) {
     return {
       type: "file_op_result",

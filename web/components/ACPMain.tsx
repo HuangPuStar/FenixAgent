@@ -1,6 +1,7 @@
 import { MessageSquare, PanelLeft, PanelLeftClose, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { retryWithBackoff } from "@/src/lib/retry";
 import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
 import { cn } from "../src/lib/utils";
@@ -34,36 +35,13 @@ export function ACPMain({
 }: ACPMainProps) {
   const { t } = useTranslation("components");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
-  const BOOTSTRAP_MAX_ATTEMPTS = 10;
   const chatRef = useRef<ChatInterfaceHandle>(null);
   const bootstrappedRef = useRef(false);
-  const bootstrapRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: client 变更时需重置 bootstrap 状态，否则新连接不会加载会话
   useEffect(() => {
     bootstrappedRef.current = false;
-    setBootstrapAttempt(0);
-    if (bootstrapRetryTimerRef.current) {
-      clearTimeout(bootstrapRetryTimerRef.current);
-      bootstrapRetryTimerRef.current = null;
-    }
-  }, [client]);
-
-  // When capabilities arrive via ACP event (not React getter), bump bootstrap attempt once.
-  // This avoids the infinite loop caused by depending on a getter that returns true on every render.
-  useEffect(() => {
-    const onCaps = () => {
-      if (bootstrappedRef.current) return;
-      if (client.getState() !== "connected") return;
-      if (!client.supportsSessionList) return;
-      setBootstrapAttempt((prev) => prev + 1);
-    };
-    client.state.on("capabilitiesChange", onCaps);
-    // Also check immediately in case capabilities already arrived before listener was registered
-    onCaps();
-    return () => client.state.off("capabilitiesChange", onCaps);
   }, [client]);
 
   // Handle session selection
@@ -85,42 +63,32 @@ export function ACPMain({
   );
 
   // Bootstrap: load latest session or create new one.
-  // Triggers on connection ready AND when capabilities arrive (via bootstrapAttempt increment).
   useEffect(() => {
-    if (client.getState() !== "connected") {
-      return;
-    }
-    if (bootstrappedRef.current) {
-      return;
-    }
+    if (client.getState() !== "connected") return;
+    if (bootstrappedRef.current) return;
 
     let cancelled = false;
 
     const bootstrap = async () => {
       try {
-        if (!client.supportsSessionList) {
-          // Capabilities not ready yet — retry via timer (not polling, just wait)
-          if (bootstrapAttempt < BOOTSTRAP_MAX_ATTEMPTS) {
-            if (!cancelled) {
-              bootstrapRetryTimerRef.current = setTimeout(() => {
-                setBootstrapAttempt((prev) => prev + 1);
-              }, 200);
+        // Wait for capabilities with exponential backoff
+        await retryWithBackoff(
+          async () => {
+            if (cancelled) return;
+            if (!client.supportsSessionList) {
+              throw new Error("Capabilities not ready");
             }
-            return;
-          }
-          // capabilities 始终不可用，跳过 session list 直接创建新会话
-          console.log("[ACPMain] Session list not supported, creating new session directly");
-          bootstrappedRef.current = true;
-          chatRef.current?.newSession();
-          return;
-        }
+          },
+          { maxAttempts: 5, baseDelayMs: 500, maxDelayMs: 8000 },
+        );
+        if (cancelled) return;
 
         bootstrappedRef.current = true;
-        // 不传 cwd — 让 agent 自己决定工作目录（本地/远程路径由后端处理）
         const response = await client.listSessions();
         if (cancelled) return;
 
-        const latest = [...response.sessions].sort((a, b) => {
+        const sessions = Array.isArray(response?.sessions) ? response.sessions : [];
+        const latest = [...sessions].sort((a, b) => {
           const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
           const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
           return timeB - timeA;
@@ -135,6 +103,13 @@ export function ACPMain({
         console.log("[ACPMain] No existing sessions found, creating new session");
         chatRef.current?.newSession();
       } catch (error) {
+        // Capabilities never became available — create session directly
+        if (!client.supportsSessionList && !cancelled) {
+          console.log("[ACPMain] Session list not supported, creating new session directly");
+          bootstrappedRef.current = true;
+          chatRef.current?.newSession();
+          return;
+        }
         bootstrappedRef.current = false;
         console.warn("[ACPMain] Failed to bootstrap latest session:", error);
       }
@@ -144,12 +119,8 @@ export function ACPMain({
 
     return () => {
       cancelled = true;
-      if (bootstrapRetryTimerRef.current) {
-        clearTimeout(bootstrapRetryTimerRef.current);
-        bootstrapRetryTimerRef.current = null;
-      }
     };
-  }, [bootstrapAttempt, client, handleSelectSession]);
+  }, [client, handleSelectSession]);
 
   return (
     <div className="flex h-full w-full">
@@ -267,7 +238,7 @@ function SidebarSessionList({
     setLoading(true);
     try {
       const response = await client.listSessions();
-      setSessions(response.sessions);
+      setSessions(Array.isArray(response?.sessions) ? response.sessions : []);
     } catch (err) {
       console.warn("[SidebarSessionList] Failed to load:", err);
     } finally {
@@ -295,7 +266,11 @@ function SidebarSessionList({
   useEffect(() => {
     const handler = (state: string) => {
       if (state === "connected") {
-        setTimeout(loadSessions, 200);
+        retryWithBackoff(() => loadSessions(), {
+          maxAttempts: 2,
+          baseDelayMs: 300,
+          maxDelayMs: 1000,
+        }).catch(() => {});
       }
     };
     client.setConnectionStateHandler(handler);

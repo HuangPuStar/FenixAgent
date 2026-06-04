@@ -422,6 +422,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           return prev.map((entry, index) => {
             if (index !== existingIndex) return entry;
             if (entry.type !== "tool_call") return entry;
+            // 等待用户确认权限时不覆盖，防止权限弹窗被竞态更新吞掉
+            if (entry.toolCall.status === "waiting_for_confirmation") return entry;
 
             return {
               type: "tool_call",
@@ -464,6 +466,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         return prev.map((entry, index) => {
           if (index !== existingIndex) return entry;
           if (entry.type !== "tool_call") return entry;
+          // 等待用户确认权限时不覆盖，防止权限弹窗被竞态更新吞掉
+          if (entry.toolCall.status === "waiting_for_confirmation") return entry;
 
           const newStatus = update.status ? mapToolStatus(update.status) : entry.toolCall.status;
           const mergedContent = update.content
@@ -532,6 +536,19 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       resetThreadState();
     });
 
+    // 连接断开时强制退出 loading 状态，防止卡死
+    const connectionStateHandler = (state: string) => {
+      if (state === "error" || state === "disconnected") {
+        setIsLoading((prev) => {
+          if (prev) {
+            console.log("[ChatInterface] Connection lost while loading, forcing isLoading=false");
+          }
+          return false;
+        });
+      }
+    };
+    client.setConnectionStateHandler(connectionStateHandler);
+
     client.setSessionUpdateHandler((sessionId: string, update: SessionUpdate) => {
       handleSessionUpdate(sessionId, update);
     });
@@ -564,6 +581,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     return () => {
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      client.removeConnectionStateHandler(connectionStateHandler);
       client.setSessionCreatedHandler(() => {});
       client.setSessionLoadedHandler(() => {});
       client.setSessionSwitchingHandler(null);
@@ -632,7 +650,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // 1. Mark all pending/running/waiting_for_confirmation tool calls as canceled
   // 2. Send cancel notification to agent
   // 3. Do NOT set isLoading=false here - wait for prompt_complete with stopReason="cancelled"
-  const handleCancel = () => {
+  // 4. Safety: if prompt_complete never arrives (agent dead), force isLoading=false after timeout
+  const handleCancel = useCallback(() => {
     console.log("[ChatInterface] Cancel requested");
 
     // Like Zed: iterate all entries, mark Pending/WaitingForConfirmation/InProgress tool calls as Canceled
@@ -662,7 +681,16 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     client.cancel();
     // Note: Do NOT set isLoading=false here!
     // Wait for prompt_complete with stopReason="cancelled" from the agent
-  };
+    // Safety: if agent is dead and prompt_complete never arrives, force after 3s
+    setTimeout(() => {
+      setIsLoading((prev) => {
+        if (prev) {
+          console.log("[ChatInterface] Cancel timeout - forcing isLoading=false");
+        }
+        return false;
+      });
+    }, 3000);
+  }, [client]);
 
   const handlePermissionResponse = useCallback(
     (requestId: string, optionId: string | null, optionKind: PermissionOption["kind"] | null) => {
