@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { envApi } from "../../../../src/api/sdk";
 import type { ThreadEntry } from "../../../../src/lib/types";
 import { StatusHeader } from "../../../components/agent-panel/StatusHeader";
-import { useContextQueue } from "../../../lib/use-context-queue";
 
 const ChatPanel = lazy(() => import("../../../pages/agent-panel/ChatPanel").then((m) => ({ default: m.ChatPanel })));
 const ArtifactsPanel = lazy(() =>
@@ -19,11 +18,6 @@ export const Route = createFileRoute("/agent/_panel/chat/$agentId_/$sessionId")(
 function ChatWithSessionRoute() {
   const { agentId, sessionId } = Route.useParams();
   const { t } = useTranslation("agentPanel");
-
-  useContextQueue(
-    "route",
-    `当前页面: /agent/chat/${agentId}/${sessionId}\nagentId: ${agentId}\nsessionId: ${sessionId}`,
-  );
 
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(() => {
     const saved = localStorage.getItem("agent-panel:artifacts-collapsed");
