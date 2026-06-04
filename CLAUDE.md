@@ -4,20 +4,75 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Remote Control Server (RCS) 是一个基于 Elysia + Bun 的 AI Agent 控制面板后端（package name: `fenix`），配合 React 19 + Vite 前端，使用 PostgreSQL + Drizzle ORM 持久化。核心功能包括：
-
-- **ACP 协议支持**：通过 WebSocket 与 acp-link Agent通信，实现远程 Agent 控制和事件流转发
-- **配置管理**：Providers/Models/Agents/Skills/MCP 的动态配置，存储于 PostgreSQL（`src/services/config/` 子模块）
-- **多租户**：better-auth organization 插件实现多组织隔离，所有配置和资源以 `organizationId` 为范围，通过 `AuthContext` 传递
-- **会话管理**：会话事件推送，支持 ACP session/list 按 cwd 过滤
-- **认证授权**：better-auth + `@better-auth/api-key` 插件，支持用户会话和 acp-link 的 Bearer token
-- **定时 HTTP 任务**：cron 调度、执行历史记录、失败重试
-- **知识库/工作流引擎/Meta Agent**：知识库管理、DAG 工作流引擎（`@fenix/workflow-engine`）、元智能体编排
-- **IM 通道**（开发中）：多平台消息通道接入与路由绑定
-- **S3 文件存储**（可选）、**Redis 缓存**（可选）、**Hermes 消息推送**（可选）
-- **Workspace Packages**：`packages/` 下有 8 个内部包：acp-link、acp-link-rs、core、plugin-sdk、plugin-opencode、remote-runtime、sdk、workflow-engine
+Remote Control Server (RCS) 是一个基于 Elysia + Bun 的 AI Agent 控制面板后端（package name: `fenix`），配合 React 19 + Vite 前端，使用 PostgreSQL + Drizzle ORM 持久化。支持多租户组织隔离（better-auth）、ACP 协议实时通信、DAG 工作流引擎、知识库管理、定时任务、IM 通道集成。可选依赖：S3 文件存储、Redis 缓存、Hermes 消息推送。`packages/` 下 10 个内部 workspace 包。
 
 **依赖结构**：`web/` 没有独立的 `package.json`，所有前后端依赖统一在根 `package.json` 管理。前端代码在 `web/` 但依赖安装/升级都在根目录执行。
+
+## 功能模块
+
+产品以 Agent 为核心，围绕 **配置 → 运行 → 编排 → 集成** 四层组织：
+
+### 基础设施层
+
+| 模块 | 路由/目录 | 说明 |
+|------|-----------|------|
+| **认证授权** | `src/auth/` + `src/plugins/auth.ts` | better-auth 用户登录/注册 + organization 多租户 + API Key（`rcs_xxx`）三路认证 |
+| **多租户组织** | `/web/organizations` | 组织 CRUD、成员邀请、角色管理（owner/admin/member）、组织切换、品牌定制（logo + 名称） |
+| **API Key 管理** | `/web/auth` → `/agent/apikeys` 页面 | 创建/撤销 API Key，设置过期时间，SHA-256 哈希存储 |
+| **机器注册表** | `/web/registry` | 机器注册与状态追踪、事件历史、标签过滤（`machine` + `registryEvent` 表） |
+
+### Agent 配置层
+
+| 模块 | 路由/目录 | 说明 |
+|------|-----------|------|
+| **Provider 配置** | `/web/config/providers` | LLM 供应商配置（API Key、endpoint、自定义参数），密钥用 `{env:RCS_SECRET_<name>}` 占位 |
+| **Model 配置** | `/web/config/models` → `/agent/models` 页面 | AI 模型定义（上下文限制、费用、模态），支持批量测试连接 |
+| **Agent 配置** | `/web/config/agents` | Agent 行为配置（系统提示、权限规则、工具访问控制、默认模型） |
+| **Skill 管理** | `/web/config/skills` → `/agent/skills` 页面 | Skill 创建/上传/启用/禁用，元数据 PG + 内容文件系统双层存储 |
+| **MCP Server** | `/web/config/mcp` → `/agent/mcp` 页面 | MCP 服务器配置（local stdio / remote streamable-http），工具检查、OAuth 凭证管理 |
+| **Permission 系统** | `src/schemas/` | 三态权限（ask/allow/deny），规则型工具支持通配符，开关型工具仅三态 |
+
+### Agent 运行层
+
+| 模块 | 路由/目录 | 说明 |
+|------|-----------|------|
+| **Environment 管理** | `/v1/environments` + `/web/environments` | Agent 运行环境 CRUD，含 auto-start、secret 生成、workspace 自动创建 |
+| **Instance 管理** | `/v2/instances` | 环境内实例 spawn/stop/list，多实例并发运行，`ensureRunning()` 并发安全 |
+| **Session 管理** | `/web/sessions` + `/v1/sessions` | 会话创建/列表/事件推送，ACP session/list 按 cwd 过滤 |
+| **Chat 交互** | `/agent/chat/$agentId` 页面 + `/acp/relay/:agentId` | 实时聊天界面，WebSocket relay 中继，ArtifactsPanel 展示输出 |
+| **ACP 协议** | `/acp/ws` + `/acp/relay` | acp-link 注册（NDJSON）、前端中继桥接、keep_alive + 超时检测 |
+| **文件管理** | `/web/sessions/:id/user/*` + `/web/s3-files` | 用户工作区文件读写上传、目录浏览、S3 存储（presigned URL） |
+| **控制指令** | `/web/control` | 向 Agent 发送权限请求、中断指令等控制消息 |
+
+### 编排自动化层
+
+| 模块 | 路由/目录 | 说明 |
+|------|-----------|------|
+| **DAG 工作流** | `/web/workflow-*`（10 个路由）→ `/agent/workflow` 页面 | YAML 定义 + 可视化 DAG 编辑器、多版本管理、参数化执行、dry run |
+| **Workflow Board** | `/web/workflow-boards` | 看板式作业管理，拖拽流转阶段（Ready → Running → Suspended → Completed） |
+| **Workflow Jobs** | `/web/workflow-jobs*`（3 个路由） | 作业创建/执行/日志/重试，SSE 实时事件流 |
+| **Workflow Triggers** | `/web/workflow-defs` | Webhook 触发器，外部系统自动触发工作流执行 |
+| **定时任务** | `/web/tasks` → `/agent/tasks` 页面 | cron 表达式调度 HTTP 任务、执行日志、手动触发、启用/禁用 |
+| **Meta Agent** | `/web/meta-agent` | 自举式元智能体：自动创建 Environment + AgentConfig + Skill → spawn 实例 |
+
+### 知识与集成层
+
+| 模块 | 路由/目录 | 说明 |
+|------|-----------|------|
+| **知识库** | `/web/knowledge-bases` → `/agent/knowledge-bases` 页面 | 知识库 CRUD、文件/URL 上传、Agent 绑定、语义检索 |
+| **MCP 查询** | `/mcp/*` | MCP 协议端点，Agent 通过 Bearer token 查询知识库内容 |
+| **IM 通道**（开发中） | `/web/channels` → `/agent/channels` 页面 | 微信/飞书等多平台消息接入，通道与 Agent 路由绑定 |
+| **Webhook** | `/hooks/:publicHash` | 外部 webhook 触发（无认证），按 publicHash 路由 |
+| **Share Link** | 数据库 `shareLink` + `shareEventSnapshot` 表 | 会话快照分享 |
+
+### 前端页面结构
+
+Agent 面板（`/agent/*`）统一布局：**AgentSidebar**（左）+ **ChatPanel**（中）+ **ArtifactsPanel**（右，可调宽度）
+
+**Sidebar 导航分组**：
+- **快捷配置**：Models / Skills / MCP / Organizations
+- **Agent 树**：展开式 Agent 卡片 + 实例列表 + Session 入口
+- **更多菜单**：Dashboard / Workflow / Sessions / Knowledge Bases / Tasks / API Keys / Channels
 
 ## 常用命令
 
@@ -49,26 +104,21 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 - **`bun run precheck` 是代码质量的第一标准**。流程：`biome format --write` → `biome check --write --linter-enabled=false`（import 排序）→ `tsc` → `biome check`。格式和 import 排序自动修复
 - 后端挂载 `web/dist/` 提供前端静态文件，修改前端后**必须** `bun run build:web`
-- **前端开发代理**：`web/vite.config.ts` 配置了 `/web`、`/api`、`/acp` 代理到 `http://localhost:3000`，`dev:web` 时前端请求自动转发到后端
-- **严禁手写 SQL 迁移**：所有 schema 变更通过 `src/db/schema.ts` → `drizzle-kit generate` → `push/migrate`
-- **环境变量**：新增必须先在 `src/env.ts` 的 `envSchema` 中声明（Zod `zod/v4`）
-- **代码质量工具**：Biome v2.4.15 统一 lint + format（`biome.json`），不使用 ESLint/Prettier
-- **Swagger API 文档**：`/docs/swagger`，新增路由时添加 `.tags()` 分组
 - **工作目录漂移**：Bash `cd web` 后相对路径会出错，使用绝对路径或每次回 cd
 
 ## 架构关键点
 
 ### 后端架构 (Elysia + Bun)
 
-**入口**：`src/index.ts` — 挂载路由和插件，启动时执行：DB 初始化 → 重置所有 `agent_session.status` 为 idle → `validateEnv()` → `applyEnv()` → `getCoreRuntime()`（注册 opencode 插件 + local node）→ `startScheduler()` → 清理残留 acp-link 进程 → auto-start 带 `autoStart=true` 的 Environment 实例 → `app.listen()`。全局请求体限制 10MB，路径双斜杠自动 302 重定向。优雅关闭：Hermes → ACP 连接 → Relay 连接 → 所有 Instance → Scheduler → Cache → PG 连接
+**入口**：`src/index.ts` — DB 初始化 → `validateEnv()` → `getCoreRuntime()`（注册 plugin + local node）→ `startScheduler()` → 清理残留 acp-link → auto-start 环境 → `app.listen()`。全局请求体限制 10MB。优雅关闭：Hermes → ACP → Relay → Instance → Scheduler → Cache → PG
 
 - `/v1/*`：旧版环境/会话 API（`src/routes/v1/`）
 - `/v2/*`：**主流**，Worker/CodeSession 相关 API（`src/routes/v2/`）
-- `/web/*`：控制面板业务 API（`src/routes/web/`，~25 个子模块：auth/config/environments/instances/sessions/files/s3-files/user-file/skills/tasks/knowledge-bases/channels/organizations/control/meta-agent/registry/workflow-defs/workflow-engine/workflow-sse/workflow-boards/workflow-jobs/workflow-jobs-logs/workflow-jobs-sse/workflow-stats/workflow-proxy）
+- `/web/*`：控制面板业务 API（`src/routes/web/`，~30 个子模块：auth/branding/config/environments/instances/sessions/files/s3-files/user-file/skills/tasks/knowledge-bases/channels/organizations/control/meta-agent/registry/workflow-defs/workflow-engine/workflow-sse/workflow-boards/workflow-jobs/workflow-jobs-logs/workflow-jobs-sse/workflow-stats/workflow-proxy）
 - `/acp/*`：ACP WebSocket 端点（`src/routes/acp/`）
 - `/mcp/*`：MCP 知识库查询（`src/routes/mcp/`）
 - `/workflow-ui/*`：Workflow 可视化编辑器代理到 acpx-g 服务（`src/routes/web/workflow-proxy.ts`）
-- `/hooks/*`：Webhook 触发路由（无认证）
+- `/hooks/*`：Webhook 触发路由（`src/routes/hooks.ts`，单文件，无认证）
 
 **认证层**（`src/auth/`）：better-auth + organization + apiKey 插件。`src/plugins/auth.ts` 提供 `authGuardPlugin`（`sessionAuth` macro），`src/services/org-context.ts` 的 `loadOrgContext` 从请求解析 `AuthContext`（`organizationId`/`userId`/`role`）。认证优先级：better-auth session cookie → API Key（`rcs_xxx`）→ Environment Secret → 全局 `RCS_API_KEYS`。组织 ID 从 `x-active-org-id` header > `activeOrganizationId` query param > `active_org_id` cookie 提取，结果缓存 60 秒。测试通过 `setTestAuth()` + `setTestOrgContext()` 绕过
 
@@ -78,29 +128,28 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 **传输层**（`src/transport/`）：三层架构
 
-- **ACP WS Handler**（`acp-ws-handler.ts`）：管理 acp-link 的 WebSocket 连接注册（`connections` Map），NDJSON 格式通信，server 端 keep_alive + 客户端活跃超时检测（3 倍 keepalive 间隔）
-- **Relay 子模块**（`relay/`）：前端到 Agent 的中继桥接，两种模式：
-  - **Instance 模式**（优先）：通过 `CoreRuntimeFacade.connectInstanceRelay()` 获取 handle，消息直接转发；handle 未就绪时 buffer 消息，连接后 flush
-  - **EventBus 模式**（fallback）：直连 acp-link WS 时，通过 EventBus subscribe 转发 inbound 消息
-  - `RelayConnectionManager`（`connection-manager.ts`）管理所有前端 relay 连接，最后一个 relay 断开时关闭 core relay handle
-  - `message-router.ts`：过滤 keep_alive/connect、发布 inbound 到 EventBus（供 SSE 订阅者）、flush outbound buffer
-- **EventBus**（`event-bus.ts`）：pub/sub 事件总线，per-session/per-agent 隔离。每个 bus 缓存最近 5000 条事件（超限时裁剪到一半），支持 `getEventsSince(seqNum)` 做 SSE 断线重连。`event-service.ts` 是 service 层的统一入口封装
+- **ACP WS Handler**（`acp-ws-handler.ts`）：管理 acp-link 的 WebSocket 连接注册，NDJSON 格式，keep_alive + 超时检测
+- **Relay 子模块**（`relay/`）：前端到 Agent 的中继桥接
+  - **Instance 模式**（优先）：通过 `CoreRuntimeFacade` 获取 handle，消息直接转发；handle 未就绪时 buffer
+  - **EventBus 模式**（fallback）：直连 acp-link WS，通过 EventBus 转发
+  - `RelayConnectionManager` 管理所有前端 relay 连接
+- **EventBus**（`event-bus.ts`）：pub/sub 事件总线，per-session/per-agent 隔离，支持 `getEventsSince(seqNum)` SSE 断线重连
 
 **插件层**（`src/plugins/`）：auth、cors、error-handler（`AppError` → HTTP 状态码）、logger（requestId）、rate-limit、static、require-team-scope（`requireOrgScope` 组织资源校验）
 
 **核心服务模块**（`src/services/`）按业务域划分：
 
-- **环境管理**：`environment.ts`（barrel re-export）→ `environment-acp.ts`（ACP 注册/连接/心跳/能力上报）、`environment-web.ts`（前端 CRUD + 实例列表聚合）、`environment-core.ts`（workspace 验证/secret 生成/响应组装/删除）
-- **实例管理**：`instance.ts` — `@fenix/core` RuntimeFacade 的 RCS 适配层。核心模式：`CoreRuntimeFacade` 管理实例生命周期（spawn/stop/list），`supplements` Map 补充 core 不维护的 RCS 业务字段（userId/environmentId/organizationId/instanceNumber）。`ensureRunning()` 做并发安全：async gap 后重新检查，避免重复 spawn
-- **会话管理**：`session.ts` — 轻量存根，session 元数据由 Agent 进程管理。RCS 侧仅维护 EventBus 活跃状态 + PG 持久化
-- **Core Bootstrap**：`core-bootstrap.ts` — 全局 `CoreRuntimeFacade` 单例工厂，注册 opengine plugin + local node + `onInstanceStarted` 回调。可替换的 facade 工厂（测试时注入 mock）
-- **Launch Spec**：`launch-spec-builder.ts` — 将 DB 中的 Agent/Model/MCP/Skill/Knowledge 配置转换为 `AgentLaunchSpec`（SDK 格式）。MCP 配置格式转换：DB `local/remote` → SDK `stdio/streamable-http`；Model 解析 `provider/model` 斜杠引用
-- **定时任务**：`scheduler.ts` — node-schedule cron 调度，并发执行保护（`runningTasks` Set 防重入），可替换的 `scheduleJobImpl`（测试时注入）
-- **知识库**：`knowledge-base.ts`、`knowledge-provider/` — 知识库管理与检索
-- **IM 通道**：`channel-binding.ts`、`channel-provider.ts` — 消息通道接入（开发中）
-- **Meta Agent**：`meta-agent.ts` — 自举式环境管理：查找/创建 meta-agent Environment → 确保 AgentConfig + Skill 注册 → spawn 实例 + 创建 API key
-- **工作流**：`workflow/` — per-organization 的 `WorkflowEngine` 实例缓存（`engines` Map），使用 PG StorageAdapter（事件溯源模式：workflowEvent + workflowSnapshot + workflowNodeOutput）和 ACP Transport（通过 EventBus 收集 agent 响应，等待 `prompt_complete` 信号）
-- **配置服务**（`config/`）：`config-pg.ts` 是 barrel re-export，实现拆分到子模块。`aggregate.ts` 的 `getAgentFullConfig()` 一次加载 agent + providers + skills + mcpServers（并行查询）。`jsonb.ts` 兼容旧双重编码
+- **环境管理**：`environment.ts`（barrel）→ `environment-acp.ts` / `environment-web.ts` / `environment-core.ts`
+- **实例管理**：`instance.ts` — `CoreRuntimeFacade` 适配层，`ensureRunning()` 并发安全
+- **会话管理**：`session.ts` — 轻量存根，元数据由 Agent 进程管理
+- **Core Bootstrap**：`core-bootstrap.ts` — 全局 `CoreRuntimeFacade` 单例工厂
+- **Launch Spec**：`launch-spec-builder.ts` — DB 配置 → `AgentLaunchSpec`，MCP/Model 格式转换
+- **定时任务**：`scheduler.ts` — cron 调度，并发保护
+- **知识库**：`knowledge-base.ts`、`knowledge-provider/`
+- **IM 通道**：`channel-binding.ts`、`channel-provider.ts`（开发中）
+- **Meta Agent**：`meta-agent.ts` — 自举式：查找/创建 Environment → AgentConfig → spawn 实例
+- **工作流**：`workflow/` — per-organization `WorkflowEngine`，PG 事件溯源 + ACP Transport
+- **配置服务**（`config/`）：barrel re-export + 子模块，`aggregate.ts` 并行加载 full config
 
 **Repository 层**（`src/repositories/`）：数据访问抽象，接口 + 实现模式。新增数据表访问须创建对应 Repository 文件，接口命名 `IXxxRepo`，实现类直接导出，通过 `index.ts` 统一导出。Service 层通过注入 Repository 访问数据，禁止直接 import `db` 写查询。
 
@@ -116,8 +165,6 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 - `plugins/auth.ts`：`setTestAuth()` 绕过认证
 - `services/org-context.ts`：`setTestOrgContext()` 绕过 DB 查询
 - `repositories/index.ts`：`resetAllRepos()` 重置内存仓储
-
-**Config 服务架构**：`config-pg.ts` 是 barrel re-export（所有实现已迁移到 `src/services/config/` 子目录）。新增配置 CRUD 须在 `config/` 下对应子模块实现，保持 `config-pg.ts` 的 re-export 兼容。`aggregate.ts` 的 `getAgentFullConfig()` 是 spawn 时一次性加载入口（并行查询 providers + mcpServers + skills）。`jsonb.ts` 的 `parseJsonb<T>()` 兼容旧双重编码数据
 
 **Workflow 引擎架构**：per-organization 的 `WorkflowEngine` 实例（`engines` Map，lazy 创建）。三层适配：
 - `pg-storage-adapter.ts`：事件溯源存储（workflowEvent + workflowSnapshot + workflowNodeOutput），所有查询限定 `organizationId`
@@ -155,16 +202,18 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 ### Workspace Packages
 
-`packages/` 下 8 个内部包（`private: true`，`tsconfig.base.json` 路径映射）：
+`packages/` 下 10 个内部包（`private: true`，`tsconfig.base.json` 路径映射）：
 
 - **acp-link**：ACP stdio-to-WebSocket 桥接器
 - **acp-link-rs**：ACP 桥接器 Rust 实现
 - **@fenix/core**：核心运行时抽象（types/registry/runtime/facade）
 - **@fenix/plugin-sdk**：插件开发 SDK（engine-plugin/engine-relay 接口）
 - **@fenix/opencode**：opencode 引擎插件实现（目录名 `plugin-opencode`）
+- **@fenix/ccb**：CCB 引擎插件实现（目录名 `plugin-ccb`）
 - **@fenix/remote-runtime**：远程运行时
 - **@fenix/sdk**：前端 API SDK 工厂，各业务模块 Api 类（目录名 `sdk`）
 - **@fenix/workflow-engine**：DAG 工作流引擎 — parser/scheduler/executor/recovery/secrets（开发中，API 可能变化）
+- **@fenix/logger**：统一日志工具
 
 ### 前端架构 (React 19 + Vite + TanStack Router)
 
@@ -304,7 +353,7 @@ await auth.api.createOrganization({
 
 PostgreSQL + Drizzle ORM（`drizzle-orm/postgres-js`），Schema 在 `src/db/schema.ts`（唯一真相来源）。
 
-表分类：better-auth 核心表（user/session/account/verification）、organization 插件（organization/member/invitation）、api-key 插件（apikey）、自定义表（mcpTool/scheduledTask/taskExecutionLog/shareLink/shareEventSnapshot/environment）、配置表（provider/model/agentConfig/mcpServer/skill/userConfig）、知识库（knowledgeBase/knowledgeResource/agentKnowledgeBinding）、Workflow（workflow/workflowVersion/workflowRun/workflowEvent/workflowSnapshot/workflowNodeOutput）、IM 通道（imChannel/imChannelRoute/channelBinding）
+表分类：better-auth 核心表（user/session/account/verification）、organization 插件（organization/member/invitation）、api-key 插件（apikey）、自定义表（mcpTool/scheduledTask/taskExecutionLog/shareLink/shareEventSnapshot/environment/agentSession）、配置表（provider/model/agentConfig/agentConfigSkill/mcpServer/skill/userConfig）、知识库（knowledgeBase/knowledgeResource/agentKnowledgeBinding）、Workflow（workflow/workflowVersion/workflowRun/workflowEvent/workflowSnapshot/workflowNodeOutput/workflowBoard/workflowJob/workflowTrigger）、IM 通道（imChannel/imChannelRoute/channelBinding）、Registry（machine/registryEvent）
 
 ### Schema 变更流程
 
@@ -419,7 +468,7 @@ beforeEach(() => {
 
 两套 StatusBadge，状态值不同：
 
-- `web/src/components/Navbar.tsx`：会话/环境状态（active/running/idle/inactive 等）
+- `web/src/pages/workflow/WorkflowRuns.tsx`：工作流运行状态
 - `web/components/config/StatusBadge.tsx`：配置页状态（configured/enabled/unconfigured/disabled 等）
 
 ## 常见陷阱
@@ -462,13 +511,12 @@ beforeEach(() => {
 2. **WebSocket 断连**：反向Agent timeout 需 > 30s（Bun idleTimeout 默认）
 3. **状态 Badge 混淆**：两个不同文件的 StatusBadge，状态值不同
 4. **Split Button 可见性**：多实例下拉按钮应在环境在线时就显示
-5. **ChatInterface 有两处 ChatInput**：修改 sessionId 传递时必须两处都改
-6. **FilePickerDialog 上传始终到 user/**：不管浏览哪个目录
-7. **routeTree.gen.ts 严禁手动编辑**：由 Vite 插件自动生成
-8. **TanStack Router Vite 插件顺序**：`TanStackRouterVite` 必须在 `plugins` 数组第一位
-9. **createFileRoute 路径自动修正**：插件会自动修正路由 ID，不需要手动对齐
-10. **Sidebar 导航项必须有 `to` 字段**：有 `to` 渲染 `<Link>`，没有则渲染 `<button>`
-11. **AgentPanelLayout 路由参数**：`agentId`/`sessionId` 从路由参数注入，v2 路由在 `routes/agent/_panel/` 下
+5. **FilePickerDialog 上传始终到 user/**：不管浏览哪个目录
+6. **routeTree.gen.ts 严禁手动编辑**：由 Vite 插件自动生成
+7. **TanStack Router Vite 插件顺序**：`TanStackRouterVite` 必须在 `plugins` 数组第一位
+8. **createFileRoute 路径自动修正**：插件会自动修正路由 ID，不需要手动对齐
+9. **Sidebar 导航项必须有 `to` 字段**：有 `to` 渲染 `<Link>`，没有则渲染 `<button>`
+10. **AgentPanelLayout 路由参数**：`agentId`/`sessionId` 从路由参数注入，v2 路由在 `routes/agent/_panel/` 下
 
 ## 代码风格
 
@@ -486,7 +534,6 @@ Biome v2.4.15，space indent 2，lineWidth 120。`noExplicitAny: warn`，`noNonN
 
 - **Zod v4**：项目使用 Zod v4，导入路径 `from "zod/v4"`（不是 `from "zod"`）。禁止使用 v3 API
 - **禁止 `as any`**（业务代码），用具体类型或 `as unknown as TargetType` 双重断言
-- **Config 响应解包**：用 `unwrapConfigData<T>()`（`web/src/api/config-response.ts`），禁止 `(data as any)?.data`
 - **Config body 类型**：必须注册在 `src/schemas/config.schema.ts` 的 `ConfigBodySchema` 中
 - **API 响应数组守卫**：`.filter()`/`.map()` 前必须 `Array.isArray()`
 - **catch 块必须有 `console.error(err)`**
@@ -581,7 +628,7 @@ app.post("/resource", async ({ store, body, request }) => {
 
 - Docker 多阶段构建（`Dockerfile`）：deps → build（前端 `build:web` + 后端 `bun build`）→ runtime
 - `build-image.sh` 构建镜像（默认 linux/amd64，输出 tar.gz）
-- `docker-compose.yml`（开发）/ `docker-compose.prod.yml`（生产）
+- `docker-compose.yml`（开发）/ `docker-compose.prod.yml`（生产）/ `docker-compose.machines.yml`（机器管理）
 - 修改 `packages/` 或 `tsconfig.base.json` 后须同步 Dockerfile 的 COPY 范围
 - 运行时环境预装 Python3、git、ripgrep（opencode 依赖）
 

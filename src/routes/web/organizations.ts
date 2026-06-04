@@ -139,13 +139,19 @@ app.post(
         }
       }
       case "update": {
-        if (!b.organizationId || !b.data)
+        if (!b.organizationId)
           return error(400, {
             success: false,
-            error: { code: "VALIDATION_ERROR", message: "organizationId and data required" },
+            error: { code: "VALIDATION_ERROR", message: "organizationId required" },
           });
+        // SDK 直接传 name/slug 等字段，兼容 { data: {...} } 和 { name, slug } 两种格式
+        const updateData: Record<string, unknown> = b.data ?? {};
+        if (!b.data) {
+          if (b.name) updateData.name = b.name;
+          if (b.slug) updateData.slug = b.slug;
+        }
         const org = await api.updateOrganization({
-          body: { data: b.data, organizationId: b.organizationId },
+          body: { data: updateData, organizationId: b.organizationId },
           headers: request.headers,
         });
         return { success: true, data: org };
