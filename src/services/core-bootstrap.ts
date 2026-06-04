@@ -11,6 +11,7 @@ import {
 import { validateEnv } from "../env";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
+import { globalInstanceRegistry } from "./instance-registry";
 
 let facade: CoreRuntimeFacade | null = null;
 
@@ -112,6 +113,8 @@ export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry
     for (const instance of runtime.listInstances()) {
       if (instance.nodeId !== machineId) continue;
       runtime.deleteInstance(instance.instanceId);
+      // 同步清理 RCS 业务层 registry，否则 ensureRunning 会 reuse 已失效实例
+      globalInstanceRegistry.unregister(instance.instanceId);
       log(`[core-bootstrap] Deleted instance ${instance.instanceId} on reconnected machine ${machineId}`);
     }
     // 注意：不关闭 relay 连接，让前端自动重连 ensureRunning 时使用新 transport
