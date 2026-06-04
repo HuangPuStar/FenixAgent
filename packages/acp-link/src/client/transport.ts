@@ -15,7 +15,7 @@ export interface TransportEvents {
  *
  * 职责：
  * - 连接/断开 WebSocket
- * - 自动重连（指数退避，最多 3 次）
+ * - 自动重连（指数退避 + jitter，最多 5 次，连接稳定才重置计数）
  * - 收发原始字符串
  * - 传播连接状态和关闭原因
  */
@@ -29,6 +29,10 @@ export class WSTransport extends EventEmitter<TransportEvents> {
   private static readonly MAX_DELAY_MS = 30000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private manualDisconnect = false;
+  /** 连接成功的时间戳，用于判断连接是否稳定 */
+  private connectedAt = 0;
+  /** 连接稳定阈值：超过此时间才视为有效连接并重置重连计数器 */
+  private static readonly STABLE_THRESHOLD_MS = 5000;
 
   get state(): TransportState {
     return this._state;
@@ -70,7 +74,8 @@ export class WSTransport extends EventEmitter<TransportEvents> {
 
       ws.onopen = () => {
         if (this.ws !== ws) return;
-        this.reconnectAttempt = 0;
+        // 记录连接成功时间，延迟重置重连计数器
+        this.connectedAt = Date.now();
         this.setState("connected");
       };
 
@@ -92,6 +97,14 @@ export class WSTransport extends EventEmitter<TransportEvents> {
           this.setState("disconnected", event);
           return;
         }
+
+        // 连接稳定超过阈值才视为有效连接，重置重连计数器
+        // 防止 relay 接受连接但 agent 不可达时立即断开导致的无限重连循环
+        const wasStable = this.connectedAt > 0 && Date.now() - this.connectedAt >= WSTransport.STABLE_THRESHOLD_MS;
+        if (wasStable) {
+          this.reconnectAttempt = 0;
+        }
+        this.connectedAt = 0;
 
         // 尝试重连
         if (this.reconnectAttempt < WSTransport.MAX_RECONNECT_ATTEMPTS) {
