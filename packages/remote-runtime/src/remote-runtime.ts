@@ -15,6 +15,7 @@ export interface RemoteRuntimeOptions {
 
 export function createRemoteRuntime(options: RemoteRuntimeOptions): EngineRuntime {
   const { transport } = options;
+  let agentCapabilities: Record<string, unknown> | null = null;
 
   async function prepareEnvironment(input: PrepareEnvironmentInput): Promise<void> {
     const response = await transport.sendAndWait({
@@ -37,10 +38,13 @@ export function createRemoteRuntime(options: RemoteRuntimeOptions): EngineRuntim
     if (response.status === "error") {
       throw new Error(response.message ?? "Remote start failed");
     }
+
+    // 保存远端 agent 的 capabilities，供 connectRelay 转发给前端
+    agentCapabilities = (response as Record<string, unknown>).capabilities as Record<string, unknown> | null;
   }
 
   async function connectRelay(input: ConnectRelayInput): Promise<EngineRelayHandle> {
-    return new RemoteRelayHandle(transport, input.instanceId, input.sessionId ?? input.instanceId);
+    return new RemoteRelayHandle(transport, input.instanceId, input.sessionId ?? input.instanceId, agentCapabilities);
   }
 
   async function stopInstance(input: StopInstanceInput): Promise<void> {

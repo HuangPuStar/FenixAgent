@@ -5,11 +5,13 @@ export class RemoteRelayHandle implements EngineRelayHandle {
   private _state: "open" | "closed" = "open";
   private unsubSession: (() => void) | null = null;
   private messageListeners = new Set<(message: EngineRelayMessage) => void>();
+  private capsSent = false;
 
   constructor(
     private transport: RemoteTransport,
     private instanceId: string,
     private sessionId: string,
+    private agentCapabilities: Record<string, unknown> | null = null,
   ) {
     this.unsubSession = transport.onSessionMessage((instId, _sessId, msg) => {
       if (instId !== instanceId) return;
@@ -39,6 +41,11 @@ export class RemoteRelayHandle implements EngineRelayHandle {
   }
 
   onMessage(listener: (message: EngineRelayMessage) => void): () => void {
+    // 首次注册 listener 时，发送缓存的 agent capabilities
+    if (!this.capsSent && this.agentCapabilities) {
+      this.capsSent = true;
+      listener({ type: "status", payload: { connected: true, capabilities: this.agentCapabilities } });
+    }
     this.messageListeners.add(listener);
     return () => {
       this.messageListeners.delete(listener);

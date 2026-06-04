@@ -156,6 +156,21 @@ async function openLocalRelay(
   // 4. 先发送 relay 层的 status（携带 agent_prompt），再注册 onMessage
   //    确保前端先收到连接就绪信号，再收到 agent 的 capabilities
   sendToRelayWs(ws, { type: "status", payload: { connected: true, agent_prompt: agentPrompt ?? null } });
+  setTimeout(() => {
+    if (ws.readyState === 1) {
+      sendToRelayWs(ws, {
+        type: "status",
+        payload: {
+          connected: true,
+          capabilities: {
+            sessionCapabilities: { list: {}, load: {}, resume: {}, close: {}, fork: {} },
+            promptCapabilities: { embeddedContext: true, image: true },
+            loadSession: true,
+          },
+        },
+      });
+    }
+  }, 2000);
   log(`[ACP-Relay] Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
 
   const full = handle as FullRelayHandle;
