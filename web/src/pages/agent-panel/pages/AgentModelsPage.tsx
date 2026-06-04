@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { modelApi, providerApi } from "@/src/api/sdk";
+import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import type { ModelConfig, ProviderInfo, ProviderModel } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
@@ -65,6 +66,7 @@ export function buildProviderPublicReadablePayload(
 
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [providerModels, setProviderModels] = useState<Record<string, ProviderModel[]>>({});
   const [loading, setLoading] = useState(true);
@@ -255,7 +257,7 @@ export function AgentModelsPage() {
         toast.error(t("saveProvider.errorGeneric", { message: error.message }));
         return;
       }
-      toast.success(next ? t("resource.makePublic") : t("resource.makePrivate"));
+      toast.success(next ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
       loadAll();
       dispatchConfigChange("providers");
     } catch (e) {
@@ -581,7 +583,7 @@ export function AgentModelsPage() {
                           </span>
                         )}
                         <span className="inline-flex items-center rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-secondary">
-                          {t(getProviderResourceBadgeKey(provider))}
+                          {tComponents(getProviderResourceBadgeKey(provider))}
                         </span>
                       </div>
                       <label
@@ -595,12 +597,10 @@ export function AgentModelsPage() {
                             void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
                           }
                         />
-                        {provider.resourceAccess?.publicReadable
-                          ? t("resource.disableSharing")
-                          : t("resource.enableSharing")}
+                        {tComponents("resource.public")}
                       </label>
                       {!writable && (
-                        <p className="mt-3 text-xs font-medium text-text-muted">{t("resource.readOnly")}</p>
+                        <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
                       )}
                     </div>
                     <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">

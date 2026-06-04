@@ -89,15 +89,7 @@
     "noOptions": "暂无可用技能"
   },
   "resource": {
-    "internal": "私有",
-    "external": "共享",
-    "public": "公开",
-    "makePublic": "设为公开",
-    "makePrivate": "设为私有",
-    "readOnly": "只读",
-    "sharingTitle": "共享设置",
-    "enableSharing": "允许其他团队读取此智能体",
-    "disableSharing": "停止共享此智能体",
+    "publicDescription": "允许其他团队读取此智能体",
     "sharedSourceTitle": "共享智能体",
     "readOnlyAgent": "该智能体来自 {{source}} 的共享，当前团队无法编辑。"
   },

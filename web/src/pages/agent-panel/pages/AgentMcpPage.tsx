@@ -19,6 +19,7 @@ import {
   getMcpLookupKey,
   getMcpResourceBadgeKey,
 } from "@/src/lib/mcp-resource-access";
+import { NS } from "../../../i18n";
 import type { McpInspectResult, McpServerConfig, McpServerInfo, McpToolInfo } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
@@ -116,6 +117,7 @@ function buildMcpPayload(
 
 export function AgentMcpPage() {
   const { t } = useTranslation("mcp");
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const [servers, setServers] = useState<McpServerInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -373,7 +375,7 @@ export function AgentMcpPage() {
       setSharingServer(null);
       return;
     }
-    toast.success(t("toast.serverUpdated"));
+    toast.success(nextPublicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
     setSharingServer(null);
     loadServers();
   };
@@ -512,7 +514,7 @@ export function AgentMcpPage() {
                       {server.type === "local" ? "Local" : server.type === "remote" ? "Remote" : t("disabled")}
                     </span>
                     <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-muted">
-                      {t(getMcpResourceBadgeKey(server))}
+                      {tComponents(getMcpResourceBadgeKey(server))}
                     </span>
                     <span
                       className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-xs font-medium ${
@@ -537,12 +539,12 @@ export function AgentMcpPage() {
                         disabled={sharingServer === serverKey}
                         onCheckedChange={() => void handleTogglePublicReadable(server)}
                       />
-                      {server.resourceAccess?.publicReadable
-                        ? t("resource.disableSharing")
-                        : t("resource.enableSharing")}
+                      {tComponents("resource.public")}
                     </label>
                   )}
-                  {!writable && <p className="mt-3 text-xs font-medium text-text-muted">{t("resource.readOnly")}</p>}
+                  {!writable && (
+                    <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
+                  )}
                 </div>
                 <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   {writable && (

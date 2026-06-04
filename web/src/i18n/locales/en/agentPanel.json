@@ -58,10 +58,5 @@
   "agentDefaultDesc": "Agent",
   "sharedFrom": "Shared from {{source}}",
   "expandInstances": "Expand instances",
-  "collapseInstances": "Collapse instances",
-  "resource": {
-    "internal": "Private",
-    "external": "Shared",
-    "public": "Public"
-  }
+  "collapseInstances": "Collapse instances"
 }

@@ -58,10 +58,5 @@
   "agentDefaultDesc": "智能体",
   "sharedFrom": "共享自 {{source}}",
   "expandInstances": "展开实例",
-  "collapseInstances": "收起实例",
-  "resource": {
-    "internal": "私有",
-    "external": "共享",
-    "public": "公开"
-  }
+  "collapseInstances": "收起实例"
 }

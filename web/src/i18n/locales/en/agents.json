@@ -89,15 +89,7 @@
     "noOptions": "No skills available"
   },
   "resource": {
-    "internal": "Private",
-    "external": "Shared",
-    "public": "Public",
-    "makePublic": "Make public",
-    "makePrivate": "Make private",
-    "readOnly": "Read-only",
-    "sharingTitle": "Sharing",
-    "enableSharing": "Allow other teams to read this agent",
-    "disableSharing": "Stop sharing this agent",
+    "publicDescription": "Allow other teams to read this agent",
     "sharedSourceTitle": "Shared agent",
     "readOnlyAgent": "This agent is shared from {{source}} and cannot be edited here."
   },

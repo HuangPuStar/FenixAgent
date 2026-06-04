@@ -5,14 +5,6 @@
   "empty": "暂无 MCP 服务器，点击「新建服务器」添加",
   "disabled": "已禁用",
   "resource": {
-    "internal": "私有",
-    "external": "共享",
-    "public": "公开",
-    "makePublic": "设为公开",
-    "makePrivate": "设为私有",
-    "enableSharing": "设为公开",
-    "disableSharing": "设为私有",
-    "readOnly": "只读",
     "trustedNotice": "公开 MCP 会向拥有读取权限的受信任内部团队暴露完整配置。"
   },
   "column": {

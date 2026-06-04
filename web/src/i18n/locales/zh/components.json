@@ -248,14 +248,6 @@
     "lightweightModel": "轻量模型",
     "lightweightModelPlaceholder": "选择轻量模型"
   },
-  "resource": {
-    "internal": "内部",
-    "external": "外部",
-    "public": "公开",
-    "makePublic": "设为公开",
-    "makePrivate": "设为私有",
-    "readOnly": "只读"
-  },
   "acpConnect": {
     "server": "服务器",
     "connect": "连接",
@@ -299,5 +291,13 @@
     "loadError": "加载失败",
     "retry": "重试",
     "empty": "暂无内容"
+  },
+  "resource": {
+    "internal": "私有",
+    "external": "共享",
+    "public": "公开",
+    "makePublic": "设为公开",
+    "makePrivate": "设为私有",
+    "readOnly": "只读"
   }
 }

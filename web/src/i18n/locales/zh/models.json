@@ -25,16 +25,7 @@
     "primary": "主模型",
     "small": "轻量模型"
   },
-  "resource": {
-    "internal": "私有",
-    "external": "共享",
-    "public": "公开",
-    "makePublic": "设为公开",
-    "makePrivate": "设为私有",
-    "enableSharing": "设为公开",
-    "disableSharing": "设为私有",
-    "readOnly": "只读"
-  },
+  "resource": {},
   "validation": {
     "nameEmpty": "名称不能为空",
     "nameLength": "名称长度须在 1-64 字符之间"

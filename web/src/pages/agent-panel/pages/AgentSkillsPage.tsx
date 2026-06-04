@@ -85,6 +85,7 @@ const directoryInputProps = { webkitdirectory: "", directory: "" } as Record<str
 
 export function AgentSkillsPage() {
   const { t } = useTranslation(NS.SKILLS);
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -189,6 +190,7 @@ export function AgentSkillsPage() {
 
   const handleToggleSharing = async (skill: SkillInfo) => {
     if (!canManageSkillSharing(skill)) return;
+    const nextPublicReadable = !skill.resourceAccess?.publicReadable;
     const { data: detail, error: detailError } = await skillConfigApi.get(getSkillLookupKey(skill));
     if (detailError) {
       toast.error(t("toast.loadDetailFailed"));
@@ -199,13 +201,13 @@ export function AgentSkillsPage() {
       description: d.description ?? skill.description ?? "",
       content: d.content ?? "",
       metadata: d.metadata ?? {},
-      publicReadable: !skill.resourceAccess?.publicReadable,
+      publicReadable: nextPublicReadable,
     });
     if (error) {
       toast.error(t("toast.saveFailedWith", { message: error.message }));
       return;
     }
-    toast.success(t("toast.skillUpdated"));
+    toast.success(nextPublicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
     loadSkills();
     dispatchConfigChange("skills");
   };
@@ -352,7 +354,7 @@ export function AgentSkillsPage() {
                     {getSkillOptionLabel(skill)}
                   </span>
                   <span className="inline-flex shrink-0 whitespace-nowrap rounded border border-border-subtle px-1.5 py-0.5 text-[10px] font-medium leading-none text-text-muted">
-                    {t(getSkillResourceBadgeKey(skill))}
+                    {tComponents(getSkillResourceBadgeKey(skill))}
                   </span>
                 </div>
                 <p className="text-xs text-text-secondary line-clamp-3 mt-2 leading-relaxed">
@@ -364,10 +366,12 @@ export function AgentSkillsPage() {
                       checked={Boolean(skill.resourceAccess?.publicReadable)}
                       onCheckedChange={() => void handleToggleSharing(skill)}
                     />
-                    {skill.resourceAccess?.publicReadable ? t("resource.disableSharing") : t("resource.enableSharing")}
+                    {tComponents("resource.public")}
                   </label>
                 )}
-                {!writable && <p className="mt-3 text-xs font-medium text-text-muted">{t("resource.readOnly")}</p>}
+                {!writable && (
+                  <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
+                )}
               </div>
             </div>
           );
@@ -516,7 +520,7 @@ export function AgentSkillsPage() {
           <div className="space-y-4">
             {editingReadOnly && (
               <p className="rounded-lg border border-border-subtle bg-surface-2 px-3 py-2 text-sm text-text-muted">
-                {t("resource.readOnly")}
+                {tComponents("resource.readOnly")}
               </p>
             )}
             <div>

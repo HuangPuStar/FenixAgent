@@ -63,6 +63,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const isEdit = mode === "edit";
   const { t } = useTranslation(NS.AGENTS);
   const { t: tAgentPanel } = useTranslation(NS.AGENT_PANEL);
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
 
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
@@ -599,10 +600,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                     !isEdit) && (
                     <label className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm">
                       <div>
-                        <p className="font-medium text-text-bright">{t("resource.sharingTitle")}</p>
-                        <p className="text-xs text-text-muted">
-                          {formPublicReadable ? t("resource.disableSharing") : t("resource.enableSharing")}
-                        </p>
+                        <p className="font-medium text-text-bright">{tComponents("resource.public")}</p>
+                        <p className="text-xs text-text-muted">{t("resource.publicDescription")}</p>
                       </div>
                       <Switch
                         checked={formPublicReadable}

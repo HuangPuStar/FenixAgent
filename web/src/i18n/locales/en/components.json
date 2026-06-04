@@ -248,14 +248,6 @@
     "lightweightModel": "Lightweight Model",
     "lightweightModelPlaceholder": "Select lightweight model"
   },
-  "resource": {
-    "internal": "Internal",
-    "external": "External",
-    "public": "Public",
-    "makePublic": "Make Public",
-    "makePrivate": "Make Private",
-    "readOnly": "Read only"
-  },
   "acpConnect": {
     "server": "Server",
     "connect": "Connect",
@@ -299,5 +291,13 @@
     "loadError": "Failed to load",
     "retry": "Retry",
     "empty": "No items"
+  },
+  "resource": {
+    "internal": "Private",
+    "external": "Shared",
+    "public": "Public",
+    "makePublic": "Make public",
+    "makePrivate": "Make private",
+    "readOnly": "Read-only"
   }
 }

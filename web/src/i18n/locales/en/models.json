@@ -25,16 +25,7 @@
     "primary": "Primary",
     "small": "Lightweight"
   },
-  "resource": {
-    "internal": "Private",
-    "external": "Shared",
-    "public": "Public",
-    "makePublic": "Make Public",
-    "makePrivate": "Make Private",
-    "enableSharing": "Make public",
-    "disableSharing": "Make private",
-    "readOnly": "Read only"
-  },
+  "resource": {},
   "validation": {
     "nameEmpty": "Name cannot be empty",
     "nameLength": "Name must be between 1-64 characters"

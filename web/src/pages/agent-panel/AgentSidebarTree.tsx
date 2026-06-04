@@ -67,6 +67,7 @@ export function AgentSidebarTree({
   onEditAgent,
 }: AgentSidebarTreeProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const { org } = useOrg();
   const orgId = org?.id;
   const [treeNodes, setTreeNodes] = useState<AgentTreeNode[]>([]);
@@ -398,7 +399,7 @@ export function AgentSidebarTree({
                 <div className="flex items-center gap-1.5">
                   <div className="text-[13px] font-semibold text-text-primary truncate">{displayName}</div>
                   <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
-                    {t(getAgentAccessBadgeKey(agent))}
+                    {tComponents(getAgentAccessBadgeKey(agent))}
                   </span>
                 </div>
                 <div className="text-[11px] text-text-dim truncate mt-0.5">

@@ -35,16 +35,7 @@
     "nameRequired": "Name cannot be empty",
     "contentRequired": "Content cannot be empty"
   },
-  "resource": {
-    "internal": "Private",
-    "external": "Shared",
-    "public": "Public",
-    "makePublic": "Make public",
-    "makePrivate": "Make private",
-    "enableSharing": "Make public",
-    "disableSharing": "Make private",
-    "readOnly": "Read-only"
-  },
+  "resource": {},
   "upload": {
     "selectFolder": "Click to select a folder containing skills",
     "selectFolderHint": "Each subdirectory will be recognized as a skill, and must contain SKILL.md",

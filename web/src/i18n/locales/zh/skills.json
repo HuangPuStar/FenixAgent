@@ -35,16 +35,7 @@
     "nameRequired": "名称不能为空",
     "contentRequired": "内容不能为空"
   },
-  "resource": {
-    "internal": "私有",
-    "external": "共享",
-    "public": "公开",
-    "makePublic": "设为公开",
-    "makePrivate": "设为私有",
-    "enableSharing": "设为公开",
-    "disableSharing": "设为私有",
-    "readOnly": "只读"
-  },
+  "resource": {},
   "upload": {
     "selectFolder": "点击选择包含技能的文件夹",
     "selectFolderHint": "每个子目录将被识别为一个 skill，目录内需包含 SKILL.md",
