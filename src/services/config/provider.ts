@@ -2,35 +2,60 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { model, provider } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
+import {
+  assertInternalWritable,
+  canReadResource,
+  decorateResourceAccess,
+  listReadableResourceRefs,
+  setPublicRead,
+} from "../resource-permission";
 import type {
   ModelCostConfig,
   ModelDataInput,
+  ModelEntryWithProviderAccess,
   ModelLimitConfig,
   ModelModalities,
   ModelOptions,
+  ProviderSetOptions,
   ProviderUpsertData,
+  ResourceAccess,
 } from "./types";
 
 // ────────────────────────────────────────────
 // Provider 操作
 // ────────────────────────────────────────────
 
-export async function listProviders(ctx: AuthContext) {
-  const rows = await db
-    .select({
-      id: provider.id,
-      name: provider.name,
-      displayName: provider.displayName,
-      protocol: provider.protocol,
-      baseUrl: provider.baseUrl,
-      apiKey: provider.apiKey,
-      extraOptions: provider.extraOptions,
-      createdAt: provider.createdAt,
-      updatedAt: provider.updatedAt,
-    })
-    .from(provider)
-    .where(eq(provider.organizationId, ctx.organizationId));
+type ProviderRow = typeof provider.$inferSelect;
+type ProviderRowWithAccess = ProviderRow & { resourceAccess: ResourceAccess };
+type ProviderDetailWithAccess = ProviderRowWithAccess & { models: ModelEntryWithProviderAccess[] };
 
+function parseResourceKey(resourceKey: string) {
+  const slashIndex = resourceKey.indexOf("/");
+  if (slashIndex <= 0 || slashIndex === resourceKey.length - 1) return null;
+  return {
+    sourceOrganizationId: resourceKey.slice(0, slashIndex),
+    resourceUid: resourceKey.slice(slashIndex + 1),
+  };
+}
+
+async function listExternalProviders(ctx: AuthContext): Promise<ProviderRow[]> {
+  const refs = await listReadableResourceRefs(ctx, "provider");
+  const ids = refs.map((ref) => ref.resourceId);
+  if (ids.length === 0) return [];
+
+  const rows = await db.select().from(provider).where(inArray(provider.id, ids));
+  const refKeys = new Set(refs.map((ref) => `${ref.organizationId}/${ref.resourceId}`));
+  return rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`));
+}
+
+export async function listReadableProviders(ctx: AuthContext): Promise<ProviderRowWithAccess[]> {
+  const rows = await db.select().from(provider).where(eq(provider.organizationId, ctx.organizationId));
+  const external = await listExternalProviders(ctx);
+  return decorateResourceAccess(ctx, "provider", [...rows, ...external]);
+}
+
+export async function listProviders(ctx: AuthContext) {
+  const rows = await listReadableProviders(ctx);
   const providerIds = rows.map((r) => r.id);
   const modelCounts =
     providerIds.length > 0
@@ -40,7 +65,7 @@ export async function listProviders(ctx: AuthContext) {
             count: sql<number>`COUNT(*)`,
           })
           .from(model)
-          .where(and(eq(model.organizationId, ctx.organizationId), inArray(model.providerId, providerIds)))
+          .where(inArray(model.providerId, providerIds))
           .groupBy(model.providerId)
       : [];
   const countByProviderId = new Map(modelCounts.map((r) => [r.providerId, Number(r.count)]));
@@ -53,30 +78,74 @@ export async function listProviders(ctx: AuthContext) {
     baseUrl: r.baseUrl,
     apiKey: r.apiKey,
     extraOptions: r.extraOptions,
+    resourceAccess: r.resourceAccess,
+    resourceKey: r.resourceAccess.resourceKey,
     modelCount: countByProviderId.get(r.id) ?? 0,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   }));
 }
 
-export async function getProvider(ctx: AuthContext, name: string) {
+async function listModelsWithProviderAccess(
+  providerRow: ProviderRowWithAccess,
+): Promise<ModelEntryWithProviderAccess[]> {
+  const models = await db.select().from(model).where(eq(model.providerId, providerRow.id));
+  return models.map((m) => ({
+    ...m,
+    providerResourceAccess: providerRow.resourceAccess,
+  }));
+}
+
+export async function getProviderByResourceKey(
+  ctx: AuthContext,
+  resourceKey: string,
+): Promise<ProviderDetailWithAccess | null> {
+  const parsed = parseResourceKey(resourceKey);
+  if (!parsed) return null;
+
+  const rows = await db.select().from(provider).where(eq(provider.id, parsed.resourceUid)).limit(1);
+  const row = rows[0] ?? null;
+  if (!row || row.organizationId !== parsed.sourceOrganizationId) return null;
+
+  const readable = await canReadResource(ctx, "provider", row.id, row.organizationId);
+  if (!readable) return null;
+
+  const [decorated] = await decorateResourceAccess(ctx, "provider", [row]);
+  const models = await listModelsWithProviderAccess(decorated);
+  return { ...decorated, models };
+}
+
+export async function getProvider(ctx: AuthContext, name: string): Promise<ProviderDetailWithAccess | null> {
+  if (parseResourceKey(name)) return getProviderByResourceKey(ctx, name);
+
   const rows = await db
     .select()
     .from(provider)
     .where(and(eq(provider.organizationId, ctx.organizationId), eq(provider.name, name)))
     .limit(1);
-  if (rows.length === 0) return null;
-  const p = rows[0];
+  const internal = rows[0] ?? null;
+  if (internal) {
+    const [decorated] = await decorateResourceAccess(ctx, "provider", [internal]);
+    const models = await listModelsWithProviderAccess(decorated);
+    return { ...decorated, models };
+  }
 
-  const models = await db
-    .select()
-    .from(model)
-    .where(and(eq(model.organizationId, ctx.organizationId), eq(model.providerId, p.id)));
+  const external = (await listExternalProviders(ctx)).find((row) => row.name === name);
+  if (!external) return null;
+  const readable = await canReadResource(ctx, "provider", external.id, external.organizationId);
+  if (!readable) return null;
 
-  return { ...p, models };
+  const [decorated] = await decorateResourceAccess(ctx, "provider", [external]);
+  const models = await listModelsWithProviderAccess(decorated);
+  return { ...decorated, models };
 }
 
-export async function upsertProvider(ctx: AuthContext, name: string, data: ProviderUpsertData) {
+export async function upsertProvider(
+  ctx: AuthContext,
+  name: string,
+  data: ProviderUpsertData,
+  options: ProviderSetOptions = {},
+) {
   const set = {
     displayName: data.displayName,
     protocol: data.protocol,
@@ -100,15 +169,32 @@ export async function upsertProvider(ctx: AuthContext, name: string, data: Provi
     })
     .returning({ id: provider.id });
 
+  if (options.publicReadable !== undefined) {
+    await setPublicRead(ctx, "provider", ctx.organizationId, row.id, options.publicReadable);
+  }
+
   return row.id;
 }
 
 export async function deleteProvider(ctx: AuthContext, name: string): Promise<boolean> {
-  const result = await db
-    .delete(provider)
-    .where(and(eq(provider.organizationId, ctx.organizationId), eq(provider.name, name)))
-    .returning({ id: provider.id });
+  const row = await getProvider(ctx, name);
+  if (!row) return false;
+
+  assertInternalWritable(ctx, "provider", row.id, row.organizationId);
+  const result = await db.delete(provider).where(eq(provider.id, row.id)).returning({ id: provider.id });
   return result.length > 0;
+}
+
+export async function assertProviderInternalWritable(
+  ctx: AuthContext,
+  nameOrResourceKey: string,
+): Promise<ProviderDetailWithAccess | null> {
+  const row = parseResourceKey(nameOrResourceKey)
+    ? await getProviderByResourceKey(ctx, nameOrResourceKey)
+    : await getProvider(ctx, nameOrResourceKey);
+  if (!row) return null;
+  assertInternalWritable(ctx, "provider", row.id, row.organizationId);
+  return row;
 }
 
 /** 将前端数据映射为 PG model 字段 */

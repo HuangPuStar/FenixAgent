@@ -118,7 +118,15 @@ describe("skill archive lifecycle", () => {
 
   // 删除 PG 元数据成功后，同步删除 source 和 archive。
   test("deleteSkill removes source dir and archive", async () => {
-    const { skillFs } = installMocks();
+    const { configPg, skillFs } = installMocks();
+    configPg.getSkill.mockImplementationOnce(
+      async () =>
+        ({
+          name: "demo",
+          contentPath: `${root}/demo/SKILL.md`,
+          resourceAccess: { writable: true },
+        }) as unknown as null,
+    );
 
     await expect(deleteSkill(ctx, "demo")).resolves.toBe(true);
 

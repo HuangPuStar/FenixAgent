@@ -4,6 +4,9 @@
   "search": "Search MCP servers...",
   "empty": "No MCP servers yet. Click \"New Server\" to add one",
   "disabled": "Disabled",
+  "resource": {
+    "trustedNotice": "Public MCP servers expose their full configuration to trusted internal teams with read access."
+  },
   "column": {
     "name": "Name",
     "type": "Type",
@@ -13,6 +16,7 @@
   },
   "btn": {
     "newServer": "New Server",
+    "view": "View",
     "inspect": "Inspect",
     "inspecting": "Inspecting...",
     "disable": "Disable",
@@ -28,6 +32,7 @@
   },
   "dialog": {
     "editTitle": "Edit MCP Server",
+    "detailTitle": "MCP Server Details",
     "createTitle": "New MCP Server",
     "nameImmutable": "Name cannot be changed after creation"
   },

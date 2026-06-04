@@ -1,4 +1,5 @@
 import Elysia from "elysia";
+import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
 import * as configPg from "../../../services/config/index";
@@ -28,6 +29,8 @@ async function handleList(ctx: AuthContext) {
     keyHint: toKeyHint(p.apiKey),
     baseURL: p.baseUrl ?? null,
     modelCount: p.modelCount,
+    resourceAccess: p.resourceAccess,
+    resourceKey: p.resourceKey,
   }));
   return configSuccess({ providers: list });
 }
@@ -42,6 +45,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     modalities: m.modalities ?? null,
     limit: m.limitConfig ?? null,
     cost: m.cost ?? null,
+    providerResourceAccess: m.providerResourceAccess,
   }));
 
   return configSuccess({
@@ -50,6 +54,8 @@ async function handleGet(ctx: AuthContext, name: string) {
     protocol: p.protocol,
     keyHint: toKeyHint(p.apiKey),
     baseURL: p.baseUrl ?? null,
+    resourceAccess: p.resourceAccess,
+    resourceKey: p.resourceAccess?.resourceKey,
     options: {
       ...(p.baseUrl ? { baseURL: p.baseUrl } : {}),
       ...(p.apiKey ? { apiKey: p.apiKey } : {}),
@@ -66,6 +72,9 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
 
   // 读取现有 provider 以保留 models
   const existing = await configPg.getProvider(ctx, name);
+  if (existing?.resourceAccess?.writable === false) {
+    throw new AppError("External provider is read-only", "FORBIDDEN", 403);
+  }
 
   // 分解 data 为 PG 字段
   const apiKey = data.apiKey as string | undefined;
@@ -74,9 +83,10 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   const protocol =
     rawProtocol === "anthropic" || rawProtocol === "openai" ? rawProtocol : (existing?.protocol ?? "openai");
   const displayName = (data.name as string) ?? existing?.displayName ?? undefined;
+  const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
   // 收集 extraOptions：data 中除已知字段外的其他 options
-  const knownKeys = new Set(["protocol", "name", "baseURL", "apiKey", "models", "options"]);
+  const knownKeys = new Set(["protocol", "name", "baseURL", "apiKey", "models", "options", "publicReadable"]);
   const extraOptions: Record<string, unknown> = {};
   if (typeof data.options === "object" && data.options !== null) {
     for (const [k, v] of Object.entries(data.options as Record<string, unknown>)) {
@@ -91,25 +101,30 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     }
   }
 
-  await configPg.upsertProvider(ctx, name, {
-    displayName,
-    protocol,
-    baseUrl,
-    apiKey,
-    extraOptions: Object.keys(extraOptions).length > 0 ? extraOptions : undefined,
-  });
+  await configPg.upsertProvider(
+    ctx,
+    name,
+    {
+      displayName,
+      protocol,
+      baseUrl,
+      apiKey,
+      extraOptions: Object.keys(extraOptions).length > 0 ? extraOptions : undefined,
+    },
+    { publicReadable },
+  );
 
   // 处理 models（如果有）
   if (data.models && typeof data.models === "object") {
-    const providerRecord = await configPg.getProvider(ctx, name);
+    const providerRecord = await configPg.assertProviderInternalWritable(ctx, name);
     if (providerRecord) {
       const incoming = data.models as Record<string, Record<string, unknown>>;
       for (const [modelId, modelCfg] of Object.entries(incoming)) {
         const existingModel = providerRecord.models?.find((m) => m.modelId === modelId);
         if (existingModel) {
-          await configPg.updateModel(ctx.organizationId, providerRecord.id, modelId, buildModelData(modelCfg));
+          await configPg.updateModel(ctx, providerRecord.id, modelId, buildModelData(modelCfg));
         } else {
-          await configPg.addModel(ctx.organizationId, providerRecord.id, { modelId, ...buildModelData(modelCfg) });
+          await configPg.addModel(ctx, providerRecord.id, { modelId, ...buildModelData(modelCfg) });
         }
       }
     }
@@ -345,7 +360,7 @@ async function testProviderModelMessage(
 }
 
 async function handleTest(ctx: AuthContext, name: string) {
-  const p = await configPg.getProvider(ctx, name);
+  const p = await configPg.assertProviderInternalWritable(ctx, name);
   if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
 
   const apiKey = resolveApiKey(p.apiKey) ?? "";
@@ -375,7 +390,7 @@ async function handleTest(ctx: AuthContext, name: string) {
 async function handleTestModel(ctx: AuthContext, providerName: string, modelId: string) {
   if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
 
-  const p = await configPg.getProvider(ctx, providerName);
+  const p = await configPg.assertProviderInternalWritable(ctx, providerName);
   if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
@@ -401,6 +416,8 @@ async function handleTestModel(ctx: AuthContext, providerName: string, modelId: 
 }
 
 async function handleDelete(ctx: AuthContext, name: string) {
+  const row = await configPg.assertProviderInternalWritable(ctx, name);
+  if (!row) return configError("NOT_FOUND", `Provider '${name}' not found`);
   const deleted = await configPg.deleteProvider(ctx, name);
   if (!deleted) return configError("NOT_FOUND", `Provider '${name}' not found`);
   invalidateAvailableCache();
@@ -411,13 +428,13 @@ async function handleAddModel(ctx: AuthContext, providerName: string, data: Reco
   const modelId = data.modelId as string;
   if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
 
-  const p = await configPg.getProvider(ctx, providerName);
+  const p = await configPg.assertProviderInternalWritable(ctx, providerName);
   if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
   if (existingModel) return configError("VALIDATION_ERROR", `Model '${modelId}' already exists`);
 
-  await configPg.addModel(ctx.organizationId, p.id, { modelId, ...buildModelData(data) });
+  await configPg.addModel(ctx, p.id, { modelId, ...buildModelData(data) });
   invalidateAvailableCache();
   return configSuccess({ modelId });
 }
@@ -430,13 +447,13 @@ async function handleUpdateModel(
 ) {
   if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
 
-  const p = await configPg.getProvider(ctx, providerName);
+  const p = await configPg.assertProviderInternalWritable(ctx, providerName);
   if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
   if (!existingModel) return configError("NOT_FOUND", `Model '${modelId}' not found`);
 
-  await configPg.updateModel(ctx.organizationId, p.id, modelId, buildModelData(data));
+  await configPg.updateModel(ctx, p.id, modelId, buildModelData(data));
   invalidateAvailableCache();
   return configSuccess({ modelId });
 }
@@ -444,13 +461,13 @@ async function handleUpdateModel(
 async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId: string) {
   if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
 
-  const p = await configPg.getProvider(ctx, providerName);
+  const p = await configPg.assertProviderInternalWritable(ctx, providerName);
   if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
   if (!existingModel) return configError("NOT_FOUND", `Model '${modelId}' not found`);
 
-  await configPg.removeModel(ctx.organizationId, p.id, modelId);
+  await configPg.removeModel(ctx, p.id, modelId);
   invalidateAvailableCache();
   return configSuccess(null);
 }
@@ -486,6 +503,9 @@ app.post(
           return error(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
       }
     } catch (e: unknown) {
+      if (e instanceof AppError) {
+        return error(e.statusCode, configError(e.code, e.message));
+      }
       const message = e instanceof Error ? e.message : "Unknown error";
       return error(500, configError("CONFIG_READ_ERROR", message));
     }

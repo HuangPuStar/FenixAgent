@@ -18,6 +18,18 @@ let _providers: Map<
   }
 > = new Map();
 
+function internalAccess(id: string) {
+  return {
+    ownership: "internal" as const,
+    sourceOrganizationId: "test-team",
+    resourceUid: id,
+    resourceKey: `test-team/${id}`,
+    manageable: true,
+    writable: true,
+    publicReadable: false,
+  };
+}
+
 function setupStubs() {
   stubConfigPg({
     listProviders: async (_ctx: any) => {
@@ -29,6 +41,8 @@ function setupStubs() {
         baseUrl: p.baseUrl,
         apiKey: p.apiKey,
         extraOptions: p.extraOptions,
+        resourceAccess: internalAccess(p.id),
+        resourceKey: `test-team/${p.id}`,
         modelCount: p.models.size,
       }));
     },
@@ -37,13 +51,33 @@ function setupStubs() {
       if (!p) return null;
       return {
         ...p,
+        resourceAccess: internalAccess(p.id),
         models: [...p.models.entries()].map(([modelId, m]) => ({
           id: "model-uuid",
           providerId: p.id,
           modelId,
+          providerResourceAccess: internalAccess(p.id),
           ...m,
         })),
       };
+    },
+    assertProviderInternalWritable: async (_ctx: any, name: string) => {
+      const p = await (async () => {
+        const provider = _providers.get(name);
+        if (!provider) return null;
+        return {
+          ...provider,
+          resourceAccess: internalAccess(provider.id),
+          models: [...provider.models.entries()].map(([modelId, m]) => ({
+            id: "model-uuid",
+            providerId: provider.id,
+            modelId,
+            providerResourceAccess: internalAccess(provider.id),
+            ...m,
+          })),
+        };
+      })();
+      return p;
     },
     upsertProvider: async (_ctx: any, name: string, data: any) => {
       const existing = _providers.get(name);
@@ -73,7 +107,7 @@ function setupStubs() {
     deleteProvider: async (_ctx: any, name: string) => {
       return _providers.delete(name);
     },
-    addModel: async (_orgId: string, providerId: string, data: any) => {
+    addModel: async (_ctx: any, providerId: string, data: any) => {
       for (const p of _providers.values()) {
         if (p.id === providerId) {
           p.models.set(data.modelId, data);
@@ -81,7 +115,7 @@ function setupStubs() {
         }
       }
     },
-    updateModel: async (_orgId: string, providerId: string, modelId: string, data: any) => {
+    updateModel: async (_ctx: any, providerId: string, modelId: string, data: any) => {
       for (const p of _providers.values()) {
         if (p.id === providerId) {
           const existing = p.models.get(modelId) ?? {};
@@ -90,7 +124,7 @@ function setupStubs() {
         }
       }
     },
-    removeModel: async (_orgId: string, providerId: string, modelId: string) => {
+    removeModel: async (_ctx: any, providerId: string, modelId: string) => {
       for (const p of _providers.values()) {
         if (p.id === providerId) {
           p.models.delete(modelId);

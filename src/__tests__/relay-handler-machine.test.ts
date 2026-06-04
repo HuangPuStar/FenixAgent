@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb, stubEnvironmentRepo } from "../test-utils/helpers";
 
-// Mock DB — relay uses getAgentConfigById which queries db (chain builder)
 const _dbRows: Array<Record<string, unknown>> = [];
 // Helper for tests to set db return values
 function _setDbRows(rows: Array<Record<string, unknown>>) {
@@ -11,18 +10,19 @@ function _setDbRows(rows: Array<Record<string, unknown>>) {
 
 beforeEach(() => {
   resetAllStubs();
-  // 配置链式查询构建器 stub
   stubDb({
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: () => _dbRows,
-        }),
-        leftJoin: () => ({
-          where: () => _dbRows,
-        }),
-      }),
-    }),
+    select: mock(() => ({
+      from: mock(() => ({
+        where: mock(() =>
+          Object.assign(Promise.resolve(_dbRows), {
+            limit: mock(() => _dbRows),
+          }),
+        ),
+        leftJoin: mock(() => ({
+          where: mock(() => _dbRows),
+        })),
+      })),
+    })),
   });
 });
 

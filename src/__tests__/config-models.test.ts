@@ -13,6 +13,27 @@ let _userConfig: {
 } = { defaultAgent: null, currentModel: null, smallModel: null, permission: null };
 let _providers: Map<string, { id: string; name: string; models: Map<string, Record<string, unknown>> }> = new Map();
 
+function internalAccess(id: string) {
+  return {
+    ownership: "internal" as const,
+    sourceOrganizationId: "test-team",
+    resourceUid: id,
+    resourceKey: `test-team/${id}`,
+    manageable: true,
+    writable: true,
+    publicReadable: false,
+  };
+}
+
+function seedModel(providerName: string, modelId: string, displayName = modelId) {
+  const providerId = `prov-${providerName}`;
+  _providers.set(providerName, {
+    id: providerId,
+    name: providerName,
+    models: new Map([[modelId, { displayName }]]),
+  });
+}
+
 describe("Models Config Route", () => {
   afterEach(() => {
     resetTestAuth();
@@ -30,17 +51,43 @@ describe("Models Config Route", () => {
         if (patch.defaultAgent !== undefined) _userConfig.defaultAgent = patch.defaultAgent;
       },
       listProviders: async (_ctx: any) => {
-        return [..._providers.values()].map((p) => ({ id: p.id, name: p.name, modelCount: p.models.size }));
+        return [..._providers.values()].map((p) => ({
+          id: p.id,
+          name: p.name,
+          resourceAccess: internalAccess(p.id),
+          resourceKey: `test-team/${p.id}`,
+          modelCount: p.models.size,
+        }));
       },
       getProvider: async (_ctx: any, name: string) => {
-        const p = _providers.get(name);
+        const providerName = name.includes("/")
+          ? [..._providers.values()].find((p) => `test-team/${p.id}` === name)?.name
+          : name;
+        const p = providerName ? _providers.get(providerName) : null;
         if (!p) return null;
         return {
           ...p,
+          resourceAccess: internalAccess(p.id),
           models: [...p.models.entries()].map(([modelId, m]) => ({
             id: "model-uuid",
             providerId: p.id,
             modelId,
+            providerResourceAccess: internalAccess(p.id),
+            ...m,
+          })),
+        };
+      },
+      getProviderByResourceKey: async (_ctx: any, resourceKey: string) => {
+        const p = [..._providers.values()].find((provider) => `test-team/${provider.id}` === resourceKey);
+        if (!p) return null;
+        return {
+          ...p,
+          resourceAccess: internalAccess(p.id),
+          models: [...p.models.entries()].map(([modelId, m]) => ({
+            id: "model-uuid",
+            providerId: p.id,
+            modelId,
+            providerResourceAccess: internalAccess(p.id),
             ...m,
           })),
         };
@@ -136,45 +183,49 @@ describe("Models Config Route", () => {
   });
 
   test("set action — 设置主模型", async () => {
+    seedModel("anthropic", "claude-opus-4-7");
     const res = await modelsRoute.handle(
       new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", data: { model: "claude-opus-4-7" } }),
+        body: JSON.stringify({ action: "set", data: { model: "anthropic/claude-opus-4-7" } }),
       }),
     );
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.data.model).toBe("claude-opus-4-7");
-    expect(_userConfig.currentModel).toBe("claude-opus-4-7");
+    expect(json.data.model).toBe("anthropic/claude-opus-4-7");
+    expect(_userConfig.currentModel).toBe("anthropic/claude-opus-4-7");
   });
 
   test("set action — 设置轻量模型", async () => {
+    seedModel("openai", "gpt-4o-mini");
     const res = await modelsRoute.handle(
       new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", data: { small_model: "gpt-4o-mini" } }),
+        body: JSON.stringify({ action: "set", data: { small_model: "openai/gpt-4o-mini" } }),
       }),
     );
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.data.small_model).toBe("gpt-4o-mini");
-    expect(_userConfig.smallModel).toBe("gpt-4o-mini");
+    expect(json.data.small_model).toBe("openai/gpt-4o-mini");
+    expect(_userConfig.smallModel).toBe("openai/gpt-4o-mini");
   });
 
   test("set action — 同时设置", async () => {
+    seedModel("p", "a");
+    _providers.get("p")!.models.set("b", { displayName: "b" });
     const res = await modelsRoute.handle(
       new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", data: { model: "a", small_model: "b" } }),
+        body: JSON.stringify({ action: "set", data: { model: "p/a", small_model: "p/b" } }),
       }),
     );
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(_userConfig.currentModel).toBe("a");
-    expect(_userConfig.smallModel).toBe("b");
+    expect(_userConfig.currentModel).toBe("p/a");
+    expect(_userConfig.smallModel).toBe("p/b");
   });
 
   test("set action — 空数据返回 VALIDATION_ERROR", async () => {
@@ -294,18 +345,19 @@ describe("Models Config Route", () => {
   });
 
   test("set action — 同时设置 model 和 permission", async () => {
+    seedModel("openai", "gpt-4o");
     const res = await modelsRoute.handle(
       new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", data: { model: "gpt-4o", permission: { edit: "deny" } } }),
+        body: JSON.stringify({ action: "set", data: { model: "openai/gpt-4o", permission: { edit: "deny" } } }),
       }),
     );
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.data.model).toBe("gpt-4o");
+    expect(json.data.model).toBe("openai/gpt-4o");
     expect(json.data.permission).toEqual({ edit: "deny" });
-    expect(_userConfig.currentModel).toBe("gpt-4o");
+    expect(_userConfig.currentModel).toBe("openai/gpt-4o");
     expect(_userConfig.permission).toEqual({ edit: "deny" });
   });
 
@@ -338,7 +390,7 @@ describe("Models Config Route", () => {
       new Request("http://localhost/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", data: { model: "new-model" } }),
+        body: JSON.stringify({ action: "set", data: { model: "p1/new-model" } }),
       }),
     );
     const res = await modelsRoute.handle(

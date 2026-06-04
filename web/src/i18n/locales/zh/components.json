@@ -295,5 +295,13 @@
   "todoPanel": {
     "completed": "已完成",
     "inProgress": "进行中"
+  },
+  "resource": {
+    "internal": "私有",
+    "external": "共享",
+    "public": "公开",
+    "makePublic": "设为公开",
+    "makePrivate": "设为私有",
+    "readOnly": "只读"
   }
 }

@@ -1,13 +1,14 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
-// Mock db before any module imports it
-mock.module("../db", () => ({
-  db: {
+beforeEach(() => {
+  resetAllStubs();
+  stubDb({
     select: mock(() => {
       throw new Error("unexpected db call in test");
     }),
-  },
-}));
+  });
+});
 
 describe("registry.ts 服务函数", () => {
   test("registerMachine 函数已导出", async () => {

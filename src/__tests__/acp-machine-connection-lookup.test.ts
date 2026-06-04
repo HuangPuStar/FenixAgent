@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { setConfig } from "../config";
-import { resetAllStubs } from "../test-utils/helpers";
+import { resetAllStubs, stubDb } from "../test-utils/helpers";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
-
-// Mock config — setConfig 注入测试值
-setConfig({ wsKeepaliveInterval: 30 });
 
 // Mock registry services
 mock.module("../services/registry", () => ({
@@ -38,6 +35,12 @@ mock.module("../services/core-bootstrap", () => ({
 
 beforeEach(() => {
   resetAllStubs();
+  setConfig({ wsKeepaliveInterval: 30 });
+  stubDb({
+    select: mock(() => {
+      throw new Error("unexpected db call in test");
+    }),
+  });
 });
 
 function createMockWs(readyState = 1): WsConnection {

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { modelApi, providerApi } from "@/src/api/sdk";
+import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import type { ModelConfig, ProviderInfo, ProviderModel } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
@@ -36,8 +37,36 @@ function getErrorDataRecord(data: unknown): Record<string, unknown> {
   return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
 }
 
+export function getProviderKey(provider: ProviderInfo): string {
+  return provider.resourceAccess?.resourceKey ?? provider.resourceKey ?? provider.id;
+}
+
+export function getProviderDisplayName(provider: ProviderInfo): string {
+  const source = provider.resourceAccess?.sourceOrganizationName;
+  if (source) return `${source}/${provider.id}`;
+  return provider.id;
+}
+
+export function getProviderResourceBadgeKey(provider: ProviderInfo): string {
+  if (provider.resourceAccess?.ownership === "external") return "resource.external";
+  if (provider.resourceAccess?.publicReadable) return "resource.public";
+  return "resource.internal";
+}
+
+export function canWriteProvider(provider: ProviderInfo): boolean {
+  return provider.resourceAccess?.writable !== false;
+}
+
+export function buildProviderPublicReadablePayload(
+  options: Record<string, unknown>,
+  publicReadable: boolean,
+): Record<string, unknown> {
+  return { ...options, publicReadable };
+}
+
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [providerModels, setProviderModels] = useState<Record<string, ProviderModel[]>>({});
   const [loading, setLoading] = useState(true);
@@ -57,6 +86,7 @@ export function AgentModelsPage() {
   const [testing, setTesting] = useState<string | null>(null);
   const [testingModelKey, setTestingModelKey] = useState<string | null>(null);
   const [addedModelIds, setAddedModelIds] = useState<Set<string>>(new Set());
+  const [sharingProviderKey, setSharingProviderKey] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
   const [formApiKey, setFormApiKey] = useState("");
   const [formBaseURL, setFormBaseURL] = useState("");
@@ -64,10 +94,12 @@ export function AgentModelsPage() {
   const [formDisplayName, setFormDisplayName] = useState("");
   const [formSaving, setFormSaving] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
+  const editingReadOnly = editingProvider ? !canWriteProvider(editingProvider) : false;
 
   // Model form state
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [isNewModel, setIsNewModel] = useState(false);
+  const [modelReadOnly, setModelReadOnly] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
   const [modelProviderId, setModelProviderId] = useState("");
   const [mfId, setMfId] = useState("");
@@ -134,11 +166,12 @@ export function AgentModelsPage() {
           const modelsMap: Record<string, ProviderModel[]> = {};
           await Promise.all(
             data.map(async (p) => {
+              const providerKey = getProviderKey(p);
               try {
-                const { data: detail } = await providerApi.get(p.id);
-                modelsMap[p.id] = (detail as unknown as { models?: ProviderModel[] }).models ?? [];
+                const { data: detail } = await providerApi.get(providerKey);
+                modelsMap[providerKey] = (detail as unknown as { models?: ProviderModel[] }).models ?? [];
               } catch {
-                modelsMap[p.id] = [];
+                modelsMap[providerKey] = [];
               }
             }),
           );
@@ -203,6 +236,34 @@ export function AgentModelsPage() {
       toast.error(t("saveProvider.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
     } finally {
       setFormSaving(false);
+    }
+  };
+
+  const handleTogglePublic = async (provider: ProviderInfo, next: boolean) => {
+    const providerKey = getProviderKey(provider);
+    setSharingProviderKey(providerKey);
+    try {
+      const { data: detail, error: getError } = await providerApi.get(providerKey);
+      if (getError) {
+        toast.error(t("loadProviderDetailError", { message: getError.message }));
+        return;
+      }
+      const options = ((detail as unknown as { options?: Record<string, unknown> })?.options ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const { error } = await providerApi.set(provider.id, buildProviderPublicReadablePayload(options, next));
+      if (error) {
+        toast.error(t("saveProvider.errorGeneric", { message: error.message }));
+        return;
+      }
+      toast.success(next ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
+      loadAll();
+      dispatchConfigChange("providers");
+    } catch (e) {
+      toast.error(t("saveProvider.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
+    } finally {
+      setSharingProviderKey(null);
     }
   };
 
@@ -304,6 +365,7 @@ export function AgentModelsPage() {
   const openNewModel = (providerId: string) => {
     setModelProviderId(providerId);
     setIsNewModel(true);
+    setModelReadOnly(false);
     setMfId("");
     setMfName("");
     setMfContext("");
@@ -321,6 +383,30 @@ export function AgentModelsPage() {
   const openEditModel = (providerId: string, m: ProviderModel) => {
     setModelProviderId(providerId);
     setIsNewModel(false);
+    setModelReadOnly(false);
+    setMfId(m.id);
+    setMfName(m.name);
+    const limit = (m.limit as Record<string, number | undefined>) ?? {};
+    setMfContext(limit.context ? String(limit.context) : "");
+    setMfOutput(limit.output ? String(limit.output) : "");
+    const modalities = (m.modalities as { input?: string[]; output?: string[] }) ?? {};
+    setMfInputModalities(modalities.input ?? ["text"]);
+    setMfOutputModalities(modalities.output ?? ["text"]);
+    const cost = (m.cost as Record<string, number | undefined>) ?? {};
+    setMfCostInput(cost.input ? String(cost.input) : "");
+    setMfCostOutput(cost.output ? String(cost.output) : "");
+    const options = (m.options ?? {}) as Record<string, unknown>;
+    const thinking = options.thinking as Record<string, unknown> | undefined;
+    setMfThinkingEnabled(!!thinking?.enabled);
+    setMfThinkingBudget(thinking?.budgetTokens ? String(thinking.budgetTokens) : "");
+    setShowAdvanced(!!thinking?.enabled || !!cost.input || !!cost.output);
+    setModelDialogOpen(true);
+  };
+
+  const openViewModel = (providerId: string, m: ProviderModel) => {
+    setModelProviderId(providerId);
+    setIsNewModel(false);
+    setModelReadOnly(true);
     setMfId(m.id);
     setMfName(m.name);
     const limit = (m.limit as Record<string, number | undefined>) ?? {};
@@ -444,7 +530,7 @@ export function AgentModelsPage() {
       />
       <AgentCardList
         items={providers}
-        cardKey={(p) => p.id}
+        cardKey={getProviderKey}
         searchPlaceholder={t("searchPlaceholder")}
         searchFn={(p, q) => p.id.toLowerCase().includes(q) || (p.name?.toLowerCase().includes(q) ?? false)}
         selectable
@@ -457,10 +543,13 @@ export function AgentModelsPage() {
           </Button>
         }
         renderCard={(provider, isSelected, toggleSelect) => {
-          const models = providerModels[provider.id] ?? [];
+          const providerKey = getProviderKey(provider);
+          const providerDisplayName = getProviderDisplayName(provider);
+          const writable = canWriteProvider(provider);
+          const models = providerModels[providerKey] ?? [];
           return (
             <Collapsible
-              key={provider.id}
+              key={providerKey}
               className="group rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm"
             >
               <CollapsibleTrigger asChild>
@@ -470,12 +559,13 @@ export function AgentModelsPage() {
                       type="checkbox"
                       checked={isSelected}
                       onChange={toggleSelect}
+                      disabled={!writable}
                       onClick={(event) => event.stopPropagation()}
-                      className="rounded border-border"
+                      className="rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-sm font-medium text-text-bright">{provider.id}</span>
+                        <span className="font-mono text-sm font-medium text-text-bright">{providerDisplayName}</span>
                         {provider.name && provider.name !== provider.id && (
                           <span className="text-xs text-text-secondary">{provider.name}</span>
                         )}
@@ -492,40 +582,75 @@ export function AgentModelsPage() {
                             {provider.keyHint}
                           </span>
                         )}
+                        <span className="inline-flex items-center rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-secondary">
+                          {tComponents(getProviderResourceBadgeKey(provider))}
+                        </span>
                       </div>
+                      <label
+                        className="mt-3 flex items-center gap-2 text-xs text-text-muted"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Switch
+                          checked={Boolean(provider.resourceAccess?.publicReadable)}
+                          disabled={sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true}
+                          onCheckedChange={() =>
+                            void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
+                          }
+                        />
+                        {tComponents("resource.public")}
+                      </label>
+                      {!writable && (
+                        <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
+                      )}
                     </div>
                     <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleTest(provider.id);
-                        }}
-                        disabled={testing === provider.id}
-                      >
-                        {testing === provider.id ? t("actions.testing") : t("actions.test")}
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleOpenEdit(provider);
-                        }}
-                      >
-                        {t("actions.edit")}
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="destructive"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleDelete(provider.id);
-                        }}
-                      >
-                        {t("actions.delete")}
-                      </Button>
+                      {writable && (
+                        <>
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleTest(providerKey);
+                            }}
+                            disabled={testing === providerKey}
+                          >
+                            {testing === providerKey ? t("actions.testing") : t("actions.test")}
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenEdit(provider);
+                            }}
+                          >
+                            {t("actions.edit")}
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="destructive"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDelete(provider.id);
+                            }}
+                          >
+                            {t("actions.delete")}
+                          </Button>
+                        </>
+                      )}
+                      {!writable && (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleOpenEdit(provider);
+                          }}
+                        >
+                          {t("actions.view")}
+                        </Button>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-text-muted px-2 py-1 rounded">
                       <span>
@@ -544,7 +669,8 @@ export function AgentModelsPage() {
                     models.map((m) => {
                       const limit = (m.limit as Record<string, number | undefined>) ?? {};
                       const cost = (m.cost as Record<string, number | undefined>) ?? {};
-                      const modelTesting = testingModelKey === `${provider.id}:${m.id}`;
+                      const modelWritable = writable && m.providerResourceAccess?.writable !== false;
+                      const modelTesting = testingModelKey === `${providerKey}:${m.id}`;
                       return (
                         <div
                           key={m.id}
@@ -568,37 +694,47 @@ export function AgentModelsPage() {
                             </div>
                           </div>
                           <div className="ml-auto flex shrink-0 items-center gap-2">
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              onClick={() => handleTestModel(provider.id, m.id)}
-                              disabled={modelTesting}
-                            >
-                              {modelTesting ? t("actions.testing") : t("actions.test")}
-                            </Button>
-                            <Button size="xs" variant="outline" onClick={() => openEditModel(provider.id, m)}>
-                              {t("actions.edit")}
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="destructive"
-                              onClick={() => setDeleteModelConfirm({ providerId: provider.id, modelId: m.id })}
-                            >
-                              {t("actions.delete")}
-                            </Button>
+                            {modelWritable ? (
+                              <>
+                                <Button
+                                  size="xs"
+                                  variant="outline"
+                                  onClick={() => handleTestModel(providerKey, m.id)}
+                                  disabled={modelTesting}
+                                >
+                                  {modelTesting ? t("actions.testing") : t("actions.test")}
+                                </Button>
+                                <Button size="xs" variant="outline" onClick={() => openEditModel(providerKey, m)}>
+                                  {t("actions.edit")}
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  variant="destructive"
+                                  onClick={() => setDeleteModelConfirm({ providerId: providerKey, modelId: m.id })}
+                                >
+                                  {t("actions.delete")}
+                                </Button>
+                              </>
+                            ) : (
+                              <Button size="xs" variant="outline" onClick={() => openViewModel(providerKey, m)}>
+                                {t("actions.view")}
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
                     })
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openNewModel(provider.id)}
-                    className="w-full border-dashed text-text-secondary hover:text-text-primary hover:border-brand"
-                  >
-                    {t("modelSubrow.addButton")}
-                  </Button>
+                  {writable && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openNewModel(providerKey)}
+                      className="w-full border-dashed text-text-secondary hover:text-text-primary hover:border-brand"
+                    >
+                      {t("modelSubrow.addButton")}
+                    </Button>
+                  )}
                 </div>
               </CollapsibleContent>
             </Collapsible>
@@ -610,9 +746,12 @@ export function AgentModelsPage() {
       <FormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        title={editingProvider ? t("form.editTitle") : t("form.createTitle")}
+        title={
+          editingProvider ? (editingReadOnly ? t("form.detailTitle") : t("form.editTitle")) : t("form.createTitle")
+        }
         onSubmit={handleSave}
         loading={formSaving}
+        hideSubmit={editingReadOnly}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -621,7 +760,7 @@ export function AgentModelsPage() {
               <Input
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                disabled={!!editingProvider}
+                disabled={editingReadOnly || !!editingProvider}
                 placeholder={t("form.idPlaceholder")}
                 className="mt-1 font-mono text-sm"
               />
@@ -632,6 +771,7 @@ export function AgentModelsPage() {
               <Input
                 value={formDisplayName}
                 onChange={(e) => setFormDisplayName(e.target.value)}
+                disabled={editingReadOnly}
                 placeholder={t("form.displayNamePlaceholder")}
                 className="mt-1"
               />
@@ -639,7 +779,11 @@ export function AgentModelsPage() {
           </div>
           <div>
             <label className="text-sm font-medium text-text-primary">{t("form.protocol")}</label>
-            <Select value={formProtocol} onValueChange={(value) => setFormProtocol(value as "openai" | "anthropic")}>
+            <Select
+              value={formProtocol}
+              onValueChange={(value) => setFormProtocol(value as "openai" | "anthropic")}
+              disabled={editingReadOnly}
+            >
               <SelectTrigger className="mt-1">
                 <SelectValue />
               </SelectTrigger>
@@ -658,6 +802,7 @@ export function AgentModelsPage() {
               type="password"
               value={formApiKey}
               onChange={(e) => setFormApiKey(e.target.value)}
+              disabled={editingReadOnly}
               placeholder={editingProvider ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyCreatePlaceholder")}
               className="mt-1"
             />
@@ -667,6 +812,7 @@ export function AgentModelsPage() {
             <Input
               value={formBaseURL}
               onChange={(e) => setFormBaseURL(e.target.value)}
+              disabled={editingReadOnly}
               placeholder={t("form.baseUrlPlaceholder")}
               className="mt-1"
             />
@@ -678,19 +824,36 @@ export function AgentModelsPage() {
       <FormDialog
         open={modelDialogOpen}
         onOpenChange={setModelDialogOpen}
-        title={isNewModel ? t("modelSubrow.createTitle") : t("modelSubrow.editTitle", { id: mfId })}
+        title={
+          isNewModel
+            ? t("modelSubrow.createTitle")
+            : modelReadOnly
+              ? t("modelSubrow.detailTitle", { id: mfId })
+              : t("modelSubrow.editTitle", { id: mfId })
+        }
         onSubmit={handleModelSave}
         loading={modelSaving}
+        hideSubmit={modelReadOnly}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium text-text-primary">{t("modelSubrow.modelId")}</label>
-              <Input value={mfId} onChange={(e) => setMfId(e.target.value)} disabled={!isNewModel} className="mt-1" />
+              <Input
+                value={mfId}
+                onChange={(e) => setMfId(e.target.value)}
+                disabled={modelReadOnly || !isNewModel}
+                className="mt-1"
+              />
             </div>
             <div>
               <label className="text-sm font-medium text-text-primary">{t("modelSubrow.displayName")}</label>
-              <Input value={mfName} onChange={(e) => setMfName(e.target.value)} className="mt-1" />
+              <Input
+                value={mfName}
+                onChange={(e) => setMfName(e.target.value)}
+                disabled={modelReadOnly}
+                className="mt-1"
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -700,6 +863,7 @@ export function AgentModelsPage() {
                 type="number"
                 value={mfContext}
                 onChange={(e) => setMfContext(e.target.value)}
+                disabled={modelReadOnly}
                 className="mt-1 font-mono text-sm"
               />
             </div>
@@ -709,6 +873,7 @@ export function AgentModelsPage() {
                 type="number"
                 value={mfOutput}
                 onChange={(e) => setMfOutput(e.target.value)}
+                disabled={modelReadOnly}
                 className="mt-1 font-mono text-sm"
               />
             </div>
@@ -720,8 +885,12 @@ export function AgentModelsPage() {
                 <button
                   key={m}
                   type="button"
-                  onClick={() => toggleModality(mfInputModalities, m, setMfInputModalities)}
+                  onClick={() => {
+                    if (modelReadOnly) return;
+                    toggleModality(mfInputModalities, m, setMfInputModalities);
+                  }}
                   className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${mfInputModalities.includes(m) ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-surface-2 text-text-secondary border-border-light"}`}
+                  disabled={modelReadOnly}
                 >
                   {m}
                 </button>
@@ -735,22 +904,32 @@ export function AgentModelsPage() {
                 <button
                   key={m}
                   type="button"
-                  onClick={() => toggleModality(mfOutputModalities, m, setMfOutputModalities)}
+                  onClick={() => {
+                    if (modelReadOnly) return;
+                    toggleModality(mfOutputModalities, m, setMfOutputModalities);
+                  }}
                   className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${mfOutputModalities.includes(m) ? "bg-emerald-100 text-emerald-700 border-emerald-300" : "bg-surface-2 text-text-secondary border-border-light"}`}
+                  disabled={modelReadOnly}
                 >
                   {m}
                 </button>
               ))}
             </div>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            disabled={modelReadOnly}
+          >
             {showAdvanced ? t("modelSubrow.hideAdvanced") : t("modelSubrow.showAdvanced")}
           </Button>
           {showAdvanced && (
             <div className="space-y-3 border-t pt-3">
               <div className="flex items-center gap-3">
                 <label className="text-sm font-medium text-text-primary">{t("modelSubrow.thinkingEnabled")}</label>
-                <Switch checked={mfThinkingEnabled} onCheckedChange={setMfThinkingEnabled} />
+                <Switch checked={mfThinkingEnabled} disabled={modelReadOnly} onCheckedChange={setMfThinkingEnabled} />
               </div>
               {mfThinkingEnabled && (
                 <div>
@@ -759,6 +938,7 @@ export function AgentModelsPage() {
                     type="number"
                     value={mfThinkingBudget}
                     onChange={(e) => setMfThinkingBudget(e.target.value)}
+                    disabled={modelReadOnly}
                     className="mt-1"
                   />
                 </div>
@@ -771,6 +951,7 @@ export function AgentModelsPage() {
                     step="0.01"
                     value={mfCostInput}
                     onChange={(e) => setMfCostInput(e.target.value)}
+                    disabled={modelReadOnly}
                     className="mt-1"
                   />
                 </div>
@@ -781,6 +962,7 @@ export function AgentModelsPage() {
                     step="0.01"
                     value={mfCostOutput}
                     onChange={(e) => setMfCostOutput(e.target.value)}
+                    disabled={modelReadOnly}
                     className="mt-1"
                   />
                 </div>

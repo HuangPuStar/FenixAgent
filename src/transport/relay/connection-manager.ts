@@ -1,4 +1,4 @@
-import { log, error as logError } from "@fenix/logger";
+import { error as logError } from "@fenix/logger";
 import type { ManagedConnection, RelayConnectionEntry } from "../../types/store";
 import type { WsConnection } from "../ws-types";
 
@@ -80,7 +80,7 @@ export function sendToRelayWs(ws: WsConnection, msg: object): void {
   try {
     const payload = JSON.stringify(msg);
     ws.send(payload);
-    log(`[ACP-Relay] Sent to frontend: type=${(msg as Record<string, unknown>).type} bytes=${payload.length}`);
+    // log(`[ACP-Relay] Sent to frontend: type=${(msg as Record<string, unknown>).type} bytes=${payload.length}`);
   } catch (err) {
     logError("[ACP-Relay] send error:", err);
   }

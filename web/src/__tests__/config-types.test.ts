@@ -78,6 +78,7 @@ describe("PermissionConfig types", () => {
 
   test("AgentDetail 包含新字段且类型正确", () => {
     const detail: AgentDetail = {
+      id: "agc_1",
       name: "test",
       builtIn: false,
       model: "gpt-4o",
@@ -94,6 +95,17 @@ describe("PermissionConfig types", () => {
       color: "#FF5500",
       description: "测试Agent",
       knowledge: null,
+      machineId: "machine-1",
+      skillIds: ["skill-1"],
+      resourceAccess: {
+        ownership: "internal",
+        sourceOrganizationId: "org_current",
+        resourceUid: "agc_1",
+        resourceKey: "org_current/agc_1",
+        manageable: true,
+        writable: true,
+        publicReadable: false,
+      },
     };
     expect(detail.variant).toBe("thinking");
     expect(detail.temperature).toBe(0.7);
@@ -102,6 +114,8 @@ describe("PermissionConfig types", () => {
     expect(detail.hidden).toBe(true);
     expect(detail.color).toBe("#FF5500");
     expect(detail.description).toBe("测试Agent");
+    expect(detail.machineId).toBe("machine-1");
+    expect(detail.skillIds).toEqual(["skill-1"]);
   });
 
   test("AgentDetail 新字段可为 null（除 disable 和 hidden）", () => {
@@ -122,12 +136,54 @@ describe("PermissionConfig types", () => {
       color: null,
       description: null,
       knowledge: null,
+      machineId: null,
+      skillIds: [],
+      resourceAccess: {
+        ownership: "external",
+        sourceOrganizationId: "org_source",
+        resourceUid: "agc_2",
+        resourceKey: "org_source/agc_2",
+        manageable: false,
+        writable: false,
+      },
     };
     expect(detail.variant).toBeNull();
     expect(detail.temperature).toBeNull();
     expect(detail.top_p).toBeNull();
     expect(detail.disable).toBe(false);
     expect(detail.hidden).toBe(false);
+  });
+
+  test("AgentDetail 可携带共享资源展示标签", () => {
+    const detail: AgentDetail = {
+      name: "shared-agent",
+      builtIn: false,
+      model: "org-source/provider-id/model-id",
+      prompt: null,
+      tools: null,
+      steps: 20,
+      mode: "primary",
+      permission: null,
+      variant: null,
+      temperature: null,
+      top_p: null,
+      disable: false,
+      hidden: false,
+      color: null,
+      description: null,
+      knowledge: { knowledgeBaseIds: ["kb-1"] },
+      machineId: "machine-1",
+      skillIds: ["skill-1"],
+      relatedResources: {
+        modelLabel: "Source Team/openai/gpt-4o",
+        machineLabel: "builder-host",
+        skills: [{ id: "skill-1", label: "deploy-skill" }],
+        knowledgeBases: [{ id: "kb-1", label: "Product Docs", slug: "product-docs" }],
+      },
+    };
+    expect(detail.relatedResources?.modelLabel).toBe("Source Team/openai/gpt-4o");
+    expect(detail.relatedResources?.skills?.[0]?.label).toBe("deploy-skill");
+    expect(detail.relatedResources?.knowledgeBases?.[0]?.slug).toBe("product-docs");
   });
 
   // ── AgentInfo 新字段类型验证 ──
@@ -140,7 +196,18 @@ describe("PermissionConfig types", () => {
       mode: "primary",
       description: "构建Agent",
       color: "primary",
+      id: "agc_build",
       knowledgeBaseCount: 0,
+      skillLabels: [{ id: "skill-1", label: "deploy-skill" }],
+      resourceAccess: {
+        ownership: "internal",
+        sourceOrganizationId: "org_current",
+        resourceUid: "agc_build",
+        resourceKey: "org_current/agc_build",
+        manageable: true,
+        writable: true,
+        publicReadable: true,
+      },
     };
     expect(info.description).toBe("构建Agent");
     expect(info.color).toBe("primary");
@@ -150,6 +217,7 @@ describe("PermissionConfig types", () => {
     const info: AgentInfo = {
       name: "test",
       builtIn: false,
+      id: "agc_test",
       model: null,
       mode: null,
       description: null,

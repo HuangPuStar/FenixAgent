@@ -137,6 +137,8 @@ export interface ProviderInfo {
   keyHint: string | null;
   baseURL: string | null;
   modelCount: number;
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
 }
 
 export interface ProviderModel {
@@ -146,6 +148,9 @@ export interface ProviderModel {
   limit: unknown;
   cost: unknown;
   options?: Record<string, unknown>;
+  providerResourceAccess?: ResourceAccess;
+  providerResourceKey?: string;
+  stableFullId?: string;
 }
 
 export interface ProviderDetail {
@@ -156,6 +161,8 @@ export interface ProviderDetail {
   baseURL: string | null;
   options: Record<string, unknown>;
   models: ProviderModel[];
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
 }
 
 // --- Models ---
@@ -167,6 +174,9 @@ export interface ModelEntry {
   label: string;
   contextLimit: number | null;
   outputLimit: number | null;
+  providerResourceAccess?: ResourceAccess;
+  providerResourceKey?: string;
+  stableFullId?: string;
 }
 
 export interface ModelConfig {
@@ -181,17 +191,22 @@ export interface ModelConfig {
 // --- Agents ---
 
 export interface AgentInfo {
+  id: string;
   name: string;
   builtIn: boolean;
   model: string | null;
+  modelLabel?: string | null;
   mode: string | null;
   description: string | null;
   color: string | null;
   knowledgeBaseCount: number;
+  skillLabels?: Array<{ id: string; label: string }>;
+  resourceAccess?: ResourceAccess;
   enabled?: boolean;
 }
 
 export interface AgentDetail {
+  id?: string;
   name: string;
   builtIn: boolean;
   model: string | null;
@@ -208,15 +223,36 @@ export interface AgentDetail {
   color: string | null;
   description: string | null;
   knowledge: AgentKnowledgeConfig | null;
+  skillIds?: string[];
+  machineId?: string | null;
+  relatedResources?: {
+    modelLabel?: string | null;
+    machineLabel?: string | null;
+    skills?: Array<{ id: string; label: string }>;
+    knowledgeBases?: Array<{ id: string; label: string; slug?: string | null }>;
+  };
+  resourceAccess?: ResourceAccess;
 }
 
 // --- Skills ---
+
+export interface ResourceAccess {
+  ownership: "internal" | "external";
+  sourceOrganizationId: string;
+  sourceOrganizationName?: string;
+  resourceUid: string;
+  resourceKey: string;
+  manageable: boolean;
+  writable: boolean;
+  publicReadable?: boolean;
+}
 
 export interface SkillInfo {
   id: string;
   name: string;
   description: string;
   path: string;
+  resourceAccess?: ResourceAccess;
 }
 
 export interface SkillDetail {
@@ -225,6 +261,7 @@ export interface SkillDetail {
   content: string;
   path: string;
   metadata: Record<string, string>;
+  resourceAccess?: ResourceAccess;
 }
 
 export interface UploadManifestEntry {
@@ -273,12 +310,18 @@ export interface McpServerInfo {
   summary: string;
   timeout?: number;
   toolsCount?: number;
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
 }
 
 /** MCP 服务器详情（编辑用） */
 export interface McpServerDetail {
   name: string;
   config: McpServerConfig;
+  enabled?: boolean;
+  summary?: string;
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
 }
 
 /** MCP Tool 缓存记录 */

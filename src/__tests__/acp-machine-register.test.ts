@@ -1,6 +1,10 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
-mock.module("../db", () => ({ db: {} }));
+beforeEach(() => {
+  resetAllStubs();
+  stubDb({});
+});
 
 describe("AcpConnectionEntry 新增字段", () => {
   test("AcpConnectionEntry 类型包含 isMachine 和 machineId", async () => {

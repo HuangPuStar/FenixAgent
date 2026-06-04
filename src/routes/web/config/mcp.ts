@@ -1,4 +1,5 @@
 import Elysia from "elysia";
+import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
 import * as configPg from "../../../services/config/index";
@@ -14,6 +15,19 @@ import {
 import type { McpRemoteConfig, McpServerConfig } from "../../../services/config/types";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
 
+function splitMcpConfigInput(input: unknown) {
+  if (typeof input !== "object" || input === null) {
+    return { config: input as McpServerConfig, publicReadable: undefined as boolean | undefined };
+  }
+  const raw = input as Record<string, unknown>;
+  const publicReadable = typeof raw.publicReadable === "boolean" ? raw.publicReadable : undefined;
+  const { publicReadable: _ignored, ...config } = raw;
+  return {
+    config: config as unknown as McpServerConfig,
+    publicReadable,
+  };
+}
+
 // --- Action Handlers ---
 
 async function handleList(ctx: AuthContext) {
@@ -22,10 +36,22 @@ async function handleList(ctx: AuthContext) {
   const serversWithCount = await Promise.all(
     servers.map(async (s) => {
       try {
-        const toolsCount = await countToolsByServer(ctx.organizationId, s.name);
-        return { ...toServerInfo(s.name, s), toolsCount };
+        const info = toServerInfo(s.name, s);
+        const toolsCount = await countToolsByServer(s.organizationId, s.name);
+        return {
+          ...info,
+          resourceAccess: s.resourceAccess,
+          resourceKey: s.resourceAccess.resourceKey,
+          toolsCount,
+        };
       } catch {
-        return { ...toServerInfo(s.name, s), toolsCount: 0 };
+        const info = toServerInfo(s.name, s);
+        return {
+          ...info,
+          resourceAccess: s.resourceAccess,
+          resourceKey: s.resourceAccess.resourceKey,
+          toolsCount: 0,
+        };
       }
     }),
   );
@@ -34,12 +60,16 @@ async function handleList(ctx: AuthContext) {
 }
 
 async function handleGet(ctx: AuthContext, name: string) {
-  const s = await configPg.getMcpServer(ctx, name);
+  const s = name.includes("/")
+    ? await configPg.getMcpServerByResourceKey(ctx, name)
+    : await configPg.getMcpServer(ctx, name);
   if (!s) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
-  return { success: true, data: { name, config: s.config } };
+  return { success: true, data: { name: s.name, config: s.config, resourceAccess: s.resourceAccess } };
 }
 
-async function handleCreate(ctx: AuthContext, name: string, config: McpServerConfig) {
+async function handleCreate(ctx: AuthContext, name: string, configInput: unknown, bodyPublicReadable?: boolean) {
+  const { config, publicReadable: configPublicReadable } = splitMcpConfigInput(configInput);
+  const publicReadable = bodyPublicReadable ?? configPublicReadable;
   if (!isValidMcpName(name)) {
     return {
       success: false,
@@ -53,34 +83,39 @@ async function handleCreate(ctx: AuthContext, name: string, config: McpServerCon
   if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
 
   const existing = await configPg.getMcpServer(ctx, name);
-  if (existing)
+  if (existing?.resourceAccess?.ownership === "internal")
     return { success: false, error: { code: "ALREADY_EXISTS", message: `MCP server '${name}' already exists` } };
 
   const cfgType =
     typeof config === "object" && config !== null && "type" in config
       ? ((config as unknown as Record<string, unknown>).type as string)
       : "local";
-  await configPg.createMcpServer(ctx, name, cfgType, config as McpServerConfig);
+  await configPg.createMcpServer(ctx, name, cfgType, config as McpServerConfig, { publicReadable });
   return { success: true, data: { name } };
 }
 
-async function handleUpdate(ctx: AuthContext, name: string, config: McpServerConfig) {
+async function handleUpdate(ctx: AuthContext, name: string, configInput: unknown, bodyPublicReadable?: boolean) {
+  const { config, publicReadable: configPublicReadable } = splitMcpConfigInput(configInput);
+  const publicReadable = bodyPublicReadable ?? configPublicReadable;
   const validation = validateMcpConfig(config);
   if (validation) return { success: false, error: { code: "VALIDATION_ERROR", message: validation } };
 
   const existing = await configPg.getMcpServer(ctx, name);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
-  await configPg.updateMcpServer(ctx, name, config as McpServerConfig);
+  await configPg.updateMcpServer(ctx, name, config as McpServerConfig, { publicReadable });
   return { success: true, data: { name } };
 }
 
 async function handleDelete(ctx: AuthContext, name: string) {
+  const server = await configPg.assertMcpServerInternalWritable(ctx, name);
+  if (!server) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+
   const deleted = await configPg.deleteMcpServer(ctx, name);
   if (!deleted) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
   try {
-    await deleteToolsByServer(ctx.organizationId, name);
+    await deleteToolsByServer(server.organizationId, name);
   } catch {
     // ignore db errors on cleanup
   }
@@ -89,7 +124,7 @@ async function handleDelete(ctx: AuthContext, name: string) {
 }
 
 async function handleEnable(ctx: AuthContext, name: string) {
-  const existing = await configPg.getMcpServer(ctx, name);
+  const existing = await configPg.assertMcpServerInternalWritable(ctx, name);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
   const config = existing.config as Record<string, unknown>;
@@ -105,7 +140,7 @@ async function handleEnable(ctx: AuthContext, name: string) {
 }
 
 async function handleDisable(ctx: AuthContext, name: string) {
-  const existing = await configPg.getMcpServer(ctx, name);
+  const existing = await configPg.assertMcpServerInternalWritable(ctx, name);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
   await configPg.setMcpServerEnabled(ctx, name, false);
@@ -113,7 +148,7 @@ async function handleDisable(ctx: AuthContext, name: string) {
 }
 
 async function handleTest(ctx: AuthContext, name: string) {
-  const s = await configPg.getMcpServer(ctx, name);
+  const s = await configPg.assertMcpServerInternalWritable(ctx, name);
   if (!s) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
   const config = s.config as Record<string, unknown>;
@@ -196,7 +231,7 @@ async function handleTestUrl(url: string, headers?: Record<string, string>, time
 }
 
 async function handleInspect(ctx: AuthContext, name: string) {
-  const s = await configPg.getMcpServer(ctx, name);
+  const s = await configPg.assertMcpServerInternalWritable(ctx, name);
   if (!s) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
 
   const config = s.config as Record<string, unknown>;
@@ -216,7 +251,7 @@ async function handleInspect(ctx: AuthContext, name: string) {
     return { success: false, error: { code: "VALIDATION_ERROR", message: result.message ?? "无法连接到 MCP 服务器" } };
   }
 
-  await replaceToolsForServer(ctx.organizationId, name, result.tools);
+  await replaceToolsForServer(s.organizationId, name, result.tools);
 
   return {
     success: true,
@@ -231,7 +266,9 @@ async function handleInspect(ctx: AuthContext, name: string) {
 }
 
 async function handleListTools(ctx: AuthContext, name: string) {
-  const tools = await listToolsByServer(ctx.organizationId, name);
+  const server = await configPg.assertMcpServerInternalWritable(ctx, name);
+  if (!server) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
+  const tools = await listToolsByServer(server.organizationId, name);
 
   return {
     success: true,
@@ -259,13 +296,19 @@ app.post(
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
     const b = body as ConfigBody;
-    const { action, name, config, url, headers, timeout } = {
+    const { action, name, config, url, headers, timeout, publicReadable } = {
       action: b.action ?? "",
       name: b.name as string | undefined,
       config: (b.config ?? b.data) as McpServerConfig | undefined,
       url: b.url as string | undefined,
       headers: b.headers as Record<string, string> | undefined,
       timeout: b.timeout as number | undefined,
+      publicReadable:
+        typeof (b.data as Record<string, unknown> | undefined)?.publicReadable === "boolean"
+          ? ((b.data as Record<string, unknown>).publicReadable as boolean)
+          : typeof (b.config as Record<string, unknown> | undefined)?.publicReadable === "boolean"
+            ? ((b.config as Record<string, unknown>).publicReadable as boolean)
+            : undefined,
     };
 
     try {
@@ -275,10 +318,10 @@ app.post(
         case "get":
           return await handleGet(authCtx, name!);
         case "create":
-          return await handleCreate(authCtx, name!, config as McpServerConfig);
+          return await handleCreate(authCtx, name!, config, publicReadable);
         case "set":
         case "update":
-          return await handleUpdate(authCtx, name!, config as McpServerConfig);
+          return await handleUpdate(authCtx, name!, config, publicReadable);
         case "delete":
           return await handleDelete(authCtx, name!);
         case "enable":
@@ -300,6 +343,9 @@ app.post(
           });
       }
     } catch (e: unknown) {
+      if (e instanceof AppError) {
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      }
       const message = e instanceof Error ? e.message : "Unknown error";
       return error(500, { success: false, error: { code: "CONFIG_READ_ERROR", message } });
     }

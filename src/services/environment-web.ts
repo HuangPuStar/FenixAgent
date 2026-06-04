@@ -24,7 +24,10 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
   // Agent 配置校验：可选，提供时需验证存在性，并自动填充 machineName
   let machineName: string | undefined;
   if (params.agentConfigId) {
-    const agent = await configPg.getAgentConfigById(params.agentConfigId, organizationId);
+    const agent = await configPg.getReadableAgentConfigById(
+      { organizationId: organizationId ?? userId, userId, role: "owner" },
+      params.agentConfigId,
+    );
     if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
     // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName
     if (agent.machineId) {
@@ -72,7 +75,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
 
 /** 更新 Web 控制面板 Environment — 不再允许修改 workspacePath */
 export async function updateWebEnvironment(envId: string, organizationId: string, params: UpdateWebEnvironmentParams) {
-  await getOwnedEnvironment(envId, organizationId);
+  const existingEnv = await getOwnedEnvironment(envId, organizationId);
   const patch: EnvironmentUpdateParams = {};
 
   if (params.name !== undefined) {
@@ -83,11 +86,25 @@ export async function updateWebEnvironment(envId: string, organizationId: string
   }
   if (params.agentConfigId !== undefined) {
     if (params.agentConfigId) {
-      const agent = await configPg.getAgentConfigById(params.agentConfigId, organizationId);
+      const agent = await configPg.getReadableAgentConfigById(
+        { organizationId, userId: existingEnv.userId ?? organizationId, role: "owner" },
+        params.agentConfigId,
+      );
       if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
       patch.agentConfigId = params.agentConfigId;
+      let machineName: string | null = null;
+      if (agent.machineId) {
+        const m = await db
+          .select({ agentName: machine.agentName })
+          .from(machine)
+          .where(eq(machine.id, agent.machineId))
+          .limit(1);
+        machineName = m[0]?.agentName ?? null;
+      }
+      patch.machineName = machineName;
     } else {
       patch.agentConfigId = null;
+      patch.machineName = null;
     }
   }
   if (params.description !== undefined) {

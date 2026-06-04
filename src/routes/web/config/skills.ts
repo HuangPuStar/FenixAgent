@@ -39,7 +39,7 @@ async function handleSet(
   ctx: AuthContext,
   body: {
     name?: string;
-    data?: { description: string; content: string; metadata?: Record<string, string> };
+    data?: { description: string; content: string; metadata?: Record<string, string>; publicReadable?: boolean };
   },
   errorFn: (status: number, body: unknown) => unknown,
 ) {
@@ -50,7 +50,7 @@ async function handleSet(
     return errorFn(400, configValidationError("Missing required field: data.content"));
   }
   const result = await setSkill(ctx, body.name, body.data);
-  return configSuccess({ name: result.name });
+  return configSuccess({ name: result.name, resourceAccess: result.resourceAccess });
 }
 
 async function handleDelete(
@@ -152,7 +152,9 @@ app.post(
     const payload = {
       action: b.action ?? "",
       name: b.name,
-      data: b.data as { description: string; content: string; metadata?: Record<string, string> } | undefined,
+      data: b.data as
+        | { description: string; content: string; metadata?: Record<string, string>; publicReadable?: boolean }
+        | undefined,
     };
     const { action } = payload;
 

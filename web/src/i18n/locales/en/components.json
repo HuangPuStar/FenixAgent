@@ -295,5 +295,13 @@
   "todoPanel": {
     "completed": "completed",
     "inProgress": "in progress"
+  },
+  "resource": {
+    "internal": "Private",
+    "external": "Shared",
+    "public": "Public",
+    "makePublic": "Make public",
+    "makePrivate": "Make private",
+    "readOnly": "Read-only"
   }
 }
