@@ -1,5 +1,13 @@
 # 格式化暂存文件 + import 排序
-FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.json' '*.css' | grep -v 'node_modules' | grep -v 'routeTree.gen.ts' | tr '\n' ' ')
+# 与 biome.json 的忽略目录保持一致，避免只命中被忽略文件时 biome 直接失败。
+FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.json' '*.css' \
+  | grep -v 'node_modules' \
+  | grep -v 'routeTree.gen.ts' \
+  | grep -v '^drizzle/' \
+  | grep -v '^[^[:space:]]*/dist/' \
+  | grep -v '^\\.agents/' \
+  | grep -v '^[^[:space:]]*/coverage/' \
+  | tr '\n' ' ')
 
 if [ -n "$FILES" ]; then
   echo "husky: formatting staged files..."
@@ -7,4 +15,3 @@ if [ -n "$FILES" ]; then
   npx biome check --write --linter-enabled=false $FILES
   git add $FILES
 fi
-

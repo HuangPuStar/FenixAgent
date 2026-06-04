@@ -1,5 +1,5 @@
 {
-  "id": "d27dbbb1-0fb2-4343-bccf-e77428e88780",
+  "id": "300b7b61-8294-41c8-a559-91fe2385ec85",
   "prevId": "3bcdf5bf-44c0-4108-a5ca-a6fe7fc49a31",
   "version": "7",
   "dialect": "postgresql",
@@ -2593,51 +2593,6 @@
         }
       },
       "indexes": {
-        "idx_resource_permission_unique": {
-          "name": "idx_resource_permission_unique",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "resource_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "resource_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "principal_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "principal_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "action",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_resource_permission_org_type": {
           "name": "idx_resource_permission_org_type",
           "columns": [
@@ -2710,7 +2665,20 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "idx_resource_permission_unique": {
+          "name": "idx_resource_permission_unique",
+          "nullsNotDistinct": true,
+          "columns": [
+            "organization_id",
+            "resource_type",
+            "resource_id",
+            "principal_type",
+            "principal_id",
+            "action"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -4727,7 +4695,8 @@
       "values": [
         "provider",
         "skill",
-        "mcp_server"
+        "mcp_server",
+        "agent_config"
       ]
     }
   },
