@@ -144,10 +144,10 @@ export function ChatInput({
       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         if (isLoading) {
-          onInterrupt?.();
-        } else {
-          handleSubmit();
+          // Loading 时不通过 Enter 中断，需点击停止按钮
+          return;
         }
+        handleSubmit();
       }
     },
     [handleSubmit, isLoading, onInterrupt, showCommandMenu],
