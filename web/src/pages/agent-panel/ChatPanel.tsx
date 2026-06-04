@@ -33,12 +33,18 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<ACPClient | null>(null);
   const [reconnectKey, setReconnectKey] = useState(0);
+  const lastReconnectRef = useRef(0);
 
-  // 监听实例重启事件，强制重连
+  // 监听实例重启事件，强制重连（带最小间隔防止风暴）
   useEffect(() => {
     const handler = (e: Event) => {
       const { envId } = (e as CustomEvent<{ envId: string }>).detail;
       if (envId === agentId) {
+        const now = Date.now();
+        const elapsed = now - lastReconnectRef.current;
+        // Minimum 2s between reconnects
+        if (elapsed < 2000) return;
+        lastReconnectRef.current = now;
         setReconnectKey((k) => k + 1);
       }
     };
