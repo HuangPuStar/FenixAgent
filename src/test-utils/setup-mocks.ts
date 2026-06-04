@@ -8,6 +8,7 @@ import { mock } from "bun:test";
 import { getApiKeyServiceStub, getAuthApiStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
+import { getEnvironmentRepoStub } from "./stubs/module-stubs";
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type AnyFn = (...args: any[]) => any;
@@ -132,3 +133,16 @@ mock.module("../db", () => {
 //
 // 注意：../repositories 等模块导出了对象实例（repo），不能使用 createLazyMock（仅适用于函数导出）。
 // 这些模块需要被测代码使用 DI 注入模式后才能安全加入 preload。当前保留 mock.module() 在测试文件中。
+
+// ── repositories/environment — 环境仓储（对象导出）──
+// 仅有 acp-machine-connection-lookup.test.ts 和 relay-handler-machine.test.ts 使用 mock
+
+mock.module("../repositories/environment", () => {
+  const obj: Record<string, unknown> = {};
+  Object.defineProperty(obj, "environmentRepo", {
+    enumerable: true,
+    configurable: true,
+    get: () => getEnvironmentRepoStub() ?? { getById: async () => null },
+  });
+  return obj;
+});

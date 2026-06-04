@@ -11,6 +11,15 @@ import {
   WriteFileRequestSchema,
 } from "../../schemas/file.schema";
 import { getOwnedEnvironment } from "../../services/environment-core";
+import {
+  getRemoteMachineId,
+  remoteDeleteFile,
+  remoteListDir,
+  remoteReadBinaryFile,
+  remoteReadFile,
+  remoteUploadFiles,
+  remoteWriteFile,
+} from "../../services/remote-file-service";
 
 import {
   createFileStream,
@@ -53,6 +62,19 @@ app.get(
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
     const queryPath = (query as Record<string, string | undefined>)?.path || "";
+
+    // 远程环境：通过 file-ws 代理
+    const machineId = await getRemoteMachineId(envId);
+    if (machineId) {
+      try {
+        const entries = await remoteListDir(machineId, envId, queryPath);
+        return { entries };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Remote file operation failed";
+        return error(503, { error: { type: "remote_error", message } });
+      }
+    }
+
     const result = await resolveWorkspacePath(envId, queryPath);
     if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
 
@@ -76,6 +98,41 @@ app.get(
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     const filePath = normalizeUserRoutePath((params as any)["*"] as string);
     const preview = (query as Record<string, string | undefined>)?.preview === "true";
+
+    // 远程环境
+    const machineId = await getRemoteMachineId(envId);
+    if (machineId) {
+      try {
+        if (preview) {
+          const binResult = await remoteReadBinaryFile(machineId, envId, filePath);
+          const buffer = Buffer.from(binResult.data, "base64");
+          set.headers["Content-Type"] = binResult.mimeType || "application/octet-stream";
+          set.headers["Content-Security-Policy"] =
+            "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * blob:; connect-src *";
+          return new Response(buffer);
+        }
+        // 非预览：先尝试文本，失败则走二进制下载
+        try {
+          const textResult = await remoteReadFile(machineId, envId, filePath);
+          return {
+            name: textResult.name,
+            path: textResult.path,
+            content: textResult.content,
+            size: textResult.size,
+            encoding: "utf-8",
+          };
+        } catch {
+          const binResult = await remoteReadBinaryFile(machineId, envId, filePath);
+          const buffer = Buffer.from(binResult.data, "base64");
+          set.headers["Content-Disposition"] = `attachment; filename="${binResult.name}"`;
+          set.headers["Content-Type"] = "application/octet-stream";
+          return new Response(buffer);
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Remote file operation failed";
+        return error(503, { error: { type: "remote_error", message } });
+      }
+    }
 
     const result = await resolveWorkspacePath(envId, filePath);
     if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
@@ -131,13 +188,6 @@ app.post(
     if (!isUserPath(dirPath))
       return error(400, { error: { type: "validation_error", message: "Only user/ paths are writable" } });
 
-    const result = await resolveWorkspacePath(envId, dirPath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
-
-    const { resolved } = result;
-    const { mkdir, writeFile: writeFileAsync } = await import("node:fs/promises");
-    await mkdir(resolved, { recursive: true });
-
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     if (!files || files.length === 0)
@@ -153,6 +203,36 @@ app.post(
         relativePaths = [];
       }
     }
+
+    // 远程环境
+    const machineId = await getRemoteMachineId(envId);
+    if (machineId) {
+      try {
+        const remoteFiles = await Promise.all(
+          files.map(async (file, i) => {
+            const buffer = Buffer.from(await file.arrayBuffer());
+            if (buffer.length > 50 * 1024 * 1024) throw new Error(`File ${file.name} exceeds 50MB limit`);
+            return {
+              name: file.name,
+              content: buffer.toString("base64"),
+              relativePath: relativePaths[i] || file.name,
+            };
+          }),
+        );
+        const result = await remoteUploadFiles(machineId, envId, dirPath, remoteFiles);
+        return result;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Remote file operation failed";
+        return error(503, { error: { type: "remote_error", message } });
+      }
+    }
+
+    const result = await resolveWorkspacePath(envId, dirPath);
+    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
+
+    const { resolved } = result;
+    const { mkdir, writeFile: writeFileAsync } = await import("node:fs/promises");
+    await mkdir(resolved, { recursive: true });
 
     const uploaded: Array<{ name: string; path: string; size: number }> = [];
     for (let i = 0; i < files.length; i++) {
@@ -200,6 +280,18 @@ app.put(
     if (b.content.length > 100 * 1024 * 1024)
       return error(413, { error: { type: "validation_error", message: "Content exceeds 100MB limit" } });
 
+    // 远程环境
+    const machineId = await getRemoteMachineId(envId);
+    if (machineId) {
+      try {
+        const result = await remoteWriteFile(machineId, envId, filePath, b.content);
+        return result;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Remote file operation failed";
+        return error(503, { error: { type: "remote_error", message } });
+      }
+    }
+
     const result = await resolveWorkspacePath(envId, filePath);
     if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
 
@@ -224,6 +316,18 @@ app.delete(
 
     if (!isUserPath(filePath))
       return error(400, { error: { type: "validation_error", message: "Only user/ paths are writable" } });
+
+    // 远程环境
+    const machineId = await getRemoteMachineId(envId);
+    if (machineId) {
+      try {
+        await remoteDeleteFile(machineId, envId, filePath);
+        return { ok: true as const };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Remote file operation failed";
+        return error(503, { error: { type: "remote_error", message } });
+      }
+    }
 
     const result = await resolveWorkspacePath(envId, filePath);
     if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });

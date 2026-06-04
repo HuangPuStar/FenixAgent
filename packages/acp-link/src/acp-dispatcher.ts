@@ -59,20 +59,27 @@ function cancelPendingPermissions(state: AcpSessionState): void {
  * server mode 和 client mode 的 relay 共用此逻辑。
  */
 export class AcpDispatcher {
+  private workspace: string;
+
   constructor(
     private state: AcpSessionState,
     private send: (message: unknown) => void,
-  ) {}
+    workspace?: string,
+  ) {
+    this.workspace = workspace ?? process.cwd();
+  }
 
   /** 处理从 WS 收到的原始消息（可能是 JSON-RPC 或传输层消息） */
   async handleMessage(raw: unknown): Promise<void> {
     if (isTransportMessage(raw)) {
+      console.log("[acp-dispatcher] ← transport:", JSON.stringify(raw).slice(0, 500));
       await this.handleTransportMessage(raw as Record<string, unknown>);
       return;
     }
 
     const msg = raw as Record<string, unknown>;
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id !== undefined) {
+      console.log("[acp-dispatcher] ← rpc:", JSON.stringify(raw).slice(0, 500));
       await this.handleRequest(msg as unknown as JsonRpcRequest);
     }
   }
@@ -102,6 +109,7 @@ export class AcpDispatcher {
 
   private async handleRequest(msg: JsonRpcRequest): Promise<void> {
     const { id, method, params } = msg;
+    const _t0 = Date.now();
     try {
       switch (method) {
         case ACP_METHOD.SESSION_NEW:
@@ -131,7 +139,12 @@ export class AcpDispatcher {
         default:
           this.send(createErrorResponse(id, -32601, `Method not found: ${method}`));
       }
+      console.log("[acp-dispatcher] → rpc response:", JSON.stringify({ method, id, elapsed: Date.now() - _t0 }));
     } catch (error) {
+      console.error(
+        "[acp-dispatcher] ✗ rpc error:",
+        JSON.stringify({ method, id, elapsed: Date.now() - _t0, error: (error as Error).message }),
+      );
       this.send(createErrorResponse(id, -32603, (error as Error).message));
     }
   }
@@ -149,9 +162,8 @@ export class AcpDispatcher {
       return;
     }
     try {
-      const cwd = params.cwd as string | undefined;
       const result = await this.state.connection.newSession({
-        cwd: cwd ?? process.cwd(),
+        cwd: this.workspace,
         mcpServers: [],
       });
       this.state.sessionId = result.sessionId;
@@ -263,7 +275,7 @@ export class AcpDispatcher {
     }
     try {
       const result = await this.state.connection.listSessions({
-        cwd: params.cwd,
+        cwd: this.workspace,
         cursor: params.cursor,
       });
       const MAX_SESSIONS = 20;
@@ -298,7 +310,7 @@ export class AcpDispatcher {
     try {
       const result = await this.state.connection.loadSession({
         sessionId: params.sessionId,
-        cwd: params.cwd ?? process.cwd(),
+        cwd: this.workspace,
         mcpServers: [],
       });
       this.state.sessionId = params.sessionId;
@@ -330,7 +342,7 @@ export class AcpDispatcher {
       // @ts-expect-error SDK type mismatch: unstable_resumeSession exists on Agent interface
       const result = await this.state.connection.unstable_resumeSession({
         sessionId: params.sessionId,
-        cwd: params.cwd ?? process.cwd(),
+        cwd: this.workspace,
       });
       this.state.sessionId = params.sessionId;
       this.state.modelState = result.models ?? null;

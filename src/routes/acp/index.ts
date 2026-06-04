@@ -1,11 +1,12 @@
+import { log, error as logError } from "@fenix/logger";
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
 import { auth } from "../../auth/better-auth";
 import { validateEnv } from "../../env";
-import { log, error as logError } from "../../logger";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
+import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
 import type { WsConnection } from "../../transport/ws-types";
 
@@ -90,6 +91,46 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       const wsId = (ws.data as any).__acpWsId as string | undefined;
       if (wsId) {
         handleAcpWsClose(adaptWs(ws), wsId, code, reason);
+      }
+    },
+  })
+
+  /** WS /acp/file-ws — WebSocket endpoint for remote file operations */
+  .ws("/file-ws", {
+    async open(ws) {
+      const url = new URL(ws.data.request.url);
+      const secret = url.searchParams.get("secret");
+      const registrySecret = validateEnv().REGISTRY_SECRET;
+
+      if (!secret || !registrySecret || secret !== registrySecret) {
+        log("[File-WS] Upgrade rejected: invalid or missing registry secret");
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      const wsId = `file_ws_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension
+      (ws.data as any).__fileWsId = wsId;
+      log(`[File-WS] Upgrade accepted: wsId=${wsId}`);
+      handleFileWsOpen(adaptWs(ws), wsId);
+    },
+    message(ws, data) {
+      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
+        logError(`[File-WS] Message too large: ${data.length} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const wsId = (ws.data as any).__fileWsId as string | undefined;
+      if (wsId) {
+        handleFileWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
+      }
+    },
+    close(ws, _code, _reason) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const wsId = (ws.data as any).__fileWsId as string | undefined;
+      if (wsId) {
+        handleFileWsClose(adaptWs(ws), wsId);
       }
     },
   })

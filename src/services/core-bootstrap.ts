@@ -1,11 +1,14 @@
+import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
-import { createEnginePlugin, type OpencodeRuntime } from "@fenix/opencode";
+import { log } from "@fenix/logger";
+import { createEnginePlugin as createOpencodePlugin, type OpencodeRuntime } from "@fenix/opencode";
 import {
   createRemoteRuntime,
   createWsRemoteTransport,
   type RemoteTransport,
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
+import { validateEnv } from "../env";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 
@@ -15,17 +18,26 @@ let facade: CoreRuntimeFacade | null = null;
 const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
+  const env = validateEnv();
+  const engineType = env.RCS_ENGINE_TYPE;
+  const plugin =
+    engineType === "ccb"
+      ? createCcbPlugin({ command: env.RCS_CCB_COMMAND, args: env.RCS_CCB_ARGS.split(/\s+/).filter(Boolean) })
+      : createOpencodePlugin();
+
   return createCoreRuntime({
-    plugins: [createEnginePlugin()],
+    plugins: [plugin],
     nodes: [
       {
         id: "local-default",
         mode: "local",
-        engineTypes: ["opencode"],
+        engineTypes: [engineType],
         status: "online",
       },
     ],
     onInstanceStarted(instanceId, runtime, updateMetadata) {
+      // ccb 引擎没有 getInstanceState，跳过
+      if (engineType === "ccb") return;
       // 远程实例没有 getInstanceState，跳过 metadata 写入
       if (typeof (runtime as OpencodeRuntime).getInstanceState !== "function") return;
       const opencode = runtime as OpencodeRuntime;
@@ -93,20 +105,36 @@ export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry
   acpEntry.remoteTransport = transport;
 
   const existing = runtime.getNode(machineId);
-  if (existing) return;
+  if (existing) {
+    // node 已存在（重连场景）：更新状态为 online
+    runtime.updateNodeStatus(machineId, "online");
+    return;
+  }
 
   runtime.registerNode({
     id: machineId,
     mode: "remote",
-    engineTypes: ["opencode"],
+    engineTypes: [validateEnv().RCS_ENGINE_TYPE],
     status: "online",
     metadata: { machineId },
   });
 }
 
 /**
- * 远程 machine 断连后，清理 transport 缓存。
+ * 远程 machine 断连后，清理 transport 缓存并更新 node 状态为 offline。
+ * 同时删除该 machineId 下的所有活跃实例记录，使后续 ensureRunning 能重新 launch。
  */
 export function unregisterRemoteNode(machineId: string): void {
   remoteTransports.delete(machineId);
+  const runtime = getCoreRuntime();
+  const existing = runtime.getNode(machineId);
+  if (existing) {
+    runtime.updateNodeStatus(machineId, "offline");
+  }
+  // 删除该 machineId 下所有活跃实例，让 ensureRunning 重新 launch
+  for (const instance of runtime.listInstances()) {
+    if (instance.nodeId !== machineId) continue;
+    runtime.deleteInstance(instance.instanceId);
+    log(`[core-bootstrap] Deleted instance ${instance.instanceId} on disconnected machine ${machineId}`);
+  }
 }

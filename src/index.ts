@@ -1,3 +1,10 @@
+import { createLogger, interceptConsole } from "@fenix/logger";
+
+// ⚠️ 必须在所有其他代码之前拦截 console，保证全局日志统一
+interceptConsole();
+
+const startupLog = createLogger("rcs");
+
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import swagger from "@elysiajs/swagger";
@@ -29,23 +36,23 @@ import { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment, stopAll
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { resolveWorkspacePath } from "./services/workspace-resolver";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
+import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
 
 await initDb();
-console.log("[RCS] Database initialized (PostgreSQL + better-auth)");
+startupLog.info("Database initialized");
 
 // 重启时重置所有 agent_session 状态为 idle
 // WebSocket/EventBus 已断开，之前的运行状态不再有效
 import { sql } from "drizzle-orm";
 
 await db.update(agentSession).set({ status: "idle", updatedAt: new Date() }).where(sql`1=1`);
-console.log("[RCS] All agent sessions reset to idle");
 
 const env = validateEnv();
 applyEnv(env);
 
 getCoreRuntime();
-console.log("[RCS] Core runtime initialized (opencode engine + local node)");
+startupLog.info("Core runtime initialized");
 
 await startScheduler();
 
@@ -59,7 +66,6 @@ if (hermesUrl) {
 // Kill stale acp-link processes from previous runs
 try {
   execSync("pkill -f 'acp-link.*opencode' || true", { stdio: "ignore" });
-  console.log("[RCS] Cleaned up stale acp-link processes");
 } catch {
   // pkill not available or no matching processes — ignore
 }
@@ -79,18 +85,16 @@ try {
     }
     const cwd = resolveWorkspacePath(env.organizationId, env.userId, env.id);
     if (!existsSync(cwd)) {
-      console.log(`[RCS] Skipping environment ${env.name}: workspace directory does not exist (${cwd})`);
+      startupLog.warn(`Skipping ${env.name}: workspace directory does not exist`);
       continue;
     }
     const existing = findRunningInstanceByEnvironment(env.id);
     if (existing) continue;
     try {
       await spawnInstanceFromEnvironment(env.userId, env.id);
-      console.log(`[RCS] Auto-started instance for environment: ${env.name} (${env.id})`);
+      startupLog.info(`Auto-started: ${env.name}`);
     } catch (err: unknown) {
-      console.error(
-        `[RCS] Failed to auto-start instance for ${env.name}: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      startupLog.error(`Failed to auto-start ${env.name}`, err instanceof Error ? err : undefined);
     }
   }
 })();
@@ -111,14 +115,32 @@ const app = new Elysia()
           description: "Remote Control Server API — config, sessions, environments, ACP protocol",
         },
         tags: [
-          { name: "Config", description: "Configuration management (providers, models, agents, skills, MCP)" },
-          { name: "Sessions", description: "Session management and event streaming" },
-          { name: "Environments", description: "ACP agent environments" },
-          { name: "Instances", description: "Agent instance lifecycle" },
+          {
+            name: "Config",
+            description: "Configuration management (providers, models, agents, skills, MCP)",
+          },
+          {
+            name: "Sessions",
+            description: "Session management and event streaming",
+          },
+          {
+            name: "Environments",
+            description: "ACP agent environments",
+          },
+          {
+            name: "Instances",
+            description: "Agent instance lifecycle",
+          },
           { name: "Tasks", description: "Scheduled HTTP tasks" },
-          { name: "Knowledge", description: "Knowledge bases and resources" },
+          {
+            name: "Knowledge",
+            description: "Knowledge bases and resources",
+          },
           { name: "Channels", description: "IM channel bindings" },
-          { name: "Workflow Engine", description: "Native DAG workflow execution engine" },
+          {
+            name: "Workflow Engine",
+            description: "Native DAG workflow execution engine",
+          },
         ],
       },
       swaggerOptions: {
@@ -136,8 +158,16 @@ const app = new Elysia()
     const contentLength = request.headers.get("content-length");
     if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
       return new Response(
-        JSON.stringify({ error: { type: "PAYLOAD_TOO_LARGE", message: "Request body exceeds 10MB limit" } }),
-        { status: 413, headers: { "Content-Type": "application/json" } },
+        JSON.stringify({
+          error: {
+            type: "PAYLOAD_TOO_LARGE",
+            message: "Request body exceeds 10MB limit",
+          },
+        }),
+        {
+          status: 413,
+          headers: { "Content-Type": "application/json" },
+        },
       );
     }
   })
@@ -146,7 +176,10 @@ const app = new Elysia()
     const url = new URL(request.url);
     if (url.pathname.includes("//")) {
       url.pathname = url.pathname.replace(/\/+/g, "/");
-      return new Response(null, { status: 302, headers: { Location: url.toString() } });
+      return new Response(null, {
+        status: 302,
+        headers: { Location: url.toString() },
+      });
     }
   })
   // Health check
@@ -174,15 +207,10 @@ const app = new Elysia()
   // ACP protocol routes
   .use(acpRoutes);
 
-console.log("[RCS] ACP support enabled");
-
 const port = config.port;
 const host = config.host;
 
-console.log(`[RCS] Remote Control Server starting on ${host}:${port}`);
-console.log(`[RCS] Base URL: ${config.baseUrl || `http://localhost:${port}`}`);
-console.log(`[RCS] WebSocket idle timeout: ${config.wsIdleTimeout}s`);
-console.log(`[RCS] WebSocket keepalive interval: ${config.wsKeepaliveInterval}s`);
+startupLog.info(`Listening on ${host}:${port} (baseUrl: ${config.baseUrl || `http://localhost:${port}`})`);
 
 export type App = typeof app;
 
@@ -193,11 +221,12 @@ export default app;
 
 // Graceful shutdown
 async function gracefulShutdown(signal: string) {
-  console.log(`\n[RCS] Received ${signal}, shutting down...`);
+  startupLog.info(`Received ${signal}, shutting down...`);
   const hermesClient = getHermesClient();
   await hermesClient?.stop();
   closeAllRelayConnections();
   closeAllAcpConnections();
+  closeAllFileWsConnections();
   await stopAllInstances();
   stopScheduler();
   await closeCache();

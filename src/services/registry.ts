@@ -1,7 +1,7 @@
+import { log } from "@fenix/logger";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { agentConfig, machine, registryEvent } from "../db/schema";
-import { log } from "../logger";
 import type { AuthContext } from "../plugins/auth";
 
 function genId(prefix: string): string {

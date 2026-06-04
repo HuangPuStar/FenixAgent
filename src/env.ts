@@ -61,6 +61,11 @@ const envSchema = z.object({
   REGISTRY_SECRET: z.string().default("rcs-registry-secret"),
   ACPX_G_URL: z.string().default("http://localhost:8848"),
 
+  // ── 可选：引擎 ──
+  RCS_ENGINE_TYPE: z.enum(["opencode", "ccb"]).default("opencode"),
+  RCS_CCB_COMMAND: z.string().default("ccb"),
+  RCS_CCB_ARGS: z.string().default("--acp"),
+
   // ── 可选：Redis 缓存 ──
   RCS_REDIS_URL: z.string().optional(),
   RCS_REDIS_PASSWORD: z.string().optional(),

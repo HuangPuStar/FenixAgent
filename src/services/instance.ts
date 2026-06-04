@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
+import { log, error as logError } from "@fenix/logger";
 import { getBaseUrl } from "../config";
+import { validateEnv } from "../env";
 import { AppError, NotFoundError } from "../errors";
-import { log, error as logError } from "../logger";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
 import type { InstanceSupplement } from "../types/store";
@@ -104,7 +105,6 @@ export async function spawnInstanceFromEnvironment(
 ): Promise<SpawnedInstance> {
   const env = prefetchedEnv ?? (await environmentRepo.getById(environmentId));
   if (!env) throw new NotFoundError("Environment not found");
-  // 注意：团队归属由调用方（route 层 getOwnedEnvironment）验证，此处仅确认环境存在
 
   // 解析 AgentConfig：有则加载完整配置，无则用默认 "general" agent
   let agentName = "general";
@@ -170,7 +170,7 @@ export async function spawnInstanceFromEnvironment(
   const facade = getCoreRuntime();
   const snapshot = await facade.launchInstance({
     instanceId,
-    engineType: "opencode",
+    engineType: validateEnv().RCS_ENGINE_TYPE,
     nodeId,
     launchSpec,
   });
@@ -257,12 +257,10 @@ export async function stopInstance(id: string, organizationId: string): Promise<
   const facade = getCoreRuntime();
   const snapshot = facade.getInstance(id);
   if (!snapshot) {
-    // core 中不存在实例时清理残留 supplement 避免内存泄漏
     registry.unregister(id);
     return { ok: false, error: "Instance not found" };
   }
   if (snapshot.status === "stopped" || snapshot.status === "stopping") {
-    // 已停止实例清理 supplement
     registry.unregister(id);
     return { ok: false, error: "Already stopped" };
   }

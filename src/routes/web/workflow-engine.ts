@@ -5,6 +5,7 @@
  * listRuns 直接调用 StorageAdapter（不走引擎门面）。
  */
 
+import { createLogger } from "@fenix/logger";
 import { WorkflowError } from "@fenix/workflow-engine";
 import { and, eq } from "drizzle-orm";
 import Elysia from "elysia";
@@ -14,6 +15,8 @@ import { authGuardPlugin } from "../../plugins/auth";
 import { cleanupSpawnedEnvironments, getTeamEngine } from "../../services/workflow";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
+
+const logger = createLogger("wf-engine");
 
 const app = new Elysia({ name: "web-workflow-engine" }).use(authGuardPlugin);
 
@@ -66,7 +69,7 @@ app.post(
               }
             },
             async (err) => {
-              console.error("[workflow-engine] run background error:", err);
+              logger.error("run background error:", err);
               if (workflowId) {
                 publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
                   runId,
@@ -213,7 +216,7 @@ app.post(
         const status = code === "RUN_NOT_FOUND" ? 404 : code === "VALIDATION_ERROR" ? 400 : 500;
         return error(status, { error: { type: code, message: err.message } });
       }
-      console.error("[workflow-engine] Unexpected error:", err);
+      logger.error("Unexpected error:", err);
       return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message || "Unknown error" } });
     }
   },

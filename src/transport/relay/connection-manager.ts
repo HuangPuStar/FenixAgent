@@ -1,4 +1,4 @@
-import { log, error as logError } from "../../logger";
+import { log, error as logError } from "@fenix/logger";
 import type { ManagedConnection, RelayConnectionEntry } from "../../types/store";
 import type { WsConnection } from "../ws-types";
 

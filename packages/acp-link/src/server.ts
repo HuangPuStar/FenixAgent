@@ -3,6 +3,7 @@ import os from "node:os";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { handleFileOp } from "./client/file-operations.js";
 import { InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import {
@@ -165,6 +166,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd());
   const url = `${config.rcsUrl}/acp/ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
   let ws: WebSocket | null = null;
+  let fileWs: WebSocket | null = null;
+  let fileWsHeartbeat: ReturnType<typeof setInterval> | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempt = 0;
   const MAX_RECONNECT_MS = 30_000;
@@ -207,15 +210,77 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data as string);
+        // ── ACP 调试日志 ──
+        if (msg.type !== "heartbeat" && msg.type !== "keep_alive") {
+          console.log("[acp-client] ← RCS:", JSON.stringify(msg).slice(0, 500));
+        }
         switch (msg.type) {
-          case "registered":
+          case "registered": {
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
             heartbeatTimer = setInterval(() => {
               if (ws && ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: "heartbeat" }));
               }
             }, 30000);
+
+            // Establish file-ws connection
+            // Close existing file-ws before creating a new one (prevents leak on re-register)
+            if (fileWs) {
+              try {
+                fileWs.close();
+              } catch {
+                /* ignore */
+              }
+              fileWs = null;
+            }
+            if (fileWsHeartbeat) {
+              clearInterval(fileWsHeartbeat);
+              fileWsHeartbeat = null;
+            }
+            const fileWsUrl = `${config.rcsUrl}/acp/file-ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
+            const connectFileWs = () => {
+              if (manualClose) return;
+              fileWs = new WebSocket(fileWsUrl);
+              fileWs.onopen = () => {
+                console.log("[acp-client] file-ws connected, registering...");
+                if (fileWs && fileWs.readyState === 1) {
+                  fileWs.send(JSON.stringify({ type: "register", machine_id: msg.machine_id }));
+                }
+                fileWsHeartbeat = setInterval(() => {
+                  if (fileWs && fileWs.readyState === 1) {
+                    fileWs.send(JSON.stringify({ type: "keep_alive" }));
+                  }
+                }, 30000);
+              };
+              fileWs.onmessage = async (event) => {
+                try {
+                  const fmsg = JSON.parse(event.data as string);
+                  if (fmsg.type === "file_op") {
+                    const result = await handleFileOp(fmsg);
+                    if (fileWs && fileWs.readyState === 1) {
+                      fileWs.send(JSON.stringify(result));
+                    }
+                  }
+                } catch {
+                  // ignore
+                }
+              };
+              fileWs.onclose = () => {
+                if (fileWsHeartbeat) {
+                  clearInterval(fileWsHeartbeat);
+                  fileWsHeartbeat = null;
+                }
+                if (!manualClose) {
+                  setTimeout(connectFileWs, 5000);
+                }
+              };
+              fileWs.onerror = () => {
+                // onclose will handle
+              };
+            };
+            connectFileWs();
             break;
+          }
           case "session_start": {
             const sessionId = msg.session_id as string;
             const launchSpec = msg.launch_spec;
@@ -326,14 +391,15 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               // payload 直接传入消息对象（JSON-RPC 或传输层消息）
               const relaySend = (msgObj: unknown) => {
                 if (ws && ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: "relay",
-                      instance_id: instId,
-                      session_id: instId,
-                      payload: msgObj,
-                    }),
-                  );
+                  const relayMsg = {
+                    type: "relay",
+                    instance_id: instId,
+                    session_id: instId,
+                    payload: msgObj,
+                  };
+                  // ── ACP 调试日志 ──
+                  console.log("[acp-client] → RCS relay:", JSON.stringify(relayMsg).slice(0, 500));
+                  ws.send(JSON.stringify(relayMsg));
                 }
               };
               const result = await instanceMgr.start(instId, relaySend);
@@ -388,6 +454,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const instId = msg.instance_id as string;
             const sessId = msg.session_id as string;
             const relayPayload = msg.payload;
+            // ── ACP 调试日志 ──
+            console.log("[acp-client] relay → dispatcher:", JSON.stringify(relayPayload).slice(0, 500));
             if (instanceMgr.hasInstance(instId)) {
               const dispatcher = instanceMgr.getDispatcher(instId);
               if (dispatcher) {
@@ -419,12 +487,22 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
       if (manualClose) return;
+
+      // 提供有意义的断连原因提示
+      if (event.code === 4003) {
+        console.error(
+          `[acp-client] 认证失败: ${event.reason || "secret 不匹配"}，请检查 RCS_SECRET 与服务端 REGISTRY_SECRET 是否一致`,
+        );
+        manualClose = true;
+        return;
+      }
+
       // 指数退避重连（不断连不杀子进程）
       const delay = Math.min(1000 * 2 ** reconnectAttempt, MAX_RECONNECT_MS);
       reconnectAttempt++;
@@ -443,6 +521,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     close: () => {
       manualClose = true;
       if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (fileWsHeartbeat) clearInterval(fileWsHeartbeat);
+      fileWs?.close();
       sessionMgr.stopAll();
       ws?.close();
     },

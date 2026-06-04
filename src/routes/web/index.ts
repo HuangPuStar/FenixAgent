@@ -6,6 +6,7 @@ import webConfig from "./config";
 import webControl from "./control";
 import webEnvironments from "./environments";
 import webFiles from "./files";
+import webInstances from "./instances";
 import webKnowledgeBases from "./knowledge-bases";
 import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
@@ -31,6 +32,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webConfig)
   .use(webControl)
   .use(webFiles)
+  .use(webInstances)
   .use(webKnowledgeBases)
   .use(webMetaAgent)
   .use(webOrganizations)

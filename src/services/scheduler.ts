@@ -1,5 +1,5 @@
+import { error, log } from "@fenix/logger";
 import schedule from "node-schedule";
-import { error, log } from "../logger";
 import { scheduledTaskRepo } from "../repositories/task";
 import { createExecutionLog, executeTaskById, getTaskById } from "./task";
 

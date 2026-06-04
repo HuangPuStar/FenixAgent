@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
-import { envApi } from "../src/api/sdk";
 import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { Button } from "./ui/button";
@@ -27,7 +26,6 @@ interface ACPMainProps {
 export function ACPMain({
   client,
   agentId,
-  initialCwd,
   readonly,
   hideSidebar,
   rcsSessionId,
@@ -36,40 +34,12 @@ export function ACPMain({
 }: ACPMainProps) {
   const { t } = useTranslation("components");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [cwd, setCwd] = useState<string | undefined>(initialCwd?.replace(/\/+$/, ""));
-  const [cwdReady, setCwdReady] = useState(!agentId || !!initialCwd);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
   const BOOTSTRAP_MAX_ATTEMPTS = 10;
   const chatRef = useRef<ChatInterfaceHandle>(null);
   const bootstrappedRef = useRef(false);
   const bootstrapRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (initialCwd) {
-      setCwd(initialCwd.replace(/\/+$/, ""));
-      setCwdReady(true);
-      return;
-    }
-
-    if (!agentId) {
-      setCwdReady(true);
-      return;
-    }
-
-    setCwdReady(false);
-    envApi
-      .get({ id: agentId })
-      .then(({ data, error }: { data?: unknown; error?: unknown }) => {
-        if (error) throw new Error((error as { message?: string }).message ?? "加载环境失败");
-        const envData = data as { workspace_path?: string };
-        setCwd(envData.workspace_path?.replace(/\/+$/, ""));
-        setCwdReady(true);
-      })
-      .catch(() => {
-        setCwdReady(true);
-      });
-  }, [agentId, initialCwd]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: client 变更时需重置 bootstrap 状态，否则新连接不会加载会话
   useEffect(() => {
@@ -84,7 +54,6 @@ export function ACPMain({
   // When capabilities arrive via ACP event (not React getter), bump bootstrap attempt once.
   // This avoids the infinite loop caused by depending on a getter that returns true on every render.
   useEffect(() => {
-    if (!cwdReady) return;
     const onCaps = () => {
       if (bootstrappedRef.current) return;
       if (client.getState() !== "connected") return;
@@ -95,7 +64,7 @@ export function ACPMain({
     // Also check immediately in case capabilities already arrived before listener was registered
     onCaps();
     return () => client.state.off("capabilitiesChange", onCaps);
-  }, [cwdReady, client]);
+  }, [client]);
 
   // Handle session selection
   const handleSelectSession = useCallback(
@@ -118,9 +87,6 @@ export function ACPMain({
   // Bootstrap: load latest session or create new one.
   // Triggers on connection ready AND when capabilities arrive (via bootstrapAttempt increment).
   useEffect(() => {
-    if (!cwdReady) {
-      return;
-    }
     if (client.getState() !== "connected") {
       return;
     }
@@ -150,7 +116,8 @@ export function ACPMain({
         }
 
         bootstrappedRef.current = true;
-        const response = await client.listSessions(cwd ? { cwd } : undefined);
+        // 不传 cwd — 让 agent 自己决定工作目录（本地/远程路径由后端处理）
+        const response = await client.listSessions();
         if (cancelled) return;
 
         const latest = [...response.sessions].sort((a, b) => {
@@ -165,7 +132,7 @@ export function ACPMain({
           return;
         }
 
-        console.log("[ACPMain] No existing sessions found for cwd, creating new session");
+        console.log("[ACPMain] No existing sessions found, creating new session");
         chatRef.current?.newSession();
       } catch (error) {
         bootstrappedRef.current = false;
@@ -182,7 +149,7 @@ export function ACPMain({
         bootstrapRetryTimerRef.current = null;
       }
     };
-  }, [bootstrapAttempt, client, cwd, cwdReady, handleSelectSession]);
+  }, [bootstrapAttempt, client, handleSelectSession]);
 
   return (
     <div className="flex h-full w-full">
@@ -198,7 +165,7 @@ export function ACPMain({
           <div className="flex items-center justify-between px-3 py-4">
             {!sidebarCollapsed && (
               <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
-                会话
+                {t("acpMain.sessions")}
               </span>
             )}
             <div className={cn("flex items-center gap-0.5", sidebarCollapsed && "mx-auto")}>
@@ -229,8 +196,6 @@ export function ACPMain({
             <ScrollArea className="flex-1">
               <SidebarSessionList
                 client={client}
-                cwd={cwd}
-                cwdReady={cwdReady}
                 initialActiveSessionId={initialActiveSessionId}
                 onSelectSession={handleSelectSession}
               />
@@ -258,8 +223,6 @@ export function ACPMain({
           ref={chatRef}
           client={client}
           agentId={agentId}
-          cwd={cwd}
-          cwdReady={cwdReady}
           readonly={readonly}
           hideContextPanel={true}
           rcsSessionId={rcsSessionId}
@@ -278,14 +241,10 @@ export function ACPMain({
 
 function SidebarSessionList({
   client,
-  cwd,
-  cwdReady,
   initialActiveSessionId,
   onSelectSession,
 }: {
   client: ACPClient;
-  cwd?: string;
-  cwdReady: boolean;
   initialActiveSessionId: string | null;
   onSelectSession: (session: AgentSessionInfo) => void;
 }) {
@@ -301,37 +260,29 @@ function SidebarSessionList({
   }, [initialActiveSessionId]);
 
   const loadSessions = useCallback(async () => {
-    if (!cwdReady) {
-      return;
-    }
     if (!client.supportsSessionList) {
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const response = await client.listSessions(cwd ? { cwd } : undefined);
+      const response = await client.listSessions();
       setSessions(response.sessions);
     } catch (err) {
       console.warn("[SidebarSessionList] Failed to load:", err);
     } finally {
       setLoading(false);
     }
-  }, [client, cwd, cwdReady]);
+  }, [client]);
 
   useEffect(() => {
-    if (!cwdReady) {
-      setLoading(true);
-      return;
-    }
     if (client.getState() === "connected") {
       loadSessions();
     }
-  }, [client, cwdReady, loadSessions]);
+  }, [client, loadSessions]);
 
   // When capabilities arrive via ACP event, load sessions
   useEffect(() => {
-    if (!cwdReady) return;
     const onCaps = () => {
       if (client.supportsSessionList) {
         loadSessions();
@@ -339,25 +290,22 @@ function SidebarSessionList({
     };
     client.state.on("capabilitiesChange", onCaps);
     return () => client.state.off("capabilitiesChange", onCaps);
-  }, [client, cwdReady, loadSessions]);
+  }, [client, loadSessions]);
 
   useEffect(() => {
     const handler = (state: string) => {
-      if (state === "connected" && cwdReady) {
+      if (state === "connected") {
         setTimeout(loadSessions, 200);
       }
     };
     client.setConnectionStateHandler(handler);
     return () => client.removeConnectionStateHandler(handler);
-  }, [client, cwdReady, loadSessions]);
+  }, [client, loadSessions]);
 
   useEffect(() => {
-    if (!cwdReady) {
-      return;
-    }
     const interval = setInterval(loadSessions, 30_000);
     return () => clearInterval(interval);
-  }, [cwdReady, loadSessions]);
+  }, [loadSessions]);
 
   const sorted = useMemo(
     () =>

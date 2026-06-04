@@ -334,8 +334,6 @@ export function AgentSidebarTree({
         const isEntering = enteringAgentId === agent.id;
         const runningInstances = getRunningInstances(node);
         const isRestarting = runningInstances.some((inst) => restartingIds.has(inst.id));
-        const initial = agent.name.charAt(0).toUpperCase();
-        const avatarBg = agent.color || "var(--color-brand)";
 
         return (
           <div key={agent.id} className="group relative mx-2">

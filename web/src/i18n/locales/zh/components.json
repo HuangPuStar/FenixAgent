@@ -137,6 +137,10 @@
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
+    "dropToUpload": "释放文件以上传",
+    "uploadTo": "上传到: {{path}}",
+    "uploadingFile": "正在上传 {{name}}...",
+    "uploadingProgress": "{{percent}}%",
     "downloadZip": "下载 ZIP",
     "downloadFailed": "下载失败",
     "contextMenu": {
@@ -254,6 +258,7 @@
     "noSessions": "暂无会话",
     "clickToCreate": "点击上方 + 创建新会话",
     "historySessions": "历史会话",
+    "sessions": "会话",
     "today": "今天",
     "yesterday": "昨天",
     "earlier": "更早"

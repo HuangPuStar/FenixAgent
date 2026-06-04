@@ -1,6 +1,6 @@
+import { log } from "@fenix/logger";
 import { generateWorkerJwt } from "../auth/jwt";
 import { config, getBaseUrl } from "../config";
-import { log } from "../logger";
 import { environmentRepo, sessionRepo, workItemRepo } from "../repositories";
 import type { WorkResponse } from "../types/api";
 

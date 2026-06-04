@@ -4,6 +4,7 @@
  * POST /web/workflow-defs — action 分发，管理工作流定义和版本。
  */
 
+import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import {
@@ -30,6 +31,8 @@ import {
   listTriggers,
   regenerateHash,
 } from "../../services/workflow-trigger";
+
+const logger = createLogger("wf-defs");
 
 const app = new Elysia({ name: "web-workflow-defs" }).use(authGuardPlugin);
 
@@ -266,7 +269,7 @@ app.post(
           return error(400, { error: { type: "VALIDATION_ERROR", message: `Unknown action: ${action}` } });
       }
     } catch (err: unknown) {
-      console.error("[workflow-defs] Error:", err);
+      logger.error("Error:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }

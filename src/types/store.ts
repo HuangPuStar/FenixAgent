@@ -64,6 +64,8 @@ export interface RelayConnectionEntry {
   pendingReconnect?: boolean;
   /** machine 连接的 wsId，用于断连后恢复 onSessionMessage 回调 */
   machineWsId?: string;
+  /** 本地 agent 的 workspace 路径，用于 JSON-RPC session cwd 注入 */
+  workspacePath?: string;
 }
 
 /** RelayConnectionEntry + wsId for managed connections */
@@ -133,4 +135,23 @@ export interface PermissionRequestDetails {
   toolName?: string;
   input?: Record<string, unknown>;
   requestId?: string;
+}
+
+// ────────────────────────────────────────────
+// File WS Connection
+// 用于 /acp/file-ws 端点的远程文件操作连接
+// ────────────────────────────────────────────
+
+/** Per-connection state for file operation WebSocket connections (`/acp/file-ws`) */
+export interface FileWsConnectionEntry {
+  /** 关联的 machine ID（注册后赋值） */
+  machineId: string | null;
+  /** WS 连接 */
+  ws: import("../transport/ws-types").WsConnection;
+  /** 连接 ID */
+  wsId: string;
+  /** 连接打开时间 */
+  openTime: number;
+  /** 最后活跃时间（用于超时检测） */
+  lastClientActivity: number;
 }

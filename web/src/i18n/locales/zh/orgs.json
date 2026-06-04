@@ -51,6 +51,9 @@
     "confirmDelete": "确认删除",
     "deleting": "删除中..."
   },
+  "orgId": "组织 ID",
+  "copyId": "复制 ID",
+  "copied": "已复制",
   "editName": {
     "placeholder": "组织名称"
   },

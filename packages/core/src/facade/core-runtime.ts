@@ -3,7 +3,7 @@ import { CoreNodeRegistry } from "../registry/core-node-registry";
 import { EnginePluginRegistry } from "../registry/engine-plugin-registry";
 import { createInstanceOrchestrator } from "../runtime/instance-orchestrator";
 import { createRuntimeInstanceStore, type RuntimeInstanceStore } from "../runtime/runtime-instance-store";
-import type { CoreNode, CreateCoreNodeInput } from "../types/core-node";
+import type { CoreNode, CoreNodeStatus, CreateCoreNodeInput } from "../types/core-node";
 import type { ConnectInstanceRelayRequest, LaunchInstanceRequest } from "../types/launch-request";
 import type { RuntimeInstanceSnapshot } from "../types/runtime-instance";
 
@@ -33,6 +33,8 @@ export interface CoreRuntimeFacade {
   getPlugin(engineType: string): EnginePlugin | null;
   /** 查询全部已注册 plugin。 */
   listPlugins(): EnginePlugin[];
+  /** 更新 node 在线状态。 */
+  updateNodeStatus(nodeId: string, status: CoreNodeStatus): CoreNode;
   /** 删除实例记录及其 runtime 缓存。 */
   deleteInstance(instanceId: string): boolean;
   /** 写入 plugin 补充元数据（port, token, pid 等）。 */
@@ -132,6 +134,10 @@ export function createCoreRuntime(options?: CreateCoreRuntimeOptions): CoreRunti
     /** 查询全部 plugin。 */
     listPlugins() {
       return pluginRegistry.list();
+    },
+    /** 更新 node 在线状态。 */
+    updateNodeStatus(nodeId, status) {
+      return nodeRegistry.setStatus(nodeId, status);
     },
     /** 删除实例记录及其 runtime 缓存。 */
     deleteInstance(instanceId) {

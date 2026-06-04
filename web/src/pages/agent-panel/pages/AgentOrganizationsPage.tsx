@@ -1,4 +1,4 @@
-import { Plus, Shield, ShieldCheck, Trash2, User, UserPlus } from "lucide-react";
+import { Copy, Plus, Shield, ShieldCheck, Trash2, User, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -77,6 +77,15 @@ export function AgentOrganizationsPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
+
+  const [copiedId, setCopiedId] = useState(false);
+
+  const handleCopyId = useCallback(() => {
+    if (!selectedOrgId) return;
+    navigator.clipboard.writeText(selectedOrgId);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  }, [selectedOrgId]);
 
   const [editingName, setEditingName] = useState(false);
   const [editName, setEditName] = useState("");
@@ -317,6 +326,21 @@ export function AgentOrganizationsPage() {
                     <div>
                       <h2 className="text-lg font-bold text-text-bright">{detail.name}</h2>
                       <p className="text-sm text-text-dim mt-0.5">{detail.slug}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className="text-xs text-text-dim">{t("orgId")}:</span>
+                        <code className="text-xs text-text-secondary bg-surface-hover px-1.5 py-0.5 rounded font-mono">
+                          {detail.id}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={handleCopyId}
+                          className="text-text-dim hover:text-text-secondary transition-colors"
+                          title={t("copyId")}
+                        >
+                          <Copy className="w-3 h-3" />
+                        </button>
+                        {copiedId && <span className="text-xs text-green-500">{t("copied")}</span>}
+                      </div>
                     </div>
                     {canManage && (
                       <Button

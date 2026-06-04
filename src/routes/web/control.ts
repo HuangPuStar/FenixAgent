@@ -1,5 +1,5 @@
+import { log } from "@fenix/logger";
 import Elysia from "elysia";
-import { log } from "../../logger";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo, sessionRepo } from "../../repositories";
 import { SessionEventPayloadSchema } from "../../schemas/session.schema";

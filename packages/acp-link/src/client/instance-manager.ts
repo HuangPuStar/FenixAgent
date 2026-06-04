@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
@@ -6,6 +7,7 @@ import { buildOpencodeRuntimeConfig, installSkills, writeOpencodeConfig } from "
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
 import { ACP_METHOD, createNotification } from "../json-rpc.js";
+import { registerWorkspace } from "./file-operations.js";
 import { resolveExecutable } from "./resolve-executable";
 
 interface InstanceState {
@@ -36,6 +38,14 @@ export class InstanceManager {
 
   async prepare(instanceId: string, launchSpec: AgentLaunchSpec): Promise<void> {
     const workspace = this.resolveWorkspace(launchSpec);
+
+    // Ensure workspace directory exists (same as local opencode-runtime.ts)
+    await mkdir(workspace, { recursive: true });
+
+    // Register workspace mapping for file operations
+    if (launchSpec.environmentId) {
+      registerWorkspace(launchSpec.environmentId, workspace);
+    }
 
     const installedSkills = await installSkills(workspace, launchSpec.skills);
     const runtimeConfig = buildOpencodeRuntimeConfig(launchSpec, installedSkills);
@@ -102,6 +112,15 @@ export class InstanceManager {
       clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
     });
 
+    console.log(
+      `[instance-manager] initialized: ${instanceId}`,
+      `protocol=${initResult.protocolVersion}`,
+      `loadSession=${!!initResult.agentCapabilities?.loadSession}`,
+      `sessionList=${!!initResult.agentCapabilities?.sessionCapabilities?.list}`,
+      `sessionResume=${!!initResult.agentCapabilities?.sessionCapabilities?.resume}`,
+      `workspace=${state.workspace}`,
+    );
+
     state.process = proc;
     state.connection = connection;
     state.capabilities = (initResult.agentCapabilities as Record<string, unknown>) ?? {};
@@ -118,7 +137,7 @@ export class InstanceManager {
         }
       : null;
     state.sessionState.promptCapabilities = initResult.agentCapabilities?.promptCapabilities ?? null;
-    state.dispatcher = new AcpDispatcher(state.sessionState, send);
+    state.dispatcher = new AcpDispatcher(state.sessionState, send, state.workspace);
 
     console.log(`[instance-manager] started: ${instanceId}, capabilities:`, Object.keys(state.capabilities));
 

@@ -14,6 +14,7 @@
     "db:generate": "bunx drizzle-kit generate",
     "db:migrate": "bunx drizzle-kit migrate",
     "build:web": "cd web && bunx vite build",
+    "build:remote-runtime": "bun build scripts/start-remote-runtime.ts --target=bun --outdir dist/remote-runtime",
     "preview:web": "cd web && bunx vite preview",
     "typecheck": "tsc --noEmit",
     "typecheck:web": "cd web && tsc --noEmit",

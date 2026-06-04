@@ -1,6 +1,6 @@
+import { log } from "@fenix/logger";
 import Elysia from "elysia";
 import { verifyWorkerJwt } from "../../auth/jwt";
-import { log } from "../../logger";
 import { errorResponse } from "../../plugins/auth";
 import { getSession, resolveExistingSessionId } from "../../services/session";
 import {

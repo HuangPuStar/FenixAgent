@@ -1,4 +1,4 @@
-import { log } from "../../logger";
+import { log } from "@fenix/logger";
 import { getAcpEventBus } from "../event-bus";
 
 /** Whether an outbound message should be intercepted (not forwarded to agent) */
@@ -44,6 +44,7 @@ export function flushOutboundBuffer(buffer: Record<string, unknown>[], handle: {
   const filtered = filterConnectFromFlush(buffered);
   for (const msg of filtered) {
     try {
+      log("Relay → agent (buffer flush)", { msgType: msg.type, payload: JSON.stringify(msg).slice(0, 300) });
       handle.send(msg);
     } catch {
       break;
