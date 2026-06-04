@@ -224,6 +224,19 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             }, 30000);
 
             // Establish file-ws connection
+            // Close existing file-ws before creating a new one (prevents leak on re-register)
+            if (fileWs) {
+              try {
+                fileWs.close();
+              } catch {
+                /* ignore */
+              }
+              fileWs = null;
+            }
+            if (fileWsHeartbeat) {
+              clearInterval(fileWsHeartbeat);
+              fileWsHeartbeat = null;
+            }
             const fileWsUrl = `${config.rcsUrl}/acp/file-ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
             const connectFileWs = () => {
               if (manualClose) return;
