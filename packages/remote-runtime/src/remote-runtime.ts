@@ -40,7 +40,7 @@ export function createRemoteRuntime(options: RemoteRuntimeOptions): EngineRuntim
     }
 
     // 保存远端 agent 的 capabilities，供 connectRelay 转发给前端
-    agentCapabilities = (response as Record<string, unknown>).capabilities as Record<string, unknown> | null;
+    agentCapabilities = (response as unknown as Record<string, unknown>).capabilities as Record<string, unknown> | null;
   }
 
   async function connectRelay(input: ConnectRelayInput): Promise<EngineRelayHandle> {
