@@ -8,12 +8,21 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
 export const providerProtocolEnum = pgEnum("provider_protocol", ["openai", "anthropic"]);
+export const resourcePermissionTypeEnum = pgEnum("resource_permission_type", [
+  "provider",
+  "skill",
+  "mcp_server",
+  "agent_config",
+]);
+export const resourcePermissionPrincipalEnum = pgEnum("resource_permission_principal", ["all", "organization"]);
+export const resourcePermissionActionEnum = pgEnum("resource_permission_action", ["read"]);
 
 // better-auth tables — primary keys stay as text (better-auth generates IDs internally)
 export const user = pgTable("user", {
@@ -557,6 +566,41 @@ export const skill = pgTable(
   },
   (table) => ({
     orgNameIdx: uniqueIndex("idx_skill_org_name").on(table.organizationId, table.name),
+  }),
+);
+
+export const resourcePermission = pgTable(
+  "resource_permission",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: text("organization_id").notNull(),
+    resourceType: resourcePermissionTypeEnum("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    principalType: resourcePermissionPrincipalEnum("principal_type").notNull(),
+    principalId: text("principal_id"),
+    action: resourcePermissionActionEnum("action").notNull().default("read"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueGrantIdx: unique("idx_resource_permission_unique")
+      .on(
+        table.organizationId,
+        table.resourceType,
+        table.resourceId,
+        table.principalType,
+        table.principalId,
+        table.action,
+      )
+      .nullsNotDistinct(),
+    orgTypeIdx: index("idx_resource_permission_org_type").on(table.organizationId, table.resourceType),
+    principalActionIdx: index("idx_resource_permission_principal_action").on(
+      table.principalType,
+      table.principalId,
+      table.action,
+    ),
+    resourceIdx: index("idx_resource_permission_resource").on(table.resourceType, table.resourceId),
   }),
 );
 

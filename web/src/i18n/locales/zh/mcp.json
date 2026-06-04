@@ -4,6 +4,9 @@
   "search": "搜索 MCP 服务器...",
   "empty": "暂无 MCP 服务器，点击「新建服务器」添加",
   "disabled": "已禁用",
+  "resource": {
+    "trustedNotice": "公开 MCP 会向拥有读取权限的受信任内部团队暴露完整配置。"
+  },
   "column": {
     "name": "名称",
     "type": "类型",
@@ -13,6 +16,7 @@
   },
   "btn": {
     "newServer": "新建服务器",
+    "view": "查看",
     "inspect": "检测",
     "inspecting": "检测中...",
     "disable": "禁用",
@@ -28,6 +32,7 @@
   },
   "dialog": {
     "editTitle": "编辑 MCP 服务器",
+    "detailTitle": "MCP 服务器详情",
     "createTitle": "新建 MCP 服务器",
     "nameImmutable": "名称创建后不可修改"
   },

@@ -15,6 +15,13 @@
       "when": 1780278196881,
       "tag": "0001_auto-generated",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780544302935,
+      "tag": "0002_resource_permission",
+      "breakpoints": true
     }
   ]
 }

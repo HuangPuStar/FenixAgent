@@ -42,6 +42,29 @@ export interface PermissionObjectConfig {
 export type PermissionConfig = PermissionAction | PermissionObjectConfig;
 
 // ────────────────────────────────────────────
+// Resource Access
+// ────────────────────────────────────────────
+
+/** Unified resource ownership and access metadata. */
+export interface ResourceAccess {
+  ownership: "internal" | "external";
+  sourceOrganizationId: string;
+  sourceOrganizationName?: string;
+  resourceUid: string;
+  resourceKey: string;
+  manageable: boolean;
+  writable: boolean;
+  publicReadable?: boolean;
+}
+
+/** Minimal config row shape used to decorate resource access metadata. */
+export interface ResourceAccessInput {
+  id: string;
+  organizationId: string;
+  name?: string | null;
+}
+
+// ────────────────────────────────────────────
 // Agent Knowledge
 // ────────────────────────────────────────────
 
@@ -70,6 +93,19 @@ export interface ProviderUpsertData {
   baseUrl?: string;
   apiKey?: string;
   extraOptions?: ProviderExtraOptions;
+}
+
+/** Additional options accepted by provider writes. */
+export interface ProviderSetOptions {
+  publicReadable?: boolean;
+}
+
+/** Minimal provider identity with resource access metadata. */
+export interface ProviderResourceRef {
+  id: string;
+  name: string;
+  organizationId: string;
+  resourceAccess: ResourceAccess;
 }
 
 // ────────────────────────────────────────────
@@ -118,6 +154,20 @@ export interface ModelDataInput {
   limit?: unknown;
   cost?: unknown;
   options?: unknown;
+}
+
+/** Model row decorated with the access metadata inherited from its provider. */
+export interface ModelEntryWithProviderAccess {
+  id: string;
+  providerId: string;
+  organizationId: string;
+  modelId: string;
+  displayName: string | null;
+  modalities: unknown;
+  limitConfig: unknown;
+  cost: unknown;
+  options: unknown;
+  providerResourceAccess: ResourceAccess;
 }
 
 // ────────────────────────────────────────────
@@ -178,6 +228,13 @@ export interface McpServerInfoOutput {
   enabled: boolean;
   summary: string;
   timeout?: number;
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
+}
+
+/** Additional options accepted by MCP writes. */
+export interface McpServerSetOptions {
+  publicReadable?: boolean;
 }
 
 // ────────────────────────────────────────────
@@ -192,6 +249,25 @@ export interface SkillUpsertData {
   description?: string;
   contentPath?: string;
   metadata?: SkillMetadata;
+}
+
+/** Skill config row decorated with resource access metadata. */
+export interface SkillConfigRowWithAccess {
+  id: string;
+  userId: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  contentPath: string | null;
+  metadata: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  resourceAccess: ResourceAccess;
+}
+
+/** Additional options accepted by skill writes. */
+export interface SkillSetOptions {
+  publicReadable?: boolean;
 }
 
 // ────────────────────────────────────────────
@@ -226,5 +302,35 @@ export interface AgentConfigUpsertData {
   color?: string | null;
   description?: string | null;
   knowledge?: AgentKnowledgeConfig | null;
+  skillIds?: string[];
+}
+
+/** Agent config row decorated with resource access metadata. */
+export interface AgentConfigRowWithAccess {
+  id: string;
+  userId: string;
+  organizationId: string;
+  name: string;
+  prompt: string | null;
+  model: string | null;
+  steps: number | null;
+  mode: string | null;
+  permission: PermissionConfig | null;
+  variant: string | null;
+  temperature: number | null;
+  topP: number | null;
+  disable: boolean;
+  hidden: boolean;
+  color: string | null;
+  description: string | null;
+  knowledge: AgentKnowledgeConfig | null;
+  machineId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  resourceAccess: ResourceAccess;
+}
+
+/** Agent config detail returned to the frontend with resolved access metadata. */
+export interface AgentConfigDetailWithAccess extends AgentConfigRowWithAccess {
   skillIds?: string[];
 }

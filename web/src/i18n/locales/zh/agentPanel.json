@@ -33,6 +33,7 @@
   "navigation": "设置",
   "createAgent": "新建智能体",
   "agentConfig": "智能体配置",
+  "viewAgentConfig": "查看智能体详情",
   "newInstance": "新建实例",
   "restart": "重启",
   "stop": "停止",
@@ -55,6 +56,7 @@
   "deleteSuccess": "智能体已删除",
   "deleteFailed": "删除智能体失败: {{message}}",
   "agentDefaultDesc": "智能体",
+  "sharedFrom": "共享自 {{source}}",
   "expandInstances": "展开实例",
   "collapseInstances": "收起实例"
 }

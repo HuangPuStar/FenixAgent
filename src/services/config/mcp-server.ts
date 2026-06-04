@@ -1,29 +1,95 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { mcpServer, mcpTool } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
+import {
+  assertInternalWritable,
+  canReadResource,
+  decorateResourceAccess,
+  listReadableResourceRefs,
+  setPublicRead,
+} from "../resource-permission";
 import { parseJsonb } from "./jsonb";
-import type { McpServerConfig, McpServerInfoOutput } from "./types";
+import type { McpServerConfig, McpServerInfoOutput, McpServerSetOptions, ResourceAccess } from "./types";
 
 // ────────────────────────────────────────────
 // MCP Server 操作
 // ────────────────────────────────────────────
 
-export async function listMcpServers(ctx: AuthContext) {
-  return db.select().from(mcpServer).where(eq(mcpServer.organizationId, ctx.organizationId));
+type McpServerRow = typeof mcpServer.$inferSelect;
+type McpServerRowWithAccess = McpServerRow & { resourceAccess: ResourceAccess };
+
+function parseResourceKey(resourceKey: string) {
+  const slashIndex = resourceKey.indexOf("/");
+  if (slashIndex <= 0 || slashIndex === resourceKey.length - 1) return null;
+  return {
+    sourceOrganizationId: resourceKey.slice(0, slashIndex),
+    resourceUid: resourceKey.slice(slashIndex + 1),
+  };
 }
 
-export async function getMcpServer(ctx: AuthContext, name: string) {
+async function listExternalMcpServers(ctx: AuthContext): Promise<McpServerRow[]> {
+  const refs = await listReadableResourceRefs(ctx, "mcp_server");
+  const ids = refs.map((ref) => ref.resourceId);
+  if (ids.length === 0) return [];
+
+  const rows = await db.select().from(mcpServer).where(inArray(mcpServer.id, ids));
+  const refKeys = new Set(refs.map((ref) => `${ref.organizationId}/${ref.resourceId}`));
+  return rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`));
+}
+
+export async function listMcpServers(ctx: AuthContext): Promise<McpServerRowWithAccess[]> {
+  const internal = await db.select().from(mcpServer).where(eq(mcpServer.organizationId, ctx.organizationId));
+  const external = await listExternalMcpServers(ctx);
+  return decorateResourceAccess(ctx, "mcp_server", [...internal, ...external]);
+}
+
+export async function getMcpServer(ctx: AuthContext, name: string): Promise<McpServerRowWithAccess | null> {
   const rows = await db
     .select()
     .from(mcpServer)
     .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.name, name)))
     .limit(1);
-  return rows[0] ?? null;
+  const internal = rows[0] ?? null;
+  if (internal) {
+    const [decorated] = await decorateResourceAccess(ctx, "mcp_server", [internal]);
+    return decorated;
+  }
+
+  const external = (await listExternalMcpServers(ctx)).find((row) => row.name === name);
+  if (!external) return null;
+  const canRead = await canReadResource(ctx, "mcp_server", external.id, external.organizationId);
+  if (!canRead) return null;
+  const [decorated] = await decorateResourceAccess(ctx, "mcp_server", [external]);
+  return decorated;
 }
 
-export async function createMcpServer(ctx: AuthContext, name: string, type: string, config: McpServerConfig) {
+export async function getMcpServerByResourceKey(
+  ctx: AuthContext,
+  resourceKey: string,
+): Promise<McpServerRowWithAccess | null> {
+  const parsed = parseResourceKey(resourceKey);
+  if (!parsed) return null;
+
+  const rows = await db.select().from(mcpServer).where(eq(mcpServer.id, parsed.resourceUid)).limit(1);
+  const row = rows[0] ?? null;
+  if (!row || row.organizationId !== parsed.sourceOrganizationId) return null;
+
+  const readable = await canReadResource(ctx, "mcp_server", row.id, row.organizationId);
+  if (!readable) return null;
+
+  const [decorated] = await decorateResourceAccess(ctx, "mcp_server", [row]);
+  return decorated;
+}
+
+export async function createMcpServer(
+  ctx: AuthContext,
+  name: string,
+  type: string,
+  config: McpServerConfig,
+  options: McpServerSetOptions = {},
+) {
   const values = {
     organizationId: ctx.organizationId,
     userId: ctx.userId,
@@ -33,7 +99,7 @@ export async function createMcpServer(ctx: AuthContext, name: string, type: stri
     enabled: true,
     updatedAt: new Date(),
   };
-  await db
+  const rows = await db
     .insert(mcpServer)
     .values(values)
     .onConflictDoUpdate({
@@ -43,10 +109,24 @@ export async function createMcpServer(ctx: AuthContext, name: string, type: stri
         config,
         updatedAt: new Date(),
       },
-    });
+    })
+    .returning({ id: mcpServer.id });
+
+  if (options.publicReadable !== undefined && rows[0]) {
+    await setPublicRead(ctx, "mcp_server", ctx.organizationId, rows[0].id, options.publicReadable);
+  }
 }
 
-export async function updateMcpServer(ctx: AuthContext, name: string, config: McpServerConfig): Promise<boolean> {
+export async function updateMcpServer(
+  ctx: AuthContext,
+  name: string,
+  config: McpServerConfig,
+  options: McpServerSetOptions = {},
+): Promise<boolean> {
+  const existing = await getMcpServer(ctx, name);
+  if (!existing) return false;
+
+  assertInternalWritable(ctx, "mcp_server", existing.id, existing.organizationId);
   const updates: Partial<typeof mcpServer.$inferInsert> = { config, updatedAt: new Date() };
   if ("type" in config && typeof config.type === "string" && VALID_MCP_TYPES.includes(config.type)) {
     updates.type = config.type;
@@ -54,26 +134,44 @@ export async function updateMcpServer(ctx: AuthContext, name: string, config: Mc
   const result = await db
     .update(mcpServer)
     .set(updates)
-    .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.name, name)))
+    .where(eq(mcpServer.id, existing.id))
     .returning({ id: mcpServer.id });
+  if (result.length > 0 && options.publicReadable !== undefined) {
+    await setPublicRead(ctx, "mcp_server", ctx.organizationId, existing.id, options.publicReadable);
+  }
   return result.length > 0;
 }
 
 export async function deleteMcpServer(ctx: AuthContext, name: string): Promise<boolean> {
-  const result = await db
-    .delete(mcpServer)
-    .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.name, name)))
-    .returning({ id: mcpServer.id });
+  const row = await getMcpServer(ctx, name);
+  if (!row) return false;
+
+  assertInternalWritable(ctx, "mcp_server", row.id, row.organizationId);
+  const result = await db.delete(mcpServer).where(eq(mcpServer.id, row.id)).returning({ id: mcpServer.id });
   return result.length > 0;
 }
 
 export async function setMcpServerEnabled(ctx: AuthContext, name: string, enabled: boolean): Promise<boolean> {
+  const row = await getMcpServer(ctx, name);
+  if (!row) return false;
+
+  assertInternalWritable(ctx, "mcp_server", row.id, row.organizationId);
   const result = await db
     .update(mcpServer)
     .set({ enabled, updatedAt: new Date() })
-    .where(and(eq(mcpServer.organizationId, ctx.organizationId), eq(mcpServer.name, name)))
+    .where(eq(mcpServer.id, row.id))
     .returning({ id: mcpServer.id });
   return result.length > 0;
+}
+
+export async function assertMcpServerInternalWritable(
+  ctx: AuthContext,
+  name: string,
+): Promise<McpServerRowWithAccess | null> {
+  const row = await getMcpServer(ctx, name);
+  if (!row) return null;
+  assertInternalWritable(ctx, "mcp_server", row.id, row.organizationId);
+  return row;
 }
 
 // ────────────────────────────────────────────

@@ -1,10 +1,13 @@
 export type { AuthContext } from "../../plugins/auth";
 export {
   AGENT_SETTABLE_FIELDS,
+  assertAgentConfigInternalWritable,
   createAgentConfig,
   deleteAgentConfig,
   getAgentConfig,
   getAgentConfigById,
+  getAgentConfigByResourceKey,
+  getReadableAgentConfigById,
   isBuiltInAgent,
   listAgentConfigs,
   normalizeKnowledgeConfig,
@@ -17,9 +20,11 @@ export type { AgentFullConfig } from "./aggregate";
 export { getAgentFullConfig } from "./aggregate";
 export { parseJsonb, parseJsonbOr } from "./jsonb";
 export {
+  assertMcpServerInternalWritable,
   createMcpServer,
   deleteMcpServer,
   getMcpServer,
+  getMcpServerByResourceKey,
   isValidMcpName,
   listMcpServers,
   setMcpServerEnabled,
@@ -28,27 +33,46 @@ export {
   validateMcpConfig,
 } from "./mcp-server";
 export { addModel, removeModel, updateModel } from "./model";
-export { buildModelData, deleteProvider, getProvider, listProviders, upsertProvider } from "./provider";
+export {
+  assertProviderInternalWritable,
+  buildModelData,
+  deleteProvider,
+  getProvider,
+  getProviderByResourceKey,
+  listProviders,
+  listReadableProviders,
+  upsertProvider,
+} from "./provider";
 export {
   deleteSkill,
   getSkill,
+  getSkillByResourceKey,
   listSkills,
   upsertSkill,
 } from "./skill";
 export type {
+  AgentConfigDetailWithAccess,
+  AgentConfigRowWithAccess,
   AgentConfigUpsertData,
   AgentKnowledgeConfig,
   McpServerConfig,
   McpServerInfoOutput,
+  McpServerSetOptions,
   ModelCostConfig,
+  ModelEntryWithProviderAccess,
   ModelLimitConfig,
   ModelModalities,
   ModelOptions,
   PermissionAction,
   PermissionConfig,
   ProviderExtraOptions,
+  ProviderSetOptions,
   ProviderUpsertData,
+  ResourceAccess,
+  ResourceAccessInput,
+  SkillConfigRowWithAccess,
   SkillMetadata,
+  SkillSetOptions,
   SkillUpsertData,
 } from "./types";
 export type { UserConfigData } from "./user-config";

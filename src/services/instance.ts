@@ -1,14 +1,15 @@
 import { randomBytes } from "node:crypto";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { log, error as logError } from "@fenix/logger";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { getBaseUrl } from "../config";
 import { validateEnv } from "../env";
 import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
 import type { InstanceSupplement } from "../types/store";
-import type { AgentFullConfig } from "./config/index";
-import { getAgentConfigById, getAgentFullConfig } from "./config/index";
+import type { AgentConfigDetailWithAccess, AgentFullConfig } from "./config/index";
+import { getAgentFullConfig, getReadableAgentConfigById } from "./config/index";
 import { getCoreRuntime } from "./core-bootstrap";
 import { globalInstanceRegistry } from "./instance-registry";
 import { buildLaunchSpec } from "./launch-spec-builder";
@@ -97,6 +98,99 @@ function filterInstances(
   });
 }
 
+function parseSharedModelRef(modelRef: string | null | undefined) {
+  if (!modelRef) return null;
+  const parts = modelRef.split("/");
+  if (parts.length < 3) return null;
+  return {
+    resourceKey: `${parts[0]}/${parts[1]}`,
+    modelId: parts.slice(2).join("/"),
+  };
+}
+
+function parseLegacyModelRef(modelRef: string | null | undefined) {
+  if (!modelRef) return null;
+  const slashIndex = modelRef.indexOf("/");
+  if (slashIndex < 0) return null;
+  return {
+    providerName: modelRef.slice(0, slashIndex),
+    modelId: modelRef.slice(slashIndex + 1),
+  };
+}
+
+/**
+ * 在真正 launch 前把资源缺失从“静默 fallback/skip”提升为明确错误，方便排查配置问题。
+ */
+export function validateLaunchSpecResources(
+  agentConfig: AgentConfigDetailWithAccess | null,
+  fullConfig: AgentFullConfig,
+  launchSpec: AgentLaunchSpec,
+) {
+  if (!agentConfig) return;
+  const agentConfigId = agentConfig.id;
+  const modelRef = agentConfig.model;
+
+  const sharedModelRef = parseSharedModelRef(modelRef);
+  if (sharedModelRef) {
+    const matchedProvider = fullConfig.providers.find(
+      (provider) => provider.resourceAccess?.resourceKey === sharedModelRef.resourceKey,
+    );
+    if (!matchedProvider) {
+      logError(
+        `[instance] spawnInstanceFromEnvironment: missing model provider for agentConfig='${agentConfigId}', modelRef='${modelRef}', expectedResourceKey='${sharedModelRef.resourceKey}', providers=${JSON.stringify(fullConfig.providers.map((provider) => ({ id: provider.id, org: provider.organizationId, name: provider.name, resourceKey: provider.resourceAccess?.resourceKey ?? null })))} `,
+      );
+      throw new AppError(
+        `AgentConfig '${agentConfigId}' references missing model provider '${sharedModelRef.resourceKey}'`,
+        "INVALID_CONFIG",
+        400,
+      );
+    }
+  } else {
+    const legacyModelRef = parseLegacyModelRef(modelRef);
+    if (legacyModelRef) {
+      const matchedProvider = fullConfig.providers.find(
+        (provider) =>
+          provider.name === legacyModelRef.providerName || provider.displayName === legacyModelRef.providerName,
+      );
+      if (!matchedProvider) {
+        logError(
+          `[instance] spawnInstanceFromEnvironment: missing legacy model provider for agentConfig='${agentConfigId}', modelRef='${modelRef}', providerName='${legacyModelRef.providerName}', providers=${JSON.stringify(fullConfig.providers.map((provider) => ({ id: provider.id, org: provider.organizationId, name: provider.name, displayName: provider.displayName ?? null })))} `,
+        );
+        throw new AppError(
+          `AgentConfig '${agentConfigId}' references missing model provider '${legacyModelRef.providerName}'`,
+          "INVALID_CONFIG",
+          400,
+        );
+      }
+    }
+  }
+
+  const translatedSkillNames = new Set(launchSpec.skills.map((skill) => skill.name));
+  const expectedSkillIds = new Set(agentConfig.skillIds ?? []);
+  const missingSkills = fullConfig.skills
+    .filter((skill) => expectedSkillIds.has(skill.id) && !translatedSkillNames.has(skill.name))
+    .map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      contentPath: skill.contentPath ?? null,
+    }));
+  const missingSkillRows = [...expectedSkillIds].filter(
+    (skillId) => !fullConfig.skills.some((skill) => skill.id === skillId),
+  );
+  if (missingSkillRows.length > 0) {
+    logError(
+      `[instance] spawnInstanceFromEnvironment: missing configured skill rows for agentConfig='${agentConfigId}', missingSkillIds=${JSON.stringify(missingSkillRows)}, available=${JSON.stringify(fullConfig.skills.map((skill) => ({ id: skill.id, name: skill.name })))} `,
+    );
+    throw new AppError(`AgentConfig '${agentConfigId}' references missing skills`, "INVALID_CONFIG", 400);
+  }
+  if (missingSkills.length > 0) {
+    logError(
+      `[instance] spawnInstanceFromEnvironment: missing translated skills for agentConfig='${agentConfigId}', missing=${JSON.stringify(missingSkills)}, translated=${JSON.stringify(launchSpec.skills)}`,
+    );
+    throw new AppError(`AgentConfig '${agentConfigId}' references missing skills`, "INVALID_CONFIG", 400);
+  }
+}
+
 export async function spawnInstanceFromEnvironment(
   userId: string,
   environmentId: string,
@@ -105,31 +199,38 @@ export async function spawnInstanceFromEnvironment(
 ): Promise<SpawnedInstance> {
   const env = prefetchedEnv ?? (await environmentRepo.getById(environmentId));
   if (!env) throw new NotFoundError("Environment not found");
+  log(
+    `[instance] spawnInstanceFromEnvironment: environmentId='${environmentId}', org='${env.organizationId ?? ""}', user='${userId}', agentConfigId='${env.agentConfigId ?? ""}'`,
+  );
 
   // 解析 AgentConfig：有则加载完整配置，无则用默认 "general" agent
   let agentName = "general";
   let agentPrompt: string | null = null;
   let modelRef: string | null = null;
   let fullConfig: AgentFullConfig;
+  let agentMachineId: string | null = null;
 
   if (env.agentConfigId) {
-    const resolvedAgentConfig = await getAgentConfigById(env.agentConfigId);
+    const accessCtx = { organizationId: env.organizationId ?? "", userId, role: "owner" as const };
+    const resolvedAgentConfig = await getReadableAgentConfigById(accessCtx, env.agentConfigId);
     if (!resolvedAgentConfig) {
       throw new NotFoundError(`AgentConfig '${env.agentConfigId}' not found`);
     }
-    fullConfig = await getAgentFullConfig(
-      { organizationId: env.organizationId ?? "", userId: env.userId ?? "", role: "owner" },
-      resolvedAgentConfig.id,
-    );
+    fullConfig = await getAgentFullConfig(accessCtx, resolvedAgentConfig.id);
     const ac = fullConfig.agentConfig as Record<string, unknown> | null;
     agentName = resolvedAgentConfig.name;
     agentPrompt = typeof ac?.prompt === "string" ? ac.prompt : null;
     modelRef = typeof ac?.model === "string" ? ac.model : null;
+    agentMachineId = resolvedAgentConfig.machineId ?? null;
+    log(
+      `[instance] spawnInstanceFromEnvironment: resolved agentConfig id='${resolvedAgentConfig.id}', sourceOrg='${resolvedAgentConfig.organizationId}', modelRef='${modelRef ?? ""}', machineId='${agentMachineId ?? ""}'`,
+    );
   } else {
     fullConfig = await getAgentFullConfig(
       { organizationId: env.organizationId ?? "", userId: env.userId ?? "", role: "owner" },
       null,
     );
+    log("[instance] spawnInstanceFromEnvironment: no agentConfigId, using default fullConfig");
   }
 
   // 注入平台级环境变量（caller 的 extraEnv 可覆盖）
@@ -152,17 +253,18 @@ export async function spawnInstanceFromEnvironment(
     environmentSecret: env.secret,
     extraEnv: mergedExtraEnv,
   });
+  validateLaunchSpecResources(fullConfig.agentConfig, fullConfig, launchSpec);
+  log(
+    `[instance] spawnInstanceFromEnvironment: launchSpec.model provider='${launchSpec.model.provider}', model='${launchSpec.model.model}', modelName='${launchSpec.model.modelName ?? ""}', baseUrl='${launchSpec.model.baseUrl}', hasApiKey=${Boolean(launchSpec.model.apiKey)}`,
+  );
 
   const instanceId = `inst_${randomBytes(8).toString("hex")}`;
   const instanceNumber = registry.nextInstanceNumber(environmentId);
 
   // 解析目标 node：有 machineId 时走远程，否则走本地
   let nodeId = "local-default";
-  if (env.agentConfigId) {
-    const agentCfg = await getAgentConfigById(env.agentConfigId);
-    if (agentCfg?.machineId) {
-      nodeId = agentCfg.machineId;
-    }
+  if (agentMachineId) {
+    nodeId = agentMachineId;
   }
 
   // 委托 core 执行 launch

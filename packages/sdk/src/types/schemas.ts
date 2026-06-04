@@ -57,22 +57,46 @@ export interface StatusOkResponse {
 
 // ── Config ──
 export interface AgentInfo extends Indexable {
+  id: string;
   name: string;
   model?: string;
+  modelLabel?: string | null;
   description?: string;
   builtIn?: boolean;
   enabled?: boolean;
   permissions?: Record<string, string>;
   skills?: string[];
+  skillLabels?: Array<{ id: string; label: string }>;
+  knowledgeBaseCount?: number;
+  resourceAccess?: ResourceAccess;
 }
 export interface AgentDetail extends AgentInfo {
   systemPrompt?: string;
+  prompt?: string | null;
+  skillIds?: string[];
+  machineId?: string | null;
+  relatedResources?: {
+    modelLabel?: string | null;
+    machineLabel?: string | null;
+    skills?: Array<{ id: string; label: string }>;
+    knowledgeBases?: Array<{ id: string; label: string; slug?: string | null }>;
+  };
 }
 export type ConfigAction = "list" | "get" | "set" | "create" | "delete" | "set_default";
 export interface ConfigBody {
   action: ConfigAction;
   name?: string;
   data?: Record<string, unknown>;
+}
+export interface ResourceAccess extends Indexable {
+  ownership: "internal" | "external";
+  sourceOrganizationId: string;
+  sourceOrganizationName?: string;
+  resourceUid: string;
+  resourceKey: string;
+  manageable: boolean;
+  writable: boolean;
+  publicReadable?: boolean;
 }
 export interface McpInspectResult extends Indexable {
   name: string;
@@ -83,12 +107,16 @@ export interface McpServerDetail extends Indexable {
   config: Record<string, unknown>;
   enabled?: boolean;
   summary?: string;
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
 }
 export interface McpServerInfo extends Indexable {
   name: string;
   type?: string;
   enabled?: boolean;
   summary?: string;
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
 }
 export interface McpToolInfo {
   name: string;
@@ -104,28 +132,48 @@ export interface ModelConfig extends Indexable {
 }
 export interface ModelEntry {
   id: string;
-  name: string;
   provider: string;
+  name?: string;
+  fullId?: string;
+  label?: string;
+  contextLimit?: number | null;
+  outputLimit?: number | null;
+  providerResourceAccess?: ResourceAccess;
+  providerResourceKey?: string;
+  stableFullId?: string;
 }
 export interface ProviderDetail extends Indexable {
+  id?: string;
   name: string;
   protocol: "openai" | "anthropic";
   keyHint?: string;
   baseURL?: string;
   models?: ModelEntry[];
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
 }
 export interface ProviderInfo extends Indexable {
+  id?: string;
   name: string;
   protocol: "openai" | "anthropic";
   keyHint?: string;
   baseURL?: string;
+  modelCount?: number;
+  resourceAccess?: ResourceAccess;
+  resourceKey?: string;
 }
 export interface SkillInfo extends Indexable {
+  id?: string;
   name: string;
   description?: string;
   enabled?: boolean;
   path?: string;
   source?: SkillSourceInfo;
+  resourceAccess?: ResourceAccess;
+}
+export interface SkillDetail extends SkillInfo {
+  content?: string;
+  metadata?: Record<string, string>;
 }
 export interface SkillSourceInfo {
   type: string;

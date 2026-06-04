@@ -10,7 +10,11 @@ import { dispatchConfigChange } from "@/src/lib/config-events";
 import type { ModelConfig, ModelEntry } from "@/src/types/config";
 
 export function buildModelOptions(available: ModelEntry[]): { value: string; label: string }[] {
-  return available.map((m) => ({ value: m.fullId, label: `${m.label} (${m.provider})` }));
+  return available.map((m) => {
+    const source = m.providerResourceAccess?.sourceOrganizationName;
+    const label = source ? `${source}/${m.fullId}` : m.fullId;
+    return { value: m.stableFullId ?? m.fullId, label };
+  });
 }
 
 /** Server response shape returned after updating the current model config. */

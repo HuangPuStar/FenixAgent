@@ -25,6 +25,7 @@
     "primary": "Primary",
     "small": "Lightweight"
   },
+  "resource": {},
   "validation": {
     "nameEmpty": "Name cannot be empty",
     "nameLength": "Name must be between 1-64 characters"
@@ -32,6 +33,7 @@
   "actions": {
     "test": "Test",
     "testing": "Testing...",
+    "view": "View",
     "edit": "Edit",
     "delete": "Delete",
     "add": "Add"
@@ -54,6 +56,7 @@
   },
   "form": {
     "editTitle": "Edit Provider",
+    "detailTitle": "Provider Details",
     "createTitle": "New Provider",
     "id": "ID (Identifier)",
     "idPlaceholder": "bailian-token-plan",
@@ -92,6 +95,7 @@
     "emptyMessage": "No models yet. Click the button below to add",
     "addButton": "+ Add Model",
     "createTitle": "New Model",
+    "detailTitle": "Model Details — {{id}}",
     "editTitle": "Edit Model — {{id}}",
     "modelId": "Model ID",
     "modelIdPlaceholder": "e.g. qwen3.6-plus",

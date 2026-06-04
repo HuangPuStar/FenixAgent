@@ -8,7 +8,18 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { mcpApi } from "@/src/api/sdk";
+import {
+  canManageMcpSharing,
+  canWriteMcp,
+  filterWritableMcps,
+  getMcpDisplayName,
+  getMcpKey,
+  getMcpLookupKey,
+  getMcpResourceBadgeKey,
+} from "@/src/lib/mcp-resource-access";
+import { NS } from "../../../i18n";
 import type { McpInspectResult, McpServerConfig, McpServerInfo, McpToolInfo } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
@@ -106,6 +117,7 @@ function buildMcpPayload(
 
 export function AgentMcpPage() {
   const { t } = useTranslation("mcp");
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const [servers, setServers] = useState<McpServerInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -135,6 +147,8 @@ export function AgentMcpPage() {
   const [inspectingServer, setInspectingServer] = useState<string | null>(null);
   const [toolsCache, setToolsCache] = useState<Record<string, McpToolInfo[]>>({});
   const [expandedServer, setExpandedServer] = useState<string | null>(null);
+  const [sharingServer, setSharingServer] = useState<string | null>(null);
+  const editingReadOnly = editingServer ? !canWriteMcp(editingServer) : false;
 
   const loadServers = useCallback(async () => {
     setLoading(true);
@@ -175,7 +189,7 @@ export function AgentMcpPage() {
   const handleOpenEdit = async (server: McpServerInfo) => {
     setEditingServer(server);
     setFormName(server.name);
-    const { data: detail, error: detailError } = await mcpApi.get(server.name);
+    const { data: detail, error: detailError } = await mcpApi.get(getMcpLookupKey(server));
     if (detailError) {
       console.error(t("toast.loadDetailFailed"), detailError);
       toast.error(t("toast.loadDetailFailed"));
@@ -271,6 +285,7 @@ export function AgentMcpPage() {
   };
 
   const handleToggle = async (server: McpServerInfo) => {
+    if (!canWriteMcp(server)) return;
     if (server.enabled) {
       const { error } = await mcpApi.disable(server.name);
       if (error) {
@@ -305,7 +320,9 @@ export function AgentMcpPage() {
   };
 
   const handleInspect = async (server: McpServerInfo) => {
-    setInspectingServer(server.name);
+    if (!canWriteMcp(server)) return;
+    const serverKey = getMcpKey(server);
+    setInspectingServer(serverKey);
     const { data: result, error } = (await mcpApi.inspect(server.name)) as unknown as {
       data: McpInspectResult;
       error: { message: string } | null;
@@ -327,16 +344,40 @@ export function AgentMcpPage() {
     loadServers();
     setToolsCache((prev) => ({
       ...prev,
-      [server.name]: result.tools.map((toolItem) => ({
-        id: `${server.name}:${toolItem.name}`,
+      [serverKey]: result.tools.map((toolItem) => ({
+        id: `${serverKey}:${toolItem.name}`,
         toolName: toolItem.name,
         description: toolItem.description ?? null,
         inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
         inspectedAt: Date.now(),
       })),
     }));
-    setExpandedServer(server.name);
+    setExpandedServer(serverKey);
     setInspectingServer(null);
+  };
+
+  const handleTogglePublicReadable = async (server: McpServerInfo) => {
+    if (!canManageMcpSharing(server) || !server.resourceAccess) return;
+    const nextPublicReadable = !server.resourceAccess.publicReadable;
+    setSharingServer(getMcpKey(server));
+    const { data: detail, error: detailError } = await mcpApi.get(getMcpLookupKey(server));
+    if (detailError) {
+      console.error(t("toast.loadDetailFailed"), detailError);
+      toast.error(t("toast.loadDetailFailed"));
+      setSharingServer(null);
+      return;
+    }
+    const config = ((detail as Record<string, unknown>)?.config ?? detail) as Record<string, unknown>;
+    const { error } = await mcpApi.set(server.name, { ...config, publicReadable: nextPublicReadable });
+    if (error) {
+      console.error(t("toast.saveFailed"), error);
+      toast.error(t("toast.saveFailedWith", { message: error.message }));
+      setSharingServer(null);
+      return;
+    }
+    toast.success(nextPublicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
+    setSharingServer(null);
+    loadServers();
   };
 
   const handleTestFormUrl = async () => {
@@ -404,6 +445,10 @@ export function AgentMcpPage() {
   const batchActionLabel =
     batchAction === "delete" ? t("btn.delete") : batchAction === "enable" ? t("btn.enable") : t("btn.disable");
 
+  const handleSelectedChange = (items: McpServerInfo[]) => {
+    setSelected(filterWritableMcps(items));
+  };
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <AgentPageHeader
@@ -411,14 +456,19 @@ export function AgentMcpPage() {
         subtitle={t("subtitle")}
         actions={<Button onClick={handleOpenCreate}>{t("btn.newServer")}</Button>}
       />
+      <div className="px-6 py-3 border-b border-border-subtle bg-warning/10 text-sm text-text-secondary">
+        {t("resource.trustedNotice")}
+      </div>
       <AgentCardList
         items={servers}
-        cardKey={(s) => s.name}
+        cardKey={(s) => getMcpKey(s)}
         searchPlaceholder={t("search")}
-        searchFn={(s, q) => s.name.toLowerCase().includes(q) || (s.summary ?? "").toLowerCase().includes(q)}
+        searchFn={(s, q) =>
+          getMcpDisplayName(s).toLowerCase().includes(q) || (s.summary ?? "").toLowerCase().includes(q)
+        }
         selectable
         selectedItems={selected}
-        onSelectionChange={setSelected}
+        onSelectionChange={handleSelectedChange}
         emptyMessage={t("empty")}
         batchActions={
           <div className="flex gap-1.5">
@@ -434,15 +484,24 @@ export function AgentMcpPage() {
           </div>
         }
         renderCard={(server, isSelected, toggleSelect) => {
-          const isExpanded = expandedServer === server.name;
-          const tools = toolsCache[server.name];
+          const serverKey = getMcpKey(server);
+          const isExpanded = expandedServer === serverKey;
+          const tools = toolsCache[serverKey];
+          const writable = canWriteMcp(server);
+          const manageable = canManageMcpSharing(server);
           return (
             <div className="rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm overflow-hidden">
               <div className="group flex items-center gap-3 px-4 py-3">
-                <input type="checkbox" checked={isSelected} onChange={toggleSelect} className="rounded border-border" />
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={toggleSelect}
+                  disabled={!writable}
+                  className="rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-medium text-text-bright">{server.name}</span>
+                    <span className="font-mono text-sm font-medium text-text-bright">{getMcpDisplayName(server)}</span>
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
                         server.type === "local"
@@ -453,6 +512,9 @@ export function AgentMcpPage() {
                       }`}
                     >
                       {server.type === "local" ? "Local" : server.type === "remote" ? "Remote" : t("disabled")}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-muted">
+                      {tComponents(getMcpResourceBadgeKey(server))}
                     </span>
                     <span
                       className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-xs font-medium ${
@@ -470,38 +532,60 @@ export function AgentMcpPage() {
                       {server.toolsCount} {t("column.tools").toLowerCase()}
                     </span>
                   )}
+                  {manageable && (
+                    <label className="mt-3 flex items-center gap-2 text-xs text-text-muted">
+                      <Switch
+                        checked={Boolean(server.resourceAccess?.publicReadable)}
+                        disabled={sharingServer === serverKey}
+                        onCheckedChange={() => void handleTogglePublicReadable(server)}
+                      />
+                      {tComponents("resource.public")}
+                    </label>
+                  )}
+                  {!writable && (
+                    <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
+                  )}
                 </div>
                 <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    disabled={inspectingServer === server.name}
-                    onClick={() => handleInspect(server)}
-                  >
-                    {inspectingServer === server.name ? t("btn.inspecting") : t("btn.inspect")}
-                  </Button>
-                  <Button size="xs" variant="outline" onClick={() => handleToggle(server)}>
-                    {server.enabled ? t("btn.disable") : t("btn.enable")}
-                  </Button>
-                  <Button size="xs" variant="outline" onClick={() => handleOpenEdit(server)}>
-                    {t("btn.edit")}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="destructive"
-                    onClick={() => {
-                      setDeleteTarget(server.name);
-                      setConfirmOpen(true);
-                    }}
-                  >
-                    {t("btn.delete")}
-                  </Button>
-                  {tools && tools.length > 0 && (
+                  {writable && (
                     <Button
                       size="xs"
-                      variant="ghost"
-                      onClick={() => setExpandedServer(isExpanded ? null : server.name)}
+                      variant="outline"
+                      disabled={inspectingServer === serverKey}
+                      onClick={() => handleInspect(server)}
                     >
+                      {inspectingServer === serverKey ? t("btn.inspecting") : t("btn.inspect")}
+                    </Button>
+                  )}
+                  {writable && (
+                    <Button size="xs" variant="outline" onClick={() => handleToggle(server)}>
+                      {server.enabled ? t("btn.disable") : t("btn.enable")}
+                    </Button>
+                  )}
+                  {writable && (
+                    <Button size="xs" variant="outline" onClick={() => handleOpenEdit(server)}>
+                      {t("btn.edit")}
+                    </Button>
+                  )}
+                  {!writable && (
+                    <Button size="xs" variant="outline" onClick={() => handleOpenEdit(server)}>
+                      {t("btn.view")}
+                    </Button>
+                  )}
+                  {writable && (
+                    <Button
+                      size="xs"
+                      variant="destructive"
+                      onClick={() => {
+                        setDeleteTarget(server.name);
+                        setConfirmOpen(true);
+                      }}
+                    >
+                      {t("btn.delete")}
+                    </Button>
+                  )}
+                  {tools && tools.length > 0 && (
+                    <Button size="xs" variant="ghost" onClick={() => setExpandedServer(isExpanded ? null : serverKey)}>
                       {isExpanded ? "▲" : "▼"}
                     </Button>
                   )}
@@ -549,9 +633,12 @@ export function AgentMcpPage() {
       <FormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        title={editingServer ? t("dialog.editTitle") : t("dialog.createTitle")}
+        title={
+          editingServer ? (editingReadOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")
+        }
         onSubmit={handleSave}
         loading={formSaving}
+        hideSubmit={editingReadOnly}
         width="sm:max-w-2xl"
       >
         <div className="space-y-4">
@@ -560,7 +647,7 @@ export function AgentMcpPage() {
             <Input
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
-              disabled={!!editingServer}
+              disabled={editingReadOnly || !!editingServer}
               placeholder="my-mcp-server"
               className="mt-1 font-mono text-sm"
             />
@@ -574,7 +661,7 @@ export function AgentMcpPage() {
             <Select
               value={formType}
               onValueChange={(v) => setFormType(v as "local" | "remote")}
-              disabled={!!editingServer}
+              disabled={editingReadOnly || !!editingServer}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -593,6 +680,7 @@ export function AgentMcpPage() {
                 <Input
                   value={formCommand}
                   onChange={(e) => setFormCommand(e.target.value)}
+                  disabled={editingReadOnly}
                   placeholder="npx @anthropic/mcp-server-xxx --arg1 val1"
                   className="font-mono text-sm"
                 />
@@ -604,6 +692,7 @@ export function AgentMcpPage() {
                     type="button"
                     size="xs"
                     variant="outline"
+                    disabled={editingReadOnly}
                     onClick={() => setFormEnvironment([...formEnvironment, { key: "", value: "" }])}
                   >
                     {t("btn.add")}
@@ -615,6 +704,7 @@ export function AgentMcpPage() {
                       <Input
                         placeholder="KEY"
                         value={entry.key}
+                        disabled={editingReadOnly}
                         onChange={(e) => {
                           const next = [...formEnvironment];
                           next[idx] = { ...next[idx], key: e.target.value };
@@ -625,6 +715,7 @@ export function AgentMcpPage() {
                       <Input
                         placeholder="VALUE"
                         value={entry.value}
+                        disabled={editingReadOnly}
                         onChange={(e) => {
                           const next = [...formEnvironment];
                           next[idx] = { ...next[idx], value: e.target.value };
@@ -636,6 +727,7 @@ export function AgentMcpPage() {
                         type="button"
                         size="xs"
                         variant="ghost"
+                        disabled={editingReadOnly}
                         className="text-text-muted hover:text-destructive shrink-0"
                         onClick={() => setFormEnvironment(formEnvironment.filter((_, i) => i !== idx))}
                       >
@@ -655,6 +747,7 @@ export function AgentMcpPage() {
                   <Input
                     value={formUrl}
                     onChange={(e) => setFormUrl(e.target.value)}
+                    disabled={editingReadOnly}
                     placeholder="https://example.com/mcp"
                     className="flex-1 font-mono text-sm"
                   />
@@ -662,7 +755,7 @@ export function AgentMcpPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={testingUrl || !formUrl.trim()}
+                    disabled={editingReadOnly || testingUrl || !formUrl.trim()}
                     onClick={handleTestFormUrl}
                   >
                     {testingUrl ? t("btn.testing") : t("btn.test")}
@@ -676,6 +769,7 @@ export function AgentMcpPage() {
                     type="button"
                     size="xs"
                     variant="outline"
+                    disabled={editingReadOnly}
                     onClick={() => setFormHeaders([...formHeaders, { key: "", value: "" }])}
                   >
                     {t("btn.add")}
@@ -687,6 +781,7 @@ export function AgentMcpPage() {
                       <Input
                         placeholder={t("headerNamePlaceholder")}
                         value={entry.key}
+                        disabled={editingReadOnly}
                         onChange={(e) => {
                           const next = [...formHeaders];
                           next[idx] = { ...next[idx], key: e.target.value };
@@ -697,6 +792,7 @@ export function AgentMcpPage() {
                       <Input
                         placeholder={t("headerValuePlaceholder")}
                         value={entry.value}
+                        disabled={editingReadOnly}
                         onChange={(e) => {
                           const next = [...formHeaders];
                           next[idx] = { ...next[idx], value: e.target.value };
@@ -708,6 +804,7 @@ export function AgentMcpPage() {
                         type="button"
                         size="xs"
                         variant="ghost"
+                        disabled={editingReadOnly}
                         className="text-text-muted hover:text-destructive shrink-0"
                         onClick={() => setFormHeaders(formHeaders.filter((_, i) => i !== idx))}
                       >
@@ -717,7 +814,7 @@ export function AgentMcpPage() {
                   ))}
                 </div>
               </div>
-              <Collapsible open={oauthExpanded} onOpenChange={setOauthExpanded}>
+              <Collapsible open={oauthExpanded} onOpenChange={editingReadOnly ? undefined : setOauthExpanded}>
                 <div className="rounded-lg border border-border-light">
                   <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-text-primary hover:bg-surface-hover transition-colors">
                     {t("form.oauthConfig")}
@@ -733,6 +830,7 @@ export function AgentMcpPage() {
                           <Input
                             value={formOauthClientId}
                             onChange={(e) => setFormOauthClientId(e.target.value)}
+                            disabled={editingReadOnly}
                             placeholder={t("form.optional")}
                             className="mt-1"
                           />
@@ -743,6 +841,7 @@ export function AgentMcpPage() {
                             type="password"
                             value={formOauthClientSecret}
                             onChange={(e) => setFormOauthClientSecret(e.target.value)}
+                            disabled={editingReadOnly}
                             placeholder={t("form.optional")}
                             className="mt-1"
                           />
@@ -754,6 +853,7 @@ export function AgentMcpPage() {
                           <Input
                             value={formOauthScope}
                             onChange={(e) => setFormOauthScope(e.target.value)}
+                            disabled={editingReadOnly}
                             placeholder={t("form.optional")}
                             className="mt-1"
                           />
@@ -763,6 +863,7 @@ export function AgentMcpPage() {
                           <Input
                             value={formOauthRedirectUri}
                             onChange={(e) => setFormOauthRedirectUri(e.target.value)}
+                            disabled={editingReadOnly}
                             placeholder={t("form.optional")}
                             className="mt-1"
                           />
@@ -781,6 +882,7 @@ export function AgentMcpPage() {
               type="number"
               value={formTimeout}
               onChange={(e) => setFormTimeout(e.target.value)}
+              disabled={editingReadOnly}
               placeholder="5000"
               min={1}
               className="font-mono text-sm"

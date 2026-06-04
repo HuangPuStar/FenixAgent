@@ -1,13 +1,15 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
-import { model } from "../../db/schema";
+import { model, provider } from "../../db/schema";
+import { NotFoundError } from "../../errors";
+import type { AuthContext } from "../../plugins/auth";
+import { assertInternalWritable } from "../resource-permission";
 import type { ModelCostConfig, ModelLimitConfig, ModelModalities, ModelOptions } from "./types";
 
 // ────────────────────────────────────────────
 // Model 操作
 //
-// 所有函数以 organizationId 为首参数，WHERE 条件包含 organization_id 隔离。
-// 调用方（通常是 routes/web/config/providers.ts）传入 authCtx.organizationId。
+// 所有 model 写操作继承 provider 可写性，外部 provider 下的模型只能读取。
 // ────────────────────────────────────────────
 
 /** 构建 model 写入字段（addModel 的 values 和 set 共享） */
@@ -28,8 +30,16 @@ function buildModelValues(data: {
   };
 }
 
+async function getWritableProvider(ctx: AuthContext, providerId: string) {
+  const rows = await db.select().from(provider).where(eq(provider.id, providerId)).limit(1);
+  const row = rows[0] ?? null;
+  if (!row) throw new NotFoundError(`Provider '${providerId}' not found`);
+  assertInternalWritable(ctx, "provider", row.id, row.organizationId);
+  return row;
+}
+
 export async function addModel(
-  organizationId: string,
+  ctx: AuthContext,
   providerId: string,
   data: {
     modelId: string;
@@ -40,10 +50,11 @@ export async function addModel(
     options?: ModelOptions | null;
   },
 ) {
+  const providerRow = await getWritableProvider(ctx, providerId);
   const fields = buildModelValues(data);
   await db
     .insert(model)
-    .values({ organizationId, providerId, modelId: data.modelId, ...fields })
+    .values({ organizationId: providerRow.organizationId, providerId, modelId: data.modelId, ...fields })
     .onConflictDoUpdate({
       target: [model.providerId, model.modelId],
       set: fields,
@@ -51,7 +62,7 @@ export async function addModel(
 }
 
 export async function updateModel(
-  organizationId: string,
+  ctx: AuthContext,
   providerId: string,
   modelId: string,
   data: {
@@ -62,6 +73,7 @@ export async function updateModel(
     options?: ModelOptions | null;
   },
 ): Promise<boolean> {
+  const providerRow = await getWritableProvider(ctx, providerId);
   const set: Partial<typeof model.$inferInsert> = { updatedAt: new Date() };
   if (data.displayName !== undefined) set.displayName = data.displayName;
   if (data.modalities !== undefined) set.modalities = data.modalities;
@@ -72,15 +84,28 @@ export async function updateModel(
   const result = await db
     .update(model)
     .set(set)
-    .where(and(eq(model.organizationId, organizationId), eq(model.providerId, providerId), eq(model.modelId, modelId)))
+    .where(
+      and(
+        eq(model.organizationId, providerRow.organizationId),
+        eq(model.providerId, providerId),
+        eq(model.modelId, modelId),
+      ),
+    )
     .returning({ id: model.id });
   return result.length > 0;
 }
 
-export async function removeModel(organizationId: string, providerId: string, modelId: string): Promise<boolean> {
+export async function removeModel(ctx: AuthContext, providerId: string, modelId: string): Promise<boolean> {
+  const providerRow = await getWritableProvider(ctx, providerId);
   const result = await db
     .delete(model)
-    .where(and(eq(model.organizationId, organizationId), eq(model.providerId, providerId), eq(model.modelId, modelId)))
+    .where(
+      and(
+        eq(model.organizationId, providerRow.organizationId),
+        eq(model.providerId, providerId),
+        eq(model.modelId, modelId),
+      ),
+    )
     .returning({ id: model.id });
   return result.length > 0;
 }

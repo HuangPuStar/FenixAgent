@@ -1,9 +1,17 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { agentConfig } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
 import type { AgentKnowledgeConfig, AgentKnowledgePolicy } from "../agent-knowledge";
 import { resolveAgentKnowledgePolicy } from "../agent-knowledge";
+import {
+  assertInternalWritable,
+  canReadResource,
+  decorateResourceAccess,
+  listReadableResourceRefs,
+  setPublicRead,
+} from "../resource-permission";
+import type { AgentConfigDetailWithAccess, AgentConfigRowWithAccess } from "./types";
 
 // ────────────────────────────────────────────
 // Agent Config 操作
@@ -30,17 +38,82 @@ const AGENT_SETTABLE_FIELDS = [
 /** 前端字段名 → Drizzle 列名映射（路由层已做映射，此处为防御性兜底） */
 const FIELD_ALIAS: Record<string, string> = { top_p: "topP" };
 
-export async function listAgentConfigs(ctx: AuthContext) {
-  return db.select().from(agentConfig).where(eq(agentConfig.organizationId, ctx.organizationId));
+type AgentConfigRow = typeof agentConfig.$inferSelect;
+type AgentConfigSetOptions = { publicReadable?: boolean };
+
+function parseResourceKey(resourceKey: string) {
+  const slashIndex = resourceKey.indexOf("/");
+  if (slashIndex <= 0 || slashIndex === resourceKey.length - 1) return null;
+  return {
+    sourceOrganizationId: resourceKey.slice(0, slashIndex),
+    resourceUid: resourceKey.slice(slashIndex + 1),
+  };
 }
 
-export async function getAgentConfig(ctx: AuthContext, name: string) {
+async function listExternalAgentConfigs(ctx: AuthContext): Promise<AgentConfigRow[]> {
+  const refs = await listReadableResourceRefs(ctx, "agent_config");
+  const ids = refs.map((ref) => ref.resourceId);
+  if (ids.length === 0) return [];
+
+  const rows = await db.select().from(agentConfig).where(inArray(agentConfig.id, ids));
+  const refKeys = new Set(refs.map((ref) => `${ref.organizationId}/${ref.resourceId}`));
+  return rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`));
+}
+
+export async function listAgentConfigs(ctx: AuthContext): Promise<AgentConfigRowWithAccess[]> {
+  const internal = await db.select().from(agentConfig).where(eq(agentConfig.organizationId, ctx.organizationId));
+  const external = await listExternalAgentConfigs(ctx);
+  return (await decorateResourceAccess(ctx, "agent_config", [
+    ...internal,
+    ...external,
+  ])) as unknown as AgentConfigRowWithAccess[];
+}
+
+export async function getAgentConfigByResourceKey(
+  ctx: AuthContext,
+  resourceKey: string,
+): Promise<AgentConfigDetailWithAccess | null> {
+  const parsed = parseResourceKey(resourceKey);
+  if (!parsed) return null;
+
+  const rows = await db.select().from(agentConfig).where(eq(agentConfig.id, parsed.resourceUid)).limit(1);
+  const row = rows[0] ?? null;
+  if (!row || row.organizationId !== parsed.sourceOrganizationId) return null;
+
+  const readable = await canReadResource(ctx, "agent_config", row.id, row.organizationId);
+  if (!readable) return null;
+
+  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [row]);
+  return decorated as unknown as AgentConfigDetailWithAccess;
+}
+
+export async function getAgentConfig(
+  ctx: AuthContext,
+  nameOrResourceKey: string,
+): Promise<AgentConfigDetailWithAccess | null> {
+  if (parseResourceKey(nameOrResourceKey)) {
+    return getAgentConfigByResourceKey(ctx, nameOrResourceKey);
+  }
+
   const rows = await db
     .select()
     .from(agentConfig)
-    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.name, name)))
+    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.name, nameOrResourceKey)))
     .limit(1);
-  return rows[0] ?? null;
+  const internal = rows[0] ?? null;
+  if (internal) {
+    const [decorated] = await decorateResourceAccess(ctx, "agent_config", [internal]);
+    return decorated as unknown as AgentConfigDetailWithAccess;
+  }
+
+  const external = (await listExternalAgentConfigs(ctx)).find((row) => row.name === nameOrResourceKey);
+  if (!external) return null;
+
+  const readable = await canReadResource(ctx, "agent_config", external.id, external.organizationId);
+  if (!readable) return null;
+
+  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [external]);
+  return decorated as unknown as AgentConfigDetailWithAccess;
 }
 
 export async function getAgentConfigById(id: string, orgId?: string) {
@@ -56,6 +129,22 @@ export async function getAgentConfigById(id: string, orgId?: string) {
   return rows[0] ?? null;
 }
 
+export async function getReadableAgentConfigById(
+  ctx: AuthContext,
+  id: string,
+): Promise<AgentConfigDetailWithAccess | null> {
+  const row = await getAgentConfigById(id);
+  if (!row) return null;
+
+  if (row.organizationId !== ctx.organizationId) {
+    const readable = await canReadResource(ctx, "agent_config", row.id, row.organizationId);
+    if (!readable) return null;
+  }
+
+  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [row]);
+  return decorated as unknown as AgentConfigDetailWithAccess;
+}
+
 /** 将 data 中 AGENT_SETTABLE_FIELDS 范围内的字段映射为 Drizzle set 对象 */
 function buildSetFromData(data: Record<string, unknown>): Partial<typeof agentConfig.$inferInsert> {
   const set: Partial<typeof agentConfig.$inferInsert> = { updatedAt: new Date() };
@@ -68,44 +157,75 @@ function buildSetFromData(data: Record<string, unknown>): Partial<typeof agentCo
   return set;
 }
 
-export async function createAgentConfig(ctx: AuthContext, name: string, data: Record<string, unknown>) {
+export async function createAgentConfig(
+  ctx: AuthContext,
+  name: string,
+  data: Record<string, unknown>,
+  options: AgentConfigSetOptions = {},
+) {
   const set = buildSetFromData(data);
-  const values = {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    name,
-    ...set,
-  } as typeof agentConfig.$inferInsert;
-
-  await db
+  const [row] = await db
     .insert(agentConfig)
-    .values(values)
+    .values({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      name,
+      ...set,
+    } as typeof agentConfig.$inferInsert)
     .onConflictDoUpdate({
       target: [agentConfig.organizationId, agentConfig.name],
       set,
-    });
+    })
+    .returning({ id: agentConfig.id });
+
+  if (options.publicReadable !== undefined) {
+    await setPublicRead(ctx, "agent_config", ctx.organizationId, row.id, options.publicReadable);
+  }
+
+  return row.id;
 }
 
 export async function updateAgentConfig(
   ctx: AuthContext,
-  name: string,
+  nameOrResourceKey: string,
   data: Record<string, unknown>,
+  options: AgentConfigSetOptions = {},
 ): Promise<boolean> {
+  const existing = await getAgentConfig(ctx, nameOrResourceKey);
+  if (!existing) return false;
+
+  assertInternalWritable(ctx, "agent_config", existing.id, existing.organizationId);
   const set = buildSetFromData(data);
   const result = await db
     .update(agentConfig)
     .set(set)
-    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.name, name)))
+    .where(eq(agentConfig.id, existing.id))
     .returning({ id: agentConfig.id });
+  if (result.length > 0 && options.publicReadable !== undefined) {
+    await setPublicRead(ctx, "agent_config", ctx.organizationId, existing.id, options.publicReadable);
+  }
   return result.length > 0;
 }
 
 export async function deleteAgentConfig(ctx: AuthContext, name: string): Promise<boolean> {
-  const result = await db
-    .delete(agentConfig)
-    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.name, name)))
-    .returning({ id: agentConfig.id });
+  const row = await getAgentConfig(ctx, name);
+  if (!row) return false;
+
+  assertInternalWritable(ctx, "agent_config", row.id, row.organizationId);
+  const result = await db.delete(agentConfig).where(eq(agentConfig.id, row.id)).returning({ id: agentConfig.id });
   return result.length > 0;
+}
+
+export async function assertAgentConfigInternalWritable(
+  ctx: AuthContext,
+  nameOrResourceKey: string,
+): Promise<AgentConfigDetailWithAccess | null> {
+  const row = parseResourceKey(nameOrResourceKey)
+    ? await getAgentConfigByResourceKey(ctx, nameOrResourceKey)
+    : await getAgentConfig(ctx, nameOrResourceKey);
+  if (!row) return null;
+  assertInternalWritable(ctx, "agent_config", row.id, row.organizationId);
+  return row;
 }
 
 export { AGENT_SETTABLE_FIELDS };

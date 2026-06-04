@@ -12,6 +12,7 @@ import { auth } from "../auth/better-auth";
 import type { AuthContext } from "../plugins/auth";
 import { spawnInstanceFromEnvironment } from "../transport/relay";
 import { createAgentConfig, getAgentConfig } from "./config/agent-config";
+import { getProvider, listProviders } from "./config/provider";
 import { upsertSkill } from "./config/skill";
 import { META_SKILL_DESCRIPTION, META_SKILL_NAME, writeMetaSkillFile } from "./config/skill-meta-content";
 import { createWebEnvironment, listEnvironmentsWithInstances } from "./environment-web";
@@ -39,12 +40,27 @@ export async function findMetaEnvironment(ctx: AuthContext): Promise<{ id: strin
 }
 
 /** 确保环境中存在 meta agent 所需的 AgentConfig 和 Skill */
+async function resolveDefaultMetaModelRef(ctx: AuthContext): Promise<string | null> {
+  const providers = await listProviders(ctx);
+  for (const provider of providers) {
+    const providerKey = provider.resourceAccess?.resourceKey ?? provider.name;
+    const detail = await getProvider(ctx, providerKey);
+    const firstModel = detail?.models?.[0];
+    if (!firstModel) continue;
+    return provider.resourceAccess?.ownership === "external"
+      ? `${provider.resourceAccess.resourceKey}/${firstModel.modelId}`
+      : `${provider.name}/${firstModel.modelId}`;
+  }
+  return null;
+}
+
 async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
   let agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
   if (!agentConfig) {
+    const defaultModelRef = await resolveDefaultMetaModelRef(ctx);
     await createAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
       description: "Meta Agent — 工作流编排助手",
-      model: null,
+      model: defaultModelRef,
       prompt: null,
       steps: null,
     });

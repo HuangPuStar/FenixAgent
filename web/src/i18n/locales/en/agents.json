@@ -18,6 +18,7 @@
   "actions": {
     "setDefault": "Set Default",
     "edit": "Edit",
+    "view": "View",
     "save": "Save",
     "delete": "Delete"
   },
@@ -28,6 +29,7 @@
   "batchDeleteError": "Batch delete failed: {{message}}",
   "dialog": {
     "editTitle": "Edit Agent",
+    "detailTitle": "View Agent Details",
     "cancel": "Cancel",
     "createTitle": "New Agent",
     "createConfirm": "Create",
@@ -85,6 +87,11 @@
     "tabTitle": "Bind Skills",
     "selectedCount": "{{count}} skill(s) selected",
     "noOptions": "No skills available"
+  },
+  "resource": {
+    "publicDescription": "Allow other teams to read this agent",
+    "sharedSourceTitle": "Shared agent",
+    "readOnlyAgent": "This agent is shared from {{source}} and cannot be edited here."
   },
   "save": {
     "successCreate": "Agent created",

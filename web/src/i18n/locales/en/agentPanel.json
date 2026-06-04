@@ -33,6 +33,7 @@
   "navigation": "Settings",
   "createAgent": "New Agent",
   "agentConfig": "Agent Config",
+  "viewAgentConfig": "View agent details",
   "newInstance": "New Instance",
   "restart": "Restart",
   "stop": "Stop",
@@ -55,6 +56,7 @@
   "deleteSuccess": "Agent deleted",
   "deleteFailed": "Failed to delete agent: {{message}}",
   "agentDefaultDesc": "Agent",
+  "sharedFrom": "Shared from {{source}}",
   "expandInstances": "Expand instances",
   "collapseInstances": "Collapse instances"
 }

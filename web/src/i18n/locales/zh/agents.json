@@ -18,6 +18,7 @@
   "actions": {
     "setDefault": "设为默认",
     "edit": "编辑",
+    "view": "查看",
     "save": "保存",
     "delete": "删除"
   },
@@ -28,6 +29,7 @@
   "batchDeleteError": "批量删除失败: {{message}}",
   "dialog": {
     "editTitle": "编辑Agent",
+    "detailTitle": "查看Agent详情",
     "cancel": "取消",
     "createTitle": "新建Agent",
     "createConfirm": "创建",
@@ -85,6 +87,11 @@
     "tabTitle": "绑定技能",
     "selectedCount": "已选择 {{count}} 个技能",
     "noOptions": "暂无可用技能"
+  },
+  "resource": {
+    "publicDescription": "允许其他团队读取此智能体",
+    "sharedSourceTitle": "共享智能体",
+    "readOnlyAgent": "该智能体来自 {{source}} 的共享，当前团队无法编辑。"
   },
   "save": {
     "successCreate": "Agent已创建",

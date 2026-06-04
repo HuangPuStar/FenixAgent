@@ -25,6 +25,7 @@
     "primary": "主模型",
     "small": "轻量模型"
   },
+  "resource": {},
   "validation": {
     "nameEmpty": "名称不能为空",
     "nameLength": "名称长度须在 1-64 字符之间"
@@ -32,6 +33,7 @@
   "actions": {
     "test": "测试",
     "testing": "检测中...",
+    "view": "查看",
     "edit": "编辑",
     "delete": "删除",
     "add": "添加"
@@ -54,6 +56,7 @@
   },
   "form": {
     "editTitle": "编辑服务商",
+    "detailTitle": "服务商详情",
     "createTitle": "新建服务商",
     "id": "ID（标识符）",
     "idPlaceholder": "bailian-token-plan",
@@ -92,6 +95,7 @@
     "emptyMessage": "暂无模型，点击下方按钮添加",
     "addButton": "+ 添加模型",
     "createTitle": "新增模型",
+    "detailTitle": "模型详情 — {{id}}",
     "editTitle": "编辑模型 — {{id}}",
     "modelId": "模型 ID",
     "modelIdPlaceholder": "例如 qwen3.6-plus",
