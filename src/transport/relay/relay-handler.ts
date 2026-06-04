@@ -1,5 +1,5 @@
-import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+import { log, error as logError } from "../../logger";
 import type { EnvironmentRecord } from "../../repositories/environment";
 import { environmentRepo } from "../../repositories/environment";
 import { getAgentConfigById } from "../../services/config/agent-config";
