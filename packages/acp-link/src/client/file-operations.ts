@@ -351,7 +351,7 @@ async function opTree(workspace: string, params: Record<string, unknown>): Promi
       if (basename(fullPath) === ".opencode" && resolve(fullPath, "..") === workspace) continue;
 
       const relPath = relative(workspace, fullPath);
-      paths.push(relPath);
+      paths.push(entry.isDirectory() ? `${relPath}/` : relPath);
 
       if (entry.isDirectory()) {
         await walk(fullPath);
