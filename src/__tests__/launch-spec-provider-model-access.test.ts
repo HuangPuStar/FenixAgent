@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { mcpServer, provider } from "../db/schema";
 import type { AuthContext } from "../plugins/auth";
 import { getAgentFullConfig } from "../services/config/aggregate";
 import { buildLaunchSpec } from "../services/launch-spec-builder";
@@ -36,11 +37,27 @@ function queryResult<T>(rows: T[]) {
   });
 }
 
-function installAggregateDb(selectResults: unknown[][]) {
+function installAggregateDb(params: {
+  providerInternal?: unknown[];
+  providerExternal?: unknown[];
+  mcpRows?: unknown[];
+}) {
+  let providerCallCount = 0;
   stubDb({
     select: () => ({
-      from: () => ({
-        where: () => queryResult(selectResults.shift() ?? []),
+      from: (table: unknown) => ({
+        where: () => {
+          if (table === provider) {
+            providerCallCount += 1;
+            return queryResult(
+              providerCallCount === 1 ? (params.providerInternal ?? []) : (params.providerExternal ?? []),
+            );
+          }
+          if (table === mcpServer) {
+            return queryResult(params.mcpRows ?? []);
+          }
+          return queryResult([]);
+        },
       }),
     }),
   });
@@ -68,7 +85,7 @@ describe("launch spec provider model access", () => {
       apiKey: "external-key",
       baseUrl: "https://external.example.com",
     });
-    installAggregateDb([[internal], [], [], [external], [], []]);
+    installAggregateDb({ providerInternal: [internal], providerExternal: [external], mcpRows: [] });
     stubResourcePermissionRepo({
       listAccessibleForPrincipal: async (_orgId, resourceType) =>
         resourceType === "provider"

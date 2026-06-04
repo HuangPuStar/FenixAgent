@@ -159,8 +159,8 @@ describe("model provider access", () => {
 
     const externalModel = json.data.available.find((item: { id: string }) => item.id === "shared-model");
     expect(externalModel).toMatchObject({
-      provider: "openai",
-      fullId: "openai/shared-model",
+      provider: "OpenAI Shared",
+      fullId: "OpenAI Shared/shared-model",
       stableFullId: "org_source/provider_external/shared-model",
       providerResourceKey: "org_source/provider_external",
     });

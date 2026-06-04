@@ -6,9 +6,9 @@
  */
 
 import { dirname, join } from "node:path";
+import { error as logError } from "@fenix/logger";
 import { config } from "../config";
 import { AppError } from "../errors";
-import { error as logError } from "@fenix/logger";
 import type { AuthContext } from "../plugins/auth";
 import * as _configPg from "./config/index";
 import {
