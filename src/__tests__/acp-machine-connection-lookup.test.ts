@@ -30,7 +30,7 @@ mock.module("../services/environment", () => ({
 // Mock core-bootstrap — acp-ws-handler 导入了 getCoreRuntime 等
 mock.module("../services/core-bootstrap", () => ({
   getCoreRuntime: () => null,
-  registerRemoteNode: mock(async () => {}),
+  registerRemoteNode: mock(() => {}),
   unregisterRemoteNode: mock(() => {}),
 }));
 

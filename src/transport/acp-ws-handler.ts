@@ -143,7 +143,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     log(`Machine registered: id=${result.id} agent=${agentName}`);
 
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
-    await registerRemoteNode(result.id, entry.ws, entry);
+    registerRemoteNode(result.id, entry.ws, entry);
 
     sendToWs(entry.ws, {
       type: "registered",
