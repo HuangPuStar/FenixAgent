@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 
 const { retryWithBackoff } = await import("../lib/retry");
 
