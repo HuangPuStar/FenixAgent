@@ -315,15 +315,9 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
     `Connection closed: relayWsId=${relayWsId} agentId=${entry.agentId} code=${code ?? "none"} duration=${duration}s`,
   );
 
-  // 关闭 relay handle
+  // 关闭 relay handle — 仅断开事件订阅，不关闭远程 agent 连接
+  // 前端刷新时 relay 断连不应终止远程实例，前端重连后应能复用
   if (entry.relayHandle) {
-    if (entry.instanceId && !manager.hasOtherRelayForInstance(entry.instanceId, relayWsId)) {
-      try {
-        entry.relayHandle.close(1000, "relay disconnected");
-      } catch {
-        /* ignore */
-      }
-    }
     entry.relayUnsub?.();
   }
 
