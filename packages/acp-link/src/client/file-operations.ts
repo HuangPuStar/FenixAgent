@@ -41,27 +41,18 @@ export { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js"
 // Path Safety
 // ============================================================================
 
-const USER_DIR = "user";
-
 /**
- * Resolve a relative path against workspace/user/ and validate it stays within bounds.
- * Strips leading "user/" prefix from the relative path if present.
+ * Resolve a relative path against workspace root and validate it stays within bounds.
+ * - "user/xxx" → {workspace}/user/xxx（兼容旧调用）
+ * - ".claude/xxx" → {workspace}/.claude/xxx
+ * - "" → {workspace}
  * Returns the absolute resolved path, or null if path escapes workspace.
  */
 function resolveAndValidate(workspace: string, relativePath: string): string | null {
-  // Strip leading "user/" prefix
-  let cleaned = relativePath;
-  if (cleaned.startsWith("user/") || cleaned.startsWith("user\\")) {
-    cleaned = cleaned.slice(USER_DIR.length + 1);
-  } else if (cleaned === "user") {
-    cleaned = "";
-  }
+  const resolved = resolve(workspace, relativePath);
 
-  const baseDir = resolve(workspace, USER_DIR);
-  const resolved = resolve(baseDir, cleaned);
-
-  // Path traversal check: resolved must start with baseDir
-  if (!resolved.startsWith(`${baseDir}/`) && resolved !== baseDir) {
+  // Path traversal check: resolved must start with workspace
+  if (!resolved.startsWith(`${workspace}/`) && resolved !== workspace) {
     return null;
   }
 
@@ -182,20 +173,6 @@ function getMimeType(filePath: string): string {
   return MIME_TYPES[ext] ?? "application/octet-stream";
 }
 
-/**
- * Whether to hide a directory entry.
- * Hides .opencode outside user/ scope (i.e. at workspace root level).
- */
-function shouldHideEntry(entryPath: string, userDir: string): boolean {
-  const name = basename(entryPath);
-  if (name === ".opencode") {
-    // If the entry is directly under workspace (not under user/), hide it
-    const parentDir = resolve(entryPath, "..");
-    if (parentDir !== userDir) return true;
-  }
-  return false;
-}
-
 // ============================================================================
 // Operations
 // ============================================================================
@@ -205,18 +182,16 @@ async function opList(workspace: string, params: Record<string, unknown>): Promi
   const dirPath = resolveAndValidate(workspace, rawPath);
   if (!dirPath) throw new Error("Invalid path: path traversal detected");
 
-  const userDir = resolve(workspace, USER_DIR);
   const names = await readdir(dirPath, { withFileTypes: true });
 
   const entries: FileEntry[] = [];
   for (const entry of names) {
     const fullPath = join(dirPath, entry.name);
 
-    // Hide .opencode outside user/ scope
-    if (shouldHideEntry(fullPath, userDir)) continue;
+    // Hide .opencode at workspace root
+    if (basename(fullPath) === ".opencode" && resolve(fullPath, "..") === workspace) continue;
 
-    const relPath = relative(userDir, fullPath);
-    const entryPath = `${USER_DIR}/${relPath}`;
+    const entryPath = relative(workspace, fullPath);
 
     if (entry.isDirectory()) {
       entries.push({ name: entry.name, path: entryPath, type: "dir", size: 0, modifiedAt: 0 });
@@ -256,8 +231,7 @@ async function opRead(
   const content = await readFile(filePath, "utf-8");
   const info = await stat(filePath);
   const name = basename(filePath);
-  const userDir = resolve(workspace, USER_DIR);
-  const relPath = `${USER_DIR}/${relative(userDir, filePath)}`;
+  const relPath = relative(workspace, filePath);
 
   return { name, path: relPath, content, size: info.size, encoding: "utf-8" };
 }
@@ -272,8 +246,7 @@ async function opReadBinary(
   const buffer = await readFile(filePath);
   const info = await stat(filePath);
   const name = basename(filePath);
-  const userDir = resolve(workspace, USER_DIR);
-  const relPath = `${USER_DIR}/${relative(userDir, filePath)}`;
+  const relPath = relative(workspace, filePath);
 
   return {
     name,
@@ -292,11 +265,11 @@ async function opWrite(
   if (!filePath) throw new Error("Invalid path: path traversal detected");
 
   const content = params.content as string;
+  await mkdir(resolve(filePath, ".."), { recursive: true });
   await writeFile(filePath, content, "utf-8");
 
   const name = basename(filePath);
-  const userDir = resolve(workspace, USER_DIR);
-  const relPath = `${USER_DIR}/${relative(userDir, filePath)}`;
+  const relPath = relative(workspace, filePath);
 
   return { name, path: relPath, size: Buffer.byteLength(content, "utf-8") };
 }
@@ -310,7 +283,6 @@ async function opUpload(
 
   const files = params.files as Array<{ name: string; content: string; relativePath?: string }>;
   const results: Array<{ name: string; path: string; size: number }> = [];
-  const userDir = resolve(workspace, USER_DIR);
 
   for (const file of files) {
     const relPath = file.relativePath ?? file.name;
@@ -327,7 +299,7 @@ async function opUpload(
     await writeFile(targetPath, buffer);
 
     const name = basename(targetPath);
-    const displayPath = `${USER_DIR}/${relative(userDir, targetPath)}`;
+    const displayPath = relative(workspace, targetPath);
     results.push({ name, path: displayPath, size: buffer.length });
   }
 
@@ -366,17 +338,19 @@ async function opMkdir(workspace: string, params: Record<string, unknown>): Prom
   return { path: params.path as string };
 }
 
-async function opTree(workspace: string): Promise<{ paths: string[] }> {
-  const userDir = resolve(workspace, USER_DIR);
+async function opTree(workspace: string, params: Record<string, unknown>): Promise<{ paths: string[] }> {
+  const rawPath = (params.path as string) || "";
+  const rootDir = resolveAndValidate(workspace, rawPath) ?? workspace;
   const paths: string[] = [];
 
   async function walk(dir: string): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
-      if (shouldHideEntry(fullPath, userDir)) continue;
+      // Hide .opencode at workspace root
+      if (basename(fullPath) === ".opencode" && resolve(fullPath, "..") === workspace) continue;
 
-      const relPath = `${USER_DIR}/${relative(userDir, fullPath)}`;
+      const relPath = relative(workspace, fullPath);
       paths.push(relPath);
 
       if (entry.isDirectory()) {
@@ -386,9 +360,9 @@ async function opTree(workspace: string): Promise<{ paths: string[] }> {
   }
 
   try {
-    await walk(userDir);
+    await walk(rootDir);
   } catch {
-    // user/ dir may not exist yet
+    // dir may not exist yet
   }
 
   return { paths };
@@ -448,7 +422,7 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
         data = await opMkdir(workspace, params);
         break;
       case "tree":
-        data = await opTree(workspace);
+        data = await opTree(workspace, params);
         break;
       default:
         return {
