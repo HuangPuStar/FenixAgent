@@ -47,9 +47,11 @@ export interface Logger {
 // ─── pino 实例 ──────────────────────────────────────────
 
 const isTest = process.env.NODE_ENV === "test" || (typeof Bun !== "undefined" && !!Bun.env.BUN_TEST);
-const logFormat = process.env.LOG_FORMAT ?? "pretty"; // "pretty" | "json"
+const isProd = process.env.NODE_ENV === "production";
+const logFormat = process.env.LOG_FORMAT ?? (isProd ? "json" : "pretty"); // "pretty" | "json"
 
-// 默认 pretty（人类可读），设 LOG_FORMAT=json 切换为 JSON（日志采集系统）
+// pino-pretty 使用 worker thread（thread-stream），生产环境高并发下易崩溃
+// 生产默认 JSON；开发默认 pretty（人类可读）
 const usePretty = logFormat !== "json";
 
 const pinoInstance = pino({

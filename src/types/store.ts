@@ -64,6 +64,8 @@ export interface RelayConnectionEntry {
   pendingReconnect?: boolean;
   /** machine 连接的 wsId，用于断连后恢复 onSessionMessage 回调 */
   machineWsId?: string;
+  /** 本地 agent 的 workspace 路径，用于 JSON-RPC session cwd 注入 */
+  workspacePath?: string;
 }
 
 /** RelayConnectionEntry + wsId for managed connections */

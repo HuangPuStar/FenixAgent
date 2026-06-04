@@ -78,8 +78,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 interface ChatInterfaceProps {
   client: ACPClient;
   agentId?: string;
-  cwd?: string;
-  cwdReady?: boolean;
   readonly?: boolean;
   hideContextPanel?: boolean;
   rcsSessionId?: string;
@@ -171,18 +169,7 @@ export interface ChatInterfaceHandle {
 }
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
-  {
-    client,
-    agentId,
-    cwd,
-    cwdReady = true,
-    readonly,
-    hideContextPanel,
-    rcsSessionId,
-    onSessionCreated,
-    scenePrompt,
-    onPromptComplete,
-  },
+  { client, agentId, readonly, hideContextPanel, rcsSessionId, onSessionCreated, scenePrompt, onPromptComplete },
   ref,
 ) {
   const { t } = useTranslation("components");
@@ -215,8 +202,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const storageKey = agentId ? `acp_last_session_${agentId}` : null;
 
   const requestCreateSession = useCallback(async () => {
-    await client.createSession(cwd);
-  }, [client, cwd]);
+    await client.createSession();
+  }, [client]);
 
   const activateSession = useCallback(
     (sessionId: string, options?: { resetEntries?: boolean }) => {
@@ -616,11 +603,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Creates a new session by clearing current state and calling new_session
   // This is the core of Zed's NewThread action
   const handleNewSession = useCallback(() => {
-    if (!cwdReady) {
-      console.log("[ChatInterface] Ignoring new session request until cwd is ready");
-      return;
-    }
-
     console.log("[ChatInterface] Creating new session...");
 
     // Reference: Zed's set_server_state() calls close_all_sessions() before setting new state
@@ -636,7 +618,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // 3. Create new session (like Zed's initial_state -> connection.new_session())
     // The session_created handler will set sessionReady=true when ready
     requestCreateSession();
-  }, [cwdReady, isLoading, resetThreadState, requestCreateSession, client.cancel]);
+  }, [isLoading, resetThreadState, requestCreateSession, client.cancel]);
 
   useImperativeHandle(
     ref,

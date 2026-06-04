@@ -3,6 +3,7 @@ import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { EnvironmentRecord } from "../../repositories/environment";
 import { environmentRepo } from "../../repositories/environment";
 import { getAgentConfigById } from "../../services/config/agent-config";
+import { resolveWorkspacePath } from "../../services/workspace-resolver";
 import type { RelayConnectionEntry } from "../../types/store";
 import { findMachineConnectionById, sendToWs, setAgentMachineCache } from "../acp-ws-handler";
 import type { WsConnection } from "../ws-types";
@@ -150,6 +151,7 @@ async function openLocalRelay(
     sessionId,
     outboundBuffer: [],
     sessionStarted: true,
+    workspacePath: resolveWorkspacePath(_env.organizationId ?? userId, userId, _env.id),
   };
   manager.add(relayWsId, entry);
 
@@ -267,6 +269,20 @@ export async function handleRelayMessage(
     if (!entry.sessionStarted && !isJsonRpc && parsed.type !== "list_sessions") {
       entry.outboundBuffer.push(parsed);
       return;
+    }
+    // 本地 agent：注入 workspace cwd（远程 agent 由 AcpDispatcher 处理）
+    if (isJsonRpc && entry.workspacePath) {
+      const method = parsed.method as string | undefined;
+      if (
+        method === "session/new" ||
+        method === "session/list" ||
+        method === "session/load" ||
+        method === "session/resume"
+      ) {
+        const params = (parsed.params ?? {}) as Record<string, unknown>;
+        params.cwd = entry.workspacePath;
+        parsed.params = params;
+      }
     }
     try {
       log("Relay → agent", {
