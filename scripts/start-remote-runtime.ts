@@ -13,7 +13,9 @@
  *   RCS_TENANT_ID       组织 ID (必填)
  *   RCS_USER_ID         用户 ID (可选)
  *   RCS_LABELS          节点标签，逗号分隔 (默认 remote-runtime)
- *   RCS_WORKSPACE_ROOT  工作区根目录 (默认 ~/.rcs/workspaces)
+ *
+ * 工作区路径: workspace 根目录为启动目录 (cwd)，实例路径自动按
+ *   {cwd}/{organizationId}/{userId}/{environmentId} 计算。
  */
 
 import { startServer } from "../packages/acp-link/src/server";
@@ -26,7 +28,6 @@ const RCS_URL = process.env.RCS_URL || "";
 const TENANT_ID = process.env.RCS_TENANT_ID || "";
 const USER_ID = process.env.RCS_USER_ID || "";
 const LABELS = process.env.RCS_LABELS || "remote-runtime";
-const WORKSPACE_ROOT = process.env.RCS_WORKSPACE_ROOT || `${process.env.HOME}/.rcs/workspaces`;
 // ──────────
 
 const args = process.argv.slice(2);
@@ -48,7 +49,6 @@ if (args.length === 0) {
   console.log("  RCS_TENANT_ID       组织 ID (必填)");
   console.log("  RCS_USER_ID         用户 ID (可选)");
   console.log("  RCS_LABELS          节点标签，逗号分隔 (默认 remote-runtime)");
-  console.log("  RCS_WORKSPACE_ROOT  工作区根目录 (默认 ~/.rcs/workspaces)");
   process.exit(1);
 }
 
@@ -70,7 +70,7 @@ const [command, ...agentArgs] = args;
 console.log(`RCS 在线 (${wsUrl})`);
 console.log(`启动远程 Runtime 节点...`);
 console.log(`  Agent:        ${command} ${agentArgs.join(" ")}`);
-console.log(`  Workspace:    ${WORKSPACE_ROOT}`);
+console.log(`  Workspace:    ${process.cwd()} (cwd)`);
 console.log(`  Tenant:       ${TENANT_ID || "无"}`);
 console.log(`  Labels:       ${LABELS}`);
 console.log("");
