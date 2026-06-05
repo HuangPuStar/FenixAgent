@@ -22,7 +22,8 @@ describe("workspace-fs tree utilities", () => {
 
   // listPathsRecursive 递归路径列表
   test("listPathsRecursive returns all user/ paths", async () => {
-    const paths = await listPathsRecursive(baseDir);
+    const entries = await listPathsRecursive(baseDir);
+    const paths = entries.map((e) => e.path);
     expect(paths).toContain("a.txt");
     expect(paths).toContain("sub/b.txt");
     expect(paths).toContain("sub/nested/c.txt");
@@ -32,7 +33,8 @@ describe("workspace-fs tree utilities", () => {
 
   // listPathsRecursive 目录以 / 结尾
   test("listPathsRecursive directories end with /", async () => {
-    const paths = await listPathsRecursive(baseDir);
+    const entries = await listPathsRecursive(baseDir);
+    const paths = entries.map((e) => e.path);
     expect(paths).toContain("sub/");
     expect(paths).toContain("sub/nested/");
   });

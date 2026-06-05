@@ -422,18 +422,18 @@ export function TreeItem({
       {/* Node row */}
       <div
         className={cn(
-          "group relative flex items-center gap-1 h-7 px-1 rounded-sm cursor-pointer",
+          "group relative flex items-center gap-0.5 h-7 px-0.5 rounded-sm cursor-pointer",
           "hover:bg-accent/50",
-          state.selected && "bg-accent",
+          state.selected && "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px]",
           data.isDisabled && "opacity-50 pointer-events-none",
           className,
         )}
-        style={{ paddingLeft: `${depth * 16 + 4}px` }}
+        style={{ paddingLeft: `${depth * 6}px` }}
         onClick={handleRowClick}
       >
         {/* Chevron */}
         <span
-          className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
+          className={cn("flex items-center justify-center", showChevron ? "flex-shrink-0 w-4 h-4" : "w-0")}
           onClick={showChevron ? handleChevronClick : undefined}
         >
           {state.loading ? (
@@ -546,7 +546,7 @@ function ShowMoreButton({ remaining, onClick, depth }: ShowMoreButtonProps) {
     <button
       type="button"
       className="flex items-center gap-1 h-7 px-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm cursor-pointer w-full"
-      style={{ paddingLeft: `${(depth + 1) * 16 + 4}px` }}
+      style={{ paddingLeft: `${(depth + 1) * 6}px` }}
       onClick={onClick}
     >
       {t("tree.showMore", { count: remaining })}

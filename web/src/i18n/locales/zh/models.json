@@ -68,7 +68,13 @@
     "apiKeyEditPlaceholder": "留空表示不修改",
     "apiKeyCreatePlaceholder": "输入 API Key",
     "baseUrl": "Base URL",
-    "baseUrlPlaceholder": "可选，默认使用服务商 URL"
+    "baseUrlPlaceholder": "可选，默认使用服务商 URL",
+    "modelsSection": "可用模型列表",
+    "fetchModels": "获取模型列表",
+    "fetching": "获取中...",
+    "selectAll": "全选 / 取消全选",
+    "noModelsFound": "未获取到模型或无法连接到服务商",
+    "noModelsHint": "这不一定是配置错误 — 部分模型提供商不开放模型列表获取接口"
   },
   "testDialog": {
     "failTitle": "连接测试失败 — {{name}}",

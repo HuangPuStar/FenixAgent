@@ -25,6 +25,7 @@ import {
   isUserPath,
   listPathsRecursive,
   mkdirp,
+  normalizeUserRoutePath,
   renamePath,
   resolveWorkspacePath,
 } from "../../services/workspace-fs";
@@ -71,8 +72,13 @@ app.get(
 
     const resolved = await resolveWorkspacePath(params.id, ".");
     if (!resolved) return error(404, { error: { type: "not_found", message: "工作区不存在" } });
-    const paths = await listPathsRecursive(resolved.workspaceDir);
-    return { paths };
+    const entries = await listPathsRecursive(resolved.workspaceDir);
+    const paths = entries.map((e) => e.path);
+    const mtimes: Record<string, number> = {};
+    for (const e of entries) {
+      if (e.mtime > 0) mtimes[e.path] = e.mtime;
+    }
+    return { paths, mtimes };
   },
   { sessionAuth: true },
 );
@@ -180,25 +186,27 @@ app.delete(
     const failed: Array<{ path: string; error: string }> = [];
 
     for (const p of paths) {
-      if (!isUserPath(p)) {
+      // 自动补 user/ 前缀（树返回路径不带前缀）
+      const fullPath = normalizeUserRoutePath(p);
+      if (!isUserPath(fullPath)) {
         failed.push({ path: p, error: "Only user/ paths are allowed" });
         continue;
       }
       try {
-        const resolved = await resolveWorkspacePath(params.id, p);
+        const resolved = await resolveWorkspacePath(params.id, fullPath);
         if (!resolved) {
-          failed.push({ path: p, error: "Not found" });
+          failed.push({ path: fullPath, error: "Not found" });
           continue;
         }
         const info = await stat(resolved.resolved);
         if (info.isDirectory()) {
-          failed.push({ path: p, error: "Cannot delete directories" });
+          failed.push({ path: fullPath, error: "Cannot delete directories" });
           continue;
         }
         await deleteFile(resolved.resolved);
-        deleted.push(p);
+        deleted.push(fullPath);
       } catch (e) {
-        failed.push({ path: p, error: e instanceof Error ? e.message : "Unknown error" });
+        failed.push({ path: fullPath, error: e instanceof Error ? e.message : "Unknown error" });
       }
     }
 

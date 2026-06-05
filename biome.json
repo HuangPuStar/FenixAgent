@@ -73,6 +73,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["web/src/components/agent-panel/preview/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noArrayIndexKey": "off"
+          }
+        }
+      }
     }
   ]
 }

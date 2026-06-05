@@ -46,6 +46,10 @@ export const ConfigBodySchema = z.object({
   command: z.array(z.string()).optional(),
   environment: z.record(z.string(), z.string()).optional(),
   type: z.enum(["local", "remote", "disabled"]).optional(),
+  /** inline provider 测试凭证 */
+  apiKey: z.string().optional(),
+  baseURL: z.string().optional(),
+  protocol: z.enum(["openai", "anthropic"]).optional(),
 });
 
 // ── Providers ──

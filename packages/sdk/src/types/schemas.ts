@@ -263,6 +263,7 @@ export interface FileWriteResult {
 }
 export interface TreeResponse {
   paths: string[];
+  mtimes?: Record<string, number>;
 }
 export interface RenameResponse {
   oldPath: string;
