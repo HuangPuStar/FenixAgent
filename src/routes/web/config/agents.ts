@@ -398,7 +398,7 @@ async function handleDelete(ctx: AuthContext, name: string) {
   return configSuccess(null);
 }
 
-import { loadAgentTemplates, type AgentTemplate } from "../../../services/agent-templates";
+import { loadAgentTemplates } from "../../../services/agent-templates";
 
 function handleTemplates() {
   return configSuccess({ templates: loadAgentTemplates() });
