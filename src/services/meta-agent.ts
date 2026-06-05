@@ -18,7 +18,7 @@ import { spawnInstanceFromEnvironment } from "../transport/relay";
 import { createAgentConfig, getAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
-import { deleteSkill, listSkills } from "./config/skill";
+import { deleteSkill, getSkill, listSkills } from "./config/skill";
 import { setSkill } from "./skill";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
@@ -168,19 +168,30 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
 
   // 注册/更新当前文件系统中的内置 skill
   const skillIds: string[] = [];
-  for (const skill of builtinSkills) {
+  for (const builtin of builtinSkills) {
     try {
-      const info = await setSkill(ctx, skill.name, {
-        description: skill.description,
-        content: skill.content,
+      // 检查是否已有同名用户 skill，避免覆写
+      const existing = await getSkill(ctx, builtin.name);
+      if (existing && !isMetaBuiltin(existing)) {
+        // 同名但属于用户，跳过注册，直接用现有 ID 绑定
+        skillIds.push(existing.id);
+        log(
+          `[meta-agent] Skipping built-in skill "${builtin.name}": user skill with same name exists (id=${existing.id})`,
+        );
+        continue;
+      }
+
+      const info = await setSkill(ctx, builtin.name, {
+        description: builtin.description,
+        content: builtin.content,
         metadata: { ...META_BUILTIN_MARKER },
       });
       if (info.id) {
         skillIds.push(info.id);
       }
-      log(`[meta-agent] Registered built-in skill: ${skill.name} (id=${info.id})`);
+      log(`[meta-agent] Registered built-in skill: ${builtin.name} (id=${info.id})`);
     } catch (err) {
-      console.error(`[meta-agent] Failed to register skill ${skill.name}:`, err);
+      console.error(`[meta-agent] Failed to register skill ${builtin.name}:`, err);
     }
   }
 
