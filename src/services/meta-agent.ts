@@ -167,6 +167,7 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
 
   // 扫描当前文件系统中的内置 skill
   const builtinSkills = scanBuiltinSkills();
+  log(`[meta-agent] scanBuiltinSkills: cwd=${process.cwd()}, found=${builtinSkills.length} skills`);
   const builtinNames = new Set(builtinSkills.map((s) => s.name));
 
   // 查询 DB 中由 meta agent 注册的 skill，找出需要清理的孤儿
