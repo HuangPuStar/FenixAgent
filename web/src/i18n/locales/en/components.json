@@ -130,6 +130,7 @@
   "fileTree": {
     "refresh": "Refresh",
     "emptyState": "No files in workspace",
+    "emptyHint": "Use the toolbar or drag files here to upload",
     "upload": "Upload",
     "download": "Download",
     "newFile": "New File",
@@ -138,6 +139,10 @@
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
     "dropToUpload": "Drop files to upload",
+    "hintDragUpload": "Drag to upload",
+    "hintDoubleClick": "Double-click to preview",
+    "hintDrag": "Drag to upload",
+    "hintDoubleClick": "Double-click to preview",
     "uploadTo": "Upload to: {{path}}",
     "uploadingFile": "Uploading {{name}}...",
     "uploadingProgress": "{{percent}}%",
@@ -160,7 +165,10 @@
       "unsupportedType": "This file type cannot be previewed",
       "fileSize": "File size",
       "fileType": "File type",
-      "pdfLoadFailed": "Failed to load PDF"
+      "pdfLoadFailed": "Failed to load PDF",
+      "tableLoadFailed": "Failed to load table file",
+      "emptyTable": "The table is empty",
+      "tableTruncated": "Showing {{shown}} of {{total}} rows"
     }
   },
   "tool": {

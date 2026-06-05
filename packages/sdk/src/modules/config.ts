@@ -25,8 +25,11 @@ export class ProviderApi extends BaseApi {
   async set(name: string, data: Record<string, unknown>): Promise<ApiResult<ProviderInfo>> {
     return this.post<ProviderInfo>("/web/config/providers", { action: "set", name, data });
   }
-  async test(name: string): Promise<ApiResult<{ success: boolean; error?: string }>> {
-    return this.post("/web/config/providers", { action: "test", name });
+  async test(
+    name: string,
+    inline?: { apiKey?: string; baseURL?: string; protocol?: string },
+  ): Promise<ApiResult<{ success: boolean; error?: string }>> {
+    return this.post("/web/config/providers", { action: "test", name, ...inline });
   }
   async testModel(name: string, modelId: string): Promise<ApiResult<{ ok: boolean; content: string }>> {
     return this.post("/web/config/providers", { action: "test_model", name, modelId });

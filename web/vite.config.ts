@@ -72,7 +72,7 @@ export default defineConfig({
     proxy: {
       "/web": "http://localhost:3000",
       "/api": "http://localhost:3000",
-      "/acp": "http://localhost:3000",
+      "/acp": { target: "http://localhost:3000", ws: true },
     },
   },
 });

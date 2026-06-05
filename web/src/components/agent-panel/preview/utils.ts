@@ -1,4 +1,9 @@
-export type FileCategory = "code" | "image" | "pdf" | "binary";
+export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown";
+
+/** encodeURIComponent 不编码 ()，需额外处理，用于 URL 路径 */
+export function encodePathSegment(seg: string) {
+  return encodeURIComponent(seg).split("(").join("%28").split(")").join("%29");
+}
 
 const CODE_EXTENSIONS = new Set([
   "ts",
@@ -84,6 +89,10 @@ const CODE_EXTENSIONS = new Set([
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]);
 
+const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm"]);
+
+const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
+
 const EXT_TO_SHIKI_LANG: Record<string, string> = {
   ts: "typescript",
   tsx: "tsx",
@@ -152,6 +161,8 @@ export function classifyFile(filePath: string): FileCategory {
   const ext = getExtension(filePath);
   if (ext === "pdf") return "pdf";
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
+  if (TABLE_EXTENSIONS.has(ext)) return "table";
+  if (MARKDOWN_EXTENSIONS.has(ext)) return "markdown";
   if (CODE_EXTENSIONS.has(ext)) return "code";
   return "binary";
 }

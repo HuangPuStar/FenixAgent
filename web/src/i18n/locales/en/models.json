@@ -68,7 +68,13 @@
     "apiKeyEditPlaceholder": "Leave empty to keep unchanged",
     "apiKeyCreatePlaceholder": "Enter API Key",
     "baseUrl": "Base URL",
-    "baseUrlPlaceholder": "Optional, uses provider default URL"
+    "baseUrlPlaceholder": "Optional, uses provider default URL",
+    "modelsSection": "Available Models",
+    "fetchModels": "Fetch Models",
+    "fetching": "Fetching...",
+    "selectAll": "Select / Deselect All",
+    "noModelsFound": "No models found or unable to connect to provider",
+    "noModelsHint": "This may not be a configuration error — some providers do not expose a model listing API"
   },
   "testDialog": {
     "failTitle": "Connection Test Failed — {{name}}",

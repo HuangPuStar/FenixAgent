@@ -169,7 +169,13 @@ app.get(
       return { name: fileName, path: displayPath, content, size, encoding: "utf-8" };
     }
 
-    set.headers["Content-Disposition"] = `attachment; filename="${fileName}"`;
+    // 中文文件名需要用 RFC 5987 编码，否则 HTTP header 非法
+    const hasNonAscii = [...fileName].some((c) => c.charCodeAt(0) > 127);
+    const encodedFileName = encodeURIComponent(fileName);
+    const contentDisp = hasNonAscii
+      ? `attachment; filename*=UTF-8''${encodedFileName}`
+      : `attachment; filename="${fileName}"`;
+    set.headers["Content-Disposition"] = contentDisp;
     set.headers["Content-Type"] = "application/octet-stream";
     // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch with Response constructor
     return new Response(createFileStream(resolved) as any);

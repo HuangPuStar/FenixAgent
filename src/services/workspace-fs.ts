@@ -77,7 +77,13 @@ export function isUserPath(path: string): boolean {
 
 /** 将路由通配符路径规范化为 user/ 作用域 */
 export function normalizeUserRoutePath(path: string): string {
-  const normalized = path.trim();
+  // 解码 URL 编码的字符（如 %28 → (, %E5%9F%83 → 埃）
+  let normalized: string;
+  try {
+    normalized = decodeURIComponent(path.trim());
+  } catch {
+    normalized = path.trim();
+  }
   if (!normalized) return "user";
   if (normalized === "user" || normalized.startsWith("user/")) return normalized;
   if (normalized.startsWith(".")) return normalized;
@@ -218,17 +224,24 @@ export function createFileStream(filePath: string): NodeJS.ReadableStream {
   return createReadStream(filePath);
 }
 
-/** 递归列出 user/ 下所有文件和目录，返回相对路径（目录以 / 结尾） */
-export async function listPathsRecursive(workspaceDir: string): Promise<string[]> {
+/** 树节点信息（含修改时间用于排序） */
+export interface TreeNodeEntry {
+  path: string;
+  /** 文件修改时间（毫秒时间戳），目录为 0 */
+  mtime: number;
+}
+
+/** 递归列出 user/ 下所有文件和目录，返回相对路径及修改时间（目录以 / 结尾） */
+export async function listPathsRecursive(workspaceDir: string): Promise<TreeNodeEntry[]> {
   const userDir = join(workspaceDir, "user");
   await mkdir(userDir, { recursive: true });
 
-  const results: string[] = [];
+  const results: TreeNodeEntry[] = [];
 
   async function walk(dirPath: string, prefix: string): Promise<void> {
     const entries = await readdir(dirPath, { withFileTypes: true });
     const dirs: { name: string; fullPath: string; relPath: string }[] = [];
-    const files: string[] = [];
+    const files: { relPath: string; fullPath: string }[] = [];
 
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
@@ -239,20 +252,27 @@ export async function listPathsRecursive(workspaceDir: string): Promise<string[]
       if (entry.isDirectory()) {
         dirs.push({ name: entry.name, fullPath, relPath });
       } else {
-        files.push(relPath);
+        files.push({ relPath, fullPath });
       }
     }
 
-    // 排序：目录按名称字母序，文件按名称字母序
+    // 排序：目录按名称字母序
     dirs.sort((a, b) => a.name.localeCompare(b.name));
-    files.sort();
 
     for (const d of dirs) {
-      results.push(`${d.relPath}/`);
+      results.push({ path: `${d.relPath}/`, mtime: 0 });
       await walk(d.fullPath, d.relPath);
     }
 
-    results.push(...files);
+    // 文件：获取修改时间
+    for (const f of files) {
+      try {
+        const info = await stat(f.fullPath);
+        results.push({ path: f.relPath, mtime: info.mtimeMs });
+      } catch {
+        results.push({ path: f.relPath, mtime: 0 });
+      }
+    }
   }
 
   await walk(userDir, "");

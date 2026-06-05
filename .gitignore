@@ -14,6 +14,7 @@ src/utils/vendor/
 .agents/*
 !.agents/skills/
 .claude/
+.codegraph/
 .omx/
 .docs/task/
 # Binary / screenshot files (root only)

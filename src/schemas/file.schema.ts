@@ -42,6 +42,7 @@ export const WriteFileRequestSchema = z.object({
 
 export const TreeResponseSchema = z.object({
   paths: z.array(z.string()),
+  mtimes: z.record(z.string(), z.number()).optional(),
 });
 
 export const RenameRequestSchema = z.object({

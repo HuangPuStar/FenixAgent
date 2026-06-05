@@ -1,5 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -95,6 +95,12 @@ export function AgentModelsPage() {
   const [formSaving, setFormSaving] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const editingReadOnly = editingProvider ? !canWriteProvider(editingProvider) : false;
+
+  // 表单内模型获取相关状态
+  const [formAvailableModels, setFormAvailableModels] = useState<string[]>([]);
+  const [formSelectedModels, setFormSelectedModels] = useState<Set<string>>(new Set());
+  const [formFetchingModels, setFormFetchingModels] = useState(false);
+  const [formModelsFetched, setFormModelsFetched] = useState(false);
 
   // Model form state
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
@@ -201,6 +207,7 @@ export function AgentModelsPage() {
     setFormBaseURL("");
     setFormProtocol("openai");
     setFormDisplayName("");
+    resetFormModelState();
     setDialogOpen(true);
   };
 
@@ -211,6 +218,7 @@ export function AgentModelsPage() {
     setFormBaseURL(provider.baseURL ?? "");
     setFormProtocol(provider.protocol);
     setFormDisplayName(provider.name !== provider.id ? provider.name : "");
+    resetFormModelState();
     setDialogOpen(true);
   };
 
@@ -227,10 +235,23 @@ export function AgentModelsPage() {
       data.protocol = formProtocol;
       if (formDisplayName) data.name = formDisplayName;
       await providerApi.set(formName, data);
+
+      // 导入勾选的模型（逐个添加，忽略失败）
+      let modelsAdded = false;
+      for (const modelId of formSelectedModels) {
+        try {
+          await providerApi.addModel(formName, { modelId, name: modelId });
+          modelsAdded = true;
+        } catch {
+          // 模型添加失败静默处理
+        }
+      }
+
       toast.success(editingProvider ? t("saveProvider.successUpdate") : t("saveProvider.successCreate"));
       setDialogOpen(false);
       loadAll();
       dispatchConfigChange("providers");
+      if (modelsAdded) dispatchConfigChange("models");
     } catch (e) {
       console.error(t("saveProvider.errorGeneric", { message: "" }), e);
       toast.error(t("saveProvider.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
@@ -266,6 +287,89 @@ export function AgentModelsPage() {
       setSharingProviderKey(null);
     }
   };
+
+  // 表单内获取模型列表
+  // 新建：用 inline 凭证测试，无需先保存
+  // 编辑：直接测试已保存的 provider
+  const handleFetchModels = async () => {
+    if (!formName.trim()) {
+      toast.error(t("validation.nameEmpty"));
+      return;
+    }
+    setFormFetchingModels(true);
+    setFormModelsFetched(false);
+    try {
+      let result: unknown;
+      let testErr: unknown = null;
+
+      if (editingProvider) {
+        // 编辑：先更新再测试
+        const data: Record<string, unknown> = {};
+        if (formApiKey) data.apiKey = formApiKey;
+        if (formBaseURL) data.baseURL = formBaseURL;
+        data.protocol = formProtocol;
+        if (formDisplayName) data.name = formDisplayName;
+        await providerApi.set(formName, data);
+        const res = await providerApi.test(formName);
+        result = res.data;
+        testErr = res.error;
+      } else {
+        // 新建：用 inline 凭证测试，不保存
+        const res = await providerApi.test(formName, {
+          apiKey: formApiKey || undefined,
+          baseURL: formBaseURL || undefined,
+          protocol: formProtocol,
+        });
+        result = res.data;
+        testErr = res.error;
+      }
+
+      if (testErr) {
+        setFormAvailableModels([]);
+        setFormModelsFetched(true);
+        return;
+      }
+      const r = result as unknown as Record<string, unknown>;
+      const modelIds = Array.isArray(r?.models)
+        ? (r.models as unknown as Array<{ id?: string }>).map((m: { id?: string }) => m.id ?? String(m))
+        : [];
+      setFormAvailableModels(modelIds);
+      setFormModelsFetched(true);
+
+      // 已存在的模型默认选中
+      const existingIds = new Set((providerModels[formName] ?? []).map((m) => m.id));
+      setFormSelectedModels(existingIds);
+    } catch {
+      setFormAvailableModels([]);
+      setFormModelsFetched(true);
+    } finally {
+      setFormFetchingModels(false);
+    }
+  };
+
+  // 重置表单时的清理
+  const resetFormModelState = () => {
+    setFormAvailableModels([]);
+    setFormSelectedModels(new Set());
+    setFormFetchingModels(false);
+    setFormModelsFetched(false);
+  };
+
+  // 存储最新的 handleFetchModels 引用，避免 useEffect 依赖它导致无限循环
+  const handleFetchModelsRef = useRef(handleFetchModels);
+  handleFetchModelsRef.current = handleFetchModels;
+
+  // API Key 或 Base URL 变化时自动获取模型列表（800ms 防抖）
+  useEffect(() => {
+    if (!dialogOpen || !formName.trim()) return;
+    if (!formApiKey.trim() && !formBaseURL.trim()) return;
+
+    const timer = setTimeout(() => {
+      handleFetchModelsRef.current();
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [formApiKey, formBaseURL, dialogOpen, formName]);
 
   const handleTest = async (name: string) => {
     setTesting(name);
@@ -802,6 +906,9 @@ export function AgentModelsPage() {
               type="password"
               value={formApiKey}
               onChange={(e) => setFormApiKey(e.target.value)}
+              onBlur={() => {
+                if (formName.trim() && formApiKey.trim()) handleFetchModels();
+              }}
               disabled={editingReadOnly}
               placeholder={editingProvider ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyCreatePlaceholder")}
               className="mt-1"
@@ -812,10 +919,82 @@ export function AgentModelsPage() {
             <Input
               value={formBaseURL}
               onChange={(e) => setFormBaseURL(e.target.value)}
+              onBlur={() => {
+                if (formName.trim() && formBaseURL.trim()) handleFetchModels();
+              }}
               disabled={editingReadOnly}
               placeholder={t("form.baseUrlPlaceholder")}
               className="mt-1"
             />
+          </div>
+
+          {/* 模型列表获取与勾选 */}
+          <div className="border-t border-border pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-text-primary">{t("form.modelsSection")}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleFetchModels}
+                disabled={formFetchingModels || editingReadOnly}
+              >
+                {formFetchingModels ? t("form.fetching") : t("form.fetchModels")}
+              </Button>
+            </div>
+            {formModelsFetched ? (
+              formAvailableModels.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto border border-border rounded-lg p-2 space-y-1">
+                  <label className="flex items-center gap-2 px-2 py-1 rounded hover:bg-surface-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border"
+                      checked={formSelectedModels.size === formAvailableModels.length && formAvailableModels.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setFormSelectedModels(new Set(formAvailableModels));
+                        } else {
+                          setFormSelectedModels(new Set());
+                        }
+                      }}
+                    />
+                    <span className="text-xs text-text-muted">{t("form.selectAll")}</span>
+                  </label>
+                  {formAvailableModels.map((modelId) => (
+                    <label
+                      key={modelId}
+                      className="flex items-center gap-2 px-2 py-1 rounded hover:bg-surface-2 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border"
+                        checked={formSelectedModels.has(modelId)}
+                        onChange={(e) => {
+                          const next = new Set(formSelectedModels);
+                          if (e.target.checked) {
+                            next.add(modelId);
+                          } else {
+                            next.delete(modelId);
+                          }
+                          setFormSelectedModels(next);
+                        }}
+                      />
+                      <span className="text-sm font-mono text-text-primary">{modelId}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-2">
+                  <p className="text-xs text-text-muted">{t("form.noModelsFound")}</p>
+                  <p className="text-xs text-text-muted mt-1">{t("form.noModelsHint")}</p>
+                </div>
+              )
+            ) : formFetchingModels ? (
+              <div className="flex items-center gap-2 py-2">
+                <Skeleton className="h-5 w-5 rounded" />
+                <span className="text-xs text-text-muted">{t("form.fetching")}</span>
+              </div>
+            ) : null}
           </div>
         </div>
       </FormDialog>

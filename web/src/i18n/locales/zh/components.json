@@ -130,6 +130,7 @@
   "fileTree": {
     "refresh": "刷新",
     "emptyState": "工作区暂无文件",
+    "emptyHint": "通过上方按钮或拖拽文件到此处上传",
     "upload": "上传",
     "download": "下载",
     "newFile": "新建文件",
@@ -138,6 +139,10 @@
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
     "dropToUpload": "释放文件以上传",
+    "hintDragUpload": "拖拽上传",
+    "hintDoubleClick": "双击预览",
+    "hintDrag": "拖拽上传",
+    "hintDoubleClick": "双击预览",
     "uploadTo": "上传到: {{path}}",
     "uploadingFile": "正在上传 {{name}}...",
     "uploadingProgress": "{{percent}}%",
@@ -160,7 +165,10 @@
       "unsupportedType": "此文件类型不支持预览",
       "fileSize": "文件大小",
       "fileType": "文件类型",
-      "pdfLoadFailed": "加载 PDF 失败"
+      "pdfLoadFailed": "加载 PDF 失败",
+      "tableLoadFailed": "加载表格文件失败",
+      "emptyTable": "表格为空",
+      "tableTruncated": "显示 {{shown}} / {{total}} 行"
     }
   },
   "tool": {

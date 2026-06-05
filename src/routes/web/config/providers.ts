@@ -7,7 +7,16 @@ import { buildModelData } from "../../../services/config/provider";
 import { configError, configSuccess, resolveApiKey, toKeyHint } from "../../../services/config-utils";
 import { invalidateAvailableCache } from "./models";
 
-type ProviderBody = { action: string; name?: string; modelId?: string; data?: Record<string, unknown> };
+type ProviderBody = {
+  action: string;
+  name?: string;
+  modelId?: string;
+  data?: Record<string, unknown>;
+  /** inline 测试凭证：传入则跳过 DB 查询，直接使用传入值 */
+  apiKey?: string;
+  baseURL?: string;
+  protocol?: string;
+};
 
 type TestErrorCode =
   | "PROVIDER_TEST_LIST_HTTP_ERROR"
@@ -359,18 +368,34 @@ async function testProviderModelMessage(
   return configSuccess({ ok: true, content });
 }
 
-async function handleTest(ctx: AuthContext, name: string) {
-  const p = await configPg.assertProviderInternalWritable(ctx, name);
-  if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
+async function handleTest(
+  ctx: AuthContext,
+  name: string,
+  inline?: { apiKey?: string; baseURL?: string; protocol?: "openai" | "anthropic" },
+) {
+  let apiKey: string;
+  let baseURL: string;
+  let protocol: string;
 
-  const apiKey = resolveApiKey(p.apiKey) ?? "";
-  const baseURL = normalizeProviderBaseUrl(p.baseUrl, p.protocol);
+  if (inline?.apiKey || inline?.baseURL) {
+    // inline 模式：直接使用传入的凭证，不查 DB（用于表单内预览模型列表）
+    apiKey = inline.apiKey ?? "";
+    baseURL = inline.baseURL ? normalizeProviderBaseUrl(inline.baseURL, inline.protocol ?? "openai") : "";
+    protocol = inline.protocol === "anthropic" ? "anthropic" : "openai";
+  } else {
+    // 标准模式：从已保存的 provider 加载凭证
+    const p = await configPg.assertProviderInternalWritable(ctx, name);
+    if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
+    apiKey = resolveApiKey(p.apiKey) ?? "";
+    baseURL = normalizeProviderBaseUrl(p.baseUrl, p.protocol);
+    protocol = p.protocol;
+  }
 
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
     try {
-      if (p.protocol === "anthropic") {
+      if (protocol === "anthropic") {
         return await testAnthropicProvider(baseURL, apiKey, controller.signal);
       }
       return await testOpenAICompatibleProvider(baseURL, apiKey, controller.signal);
@@ -381,7 +406,7 @@ async function handleTest(ctx: AuthContext, name: string) {
     const failure = getTestFailureReason(e);
     return configTestError("CONFIG_TEST_REQUEST_FAILED", {
       target: "provider",
-      protocol: p.protocol,
+      protocol,
       ...failure,
     });
   }
@@ -478,7 +503,15 @@ app.post(
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
     const b = body as ConfigBody;
-    const payload: ProviderBody = { action: b.action ?? "", name: b.name, modelId: b.modelId, data: b.data };
+    const payload: ProviderBody = {
+      action: b.action ?? "",
+      name: b.name,
+      modelId: b.modelId,
+      data: b.data,
+      apiKey: b.apiKey,
+      baseURL: b.baseURL,
+      protocol: b.protocol,
+    };
     try {
       switch (payload.action) {
         case "list":
@@ -487,8 +520,19 @@ app.post(
           return await handleGet(authCtx, payload.name!);
         case "set":
           return await handleSet(authCtx, payload.name!, payload.data!);
-        case "test":
-          return await handleTest(authCtx, payload.name!);
+        case "test": {
+          const protocol =
+            payload.protocol === "anthropic"
+              ? ("anthropic" as const)
+              : payload.protocol === "openai"
+                ? ("openai" as const)
+                : undefined;
+          return await handleTest(authCtx, payload.name!, {
+            apiKey: payload.apiKey,
+            baseURL: payload.baseURL,
+            protocol,
+          });
+        }
         case "test_model":
           return await handleTestModel(authCtx, payload.name!, payload.modelId!);
         case "delete":
