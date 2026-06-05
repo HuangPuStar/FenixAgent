@@ -6,6 +6,7 @@ import { validateEnv } from "../env";
 import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
+import { findMachineConnectionById } from "../transport/acp-ws-handler";
 import type { InstanceSupplement } from "../types/store";
 import { getReadableAgentConfigById } from "./config/index";
 import { getCoreRuntime } from "./core-bootstrap";
@@ -162,6 +163,14 @@ export async function spawnInstanceFromEnvironment(
   let nodeId = "local-default";
   if (agentMachineId) {
     nodeId = agentMachineId;
+  }
+
+  // 远程节点启动前连接检查
+  if (nodeId !== "local-default") {
+    const machineConn = findMachineConnectionById(nodeId);
+    if (!machineConn) {
+      throw new AppError(`远程节点 '${nodeId}' 未连接，无法启动实例`, "MACHINE_OFFLINE", 503);
+    }
   }
 
   // 委托 core 执行 launch
