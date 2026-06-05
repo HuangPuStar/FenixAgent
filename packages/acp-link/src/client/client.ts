@@ -293,7 +293,11 @@ export class ACPClient {
         const r = result as { stopReason?: string; usage?: PromptUsage };
         this.promptCompleteHandler?.(r.stopReason ?? "end_turn", r.usage);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("[ACPClient] sendPrompt failed:", (err as Error).message);
+        // pending 超时或被 reject 时，也要通知上层结束 loading
+        this.promptCompleteHandler?.("error");
+      });
   }
 
   cancel(): void {
