@@ -62,6 +62,7 @@ export interface AgentTemplate {
   name: string;
   description: string;
   prompt: string;
+  skills: string[];
 }
 
 export class AgentApi extends BaseApi {

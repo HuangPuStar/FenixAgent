@@ -10,6 +10,7 @@ export interface AgentTemplate {
   name: string;
   description: string;
   prompt: string;
+  skills: string[];
 }
 
 let cachedTemplates: AgentTemplate[] | null = null;
@@ -35,12 +36,14 @@ export function loadAgentTemplates(): AgentTemplate[] {
   cachedTemplates = files.map((filename) => {
     const id = filename.replace(/\.(yaml|yml)$/, "");
     const raw = readFileSync(join(dir, filename), "utf-8");
-    const parsed = yaml.load(raw) as Record<string, string>;
+    const parsed = yaml.load(raw) as Record<string, unknown>;
+    const skillsRaw = parsed.skills;
     return {
       id,
-      name: parsed.name ?? id,
-      description: parsed.description ?? "",
-      prompt: parsed.prompt ?? "",
+      name: (parsed.name as string) ?? id,
+      description: (parsed.description as string) ?? "",
+      prompt: (parsed.prompt as string) ?? "",
+      skills: Array.isArray(skillsRaw) ? (skillsRaw as string[]) : [],
     };
   });
 
