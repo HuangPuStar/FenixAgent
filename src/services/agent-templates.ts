@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 
@@ -16,8 +15,17 @@ export interface AgentTemplate {
 let cachedTemplates: AgentTemplate[] | null = null;
 
 /**
- * 从 .agents/agents/ 目录加载 YAML 模板文件。
- * 每个文件的文件名（不含扩展名）作为模板 id。
+ * 从 .agents/agents/ 目录加载 Markdown 模板文件。
+ * 每个文件为 Markdown + YAML frontmatter 格式：
+ *   ---
+ *   name: 模板名称
+ *   description: 描述
+ *   skills:
+ *     - skill-name
+ *   ---
+ *   正文内容作为 prompt
+ *
+ * 文件名（不含扩展名）作为模板 id。
  * 结果按文件名字典序排列，带简单内存缓存（进程生命周期内只读一次磁盘）。
  */
 export function loadAgentTemplates(): AgentTemplate[] {
@@ -30,21 +38,30 @@ export function loadAgentTemplates(): AgentTemplate[] {
   }
 
   const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
+    .filter((f) => f.endsWith(".md"))
     .sort();
 
   cachedTemplates = files.map((filename) => {
-    const id = filename.replace(/\.(yaml|yml)$/, "");
+    const id = filename.replace(/\.md$/, "");
     const raw = readFileSync(join(dir, filename), "utf-8");
-    const parsed = yaml.load(raw) as Record<string, unknown>;
-    const skillsRaw = parsed.skills;
-    return {
-      id,
-      name: (parsed.name as string) ?? id,
-      description: (parsed.description as string) ?? "",
-      prompt: (parsed.prompt as string) ?? "",
-      skills: Array.isArray(skillsRaw) ? (skillsRaw as string[]) : [],
-    };
+
+    // 解析 YAML frontmatter
+    const frontmatterMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    let name = id;
+    let description = "";
+    let prompt = raw;
+    let skills: string[] = [];
+
+    if (frontmatterMatch) {
+      const parsed = yaml.load(frontmatterMatch[1]) as Record<string, unknown>;
+      name = (parsed.name as string) ?? id;
+      description = (parsed.description as string) ?? "";
+      prompt = frontmatterMatch[2].trim();
+      const skillsRaw = parsed.skills;
+      skills = Array.isArray(skillsRaw) ? (skillsRaw as string[]) : [];
+    }
+
+    return { id, name, description, prompt, skills };
   });
 
   return cachedTemplates;
