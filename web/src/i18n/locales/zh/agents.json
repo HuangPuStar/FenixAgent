@@ -41,10 +41,13 @@
       "more": "更多"
     }
   },
+  "templates": {
+    "title": "快速模板"
+  },
   "form": {
     "name": "名称",
     "namePlaceholder": "例如 my-agent",
-    "nameValidationError": "名称只能包含小写字母、数字和单连字符，长度 1-64",
+    "nameValidationError": "名称需为 1-64 个字符（字母、数字、单连字符）",
     "machine": "机器",
     "machinePlaceholder": "选择一个在线的机器",
     "machineLocal": "本地（默认）",

@@ -1,0 +1,118 @@
+schema_version: "1"
+name: 4226b994-6a49-4e91-8611-308c69ac81f9
+description: |
+  数据管道 demo — 节点间数据逐级变换：
+  gen_data(params) → 并行[filter_high + calc_low_avg] → summary → format_output
+timeout: 60
+params:
+  data_size:
+    type: number
+    default: 30
+  threshold:
+    type: number
+    default: 200
+nodes:
+  - id: gen_data
+    type: python
+    inputs:
+      size: params.data_size
+    code: |
+      import json, random, time
+      time.sleep(2)
+      random.seed(42)
+      records = [
+        {"id": i + 1, "val": round(random.uniform(10, 500), 2), "cat": random.choice(["A", "B", "C"])}
+        for i in range(size)
+      ]
+      print(json.dumps({"count": len(records), "records": records}))
+  - id: filter_high
+    type: shell
+    depends_on:
+      - gen_data
+    inputs:
+      DATA: nodes.gen_data.output
+      THRESHOLD: params.threshold
+    command: |
+      python3 << 'PYEOF'
+      import json, os, time
+      time.sleep(3)
+      data = json.loads(os.environ['DATA'])
+      threshold = float(os.environ['THRESHOLD'])
+      high = [r for r in data['records'] if r['val'] >= threshold]
+      print(json.dumps({
+        "total_high": len(high),
+        "high_sum": round(sum(r['val'] for r in high), 2),
+        "threshold": threshold,
+      }))
+      PYEOF
+  - id: calc_low_avg
+    type: shell
+    depends_on:
+      - gen_data
+    inputs:
+      DATA: nodes.gen_data.output
+      THRESHOLD: params.threshold
+    command: |
+      python3 << 'PYEOF'
+      import json, os, time
+      time.sleep(3)
+      data = json.loads(os.environ['DATA'])
+      threshold = float(os.environ['THRESHOLD'])
+      low = [r for r in data['records'] if r['val'] < threshold]
+      print(json.dumps({
+        "total_low": len(low),
+        "low_avg": round(sum(r['val'] for r in low) / len(low), 2) if low else 0,
+        "threshold": threshold,
+      }))
+      PYEOF
+  - id: summary
+    type: shell
+    depends_on:
+      - filter_high
+      - calc_low_avg
+      - gen_data
+    inputs:
+      HIGH: nodes.filter_high.output
+      LOW: nodes.calc_low_avg.output
+      TOTAL_COUNT: nodes.gen_data.output.count
+      THRESHOLD: params.threshold
+    command: |
+      python3 << 'PYEOF'
+      import json, os, time
+      time.sleep(1.5)
+      high = json.loads(os.environ['HIGH'])
+      low = json.loads(os.environ['LOW'])
+      total = int(os.environ['TOTAL_COUNT'])
+      threshold = os.environ['THRESHOLD']
+      print(json.dumps({
+        "total": total,
+        "threshold": float(threshold),
+        "high_count": high['total_high'],
+        "high_sum": high['high_sum'],
+        "low_count": low['total_low'],
+        "low_avg": low['low_avg'],
+        "coverage": round((high['total_high'] + low['total_low']) / total * 100, 1),
+      }))
+      PYEOF
+  - id: format_output
+    type: python
+    depends_on:
+      - summary
+    inputs:
+      report: nodes.summary.output
+    code: |
+      import time
+      time.sleep(1)
+      lines = [
+        "=== Data Pipeline Report ===",
+        f"Total records:  {report['total']}",
+        f"Threshold:      {report['threshold']}",
+        f"High-value:     {report['high_count']} records, sum = {report['high_sum']}",
+        f"Low-value:      {report['low_count']} records, avg = {report['low_avg']}",
+        f"Coverage:       {report['coverage']}%",
+      ]
+      print("\n".join(lines))
+  - id: audit_1
+    type: audit
+    depends_on:
+      - format_output

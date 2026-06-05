@@ -115,7 +115,7 @@ export function buildSkillMd(
 ): string {
   const meta: Record<string, string> = { name, description, ...(metadata ?? {}) };
   const frontmatter = Object.entries(meta)
-    .map(([k, v]) => `${k}: "${v}"`)
+    .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
   return `---\n${frontmatter}\n---\n${content}`;
 }

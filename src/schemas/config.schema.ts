@@ -22,6 +22,7 @@ const ConfigActionValues = [
   "inspect",
   "list_tools",
   "workspace_list",
+  "templates",
 ] as const;
 
 export const ConfigActionSchema = z.enum(ConfigActionValues);

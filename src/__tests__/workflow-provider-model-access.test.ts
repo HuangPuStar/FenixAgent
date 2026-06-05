@@ -1,47 +1,110 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { agentConfigSkill, mcpServer, model, provider } from "../db/schema";
+import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { buildLaunchSpec } from "../services/launch-spec-builder";
+import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const now = new Date("2026-06-01T00:00:00.000Z");
 
-function providerRow() {
+function queryResult<T>(rows: T[]) {
+  return Object.assign(Promise.resolve(rows), {
+    limit: async () => rows,
+  });
+}
+
+function createWorkflowAgentConfig() {
   return {
-    id: "provider_external",
+    id: "agc_workflow",
     userId: "user_source",
     organizationId: "org_source",
-    name: "openai",
-    displayName: "OpenAI Shared",
-    protocol: "openai" as const,
-    baseUrl: "https://external.example.com",
-    apiKey: "external-key",
-    extraOptions: {},
+    name: "workflow-agent",
+    prompt: null,
+    model: "org_source/provider_external/shared-model",
+    steps: 10,
+    mode: "primary",
+    permission: null,
+    variant: null,
+    temperature: null,
+    topP: null,
+    disable: false,
+    hidden: false,
+    color: null,
+    description: null,
+    knowledge: null,
+    machineId: null,
     createdAt: now,
     updatedAt: now,
     resourceAccess: {
       ownership: "external" as const,
       sourceOrganizationId: "org_source",
-      resourceUid: "provider_external",
-      resourceKey: "org_source/provider_external",
+      resourceUid: "agc_workflow",
+      resourceKey: "org_source/agc_workflow",
       manageable: false,
       writable: false,
+      publicReadable: true,
     },
   };
 }
 
 describe("workflow provider model access", () => {
-  // Workflow 当前不再维护独立 agent config resolver，稳定外部 provider model 引用由 LaunchSpec 统一解析
-  test("workflow runtime 可使用外部 provider model fullConfig", async () => {
+  beforeEach(() => {
+    resetAllStubs();
+    setListAgentKnowledgeBindingsById(async () => []);
+  });
+
+  // Workflow runtime 通过 LaunchSpec builder 统一解析稳定共享 provider 引用
+  test("workflow runtime 可使用共享 provider model", async () => {
+    stubDb({
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => {
+            if (table === provider) {
+              return queryResult([
+                {
+                  id: "provider_external",
+                  userId: "user_source",
+                  organizationId: "org_source",
+                  name: "openai",
+                  displayName: "OpenAI Shared",
+                  protocol: "openai",
+                  baseUrl: "https://external.example.com",
+                  apiKey: "external-key",
+                  extraOptions: {},
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              ]);
+            }
+            if (table === model) {
+              return queryResult([
+                {
+                  id: "model_external",
+                  organizationId: "org_source",
+                  providerId: "provider_external",
+                  modelId: "shared-model",
+                  displayName: "Shared Model",
+                  modalities: null,
+                  limitConfig: null,
+                  cost: null,
+                  options: null,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              ]);
+            }
+            if (table === agentConfigSkill) return queryResult([]);
+            if (table === mcpServer) return queryResult([]);
+            return queryResult([]);
+          },
+        }),
+      }),
+    });
+
     const spec = await buildLaunchSpec({
       organizationId: "org_current",
       userId: "user_owner",
-      agentName: "workflow-agent",
-      modelRef: "org_source/provider_external/shared-model",
+      agentConfig: createWorkflowAgentConfig(),
       environmentSecret: "secret",
-      fullConfig: {
-        agentConfig: null,
-        providers: [providerRow()],
-        skills: [],
-        mcpServers: [],
-      },
     });
 
     expect(spec.model).toMatchObject({
@@ -52,26 +115,31 @@ describe("workflow provider model access", () => {
     });
   });
 
-  // 不可读或不存在的 provider 不进入 fullConfig，稳定引用解析失败时回落为明确的默认空 key 配置
-  test("workflow runtime 缺少可读 provider 时不会使用外部密钥", async () => {
-    const spec = await buildLaunchSpec({
-      organizationId: "org_current",
-      userId: "user_owner",
-      agentName: "workflow-agent",
-      modelRef: "org_source/provider_external/shared-model",
-      environmentSecret: "secret",
-      fullConfig: {
-        agentConfig: null,
-        providers: [],
-        skills: [],
-        mcpServers: [],
-      },
+  // Workflow runtime 缺少 provider 时应直接失败，而不是生成不可运行的默认模型
+  test("workflow runtime 缺少 provider 时直接失败", async () => {
+    stubDb({
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => {
+            if (table === provider) return queryResult([]);
+            if (table === model) return queryResult([]);
+            if (table === agentConfigSkill) return queryResult([]);
+            if (table === mcpServer) return queryResult([]);
+            return queryResult([]);
+          },
+        }),
+      }),
     });
 
-    expect(spec.model).toMatchObject({
-      provider: "openai",
-      apiKey: "",
-      model: "org_source/provider_external/shared-model",
+    await expect(
+      buildLaunchSpec({
+        organizationId: "org_current",
+        userId: "user_owner",
+        agentConfig: createWorkflowAgentConfig(),
+        environmentSecret: "secret",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_CONFIG",
     });
   });
 });

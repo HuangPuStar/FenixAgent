@@ -1,0 +1,34 @@
+schema_version: "1"
+name: agent 测试
+description: 串行流水线测试：三个 agent 依次传递消息验证链路连通性
+timeout: 120
+nodes:
+  - id: step1
+    type: agent
+    description: 第一个 agent
+    agent: test2
+    prompt: |
+      请用中文回答，只说一句问候语。不要 JSON，直接输出文字。
+    steps: 3
+  - id: step2
+    type: agent
+    depends_on:
+      - step1
+    description: 第二个 agent
+    agent: test2
+    prompt: |
+      上一步说: ${{ nodes.step1.output }}
+
+      请用中文重复一遍上面的内容，再加一句"收到"。不要 JSON，直接输出文字。
+    steps: 3
+  - id: step3
+    type: agent
+    depends_on:
+      - step2
+    description: 第三个 agent
+    agent: test2
+    prompt: |
+      上一步说: ${{ nodes.step2.output }}
+
+      请用中文说"全部完成，测试通过"。不要 JSON，直接输出文字。
+    steps: 3

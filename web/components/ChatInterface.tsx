@@ -147,6 +147,9 @@ function SessionModeSelector({
 function mapToolStatus(status: string): ToolCallStatus {
   if (status === "completed") return "complete";
   if (status === "failed") return "error";
+  if (status === "canceled" || status === "cancelled") return "canceled";
+  if (status === "rejected") return "rejected";
+  // "pending" / "in_progress" / unknown → "running"
   return "running";
 }
 
@@ -160,6 +163,9 @@ function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
   }
   return -1;
 }
+
+// 终态集合 — 已处于终态的工具调用不接受服务器状态覆盖
+const TERMINAL_STATUSES = new Set<ToolCallStatus>(["canceled", "rejected"]);
 
 // =============================================================================
 // 纯函数：将 SessionUpdate 应用到 entries 数组，返回新数组
@@ -250,7 +256,9 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
     if (existingIndex >= 0) {
       return entries.map((entry, index) => {
         if (index !== existingIndex || entry.type !== "tool_call") return entry;
-        if (entry.toolCall.status === "waiting_for_confirmation") return entry;
+        // 保护终态和待确认状态
+        if (TERMINAL_STATUSES.has(entry.toolCall.status) || entry.toolCall.status === "waiting_for_confirmation")
+          return entry;
         return { type: "tool_call", toolCall: { ...entry.toolCall, ...toolCallData } };
       });
     }
@@ -277,7 +285,9 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
 
     return entries.map((entry, index) => {
       if (index !== existingIndex || entry.type !== "tool_call") return entry;
-      if (entry.toolCall.status === "waiting_for_confirmation") return entry;
+      // 保护终态和待确认状态
+      if (TERMINAL_STATUSES.has(entry.toolCall.status) || entry.toolCall.status === "waiting_for_confirmation")
+        return entry;
 
       const newStatus = update.status ? mapToolStatus(update.status) : entry.toolCall.status;
       const mergedContent = update.content

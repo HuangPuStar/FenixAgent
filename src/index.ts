@@ -11,7 +11,7 @@ import swagger from "@elysiajs/swagger";
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
 import { db, initDb, client as pgClient } from "./db";
-import { agentSession } from "./db/schema";
+import { agentSession, member } from "./db/schema";
 import { validateEnv } from "./env";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
@@ -33,6 +33,7 @@ import { closeCache } from "./services/cache";
 import { getCoreRuntime } from "./services/core-bootstrap";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
 import { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment, stopAllInstances } from "./services/instance";
+import { syncBuiltinSkills } from "./services/meta-agent";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { resolveWorkspacePath } from "./services/workspace-resolver";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
@@ -55,6 +56,43 @@ getCoreRuntime();
 startupLog.info("Core runtime initialized");
 
 await startScheduler();
+
+// 同步内置 skill 到每个组织的 data/skills/
+// 遍历 member 表获取所有 (orgId, userId, role) 去重后，为每个组织注册 .agents/skills/ 下的 skill
+(async () => {
+  try {
+    const rows = await db
+      .select({
+        organizationId: member.organizationId,
+        userId: member.userId,
+        role: member.role,
+      })
+      .from(member);
+    // 按 organizationId 去重，每个组织只同步一次（取第一个 owner/admin，否则取任意一个）
+    const orgMap = new Map<string, { userId: string; role: string }>();
+    for (const r of rows) {
+      if (!orgMap.has(r.organizationId)) {
+        orgMap.set(r.organizationId, { userId: r.userId, role: r.role });
+      }
+    }
+    for (const [orgId, info] of orgMap) {
+      try {
+        await syncBuiltinSkills({
+          organizationId: orgId,
+          userId: info.userId,
+          role: info.role as "owner" | "admin" | "member",
+        });
+      } catch (err) {
+        startupLog.error(`Failed to sync builtin skills for org ${orgId}`, err instanceof Error ? err : undefined);
+      }
+    }
+    if (orgMap.size > 0) {
+      startupLog.info(`Builtin skills synced for ${orgMap.size} organization(s)`);
+    }
+  } catch (err) {
+    startupLog.error("Failed to sync builtin skills", err instanceof Error ? err : undefined);
+  }
+})();
 
 // Initialize Hermes client if configured
 // biome-ignore lint/suspicious/noExplicitAny: config channels shape is dynamic

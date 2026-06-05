@@ -335,7 +335,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
 
 async function handleCreate(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   if (!isValidResourceName(name)) {
-    return configValidationError("Invalid agent name: must be 1-64 lowercase alphanumeric chars with single hyphens");
+    return configValidationError("Invalid agent name: must be 1-64 characters (letters, numbers, single hyphens)");
   }
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
@@ -398,6 +398,12 @@ async function handleDelete(ctx: AuthContext, name: string) {
   return configSuccess(null);
 }
 
+import { loadAgentTemplates } from "../../../services/agent-templates";
+
+function handleTemplates() {
+  return configSuccess({ templates: loadAgentTemplates() });
+}
+
 async function handleSetDefault(ctx: AuthContext, name: string) {
   const agent = await configPg.getAgentConfig(ctx, name);
   if (!agent) return configNotFound(`Agent '${name}' not found`);
@@ -423,11 +429,13 @@ app.post(
       data: b.data as Record<string, unknown> | undefined,
     };
     // get/set/create/delete/set_default 都需要 name
-    if (action !== "list" && !name) {
+    if (action !== "list" && action !== "templates" && !name) {
       return error(400, configValidationError("Missing 'name' field"));
     }
     try {
       switch (action) {
+        case "templates":
+          return handleTemplates();
         case "list":
           return await handleList(authCtx);
         case "get":

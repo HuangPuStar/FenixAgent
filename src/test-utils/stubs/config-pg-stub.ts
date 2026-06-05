@@ -1,5 +1,5 @@
-// config-pg stub 注册表
-// 替代各测试文件中的 mock.module("../services/config-pg", ...) 调用
+// config service stub 注册表
+// 替代各测试文件中的 mock.module("../services/config/index", ...) 调用
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type StubFn = (...args: any[]) => any;
@@ -19,7 +19,6 @@ interface ConfigPgStubs {
   getAgentConfig: StubFn;
   getAgentConfigById: StubFn;
   getAgentConfigByResourceKey: StubFn;
-  getAgentFullConfig: StubFn;
   getReadableAgentConfigById: StubFn;
   getMcpServer: StubFn;
   getMcpServerByResourceKey: StubFn;
@@ -52,7 +51,7 @@ export function stubConfigPg(overrides: Partial<ConfigPgStubs>) {
 
 export function getConfigPgStub<K extends keyof ConfigPgStubs>(name: K): ConfigPgStubs[K] {
   const fn = _stubs[name];
-  if (!fn) throw new Error(`config-pg stub '${String(name)}' not configured, call stubConfigPg() in beforeEach`);
+  if (!fn) throw new Error(`config service stub '${String(name)}' not configured, call stubConfigPg() in beforeEach`);
   return fn;
 }
 

@@ -41,10 +41,13 @@
       "more": "More"
     }
   },
+  "templates": {
+    "title": "Quick Templates"
+  },
   "form": {
     "name": "Name",
     "namePlaceholder": "e.g. my-agent",
-    "nameValidationError": "Name can only contain lowercase letters, numbers, and single hyphens, length 1-64",
+    "nameValidationError": "Name must be 1-64 characters (letters, numbers, single hyphens)",
     "machine": "Machine",
     "machinePlaceholder": "Select an online machine",
     "machineLocal": "Local (Default)",

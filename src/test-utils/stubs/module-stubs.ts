@@ -36,9 +36,6 @@ export const configSkillRegistry = createStubRegistry("configSkill", false);
 // ../services/config/agent-config — agent 配置子模块，2 个测试文件使用
 export const configAgentConfigRegistry = createStubRegistry("configAgentConfig", false);
 
-// ../services/config/skill-meta-content — meta skill 内容，2 个测试文件使用
-export const configSkillMetaContentRegistry = createStubRegistry("configSkillMetaContent", false);
-
 // ../services/agent-knowledge — agent 知识库绑定，2 个测试文件使用
 export const agentKnowledgeRegistry = createStubRegistry("agentKnowledge", false);
 
@@ -88,7 +85,6 @@ export const stubInstance = instanceRegistry.stub;
 export const stubEnvironmentWeb = environmentWebRegistry.stub;
 export const stubConfigSkill = configSkillRegistry.stub;
 export const stubConfigAgentConfig = configAgentConfigRegistry.stub;
-export const stubConfigSkillMetaContent = configSkillMetaContentRegistry.stub;
 export const stubAgentKnowledge = agentKnowledgeRegistry.stub;
 export const stubMcpInspector = mcpInspectorRegistry.stub;
 export const stubConfigMcpServer = configMcpServerRegistry.stub;
@@ -110,7 +106,6 @@ export function resetModuleStubs() {
   environmentWebRegistry.reset();
   configSkillRegistry.reset();
   configAgentConfigRegistry.reset();
-  configSkillMetaContentRegistry.reset();
   agentKnowledgeRegistry.reset();
   mcpInspectorRegistry.reset();
   configMcpServerRegistry.reset();

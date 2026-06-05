@@ -92,6 +92,9 @@ export class ACPProtocol extends EventEmitter<ProtocolEvents> {
       case "pong":
         this.emit("pong");
         break;
+      case "prompt_complete":
+        this.emit("prompt_complete", msg.payload as ProtocolEvents["prompt_complete"]);
+        break;
     }
   }
 

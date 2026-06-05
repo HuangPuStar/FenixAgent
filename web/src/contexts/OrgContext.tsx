@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { orgApi } from "@/src/api/sdk";
 
@@ -43,6 +44,7 @@ function installFetchInterceptor() {
 }
 
 export function OrgProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [org, setOrg] = useState<OrgInfo | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<OrgWithRole[]>([]);
@@ -77,12 +79,15 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     refreshOrgs();
   }, [refreshOrgs]);
 
-  const switchOrg = useCallback(async (orgId: string) => {
-    localStorage.setItem(STORAGE_KEY, orgId);
-    await orgApi.setActive(orgId);
-    // 切换组织后导航回首页，避免停留在旧组织的资源详情页（如 chat/$agentId）
-    window.location.href = "/ctrl/agent/chat/_new";
-  }, []);
+  const switchOrg = useCallback(
+    async (orgId: string) => {
+      localStorage.setItem(STORAGE_KEY, orgId);
+      await orgApi.setActive(orgId);
+      // 切换组织后导航回新聊天页，避免停留在旧组织的资源详情页
+      void navigate({ to: "/agent/chat/$agentId", params: { agentId: "_new" }, replace: true });
+    },
+    [navigate],
+  );
 
   return (
     <OrgContext.Provider value={{ org, role, orgs, loading, switchOrg, refreshOrgs }}>{children}</OrgContext.Provider>

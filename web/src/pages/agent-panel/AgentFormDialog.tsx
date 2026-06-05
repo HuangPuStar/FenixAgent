@@ -1,3 +1,4 @@
+import { Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -18,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { agentApi, envApi, instanceApi, kbApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
+import type { AgentTemplate } from "../../../../packages/sdk/src/modules/config";
 import { PermissionTab } from "../../components/PermissionTab";
 import { NS } from "../../i18n";
 import { canManageAgentSharing, getAgentDisplayName, isAgentWritable } from "../../lib/agent-resource-access";
@@ -96,7 +98,10 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
   const [displayAgentName, setDisplayAgentName] = useState("");
   const [relatedResources, setRelatedResources] = useState<AgentRelatedResourcesView | undefined>(undefined);
-  const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission" | "skills" | "more">("basic");
+  const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission" | "more">("basic");
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [skillsExpanded, setSkillsExpanded] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
@@ -119,6 +124,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setCurrentAgentId(null);
     setDisplayAgentName("");
     setRelatedResources(undefined);
+    setSelectedTemplateId(null);
 
     // 加载在线机器列表
     registryApi.list({ status: "online", limit: 100 }).then(({ data, error }) => {
@@ -195,6 +201,12 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           toast.error(t("knowledge.loadError", { message: (err as Error).message }));
         })
         .finally(() => setLoading(false));
+
+      agentApi.templates().then(({ data, error }) => {
+        if (!error && data?.templates) {
+          setTemplates(data.templates);
+        }
+      });
     } else {
       setFormName(defaultName ?? "");
       setFormSteps("50");
@@ -207,6 +219,13 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       setFormHidden(false);
       setFormDisable(false);
       setFormPublicReadable(false);
+      setSelectedTemplateId(null);
+
+      agentApi.templates().then(({ data, error }) => {
+        if (!error && data?.templates) {
+          setTemplates(data.templates);
+        }
+      });
 
       modelApi.get().then(({ data, error }) => {
         if (error) return;
@@ -533,7 +552,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             )}
             {/* Tabs */}
             <div className="flex gap-1 rounded-lg bg-surface-2 p-1 m-6 mb-0 flex-shrink-0">
-              {(["basic", "knowledge", "permission", "skills", "more"] as const).map((tab) => (
+              {(["basic", "knowledge", "permission", "more"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -595,6 +614,136 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  {templates.length > 0 && (
+                    <div>
+                      <Label className="mb-2 block">{t("templates.title")}</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {templates.map((tpl) => (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => {
+                              setFormPrompt(tpl.prompt);
+                              if (!isEdit) setFormName(tpl.name);
+                              setSelectedTemplateId(tpl.id);
+                              if (tpl.skills.length > 0) {
+                                const matchedSkillIds = tpl.skills
+                                  .map((skillName) => {
+                                    const found = effectiveSkillOptions.find(
+                                      (s) => s.name === skillName || s.label === skillName,
+                                    );
+                                    return found ? getSkillOptionValue(found) : null;
+                                  })
+                                  .filter((v): v is string => v !== null);
+                                if (matchedSkillIds.length > 0) {
+                                  setFormSkillIds(matchedSkillIds);
+                                }
+                              }
+                            }}
+                            className={`text-left rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${
+                              selectedTemplateId === tpl.id
+                                ? "border-primary bg-primary/5 text-text-bright"
+                                : "border-border-subtle hover:border-primary/40 text-text-secondary hover:text-text-bright"
+                            }`}
+                          >
+                            <p className="text-sm font-medium">{tpl.name}</p>
+                            <p className="text-xs text-text-muted mt-0.5 line-clamp-2">{tpl.description}</p>
+                            {tpl.skills.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {tpl.skills.map((s) => (
+                                  <span
+                                    key={s}
+                                    className="inline-block rounded bg-primary/10 text-primary text-[10px] px-1.5 py-0.5"
+                                  >
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* 技能绑定 - 折叠展示 */}
+                  <div className="rounded-lg border border-border-subtle p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-text-bright">{t("skills.tabTitle")}</p>
+                        <p className="text-xs text-text-muted">
+                          {t("skills.selectedCount", { count: formSkillIds.length })}
+                        </p>
+                      </div>
+                      {!readOnlyAgent && (
+                        <button
+                          type="button"
+                          onClick={() => setSkillsExpanded(!skillsExpanded)}
+                          className="rounded-md p-1 hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {/* 已选技能 badge */}
+                    {formSkillIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {formSkillIds.map((sid) => {
+                          const skill = effectiveSkillOptions.find((s) => getSkillOptionValue(s) === sid);
+                          return (
+                            <span
+                              key={sid}
+                              className="inline-flex items-center gap-1 rounded bg-primary/10 text-primary text-xs px-2 py-0.5"
+                            >
+                              {skill?.label ?? sid}
+                              {!readOnlyAgent && (
+                                <button
+                                  type="button"
+                                  onClick={() => setFormSkillIds((cur) => cur.filter((id) => id !== sid))}
+                                  className="hover:text-text-bright"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* 展开的完整技能列表 */}
+                    {skillsExpanded && (
+                      <div className="mt-3 space-y-2 border-t border-border-subtle pt-3">
+                        {effectiveSkillOptions.length === 0 ? (
+                          <p className="text-sm text-text-muted">{t("skills.noOptions")}</p>
+                        ) : (
+                          effectiveSkillOptions.map((item) => {
+                            const value = getSkillOptionValue(item);
+                            const checked = formSkillIds.includes(value);
+                            return (
+                              <label
+                                key={item.key}
+                                className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
+                              >
+                                <div>
+                                  <p className="font-medium text-text-bright">{item.label}</p>
+                                  {item.description && <p className="text-xs text-text-muted">{item.description}</p>}
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={readOnlyAgent}
+                                  onChange={(e) => {
+                                    setFormSkillIds((current) =>
+                                      e.target.checked ? [...current, value] : current.filter((id) => id !== value),
+                                    );
+                                  }}
+                                />
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
                   </div>
                   {(canManageAgentSharing({ name: agentIdentityName, resourceAccess: formResourceAccess }) ||
                     !isEdit) && (
@@ -690,51 +839,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                     permission={formPermission}
                     onPermissionChange={setFormPermission}
                   />
-                </div>
-              )}
-              {activeTab === "skills" && (
-                <div className="space-y-4">
-                  <div className="rounded-lg border border-border-subtle p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-text-bright">{t("skills.tabTitle")}</p>
-                        <p className="text-xs text-text-muted">
-                          {t("skills.selectedCount", { count: formSkillIds.length })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {effectiveSkillOptions.length === 0 ? (
-                        <p className="text-sm text-text-muted">{t("skills.noOptions")}</p>
-                      ) : (
-                        effectiveSkillOptions.map((item) => {
-                          const value = getSkillOptionValue(item);
-                          const checked = formSkillIds.includes(value);
-                          return (
-                            <label
-                              key={item.key}
-                              className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
-                            >
-                              <div>
-                                <p className="font-medium text-text-bright">{item.label}</p>
-                                {item.description && <p className="text-xs text-text-muted">{item.description}</p>}
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={readOnlyAgent}
-                                onChange={(e) => {
-                                  setFormSkillIds((current) =>
-                                    e.target.checked ? [...current, value] : current.filter((id) => id !== value),
-                                  );
-                                }}
-                              />
-                            </label>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
                 </div>
               )}
               {activeTab === "more" && (

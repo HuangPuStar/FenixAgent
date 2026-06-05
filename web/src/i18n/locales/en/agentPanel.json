@@ -59,5 +59,12 @@
   "agentDefaultDesc": "Agent",
   "sharedFrom": "Shared from {{source}}",
   "expandInstances": "Expand instances",
-  "collapseInstances": "Collapse instances"
+  "collapseInstances": "Collapse instances",
+  "metaAgent": "Meta Agent",
+  "metaAgentDesc": "Platform assistant with API access",
+  "metaAgentToggle": "Show Meta Agent",
+  "metaAgentStarting": "Starting Meta Agent...",
+  "metaAgentFailed": "Failed to start Meta Agent",
+  "cancel": "Cancel",
+  "remoteNode": "Remote"
 }

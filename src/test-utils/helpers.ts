@@ -23,7 +23,6 @@ export {
   stubConfigAgentConfig,
   stubConfigMcpServer,
   stubConfigSkill,
-  stubConfigSkillMetaContent,
   stubCoreBootstrap,
   stubEnvironmentCore,
   stubEnvironmentRepo,
