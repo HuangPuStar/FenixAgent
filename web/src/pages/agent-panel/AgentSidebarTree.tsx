@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, ChevronRight, Eye, Loader2, Plus, RotateCw, Settings, Square } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, Eye, Loader2, Plus, RotateCw, Settings, Sparkles, Square } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -13,6 +13,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { ensureMetaAgent } from "@/src/api/meta-agent";
 import { agentApi, envApi, instanceApi, modelApi } from "@/src/api/sdk";
 import { useOrg } from "../../contexts/OrgContext";
 import { NS } from "../../i18n";
@@ -80,6 +82,12 @@ export function AgentSidebarTree({
   const [restartTargetNode, setRestartTargetNode] = useState<AgentTreeNode | null>(null);
   const [selectedRestartInstances, setSelectedRestartInstances] = useState<Set<string>>(new Set());
   const [modelLabelMap, setModelLabelMap] = useState<Map<string, string>>(new Map());
+
+  // Meta Agent 显示控制
+  const [showMetaAgent, setShowMetaAgent] = useState(
+    () => localStorage.getItem("agent-panel:show-meta-agent") === "true",
+  );
+  const [metaAgentLoading, setMetaAgentLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -315,6 +323,25 @@ export function AgentSidebarTree({
     setRestartTargetNode(null);
   }, [restartTargetNode, getRunningInstances, selectedRestartInstances, handleRestartInstance]);
 
+  // 持久化 Meta Agent 显示状态
+  useEffect(() => {
+    localStorage.setItem("agent-panel:show-meta-agent", String(showMetaAgent));
+  }, [showMetaAgent]);
+
+  // 进入 Meta Agent
+  const handleEnterMetaAgent = useCallback(async () => {
+    setMetaAgentLoading(true);
+    try {
+      const result = await ensureMetaAgent();
+      onSelectInstance(result.instanceId ?? "", result.environmentId, null);
+    } catch (err) {
+      console.error("Failed to start Meta Agent:", err);
+      toast.error(t("metaAgentFailed"));
+    } finally {
+      setMetaAgentLoading(false);
+    }
+  }, [onSelectInstance, t]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-6">
@@ -346,17 +373,52 @@ export function AgentSidebarTree({
     <div className="flex-1 overflow-y-auto py-2 space-y-2">
       <div className="flex items-center justify-between px-4 pt-1 pb-2">
         <span className="agent-tree-section-title">{t("agents")}</span>
-        {onCreateAgent && (
+        <div className="flex items-center gap-1">
+          <label
+            className="flex items-center gap-1 cursor-pointer text-text-dim hover:text-text-secondary transition-colors"
+            title={t("metaAgentToggle")}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <Switch size="sm" checked={showMetaAgent} onCheckedChange={setShowMetaAgent} />
+          </label>
+          {onCreateAgent && (
+            <button
+              type="button"
+              onClick={onCreateAgent}
+              title={t("createAgent")}
+              className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-surface-hover cursor-pointer transition-colors text-text-dim hover:text-text-primary"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+      {/* Meta Agent 卡片 */}
+      {showMetaAgent && (
+        <div className="mx-2 mb-2">
           <button
             type="button"
-            onClick={onCreateAgent}
-            title={t("createAgent")}
-            className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-surface-hover cursor-pointer transition-colors text-text-dim hover:text-text-primary"
+            disabled={metaAgentLoading}
+            onClick={handleEnterMetaAgent}
+            className={[
+              "flex items-center gap-2.5 w-full p-2.5",
+              "border border-brand/30 rounded-[10px] bg-gradient-to-r from-brand/5 to-brand/10",
+              "cursor-pointer text-left font-[inherit]",
+              "transition-all duration-150",
+              "hover:border-brand/50 hover:shadow-sm",
+              "disabled:opacity-60 disabled:cursor-not-allowed",
+            ].join(" ")}
           >
-            <Plus className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-brand to-brand-light text-white">
+              {metaAgentLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold text-text-primary truncate">{t("metaAgent")}</div>
+              <div className="text-[11px] text-text-dim truncate mt-0.5">{t("metaAgentDesc")}</div>
+            </div>
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {treeNodes.map((node) => {
         const { agent, instances } = node;
         const collapsed = !expandedAgents[agent.id];

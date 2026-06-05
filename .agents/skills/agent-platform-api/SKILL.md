@@ -1,220 +1,46 @@
 ---
 name: agent-platform-api
-description: RCS Platform API client. Use this skill to operate the RCS platform — manage environments, sessions, agents, tasks, knowledge bases, workflows, and more. Triggers include requests to "list environments", "create a session", "check agent config", "run a workflow", "manage tasks", "query knowledge base", and any RCS platform operation. Use curl + jq to call REST API.
+description: RCS Platform API 完整参考。Agent 通过 curl + jq 调用 REST API 操作平台资源：环境、会话、工作流、配置、任务、知识库、组织等。
 allowed-tools: Bash
 ---
 
 # RCS Platform API
 
-## Overview
+## 认证
 
-This skill lets you operate the RCS platform by calling REST API with curl. Authentication is handled automatically via environment variables.
-
-## Authentication
-
-Two environment variables are automatically injected by RCS:
-
-- `$USER_META_BASE_URL` — API server base URL (e.g. `http://localhost:3000`)
-- `$USER_META_API_KEY` — Bearer token
-
-All API requests must include `Authorization: Bearer $USER_META_API_KEY` header.
-
-## Quick Start
+两个环境变量由系统自动注入，所有请求必须携带：
 
 ```bash
-# List environments
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"list"}' | jq .
+AUTH="-H 'Authorization: Bearer $USER_META_API_KEY' -H 'Content-Type: application/json'"
 ```
 
-## API Reference
+- `$USER_META_BASE_URL` — API 服务器地址
+- `$USER_META_API_KEY` — Bearer token
 
-### WorkflowDefApi — `/web/workflow-defs`
+## 响应格式
 
-All actions use `POST /web/workflow-defs` with JSON body containing `action` field.
+成功：`{ "success": true, "data": ... }`
+失败：`{ "success": false, "error": { "type": "ERROR_CODE", "message": "..." } }`
 
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `create` | `name` | `description` |
-| `save` | `workflowId`, `yaml` | — |
-| `publish` | `workflowId` | — |
-| `list` | — | — |
-| `get` | `workflowId` | — |
-| `getVersions` | `workflowId` | — |
-| `getVersion` | `workflowId`, `version` | — |
-| `setLatest` | `workflowId`, `version` | — |
-| `delete` | `workflowId` | — |
-| `updateMeta` | `workflowId` | `name`, `description` |
-| `restoreToDraft` | `workflowId`, `version` | — |
-| `recover` | — | — |
-| `recoverApply` | `workflowIds` | — |
-| `createTrigger` | `workflowId` | `type` (default "webhook"), `config` |
-| `listTriggers` | `workflowId` | — |
-| `deleteTrigger` | `triggerId` | — |
-| `regenerateHash` | `triggerId` | — |
-| `enableTrigger` | `triggerId` | — |
-| `disableTrigger` | `triggerId` | — |
-| `getParamDefs` | `workflowId` | `version` |
+## API 模块索引
 
-### WorkflowEngineApi — `/web/workflow-engine`
+| 模块 | 文档 | 说明 |
+|------|------|------|
+| 环境 | `references/environment.md` | 环境创建/列表/进入/实例管理 |
+| 会话 | `references/session.md` | 会话列表/历史/控制/中断 |
+| 工作流 | `references/workflow.md` | 工作流定义/执行引擎/触发器/看板/作业 |
+| 配置 | `references/config.md` | Provider/Model/Agent/Skill/MCP 配置 |
+| 任务 | `references/task.md` | 定时任务 CRUD/触发/日志 |
+| 知识库 | `references/knowledge.md` | 知识库 CRUD/文件上传/URL 导入 |
+| 组织 | `references/org.md` | 组织管理/成员/API Key |
 
-All actions use `POST /web/workflow-engine` with JSON body containing `action` field.
+**使用某个模块的 API 前，先 `cat references/<module>.md` 读取完整文档和 curl 示例。**
 
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `run` | — | `workflowId`, `yaml`, `params` |
-| `dryRun` | — | `yaml` |
-| `cancel` | `runId` | — |
-| `approve` | `runId`, `nodeId`, `token` | `data` |
-| `getRunStatus` | `runId` | — |
-| `getEvents` | `runId` | — |
-| `getOutput` | `runId`, `nodeId` | — |
-| `getPendingApprovals` | `runId` | — |
-| `listRuns` | — | `workflowId` |
-| `recover` | `runId` | `yaml` |
-| `rerunFrom` | `runId` | `yaml`, `fromNodeId`, `workflowId` |
+## 常用 jq 技巧
 
-### EnvironmentApi — `/web/environments`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `list` (GET) | — | — |
-| `create` (POST) | `name` | `description`, `agentConfigId`, `autoStart` |
-| `get` (GET) | `id` (path) | — |
-| `update` (PATCH) | `id` (path) | `name`, `description`, `agentConfigId`, `autoStart` |
-| `delete` (DELETE) | `id` (path) | — |
-| `enter` (POST) | `id` (path) | `instance_number` |
-| `listInstances` (GET) | `id` (path) | — |
-
-### SessionApi — `/web/sessions`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `list` (GET) | — | — |
-| `create` (POST) | — | any fields |
-| `get` (GET) | `id` (path) | — |
-| `history` (GET) | `id` (path) | — |
-
-### ControlApi — `/web/sessions/:id/events`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `sendEvent` (POST) | `id` (path) | any payload |
-| `control` (POST) | `id` (path) | any payload |
-| `interrupt` (POST) | `id` (path) | — |
-
-### InstanceApi — `/web/instances`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `create` (POST) | — | any fields |
-| `spawn` (POST) | `environmentId` | `agentConfigId` |
-| `list` (GET) | — | — |
-| `delete` (DELETE) | `id` (path) | — |
-
-### Config APIs — `/web/config/:module`
-
-Modules: `providers`, `models`, `agents`, `skills`, `mcp`. All use `POST /web/config/:module` with JSON body containing `action` field.
-
-| Action | Notes |
-|---|---|
-| `list` | — |
-| `get` | requires `name` |
-| `set` | requires `name` |
-| `create` | requires `name` |
-| `delete` | requires `name` |
-| `enable` | requires `name` |
-| `disable` | requires `name` |
-| `test` | requires `name` |
-
-### KnowledgeBaseApi — `/web/knowledgeBases`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `list` (GET) | — | — |
-| `create` (POST) | `name` | `description` |
-| `get` (GET) | `id` (path) | — |
-| `update` (PATCH) | `id` (path) | `name`, `description` |
-| `delete` (DELETE) | `id` (path) | — |
-| `uploadResources` (POST) | `id` (path) + FormData | — |
-| `importUrl` (POST) | `id` (path), `url` | `sourceName` |
-| `listResources` (GET) | `id` (path) | — |
-| `deleteResource` (DELETE) | `id`, `resourceId` (path) | — |
-
-### TaskApi — `/web/tasks`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `list` (GET) | — | — |
-| `create` (POST) | `name` | `cron`, `url`, `method`, `headers`, `body` |
-| `get` (GET) | `id` (path) | — |
-| `update` (PATCH) | `id` (path) | same as create |
-| `delete` (DELETE) | `id` (path) | — |
-| `toggle` (POST) | `id` (path) | — |
-| `trigger` (POST) | `id` (path) | — |
-| `logs` (GET) | `id` (path) | `page`, `pageSize` |
-| `clearLogs` (DELETE) | `id` (path) | — |
-
-### OrganizationApi — `/web/organizations`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `list` (GET) | — | — |
-| `get` (GET) | `organizationId` (path) | — |
-| `create` (POST) | `name` | `slug` |
-| `update` (PATCH) | `organizationId` (path) | `name`, `slug` |
-| `delete` (DELETE) | `organizationId` (path) | — |
-| `setActive` (POST) | `organizationId` (path) | — |
-| `listMembers` (GET) | `organizationId` (path) | — |
-| `addMember` (POST) | `organizationId` (path), `email`, `role` | — |
-| `removeMember` (DELETE) | `organizationId`, `memberId` (path) | — |
-| `updateRole` (PATCH) | `organizationId`, `memberId` (path), `role` | — |
-
-### ApiKeyApi — `/web/apiKeys`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `list` (GET) | — | — |
-| `create` (POST) | `name` | `expiresIn` |
-| `delete` (DELETE) | `id` (path) | — |
-| `update` (PATCH) | `id` (path) | any fields |
-
-### FileApi — `/web/environments/:id/user`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `listDir` (GET) | `id` (path) | `path` (query) |
-| `readFile` (GET) | `id`, `path` (path) | `preview` (query) |
-| `upload` (POST) | `id` (path) + FormData | `path` (query) |
-| `writeFile` (POST) | `id`, `path` (path), `content` | — |
-| `deleteFile` (DELETE) | `id`, `path` (path) | — |
-
-### MetaAgentApi — `/web/meta-agent`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `ensure` (POST) | — | — |
-
-### V1EnvironmentApi — `/v1/environments`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `registerBridge` (POST) | `machine_name` | — |
-| `deregisterBridge` (DELETE) | `id` (path) | — |
-| `reconnectBridge` (POST) | `id` (path) | — |
-| `pollWork` (GET) | `id` (path) | — |
-| `ackWork` (POST) | `id`, `workId` (path) | — |
-| `stopWork` (POST) | `id`, `workId` (path) | — |
-| `heartbeat` (POST) | `id`, `workId` (path) | — |
-
-### V1SessionApi — `/v1/sessions`
-
-| Action | Required Fields | Optional Fields |
-|---|---|---|
-| `create` (POST) | — | `environmentId`, `title`, `source` |
-| `get` (GET) | `id` (path) | — |
-| `update` (PATCH) | `id` (path) | any fields |
-| `archive` (DELETE) | `id` (path) | — |
-| `sendEvents` (POST) | `id` (path), `events` | — |
+```bash
+| jq '.data'                  # 提取 data 字段
+| jq '.data[] | { id, name }' # 列表提取 id 和 name
+| jq -r '.data.draftYaml'     # 原文输出工作流草稿
+| jq '{ success }'            # 只看成功状态
+```

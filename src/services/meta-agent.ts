@@ -4,22 +4,38 @@
  * 管理 meta agent 的 Environment 生命周期：
  * - 查找或创建名为 meta-agent 的 Environment（kebab-case，通过校验）
  * - 确保 meta AgentConfig 存在
- * - 确保 meta 专属 Skill 已注册并写入文件系统
+ * - 自动扫描并装载项目 .agents/skills/ 下的内置 Skill
+ * - 每次同步时清理 DB 中已不在文件系统的孤儿 Skill
  * - 按需 spawn 实例，自动创建 API key 注入环境变量
  */
 
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { log } from "@fenix/logger";
 import { auth } from "../auth/better-auth";
 import type { AuthContext } from "../plugins/auth";
 import { spawnInstanceFromEnvironment } from "../transport/relay";
 import { createAgentConfig, getAgentConfig } from "./config/agent-config";
+import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
-import { upsertSkill } from "./config/skill";
-import { META_SKILL_DESCRIPTION, META_SKILL_NAME, writeMetaSkillFile } from "./config/skill-meta-content";
-import { createWebEnvironment, listEnvironmentsWithInstances } from "./environment-web";
+import { deleteSkill, listSkills } from "./config/skill";
+import { setSkill } from "./skill";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
 const META_AGENT_CONFIG_NAME = "meta";
 const META_KEY_LABEL = "Meta Agent";
+
+/** 内置 skill 目录，相对于项目根目录 */
+const BUILTIN_SKILLS_DIR = ".agents/skills";
+
+/** 内置 skill 的 metadata 标记，用于识别 meta agent 创建的 skill，避免误删用户 skill */
+const META_BUILTIN_MARKER = { source: "meta-builtin" } as const;
+
+/** 判断一个 DB skill 行是否由 meta agent 注册 */
+function isMetaBuiltin(row: { metadata: unknown }): boolean {
+  if (!row.metadata || typeof row.metadata !== "object") return false;
+  return (row.metadata as Record<string, string>).source === "meta-builtin";
+}
 
 /** orgId → apiKey 明文缓存，避免重复创建 */
 const metaApiKeyCache = new Map<string, string>();
@@ -33,6 +49,7 @@ export interface EnsureMetaResult {
 
 /** 从环境列表中查找名为 meta-agent 的环境 */
 export async function findMetaEnvironment(ctx: AuthContext): Promise<{ id: string; name: string } | null> {
+  const { listEnvironmentsWithInstances } = await import("./environment-web");
   const envs = await listEnvironmentsWithInstances(ctx.organizationId);
   // biome-ignore lint/suspicious/noExplicitAny: environment list items have dynamic shape
   const meta = envs.find((e: any) => e.name === META_ENVIRONMENT_NAME);
@@ -54,6 +71,60 @@ async function resolveDefaultMetaModelRef(ctx: AuthContext): Promise<string | nu
   return null;
 }
 
+/** 解析 SKILL.md 的 frontmatter，提取 name 和 description */
+function parseSkillFrontmatter(raw: string): { name: string; description: string } | null {
+  const match = raw.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!match) return null;
+  const frontmatter = match[1];
+  const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
+  if (!nameMatch) return null;
+  // description 可能是多行（| 前缀），取第一行作为摘要
+  const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
+  // 去掉 YAML 双引号包裹，与 skill-fs.ts parseFrontmatter 保持一致
+  const unquote = (v: string) => v.trim().replace(/^"(.*)"$/, "$1");
+  return {
+    name: unquote(nameMatch[1]),
+    description: descMatch ? unquote(descMatch[1]) : "",
+  };
+}
+
+/** 扫描内置 skill 目录，返回每个 skill 的 { name, description, content } */
+function scanBuiltinSkills(): { name: string; description: string; content: string }[] {
+  const skillsDir = join(process.cwd(), BUILTIN_SKILLS_DIR);
+  if (!existsSync(skillsDir)) {
+    log(`[meta-agent] Built-in skills directory not found: ${skillsDir}`);
+    return [];
+  }
+
+  const skills: { name: string; description: string; content: string }[] = [];
+  const entries = readdirSync(skillsDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const skillMdPath = join(skillsDir, entry.name, "SKILL.md");
+    if (!existsSync(skillMdPath)) continue;
+
+    try {
+      const raw = readFileSync(skillMdPath, "utf-8");
+      const parsed = parseSkillFrontmatter(raw);
+      if (!parsed) {
+        log(`[meta-agent] Skipping ${entry.name}: no valid frontmatter`);
+        continue;
+      }
+      skills.push({ ...parsed, content: raw });
+    } catch (err) {
+      log(`[meta-agent] Failed to read skill ${entry.name}: ${err}`);
+    }
+  }
+
+  return skills;
+}
+
+/**
+ * 确保内置 skill 已注册到 DB + 文件系统，并绑定到 meta AgentConfig。
+ * 自动清理文件系统中已移除的孤儿 skill。
+ * 返回 meta AgentConfig ID。
+ */
 async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
   let agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
   if (!agentConfig) {
@@ -70,12 +141,52 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     }
   }
 
-  await writeMetaSkillFile();
+  // 扫描当前文件系统中的内置 skill
+  const builtinSkills = scanBuiltinSkills();
+  const builtinNames = new Set(builtinSkills.map((s) => s.name));
 
-  await upsertSkill(ctx, META_SKILL_NAME, {
-    description: META_SKILL_DESCRIPTION,
-    contentPath: `meta/${META_SKILL_NAME}/SKILL.md`,
-  });
+  // 查询 DB 中由 meta agent 注册的 skill，找出需要清理的孤儿
+  const allDbSkills = await listSkills(ctx);
+  const orphans = allDbSkills.filter(
+    (s) =>
+      // 只清理 meta agent 自己注册的（通过 metadata.source 标记识别）
+      // 绝不触碰用户手动创建的 skill
+      isMetaBuiltin(s) && !builtinNames.has(s.name),
+  );
+
+  // 清理孤儿 skill：先从 AgentConfig 解绑（syncAgentSkills 会全量覆盖），再删 DB 行
+  if (orphans.length > 0) {
+    for (const orphan of orphans) {
+      try {
+        await deleteSkill(ctx, orphan.name);
+        log(`[meta-agent] Cleaned up orphan skill: ${orphan.name} (id=${orphan.id})`);
+      } catch (err) {
+        console.error(`[meta-agent] Failed to delete orphan skill ${orphan.name}:`, err);
+      }
+    }
+  }
+
+  // 注册/更新当前文件系统中的内置 skill
+  const skillIds: string[] = [];
+  for (const skill of builtinSkills) {
+    try {
+      const info = await setSkill(ctx, skill.name, {
+        description: skill.description,
+        content: skill.content,
+        metadata: { ...META_BUILTIN_MARKER },
+      });
+      if (info.id) {
+        skillIds.push(info.id);
+      }
+      log(`[meta-agent] Registered built-in skill: ${skill.name} (id=${info.id})`);
+    } catch (err) {
+      console.error(`[meta-agent] Failed to register skill ${skill.name}:`, err);
+    }
+  }
+
+  // 全量覆盖 meta AgentConfig 的 skill 绑定
+  await syncAgentSkills(agentConfig.id, skillIds);
+  log(`[meta-agent] Synced ${skillIds.length} skills to meta AgentConfig`);
 
   return agentConfig.id;
 }
@@ -139,6 +250,7 @@ export async function ensureMetaEnvironment(ctx: AuthContext, request: Request):
     }
   }
 
+  const { createWebEnvironment } = await import("./environment-web");
   const env = await createWebEnvironment({
     name: META_ENVIRONMENT_NAME,
     description: "Meta Agent — 工作流编排助手（自动创建）",

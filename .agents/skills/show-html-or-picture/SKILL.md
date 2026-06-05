@@ -1,6 +1,6 @@
 ---
-name: "show-html-or-picture"
-description: "当需要把本地 HTML 或图片文件展示给前端时使用。优先引用工作目录下 user/ 目录中的文件；如果目标文件不在 user/ 目录下，先复制到 user/ 再展示。最终只输出可直接渲染的相对路径片段：HTML 输出 iframe，图片输出 Markdown 图片；路径不能是绝对路径，也不能以 / 开头，且不要附加额外说明文字。"
+name: show-html-or-picture
+description: 当需要把本地 HTML 或图片文件展示给前端时使用。优先引用工作目录下 user/ 目录中的文件；如果目标文件不在 user/ 目录下，先复制到 user/ 再展示。最终只输出可直接渲染的相对路径片段：HTML 输出 iframe，图片输出 Markdown 图片；路径不能是绝对路径，也不能以 / 开头，且不要附加额外说明文字。
 ---
 
 把本地 HTML 或图片展示给前端。
