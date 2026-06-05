@@ -9,8 +9,8 @@
  * - 按需 spawn 实例，自动创建 API key 注入环境变量
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { log } from "@fenix/logger";
 import { auth } from "../auth/better-auth";
 import type { AuthContext } from "../plugins/auth";
@@ -18,9 +18,9 @@ import { spawnInstanceFromEnvironment } from "../transport/relay";
 import { createAgentConfig, getAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
-import { deleteSkill, getSkill, listSkills, upsertSkill } from "./config/skill";
-import { importSkillDirectories } from "./skill";
-import type { UploadSkillFile } from "./skill-fs";
+import { deleteSkill, getSkill, listSkills } from "./config/skill";
+import { getGlobalSkillsDir, setSkill } from "./skill";
+import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
 const META_AGENT_CONFIG_NAME = "meta";
@@ -103,15 +103,25 @@ function collectFiles(dir: string, base = dir): string[] {
   return results;
 }
 
-/** 扫描内置 skill 目录，返回每个 skill 的完整文件列表 */
-function scanBuiltinSkills(): { name: string; description: string; files: UploadSkillFile[] }[] {
+/** 扫描内置 skill 目录，返回每个 skill 的元数据 + 额外文件 */
+function scanBuiltinSkills(): {
+  name: string;
+  description: string;
+  content: string;
+  extraFiles: { relativePath: string; content: string }[];
+}[] {
   const skillsDir = join(process.cwd(), BUILTIN_SKILLS_DIR);
   if (!existsSync(skillsDir)) {
     log(`[meta-agent] Built-in skills directory not found: ${skillsDir}`);
     return [];
   }
 
-  const skills: { name: string; description: string; files: UploadSkillFile[] }[] = [];
+  const skills: {
+    name: string;
+    description: string;
+    content: string;
+    extraFiles: { relativePath: string; content: string }[];
+  }[] = [];
   const entries = readdirSync(skillsDir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -128,14 +138,18 @@ function scanBuiltinSkills(): { name: string; description: string; files: Upload
         continue;
       }
 
-      const relPaths = collectFiles(skillDir);
-      const files: UploadSkillFile[] = relPaths.map((relPath) => ({
-        skillName: parsed.name,
-        relativePath: relPath,
-        content: readFileSync(join(skillDir, relPath), "utf-8"),
-      }));
+      // 收集除 SKILL.md 之外的所有文件
+      const allRelPaths = collectFiles(skillDir);
+      const extraFiles: { relativePath: string; content: string }[] = [];
+      for (const relPath of allRelPaths) {
+        if (relPath === "SKILL.md") continue;
+        extraFiles.push({
+          relativePath: relPath,
+          content: readFileSync(join(skillDir, relPath), "utf-8"),
+        });
+      }
 
-      skills.push({ ...parsed, files });
+      skills.push({ ...parsed, content: raw, extraFiles });
     } catch (err) {
       log(`[meta-agent] Failed to read skill ${entry.name}: ${err}`);
     }
@@ -193,7 +207,6 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
 
   // 注册/更新当前文件系统中的内置 skill（完整文件，包含 references 等）
   const skillIds: string[] = [];
-  const allFiles: UploadSkillFile[] = [];
   for (const builtin of builtinSkills) {
     // 检查是否已有同名用户 skill，避免覆写
     const existing = await getSkill(ctx, builtin.name);
@@ -203,38 +216,34 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
       );
       continue;
     }
-    log(
-      `[meta-agent] Queuing built-in skill "${builtin.name}": ${builtin.files.length} files, existing=${!!existing}, isMetaBuiltin=${existing ? isMetaBuiltin(existing) : "N/A"}`,
-    );
-    allFiles.push(...builtin.files);
-  }
-
-  if (allFiles.length > 0) {
     try {
-      const result = await importSkillDirectories(ctx, allFiles, "overwrite");
-      log(
-        `[meta-agent] importSkillDirectories result: imported=${result.imported.map((i) => i.name).join(",")}, skipped=${result.skipped.join(",")}`,
-      );
-      const importedNames = new Set(result.imported.map((i) => i.name));
-      for (const imported of result.imported) {
-        log(`[meta-agent] Registered built-in skill: ${imported.name} (path=${imported.path})`);
+      const info = await setSkill(ctx, builtin.name, {
+        description: builtin.description,
+        content: builtin.content,
+        metadata: { ...META_BUILTIN_MARKER },
+      });
+      if (info.id) {
+        skillIds.push(info.id);
       }
-      // 收集导入成功的 skill ID，并补上 meta-builtin metadata 标记
-      for (const name of importedNames) {
-        const row = await getSkill(ctx, name);
-        if (row) {
-          skillIds.push(row.id);
-          // importSkillDirectories 不传 metadata，需要补上标记用于孤儿检测
-          await upsertSkill(ctx, name, {
-            description: row.description ?? "",
-            metadata: { ...META_BUILTIN_MARKER },
-          }).catch((e) => {
-            console.error(`[meta-agent] Failed to mark meta-builtin for ${name}:`, e);
-          });
+      // 将额外文件（references/ 等）写入 skill 目录
+      if (builtin.extraFiles.length > 0) {
+        const skillRoot = getGlobalSkillsDir();
+        const skillDir = getSkillSourceDir(skillRoot, builtin.name);
+        for (const { relativePath: rp, content: fc } of builtin.extraFiles) {
+          const filePath = join(skillDir, rp);
+          mkdirSync(dirname(filePath), { recursive: true });
+          writeFileSync(filePath, fc, "utf-8");
+          log(`[meta-agent] Wrote extra file: ${builtin.name}/${rp}`);
         }
+        // 重新构建 archive 以包含额外文件
+        const archivePath = getSkillArchivePath(skillRoot, builtin.name);
+        await buildSkillArchive(skillDir, archivePath);
       }
+      log(
+        `[meta-agent] Registered built-in skill: ${builtin.name} (id=${info.id}, extraFiles=${builtin.extraFiles.length})`,
+      );
     } catch (err) {
-      console.error("[meta-agent] Failed to import built-in skills:", err);
+      console.error(`[meta-agent] Failed to register skill ${builtin.name}:`, err);
     }
   }
 
