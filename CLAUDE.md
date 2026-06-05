@@ -335,6 +335,8 @@ Biome v2.4.15，space indent 2，lineWidth 120。`noExplicitAny: warn`，`noNonN
 
 Angular 风格（`feat:` / `fix:` / `refactor:` / `test:` / `chore:` / `docs:`），中文标题。每个提交单一职责，作用域用括号（如 `feat(workflow):`）。AI 辅助提交必须附加 `Co-authored-by`（Claude / GLM / GPT / Gemini）。大分支合并前 squash merge
 
+**提交前必须 precheck**：每次 `git commit` 前，如果本次有代码改动（非纯文档/配置），必须先运行 `bun run precheck` 确保通过后再提交。precheck 会自动修复格式和 import 排序，修复后的变更一并提交
+
 ### React 组件模式
 
 1. `useState` + `useCallback`，避免依赖循环
