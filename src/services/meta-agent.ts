@@ -15,7 +15,7 @@ import { log } from "@fenix/logger";
 import { auth } from "../auth/better-auth";
 import type { AuthContext } from "../plugins/auth";
 import { spawnInstanceFromEnvironment } from "../transport/relay";
-import { createAgentConfig, getAgentConfig } from "./config/agent-config";
+import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
 import { deleteSkill, getSkill, listSkills } from "./config/skill";
@@ -215,6 +215,17 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
     if (!agentConfig) {
       throw new Error("Failed to create meta agent config");
+    }
+  }
+
+  // 已有配置但 model 为空时，自动解析并填充默认模型
+  if (!agentConfig.model?.trim()) {
+    const defaultModelRef = await resolveDefaultMetaModelRef(ctx);
+    if (defaultModelRef) {
+      log(`[meta-agent] Auto-filling empty model for meta AgentConfig: ${defaultModelRef}`);
+      await updateAgentConfig(ctx, META_AGENT_CONFIG_NAME, { model: defaultModelRef });
+    } else {
+      log(`[meta-agent] No provider/model available to auto-fill meta AgentConfig model`);
     }
   }
 
