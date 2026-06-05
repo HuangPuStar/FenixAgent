@@ -99,9 +99,11 @@ COPY --from=build /app/web/dist ./web/dist
 COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY drizzle ./drizzle
 
-RUN mkdir -p /root/.config/opencode /root/.local/share/opencode /app/data /app/workflow /app/workspaces 
-RUN mkdir -p /app/data/skills
+RUN mkdir -p /root/.config/opencode /root/.local/share/opencode /app/data /app/workflow /app/workspaces
+RUN mkdir -p /app/data/skills /app/.agents/agents /app/.agents/skills
 COPY ./skills/ /app/data/skills/
+COPY .agents/agents/ /app/.agents/agents/
+COPY .agents/skills/ /app/.agents/skills/
 
 VOLUME ["/root/.config/opencode", "/root/.local/share/opencode", "/app/data", "/app/workflow", "/app/workspaces"]
 
