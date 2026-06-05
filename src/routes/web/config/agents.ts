@@ -335,7 +335,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
 
 async function handleCreate(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   if (!isValidResourceName(name)) {
-    return configValidationError("Invalid agent name: must be 1-64 lowercase alphanumeric chars with single hyphens");
+    return configValidationError("Invalid agent name: must be 1-64 characters (letters, numbers, single hyphens)");
   }
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);

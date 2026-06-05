@@ -22,8 +22,8 @@ describe("isValidAgentNameInput", () => {
     expect(isValidAgentNameInput("my-agent")).toBe(true);
   });
 
-  test("uppercase rejected", () => {
-    expect(isValidAgentNameInput("MY-AGENT")).toBe(false);
+  test("uppercase allowed", () => {
+    expect(isValidAgentNameInput("MY-AGENT")).toBe(true);
   });
 
   test("single char valid", () => {
@@ -72,6 +72,18 @@ describe("isValidAgentNameInput — Task 5 回归", () => {
 
   test("65 字符名称不合法", () => {
     expect(isValidAgentNameInput("a".repeat(65))).toBe(false);
+  });
+
+  test("中文名称合法", () => {
+    expect(isValidAgentNameInput("会议纪要助手")).toBe(true);
+  });
+
+  test("中英混合带连字符合法", () => {
+    expect(isValidAgentNameInput("Agent-助手")).toBe(true);
+  });
+
+  test("日文名称合法", () => {
+    expect(isValidAgentNameInput("エージェント")).toBe(true);
   });
 });
 

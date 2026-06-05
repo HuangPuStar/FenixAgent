@@ -23,14 +23,14 @@ export function configValidationError(message: string) {
   return configError("VALIDATION_ERROR", message);
 }
 
-/** 通用资源名校验：1-64 字符，小写字母数字和单连字符 */
+/** 通用资源名校验：1-64 字符，Unicode 字母、数字和单连字符 */
 export function isValidResourceName(name: string): boolean {
   return (
     typeof name === "string" &&
     name.length >= 1 &&
     name.length <= 64 &&
     !name.includes("--") &&
-    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name)
+    /^[\p{L}0-9](?:[\p{L}0-9-]*[\p{L}0-9])?$/u.test(name)
   );
 }
 

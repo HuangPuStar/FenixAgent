@@ -4,7 +4,7 @@ import type { KnowledgeBaseInfo } from "../types/knowledge";
 export const DEFAULT_AGENT_MODE = "primary";
 
 export function isValidAgentNameInput(name: string): boolean {
-  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) && name.length >= 1 && name.length <= 64;
+  return /^[\p{L}0-9]+(?:-[\p{L}0-9]+)*$/u.test(name) && name.length >= 1 && name.length <= 64;
 }
 
 export function isValidStepsInput(steps: string): boolean {
