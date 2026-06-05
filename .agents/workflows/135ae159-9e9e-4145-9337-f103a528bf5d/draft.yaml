@@ -1,0 +1,36 @@
+schema_version: "1"
+name: 测试工作流
+description: >
+  多 Agent 协作竞品分析： 1. planner — 分析需求，输出调研框架 2. researcher — 用 web search 逐维度收集信息 3. analyst — 对比分析 + SWOT 4. writer — 写入
+  Markdown 文件
+timeout: 600
+params:
+  products:
+    type: string
+    description: 竞品名称，多个用逗号分隔
+    default: Claude Code, Cursor, GitHub Copilot
+  dimensions:
+    type: string
+    description: 分析维度，多个用逗号分隔
+    default: 功能特性、定价模式、适用场景、核心优劣势
+  output_path:
+    type: string
+    description: 报告输出路径（工作目录下）
+    default: output/竞品分析报告.md
+nodes:
+  - id: planner
+    type: agent
+    description: 分析需求，生成调研框架
+    agent: test2
+    prompt: |
+      你是一个竞品分析专家。hello 一句
+    steps: 3
+    output_messages: 1
+  - id: writer
+    type: python
+    depends_on:
+      - planner
+    inputs:
+      report: nodes.planner.output.simplified
+    description: 将 JSON 数据转换为 Markdown 报告并写入文件
+    code: print(report)

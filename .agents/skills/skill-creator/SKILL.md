@@ -1,6 +1,8 @@
 ---
 name: skill-creator
 description: 帮助用户创建、编辑和优化 Agent Skill 指令文件。当用户提到"创建 skill"、"写技能"、"编辑 skill"、"优化技能"、"新建技能"或需要生成 SKILL.md 文件时使用。
+required_skills:
+  - agent-platform-api
 ---
 
 # Skill Creator

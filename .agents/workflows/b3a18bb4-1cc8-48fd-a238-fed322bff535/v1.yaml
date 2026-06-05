@@ -1,0 +1,22 @@
+schema_version: "1"
+name: test
+description: 简单测试工作流
+timeout: 300
+nodes:
+  - id: hello
+    type: shell
+    description: 生成问候数据
+    command: printf '{"greeting":"Hello World","user":"测试用户"}'
+  - id: done
+    type: shell
+    depends_on:
+      - hello
+    description: 接收上游数据并输出
+    inputs:
+      GREETING_JSON: nodes.hello.output
+    command: |-
+      python3 << 'PYEOF'
+      import json, os
+      data = json.loads(os.environ['GREETING_JSON'])
+      print(f"收到: {data['greeting']}, 来自: {data['user']}")
+      PYEOF
