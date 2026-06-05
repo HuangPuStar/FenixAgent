@@ -77,6 +77,7 @@
     "drawflow": "^0.0.60",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
+    "gray-matter": "^4.0.3",
     "i18next": "^26.2.0",
     "i18next-browser-languagedetector": "^8.2.1",
     "ioredis": "^5.10.1",

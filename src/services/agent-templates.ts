@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import yaml from "js-yaml";
+import matter from "gray-matter";
 
 const AGENTS_DIR = ".agents/agents";
 
@@ -44,24 +44,15 @@ export function loadAgentTemplates(): AgentTemplate[] {
   cachedTemplates = files.map((filename) => {
     const id = filename.replace(/\.md$/, "");
     const raw = readFileSync(join(dir, filename), "utf-8");
-
-    // 解析 YAML frontmatter（兼容 \n / \r\n / \r 换行）
-    const frontmatterMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-    let name = id;
-    let description = "";
-    let prompt = raw;
-    let skills: string[] = [];
-
-    if (frontmatterMatch) {
-      const parsed = yaml.load(frontmatterMatch[1]) as Record<string, unknown>;
-      name = (parsed.name as string) ?? id;
-      description = (parsed.description as string) ?? "";
-      prompt = frontmatterMatch[2].trim();
-      const skillsRaw = parsed.skills;
-      skills = Array.isArray(skillsRaw) ? (skillsRaw as string[]) : [];
-    }
-
-    return { id, name, description, prompt, skills };
+    const { data, content } = matter(raw);
+    const skillsRaw = data.skills;
+    return {
+      id,
+      name: (data.name as string) ?? id,
+      description: (data.description as string) ?? "",
+      prompt: content.trim(),
+      skills: Array.isArray(skillsRaw) ? (skillsRaw as string[]) : [],
+    };
   });
 
   return cachedTemplates;
