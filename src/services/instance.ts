@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { log, error as logError } from "@fenix/logger";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { getBaseUrl } from "../config";
 import { validateEnv } from "../env";
 import { AppError, NotFoundError } from "../errors";
@@ -10,7 +11,7 @@ import type { InstanceSupplement } from "../types/store";
 import { getReadableAgentConfigById } from "./config/index";
 import { getCoreRuntime } from "./core-bootstrap";
 import { globalInstanceRegistry } from "./instance-registry";
-import { buildLaunchSpec } from "./launch-spec-builder";
+import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
 import { _sessionRepo } from "./session";
 
 // ────────────────────────────────────────────
@@ -97,10 +98,14 @@ function filterInstances(
 }
 
 /**
- * 基于 environment 绑定的 agentConfig 启动一个新实例。
+ * 基于 environment 配置启动一个新实例。
  *
- * 这里显式拒绝无 agentConfigId 的环境，因为当前链路已经不再接受
- * “默认 general + 伪 fallback model” 这种会把配置问题延后到运行时的行为。
+ * 绑定了 agentConfig 时走完整资源解析；未绑定时只注入一个最小 LaunchSpec，
+ * 让环境仍可启动，但不会偷偷继承 prompt / skills / MCP 等额外配置。
+ *
+ * 这条“无 AgentConfig”分支主要给系统级环境使用，例如平台自举阶段的
+ * meta-agent。这里把场景约束放在 instance 层，而不是 launch-spec builder，
+ * 避免底层组装器耦合具体业务概念。
  */
 export async function spawnInstanceFromEnvironment(
   userId: string,
@@ -114,43 +119,47 @@ export async function spawnInstanceFromEnvironment(
     `[instance] spawnInstanceFromEnvironment: environmentId='${environmentId}', org='${env.organizationId ?? ""}', user='${userId}', agentConfigId='${env.agentConfigId ?? ""}'`,
   );
 
-  // Phase 1: 入口约束必须先收紧，避免后面 builder 被迫处理无意义的默认分支。
-  if (!env.agentConfigId) {
-    logError(
-      `[instance] spawnInstanceFromEnvironment: environmentId='${environmentId}' missing agentConfigId, org='${env.organizationId ?? ""}', user='${userId}'`,
-    );
-    throw new AppError("Environment has no agentConfig bound", "INVALID_CONFIG", 400);
-  }
-
-  const accessCtx = { organizationId: env.organizationId ?? "", userId, role: "owner" as const };
-  const resolvedAgentConfig = await getReadableAgentConfigById(accessCtx, env.agentConfigId);
-  if (!resolvedAgentConfig) {
-    logError(
-      `[instance] spawnInstanceFromEnvironment: agentConfigId='${env.agentConfigId}' not found for environmentId='${environmentId}', org='${env.organizationId ?? ""}'`,
-    );
-    throw new NotFoundError(`AgentConfig '${env.agentConfigId}' not found`);
-  }
-  const agentMachineId = resolvedAgentConfig.machineId ?? null;
-  log(
-    `[instance] spawnInstanceFromEnvironment: resolved agentConfig id='${resolvedAgentConfig.id}', sourceOrg='${resolvedAgentConfig.organizationId}', modelRef='${resolvedAgentConfig.model ?? ""}', machineId='${agentMachineId ?? ""}'`,
-  );
-
-  // Phase 2: 注入平台级环境变量，调用方仍可通过 extraEnv 覆盖这些默认值。
+  // Phase 1: 注入平台级环境变量，调用方仍可通过 extraEnv 覆盖这些默认值。
   const platformEnv: Record<string, string> = {
     USER_META_API_KEY: env.secret,
     USER_META_BASE_URL: getBaseUrl(),
   };
   const mergedExtraEnv = { ...platformEnv, ...extraEnv };
 
-  // Phase 3: LaunchSpec 内部会直接取数并做严格校验，失败会在启动前暴露。
-  const launchSpec = await buildLaunchSpec({
+  // Phase 2: 有 agentConfig 时走完整 builder；没有时降级为最小可运行配置。
+  let agentMachineId: string | null = null;
+  const launchContext = {
     organizationId: env.organizationId ?? userId,
     userId: env.userId ?? userId,
     environmentId,
-    agentConfig: resolvedAgentConfig,
-    environmentSecret: env.secret,
     extraEnv: mergedExtraEnv,
-  });
+  };
+  let launchSpec: AgentLaunchSpec;
+  if (env.agentConfigId) {
+    const agentConfigId = env.agentConfigId;
+    const accessCtx = { organizationId: env.organizationId ?? "", userId, role: "owner" as const };
+    const resolvedAgentConfig = await getReadableAgentConfigById(accessCtx, agentConfigId);
+    if (!resolvedAgentConfig) {
+      logError(
+        `[instance] spawnInstanceFromEnvironment: agentConfigId='${agentConfigId}' not found for environmentId='${environmentId}', org='${env.organizationId ?? ""}'`,
+      );
+      throw new NotFoundError(`AgentConfig '${agentConfigId}' not found`);
+    }
+    agentMachineId = resolvedAgentConfig.machineId ?? null;
+    log(
+      `[instance] spawnInstanceFromEnvironment: resolved agentConfig id='${resolvedAgentConfig.id}', sourceOrg='${resolvedAgentConfig.organizationId}', modelRef='${resolvedAgentConfig.model ?? ""}', machineId='${agentMachineId ?? ""}'`,
+    );
+    launchSpec = await buildLaunchSpec({
+      ...launchContext,
+      agentConfig: resolvedAgentConfig,
+      environmentSecret: env.secret,
+    });
+  } else {
+    log(
+      `[instance] spawnInstanceFromEnvironment: environmentId='${environmentId}' has no agentConfigId, fallback to minimal launch spec`,
+    );
+    launchSpec = await buildBasicLaunchSpec(launchContext);
+  }
   log(
     `[instance] spawnInstanceFromEnvironment: launchSpec.model provider='${launchSpec.model.provider}', model='${launchSpec.model.model}', modelName='${launchSpec.model.modelName ?? ""}', baseUrl='${launchSpec.model.baseUrl}', hasApiKey=${Boolean(launchSpec.model.apiKey)}`,
   );

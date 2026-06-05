@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { getBaseUrl } from "../config";
 import { db } from "../db";
 import { agentConfigSkill, mcpServer, model, provider, skill } from "../db/schema";
@@ -268,6 +268,57 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Pro
   };
 }
 
+/**
+ * 为“无 AgentConfig 绑定”的最小启动路径解析一个可运行模型。
+ *
+ * 1. 不继承任何 prompt / skill / MCP
+ * 2. 仅从当前用户可读的 provider/model 中挑第一个可用项
+ * 3. 如果一个模型都没有，则直接报错，引导用户先完成基础模型配置
+ */
+async function resolveFirstReadableModelConfig(input: {
+  organizationId: string;
+  userId: string;
+  environmentId?: string;
+}): Promise<ModelConfig> {
+  const sortedProviders = await db
+    .select()
+    .from(provider)
+    .where(eq(provider.organizationId, input.organizationId))
+    .orderBy(asc(provider.createdAt), asc(provider.id));
+
+  for (const providerRow of sortedProviders) {
+    const modelRows = await db
+      .select()
+      .from(model)
+      .where(and(eq(model.organizationId, providerRow.organizationId), eq(model.providerId, providerRow.id)))
+      .orderBy(asc(model.createdAt), asc(model.id))
+      .limit(1);
+    const firstModel = modelRows[0];
+    if (!firstModel) {
+      log(
+        `[launch-spec-builder] resolveFirstReadableModelConfig: skip provider without model org='${providerRow.organizationId}', provider='${providerRow.id}'`,
+      );
+      continue;
+    }
+
+    log(
+      `[launch-spec-builder] resolveFirstReadableModelConfig: selected provider='${providerRow.organizationId}/${providerRow.id}', model='${firstModel.modelId}'`,
+    );
+    return {
+      provider: providerRow.name,
+      protocol: toLaunchModelProtocol(providerRow.protocol, providerRow.name, input.environmentId ?? "minimal"),
+      baseUrl: providerRow.baseUrl || "",
+      apiKey: providerRow.apiKey || "",
+      model: firstModel.modelId,
+    };
+  }
+
+  throwInvalidConfig(
+    "Default agent requires at least one configured model. Please configure a model first, then retry.",
+    `[launch-spec-builder] resolveFirstReadableModelConfig: no readable model for org='${input.organizationId}', user='${input.userId}', environmentId='${input.environmentId ?? ""}'. minimal launch spec requires at least one readable model`,
+  );
+}
+
 /** 递归收集目录下所有文件的最晚修改时间 */
 function getLatestMtime(dir: string): number {
   let latest = 0;
@@ -467,6 +518,14 @@ export interface BuildLaunchSpecInput {
   extraEnv?: Record<string, string>;
 }
 
+/** 未绑定 AgentConfig 时的最小启动参数。 */
+export interface BuildBasicLaunchSpecInput {
+  organizationId: string;
+  userId: string;
+  environmentId?: string;
+  extraEnv?: Record<string, string>;
+}
+
 /** 可替换的 buildLaunchSpec 实现（测试时注入 mock） */
 let _buildLaunchSpec: ((input: BuildLaunchSpecInput) => Promise<AgentLaunchSpec>) | null = null;
 
@@ -556,5 +615,31 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     model,
     skills,
     mcpServers,
+  };
+}
+
+/**
+ * 构造一个不依赖 AgentConfig 的最小 LaunchSpec。
+ *
+ * 上层会决定哪些环境允许走这条路径；builder 这里只负责产出一个
+ * “第一个可用模型 + 空资源集”的最小运行配置。
+ */
+export async function buildBasicLaunchSpec(input: BuildBasicLaunchSpecInput): Promise<AgentLaunchSpec> {
+  const modelConfig = await resolveFirstReadableModelConfig(input);
+  log(
+    `[launch-spec-builder] buildBasicLaunchSpec: org='${input.organizationId}', user='${input.userId}', environmentId='${input.environmentId ?? ""}', provider='${modelConfig.provider}', model='${modelConfig.model}'`,
+  );
+
+  return {
+    organizationId: input.organizationId,
+    userId: input.userId,
+    ...(input.environmentId ? { environmentId: input.environmentId } : {}),
+    env: input.extraEnv ?? {},
+    agent: {
+      name: "build",
+    },
+    model: modelConfig,
+    skills: [],
+    mcpServers: [],
   };
 }

@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { agentConfigSkill, mcpServer, model, provider } from "../db/schema";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
-import { spawnInstanceFromEnvironment } from "../services/instance";
-import { buildLaunchSpec } from "../services/launch-spec-builder";
+import { buildBasicLaunchSpec, buildLaunchSpec } from "../services/launch-spec-builder";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const now = new Date("2026-06-05T00:00:00.000Z");
@@ -54,35 +53,79 @@ describe("launch spec builder errors", () => {
     setListAgentKnowledgeBindingsById(async () => []);
   });
 
-  // 没绑定 agentConfig 的 environment 应直接报配置错误，而不是进入默认 general fallback
-  test("environment missing agentConfigId throws INVALID_CONFIG", async () => {
-    await expect(
-      spawnInstanceFromEnvironment("user_1", "env_1", {
-        id: "env_1",
-        name: "demo",
-        description: null,
-        workspacePath: "/tmp/demo",
-        agentConfigId: null,
-        secret: "sec_1",
-        machineName: null,
-        directory: null,
-        branch: null,
-        gitRepoUrl: null,
-        maxSessions: 1,
-        workerType: "acp",
-        capabilities: null,
-        status: "idle",
-        username: null,
-        userId: "user_1",
-        organizationId: "org_1",
-        autoStart: true,
-        lastPollAt: null,
-        createdAt: now,
-        updatedAt: now,
+  // 没绑定 agentConfig 时应退回到最小 launch spec，只保留第一个可用模型
+  test("buildBasicLaunchSpec uses first available model without extra resources", async () => {
+    stubDb({
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => ({
+            orderBy: () => {
+              if (table === provider) {
+                return Promise.resolve([
+                  {
+                    id: "provider_demo",
+                    userId: "user_owner",
+                    organizationId: "org_current",
+                    name: "openai",
+                    displayName: "OpenAI",
+                    protocol: "openai",
+                    baseUrl: "https://internal.example.com",
+                    apiKey: "internal-key",
+                    extraOptions: {},
+                    createdAt: now,
+                    updatedAt: now,
+                  },
+                ]);
+              }
+              return {
+                limit: async () => {
+                  if (table === model) {
+                    return [
+                      {
+                        id: "model_demo",
+                        organizationId: "org_current",
+                        providerId: "provider_demo",
+                        modelId: "gpt-4o",
+                        displayName: "GPT-4o",
+                        modalities: null,
+                        limitConfig: null,
+                        cost: null,
+                        options: null,
+                        createdAt: now,
+                        updatedAt: now,
+                      },
+                    ];
+                  }
+                  return [];
+                },
+              };
+            },
+          }),
+        }),
       }),
-    ).rejects.toMatchObject({
-      code: "INVALID_CONFIG",
-      message: "Environment has no agentConfig bound",
+    });
+
+    await expect(
+      buildBasicLaunchSpec({
+        organizationId: "org_current",
+        userId: "user_owner",
+        environmentId: "env_basic",
+      }),
+    ).resolves.toEqual({
+      organizationId: "org_current",
+      userId: "user_owner",
+      environmentId: "env_basic",
+      env: {},
+      agent: { name: "build" },
+      model: {
+        provider: "openai",
+        protocol: "openai",
+        baseUrl: "https://internal.example.com",
+        apiKey: "internal-key",
+        model: "gpt-4o",
+      },
+      skills: [],
+      mcpServers: [],
     });
   });
 
