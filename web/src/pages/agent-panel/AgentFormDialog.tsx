@@ -1,3 +1,4 @@
+import { Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -35,7 +36,6 @@ import { dispatchConfigChange } from "../../lib/config-events";
 import { getSkillOptionValue, mapSkillOptions } from "../../lib/skill-resource-access";
 import type { ModelEntry, ResourceAccess } from "../../types/config";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
-import { Plus, X } from "lucide-react";
 
 interface AgentFormDialogProps {
   open: boolean;
@@ -625,6 +625,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                             type="button"
                             onClick={() => {
                               setFormPrompt(tpl.prompt);
+                              if (!isEdit) setFormName(tpl.name);
                               setSelectedTemplateId(tpl.id);
                               if (tpl.skills.length > 0) {
                                 const matchedSkillIds = tpl.skills
