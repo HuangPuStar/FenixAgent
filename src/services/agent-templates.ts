@@ -45,8 +45,8 @@ export function loadAgentTemplates(): AgentTemplate[] {
     const id = filename.replace(/\.md$/, "");
     const raw = readFileSync(join(dir, filename), "utf-8");
 
-    // 解析 YAML frontmatter
-    const frontmatterMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    // 解析 YAML frontmatter（兼容 \n / \r\n / \r 换行）
+    const frontmatterMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
     let name = id;
     let description = "";
     let prompt = raw;
