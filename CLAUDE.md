@@ -290,7 +290,7 @@ VALUES ('<sha256哈希值>', <journal中的when时间戳>);
 
 **架构约束**：
 
-1. **配置写入竞争**：`config-pg.ts` 无分布式锁，并发 upsert 可能竞态
+1. **配置写入竞争**：`src/services/config/` 下的配置写入逻辑无分布式锁，并发 upsert 可能竞态
 2. **acp-link spawn 认证**：本地 WS 始终 auth，自动生成 64 位 hex token，relay 须从 stdout 正则捕获
 3. **acp-link 端口残留**：服务器重启不会杀旧进程，需先清理否则 `EADDRINUSE`
 4. **acp-link standalone 模式**：spawn 时不设 `ACP_RCS_URL`，opencode 子进程由 relay 连接触发
