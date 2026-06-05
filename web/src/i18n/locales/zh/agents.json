@@ -41,6 +41,9 @@
       "more": "更多"
     }
   },
+  "templates": {
+    "title": "快速模板"
+  },
   "form": {
     "name": "名称",
     "namePlaceholder": "例如 my-agent",

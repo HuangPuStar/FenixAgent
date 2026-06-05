@@ -41,6 +41,9 @@
       "more": "More"
     }
   },
+  "templates": {
+    "title": "Quick Templates"
+  },
   "form": {
     "name": "Name",
     "namePlaceholder": "e.g. my-agent",

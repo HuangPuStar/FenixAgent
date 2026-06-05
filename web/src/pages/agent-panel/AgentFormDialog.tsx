@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { agentApi, envApi, instanceApi, kbApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
+import type { AgentTemplate } from "../../../../packages/sdk/src/modules/config";
 import { PermissionTab } from "../../components/PermissionTab";
 import { NS } from "../../i18n";
 import { canManageAgentSharing, getAgentDisplayName, isAgentWritable } from "../../lib/agent-resource-access";
@@ -97,6 +98,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [displayAgentName, setDisplayAgentName] = useState("");
   const [relatedResources, setRelatedResources] = useState<AgentRelatedResourcesView | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "permission" | "skills" | "more">("basic");
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
@@ -119,6 +122,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setCurrentAgentId(null);
     setDisplayAgentName("");
     setRelatedResources(undefined);
+    setSelectedTemplateId(null);
 
     // 加载在线机器列表
     registryApi.list({ status: "online", limit: 100 }).then(({ data, error }) => {
@@ -195,6 +199,12 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           toast.error(t("knowledge.loadError", { message: (err as Error).message }));
         })
         .finally(() => setLoading(false));
+
+      agentApi.templates().then(({ data, error }) => {
+        if (!error && data?.templates) {
+          setTemplates(data.templates);
+        }
+      });
     } else {
       setFormName(defaultName ?? "");
       setFormSteps("50");
@@ -207,6 +217,13 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       setFormHidden(false);
       setFormDisable(false);
       setFormPublicReadable(false);
+      setSelectedTemplateId(null);
+
+      agentApi.templates().then(({ data, error }) => {
+        if (!error && data?.templates) {
+          setTemplates(data.templates);
+        }
+      });
 
       modelApi.get().then(({ data, error }) => {
         if (error) return;
@@ -596,6 +613,31 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                       </SelectContent>
                     </Select>
                   </div>
+                  {templates.length > 0 && (
+                    <div>
+                      <Label className="mb-2 block">{t("templates.title")}</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {templates.map((tpl) => (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => {
+                              setFormPrompt(tpl.prompt);
+                              setSelectedTemplateId(tpl.id);
+                            }}
+                            className={`text-left rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${
+                              selectedTemplateId === tpl.id
+                                ? "border-primary bg-primary/5 text-text-bright"
+                                : "border-border-subtle hover:border-primary/40 text-text-secondary hover:text-text-bright"
+                            }`}
+                          >
+                            <p className="text-sm font-medium">{tpl.name}</p>
+                            <p className="text-xs text-text-muted mt-0.5 line-clamp-2">{tpl.description}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {(canManageAgentSharing({ name: agentIdentityName, resourceAccess: formResourceAccess }) ||
                     !isEdit) && (
                     <label className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm">

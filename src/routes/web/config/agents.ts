@@ -398,6 +398,12 @@ async function handleDelete(ctx: AuthContext, name: string) {
   return configSuccess(null);
 }
 
+import { loadAgentTemplates, type AgentTemplate } from "../../../services/agent-templates";
+
+function handleTemplates() {
+  return configSuccess({ templates: loadAgentTemplates() });
+}
+
 async function handleSetDefault(ctx: AuthContext, name: string) {
   const agent = await configPg.getAgentConfig(ctx, name);
   if (!agent) return configNotFound(`Agent '${name}' not found`);
@@ -423,11 +429,13 @@ app.post(
       data: b.data as Record<string, unknown> | undefined,
     };
     // get/set/create/delete/set_default 都需要 name
-    if (action !== "list" && !name) {
+    if (action !== "list" && action !== "templates" && !name) {
       return error(400, configValidationError("Missing 'name' field"));
     }
     try {
       switch (action) {
+        case "templates":
+          return handleTemplates();
         case "list":
           return await handleList(authCtx);
         case "get":

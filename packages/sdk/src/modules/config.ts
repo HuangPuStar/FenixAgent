@@ -57,7 +57,17 @@ export class ModelApi extends BaseApi {
   }
 }
 
+export interface AgentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+}
+
 export class AgentApi extends BaseApi {
+  async templates(): Promise<ApiResult<{ templates: AgentTemplate[] }>> {
+    return this.post<{ templates: AgentTemplate[] }>("/web/config/agents", { action: "templates" });
+  }
   async list(): Promise<ApiResult<{ default_agent: string | null; agents: AgentInfo[] }>> {
     return this.post<{ default_agent: string | null; agents: AgentInfo[] }>("/web/config/agents", { action: "list" });
   }
