@@ -35,7 +35,7 @@ function createLazyMock(keys: readonly string[], getStub: (name: string) => any)
   return obj;
 }
 
-// ── config-pg 导出名称 ──
+// ── config service barrel 导出名称 ──
 
 const CONFIG_PG_KEYS = [
   "AGENT_SETTABLE_FIELDS",
@@ -52,7 +52,6 @@ const CONFIG_PG_KEYS = [
   "getAgentConfig",
   "getAgentConfigById",
   "getAgentConfigByResourceKey",
-  "getAgentFullConfig",
   "getReadableAgentConfigById",
   "getMcpServer",
   "getMcpServerByResourceKey",

@@ -16,8 +16,6 @@ export {
   validateAgentData,
 } from "./agent-config";
 export { listAgentSkillIds, syncAgentSkills } from "./agent-config-skill";
-export type { AgentFullConfig } from "./aggregate";
-export { getAgentFullConfig } from "./aggregate";
 export { parseJsonb, parseJsonbOr } from "./jsonb";
 export {
   assertMcpServerInternalWritable,
