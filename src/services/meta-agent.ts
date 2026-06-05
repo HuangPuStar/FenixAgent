@@ -202,12 +202,18 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
       );
       continue;
     }
+    log(
+      `[meta-agent] Queuing built-in skill "${builtin.name}": ${builtin.files.length} files, existing=${!!existing}, isMetaBuiltin=${existing ? isMetaBuiltin(existing) : "N/A"}`,
+    );
     allFiles.push(...builtin.files);
   }
 
   if (allFiles.length > 0) {
     try {
       const result = await importSkillDirectories(ctx, allFiles, "overwrite");
+      log(
+        `[meta-agent] importSkillDirectories result: imported=${result.imported.map((i) => i.name).join(",")}, skipped=${result.skipped.join(",")}`,
+      );
       const importedNames = new Set(result.imported.map((i) => i.name));
       for (const imported of result.imported) {
         log(`[meta-agent] Registered built-in skill: ${imported.name} (path=${imported.path})`);
