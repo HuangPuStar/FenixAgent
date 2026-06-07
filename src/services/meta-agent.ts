@@ -176,7 +176,7 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
       // 将 .agents/skills/{name}/ 下的额外文件（references/ 等）同步到 data/skills/{name}/
       const builtinDir = join(process.cwd(), BUILTIN_SKILLS_DIR, builtin.name);
       const targetRoot = getGlobalSkillsDir();
-      const targetDir = getSkillSourceDir(targetRoot, builtin.name);
+      const targetDir = getSkillSourceDir(targetRoot, ctx.organizationId, builtin.name);
       const extraEntries = readdirSync(builtinDir).filter((e) => e !== "SKILL.md");
       for (const extra of extraEntries) {
         const src = join(builtinDir, extra);
@@ -186,7 +186,7 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
 
       // 有额外文件时需要重建 archive 以包含 references 等目录
       if (extraEntries.length > 0) {
-        const archivePath = getSkillArchivePath(targetRoot, builtin.name);
+        const archivePath = getSkillArchivePath(targetRoot, ctx.organizationId, builtin.name);
         await buildSkillArchive(targetDir, archivePath);
       }
 

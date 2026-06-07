@@ -23,8 +23,13 @@ function installMocks() {
   };
   const skillFs = {
     assertValidSkillName: (name: string) => name.trim(),
-    getSkillSourceDir: (skillRoot: string, name: string) => `${skillRoot}/${name}`,
-    getSkillArchivePath: (skillRoot: string, name: string) => `${skillRoot}/${name}.zip`,
+    getSkillOrganizationDir: (skillRoot: string, organizationId: string) => `${skillRoot}/${organizationId}`,
+    getSkillSourceDir: (skillRoot: string, organizationId: string, name: string) =>
+      `${skillRoot}/${organizationId}/${name}`,
+    getSkillMdPath: (skillRoot: string, organizationId: string, name: string) =>
+      `${skillRoot}/${organizationId}/${name}/SKILL.md`,
+    getSkillArchivePath: (skillRoot: string, organizationId: string, name: string) =>
+      `${skillRoot}/${organizationId}/${name}.zip`,
     buildSkillArchive: mock(async () => {}),
     deleteSkillArchive: mock(async () => {}),
     createSkillValidationError: (msg: string) => {
@@ -93,7 +98,7 @@ describe("skill import name overwrite semantics", () => {
   test("首次同名上传返回 conflicts 且不写入文件和 PG", async () => {
     const { configPg, skillFs } = installMocks();
     configPg.getSkill.mockImplementationOnce(
-      async () => ({ name: "demo", enabled: true, contentPath: `${root}/demo/SKILL.md` }) as unknown as null,
+      async () => ({ name: "demo", enabled: true, organizationId: "org-1" }) as unknown as null,
     );
 
     const result = await importSkillDirectories(ctx, [makeFile("demo")]);
@@ -101,7 +106,7 @@ describe("skill import name overwrite semantics", () => {
     expect(result).toEqual({
       imported: [],
       skipped: [],
-      conflicts: [{ name: "demo", enabled: true, path: `${root}/demo/SKILL.md` }],
+      conflicts: [{ name: "demo", enabled: true, path: `${root}/org-1/demo/SKILL.md` }],
     });
     expect(skillFs.writeImportFiles).not.toHaveBeenCalled();
     expect(skillFs.cleanupWrittenSkills).not.toHaveBeenCalled();
@@ -116,7 +121,7 @@ describe("skill import name overwrite semantics", () => {
     configPg.getSkill.mockImplementation(async (...args: unknown[]) => {
       const name = args[1];
       return typeof name === "string" && name === "existing"
-        ? ({ name, enabled: true, contentPath: `${root}/${name}/SKILL.md` } as unknown as null)
+        ? ({ name, enabled: true, organizationId: "org-1" } as unknown as null)
         : null;
     });
 
@@ -128,7 +133,6 @@ describe("skill import name overwrite semantics", () => {
     expect(configPg.deleteSkill).not.toHaveBeenCalled();
     expect(configPg.upsertSkill).toHaveBeenCalledWith(ctx, "fresh", {
       description: "fresh desc",
-      contentPath: `${root}/fresh/SKILL.md`,
     });
   });
 
@@ -141,8 +145,7 @@ describe("skill import name overwrite semantics", () => {
       content: "---\nname: other-name\ndescription: New\n---\nBody",
     };
     configPg.getSkill.mockImplementationOnce(
-      async () =>
-        ({ name: "folder-name", enabled: true, contentPath: `${root}/folder-name/SKILL.md` }) as unknown as null,
+      async () => ({ name: "folder-name", enabled: true, organizationId: "org-1" }) as unknown as null,
     );
 
     const result = await importSkillDirectories(ctx, [file], "overwrite");
@@ -150,7 +153,6 @@ describe("skill import name overwrite semantics", () => {
     expect(configPg.deleteSkill).toHaveBeenCalledWith(ctx, "folder-name");
     expect(configPg.upsertSkill).toHaveBeenCalledWith(ctx, "folder-name", {
       description: "New",
-      contentPath: `${root}/folder-name/SKILL.md`,
     });
     expect(result.imported[0]?.name).toBe("folder-name");
   });

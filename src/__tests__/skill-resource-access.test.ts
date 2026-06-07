@@ -33,7 +33,6 @@ function skillMeta(overrides: Record<string, unknown> = {}) {
     organizationId: "org-current",
     name: "demo",
     description: "Demo",
-    contentPath: `${root}/demo/SKILL.md`,
     metadata: {},
     createdAt: new Date("2026-06-01T00:00:00.000Z"),
     updatedAt: new Date("2026-06-01T00:00:00.000Z"),
@@ -55,8 +54,13 @@ function installMocks() {
       if (name.includes("/")) throw new Error("resource key should not be validated as skill name");
       return name.trim();
     },
-    getSkillSourceDir: (skillRoot: string, name: string) => `${skillRoot}/${name}`,
-    getSkillArchivePath: (skillRoot: string, name: string) => `${skillRoot}/${name}.zip`,
+    getSkillOrganizationDir: (skillRoot: string, organizationId: string) => `${skillRoot}/${organizationId}`,
+    getSkillSourceDir: (skillRoot: string, organizationId: string, name: string) =>
+      `${skillRoot}/${organizationId}/${name}`,
+    getSkillMdPath: (skillRoot: string, organizationId: string, name: string) =>
+      `${skillRoot}/${organizationId}/${name}/SKILL.md`,
+    getSkillArchivePath: (skillRoot: string, organizationId: string, name: string) =>
+      `${skillRoot}/${organizationId}/${name}.zip`,
     buildSkillArchive: mock(async () => {}),
     deleteSkillArchive: mock(async () => {}),
     createSkillValidationError: (msg: string) => {
@@ -95,7 +99,7 @@ afterEach(() => {
 });
 
 describe("skill resource access orchestration", () => {
-  // listSkills 透传内部和外部 resourceAccess，外部保留源 contentPath。
+  // listSkills 透传内部和外部 resourceAccess，外部路径按源组织推导。
   test("listSkills 透传 resourceAccess", async () => {
     const { configPg } = installMocks();
     configPg.listSkills.mockImplementationOnce(async () => [
@@ -103,7 +107,6 @@ describe("skill resource access orchestration", () => {
       skillMeta({
         id: "skill-external",
         organizationId: "org-source",
-        contentPath: "/source/shared/SKILL.md",
         resourceAccess: externalAccess,
       }),
     ]);
@@ -114,17 +117,16 @@ describe("skill resource access orchestration", () => {
       "org-current/skill-internal",
       "org-source/skill-external",
     ]);
-    expect(rows[1].path).toBe("/source/shared/SKILL.md");
+    expect(rows[1].path).toBe(`${root}/org-source/demo/SKILL.md`);
   });
 
-  // getSkill(resourceKey) 通过 getSkillByResourceKey 读取源 contentPath。
+  // getSkill(resourceKey) 通过源组织推导 SKILL.md 路径。
   test("getSkill 支持 resourceKey 并读取源路径", async () => {
     const { configPg, skillFs } = installMocks();
     configPg.getSkillByResourceKey.mockImplementationOnce(async () =>
       skillMeta({
         id: "skill-external",
         organizationId: "org-source",
-        contentPath: "/source/shared/SKILL.md",
         resourceAccess: externalAccess,
       }),
     );
@@ -132,7 +134,7 @@ describe("skill resource access orchestration", () => {
     const detail = await getSkill(ctx, "org-source/skill-external");
 
     expect(configPg.getSkillByResourceKey).toHaveBeenCalledWith(ctx, "org-source/skill-external");
-    expect(skillFs.readSkillDetailFromMd).toHaveBeenCalledWith("/source/shared/SKILL.md");
+    expect(skillFs.readSkillDetailFromMd).toHaveBeenCalledWith(`${root}/org-source/demo/SKILL.md`);
     expect(detail?.resourceAccess?.writable).toBe(false);
   });
 
@@ -148,7 +150,7 @@ describe("skill resource access orchestration", () => {
     expect(configPg.upsertSkill).toHaveBeenCalledWith(
       ctx,
       "demo",
-      { description: "Demo", contentPath: `${root}/demo/SKILL.md`, metadata: undefined },
+      { description: "Demo", metadata: undefined },
       { publicReadable: true },
     );
   });

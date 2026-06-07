@@ -15,8 +15,12 @@ beforeEach(() => {
   } as any;
   _deps.skillFs = {
     assertValidSkillName: (name: string) => name.trim(),
-    getSkillSourceDir: (root: string, name: string) => `${root}/${name}`,
-    getSkillArchivePath: (root: string, name: string) => `${root}/${name}.zip`,
+    getSkillOrganizationDir: (root: string, organizationId: string) => `${root}/${organizationId}`,
+    getSkillSourceDir: (root: string, organizationId: string, name: string) => `${root}/${organizationId}/${name}`,
+    getSkillMdPath: (root: string, organizationId: string, name: string) =>
+      `${root}/${organizationId}/${name}/SKILL.md`,
+    getSkillArchivePath: (root: string, organizationId: string, name: string) =>
+      `${root}/${organizationId}/${name}.zip`,
     buildSkillArchive: mock(async () => {}),
     deleteSkillArchive: mock(async () => {}),
     createSkillValidationError: (msg: string) => {
@@ -76,7 +80,7 @@ describe("importSkillDirectories PG deletes 并行化", () => {
   test("overwrite 策略下冲突 skill 的 PG delete 应并行执行", async () => {
     getSkillMock.mockImplementation(async (_ctx: any, name: string) => ({
       name,
-      contentPath: `/path/${name}/SKILL.md`,
+      organizationId: "test-org",
     }));
 
     await importSkillDirectories(

@@ -559,13 +559,25 @@ export const skill = pgTable(
     organizationId: text("organization_id").notNull(),
     name: varchar("name").notNull(),
     description: text("description"),
-    contentPath: text("content_path"),
     metadata: jsonb("metadata"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     orgNameIdx: uniqueIndex("idx_skill_org_name").on(table.organizationId, table.name),
+  }),
+);
+
+// 启动数据迁移执行记录
+export const dataMigrateRecord = pgTable(
+  "data_migrate_record",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    nameIdx: uniqueIndex("idx_data_migrate_record_name").on(table.name),
   }),
 );
 

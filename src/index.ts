@@ -31,6 +31,7 @@ import webApp from "./routes/web";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import { closeCache } from "./services/cache";
 import { getCoreRuntime } from "./services/core-bootstrap";
+import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
 import { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment, stopAllInstances } from "./services/instance";
 import { syncBuiltinSkills } from "./services/meta-agent";
@@ -42,6 +43,9 @@ import { closeAllRelayConnections } from "./transport/relay";
 
 await initDb();
 startupLog.info("Database initialized");
+
+await runDataMigrations();
+startupLog.info("Data migrations completed");
 
 // 重启时重置所有 agent_session 状态为 idle
 // WebSocket/EventBus 已断开，之前的运行状态不再有效
