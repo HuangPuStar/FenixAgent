@@ -15,6 +15,7 @@ function makeEnv(skillDir: string): Env {
     RCS_BASE_URL: "",
     RCS_VERSION: "0.1.0",
     SKILL_DIR: skillDir,
+    RCS_SYSTEM_ADMIN_PASSWORD_FILE: "./data/password.txt",
     APP_BRAND_NAME: "Fenix",
     APP_LOGO_PATH: "",
     RCS_POLL_TIMEOUT: 8,
