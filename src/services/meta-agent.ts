@@ -19,6 +19,7 @@ import { createAgentConfig, getAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
 import { deleteSkill, getSkill, listSkills } from "./config/skill";
+import { setPublicRead } from "./resource-permission";
 import { getGlobalSkillsDir, setSkill } from "./skill";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
@@ -72,7 +73,7 @@ async function resolveDefaultMetaModelRef(ctx: AuthContext): Promise<string | nu
   return null;
 }
 
-/** 解析 SKILL.md 的 frontmatter，提取 name 和 description */
+/** 解析内置 SKILL.md 的最小 frontmatter；这里只提取同步阶段真正需要的字段。 */
 function parseSkillFrontmatter(raw: string): { name: string; description: string } | null {
   const match = raw.match(/^---\s*\n([\s\S]*?)\n---/);
   if (!match) return null;
@@ -89,7 +90,7 @@ function parseSkillFrontmatter(raw: string): { name: string; description: string
   };
 }
 
-/** 扫描内置 skill 目录，返回每个 skill 的 { name, description, content } */
+/** 扫描仓库内置 skill 源目录；这里读取的是源码模板，不是运行时组织目录。 */
 function scanBuiltinSkills(): { name: string; description: string; content: string }[] {
   const skillsDir = join(process.cwd(), BUILTIN_SKILLS_DIR);
   if (!existsSync(skillsDir)) {
@@ -124,9 +125,8 @@ function scanBuiltinSkills(): { name: string; description: string; content: stri
 /**
  * 同步内置 skill 到 PG + 文件系统（`data/skills/`）。
  *
- * 服务器启动时对每个组织调用一次，确保 `.agents/skills/` 下的内置 skill
- * 通过 `setSkill` 正规流程注册到 DB 和文件系统。
- * 同时清理文件系统中已移除的孤儿 skill。
+ * 将 `.agents/skills/` 下的内置 skill 同步到指定组织。
+ * 该函数只负责“把 builtin 写进目标组织”，不负责启动期的系统级编排。
  */
 export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
   const builtinSkills = scanBuiltinSkills();
@@ -197,9 +197,53 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
   }
 }
 
+/** 将当前组织下已同步的 builtin 名称反查成 skill id，供后续绑定 AgentConfig 或公开设置。 */
+async function listBuiltinSkillIds(ctx: AuthContext): Promise<string[]> {
+  const skillIds: string[] = [];
+  for (const builtin of scanBuiltinSkills()) {
+    const existing = await getSkill(ctx, builtin.name);
+    if (existing?.id) {
+      skillIds.push(existing.id);
+    }
+  }
+  return skillIds;
+}
+
 /**
- * 确保内置 skill 已注册到 DB + 文件系统，并绑定到 meta AgentConfig。
- * 自动清理文件系统中已移除的孤儿 skill。
+ * 将 builtin skill 同步到系统 admin 组织，并统一设置为公开可读。
+ * 这样其他组织通过现有 external/public readable 机制访问，不再复制物理副本。
+ */
+export async function syncBuiltinSkillsToSystemAdmin(
+  ctx: AuthContext,
+  deps: {
+    syncBuiltinSkills?: (ctx: AuthContext) => Promise<void>;
+    listBuiltinSkillIds?: (ctx: AuthContext) => Promise<string[]>;
+    setSkillPublicReadable?: (skillId: string) => Promise<void>;
+  } = {},
+): Promise<void> {
+  const syncBuiltinSkillsFn = deps.syncBuiltinSkills ?? syncBuiltinSkills;
+  const listBuiltinSkillIdsFn = deps.listBuiltinSkillIds ?? listBuiltinSkillIds;
+  // 公开读设置保留在这里，而不是塞进 setSkill 流程里，
+  // 因为“系统托管 + 全组织共享”是 builtin 编排策略，不是普通 skill 写入的默认语义。
+  const setSkillPublicReadable =
+    deps.setSkillPublicReadable ??
+    ((skillId: string) => setPublicRead(ctx, "skill", ctx.organizationId, skillId, true));
+
+  await syncBuiltinSkillsFn(ctx);
+  for (const skillId of await listBuiltinSkillIdsFn(ctx)) {
+    await setSkillPublicReadable(skillId);
+  }
+  log(`[meta-agent] Builtin skills hosted under admin organization ${ctx.organizationId}`);
+}
+
+/**
+ * 收集当前组织可读的 builtin skill 并绑定到 meta AgentConfig。
+ * builtin skill 统一托管在系统 admin 组织下，这里只做读取与绑定，不再为业务组织写本地副本。
+ *
+ * 这意味着：
+ * - 系统 admin 组织会绑定本地托管的 builtin skill
+ * - 业务组织只会绑定“通过公开读可见”的 external skill
+ * - `ensureMetaConfig()` 不再承担 builtin 物理同步职责，避免重新回到每组织复制一份的旧模型
  * 返回 meta AgentConfig ID。
  */
 async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
@@ -218,17 +262,8 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     }
   }
 
-  // 同步内置 skill（注册 + 清理孤儿）
-  await syncBuiltinSkills(ctx);
-
   // 收集所有应绑定到 meta AgentConfig 的 skill ID
-  const skillIds: string[] = [];
-  for (const builtin of scanBuiltinSkills()) {
-    const existing = await getSkill(ctx, builtin.name);
-    if (existing?.id) {
-      skillIds.push(existing.id);
-    }
-  }
+  const skillIds = await listBuiltinSkillIds(ctx);
 
   // 全量覆盖 meta AgentConfig 的 skill 绑定
   await syncAgentSkills(agentConfig.id, skillIds);
