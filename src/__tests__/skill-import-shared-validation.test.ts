@@ -12,8 +12,12 @@ beforeEach(() => {
   } as any;
   _deps.skillFs = {
     assertValidSkillName: (name: string) => name.trim(),
-    getSkillSourceDir: (root: string, name: string) => `${root}/${name}`,
-    getSkillArchivePath: (root: string, name: string) => `${root}/${name}.zip`,
+    getSkillOrganizationDir: (root: string, organizationId: string) => `${root}/${organizationId}`,
+    getSkillSourceDir: (root: string, organizationId: string, name: string) => `${root}/${organizationId}/${name}`,
+    getSkillMdPath: (root: string, organizationId: string, name: string) =>
+      `${root}/${organizationId}/${name}/SKILL.md`,
+    getSkillArchivePath: (root: string, organizationId: string, name: string) =>
+      `${root}/${organizationId}/${name}.zip`,
     buildSkillArchive: mock(async () => {}),
     deleteSkillArchive: mock(async () => {}),
     createSkillValidationError: (msg: string) => {

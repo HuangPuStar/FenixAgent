@@ -247,7 +247,6 @@ export type SkillMetadata = Record<string, string>;
 /** Data shape accepted by upsertSkill */
 export interface SkillUpsertData {
   description?: string;
-  contentPath?: string;
   metadata?: SkillMetadata;
 }
 
@@ -258,7 +257,6 @@ export interface SkillConfigRowWithAccess {
   organizationId: string;
   name: string;
   description: string | null;
-  contentPath: string | null;
   metadata: unknown;
   createdAt: Date;
   updatedAt: Date;

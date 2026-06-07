@@ -97,7 +97,6 @@ export async function upsertSkill(
 
   const commonFields = {
     description: data.description,
-    contentPath: data.contentPath,
     metadata: data.metadata ?? undefined,
     updatedAt: new Date(),
   };

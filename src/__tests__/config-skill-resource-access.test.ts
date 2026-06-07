@@ -23,7 +23,6 @@ function baseSkillRow() {
     organizationId: "org_current",
     name: "shared",
     description: "internal skill",
-    contentPath: "/skills/current/shared/SKILL.md",
     metadata: {},
     createdAt: now,
     updatedAt: now,
@@ -97,7 +96,6 @@ describe("config skill resource access", () => {
       organizationId: "org_source",
       userId: "user_source",
       description: "external",
-      contentPath: "/skills/source/shared/SKILL.md",
     });
     installDb([[internal], [external]]);
     stubResourcePermissionRepo({

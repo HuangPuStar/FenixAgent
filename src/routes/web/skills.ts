@@ -37,7 +37,7 @@ app.get("/:name/download", async ({ params, query, set }) => {
     return jsonError(404, "not_found", "Skill not found");
   }
 
-  const archivePath = getSkillArchivePath(getGlobalSkillsDir(), name);
+  const archivePath = getSkillArchivePath(getGlobalSkillsDir(), payload.organizationId, name);
   const info = await stat(archivePath).catch(() => null);
   if (!info?.isFile()) {
     return jsonError(404, "not_found", "Skill archive not found");
