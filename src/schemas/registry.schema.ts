@@ -8,6 +8,7 @@ export const MachineSchema = z.object({
   status: z.string(),
   machineInfo: z.record(z.string(), z.unknown()).nullable(),
   labels: z.string().array().nullable(),
+  supportedEngineTypes: z.array(z.object({ type: z.string(), cliPath: z.string().optional() })).nullable(),
   maxSessions: z.number(),
   heartbeatIntervalMs: z.number(),
   lastHeartbeatAt: z.number().nullable(),

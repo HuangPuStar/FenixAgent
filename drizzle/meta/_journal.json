@@ -29,6 +29,13 @@
       "when": 1780828274012,
       "tag": "0003_skill-storage-by-org",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780890601802,
+      "tag": "0004_add-engine-type-fields",
+      "breakpoints": true
     }
   ]
 }

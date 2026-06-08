@@ -127,6 +127,7 @@ export async function registerMachine(params: {
   heartbeatIntervalMs: number;
   tenantId: string | null;
   userId: string | null;
+  supportedEngineTypes: { type: string; cliPath?: string }[];
 }): Promise<{ id: string }> {
   const hostname = params.machineInfo?.hostname as string | undefined;
   const id = deriveMachineId(params.machineInfo);
@@ -155,6 +156,7 @@ export async function registerMachine(params: {
         status: "online",
         machineInfo: params.machineInfo,
         labels: params.labels,
+        supportedEngineTypes: params.supportedEngineTypes,
         heartbeatIntervalMs: params.heartbeatIntervalMs,
         lastHeartbeatAt: now,
         updatedAt: now,
@@ -180,6 +182,7 @@ export async function registerMachine(params: {
     status: "online",
     machineInfo: params.machineInfo,
     labels: params.labels,
+    supportedEngineTypes: params.supportedEngineTypes,
     heartbeatIntervalMs: params.heartbeatIntervalMs,
     lastHeartbeatAt: now,
     registeredAt: now,

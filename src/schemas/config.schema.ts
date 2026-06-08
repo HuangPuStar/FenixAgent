@@ -129,6 +129,7 @@ export const AgentDetailSchema = z.object({
   color: z.string().nullable(),
   description: z.string().nullable(),
   knowledge: z.unknown().nullable(),
+  engineType: z.string().nullable(),
 });
 
 // ── Skills ──

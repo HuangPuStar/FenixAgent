@@ -128,6 +128,9 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   const heartbeatIntervalMs = typeof msg.heartbeat_interval_ms === "number" ? msg.heartbeat_interval_ms : 30000;
   const tenantId = (msg.tenant_id as string) || null;
   const userId = (msg.user_id as string) || null;
+  const supportedEngineTypes = Array.isArray(msg.supported_engine_types)
+    ? (msg.supported_engine_types as { type: string; cliPath?: string }[])
+    : [{ type: "opencode" }];
 
   try {
     const result = await registerMachine({
@@ -137,13 +140,15 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
       heartbeatIntervalMs,
       tenantId,
       userId,
+      supportedEngineTypes,
     });
 
     entry.machineId = result.id;
     log(`Machine registered: id=${result.id} agent=${agentName}`);
 
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
-    registerRemoteNode(result.id, entry.ws, entry);
+    const engineTypes = supportedEngineTypes.map((e) => e.type);
+    registerRemoteNode(result.id, entry.ws, entry, engineTypes);
 
     sendToWs(entry.ws, {
       type: "registered",

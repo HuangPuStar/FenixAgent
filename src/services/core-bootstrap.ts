@@ -94,7 +94,12 @@ export function resetCoreRuntime(): void {
  * 远程 machine 注册成功后，动态注册 remote node 到 core。
  * @param acpEntry 对应的 AcpConnectionEntry，用于在消息路由时注入到 transport
  */
-export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry: AcpConnectionEntry): void {
+export function registerRemoteNode(
+  machineId: string,
+  ws: WsConnection,
+  acpEntry: AcpConnectionEntry,
+  engineTypes?: string[],
+): void {
   const runtime = getCoreRuntime();
 
   // WsConnection 没有 onmessage，通过 injectMessage 由 handleAcpWsMessage 路由
@@ -124,7 +129,7 @@ export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry
   runtime.registerNode({
     id: machineId,
     mode: "remote",
-    engineTypes: [validateEnv().RCS_ENGINE_TYPE],
+    engineTypes: engineTypes ?? ["opencode"],
     status: "online",
     metadata: { machineId },
   });
