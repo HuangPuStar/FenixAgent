@@ -19,7 +19,8 @@ function createAgentConfig(overrides: Record<string, unknown> = {}) {
     organizationId: "org_current",
     name: "demo",
     prompt: null,
-    model: "org_current/provider_demo/gpt-4o",
+    modelId: "model_demo",
+    model: null,
     steps: 10,
     mode: "primary",
     permission: null,
@@ -135,7 +136,7 @@ describe("launch spec builder errors", () => {
       buildLaunchSpec({
         organizationId: "org_current",
         userId: "user_owner",
-        agentConfig: createAgentConfig({ model: null }),
+        agentConfig: createAgentConfig({ modelId: null }),
         environmentSecret: "secret",
       }),
     ).rejects.toMatchObject({

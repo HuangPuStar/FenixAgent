@@ -65,10 +65,11 @@ describe("config SDK modules", () => {
   test("agentApi.create sends create action", async () => {
     fetchMock.body = { success: true, data: { name: "my-agent" } };
     const { agentApi } = await import("../api/sdk");
-    await agentApi.create("my-agent", { model: "gpt-4" });
+    await agentApi.create("my-agent", { modelId: "model-1" });
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     const body = JSON.parse(call[1].body);
     expect(body.action).toBe("create");
+    expect(body.data).toEqual({ modelId: "model-1" });
   });
 
   // 测试 delete skill 发送 delete action

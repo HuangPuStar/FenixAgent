@@ -48,7 +48,7 @@ const externalProvider: ProviderInfo = {
 };
 
 const externalModel: ModelEntry = {
-  id: "shared-model",
+  id: "model-uuid-shared",
   provider: "openai",
   fullId: "openai/shared-model",
   stableFullId: "org-source/provider-external/shared-model",
@@ -100,7 +100,7 @@ describe("provider model resource access flow", () => {
   // AgentFormDialog 模型选项同样优先提交 stableFullId
   test("agent form model options prefer stableFullId", () => {
     expect(mapModelOptions([externalModel])).toEqual([
-      { value: "org-source/provider-external/shared-model", label: "Source Team/openai/shared-model" },
+      { value: "model-uuid-shared", label: "Source Team/openai/shared-model" },
     ]);
   });
 });

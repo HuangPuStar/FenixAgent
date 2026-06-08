@@ -17,7 +17,7 @@ describe("AGENT_SETTABLE_FIELDS top_p 白名单", () => {
 
   test("top_p 和 topP 共存不影响其他字段", () => {
     const expectedFields = [
-      "model",
+      "modelId",
       "prompt",
       "steps",
       "mode",

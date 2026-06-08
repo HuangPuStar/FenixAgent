@@ -195,6 +195,7 @@ export interface AgentInfo {
   name: string;
   builtIn: boolean;
   model: string | null;
+  modelId: string | null;
   modelLabel?: string | null;
   mode: string | null;
   description: string | null;
@@ -210,6 +211,7 @@ export interface AgentDetail {
   name: string;
   builtIn: boolean;
   model: string | null;
+  modelId: string | null;
   prompt: string | null;
   tools: Record<string, boolean> | null;
   steps: number | null;

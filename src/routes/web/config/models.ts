@@ -53,7 +53,9 @@ async function buildAvailableList(ctx: AuthContext): Promise<ModelEntry[]> {
       const limit = (m.limitConfig as { context?: number; output?: number } | undefined) ?? undefined;
       const inheritedAccess = m.providerResourceAccess ?? p.resourceAccess;
       models.push({
-        id: m.modelId,
+        // Agent config now persists modelId as the model table UUID, so the
+        // available list must expose the row id instead of the human model name.
+        id: m.id,
         provider: providerLabel,
         fullId: `${providerLabel}/${m.modelId}`,
         stableFullId: providerResourceKey ? `${providerResourceKey}/${m.modelId}` : undefined,

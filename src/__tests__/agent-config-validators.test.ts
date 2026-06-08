@@ -12,7 +12,7 @@ describe("AGENT_SETTABLE_FIELDS", () => {
   // 确认已知字段都包含在列表中
   it("包含所���期望的可设置字段", () => {
     const expected = [
-      "model",
+      "modelId",
       "prompt",
       "steps",
       "mode",

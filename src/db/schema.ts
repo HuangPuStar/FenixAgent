@@ -317,6 +317,8 @@ export const agentKnowledgeBinding = pgTable(
     knowledgeBaseId: uuid("knowledge_base_id")
       .notNull()
       .references(() => knowledgeBase.id, { onDelete: "cascade" }),
+    // 仅保存知识库策略等配置；knowledgeBaseId 仍由绑定关系本身表达，避免重复存 ID 列表。
+    config: jsonb("config"),
     priority: integer("priority").notNull().default(0),
     enabled: boolean("enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -505,7 +507,10 @@ export const agentConfig = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     organizationId: text("organization_id").notNull(),
     name: varchar("name").notNull(),
+    // 已废弃：不再被读取，后面使用 modelId
     model: varchar("model"),
+    // 运行时正式使用 modelId 关联模型表主键。
+    modelId: uuid("model_id").references(() => model.id, { onDelete: "set null" }),
     prompt: text("prompt"),
     steps: integer("steps"),
     mode: varchar("mode", { length: 20 }),
@@ -517,7 +522,6 @@ export const agentConfig = pgTable(
     hidden: boolean("hidden").notNull().default(false),
     color: varchar("color"),
     description: text("description"),
-    knowledge: jsonb("knowledge"),
     machineId: text("machine_id").references(() => machine.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

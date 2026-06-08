@@ -287,7 +287,7 @@ export interface UserConfigData {
 
 /** Data shape for creating/updating an agent config */
 export interface AgentConfigUpsertData {
-  model?: string | null;
+  modelId?: string | null;
   prompt?: string | null;
   steps?: number | null;
   mode?: string | null;
@@ -311,6 +311,7 @@ export interface AgentConfigRowWithAccess {
   organizationId: string;
   name: string;
   prompt: string | null;
+  modelId: string | null;
   model: string | null;
   steps: number | null;
   mode: string | null;

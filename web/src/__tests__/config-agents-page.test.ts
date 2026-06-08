@@ -122,7 +122,7 @@ describe("buildSubagentFormData", () => {
   test("基本构建", () => {
     const data = buildSubagentFormData({
       name: "my-sub",
-      model: "gpt-4",
+      modelId: "model-1",
       description: "test desc",
       prompt: "do something",
       steps: "50",
@@ -130,7 +130,7 @@ describe("buildSubagentFormData", () => {
     });
     expect(data).toEqual({
       mode: "subagent",
-      model: "gpt-4",
+      modelId: "model-1",
       steps: 50,
       prompt: "do something",
       description: "test desc",
@@ -141,13 +141,13 @@ describe("buildSubagentFormData", () => {
   test("空字符串转 undefined", () => {
     const data = buildSubagentFormData({
       name: "my-sub",
-      model: "",
+      modelId: "",
       description: "",
       prompt: "",
       steps: "30",
       disable: false,
     });
-    expect(data.model).toBeUndefined();
+    expect(data.modelId).toBeUndefined();
     expect(data.prompt).toBeUndefined();
     expect(data.description).toBeUndefined();
   });
@@ -220,7 +220,7 @@ describe("Agent knowledge form helpers", () => {
 
   test("保存时提交 payload 包含 knowledge.knowledgeBaseIds 与 policy.maxResults", () => {
     const payload = buildAgentPayload({
-      model: "gpt-4o",
+      modelId: "model-1",
       mode: "primary",
       steps: "50",
       prompt: "",
@@ -239,6 +239,7 @@ describe("Agent knowledge form helpers", () => {
       },
     });
 
+    expect(payload.modelId).toBe("model-1");
     expect(payload.knowledge).toEqual({
       knowledgeBaseIds: ["kb_a", "kb_b"],
       policy: { searchFirst: true, maxResults: 7 },

@@ -32,7 +32,7 @@ export function getFullAgentColumnKeys(): string[] {
 
 export function buildSubagentFormData(params: {
   name: string;
-  model: string;
+  modelId: string;
   description: string;
   prompt: string;
   steps: string;
@@ -40,7 +40,7 @@ export function buildSubagentFormData(params: {
 }): Record<string, unknown> {
   return {
     mode: "subagent",
-    model: params.model || undefined,
+    modelId: params.modelId || undefined,
     steps: parseInt(params.steps, 10),
     prompt: params.prompt || undefined,
     description: params.description || undefined,
@@ -76,7 +76,7 @@ export function filterKnowledgeBaseIds(selectedIds: string[], knowledgeOptions: 
 }
 
 export function buildAgentPayload(input: {
-  model: string;
+  modelId: string;
   mode: string;
   steps: string;
   prompt: string;
@@ -91,7 +91,7 @@ export function buildAgentPayload(input: {
   knowledge: AgentKnowledgeFormState;
 }) {
   return {
-    model: input.model || undefined,
+    modelId: input.modelId || undefined,
     mode: input.mode,
     steps: parseInt(input.steps, 10),
     prompt: input.prompt || undefined,

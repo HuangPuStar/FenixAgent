@@ -10,7 +10,7 @@ import {
 describe("validateAgentData", () => {
   // 有效数据返回 null
   test("有效数据返回 null", () => {
-    expect(validateAgentData({ model: "gpt-4o", steps: 50, mode: "primary" })).toBeNull();
+    expect(validateAgentData({ modelId: "model_1", steps: 50, mode: "primary" })).toBeNull();
   });
 
   // 无效 mode

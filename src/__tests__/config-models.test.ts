@@ -30,7 +30,7 @@ function seedModel(providerName: string, modelId: string, displayName = modelId)
   _providers.set(providerName, {
     id: providerId,
     name: providerName,
-    models: new Map([[modelId, { displayName }]]),
+    models: new Map([[modelId, { id: `uuid-${providerName}-${modelId}`, displayName }]]),
   });
 }
 
@@ -69,7 +69,7 @@ describe("Models Config Route", () => {
           ...p,
           resourceAccess: internalAccess(p.id),
           models: [...p.models.entries()].map(([modelId, m]) => ({
-            id: "model-uuid",
+            id: (m.id as string) ?? `uuid-${p.name}-${modelId}`,
             providerId: p.id,
             modelId,
             providerResourceAccess: internalAccess(p.id),
@@ -84,7 +84,7 @@ describe("Models Config Route", () => {
           ...p,
           resourceAccess: internalAccess(p.id),
           models: [...p.models.entries()].map(([modelId, m]) => ({
-            id: "model-uuid",
+            id: (m.id as string) ?? `uuid-${p.name}-${modelId}`,
             providerId: p.id,
             modelId,
             providerResourceAccess: internalAccess(p.id),
@@ -123,8 +123,8 @@ describe("Models Config Route", () => {
       id: "prov-anthropic",
       name: "anthropic",
       models: new Map([
-        ["claude-sonnet-4-6", { displayName: "Claude Sonnet 4.6" }],
-        ["claude-haiku-4-5", { displayName: "Claude Haiku 4.5" }],
+        ["claude-sonnet-4-6", { id: "uuid-anthropic-sonnet", displayName: "Claude Sonnet 4.6" }],
+        ["claude-haiku-4-5", { id: "uuid-anthropic-haiku", displayName: "Claude Haiku 4.5" }],
       ]),
     });
     await modelsRoute.handle(
@@ -147,7 +147,7 @@ describe("Models Config Route", () => {
     expect(json.data.current.small_model).toBe("claude-haiku-4-5");
     expect(json.data.available).toHaveLength(2);
     expect(json.data.available[0]).toMatchObject({
-      id: "claude-sonnet-4-6",
+      id: "uuid-anthropic-sonnet",
       provider: "anthropic",
       label: "Claude Sonnet 4.6",
     });
@@ -377,7 +377,11 @@ describe("Models Config Route", () => {
   });
 
   test("set action invalidates available model cache", async () => {
-    _providers.set("p1", { id: "prov-p1", name: "p1", models: new Map([["old-model", { displayName: "Old" }]]) });
+    _providers.set("p1", {
+      id: "prov-p1",
+      name: "p1",
+      models: new Map([["old-model", { id: "uuid-p1-old-model", displayName: "Old" }]]),
+    });
     await modelsRoute.handle(
       new Request("http://localhost/config/models", {
         method: "POST",
@@ -385,7 +389,11 @@ describe("Models Config Route", () => {
         body: JSON.stringify({ action: "get" }),
       }),
     );
-    _providers.set("p1", { id: "prov-p1", name: "p1", models: new Map([["new-model", { displayName: "New" }]]) });
+    _providers.set("p1", {
+      id: "prov-p1",
+      name: "p1",
+      models: new Map([["new-model", { id: "uuid-p1-new-model", displayName: "New" }]]),
+    });
     await modelsRoute.handle(
       new Request("http://localhost/config/models", {
         method: "POST",
@@ -402,14 +410,16 @@ describe("Models Config Route", () => {
     );
     const json = await res.json();
     expect(json.data.available).toHaveLength(1);
-    expect(json.data.available[0].id).toBe("new-model");
+    expect(json.data.available[0].id).toBe("uuid-p1-new-model");
   });
 
   test("set action — available list reflects model with context/output limits", async () => {
     _providers.set("p1", {
       id: "prov-p1",
       name: "p1",
-      models: new Map([["big-model", { displayName: "Big", limitConfig: { context: 200000, output: 8192 } }]]),
+      models: new Map([
+        ["big-model", { id: "uuid-p1-big-model", displayName: "Big", limitConfig: { context: 200000, output: 8192 } }],
+      ]),
     });
     await modelsRoute.handle(
       new Request("http://localhost/config/models", {
@@ -426,7 +436,7 @@ describe("Models Config Route", () => {
       }),
     );
     const json = await res.json();
-    const model = json.data.available.find((m: any) => m.id === "big-model");
+    const model = json.data.available.find((m: any) => m.id === "uuid-p1-big-model");
     expect(model.contextLimit).toBe(200000);
     expect(model.outputLimit).toBe(8192);
   });

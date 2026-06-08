@@ -148,7 +148,7 @@ export async function spawnInstanceFromEnvironment(
     }
     agentMachineId = resolvedAgentConfig.machineId ?? null;
     log(
-      `[instance] spawnInstanceFromEnvironment: resolved agentConfig id='${resolvedAgentConfig.id}', sourceOrg='${resolvedAgentConfig.organizationId}', modelRef='${resolvedAgentConfig.model ?? ""}', machineId='${agentMachineId ?? ""}'`,
+      `[instance] spawnInstanceFromEnvironment: resolved agentConfig id='${resolvedAgentConfig.id}', sourceOrg='${resolvedAgentConfig.organizationId}', modelId='${resolvedAgentConfig.modelId ?? ""}', machineId='${agentMachineId ?? ""}'`,
     );
     launchSpec = await buildLaunchSpec({
       ...launchContext,

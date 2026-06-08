@@ -254,7 +254,8 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
     return db
       .select()
       .from(agentKnowledgeBinding)
-      .where(and(eq(agentKnowledgeBinding.agentConfigId, agentConfigId), eq(agentKnowledgeBinding.enabled, true)));
+      .where(and(eq(agentKnowledgeBinding.agentConfigId, agentConfigId), eq(agentKnowledgeBinding.enabled, true)))
+      .orderBy(agentKnowledgeBinding.priority);
   }
 
   async listByKnowledgeBaseId(knowledgeBaseId: string) {
@@ -309,6 +310,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
         id: agentKnowledgeBinding.id,
         agentConfigId: agentKnowledgeBinding.agentConfigId,
         knowledgeBaseId: agentKnowledgeBinding.knowledgeBaseId,
+        config: agentKnowledgeBinding.config,
         priority: agentKnowledgeBinding.priority,
         enabled: agentKnowledgeBinding.enabled,
         createdAt: agentKnowledgeBinding.createdAt,

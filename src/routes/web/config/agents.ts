@@ -6,6 +6,7 @@ import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import {
   type AgentKnowledgeConfig,
+  getAgentKnowledgeConfigById,
   InvalidKnowledgeBindingError,
   listAgentKnowledgeBindingsById,
   syncAgentKnowledgeBindingsById,
@@ -37,32 +38,11 @@ interface AgentRelatedResourceView {
 interface AgentResourceDisplayInput {
   id: string;
   organizationId: string;
-  model: string | null;
+  modelId: string | null;
   machineId: string | null;
   resourceAccess?: {
     sourceOrganizationId: string;
   };
-}
-
-function parseModelRef(modelRef: string) {
-  const parts = modelRef.split("/");
-  if (parts.length >= 3) {
-    return {
-      providerOrganizationId: parts[0],
-      providerId: parts[1],
-      providerName: null,
-      modelId: parts.slice(2).join("/"),
-    };
-  }
-  if (parts.length === 2) {
-    return {
-      providerOrganizationId: null,
-      providerId: null,
-      providerName: parts[0],
-      modelId: parts[1],
-    };
-  }
-  return null;
 }
 
 async function buildAgentRelatedResourceView(
@@ -70,7 +50,7 @@ async function buildAgentRelatedResourceView(
   skillIds: string[],
 ): Promise<AgentRelatedResourceView> {
   const fallback: AgentRelatedResourceView = {
-    modelLabel: agent.model ?? null,
+    modelLabel: agent.modelId ?? null,
     machineLabel: agent.machineId ?? null,
     skills: skillIds.map((id) => ({ id, label: id })),
     knowledgeBases: [],
@@ -80,54 +60,36 @@ async function buildAgentRelatedResourceView(
     const sourceOrganizationId = agent.resourceAccess?.sourceOrganizationId ?? agent.organizationId;
     let modelLabel: string | null = null;
 
-    if (agent.model) {
-      const parsedModel = parseModelRef(agent.model);
-      if (parsedModel) {
-        let providerRow:
-          | {
-              id: string;
-              name: string;
-              displayName: string | null;
-            }
-          | undefined;
-
-        if (parsedModel.providerId && parsedModel.providerOrganizationId) {
-          const rows = await db
-            .select({ id: provider.id, name: provider.name, displayName: provider.displayName })
-            .from(provider)
-            .where(
-              and(
-                eq(provider.id, parsedModel.providerId),
-                eq(provider.organizationId, parsedModel.providerOrganizationId),
-              ),
-            )
-            .limit(1);
-          providerRow = rows[0];
-        } else if (parsedModel.providerName) {
-          const rows = await db
-            .select({ id: provider.id, name: provider.name, displayName: provider.displayName })
-            .from(provider)
-            .where(and(eq(provider.name, parsedModel.providerName), eq(provider.organizationId, sourceOrganizationId)))
-            .limit(1);
-          providerRow = rows[0];
-        }
-
+    if (agent.modelId) {
+      const modelRows = await db
+        .select({
+          id: model.id,
+          modelName: model.modelId,
+          displayName: model.displayName,
+          providerId: model.providerId,
+          providerOrganizationId: model.organizationId,
+        })
+        .from(model)
+        .where(eq(model.id, agent.modelId))
+        .limit(1);
+      const modelRow = modelRows[0];
+      if (modelRow) {
+        const providerRows = await db
+          .select({ id: provider.id, name: provider.name, displayName: provider.displayName })
+          .from(provider)
+          .where(
+            and(eq(provider.id, modelRow.providerId), eq(provider.organizationId, modelRow.providerOrganizationId)),
+          )
+          .limit(1);
+        const providerRow = providerRows[0];
         if (providerRow) {
-          const modelRows = await db
-            .select({ modelId: model.modelId, displayName: model.displayName })
-            .from(model)
-            .where(and(eq(model.providerId, providerRow.id), eq(model.modelId, parsedModel.modelId)))
-            .limit(1);
-          const modelRow = modelRows[0];
           const providerName = providerRow.displayName ?? providerRow.name;
-          const modelName = modelRow?.displayName ?? modelRow?.modelId ?? parsedModel.modelId;
+          const modelName = modelRow.displayName ?? modelRow.modelName;
           modelLabel = `${providerName}/${modelName}`;
         }
       }
 
-      if (!modelLabel) {
-        modelLabel = agent.model;
-      }
+      if (!modelLabel) modelLabel = agent.modelId;
     }
 
     let machineLabel: string | null = null;
@@ -192,6 +154,7 @@ function _pgRowToAgentFields(
   return {
     name: r.name as string,
     model: (r.model as string) ?? null,
+    modelId: (r.modelId as string) ?? null,
     mode: (r.mode as string) ?? null,
     description: (r.description as string) ?? null,
     color: (r.color as string) ?? null,
@@ -203,7 +166,7 @@ function _pgRowToAgentFields(
     top_p: (r.topP as number) ?? null,
     prompt: (r.prompt as string) ?? null,
     permission,
-    knowledge: (r.knowledge as unknown) ?? null,
+    knowledge: null,
   };
 }
 
@@ -218,7 +181,7 @@ async function handleList(ctx: AuthContext) {
         {
           id: a.id,
           organizationId: a.organizationId,
-          model: a.model ?? null,
+          modelId: a.modelId ?? null,
           machineId: a.machineId ?? null,
           resourceAccess: a.resourceAccess,
         },
@@ -229,6 +192,7 @@ async function handleList(ctx: AuthContext) {
         name: a.name,
         builtIn: isBuiltInAgent(a.name),
         model: a.model ?? null,
+        modelId: a.modelId ?? null,
         modelLabel: relatedResources.modelLabel,
         mode: a.mode ?? null,
         description: a.description ?? null,
@@ -256,12 +220,14 @@ async function handleGet(ctx: AuthContext, name: string) {
 
   const skillIds = await configPg.listAgentSkillIds(agent.id);
   const relatedResources = await buildAgentRelatedResourceView(agent, skillIds);
+  const knowledge = await getAgentKnowledgeConfigById(agent.id);
 
   return configSuccess({
     id: agent.id,
     name: agent.name,
     builtIn: isBuiltInAgent(agent.name),
     model: agent.model ?? null,
+    modelId: agent.modelId ?? null,
     prompt: agent.prompt ?? null,
     steps: agent.steps ?? null,
     mode: agent.mode ?? null,
@@ -273,7 +239,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     hidden: agent.hidden ?? false,
     color: agent.color ?? null,
     description: agent.description ?? null,
-    knowledge: normalizeKnowledgeConfig(agent.knowledge ?? null),
+    knowledge: normalizeKnowledgeConfig(knowledge ?? null),
     machineId: agent.machineId ?? null,
     skillIds,
     relatedResources,
@@ -480,6 +446,9 @@ app.post(
       ) {
         const message = error_ instanceof Error ? error_.message : "知识库绑定无效";
         return error(400, configError("INVALID_KNOWLEDGE_BINDINGS", message));
+      }
+      if (error_ instanceof AppError && error_.code === "VALIDATION_ERROR") {
+        return error(400, configValidationError(error_.message));
       }
       throw error_;
     }

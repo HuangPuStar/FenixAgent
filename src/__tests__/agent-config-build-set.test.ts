@@ -6,7 +6,7 @@ describe("buildSetFromData 字段映射", () => {
   // AGENT_SETTABLE_FIELDS 包含所有可写字段
   test("AGENT_SETTABLE_FIELDS 覆盖所有已知字段", () => {
     const fields = [
-      "model",
+      "modelId",
       "prompt",
       "steps",
       "mode",

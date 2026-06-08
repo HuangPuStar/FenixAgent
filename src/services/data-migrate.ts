@@ -1,6 +1,7 @@
 import { log } from "@fenix/logger";
 import { db } from "../db";
 import { dataMigrateRecord } from "../db/schema";
+import { migrateAgentConfigModelId } from "./data-migrates/migrate-agent-config-model-id";
 import { migrateSkillStorageByOrganization } from "./data-migrates/migrate-skill-storage-by-organization";
 
 export interface DataMigrate {
@@ -9,7 +10,7 @@ export interface DataMigrate {
 }
 
 export const _deps = {
-  migrates: [migrateSkillStorageByOrganization] as DataMigrate[],
+  migrates: [migrateAgentConfigModelId, migrateSkillStorageByOrganization] as DataMigrate[],
   listAppliedMigrationNames: async (): Promise<string[]> => {
     const rows = await db.select({ name: dataMigrateRecord.name }).from(dataMigrateRecord);
     return rows.map((row) => row.name);
@@ -21,7 +22,7 @@ export const _deps = {
 };
 
 export function _resetDeps() {
-  _deps.migrates = [migrateSkillStorageByOrganization];
+  _deps.migrates = [migrateAgentConfigModelId, migrateSkillStorageByOrganization];
   _deps.listAppliedMigrationNames = async () => {
     const rows = await db.select({ name: dataMigrateRecord.name }).from(dataMigrateRecord);
     return rows.map((row) => row.name);

@@ -60,6 +60,7 @@ export interface AgentInfo extends Indexable {
   id: string;
   name: string;
   model?: string;
+  modelId?: string | null;
   modelLabel?: string | null;
   description?: string;
   builtIn?: boolean;
