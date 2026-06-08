@@ -155,7 +155,7 @@ describe("buildSubagentFormData", () => {
   test("steps 解析为数字", () => {
     const data = buildSubagentFormData({
       name: "my-sub",
-      model: "gpt-4",
+      modelId: "gpt-4",
       description: "",
       prompt: "",
       steps: "100",
@@ -167,7 +167,7 @@ describe("buildSubagentFormData", () => {
   test("disable 透传", () => {
     const data = buildSubagentFormData({
       name: "my-sub",
-      model: "gpt-4",
+      modelId: "gpt-4",
       description: "",
       prompt: "",
       steps: "50",
@@ -179,7 +179,7 @@ describe("buildSubagentFormData", () => {
   test("不含高级字段", () => {
     const data = buildSubagentFormData({
       name: "my-sub",
-      model: "gpt-4",
+      modelId: "gpt-4",
       description: "",
       prompt: "",
       steps: "50",

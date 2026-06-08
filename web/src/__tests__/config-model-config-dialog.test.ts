@@ -6,39 +6,42 @@ describe("buildModelOptions", () => {
   test("maps available models to value/label pairs", () => {
     const available: ModelEntry[] = [
       {
-        id: "gpt-4",
+        id: "uuid-gpt-4",
+        modelId: "gpt-4",
+        displayName: "GPT-4",
         provider: "openai",
-        label: "GPT-4",
-        fullId: "openai/gpt-4",
+        providerDisplayName: "OpenAI",
         contextLimit: null,
         outputLimit: null,
       },
       {
-        id: "claude-3",
+        id: "uuid-claude-3",
+        modelId: "claude-3",
+        displayName: "Claude 3",
         provider: "anthropic",
-        label: "Claude 3",
-        fullId: "anthropic/claude-3",
+        providerDisplayName: "Anthropic",
         contextLimit: null,
         outputLimit: null,
       },
     ];
     const result = buildModelOptions(available);
     expect(result).toEqual([
-      { value: "openai/gpt-4", label: "openai/gpt-4" },
-      { value: "anthropic/claude-3", label: "anthropic/claude-3" },
+      { value: "openai/gpt-4", label: "OpenAI/GPT-4" },
+      { value: "anthropic/claude-3", label: "Anthropic/Claude 3" },
     ]);
   });
 
-  test("prefers stableFullId and includes source organization in label", () => {
+  test("uses resource key for shared models and keeps server display name", () => {
     const available: ModelEntry[] = [
       {
         id: "shared-model",
+        modelId: "shared-model",
+        displayName: "Shared Model",
         provider: "openai",
-        label: "Shared Model",
-        fullId: "openai/shared-model",
-        stableFullId: "org-source/provider-uid/shared-model",
+        providerDisplayName: "OpenAI Shared",
         contextLimit: null,
         outputLimit: null,
+        providerResourceKey: "org-source/provider-uid",
         providerResourceAccess: {
           ownership: "external",
           sourceOrganizationId: "org-source",
@@ -52,7 +55,7 @@ describe("buildModelOptions", () => {
     ];
     const result = buildModelOptions(available);
     expect(result).toEqual([
-      { value: "org-source/provider-uid/shared-model", label: "Source Team/openai/shared-model" },
+      { value: "org-source/provider-uid/shared-model", label: "Source Team/OpenAI Shared/Shared Model" },
     ]);
   });
 
@@ -62,8 +65,10 @@ describe("buildModelOptions", () => {
   });
 
   test("handles null/undefined fields gracefully", () => {
-    const available = [{ id: "test", provider: "p", label: "Test", fullId: "p/test" }] as ModelEntry[];
+    const available = [
+      { id: "uuid-test", modelId: "test", displayName: "Test", provider: "p", providerDisplayName: "Provider" },
+    ] as ModelEntry[];
     const result = buildModelOptions(available);
-    expect(result).toEqual([{ value: "p/test", label: "p/test" }]);
+    expect(result).toEqual([{ value: "p/test", label: "Provider/Test" }]);
   });
 });

@@ -85,9 +85,10 @@ export const ProviderDetailSchema = z.object({
 
 export const ModelEntrySchema = z.object({
   id: z.string(),
+  modelId: z.string(),
+  displayName: z.string(),
   provider: z.string(),
-  fullId: z.string(),
-  label: z.string(),
+  providerDisplayName: z.string(),
   contextLimit: z.number().nullable(),
   outputLimit: z.number().nullable(),
 });

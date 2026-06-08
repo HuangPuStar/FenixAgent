@@ -133,15 +133,14 @@ export interface ModelConfig extends Indexable {
 }
 export interface ModelEntry {
   id: string;
+  modelId: string;
+  displayName: string;
   provider: string;
-  name?: string;
-  fullId?: string;
-  label?: string;
+  providerDisplayName: string;
   contextLimit?: number | null;
   outputLimit?: number | null;
   providerResourceAccess?: ResourceAccess;
   providerResourceKey?: string;
-  stableFullId?: string;
 }
 export interface ProviderDetail extends Indexable {
   id?: string;

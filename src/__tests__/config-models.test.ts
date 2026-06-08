@@ -148,8 +148,10 @@ describe("Models Config Route", () => {
     expect(json.data.available).toHaveLength(2);
     expect(json.data.available[0]).toMatchObject({
       id: "uuid-anthropic-sonnet",
+      modelId: "claude-sonnet-4-6",
+      displayName: "Claude Sonnet 4.6",
       provider: "anthropic",
-      label: "Claude Sonnet 4.6",
+      providerDisplayName: "anthropic",
     });
   });
 

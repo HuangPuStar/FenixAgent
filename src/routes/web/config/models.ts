@@ -15,14 +15,14 @@ const cachedAvailableByOrg = new Map<
   {
     models: Array<{
       id: string;
+      modelId: string;
+      displayName: string;
       provider: string;
-      fullId: string;
-      label: string;
+      providerDisplayName: string;
       contextLimit: number | null;
       outputLimit: number | null;
       providerResourceAccess?: import("../../../services/config/types").ResourceAccess;
       providerResourceKey?: string;
-      stableFullId?: string;
     }>;
     updatedAt: number;
   }
@@ -31,14 +31,14 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
 
 type ModelEntry = {
   id: string;
+  modelId: string;
+  displayName: string;
   provider: string;
-  fullId: string;
-  label: string;
+  providerDisplayName: string;
   contextLimit: number | null;
   outputLimit: number | null;
   providerResourceAccess?: import("../../../services/config/types").ResourceAccess;
   providerResourceKey?: string;
-  stableFullId?: string;
 };
 
 async function buildAvailableList(ctx: AuthContext): Promise<ModelEntry[]> {
@@ -48,18 +48,19 @@ async function buildAvailableList(ctx: AuthContext): Promise<ModelEntry[]> {
     const providerResourceKey = p.resourceAccess?.resourceKey ?? p.resourceKey;
     const pDetail = await configPg.getProvider(ctx, providerResourceKey ?? p.name);
     if (!pDetail?.models) continue;
-    const providerLabel = p.displayName ?? p.name;
+    const providerDisplayName = p.displayName ?? p.name;
     for (const m of pDetail.models) {
       const limit = (m.limitConfig as { context?: number; output?: number } | undefined) ?? undefined;
       const inheritedAccess = m.providerResourceAccess ?? p.resourceAccess;
+      const modelDisplayName = m.displayName ?? m.modelId;
       models.push({
-        // Agent config now persists modelId as the model table UUID, so the
-        // available list must expose the row id instead of the human model name.
+        // Agent config now persists modelId as the model table UUID, while
+        // current model preferences still save provider/model string refs.
         id: m.id,
-        provider: providerLabel,
-        fullId: `${providerLabel}/${m.modelId}`,
-        stableFullId: providerResourceKey ? `${providerResourceKey}/${m.modelId}` : undefined,
-        label: m.displayName ?? m.modelId,
+        modelId: m.modelId,
+        displayName: modelDisplayName,
+        provider: p.name,
+        providerDisplayName,
         contextLimit: limit?.context ?? null,
         outputLimit: limit?.output ?? null,
         providerResourceAccess: inheritedAccess,

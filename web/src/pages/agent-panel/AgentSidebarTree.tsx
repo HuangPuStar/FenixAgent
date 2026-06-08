@@ -57,8 +57,8 @@ function buildModelLabelMap(available: ModelEntry[]): Map<string, string> {
   return new Map(
     available.map((model) => {
       const source = model.providerResourceAccess?.sourceOrganizationName;
-      const label = source ? `${source}/${model.fullId}` : model.fullId;
-      return [model.id, label];
+      const providerLabel = source ? `${source}/${model.providerDisplayName}` : model.providerDisplayName;
+      return [model.id, `${providerLabel}/${model.displayName}`];
     }),
   );
 }

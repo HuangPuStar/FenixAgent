@@ -56,8 +56,8 @@ interface AgentRelatedResourcesView {
 export function mapModelOptions(available: ModelEntry[]): { value: string; label: string }[] {
   return available.map((model) => {
     const source = model.providerResourceAccess?.sourceOrganizationName;
-    const label = source ? `${source}/${model.fullId}` : model.fullId;
-    return { value: model.id, label };
+    const providerLabel = source ? `${source}/${model.providerDisplayName}` : model.providerDisplayName;
+    return { value: model.id, label: `${providerLabel}/${model.displayName}` };
   });
 }
 
