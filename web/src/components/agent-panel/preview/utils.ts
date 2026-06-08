@@ -172,6 +172,18 @@ export function getShikiLanguage(filePath: string): string | undefined {
   return EXT_TO_SHIKI_LANG[ext];
 }
 
+/**
+ * 构建文件预览 URL。
+ * 远程节点的 tree 返回路径如 "user/hello.html"，已经带 user/ 前缀；
+ * 本地节点 tree 也返回 "user/hello.html"。
+ * 路由 /:id/user/* 的通配符不包含 "user/"，所以需要确保 filePath 带 user/ 前缀。
+ */
+export function buildPreviewUrl(envId: string, filePath: string): string {
+  const withUserPrefix = filePath.startsWith("user/") ? filePath : `user/${filePath}`;
+  const encoded = withUserPrefix.split("/").map(encodePathSegment).join("/");
+  return `/web/environments/${envId}/user/${encoded}?preview=true`;
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

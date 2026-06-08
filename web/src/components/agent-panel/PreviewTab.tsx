@@ -74,15 +74,8 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
     loadFile();
   }, [loadFile]);
 
-  const displayName = fileName ?? (filePath ? filePath.split("/").pop() : null);
-
   return (
     <div className="flex-1 overflow-hidden flex flex-col h-full">
-      {displayName && (
-        <div className="px-3 py-2 border-b border-border text-xs text-text-muted font-display truncate">
-          {displayName}
-        </div>
-      )}
       <div className="flex-1 overflow-auto flex flex-col">
         {loading && (
           <div className="flex items-center justify-center h-full">

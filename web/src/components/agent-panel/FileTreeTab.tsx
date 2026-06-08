@@ -1,15 +1,4 @@
-import {
-  Download,
-  File,
-  FilePlus,
-  Folder,
-  FolderInput,
-  FolderOpen,
-  MousePointerClick,
-  RefreshCw,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { Download, File, FilePlus, Folder, FolderInput, FolderOpen, RefreshCw, Trash2, Upload } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -18,7 +7,7 @@ import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
 import { fileApi, userFileApi } from "@/src/api/sdk";
 import { NS } from "../../i18n";
-import { encodePathSegment } from "./preview/utils";
+import { buildPreviewUrl, encodePathSegment } from "./preview/utils";
 
 interface FileTreeTabProps {
   envId: string | null;
@@ -74,7 +63,7 @@ function parsePathsToTree(paths: string[]): ParsedNode[] {
 function parsedToTreeNodeData(node: ParsedNode): TreeNodeData {
   return {
     id: node.path,
-    label: node.name,
+    label: node.path,
     hasChildren: node.isDir && node.children.length > 0,
   };
 }
@@ -92,13 +81,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const [refreshKey, setRefreshKey] = useState(0);
   const treeDataRef = useRef<ParsedNode[]>([]);
   const [selectedDir, setSelectedDir] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [selectedIsDir, setSelectedIsDir] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ path: string; name: string } | null>(null);
-  /** 双击检测：记录上次点击的节点和时刻 */
-  const lastClickRef = useRef<{ nodeId: string; time: number } | null>(null);
-  const DOUBLE_CLICK_THRESHOLD = 300;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -194,34 +178,19 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     [findChildren],
   );
 
-  /** 单击选中 + 双击预览（在 select 回调中通过时间差检测双击） */
+  /** 单击：目录选中，文件直接预览 */
   const handleSelect = useCallback(
     (nodeId: string | null, _node: TreeNodeData) => {
       if (!nodeId) return;
       const parsed = findNodeByPath(treeDataRef.current, nodeId);
       const isDir = parsed?.isDir ?? false;
 
-      // 更新选中状态
-      setSelectedIsDir(isDir);
       if (isDir) {
         setSelectedDir(nodeId);
-        setSelectedFile(nodeId);
       } else {
         const parentDir = nodeId.substring(0, nodeId.lastIndexOf("/"));
         setSelectedDir(parentDir || null);
-        setSelectedFile(nodeId);
-      }
-
-      // 双击检测：文件且同一节点 300ms 内再次点击 → 预览
-      if (!isDir) {
-        const now = Date.now();
-        const prev = lastClickRef.current;
-        if (prev && prev.nodeId === nodeId && now - prev.time < DOUBLE_CLICK_THRESHOLD) {
-          lastClickRef.current = null;
-          onPreviewFile(nodeId);
-        } else {
-          lastClickRef.current = { nodeId, time: now };
-        }
+        onPreviewFile(nodeId);
       }
     },
     [onPreviewFile],
@@ -275,18 +244,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     setContextMenu(null);
   }, [contextMenu, envId]);
 
-  const handleToolbarDelete = useCallback(() => {
-    if (!envId || !selectedFile) return;
-    setDeleteConfirm({ path: selectedFile, name: selectedFile.split("/").pop() ?? selectedFile });
-  }, [envId, selectedFile]);
-
   const executeDelete = useCallback(async () => {
     if (!deleteConfirm || !envId) return;
     const { error: deleteErr } = await userFileApi.batchDelete({ id: envId }, { paths: [deleteConfirm.path] });
     if (deleteErr) {
       toast.error(t("fileTree.contextMenu.delete"));
     } else {
-      setSelectedFile(null);
       loadTree();
     }
     setDeleteConfirm(null);
@@ -419,32 +382,71 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     [uploadFiles],
   );
 
-  // 下载：文件直接下载，目录打包为 zip
-  const handleDownload = useCallback(async () => {
-    if (!envId || !selectedFile) return;
-    try {
-      if (selectedIsDir) {
-        const url = `/web/environments/${envId}/user-file/download-zip?path=${encodePathSegment(selectedFile)}`;
-        const a = document.createElement("a");
-        a.href = url;
-        const dirName = selectedFile.split("/").filter(Boolean).pop() || "download";
-        a.download = `${dirName}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      } else {
-        const url = `/web/environments/${envId}/user/${selectedFile.split("/").map(encodePathSegment).join("/")}?preview=true`;
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = selectedFile.split("/").pop() || "file";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+  // 下载：文件直接下载，目录打包为 zip（per-item 回调）
+  const handleDownload = useCallback(
+    async (nodePath: string, isDir: boolean) => {
+      if (!envId) return;
+      try {
+        if (isDir) {
+          const url = `/web/environments/${envId}/user-file/download-zip?path=${encodePathSegment(nodePath)}`;
+          const a = document.createElement("a");
+          a.href = url;
+          const dirName = nodePath.split("/").filter(Boolean).pop() || "download";
+          a.download = `${dirName}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } else {
+          const url = buildPreviewUrl(envId, nodePath);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = nodePath.split("/").pop() || "file";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      } catch {
+        toast.error(t("fileTree.downloadFailed"));
       }
-    } catch {
-      toast.error(t("fileTree.downloadFailed"));
-    }
-  }, [envId, selectedFile, selectedIsDir, t]);
+    },
+    [envId, t],
+  );
+
+  // per-item 操作：下载 + 删除，hover 时显示
+  const renderActions = useCallback(
+    (node: TreeNodeData, _state: NodeState) => {
+      const parsed = findNodeByPath(treeDataRef.current, node.id);
+      const isDir = parsed?.isDir ?? false;
+
+      return (
+        <>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDownload(node.id, isDir);
+            }}
+            className="h-5 w-5 flex items-center justify-center rounded text-text-muted hover:text-text-primary"
+            title={isDir ? t("fileTree.downloadZip") : t("fileTree.download")}
+          >
+            <Download className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteConfirm({ path: node.id, name: node.label });
+            }}
+            className="h-5 w-5 flex items-center justify-center rounded text-text-muted hover:text-status-error"
+            title={t("fileTree.contextMenu.delete")}
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </>
+      );
+    },
+    [handleDownload, t],
+  );
 
   // 新建空文件
   const handleNewFile = useCallback(async () => {
@@ -473,7 +475,9 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     return (
       <span className="flex items-center gap-1.5">
         <IconComp className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-        <span className="truncate">{node.label}</span>
+        <span className="truncate" title={node.label}>
+          {node.label}
+        </span>
       </span>
     );
   }, []);
@@ -510,24 +514,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
           title={t("fileTree.uploadFolder")}
         >
           <FolderInput className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleDownload}
-          disabled={!selectedFile || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={selectedIsDir ? t("fileTree.downloadZip") : t("fileTree.download")}
-        >
-          <Download className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleToolbarDelete}
-          disabled={!selectedFile || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-status-error hover:bg-status-error/10 transition-colors disabled:opacity-50"
-          title={t("fileTree.contextMenu.delete")}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
@@ -574,17 +560,13 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
             <p className="text-xs text-text-muted/60 text-center max-w-[200px]">{t("fileTree.emptyHint")}</p>
           </div>
         ) : (
-          <Tree key={refreshKey} getChildren={getChildren} onSelect={handleSelect} renderLabel={renderLabel} />
-        )}
-        {/* 操作提示 */}
-        {envId && !isEmpty && !loading && (
-          <div className="flex items-center gap-2 px-3 py-2 border-t border-border/50 shrink-0 text-xs text-text-muted">
-            <MousePointerClick className="h-3 w-3 shrink-0" />
-            <span>{t("fileTree.hintDoubleClick")}</span>
-            <span className="text-border/60">·</span>
-            <Upload className="h-3 w-3 shrink-0" />
-            <span>{t("fileTree.hintDrag")}</span>
-          </div>
+          <Tree
+            key={refreshKey}
+            getChildren={getChildren}
+            onSelect={handleSelect}
+            renderActions={renderActions}
+            renderLabel={renderLabel}
+          />
         )}
       </div>
 
@@ -659,21 +641,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         onConfirm={executeDelete}
         confirmLabel={t("fileTree.contextMenu.delete")}
       />
-
-      {/* 操作提示 */}
-      <div className="px-3 py-2 border-t border-border flex items-center gap-3 text-[10px] text-text-muted shrink-0">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3.5 h-3.5 border border-border rounded text-center leading-3 text-[8px]">
-            2x
-          </span>
-          {t("fileTree.hintDoubleClick")}
-        </span>
-        <span className="text-border">|</span>
-        <span className="flex items-center gap-1">
-          <Upload className="h-3 w-3" />
-          {t("fileTree.hintDragUpload")}
-        </span>
-      </div>
     </div>
   );
 });

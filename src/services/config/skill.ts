@@ -1,3 +1,4 @@
+import { createLogger } from "@fenix/logger";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { skill } from "../../db/schema";
@@ -10,6 +11,8 @@ import {
   setPublicRead,
 } from "../resource-permission";
 import type { SkillConfigRowWithAccess, SkillSetOptions, SkillUpsertData } from "./types";
+
+const logger = createLogger("config-skill");
 
 // ────────────────────────────────────────────
 // Skill 操作（全局技能库）
@@ -104,6 +107,9 @@ export async function upsertSkill(
   if (existing.length > 0) {
     assertInternalWritable(ctx, "skill", existing[0].id, ctx.organizationId);
     await db.update(skill).set(commonFields).where(eq(skill.id, existing[0].id));
+    logger.info(
+      `[SkillConfig] skill_write user=${ctx.userId} org=${ctx.organizationId} skill=${name} action=${options.auditAction ?? "set"} mode=update`,
+    );
     if (options.publicReadable !== undefined) {
       await setPublicRead(ctx, "skill", ctx.organizationId, existing[0].id, options.publicReadable);
     }
@@ -119,6 +125,9 @@ export async function upsertSkill(
       ...commonFields,
     })
     .returning({ id: skill.id });
+  logger.info(
+    `[SkillConfig] skill_write user=${ctx.userId} org=${ctx.organizationId} skill=${name} action=${options.auditAction ?? "set"} mode=insert`,
+  );
   if (options.publicReadable !== undefined) {
     await setPublicRead(ctx, "skill", ctx.organizationId, inserted[0].id, options.publicReadable);
   }
@@ -131,5 +140,8 @@ export async function deleteSkill(ctx: AuthContext, name: string): Promise<boole
 
   assertInternalWritable(ctx, "skill", row.id, row.organizationId);
   const result = await db.delete(skill).where(eq(skill.id, row.id)).returning({ id: skill.id });
+  if (result.length > 0) {
+    logger.info(`[SkillConfig] skill_delete user=${ctx.userId} org=${ctx.organizationId} skill=${name}`);
+  }
   return result.length > 0;
 }

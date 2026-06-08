@@ -25,6 +25,7 @@ import {
   configValidationError,
   isValidResourceName,
 } from "../../../services/config-utils";
+import { ensureHindsightMcpServer } from "../../../services/hindsight";
 
 interface AgentRelatedResourceView {
   modelLabel: string | null;
@@ -330,6 +331,15 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
       await configPg.syncAgentSkills(updatedAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
     }
   }
+
+  // 记忆 MCP 开关：勾选创建 mcpServer 记录 + 确保 bank，取消则删除 mcpServer 记录
+  if (data.enableMemory === true) {
+    const result = await ensureHindsightMcpServer(ctx);
+    if (!result.ok) {
+      console.warn(`[hindsight] Failed for agent '${name}': ${result.error}`);
+    }
+  }
+
   return configSuccess({ name, ...filtered, resourceAccess: updatedAgent?.resourceAccess });
 }
 
@@ -376,6 +386,15 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
       await configPg.syncAgentSkills(createdAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
     }
   }
+
+  // 勾选记忆 MCP 时，创建 mcpServer 表记录 + 确保 bank 存在
+  if (data.enableMemory === true) {
+    const result = await ensureHindsightMcpServer(ctx);
+    if (!result.ok) {
+      console.warn(`[hindsight] Failed for agent '${name}': ${result.error}`);
+    }
+  }
+
   return configSuccess({ name, resourceAccess: createdAgent?.resourceAccess });
 }
 

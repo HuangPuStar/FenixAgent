@@ -9,6 +9,8 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import matter from "gray-matter";
+import yaml from "js-yaml";
 import type { ResourceAccess } from "./config/types";
 
 // ────────────────────────────────────────────
@@ -102,18 +104,27 @@ export function getSkillArchivePath(skillRoot: string, organizationId: string, n
 
 /** 从原始 Markdown 文本中解析 YAML frontmatter */
 export function parseFrontmatter(raw: string): { metadata: Record<string, string>; content: string } {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  if (!match) return { metadata: {}, content: raw };
+  const parsed = matter(raw);
   const metadata: Record<string, string> = {};
-  for (const line of match[1].split("\n")) {
-    const idx = line.indexOf(":");
-    if (idx > 0)
-      metadata[line.slice(0, idx).trim()] = line
-        .slice(idx + 1)
-        .trim()
-        .replace(/^"(.*)"$/, "$1");
+
+  // Skill 详情接口当前仍约定 metadata 是 string map，这里用真实 YAML 解析后再收敛回字符串。
+  for (const [key, value] of Object.entries(parsed.data)) {
+    if (typeof value === "string") {
+      metadata[key] = value;
+      continue;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      metadata[key] = String(value);
+      continue;
+    }
+    if (value === null) {
+      metadata[key] = "null";
+      continue;
+    }
+    metadata[key] = yaml.dump(value, { lineWidth: 120 }).trim();
   }
-  return { metadata, content: match[2] };
+
+  return { metadata, content: parsed.content };
 }
 
 /** 构建 SKILL.md 文件内容（含 frontmatter） */

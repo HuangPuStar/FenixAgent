@@ -151,7 +151,7 @@ describe("skill resource access orchestration", () => {
       ctx,
       "demo",
       { description: "Demo", metadata: undefined },
-      { publicReadable: true },
+      { publicReadable: true, auditAction: "set" },
     );
   });
 

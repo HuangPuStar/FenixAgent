@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { agentApi, envApi, instanceApi, kbApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
+import { agentApi, envApi, instanceApi, kbApi, mcpApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
 import type { AgentTemplate } from "../../../../packages/sdk/src/modules/config";
 import { PermissionTab } from "../../components/PermissionTab";
 import { NS } from "../../i18n";
@@ -102,6 +102,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [skillsExpanded, setSkillsExpanded] = useState(false);
+  const [hindsightEnabled, setHindsightEnabled] = useState(false);
+  const [formEnableMemory, setFormEnableMemory] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
@@ -125,6 +127,21 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setDisplayAgentName("");
     setRelatedResources(undefined);
     setSelectedTemplateId(null);
+    setFormEnableMemory(false);
+
+    // 加载 Hindsight 记忆 MCP 可用性
+    fetch("/web/hindsight/status")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data?.enabled) {
+          setHindsightEnabled(true);
+        } else {
+          setHindsightEnabled(false);
+        }
+      })
+      .catch(() => {
+        setHindsightEnabled(false);
+      });
 
     // 加载在线机器列表
     registryApi.list({ status: "online", limit: 100 }).then(({ data, error }) => {
@@ -178,6 +195,21 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
               : null,
           );
           setFormSkillIds(Array.isArray(d.skillIds) ? (d.skillIds as string[]) : []);
+
+          // 编辑模式回显：检查是否已关联 hindsight MCP
+          mcpApi
+            .list()
+            .then((mcpResult) => {
+              if (mcpResult.data) {
+                const raw = mcpResult.data;
+                const servers = Array.isArray(raw)
+                  ? raw
+                  : (((raw as Record<string, unknown>)?.servers ?? []) as Array<{ name: string }>);
+                const hasHindsight = servers.some((s) => s.name.toLowerCase().includes("hindsight"));
+                setFormEnableMemory(hasHindsight);
+              }
+            })
+            .catch(() => {});
 
           const modelsData = modelsResult.data as unknown as Record<string, unknown> | null;
           const available = modelsData?.available;
@@ -380,7 +412,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           skillIds: formSkillIds,
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
+          ...(formEnableMemory ? { enableMemory: true } : {}),
         };
+
         const { error } = await agentApi.set(agentName!, data);
         if (error) {
           toast.error(t("save.errorGeneric", { message: error.message }));
@@ -414,6 +448,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           skillIds: formSkillIds,
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
+          ...(formEnableMemory ? { enableMemory: true } : {}),
         });
         if (error) {
           console.error(t("save.errorGeneric", { message: "" }), error);
@@ -459,6 +494,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     t,
     readOnlyAgent,
     formPublicReadable,
+    formEnableMemory,
   ]);
 
   const getRunningInstanceIds = useCallback(async () => {
@@ -745,6 +781,19 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                       </div>
                     )}
                   </div>
+                  {hindsightEnabled && (
+                    <label className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm">
+                      <div>
+                        <p className="font-medium text-text-bright">{t("memory.enableTitle")}</p>
+                        <p className="text-xs text-text-muted">{t("memory.enableDescription")}</p>
+                      </div>
+                      <Switch
+                        checked={formEnableMemory}
+                        disabled={readOnlyAgent}
+                        onCheckedChange={setFormEnableMemory}
+                      />
+                    </label>
+                  )}
                   {(canManageAgentSharing({ name: agentIdentityName, resourceAccess: formResourceAccess }) ||
                     !isEdit) && (
                     <label className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm">

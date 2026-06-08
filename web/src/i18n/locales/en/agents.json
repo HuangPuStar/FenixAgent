@@ -91,6 +91,10 @@
     "selectedCount": "{{count}} skill(s) selected",
     "noOptions": "No skills available"
   },
+  "memory": {
+    "enableTitle": "Agent Memory",
+    "enableDescription": "Enable agent memory across conversations"
+  },
   "resource": {
     "publicDescription": "Allow other teams to read this agent",
     "sharedSourceTitle": "Shared agent",

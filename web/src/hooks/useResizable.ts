@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 interface Size {
   width: number;
@@ -15,59 +15,64 @@ interface UseResizableOptions {
 /**
  * 拖拽边缘调整元素尺寸的 hook。
  *
- * 通过 ref 保持拖拽开始时的快照，避免 state 依赖导致
- * 事件监听器频繁重新注册。
+ * 拖拽期间直接操作 DOM 保证严格跟手，松手后同步到 React state。
+ * 返回 ref 用于绑定到目标 DOM 元素。
  */
 export function useResizable({ initialWidth, initialHeight, minWidth = 400, minHeight = 300 }: UseResizableOptions) {
   const [size, setSize] = useState<Size>({ width: initialWidth, height: initialHeight });
-  const sizeRef = useRef(size);
-  sizeRef.current = size;
 
+  const elRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; startW: number; startH: number; edge: string } | null>(null);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent, edge: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startW: sizeRef.current.width,
-      startH: sizeRef.current.height,
-      edge,
-    };
-  }, []);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent, edge: string) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      const dx = e.clientX - drag.startX;
-      const dy = e.clientY - drag.startY;
-      const current = sizeRef.current;
+      const el = elRef.current;
+      if (!el) return;
 
-      let newW = drag.startW;
-      let newH = drag.startH;
-      if (drag.edge.includes("e")) newW = Math.max(minWidth, drag.startW + dx);
-      if (drag.edge.includes("s")) newH = Math.max(minHeight, drag.startH + dy);
-      if (drag.edge.includes("w")) newW = Math.max(minWidth, drag.startW - dx);
-      if (drag.edge.includes("n")) newH = Math.max(minHeight, drag.startH - dy);
+      const startW = el.offsetWidth;
+      const startH = el.offsetHeight;
 
-      if (newW !== current.width || newH !== current.height) {
-        setSize({ width: newW, height: newH });
-      }
-    };
+      dragRef.current = { startX: e.clientX, startY: e.clientY, startW, startH, edge };
 
-    const handleMouseUp = () => {
-      dragRef.current = null;
-    };
+      const onMove = (ev: MouseEvent) => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        const dx = ev.clientX - drag.startX;
+        const dy = ev.clientY - drag.startY;
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [minWidth, minHeight]);
+        let newW = drag.startW;
+        let newH = drag.startH;
+        if (drag.edge.includes("e")) newW = Math.max(minWidth, drag.startW + dx);
+        if (drag.edge.includes("s")) newH = Math.max(minHeight, drag.startH + dy);
+        if (drag.edge.includes("w")) newW = Math.max(minWidth, drag.startW - dx);
+        if (drag.edge.includes("n")) newH = Math.max(minHeight, drag.startH - dy);
+
+        // 直接操作 DOM，保证跟手
+        el.style.width = `${newW}px`;
+        el.style.height = `${newH}px`;
+      };
+
+      const onUp = () => {
+        dragRef.current = null;
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+
+        // 拖拽结束后同步到 React state
+        if (elRef.current) {
+          const finalW = elRef.current.offsetWidth;
+          const finalH = elRef.current.offsetHeight;
+          setSize({ width: finalW, height: finalH });
+        }
+      };
+
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [minWidth, minHeight],
+  );
 
   const resizeHandle = useCallback(
     (edge: string) => ({
@@ -77,19 +82,19 @@ export function useResizable({ initialWidth, initialHeight, minWidth = 400, minH
     [handleMouseDown],
   );
 
-  return { size, resizeHandle };
+  return { size, resizeHandle, ref: elRef };
 }
 
 function edgeToClass(edge: string): string {
   const map: Record<string, string> = {
-    se: "absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-10",
-    sw: "absolute bottom-0 left-0 w-5 h-5 cursor-nesw-resize z-10",
-    ne: "absolute top-0 right-0 w-5 h-5 cursor-nesw-resize z-10",
-    nw: "absolute top-0 left-0 w-5 h-5 cursor-nwse-resize z-10",
-    e: "absolute top-0 bottom-0 right-0 w-1.5 cursor-e-resize z-10",
-    w: "absolute top-0 bottom-0 left-0 w-1.5 cursor-w-resize z-10",
-    s: "absolute bottom-0 left-0 right-0 h-1.5 cursor-s-resize z-10",
-    n: "absolute top-0 left-0 right-0 h-1.5 cursor-n-resize z-10",
+    se: "absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize z-10",
+    sw: "absolute bottom-0 left-0 w-6 h-6 cursor-nesw-resize z-10",
+    ne: "absolute top-0 right-0 w-6 h-6 cursor-nesw-resize z-10",
+    nw: "absolute top-0 left-0 w-6 h-6 cursor-nwse-resize z-10",
+    e: "absolute top-0 bottom-0 right-0 w-2 cursor-e-resize z-10",
+    w: "absolute top-0 bottom-0 left-0 w-2 cursor-w-resize z-10",
+    s: "absolute bottom-0 left-0 right-0 h-2 cursor-s-resize z-10",
+    n: "absolute top-0 left-0 right-0 h-2 cursor-n-resize z-10",
   };
-  return map[edge] || "absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-10";
+  return map[edge] || "absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize z-10";
 }

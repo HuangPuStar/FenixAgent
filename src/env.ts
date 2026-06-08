@@ -56,6 +56,9 @@ const envSchema = z.object({
   HERMES_URL: z.string().optional(),
   HERMES_PLATFORMS: z.string().optional(),
 
+  // ── 可选：Hindsight 记忆 MCP ──
+  HINDSIGHT_MCP_URL: z.string().optional(),
+
   // ── 可选：Workflow ──
 
   // ── 可选：注册中心 ──

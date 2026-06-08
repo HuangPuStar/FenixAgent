@@ -1,0 +1,35 @@
+# Hindsight — AI 记忆/知识库服务
+# Usage: docker compose -f docker/hindsight/docker-compose.yml up -d
+# 或与主 compose 一起: docker compose -f docker-compose.yml -f docker/hindsight/docker-compose.yml up -d
+
+services:
+    hindsight:
+        image: ghcr.io/vectorize-io/hindsight:latest
+        container_name: fenix-hindsight
+        restart: none
+        ports:
+            - "9999:9999"
+            - "8888:8888"
+        environment:
+            # LLM: 阿里云百炼（OpenAI 兼容格式）
+            HINDSIGHT_API_LLM_PROVIDER: openai
+            HINDSIGHT_API_LLM_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_LLM_MODEL: qwen3.6-flash
+            HINDSIGHT_API_LLM_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+            # Embedding: 阿里云百炼 text-embedding-v3
+            ENV_EMBEDDINGS_OPENAI_BATCH_SIZE: 64,
+            HINDSIGHT_API_EMBEDDINGS_PROVIDER: openai
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL: text-embedding-v4
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+            # Reranker: 阿里云百炼 qwen3-rerank
+            HINDSIGHT_API_RERANKER_PROVIDER: alibaba
+            HINDSIGHT_API_RERANKER_ALIBABA_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_RERANKER_ALIBABA_MODEL: qwen3-rerank
+        volumes:
+            - ~/.hindsight-docker:/home/hindsight/.pg0
+
+volumes:
+    hindsight-data:

@@ -209,7 +209,7 @@ export async function setSkill(
         description: skillData.description,
         metadata: skillData.metadata,
       },
-      { publicReadable },
+      { publicReadable, auditAction: "set" },
     );
     const updatedMeta = await _deps.configPg.getSkill(ctx, safeName).catch(() => null);
 
@@ -363,13 +363,21 @@ export async function importSkillDirectories(
       return existing
         ? {
             name,
+            existing,
             enabled: true,
             path: skillContentPath(resolveSkillSourceOrganizationId(existing, ctx.organizationId), name),
           }
         : null;
     }),
   );
-  const conflicts: ImportSkillsConflict[] = existingResults.filter((r): r is ImportSkillsConflict => r !== null);
+  const existingConflicts = existingResults.filter(
+    (r): r is NonNullable<(typeof existingResults)[number]> => r !== null,
+  );
+  const conflicts: ImportSkillsConflict[] = existingConflicts.map(({ name, enabled, path }) => ({
+    name,
+    enabled,
+    path,
+  }));
 
   if (conflicts.length > 0 && !strategy) {
     return { imported: [], skipped: [], conflicts };
@@ -383,32 +391,57 @@ export async function importSkillDirectories(
 
   const conflictNames = new Set(conflicts.map((item) => item.name));
   const overwriteNames = pendingEntries.filter(([name]) => conflictNames.has(name)).map(([name]) => name);
+  const overwriteNameSet = new Set(overwriteNames);
+  const overwriteExistingByName = new Map(
+    existingConflicts
+      .filter(({ name }) => overwriteNameSet.has(name))
+      .map(({ name, existing }) => [name, existing] as const),
+  );
 
   const result = await executeImportCore(
     targetDir,
     pendingEntries,
-    strategy === "overwrite" ? overwriteNames : [],
+    overwriteNames,
     "rcs-skill-import-",
-    // onConflictCleanup: overwrite 时清理 PG 冲突记录（pre-write）
-    strategy === "overwrite"
-      ? async (names) => {
-          await Promise.all(names.map((name) => _deps.configPg.deleteSkill(ctx, name)));
-        }
-      : undefined,
+    undefined,
     // onSkillWritten: 并行写入 PG 元数据
     async (info) => {
       await _deps.skillFs.buildSkillArchive(
         _deps.skillFs.getSkillSourceDir(root, ctx.organizationId, info.name),
         _deps.skillFs.getSkillArchivePath(root, ctx.organizationId, info.name),
       );
-      await _deps.configPg.upsertSkill(ctx, info.name, {
-        description: info.description,
-      });
+      await _deps.configPg.upsertSkill(
+        ctx,
+        info.name,
+        {
+          description: info.description,
+        },
+        { auditAction: overwriteNames.includes(info.name) ? "upload_overwrite" : "upload_create" },
+      );
     },
     // onRollbackCleanup: 回滚时清理已尝试写入的 PG 记录
     async (names) => {
+      const deleteNames = names.filter((name) => !overwriteNameSet.has(name));
+      const restoreNames = names.filter((name) => overwriteNameSet.has(name));
+
       await Promise.all([
-        ...names.map((name) => _deps.configPg.deleteSkill(ctx, name)),
+        ...deleteNames.map((name) => _deps.configPg.deleteSkill(ctx, name)),
+        ...restoreNames.map(async (name) => {
+          const existing = overwriteExistingByName.get(name);
+          if (!existing) return;
+          await _deps.configPg.upsertSkill(
+            ctx,
+            name,
+            {
+              description: existing.description ?? undefined,
+              metadata:
+                existing.metadata && typeof existing.metadata === "object"
+                  ? (existing.metadata as Record<string, string>)
+                  : undefined,
+            },
+            { auditAction: "upload_overwrite" },
+          );
+        }),
         ...names.map((name) => _deps.skillFs.deleteSkillArchive(root, ctx.organizationId, name)),
       ]);
     },

@@ -20,6 +20,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
 
 默认服务启动在 http://localhost:3001/
 
+首次启动后，系统会自动创建管理员账号 `admin@fenix.com`。初始密码会写入 `RCS_SYSTEM_ADMIN_PASSWORD_FILE`，默认路径是 `data/password.txt`。
+
 ### 本地 开发 部署
 
 ```bash
@@ -39,6 +41,8 @@ bash restart-server.sh
 需要安装 OpenCode 作为 ACP Agent
 
 默认服务启动在 http://localhost:3000/
+
+首次启动后，系统会自动创建管理员账号 `admin@fenix.com`。初始密码会写入 `RCS_SYSTEM_ADMIN_PASSWORD_FILE`，默认路径是 `data/password.txt`。
 
 ### 使用
 

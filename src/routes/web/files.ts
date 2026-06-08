@@ -99,13 +99,13 @@ app.get(
     const rawFilePath = (params as any)["*"] as string;
     const preview = (query as Record<string, string | undefined>)?.preview === "true";
 
-    // 远程环境
+    // 远程环境：路由通配符不含 "user/" 前缀，需补全后发给远程节点
     const machineId = await getRemoteMachineId(envId);
     if (machineId) {
-      // 远程节点支持 workspace 全路径，不强制 user/ 前缀
+      const filePath = normalizeUserRoutePath(rawFilePath);
       try {
         if (preview) {
-          const binResult = await remoteReadBinaryFile(machineId, envId, rawFilePath);
+          const binResult = await remoteReadBinaryFile(machineId, envId, filePath);
           const buffer = Buffer.from(binResult.data, "base64");
           set.headers["Content-Type"] = binResult.mimeType || "application/octet-stream";
           set.headers["Content-Security-Policy"] =
@@ -114,7 +114,7 @@ app.get(
         }
         // 非预览：先尝试文本，失败则走二进制下载
         try {
-          const textResult = await remoteReadFile(machineId, envId, rawFilePath);
+          const textResult = await remoteReadFile(machineId, envId, filePath);
           return {
             name: textResult.name,
             path: textResult.path,
@@ -123,7 +123,7 @@ app.get(
             encoding: "utf-8",
           };
         } catch {
-          const binResult = await remoteReadBinaryFile(machineId, envId, rawFilePath);
+          const binResult = await remoteReadBinaryFile(machineId, envId, filePath);
           const buffer = Buffer.from(binResult.data, "base64");
           set.headers["Content-Disposition"] = `attachment; filename="${binResult.name}"`;
           set.headers["Content-Type"] = "application/octet-stream";
