@@ -25,8 +25,7 @@ export interface CreateRelayHandleInput {
 
 export interface OpencodeRelayHandle extends EngineRelayHandle {
   readonly url: string;
-  readonly ready: Promise<void>;
-  onMessage(listener: (message: EngineRelayMessage) => void): () => void;
+  // onMessage/ready 已在 EngineRelayHandle 中声明为可选，此处不再重复声明
 }
 
 const KEEPALIVE_TYPE = "keep_alive";

@@ -32,6 +32,7 @@ describe("AGENT_SETTABLE_FIELDS top_p 白名单", () => {
       "description",
       "knowledge",
       "machineId",
+      "engineType",
     ] as const;
     expect([...AGENT_SETTABLE_FIELDS].sort()).toEqual([...expectedFields].sort());
   });

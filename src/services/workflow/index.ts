@@ -11,6 +11,7 @@
  * - workflow 结束后统一销毁启动的实例
  */
 
+import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import type { Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
 import { and, eq } from "drizzle-orm";
@@ -60,8 +61,8 @@ function createChannelFactory(organizationId: string) {
     const facade = getCoreRuntime();
     const handle = await facade.connectInstanceRelay({ instanceId: instance.id });
 
-    // 4. 等待 relay ready（handle 内部会等 WS open）
-    if ("ready" in handle && handle.ready instanceof Promise) {
+    // 4. 等待 relay ready（ready 已在 EngineRelayHandle 中声明）
+    if (handle.ready) {
       await handle.ready;
     }
 
@@ -71,13 +72,9 @@ function createChannelFactory(organizationId: string) {
         handle.send(message as { type: string; payload?: unknown });
       },
       onMessage: (handler: (msg: Record<string, unknown>) => void) => {
-        if ("onMessage" in handle && typeof (handle as { onMessage?: unknown }).onMessage === "function") {
-          const opencodeHandle = handle as {
-            onMessage: (listener: (msg: Record<string, unknown>) => void) => () => void;
-          };
-          return opencodeHandle.onMessage(handler);
+        if (handle.onMessage) {
+          return handle.onMessage(handler as unknown as (message: EngineRelayMessage) => void);
         }
-        // 没有 onMessage 则返回空 unsub
         return () => {};
       },
     };

@@ -12,7 +12,7 @@ import type {
 } from "@fenix/plugin-sdk";
 import { AcpLinkProcessManager, type ManagedAcpLinkProcess } from "../process/acp-link-process-manager";
 import { createPortAllocator, type PortAllocator } from "../process/port-allocator";
-import { createRelayHandle, type OpencodeRelayHandle, type RelayHandleDependencies } from "../relay/relay-handle";
+import { createRelayHandle, type RelayHandleDependencies } from "../relay/relay-handle";
 import { prepareWorkspaceEnvironment } from "./environment-preparer";
 import { buildOpencodeRuntimeConfig, type InstalledSkillReference, type OpencodeRuntimeConfig } from "./runtime-config";
 import { installSkills, type SkillInstallerDependencies } from "./skill-installer";
@@ -222,7 +222,7 @@ export function createOpencodeRuntime(dependencies: OpencodeRuntimeDependencies 
               createWebSocket: (url) => new WebSocket(url) as never,
             },
           );
-          const relayHandle = relay as Partial<OpencodeRelayHandle>;
+          const relayHandle = relay;
 
           try {
             if (relayHandle.ready) {

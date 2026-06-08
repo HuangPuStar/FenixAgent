@@ -10,12 +10,6 @@ import type { WsConnection } from "../ws-types";
 import { RelayConnectionManager, sendToRelayWs } from "./connection-manager";
 import { filterConnectFromFlush } from "./message-router";
 
-/** OpencodeRelayHandle extends EngineRelayHandle with onMessage/ready */
-type FullRelayHandle = EngineRelayHandle & {
-  onMessage?: (listener: (message: { type: string; payload?: unknown }) => void) => () => void;
-  ready?: Promise<void>;
-};
-
 const manager = new RelayConnectionManager();
 
 const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
@@ -107,8 +101,7 @@ async function openLocalRelay(
     const facade = getCoreRuntime();
     handle = await facade.connectInstanceRelay({ instanceId, sessionId });
 
-    const full = handle as FullRelayHandle;
-    if (full.ready) await full.ready;
+    if (handle.ready) await handle.ready;
 
     // WS 在 await 期间关闭 → 清理 handle 并放弃
     if (ws.readyState !== 1) {
@@ -162,16 +155,15 @@ async function openLocalRelay(
   log("Relay → frontend status", { relayWsId, agentId, instanceId, connected: true });
   log(`Local relay established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
 
-  const full = handle as FullRelayHandle;
-  if (full.onMessage) {
-    entry.relayUnsub = full.onMessage((message) => {
+  if (handle.onMessage) {
+    entry.relayUnsub = handle.onMessage((message) => {
       // 转发 agent 的 status（含 capabilities），使前端能检测 session/list 等能力
-      if ((message as Record<string, unknown>).type === "status") {
+      if ((message as unknown as Record<string, unknown>).type === "status") {
         log("Relay ← agent status", { relayWsId, agentId, instanceId, payload: JSON.stringify(message).slice(0, 300) });
         sendToRelayWs(ws, message);
         return;
       }
-      if ((message as Record<string, unknown>).type === "relay_closed") {
+      if ((message as unknown as Record<string, unknown>).type === "relay_closed") {
         log("Relay ← agent relay_closed", { relayWsId, agentId, instanceId });
         sendToRelayWs(ws, {
           type: "error",
