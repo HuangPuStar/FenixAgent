@@ -266,6 +266,7 @@ export interface SkillConfigRowWithAccess {
 /** Additional options accepted by skill writes. */
 export interface SkillSetOptions {
   publicReadable?: boolean;
+  auditAction?: "set" | "upload_create" | "upload_overwrite";
 }
 
 // ────────────────────────────────────────────

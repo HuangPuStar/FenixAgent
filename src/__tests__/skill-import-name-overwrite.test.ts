@@ -131,9 +131,14 @@ describe("skill import name overwrite semantics", () => {
     expect(result.skipped).toEqual(["existing"]);
     expect(result.conflicts).toEqual([]);
     expect(configPg.deleteSkill).not.toHaveBeenCalled();
-    expect(configPg.upsertSkill).toHaveBeenCalledWith(ctx, "fresh", {
-      description: "fresh desc",
-    });
+    expect(configPg.upsertSkill).toHaveBeenCalledWith(
+      ctx,
+      "fresh",
+      {
+        description: "fresh desc",
+      },
+      { auditAction: "upload_create" },
+    );
   });
 
   // overwrite 策略以上传目录名作为身份，即使 frontmatter name 不同也不改变覆盖目标。
@@ -150,10 +155,15 @@ describe("skill import name overwrite semantics", () => {
 
     const result = await importSkillDirectories(ctx, [file], "overwrite");
 
-    expect(configPg.deleteSkill).toHaveBeenCalledWith(ctx, "folder-name");
-    expect(configPg.upsertSkill).toHaveBeenCalledWith(ctx, "folder-name", {
-      description: "New",
-    });
+    expect(configPg.deleteSkill).not.toHaveBeenCalledWith(ctx, "folder-name");
+    expect(configPg.upsertSkill).toHaveBeenCalledWith(
+      ctx,
+      "folder-name",
+      {
+        description: "New",
+      },
+      { auditAction: "upload_overwrite" },
+    );
     expect(result.imported[0]?.name).toBe("folder-name");
   });
 
