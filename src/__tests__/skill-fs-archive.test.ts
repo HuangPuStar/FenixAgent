@@ -8,6 +8,8 @@ import {
   buildSkillArchive,
   deleteSkillArchive,
   getSkillArchivePath,
+  getSkillMdPath,
+  getSkillOrganizationDir,
   getSkillSourceDir,
 } from "../services/skill-fs";
 
@@ -43,8 +45,10 @@ describe("skill fs archive", () => {
 
   // 路径工具统一从 skill root 派生 source 与 zip artifact。
   test("path helpers build source and archive paths", () => {
-    expect(getSkillSourceDir(root, "demo")).toBe(join(root, "demo"));
-    expect(getSkillArchivePath(root, "demo")).toBe(join(root, "demo.zip"));
+    expect(getSkillOrganizationDir(root, "org-a")).toBe(join(root, "org-a"));
+    expect(getSkillSourceDir(root, "org-a", "demo")).toBe(join(root, "org-a", "demo"));
+    expect(getSkillMdPath(root, "org-a", "demo")).toBe(join(root, "org-a", "demo", "SKILL.md"));
+    expect(getSkillArchivePath(root, "org-a", "demo")).toBe(join(root, "org-a", "demo.zip"));
   });
 
   // 非法名称会在进入路径拼接前被拒绝。
@@ -56,12 +60,12 @@ describe("skill fs archive", () => {
 
   // 生成的 zip 条目直接包含 skill 目录内容，不额外套一层目录。
   test("buildSkillArchive writes central directory entries", async () => {
-    const sourceDir = getSkillSourceDir(root, "demo");
+    const sourceDir = getSkillSourceDir(root, "org-a", "demo");
     await mkdir(join(sourceDir, "references"), { recursive: true });
     await writeFile(join(sourceDir, "SKILL.md"), "# Demo", "utf-8");
     await writeFile(join(sourceDir, "references", "ref.md"), "ref", "utf-8");
 
-    const archivePath = getSkillArchivePath(root, "demo");
+    const archivePath = getSkillArchivePath(root, "org-a", "demo");
     await buildSkillArchive(sourceDir, archivePath);
 
     const names = readCentralDirectoryNames(await readFile(archivePath));
@@ -70,10 +74,11 @@ describe("skill fs archive", () => {
 
   // 删除 archive 不要求文件存在，存在时会被清理掉。
   test("deleteSkillArchive removes archive file", async () => {
-    const archivePath = getSkillArchivePath(root, "demo");
+    const archivePath = getSkillArchivePath(root, "org-a", "demo");
+    await mkdir(join(root, "org-a"), { recursive: true });
     await writeFile(archivePath, "zip", "utf-8");
 
-    await deleteSkillArchive(root, "demo");
+    await deleteSkillArchive(root, "org-a", "demo");
 
     expect(existsSync(archivePath)).toBe(false);
   });

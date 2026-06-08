@@ -8,6 +8,7 @@ function buildConfig(env: Env) {
     host: env.RCS_HOST,
     baseUrl: env.RCS_BASE_URL,
     skillDir: resolve(env.SKILL_DIR ?? "./data/skills"),
+    systemAdminPasswordFile: resolve(env.RCS_SYSTEM_ADMIN_PASSWORD_FILE ?? "./data/password.txt"),
     pollTimeout: env.RCS_POLL_TIMEOUT,
     heartbeatInterval: env.RCS_HEARTBEAT_INTERVAL,
     /** Bun WebSocket idle timeout (seconds). Bun sends protocol-level pings after

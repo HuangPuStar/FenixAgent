@@ -14,6 +14,7 @@ const envSchema = z.object({
   RCS_BASE_URL: z.string().default(""),
   RCS_VERSION: z.string().default("0.1.0"),
   SKILL_DIR: z.string().default("./data/skills"),
+  RCS_SYSTEM_ADMIN_PASSWORD_FILE: z.string().default("./data/password.txt"),
   APP_BRAND_NAME: z.string().default("Fenix"),
   APP_LOGO_PATH: z.string().default(""),
 

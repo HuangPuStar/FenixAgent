@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
@@ -36,7 +36,6 @@ function summarizeSkills(skills: SkillRow[]) {
     id: row.id,
     organizationId: row.organizationId,
     name: row.name,
-    contentPath: row.contentPath ?? null,
   }));
 }
 
@@ -341,13 +340,9 @@ function isSkillStale(sourceDir: string, archivePath: string): boolean {
 }
 
 function resolveSkillArchivePath(skillRoot: string, row: SkillRow) {
-  if (row.contentPath) {
-    const sourceDir = dirname(row.contentPath);
-    return { archivePath: `${sourceDir}.zip`, sourceDir };
-  }
   return {
-    archivePath: getSkillArchivePath(skillRoot, row.name),
-    sourceDir: getSkillSourceDir(skillRoot, row.name),
+    archivePath: getSkillArchivePath(skillRoot, row.organizationId, row.name),
+    sourceDir: getSkillSourceDir(skillRoot, row.organizationId, row.name),
   };
 }
 
@@ -467,7 +462,7 @@ async function buildSkillSpecs(agentConfig: AgentConfigDetailWithAccess, skills:
   for (const row of skills) {
     const { archivePath, sourceDir } = resolveSkillArchivePath(skillRoot, row);
     log(
-      `[launch-spec-builder] buildLaunchSpec: translating skill '${row.name}' sourceDir='${sourceDir}' archivePath='${archivePath}' contentPath='${row.contentPath ?? ""}'`,
+      `[launch-spec-builder] buildLaunchSpec: translating skill '${row.name}' sourceDir='${sourceDir}' archivePath='${archivePath}' skillOrg='${row.organizationId}'`,
     );
 
     if (!existsSync(sourceDir)) {

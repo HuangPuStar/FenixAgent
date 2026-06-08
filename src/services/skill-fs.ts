@@ -80,14 +80,24 @@ export function assertValidSkillName(name: string): string {
   return skillName;
 }
 
+/** 返回组织级 skill 根目录。 */
+export function getSkillOrganizationDir(skillRoot: string, organizationId: string): string {
+  return join(skillRoot, organizationId);
+}
+
 /** 返回 skill 源目录路径。 */
-export function getSkillSourceDir(skillRoot: string, name: string): string {
-  return join(skillRoot, assertValidSkillName(name));
+export function getSkillSourceDir(skillRoot: string, organizationId: string, name: string): string {
+  return join(getSkillOrganizationDir(skillRoot, organizationId), assertValidSkillName(name));
+}
+
+/** 返回 SKILL.md 路径。 */
+export function getSkillMdPath(skillRoot: string, organizationId: string, name: string): string {
+  return join(getSkillSourceDir(skillRoot, organizationId, name), "SKILL.md");
 }
 
 /** 返回 skill zip artifact 路径。 */
-export function getSkillArchivePath(skillRoot: string, name: string): string {
-  return join(skillRoot, `${assertValidSkillName(name)}.zip`);
+export function getSkillArchivePath(skillRoot: string, organizationId: string, name: string): string {
+  return join(getSkillOrganizationDir(skillRoot, organizationId), `${assertValidSkillName(name)}.zip`);
 }
 
 /** 从原始 Markdown 文本中解析 YAML frontmatter */
@@ -325,8 +335,8 @@ export async function deleteSkillDir(skillDir: string): Promise<void> {
 }
 
 /** 删除 skill zip artifact（如果存在）。 */
-export async function deleteSkillArchive(skillRoot: string, name: string): Promise<void> {
-  await rm(getSkillArchivePath(skillRoot, name), { force: true });
+export async function deleteSkillArchive(skillRoot: string, organizationId: string, name: string): Promise<void> {
+  await rm(getSkillArchivePath(skillRoot, organizationId, name), { force: true });
 }
 
 /** 根据冲突列表和策略，决定哪些 entries 需要写入、哪些跳过 */
