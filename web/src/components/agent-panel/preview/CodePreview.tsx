@@ -18,7 +18,7 @@ export function CodePreview({ content, filePath }: CodePreviewProps) {
       const lang = getShikiLanguage(filePath) ?? "text";
       const result = await codeToHtml(content, {
         lang,
-        theme: "github-dark-default",
+        theme: "github-light-default",
       });
       setHtml(result);
     } catch {
@@ -44,7 +44,7 @@ export function CodePreview({ content, filePath }: CodePreviewProps) {
   return (
     <div className="flex-1 overflow-auto p-4">
       <div
-        className="code-preview-view rounded-lg overflow-hidden text-sm [&_pre]:!bg-[#0d1117] [&_pre]:p-4 [&_pre]:m-0 [&_pre]:overflow-auto [&_code]:text-[13px] [&_code]:leading-relaxed"
+        className="code-preview-view rounded-lg overflow-hidden text-sm [&_pre]:!bg-[#ffffff] [&_pre]:p-4 [&_pre]:m-0 [&_pre]:overflow-auto [&_code]:text-[13px] [&_code]:leading-relaxed"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki 输出的可信 HTML
         dangerouslySetInnerHTML={{ __html: html ?? "" }}
       />

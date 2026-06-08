@@ -1,4 +1,4 @@
-import { FolderTree, Maximize2, Minimize2, PanelRightClose, Upload, X } from "lucide-react";
+import { FolderTree, PanelRightClose, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -19,27 +19,53 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
   const { t } = useTranslation(NS.COMPONENTS);
   const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
-  const { size: dialogSize, resizeHandle } = useResizable({
-    initialWidth: Math.round(window.innerWidth * 0.66),
-    initialHeight: Math.round(window.innerHeight * 0.75),
+
+  // --- 预览弹窗尺寸 & 拖动 ---
+  const [dialogKey, setDialogKey] = useState(0);
+  const initSizeRef = useRef({
+    width: Math.round(window.innerWidth * 0.66),
+    height: Math.round(window.innerHeight * 0.75),
   });
-  const [isMaximized, setIsMaximized] = useState(false);
-  const prevSizeRef = useRef({ width: 0, height: 0 });
+  const { resizeHandle, ref: dialogContentRef } = useResizable({
+    initialWidth: initSizeRef.current.width,
+    initialHeight: initSizeRef.current.height,
+  });
+  const [dialogOffset, setDialogOffset] = useState({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
 
-  const effectiveStyle: React.CSSProperties = isMaximized
-    ? { width: "calc(100vw - 16px)", height: "calc(100vh - 16px)" }
-    : { width: dialogSize.width, height: dialogSize.height };
+  const handleHeaderDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+      e.preventDefault();
+      dragStartRef.current = { x: e.clientX, y: e.clientY, ox: dialogOffset.x, oy: dialogOffset.y };
 
-  const toggleMaximize = useCallback(() => {
-    setIsMaximized((prev) => {
-      if (!prev) {
-        // 进入最大化前记住当前尺寸
-        prevSizeRef.current = { width: dialogSize.width, height: dialogSize.height };
-      }
-      return !prev;
-    });
-  }, [dialogSize]);
+      const onMove = (ev: MouseEvent) => {
+        const ds = dragStartRef.current;
+        setDialogOffset({ x: ds.ox + ev.clientX - ds.x, y: ds.oy + ev.clientY - ds.y });
+      };
 
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [dialogOffset],
+  );
+
+  const closePreview = useCallback(() => {
+    setPreviewFilePath(null);
+    setDialogOffset({ x: 0, y: 0 });
+    initSizeRef.current = {
+      width: Math.round(window.innerWidth * 0.66),
+      height: Math.round(window.innerHeight * 0.75),
+    };
+    setDialogKey((k) => k + 1);
+  }, []);
+
+  // --- 拖拽上传 ---
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{
     active: boolean;
@@ -219,36 +245,39 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
         )}
       </div>
 
-      {/* 文件预览弹窗 — 位于视口中央，宽 2/3、高 3/4 */}
+      {/* 文件预览弹窗 */}
       <Dialog
         open={!!previewFilePath}
         onOpenChange={(open) => {
-          if (!open) setPreviewFilePath(null);
+          if (!open) closePreview();
         }}
       >
         <DialogContent
-          className={`flex flex-col p-0 gap-0 overflow-hidden sm:max-w-none ${isMaximized ? "!top-2 !left-2 !translate-x-0 !translate-y-0 !rounded-none" : ""}`}
-          style={effectiveStyle}
+          key={dialogKey}
+          ref={(el: unknown) => {
+            dialogContentRef.current = el as HTMLElement | null;
+          }}
+          className="flex flex-col p-0 gap-0 overflow-hidden sm:max-w-none shadow-[0_0_40px_rgba(0,0,0,0.4)] !transition-none"
+          style={{
+            width: initSizeRef.current.width,
+            height: initSizeRef.current.height,
+            transform: `translate(${dialogOffset.x}px, ${dialogOffset.y}px)`,
+          }}
+          showOverlay
           disableOverlayClose
-          disableEscapeClose
           showCloseButton={false}
         >
-          <DialogHeader className="flex-row items-center justify-between px-4 py-3 border-b shrink-0 gap-2">
+          <DialogHeader
+            className="flex-row items-center justify-between px-4 py-3 border-b shrink-0 gap-2 cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={handleHeaderDragStart}
+          >
             <DialogTitle className="text-sm font-medium truncate max-w-[70%]">
               {previewFilePath?.split("/").pop() ?? t("fileTree.preview.title")}
             </DialogTitle>
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={toggleMaximize}
-                className="h-6 w-6 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors"
-                title={isMaximized ? "恢复" : "最大化"}
-              >
-                {isMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPreviewFilePath(null)}
+                onClick={closePreview}
                 className="h-6 w-6 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors"
                 title="关闭"
               >
@@ -259,19 +288,15 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
           <div className="flex-1 min-h-0 overflow-auto">
             {previewFilePath && <PreviewTab envId={envId} filePath={previewFilePath} />}
           </div>
-          {/* 拖拽调整尺寸的把手 — 四角 + 四边（最大化时隐藏） */}
-          {!isMaximized && (
-            <>
-              <div {...resizeHandle("n")} />
-              <div {...resizeHandle("s")} />
-              <div {...resizeHandle("e")} />
-              <div {...resizeHandle("w")} />
-              <div {...resizeHandle("ne")} />
-              <div {...resizeHandle("nw")} />
-              <div {...resizeHandle("se")} />
-              <div {...resizeHandle("sw")} />
-            </>
-          )}
+          {/* Resize handles */}
+          <div {...resizeHandle("n")} />
+          <div {...resizeHandle("s")} />
+          <div {...resizeHandle("e")} />
+          <div {...resizeHandle("w")} />
+          <div {...resizeHandle("ne")} />
+          <div {...resizeHandle("nw")} />
+          <div {...resizeHandle("se")} />
+          <div {...resizeHandle("sw")} />
         </DialogContent>
       </Dialog>
     </>

@@ -460,9 +460,13 @@ export function TreeItem({
 
         {/* Label area */}
         {renderLabel ? (
-          <span className="flex-1 min-w-0 truncate">{renderLabel(data, state)}</span>
+          <span className="flex-1 min-w-0 truncate" title={data.label}>
+            {renderLabel(data, state)}
+          </span>
         ) : (
-          <span className="flex-1 min-w-0 truncate">{data.label}</span>
+          <span className="flex-1 min-w-0 truncate" title={data.label}>
+            {data.label}
+          </span>
         )}
 
         {/* Description */}
