@@ -27,7 +27,11 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
     }),
     [],
   );
-  const { size: dialogSize, resizeHandle, targetRef: dialogResizeRef } = useResizable({
+  const {
+    size: dialogSize,
+    resizeHandle,
+    targetRef: dialogResizeRef,
+  } = useResizable({
     initialWidth: initialDialogSize.width,
     initialHeight: initialDialogSize.height,
     externalOffsetX: dialogOffset.x,
