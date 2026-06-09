@@ -63,7 +63,7 @@ function parsePathsToTree(paths: string[]): ParsedNode[] {
 function parsedToTreeNodeData(node: ParsedNode): TreeNodeData {
   return {
     id: node.path,
-    label: node.path,
+    label: node.name,
     hasChildren: node.isDir && node.children.length > 0,
   };
 }
