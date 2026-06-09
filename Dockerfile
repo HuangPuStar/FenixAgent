@@ -36,6 +36,7 @@ FROM oven/bun:1 AS remote-runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV OPENCODE_DISABLE_AUTOUPDATE=1
 
 # Install common tools (agent runtime dependencies)
 RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
