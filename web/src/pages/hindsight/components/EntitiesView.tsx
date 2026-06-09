@@ -84,9 +84,7 @@ export function EntitiesView() {
     setCurrentPage(1);
     loadEntities(1);
     setSelectedEntity(null);
-    // 仅挂载时执行一次；不重置 graphData，由第二个 effect 自行管理
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 仅挂载时执行
-  }, []);
+  }, [loadEntities]);
 
   useEffect(() => {
     if (viewMode === "relations" && !graphData && !graphLoading) {

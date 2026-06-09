@@ -4,8 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hindsightApi } from "@/src/api/hindsight";
 import { NS } from "@/src/i18n";
-import { DataView } from "./components/DataView";
-import { DocumentsView } from "./components/DocumentsView";
+import { DataView as HindsightDataView } from "./components/DataView";
 import { EntitiesView } from "./components/EntitiesView";
 import { MentalModelsView } from "./components/MentalModelsView";
 
@@ -82,13 +81,13 @@ export function MemoriesPage() {
 
         {/* 前 3 个 tab 使用 DataView，内部有 Constellation/Graph/Table/Timeline 切换 */}
         <TabsContent value="world" className="flex-1 min-h-0 overflow-auto p-4">
-          <DataView factType="world" />
+          <HindsightDataView factType="world" />
         </TabsContent>
         <TabsContent value="experience" className="flex-1 min-h-0 overflow-auto p-4">
-          <DataView factType="experience" />
+          <HindsightDataView factType="experience" />
         </TabsContent>
         <TabsContent value="observation" className="flex-1 min-h-0 overflow-auto p-4">
-          <DataView factType="observation" />
+          <HindsightDataView factType="observation" />
         </TabsContent>
         <TabsContent value="mental-models" className="flex-1 min-h-0 overflow-auto p-4">
           <MentalModelsView />

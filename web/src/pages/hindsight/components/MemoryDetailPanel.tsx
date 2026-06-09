@@ -150,11 +150,11 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
                     {(Array.isArray(displayMemory.entities)
                       ? displayMemory.entities
                       : String(displayMemory.entities).split(", ")
-                    ).map((entity: any, i: number) => {
+                    ).map((entity: any, _i: number) => {
                       const entityText = typeof entity === "string" ? entity : entity?.name || JSON.stringify(entity);
                       return (
                         <span
-                          key={i}
+                          key={entityText}
                           className="text-sm px-3 py-1.5 rounded-full bg-primary/10 text-primary font-medium"
                         >
                           {entityText}

@@ -1,4 +1,4 @@
-import { Calendar, FileText, Loader2, Users } from "lucide-react";
+import { Calendar, Loader2, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -129,8 +129,8 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
                   {t("memoryDetailModal.sectionEntities")}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {memory.entities.map((entity: string, idx: number) => (
-                    <span key={idx} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
+                  {memory.entities.map((entity: string) => (
+                    <span key={entity} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
                       {entity}
                     </span>
                   ))}

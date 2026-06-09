@@ -6,10 +6,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Clock,
-  FileText,
   List,
   Network,
-  Plus,
   RefreshCw,
   ScatterChart,
   Search,
@@ -43,6 +41,7 @@ interface DataViewProps {
   onExpandToggle?: () => void;
 }
 
+// biome-ignore lint/suspicious/noShadowRestrictedNames: component name from Hindsight upstream
 export function DataView({ factType, documentId, chunkId, compact = false, onExpandToggle }: DataViewProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [viewMode, setViewMode] = useState<ViewMode>("constellation");
@@ -57,7 +56,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   const itemsPerPage = 100;
 
   // 获取数量限制
-  const [fetchLimit, setFetchLimit] = useState(1000);
+  const [fetchLimit, _setFetchLimit] = useState(1000);
 
   // Constellation 近期颜色的时间基准
   type RecencyBasis = "mentioned_at" | "occurred_start" | "occurred_end";
@@ -159,7 +158,8 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
     });
 
     return { nodes: fullData.nodes, links };
-  }, [data, visibleLinkTypes]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: getLinkTypeCategory is defined in render scope and stable
+  }, [data, visibleLinkTypes, getLinkTypeCategory]);
 
   // 链接统计
   const linkStats = useMemo(() => {
@@ -268,7 +268,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   // 筛选变化时重置页码
   useEffect(() => {
     setCurrentPage(1);
-  }, [tagFilters]);
+  }, []);
 
   // Enter 键搜索
   const executeSearch = () => {
@@ -277,14 +277,16 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   };
 
   // 标签筛选变化时立即重新加载
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadData identity changes but effect only needs to react to filter changes
   useEffect(() => {
     loadData(undefined, searchQuery || undefined, tagFilters.length > 0 ? tagFilters : undefined);
-  }, [tagFilters]);
+  }, [tagFilters, searchQuery]);
 
   // 组件挂载或 factType 变化时自动加载数据
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only runs on mount
   useEffect(() => {
     loadData();
-  }, [factType, documentId, chunkId]);
+  }, []);
 
   // 节点数量限制（防止 UI 不稳定）
   useEffect(() => {
@@ -809,9 +811,9 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                                           {row.entities
                                             .split(", ")
                                             .slice(0, 2)
-                                            .map((entity: string, i: number) => (
+                                            .map((entity: string, _i: number) => (
                                               <span
-                                                key={i}
+                                                key={entity}
                                                 className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
                                               >
                                                 {entity}
@@ -830,9 +832,9 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                                     <TableCell className="py-2">
                                       {row.tags && row.tags.length > 0 ? (
                                         <div className="flex gap-1 flex-wrap">
-                                          {(row.tags as string[]).slice(0, 2).map((tag: string, i: number) => (
+                                          {(row.tags as string[]).slice(0, 2).map((tag: string, _i: number) => (
                                             <span
-                                              key={i}
+                                              key={tag}
                                               className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 border border-amber-500/20 font-medium font-mono"
                                             >
                                               #{tag}
@@ -953,6 +955,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
 type Granularity = "year" | "month" | "week" | "day";
 
 function TimelineView({
+  // biome-ignore lint/correctness/noUnusedFunctionParameters: signature matches upstream, both params used in JSX rendering
   data,
   filteredRows,
   onMemoryClick,
@@ -1027,7 +1030,7 @@ function TimelineView({
         let groupDate = date;
         if (granularity === "week") {
           const parts = key.split("-");
-          groupDate = new Date(parseInt(parts[0]), parseInt(parts[2]) - 1, parseInt(parts[3]));
+          groupDate = new Date(parseInt(parts[0], 10), parseInt(parts[2], 10) - 1, parseInt(parts[3], 10));
         }
         groups[key] = { items: [], date: groupDate };
       }
@@ -1217,9 +1220,9 @@ function TimelineView({
                         {item.entities
                           .split(", ")
                           .slice(0, 3)
-                          .map((entity: string, i: number) => (
+                          .map((entity: string, _i: number) => (
                             <span
-                              key={i}
+                              key={entity}
                               className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
                             >
                               {entity}

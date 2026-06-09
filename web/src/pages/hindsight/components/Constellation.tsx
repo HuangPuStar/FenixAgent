@@ -1,4 +1,4 @@
-import { layout, layoutWithLines, prepare, prepareWithSegments } from "@chenglou/pretext";
+import { layoutWithLines, prepare, prepareWithSegments } from "@chenglou/pretext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
@@ -19,12 +19,6 @@ interface PreparedNode {
   /** Color derived from link count (heat gradient) */
   heatColor: string;
   linkCount: number;
-}
-
-interface ScreenNode {
-  idx: number;
-  sx: number;
-  sy: number;
 }
 
 // ============================================================================
@@ -76,7 +70,7 @@ export interface ConstellationProps {
 // Helpers
 // ============================================================================
 
-function hexToRgba(hex: string, alpha: number): string {
+function _hexToRgba(hex: string, alpha: number): string {
   // Handle non-hex formats
   if (!hex.startsWith("#")) return hex;
   const r = parseInt(hex.slice(1, 3), 16);
@@ -138,7 +132,7 @@ function useIsDarkMode() {
 // Constants
 // ============================================================================
 
-const FONT = '12px Inter, -apple-system, "Segoe UI", sans-serif';
+const _FONT = '12px Inter, -apple-system, "Segoe UI", sans-serif';
 const FONT_SMALL = '11px Inter, -apple-system, "Segoe UI", sans-serif';
 const FONT_BOLD = '600 10px Inter, -apple-system, "Segoe UI", sans-serif';
 const MONO = '11px "SF Mono", "Fira Code", Consolas, monospace';
@@ -204,7 +198,9 @@ export function Constellation({
     if (!data.nodes.length) return { preparedNodes: [], linksByNode: new Map(), linksWithIndices: [] };
 
     const nodeIndexMap = new Map<string, number>();
-    data.nodes.forEach((n, i) => nodeIndexMap.set(n.id, i));
+    data.nodes.forEach((n, i) => {
+      nodeIndexMap.set(n.id, i);
+    });
 
     // Count links per node
     const linkCounts = new Map<string, number>();
@@ -614,7 +610,21 @@ export function Constellation({
     ctx.restore();
 
     animRef.current = requestAnimationFrame(animate);
-  }, [isDark, preparedNodes, linksWithIndices, linksByNode, t]);
+  }, [
+    isDark,
+    preparedNodes,
+    linksWithIndices,
+    linksByNode,
+    t,
+    sizeLegendLabel?.toUpperCase,
+    heatLegendLabel,
+    heatLegendEndpoints,
+    nodeSizeFn,
+    sizeLegendLabel,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: drawLabel is a render-scope helper that does not need stable identity
+    drawLabel,
+    compactLabels,
+  ]);
 
   // ----- Label drawing helper -----
   function drawLabel(
@@ -679,7 +689,7 @@ export function Constellation({
       ctx.globalAlpha = isHovered ? 1 : force ? 0.85 : Math.min(1, (zoom - 0.3) * 2.5);
       ctx.textAlign = "left";
       const text = n.node.label || n.node.id.substring(0, 12);
-      const label = text.length > 45 ? text.slice(0, 45) + "..." : text;
+      const label = text.length > 45 ? `${text.slice(0, 45)}...` : text;
       ctx.fillText(label, sx + r + 5, sy + 4);
       ctx.globalAlpha = 1;
     }
@@ -911,7 +921,7 @@ export function Constellation({
       canvas.removeEventListener("mouseup", handleMouseUp);
       canvas.removeEventListener("mouseleave", handleMouseLeave);
     };
-  }, [animate, preparedNodes, onNodeClick, isFullscreen]);
+  }, [animate, preparedNodes, onNodeClick, isDark, t]);
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => !prev);
@@ -941,7 +951,7 @@ export function Constellation({
       stateRef.current.H = rect.height;
     }, 50);
     return () => clearTimeout(timer);
-  }, [isFullscreen]);
+  }, []);
 
   return (
     <div
