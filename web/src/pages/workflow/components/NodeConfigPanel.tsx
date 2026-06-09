@@ -4,6 +4,7 @@
 import type { Node } from "@xyflow/react";
 import { Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { syncOutputOnRename } from "../preset-utils";
 import type { WfMeta } from "../yaml-utils";
 import { START_NODE_ID } from "../yaml-utils";
 import { InputsEditor } from "./InputsEditor";
@@ -419,7 +420,10 @@ export function NodeConfigPanel({
                           if (k.trim()) cleaned[k.trim()] = v;
                         }
                       }
-                      updateNodeData({ output: Object.keys(cleaned).length ? cleaned : undefined });
+                      // 检测 key 名变更并自动同步表达式中的同名引用
+                      const oldOutput = (sd?.output as Record<string, string>) ?? {};
+                      const synced = syncOutputOnRename(oldOutput, cleaned);
+                      updateNodeData({ output: Object.keys(synced).length ? synced : undefined });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.transform_output_key_placeholder")}

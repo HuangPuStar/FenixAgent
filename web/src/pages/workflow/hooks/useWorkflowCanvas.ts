@@ -10,6 +10,7 @@ import { type RefObject, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { autoLayout } from "../layout";
+import { getPresetById } from "../presets";
 import { createStartNode, defaultMeta, nextNodeId, resetNodeCounter, START_NODE_ID, type WfMeta } from "../yaml-utils";
 
 export interface UseWorkflowCanvasParams {
@@ -42,7 +43,11 @@ export interface UseWorkflowCanvasReturn {
   onConnectStart: (event: MouseEvent | TouchEvent) => void;
   onConnectEnd: (event: MouseEvent | TouchEvent) => void;
   handleNodesDelete: (nodes: Node[]) => void;
-  addNode: (type: string, position?: { x: number; y: number }) => void;
+  addNode: (
+    type: string,
+    presetOrPosition?: string | { x: number; y: number },
+    positionFallback?: { x: number; y: number },
+  ) => void;
   onDragOver: (event: React.DragEvent) => void;
   onDrop: (event: React.DragEvent) => void;
   handleAutoLayout: () => void;
@@ -97,8 +102,52 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
           eds,
         ),
       );
+
+      // 自动补全：检测目标为 transform 节点且有预设时，自动填入 inputs + depends_on
+      if (connection.target) {
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== connection.target) return n;
+            if (n.data?.type !== "transform") return n;
+
+            const presetId = n.data?._preset as string | undefined;
+            if (!presetId) return n;
+
+            const preset = getPresetById(presetId);
+            if (!preset) return n;
+
+            // 收集所有连接到该节点的上游节点 ID（现有 edges + 新连接）
+            const existingUpstreamIds = edges.filter((e) => e.target === n.id).map((e) => e.source);
+            const allUpstreamIds = [...new Set([...existingUpstreamIds, connection.source])];
+
+            if (allUpstreamIds.length < preset.minUpstream) return n;
+
+            // 按预设类型分配 inputs 变量名
+            const inputs: Record<string, string> = {};
+            if (preset.id === "merge") {
+              allUpstreamIds.slice(0, 2).forEach((uid, i) => {
+                inputs[`src${i + 1}`] = `nodes.${uid}.output`;
+              });
+            } else {
+              inputs.data = `nodes.${allUpstreamIds[0]}.output`;
+            }
+
+            // 合并已有的 depends_on 和新连接的上游节点
+            const existingDepends: string[] = Array.isArray(n.data?.depends_on) ? (n.data.depends_on as string[]) : [];
+
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                inputs,
+                depends_on: [...new Set([...existingDepends, ...allUpstreamIds])],
+              },
+            };
+          }),
+        );
+      }
     },
-    [setEdges, didConnect],
+    [setEdges, setNodes, didConnect, edges],
   );
 
   const onConnectStart = useCallback(
@@ -153,13 +202,35 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
   );
 
   const addNode = useCallback(
-    (type: string, position?: { x: number; y: number }) => {
+    (
+      type: string,
+      presetOrPosition?: string | { x: number; y: number },
+      positionFallback?: { x: number; y: number },
+    ) => {
+      // 参数兼容处理：第二个参数可能是 preset 字符串或 position 对象
+      let preset: string | undefined;
+      let position: { x: number; y: number } | undefined;
+      if (typeof presetOrPosition === "string") {
+        preset = presetOrPosition;
+        position = positionFallback;
+      } else {
+        position = presetOrPosition;
+      }
+
+      const presetConfig = preset ? getPresetById(preset) : undefined;
       const id = nextNodeId(type);
       const newNode: Node = {
         id,
         type,
         position: position ?? { x: 300 + Math.random() * 200, y: 100 + Math.random() * 200 },
-        data: {},
+        data: {
+          ...(presetConfig
+            ? {
+                output: { ...presetConfig.defaultOutput },
+                _preset: preset, // 前端运行时标记，不写入 YAML
+              }
+            : {}),
+        },
       };
       setNodes((nds) => [...nds, newNode]);
     },
@@ -176,11 +247,12 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       event.preventDefault();
       const type = event.dataTransfer.getData("application/workflow-node");
       if (!type) return;
+      const preset = event.dataTransfer.getData("application/workflow-preset");
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
-      addNode(type, position);
+      addNode(type, preset || position, preset ? position : undefined);
     },
     [screenToFlowPosition, addNode],
   );

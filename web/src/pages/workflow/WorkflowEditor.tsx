@@ -35,7 +35,6 @@ import {
   Rocket,
   Save,
   ShieldCheck,
-  Shuffle,
   Terminal,
   Upload,
 } from "lucide-react";
@@ -65,19 +64,17 @@ import { useWorkflowPersistence } from "./hooks/useWorkflowPersistence";
 import { useWorkflowRun } from "./hooks/useWorkflowRun";
 import { autoLayout } from "./layout";
 import { nodeTypes } from "./nodes";
+import { TRANSFORM_PRESETS } from "./presets";
 import { dedupEvents } from "./utils";
 import { createStartNode, defaultMeta, START_NODE_ID, type WfMeta, yamlToFlow } from "./yaml-utils";
 import "./workflow.css";
 
-const PALETTE_ITEMS = [
+const BASIC_PALETTE_ITEMS = [
   { type: "shell", labelKey: "nodes.shell", icon: Terminal, color: "#3b82f6" },
   { type: "python", labelKey: "nodes.python", icon: Code, color: "#0ea5e9" },
   { type: "agent", labelKey: "nodes.agent", icon: Bot, color: "#22c55e" },
   { type: "api", labelKey: "nodes.api", icon: Globe, color: "#8b5cf6" },
   { type: "audit", labelKey: "editor.palette_audit", icon: ShieldCheck, color: "#f59e0b" },
-  { type: "transform", labelKey: "nodes.transform", icon: Shuffle, color: "#f97316" },
-  // { type: "workflow", labelKey: "editor.palette_subworkflow", icon: GitBranch, color: "#ec4899" },
-  // { type: "loop", labelKey: "editor.palette_loop", icon: RefreshCw, color: "#06b6d4" },
 ] as const;
 
 interface WorkflowEditorProps {
@@ -488,22 +485,45 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             <Panel position="top-left" className="wf-panel-palette">
               <div className="wf-palette">
                 <div className="wf-palette-title">{t("editor.palette_drag_hint")}</div>
-                {PALETTE_ITEMS.map(({ type, labelKey, icon: Icon, color }) => (
+                {/* 基础节点 */}
+                {BASIC_PALETTE_ITEMS.map((item) => (
                   <button
-                    key={type}
+                    key={item.type}
                     type="button"
                     className="wf-palette-btn"
                     draggable
                     onDragStart={(e) => {
-                      e.dataTransfer.setData("application/workflow-node", type);
+                      e.dataTransfer.setData("application/workflow-node", item.type);
                       e.dataTransfer.effectAllowed = "move";
                     }}
-                    onClick={() => addNode(type)}
+                    onClick={() => addNode(item.type)}
                   >
-                    <span className="wf-palette-icon" style={{ background: color }}>
-                      <Icon size={14} />
+                    <span className="wf-palette-icon" style={{ background: item.color }}>
+                      <item.icon size={14} />
                     </span>
-                    {t(labelKey)}
+                    {t(item.labelKey)}
+                  </button>
+                ))}
+                {/* 分隔线 */}
+                <div className="wf-palette-divider" />
+                {/* 数据变换预设 */}
+                {TRANSFORM_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className="wf-palette-btn"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/workflow-node", "transform");
+                      e.dataTransfer.setData("application/workflow-preset", preset.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onClick={() => addNode("transform", preset.id)}
+                  >
+                    <span className="wf-palette-icon" style={{ background: preset.color }}>
+                      <preset.icon size={14} />
+                    </span>
+                    {t(preset.labelKey)}
                   </button>
                 ))}
               </div>

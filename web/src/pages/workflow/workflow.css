@@ -160,6 +160,13 @@
   flex-shrink: 0;
 }
 
+/* 面板中基础节点与数据变换预设之间的分隔线 */
+.wf-palette-divider {
+  border-top: 1px solid var(--border, #e5e7eb);
+  margin: 6px 0;
+  width: 100%;
+}
+
 /* ── Toolbar (Panel overlay) ── */
 .wf-panel-toolbar {
   margin: 0;
