@@ -476,7 +476,7 @@ git commit -m "test(hindsight): 新增 proxy 路由测试"
     "submit": "存储"
   },
   "status": {
-    "notConfigured": "Hindsight 未配置，请设置 HINDSIGHT_MCP_URL。",
+    "notConfigured": "记忆能力未开启，请联系管理员进行记忆服务部署与配置",
     "loading": "加载中..."
   }
 }

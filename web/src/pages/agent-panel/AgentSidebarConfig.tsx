@@ -40,6 +40,7 @@ interface NavGroup {
 const QUICK_NAV: NavEntry[] = [
   { id: "models", labelKey: "agentPanel:models", icon: Cpu },
   { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
+  { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
   { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
   { id: "organizations", labelKey: "sidebar:organizations", icon: Users },
 ];
@@ -59,7 +60,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
       { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
-      { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
       { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },
     ],
   },
