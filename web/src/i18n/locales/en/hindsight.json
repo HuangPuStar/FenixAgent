@@ -2,8 +2,9 @@
   "title": "Memories",
   "description": "Agent memory management powered by Hindsight",
   "tabs": {
-    "memories": "Memories",
-    "documents": "Documents",
+    "worldFacts": "World Facts",
+    "experience": "Experience",
+    "observations": "Observations",
     "mentalModels": "Mental Models",
     "entities": "Entities"
   },

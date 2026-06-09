@@ -2,8 +2,9 @@
   "title": "记忆",
   "description": "由 Hindsight 驱动的 Agent 记忆管理",
   "tabs": {
-    "memories": "记忆",
-    "documents": "文档",
+    "worldFacts": "世界事实",
+    "experience": "经验",
+    "observations": "观察",
     "mentalModels": "心理模型",
     "entities": "实体"
   },
