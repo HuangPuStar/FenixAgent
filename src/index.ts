@@ -84,7 +84,7 @@ if (hermesUrl) {
 
 // Kill stale acp-link processes from previous runs
 try {
-  execSync("pkill -f 'acp-link.*opencode' || true", { stdio: "ignore" });
+  execSync("pkill -f 'acp-link' || true", { stdio: "ignore" });
 } catch {
   // pkill not available or no matching processes — ignore
 }
