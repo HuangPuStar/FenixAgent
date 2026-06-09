@@ -173,7 +173,7 @@ export function MentalModelsView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadModels();

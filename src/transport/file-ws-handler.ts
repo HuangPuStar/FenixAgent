@@ -195,7 +195,7 @@ export function sendFileOpAndWait(
   timeoutMs: number = DEFAULT_FILE_OP_TIMEOUT_MS,
 ): Promise<{ status: string; data?: unknown; error?: string }> {
   const entry = machineFileWsIndex.get(machineId);
-  if (!entry || entry.ws.readyState !== 1) {
+  if (entry?.ws.readyState !== 1) {
     return Promise.reject(new Error(`No active file-ws connection for machine: ${machineId}`));
   }
 

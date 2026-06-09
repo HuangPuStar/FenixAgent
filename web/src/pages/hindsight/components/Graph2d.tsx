@@ -570,7 +570,17 @@ export function Graph2D({
         cyRef.current = null;
       }
     };
-  }, [dataSignature, isMounted, containerDiv]);
+  }, [
+    dataSignature,
+    isMounted,
+    containerDiv,
+    isDarkMode,
+    cyElements.filter,
+    cyElements.slice,
+    showLabels,
+    cyElements.length,
+    cyElements,
+  ]);
 
   // Handle resize
   useEffect(() => {
@@ -690,7 +700,7 @@ export function convertHindsightGraphData(hindsightData: {
     // Use memory text as label, truncated to ~40 chars
     let label = n.data.label;
     if (!label && tableRow?.text) {
-      label = tableRow.text.length > 40 ? tableRow.text.substring(0, 40) + "..." : tableRow.text;
+      label = tableRow.text.length > 40 ? `${tableRow.text.substring(0, 40)}...` : tableRow.text;
     }
     if (!label) {
       label = n.data.id.substring(0, 8);

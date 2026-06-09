@@ -49,7 +49,7 @@ export function DocumentsView() {
     } finally {
       setLoading(false);
     }
-  }, [search, page]);
+  }, [search, page, t]);
 
   useEffect(() => {
     loadDocuments();

@@ -1,5 +1,5 @@
 import { Tag, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Input } from "@/components/ui/input";

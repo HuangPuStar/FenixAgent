@@ -59,7 +59,7 @@ export function handleAcpWsOpen(
 
     const keepalive = setInterval(() => {
       const entry = connections.get(wsId);
-      if (!entry || entry.ws.readyState !== 1) {
+      if (entry?.ws.readyState !== 1) {
         clearInterval(keepalive);
         return;
       }
@@ -96,7 +96,7 @@ export function handleAcpWsOpen(
       const bus = getAcpEventBus(boundEnvId);
       const unsub = bus.subscribe((event) => {
         const entry = connections.get(wsId);
-        if (!entry || entry.ws.readyState !== 1) return;
+        if (entry?.ws.readyState !== 1) return;
         if (event.direction !== "outbound") return;
         sendToWs(entry.ws, event.payload as object);
       });

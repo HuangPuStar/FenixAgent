@@ -402,7 +402,7 @@ export function AgentModelsPage() {
   };
 
   const handleAddFromTest = async (modelId: string) => {
-    if (!testResult || testResult.kind !== "provider" || "error" in testResult) return;
+    if (testResult?.kind !== "provider" || "error" in testResult) return;
     const { error } = await providerApi.addModel(testResult.name, { modelId, name: modelId });
     if (error) {
       console.error(error);

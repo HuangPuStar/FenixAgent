@@ -318,7 +318,7 @@ export async function handleAcpIdentify(params: {
   }
 
   const record = await getEnvironment(params.agentId);
-  if (!record || record.workerType !== "acp") {
+  if (record?.workerType !== "acp") {
     throw new NotFoundError("Agent not found");
   }
   if (record.userId && record.userId !== params.userId) {
