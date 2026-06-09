@@ -169,7 +169,7 @@ export function MentalModelsView() {
       setModels(Array.isArray(res.items) ? res.items : []);
     } catch (err) {
       console.error("Failed to load mental models:", err);
-      toast.error(err instanceof Error ? err.message : "Failed to load mental models");
+      toast.error(err instanceof Error ? err.message : t("mentalModels.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -204,7 +204,7 @@ export function MentalModelsView() {
       loadModels();
     } catch (err) {
       console.error("Failed to delete mental model:", err);
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : t("mentalModels.deleteFailed"));
     }
   };
 

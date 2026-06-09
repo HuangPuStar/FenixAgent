@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, List, ScatterChart } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, List, ScatterChart, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -291,7 +291,7 @@ export function EntitiesView() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-3 pt-3 border-t">
                   <div className="text-xs text-muted-foreground">
-                    {offset + 1}-{Math.min(offset + ITEMS_PER_PAGE, total)} of {total}
+                    {offset + 1}-{Math.min(offset + ITEMS_PER_PAGE, total)} {t("entitiesView.of")} {total}
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
@@ -360,7 +360,7 @@ export function EntitiesView() {
                 <p className="text-sm text-muted-foreground mt-1">{t("entitiesView.entityDetails")}</p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelectedEntity(null)} className="h-8 w-8 p-0">
-                <span className="text-lg">x</span>
+                <X className="h-4 w-4" />
               </Button>
             </div>
 

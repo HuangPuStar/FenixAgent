@@ -76,14 +76,6 @@ export interface ConstellationProps {
 // Helpers
 // ============================================================================
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function easeOutCubic(t: number): number {
-  return 1 - Math.pow(1 - t, 3);
-}
-
 function hexToRgba(hex: string, alpha: number): string {
   // Handle non-hex formats
   if (!hex.startsWith("#")) return hex;
@@ -301,10 +293,11 @@ export function Constellation({
 
     const s = stateRef.current;
 
-    // Smooth interpolation
-    s.panX = lerp(s.panX, s.targetPanX, 0.12);
-    s.panY = lerp(s.panY, s.targetPanY, 0.12);
-    s.zoom = lerp(s.zoom, s.targetZoom, 0.12);
+    // 直接使用目标值，无插值动画 — 避免初始化/切换时的飞入效果
+    // 平移和缩放瞬间到位，手感由鼠标拖拽和滚轮提供
+    s.panX = s.targetPanX;
+    s.panY = s.targetPanY;
+    s.zoom = s.targetZoom;
 
     const { W, H, dpr, zoom, panX, panY, mouseX, mouseY, hoverIndex } = s;
     const cx = W / 2 + panX;
@@ -383,7 +376,7 @@ export function Constellation({
       }
       ctx.globalAlpha = 1;
     } else {
-      const baseAlpha = 0.06 + Math.min(zoom * 0.04, 0.1);
+      const baseAlpha = 0.5;
       ctx.lineWidth = 0.4;
 
       for (const link of linksWithIndices) {
@@ -783,7 +776,7 @@ export function Constellation({
         // Type badge + link count
         let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`;
         html += `<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:${nodeColor};background:${nodeColor}18;padding:2px 8px;border-radius:4px">${factType}</span>`;
-        html += `<span style="font-size:10px;color:${muted}">${linkCount} link${linkCount !== 1 ? "s" : ""}</span>`;
+        html += `<span style="font-size:10px;color:${muted}">${t("constellation.tooltipLinks", { count: linkCount })}</span>`;
         html += `</div>`;
 
         // Text
@@ -793,7 +786,7 @@ export function Constellation({
         html += `<div style="display:flex;flex-direction:column;gap:4px;border-top:1px solid ${isDark ? "#27272a" : "#e4e4e7"};padding-top:8px">`;
 
         if (context) {
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">Context</span><span style="${valStyle}">${context}</span></div>`;
+          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipContext")}</span><span style="${valStyle}">${context}</span></div>`;
         }
 
         // Format ISO timestamp as "YYYY-MM-DD HH:MM" — keeps the row compact
@@ -804,19 +797,19 @@ export function Constellation({
           const start = fmtTs(occurredStart);
           const end = occurredEnd ? fmtTs(occurredEnd) : null;
           const occurredDisplay = end && end !== start ? `${start} → ${end}` : start;
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">Occurred</span><span style="${valStyle}">${occurredDisplay}</span></div>`;
+          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipOccurred")}</span><span style="${valStyle}">${occurredDisplay}</span></div>`;
         }
 
         if (mentionedAt) {
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">Mentioned</span><span style="${valStyle}">${fmtTs(mentionedAt)}</span></div>`;
+          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipMentioned")}</span><span style="${valStyle}">${fmtTs(mentionedAt)}</span></div>`;
         }
 
         if (proofCount && proofCount > 1) {
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">Evidence</span><span style="${valStyle}">${proofCount} sources</span></div>`;
+          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipEvidence")}</span><span style="${valStyle}">${t("constellation.tooltipSources", { count: proofCount })}</span></div>`;
         }
 
         if (documentId) {
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">Document</span><span style="font-size:11px;font-family:monospace;color:${muted}">${String(documentId).slice(0, 12)}...</span></div>`;
+          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipDocument")}</span><span style="font-size:11px;font-family:monospace;color:${muted}">${String(documentId).slice(0, 12)}...</span></div>`;
         }
 
         html += `</div>`;

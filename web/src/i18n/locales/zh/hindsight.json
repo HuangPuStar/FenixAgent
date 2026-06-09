@@ -38,7 +38,10 @@
     "chunks": "分块",
     "reprocess": "重新处理",
     "delete": "删除",
-    "deleteConfirm": "确定要删除此文档及其所有记忆吗？"
+    "deleteConfirm": "确定要删除此文档及其所有记忆吗？",
+    "loadFailed": "加载文档失败",
+    "uploadFailed": "上传失败",
+    "deleteFailed": "删除失败"
   },
   "mentalModels": {
     "title": "心理模型",
@@ -52,7 +55,9 @@
     "delete": "删除",
     "detail": "心理模型详情",
     "deleteConfirm": "确定要删除这个心理模型吗？",
-    "lastRefreshed": "上次刷新"
+    "lastRefreshed": "上次刷新",
+    "loadFailed": "加载心理模型失败",
+    "deleteFailed": "删除失败"
   },
   "recall": {
     "query": "查询",
@@ -153,6 +158,7 @@
     "recencyBasisOccurredEnd": "发生时间（结束）",
     "sourceFactsLabel": "来源事实",
     "errorLoadingData": "加载 {{factType}} 数据出错",
+    "of": "/",
     "all": "全部",
     "memoryComposition": "记忆构成"
   },
@@ -212,6 +218,30 @@
     "entityDetails": "实体详情",
     "mentionsLabel": "提及次数",
     "firstSeenLabel": "首次出现",
-    "entityIdLabel": "实体 ID"
+    "entityIdLabel": "实体 ID",
+    "of": "/",
+    "close": "关闭"
+  },
+  "constellation": {
+    "hudStats": "记忆: {{memories}} · 可见: {{visible}} · 标签: {{labels}} · 链接: {{links}} · 缩放: {{zoom}}x",
+    "linkTypeSemantic": "语义",
+    "linkTypeTemporal": "时间",
+    "linkTypeEntity": "实体",
+    "linkTypeCausal": "因果",
+    "legendLinks": "链接数",
+    "legendFew": "少",
+    "legendMany": "多",
+    "instructions": "滚轮缩放 · 拖动平移 · 点击节点查看详情",
+    "enterFullscreenTitle": "进入全屏",
+    "exitFullscreenTitle": "退出全屏",
+    "enterFullscreenLabel": "全屏",
+    "exitFullscreenLabel": "退出",
+    "tooltipContext": "上下文",
+    "tooltipOccurred": "发生时间",
+    "tooltipMentioned": "提及时间",
+    "tooltipEvidence": "证据",
+    "tooltipSources": "{{count}} 个来源",
+    "tooltipDocument": "文档",
+    "tooltipLinks": "{{count}} 条链接"
   }
 }

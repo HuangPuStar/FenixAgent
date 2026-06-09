@@ -38,7 +38,10 @@
     "chunks": "Chunks",
     "reprocess": "Reprocess",
     "delete": "Delete",
-    "deleteConfirm": "Are you sure you want to delete this document and all its memories?"
+    "deleteConfirm": "Are you sure you want to delete this document and all its memories?",
+    "loadFailed": "Failed to load documents",
+    "uploadFailed": "Upload failed",
+    "deleteFailed": "Delete failed"
   },
   "mentalModels": {
     "title": "Mental Models",
@@ -52,7 +55,9 @@
     "delete": "Delete",
     "detail": "Mental Model Detail",
     "deleteConfirm": "Are you sure you want to delete this mental model?",
-    "lastRefreshed": "Last refreshed"
+    "lastRefreshed": "Last refreshed",
+    "loadFailed": "Failed to load mental models",
+    "deleteFailed": "Delete failed"
   },
   "recall": {
     "query": "Query",
@@ -153,6 +158,7 @@
     "recencyBasisOccurredEnd": "occurred (end)",
     "sourceFactsLabel": "source facts",
     "errorLoadingData": "Error loading {{factType}} data",
+    "of": "of",
     "all": "All",
     "memoryComposition": "Memory composition"
   },
@@ -212,6 +218,30 @@
     "entityDetails": "Entity Details",
     "mentionsLabel": "Mentions",
     "firstSeenLabel": "First Seen",
-    "entityIdLabel": "Entity ID"
+    "entityIdLabel": "Entity ID",
+    "of": "of",
+    "close": "Close"
+  },
+  "constellation": {
+    "hudStats": "Memories: {{memories}} · Visible: {{visible}} · Labels: {{labels}} · Links: {{links}} · Zoom: {{zoom}}x",
+    "linkTypeSemantic": "Semantic",
+    "linkTypeTemporal": "Temporal",
+    "linkTypeEntity": "Entity",
+    "linkTypeCausal": "Causal",
+    "legendLinks": "links",
+    "legendFew": "few",
+    "legendMany": "many",
+    "instructions": "Scroll to zoom · Drag to pan · Click node for details",
+    "enterFullscreenTitle": "Enter fullscreen",
+    "exitFullscreenTitle": "Exit fullscreen",
+    "enterFullscreenLabel": "Fullscreen",
+    "exitFullscreenLabel": "Exit",
+    "tooltipContext": "Context",
+    "tooltipOccurred": "Occurred",
+    "tooltipMentioned": "Mentioned",
+    "tooltipEvidence": "Evidence",
+    "tooltipSources": "{{count}} sources",
+    "tooltipDocument": "Document",
+    "tooltipLinks": "{{count}} links"
   }
 }

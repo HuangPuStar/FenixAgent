@@ -45,7 +45,7 @@ export function DocumentsView() {
       setTotal(typeof res.total === "number" ? res.total : 0);
     } catch (err) {
       console.error("Failed to load documents:", err);
-      toast.error(err instanceof Error ? err.message : "Failed to load documents");
+      toast.error(err instanceof Error ? err.message : t("documents.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -78,7 +78,7 @@ export function DocumentsView() {
       loadDocuments();
     } catch (err) {
       console.error("Failed to upload document:", err);
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(err instanceof Error ? err.message : t("documents.uploadFailed"));
     } finally {
       setUploading(false);
       // 重置 file input，允许重复选择同一文件
@@ -96,7 +96,7 @@ export function DocumentsView() {
       loadDocuments();
     } catch (err) {
       console.error("Failed to delete document:", err);
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : t("documents.deleteFailed"));
     }
   };
 

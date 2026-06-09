@@ -571,7 +571,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                               <span className="text-xs text-muted-foreground">
                                 {graph2DData.nodes.length > 50
                                   ? `${maxNodes ?? 50} / ${graph2DData.nodes.length}`
-                                  : `${maxNodes ?? "All"} / ${graph2DData.nodes.length}`}
+                                  : `${maxNodes ?? t("dataView.all")} / ${graph2DData.nodes.length}`}
                               </span>
                             </div>
                             <input
@@ -713,7 +713,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                                 <span
                                   className={`text-xs capitalize ${visibleLinkTypes.has(type) ? "text-foreground" : "text-muted-foreground line-through"}`}
                                 >
-                                  {type}
+                                  {t(`dataView.${type}`)}
                                 </span>
                               </div>
                             ))}
@@ -773,14 +773,14 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                             <TableBody>
                               {paginatedRows.map((row: any, idx: number) => {
                                 const occurredDisplay = row.occurred_start
-                                  ? new Date(row.occurred_start).toLocaleDateString("en-US", {
+                                  ? new Date(row.occurred_start).toLocaleDateString(undefined, {
                                       month: "short",
                                       day: "numeric",
                                       year: "numeric",
                                     })
                                   : null;
                                 const mentionedDisplay = row.mentioned_at
-                                  ? new Date(row.mentioned_at).toLocaleDateString("en-US", {
+                                  ? new Date(row.mentioned_at).toLocaleDateString(undefined, {
                                       month: "short",
                                       day: "numeric",
                                       year: "numeric",
@@ -869,7 +869,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                           {totalPages > 1 && (
                             <div className="flex items-center justify-between mt-3 pt-3 border-t">
                               <div className="text-xs text-muted-foreground">
-                                {startIndex + 1}-{Math.min(endIndex, filteredTableRows.length)} of{" "}
+                                {startIndex + 1}-{Math.min(endIndex, filteredTableRows.length)} {t("dataView.of")}{" "}
                                 {filteredTableRows.length}
                               </div>
                               <div className="flex items-center gap-1">
@@ -1003,14 +1003,14 @@ function TimelineView({
         case "year":
           return key;
         case "month":
-          return date.toLocaleDateString("en-US", { year: "numeric", month: "short" });
+          return date.toLocaleDateString(undefined, { year: "numeric", month: "short" });
         case "week": {
           const endOfWeek = new Date(date);
           endOfWeek.setDate(date.getDate() + 6);
-          return `${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${endOfWeek.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+          return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} - ${endOfWeek.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
         }
         case "day":
-          return date.toLocaleDateString("en-US", {
+          return date.toLocaleDateString(undefined, {
             weekday: "short",
             month: "short",
             day: "numeric",
@@ -1194,13 +1194,13 @@ function TimelineView({
                 >
                   <div className="w-[60px] text-right pr-3 pt-1 flex-shrink-0">
                     <div className="text-[10px] text-muted-foreground">
-                      {new Date(item.occurred_start).toLocaleDateString("en-US", {
+                      {new Date(item.occurred_start).toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",
                       })}
                     </div>
                     <div className="text-[9px] text-muted-foreground/70">
-                      {new Date(item.occurred_start).toLocaleTimeString("en-US", {
+                      {new Date(item.occurred_start).toLocaleTimeString(undefined, {
                         hour: "2-digit",
                         minute: "2-digit",
                         hour12: false,
