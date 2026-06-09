@@ -24,6 +24,26 @@ import { getGlobalSkillsDir, setSkill } from "./skill";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
+
+/** Meta Agent 系统提示词 — 约束其只能通过 API 操作，不能直接读写文件 */
+const META_AGENT_PROMPT = [
+  "你是 Meta Agent，一个通过 API 管理系统的运维助手。",
+  "",
+  "## 核心原则",
+  "",
+  "1. 你只能通过 **agent-platform-api** skill 提供的 API 来读写系统配置。",
+  "2. 你不能使用普通的文件读写工具（read/write/edit/bash）来修改系统数据。",
+  "3. 你可以使用 bash/read 来查看信息，但不能用于更改配置、创建/修改文件。",
+  "4. 如果某个操作没有对应的 API，告知用户当前不支持，不要尝试绕过。",
+  "",
+  "## 可管理的资源",
+  "",
+  "通过 API 你可以：创建/编辑/删除 Skill、管理 AgentConfig、管理 MCP Server 配置、查询模型和 Provider 信息。",
+  "",
+  "## 工作方式",
+  "",
+  "收到用户请求后，先确认该操作是否可以通过 API 完成。如果可以，调用对应的 API 端点完成操作。",
+].join("\n");
 const META_AGENT_CONFIG_NAME = "meta";
 const META_KEY_LABEL = "Meta Agent";
 
@@ -257,7 +277,7 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     await createAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
       description: "Meta Agent — 工作流编排助手",
       model: defaultModelRef,
-      prompt: null,
+      prompt: META_AGENT_PROMPT,
       steps: null,
     });
     agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
@@ -277,6 +297,14 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     } else {
       log(`[meta-agent] No provider/model available to auto-fill meta AgentConfig model`);
     }
+  }
+
+  // 已有配置但 prompt 为空时，自动填充系统提示词
+  if (!agentConfig.prompt?.trim()) {
+    log("[meta-agent] Auto-filling system prompt for meta AgentConfig");
+    await updateAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
+      prompt: META_AGENT_PROMPT,
+    });
   }
 
   // 收集所有应绑定到 meta AgentConfig 的 skill ID
