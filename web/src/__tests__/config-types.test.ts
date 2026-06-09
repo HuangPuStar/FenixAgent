@@ -98,6 +98,7 @@ describe("PermissionConfig types", () => {
       knowledge: null,
       machineId: "machine-1",
       skillIds: ["skill-1"],
+      mcpIds: ["mcp-1"],
       resourceAccess: {
         ownership: "internal",
         sourceOrganizationId: "org_current",
@@ -117,6 +118,7 @@ describe("PermissionConfig types", () => {
     expect(detail.description).toBe("测试Agent");
     expect(detail.machineId).toBe("machine-1");
     expect(detail.skillIds).toEqual(["skill-1"]);
+    expect(detail.mcpIds).toEqual(["mcp-1"]);
   });
 
   test("AgentDetail 新字段可为 null（除 disable 和 hidden）", () => {
@@ -140,6 +142,7 @@ describe("PermissionConfig types", () => {
       knowledge: null,
       machineId: null,
       skillIds: [],
+      mcpIds: [],
       resourceAccess: {
         ownership: "external",
         sourceOrganizationId: "org_source",
@@ -177,15 +180,18 @@ describe("PermissionConfig types", () => {
       knowledge: { knowledgeBaseIds: ["kb-1"] },
       machineId: "machine-1",
       skillIds: ["skill-1"],
+      mcpIds: ["mcp-1"],
       relatedResources: {
         modelLabel: "Source Team/openai/gpt-4o",
         machineLabel: "builder-host",
         skills: [{ id: "skill-1", label: "deploy-skill" }],
+        mcps: [{ id: "mcp-1", label: "filesystem" }],
         knowledgeBases: [{ id: "kb-1", label: "Product Docs", slug: "product-docs" }],
       },
     };
     expect(detail.relatedResources?.modelLabel).toBe("Source Team/openai/gpt-4o");
     expect(detail.relatedResources?.skills?.[0]?.label).toBe("deploy-skill");
+    expect(detail.relatedResources?.mcps?.[0]?.label).toBe("filesystem");
     expect(detail.relatedResources?.knowledgeBases?.[0]?.slug).toBe("product-docs");
   });
 

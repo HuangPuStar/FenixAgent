@@ -36,6 +36,13 @@
       "when": 1780918304424,
       "tag": "0004_agent-config-optimization",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780987849936,
+      "tag": "0005_agent-config-mcp-bindings",
+      "breakpoints": true
     }
   ]
 }

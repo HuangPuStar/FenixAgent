@@ -38,7 +38,7 @@ describe("MCP route resource access", () => {
     setAuth();
   });
 
-  // list 返回 resourceAccess/resourceKey，并使用源 organization 统计工具数量
+  // list 返回 resourceAccess，并使用源 organization 统计工具数量
   test("list 返回来源字段", async () => {
     stubConfigPg({
       listMcpServers: async () => [
@@ -77,8 +77,8 @@ describe("MCP route resource access", () => {
 
     expect(json.success).toBe(true);
     expect(json.data.servers[0]).toMatchObject({
+      id: "mcp_external",
       name: "shared",
-      resourceKey: "org_source/mcp_external",
       toolsCount: 2,
     });
     expect(json.data.servers[0].resourceAccess).toMatchObject({

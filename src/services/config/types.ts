@@ -302,6 +302,7 @@ export interface AgentConfigUpsertData {
   description?: string | null;
   knowledge?: AgentKnowledgeConfig | null;
   skillIds?: string[];
+  mcpIds?: string[];
 }
 
 /** Agent config row decorated with resource access metadata. */
@@ -333,4 +334,5 @@ export interface AgentConfigRowWithAccess {
 /** Agent config detail returned to the frontend with resolved access metadata. */
 export interface AgentConfigDetailWithAccess extends AgentConfigRowWithAccess {
   skillIds?: string[];
+  mcpIds?: string[];
 }

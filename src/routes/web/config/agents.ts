@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import { db } from "../../../db";
-import { knowledgeBase, machine, model, provider, skill } from "../../../db/schema";
+import { knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import {
@@ -32,6 +32,7 @@ interface AgentRelatedResourceView {
   modelLabel: string | null;
   machineLabel: string | null;
   skills: Array<{ id: string; label: string }>;
+  mcps: Array<{ id: string; label: string }>;
   knowledgeBases: Array<{ id: string; label: string; slug?: string | null }>;
 }
 
@@ -48,11 +49,13 @@ interface AgentResourceDisplayInput {
 async function buildAgentRelatedResourceView(
   agent: AgentResourceDisplayInput,
   skillIds: string[],
+  mcpIds: string[],
 ): Promise<AgentRelatedResourceView> {
   const fallback: AgentRelatedResourceView = {
     modelLabel: agent.modelId ?? null,
     machineLabel: agent.machineId ?? null,
     skills: skillIds.map((id) => ({ id, label: id })),
+    mcps: mcpIds.map((id) => ({ id, label: id })),
     knowledgeBases: [],
   };
 
@@ -116,6 +119,14 @@ async function buildAgentRelatedResourceView(
         ? await db.select({ id: skill.id, label: skill.name }).from(skill).where(inArray(skill.id, skillIds))
         : [];
     const skillLabelMap = new Map(skillLabels.map((item) => [item.id, item.label]));
+    const mcpLabels =
+      mcpIds.length > 0
+        ? await db
+            .select({ id: mcpServer.id, label: mcpServer.name })
+            .from(mcpServer)
+            .where(inArray(mcpServer.id, mcpIds))
+        : [];
+    const mcpLabelMap = new Map(mcpLabels.map((item) => [item.id, item.label]));
 
     const knowledgeBindings = await listAgentKnowledgeBindingsById(agent.id);
     const knowledgeBaseIds = knowledgeBindings.map((binding) => binding.knowledgeBaseId);
@@ -134,6 +145,7 @@ async function buildAgentRelatedResourceView(
       modelLabel,
       machineLabel,
       skills: skillIds.map((id) => ({ id, label: skillLabelMap.get(id) ?? id })),
+      mcps: mcpIds.map((id) => ({ id, label: mcpLabelMap.get(id) ?? id })),
       knowledgeBases: knowledgeBaseIds.map((id) => {
         const item = knowledgeBaseMap.get(id);
         return { id, label: item?.name ?? id, slug: item?.slug ?? null };
@@ -177,6 +189,7 @@ async function handleList(ctx: AuthContext) {
   const list = await Promise.all(
     agents.map(async (a) => {
       const skillIds = await configPg.listAgentSkillIds(a.id);
+      const mcpIds = await configPg.listAgentMcpIds(a.id);
       const relatedResources = await buildAgentRelatedResourceView(
         {
           id: a.id,
@@ -186,6 +199,7 @@ async function handleList(ctx: AuthContext) {
           resourceAccess: a.resourceAccess,
         },
         skillIds,
+        mcpIds,
       );
       return {
         id: a.id,
@@ -219,7 +233,8 @@ async function handleGet(ctx: AuthContext, name: string) {
   }
 
   const skillIds = await configPg.listAgentSkillIds(agent.id);
-  const relatedResources = await buildAgentRelatedResourceView(agent, skillIds);
+  const mcpIds = await configPg.listAgentMcpIds(agent.id);
+  const relatedResources = await buildAgentRelatedResourceView(agent, skillIds, mcpIds);
   const knowledge = await getAgentKnowledgeConfigById(agent.id);
 
   return configSuccess({
@@ -242,6 +257,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     knowledge: normalizeKnowledgeConfig(knowledge ?? null),
     machineId: agent.machineId ?? null,
     skillIds,
+    mcpIds,
     relatedResources,
     resourceAccess: agent.resourceAccess,
   });
@@ -295,6 +311,9 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     );
     if (data.skillIds !== undefined) {
       await configPg.syncAgentSkills(updatedAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
+    }
+    if (data.mcpIds !== undefined) {
+      await configPg.syncAgentMcps(updatedAgent.id, Array.isArray(data.mcpIds) ? (data.mcpIds as string[]) : []);
     }
   }
 
@@ -350,6 +369,9 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
     );
     if (data.skillIds !== undefined) {
       await configPg.syncAgentSkills(createdAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
+    }
+    if (data.mcpIds !== undefined) {
+      await configPg.syncAgentMcps(createdAgent.id, Array.isArray(data.mcpIds) ? (data.mcpIds as string[]) : []);
     }
   }
 

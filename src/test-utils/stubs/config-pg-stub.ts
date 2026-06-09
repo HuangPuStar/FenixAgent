@@ -28,6 +28,7 @@ interface ConfigPgStubs {
   getSkillByResourceKey: StubFn;
   getUserConfig: StubFn;
   listAgentConfigs: StubFn;
+  listAgentMcpIds: StubFn;
   listAgentSkillIds: StubFn;
   listMcpServers: StubFn;
   listProviders: StubFn;
@@ -35,6 +36,7 @@ interface ConfigPgStubs {
   removeModel: StubFn;
   setMcpServerEnabled: StubFn;
   setUserConfig: StubFn;
+  syncAgentMcps: StubFn;
   syncAgentSkills: StubFn;
   updateAgentConfig: StubFn;
   updateMcpServer: StubFn;

@@ -44,7 +44,9 @@ describe("Config Route Integration", () => {
       upsertSkill: async () => "skill-id",
       deleteSkill: async () => true,
       listAgentSkillIds: async () => [],
+      listAgentMcpIds: async () => [],
       syncAgentSkills: async () => {},
+      syncAgentMcps: async () => {},
     });
     setTestAuth({
       user: { id: "test-user", email: "test@test.com", name: "Test" },
@@ -124,8 +126,11 @@ describe("Config Route Integration", () => {
       listAgentConfigs: async () => [
         {
           id: "agc-external",
+          userId: "user-source",
+          organizationId: "org-source",
           name: "shared-agent",
           model: "provider/model",
+          modelId: null,
           mode: "primary",
           description: "shared",
           color: null,
@@ -142,6 +147,7 @@ describe("Config Route Integration", () => {
         },
       ],
       listAgentSkillIds: async () => ["skill-1"],
+      listAgentMcpIds: async () => [],
     });
 
     const res = await request("/web/config/agents", {
@@ -163,8 +169,11 @@ describe("Config Route Integration", () => {
     stubConfigPg({
       getAgentConfig: async () => ({
         id: "agc-external",
+        userId: "user-source",
+        organizationId: "org-source",
         name: "shared-agent",
         model: "provider/model",
+        modelId: null,
         prompt: "shared prompt",
         steps: 20,
         mode: "primary",
@@ -189,6 +198,15 @@ describe("Config Route Integration", () => {
         },
       }),
       listAgentSkillIds: async () => ["skill-1"],
+      listAgentMcpIds: async () => [],
+    });
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: async () => [],
+          limit: async () => [],
+        }),
+      }),
     });
 
     const res = await request("/web/config/agents", {

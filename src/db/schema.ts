@@ -637,6 +637,23 @@ export const agentConfigSkill = pgTable(
   }),
 );
 
+// Agent↔MCP 多对多关联
+export const agentConfigMcp = pgTable(
+  "agent_config_mcp",
+  {
+    agentConfigId: uuid("agent_config_id")
+      .notNull()
+      .references(() => agentConfig.id, { onDelete: "cascade" }),
+    mcpServerId: uuid("mcp_server_id")
+      .notNull()
+      .references(() => mcpServer.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: uniqueIndex("idx_agent_config_mcp_pk").on(table.agentConfigId, table.mcpServerId),
+  }),
+);
+
 // ────────────────────────────────────────────
 // Workflow 独立领域模块
 // ────────────────────────────────────────────

@@ -39,17 +39,17 @@ async function handleList(ctx: AuthContext) {
         const info = toServerInfo(s.name, s);
         const toolsCount = await countToolsByServer(s.organizationId, s.name);
         return {
+          id: s.id,
           ...info,
           resourceAccess: s.resourceAccess,
-          resourceKey: s.resourceAccess.resourceKey,
           toolsCount,
         };
       } catch {
         const info = toServerInfo(s.name, s);
         return {
+          id: s.id,
           ...info,
           resourceAccess: s.resourceAccess,
-          resourceKey: s.resourceAccess.resourceKey,
           toolsCount: 0,
         };
       }

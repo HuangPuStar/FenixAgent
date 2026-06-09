@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { agentConfigSkill, mcpServer, model, provider } from "../db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { buildLaunchSpec } from "../services/launch-spec-builder";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
@@ -54,7 +54,7 @@ describe("launch spec agent sharing access", () => {
     setListAgentKnowledgeBindingsById(async () => [{ knowledgeBaseId: "kb-private", priority: 0, enabled: true }]);
   });
 
-  // 共享 Agent 会按源组织精准取 provider 与 enabled MCP，并补上 knowledge MCP
+  // 共享 Agent 会按显式绑定精准取 provider 与 MCP，并补上 knowledge MCP
   test("buildLaunchSpec 使用共享 Agent 依赖生成 LaunchSpec", async () => {
     stubDb({
       select: () => ({
@@ -95,6 +95,7 @@ describe("launch spec agent sharing access", () => {
               ]);
             }
             if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigMcp) return queryResult([{ mcpServerId: "mcp_enabled" }]);
             if (table === mcpServer) {
               return queryResult([
                 {

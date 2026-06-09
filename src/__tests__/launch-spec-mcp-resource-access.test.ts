@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { agentConfigSkill, mcpServer, model, provider } from "../db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { buildLaunchSpec } from "../services/launch-spec-builder";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
@@ -53,8 +53,8 @@ describe("launch spec MCP resource access", () => {
     setListAgentKnowledgeBindingsById(async () => []);
   });
 
-  // builder 会直接读取 agentConfig 所属组织的 enabled MCP，并翻译成 SDK 配置
-  test("buildLaunchSpec 读取并转换 enabled MCP", async () => {
+  // builder 只读取 Agent 显式绑定的 MCP，并翻译成 SDK 配置
+  test("buildLaunchSpec 读取并转换绑定的 MCP", async () => {
     stubDb({
       select: () => ({
         from: (table: unknown) => ({
@@ -94,6 +94,9 @@ describe("launch spec MCP resource access", () => {
               ]);
             }
             if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigMcp) {
+              return queryResult([{ mcpServerId: "mcp_external_enabled" }]);
+            }
             if (table === mcpServer) {
               return queryResult([
                 {

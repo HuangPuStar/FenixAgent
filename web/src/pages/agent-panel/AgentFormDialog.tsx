@@ -33,6 +33,7 @@ import {
   isValidStepsInput,
 } from "../../lib/agent-utils";
 import { dispatchConfigChange } from "../../lib/config-events";
+import { getMcpDisplayName, getMcpKey } from "../../lib/mcp-resource-access";
 import { getSkillOptionValue, mapSkillOptions } from "../../lib/skill-resource-access";
 import type { ModelEntry, ResourceAccess } from "../../types/config";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
@@ -50,7 +51,28 @@ interface AgentRelatedResourcesView {
   modelLabel?: string | null;
   machineLabel?: string | null;
   skills?: Array<{ id: string; label: string }>;
+  mcps?: Array<{ id: string; label: string }>;
   knowledgeBases?: Array<{ id: string; label: string; slug?: string | null }>;
+}
+
+interface AgentMcpOption {
+  id: string;
+  key: string;
+  name: string;
+  label: string;
+  resourceAccess?: ResourceAccess;
+}
+
+function mapMcpOptions(
+  servers: Array<{ id: string; name: string; resourceAccess?: ResourceAccess }>,
+): AgentMcpOption[] {
+  return servers.map((server) => ({
+    id: server.id,
+    key: getMcpKey(server),
+    name: server.name,
+    label: getMcpDisplayName(server),
+    resourceAccess: server.resourceAccess,
+  }));
 }
 
 export function mapModelOptions(available: ModelEntry[]): { value: string; label: string }[] {
@@ -72,6 +94,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [skillOptions, setSkillOptions] = useState<
     { id: string; key: string; name: string; label: string; description: string; resourceAccess?: ResourceAccess }[]
   >([]);
+  const [mcpOptions, setMcpOptions] = useState<AgentMcpOption[]>([]);
   const [machineOptions, setMachineOptions] = useState<{ id: string; agentName: string; hostname: string }[]>([]);
 
   const [formName, setFormName] = useState("");
@@ -92,6 +115,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formKnowledgeMaxResults, setFormKnowledgeMaxResults] = useState("5");
   const [formPermission, setFormPermission] = useState<Record<string, unknown> | null>(null);
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
+  const [formMcpIds, setFormMcpIds] = useState<string[]>([]);
   const [formMachineId, setFormMachineId] = useState<string>("local");
   const [formResourceAccess, setFormResourceAccess] = useState<ResourceAccess | undefined>(undefined);
   const [formPublicReadable, setFormPublicReadable] = useState(false);
@@ -102,6 +126,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [skillsExpanded, setSkillsExpanded] = useState(false);
+  const [mcpsExpanded, setMcpsExpanded] = useState(false);
   const [hindsightEnabled, setHindsightEnabled] = useState(false);
   const [formEnableMemory, setFormEnableMemory] = useState(false);
 
@@ -120,6 +145,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setFormKnowledgeMaxResults(knowledgeDefaults.maxResults);
     setFormPermission(null);
     setFormSkillIds([]);
+    setFormMcpIds([]);
     setFormMachineId("local");
     setFormResourceAccess(undefined);
     setFormPublicReadable(false);
@@ -128,6 +154,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setRelatedResources(undefined);
     setSelectedTemplateId(null);
     setFormEnableMemory(false);
+    setSkillsExpanded(false);
+    setMcpsExpanded(false);
 
     // 加载 Hindsight 记忆 MCP 可用性
     fetch("/web/hindsight/status")
@@ -156,8 +184,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
     if (isEdit) {
       setLoading(true);
-      Promise.all([agentApi.get(agentName!), modelApi.get(), kbApi.list(), skillConfigApi.list()])
-        .then(([agentResult, modelsResult, kbResult, skillsResult]) => {
+      Promise.all([agentApi.get(agentName!), modelApi.get(), kbApi.list(), skillConfigApi.list(), mcpApi.list()])
+        .then(([agentResult, modelsResult, kbResult, skillsResult, mcpsResult]) => {
           if (agentResult.error) {
             console.error("Failed to load agent config:", agentResult.error);
             toast.error(t("knowledge.loadError", { message: agentResult.error.message }));
@@ -195,6 +223,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
               : null,
           );
           setFormSkillIds(Array.isArray(d.skillIds) ? (d.skillIds as string[]) : []);
+          setFormMcpIds(Array.isArray(d.mcpIds) ? (d.mcpIds as string[]) : []);
 
           // 编辑模式回显：检查是否已关联 hindsight MCP
           mcpApi
@@ -227,6 +256,22 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
               )
             : [];
           setSkillOptions(skills);
+
+          const mcpRaw = mcpsResult.data;
+          const mcpServers = Array.isArray(mcpRaw)
+            ? mcpRaw
+            : mcpRaw && typeof mcpRaw === "object" && Array.isArray((mcpRaw as { servers?: unknown }).servers)
+              ? ((mcpRaw as { servers: Array<{ id?: string; name: string; resourceAccess?: ResourceAccess }> })
+                  .servers ?? [])
+              : [];
+          setMcpOptions(
+            mapMcpOptions(
+              mcpServers.filter(
+                (item): item is { id: string; name: string; resourceAccess?: ResourceAccess } =>
+                  typeof item.id === "string" && item.id.length > 0,
+              ),
+            ),
+          );
         })
         .catch((err) => {
           console.error("Failed to load agent config:", err);
@@ -281,6 +326,24 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                 skills as Array<{ id: string; name: string; description?: string; resourceAccess?: ResourceAccess }>,
               )
             : [],
+        );
+      });
+
+      mcpApi.list().then(({ data, error }) => {
+        if (error) return;
+        const servers = Array.isArray(data)
+          ? data
+          : data && typeof data === "object" && Array.isArray((data as { servers?: unknown }).servers)
+            ? ((data as { servers: Array<{ id?: string; name: string; resourceAccess?: ResourceAccess }> }).servers ??
+              [])
+            : [];
+        setMcpOptions(
+          mapMcpOptions(
+            servers.filter(
+              (item): item is { id: string; name: string; resourceAccess?: ResourceAccess } =>
+                typeof item.id === "string" && item.id.length > 0,
+            ),
+          ),
         );
       });
     }
@@ -372,6 +435,21 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             })),
         ]
       : skillOptions;
+  const effectiveMcpOptions =
+    relatedResources?.mcps && relatedResources.mcps.length > 0
+      ? [
+          ...mcpOptions,
+          ...relatedResources.mcps
+            .filter((item) => !mcpOptions.some((option) => option.id === item.id || option.key === item.id))
+            .map((item) => ({
+              id: item.id,
+              key: item.id,
+              name: item.label,
+              label: item.label,
+              resourceAccess: undefined,
+            })),
+        ]
+      : mcpOptions;
 
   const handleSave = useCallback(async () => {
     if (readOnlyAgent) return;
@@ -410,6 +488,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             },
           }),
           skillIds: formSkillIds,
+          mcpIds: formMcpIds,
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
           ...(formEnableMemory ? { enableMemory: true } : {}),
@@ -446,6 +525,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             },
           }),
           skillIds: formSkillIds,
+          mcpIds: formMcpIds,
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
           ...(formEnableMemory ? { enableMemory: true } : {}),
@@ -486,6 +566,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     formKnowledgeSearchFirst,
     formKnowledgeMaxResults,
     formSkillIds,
+    formMcpIds,
     formMachineId,
     agentName,
     knowledgeOptions,
@@ -771,6 +852,80 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                                   onChange={(e) => {
                                     setFormSkillIds((current) =>
                                       e.target.checked ? [...current, value] : current.filter((id) => id !== value),
+                                    );
+                                  }}
+                                />
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-border-subtle p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-text-bright">{t("mcps.tabTitle")}</p>
+                        <p className="text-xs text-text-muted">
+                          {t("mcps.selectedCount", { count: formMcpIds.length })}
+                        </p>
+                      </div>
+                      {!readOnlyAgent && (
+                        <button
+                          type="button"
+                          onClick={() => setMcpsExpanded(!mcpsExpanded)}
+                          className="rounded-md p-1 hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {formMcpIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {formMcpIds.map((mcpId) => {
+                          const mcp = effectiveMcpOptions.find((item) => item.id === mcpId);
+                          return (
+                            <span
+                              key={mcpId}
+                              className="inline-flex items-center gap-1 rounded bg-primary/10 text-primary text-xs px-2 py-0.5"
+                            >
+                              {mcp?.label ?? mcpId}
+                              {!readOnlyAgent && (
+                                <button
+                                  type="button"
+                                  onClick={() => setFormMcpIds((current) => current.filter((id) => id !== mcpId))}
+                                  className="hover:text-text-bright"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {mcpsExpanded && (
+                      <div className="mt-3 space-y-2 border-t border-border-subtle pt-3">
+                        {effectiveMcpOptions.length === 0 ? (
+                          <p className="text-sm text-text-muted">{t("mcps.noOptions")}</p>
+                        ) : (
+                          effectiveMcpOptions.map((item) => {
+                            const checked = formMcpIds.includes(item.id);
+                            return (
+                              <label
+                                key={item.key}
+                                className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
+                              >
+                                <div>
+                                  <p className="font-medium text-text-bright">{item.label}</p>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={readOnlyAgent}
+                                  onChange={(e) => {
+                                    setFormMcpIds((current) =>
+                                      e.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
                                     );
                                   }}
                                 />

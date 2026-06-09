@@ -5,7 +5,7 @@ import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugi
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getBaseUrl } from "../config";
 import { db } from "../db";
-import { agentConfigSkill, mcpServer, model, provider, skill } from "../db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider, skill } from "../db/schema";
 import { AppError } from "../errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import type { AgentConfigDetailWithAccess } from "./config";
@@ -14,21 +14,8 @@ import { buildSkillDownloadUrl } from "./skill-download-token";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
 type LaunchModelProtocol = ModelConfig["protocol"];
-type ProviderRow = typeof provider.$inferSelect;
 type SkillRow = typeof skill.$inferSelect;
 type McpServerRow = typeof mcpServer.$inferSelect;
-
-function summarizeProviders(providers: ProviderRow[]) {
-  return providers.map((row) => ({
-    id: row.id,
-    organizationId: row.organizationId,
-    name: row.name,
-    displayName: row.displayName ?? null,
-    protocol: row.protocol ?? null,
-    baseUrl: row.baseUrl || "",
-    hasApiKey: Boolean(row.apiKey),
-  }));
-}
 
 function summarizeSkills(skills: SkillRow[]) {
   return skills.map((row) => ({
@@ -236,12 +223,43 @@ async function loadAgentSkills(agentConfig: AgentConfigDetailWithAccess): Promis
   return skillIds.map((skillId) => skillById.get(skillId) as SkillRow);
 }
 
-/** MCP 仍按 AgentConfig 所属组织加载 enabled 项，builder 不再承担权限判定职责。 */
-async function loadEnabledMcpServers(agentConfig: AgentConfigDetailWithAccess): Promise<McpServerRow[]> {
-  return db
-    .select()
-    .from(mcpServer)
-    .where(and(eq(mcpServer.organizationId, agentConfig.organizationId), eq(mcpServer.enabled, true)));
+/**
+ * 读取 Agent 显式绑定的 MCP，并保持与绑定顺序一致。
+ *
+ * AgentConfig 现在采用“显式勾选”语义，因此空绑定就代表不注入任何 MCP，
+ * 这里不能再回退到组织下全部可用 MCP。
+ */
+async function loadAgentMcpServers(agentConfig: AgentConfigDetailWithAccess): Promise<McpServerRow[]> {
+  const bindings = await db
+    .select({ mcpServerId: agentConfigMcp.mcpServerId })
+    .from(agentConfigMcp)
+    .where(eq(agentConfigMcp.agentConfigId, agentConfig.id));
+  if (bindings.length === 0) {
+    return [];
+  }
+
+  const mcpIds = bindings.map((row) => row.mcpServerId);
+  const mcpRows = await db.select().from(mcpServer).where(inArray(mcpServer.id, mcpIds));
+  const mcpById = new Map(mcpRows.map((row) => [row.id, row]));
+  const missingMcpIds = mcpIds.filter((mcpId) => !mcpById.has(mcpId));
+  if (missingMcpIds.length > 0) {
+    throwInvalidConfig(
+      `AgentConfig '${agentConfig.id}' references missing MCP servers`,
+      `[launch-spec-builder] missing mcp rows for agentConfig='${agentConfig.id}', missingMcpIds=${JSON.stringify(missingMcpIds)}, available=${JSON.stringify(
+        summarizeRawMcpServers(mcpRows),
+      )}`,
+    );
+  }
+
+  const disabledMcpRows = mcpRows.filter((row) => !row.enabled);
+  if (disabledMcpRows.length > 0) {
+    throwInvalidConfig(
+      `AgentConfig '${agentConfig.id}' references disabled MCP servers`,
+      `[launch-spec-builder] disabled mcp rows for agentConfig='${agentConfig.id}', disabled=${JSON.stringify(summarizeRawMcpServers(disabledMcpRows))}`,
+    );
+  }
+
+  return mcpIds.map((mcpId) => mcpById.get(mcpId) as McpServerRow);
 }
 
 /**
@@ -408,7 +426,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
   const [model, skillRows, rawMcpServers, knowledgeBindings] = await Promise.all([
     resolveModelConfig(agentConfig),
     loadAgentSkills(agentConfig),
-    loadEnabledMcpServers(agentConfig),
+    loadAgentMcpServers(agentConfig),
     listAgentKnowledgeBindingsById(agentConfig.id),
   ]);
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { agentConfigSkill, mcpServer, model, provider } from "../db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "../services/launch-spec-builder";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
@@ -186,6 +186,7 @@ describe("launch spec builder errors", () => {
               ]);
             }
             if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigMcp) return queryResult([{ mcpServerId: "mcp_invalid" }]);
             if (table === mcpServer) {
               return queryResult([
                 {

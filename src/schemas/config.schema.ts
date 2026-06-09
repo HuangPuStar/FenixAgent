@@ -132,6 +132,8 @@ export const AgentDetailSchema = z.object({
   color: z.string().nullable(),
   description: z.string().nullable(),
   knowledge: z.unknown().nullable(),
+  skillIds: z.array(z.string()).optional(),
+  mcpIds: z.array(z.string()).optional(),
 });
 
 // ── Skills ──

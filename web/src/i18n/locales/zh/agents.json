@@ -91,6 +91,11 @@
     "selectedCount": "已选择 {{count}} 个技能",
     "noOptions": "暂无可用技能"
   },
+  "mcps": {
+    "tabTitle": "绑定 MCP",
+    "selectedCount": "已选择 {{count}} 个 MCP",
+    "noOptions": "暂无可用 MCP"
+  },
   "memory": {
     "enableTitle": "智能体记忆",
     "enableDescription": "启用跨会话记忆能力"
