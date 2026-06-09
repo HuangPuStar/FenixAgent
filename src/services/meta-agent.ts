@@ -303,11 +303,12 @@ async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
     try {
       // biome-ignore lint/suspicious/noExplicitAny: better-auth deleteApiKey return type is untyped
       await (auth.api as any).deleteApiKey({
-        body: { id: old.id },
+        body: { keyId: old.id },
         headers,
       });
-    } catch {
-      // 旧 key 删除失败不阻断
+    } catch (err) {
+      // 旧 key 删除失败不阻断，但需要记录以便排查
+      console.error(`[meta-agent] Failed to delete old key ${old.id}:`, err);
     }
   }
 
@@ -317,7 +318,7 @@ async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
     body: {
       name: META_KEY_LABEL,
       prefix: "rcs_",
-      expiresIn: null,
+      expiresIn: 1, // 1 天过期，避免 key 永久残留
       metadata: { organizationId: ctx.organizationId, role: ctx.role },
     },
     headers,
