@@ -23,7 +23,7 @@ export interface UseMetaAgentReturn {
 export function useMetaAgent({ storageKey }: UseMetaAgentOptions): UseMetaAgentReturn {
   const [chatOpen, setChatOpen] = useState(() => {
     const saved = localStorage.getItem(storageKey);
-    return saved === "true";
+    return saved !== "false"; // 默认打开，用户关闭后持久化为 "false"
   });
   const [metaAgentId, setMetaAgentId] = useState<string | null>(null);
   // 防止快速 toggle 重复请求
