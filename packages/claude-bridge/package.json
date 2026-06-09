@@ -1,0 +1,16 @@
+{
+  "name": "@fenix/claude-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.2.112",
+    "@fenix/plugin-sdk": "workspace:*"
+  }
+}
