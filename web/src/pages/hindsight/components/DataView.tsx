@@ -127,7 +127,8 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
         });
       }
     } catch (error) {
-      // API 客户端拦截器会处理错误提示
+      // 调试：打印 loadData 错误以便排查数据加载失败
+      console.error("[DataView] loadData failed:", error);
     } finally {
       setLoading(false);
     }
@@ -302,14 +303,6 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
         <div className="text-center py-12">
           <RefreshCw className="w-8 h-8 mx-auto mb-3 text-muted-foreground animate-spin" />
           <p className="text-muted-foreground">{t("dataView.loadingMemories")}</p>
-        </div>
-      ) : data && data.total_units === 0 ? (
-        <div className="text-center py-20">
-          <FileText className="w-10 h-10 mx-auto mb-4 text-muted-foreground/50" />
-          <h3 className="text-base font-medium text-foreground mb-1">{t("dataView.noMemoriesYet")}</h3>
-          {!documentId && !chunkId && (
-            <p className="text-sm text-muted-foreground mb-6">{t("dataView.noMemoriesDescription")}</p>
-          )}
         </div>
       ) : data ? (
         <>
