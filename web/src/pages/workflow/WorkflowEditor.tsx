@@ -35,6 +35,7 @@ import {
   Rocket,
   Save,
   ShieldCheck,
+  Shuffle,
   Terminal,
   Upload,
 } from "lucide-react";
@@ -74,6 +75,7 @@ const PALETTE_ITEMS = [
   { type: "agent", labelKey: "nodes.agent", icon: Bot, color: "#22c55e" },
   { type: "api", labelKey: "nodes.api", icon: Globe, color: "#8b5cf6" },
   { type: "audit", labelKey: "editor.palette_audit", icon: ShieldCheck, color: "#f59e0b" },
+  { type: "transform", labelKey: "nodes.transform", icon: Shuffle, color: "#f97316" },
   // { type: "workflow", labelKey: "editor.palette_subworkflow", icon: GitBranch, color: "#ec4899" },
   // { type: "loop", labelKey: "editor.palette_loop", icon: RefreshCw, color: "#06b6d4" },
 ] as const;

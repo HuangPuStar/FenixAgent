@@ -15,7 +15,7 @@ export interface RetryConfig {
 }
 
 /** 节点类型 */
-export type NodeType = "shell" | "python" | "agent" | "api" | "audit" | "workflow" | "loop";
+export type NodeType = "shell" | "python" | "agent" | "api" | "audit" | "workflow" | "loop" | "transform";
 
 /** 基础节点定义 */
 export interface BaseNodeDef {
@@ -98,6 +98,15 @@ export interface LoopNodeDef extends BaseNodeDef {
   body: LoopBody;
 }
 
+/** Transform 节点 — 纯内存 JSON 变换，通过 JS 表达式重塑上游数据 */
+export interface TransformNodeDef extends BaseNodeDef {
+  type: "transform";
+  /** 从上游拉取的数据，key 为变量名，value 为表达式（如 nodes.X.output） */
+  inputs?: Record<string, string>;
+  /** 输出结构，key 为字段名，value 为 JavaScript 表达式，表达式作用域包含 inputs 变量 + params + secrets */
+  output: Record<string, string>;
+}
+
 /** 节点定义判别联合 */
 export type NodeDef =
   | ShellNodeDef
@@ -106,7 +115,8 @@ export type NodeDef =
   | ApiNodeDef
   | AuditNodeDef
   | SubWorkflowNodeDef
-  | LoopNodeDef;
+  | LoopNodeDef
+  | TransformNodeDef;
 
 /** WorkflowDef — YAML 根结构 */
 export interface WorkflowDef {
