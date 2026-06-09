@@ -2,6 +2,9 @@ import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
+import type { BridgeModule } from "@fenix/bridge-protocol";
+import { createClaudeBridge } from "@fenix/claude-bridge";
+import { createOpencodeBridge } from "@fenix/opencode-bridge";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { handleFileOp } from "./client/file-operations.js";
 import { type AgentType, InstanceManager } from "./client/instance-manager.js";
@@ -63,6 +66,8 @@ export interface ServerConfig {
   labels?: string[];
   /** Agent 类型：opencode（默认）或 ccb（Claude Code） */
   agentType?: AgentType;
+  /** 支持的引擎类型列表，注册时上报给 RCS */
+  supportedEngineTypes?: { type: string; cliPath?: string }[];
 }
 
 export interface AcpServerHandle {
@@ -151,6 +156,10 @@ export function buildRegisterMessage(config: ServerConfig): object {
     },
     labels: config.labels ?? [],
     heartbeat_interval_ms: 30000,
+    supported_engine_types: config.supportedEngineTypes ?? [
+      { type: "opencode" },
+      ...(process.env.CLAUDE_CODE_CLI_PATH ? [{ type: "claude-code", cliPath: process.env.CLAUDE_CODE_CLI_PATH }] : []),
+    ],
     tenant_id: config.tenantId ?? null,
     user_id: config.userId ?? null,
   };
@@ -167,6 +176,32 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
   const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
   const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd(), config.args, config.agentType);
+
+  // 双引擎 bridge 模块（根据 engine_type 选择）
+  const workspaceRoot = config.cwd || process.cwd();
+  const bridges: Record<string, BridgeModule> = {
+    opencode: createOpencodeBridge(workspaceRoot, config.command),
+    "claude-code": createClaudeBridge(workspaceRoot),
+  };
+  const sessionBridge = new Map<string, BridgeModule>(); // sessionId → bridge
+
+  function selectBridge(engineType?: string): BridgeModule {
+    return bridges[engineType ?? "opencode"] ?? bridges.opencode;
+  }
+
+  // Bridge 事件 → WS 转发
+  for (const [engineType, bridge] of Object.entries(bridges)) {
+    bridge.on("session_data", (sessionId: string, payload: unknown) => {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "session_data", session_id: sessionId, payload }));
+      }
+    });
+    bridge.on("session_error", (sessionId: string, error: unknown) => {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: String(error) }));
+      }
+    });
+  }
 
   // 从磁盘加载 workspace 映射（acp-link 重启后恢复）
   initRegistry(config.cwd || process.cwd()).catch((err) => {
@@ -291,14 +326,45 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
           case "session_start": {
             const sessionId = msg.session_id as string;
             const launchSpec = msg.launch_spec;
+            const engineType = msg.engine_type as string | undefined;
 
+            // 双引擎 bridge 路径
+            if (engineType && bridges[engineType]) {
+              const bridge = selectBridge(engineType);
+              sessionBridge.set(sessionId, bridge);
+              console.log(`[acp-client] session_start via bridge engine=${engineType} sessionId=${sessionId}`);
+              try {
+                await bridge.prepare(workspaceRoot, launchSpec as AgentLaunchSpec);
+                const result = await bridge.start(sessionId, {
+                  cwd: workspaceRoot,
+                  systemPrompt: msg.agent_prompt as string | undefined,
+                });
+                ws!.send(
+                  JSON.stringify({
+                    type: "session_started",
+                    session_id: sessionId,
+                    payload: { capabilities: result.capabilities },
+                  }),
+                );
+              } catch (err) {
+                ws!.send(
+                  JSON.stringify({
+                    type: "session_error",
+                    session_id: sessionId,
+                    error: (err as Error).message,
+                  }),
+                );
+              }
+              break;
+            }
+
+            // 旧 SessionManager 路径（无 engine_type 时向后兼容）
             if (launchSpec) {
               console.log(`[acp-client] session_start with launch_spec for ${sessionId}`);
               if (msg.agent_prompt) {
                 sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
               }
               sessionMgr.startSession(sessionId, launchSpec as Record<string, unknown>).then((result) => {
-                console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
                 if (ws && ws.readyState === 1) {
                   if (result === "started") {
                     const caps = sessionMgr.getCapabilities?.() ?? {};
@@ -314,8 +380,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   } else {
                     ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }));
                   }
-                } else {
-                  console.log("[acp-client] ws not ready, state:", ws?.readyState);
                 }
               });
             } else {
@@ -324,7 +388,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
               }
               sessionMgr.startSession(sessionId).then((result) => {
-                console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
                 if (ws && ws.readyState === 1) {
                   if (result === "started") {
                     const caps = sessionMgr.getCapabilities?.() ?? {};
@@ -340,31 +403,38 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   } else {
                     ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }));
                   }
-                } else {
-                  console.log("[acp-client] ws not ready, state:", ws?.readyState);
                 }
               });
             }
             break;
           }
-          case "session_data":
-            // 优先走 InstanceManager AcpDispatcher，否则走旧 SessionManager
-            if (instanceMgr.hasInstance(msg.session_id)) {
-              const dispatcher = instanceMgr.getDispatcher(msg.session_id);
-              if (dispatcher) {
-                await dispatcher.handleMessage(msg.payload);
-              }
+          case "session_data": {
+            const sessionId = msg.session_id as string;
+            // 优先走 bridge 路径
+            const bridge = sessionBridge.get(sessionId);
+            if (bridge) {
+              await bridge.sendData(sessionId, msg.payload);
+            } else if (instanceMgr.hasInstance(sessionId)) {
+              const dispatcher = instanceMgr.getDispatcher(sessionId);
+              if (dispatcher) await dispatcher.handleMessage(msg.payload);
             } else {
-              sessionMgr.sendData(msg.session_id, msg.payload);
+              sessionMgr.sendData(sessionId, msg.payload);
             }
             break;
-          case "session_end":
-            if (instanceMgr.hasInstance(msg.session_id)) {
-              instanceMgr.stop(msg.session_id);
+          }
+          case "session_end": {
+            const sessionId = msg.session_id as string;
+            const bridge = sessionBridge.get(sessionId);
+            if (bridge) {
+              await bridge.stop(sessionId);
+              sessionBridge.delete(sessionId);
+            } else if (instanceMgr.hasInstance(sessionId)) {
+              instanceMgr.stop(sessionId);
             } else {
-              sessionMgr.endSession(msg.session_id);
+              sessionMgr.endSession(sessionId);
             }
             break;
+          }
           case "prepare": {
             const instId = msg.instance_id as string;
             const launchSpec = msg.launch_spec as AgentLaunchSpec;
@@ -530,6 +600,11 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (fileWsHeartbeat) clearInterval(fileWsHeartbeat);
       fileWs?.close();
+      // 清理所有 bridge session
+      for (const [sessionId, bridge] of sessionBridge) {
+        bridge.stop(sessionId).catch(() => {});
+      }
+      sessionBridge.clear();
       sessionMgr.stopAll();
       ws?.close();
     },

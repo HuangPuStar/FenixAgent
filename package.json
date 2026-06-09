@@ -27,7 +27,7 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "check:deps": "bun run scripts/check-deps.ts",
-    "postinstall": "mkdir -p node_modules/@fenix && ln -sf ../../packages/sdk node_modules/@fenix/sdk 2>/dev/null || true",
+    "postinstall": "mkdir -p node_modules/@fenix && for pkg in sdk bridge-protocol opencode-bridge claude-bridge plugin-claude-code; do ln -sf ../../packages/$pkg node_modules/@fenix/$pkg 2>/dev/null; done || true",
     "prepare": "husky"
   },
   "dependencies": {

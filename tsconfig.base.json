@@ -4,6 +4,7 @@
       "@fenix/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
       "@fenix/core": ["./packages/core/src/index.ts"],
       "@fenix/opencode": ["./packages/plugin-opencode/src/index.ts"],
+      "@fenix/bridge-protocol": ["./packages/bridge-protocol/src/index.ts"],
       "@fenix/opencode-bridge": ["./packages/opencode-bridge/src/index.ts"],
       "@fenix/claude-bridge": ["./packages/claude-bridge/src/index.ts"],
       "@fenix/plugin-claude-code": ["./packages/plugin-claude-code/src/index.ts"],

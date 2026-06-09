@@ -1,0 +1,146 @@
+# =============================================================================
+# docker-compose.dual.yml — 双引擎开发容器组（独立于对照组）
+# RCS 复用对照组镜像 + 覆盖源码，Machine 从源码构建
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dual-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rcs
+      POSTGRES_PASSWORD: rcs
+      POSTGRES_DB: rcs
+    ports:
+      - "5433:5432"
+    volumes:
+      - dual-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rcs"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dual-net
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+      args:
+        - HTTP_PROXY=http://host.docker.internal:7897
+        - HTTPS_PROXY=http://host.docker.internal:7897
+        - http_proxy=http://host.docker.internal:7897
+        - https_proxy=http://host.docker.internal:7897
+    container_name: dual-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
+    command: ["bun", "migrate.js"]
+    networks:
+      - dual-net
+
+  rcs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - HTTP_PROXY=http://host.docker.internal:7897
+        - HTTPS_PROXY=http://host.docker.internal:7897
+        - http_proxy=http://host.docker.internal:7897
+        - https_proxy=http://host.docker.internal:7897
+    container_name: dual-rcs
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "4001:3000"
+    environment:
+      RCS_HOST: 0.0.0.0
+      RCS_PORT: 3000
+      RCS_BASE_URL: http://localhost:4001
+      RCS_API_KEYS: ${RCS_API_KEYS:-dual-dev-key}
+      DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
+      BETTER_AUTH_SECRET: dual-better-auth-secret-dev
+      BETTER_AUTH_URL: http://localhost:4001
+      REGISTRY_SECRET: ${REGISTRY_SECRET:-dual-secret}
+      LOG_FORMAT: json
+      OPENCODE_DISABLE_AUTOUPDATE: "1"
+      OPENCODE_DISABLE_TELEMETRY: "1"
+      HTTP_PROXY: http://host.docker.internal:7897
+      HTTPS_PROXY: http://host.docker.internal:7897
+      http_proxy: http://host.docker.internal:7897
+      https_proxy: http://host.docker.internal:7897
+      NO_PROXY: 127.0.0.1,localhost,0.0.0.0,postgres,dual-postgres
+      no_proxy: 127.0.0.1,localhost,0.0.0.0,postgres,dual-postgres
+    volumes:
+      - dual-opencode-config:/root/.config/opencode
+      - dual-opencode-data:/root/.local/share/opencode
+      - ./data:/app/data
+      - ./workflow:/app/workflow
+      - ./workspaces:/app/workspaces
+    healthcheck:
+      test: ["CMD", "sh", "-c", "NO_PROXY=* no_proxy=* bun -e \"fetch('http://127.0.0.1:3000/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - dual-net
+
+  machine:
+    build:
+      context: .
+      dockerfile: docker/machine/Dockerfile
+      args:
+        - HTTP_PROXY=http://host.docker.internal:7897
+        - HTTPS_PROXY=http://host.docker.internal:7897
+        - http_proxy=http://host.docker.internal:7897
+        - https_proxy=http://host.docker.internal:7897
+    container_name: dual-machine
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      rcs:
+        condition: service_healthy
+    environment:
+      RCS_URL: ws://rcs:3000
+      RCS_HOST: rcs
+      RCS_PORT: "3000"
+      RCS_SECRET: ${REGISTRY_SECRET:-dual-secret}
+      RCS_LABELS: dual-engine,dev
+      SUPPORTED_ENGINE_TYPES: '[{"type":"opencode"},{"type":"claude-code"}]'
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-db2185422c5b46a7ad83f6ad6c146b08}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.deepseek.com/anthropic}
+      HTTP_PROXY: http://host.docker.internal:7897
+      HTTPS_PROXY: http://host.docker.internal:7897
+      http_proxy: http://host.docker.internal:7897
+      https_proxy: http://host.docker.internal:7897
+      NO_PROXY: 127.0.0.1,localhost,0.0.0.0,rcs,postgres
+      no_proxy: 127.0.0.1,localhost,0.0.0.0,rcs,postgres
+      OPENCODE_DISABLE_AUTOUPDATE: "1"
+      OPENCODE_DISABLE_TELEMETRY: "1"
+    command:
+      - opencode
+      - acp
+    networks:
+      - dual-net
+
+volumes:
+  dual-postgres-data:
+  dual-opencode-config:
+  dual-opencode-data:
+
+networks:
+  dual-net:
+    driver: bridge

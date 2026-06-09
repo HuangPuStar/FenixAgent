@@ -30,6 +30,9 @@ const TENANT_ID = process.env.RCS_TENANT_ID || "";
 const USER_ID = process.env.RCS_USER_ID || "";
 const LABELS = process.env.RCS_LABELS || "remote-runtime";
 const AGENT_TYPE = (process.env.AGENT_TYPE || "opencode") as "opencode" | "ccb";
+const SUPPORTED_ENGINE_TYPES = process.env.SUPPORTED_ENGINE_TYPES
+  ? (JSON.parse(process.env.SUPPORTED_ENGINE_TYPES) as { type: string; cliPath?: string }[])
+  : [{ type: "opencode" }];
 // ──────────
 
 const args = process.argv.slice(2);
@@ -93,4 +96,5 @@ await startServer({
     .map((s) => s.trim())
     .filter(Boolean),
   agentType: AGENT_TYPE,
+  supportedEngineTypes: SUPPORTED_ENGINE_TYPES,
 });

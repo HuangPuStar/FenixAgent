@@ -91,7 +91,9 @@ export class SessionHandler {
 
   getDispatcher(): AcpDispatcher {
     if (!this.sessionState.dispatcher) {
-      this.sessionState.dispatcher = new AcpDispatcher(this.sessionState, this.send);
+      this.sessionState.dispatcher = new AcpDispatcher(this.sessionState, (msg: unknown) =>
+        this.send("session_data", msg),
+      );
     }
     return this.sessionState.dispatcher;
   }

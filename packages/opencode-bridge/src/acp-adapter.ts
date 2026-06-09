@@ -53,7 +53,7 @@ function createErrorResponse(id: string | number | null, code: number, message: 
 export class AcpDispatcher {
   constructor(
     private state: AcpSessionState,
-    private send: (type: string, payload?: unknown) => void,
+    private send: (msg: unknown) => void,
     private cwd?: string,
   ) {}
 
