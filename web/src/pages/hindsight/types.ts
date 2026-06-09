@@ -107,3 +107,34 @@ export interface HindsightStatus {
   url?: string;
   bankId?: string;
 }
+
+/** 实体 */
+export interface EntityItem {
+  id: string;
+  canonical_name: string;
+  mention_count: number;
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+/** 实体列表响应 */
+export interface EntityListResponse {
+  items: EntityItem[];
+  total: number;
+}
+
+/** 实体共现边 */
+export interface EntityEdge {
+  data: {
+    source: string;
+    target: string;
+    weight: number;
+    lastCooccurred: string | null;
+  };
+}
+
+/** 实体共现图谱响应 */
+export interface EntityGraphResponse {
+  nodes: Array<{ data: { id: string; [key: string]: unknown } }>;
+  edges: EntityEdge[];
+}

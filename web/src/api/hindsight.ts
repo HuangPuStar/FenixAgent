@@ -1,5 +1,7 @@
 import type {
   DocumentsResponse,
+  EntityGraphResponse,
+  EntityItem,
   HindsightStatus,
   MemoriesResponse,
   MemoryDetail,
@@ -69,6 +71,23 @@ export const hindsightApi = {
       body: JSON.stringify(params),
     }),
 
+  /** 获取内存图谱数据（用于 Constellation/Graph/Timeline 视图） */
+  getGraph: (params: {
+    type: string;
+    limit?: number;
+    q?: string;
+    tags?: string[];
+    document_id?: string;
+    chunk_id?: string;
+  }) =>
+    apiFetch<Record<string, any>>("/memories/graph", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+
+  /** 获取 Bank 统计信息（整合状态等） */
+  getBankStats: () => apiFetch<Record<string, any>>("/bank-stats"),
+
   /** 列出文档 */
   listDocuments: (params?: { q?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
@@ -102,4 +121,23 @@ export const hindsightApi = {
     apiFetch<{ success: boolean }>(`/mental-models/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
+
+  /** 列出实体 */
+  listEntities: (params?: { limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+    return apiFetch<{ items: EntityItem[]; total: number }>(`/entities?${qs.toString()}`);
+  },
+
+  /** 获取单个实体详情 */
+  getEntity: (id: string) => apiFetch<EntityItem>(`/entities/${encodeURIComponent(id)}`),
+
+  /** 获取实体共现图谱 */
+  getEntityGraph: (params?: { limit?: number; min_count?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params?.min_count !== undefined) qs.set("min_count", String(params.min_count));
+    return apiFetch<EntityGraphResponse>(`/entities/graph?${qs.toString()}`);
+  },
 };

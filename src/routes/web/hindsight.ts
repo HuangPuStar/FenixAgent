@@ -96,6 +96,44 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     { sessionAuth: true },
   )
 
+  // POST /memories/graph — 获取内存图谱数据（Hindsight v1 API）
+  .post(
+    "/memories/graph",
+    async ({ body, store, error }) => {
+      const bankId = await resolveMemberId(store.authContext!);
+      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      try {
+        const res = await proxyToHindsight(`/v1/default/banks/${encodeURIComponent(bankId)}/memories/graph`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...(body as Record<string, unknown>) }),
+        });
+        return await res.json();
+      } catch (err) {
+        console.error("[hindsight] POST /memories/graph proxy failed:", err);
+        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+      }
+    },
+    { sessionAuth: true },
+  )
+
+  // GET /bank-stats — 获取 bank 统计信息（Hindsight v1 API）
+  .get(
+    "/bank-stats",
+    async ({ store, error }) => {
+      const bankId = await resolveMemberId(store.authContext!);
+      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      try {
+        const res = await proxyToHindsight(`/v1/default/banks/${encodeURIComponent(bankId)}/stats`);
+        return await res.json();
+      } catch (err) {
+        console.error("[hindsight] GET /bank-stats proxy failed:", err);
+        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+      }
+    },
+    { sessionAuth: true },
+  )
+
   // ── Recall & Reflect ────────────────────────────────────
   // Recall: 语义检索记忆
   .post(
@@ -250,6 +288,62 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return await res.json();
       } catch (err) {
         console.error("[hindsight] DELETE /mental-models/:id proxy failed:", err);
+        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+      }
+    },
+    { sessionAuth: true },
+  )
+
+  // ── Entities ────────────────────────────────────────────
+  // 列出实体
+  .get(
+    "/entities",
+    async ({ query, store, error }) => {
+      const bankId = await resolveMemberId(store.authContext!);
+      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      const qs = new URLSearchParams(query as Record<string, string>);
+      qs.set("bank_id", bankId);
+      try {
+        const res = await proxyToHindsight(`/api/entities?${qs.toString()}`);
+        return await res.json();
+      } catch (err) {
+        console.error("[hindsight] GET /entities proxy failed:", err);
+        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+      }
+    },
+    { sessionAuth: true },
+  )
+
+  // 获取单个实体详情
+  .get(
+    "/entities/:id",
+    async ({ params, store, error }) => {
+      const bankId = await resolveMemberId(store.authContext!);
+      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      try {
+        const res = await proxyToHindsight(`/api/entities/${params.id}?bank_id=${encodeURIComponent(bankId)}`);
+        return await res.json();
+      } catch (err) {
+        console.error("[hindsight] GET /entities/:id proxy failed:", err);
+        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+      }
+    },
+    { sessionAuth: true },
+  )
+
+  // 获取实体共现图谱
+  .get(
+    "/entities/graph",
+    async ({ query, store, error }) => {
+      const bankId = await resolveMemberId(store.authContext!);
+      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      const qs = new URLSearchParams(query as Record<string, string>);
+      qs.set("bank_id", bankId);
+      try {
+        const res = await proxyToHindsight(`/api/entities/graph?${qs.toString()}`);
+        return await res.json();
+      } catch (err) {
+        console.error("[hindsight] GET /entities/graph proxy failed:", err);
         return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
       }
     },
