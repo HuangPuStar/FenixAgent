@@ -1,9 +1,10 @@
-import { Sparkles } from "lucide-react";
+import { Bot, Sparkles } from "lucide-react";
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
+import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { skillConfigApi } from "@/src/api/sdk";
+import { useMetaAgent } from "@/src/hooks/useMetaAgent";
 import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import {
@@ -86,6 +88,7 @@ const directoryInputProps = { webkitdirectory: "", directory: "" } as Record<str
 export function AgentSkillsPage() {
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  const { t: tAgentPanel } = useTranslation(NS.AGENT_PANEL);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -143,6 +146,8 @@ export function AgentSkillsPage() {
         s.description.toLowerCase().includes(q),
     );
   }, [skills, searchQuery]);
+
+  const { metaAgentId, chatOpen, setChatOpen } = useMetaAgent({ storageKey: "skills:chat-open" });
 
   const handleOpenCreate = (mode: CreateMode) => {
     setEditingSkill(null);
@@ -299,200 +304,246 @@ export function AgentSkillsPage() {
   const overwriteConflictNames = conflicts.map((conflict) => conflict.name).join(", ");
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <AgentPageHeader
-        title={t("title")}
-        subtitle={t("subtitle")}
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => handleOpenCreate("upload")}>
-              {t("btn.uploadSkill")}
-            </Button>
-            <Button onClick={() => handleOpenCreate("text")}>{t("btn.createSkill")}</Button>
-          </div>
-        }
-      />
-      <AgentCardList
-        items={filteredSkills}
-        cardKey={getSkillKey}
-        searchPlaceholder={t("search")}
-        searchFn={(s, q) =>
-          getSkillOptionLabel(s).toLowerCase().includes(q) ||
-          s.name.toLowerCase().includes(q) ||
-          s.description.toLowerCase().includes(q)
-        }
-        emptyMessage={t("empty")}
-        gridCols="grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-        renderCard={(skill) => {
-          const writable = skill.resourceAccess?.writable !== false;
-          const manageable = skill.resourceAccess?.manageable === true;
-
-          return (
-            <div className="group relative rounded-xl border border-border-light bg-surface-1 p-4 transition-all hover:border-border-active hover:shadow-md flex flex-col min-h-[140px]">
-              {writable ? (
-                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
-                    {t("btn.edit")}
-                  </Button>
-                  <Button size="xs" variant="destructive" onClick={() => handleDeleteClick(skill)}>
-                    {t("btn.delete")}
-                  </Button>
-                </div>
-              ) : (
-                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
-                    {t("btn.view")}
-                  </Button>
-                </div>
-              )}
-              <div className="flex-1 min-w-0 pr-20">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand-subtle text-brand shrink-0">
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </div>
-                  <span className="font-mono text-sm font-semibold text-text-bright truncate">
-                    {getSkillOptionLabel(skill)}
-                  </span>
-                  <span className="inline-flex shrink-0 whitespace-nowrap rounded border border-border-subtle px-1.5 py-0.5 text-[10px] font-medium leading-none text-text-muted">
-                    {tComponents(getSkillResourceBadgeKey(skill))}
-                  </span>
-                </div>
-                <p className="text-xs text-text-secondary line-clamp-3 mt-2 leading-relaxed">
-                  {skill.description || "—"}
-                </p>
-                {manageable && (
-                  <label className="mt-3 flex items-center gap-2 text-xs text-text-muted">
-                    <Switch
-                      checked={Boolean(skill.resourceAccess?.publicReadable)}
-                      onCheckedChange={() => void handleToggleSharing(skill)}
-                    />
-                    {tComponents("resource.public")}
-                  </label>
-                )}
-                {!writable && (
-                  <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
-                )}
-              </div>
+    <div className="flex flex-1 min-h-0">
+      <div className="flex flex-col flex-1 min-h-0">
+        <AgentPageHeader
+          title={t("title")}
+          subtitle={t("subtitle")}
+          actions={
+            <div className="flex gap-2">
+              <Button
+                variant={chatOpen ? "default" : "outline"}
+                size="icon"
+                onClick={() => setChatOpen((prev) => !prev)}
+                title={tAgentPanel("metaAgentToggle")}
+              >
+                <Bot className="w-4 h-4" />
+              </Button>
+              <Button variant="outline" onClick={() => handleOpenCreate("upload")}>
+                {t("btn.uploadSkill")}
+              </Button>
+              <Button onClick={() => handleOpenCreate("text")}>{t("btn.createSkill")}</Button>
             </div>
-          );
-        }}
-      />
+          }
+        />
+        <AgentCardList
+          items={filteredSkills}
+          cardKey={getSkillKey}
+          searchPlaceholder={t("search")}
+          searchFn={(s, q) =>
+            getSkillOptionLabel(s).toLowerCase().includes(q) ||
+            s.name.toLowerCase().includes(q) ||
+            s.description.toLowerCase().includes(q)
+          }
+          emptyMessage={t("empty")}
+          gridCols="grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+          renderCard={(skill) => {
+            const writable = skill.resourceAccess?.writable !== false;
+            const manageable = skill.resourceAccess?.manageable === true;
 
-      <FormDialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) resetUploadState();
-        }}
-        title={
-          editingSkill ? (editingReadOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")
-        }
-        onSubmit={handleDialogSubmit}
-        submitLabel={editingSkill || createMode === "text" ? t("dialog.save") : t("dialog.startUpload")}
-        loading={editingSkill || createMode === "text" ? formSaving : uploadPending}
-        disabled={
-          editingReadOnly ||
-          (!editingSkill && createMode === "upload" && uploadItems.filter((i) => i.hasSkillMd).length === 0)
-        }
-        hideSubmit={editingReadOnly}
-        width="sm:max-w-4xl"
-      >
-        {!editingSkill ? (
-          <Tabs value={createMode} onValueChange={(value) => setCreateMode(value as CreateMode)} className="min-h-0">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="upload">{t("dialog.uploadTab")}</TabsTrigger>
-              <TabsTrigger value="text">{t("dialog.createTab")}</TabsTrigger>
-            </TabsList>
-            <TabsContent value="upload" className="space-y-4">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                onChange={handleUploadSelection}
-                className="hidden"
-                {...directoryInputProps}
-              />
-              {uploadItems.length === 0 ? (
-                <div
-                  className="rounded-xl border-2 border-dashed border-border-light bg-surface-2/30 p-8 text-center cursor-pointer transition-colors hover:border-brand/40 hover:bg-brand-subtle/30"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <p className="text-sm font-medium text-text-primary">{t("upload.selectFolder")}</p>
-                  <p className="mt-1 text-xs text-text-muted">{t("upload.selectFolderHint")}</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-text-primary">
-                      {t("upload.selectedDirs", { count: uploadItems.length })}
+            return (
+              <div className="group relative rounded-xl border border-border-light bg-surface-1 p-4 transition-all hover:border-border-active hover:shadow-md flex flex-col min-h-[140px]">
+                {writable ? (
+                  <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
+                      {t("btn.edit")}
+                    </Button>
+                    <Button size="xs" variant="destructive" onClick={() => handleDeleteClick(skill)}>
+                      {t("btn.delete")}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
+                      {t("btn.view")}
+                    </Button>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 pr-20">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand-subtle text-brand shrink-0">
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="font-mono text-sm font-semibold text-text-bright truncate">
+                      {getSkillOptionLabel(skill)}
                     </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => {
-                        setUploadItems([]);
-                        setUploadError(null);
-                        if (fileInputRef.current) fileInputRef.current.value = "";
-                        fileInputRef.current?.click();
-                      }}
-                    >
-                      {t("btn.reselect")}
-                    </Button>
+                    <span className="inline-flex shrink-0 whitespace-nowrap rounded border border-border-subtle px-1.5 py-0.5 text-[10px] font-medium leading-none text-text-muted">
+                      {tComponents(getSkillResourceBadgeKey(skill))}
+                    </span>
                   </div>
-                  <div className="grid gap-2 max-h-48 overflow-y-auto">
-                    {uploadItems.map((item) => (
-                      <UploadItemCard key={item.skillName} item={item} />
-                    ))}
-                  </div>
+                  <p className="text-xs text-text-secondary line-clamp-3 mt-2 leading-relaxed">
+                    {skill.description || "—"}
+                  </p>
+                  {manageable && (
+                    <label className="mt-3 flex items-center gap-2 text-xs text-text-muted">
+                      <Switch
+                        checked={Boolean(skill.resourceAccess?.publicReadable)}
+                        onCheckedChange={() => void handleToggleSharing(skill)}
+                      />
+                      {tComponents("resource.public")}
+                    </label>
+                  )}
+                  {!writable && (
+                    <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
+                  )}
                 </div>
-              )}
-              {uploadError && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-                  {uploadError}
-                </div>
-              )}
-              {conflicts.length > 0 && (
-                <div className="space-y-3 rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm">
-                  <div className="font-medium text-warning-text">{t("conflict.title")}</div>
-                  <div className="space-y-1">
-                    {conflicts.map((c) => (
-                      <div key={c.name} className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-text-primary">{c.name}</span>
-                      </div>
-                    ))}
+              </div>
+            );
+          }}
+        />
+
+        <FormDialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetUploadState();
+          }}
+          title={
+            editingSkill ? (editingReadOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")
+          }
+          onSubmit={handleDialogSubmit}
+          submitLabel={editingSkill || createMode === "text" ? t("dialog.save") : t("dialog.startUpload")}
+          loading={editingSkill || createMode === "text" ? formSaving : uploadPending}
+          disabled={
+            editingReadOnly ||
+            (!editingSkill && createMode === "upload" && uploadItems.filter((i) => i.hasSkillMd).length === 0)
+          }
+          hideSubmit={editingReadOnly}
+          width="sm:max-w-4xl"
+        >
+          {!editingSkill ? (
+            <Tabs value={createMode} onValueChange={(value) => setCreateMode(value as CreateMode)} className="min-h-0">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="upload">{t("dialog.uploadTab")}</TabsTrigger>
+                <TabsTrigger value="text">{t("dialog.createTab")}</TabsTrigger>
+              </TabsList>
+              <TabsContent value="upload" className="space-y-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleUploadSelection}
+                  className="hidden"
+                  {...directoryInputProps}
+                />
+                {uploadItems.length === 0 ? (
+                  <div
+                    className="rounded-xl border-2 border-dashed border-border-light bg-surface-2/30 p-8 text-center cursor-pointer transition-colors hover:border-brand/40 hover:bg-brand-subtle/30"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <p className="text-sm font-medium text-text-primary">{t("upload.selectFolder")}</p>
+                    <p className="mt-1 text-xs text-text-muted">{t("upload.selectFolderHint")}</p>
                   </div>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleUploadSubmit("ignore")}
-                      disabled={uploadPending}
-                    >
-                      {t("conflict.skipConflicts")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setOverwriteConfirmOpen(true)}
-                      disabled={uploadPending}
-                    >
-                      {t("conflict.overwriteExisting")}
-                    </Button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-text-primary">
+                        {t("upload.selectedDirs", { count: uploadItems.length })}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => {
+                          setUploadItems([]);
+                          setUploadError(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                          fileInputRef.current?.click();
+                        }}
+                      >
+                        {t("btn.reselect")}
+                      </Button>
+                    </div>
+                    <div className="grid gap-2 max-h-48 overflow-y-auto">
+                      {uploadItems.map((item) => (
+                        <UploadItemCard key={item.skillName} item={item} />
+                      ))}
+                    </div>
                   </div>
+                )}
+                {uploadError && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+                    {uploadError}
+                  </div>
+                )}
+                {conflicts.length > 0 && (
+                  <div className="space-y-3 rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm">
+                    <div className="font-medium text-warning-text">{t("conflict.title")}</div>
+                    <div className="space-y-1">
+                      {conflicts.map((c) => (
+                        <div key={c.name} className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-text-primary">{c.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleUploadSubmit("ignore")}
+                        disabled={uploadPending}
+                      >
+                        {t("conflict.skipConflicts")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setOverwriteConfirmOpen(true)}
+                        disabled={uploadPending}
+                      >
+                        {t("conflict.overwriteExisting")}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="text" className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-text-primary">{t("form.name")}</label>
+                  <Input
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="my-skill"
+                    className="mt-1 font-mono text-sm"
+                  />
                 </div>
+                <div>
+                  <label className="text-sm font-medium text-text-primary">{t("form.description")}</label>
+                  <Textarea
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    className="mt-1 min-h-[80px] text-sm"
+                    placeholder={t("form.descriptionPlaceholder")}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-text-primary">{t("form.content")}</label>
+                  <p className="text-xs text-text-muted mb-1.5">{t("form.contentHint")}</p>
+                  <Textarea
+                    value={formContent}
+                    onChange={(e) => setFormContent(e.target.value)}
+                    className="min-h-[300px] font-mono text-sm"
+                    placeholder={t("form.contentPlaceholder")}
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
+          ) : (
+            <div className="space-y-4">
+              {editingReadOnly && (
+                <p className="rounded-lg border border-border-subtle bg-surface-2 px-3 py-2 text-sm text-text-muted">
+                  {tComponents("resource.readOnly")}
+                </p>
               )}
-            </TabsContent>
-            <TabsContent value="text" className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-text-primary">{t("form.name")}</label>
                 <Input
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="my-skill"
-                  className="mt-1 font-mono text-sm"
+                  disabled
+                  className="mt-1 font-mono text-sm text-text-muted"
                 />
               </div>
               <div>
@@ -500,6 +551,7 @@ export function AgentSkillsPage() {
                 <Textarea
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
+                  disabled={editingReadOnly}
                   className="mt-1 min-h-[80px] text-sm"
                   placeholder={t("form.descriptionPlaceholder")}
                 />
@@ -510,70 +562,40 @@ export function AgentSkillsPage() {
                 <Textarea
                   value={formContent}
                   onChange={(e) => setFormContent(e.target.value)}
+                  disabled={editingReadOnly}
                   className="min-h-[300px] font-mono text-sm"
                   placeholder={t("form.contentPlaceholder")}
                 />
               </div>
-            </TabsContent>
-          </Tabs>
-        ) : (
-          <div className="space-y-4">
-            {editingReadOnly && (
-              <p className="rounded-lg border border-border-subtle bg-surface-2 px-3 py-2 text-sm text-text-muted">
-                {tComponents("resource.readOnly")}
-              </p>
-            )}
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("form.name")}</label>
-              <Input
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                disabled
-                className="mt-1 font-mono text-sm text-text-muted"
-              />
             </div>
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("form.description")}</label>
-              <Textarea
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                disabled={editingReadOnly}
-                className="mt-1 min-h-[80px] text-sm"
-                placeholder={t("form.descriptionPlaceholder")}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("form.content")}</label>
-              <p className="text-xs text-text-muted mb-1.5">{t("form.contentHint")}</p>
-              <Textarea
-                value={formContent}
-                onChange={(e) => setFormContent(e.target.value)}
-                disabled={editingReadOnly}
-                className="min-h-[300px] font-mono text-sm"
-                placeholder={t("form.contentPlaceholder")}
-              />
-            </div>
-          </div>
-        )}
-      </FormDialog>
+          )}
+        </FormDialog>
 
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title={t("confirm.deleteTitle")}
-        description={t("confirm.deleteDescription", { name: deleteTarget ?? "" })}
-        variant="destructive"
-        onConfirm={confirmDelete}
-      />
-      <ConfirmDialog
-        open={overwriteConfirmOpen}
-        onOpenChange={setOverwriteConfirmOpen}
-        title={t("confirm.overwriteTitle")}
-        description={t("confirm.overwriteDescription", { names: overwriteConflictNames })}
-        variant="destructive"
-        confirmLabel={t("confirm.overwriteConfirm")}
-        onConfirm={() => void handleUploadSubmit("overwrite")}
-        loading={uploadPending}
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={t("confirm.deleteTitle")}
+          description={t("confirm.deleteDescription", { name: deleteTarget ?? "" })}
+          variant="destructive"
+          onConfirm={confirmDelete}
+        />
+        <ConfirmDialog
+          open={overwriteConfirmOpen}
+          onOpenChange={setOverwriteConfirmOpen}
+          title={t("confirm.overwriteTitle")}
+          description={t("confirm.overwriteDescription", { names: overwriteConflictNames })}
+          variant="destructive"
+          confirmLabel={t("confirm.overwriteConfirm")}
+          onConfirm={() => void handleUploadSubmit("overwrite")}
+          loading={uploadPending}
+        />
+      </div>
+      <MetaAgentPanel
+        chatOpen={chatOpen}
+        setChatOpen={(open) => setChatOpen(open)}
+        metaAgentId={metaAgentId}
+        scenePrompt={undefined}
+        onPromptComplete={loadSkills}
       />
     </div>
   );

@@ -1,15 +1,21 @@
 import { Bot, ChevronRight, Loader2, Menu, MessageSquare } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ACPClient } from "../../../acp/client";
-import type { AgentSessionInfo } from "../../../acp/types";
-import { ChatPanel } from "../../agent-panel/ChatPanel";
+import { NS } from "@/src/i18n";
+import type { ACPClient } from "../src/acp/client";
+import type { AgentSessionInfo } from "../src/acp/types";
+import { ChatPanel } from "../src/pages/agent-panel/ChatPanel";
 
-interface MetaAgentPanelProps {
+export interface MetaAgentPanelProps {
+  /** 面板是否展开 */
   chatOpen: boolean;
+  /** 设置面板展开状态 */
   setChatOpen: (open: boolean) => void;
+  /** Meta Agent environment ID */
   metaAgentId: string | null;
-  scenePrompt: string | undefined;
+  /** 可选的场景提示，workflow 场景传入 workflow 上下文，skills 场景不传 */
+  scenePrompt?: string;
+  /** 会话完成后的回调，如刷新数据 */
   onPromptComplete?: () => void;
 }
 
@@ -20,7 +26,7 @@ export function MetaAgentPanel({
   scenePrompt,
   onPromptComplete,
 }: MetaAgentPanelProps) {
-  const { t } = useTranslation("workflows");
+  const { t } = useTranslation(NS.COMPONENTS);
   const [client, setClient] = useState<ACPClient | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
@@ -35,7 +41,7 @@ export function MetaAgentPanel({
       const response = await client.listSessions();
       setSessions(Array.isArray(response?.sessions) ? response.sessions : []);
     } catch (err) {
-      console.warn("[MetaAgentPanel] Failed to load sessions:", err);
+      console.error("[MetaAgentPanel] Failed to load sessions:", err);
     } finally {
       setLoading(false);
     }
@@ -97,9 +103,9 @@ export function MetaAgentPanel({
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 86400000);
     const groups: { label: string; items: AgentSessionInfo[] }[] = [
-      { label: t("editor.history_today"), items: [] },
-      { label: t("editor.history_yesterday"), items: [] },
-      { label: t("editor.history_earlier"), items: [] },
+      { label: t("metaAgent.history_today"), items: [] },
+      { label: t("metaAgent.history_yesterday"), items: [] },
+      { label: t("metaAgent.history_earlier"), items: [] },
     ];
     for (const s of sorted) {
       const d = s.updatedAt ? new Date(s.updatedAt) : new Date(0);
@@ -149,12 +155,12 @@ export function MetaAgentPanel({
               alignItems: "center",
               transition: "color 0.15s",
             }}
-            title={t("editor.history_title")}
+            title={t("metaAgent.history_title")}
           >
             <Menu size={14} />
           </button>
           <Bot size={14} />
-          Meta Agent
+          {t("metaAgent.title")}
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
           <button
@@ -170,7 +176,7 @@ export function MetaAgentPanel({
               alignItems: "center",
             }}
             onClick={() => setChatOpen(false)}
-            title={t("editor.chat_collapse")}
+            title={t("metaAgent.chat_collapse")}
           >
             <ChevronRight size={14} />
           </button>
@@ -208,16 +214,16 @@ export function MetaAgentPanel({
               borderBottom: "1px solid #f3f4f6",
             }}
           >
-            {t("editor.history_title")}
+            {t("metaAgent.history_title")}
           </div>
           <div style={{ overflowY: "auto", flex: 1 }}>
             {loading && sessions.length === 0 ? (
               <div style={{ display: "flex", justifyContent: "center", padding: 16 }}>
-                <Loader2 size={16} style={{ animation: "wf-spin 1s linear infinite", color: "#9ca3af" }} />
+                <Loader2 size={16} className="animate-spin" style={{ color: "#9ca3af" }} />
               </div>
             ) : sessions.length === 0 ? (
               <div style={{ padding: 16, textAlign: "center", fontSize: 12, color: "#9ca3af" }}>
-                {t("editor.history_empty")}
+                {t("metaAgent.history_empty")}
               </div>
             ) : (
               grouped.map((group, gi) => (
@@ -263,7 +269,7 @@ export function MetaAgentPanel({
                     >
                       <MessageSquare size={13} style={{ flexShrink: 0, opacity: 0.5 }} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {session.title?.trim() || t("editor.history_untitled")}
+                        {session.title?.trim() || t("metaAgent.history_untitled")}
                       </span>
                     </button>
                   ))}

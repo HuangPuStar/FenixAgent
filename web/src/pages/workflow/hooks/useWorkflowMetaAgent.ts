@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { envApi } from "@/src/api/sdk";
-import { ensureMetaAgent } from "../../../api/meta-agent";
+import { useMetaAgent } from "@/src/hooks/useMetaAgent";
 import type { WfMeta } from "../yaml-utils";
 
 export interface UseWorkflowMetaAgentParams {
@@ -19,14 +19,13 @@ export interface UseWorkflowMetaAgentReturn {
   setAgentOverrideOpen: (open: boolean) => void;
 }
 
+/**
+ * Workflow 场景专用 Meta Agent hook。
+ * 内部调用通用 useMetaAgent，并添加 workflow 特有的 scenePrompt/agentList 等逻辑。
+ */
 export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentParams): UseWorkflowMetaAgentReturn {
   const { t } = useTranslation("workflows");
-
-  const [chatOpen, setChatOpen] = useState(() => {
-    const saved = localStorage.getItem("wf-editor:chat-open");
-    return saved === "true";
-  });
-  const [metaAgentId, setMetaAgentId] = useState<string | null>(null);
+  const { metaAgentId, chatOpen, setChatOpen } = useMetaAgent({ storageKey: "wf-editor:chat-open" });
 
   const scenePrompt = useMemo(() => {
     if (!workflowId) return;
@@ -39,15 +38,6 @@ export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentP
     ];
     return lines.join("\n");
   }, [workflowId, meta.name, meta.description, t]);
-
-  useEffect(() => {
-    localStorage.setItem("wf-editor:chat-open", String(chatOpen));
-    if (chatOpen && !metaAgentId) {
-      ensureMetaAgent()
-        .then((res) => setMetaAgentId(res.environmentId))
-        .catch((err) => console.error("Meta Agent failed:", err));
-    }
-  }, [chatOpen, metaAgentId]);
 
   const [agentList, setAgentList] = useState<Array<{ name: string; description: string | null }>>([]);
   const [agentOverrideOpen, setAgentOverrideOpen] = useState(false);
