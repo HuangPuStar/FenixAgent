@@ -109,9 +109,7 @@ export const AgentInfoSchema = z.object({
   builtIn: z.boolean(),
   model: z.string().nullable(),
   modelId: z.string().nullable(),
-  mode: z.string().nullable(),
   description: z.string().nullable(),
-  color: z.string().nullable(),
   knowledgeBaseCount: z.number(),
 });
 
@@ -121,19 +119,12 @@ export const AgentDetailSchema = z.object({
   model: z.string().nullable(),
   modelId: z.string().nullable(),
   prompt: z.string().nullable(),
-  steps: z.number().nullable(),
-  mode: z.string().nullable(),
-  permission: z.unknown().nullable(),
-  variant: z.string().nullable(),
-  temperature: z.number().nullable(),
-  top_p: z.number().nullable(),
-  disable: z.boolean(),
-  hidden: z.boolean(),
-  color: z.string().nullable(),
   description: z.string().nullable(),
+  extra: z.record(z.string(), z.unknown()).nullable().optional(),
   knowledge: z.unknown().nullable(),
   skillIds: z.array(z.string()).optional(),
   mcpIds: z.array(z.string()).optional(),
+  machineId: z.string().nullable().optional(),
 });
 
 // ── Skills ──

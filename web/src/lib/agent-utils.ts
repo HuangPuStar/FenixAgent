@@ -1,51 +1,8 @@
-import type { AgentDetail, AgentInfo } from "../types/config";
+import type { AgentDetail } from "../types/config";
 import type { KnowledgeBaseInfo } from "../types/knowledge";
-
-export const DEFAULT_AGENT_MODE = "primary";
 
 export function isValidAgentNameInput(name: string): boolean {
   return /^[\p{L}0-9]+(?:-[\p{L}0-9]+)*$/u.test(name) && name.length >= 1 && name.length <= 64;
-}
-
-export function isValidStepsInput(steps: string): boolean {
-  const n = parseInt(steps, 10);
-  return !Number.isNaN(n) && n >= 1 && n <= 200;
-}
-
-export function filterSubagents(agents: AgentInfo[]): AgentInfo[] {
-  return agents.filter((a) => a.mode === "subagent");
-}
-
-export function getDisplayAgents(agents: AgentInfo[], pageTab: "all" | "primary" | "subagent"): AgentInfo[] {
-  if (pageTab === "subagent") return agents.filter((a) => a.mode === "subagent");
-  if (pageTab === "primary") return agents.filter((a) => a.mode !== "subagent");
-  return agents;
-}
-
-export function getSubagentColumnKeys(): string[] {
-  return ["name", "builtIn", "model", "description"];
-}
-
-export function getFullAgentColumnKeys(): string[] {
-  return ["name", "builtIn", "model", "mode", "default"];
-}
-
-export function buildSubagentFormData(params: {
-  name: string;
-  modelId: string;
-  description: string;
-  prompt: string;
-  steps: string;
-  disable: boolean;
-}): Record<string, unknown> {
-  return {
-    mode: "subagent",
-    modelId: params.modelId || undefined,
-    steps: parseInt(params.steps, 10),
-    prompt: params.prompt || undefined,
-    description: params.description || undefined,
-    disable: params.disable,
-  };
 }
 
 export interface AgentKnowledgeFormState {
@@ -77,32 +34,14 @@ export function filterKnowledgeBaseIds(selectedIds: string[], knowledgeOptions: 
 
 export function buildAgentPayload(input: {
   modelId: string;
-  mode: string;
-  steps: string;
   prompt: string;
   description: string;
-  variant: string;
-  temperature: string;
-  topP: string;
-  color: string;
-  hidden: boolean;
-  disable: boolean;
-  permission: Record<string, unknown> | null;
   knowledge: AgentKnowledgeFormState;
 }) {
   return {
     modelId: input.modelId || undefined,
-    mode: input.mode,
-    steps: parseInt(input.steps, 10),
     prompt: input.prompt || undefined,
     description: input.description || undefined,
-    variant: input.variant || undefined,
-    temperature: input.temperature !== "" ? parseFloat(input.temperature) : undefined,
-    top_p: input.topP !== "" ? parseFloat(input.topP) : undefined,
-    color: input.color || undefined,
-    hidden: input.hidden,
-    disable: input.disable,
-    permission: input.permission,
     knowledge: {
       knowledgeBaseIds: input.knowledge.knowledgeBaseIds,
       policy: {

@@ -74,12 +74,14 @@ export interface AgentInfo extends Indexable {
 export interface AgentDetail extends AgentInfo {
   systemPrompt?: string;
   prompt?: string | null;
+  extra?: Record<string, unknown> | null;
   skillIds?: string[];
   machineId?: string | null;
   relatedResources?: {
     modelLabel?: string | null;
     machineLabel?: string | null;
     skills?: Array<{ id: string; label: string }>;
+    mcps?: Array<{ id: string; label: string }>;
     knowledgeBases?: Array<{ id: string; label: string; slug?: string | null }>;
   };
 }

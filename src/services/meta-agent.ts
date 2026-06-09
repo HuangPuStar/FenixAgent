@@ -258,7 +258,6 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
       description: "Meta Agent — 工作流编排助手",
       model: defaultModelRef,
       prompt: null,
-      steps: null,
     });
     agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
     if (!agentConfig) {

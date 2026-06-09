@@ -79,6 +79,9 @@ export interface AgentKnowledgeConfig {
   policy?: AgentKnowledgePolicy | null;
 }
 
+/** Extensible agent config bag for future UI/runtime metadata. */
+export type AgentExtraConfig = Record<string, unknown>;
+
 // ────────────────────────────────────────────
 // Provider
 // ────────────────────────────────────────────
@@ -289,18 +292,10 @@ export interface UserConfigData {
 export interface AgentConfigUpsertData {
   modelId?: string | null;
   prompt?: string | null;
-  steps?: number | null;
-  mode?: string | null;
-  permission?: PermissionConfig | null;
-  variant?: string | null;
-  temperature?: number | null;
-  topP?: number | null;
-  top_p?: number | null;
-  disable?: boolean;
-  hidden?: boolean;
-  color?: string | null;
   description?: string | null;
+  extra?: AgentExtraConfig | null;
   knowledge?: AgentKnowledgeConfig | null;
+  machineId?: string | null;
   skillIds?: string[];
   mcpIds?: string[];
 }
@@ -314,18 +309,9 @@ export interface AgentConfigRowWithAccess {
   prompt: string | null;
   modelId: string | null;
   model: string | null;
-  steps: number | null;
-  mode: string | null;
-  permission: PermissionConfig | null;
-  variant: string | null;
-  temperature: number | null;
-  topP: number | null;
-  disable: boolean;
-  hidden: boolean;
-  color: string | null;
   description: string | null;
-  knowledge: AgentKnowledgeConfig | null;
   machineId: string | null;
+  extra?: AgentExtraConfig | null;
   createdAt: Date;
   updatedAt: Date;
   resourceAccess: ResourceAccess;

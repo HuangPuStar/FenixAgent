@@ -43,6 +43,13 @@
       "when": 1780987849936,
       "tag": "0005_agent-config-mcp-bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780992115461,
+      "tag": "0006_agent-config-extra-cleanup",
+      "breakpoints": true
     }
   ]
 }

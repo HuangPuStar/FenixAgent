@@ -11,7 +11,6 @@ export {
   isBuiltInAgent,
   listAgentConfigs,
   normalizeKnowledgeConfig,
-  toolsToPermission,
   updateAgentConfig,
   validateAgentData,
 } from "./agent-config";
@@ -53,6 +52,7 @@ export type {
   AgentConfigDetailWithAccess,
   AgentConfigRowWithAccess,
   AgentConfigUpsertData,
+  AgentExtraConfig,
   AgentKnowledgeConfig,
   McpServerConfig,
   McpServerInfoOutput,

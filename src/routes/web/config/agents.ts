@@ -15,7 +15,6 @@ import {
   AGENT_SETTABLE_FIELDS,
   isBuiltInAgent,
   normalizeKnowledgeConfig,
-  toolsToPermission,
   validateAgentData,
 } from "../../../services/config/agent-config";
 import * as configPg from "../../../services/config/index";
@@ -156,32 +155,6 @@ async function buildAgentRelatedResourceView(
   }
 }
 
-/** 将 PG 行数据映射为前端兼容的 agent 字段 */
-function _pgRowToAgentFields(
-  row: typeof configPg extends { listAgentConfigs: (ctx: AuthContext) => Promise<(infer T)[]> } ? T : never,
-) {
-  const r = row as unknown as Record<string, unknown>;
-  // tools → permission 兼容转换：PG 中不再有 tools，但保留接口
-  const permission = (r.permission ?? null) as unknown;
-  return {
-    name: r.name as string,
-    model: (r.model as string) ?? null,
-    modelId: (r.modelId as string) ?? null,
-    mode: (r.mode as string) ?? null,
-    description: (r.description as string) ?? null,
-    color: (r.color as string) ?? null,
-    disable: (r.disable as boolean) ?? false,
-    hidden: (r.hidden as boolean) ?? false,
-    steps: (r.steps as number) ?? null,
-    variant: (r.variant as string) ?? null,
-    temperature: (r.temperature as number) ?? null,
-    top_p: (r.topP as number) ?? null,
-    prompt: (r.prompt as string) ?? null,
-    permission,
-    knowledge: null,
-  };
-}
-
 async function handleList(ctx: AuthContext) {
   const agents = await configPg.listAgentConfigs(ctx);
   const uc = await configPg.getUserConfig(ctx);
@@ -208,9 +181,7 @@ async function handleList(ctx: AuthContext) {
         model: a.model ?? null,
         modelId: a.modelId ?? null,
         modelLabel: relatedResources.modelLabel,
-        mode: a.mode ?? null,
         description: a.description ?? null,
-        color: a.color ?? null,
         machineId: a.machineId ?? null,
         knowledgeBaseCount: (await listAgentKnowledgeBindingsById(a.id)).length,
         skillLabels: relatedResources.skills,
@@ -225,13 +196,6 @@ async function handleGet(ctx: AuthContext, name: string) {
   const agent = await configPg.getAgentConfig(ctx, name);
   if (!agent) return configNotFound(`Agent '${name}' not found`);
 
-  let permission = agent.permission ?? null;
-  // tools→permission 兼容：旧数据可能只有 tools 没有 permission
-  const tools = (agent as unknown as Record<string, unknown>).tools;
-  if (permission == null && tools && typeof tools === "object" && !Array.isArray(tools)) {
-    permission = toolsToPermission(tools as Record<string, boolean>);
-  }
-
   const skillIds = await configPg.listAgentSkillIds(agent.id);
   const mcpIds = await configPg.listAgentMcpIds(agent.id);
   const relatedResources = await buildAgentRelatedResourceView(agent, skillIds, mcpIds);
@@ -244,16 +208,8 @@ async function handleGet(ctx: AuthContext, name: string) {
     model: agent.model ?? null,
     modelId: agent.modelId ?? null,
     prompt: agent.prompt ?? null,
-    steps: agent.steps ?? null,
-    mode: agent.mode ?? null,
-    permission,
-    variant: agent.variant ?? null,
-    temperature: agent.temperature ?? null,
-    top_p: agent.topP ?? null,
-    disable: agent.disable ?? false,
-    hidden: agent.hidden ?? false,
-    color: agent.color ?? null,
     description: agent.description ?? null,
+    extra: agent.extra ?? null,
     knowledge: normalizeKnowledgeConfig(knowledge ?? null),
     machineId: agent.machineId ?? null,
     skillIds,
@@ -290,12 +246,8 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   if (!existing) return configNotFound(`Agent '${name}' not found`);
   const updateData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(filtered)) {
-    if (key === "permission" && value == null) {
+    if (key === "knowledge" && value == null) {
       updateData[key] = null;
-    } else if (key === "knowledge" && value == null) {
-      updateData[key] = null;
-    } else if (key === "top_p") {
-      updateData.topP = value;
     } else {
       updateData[key] = value;
     }
@@ -343,23 +295,12 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
       filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
     }
   }
-  if (filtered.permission == null) delete filtered.permission;
-
-  // 映射 snake_case → camelCase for PG storage
-  const pgData: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(filtered)) {
-    if (key === "top_p") {
-      pgData.topP = value;
-    } else {
-      pgData[key] = value;
-    }
-  }
 
   // 检查是否已存在
   const existing = await configPg.getAgentConfig(ctx, name);
   if (existing) return configError("ALREADY_EXISTS", `Agent '${name}' already exists`);
 
-  await configPg.createAgentConfig(ctx, name, pgData, { publicReadable });
+  await configPg.createAgentConfig(ctx, name, filtered, { publicReadable });
   const createdAgent = await configPg.getAgentConfig(ctx, name);
   if (createdAgent) {
     await syncAgentKnowledgeBindingsById(

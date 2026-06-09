@@ -27,7 +27,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { ensureMetaAgent } from "@/src/api/meta-agent";
-import { agentApi, envApi, instanceApi, modelApi } from "@/src/api/sdk";
+import { agentApi, envApi, instanceApi } from "@/src/api/sdk";
 import { useOrg } from "../../contexts/OrgContext";
 import { NS } from "../../i18n";
 import {
@@ -37,7 +37,7 @@ import {
   isAgentWritable,
 } from "../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../lib/config-events";
-import type { ModelEntry, ResourceAccess } from "../../types/config";
+import type { ResourceAccess } from "../../types/config";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 
 interface AgentConfigItem {
@@ -48,19 +48,8 @@ interface AgentConfigItem {
   modelId?: string | null;
   modelLabel?: string | null;
   description: string | null;
-  color: string | null;
   resourceAccess?: ResourceAccess;
   machineId?: string | null;
-}
-
-function buildModelLabelMap(available: ModelEntry[]): Map<string, string> {
-  return new Map(
-    available.map((model) => {
-      const source = model.providerResourceAccess?.sourceOrganizationName;
-      const providerLabel = source ? `${source}/${model.providerDisplayName}` : model.providerDisplayName;
-      return [model.id, `${providerLabel}/${model.displayName}`];
-    }),
-  );
 }
 
 interface AgentTreeNode {
@@ -97,7 +86,6 @@ export function AgentSidebarTree({
   const [selectedRestartInstances, setSelectedRestartInstances] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<AgentConfigItem | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [modelLabelMap, setModelLabelMap] = useState<Map<string, string>>(new Map());
 
   // Meta Agent 显示控制
   const [showMetaAgent, setShowMetaAgent] = useState(
@@ -107,19 +95,11 @@ export function AgentSidebarTree({
 
   const loadData = useCallback(async () => {
     try {
-      const [{ data: agentsResult }, { data: envsData }, { data: modelsData }] = await Promise.all([
-        agentApi.list(),
-        envApi.list(),
-        modelApi.get(),
-      ]);
+      const [{ data: agentsResult }, { data: envsData }] = await Promise.all([agentApi.list(), envApi.list()]);
 
       const rawAgents = (agentsResult as unknown as { agents?: AgentConfigItem[] } | null)?.agents;
       const agents = Array.isArray(rawAgents) ? rawAgents : [];
       const envs = Array.isArray(envsData) ? (envsData as Environment[]) : [];
-      const availableModels = Array.isArray((modelsData as { available?: ModelEntry[] } | null)?.available)
-        ? (((modelsData as { available?: ModelEntry[] } | null)?.available ?? []) as ModelEntry[])
-        : [];
-      setModelLabelMap(buildModelLabelMap(availableModels));
 
       // 过滤内置智能体
       const userAgents = agents.filter((a) => !a.builtIn);
@@ -502,12 +482,7 @@ export function AgentSidebarTree({
                     {tComponents(getAgentAccessBadgeKey(agent))}
                   </span>
                 </div>
-                <div className="text-[11px] text-text-dim truncate mt-0.5">
-                  {agent.description ||
-                    agent.modelLabel ||
-                    (agent.modelId ? (modelLabelMap.get(agent.modelId) ?? agent.modelId) : null) ||
-                    t("agentDefaultDesc")}
-                </div>
+                <div className="mt-0.5 min-h-[16px] text-[11px] text-text-dim truncate">{agent.description ?? ""}</div>
                 {agent.resourceAccess?.ownership === "external" && (
                   <div className="text-[10px] text-text-muted mt-0.5">
                     {t("sharedFrom", {

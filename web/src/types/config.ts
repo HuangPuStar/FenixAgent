@@ -196,9 +196,7 @@ export interface AgentInfo {
   model: string | null;
   modelId: string | null;
   modelLabel?: string | null;
-  mode: string | null;
   description: string | null;
-  color: string | null;
   knowledgeBaseCount: number;
   skillLabels?: Array<{ id: string; label: string }>;
   resourceAccess?: ResourceAccess;
@@ -212,17 +210,8 @@ export interface AgentDetail {
   model: string | null;
   modelId: string | null;
   prompt: string | null;
-  tools: Record<string, boolean> | null;
-  steps: number | null;
-  mode: string | null;
-  permission: PermissionConfig | null;
-  variant: string | null;
-  temperature: number | null;
-  top_p: number | null;
-  disable: boolean;
-  hidden: boolean;
-  color: string | null;
   description: string | null;
+  extra?: Record<string, unknown> | null;
   knowledge: AgentKnowledgeConfig | null;
   skillIds?: string[];
   mcpIds?: string[];

@@ -1,6 +1,6 @@
 {
   "title": "智能体模板",
-  "subtitle": "管理 AI Agent 的模型、提示词和权限配置",
+  "subtitle": "管理 AI Agent 的模型、提示词和运行时资源",
   "createButton": "新建智能体模板",
   "searchPlaceholder": "搜索智能体...",
   "emptyMessage": "暂无智能体，点击「新建智能体模板」添加",
@@ -35,10 +35,7 @@
     "createConfirm": "创建",
     "tabs": {
       "basic": "基础",
-      "knowledge": "知识库",
-      "permission": "权限配置",
-      "skills": "技能",
-      "more": "更多"
+      "knowledge": "知识库"
     }
   },
   "templates": {
