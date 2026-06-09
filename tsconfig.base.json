@@ -4,6 +4,7 @@
       "@fenix/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
       "@fenix/core": ["./packages/core/src/index.ts"],
       "@fenix/opencode": ["./packages/plugin-opencode/src/index.ts"],
+      "@fenix/opencode-bridge": ["./packages/opencode-bridge/src/index.ts"],
       "@fenix/ccb": ["./packages/plugin-ccb/src/index.ts"],
       "@fenix/workflow-engine": ["./packages/workflow-engine/src/index.ts"],
       "@fenix/sdk": ["./packages/sdk/src/index.ts"],
