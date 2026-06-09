@@ -8,289 +8,289 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AgentPanelRouteImport } from './routes/agent/_panel'
-import { Route as AgentAgentIdRouteImport } from './routes/agent/$agentId'
-import { Route as AgentPanelIndexRouteImport } from './routes/agent/_panel/index'
-import { Route as AgentPanelWorkflowRouteImport } from './routes/agent/_panel/workflow'
-import { Route as AgentPanelTasksRouteImport } from './routes/agent/_panel/tasks'
-import { Route as AgentPanelSkillsRouteImport } from './routes/agent/_panel/skills'
-import { Route as AgentPanelSessionsRouteImport } from './routes/agent/_panel/sessions'
-import { Route as AgentPanelOrganizationsRouteImport } from './routes/agent/_panel/organizations'
-import { Route as AgentPanelModelsRouteImport } from './routes/agent/_panel/models'
-import { Route as AgentPanelMemoriesRouteImport } from './routes/agent/_panel/memories'
-import { Route as AgentPanelMcpRouteImport } from './routes/agent/_panel/mcp'
-import { Route as AgentPanelKnowledgeBasesRouteImport } from './routes/agent/_panel/knowledge-bases'
-import { Route as AgentPanelDashboardRouteImport } from './routes/agent/_panel/dashboard'
-import { Route as AgentPanelChannelsRouteImport } from './routes/agent/_panel/channels'
-import { Route as AgentPanelApikeysRouteImport } from './routes/agent/_panel/apikeys'
-import { Route as AgentAgentIdSessionIdRouteImport } from './routes/agent/$agentId_.$sessionId'
-import { Route as AgentPanelChatAgentIdRouteImport } from './routes/agent/_panel/chat.$agentId'
-import { Route as AgentPanelWorkflowIdVersionsRouteImport } from './routes/agent/_panel/workflow_.$id.versions'
-import { Route as AgentPanelWorkflowIdEditRouteImport } from './routes/agent/_panel/workflow_.$id.edit'
-import { Route as AgentPanelChatAgentIdSessionIdRouteImport } from './routes/agent/_panel/chat.$agentId_.$sessionId'
+import { Route as rootRouteImport } from "./routes/__root"
+import { Route as LoginRouteImport } from "./routes/login"
+import { Route as IndexRouteImport } from "./routes/index"
+import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
+import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
+import { Route as AgentPanelIndexRouteImport } from "./routes/agent/_panel/index"
+import { Route as AgentPanelWorkflowRouteImport } from "./routes/agent/_panel/workflow"
+import { Route as AgentPanelTasksRouteImport } from "./routes/agent/_panel/tasks"
+import { Route as AgentPanelSkillsRouteImport } from "./routes/agent/_panel/skills"
+import { Route as AgentPanelSessionsRouteImport } from "./routes/agent/_panel/sessions"
+import { Route as AgentPanelOrganizationsRouteImport } from "./routes/agent/_panel/organizations"
+import { Route as AgentPanelModelsRouteImport } from "./routes/agent/_panel/models"
+import { Route as AgentPanelMemoriesRouteImport } from "./routes/agent/_panel/memories"
+import { Route as AgentPanelMcpRouteImport } from "./routes/agent/_panel/mcp"
+import { Route as AgentPanelKnowledgeBasesRouteImport } from "./routes/agent/_panel/knowledge-bases"
+import { Route as AgentPanelDashboardRouteImport } from "./routes/agent/_panel/dashboard"
+import { Route as AgentPanelChannelsRouteImport } from "./routes/agent/_panel/channels"
+import { Route as AgentPanelApikeysRouteImport } from "./routes/agent/_panel/apikeys"
+import { Route as AgentAgentIdSessionIdRouteImport } from "./routes/agent/$agentId_.$sessionId"
+import { Route as AgentPanelChatAgentIdRouteImport } from "./routes/agent/_panel/chat.$agentId"
+import { Route as AgentPanelWorkflowIdVersionsRouteImport } from "./routes/agent/_panel/workflow_.$id.versions"
+import { Route as AgentPanelWorkflowIdEditRouteImport } from "./routes/agent/_panel/workflow_.$id.edit"
+import { Route as AgentPanelChatAgentIdSessionIdRouteImport } from "./routes/agent/_panel/chat.$agentId_.$sessionId"
 
 const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+  id: "/login",
+  path: "/login",
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentPanelRoute = AgentPanelRouteImport.update({
-  id: '/agent/_panel',
-  path: '/agent',
+  id: "/agent/_panel",
+  path: "/agent",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentAgentIdRoute = AgentAgentIdRouteImport.update({
-  id: '/agent/$agentId',
-  path: '/agent/$agentId',
+  id: "/agent/$agentId",
+  path: "/agent/$agentId",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentPanelIndexRoute = AgentPanelIndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelWorkflowRoute = AgentPanelWorkflowRouteImport.update({
-  id: '/workflow',
-  path: '/workflow',
+  id: "/workflow",
+  path: "/workflow",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelTasksRoute = AgentPanelTasksRouteImport.update({
-  id: '/tasks',
-  path: '/tasks',
+  id: "/tasks",
+  path: "/tasks",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelSkillsRoute = AgentPanelSkillsRouteImport.update({
-  id: '/skills',
-  path: '/skills',
+  id: "/skills",
+  path: "/skills",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelSessionsRoute = AgentPanelSessionsRouteImport.update({
-  id: '/sessions',
-  path: '/sessions',
+  id: "/sessions",
+  path: "/sessions",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelOrganizationsRoute = AgentPanelOrganizationsRouteImport.update({
-  id: '/organizations',
-  path: '/organizations',
+  id: "/organizations",
+  path: "/organizations",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelModelsRoute = AgentPanelModelsRouteImport.update({
-  id: '/models',
-  path: '/models',
+  id: "/models",
+  path: "/models",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelMemoriesRoute = AgentPanelMemoriesRouteImport.update({
-  id: '/memories',
-  path: '/memories',
+  id: "/memories",
+  path: "/memories",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelMcpRoute = AgentPanelMcpRouteImport.update({
-  id: '/mcp',
-  path: '/mcp',
+  id: "/mcp",
+  path: "/mcp",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelKnowledgeBasesRoute =
   AgentPanelKnowledgeBasesRouteImport.update({
-    id: '/knowledge-bases',
-    path: '/knowledge-bases',
+    id: "/knowledge-bases",
+    path: "/knowledge-bases",
     getParentRoute: () => AgentPanelRoute,
   } as any)
 const AgentPanelDashboardRoute = AgentPanelDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+  id: "/dashboard",
+  path: "/dashboard",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelChannelsRoute = AgentPanelChannelsRouteImport.update({
-  id: '/channels',
-  path: '/channels',
+  id: "/channels",
+  path: "/channels",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelApikeysRoute = AgentPanelApikeysRouteImport.update({
-  id: '/apikeys',
-  path: '/apikeys',
+  id: "/apikeys",
+  path: "/apikeys",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentAgentIdSessionIdRoute = AgentAgentIdSessionIdRouteImport.update({
-  id: '/agent/$agentId_/$sessionId',
-  path: '/agent/$agentId/$sessionId',
+  id: "/agent/$agentId_/$sessionId",
+  path: "/agent/$agentId/$sessionId",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentPanelChatAgentIdRoute = AgentPanelChatAgentIdRouteImport.update({
-  id: '/chat/$agentId',
-  path: '/chat/$agentId',
+  id: "/chat/$agentId",
+  path: "/chat/$agentId",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelWorkflowIdVersionsRoute =
   AgentPanelWorkflowIdVersionsRouteImport.update({
-    id: '/workflow_/$id/versions',
-    path: '/workflow/$id/versions',
+    id: "/workflow_/$id/versions",
+    path: "/workflow/$id/versions",
     getParentRoute: () => AgentPanelRoute,
   } as any)
 const AgentPanelWorkflowIdEditRoute =
   AgentPanelWorkflowIdEditRouteImport.update({
-    id: '/workflow_/$id/edit',
-    path: '/workflow/$id/edit',
+    id: "/workflow_/$id/edit",
+    path: "/workflow/$id/edit",
     getParentRoute: () => AgentPanelRoute,
   } as any)
 const AgentPanelChatAgentIdSessionIdRoute =
   AgentPanelChatAgentIdSessionIdRouteImport.update({
-    id: '/chat/$agentId_/$sessionId',
-    path: '/chat/$agentId/$sessionId',
+    id: "/chat/$agentId_/$sessionId",
+    path: "/chat/$agentId/$sessionId",
     getParentRoute: () => AgentPanelRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/agent/$agentId': typeof AgentAgentIdRoute
-  '/agent': typeof AgentPanelRouteWithChildren
-  '/agent/$agentId/$sessionId': typeof AgentAgentIdSessionIdRoute
-  '/agent/apikeys': typeof AgentPanelApikeysRoute
-  '/agent/channels': typeof AgentPanelChannelsRoute
-  '/agent/dashboard': typeof AgentPanelDashboardRoute
-  '/agent/knowledge-bases': typeof AgentPanelKnowledgeBasesRoute
-  '/agent/mcp': typeof AgentPanelMcpRoute
-  '/agent/memories': typeof AgentPanelMemoriesRoute
-  '/agent/models': typeof AgentPanelModelsRoute
-  '/agent/organizations': typeof AgentPanelOrganizationsRoute
-  '/agent/sessions': typeof AgentPanelSessionsRoute
-  '/agent/skills': typeof AgentPanelSkillsRoute
-  '/agent/tasks': typeof AgentPanelTasksRoute
-  '/agent/workflow': typeof AgentPanelWorkflowRoute
-  '/agent/': typeof AgentPanelIndexRoute
-  '/agent/chat/$agentId': typeof AgentPanelChatAgentIdRoute
-  '/agent/chat/$agentId/$sessionId': typeof AgentPanelChatAgentIdSessionIdRoute
-  '/agent/workflow/$id/edit': typeof AgentPanelWorkflowIdEditRoute
-  '/agent/workflow/$id/versions': typeof AgentPanelWorkflowIdVersionsRoute
+  "/": typeof IndexRoute
+  "/login": typeof LoginRoute
+  "/agent/$agentId": typeof AgentAgentIdRoute
+  "/agent": typeof AgentPanelRouteWithChildren
+  "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
+  "/agent/apikeys": typeof AgentPanelApikeysRoute
+  "/agent/channels": typeof AgentPanelChannelsRoute
+  "/agent/dashboard": typeof AgentPanelDashboardRoute
+  "/agent/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/mcp": typeof AgentPanelMcpRoute
+  "/agent/memories": typeof AgentPanelMemoriesRoute
+  "/agent/models": typeof AgentPanelModelsRoute
+  "/agent/organizations": typeof AgentPanelOrganizationsRoute
+  "/agent/sessions": typeof AgentPanelSessionsRoute
+  "/agent/skills": typeof AgentPanelSkillsRoute
+  "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/workflow": typeof AgentPanelWorkflowRoute
+  "/agent/": typeof AgentPanelIndexRoute
+  "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/chat/$agentId/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
+  "/agent/workflow/$id/edit": typeof AgentPanelWorkflowIdEditRoute
+  "/agent/workflow/$id/versions": typeof AgentPanelWorkflowIdVersionsRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/agent/$agentId': typeof AgentAgentIdRoute
-  '/agent/$agentId/$sessionId': typeof AgentAgentIdSessionIdRoute
-  '/agent/apikeys': typeof AgentPanelApikeysRoute
-  '/agent/channels': typeof AgentPanelChannelsRoute
-  '/agent/dashboard': typeof AgentPanelDashboardRoute
-  '/agent/knowledge-bases': typeof AgentPanelKnowledgeBasesRoute
-  '/agent/mcp': typeof AgentPanelMcpRoute
-  '/agent/memories': typeof AgentPanelMemoriesRoute
-  '/agent/models': typeof AgentPanelModelsRoute
-  '/agent/organizations': typeof AgentPanelOrganizationsRoute
-  '/agent/sessions': typeof AgentPanelSessionsRoute
-  '/agent/skills': typeof AgentPanelSkillsRoute
-  '/agent/tasks': typeof AgentPanelTasksRoute
-  '/agent/workflow': typeof AgentPanelWorkflowRoute
-  '/agent': typeof AgentPanelIndexRoute
-  '/agent/chat/$agentId': typeof AgentPanelChatAgentIdRoute
-  '/agent/chat/$agentId/$sessionId': typeof AgentPanelChatAgentIdSessionIdRoute
-  '/agent/workflow/$id/edit': typeof AgentPanelWorkflowIdEditRoute
-  '/agent/workflow/$id/versions': typeof AgentPanelWorkflowIdVersionsRoute
+  "/": typeof IndexRoute
+  "/login": typeof LoginRoute
+  "/agent/$agentId": typeof AgentAgentIdRoute
+  "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
+  "/agent/apikeys": typeof AgentPanelApikeysRoute
+  "/agent/channels": typeof AgentPanelChannelsRoute
+  "/agent/dashboard": typeof AgentPanelDashboardRoute
+  "/agent/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/mcp": typeof AgentPanelMcpRoute
+  "/agent/memories": typeof AgentPanelMemoriesRoute
+  "/agent/models": typeof AgentPanelModelsRoute
+  "/agent/organizations": typeof AgentPanelOrganizationsRoute
+  "/agent/sessions": typeof AgentPanelSessionsRoute
+  "/agent/skills": typeof AgentPanelSkillsRoute
+  "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/workflow": typeof AgentPanelWorkflowRoute
+  "/agent": typeof AgentPanelIndexRoute
+  "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/chat/$agentId/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
+  "/agent/workflow/$id/edit": typeof AgentPanelWorkflowIdEditRoute
+  "/agent/workflow/$id/versions": typeof AgentPanelWorkflowIdVersionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/agent/$agentId': typeof AgentAgentIdRoute
-  '/agent/_panel': typeof AgentPanelRouteWithChildren
-  '/agent/$agentId_/$sessionId': typeof AgentAgentIdSessionIdRoute
-  '/agent/_panel/apikeys': typeof AgentPanelApikeysRoute
-  '/agent/_panel/channels': typeof AgentPanelChannelsRoute
-  '/agent/_panel/dashboard': typeof AgentPanelDashboardRoute
-  '/agent/_panel/knowledge-bases': typeof AgentPanelKnowledgeBasesRoute
-  '/agent/_panel/mcp': typeof AgentPanelMcpRoute
-  '/agent/_panel/memories': typeof AgentPanelMemoriesRoute
-  '/agent/_panel/models': typeof AgentPanelModelsRoute
-  '/agent/_panel/organizations': typeof AgentPanelOrganizationsRoute
-  '/agent/_panel/sessions': typeof AgentPanelSessionsRoute
-  '/agent/_panel/skills': typeof AgentPanelSkillsRoute
-  '/agent/_panel/tasks': typeof AgentPanelTasksRoute
-  '/agent/_panel/workflow': typeof AgentPanelWorkflowRoute
-  '/agent/_panel/': typeof AgentPanelIndexRoute
-  '/agent/_panel/chat/$agentId': typeof AgentPanelChatAgentIdRoute
-  '/agent/_panel/chat/$agentId_/$sessionId': typeof AgentPanelChatAgentIdSessionIdRoute
-  '/agent/_panel/workflow_/$id/edit': typeof AgentPanelWorkflowIdEditRoute
-  '/agent/_panel/workflow_/$id/versions': typeof AgentPanelWorkflowIdVersionsRoute
+  "/": typeof IndexRoute
+  "/login": typeof LoginRoute
+  "/agent/$agentId": typeof AgentAgentIdRoute
+  "/agent/_panel": typeof AgentPanelRouteWithChildren
+  "/agent/$agentId_/$sessionId": typeof AgentAgentIdSessionIdRoute
+  "/agent/_panel/apikeys": typeof AgentPanelApikeysRoute
+  "/agent/_panel/channels": typeof AgentPanelChannelsRoute
+  "/agent/_panel/dashboard": typeof AgentPanelDashboardRoute
+  "/agent/_panel/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/_panel/mcp": typeof AgentPanelMcpRoute
+  "/agent/_panel/memories": typeof AgentPanelMemoriesRoute
+  "/agent/_panel/models": typeof AgentPanelModelsRoute
+  "/agent/_panel/organizations": typeof AgentPanelOrganizationsRoute
+  "/agent/_panel/sessions": typeof AgentPanelSessionsRoute
+  "/agent/_panel/skills": typeof AgentPanelSkillsRoute
+  "/agent/_panel/tasks": typeof AgentPanelTasksRoute
+  "/agent/_panel/workflow": typeof AgentPanelWorkflowRoute
+  "/agent/_panel/": typeof AgentPanelIndexRoute
+  "/agent/_panel/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/_panel/chat/$agentId_/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
+  "/agent/_panel/workflow_/$id/edit": typeof AgentPanelWorkflowIdEditRoute
+  "/agent/_panel/workflow_/$id/versions": typeof AgentPanelWorkflowIdVersionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
-    | '/login'
-    | '/agent/$agentId'
-    | '/agent'
-    | '/agent/$agentId/$sessionId'
-    | '/agent/apikeys'
-    | '/agent/channels'
-    | '/agent/dashboard'
-    | '/agent/knowledge-bases'
-    | '/agent/mcp'
-    | '/agent/memories'
-    | '/agent/models'
-    | '/agent/organizations'
-    | '/agent/sessions'
-    | '/agent/skills'
-    | '/agent/tasks'
-    | '/agent/workflow'
-    | '/agent/'
-    | '/agent/chat/$agentId'
-    | '/agent/chat/$agentId/$sessionId'
-    | '/agent/workflow/$id/edit'
-    | '/agent/workflow/$id/versions'
+    | "/"
+    | "/login"
+    | "/agent/$agentId"
+    | "/agent"
+    | "/agent/$agentId/$sessionId"
+    | "/agent/apikeys"
+    | "/agent/channels"
+    | "/agent/dashboard"
+    | "/agent/knowledge-bases"
+    | "/agent/mcp"
+    | "/agent/memories"
+    | "/agent/models"
+    | "/agent/organizations"
+    | "/agent/sessions"
+    | "/agent/skills"
+    | "/agent/tasks"
+    | "/agent/workflow"
+    | "/agent/"
+    | "/agent/chat/$agentId"
+    | "/agent/chat/$agentId/$sessionId"
+    | "/agent/workflow/$id/edit"
+    | "/agent/workflow/$id/versions"
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
-    | '/login'
-    | '/agent/$agentId'
-    | '/agent/$agentId/$sessionId'
-    | '/agent/apikeys'
-    | '/agent/channels'
-    | '/agent/dashboard'
-    | '/agent/knowledge-bases'
-    | '/agent/mcp'
-    | '/agent/memories'
-    | '/agent/models'
-    | '/agent/organizations'
-    | '/agent/sessions'
-    | '/agent/skills'
-    | '/agent/tasks'
-    | '/agent/workflow'
-    | '/agent'
-    | '/agent/chat/$agentId'
-    | '/agent/chat/$agentId/$sessionId'
-    | '/agent/workflow/$id/edit'
-    | '/agent/workflow/$id/versions'
+    | "/"
+    | "/login"
+    | "/agent/$agentId"
+    | "/agent/$agentId/$sessionId"
+    | "/agent/apikeys"
+    | "/agent/channels"
+    | "/agent/dashboard"
+    | "/agent/knowledge-bases"
+    | "/agent/mcp"
+    | "/agent/memories"
+    | "/agent/models"
+    | "/agent/organizations"
+    | "/agent/sessions"
+    | "/agent/skills"
+    | "/agent/tasks"
+    | "/agent/workflow"
+    | "/agent"
+    | "/agent/chat/$agentId"
+    | "/agent/chat/$agentId/$sessionId"
+    | "/agent/workflow/$id/edit"
+    | "/agent/workflow/$id/versions"
   id:
-    | '__root__'
-    | '/'
-    | '/login'
-    | '/agent/$agentId'
-    | '/agent/_panel'
-    | '/agent/$agentId_/$sessionId'
-    | '/agent/_panel/apikeys'
-    | '/agent/_panel/channels'
-    | '/agent/_panel/dashboard'
-    | '/agent/_panel/knowledge-bases'
-    | '/agent/_panel/mcp'
-    | '/agent/_panel/memories'
-    | '/agent/_panel/models'
-    | '/agent/_panel/organizations'
-    | '/agent/_panel/sessions'
-    | '/agent/_panel/skills'
-    | '/agent/_panel/tasks'
-    | '/agent/_panel/workflow'
-    | '/agent/_panel/'
-    | '/agent/_panel/chat/$agentId'
-    | '/agent/_panel/chat/$agentId_/$sessionId'
-    | '/agent/_panel/workflow_/$id/edit'
-    | '/agent/_panel/workflow_/$id/versions'
+    | "__root__"
+    | "/"
+    | "/login"
+    | "/agent/$agentId"
+    | "/agent/_panel"
+    | "/agent/$agentId_/$sessionId"
+    | "/agent/_panel/apikeys"
+    | "/agent/_panel/channels"
+    | "/agent/_panel/dashboard"
+    | "/agent/_panel/knowledge-bases"
+    | "/agent/_panel/mcp"
+    | "/agent/_panel/memories"
+    | "/agent/_panel/models"
+    | "/agent/_panel/organizations"
+    | "/agent/_panel/sessions"
+    | "/agent/_panel/skills"
+    | "/agent/_panel/tasks"
+    | "/agent/_panel/workflow"
+    | "/agent/_panel/"
+    | "/agent/_panel/chat/$agentId"
+    | "/agent/_panel/chat/$agentId_/$sessionId"
+    | "/agent/_panel/workflow_/$id/edit"
+    | "/agent/_panel/workflow_/$id/versions"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -301,159 +301,159 @@ export interface RootRouteChildren {
   AgentAgentIdSessionIdRoute: typeof AgentAgentIdSessionIdRoute
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
+    "/login": {
+      id: "/login"
+      path: "/login"
+      fullPath: "/login"
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
+    "/": {
+      id: "/"
+      path: "/"
+      fullPath: "/"
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/agent/_panel': {
-      id: '/agent/_panel'
-      path: '/agent'
-      fullPath: '/agent'
+    "/agent/_panel": {
+      id: "/agent/_panel"
+      path: "/agent"
+      fullPath: "/agent"
       preLoaderRoute: typeof AgentPanelRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/agent/$agentId': {
-      id: '/agent/$agentId'
-      path: '/agent/$agentId'
-      fullPath: '/agent/$agentId'
+    "/agent/$agentId": {
+      id: "/agent/$agentId"
+      path: "/agent/$agentId"
+      fullPath: "/agent/$agentId"
       preLoaderRoute: typeof AgentAgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/agent/_panel/': {
-      id: '/agent/_panel/'
-      path: '/'
-      fullPath: '/agent/'
+    "/agent/_panel/": {
+      id: "/agent/_panel/"
+      path: "/"
+      fullPath: "/agent/"
       preLoaderRoute: typeof AgentPanelIndexRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/workflow': {
-      id: '/agent/_panel/workflow'
-      path: '/workflow'
-      fullPath: '/agent/workflow'
+    "/agent/_panel/workflow": {
+      id: "/agent/_panel/workflow"
+      path: "/workflow"
+      fullPath: "/agent/workflow"
       preLoaderRoute: typeof AgentPanelWorkflowRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/tasks': {
-      id: '/agent/_panel/tasks'
-      path: '/tasks'
-      fullPath: '/agent/tasks'
+    "/agent/_panel/tasks": {
+      id: "/agent/_panel/tasks"
+      path: "/tasks"
+      fullPath: "/agent/tasks"
       preLoaderRoute: typeof AgentPanelTasksRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/skills': {
-      id: '/agent/_panel/skills'
-      path: '/skills'
-      fullPath: '/agent/skills'
+    "/agent/_panel/skills": {
+      id: "/agent/_panel/skills"
+      path: "/skills"
+      fullPath: "/agent/skills"
       preLoaderRoute: typeof AgentPanelSkillsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/sessions': {
-      id: '/agent/_panel/sessions'
-      path: '/sessions'
-      fullPath: '/agent/sessions'
+    "/agent/_panel/sessions": {
+      id: "/agent/_panel/sessions"
+      path: "/sessions"
+      fullPath: "/agent/sessions"
       preLoaderRoute: typeof AgentPanelSessionsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/organizations': {
-      id: '/agent/_panel/organizations'
-      path: '/organizations'
-      fullPath: '/agent/organizations'
+    "/agent/_panel/organizations": {
+      id: "/agent/_panel/organizations"
+      path: "/organizations"
+      fullPath: "/agent/organizations"
       preLoaderRoute: typeof AgentPanelOrganizationsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/models': {
-      id: '/agent/_panel/models'
-      path: '/models'
-      fullPath: '/agent/models'
+    "/agent/_panel/models": {
+      id: "/agent/_panel/models"
+      path: "/models"
+      fullPath: "/agent/models"
       preLoaderRoute: typeof AgentPanelModelsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/memories': {
-      id: '/agent/_panel/memories'
-      path: '/memories'
-      fullPath: '/agent/memories'
+    "/agent/_panel/memories": {
+      id: "/agent/_panel/memories"
+      path: "/memories"
+      fullPath: "/agent/memories"
       preLoaderRoute: typeof AgentPanelMemoriesRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/mcp': {
-      id: '/agent/_panel/mcp'
-      path: '/mcp'
-      fullPath: '/agent/mcp'
+    "/agent/_panel/mcp": {
+      id: "/agent/_panel/mcp"
+      path: "/mcp"
+      fullPath: "/agent/mcp"
       preLoaderRoute: typeof AgentPanelMcpRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/knowledge-bases': {
-      id: '/agent/_panel/knowledge-bases'
-      path: '/knowledge-bases'
-      fullPath: '/agent/knowledge-bases'
+    "/agent/_panel/knowledge-bases": {
+      id: "/agent/_panel/knowledge-bases"
+      path: "/knowledge-bases"
+      fullPath: "/agent/knowledge-bases"
       preLoaderRoute: typeof AgentPanelKnowledgeBasesRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/dashboard': {
-      id: '/agent/_panel/dashboard'
-      path: '/dashboard'
-      fullPath: '/agent/dashboard'
+    "/agent/_panel/dashboard": {
+      id: "/agent/_panel/dashboard"
+      path: "/dashboard"
+      fullPath: "/agent/dashboard"
       preLoaderRoute: typeof AgentPanelDashboardRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/channels': {
-      id: '/agent/_panel/channels'
-      path: '/channels'
-      fullPath: '/agent/channels'
+    "/agent/_panel/channels": {
+      id: "/agent/_panel/channels"
+      path: "/channels"
+      fullPath: "/agent/channels"
       preLoaderRoute: typeof AgentPanelChannelsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/apikeys': {
-      id: '/agent/_panel/apikeys'
-      path: '/apikeys'
-      fullPath: '/agent/apikeys'
+    "/agent/_panel/apikeys": {
+      id: "/agent/_panel/apikeys"
+      path: "/apikeys"
+      fullPath: "/agent/apikeys"
       preLoaderRoute: typeof AgentPanelApikeysRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/$agentId_/$sessionId': {
-      id: '/agent/$agentId_/$sessionId'
-      path: '/agent/$agentId/$sessionId'
-      fullPath: '/agent/$agentId/$sessionId'
+    "/agent/$agentId_/$sessionId": {
+      id: "/agent/$agentId_/$sessionId"
+      path: "/agent/$agentId/$sessionId"
+      fullPath: "/agent/$agentId/$sessionId"
       preLoaderRoute: typeof AgentAgentIdSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/agent/_panel/chat/$agentId': {
-      id: '/agent/_panel/chat/$agentId'
-      path: '/chat/$agentId'
-      fullPath: '/agent/chat/$agentId'
+    "/agent/_panel/chat/$agentId": {
+      id: "/agent/_panel/chat/$agentId"
+      path: "/chat/$agentId"
+      fullPath: "/agent/chat/$agentId"
       preLoaderRoute: typeof AgentPanelChatAgentIdRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/workflow_/$id/versions': {
-      id: '/agent/_panel/workflow_/$id/versions'
-      path: '/workflow/$id/versions'
-      fullPath: '/agent/workflow/$id/versions'
+    "/agent/_panel/workflow_/$id/versions": {
+      id: "/agent/_panel/workflow_/$id/versions"
+      path: "/workflow/$id/versions"
+      fullPath: "/agent/workflow/$id/versions"
       preLoaderRoute: typeof AgentPanelWorkflowIdVersionsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/workflow_/$id/edit': {
-      id: '/agent/_panel/workflow_/$id/edit'
-      path: '/workflow/$id/edit'
-      fullPath: '/agent/workflow/$id/edit'
+    "/agent/_panel/workflow_/$id/edit": {
+      id: "/agent/_panel/workflow_/$id/edit"
+      path: "/workflow/$id/edit"
+      fullPath: "/agent/workflow/$id/edit"
       preLoaderRoute: typeof AgentPanelWorkflowIdEditRouteImport
       parentRoute: typeof AgentPanelRoute
     }
-    '/agent/_panel/chat/$agentId_/$sessionId': {
-      id: '/agent/_panel/chat/$agentId_/$sessionId'
-      path: '/chat/$agentId/$sessionId'
-      fullPath: '/agent/chat/$agentId/$sessionId'
+    "/agent/_panel/chat/$agentId_/$sessionId": {
+      id: "/agent/_panel/chat/$agentId_/$sessionId"
+      path: "/chat/$agentId/$sessionId"
+      fullPath: "/agent/chat/$agentId/$sessionId"
       preLoaderRoute: typeof AgentPanelChatAgentIdSessionIdRouteImport
       parentRoute: typeof AgentPanelRoute
     }
