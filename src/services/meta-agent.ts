@@ -318,7 +318,7 @@ async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
     body: {
       name: META_KEY_LABEL,
       prefix: "rcs_",
-      expiresIn: 1, // 1 天过期，避免 key 永久残留
+      expiresIn: 86400, // 1 天过期（秒），避免 key 永久残留
       metadata: { organizationId: ctx.organizationId, role: ctx.role },
     },
     headers,
