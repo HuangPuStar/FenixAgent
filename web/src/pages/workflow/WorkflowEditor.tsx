@@ -38,6 +38,7 @@ import {
   Terminal,
   Upload,
 } from "lucide-react";
+import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { workflowDefApi } from "../../api/workflow-defs";
@@ -49,7 +50,6 @@ import {
   workflowEngineApi,
 } from "../../api/workflow-engine";
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
-import { MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigPopover } from "./components/NodeConfigPopover";
 import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
