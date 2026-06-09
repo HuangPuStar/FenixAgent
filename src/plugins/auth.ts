@@ -1,3 +1,4 @@
+import { requestAls } from "@fenix/logger";
 import Elysia from "elysia";
 import { auth } from "../auth/better-auth";
 import { decryptPassword, getEncryptionKey } from "../auth/encryption";
@@ -42,6 +43,7 @@ interface AuthSessionInfo {
 /** 统一认证上下文：替代散参数 userId */
 export interface AuthContext {
   organizationId: string;
+  organizationName?: string;
   userId: string;
   role: "owner" | "admin" | "member";
 }
@@ -51,6 +53,22 @@ function extractToken(request: Request): string | undefined {
   const url = new URL(request.url);
   const queryToken = url.searchParams.get("token");
   return authHeader?.replace("Bearer ", "") || queryToken || undefined;
+}
+
+/**
+ * 认证成功后，将用户/组织信息注入 ALS 上下文。
+ * 相当于 Java Spring Security 认证成功后的 MDC.put("username", auth.getName())。
+ * logger.info() 等调用会自动从 ALS 读取这些字段，无需手动传参。
+ */
+function enrichAlsContext(user: UserInfo, authContext: AuthContext | null): void {
+  const store = requestAls.getStore();
+  if (!store) return;
+  store.userId = user.id;
+  store.username = user.name;
+  if (authContext) {
+    store.organizationId = authContext.organizationId;
+    store.organizationName = authContext.organizationName;
+  }
 }
 
 /** 尝试通过 API key / environment secret 认证，成功返回 true 并设置 store */
@@ -181,6 +199,7 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
             store.user = _testAuth.user;
             store.authSession = _testAuth.session;
             if (_testAuth.authContext) store.authContext = _testAuth.authContext;
+            enrichAlsContext(_testAuth.user, _testAuth.authContext);
             return;
           }
           const session = await auth.api.getSession({ headers: request.headers });
@@ -197,12 +216,17 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
             if (ctx) {
               store.authContext = ctx;
             }
+            enrichAlsContext(store.user, store.authContext);
             return;
           }
           // Cookie 认证失败，fallback 到 API key / environment secret
           const apiKeyOk = await tryApiKeyAuth(store, request);
           if (!apiKeyOk) {
             return error(401, { error: { type: "unauthorized", message: "Not authenticated" } });
+          }
+          // API key 认证成功，store 中已有 user 和 authContext
+          if (store.user) {
+            enrichAlsContext(store.user, store.authContext);
           }
         },
       };
@@ -215,6 +239,9 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
           const ok = await tryApiKeyAuth(store, request);
           if (!ok) {
             return error(401, { error: { type: "unauthorized", message: "Invalid API key" } });
+          }
+          if (store.user) {
+            enrichAlsContext(store.user, store.authContext);
           }
         },
       };

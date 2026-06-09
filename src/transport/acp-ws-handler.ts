@@ -1,10 +1,12 @@
-import { log, error as logError } from "@fenix/logger";
+import { createLogger, error as logError } from "@fenix/logger";
 import { config } from "../config";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import type { AcpConnectionEntry } from "../types/store";
 import type { WsConnection } from "./ws-types";
+
+const logger = createLogger("transport-acp-ws-handler");
 
 const connections = new Map<string, AcpConnectionEntry>();
 
@@ -31,7 +33,7 @@ export function handleAcpWsOpen(
   if (isMachine) {
     // machine 连接不订阅 ACP event bus、不调用 handleAcpConnect
     // 心跳由 registry-heartbeat 服务管理，不在 onOpen 阶段启动
-    log(`Machine connection opened: wsId=${wsId}`);
+    logger.debug(`Machine connection opened: wsId=${wsId}`);
     connections.set(wsId, {
       agentId: null,
       boundEnvId: null,
@@ -52,7 +54,7 @@ export function handleAcpWsOpen(
 
   // 本地 acp-link 回连（旧架构路径）
   if (boundEnvId) {
-    log(`Local acp-link connection opened: wsId=${wsId} boundEnvId=${boundEnvId}`);
+    logger.debug(`Local acp-link connection opened: wsId=${wsId} boundEnvId=${boundEnvId}`);
     import("../services/environment-acp").then(({ handleAcpConnect }) => {
       handleAcpConnect(boundEnvId).catch(() => {});
     });
@@ -65,7 +67,7 @@ export function handleAcpWsOpen(
       }
       const silenceMs = Date.now() - entry.lastClientActivity;
       if (silenceMs > _CLIENT_ACTIVITY_TIMEOUT_MS) {
-        log(`Client inactive for ${Math.round(silenceMs / 1000)}s, closing dead connection`);
+        logger.debug(`Client inactive for ${Math.round(silenceMs / 1000)}s, closing dead connection`);
         try {
           entry.ws.close(1000, "client inactive");
         } catch {
@@ -107,7 +109,7 @@ export function handleAcpWsOpen(
   }
 
   // 既非 machine 也非 boundEnvId — 拒绝
-  log(`Unidentified connection rejected: wsId=${wsId}`);
+  logger.debug(`Unidentified connection rejected: wsId=${wsId}`);
   ws.close(4003, "Unidentified connection; provide either boundEnvId or registry secret");
 }
 
@@ -140,7 +142,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     });
 
     entry.machineId = result.id;
-    log(`Machine registered: id=${result.id} agent=${agentName}`);
+    logger.debug(`Machine registered: id=${result.id} agent=${agentName}`);
 
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
     registerRemoteNode(result.id, entry.ws, entry);
@@ -161,7 +163,7 @@ async function handleMachineDisconnect(entry: AcpConnectionEntry, reason?: strin
 
   try {
     await disconnectMachine(entry.machineId, reason ?? "connection closed");
-    log(`Machine disconnected: id=${entry.machineId} reason=${reason ?? "(none)"}`);
+    logger.debug(`Machine disconnected: id=${entry.machineId} reason=${reason ?? "(none)"}`);
   } catch (err) {
     logError("Machine disconnect error:", err);
   }
@@ -223,7 +225,7 @@ export async function handleAcpWsMessage(
     if (entry.isMachine && entry.remoteTransport) {
       const REMOTE_PROTOCOL_TYPES = ["prepare_result", "start_result", "stop_result", "relay"];
       if (REMOTE_PROTOCOL_TYPES.includes(msg.type as string)) {
-        log("ACP ← remote", {
+        logger.debug("ACP ← remote", {
           type: msg.type,
           machineId: entry.machineId,
           instanceId: (msg as Record<string, unknown>).instance_id,
@@ -245,7 +247,7 @@ export async function handleAcpWsMessage(
     ];
     if (entry.isMachine && SESSION_MSG_TYPES.includes(msg.type as string)) {
       const sessionId = msg.session_id as string | undefined;
-      log("ACP ← session", {
+      logger.debug("ACP ← session", {
         type: msg.type,
         machineId: entry.machineId,
         sessionId,
@@ -279,7 +281,7 @@ export async function handleAcpWsMessage(
           entry.agentId = agentId;
           entry.boundEnvId = agentId;
           sendToWs(entry.ws, { type: "identified", agent_id: agentId });
-          log(`Agent identified: wsId=${wsId} agentId=${agentId}`);
+          logger.debug(`Agent identified: wsId=${wsId} agentId=${agentId}`);
         }
       }
     }
@@ -294,7 +296,7 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
   if (!entry) return;
 
   const duration = Math.round((Date.now() - entry.openTime) / 1000);
-  log(
+  logger.debug(
     `Connection closed: wsId=${wsId} agentId=${entry.agentId} code=${code ?? "none"} reason=${reason || "(none)"} duration=${duration}s`,
   );
 
@@ -373,7 +375,7 @@ export function sendToAgentWs(agentId: string, msg: object): boolean {
   if (cachedMachineId) {
     const entry = findMachineConnectionById(cachedMachineId);
     if (entry) {
-      log("ACP → remote", {
+      logger.debug("ACP → remote", {
         agentId,
         machineId: cachedMachineId,
         payloadType: (msg as Record<string, unknown>).type,
@@ -397,7 +399,7 @@ export function sendToAgentWs(agentId: string, msg: object): boolean {
 export function closeAllAcpConnections(): void {
   if (connections.size === 0) return;
 
-  log(`Gracefully closing ${connections.size} ACP connection(s)...`);
+  logger.debug(`Gracefully closing ${connections.size} ACP connection(s)...`);
   for (const [_wsId, entry] of connections) {
     try {
       if (entry.unsub) entry.unsub();
@@ -413,5 +415,5 @@ export function closeAllAcpConnections(): void {
     }
   }
   connections.clear();
-  log("All connections closed");
+  logger.debug("All connections closed");
 }

@@ -1,5 +1,8 @@
+import { createLogger } from "@fenix/logger";
 import type { AuthContext } from "../plugins/auth";
 import { getCache } from "./cache";
+
+const log = createLogger("org-context");
 
 // ────────────────────────────────────────────
 // 测试注入：路由级测试通过 setTestOrgContext 绕过 DB 查询
@@ -57,8 +60,25 @@ export async function loadOrgContext(user: { id: string }, request: Request): Pr
       // biome-ignore lint/suspicious/noExplicitAny: better-auth member objects are untyped
       const me = memberList.find((m: any) => m.userId === user.id);
       if (me) {
+        // 从 DB 查 organization name（better-auth 的 member 对象不含 org name）
+        let orgName: string | undefined;
+        try {
+          const { db } = await import("../db");
+          const { organization } = await import("../db/schema");
+          const { eq } = await import("drizzle-orm");
+          const [orgRow] = await db
+            .select({ name: organization.name })
+            .from(organization)
+            .where(eq(organization.id, activeOrgId))
+            .limit(1);
+          orgName = orgRow?.name;
+        } catch {
+          log.warn("Failed to load organization name for ALS context");
+        }
+
         const result: AuthContext = {
           organizationId: activeOrgId,
+          organizationName: orgName,
           userId: user.id,
           role: me.role as "owner" | "admin" | "member",
         };
@@ -84,6 +104,7 @@ export async function loadOrgContext(user: { id: string }, request: Request): Pr
       if (me) {
         const result: AuthContext = {
           organizationId: org.id,
+          organizationName: org.name,
           userId: user.id,
           role: me.role as "owner" | "admin" | "member",
         };
