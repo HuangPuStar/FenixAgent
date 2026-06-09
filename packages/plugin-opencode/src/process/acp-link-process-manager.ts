@@ -10,6 +10,8 @@ export interface StartAcpLinkInput {
   workspace: string;
   port: number;
   env?: Record<string, string>;
+  /** Agent 类型（opencode / claude-code），传给 acp-link 选择对应 bridge */
+  agentType?: string;
 }
 
 export interface ManagedAcpLinkProcess {
@@ -46,13 +48,11 @@ export class AcpLinkProcessManager {
     const handle = createAcpServer({
       port: input.port,
       host: DEFAULT_HOST,
-      // for peri test don't delete this comment, thx
-      // command: "peri",
-      // args: ["acp"],
       command: opencodeExecutable,
       args: ["acp"],
       cwd: input.workspace,
       env: input.env,
+      agentType: (input.agentType as "opencode" | "ccb" | undefined) ?? "opencode",
     });
 
     const entry: ProcessEntry = {

@@ -172,6 +172,7 @@ export function createOpencodeRuntime(dependencies: OpencodeRuntimeDependencies 
           workspace: state.workspace,
           port,
           env: state.env,
+          agentType: "opencode",
         });
         state.process = process;
         state.port = process.port;
