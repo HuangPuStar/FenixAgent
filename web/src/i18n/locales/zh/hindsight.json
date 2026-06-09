@@ -27,6 +27,9 @@
   },
   "documents": {
     "upload": "上传文档",
+    "uploadSuccess": "文档上传成功",
+    "title": "标题",
+    "memoryUnits": "记忆单元",
     "search": "搜索文档...",
     "noDocuments": "暂无文档",
     "totalCount": "{{count}} 个文档",
@@ -45,7 +48,9 @@
     "content": "内容",
     "stale": "过期",
     "delete": "删除",
-    "detail": "心理模型详情"
+    "detail": "心理模型详情",
+    "deleteConfirm": "确定要删除这个心理模型吗？",
+    "lastRefreshed": "上次刷新"
   },
   "recall": {
     "query": "查询",
