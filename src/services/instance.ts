@@ -3,7 +3,6 @@ import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { getBaseUrl } from "../config";
-import { validateEnv } from "../env";
 import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
@@ -136,10 +135,11 @@ export async function spawnInstanceFromEnvironment(
     extraEnv: mergedExtraEnv,
   };
   let launchSpec: AgentLaunchSpec;
+  let resolvedAgentConfig: Awaited<ReturnType<typeof getReadableAgentConfigById>> = null;
   if (env.agentConfigId) {
     const agentConfigId = env.agentConfigId;
     const accessCtx = { organizationId: env.organizationId ?? "", userId, role: "owner" as const };
-    const resolvedAgentConfig = await getReadableAgentConfigById(accessCtx, agentConfigId);
+    resolvedAgentConfig = await getReadableAgentConfigById(accessCtx, agentConfigId);
     if (!resolvedAgentConfig) {
       logError(
         `[instance] spawnInstanceFromEnvironment: agentConfigId='${agentConfigId}' not found for environmentId='${environmentId}', org='${env.organizationId ?? ""}'`,
@@ -183,11 +183,12 @@ export async function spawnInstanceFromEnvironment(
   }
 
   // 委托 core 执行 launch
-  // port/token/pid 由 core-bootstrap 的 onInstanceStarted 回调写入 pluginMetadata
+  // engineType 从 AgentConfig 动态读取（无 agentConfig 时默认为 opencode）
+  const engineType = (resolvedAgentConfig as Record<string, unknown> | null)?.engineType ?? "opencode";
   const facade = getCoreRuntime();
   const snapshot = await facade.launchInstance({
     instanceId,
-    engineType: validateEnv().RCS_ENGINE_TYPE,
+    engineType: engineType as string,
     nodeId,
     launchSpec,
   });
