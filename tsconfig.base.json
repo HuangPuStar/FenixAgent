@@ -6,6 +6,7 @@
       "@fenix/opencode": ["./packages/plugin-opencode/src/index.ts"],
       "@fenix/opencode-bridge": ["./packages/opencode-bridge/src/index.ts"],
       "@fenix/claude-bridge": ["./packages/claude-bridge/src/index.ts"],
+      "@fenix/plugin-claude-code": ["./packages/plugin-claude-code/src/index.ts"],
       "@fenix/ccb": ["./packages/plugin-ccb/src/index.ts"],
       "@fenix/workflow-engine": ["./packages/workflow-engine/src/index.ts"],
       "@fenix/sdk": ["./packages/sdk/src/index.ts"],
