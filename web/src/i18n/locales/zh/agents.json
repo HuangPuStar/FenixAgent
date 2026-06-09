@@ -51,6 +51,8 @@
     "machine": "机器",
     "machinePlaceholder": "选择一个在线的机器",
     "machineLocal": "本地（默认）",
+    "engineType": "执行引擎",
+    "engineTypePlaceholder": "选择引擎类型",
     "machineValidationError": "机器为必选项",
     "model": "模型",
     "modelPlaceholder": "选择模型",

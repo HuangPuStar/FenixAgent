@@ -51,6 +51,8 @@
     "machine": "Machine",
     "machinePlaceholder": "Select an online machine",
     "machineLocal": "Local (Default)",
+    "engineType": "Engine",
+    "engineTypePlaceholder": "Select engine type",
     "machineValidationError": "Machine is required",
     "model": "Model",
     "modelPlaceholder": "Select model",

@@ -89,6 +89,7 @@ export function buildAgentPayload(input: {
   disable: boolean;
   permission: Record<string, unknown> | null;
   knowledge: AgentKnowledgeFormState;
+  engineType?: string;
 }) {
   return {
     model: input.model || undefined,
@@ -103,6 +104,7 @@ export function buildAgentPayload(input: {
     hidden: input.hidden,
     disable: input.disable,
     permission: input.permission,
+    engineType: input.engineType || "opencode",
     knowledge: {
       knowledgeBaseIds: input.knowledge.knowledgeBaseIds,
       policy: {

@@ -500,6 +500,16 @@ export function AgentSidebarTree({
                   <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
                     {tComponents(getAgentAccessBadgeKey(agent))}
                   </span>
+                  {(agent as unknown as Record<string, unknown>).engineType === "claude-code" && (
+                    <span className="rounded-md bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">
+                      CC
+                    </span>
+                  )}
+                  {(agent as unknown as Record<string, unknown>).engineType !== "claude-code" && (
+                    <span className="rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                      OC
+                    </span>
+                  )}
                 </div>
                 <div className="text-[11px] text-text-dim truncate mt-0.5">
                   {agent.description ||

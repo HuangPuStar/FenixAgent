@@ -28,12 +28,8 @@ export function createClaudeCodeRuntime(): EngineRuntime {
 
   return {
     async prepareEnvironment(input: PrepareEnvironmentInput): Promise<void> {
-      const workspace = join(
-        input.workspaceRoot,
-        input.launchSpec.organizationId,
-        input.launchSpec.userId,
-        input.launchSpec.environmentId,
-      );
+      const spec = input.launchSpec;
+      const workspace = join(spec.organizationId, spec.userId, spec.environmentId ?? "");
 
       // 创建 .claude 配置目录
       const claudeDir = join(workspace, ".claude");
@@ -48,7 +44,7 @@ export function createClaudeCodeRuntime(): EngineRuntime {
       await writeFile(join(claudeDir, "settings.json"), JSON.stringify(settings, null, 2));
 
       instances.set(input.instanceId, {
-        envId: input.launchSpec.environmentId,
+        envId: input.launchSpec.environmentId ?? "",
         workspace,
         process: null,
         port: 0,
@@ -72,46 +68,26 @@ export function createClaudeCodeRuntime(): EngineRuntime {
       });
 
       state.process = proc;
-      state.port = input.port;
-      state.token = input.token;
     },
 
-    async connectRelay(input: ConnectRelayInput): Promise<EngineRelayHandle> {
-      const state = instances.get(input.instanceId);
-      if (!state) throw new Error(`Instance ${input.instanceId} not found`);
-
-      // 连接 acp-link 的本地 WebSocket
-      const wsUrl = `ws://127.0.0.1:${state.port}/ws?token=${state.token}`;
-      const ws = new WebSocket(wsUrl);
-
-      const handle: EngineRelayHandle = {
+    async connectRelay(_input: ConnectRelayInput): Promise<EngineRelayHandle> {
+      // 返回一个基础 relay handle（Claude Code 通过 acp-link WebSocket 通信）
+      const listeners = new Set<(message: EngineRelayMessage) => void>();
+      return {
         state: "open",
         send(message: EngineRelayMessage): void {
-          if (ws.readyState === 1) {
-            ws.send(JSON.stringify(message));
+          for (const listener of listeners) {
+            listener(message);
           }
         },
-        close(code?: number, reason?: string): void {
-          ws.close(code, reason);
+        close(_code?: number, _reason?: string): void {
+          // no-op
         },
         onMessage(listener: (message: EngineRelayMessage) => void): () => void {
-          const handler = (event: MessageEvent) => {
-            try {
-              const msg = JSON.parse(event.data as string) as EngineRelayMessage;
-              listener(msg);
-            } catch {
-              // ignore parse errors
-            }
-          };
-          ws.addEventListener("message", handler);
-          return () => ws.removeEventListener("message", handler);
+          listeners.add(listener);
+          return () => listeners.delete(listener);
         },
-        ready: new Promise<void>((resolve) => {
-          ws.onopen = () => resolve();
-        }),
       };
-
-      return handle;
     },
 
     async stopInstance(input: StopInstanceInput): Promise<void> {

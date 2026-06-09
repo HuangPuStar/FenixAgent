@@ -93,6 +93,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formPermission, setFormPermission] = useState<Record<string, unknown> | null>(null);
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
   const [formMachineId, setFormMachineId] = useState<string>("local");
+  const [formEngineType, setFormEngineType] = useState<string>("opencode");
   const [formResourceAccess, setFormResourceAccess] = useState<ResourceAccess | undefined>(undefined);
   const [formPublicReadable, setFormPublicReadable] = useState(false);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
@@ -161,6 +162,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormHidden(Boolean(d.hidden));
           setFormDisable(Boolean(d.disable));
           setFormMachineId((d.machineId as string) || "local");
+          setFormEngineType((d.engineType as string) || "opencode");
           setFormResourceAccess(d.resourceAccess as ResourceAccess | undefined);
           setFormPublicReadable(Boolean((d.resourceAccess as ResourceAccess | undefined)?.publicReadable));
           setRelatedResources((d.relatedResources as AgentRelatedResourcesView | undefined) ?? undefined);
@@ -371,6 +373,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             hidden: formHidden,
             disable: formDisable,
             permission: formPermission,
+            engineType: formEngineType,
             knowledge: {
               knowledgeBaseIds: validKnowledgeBaseIds,
               searchFirst: formKnowledgeSearchFirst,
@@ -612,6 +615,18 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                             {m.hostname || m.agentName} ({m.id.slice(0, 8)})
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t("form.engineType")}</Label>
+                    <Select value={formEngineType} onValueChange={setFormEngineType} disabled={readOnlyAgent}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder={t("form.engineTypePlaceholder")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="opencode">OpenCode</SelectItem>
+                        <SelectItem value="claude-code">Claude Code</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

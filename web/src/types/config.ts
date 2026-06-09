@@ -225,6 +225,7 @@ export interface AgentDetail {
   knowledge: AgentKnowledgeConfig | null;
   skillIds?: string[];
   machineId?: string | null;
+  engineType?: string | null;
   relatedResources?: {
     modelLabel?: string | null;
     machineLabel?: string | null;
