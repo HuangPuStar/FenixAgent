@@ -369,6 +369,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     setIsLoading(false);
     setSessionReady(false);
     setTodoItems([]);
+    // 清除残留的错误提示和定时器，避免切换会话后错误横幅持续显示
+    setErrorMessage(null);
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+    userCancelledRef.current = false;
     wasLoadingBeforeDisconnect.current = false;
   }, []);
 
