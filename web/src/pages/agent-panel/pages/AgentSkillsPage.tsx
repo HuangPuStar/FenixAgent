@@ -131,6 +131,16 @@ export function AgentSkillsPage() {
     setLoading(false);
   }, [t]);
 
+  // 静默刷新：不触发 loading 骨架屏，避免用户感知"页面刷新"
+  const refreshSkills = useCallback(async () => {
+    const { data, error } = await skillConfigApi.list();
+    if (!error) {
+      const d = ((data as unknown as Record<string, unknown>) ?? {}) as { skills?: SkillInfo[] };
+      setSkills(Array.isArray(d?.skills) ? d.skills : []);
+    }
+    // 静默失败不弹 toast，避免干扰用户
+  }, []);
+
   useEffect(() => {
     loadSkills();
   }, [loadSkills]);
@@ -595,7 +605,7 @@ export function AgentSkillsPage() {
         setChatOpen={(open) => setChatOpen(open)}
         metaAgentId={metaAgentId}
         scenePrompt={undefined}
-        onPromptComplete={loadSkills}
+        onPromptComplete={refreshSkills}
       />
     </div>
   );
