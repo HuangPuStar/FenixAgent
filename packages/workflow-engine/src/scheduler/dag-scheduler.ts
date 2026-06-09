@@ -408,6 +408,13 @@ export class DAGScheduler {
         resolved.max_iterations = node.max_iterations;
         break;
       }
+      case "transform": {
+        // Transform 节点：通过 inputs 注入上游数据，output 表达式在 executor 内求值
+        if (node.inputs) {
+          resolved.inputs = resolveInputs(node.inputs, evalContext);
+        }
+        break;
+      }
     }
 
     // 通用字段
