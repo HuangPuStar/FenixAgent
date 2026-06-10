@@ -10,13 +10,11 @@ RUN bun install --frozen-lockfile \
 FROM deps AS build
 COPY scripts/start-remote-runtime.ts ./scripts/start-remote-runtime.ts
 COPY tsconfig.json tsconfig.base.json ./
-# --target=node: 输出 Node.js 兼容的单文件 bundle
-# acp-link server.ts 内置 Bun/Node 运行时检测，client 模式（sandbox 场景）
-# 只用全局 WebSocket（Node 22 内置），不依赖 ws 库
-RUN bun build scripts/start-remote-runtime.ts --target=node --outdir /tmp/bundle
+# --target=bun: 输出 Bun 运行时的单文件 bundle
+RUN bun build scripts/start-remote-runtime.ts --target=bun --outdir /tmp/bundle
 
 # ── Stage 3: 最小运行时 ────────────────────────
-FROM node:22-bookworm-slim
+FROM oven/bun:1
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -25,12 +23,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g opencode-ai@1.15.10 \
-    && rm -rf /root/.npm/_cacache
+RUN bun install -g opencode-ai@1.15.10
 
 COPY --from=build /tmp/bundle/start-remote-runtime.js ./
 
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
 
-CMD ["node", "start-remote-runtime.js", "opencode", "acp"]
+CMD ["bun", "start-remote-runtime.js", "opencode", "acp"]
