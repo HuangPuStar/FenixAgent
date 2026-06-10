@@ -64,7 +64,7 @@ const wsUrl = RCS_URL || `ws://${RCS_HOST}:${RCS_PORT}`;
 // 健康检查
 const httpUrl = wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:");
 try {
-  const res = await fetch(`${httpUrl}/docs/swagger`);
+  const res = await fetch(`${httpUrl}/docs/api`);
   if (!res.ok) throw new Error(`status ${res.status}`);
 } catch {
   console.error(`RCS (${wsUrl}) 未响应，请先启动 RCS`);

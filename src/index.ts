@@ -1,4 +1,5 @@
 import { createLogger, interceptConsole } from "@fenix/logger";
+import * as z from "zod/v4";
 
 // ⚠️ 必须在所有其他代码之前拦截 console，保证全局日志统一
 interceptConsole();
@@ -7,7 +8,7 @@ const startupLog = createLogger("rcs");
 
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import swagger from "@elysiajs/swagger";
+import openapi from "@elysiajs/openapi";
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
 import { db, initDb, client as pgClient } from "./db";
@@ -41,6 +42,9 @@ import { resolveWorkspacePath } from "./services/workspace-resolver";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
+
+const OPENAPI_PATH = "/docs/api";
+const OPENAPI_SPEC_PATH = `${OPENAPI_PATH}/json`;
 
 await initDb();
 startupLog.info("Database initialized");
@@ -126,7 +130,7 @@ import("./services/registry-heartbeat").then(({ startMachineSweep }) => {
 const app = new Elysia()
   .use(corsPlugin)
   .use(
-    swagger({
+    openapi({
       documentation: {
         info: {
           title: "RCS API",
@@ -162,11 +166,20 @@ const app = new Elysia()
           },
         ],
       },
-      swaggerOptions: {
-        persistAuthorization: true,
+      provider: "scalar",
+      scalar: {
+        // 显式指定 JSON 地址，避免 UI 在嵌套路径下拼错相对地址。
+        url: OPENAPI_SPEC_PATH,
       },
-      exclude: ["/health", /^\/ctrl\/.*/],
-      path: "/docs/swagger",
+      mapJsonSchema: {
+        // 让 Zod 模型直接输出成 OpenAPI 可消费的 JSON Schema。
+        zod: z.toJSONSchema,
+      },
+      exclude: {
+        paths: ["/health", /^\/ctrl\/.*/],
+      },
+      path: OPENAPI_PATH,
+      specPath: OPENAPI_SPEC_PATH,
     }),
   )
   .derive(deriveRequestId)
