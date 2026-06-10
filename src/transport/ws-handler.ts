@@ -1,4 +1,4 @@
-import { log, error as logError } from "@fenix/logger";
+import { createLogger, error as logError } from "@fenix/logger";
 import { config } from "../config";
 import { publishSessionEvent } from "../services/transport";
 import type { WsSessionCleanupEntry } from "../types/store";
@@ -6,6 +6,8 @@ import { toClientPayload } from "./client-payload";
 import type { SessionEvent } from "./event-bus";
 import { getEventBus } from "./event-bus";
 import type { WsConnection } from "./ws-types";
+
+const logger = createLogger("transport-ws-handler");
 
 const cleanupBySession = new Map<string, WsSessionCleanupEntry>();
 
@@ -33,13 +35,13 @@ function toSDKMessage(event: SessionEvent): string {
 export function handleWebSocketOpen(ws: WsConnection, sessionId: string) {
   const openTime = Date.now();
   const lastClientActivity = Date.now();
-  log(`[RC-DEBUG] [WS] Open session=${sessionId}`);
+  logger.debug(`[RC-DEBUG] [WS] Open session=${sessionId}`);
   activeConnections.add(ws);
 
   // If there's an existing connection for this session, clean it up first
   const existing = cleanupBySession.get(sessionId);
   if (existing) {
-    log(`[WS] Replacing existing connection for session=${sessionId}`);
+    logger.debug(`[WS] Replacing existing connection for session=${sessionId}`);
     existing.unsub();
     clearInterval(existing.keepalive);
     activeConnections.delete(existing.ws);
@@ -51,7 +53,7 @@ export function handleWebSocketOpen(ws: WsConnection, sessionId: string) {
   // the full conversation history — assistant replies are inbound events.
   const missed = bus.getEventsSince(0);
   if (missed.length > 0) {
-    log(`[WS] Replaying ${missed.length} missed event(s)`);
+    logger.debug(`[WS] Replaying ${missed.length} missed event(s)`);
     for (const event of missed) {
       if (ws.readyState !== 1) break;
       try {
@@ -67,7 +69,9 @@ export function handleWebSocketOpen(ws: WsConnection, sessionId: string) {
     if (event.direction !== "outbound") return;
     try {
       const sdkMsg = toSDKMessage(event);
-      log(`[RC-DEBUG] [WS] -> bridge (outbound): type=${event.type} len=${sdkMsg.length} msg=${sdkMsg.slice(0, 300)}`);
+      logger.debug(
+        `[RC-DEBUG] [WS] -> bridge (outbound): type=${event.type} len=${sdkMsg.length} msg=${sdkMsg.slice(0, 300)}`,
+      );
       ws.send(sdkMsg);
     } catch (err) {
       logError("[RC-DEBUG] [WS] send error:", err);
@@ -82,7 +86,9 @@ export function handleWebSocketOpen(ws: WsConnection, sessionId: string) {
     // Check if client is still alive — close if no data received for too long
     const silenceMs = Date.now() - lastClientActivity;
     if (silenceMs > CLIENT_ACTIVITY_TIMEOUT_MS) {
-      log(`[WS] Client inactive for ${Math.round(silenceMs / 1000)}s on session=${sessionId}, closing dead connection`);
+      logger.debug(
+        `[WS] Client inactive for ${Math.round(silenceMs / 1000)}s on session=${sessionId}, closing dead connection`,
+      );
       try {
         ws.close(1000, "client inactive");
       } catch {
@@ -126,7 +132,9 @@ export function handleWebSocketClose(ws: WsConnection, sessionId: string, code?:
   const entry = cleanupBySession.get(sessionId);
   const duration = entry ? Math.round((Date.now() - entry.openTime) / 1000) : -1;
 
-  log(`[WS] Close session=${sessionId} code=${code ?? "none"} reason=${reason || "(none)"} duration=${duration}s`);
+  logger.debug(
+    `[WS] Close session=${sessionId} code=${code ?? "none"} reason=${reason || "(none)"} duration=${duration}s`,
+  );
 
   if (entry) {
     entry.unsub();
@@ -168,7 +176,7 @@ export function ingestBridgeMessage(sessionId: string, msg: Record<string, unkno
 
   const eventType = deriveEventType(msg);
 
-  log(
+  logger.debug(
     `[RC-DEBUG] [WS] <- bridge (inbound): sessionId=${sessionId} type=${eventType}${msg.uuid ? ` uuid=${msg.uuid}` : ""} msg=${JSON.stringify(msg).slice(0, 300)}`,
   );
 
@@ -220,7 +228,7 @@ export function closeAllConnections(): void {
   const count = activeConnections.size;
   if (count === 0) return;
 
-  log(`[WS] Gracefully closing ${count} active connection(s)...`);
+  logger.debug(`[WS] Gracefully closing ${count} active connection(s)...`);
   for (const [_sessionId, entry] of cleanupBySession) {
     try {
       entry.unsub();
@@ -234,5 +242,5 @@ export function closeAllConnections(): void {
   }
   cleanupBySession.clear();
   activeConnections.clear();
-  log("[WS] All connections closed");
+  logger.debug("[WS] All connections closed");
 }

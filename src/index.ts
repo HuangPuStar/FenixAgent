@@ -16,7 +16,7 @@ import { validateEnv } from "./env";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
-import { loggerPlugin } from "./plugins/logger";
+import { deriveRequestId, logError, logRequest, logResponse } from "./plugins/logger";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import { environmentRepo } from "./repositories";
@@ -169,7 +169,10 @@ const app = new Elysia()
       path: "/docs/swagger",
     }),
   )
-  .use(loggerPlugin)
+  .derive(deriveRequestId)
+  .onBeforeHandle(logRequest)
+  .onAfterHandle(logResponse)
+  .onError(({ request, error, set }) => logError({ request, error, set }))
   .use(errorPlugin)
   .use(rateLimitPlugin)
   // 全局请求体大小限制 10MB

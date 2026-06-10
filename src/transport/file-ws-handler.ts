@@ -1,6 +1,8 @@
-import { log, error as logError } from "@fenix/logger";
+import { createLogger, error as logError } from "@fenix/logger";
 import type { FileWsConnectionEntry } from "../types/store";
 import type { WsConnection } from "./ws-types";
+
+const logger = createLogger("transport-file-ws-handler");
 
 const DEFAULT_FILE_OP_TIMEOUT_MS = 60_000;
 
@@ -55,7 +57,7 @@ export function sendToWs(ws: WsConnection, msg: object): void {
 
 /** Called on WS open — creates tracking entry */
 export function handleFileWsOpen(ws: WsConnection, wsId: string): void {
-  log(`file-ws connection opened: wsId=${wsId}`);
+  logger.debug(`file-ws connection opened: wsId=${wsId}`);
   connections.set(wsId, {
     machineId: null,
     ws,
@@ -80,7 +82,7 @@ export function handleFileWsRegister(wsId: string, msg: Record<string, unknown>)
   // Close old connection if this machine already has a file-ws
   const existing = machineFileWsIndex.get(machineId);
   if (existing && existing.wsId !== wsId) {
-    log(`file-ws replacing old connection: machineId=${machineId} oldWsId=${existing.wsId}`);
+    logger.debug(`file-ws replacing old connection: machineId=${machineId} oldWsId=${existing.wsId}`);
     try {
       existing.ws.close(1000, "replaced by new connection");
     } catch {
@@ -91,7 +93,7 @@ export function handleFileWsRegister(wsId: string, msg: Record<string, unknown>)
 
   entry.machineId = machineId;
   machineFileWsIndex.set(machineId, entry);
-  log(`file-ws registered: machineId=${machineId} wsId=${wsId}`);
+  logger.debug(`file-ws registered: machineId=${machineId} wsId=${wsId}`);
   sendToWs(entry.ws, { type: "registered" });
 }
 
@@ -151,7 +153,7 @@ export function handleFileWsMessage(_ws: WsConnection, wsId: string, data: strin
     }
 
     // Unknown message type — ignore
-    log(`file-ws unknown message type: ${type}`);
+    logger.debug(`file-ws unknown message type: ${type}`);
   }
 }
 
@@ -161,7 +163,7 @@ export function handleFileWsClose(_ws: WsConnection, wsId: string): void {
   if (!entry) return;
 
   const duration = Math.round((Date.now() - entry.openTime) / 1000);
-  log(`file-ws connection closed: wsId=${wsId} machineId=${entry.machineId ?? "null"} duration=${duration}s`);
+  logger.debug(`file-ws connection closed: wsId=${wsId} machineId=${entry.machineId ?? "null"} duration=${duration}s`);
 
   // Remove from machine index
   if (entry.machineId) {
@@ -235,7 +237,9 @@ export function isFileWsConnected(machineId: string): boolean {
 export function closeAllFileWsConnections(): void {
   if (connections.size === 0 && pendingRequests.size === 0) return;
 
-  log(`file-ws graceful shutdown: ${connections.size} connection(s), ${pendingRequests.size} pending request(s)`);
+  logger.debug(
+    `file-ws graceful shutdown: ${connections.size} connection(s), ${pendingRequests.size} pending request(s)`,
+  );
 
   // Reject all pending requests
   for (const [_requestId, pending] of pendingRequests) {
@@ -257,5 +261,5 @@ export function closeAllFileWsConnections(): void {
 
   connections.clear();
   machineFileWsIndex.clear();
-  log("file-ws all connections closed");
+  logger.debug("file-ws all connections closed");
 }
