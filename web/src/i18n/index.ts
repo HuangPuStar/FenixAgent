@@ -1,7 +1,7 @@
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
-
+import agentHomeEN from "./locales/en/agentHome.json";
 import agentPanelEN from "./locales/en/agentPanel.json";
 import agentsEN from "./locales/en/agents.json";
 import apikeyEN from "./locales/en/apikey.json";
@@ -22,6 +22,7 @@ import sidebarEN from "./locales/en/sidebar.json";
 import skillsEN from "./locales/en/skills.json";
 import tasksEN from "./locales/en/tasks.json";
 import workflowsEN from "./locales/en/workflows.json";
+import agentHomeZH from "./locales/zh/agentHome.json";
 import agentPanelZH from "./locales/zh/agentPanel.json";
 import agentsZH from "./locales/zh/agents.json";
 import apikeyZH from "./locales/zh/apikey.json";
@@ -64,6 +65,7 @@ export const NS = {
   COMPONENTS: "components",
   KANBAN: "kanban",
   HINDSIGHT: "hindsight",
+  AGENT_HOME: "agentHome",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];
@@ -94,6 +96,7 @@ i18n
         [NS.WORKFLOWS]: workflowsEN,
         [NS.KANBAN]: kanbanEN,
         [NS.HINDSIGHT]: hindsightEN,
+        [NS.AGENT_HOME]: agentHomeEN,
       },
       zh: {
         [NS.COMMON]: commonZH,
@@ -116,6 +119,7 @@ i18n
         [NS.WORKFLOWS]: workflowsZH,
         [NS.KANBAN]: kanbanZH,
         [NS.HINDSIGHT]: hindsightZH,
+        [NS.AGENT_HOME]: agentHomeZH,
       },
     },
     fallbackLng: "en",
@@ -139,6 +143,7 @@ i18n
       NS.WORKFLOWS,
       NS.KANBAN,
       NS.HINDSIGHT,
+      NS.AGENT_HOME,
     ],
     interpolation: { escapeValue: false },
     detection: {

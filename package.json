@@ -96,6 +96,7 @@
     "motion": "^12.40.0",
     "nanoid": "^5.1.11",
     "node-schedule": "^2.1.1",
+    "openai": "^6.42.0",
     "postgres": "^3.4.9",
     "qr-scanner": "^1.4.2",
     "qrcode": "^1.5.4",

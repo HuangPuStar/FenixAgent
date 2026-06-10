@@ -1,0 +1,19 @@
+{
+  "title1": "打造专属 Agent",
+  "title2": "一句话，召唤 Agent",
+  "title3": "一声令下，Agent 出发",
+  "subtitle": "说一句话，剩下的交给 Agent",
+  "inputPlaceholder": "描述你想要的 Agent 能力...",
+  "enterHint": "Enter ↵",
+  "orTemplate": "或从模板快速开始",
+  "loadingTitle": "Agent 正在分析你的需求...",
+  "loadingSubtitle": "正在匹配最佳 Skills 和配置",
+  "editInput": "编辑",
+  "nameLabel": "名称",
+  "promptLabel": "System Prompt",
+  "skillsLabel": "Skills",
+  "addSkill": "添加 Skill",
+  "createButton": "创建 Agent",
+  "createFailed": "创建 Agent 失败",
+  "generationFailed": "生成配置失败，请重试"
+}

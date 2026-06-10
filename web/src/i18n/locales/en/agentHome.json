@@ -1,0 +1,19 @@
+{
+  "title1": "Build Your Agent",
+  "title2": "Summon Your Agent with One Sentence",
+  "title3": "One Command, Agent Go",
+  "subtitle": "Say one sentence, leave the rest to Agent",
+  "inputPlaceholder": "Describe what you want your Agent to do...",
+  "enterHint": "Enter ↵",
+  "orTemplate": "Or start from a template",
+  "loadingTitle": "Agent is analyzing your needs...",
+  "loadingSubtitle": "Matching the best Skills and configuration",
+  "editInput": "Edit",
+  "nameLabel": "Name",
+  "promptLabel": "System Prompt",
+  "skillsLabel": "Skills",
+  "addSkill": "Add Skill",
+  "createButton": "Create Agent",
+  "createFailed": "Failed to create Agent",
+  "generationFailed": "Failed to generate configuration, please try again"
+}

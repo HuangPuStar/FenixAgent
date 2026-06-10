@@ -59,6 +59,11 @@ const envSchema = z.object({
   // ── 可选：Hindsight 记忆 MCP ──
   HINDSIGHT_MCP_URL: z.string().optional(),
 
+  // ── 可选：Agent 智能生成 ──
+  RCS_GENERATION_MODEL_ENDPOINT: z.string().optional(),
+  RCS_GENERATION_MODEL_KEY: z.string().optional(),
+  RCS_GENERATION_MODEL_NAME: z.string().optional(),
+
   // ── 可选：Workflow ──
 
   // ── 可选：注册中心 ──

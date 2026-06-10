@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -52,7 +53,8 @@ export function AgentSidebar({
   return (
     <aside className="agent-sidebar">
       {/* 品牌区 */}
-      <div
+      <Link
+        to="/agent/home"
         className={[
           "flex items-center gap-2.5 px-4",
           "border-b border-border-subtle",
@@ -83,7 +85,7 @@ export function AgentSidebar({
         <span className="text-sm font-bold tracking-[0.02em] text-text-bright whitespace-nowrap overflow-hidden">
           {brand.name}
         </span>
-      </div>
+      </Link>
 
       {/* 快捷导航：模型、技能、MCP、组织管理 */}
       <AgentSidebarQuickNav onNavigate={onNavigate} activeNav={activeNav} />
