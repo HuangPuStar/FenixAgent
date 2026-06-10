@@ -73,6 +73,17 @@ export function FilePickerDialog({ open, envId, onClose, onSelect }: FilePickerD
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
+
+      // 客户端提前校验单文件大小
+      const maxSize = 100 * 1024 * 1024;
+      for (const file of Array.from(files)) {
+        if (file.size > maxSize) {
+          setError(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          return;
+        }
+      }
+
       setLoading(true);
       setError(null);
       const formData = new FormData();
@@ -81,7 +92,12 @@ export function FilePickerDialog({ open, envId, onClose, onSelect }: FilePickerD
       }
       const { error: uploadErr } = await fileApi.upload({ id: envId, path: "user" }, formData);
       if (uploadErr) {
-        setError(uploadErr.message ?? t("filePicker.uploadFailed"));
+        // 413 Payload Too Large — 显示友好提示
+        if (uploadErr.status === 413) {
+          setError(t("filePicker.uploadTooLarge"));
+        } else {
+          setError(uploadErr.message ?? t("filePicker.uploadFailed"));
+        }
       } else {
         await loadDirectory(currentDir);
       }

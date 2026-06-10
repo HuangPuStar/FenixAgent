@@ -172,15 +172,15 @@ const app = new Elysia()
   .use(loggerPlugin)
   .use(errorPlugin)
   .use(rateLimitPlugin)
-  // 全局请求体大小限制 10MB
+  // 全局请求体大小限制 100MB（文件上传、工作流任务等场景）
   .onBeforeHandle(({ request }) => {
     const contentLength = request.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
+    if (contentLength && parseInt(contentLength, 10) > 100 * 1024 * 1024) {
       return new Response(
         JSON.stringify({
           error: {
             type: "PAYLOAD_TOO_LARGE",
-            message: "Request body exceeds 10MB limit",
+            message: "Request body exceeds 100MB limit",
           },
         }),
         {

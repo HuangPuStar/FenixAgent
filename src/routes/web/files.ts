@@ -217,7 +217,7 @@ app.post(
         const remoteFiles = await Promise.all(
           files.map(async (file, i) => {
             const buffer = Buffer.from(await file.arrayBuffer());
-            if (buffer.length > 50 * 1024 * 1024) throw new Error(`File ${file.name} exceeds 50MB limit`);
+            if (buffer.length > 100 * 1024 * 1024) throw new Error(`File ${file.name} exceeds 100MB limit`);
             return {
               name: file.name,
               content: buffer.toString("base64"),
@@ -248,8 +248,8 @@ app.post(
     for (let i = 0; i < files.length; i++) {
       const file = files[i]!;
       const buffer = Buffer.from(await file.arrayBuffer());
-      if (buffer.length > 50 * 1024 * 1024) {
-        return error(413, { error: { type: "validation_error", message: `File ${file.name} exceeds 50MB limit` } });
+      if (buffer.length > 100 * 1024 * 1024) {
+        return error(413, { error: { type: "validation_error", message: `File ${file.name} exceeds 100MB limit` } });
       }
 
       // 如果有对应的相对路径，保留目录结构；否则直接用文件名
