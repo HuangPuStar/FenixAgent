@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +12,11 @@ const ArtifactsPanel = lazy(() =>
 );
 
 export const Route = createFileRoute("/agent/_panel/chat/$agentId")({
+  beforeLoad: ({ params }) => {
+    if (params.agentId === "_new") {
+      throw redirect({ to: "/agent/home" });
+    }
+  },
   component: ChatRoute,
 });
 
@@ -32,7 +37,7 @@ function ChatRoute() {
 
   // 加载 environment 名称
   useEffect(() => {
-    if (!agentId || agentId === "_new") {
+    if (!agentId) {
       setEnvName(null);
       return;
     }
@@ -74,12 +79,12 @@ function ChatRoute() {
       <StatusHeader agentName={envName || stats.agentName} modelName={stats.modelName} entries={stats.entries} />
       <div className="agent-panel-content">
         <div className="agent-chat-area">
-          <ChatPanel agentId={agentId === "_new" ? null : agentId} />
+          <ChatPanel agentId={agentId} />
         </div>
         <ArtifactsPanel
           collapsed={artifactsCollapsed}
           onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
-          envId={agentId === "_new" ? null : agentId}
+          envId={agentId}
         />
         {artifactsCollapsed && (
           <button

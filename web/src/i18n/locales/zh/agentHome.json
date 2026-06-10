@@ -15,5 +15,6 @@
   "addSkill": "添加 Skill",
   "createButton": "创建 Agent",
   "createFailed": "创建 Agent 失败",
+  "noModel": "暂无可用模型，请先配置模型",
   "generationFailed": "生成配置失败，请重试"
 }

@@ -3,9 +3,10 @@ import { BookOpen, FileCode, FileText, Pencil, Search, Wand2 } from "lucide-reac
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { agentApi } from "@/src/api/sdk";
+import { agentApi, envApi, modelApi } from "@/src/api/sdk";
 import type { AgentTemplate } from "../../../../../packages/sdk/src/modules/config";
 import { NS } from "../../../i18n";
+import { dispatchConfigChange } from "../../../lib/config-events";
 import type { GenerationFormData } from "../components/AgentGenerationForm";
 import { AgentGenerationForm } from "../components/AgentGenerationForm";
 
@@ -69,7 +70,7 @@ export function AgentHomePage() {
       });
       const json = (await response.json()) as {
         success: boolean;
-        data?: { name: string; systemPrompt: string; skills: string[] };
+        data?: { name: string; systemPrompt: string; skills: Array<{ id: string; name: string; description: string }> };
         error?: { message: string };
       };
 
@@ -86,27 +87,76 @@ export function AgentHomePage() {
     }
   }, [inputValue, t]);
 
+  /** 创建 agent 配置 → 创建 environment → 跳转聊天页 */
+  const createAndNavigate = useCallback(
+    async (agentName: string, payload: Record<string, unknown>) => {
+      // 0. 获取第一个可用模型，没有则报错
+      const { data: modelData } = await modelApi.get();
+      const available = (modelData as { available?: Array<{ id: string }> } | undefined)?.available;
+      const firstModelId = Array.isArray(available) && available.length > 0 ? available[0].id : undefined;
+      if (!firstModelId) {
+        toast.error(t("noModel"));
+        return;
+      }
+
+      // 1. 创建 agent 配置（已存在也继续）
+      const agentRes = await agentApi.create(agentName, { ...payload, modelId: firstModelId });
+      const isAlreadyExists = !agentRes.ok && (agentRes as any).error?.code === "ALREADY_EXISTS";
+      if (!agentRes.ok && !isAlreadyExists) {
+        toast.error(t("createFailed"));
+        return;
+      }
+
+      // 2. 拿到 agent 的 UUID
+      const agentData = agentRes.data as { id?: string } | undefined;
+      let agentConfigId = agentData?.id;
+      // 已存在时 create 不返回 id，需要查一次
+      if (!agentConfigId) {
+        const { data: detail } = await agentApi.get(agentName);
+        agentConfigId = (detail as { id?: string } | undefined)?.id;
+      }
+      if (!agentConfigId) {
+        toast.error(t("createFailed"));
+        return;
+      }
+
+      // 刷新左侧智能体列表
+      dispatchConfigChange("agents");
+
+      // 3. 创建 environment（autoStart: true 自动启动实例）
+      const { data: newEnv } = await envApi.create({
+        name: `env-${agentConfigId.slice(0, 8)}`,
+        agentConfigId,
+        autoStart: true,
+      });
+      const envId = (newEnv as { id?: string } | undefined)?.id;
+      if (!envId) {
+        toast.error(t("createFailed"));
+        return;
+      }
+
+      // 4. 跳转聊天页（路由参数是 environment ID）
+      void navigate({ to: "/agent/chat/$agentId", params: { agentId: envId } });
+    },
+    [navigate, t],
+  );
+
   // 创建智能体（AI 生成流程）
   const handleCreateFromGeneration = useCallback(
     async (data: GenerationFormData) => {
       setCreating(true);
       try {
-        const res = await agentApi.create(data.name, {
+        await createAndNavigate(data.name, {
           prompt: data.systemPrompt,
-          skillIds: data.skills,
+          skillIds: data.skills.map((s) => s.id),
         });
-        if (res.ok) {
-          void navigate({ to: "/agent/chat/$agentId", params: { agentId: data.name } });
-        } else {
-          toast.error(t("createFailed"));
-        }
       } catch {
         toast.error(t("createFailed"));
       } finally {
         setCreating(false);
       }
     },
-    [navigate, t],
+    [createAndNavigate, t],
   );
 
   // 模板一键创建
@@ -114,22 +164,17 @@ export function AgentHomePage() {
     async (template: AgentTemplate) => {
       setTemplateCreating(template.id);
       try {
-        const res = await agentApi.create(template.id, {
+        await createAndNavigate(template.name, {
           prompt: template.prompt,
           skillIds: template.skills,
         });
-        if (res.ok) {
-          void navigate({ to: "/agent/chat/$agentId", params: { agentId: template.id } });
-        } else {
-          toast.error(t("createFailed"));
-        }
       } catch {
         toast.error(t("createFailed"));
       } finally {
         setTemplateCreating(null);
       }
     },
-    [navigate, t],
+    [createAndNavigate, t],
   );
 
   // 返回 idle 状态
@@ -141,10 +186,11 @@ export function AgentHomePage() {
   const showSubtitle = phase !== "form";
 
   return (
-    <div className="relative flex flex-1 flex-col items-center overflow-auto bg-gradient-to-br from-[#f0fdfa] via-[#ecfeff] via-50% to-[#ecfdf5]">
-      {/* 装饰光斑 */}
-      <div className="pointer-events-none absolute left-[10%] top-[5%] h-[350px] w-[350px] rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.08)_0%,transparent_60%)]" />
-      <div className="pointer-events-none absolute bottom-[5%] right-[5%] h-[300px] w-[300px] rounded-full bg-[radial-gradient(circle,rgba(20,184,166,0.06)_0%,transparent_60%)]" />
+    <div className="relative flex flex-1 flex-col items-center overflow-auto bg-white">
+      {/* 装饰光斑：纯白底上极淡的渐变点缀 */}
+      <div className="pointer-events-none absolute left-[10%] top-[8%] h-[400px] w-[400px] rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.04)_0%,transparent_60%)]" />
+      <div className="pointer-events-none absolute bottom-[8%] right-[8%] h-[350px] w-[350px] rounded-full bg-[radial-gradient(circle,rgba(217,119,6,0.03)_0%,transparent_60%)]" />
+      <div className="pointer-events-none absolute left-[50%] top-[40%] h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(37,99,235,0.02)_0%,transparent_55%)]" />
 
       {/* 内容区域 */}
       <div
@@ -153,14 +199,14 @@ export function AgentHomePage() {
       >
         {/* 标题 + 波浪装饰 */}
         <div className="flex flex-col items-center text-center">
-          <h1 className="text-[36px] font-extrabold tracking-[2px] text-[#0891b2] leading-tight">{t(titleKey)}</h1>
+          <h1 className="text-[36px] font-extrabold tracking-[2px] text-gray-800 leading-tight">{t(titleKey)}</h1>
           {/* 波浪装饰 SVG */}
           <svg width="220" height="8" viewBox="0 0 150 8" fill="none" className="-mt-[2px]">
             <defs>
               <linearGradient id="title-wave" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#0891b2" stopOpacity="0.5" />
-                <stop offset="50%" stopColor="#0d9488" stopOpacity="0.5" />
-                <stop offset="100%" stopColor="#d97706" stopOpacity="0.4" />
+                <stop offset="0%" stopColor="#374151" stopOpacity="0.4" />
+                <stop offset="50%" stopColor="#0891b2" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="#d97706" stopOpacity="0.3" />
               </linearGradient>
             </defs>
             <path
@@ -237,8 +283,8 @@ export function AgentHomePage() {
               <div className="h-px w-[60px] bg-gradient-to-l from-transparent to-gray-300/30" />
             </div>
 
-            {/* 模板网格 */}
-            <div className="flex max-w-[700px] flex-wrap justify-center gap-3">
+            {/* 模板网格：两排各 4 个 */}
+            <div className="grid max-w-[880px] grid-cols-4 gap-3">
               {templates.map((template, index) => {
                 const color = TEMPLATE_COLORS[index % TEMPLATE_COLORS.length];
                 const Icon = TEMPLATE_ICONS[index % TEMPLATE_ICONS.length];
@@ -250,7 +296,7 @@ export function AgentHomePage() {
                     type="button"
                     onClick={() => void handleTemplateClick(template)}
                     disabled={!!templateCreating}
-                    className="flex min-w-[190px] max-w-[210px] flex-1 items-center gap-3 rounded-xl border border-gray-200/50 bg-white/70 p-3.5 text-left backdrop-blur-[8px] shadow-[0_2px_16px_rgba(0,0,0,0.04)] transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] disabled:opacity-60"
+                    className="flex items-center gap-3 rounded-xl border border-gray-200/50 bg-white p-3.5 text-left shadow-[0_2px_16px_rgba(0,0,0,0.04)] transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] disabled:opacity-60"
                   >
                     <div
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]"

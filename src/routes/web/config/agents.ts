@@ -18,6 +18,7 @@ import {
   validateAgentData,
 } from "../../../services/config/agent-config";
 import * as configPg from "../../../services/config/index";
+import { listSkills } from "../../../services/config/skill";
 import {
   configError,
   configNotFound,
@@ -262,7 +263,9 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
       filtered.knowledge as AgentKnowledgeConfig | null | undefined,
     );
     if (data.skillIds !== undefined) {
-      await configPg.syncAgentSkills(updatedAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
+      const rawIds = Array.isArray(data.skillIds) ? (data.skillIds as string[]) : [];
+      const resolvedIds = await resolveSkillIds(ctx, rawIds);
+      await configPg.syncAgentSkills(updatedAgent.id, resolvedIds);
     }
     if (data.mcpIds !== undefined) {
       await configPg.syncAgentMcps(updatedAgent.id, Array.isArray(data.mcpIds) ? (data.mcpIds as string[]) : []);
@@ -280,9 +283,35 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   return configSuccess({ name, ...filtered, resourceAccess: updatedAgent?.resourceAccess });
 }
 
+/** UUID 格式正则 */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 将 skill 标识符数组（可能是 UUID 或名称）统一解析为 UUID。
+ * 模板和 AI 生成的流程可能传入 skill 名称而非 UUID，需要在此解析。
+ */
+async function resolveSkillIds(ctx: AuthContext, identifiers: string[]): Promise<string[]> {
+  if (identifiers.length === 0) return [];
+
+  // 已经全部是 UUID 则直接返回
+  if (identifiers.every((id) => UUID_RE.test(id))) return identifiers;
+
+  const skills = await listSkills(ctx);
+  const nameToId = new Map(skills.map((s) => [s.name.toLowerCase(), s.id]));
+
+  return identifiers
+    .map((id) => {
+      if (UUID_RE.test(id)) return id;
+      return nameToId.get(id.toLowerCase()) ?? null;
+    })
+    .filter((id): id is string => !!id);
+}
+
 async function handleCreate(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   if (!isValidResourceName(name)) {
-    return configValidationError("Invalid agent name: must be 1-64 characters (letters, numbers, single hyphens)");
+    return configValidationError(
+      "Invalid agent name: must be 1-64 characters (letters, numbers, spaces, single hyphens)",
+    );
   }
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
@@ -309,7 +338,9 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
       filtered.knowledge as AgentKnowledgeConfig | null | undefined,
     );
     if (data.skillIds !== undefined) {
-      await configPg.syncAgentSkills(createdAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
+      const rawIds = Array.isArray(data.skillIds) ? (data.skillIds as string[]) : [];
+      const resolvedIds = await resolveSkillIds(ctx, rawIds);
+      await configPg.syncAgentSkills(createdAgent.id, resolvedIds);
     }
     if (data.mcpIds !== undefined) {
       await configPg.syncAgentMcps(createdAgent.id, Array.isArray(data.mcpIds) ? (data.mcpIds as string[]) : []);
@@ -324,7 +355,7 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
     }
   }
 
-  return configSuccess({ name, resourceAccess: createdAgent?.resourceAccess });
+  return configSuccess({ name, id: createdAgent?.id, resourceAccess: createdAgent?.resourceAccess });
 }
 
 async function handleDelete(ctx: AuthContext, name: string) {

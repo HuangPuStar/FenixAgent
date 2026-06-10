@@ -15,5 +15,6 @@
   "addSkill": "Add Skill",
   "createButton": "Create Agent",
   "createFailed": "Failed to create Agent",
+  "noModel": "No model available, please configure a model first",
   "generationFailed": "Failed to generate configuration, please try again"
 }

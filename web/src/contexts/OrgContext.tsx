@@ -84,7 +84,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEY, orgId);
       await orgApi.setActive(orgId);
       // 切换组织后导航回新聊天页，避免停留在旧组织的资源详情页
-      void navigate({ to: "/agent/chat/$agentId", params: { agentId: "_new" }, replace: true });
+      void navigate({ to: "/agent/home", replace: true });
     },
     [navigate],
   );
