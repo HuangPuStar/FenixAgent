@@ -127,6 +127,16 @@ export function parseFrontmatter(raw: string): { metadata: Record<string, string
   return { metadata, content: parsed.content };
 }
 
+/** 将值格式化为安全的 YAML 标量值；包含换行时使用 `|` 块标量语法 */
+function yamlScalar(value: string): string {
+  if (!value.includes("\n")) return value;
+  const indented = value
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
+  return `|\n${indented}`;
+}
+
 /** 构建 SKILL.md 文件内容（含 frontmatter） */
 export function buildSkillMd(
   name: string,
@@ -136,7 +146,7 @@ export function buildSkillMd(
 ): string {
   const meta: Record<string, string> = { name, description, ...(metadata ?? {}) };
   const frontmatter = Object.entries(meta)
-    .map(([k, v]) => `${k}: ${v}`)
+    .map(([k, v]) => `${k}: ${yamlScalar(v)}`)
     .join("\n");
   return `---\n${frontmatter}\n---\n${content}`;
 }

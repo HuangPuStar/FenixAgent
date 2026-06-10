@@ -35,6 +35,12 @@
     "nameRequired": "Name cannot be empty",
     "contentRequired": "Content cannot be empty"
   },
+  "section": {
+    "private": "Private Skills",
+    "privateEmpty": "No private skills",
+    "shared": "Shared by Others",
+    "sharedEmpty": "No skills shared by others"
+  },
   "resource": {},
   "upload": {
     "selectFolder": "Click to select a folder containing skills",

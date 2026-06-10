@@ -35,6 +35,18 @@ function queryResult<T>(rows: T[]) {
   });
 }
 
+/**
+ * 创建可链式调用的 Drizzle 查询 mock。
+ * `.where()` 返回一个 thenable 对象，直接 await 返回结果；
+ * 如果调用了 `.orderBy()` 则返回 mock 结果。
+ */
+function createWhereClause(selectResults: unknown[][]) {
+  const result = queryResult(selectResults.shift() ?? []);
+  return Object.assign(result, {
+    orderBy: () => result,
+  });
+}
+
 function installDb(selectResults: unknown[][], options: { insertId?: string; deleteRows?: unknown[] } = {}) {
   const calls = {
     update: 0,
@@ -45,7 +57,7 @@ function installDb(selectResults: unknown[][], options: { insertId?: string; del
   stubDb({
     select: () => ({
       from: () => ({
-        where: () => queryResult(selectResults.shift() ?? []),
+        where: () => createWhereClause(selectResults),
       }),
     }),
     update: () => ({
