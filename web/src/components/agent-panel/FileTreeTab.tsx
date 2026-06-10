@@ -304,17 +304,30 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
 
-      const targetSubdir = selectedDir || "user";
-      try {
-        const formData = new FormData();
-        for (const file of files) {
-          formData.append("files", file);
+      // 客户端提前校验
+      const maxSize = 100 * 1024 * 1024;
+      for (const file of files) {
+        if (file.size > maxSize) {
+          toast.error(t("fileTree.fileTooLarge", { name: file.name, max: "100MB" }));
+          return;
         }
-        await fileApi.upload({ id: envId, path: targetSubdir }, formData);
+      }
+
+      const targetSubdir = selectedDir || "user";
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append("files", file);
+      }
+      const { error: uploadErr } = await fileApi.upload({ id: envId, path: targetSubdir }, formData);
+      if (uploadErr) {
+        if (uploadErr.status === 413) {
+          toast.error(t("fileTree.uploadTooLarge"));
+        } else {
+          toast.error(uploadErr.message || t("fileTree.uploadFailed"));
+        }
+      } else {
         toast.success(t("fileTree.uploadSuccess", { count: files.length }));
         await loadTree();
-      } catch {
-        toast.error(t("fileTree.uploadFailed"));
       }
     },
     [envId, selectedDir, loadTree, t],
@@ -334,6 +347,15 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     async (files: File[], relativePaths?: string[]) => {
       if (!envId || files.length === 0) return;
 
+      // 客户端提前校验单文件大小（100MB 限制）
+      const maxSize = 100 * 1024 * 1024;
+      for (const file of files) {
+        if (file.size > maxSize) {
+          toast.error(t("fileTree.fileTooLarge", { name: file.name, max: "100MB" }));
+          return;
+        }
+      }
+
       setUploading(true);
       try {
         const targetDir = selectedDir || "user";
@@ -346,7 +368,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         }
         const { error: uploadErr } = await fileApi.upload({ id: envId, path: targetDir }, formData);
         if (uploadErr) {
-          toast.error(t("fileTree.uploadFailed"));
+          if (uploadErr.status === 413) {
+            toast.error(t("fileTree.uploadTooLarge"));
+          } else {
+            toast.error(uploadErr.message || t("fileTree.uploadFailed"));
+          }
         } else {
           toast.success(t("fileTree.uploadSuccess", { count: files.length }));
           await loadTree();
