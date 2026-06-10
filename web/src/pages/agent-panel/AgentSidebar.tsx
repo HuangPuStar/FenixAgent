@@ -1,9 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { LogOut } from "lucide-react";
+import { KeyRound, LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { getAppBrand } from "@/src/lib/app-brand";
+import { ChangePasswordDialog } from "../../../components/ChangePasswordDialog";
 import { signOut, useSession } from "../../../src/lib/auth-client";
 import { OrgSwitcher } from "../../components/OrgSwitcher";
 import { AgentSidebarConfig, AgentSidebarQuickNav } from "./AgentSidebarConfig";
@@ -27,6 +28,7 @@ export function AgentSidebar({
   const { t: tSidebar } = useTranslation(NS.SIDEBAR);
   const { data: session } = useSession();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [logoFailed, setLogoFailed] = useState(false);
   const brand = getAppBrand();
@@ -151,6 +153,22 @@ export function AgentSidebar({
               </div>
               <button
                 type="button"
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  setChangePasswordOpen(true);
+                }}
+                className={[
+                  "flex items-center gap-2 w-full px-3 py-2",
+                  "text-[13px] text-text-default",
+                  "hover:bg-surface-elevated rounded-[var(--radius)] mx-0.5",
+                  "transition-colors duration-100",
+                ].join(" ")}
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                {tSidebar("changePassword")}
+              </button>
+              <button
+                type="button"
                 onClick={handleLogout}
                 className={[
                   "flex items-center gap-2 w-full px-3 py-2",
@@ -166,6 +184,7 @@ export function AgentSidebar({
           )}
         </div>
       </div>
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </aside>
   );
 }
