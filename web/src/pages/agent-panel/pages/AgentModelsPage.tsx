@@ -690,19 +690,23 @@ export function AgentModelsPage() {
                           {tComponents(getProviderResourceBadgeKey(provider))}
                         </span>
                       </div>
-                      <label
-                        className="mt-3 flex items-center gap-2 text-xs text-text-muted"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <Switch
-                          checked={Boolean(provider.resourceAccess?.publicReadable)}
-                          disabled={sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true}
-                          onCheckedChange={() =>
-                            void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
-                          }
-                        />
-                        {tComponents("resource.public")}
-                      </label>
+                      {writable && (
+                        <label
+                          className="mt-3 flex items-center gap-2 text-xs text-text-muted"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Switch
+                            checked={Boolean(provider.resourceAccess?.publicReadable)}
+                            disabled={
+                              sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true
+                            }
+                            onCheckedChange={() =>
+                              void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
+                            }
+                          />
+                          {tComponents("resource.public")}
+                        </label>
+                      )}
                       {!writable && (
                         <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
                       )}

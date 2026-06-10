@@ -45,7 +45,7 @@ export function buildResourceAccess(
     // require the resource to belong to the current organization.
     manageable: internal,
     writable: internal,
-    publicReadable: internal ? publicReadable : undefined,
+    publicReadable,
   };
 }
 
@@ -60,6 +60,24 @@ export async function getPublicReadMap(ctx: AuthContext, resourceType: ResourceP
   return new Map(rows.filter((row) => idSet.has(row.resourceId)).map((row) => [row.resourceId, row.hasPublicRead]));
 }
 
+/** 查询外部资源的公开可读状态，按 (organizationId, resourceId) 索引 */
+async function getExternalPublicReadMap(
+  ctx: AuthContext,
+  resourceType: ResourcePermissionType,
+  orgIdResourceIdPairs: { organizationId: string; resourceId: string }[],
+): Promise<Map<string, boolean>> {
+  const map = new Map<string, boolean>();
+  for (const { organizationId, resourceId } of orgIdResourceIdPairs) {
+    // 检查外部资源是否有 public read grant（principalType === "all"）
+    const rows = await _deps.repo.listByResource(organizationId, resourceType, resourceId);
+    map.set(
+      `${organizationId}/${resourceId}`,
+      rows.some((r) => r.principalType === "all" && r.principalId === null),
+    );
+  }
+  return map;
+}
+
 export async function decorateResourceAccess<T extends ResourceAccessInput>(
   ctx: AuthContext,
   resourceType: ResourcePermissionType,
@@ -67,19 +85,35 @@ export async function decorateResourceAccess<T extends ResourceAccessInput>(
 ): Promise<(T & { resourceAccess: ResourceAccess })[]> {
   const internalIds = rows.filter((row) => row.organizationId === ctx.organizationId).map((row) => row.id);
   const publicReadMap = await getPublicReadMap(ctx, resourceType, internalIds);
+
+  // 查询外部资源的公开可读状态
+  const externalPairs = rows
+    .filter((row) => row.organizationId !== ctx.organizationId)
+    .map((row) => ({ organizationId: row.organizationId, resourceId: row.id }));
+  const externalPublicReadMap =
+    externalPairs.length > 0
+      ? await getExternalPublicReadMap(ctx, resourceType, externalPairs)
+      : new Map<string, boolean>();
+
   const organizationIds = [...new Set(rows.map((row) => row.organizationId))];
   const organizationNameMap = await _deps.organizationRepo.listNamesByIds(organizationIds);
 
-  return rows.map((row) => ({
-    ...row,
-    resourceAccess: buildResourceAccess(
-      ctx,
-      resourceType,
-      row,
-      publicReadMap.get(row.id) ?? false,
-      organizationNameMap.get(row.organizationId),
-    ),
-  }));
+  return rows.map((row) => {
+    const isInternal = row.organizationId === ctx.organizationId;
+    const publicReadable = isInternal
+      ? (publicReadMap.get(row.id) ?? false)
+      : (externalPublicReadMap.get(`${row.organizationId}/${row.id}`) ?? false);
+    return {
+      ...row,
+      resourceAccess: buildResourceAccess(
+        ctx,
+        resourceType,
+        row,
+        publicReadable,
+        organizationNameMap.get(row.organizationId),
+      ),
+    };
+  });
 }
 
 export async function setPublicRead(

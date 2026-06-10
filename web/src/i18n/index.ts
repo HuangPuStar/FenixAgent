@@ -17,6 +17,7 @@ import mcpEN from "./locales/en/mcp.json";
 import modelsEN from "./locales/en/models.json";
 import orgsEN from "./locales/en/orgs.json";
 import sessionsEN from "./locales/en/sessions.json";
+import settingsEN from "./locales/en/settings.json";
 import sidebarEN from "./locales/en/sidebar.json";
 import skillsEN from "./locales/en/skills.json";
 import tasksEN from "./locales/en/tasks.json";
@@ -36,6 +37,7 @@ import mcpZH from "./locales/zh/mcp.json";
 import modelsZH from "./locales/zh/models.json";
 import orgsZH from "./locales/zh/orgs.json";
 import sessionsZH from "./locales/zh/sessions.json";
+import settingsZH from "./locales/zh/settings.json";
 import sidebarZH from "./locales/zh/sidebar.json";
 import skillsZH from "./locales/zh/skills.json";
 import tasksZH from "./locales/zh/tasks.json";
@@ -52,6 +54,7 @@ export const NS = {
   MCP: "mcp",
   TASKS: "tasks",
   WORKFLOWS: "workflows",
+  SETTINGS: "settings",
   SESSIONS: "sessions",
   ENVIRONMENTS: "environments",
   ORGS: "orgs",
@@ -89,6 +92,7 @@ i18n
         [NS.KNOWLEDGE]: knowledgeEN,
         [NS.COMPONENTS]: componentsEN,
         [NS.WORKFLOWS]: workflowsEN,
+        [NS.SETTINGS]: settingsEN,
         [NS.KANBAN]: kanbanEN,
       },
       zh: {
@@ -110,6 +114,7 @@ i18n
         [NS.KNOWLEDGE]: knowledgeZH,
         [NS.COMPONENTS]: componentsZH,
         [NS.WORKFLOWS]: workflowsZH,
+        [NS.SETTINGS]: settingsZH,
         [NS.KANBAN]: kanbanZH,
       },
     },
@@ -132,6 +137,7 @@ i18n
       NS.KNOWLEDGE,
       NS.COMPONENTS,
       NS.WORKFLOWS,
+      NS.SETTINGS,
       NS.KANBAN,
     ],
     interpolation: { escapeValue: false },

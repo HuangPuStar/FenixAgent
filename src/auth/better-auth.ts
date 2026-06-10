@@ -23,6 +23,7 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // refresh once per day
   },
+  baseURL: process.env.BETTER_AUTH_URL || process.env.RCS_BASE_URL || "http://localhost:3001",
   trustedOrigins: buildTrustedOrigins({
     trustedOrigins: process.env.RCS_TRUSTED_ORIGINS,
     betterAuthUrl: process.env.BETTER_AUTH_URL,

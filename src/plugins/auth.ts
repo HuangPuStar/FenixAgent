@@ -117,23 +117,47 @@ export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" })
   .get("/signup-status", () => ({ signupAllowed: !config.disableSignup }))
   .all("/*", async ({ request }) => {
     const url = new URL(request.url);
-    const decryptRoutes = ["/sign-in/email", "/sign-up/email"];
+    const decryptRoutes = ["/sign-in/email", "/sign-up/email", "/change-password"];
     if (request.method === "POST" && decryptRoutes.some((r) => url.pathname.endsWith(r))) {
+      const rawBody = await request.text();
       try {
         // biome-ignore lint/suspicious/noExplicitAny: request body parsed dynamically
-        const body: any = await request.clone().json();
+        const body: any = JSON.parse(rawBody);
+        let decrypted = false;
         if (body?.password && typeof body.password === "string" && body.password.startsWith("AESGCM:")) {
           body.password = decryptPassword(body.password);
-          return auth.handler(
-            new Request(request.url, {
-              method: request.method,
-              headers: request.headers,
-              body: JSON.stringify(body),
-            }),
-          );
+          decrypted = true;
         }
-      } catch {
-        // 解密失败，使用原始请求透传
+        if (
+          body?.currentPassword &&
+          typeof body.currentPassword === "string" &&
+          body.currentPassword.startsWith("AESGCM:")
+        ) {
+          body.currentPassword = decryptPassword(body.currentPassword);
+          decrypted = true;
+        }
+        if (body?.newPassword && typeof body.newPassword === "string" && body.newPassword.startsWith("AESGCM:")) {
+          body.newPassword = decryptPassword(body.newPassword);
+          decrypted = true;
+        }
+        // always pass body via new Request to avoid consumed-body issue from request.text()
+        return auth.handler(
+          new Request(request.url, {
+            method: request.method,
+            headers: request.headers,
+            body: decrypted ? JSON.stringify(body) : rawBody,
+          }),
+        );
+      } catch (err) {
+        console.error("[auth] decrypt parse error:", err);
+        // JSON parse failed, pass raw body through
+        return auth.handler(
+          new Request(request.url, {
+            method: request.method,
+            headers: request.headers,
+            body: rawBody,
+          }),
+        );
       }
     }
     return auth.handler(request);
