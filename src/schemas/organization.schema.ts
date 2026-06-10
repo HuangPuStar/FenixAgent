@@ -104,9 +104,12 @@ export const OrganizationActionRequestSchema = z.discriminatedUnion("action", [
 ]);
 
 /** 通用成功响应 */
-const ActionSuccessSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-});
+const ActionSuccessSchema = z
+  .object({
+    success: z.literal(true).describe("接口调用成功。"),
+  })
+  // 该基础分支会被复用到多个 union 响应里；保留附加字段，避免运行时序列化时误删合法的 data。
+  .passthrough();
 
 /** 组织接口响应体 */
 export const OrganizationActionResponseSchema = z.union([
