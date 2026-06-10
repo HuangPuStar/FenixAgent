@@ -1,5 +1,5 @@
 import { createLogger } from "@fenix/logger";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { skill } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
@@ -43,7 +43,8 @@ export async function listSkills(ctx: AuthContext): Promise<SkillConfigRowWithAc
   const internal = (await db
     .select()
     .from(skill)
-    .where(eq(skill.organizationId, ctx.organizationId))) as SkillConfigRow[];
+    .where(eq(skill.organizationId, ctx.organizationId))
+    .orderBy(asc(skill.createdAt))) as SkillConfigRow[];
   const external = await listExternalSkills(ctx);
   return decorateResourceAccess(ctx, "skill", [...internal, ...external]);
 }
