@@ -138,3 +138,45 @@ export interface EntityGraphResponse {
   nodes: Array<{ data: { id: string; [key: string]: unknown } }>;
   edges: EntityEdge[];
 }
+
+/** Graph API 返回的表格行数据（MemoryItem 的超集，含可选字段） */
+export interface MemoryTableRow {
+  id: string;
+  text: string;
+  entities?: string | string[];
+  context?: string;
+  occurred_start?: string | null;
+  occurred_end?: string | null;
+  mentioned_at?: string | null;
+  proof_count?: number;
+  tags?: string[];
+  fact_type?: string;
+  chunk_id?: string | null;
+  document_id?: string | null;
+  node_id?: string;
+}
+
+/** Graph API 返回的整体数据结构 */
+export interface GraphApiData {
+  table_rows?: MemoryTableRow[];
+  nodes?: Array<{ data: { id: string; label?: string; color?: string } }>;
+  edges?: Array<{
+    data: {
+      source: string;
+      target: string;
+      color?: string;
+      lineStyle?: string;
+      linkType?: string;
+      entityName?: string;
+      weight?: number;
+      similarity?: number;
+    };
+  }>;
+  total_units?: number;
+}
+
+/** Bank 统计信息 */
+export interface BankStats {
+  pending_consolidation?: number;
+  last_consolidated_at?: string | null;
+}

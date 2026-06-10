@@ -39,7 +39,7 @@ export interface GraphNode {
   color?: string;
   size?: number;
   group?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface GraphLink {
@@ -50,7 +50,7 @@ export interface GraphLink {
   type?: string;
   entity?: string;
   weight?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface GraphData {
@@ -101,7 +101,7 @@ export function Graph2D({
 }: Graph2DProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [containerDiv, setContainerDiv] = useState<HTMLDivElement | null>(null);
-  const cyRef = useRef<any>(null);
+  const cyRef = useRef<cytoscape.Core | null>(null);
   const isInitializingRef = useRef(false);
   const lastDataSignatureRef = useRef<string>("");
   const [_hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
@@ -237,8 +237,8 @@ export function Graph2D({
       if (cyRef.current && !cyRef.current.destroyed()) {
         const currentNodes = cyRef.current.nodes().length;
         const currentEdges = cyRef.current.edges().length;
-        const newNodes = cyElements.filter((el) => !(el.data as any).source).length;
-        const newEdges = cyElements.filter((el) => (el.data as any).source).length;
+        const newNodes = cyElements.filter((el) => !("source" in (el.data as Record<string, unknown>))).length;
+        const newEdges = cyElements.filter((el) => "source" in (el.data as Record<string, unknown>)).length;
 
         // If the element counts are the same, just update styles and skip reinitialization
         if (currentNodes === newNodes && currentEdges === newEdges) {
@@ -372,7 +372,7 @@ export function Graph2D({
                 "overlay-padding": 0,
               },
             },
-          ] as any,
+          ] as unknown as cytoscape.StylesheetJson,
         });
 
         cyRef.current = cy;
@@ -384,7 +384,7 @@ export function Graph2D({
           console.log("Adding elements to cytoscape");
           cy.add(cyElements);
           // fcose 布局参数超出 cytoscape BaseLayoutOptions 类型定义，使用类型断言
-          (cy.layout as any)({
+          (cy.layout as unknown as (opts: Record<string, unknown>) => { run: () => void })({
             name: "fcose",
             quality: "default",
             randomize: false,
@@ -418,7 +418,7 @@ export function Graph2D({
         }
 
         // Add basic interactions
-        cy.on("tap", "node", (evt: any) => {
+        cy.on("tap", "node", (evt: cytoscape.EventObject) => {
           const node = evt.target as cytoscape.NodeSingular;
           const originalNode = node.data("originalNode") as GraphNode;
           if (onNodeClickRef.current && originalNode) {
@@ -426,7 +426,7 @@ export function Graph2D({
           }
         });
 
-        cy.on("mouseover", "node", (evt: any) => {
+        cy.on("mouseover", "node", (evt: cytoscape.EventObject) => {
           const node = evt.target as cytoscape.NodeSingular;
           const originalNode = node.data("originalNode") as GraphNode;
           setHoveredNode(originalNode);
@@ -445,7 +445,7 @@ export function Graph2D({
         });
 
         // Edge hover handlers - only work in focus mode and on highlighted edges
-        cy.on("mouseover", "edge", (evt: any) => {
+        cy.on("mouseover", "edge", (evt: cytoscape.EventObject) => {
           const edge = evt.target;
 
           // Only allow interaction if we're in focus mode and edge is highlighted
@@ -462,7 +462,7 @@ export function Graph2D({
           }
         });
 
-        cy.on("mouseout", "edge", (evt: any) => {
+        cy.on("mouseout", "edge", (evt: cytoscape.EventObject) => {
           const edge = evt.target;
 
           // Only clear hover state if we were actually hovering a highlighted edge
@@ -475,12 +475,12 @@ export function Graph2D({
         });
 
         // Prevent edge selection to avoid gray border on click
-        cy.on("select", "edge", (evt: any) => {
+        cy.on("select", "edge", (evt: cytoscape.EventObject) => {
           evt.target.unselect();
         });
 
         // Double-click to focus on node and its connections
-        cy.on("dblclick", "node", (evt: any) => {
+        cy.on("dblclick", "node", (evt: cytoscape.EventObject) => {
           const focusedNode = evt.target as cytoscape.NodeSingular;
           const focusedNodeId = focusedNode.id();
 
@@ -525,7 +525,7 @@ export function Graph2D({
         });
 
         // Click on background to reset focus
-        cy.on("tap", (evt: any) => {
+        cy.on("tap", (evt: cytoscape.EventObject) => {
           if (evt.target === cy) {
             console.log("Clicked background - resetting focus");
 

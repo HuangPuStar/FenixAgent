@@ -758,8 +758,8 @@ export function Constellation({
       // Only rebuild innerHTML when the hovered node changes
       if (idx !== s.prevHoverIndex) {
         s.prevHoverIndex = idx;
-        const meta = node.metadata as Record<string, any> | undefined;
-        const fullText = meta?.text || node.label || node.id;
+        const meta = node.metadata as Record<string, unknown> | undefined;
+        const fullText = (meta?.text as string) || node.label || node.id;
         const entities: string[] = meta?.entities
           ? String(meta.entities)
               .split(",")
@@ -768,14 +768,14 @@ export function Constellation({
           : [];
         const nodeColor = preparedNodes[idx].heatColor;
         const linkCount = preparedNodes[idx].linkCount;
-        const factType = meta?.fact_type || node.group || "memory";
-        const context = meta?.context && meta.context !== "N/A" ? meta.context : null;
-        const tags: string[] = Array.isArray(meta?.tags) ? meta.tags : [];
-        const occurredStart = meta?.occurred_start || null;
-        const occurredEnd = meta?.occurred_end || null;
-        const mentionedAt = meta?.mentioned_at || null;
-        const proofCount = meta?.proof_count || null;
-        const documentId = meta?.document_id || null;
+        const factType = (meta?.fact_type as string) || node.group || "memory";
+        const context = meta?.context && meta.context !== "N/A" ? (meta.context as string) : null;
+        const tags: string[] = Array.isArray(meta?.tags) ? (meta.tags as string[]) : [];
+        const occurredStart = (meta?.occurred_start as string) || null;
+        const occurredEnd = (meta?.occurred_end as string) || null;
+        const mentionedAt = (meta?.mentioned_at as string) || null;
+        const proofCount = (meta?.proof_count as number) || null;
+        const documentId = (meta?.document_id as string) || null;
 
         const muted = isDark ? "#a1a1aa" : "#71717a";
         const dimmed = isDark ? "#71717a" : "#a1a1aa";

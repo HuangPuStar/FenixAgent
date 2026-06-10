@@ -87,11 +87,11 @@ export const hindsightApi = {
     if (params.tags) qs.set("tags", params.tags.join(","));
     if (params.document_id) qs.set("document_id", params.document_id);
     if (params.chunk_id) qs.set("chunk_id", params.chunk_id);
-    return apiFetch<Record<string, any>>(`/graph?${qs.toString()}`);
+    return apiFetch<Record<string, unknown>>(`/graph?${qs.toString()}`);
   },
 
   /** 获取 Bank 统计信息（整合状态等） */
-  getBankStats: () => apiFetch<Record<string, any>>("/bank-stats"),
+  getBankStats: () => apiFetch<Record<string, unknown>>("/bank-stats"),
 
   /** 列出文档 */
   listDocuments: (params?: { q?: string; limit?: number; offset?: number }) => {

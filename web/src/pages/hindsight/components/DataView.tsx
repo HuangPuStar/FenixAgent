@@ -24,6 +24,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { hindsightApi } from "@/src/api/hindsight";
 import { NS } from "@/src/i18n";
+import type { BankStats, GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, Graph2D, type GraphNode } from "./Graph2d";
 import { MemoryDetailModal } from "./MemoryDetailModal";
@@ -46,12 +47,12 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   const { t } = useTranslation(NS.HINDSIGHT);
   const [viewMode, setViewMode] = useState<ViewMode>("constellation");
   const [compactMode, setCompactMode] = useState(compact);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<GraphApiData | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedGraphNode, setSelectedGraphNode] = useState<any>(null);
+  const [selectedGraphNode, setSelectedGraphNode] = useState<MemoryTableRow | null>(null);
   const [modalMemoryId, setModalMemoryId] = useState<string | null>(null);
   const itemsPerPage = 100;
 
@@ -107,19 +108,19 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   const loadData = async (limit?: number, q?: string, tags?: string[]) => {
     setLoading(true);
     try {
-      const graphData: any = await hindsightApi.getGraph({
+      const graphData = (await hindsightApi.getGraph({
         type: factType,
         limit: limit ?? fetchLimit,
         q,
         tags,
         document_id: documentId,
         chunk_id: chunkId,
-      });
+      })) as GraphApiData;
       setData(graphData);
 
       // 观察类型：获取整合状态
       if (factType === "observation") {
-        const stats: any = await hindsightApi.getBankStats();
+        const stats = (await hindsightApi.getBankStats()) as BankStats;
         setConsolidationStatus({
           pending_consolidation: stats.pending_consolidation || 0,
           last_consolidated_at: stats.last_consolidated_at || null,
@@ -149,7 +150,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   // 转换 Graph2D 数据
   const graph2DData = useMemo(() => {
     if (!data) return { nodes: [], links: [] };
-    const fullData = convertHindsightGraphData(data);
+    const fullData = convertHindsightGraphData(data as Parameters<typeof convertHindsightGraphData>[0]);
 
     // 根据可见链接类型过滤
     const links = fullData.links.filter((link) => {
@@ -186,7 +187,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   // 节点点击回调
   const handleGraphNodeClick = useCallback(
     (node: GraphNode) => {
-      const nodeData = data?.table_rows?.find((row: any) => row.id === node.id);
+      const nodeData = data?.table_rows?.find((row: MemoryTableRow) => row.id === node.id);
       if (nodeData) {
         setSelectedGraphNode(nodeData);
       }
@@ -256,7 +257,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
     [observationSizeLookup],
   );
 
-  const linkColorFn = useCallback((link: any) => {
+  const linkColorFn = useCallback((link: { type?: string }) => {
     if (link.type === "temporal") return "#009296";
     if (link.type === "entity") return "#f59e0b";
     if (link.type === "causes" || link.type === "caused_by" || link.type === "enables" || link.type === "prevents") {
@@ -381,12 +382,12 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                 <div className="text-sm text-muted-foreground">
                   {searchQuery || tagFilters.length > 0
                     ? t("dataView.matchingMemories", { count: filteredTableRows.length })
-                    : data.table_rows?.length < data.total_units
+                    : (data.table_rows?.length ?? 0) < (data.total_units ?? 0)
                       ? t("dataView.showingMemories", {
                           shown: data.table_rows?.length ?? 0,
-                          total: data.total_units,
+                          total: data.total_units ?? 0,
                         })
-                      : t("dataView.totalMemories", { count: data.total_units })}
+                      : t("dataView.totalMemories", { count: data.total_units ?? 0 })}
                 </div>
 
                 {/* 观察类型整合状态 */}
@@ -773,7 +774,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {paginatedRows.map((row: any, idx: number) => {
+                              {paginatedRows.map((row: MemoryTableRow, idx: number) => {
                                 const occurredDisplay = row.occurred_start
                                   ? new Date(row.occurred_start).toLocaleDateString(undefined, {
                                       month: "short",
@@ -808,8 +809,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                                     <TableCell className="py-2">
                                       {row.entities ? (
                                         <div className="flex gap-1 flex-wrap">
-                                          {row.entities
-                                            .split(", ")
+                                          {(typeof row.entities === "string" ? row.entities.split(", ") : row.entities)
                                             .slice(0, 2)
                                             .map((entity: string, _i: number) => (
                                               <span
@@ -819,9 +819,14 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                                                 {entity}
                                               </span>
                                             ))}
-                                          {row.entities.split(", ").length > 2 && (
+                                          {(typeof row.entities === "string" ? row.entities.split(", ") : row.entities)
+                                            .length > 2 && (
                                             <span className="text-[10px] text-muted-foreground">
-                                              +{row.entities.split(", ").length - 2}
+                                              +
+                                              {(typeof row.entities === "string"
+                                                ? row.entities.split(", ")
+                                                : row.entities
+                                              ).length - 2}
                                             </span>
                                           )}
                                         </div>
@@ -922,7 +927,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                     })()
                   ) : (
                     <div className="text-center py-12 text-muted-foreground">
-                      {data.table_rows?.length > 0
+                      {(data.table_rows?.length ?? 0) > 0
                         ? t("dataView.noMemoriesMatchFilter")
                         : t("dataView.noMemoriesFound")}
                     </div>
@@ -960,8 +965,8 @@ function TimelineView({
   filteredRows,
   onMemoryClick,
 }: {
-  data: any;
-  filteredRows: any[];
+  data: GraphApiData;
+  filteredRows: MemoryTableRow[];
   onMemoryClick: (id: string) => void;
 }) {
   const { t } = useTranslation(NS.HINDSIGHT);
@@ -972,9 +977,9 @@ function TimelineView({
   const { sortedItems, itemsWithoutDates } = useMemo(() => {
     if (!filteredRows || filteredRows.length === 0) return { sortedItems: [], itemsWithoutDates: [] };
     const withDates = filteredRows
-      .filter((row: any) => row.occurred_start)
-      .sort((a: any, b: any) => new Date(a.occurred_start).getTime() - new Date(b.occurred_start).getTime());
-    const withoutDates = filteredRows.filter((row: any) => !row.occurred_start);
+      .filter((row) => row.occurred_start)
+      .sort((a, b) => new Date(a.occurred_start!).getTime() - new Date(b.occurred_start!).getTime());
+    const withoutDates = filteredRows.filter((row) => !row.occurred_start);
     return { sortedItems: withDates, itemsWithoutDates: withoutDates };
   }, [filteredRows]);
 
@@ -1022,9 +1027,9 @@ function TimelineView({
       }
     };
 
-    const groups: { [key: string]: { items: any[]; date: Date } } = {};
-    sortedItems.forEach((row: any) => {
-      const date = new Date(row.occurred_start);
+    const groups: { [key: string]: { items: MemoryTableRow[]; date: Date } } = {};
+    sortedItems.forEach((row) => {
+      const date = new Date(row.occurred_start!);
       const key = getGroupKey(date);
       if (!groups[key]) {
         let groupDate = date;
@@ -1189,7 +1194,7 @@ function TimelineView({
 
             {/* 条目列表 */}
             <div className="space-y-1">
-              {group.items.map((item: any, idx: number) => (
+              {group.items.map((item: MemoryTableRow, idx: number) => (
                 <div
                   key={item.id || idx}
                   onClick={() => onMemoryClick(item.id)}
@@ -1197,13 +1202,13 @@ function TimelineView({
                 >
                   <div className="w-[60px] text-right pr-3 pt-1 flex-shrink-0">
                     <div className="text-[10px] text-muted-foreground">
-                      {new Date(item.occurred_start).toLocaleDateString(undefined, {
+                      {new Date(item.occurred_start!).toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",
                       })}
                     </div>
                     <div className="text-[9px] text-muted-foreground/70">
-                      {new Date(item.occurred_start).toLocaleTimeString(undefined, {
+                      {new Date(item.occurred_start!).toLocaleTimeString(undefined, {
                         hour: "2-digit",
                         minute: "2-digit",
                         hour12: false,
@@ -1217,8 +1222,7 @@ function TimelineView({
                     <p className="text-xs text-foreground line-clamp-2 leading-relaxed">{item.text}</p>
                     {item.entities && (
                       <div className="flex gap-1 mt-1 flex-wrap">
-                        {item.entities
-                          .split(", ")
+                        {(typeof item.entities === "string" ? item.entities.split(", ") : item.entities)
                           .slice(0, 3)
                           .map((entity: string, _i: number) => (
                             <span

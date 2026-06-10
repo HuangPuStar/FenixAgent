@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { hindsightApi } from "@/src/api/hindsight";
 import { NS } from "@/src/i18n";
+import type { MemoryDetail, MemoryTableRow } from "../types";
 
 interface MemoryDetailPanelProps {
-  memory: any;
+  memory: MemoryTableRow;
   onClose: () => void;
   compact?: boolean;
   inPanel?: boolean;
@@ -17,7 +18,7 @@ interface MemoryDetailPanelProps {
 export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = false }: MemoryDetailPanelProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [fullMemory, setFullMemory] = useState<any>(null);
+  const [fullMemory, setFullMemory] = useState<(MemoryDetail & MemoryTableRow) | null>(null);
   const [loading, setLoading] = useState(false);
 
   // 获取完整记忆数据
@@ -42,12 +43,12 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
       });
   }, [memory?.id]);
 
-  const displayMemory = fullMemory || memory;
-  const isObservation = displayMemory?.fact_type === "observation" || displayMemory?.type === "observation";
+  const displayMemory = fullMemory || ({ ...memory, type: memory.fact_type } as MemoryDetail & MemoryTableRow);
+  const isObservation = displayMemory.fact_type === "observation" || displayMemory.type === "observation";
 
   // 根据类型确定标题
   const getMemoryTypeTitle = () => {
-    const factType = displayMemory?.fact_type || displayMemory?.type;
+    const factType = displayMemory.fact_type || displayMemory.type;
     if (factType === "observation") return t("memoryDetailModal.typeObservation");
     if (factType === "world") return t("memoryDetailModal.typeWorldFact");
     if (factType === "experience") return t("memoryDetailModal.typeExperience");
@@ -67,7 +68,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
 
   if (!memory) return null;
 
-  const memoryId = displayMemory.id || displayMemory.node_id;
+  const memoryId = displayMemory.id || ("node_id" in displayMemory ? displayMemory.node_id : undefined);
 
   // 面板模式：无外边框/背景，更大的 padding，醒目的关闭按钮
   if (inPanel) {
@@ -150,8 +151,13 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
                     {(Array.isArray(displayMemory.entities)
                       ? displayMemory.entities
                       : String(displayMemory.entities).split(", ")
-                    ).map((entity: any, _i: number) => {
-                      const entityText = typeof entity === "string" ? entity : entity?.name || JSON.stringify(entity);
+                    ).map((entity: unknown, _i: number) => {
+                      const entityText =
+                        typeof entity === "string"
+                          ? entity
+                          : (entity as Record<string, unknown>)?.name
+                            ? String((entity as Record<string, unknown>).name)
+                            : JSON.stringify(entity);
                       return (
                         <span
                           key={entityText}

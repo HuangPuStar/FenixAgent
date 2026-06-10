@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { hindsightApi } from "@/src/api/hindsight";
 import { NS } from "@/src/i18n";
+import type { MemoryDetail } from "../types";
 
 interface MemoryDetailModalProps {
   memoryId: string | null;
@@ -14,7 +15,7 @@ interface MemoryDetailModalProps {
 /** 内存详情弹窗 — 简化版，点击表格行/时间线条目时弹出 */
 export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
-  const [memory, setMemory] = useState<any>(null);
+  const [memory, setMemory] = useState<MemoryDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
