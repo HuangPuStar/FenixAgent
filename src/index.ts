@@ -6,7 +6,6 @@ interceptConsole();
 const startupLog = createLogger("rcs");
 
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import swagger from "@elysiajs/swagger";
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
@@ -19,7 +18,6 @@ import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, logError, logRequest, logResponse } from "./plugins/logger";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
-import { environmentRepo } from "./repositories";
 import acpRoutes from "./routes/acp";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";
@@ -33,11 +31,10 @@ import { closeCache } from "./services/cache";
 import { getCoreRuntime } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
-import { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment, stopAllInstances } from "./services/instance";
+import { stopAllInstances } from "./services/instance";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { syncBuiltin } from "./services/sync-builtin";
 import { ensureSystemAdmin } from "./services/system-admin";
-import { resolveWorkspacePath } from "./services/workspace-resolver";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
@@ -88,35 +85,6 @@ try {
 } catch {
   // pkill not available or no matching processes — ignore
 }
-
-// Auto-start instances for all environments on server boot
-(async () => {
-  const envs = await environmentRepo.listAll();
-  for (const env of envs) {
-    if (!env.userId) continue;
-    if (!env.organizationId) continue;
-    if (!env.autoStart) continue;
-    // 只为没有 machineId 的 environment 本地 spawn（有 machineId 的由远端 machine 管理）
-    if (env.agentConfigId) {
-      const { getAgentConfigById } = await import("./services/config/agent-config");
-      const agentCfg = await getAgentConfigById(env.agentConfigId);
-      if (agentCfg?.machineId) continue;
-    }
-    const cwd = resolveWorkspacePath(env.organizationId, env.userId, env.id);
-    if (!existsSync(cwd)) {
-      startupLog.warn(`Skipping ${env.name}: workspace directory does not exist`);
-      continue;
-    }
-    const existing = findRunningInstanceByEnvironment(env.id);
-    if (existing) continue;
-    try {
-      await spawnInstanceFromEnvironment(env.userId, env.id);
-      startupLog.info(`Auto-started: ${env.name}`);
-    } catch (err: unknown) {
-      startupLog.error(`Failed to auto-start ${env.name}`, err instanceof Error ? err : undefined);
-    }
-  }
-})();
 
 // 定期巡检：将无活跃 WS 连接的 machine 标为 offline（处理服务重启、网络分区等场景）
 import("./services/registry-heartbeat").then(({ startMachineSweep }) => {
