@@ -42,6 +42,7 @@ export async function readKnowledgeResourceForAgent(input: {
   const provider = getKnowledgeRuntimeProvider();
   const content = await provider.readResource({
     resourceRemoteId: result.resource.remoteId,
+    knowledgeBaseRemoteId: result.kbRemoteId || result.kbRemoteAccountId?.trim() || result.kbUserId,
     remoteAccountId: result.kbRemoteAccountId?.trim() || result.kbUserId,
     remoteUserId: result.kbRemoteUserId?.trim() || result.kbUserId,
   });
@@ -107,14 +108,21 @@ export async function searchKnowledgeByConfigId(input: {
     }
   }
 
+  // 对搜索结果中未在本地绑定中找到的 dataset_id 记录 warning
+  for (const item of results) {
+    if (item.knowledgeBaseId && !knowledgeBaseIdByRemoteId.has(item.knowledgeBaseId)) {
+      console.warn("[knowledge-runtime] search result dataset_id not found in local bindings", {
+        dataset_id: item.knowledgeBaseId,
+      });
+    }
+  }
+
   return results.map((item) => ({
     title: item.title,
     snippet: item.snippet,
     source: item.source,
     score: item.score,
-    knowledgeBaseId: item.knowledgeBaseId
-      ? (knowledgeBaseIdByRemoteId.get(item.knowledgeBaseId) ?? item.knowledgeBaseId)
-      : null,
+    knowledgeBaseId: item.knowledgeBaseId ? (knowledgeBaseIdByRemoteId.get(item.knowledgeBaseId) ?? null) : null,
     resourceId: item.resourceId ? (resourceIdByRemoteId.get(item.resourceId) ?? item.resourceId) : null,
   }));
 }
