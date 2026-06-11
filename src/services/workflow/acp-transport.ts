@@ -138,11 +138,12 @@ class AcpAgentSession implements AgentSession {
         if (typeof timeoutTimer.unref === "function") timeoutTimer.unref();
 
         // 发送 session/prompt JSON-RPC 请求
-        const promptId = nextRpcId();
         // 字段名必须用 content（与 acp-link server handlePrompt 的 params.content 对齐）
         const promptReq = createRequest(METHOD.SESSION_PROMPT, {
           content: [{ type: "text", text: request.prompt }],
         });
+        // promptId 必须从 createRequest 返回值取，不能单独调 nextRpcId()（否则 id 不一致）
+        const promptId = promptReq.id;
 
         // 监听 JSON-RPC 响应（匹配 prompt 请求 id）
         const rpcHandler = (payload: ProtocolEvents["rpc_response"]): void => {
@@ -393,7 +394,9 @@ class AcpTransport implements Transport {
       }, NEW_SESSION_TIMEOUT_MS);
       if (typeof timeout.unref === "function") timeout.unref();
 
-      const reqId = nextRpcId();
+      const req = createRequest(METHOD.SESSION_NEW, { cwd });
+      // reqId 必须从 createRequest 返回值取，不能单独调 nextRpcId()（否则 id 不一致）
+      const reqId = req.id;
 
       const rpcHandler = (payload: ProtocolEvents["rpc_response"]): void => {
         if (payload.id !== reqId) return;
@@ -432,7 +435,6 @@ class AcpTransport implements Transport {
       protocol.on("rpc_response", rpcHandler);
       protocol.on("error", errorHandler);
 
-      const req = createRequest(METHOD.SESSION_NEW, { cwd });
       channel.send(req);
       console.error(`[workflow] ACP sent session/new: agentId=${agentId} rpcId=${reqId}`);
     });

@@ -19,9 +19,12 @@ export class RemoteRelayHandle implements EngineRelayHandle {
       const payload = msg.payload as Record<string, unknown> | undefined;
       if (!payload || typeof payload !== "object") return;
 
+      console.error(
+        `[workflow] RemoteRelayHandle onSessionMessage: instId=${instId} listeners=${this.messageListeners.size} payloadType=${typeof payload.type === "string" ? payload.type : "jsonrpc"} id=${payload.id ?? "n/a"} method=${payload.method ?? "n/a"}`,
+      );
+
       // 传输层消息（status/error/pong 等）：直接透传
       if (typeof payload.type === "string") {
-        logger.info("← agent transport msg", { instanceId, type: payload.type, payload: payload.payload });
         for (const listener of this.messageListeners) {
           listener({ type: payload.type, payload: payload.payload });
         }
@@ -30,7 +33,6 @@ export class RemoteRelayHandle implements EngineRelayHandle {
 
       // JSON-RPC 消息：透传为 { type: "jsonrpc", payload } 格式
       if (payload.jsonrpc === "2.0") {
-        logger.info("← agent jsonrpc", { instanceId, method: payload.method, id: payload.id });
         for (const listener of this.messageListeners) {
           listener(payload as unknown as EngineRelayMessage);
         }

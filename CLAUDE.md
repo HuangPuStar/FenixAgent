@@ -304,6 +304,7 @@ VALUES ('<sha256哈希值>', <journal中的when时间戳>);
 12. **服务端不传绝对路径给 plugin**：plugin 按 `orgId/userId/envId` 自行计算
 13. **relay 必须转发 agent `status`**：前端依赖 `capabilities` 判断 ACP 能力
 14. **Skill DB+文件系统双同步**：必须通过 `setSkill`/`importSkillDirectories` 创建，禁止直接调 `upsertSkill`
+15. **JSON-RPC 请求 id 不可重复生成**：`createRequest()` 内部已调用 `nextRpcId()` 生成 id，外部不得再单独调 `nextRpcId()` 取 `reqId`，否则请求实际 id 与 handler 匹配的 id 差 1，导致 JSON-RPC 响应永远匹配不上。正确做法：`const req = createRequest(...); const reqId = req.id;`（见 `acp-transport.ts`）
 
 **API/路由**：文件 API 用 `/web/sessions/:id/user/*`（不是 `/files/*`）；API 改造保留旧字段直到前端迁移；Workflow 节点 inputs 引用须在 `depends_on` 节点中存在
 
