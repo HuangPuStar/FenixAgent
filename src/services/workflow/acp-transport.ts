@@ -78,6 +78,9 @@ const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** 将 relay handle 传来的已解析对象喂给 ACPProtocol（它期望 JSON 字符串输入） */
 function feedProtocol(protocol: ACPProtocol, msg: Record<string, unknown>): void {
+  console.error(
+    `[workflow] ACP feedProtocol: type=${msg.type ?? "n/a"} jsonrpc=${msg.jsonrpc ?? "n/a"} method=${msg.method ?? "n/a"} id=${msg.id ?? "n/a"}`,
+  );
   protocol.handleMessage(JSON.stringify(msg));
 }
 
