@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { BookOpen, FileCode, FileText, Pencil, Search, Wand2 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -47,12 +48,12 @@ export function AgentHomePage() {
   useEffect(() => {
     agentApi
       .templates()
-      .then((res) => {
+      .then((res: { ok: boolean; data?: { templates?: AgentTemplate[] } }) => {
         if (res.ok && res.data?.templates) {
           setTemplates(res.data.templates);
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error("[agent-home] Failed to load templates:", err);
       });
   }, []);
@@ -197,108 +198,77 @@ export function AgentHomePage() {
     setGenerationResult(null);
   }, []);
 
-  const showSubtitle = phase !== "form";
+  const titleText = t(titleKey);
 
   return (
-    <div className="relative flex flex-1 flex-col items-center overflow-auto bg-white">
-      {/* 装饰光斑：纯白底上极淡的渐变点缀 */}
-      <div className="pointer-events-none absolute left-[10%] top-[8%] h-[400px] w-[400px] rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.04)_0%,transparent_60%)]" />
-      <div className="pointer-events-none absolute bottom-[8%] right-[8%] h-[350px] w-[350px] rounded-full bg-[radial-gradient(circle,rgba(217,119,6,0.03)_0%,transparent_60%)]" />
-      <div className="pointer-events-none absolute left-[50%] top-[40%] h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(37,99,235,0.02)_0%,transparent_55%)]" />
-
-      {/* 内容区域 */}
-      <div
-        className="relative z-10 flex flex-col items-center justify-center gap-8 px-8 py-16"
-        style={{ minHeight: "calc(100vh - 56px)" }}
-      >
-        {/* 标题 + 波浪装饰 */}
-        <div className="flex flex-col items-center text-center">
-          <h1 className="text-[36px] font-extrabold tracking-[2px] text-gray-800 leading-tight">{t(titleKey)}</h1>
-          {/* 波浪装饰 SVG */}
-          <svg width="220" height="8" viewBox="0 0 150 8" fill="none" className="-mt-[2px]">
-            <defs>
-              <linearGradient id="title-wave" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#374151" stopOpacity="0.4" />
-                <stop offset="50%" stopColor="#0891b2" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#d97706" stopOpacity="0.3" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M 1.201 6.67 C 5.796 6.67 5.796 1.859 10.426 1.859 C 15.021 1.859 15.021 6.67 19.652 6.67 C 24.246 6.67 24.246 1.859 28.877 1.859 C 33.471 1.859 33.471 6.67 38.102 6.67 C 42.697 6.67 42.697 1.859 47.327 1.859 C 51.922 1.859 51.922 6.67 56.552 6.67 C 61.147 6.67 61.147 1.859 65.777 1.859 C 70.372 1.859 70.372 6.67 75.002 6.67 C 79.597 6.67 79.597 1.859 84.227 1.859 C 88.822 1.859 88.822 6.67 93.452 6.67 C 98.047 6.67 98.047 1.859 102.677 1.859 C 107.272 1.859 107.272 6.67 111.902 6.67 C 116.497 6.67 116.497 1.859 121.128 1.859 C 125.722 1.859 125.722 6.67 130.353 6.67 C 134.947 6.67 134.947 1.859 139.578 1.859 C 144.173 1.859 144.173 6.67 148.803 6.67"
-              stroke="url(#title-wave)"
-              strokeWidth="2.33"
-              strokeLinecap="round"
-            />
-          </svg>
-          {showSubtitle && <p className="mt-2.5 text-[15px] tracking-[1px] text-[#9ca3af]">{t("subtitle")}</p>}
+    <div className="agent-home-page relative flex flex-1 flex-col items-center overflow-auto">
+      <div className="agent-home-bg" />
+      <div className="agent-home-container">
+        <div className="agent-home-header">
+          <div className="agent-home-brand-icon">
+            <FenixHomeLogo />
+          </div>
+          <h1>{renderAgentTitle(titleText)}</h1>
+          {phase !== "form" && <p>{t("subtitle")}</p>}
         </div>
 
-        {/* 输入框区域 */}
-        <div className="w-full max-w-[600px]">
-          {phase === "idle" && (
-            /* 阶段 1：流光输入框 */
-            <div className="glow-border-wrapper">
-              <div className="glow-border-inner">
-                <input
-                  type="text"
+        <div className="agent-home-dialog">
+          {phase === "idle" ? (
+            <>
+              <div className="agent-home-greeting">
+                <strong>你好，</strong>告诉我你想创建一个怎样的智能体。描述它做什么、为谁服务，我会帮你生成配置。
+              </div>
+              <div className="agent-home-input-wrap">
+                <textarea
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                  onKeyDown={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                      e.preventDefault();
+                      void handleSubmit();
+                    }
+                  }}
+                  rows={2}
                   placeholder={t("inputPlaceholder")}
-                  className="w-full bg-transparent text-[15px] text-gray-800 outline-none placeholder:text-[#9ca3af]"
                 />
-                <span className="shrink-0 text-[13px] text-[#9ca3af]">{t("enterHint")}</span>
-              </div>
-            </div>
-          )}
-
-          {(phase === "generating" || phase === "form") && (
-            /* 阶段 2/3：已提交的输入框 */
-            <div className="rounded-[18px] border-[1.5px] border-gray-200/60 bg-white/75 px-[22px] py-[14px]">
-              <div className="flex items-center gap-3">
-                <span className="flex-1 text-[14px] text-gray-700">{inputValue}</span>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="shrink-0 text-[12px] font-medium text-[#0891b2] hover:underline"
-                >
-                  {t("editInput")}
+                <button type="button" onClick={() => void handleSubmit()} className="agent-home-polish-btn">
+                  <Wand2 className="h-4 w-4" />
+                  一键润色
                 </button>
               </div>
+            </>
+          ) : (
+            <div className="agent-home-submitted">
+              <span>{inputValue}</span>
+              <button type="button" onClick={handleReset}>
+                {t("editInput")}
+              </button>
             </div>
           )}
         </div>
 
-        {/* Loading 状态（阶段 2） */}
         {phase === "generating" && (
-          <div className="w-full max-w-[600px] rounded-2xl border border-gray-200/40 bg-white/60 p-6 backdrop-blur-[8px] flex flex-col items-center gap-3.5">
-            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-cyan-600/15 border-t-[#0891b2]" />
-            <div className="text-[14px] font-medium text-gray-600">{t("loadingTitle")}</div>
-            <div className="text-[12px] text-[#9ca3af]">{t("loadingSubtitle")}</div>
+          <div className="agent-home-loading">
+            <div className="agent-home-spinner" />
+            <div className="text-[14px] font-semibold text-[#0c1a3a]">{t("loadingTitle")}</div>
+            <div className="text-[12px] text-[#8a96b0]">{t("loadingSubtitle")}</div>
           </div>
         )}
 
-        {/* 表单（阶段 3） */}
         {phase === "form" && generationResult && (
-          <AgentGenerationForm
-            initialData={generationResult}
-            onCreate={handleCreateFromGeneration}
-            loading={creating}
-          />
+          <div className="agent-home-form">
+            <AgentGenerationForm
+              initialData={generationResult}
+              onCreate={handleCreateFromGeneration}
+              loading={creating}
+            />
+          </div>
         )}
 
-        {/* 模板卡片（idle 阶段显示） */}
         {phase === "idle" && (
           <>
-            {/* 分隔线 */}
-            <div className="flex items-center gap-2.5">
-              <div className="h-px w-[60px] bg-gradient-to-r from-transparent to-gray-300/30" />
-              <span className="text-[12px] font-medium tracking-[1px] text-[#b0b8c4]">{t("orTemplate")}</span>
-              <div className="h-px w-[60px] bg-gradient-to-l from-transparent to-gray-300/30" />
-            </div>
-
-            {/* 模板网格：两排各 4 个 */}
-            <div className="grid max-w-[880px] grid-cols-4 gap-3">
+            <div className="agent-home-template-label">{t("orTemplate")}</div>
+            <div className="agent-home-template-pills">
               {templates.map((template, index) => {
                 const color = TEMPLATE_COLORS[index % TEMPLATE_COLORS.length];
                 const Icon = TEMPLATE_ICONS[index % TEMPLATE_ICONS.length];
@@ -310,24 +280,22 @@ export function AgentHomePage() {
                     type="button"
                     onClick={() => void handleTemplateClick(template)}
                     disabled={!!templateCreating}
-                    className="flex items-center gap-3 rounded-xl border border-gray-200/50 bg-white p-3.5 text-left shadow-[0_2px_16px_rgba(0,0,0,0.04)] transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] disabled:opacity-60"
+                    className="agent-home-template-pill"
+                    style={
+                      {
+                        "--pill-accent": color.from,
+                        "--pill-accent-end": color.to,
+                        "--pill-glow": color.shadow,
+                      } as CSSProperties
+                    }
                   >
-                    <div
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]"
-                      style={{
-                        background: `linear-gradient(135deg, ${color.from}, ${color.to})`,
-                        boxShadow: `0 4px 14px ${color.shadow}`,
-                      }}
-                    >
-                      <Icon className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                      <div className="text-[13px] font-semibold text-gray-800">{template.name}</div>
-                      <div className="mt-0.5 text-[11px] text-[#9ca3af]">{template.description}</div>
-                    </div>
-                    {isLoading && (
-                      <div className="ml-auto h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-cyan-600/15 border-t-[#0891b2]" />
-                    )}
+                    <span className="pill-icon">
+                      {isLoading ? <span className="pill-spinner" /> : <Icon className="h-4 w-4" />}
+                    </span>
+                    <span className="pill-copy">
+                      <span className="pill-title">{template.name}</span>
+                      <span className="pill-desc">{template.description}</span>
+                    </span>
                   </button>
                 );
               })}
@@ -336,37 +304,339 @@ export function AgentHomePage() {
         )}
       </div>
 
-      {/* 流光边框动画样式 */}
       <style>{`
-        @keyframes glow-flow {
-          0% { background-position: 0% 50%; }
-          100% { background-position: 200% 50%; }
+        .agent-home-page {
+          background: #f5f7fb;
+          color: #0c1a3a;
         }
-        @keyframes shadow-flow {
-          0% { box-shadow: 0 0 20px rgba(37,99,235,0.08), 0 4px 24px rgba(0,0,0,0.03); }
-          25% { box-shadow: 0 0 20px rgba(6,182,212,0.1), 0 4px 24px rgba(0,0,0,0.03); }
-          50% { box-shadow: 0 0 20px rgba(13,148,136,0.1), 0 4px 24px rgba(0,0,0,0.03); }
-          75% { box-shadow: 0 0 20px rgba(217,119,6,0.08), 0 4px 24px rgba(0,0,0,0.03); }
-          100% { box-shadow: 0 0 20px rgba(37,99,235,0.08), 0 4px 24px rgba(0,0,0,0.03); }
+        .agent-home-bg {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          background:
+            radial-gradient(500px circle at 25% 20%, rgba(15,107,255,0.06), transparent 60%),
+            radial-gradient(400px circle at 75% 80%, rgba(107,230,255,0.05), transparent 60%);
         }
-        .glow-border-wrapper {
-          background: linear-gradient(90deg, rgba(37,99,235,0.14), rgba(6,182,212,0.18), rgba(13,148,136,0.18), rgba(217,119,6,0.14), rgba(37,99,235,0.14));
-          background-size: 200% 100%;
-          animation: glow-flow 2s linear infinite;
-          padding: 1.5px;
-          border-radius: 18px;
+        .agent-home-container {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          min-height: calc(100vh - 56px);
+          width: min(100%, 1080px);
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 24px;
         }
-        .glow-border-inner {
-          background: rgba(255,255,255,0.92);
-          backdrop-filter: blur(16px);
-          border-radius: 17px;
-          padding: 20px 24px;
+        .agent-home-header {
+          margin-bottom: 38px;
+          text-align: center;
+        }
+        .agent-home-brand-icon {
+          display: flex;
+          width: 56px;
+          height: 56px;
+          margin: 0 auto 16px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 16px;
+          background: linear-gradient(135deg, #0f6bff, #6be6ff);
+          box-shadow: 0 4px 20px rgba(15,107,255,0.25);
+        }
+        .agent-home-brand-icon svg {
+          width: 30px;
+          height: 30px;
+        }
+        .agent-home-header h1 {
+          margin: 0 0 8px;
+          font-size: 28px;
+          font-weight: 800;
+          letter-spacing: 0.02em;
+          line-height: 1.25;
+          color: #0c1a3a;
+        }
+        .agent-home-header h1 em {
+          font-style: normal;
+          background: linear-gradient(135deg, #0f6bff, #32b1ff, #6be6ff);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .agent-home-header p {
+          max-width: 480px;
+          margin: 0 auto;
+          color: #5a6785;
+          font-size: 15px;
+        }
+        .agent-home-dialog,
+        .agent-home-loading,
+        .agent-home-form {
+          width: 100%;
+          border: 1px solid rgba(12,26,58,0.1);
+          border-radius: 16px;
+          background: #fff;
+          box-shadow: 0 4px 16px rgba(12,26,58,0.08);
+        }
+        .agent-home-dialog {
+          max-width: 760px;
+          margin-bottom: 24px;
+          overflow: hidden;
+          transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .agent-home-dialog:focus-within {
+          border-color: #0f6bff;
+          box-shadow: 0 4px 24px rgba(15,107,255,0.12), 0 4px 16px rgba(12,26,58,0.08);
+        }
+        .agent-home-greeting {
+          padding: 24px 28px 0;
+          color: #5a6785;
+          font-size: 14px;
+          line-height: 1.7;
+        }
+        .agent-home-greeting strong {
+          color: #0c1a3a;
+          font-weight: 700;
+        }
+        .agent-home-input-wrap {
+          display: flex;
+          align-items: flex-end;
+          gap: 12px;
+          padding: 16px 20px 20px;
+        }
+        .agent-home-input-wrap textarea {
+          min-height: 48px;
+          max-height: 160px;
+          flex: 1;
+          resize: vertical;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          color: #0c1a3a;
+          font: inherit;
+          font-size: 15px;
+          line-height: 1.6;
+        }
+        .agent-home-input-wrap textarea::placeholder {
+          color: #8a96b0;
+        }
+        .agent-home-polish-btn {
+          display: inline-flex;
+          flex-shrink: 0;
+          align-items: center;
+          gap: 6px;
+          border: 0;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #0f6bff, #32b1ff);
+          color: #fff;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 700;
+          padding: 10px 18px;
+          transition: transform 0.2s, box-shadow 0.2s;
+          white-space: nowrap;
+        }
+        .agent-home-polish-btn:hover {
+          box-shadow: 0 4px 14px rgba(15,107,255,0.3);
+          transform: translateY(-1px);
+        }
+        .agent-home-submitted {
           display: flex;
           align-items: center;
           gap: 16px;
-          animation: shadow-flow 2s linear infinite;
+          padding: 18px 22px;
+        }
+        .agent-home-submitted span {
+          flex: 1;
+          color: #0c1a3a;
+          font-size: 14px;
+          line-height: 1.6;
+        }
+        .agent-home-submitted button {
+          border: 0;
+          background: transparent;
+          color: #0f6bff;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 700;
+        }
+        .agent-home-loading {
+          display: flex;
+          max-width: 600px;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 24px;
+          padding: 24px;
+        }
+        .agent-home-spinner,
+        .pill-spinner {
+          border-radius: 999px;
+          border: 3px solid rgba(15,107,255,0.14);
+          border-top-color: #0f6bff;
+          animation: agent-spin 0.8s linear infinite;
+        }
+        .agent-home-spinner {
+          width: 32px;
+          height: 32px;
+        }
+        .pill-spinner {
+          width: 16px;
+          height: 16px;
+        }
+        .agent-home-form {
+          max-width: 760px;
+          padding: 28px;
+        }
+        .agent-home-template-label {
+          margin-bottom: 16px;
+          color: #8a96b0;
+          font-size: 12px;
+          letter-spacing: 0.04em;
+          text-align: center;
+        }
+        .agent-home-template-pills {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          width: min(100%, 900px);
+        }
+        .agent-home-template-pill {
+          position: relative;
+          display: flex;
+          width: 100%;
+          align-items: center;
+          gap: 10px;
+          overflow: hidden;
+          border: 1px solid rgba(12,26,58,0.1);
+          border-radius: 14px;
+          background: #fff;
+          box-shadow: 0 1px 3px rgba(12,26,58,0.04);
+          color: #5a6785;
+          cursor: pointer;
+          padding: 12px 16px;
+          text-align: left;
+          transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+        }
+        .agent-home-template-pill::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: linear-gradient(90deg, var(--pill-accent), var(--pill-accent-end));
+          opacity: 0;
+          transition: opacity 0.25s;
+        }
+        .agent-home-template-pill:hover {
+          border-color: var(--pill-accent);
+          box-shadow: 0 4px 16px rgba(15,107,255,0.12), 0 1px 3px rgba(12,26,58,0.06);
+          color: #0c1a3a;
+          transform: translateY(-2px);
+        }
+        .agent-home-template-pill:hover::before {
+          opacity: 1;
+        }
+        .agent-home-template-pill:disabled {
+          cursor: not-allowed;
+          opacity: 0.64;
+          transform: none;
+        }
+        .pill-icon {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          width: 32px;
+          height: 32px;
+          flex-shrink: 0;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          background: color-mix(in srgb, var(--pill-accent) 10%, white);
+          color: var(--pill-accent);
+          transition: background 0.25s, color 0.25s, box-shadow 0.25s;
+        }
+        .agent-home-template-pill:hover .pill-icon {
+          background: linear-gradient(135deg, var(--pill-accent), var(--pill-accent-end));
+          box-shadow: 0 2px 8px var(--pill-glow);
+          color: #fff;
+        }
+        .pill-copy {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          min-width: 0;
+          flex-direction: column;
+        }
+        .pill-title {
+          color: #0c1a3a;
+          font-size: 13px;
+          font-weight: 700;
+        }
+        .pill-desc {
+          overflow: hidden;
+          color: #8a96b0;
+          font-size: 11px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        @keyframes agent-spin {
+          to { transform: rotate(360deg); }
+        }
+        @media (max-width: 760px) {
+          .agent-home-container {
+            justify-content: flex-start;
+            padding: 32px 16px;
+          }
+          .agent-home-header h1 {
+            font-size: 25px;
+          }
+          .agent-home-input-wrap,
+          .agent-home-submitted {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .agent-home-polish-btn {
+            justify-content: center;
+          }
+          .agent-home-template-pill {
+            grid-column: auto;
+          }
+          .agent-home-template-pills {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </div>
+  );
+}
+
+function FenixHomeLogo() {
+  return (
+    <svg viewBox="0 0 200 200" aria-hidden="true">
+      <path
+        d="M100 20C130 40 150 70 150 100C150 130 130 160 100 180C70 160 50 130 50 100C50 70 70 40 100 20Z"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="8"
+      />
+      <path d="M70 60Q100 30 130 60" fill="none" stroke="#fff" strokeWidth="5" />
+      <path d="M60 120Q100 160 140 120" fill="none" stroke="#fff" strokeWidth="5" />
+      <rect x="92" y="92" width="16" height="16" rx="2" fill="#fff" transform="rotate(45 100 100)" />
+    </svg>
+  );
+}
+
+function renderAgentTitle(title: string) {
+  const marker = "Agent";
+  const index = title.indexOf(marker);
+  if (index < 0) return title;
+
+  return (
+    <>
+      {title.slice(0, index)}
+      <em>{marker}</em>
+      {title.slice(index + marker.length)}
+    </>
   );
 }

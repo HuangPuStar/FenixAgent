@@ -56,6 +56,27 @@ interface OrgApi {
 
 const api = auth.api as unknown as OrgApi;
 
+/**
+ * 构造 API key metadata。
+ * 普通页面创建的 key 必须继承当前组织和角色，才能在后续纯 API key 的 HTTP 调用里
+ * 从 apikey 记录恢复出一致的组织上下文；仅靠 referenceId 只能定位“归属哪个用户”，
+ * 但无法知道应该以哪个组织、哪个角色访问多租户资源。
+ */
+function buildApiKeyMetadata(
+  metadata: unknown,
+  authContext: { organizationId: string; role: string },
+): Record<string, unknown> {
+  const base =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? { ...(metadata as Record<string, unknown>) }
+      : {};
+  return {
+    ...base,
+    organizationId: authContext.organizationId,
+    role: authContext.role,
+  };
+}
+
 function extractMembers(
   res: unknown,
 ): { id: string; userId: string; role: string; user?: { id: string; name: string; email: string } }[] {
@@ -278,7 +299,7 @@ app.post(
 app.post(
   "/apiKeys",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + dynamic action body
-  async ({ store: _store, body, error, request }: any) => {
+  async ({ store, body, error, request }: any) => {
     const b = body ?? {};
 
     switch (b.action) {
@@ -292,12 +313,21 @@ app.post(
       case "create": {
         if (!b.name)
           return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name required" } });
+        const authContext = store.authContext;
+        if (!authContext) {
+          return error(403, {
+            success: false,
+            error: { code: "FORBIDDEN", message: "No organization context" },
+          });
+        }
+        // API key 本身只是随机凭证；真正的组织/角色语义需要落到 metadata 中，
+        // 这样后续 Bearer key 请求才能在无 session/cookie 的情况下完成多租户鉴权。
         const result = await api.createApiKey({
           body: {
             name: b.name,
             prefix: "rcs_",
             expiresIn: b.expiresAt ? Math.ceil((new Date(b.expiresAt).getTime() - Date.now()) / 1000) : null,
-            metadata: b.metadata ?? null,
+            metadata: buildApiKeyMetadata(b.metadata, authContext),
           },
           headers: request.headers,
         });

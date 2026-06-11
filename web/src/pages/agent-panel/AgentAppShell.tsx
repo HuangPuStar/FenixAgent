@@ -18,7 +18,7 @@ interface AgentAppShellProps {
 export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
   const navigate = useNavigate();
   const { t } = useTranslation("agentPanel");
-  const [_selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(agentId);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId ?? null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -72,13 +72,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
 
   const handleNavigate = useCallback(
     (pageId: string) => {
-      if (pageId === "dashboard") {
-        void navigate({ to: "/" });
-      } else if (pageId === "apikeys") {
-        void navigate({ to: "/agent/apikeys" });
-      } else {
-        void navigate({ to: `/${pageId}` });
-      }
+      void navigate({ to: `/agent/${pageId}` as never });
     },
     [navigate],
   );
@@ -87,6 +81,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
     <div className="agent-panel-layout">
       <AgentSidebar
         activeNav={null}
+        selectedInstanceId={selectedInstanceId}
         onSelectInstance={handleSelectInstance}
         onNavigate={handleNavigate}
         onCreateAgent={() => setCreateDialogOpen(true)}

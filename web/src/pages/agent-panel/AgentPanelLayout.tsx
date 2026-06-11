@@ -16,8 +16,9 @@ export function AgentPanelLayout() {
   });
 
   const activeNav = (() => {
-    const segment = pathname.replace("/ctrl/agent/", "").split("/")[0];
-    if (segment === "chat" || segment === "" || pathname === "/ctrl/agent") return null;
+    const segment = pathname.replace(/^\/agent\/?/, "").split("/")[0];
+    if (segment === "" || segment === "home" || pathname === "/agent") return "home";
+    if (segment === "chat") return null;
     return segment;
   })();
 
