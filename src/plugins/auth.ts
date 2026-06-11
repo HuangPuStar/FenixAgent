@@ -100,7 +100,10 @@ async function tryApiKeyAuth(
   if (result.valid && result.key) {
     // biome-ignore lint/suspicious/noExplicitAny: better-auth API key metadata shape is untyped
     const apiKeyMeta = result.key as any;
-    const userId = apiKeyMeta.userId;
+    // better-auth API key 统一以 referenceId 表示归属主体；当前配置下它就是创建该 key 的用户 ID。
+    // 注意：API key 字符串本身不携带组织信息，这里必须依赖 apikey 记录中的 metadata
+    // 来恢复 organizationId / role，才能让纯 Bearer key 请求通过后续的多租户权限校验。
+    const userId = apiKeyMeta.referenceId;
     const user = await lookupUserById(userId);
     if (user) {
       store.user = user;
@@ -238,7 +241,8 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
           if (_testAuth) {
             store.user = _testAuth.user;
             store.authSession = _testAuth.session;
-            if (_testAuth.authContext) store.authContext = _testAuth.authContext;
+            // 测试注入需要显式覆盖为空，避免前一次请求残留的组织上下文污染当前断言。
+            store.authContext = _testAuth.authContext;
             enrichAlsContext(_testAuth.user, _testAuth.authContext);
             return;
           }
