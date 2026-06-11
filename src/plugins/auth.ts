@@ -149,13 +149,29 @@ export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" })
     "/*",
     async ({ request }) => {
       const url = new URL(request.url);
-      const decryptRoutes = ["/sign-in/email", "/sign-up/email"];
+      const decryptRoutes = ["/sign-in/email", "/sign-up/email", "/change-password"];
       if (request.method === "POST" && decryptRoutes.some((r) => url.pathname.endsWith(r))) {
         try {
           // biome-ignore lint/suspicious/noExplicitAny: request body parsed dynamically
           const body: any = await request.clone().json();
+          let decrypted = false;
           if (body?.password && typeof body.password === "string" && body.password.startsWith("AESGCM:")) {
             body.password = decryptPassword(body.password);
+            decrypted = true;
+          }
+          if (
+            body?.currentPassword &&
+            typeof body.currentPassword === "string" &&
+            body.currentPassword.startsWith("AESGCM:")
+          ) {
+            body.currentPassword = decryptPassword(body.currentPassword);
+            decrypted = true;
+          }
+          if (body?.newPassword && typeof body.newPassword === "string" && body.newPassword.startsWith("AESGCM:")) {
+            body.newPassword = decryptPassword(body.newPassword);
+            decrypted = true;
+          }
+          if (decrypted) {
             return auth.handler(
               new Request(request.url, {
                 method: request.method,
