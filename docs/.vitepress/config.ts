@@ -61,6 +61,7 @@ export default defineConfig({
         {
           text: "使用指南",
           items: [
+            { text: "External API", link: "/developer/guide/external-api" },
             { text: "系统提示词", link: "/developer/guide/system-prompt" },
             { text: "Skill 开发", link: "/developer/guide/skill-development" },
             { text: "多智能体协作", link: "/developer/guide/multi-agent" },

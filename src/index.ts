@@ -20,6 +20,7 @@ import { deriveRequestId, logError, logRequest, logResponse } from "./plugins/lo
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
+import apiAgentsRoutes from "./routes/api/agents";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";
 import sessionIngress from "./routes/v2/session-ingress";
@@ -40,8 +41,119 @@ import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
 
-const OPENAPI_PATH = "/docs/api";
-const OPENAPI_SPEC_PATH = `${OPENAPI_PATH}/json`;
+const API_OPENAPI_PATH = "/docs/openapi/external";
+const API_OPENAPI_SPEC_PATH = `${API_OPENAPI_PATH}/json`;
+const WEB_OPENAPI_PATH = "/docs/openapi/web";
+const WEB_OPENAPI_SPEC_PATH = `${WEB_OPENAPI_PATH}/json`;
+
+const EXTERNAL_OPENAPI_TAGS = [
+  {
+    name: "External AgentConfig",
+    description: "面向外部系统的 Agent 配置 CRUD 接口。",
+  },
+];
+
+const WEB_OPENAPI_TAGS = [
+  {
+    name: "AgentConfig",
+    description: "Agent 配置管理，包括列表查询、详情读取、创建、更新、删除和默认 Agent 设置。",
+  },
+  {
+    name: "ProviderConfig",
+    description: "Provider 配置管理，包括供应商凭证、连接测试和模型条目维护。",
+  },
+  {
+    name: "ModelConfig",
+    description: "模型配置管理，包括当前默认模型设置和可用模型列表刷新。",
+  },
+  {
+    name: "SkillConfig",
+    description: "Skill 配置管理，包括技能查询、编辑、删除与批量上传导入。",
+  },
+  {
+    name: "McpConfig",
+    description: "MCP 服务配置管理，包括服务增删改查、启停、测试和工具检查。",
+  },
+  {
+    name: "Sessions",
+    description: "会话管理与事件历史查询。",
+  },
+  {
+    name: "Environments",
+    description: "Agent 运行环境管理。",
+  },
+  {
+    name: "Instances",
+    description: "Agent 实例的启动、查询与销毁。",
+  },
+  {
+    name: "Control",
+    description: "会话控制接口，包括事件发送、控制指令和中断操作。",
+  },
+  {
+    name: "Files",
+    description: "环境工作区文件管理，包括文件内容读写、文件树、目录操作与批量删除。",
+  },
+  {
+    name: "Auth",
+    description: "认证相关扩展接口，包括会话归属绑定等能力。",
+  },
+  {
+    name: "Branding",
+    description: "品牌展示配置接口，包括品牌名称和 Logo 资源获取。",
+  },
+  {
+    name: "Tasks",
+    description: "定时 HTTP 任务管理与执行日志查询。",
+  },
+  {
+    name: "Organizations",
+    description: "组织、成员和 API Key 管理。",
+  },
+  {
+    name: "Knowledge",
+    description: "知识库与知识资源管理。",
+  },
+  {
+    name: "Channels",
+    description: "IM 通道绑定与消息路由配置。",
+  },
+  {
+    name: "Registry",
+    description: "机器注册表管理，包括机器列表、详情与事件历史查询。",
+  },
+  {
+    name: "Meta Agent",
+    description: "Meta Agent 自举与运行环境确保接口。",
+  },
+  {
+    name: "Hindsight",
+    description: "Hindsight 记忆服务状态查询与相关能力入口。",
+  },
+  {
+    name: "ACP",
+    description: "ACP 机器接入、Relay 中继与 Agent 列表查询接口。",
+  },
+  {
+    name: "Code Session",
+    description: "Code Session、Worker 状态同步、Bridge 接入与 Session Ingress 相关接口。",
+  },
+  {
+    name: "Workflow Engine",
+    description: "原生 DAG 工作流执行引擎相关接口。",
+  },
+];
+
+const EXTERNAL_DOC_TAG_NAMES = EXTERNAL_OPENAPI_TAGS.map((tag) => tag.name);
+const WEB_DOC_TAG_NAMES = WEB_OPENAPI_TAGS.map((tag) => tag.name);
+
+const DOC_EXCLUDED_PATHS: Array<string | RegExp> = [
+  "/health",
+  API_OPENAPI_PATH,
+  API_OPENAPI_SPEC_PATH,
+  WEB_OPENAPI_PATH,
+  WEB_OPENAPI_SPEC_PATH,
+];
 
 await initDb();
 startupLog.info("Database initialized");
@@ -101,109 +213,50 @@ const app = new Elysia()
     openapi({
       documentation: {
         info: {
-          title: "Fenix API",
+          title: "Fenix External API",
           version: config.version,
-          description: "Fenix API 文档。",
+          description: "面向外部系统的 API 文档。",
         },
-        tags: [
-          {
-            name: "AgentConfig",
-            description: "Agent 配置管理，包括列表查询、详情读取、创建、更新、删除和默认 Agent 设置。",
-          },
-          {
-            name: "ProviderConfig",
-            description: "Provider 配置管理，包括供应商凭证、连接测试和模型条目维护。",
-          },
-          {
-            name: "ModelConfig",
-            description: "模型配置管理，包括当前默认模型设置和可用模型列表刷新。",
-          },
-          {
-            name: "SkillConfig",
-            description: "Skill 配置管理，包括技能查询、编辑、删除与批量上传导入。",
-          },
-          {
-            name: "McpConfig",
-            description: "MCP 服务配置管理，包括服务增删改查、启停、测试和工具检查。",
-          },
-          {
-            name: "Sessions",
-            description: "会话管理与事件历史查询。",
-          },
-          {
-            name: "Environments",
-            description: "Agent 运行环境管理。",
-          },
-          {
-            name: "Instances",
-            description: "Agent 实例的启动、查询与销毁。",
-          },
-          {
-            name: "Control",
-            description: "会话控制接口，包括事件发送、控制指令和中断操作。",
-          },
-          {
-            name: "Files",
-            description: "环境工作区文件管理，包括文件内容读写、文件树、目录操作与批量删除。",
-          },
-          {
-            name: "Auth",
-            description: "认证相关扩展接口，包括会话归属绑定等能力。",
-          },
-          {
-            name: "Branding",
-            description: "品牌展示配置接口，包括品牌名称和 Logo 资源获取。",
-          },
-          { name: "Tasks", description: "定时 HTTP 任务管理与执行日志查询。" },
-          {
-            name: "Organizations",
-            description: "组织、成员和 API Key 管理。",
-          },
-          {
-            name: "Knowledge",
-            description: "知识库与知识资源管理。",
-          },
-          { name: "Channels", description: "IM 通道绑定与消息路由配置。" },
-          {
-            name: "Registry",
-            description: "机器注册表管理，包括机器列表、详情与事件历史查询。",
-          },
-          {
-            name: "Meta Agent",
-            description: "Meta Agent 自举与运行环境确保接口。",
-          },
-          {
-            name: "Hindsight",
-            description: "Hindsight 记忆服务状态查询与相关能力入口。",
-          },
-          {
-            name: "ACP",
-            description: "ACP 机器接入、Relay 中继与 Agent 列表查询接口。",
-          },
-          {
-            name: "Code Session",
-            description: "Code Session、Worker 状态同步、Bridge 接入与 Session Ingress 相关接口。",
-          },
-          {
-            name: "Workflow Engine",
-            description: "原生 DAG 工作流执行引擎相关接口。",
-          },
-        ],
+        tags: EXTERNAL_OPENAPI_TAGS,
       },
       provider: "scalar",
       scalar: {
-        // 显式指定 JSON 地址，避免 UI 在嵌套路径下拼错相对地址。
-        url: OPENAPI_SPEC_PATH,
+        url: API_OPENAPI_SPEC_PATH,
       },
       mapJsonSchema: {
-        // 让 Zod 模型直接输出成 OpenAPI 可消费的 JSON Schema。
         zod: z.toJSONSchema,
       },
       exclude: {
-        paths: ["/health", /^\/ctrl\/.*/],
+        paths: DOC_EXCLUDED_PATHS,
+        tags: WEB_DOC_TAG_NAMES,
       },
-      path: OPENAPI_PATH,
-      specPath: OPENAPI_SPEC_PATH,
+      path: API_OPENAPI_PATH,
+      specPath: API_OPENAPI_SPEC_PATH,
+    }),
+  )
+  .use(
+    openapi({
+      documentation: {
+        info: {
+          title: "Fenix Web API",
+          version: config.version,
+          description: "控制台内部 /web 及平台接口文档。",
+        },
+        tags: WEB_OPENAPI_TAGS,
+      },
+      provider: "scalar",
+      scalar: {
+        url: WEB_OPENAPI_SPEC_PATH,
+      },
+      mapJsonSchema: {
+        zod: z.toJSONSchema,
+      },
+      exclude: {
+        paths: DOC_EXCLUDED_PATHS,
+        tags: EXTERNAL_DOC_TAG_NAMES,
+      },
+      path: WEB_OPENAPI_PATH,
+      specPath: WEB_OPENAPI_SPEC_PATH,
     }),
   )
   .derive(deriveRequestId)
@@ -269,6 +322,8 @@ const app = new Elysia()
   .use(v2WorkerEventsStream)
   // Web control panel routes
   .use(webApp)
+  // External API routes
+  .use(apiAgentsRoutes)
   // Workflow proxy (not under /web prefix)
   .use(workflowStaticApp)
   // MCP routes

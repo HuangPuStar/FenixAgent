@@ -38,7 +38,7 @@ app.post(
       return error(500, configError("LLM_ERROR", "Failed to generate agent configuration"));
     }
   },
-  { sessionAuth: true, body: "generation-body", detail: { tags: ["Agent"], summary: "Agent 智能生成" } },
+  { sessionAuth: true, body: "generation-body", detail: { tags: ["AgentConfig"], summary: "Agent 智能生成" } },
 );
 
 export default app;
