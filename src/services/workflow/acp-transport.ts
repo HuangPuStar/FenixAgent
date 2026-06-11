@@ -328,12 +328,20 @@ class AcpTransport implements Transport {
 
     try {
       // 阶段 1：等待 agent 初始化完成（status { connected: true }）
+      const t0 = Date.now();
       await readyPromise;
+      console.error(`[workflow] ACP agent ready: agentId=${agentId} elapsed=${Date.now() - t0}ms`);
 
       // 阶段 2：发 session/new → 等待 JSON-RPC response
+      const t1 = Date.now();
       const sessionId = await this.createNewSession(channel, protocol, agentId, options?.cwd);
+      console.error(
+        `[workflow] ACP session/new done: agentId=${agentId} sessionId=${sessionId} elapsed=${Date.now() - t1}ms`,
+      );
 
-      console.error(`[workflow] ACP session created: agentId=${agentId} sessionId=${sessionId}`);
+      console.error(
+        `[workflow] ACP connect SUCCESS: agentId=${agentId} sessionId=${sessionId} total=${Date.now() - t0}ms`,
+      );
       return new AcpAgentSession(channel, sessionId, protocol);
     } catch (err) {
       console.error(`[workflow] ACP connect FAILED: agentId=${agentId}`, err);
