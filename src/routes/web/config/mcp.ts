@@ -350,7 +350,7 @@ app.post(
       return error(500, { success: false, error: { code: "CONFIG_READ_ERROR", message } });
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "MCP 服务器配置管理" } },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["McpConfig"], summary: "MCP 服务器配置管理" } },
 );
 
 export default app;
