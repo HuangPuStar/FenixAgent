@@ -7,7 +7,7 @@ import {
 } from "../../schemas/instance.schema";
 import { getCoreRuntime } from "../../services/core-bootstrap";
 import { getOwnedEnvironment } from "../../services/environment";
-import { spawnInstanceFromEnvironment, stopInstance } from "../../services/instance";
+import { spawnInstanceFromEnvironment, stopInstance, toInstanceInfo } from "../../services/instance";
 
 const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
   "delete-instance-response": DeleteInstanceResponseSchema,
@@ -34,7 +34,7 @@ app.post(
     }
 
     const instance = await spawnInstanceFromEnvironment(user.id, b.environmentId);
-    return { success: true as const, data: instance };
+    return { success: true as const, data: toInstanceInfo(instance) };
   },
   {
     sessionAuth: true,
