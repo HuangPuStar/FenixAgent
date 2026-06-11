@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { envApi } from "../../../../src/api/sdk";
+import { extractChangedFiles } from "../../../../src/lib/extract-changed-files";
 import type { ThreadEntry } from "../../../../src/lib/types";
 import { StatusHeader } from "../../../components/agent-panel/StatusHeader";
 
@@ -29,6 +30,9 @@ function ChatWithSessionRoute() {
   const [stats, setStats] = useState<{ agentName?: string; modelName?: string; entries: ThreadEntry[] }>({
     entries: [],
   });
+
+  // 从 entries 派生变更文件列表，实时跟随对话更新
+  const changedFiles = useMemo(() => extractChangedFiles(stats.entries), [stats.entries]);
 
   useEffect(() => {
     const handler = (e: Event) => setStats((e as CustomEvent).detail);
@@ -66,6 +70,7 @@ function ChatWithSessionRoute() {
           collapsed={artifactsCollapsed}
           onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
           envId={agentId}
+          changedFiles={changedFiles}
         />
         {artifactsCollapsed && (
           <button

@@ -91,9 +91,13 @@ export function buildCcbRuntimeConfig(
     // claude 使用 ANTHROPIC_AUTH_TOKEN 或 OPENAI_API_KEY
     if (model.protocol === "anthropic") {
       env.ANTHROPIC_AUTH_TOKEN = model.apiKey;
+      // CCB 同时读取 ANTHROPIC_API_KEY，多写一份确保兼容
+      env.ANTHROPIC_API_KEY = model.apiKey;
       if (model.baseUrl) env.ANTHROPIC_BASE_URL = model.baseUrl;
     } else {
       env.OPENAI_API_KEY = model.apiKey;
+      // CCB 需要此标志来启用 OpenAI 协议
+      env.CLAUDE_CODE_USE_OPENAI = "1";
       if (model.baseUrl) env.OPENAI_BASE_URL = model.baseUrl;
     }
   }

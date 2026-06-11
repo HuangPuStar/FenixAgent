@@ -4,18 +4,22 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { ChangedFilesSection } from "../../components/agent-panel/ChangedFilesSection";
 import { FileTreeTab, type FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
 import { PreviewTab } from "../../components/agent-panel/PreviewTab";
 import { useResizable } from "../../hooks/useResizable";
 import { NS } from "../../i18n";
+import type { ChangedFile } from "../../lib/extract-changed-files";
 
 interface ArtifactsPanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   envId: string | null;
+  /** 本次会话中被 Agent 修改的文件列表，已去重排序，含操作类型 */
+  changedFiles?: ChangedFile[];
 }
 
-export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ collapsed, onToggleCollapse, envId, changedFiles = [] }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
@@ -211,13 +215,16 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId }: Artifacts
             </span>
           </div>
 
-          <div className="flex-1 min-h-0">
-            <FileTreeTab
-              ref={fileTreeRef}
-              envId={envId}
-              onPreviewFile={handlePreviewFile}
-              onReferenceFile={handleReferenceFile}
-            />
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0">
+              <FileTreeTab
+                ref={fileTreeRef}
+                envId={envId}
+                onPreviewFile={handlePreviewFile}
+                onReferenceFile={handleReferenceFile}
+              />
+            </div>
+            <ChangedFilesSection files={changedFiles} />
           </div>
         </div>
 

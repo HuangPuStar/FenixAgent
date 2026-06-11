@@ -12,6 +12,38 @@ import { getMachine, listEvents, listMachines } from "../../services/registry";
 
 const logger = createLogger("registry");
 
+/**
+ * 将 Date 转为秒级 Unix 时间戳；null/undefined 原样透传。
+ * DB 层返回的是 Date 对象，但响应 schema 要求 number（秒级时间戳）。
+ */
+function toUnixSeconds(value: Date | null | undefined): number | null {
+  if (!value) return null;
+  return Math.floor(value.getTime() / 1000);
+}
+
+/**
+ * 序列化机器记录：把所有 Date 字段转为秒级时间戳，匹配响应 schema。
+ */
+function serializeMachine<T extends Record<string, unknown>>(row: T): T {
+  return {
+    ...row,
+    lastHeartbeatAt: toUnixSeconds(row.lastHeartbeatAt as Date | null | undefined),
+    registeredAt: toUnixSeconds(row.registeredAt as Date | null | undefined),
+    createdAt: toUnixSeconds(row.createdAt as Date | null | undefined),
+    updatedAt: toUnixSeconds(row.updatedAt as Date | null | undefined),
+  } as T;
+}
+
+/**
+ * 序列化事件记录：把 createdAt 从 Date 转为秒级时间戳。
+ */
+function serializeEvent<T extends Record<string, unknown>>(row: T): T {
+  return {
+    ...row,
+    createdAt: toUnixSeconds(row.createdAt as Date | null | undefined),
+  } as T;
+}
+
 const app = new Elysia({ name: "web-registry" }).use(authGuardPlugin).model({
   "event-query": EventQuerySchema,
   "machine-list-response": MachineListResponseSchema,
@@ -48,7 +80,7 @@ app.get(
         limit,
         offset,
       });
-      return { data: result.data, total: result.total };
+      return { data: result.data.map(serializeMachine), total: Number(result.total) };
     } catch (err: unknown) {
       logger.error("Failed to list machines", err);
       return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });
@@ -76,7 +108,12 @@ app.get(
       if (!result) {
         return error(404, { error: { type: "NOT_FOUND", message: "Machine not found" } });
       }
-      return { data: result };
+      return {
+        data: {
+          ...serializeMachine(result),
+          recentEvents: result.recentEvents.map(serializeEvent),
+        },
+      };
     } catch (err: unknown) {
       logger.error("Failed to get machine", err);
       return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });
@@ -103,7 +140,7 @@ app.get(
     const offset = q.offset ? Number(q.offset) : 0;
     try {
       const result = await listEvents(authCtx, params.id, { limit, offset });
-      return { data: result.data, total: result.total };
+      return { data: result.data.map(serializeEvent), total: Number(result.total) };
     } catch (err: unknown) {
       logger.error("Failed to list machine events", err);
       return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });

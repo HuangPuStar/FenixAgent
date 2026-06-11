@@ -1,4 +1,5 @@
-import { Copy, Plus, Shield, ShieldCheck, Trash2, User, UserPlus } from "lucide-react";
+import type { MachineRecord } from "@fenix/sdk";
+import { Copy, Monitor, Plus, RefreshCw, Shield, ShieldCheck, Trash2, User, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -17,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { orgApi } from "@/src/api/sdk";
+import { orgApi, registryApi } from "@/src/api/sdk";
 import { useOrg } from "../../../contexts/OrgContext";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -80,6 +81,25 @@ export function AgentOrganizationsPage() {
 
   const [copiedId, setCopiedId] = useState(false);
 
+  // 机器列表：跟随当前选中组织加载，展示该组织下注册的远程节点
+  const [machines, setMachines] = useState<MachineRecord[]>([]);
+  const [machinesLoading, setMachinesLoading] = useState(false);
+  const [machinesError, setMachinesError] = useState<string | null>(null);
+
+  const loadMachines = useCallback(async () => {
+    setMachinesLoading(true);
+    setMachinesError(null);
+    const { data, error } = await registryApi.list({ limit: 50 });
+    if (error) {
+      console.error(error);
+      setMachinesError(t("toast.loadDetailFailed"));
+      setMachines([]);
+    } else {
+      setMachines(data?.data ?? []);
+    }
+    setMachinesLoading(false);
+  }, [t]);
+
   const handleCopyId = useCallback(() => {
     if (!selectedOrgId) return;
     navigator.clipboard.writeText(selectedOrgId);
@@ -130,6 +150,15 @@ export function AgentOrganizationsPage() {
       })
       .finally(() => setLoading(false));
   }, [selectedOrgId, t]);
+
+  // 跟随组织切换加载机器列表
+  useEffect(() => {
+    if (selectedOrgId) {
+      loadMachines();
+    } else {
+      setMachines([]);
+    }
+  }, [selectedOrgId, loadMachines]);
 
   const selectedOrgRole = myOrgs.find((o) => o.id === selectedOrgId)?.role;
   const canManage = selectedOrgRole === "owner" || selectedOrgRole === "admin";
@@ -407,6 +436,63 @@ export function AgentOrganizationsPage() {
                     </div>
                   ))}
                   {members.length === 0 && <p className="text-sm text-text-dim text-center py-4">{t("noMembers")}</p>}
+                </div>
+              </div>
+
+              {/* Machines */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-text-primary">
+                    {t("machines", { count: machines.length })}
+                  </h3>
+                  <Button size="sm" variant="outline" onClick={loadMachines} disabled={machinesLoading}>
+                    <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${machinesLoading ? "animate-spin" : ""}`} />
+                    {machinesLoading ? t("machineRefreshing") : t("machineRefresh")}
+                  </Button>
+                </div>
+                <div className="grid gap-2">
+                  {machines.map((m) => {
+                    const isOnline = m.status === "online";
+                    const hostname = m.machineInfo?.hostname ?? m.agentName;
+                    return (
+                      <div
+                        key={m.id}
+                        className="group flex items-center gap-3 rounded-lg border border-border-light bg-surface-1 px-4 py-2.5"
+                      >
+                        <Monitor className="w-4 h-4 text-text-dim shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-text-bright truncate">{m.name ?? hostname}</span>
+                            <Badge variant={isOnline ? "default" : "outline"}>
+                              {t(`machineStatus.${isOnline ? "online" : "offline"}`)}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 mt-0.5 text-xs text-text-dim">
+                            <span>
+                              {t("machineAgent")}: <code className="font-mono">{m.agentName}</code>
+                            </span>
+                            {hostname && (
+                              <span>
+                                {t("machineHost")}: {hostname}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {m.labels && m.labels.length > 0 && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            {m.labels.map((l) => (
+                              <Badge key={l} variant="secondary" className="text-[10px]">
+                                {l}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {machines.length === 0 && !machinesLoading && (
+                    <p className="text-sm text-text-dim text-center py-4">{t("noMachines")}</p>
+                  )}
                 </div>
               </div>
 

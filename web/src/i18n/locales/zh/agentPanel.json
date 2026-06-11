@@ -66,5 +66,10 @@
   "metaAgentFailed": "启动 Meta Agent 失败",
   "cancel": "取消",
   "remoteNode": "远程",
-  "memories": "记忆"
+  "memories": "记忆",
+  "changedFiles": {
+    "title": "变更文件",
+    "count_one": "{{count}} 个文件",
+    "count_other": "{{count}} 个文件"
+  }
 }

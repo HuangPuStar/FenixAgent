@@ -18,6 +18,19 @@
   "members": "Members ({{count}})",
   "inviteMember": "Add Member",
   "noMembers": "No members yet",
+  "machines": "Machines ({{count}})",
+  "noMachines": "No machines yet",
+  "machineStatus": {
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "machineAgent": "Agent",
+  "machineHost": "Host",
+  "machineLabels": "Labels",
+  "machineLastSeen": "Last Heartbeat",
+  "machineNever": "Never",
+  "machineRefresh": "Refresh",
+  "machineRefreshing": "Refreshing...",
   "table": {
     "user": "User",
     "role": "Role",

@@ -61,11 +61,12 @@ if (args.length === 0) {
 // 确定 WS URL
 const wsUrl = RCS_URL || `ws://${RCS_HOST}:${RCS_PORT}`;
 
-// 健康检查
+// 健康检查：只验证服务可达，不依赖特定路径返回 2xx
 const httpUrl = wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:");
 try {
-  const res = await fetch(`${httpUrl}/docs/api`);
-  if (!res.ok) throw new Error(`status ${res.status}`);
+  const res = await fetch(httpUrl, { redirect: "manual" });
+  // 任何 HTTP 响应（含 3xx/4xx）都说明服务在线，只有网络错误才视为不可达
+  if (res.status === 0) throw new Error("no response");
 } catch {
   console.error(`RCS (${wsUrl}) 未响应，请先启动 RCS`);
   process.exit(1);
