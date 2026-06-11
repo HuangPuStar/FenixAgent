@@ -139,8 +139,24 @@ const app = new Elysia()
         },
         tags: [
           {
-            name: "Config",
-            description: "配置管理，包括 Provider、模型、Agent、Skill 和 MCP 服务配置。",
+            name: "AgentConfig",
+            description: "Agent 配置管理，包括列表查询、详情读取、创建、更新、删除和默认 Agent 设置。",
+          },
+          {
+            name: "ProviderConfig",
+            description: "Provider 配置管理，包括供应商凭证、连接测试和模型条目维护。",
+          },
+          {
+            name: "ModelConfig",
+            description: "模型配置管理，包括当前默认模型设置和可用模型列表刷新。",
+          },
+          {
+            name: "SkillConfig",
+            description: "Skill 配置管理，包括技能查询、编辑、删除与批量上传导入。",
+          },
+          {
+            name: "McpConfig",
+            description: "MCP 服务配置管理，包括服务增删改查、启停、测试和工具检查。",
           },
           {
             name: "Sessions",
