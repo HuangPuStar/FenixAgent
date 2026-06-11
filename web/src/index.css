@@ -486,3 +486,8 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
     transition-duration: 0.01ms;
   }
 }
+
+/* 隐藏 streamdown 渲染的代码块头部（由 Agent 消息 markdown 产生） */
+[data-streamdown="code-block-header"] {
+  display: none;
+}
