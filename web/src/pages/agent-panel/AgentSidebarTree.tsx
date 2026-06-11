@@ -370,14 +370,14 @@ export function AgentSidebarTree({
 
   if (treeNodes.length === 0) {
     return (
-      <div className="px-4 py-4 text-center">
+      <div className="agent-sidebar-empty px-4 py-4 text-center">
         <Bot className="h-8 w-8 mx-auto mb-2 text-text-muted opacity-30" />
         <p className="text-xs text-text-muted mb-3">{t("noAgents")}</p>
         {onCreateAgent && (
           <button
             type="button"
             onClick={onCreateAgent}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+            className="agent-sidebar-create-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             {t("createAgent")}
@@ -388,7 +388,7 @@ export function AgentSidebarTree({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto py-2 space-y-2">
+    <div className="agent-sidebar-tree flex-1 overflow-y-auto py-2">
       <div className="flex items-center justify-between px-4 pt-1 pb-2">
         <span className="agent-tree-section-title">{t("agents")}</span>
         <div className="flex items-center gap-1">
@@ -404,7 +404,7 @@ export function AgentSidebarTree({
               type="button"
               onClick={onCreateAgent}
               title={t("createAgent")}
-              className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-surface-hover cursor-pointer transition-colors text-text-dim hover:text-text-primary"
+              className="agent-sidebar-icon-btn w-6 h-6 flex items-center justify-center rounded-md hover:bg-surface-hover cursor-pointer transition-colors text-text-dim hover:text-text-primary"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -442,24 +442,26 @@ export function AgentSidebarTree({
         const collapsed = !expandedAgents[agent.id];
         const isEntering = enteringAgentId === agent.id;
         const runningInstances = getRunningInstances(node);
+        const isAgentSelected = instances.some((inst) => inst.id === selectedInstanceId);
         const isRestarting = runningInstances.some((inst) => restartingIds.has(inst.id));
         const writable = isAgentWritable(agent);
         const displayName = getAgentDisplayName(agent);
 
         return (
-          <div key={agent.id} className="group relative mx-2">
+          <div key={agent.id} className="agent-sidebar-agent group relative">
             {/* 卡片主体 */}
             <button
               type="button"
               disabled={isEntering}
               onClick={() => handleEnterAgent(node)}
               className={[
-                "flex items-center gap-2.5 w-full p-2.5",
+                "agent-sidebar-agent-card flex items-center gap-2.5 w-full",
                 "border border-border-subtle rounded-[10px] bg-surface-1",
                 "cursor-pointer text-left font-[inherit]",
                 "transition-all duration-150",
                 "hover:bg-surface-hover hover:border-border-default hover:shadow-sm",
                 "disabled:opacity-60 disabled:cursor-not-allowed",
+                isAgentSelected ? "active" : "",
               ].join(" ")}
             >
               {/* 头像 */}
@@ -478,7 +480,7 @@ export function AgentSidebarTree({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <div className="text-[13px] font-semibold text-text-primary truncate">{displayName}</div>
-                  <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
+                  <span className="agent-sidebar-badge rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
                     {tComponents(getAgentAccessBadgeKey(agent))}
                   </span>
                 </div>
@@ -500,7 +502,7 @@ export function AgentSidebarTree({
             </button>
 
             {/* 悬浮操作栏 */}
-            <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="agent-sidebar-actions absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"
                 className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
@@ -563,7 +565,7 @@ export function AgentSidebarTree({
                         <div
                           key={inst.id}
                           className={[
-                            "group flex items-center gap-2 px-3 py-1.5 ml-2 text-[13px] rounded-md cursor-pointer transition-colors",
+                            "agent-sidebar-instance group flex items-center gap-2 px-3 py-1.5 ml-2 text-[13px] rounded-md cursor-pointer transition-colors",
                             selectedInstanceId === inst.id
                               ? "bg-brand-subtle text-brand"
                               : "text-text-primary hover:bg-surface-hover",
@@ -607,7 +609,7 @@ export function AgentSidebarTree({
                   disabled={isEntering}
                   onClick={() => handleEnterAgent(node, { spawnNew: true })}
                   title={t("newInstance")}
-                  className="flex items-center gap-1.5 px-3 py-1 ml-2 text-[13px] text-text-dim cursor-pointer border-none rounded-md bg-transparent hover:bg-surface-hover hover:text-text-secondary transition-colors whitespace-nowrap"
+                  className="agent-sidebar-new-instance flex items-center gap-1.5 px-3 py-1 ml-2 text-[13px] text-text-dim cursor-pointer border-none rounded-md bg-transparent hover:bg-surface-hover hover:text-text-secondary transition-colors whitespace-nowrap"
                 >
                   <Plus className="w-3.5 h-3.5 shrink-0" />
                   <span>{t("newInstance")}</span>
