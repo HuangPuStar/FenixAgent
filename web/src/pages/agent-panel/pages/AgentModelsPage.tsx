@@ -214,22 +214,12 @@ export function AgentModelsPage() {
   const handleOpenEdit = (provider: ProviderInfo) => {
     setEditingProvider(provider);
     setFormName(provider.id);
+    setFormApiKey("");
     setFormBaseURL(provider.baseURL ?? "");
     setFormProtocol(provider.protocol);
     setFormDisplayName(provider.name !== provider.id ? provider.name : "");
-    setFormApiKey("");
     resetFormModelState();
     setDialogOpen(true);
-    // 异步获取完整 provider 数据填充 API Key 等保存字段
-    const providerKey = getProviderKey(provider);
-    void providerApi.get(providerKey).then((response) => {
-      if (response?.data?.options?.apiKey) {
-        setFormApiKey(response.data.options.apiKey as string);
-      }
-      if (response?.data?.options?.baseURL) {
-        setFormBaseURL(response.data.options.baseURL as string);
-      }
-    });
   };
 
   const handleSave = async () => {
@@ -346,7 +336,9 @@ export function AgentModelsPage() {
       setFormAvailableModels(modelIds);
       setFormModelsFetched(true);
 
-      // 不自动勾选任何模型，由用户手动选择
+      // 已存在的模型默认选中
+      const existingIds = new Set((providerModels[formName] ?? []).map((m) => m.id));
+      setFormSelectedModels(existingIds);
     } catch {
       setFormAvailableModels([]);
       setFormModelsFetched(true);
@@ -698,23 +690,19 @@ export function AgentModelsPage() {
                           {tComponents(getProviderResourceBadgeKey(provider))}
                         </span>
                       </div>
-                      {writable && (
-                        <label
-                          className="mt-3 flex items-center gap-2 text-xs text-text-muted"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <Switch
-                            checked={Boolean(provider.resourceAccess?.publicReadable)}
-                            disabled={
-                              sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true
-                            }
-                            onCheckedChange={() =>
-                              void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
-                            }
-                          />
-                          {tComponents("resource.public")}
-                        </label>
-                      )}
+                      <label
+                        className="mt-3 flex items-center gap-2 text-xs text-text-muted"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Switch
+                          checked={Boolean(provider.resourceAccess?.publicReadable)}
+                          disabled={sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true}
+                          onCheckedChange={() =>
+                            void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
+                          }
+                        />
+                        {tComponents("resource.public")}
+                      </label>
                       {!writable && (
                         <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
                       )}

@@ -153,7 +153,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
  */
 function normalizeProviderBaseUrl(baseUrl: string | null | undefined, protocol: "openai" | "anthropic"): string {
   const fallback = protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com";
-  return (baseUrl || fallback).replace(/\/+$/, "");
+  return (baseUrl ?? fallback).replace(/\/+$/, "");
 }
 
 /**
@@ -380,7 +380,7 @@ async function handleTest(
   if (inline?.apiKey || inline?.baseURL) {
     // inline 模式：直接使用传入的凭证，不查 DB（用于表单内预览模型列表）
     apiKey = inline.apiKey ?? "";
-    baseURL = normalizeProviderBaseUrl(inline.baseURL, inline.protocol ?? "openai");
+    baseURL = inline.baseURL ? normalizeProviderBaseUrl(inline.baseURL, inline.protocol ?? "openai") : "";
     protocol = inline.protocol === "anthropic" ? "anthropic" : "openai";
   } else {
     // 标准模式：从已保存的 provider 加载凭证
