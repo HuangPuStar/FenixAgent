@@ -70,8 +70,8 @@ export function setChannelFactory(factory: ChannelFactory | null): void {
 
 /** 等待 agent 进程初始化完成（connect → status）的最大时间 */
 const AGENT_INIT_TIMEOUT_MS = 120_000;
-/** session/new JSON-RPC 握手超时 */
-const NEW_SESSION_TIMEOUT_MS = 30_000;
+/** session/new JSON-RPC 握手超时（agent 冷启动可能需要加载模型、连接 MCP） */
+const NEW_SESSION_TIMEOUT_MS = 120_000;
 /** session/prompt 执行超时 */
 const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -133,9 +133,9 @@ class AcpAgentSession implements AgentSession {
 
         // 发送 session/prompt JSON-RPC 请求
         const promptId = nextRpcId();
+        // 字段名必须用 content（与 acp-link server handlePrompt 的 params.content 对齐）
         const promptReq = createRequest(METHOD.SESSION_PROMPT, {
-          sessionId: this.sessionId,
-          prompt: [{ type: "text", text: request.prompt }],
+          content: [{ type: "text", text: request.prompt }],
         });
 
         // 监听 JSON-RPC 响应（匹配 prompt 请求 id）
