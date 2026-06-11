@@ -16,20 +16,18 @@ export function WorkflowMetaPopover({ open, onOpenChange, readOnly, meta, update
   const { t } = useTranslation("workflows");
 
   return (
-    <div className="wf-meta-popover-anchor">
-      <Popover open={open} onOpenChange={onOpenChange}>
-        <PopoverTrigger asChild>
-          <button type="button" className="wf-meta-trigger-btn" title={t("editor.meta_settings")}>
-            <Settings size={14} />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent side="top" align="end" sideOffset={8} collisionPadding={16} className="wf-meta-popover">
-          <div className="wf-popover-header">
-            <span className="wf-popover-title">{t("editor.meta_settings")}</span>
-          </div>
-          <WorkflowMetaCard readOnly={readOnly} meta={meta} updateMeta={updateMeta} />
-        </PopoverContent>
-      </Popover>
-    </div>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <button type="button" className="wf-meta-trigger-btn" title={t("editor.meta_settings")}>
+          <Settings size={14} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" sideOffset={8} collisionPadding={16} className="wf-meta-popover">
+        <div className="wf-popover-header">
+          <span className="wf-popover-title">{t("editor.meta_settings")}</span>
+        </div>
+        <WorkflowMetaCard readOnly={readOnly} meta={meta} updateMeta={updateMeta} />
+      </PopoverContent>
+    </Popover>
   );
 }

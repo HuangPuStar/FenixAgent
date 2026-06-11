@@ -127,7 +127,15 @@ export function AgentHomePage() {
       // 刷新左侧智能体列表
       dispatchConfigChange("agents");
 
-      // 3. 创建 environment（autoStart: true 自动启动实例）
+      // 3. 查找是否已有绑定该 agentConfigId 的 environment，有则直接复用
+      const { data: envList } = await envApi.list();
+      const existingEnv = (Array.isArray(envList) ? envList : []).find((e) => e.agent_config_id === agentConfigId);
+      if (existingEnv) {
+        void navigate({ to: "/agent/chat/$agentId", params: { agentId: existingEnv.id } });
+        return;
+      }
+
+      // 4. 没有则创建新 environment（autoStart: true 自动启动实例）
       const { data: newEnv } = await envApi.create({
         name: `env-${agentConfigId.slice(0, 8)}`,
         agentConfigId,
@@ -139,7 +147,7 @@ export function AgentHomePage() {
         return;
       }
 
-      // 4. 跳转聊天页（路由参数是 environment ID）
+      // 5. 跳转聊天页（路由参数是 environment ID）
       void navigate({ to: "/agent/chat/$agentId", params: { agentId: envId } });
     },
     [navigate, t],

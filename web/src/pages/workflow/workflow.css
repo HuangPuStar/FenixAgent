@@ -450,20 +450,17 @@
   padding: 4px 0;
 }
 
-/* ── Meta Popover Anchor (bottom-right) ── */
-.wf-meta-popover-anchor {
+/* ── Bottom-right Actions Group ── */
+.wf-bottom-actions {
   position: absolute;
   bottom: 12px;
   right: 12px;
   z-index: 5;
+  display: flex;
+  gap: 8px;
 }
 
-.wf-run-popover-anchor {
-  position: absolute;
-  bottom: 12px;
-  right: 52px;
-  z-index: 5;
-}
+/* wf-meta-popover-anchor 和 wf-run-popover-anchor 的定位已由 wf-bottom-actions 管理 */
 
 .wf-meta-trigger-btn {
   display: flex;
