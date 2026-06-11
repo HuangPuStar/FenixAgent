@@ -100,9 +100,10 @@ class AcpAgentSession implements AgentSession {
     const chunks: string[] = [];
     const collectedMessages: AgentMessage[] = [];
 
-    if (request.signal?.aborted) {
-      throw new DOMException("Request aborted", "AbortError");
-    }
+    // 不在入口处检查 signal.aborted — connect() 可能耗时较长，
+    // 导致 DAG 级超时在 connect 阶段触发但 signal 在 execute 入口才被发现。
+    // prompt 仍会被发送，abort listener（下方 ~line 224）负责取消。
+    console.error(`[workflow] ACP execute start: sessionId=${this.sessionId} signalAborted=${request.signal?.aborted}`);
 
     // 监听 session/update notification 收集流式输出
     const updateHandler = (payload: ProtocolEvents["session_update"]): void => {
