@@ -332,7 +332,21 @@
     "history_earlier": "更早",
     "history_empty": "暂无对话记录",
     "history_loading": "加载中...",
-    "history_untitled": "新对话"
+    "history_untitled": "新对话",
+    "tooltip_version_indicator": "版本状态与预览",
+    "vi_status_draft": "正在编辑草稿",
+    "vi_status_preview": "正在预览 v{{version}}",
+    "vi_badge_draft": "草稿",
+    "vi_back_to_draft": "返回草稿",
+    "vi_preview": "预览",
+    "vi_set_latest": "设为最新",
+    "vi_restore_to_draft": "恢复为草稿",
+    "vi_restore_confirm": "将 v{{version}} 的内容恢复到草稿？当前草稿将被覆盖。",
+    "vi_view_all": "查看全部版本",
+    "vi_no_versions": "暂无发布版本",
+    "vi_no_versions_hint": "发布后创建第一个版本",
+    "vi_latest_badge": "latest: v{{version}}",
+    "vi_preview_mode": "预览中"
   },
   "run_params": {
     "title": "运行参数",

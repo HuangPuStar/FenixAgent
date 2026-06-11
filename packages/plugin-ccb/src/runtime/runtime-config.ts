@@ -84,6 +84,8 @@ export function buildCcbRuntimeConfig(
   // 环境变量：注入 model 的 apiKey / baseUrl
   const env: Record<string, string> = {};
   const { model } = launchSpec;
+  // 对齐 opencode：优先用 modelName，fallback 到 model
+  const effectiveModelName = model.modelName ?? model.model;
 
   if (model.apiKey) {
     // claude 使用 ANTHROPIC_AUTH_TOKEN 或 OPENAI_API_KEY
@@ -96,8 +98,8 @@ export function buildCcbRuntimeConfig(
     }
   }
 
-  if (model.modelName) {
-    env.ANTHROPIC_MODEL = model.modelName;
+  if (effectiveModelName) {
+    env.ANTHROPIC_MODEL = effectiveModelName;
   }
 
   // 额外环境变量
@@ -110,9 +112,12 @@ export function buildCcbRuntimeConfig(
   }
 
   // model 字段
-  if (model.modelName) {
-    config.model = model.modelName;
+  if (effectiveModelName) {
+    config.model = effectiveModelName;
   }
+
+  // modelType：从 protocol 映射，告诉 CCB 使用哪种 API 协议
+  config.modelType = model.protocol;
 
   return config;
 }

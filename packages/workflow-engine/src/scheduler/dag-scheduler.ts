@@ -234,8 +234,9 @@ export class DAGScheduler {
         summary,
         spawnedEnvIds: this.ctx.spawnedEnvIds ? [...this.ctx.spawnedEnvIds] : [],
       };
-    } catch (_error) {
+    } catch (error) {
       // 未预期的异常 → ERROR 状态
+      console.error(`[workflow] DAG unexpected error: runId=${this.ctx.runId}`, error);
       const completedAt = new Date().toISOString();
       await this.emitEvent("dag.cancelled");
       const summary = this.buildSummary("ERROR", completedAt);
@@ -322,23 +323,32 @@ export class DAGScheduler {
         throw error;
       }
 
-      // 处理 AbortError（取消）
+      const nodeType = this.nodeMap.get(nodeId)?.type ?? "unknown";
+
+      // 处理 AbortError（取消 / 超时）
       if (error instanceof DOMException && error.name === "AbortError") {
         this.nodeStates.set(nodeId, "CANCELLED");
         await this.emitEvent("node.cancelled", nodeId);
+        console.error(`[workflow] Node CANCELLED: nodeId=${nodeId} type=${nodeType} reason=${error.message}`);
         return;
       }
 
-      // 节点失败（执行器内部已发射 node.failed 事件，此处不再重复）
+      // 节点失败
       this.nodeStates.set(nodeId, "FAILED");
 
-      // 保存失败输出，使前端能查看错误详情
       const failureOutput = this.extractFailureOutput(error);
       if (failureOutput) {
         this.nodeOutputs.set(nodeId, failureOutput);
         this.lastEventId = `evt_${nanoid(10)}`;
         await this.saveSnapshotAfterNode(nodeId, failureOutput);
       }
+
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorDetail =
+        error instanceof WorkflowError && error.details?.abort_reason
+          ? ` reason=${error.details.abort_reason as string}`
+          : "";
+      console.error(`[workflow] Node FAILED: nodeId=${nodeId} type=${nodeType} error=${errorMsg}${errorDetail}`);
 
       // BFS 错误传播：标记下游为 SKIPPED
       await this.propagateFailure(nodeId);

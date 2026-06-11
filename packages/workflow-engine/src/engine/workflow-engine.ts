@@ -221,9 +221,13 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       try {
         const scheduler = new DAGScheduler(context);
         result = await scheduler.run();
+        const ns = result.summary.node_summary;
+        console.log(
+          `[workflow] Run completed: runId=${runId} status=${result.status} nodes=${ns.total} completed=${ns.completed} failed=${ns.failed}`,
+        );
         return result;
       } catch (err) {
-        console.error(`[workflow-engine] runAsync ${runId} failed:`, err);
+        console.error(`[workflow] Run error: runId=${runId}`, err);
         throw err;
       } finally {
         if (result?.status !== "SUSPENDED") {
