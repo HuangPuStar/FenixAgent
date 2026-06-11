@@ -1,8 +1,9 @@
-import { Download, File, FilePlus, Folder, FolderInput, FolderOpen, RefreshCw, Trash2, Upload } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Download, File, Folder, FolderInput, FolderOpen, RefreshCw, Trash2, Upload } from "lucide-react";
+import { forwardRef, type ReactNode, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
 import { fileApi, userFileApi } from "@/src/api/sdk";
@@ -66,6 +67,37 @@ function parsedToTreeNodeData(node: ParsedNode): TreeNodeData {
     label: node.name,
     hasChildren: node.isDir && node.children.length > 0,
   };
+}
+
+/** 工具栏按钮：点击后压制 tooltip，鼠标真正离开再重新进入后才恢复 */
+function ToolbarTip({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const suppressRef = useRef(false);
+
+  return (
+    <Tooltip
+      open={open}
+      onOpenChange={(v) => {
+        if (suppressRef.current && v) return;
+        setOpen(v);
+      }}
+    >
+      <TooltipTrigger asChild>
+        <span
+          onPointerDown={() => {
+            suppressRef.current = true;
+            setOpen(false);
+          }}
+          onPointerEnter={() => {
+            suppressRef.current = false;
+          }}
+        >
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export interface FileTreeTabHandle {
@@ -474,21 +506,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     [handleDownload, t],
   );
 
-  // 新建空文件
-  const handleNewFile = useCallback(async () => {
-    if (!envId) return;
-    const name = window.prompt(t("fileTree.newFileName"));
-    if (!name) return;
-    const parentDir = selectedDir || "user";
-    const fullPath = `${parentDir}/${name}`;
-    const { error: writeErr } = await fileApi.writeFile({ id: envId, path: fullPath }, { content: "" });
-    if (writeErr) {
-      console.error("New file failed:", writeErr);
-    } else {
-      await loadTree();
-    }
-  }, [envId, selectedDir, loadTree, t]);
-
   // 自定义 label：目录用 FolderOpen 图标，文件用 File 图标（通过 icon prop 已处理）
   // 但目录展开时切换为 FolderOpen
   const renderLabel = useCallback((node: TreeNodeData, state: NodeState) => {
@@ -501,9 +518,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     return (
       <span className="flex items-center gap-1.5">
         <IconComp className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-        <span className="truncate" title={node.label}>
-          {node.label}
-        </span>
+        <span className="truncate">{node.label}</span>
       </span>
     );
   }, []);
@@ -514,42 +529,36 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* 工具栏 */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border flex-shrink-0">
-        <button
-          type="button"
-          onClick={loadTree}
-          disabled={loading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.refresh")}
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-        </button>
-        <button
-          type="button"
-          onClick={handleUploadClick}
-          disabled={uploading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.upload")}
-        >
-          <Upload className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleFolderUploadClick}
-          disabled={uploading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.uploadFolder")}
-        >
-          <FolderInput className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleNewFile}
-          disabled={!envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.newFile")}
-        >
-          <FilePlus className="h-3.5 w-3.5" />
-        </button>
+        <ToolbarTip label={t("fileTree.refresh")}>
+          <button
+            type="button"
+            onClick={loadTree}
+            disabled={loading || !envId}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </ToolbarTip>
+        <ToolbarTip label={t("fileTree.upload")}>
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            disabled={uploading || !envId}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          >
+            <Upload className="h-3.5 w-3.5" />
+          </button>
+        </ToolbarTip>
+        <ToolbarTip label={t("fileTree.uploadFolder")}>
+          <button
+            type="button"
+            onClick={handleFolderUploadClick}
+            disabled={uploading || !envId}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          >
+            <FolderInput className="h-3.5 w-3.5" />
+          </button>
+        </ToolbarTip>
         <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileInputChange} />
         <input
           ref={folderInputRef}
