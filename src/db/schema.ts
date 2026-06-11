@@ -269,7 +269,7 @@ export const knowledgeBase = pgTable(
     name: varchar("name").notNull(),
     slug: varchar("slug").notNull(),
     description: text("description"),
-    provider: varchar("provider").notNull().default("openviking"),
+    provider: varchar("provider").notNull().default("ragflow"),
     remoteId: varchar("remote_id"),
     remoteAccountId: varchar("remote_account_id"),
     remoteUserId: varchar("remote_user_id"),
