@@ -1,4 +1,4 @@
-import { FolderTree, PanelRightClose, Upload, X } from "lucide-react";
+import { FolderTree, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -13,13 +13,12 @@ import type { ChangedFile } from "../../lib/extract-changed-files";
 
 interface ArtifactsPanelProps {
   collapsed: boolean;
-  onToggleCollapse: () => void;
   envId: string | null;
   /** 本次会话中被 Agent 修改的文件列表，已去重排序，含操作类型 */
   changedFiles?: ChangedFile[];
 }
 
-export function ArtifactsPanel({ collapsed, onToggleCollapse, envId, changedFiles = [] }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
@@ -190,22 +189,14 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId, changedFile
   return (
     <>
       <div
-        className="relative flex shrink-0 border-l border-border bg-surface-1"
+        className="relative flex shrink-0 bg-surface-1 rounded-xl overflow-hidden"
+        style={{ boxShadow: "var(--shadow-card)" }}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <button
-          className="absolute left-0 -translate-x-full top-1/2 -translate-y-1/2 z-10 w-6 h-12 flex items-center justify-center rounded-l-lg border border-border border-r-0 bg-surface-1 text-text-muted cursor-pointer transition-colors duration-150 hover:bg-surface-2 hover:text-text-primary"
-          onClick={onToggleCollapse}
-          title={t("closePanel")}
-          aria-label={t("closePanel")}
-        >
-          <PanelRightClose className="h-3.5 w-3.5" />
-        </button>
-
-        <div className="agent-artifacts-resize-handle" style={{ left: 0 }} onMouseDown={handleMouseDown} />
+        <div className="agent-artifacts-resize-handle" onMouseDown={handleMouseDown} />
 
         <div className="flex flex-col overflow-hidden" style={{ width }}>
           <div className="flex items-center px-2 py-1.5 border-b border-border shrink-0">

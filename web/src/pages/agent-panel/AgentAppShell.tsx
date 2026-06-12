@@ -92,11 +92,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
           <div className="agent-chat-area">
             <ChatPanel agentId={selectedAgentId} sessionId={currentSessionId} />
           </div>
-          <ArtifactsPanel
-            collapsed={artifactsCollapsed}
-            onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
-            envId={selectedAgentId}
-          />
+          <ArtifactsPanel collapsed={artifactsCollapsed} envId={selectedAgentId} />
           {artifactsCollapsed && (
             <button
               type="button"

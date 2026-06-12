@@ -66,12 +66,7 @@ function ChatWithSessionRoute() {
         <div className="agent-chat-area">
           <ChatPanel agentId={agentId} sessionId={sessionId} />
         </div>
-        <ArtifactsPanel
-          collapsed={artifactsCollapsed}
-          onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
-          envId={agentId}
-          changedFiles={changedFiles}
-        />
+        <ArtifactsPanel collapsed={artifactsCollapsed} envId={agentId} changedFiles={changedFiles} />
         {artifactsCollapsed && (
           <button
             type="button"

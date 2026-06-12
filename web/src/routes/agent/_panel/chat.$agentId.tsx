@@ -85,12 +85,7 @@ function ChatRoute() {
         <div className="agent-chat-area">
           <ChatPanel agentId={agentId} />
         </div>
-        <ArtifactsPanel
-          collapsed={artifactsCollapsed}
-          onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
-          envId={agentId}
-          changedFiles={changedFiles}
-        />
+        <ArtifactsPanel collapsed={artifactsCollapsed} envId={agentId} changedFiles={changedFiles} />
         {artifactsCollapsed && (
           <button
             type="button"
