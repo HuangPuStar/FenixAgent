@@ -12,6 +12,13 @@
   --agent-sidebar-from: #1759dc;
   --agent-sidebar-to: #0d2a6e;
   --agent-sidebar-cyan: #6be6ff;
+  --color-canvas: #f5f6f8;
+  --shadow-card: 0 4px 12px -6px rgba(15, 23, 42, 0.1);
+}
+
+:root.dark {
+  --color-canvas: #1a1d23;
+  --shadow-card: 0 4px 12px -6px rgba(0, 0, 0, 0.3);
 }
 
 /* ---------- 三栏布局容器 ---------- */
@@ -29,6 +36,7 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  background: var(--color-canvas);
 }
 
 /* agent-panel-content: row layout — chat area + artifacts side by side */
