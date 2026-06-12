@@ -266,7 +266,10 @@ async function handleInspect(ctx: AuthContext, name: string) {
 }
 
 async function handleListTools(ctx: AuthContext, name: string) {
-  const server = await configPg.assertMcpServerInternalWritable(ctx, name);
+  // 支持内部和外部 MCP server
+  const server = name.includes("/")
+    ? await configPg.getMcpServerByResourceKey(ctx, name)
+    : await configPg.getMcpServer(ctx, name);
   if (!server) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
   const tools = await listToolsByServer(server.organizationId, name);
 

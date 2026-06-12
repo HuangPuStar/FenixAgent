@@ -84,7 +84,7 @@ export function AgentOrganizationsPage() {
   // 机器列表：跟随当前选中组织加载，展示该组织下注册的远程节点
   const [machines, setMachines] = useState<MachineRecord[]>([]);
   const [machinesLoading, setMachinesLoading] = useState(false);
-  const [machinesError, setMachinesError] = useState<string | null>(null);
+  const [_machinesError, setMachinesError] = useState<string | null>(null);
 
   const loadMachines = useCallback(async () => {
     setMachinesLoading(true);

@@ -3,6 +3,7 @@
   "subtitle": "管理用于智能体认证的 API 密钥",
   "btn": {
     "create": "创建密钥",
+    "copy": "复制",
     "revoke": "吊销"
   },
   "searchPlaceholder": "搜索密钥...",
@@ -13,8 +14,9 @@
   },
   "dialog": {
     "createTitle": "创建 API 密钥",
-    "keyCreated": "新的 API 密钥已创建，请立即复制——之后将无法再查看。",
-    "keyWarning": "请务必立即复制此密钥，之后将无法再次查看。"
+    "close": "关闭",
+    "keyCreated": "新的 API 密钥已创建",
+    "keyWarning": "关闭此弹窗后将无法再次查看该密钥，请立即复制并妥善保存。"
   },
   "form": {
     "name": "名称"
@@ -30,6 +32,7 @@
     "loadFailed": "加载 API 密钥失败",
     "createFailed": "创建 API 密钥失败",
     "created": "API 密钥已创建",
+    "copied": "已复制",
     "deleteFailed": "吊销 API 密钥失败",
     "deleted": "API 密钥已吊销"
   }

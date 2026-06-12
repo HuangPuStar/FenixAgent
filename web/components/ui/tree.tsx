@@ -428,7 +428,7 @@ export function TreeItem({
           data.isDisabled && "opacity-50 pointer-events-none",
           className,
         )}
-        style={{ paddingLeft: `${depth * 6}px` }}
+        style={{ paddingLeft: `${depth * 12}px` }}
         onClick={handleRowClick}
       >
         {/* Chevron */}
@@ -451,23 +451,18 @@ export function TreeItem({
           ) : null}
         </span>
 
-        {/* Icon */}
-        {data.icon ? (
-          <data.icon className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
-        ) : (
-          <span className="w-5 flex-shrink-0" />
-        )}
+        {/* Icon — renderLabel 自带图标时跳过，避免重复间距 */}
+        {!renderLabel &&
+          (data.icon ? (
+            <data.icon className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+          ) : (
+            <span className="w-5 flex-shrink-0" />
+          ))}
 
-        {/* Label area */}
-        {renderLabel ? (
-          <span className="flex-1 min-w-0 truncate" title={data.label}>
-            {renderLabel(data, state)}
-          </span>
-        ) : (
-          <span className="flex-1 min-w-0 truncate" title={data.label}>
-            {data.label}
-          </span>
-        )}
+        {/* Label area — 鼠标悬停时跟随光标显示全名浮窗 */}
+        <TreeLabelTip label={data.label}>
+          <span className="flex-1 min-w-0 truncate">{renderLabel ? renderLabel(data, state) : data.label}</span>
+        </TreeLabelTip>
 
         {/* Description */}
         {data.description && !renderLabel && (
@@ -535,6 +530,51 @@ export function TreeItemGroup({ children, className }: TreeItemGroupProps) {
 }
 
 // ---------------------------------------------------------------------------
+// TreeLabelTip — 鼠标悬停 0.4s 后弹出全名浮窗，位置固定，离开消失
+// ---------------------------------------------------------------------------
+
+function TreeLabelTip({ label, children }: { label: string; children: ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!visible) {
+        // 浮窗未出现：记录最新鼠标位置，延时 0.4s 弹出
+        clearTimeout(timerRef.current);
+        const { clientX, clientY } = e;
+        timerRef.current = setTimeout(() => {
+          setPos({ x: clientX, y: clientY });
+          setVisible(true);
+        }, 400);
+      }
+      // 浮窗已出现：位置固定，不再更新
+    },
+    [visible],
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    clearTimeout(timerRef.current);
+    setVisible(false);
+  }, []);
+
+  return (
+    <span className="flex-1 min-w-0" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
+      {children}
+      {visible && (
+        <span
+          className="fixed z-50 max-w-xs rounded-md border border-border bg-surface-1 px-2.5 py-1 text-xs text-text-primary shadow-md pointer-events-none break-all"
+          style={{ left: pos.x + 12, top: pos.y + 18 }}
+        >
+          {label}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ShowMoreButton (internal)
 // ---------------------------------------------------------------------------
 
@@ -550,7 +590,7 @@ function ShowMoreButton({ remaining, onClick, depth }: ShowMoreButtonProps) {
     <button
       type="button"
       className="flex items-center gap-1 h-8 px-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm cursor-pointer w-full"
-      style={{ paddingLeft: `${(depth + 1) * 6}px` }}
+      style={{ paddingLeft: `${(depth + 1) * 12}px` }}
       onClick={onClick}
     >
       {t("tree.showMore", { count: remaining })}

@@ -21,6 +21,7 @@ import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
 import apiAgentsRoutes from "./routes/api/agents";
+import apiSkillsRoutes from "./routes/api/skills";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";
 import sessionIngress from "./routes/v2/session-ingress";
@@ -50,6 +51,10 @@ const EXTERNAL_OPENAPI_TAGS = [
   {
     name: "External AgentConfig",
     description: "面向外部系统的 Agent 配置 CRUD 接口。",
+  },
+  {
+    name: "External Skill",
+    description: "面向外部系统的 Skill 管理接口。",
   },
 ];
 
@@ -265,15 +270,15 @@ const app = new Elysia()
   .onError(({ request, error, set }) => logError({ request, error, set }))
   .use(errorPlugin)
   .use(rateLimitPlugin)
-  // 全局请求体大小限制 10MB
+  // 全局请求体大小限制 100MB（文件上传、工作流任务等场景）
   .onBeforeHandle(({ request }) => {
     const contentLength = request.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
+    if (contentLength && parseInt(contentLength, 10) > 100 * 1024 * 1024) {
       return new Response(
         JSON.stringify({
           error: {
             type: "PAYLOAD_TOO_LARGE",
-            message: "Request body exceeds 10MB limit",
+            message: "Request body exceeds 100MB limit",
           },
         }),
         {
@@ -324,6 +329,7 @@ const app = new Elysia()
   .use(webApp)
   // External API routes
   .use(apiAgentsRoutes)
+  .use(apiSkillsRoutes)
   // Workflow proxy (not under /web prefix)
   .use(workflowStaticApp)
   // MCP routes

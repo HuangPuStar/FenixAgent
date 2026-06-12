@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { FileX, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fileApi } from "@/src/api/sdk";
@@ -9,7 +9,7 @@ import { ImagePreview } from "./preview/ImagePreview";
 import { MarkdownPreview } from "./preview/MarkdownPreview";
 import { PdfPreview } from "./preview/PdfPreview";
 import { TablePreview } from "./preview/TablePreview";
-import { classifyFile } from "./preview/utils";
+import { classifyFile, formatFileSize } from "./preview/utils";
 
 interface PreviewTabProps {
   envId: string | null;
@@ -49,10 +49,13 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
     setLoading(true);
     setError(null);
     const normalized = filePath.endsWith("/") ? filePath.slice(0, -1) : filePath;
+    // 保留文件名用于错误提示卡片
+    const fallbackName = normalized.split("/").pop() || normalized;
+    setFileName(fallbackName);
     const { data, error: err } = await fileApi.readFile({ id: envId, path: normalized });
     if (err) {
       console.error("Failed to load file:", err);
-      setError(t("fileTree.preview.fetchFailed"));
+      setError("unsupported");
       setContent(null);
     } else if (data && typeof data.content === "string") {
       setContent(data.content);
@@ -64,11 +67,11 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
       setFileSize(data.size);
     } else {
       setContent(null);
-      setError(t("fileTree.preview.notTextFile"));
+      setError("unsupported");
       setFileName(normalized.split("/").pop() || normalized);
     }
     setLoading(false);
-  }, [envId, filePath, t]);
+  }, [envId, filePath]);
 
   useEffect(() => {
     loadFile();
@@ -82,7 +85,19 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
             <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
           </div>
         )}
-        {!loading && error && <div className="p-4 text-center text-sm text-status-error">{error}</div>}
+        {/* 加载失败：展示"暂不支持预览"卡片 */}
+        {!loading && error && fileName && (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="flex flex-col items-center gap-3 max-w-xs text-center">
+              <div className="w-16 h-16 rounded-xl bg-surface-2 flex items-center justify-center">
+                <FileX className="h-8 w-8 text-text-muted" />
+              </div>
+              <p className="text-sm font-medium text-text-primary break-all">{fileName}</p>
+              {fileSize !== undefined && <span className="text-xs text-text-muted">{formatFileSize(fileSize)}</span>}
+              <p className="text-xs text-text-muted mt-1">{t("fileTree.preview.unsupportedType")}</p>
+            </div>
+          </div>
+        )}
         {!loading && !error && !filePath && !fileName && (
           <div className="p-4 text-center text-sm text-text-muted">{t("fileTree.preview.noFileSelected")}</div>
         )}
