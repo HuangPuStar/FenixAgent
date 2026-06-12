@@ -326,5 +326,10 @@
     "history_empty": "暂无会话",
     "history_untitled": "未命名",
     "chat_collapse": "收起面板"
+  },
+  "chatComposer": {
+    "send": "发送",
+    "stop": "停止",
+    "newSession": "新会话"
   }
 }

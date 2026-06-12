@@ -326,5 +326,10 @@
     "history_empty": "No sessions",
     "history_untitled": "Untitled",
     "chat_collapse": "Collapse Panel"
+  },
+  "chatComposer": {
+    "send": "Send",
+    "stop": "Stop",
+    "newSession": "New Thread"
   }
 }
