@@ -21,6 +21,9 @@ services:
             REDIS_PASSWORD: ${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026}
             # 使用内置 Infinity 向量数据库（无需 Elasticsearch）
             DOC_ENGINE: infinity
+            # Infinity 连接（内置向量存储）
+            INFINITY_HOST: infinity
+            INFINITY_PORT: 23817
         volumes:
             - ragflow_data:/ragflow/data
             - ragflow_logs:/ragflow/logs
@@ -28,6 +31,8 @@ services:
             ragflow-mysql:
                 condition: service_healthy
             ragflow-redis:
+                condition: service_healthy
+            infinity:
                 condition: service_healthy
         restart: unless-stopped
         healthcheck:
@@ -53,6 +58,22 @@ services:
         healthcheck:
             test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}"]
             interval: 5s
+            timeout: 5s
+            retries: 12
+            start_period: 20s
+
+    # RagFlow 依赖：Infinity 向量数据库
+    infinity:
+        image: infiniflow/infinity:v0.5.0
+        container_name: fenix-ragflow-infinity
+        restart: unless-stopped
+        ports:
+            - "127.0.0.1:23817:23817"
+        volumes:
+            - ragflow_infinity_data:/var/infinity
+        healthcheck:
+            test: ["CMD-SHELL", "wget -q -O- http://localhost:23817 || exit 1"]
+            interval: 10s
             timeout: 5s
             retries: 12
             start_period: 20s
@@ -147,5 +168,6 @@ volumes:
     ragflow_logs:
     ragflow_mysql_data:
     ragflow_redis_data:
+    ragflow_infinity_data:
     postgres-data:
     rustfs-data:
