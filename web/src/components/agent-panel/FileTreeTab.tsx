@@ -1,13 +1,14 @@
-import { Download, File, FilePlus, Folder, FolderInput, FolderOpen, RefreshCw, Trash2, Upload } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Download, File, Folder, FolderInput, FolderOpen, RefreshCw, Trash2, Upload } from "lucide-react";
+import { forwardRef, type ReactNode, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
 import { fileApi, userFileApi } from "@/src/api/sdk";
 import { NS } from "../../i18n";
-import { buildPreviewUrl, encodePathSegment } from "./preview/utils";
+import { buildPreviewUrl, classifyFile, encodePathSegment } from "./preview/utils";
 
 interface FileTreeTabProps {
   envId: string | null;
@@ -66,6 +67,37 @@ function parsedToTreeNodeData(node: ParsedNode): TreeNodeData {
     label: node.name,
     hasChildren: node.isDir && node.children.length > 0,
   };
+}
+
+/** 工具栏按钮：点击后压制 tooltip，鼠标真正离开再重新进入后才恢复 */
+function ToolbarTip({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const suppressRef = useRef(false);
+
+  return (
+    <Tooltip
+      open={open}
+      onOpenChange={(v) => {
+        if (suppressRef.current && v) return;
+        setOpen(v);
+      }}
+    >
+      <TooltipTrigger asChild>
+        <span
+          onPointerDown={() => {
+            suppressRef.current = true;
+            setOpen(false);
+          }}
+          onPointerEnter={() => {
+            suppressRef.current = false;
+          }}
+        >
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export interface FileTreeTabHandle {
@@ -178,7 +210,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     [findChildren],
   );
 
-  /** 单击：目录选中，文件直接预览 */
+  /** 单击：目录选中，可预览文件触发预览，二进制文件忽略 */
   const handleSelect = useCallback(
     (nodeId: string | null, _node: TreeNodeData) => {
       if (!nodeId) return;
@@ -190,7 +222,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       } else {
         const parentDir = nodeId.substring(0, nodeId.lastIndexOf("/"));
         setSelectedDir(parentDir || null);
-        onPreviewFile(nodeId);
+        // binary 类型（.pyc .zip .tar.gz 等）无法预览，跳过
+        if (classifyFile(nodeId) !== "binary") {
+          onPreviewFile(nodeId);
+        }
       }
     },
     [onPreviewFile],
@@ -304,17 +339,30 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
 
-      const targetSubdir = selectedDir || "user";
-      try {
-        const formData = new FormData();
-        for (const file of files) {
-          formData.append("files", file);
+      // 客户端提前校验
+      const maxSize = 100 * 1024 * 1024;
+      for (const file of files) {
+        if (file.size > maxSize) {
+          toast.error(t("fileTree.fileTooLarge", { name: file.name, max: "100MB" }));
+          return;
         }
-        await fileApi.upload({ id: envId, path: targetSubdir }, formData);
+      }
+
+      const targetSubdir = selectedDir || "user";
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append("files", file);
+      }
+      const { error: uploadErr } = await fileApi.upload({ id: envId, path: targetSubdir }, formData);
+      if (uploadErr) {
+        if (uploadErr.status === 413) {
+          toast.error(t("fileTree.uploadTooLarge"));
+        } else {
+          toast.error(uploadErr.message || t("fileTree.uploadFailed"));
+        }
+      } else {
         toast.success(t("fileTree.uploadSuccess", { count: files.length }));
         await loadTree();
-      } catch {
-        toast.error(t("fileTree.uploadFailed"));
       }
     },
     [envId, selectedDir, loadTree, t],
@@ -334,6 +382,15 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     async (files: File[], relativePaths?: string[]) => {
       if (!envId || files.length === 0) return;
 
+      // 客户端提前校验单文件大小（100MB 限制）
+      const maxSize = 100 * 1024 * 1024;
+      for (const file of files) {
+        if (file.size > maxSize) {
+          toast.error(t("fileTree.fileTooLarge", { name: file.name, max: "100MB" }));
+          return;
+        }
+      }
+
       setUploading(true);
       try {
         const targetDir = selectedDir || "user";
@@ -346,7 +403,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         }
         const { error: uploadErr } = await fileApi.upload({ id: envId, path: targetDir }, formData);
         if (uploadErr) {
-          toast.error(t("fileTree.uploadFailed"));
+          if (uploadErr.status === 413) {
+            toast.error(t("fileTree.uploadTooLarge"));
+          } else {
+            toast.error(uploadErr.message || t("fileTree.uploadFailed"));
+          }
         } else {
           toast.success(t("fileTree.uploadSuccess", { count: files.length }));
           await loadTree();
@@ -382,29 +443,39 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     [uploadFiles],
   );
 
-  // 下载：文件直接下载，目录打包为 zip（per-item 回调）
+  // 下载：文件直接下载，目录打包为 zip
+  // 使用 fetch + Blob 确保携带认证 cookie；<a download> 无法保证 credentials
   const handleDownload = useCallback(
     async (nodePath: string, isDir: boolean) => {
       if (!envId) return;
       try {
+        let url: string;
+        let fileName: string;
+
         if (isDir) {
-          const url = `/web/environments/${envId}/user-file/download-zip?path=${encodePathSegment(nodePath)}`;
-          const a = document.createElement("a");
-          a.href = url;
           const dirName = nodePath.split("/").filter(Boolean).pop() || "download";
-          a.download = `${dirName}.zip`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+          // tree 返回的路径可能缺少 user/ 前缀，后端 isUserPath 校验要求必须有
+          const withUserPrefix = nodePath.startsWith("user/") ? nodePath : `user/${nodePath}`;
+          url = `/web/environments/${envId}/user-file/download-zip?path=${encodePathSegment(withUserPrefix)}`;
+          fileName = `${dirName}.zip`;
         } else {
-          const url = buildPreviewUrl(envId, nodePath);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = nodePath.split("/").pop() || "file";
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+          url = buildPreviewUrl(envId, nodePath);
+          fileName = nodePath.split("/").pop() || "file";
         }
+
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) {
+          throw new Error(`Download failed: ${res.status}`);
+        }
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
       } catch {
         toast.error(t("fileTree.downloadFailed"));
       }
@@ -448,21 +519,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     [handleDownload, t],
   );
 
-  // 新建空文件
-  const handleNewFile = useCallback(async () => {
-    if (!envId) return;
-    const name = window.prompt(t("fileTree.newFileName"));
-    if (!name) return;
-    const parentDir = selectedDir || "user";
-    const fullPath = `${parentDir}/${name}`;
-    const { error: writeErr } = await fileApi.writeFile({ id: envId, path: fullPath }, { content: "" });
-    if (writeErr) {
-      console.error("New file failed:", writeErr);
-    } else {
-      await loadTree();
-    }
-  }, [envId, selectedDir, loadTree, t]);
-
   // 自定义 label：目录用 FolderOpen 图标，文件用 File 图标（通过 icon prop 已处理）
   // 但目录展开时切换为 FolderOpen
   const renderLabel = useCallback((node: TreeNodeData, state: NodeState) => {
@@ -475,9 +531,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     return (
       <span className="flex items-center gap-1.5">
         <IconComp className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-        <span className="truncate" title={node.label}>
-          {node.label}
-        </span>
+        <span className="truncate">{node.label}</span>
       </span>
     );
   }, []);
@@ -488,42 +542,36 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* 工具栏 */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border flex-shrink-0">
-        <button
-          type="button"
-          onClick={loadTree}
-          disabled={loading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.refresh")}
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-        </button>
-        <button
-          type="button"
-          onClick={handleUploadClick}
-          disabled={uploading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.upload")}
-        >
-          <Upload className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleFolderUploadClick}
-          disabled={uploading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.uploadFolder")}
-        >
-          <FolderInput className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleNewFile}
-          disabled={!envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.newFile")}
-        >
-          <FilePlus className="h-3.5 w-3.5" />
-        </button>
+        <ToolbarTip label={t("fileTree.refresh")}>
+          <button
+            type="button"
+            onClick={loadTree}
+            disabled={loading || !envId}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </ToolbarTip>
+        <ToolbarTip label={t("fileTree.upload")}>
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            disabled={uploading || !envId}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          >
+            <Upload className="h-3.5 w-3.5" />
+          </button>
+        </ToolbarTip>
+        <ToolbarTip label={t("fileTree.uploadFolder")}>
+          <button
+            type="button"
+            onClick={handleFolderUploadClick}
+            disabled={uploading || !envId}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+          >
+            <FolderInput className="h-3.5 w-3.5" />
+          </button>
+        </ToolbarTip>
         <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileInputChange} />
         <input
           ref={folderInputRef}

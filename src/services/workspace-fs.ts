@@ -24,6 +24,7 @@ const TEXT_EXTENSIONS = new Set([
   ".xml",
   ".toml",
   ".ini",
+  ".properties",
   ".cfg",
   ".sh",
   ".bash",

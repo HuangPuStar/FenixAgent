@@ -35,7 +35,9 @@
     "uploadFile": "上传文件",
     "noFiles": "暂无文件",
     "loadFailed": "加载文件失败",
-    "uploadFailed": "上传失败"
+    "uploadFailed": "上传失败",
+    "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
+    "uploadTooLarge": "上传失败：文件大小超过 100MB 限制"
   },
   "identity": {
     "title": "身份标识",
@@ -138,6 +140,8 @@
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
+    "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
+    "uploadTooLarge": "上传失败：文件大小超过 100MB 限制",
     "dropToUpload": "释放文件以上传",
     "hintDragUpload": "拖拽上传",
     "hintDoubleClick": "双击预览",
