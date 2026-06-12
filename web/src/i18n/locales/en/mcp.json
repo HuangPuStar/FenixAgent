@@ -74,7 +74,7 @@
   "validation": {
     "nameRequired": "Name cannot be empty",
     "nameNoDoubleHyphen": "Name cannot contain consecutive hyphens",
-    "namePattern": "Name can only contain lowercase letters, numbers, and hyphens, and cannot start/end with a hyphen",
+    "namePattern": "Name can only contain letters, numbers, and hyphens, and cannot start/end with a hyphen",
     "nameTooLong": "Name cannot exceed 64 characters",
     "commandRequired": "Command cannot be empty",
     "commandInvalid": "Invalid command format",

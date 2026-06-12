@@ -1,3 +1,4 @@
+import { AlertTriangle, Copy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -160,18 +161,35 @@ export function AgentApiKeysPage() {
           setDialogOpen(open);
           if (!open) setNewKeyValue(null);
         }}
-        title={t("dialog.createTitle")}
+        title={newKeyValue ? t("dialog.keyCreated") : t("dialog.createTitle")}
         onSubmit={handleSave}
         loading={formSaving}
+        hideSubmit={!!newKeyValue}
+        cancelLabel={newKeyValue ? t("dialog.close") : undefined}
       >
         <div className="space-y-4">
           {newKeyValue ? (
-            <div className="space-y-3">
-              <p className="text-sm text-text-secondary">{t("dialog.keyCreated")}</p>
-              <div className="rounded-lg border bg-surface-2 p-3">
-                <code className="text-sm font-mono text-text-bright break-all">{newKeyValue}</code>
+            <div className="space-y-4">
+              <div className="relative rounded-lg border-2 border-amber-500/30 bg-amber-500/5 p-3">
+                <code className="block text-sm font-mono text-text-bright break-all pr-10 select-all">
+                  {newKeyValue}
+                </code>
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 rounded-md border border-border-light bg-surface-2 p-1.5 text-text-muted hover:text-text-bright hover:bg-surface-3 transition-colors"
+                  onClick={() => {
+                    navigator.clipboard.writeText(newKeyValue!);
+                    toast.success(t("toast.copied"));
+                  }}
+                  title={t("btn.copy")}
+                >
+                  <Copy className="h-4 w-4" />
+                </button>
               </div>
-              <p className="text-xs text-text-muted">{t("dialog.keyWarning")}</p>
+              <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/5 p-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">{t("dialog.keyWarning")}</p>
+              </div>
             </div>
           ) : (
             <div>
