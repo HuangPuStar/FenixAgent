@@ -1,5 +1,5 @@
 import imageCompression from "browser-image-compression";
-import { Hexagon, Send, Square } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -12,7 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ACPClient } from "../../src/acp/client";
 import type { AvailableCommand, SessionMode } from "../../src/acp/types";
-import { envApi, fileApi } from "../../src/api/sdk";
+import { fileApi } from "../../src/api/sdk";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
 import { formatTokenCount, type TokenStats } from "../../src/lib/token-stats";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
@@ -70,7 +70,7 @@ interface ChatComposerProps {
  *
  * 从 ChatInput 迁移全部输入逻辑（state/handlers/effects/图片处理/文件拖拽/slash 命令），
  * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。底部元信息条包含：
- * 环境名 / SessionModeSelector / ModelSelectorPopover / token 统计 / 新会话 / 发送。
+ * SessionModeSelector / ModelSelectorPopover / token 统计 / 新会话 / 发送。
  */
 export function ChatComposer({
   onSubmit,
@@ -111,30 +111,6 @@ export function ChatComposer({
 
   // 文件上传和浏览使用 envId（environment ID），后端路由为 /web/environments/:envId/user/*
   const fileWorkspaceId = envId;
-
-  // ---------------------------------------------------------------------------
-  // 加载环境名（用于元信息条显示，Task 5 会用到）
-  // ---------------------------------------------------------------------------
-  const [envName, setEnvName] = useState<string | null>(null);
-  useEffect(() => {
-    if (!envId) {
-      setEnvName(null);
-      return;
-    }
-    let cancelled = false;
-    envApi
-      .get({ id: envId })
-      .then(({ data }) => {
-        if (!cancelled) setEnvName(data?.name ?? envId);
-      })
-      .catch((err) => {
-        console.error("Failed to load environment name:", err);
-        if (!cancelled) setEnvName(envId); // 兜底显示 envId，便于排查
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [envId]);
 
   // ---------------------------------------------------------------------------
   // Effects — 从 ChatInput 原样迁移
@@ -456,24 +432,7 @@ export function ChatComposer({
 
         {/* 底部元信息条 —— flex-wrap 允许数据多时换行到第二行 */}
         <div className="chat-composer-meta flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[11px]">
-          {/* 左侧：环境名 + 模式 + 模型 */}
-          {envId && (
-            <>
-              <span className="flex items-center gap-1 text-text-primary font-medium max-w-[140px]">
-                <span
-                  className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center shrink-0"
-                  style={{
-                    background: "color-mix(in srgb, var(--color-brand) 12%, transparent)",
-                  }}
-                >
-                  <Hexagon className="h-2.5 w-2.5 text-brand" />
-                </span>
-                <span className="truncate">{envName ?? envId}</span>
-              </span>
-              <span className="chat-composer-divider" />
-            </>
-          )}
-
+          {/* 左侧：模式 + 模型 */}
           {availableModes && availableModes.length > 0 && onModeChange && (
             <SessionModeSelector
               modes={availableModes}

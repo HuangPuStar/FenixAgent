@@ -33,15 +33,6 @@ describe("ChatComposer", () => {
     expect(html).toContain("lucide-send");
   });
 
-  // 元信息条：传入 envId 时应渲染环境标识
-  test("renders environment name when envId provided", async () => {
-    const { ChatComposer } = await import("../../components/chat/ChatComposer");
-    const html = ReactDOMServer.renderToString(
-      <ChatComposer onSubmit={() => {}} client={mockClient} envId="env_123" />,
-    );
-    expect(html).toContain("env_123");
-  });
-
   // 元信息条：token 进度条宽度 + 百分比（数字文字已移除）
   test("renders token stats when tokenStats provided", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
