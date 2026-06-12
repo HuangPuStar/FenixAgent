@@ -690,3 +690,75 @@ file-tree-container {
   min-width: 0;
   overflow: hidden;
 }
+
+/* =============================================================================
+   ChatComposer —— 玻璃磨砂命令岛
+   ============================================================================= */
+
+.chat-composer-card {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* 暗色模式 */
+:root.dark .chat-composer-card,
+.dark .chat-composer-card {
+  background: rgba(45, 45, 47, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* focus-within：品牌色边框 + 柔和光环 */
+.chat-composer-card:focus-within {
+  border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-brand) 12%, transparent),
+    0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+/* backdrop-filter 不支持时的 fallback */
+@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
+  .chat-composer-card {
+    background: var(--color-surface-1);
+  }
+}
+
+/* textarea 编辑区 */
+.chat-composer-textarea {
+  font-family: var(--font-display, inherit);
+}
+
+.chat-composer-textarea:focus {
+  outline: none;
+}
+
+/* 元信息条 */
+.chat-composer-meta {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+:root.dark .chat-composer-meta,
+.dark .chat-composer-meta {
+  border-top-color: rgba(255, 255, 255, 0.05);
+}
+
+/* 元信息条分隔线 */
+.chat-composer-divider {
+  width: 1px;
+  height: 12px;
+  background: rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+:root.dark .chat-composer-divider,
+.dark .chat-composer-divider {
+  background: rgba(255, 255, 255, 0.08);
+}
