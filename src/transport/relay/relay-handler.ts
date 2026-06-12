@@ -461,7 +461,6 @@ function closeRelayByMachine(machineId: string, reason: string): void {
     log(
       `[ACP-Relay] Closing relay ${relayWsId} (${reason}) instanceId=${entry.instanceId} agentId=${entry.agentId} match=${matchByInstance ? "instance" : "cache"}`,
     );
-    log(`[ACP-Relay] Closing relay ${relayWsId} (${reason})`);
     try {
       entry.relayHandle?.close(4500, reason);
     } catch {
