@@ -1,19 +1,5 @@
-import {
-  BookOpen,
-  Bot,
-  CodeXml,
-  Eye,
-  FileCode,
-  FilePen,
-  Files,
-  FileText,
-  Globe,
-  ListChecks,
-  Search,
-  Terminal,
-  Zap,
-} from "lucide-react";
-import { type ComponentType } from "react";
+import { BookOpen, Bot, Eye, FilePen, Files, FileText, Globe, ListChecks, Search, Terminal, Zap } from "lucide-react";
+import type { ComponentType } from "react";
 import type { ToolCallData } from "../../src/lib/types";
 
 // =============================================================================
@@ -231,7 +217,7 @@ function formatOutput(tool: ToolCallData): string {
 /** 从 rawInput 结构推断工具类型（当 title 无法匹配时兜底使用） */
 function inferToolTypeFromInput(
   input: Record<string, unknown> | undefined,
-  lower: string,
+  _lower: string,
 ): "search" | "read" | "write" | "edit" | "skill" | null {
   if (!input) return null;
   // 有 pattern → search（grep/glob 无论有无 include 都是搜索）

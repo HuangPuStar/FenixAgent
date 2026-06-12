@@ -171,7 +171,9 @@
       "pdfLoadFailed": "加载 PDF 失败",
       "tableLoadFailed": "加载表格文件失败",
       "emptyTable": "表格为空",
-      "tableTruncated": "显示 {{shown}} / {{total}} 行"
+      "tableTruncated": "显示 {{shown}} / {{total}} 行",
+      "htmlPreview": "预览",
+      "htmlSource": "源码"
     }
   },
   "tool": {
