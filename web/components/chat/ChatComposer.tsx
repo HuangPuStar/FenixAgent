@@ -14,12 +14,14 @@ import type { ACPClient } from "../../src/acp/client";
 import type { AvailableCommand, SessionMode } from "../../src/acp/types";
 import { envApi, fileApi } from "../../src/api/sdk";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
-import type { TokenStats } from "../../src/lib/token-stats";
+import { formatTokenCount, type TokenStats } from "../../src/lib/token-stats";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import type { FileInfo } from "../../src/types";
+import { ModelSelectorPopover } from "../model-selector/ModelSelectorPopover";
 import { Button } from "../ui/button";
 import { CommandMenu } from "./CommandMenu";
+import { SessionModeSelector } from "./SessionModeSelector";
 
 // 图片压缩配置
 const IMAGE_COMPRESSION_OPTIONS = {
@@ -28,6 +30,9 @@ const IMAGE_COMPRESSION_OPTIONS = {
   useWebWorker: true,
   fileType: "image/jpeg" as const,
 };
+
+// 元信息条 token 统计所用的上下文窗口假设上限，用于进度条和百分比归一化
+const MAX_CONTEXT_TOKENS = 200000;
 
 /** ChatComposer 属性 — 新玻璃磨砂命令岛输入组件 */
 interface ChatComposerProps {
@@ -64,7 +69,8 @@ interface ChatComposerProps {
  * ChatComposer — 玻璃磨砂命令岛输入组件
  *
  * 从 ChatInput 迁移全部输入逻辑（state/handlers/effects/图片处理/文件拖拽/slash 命令），
- * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。元信息条在 Task 5 补充。
+ * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。底部元信息条在 Task 5 实现：
+ * 环境名 / SessionModeSelector / ModelSelectorPopover / token 统计 / 新会话 / 发送。
  */
 export function ChatComposer({
   onSubmit,
@@ -429,9 +435,78 @@ export function ChatComposer({
           className="chat-composer-textarea w-full resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[48px] max-h-[200px] leading-relaxed px-4 pt-4 pb-2"
         />
 
-        {/* 底部脚标行 —— Task 5 会填充完整元信息条，本任务只放发送按钮 */}
-        <div className="chat-composer-meta flex items-center gap-2 px-4 py-2.5">
+        {/* 底部元信息条 */}
+        <div className="chat-composer-meta flex items-center gap-2.5 px-4 py-2.5 text-[11px]">
+          {/* 左侧：环境名 + 模式 + 模型 */}
+          {envId && (
+            <>
+              <span className="flex items-center gap-1 text-text-primary font-medium max-w-[140px]">
+                <span
+                  className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center text-[10px] shrink-0"
+                  style={{
+                    background: "color-mix(in srgb, var(--color-brand) 12%, transparent)",
+                  }}
+                >
+                  ⬡
+                </span>
+                <span className="truncate">{envName ?? envId}</span>
+              </span>
+              <span className="chat-composer-divider" />
+            </>
+          )}
+
+          {availableModes && availableModes.length > 0 && onModeChange && (
+            <SessionModeSelector
+              modes={availableModes}
+              currentModeId={currentModeId ?? null}
+              onModeChange={onModeChange}
+            />
+          )}
+
+          {client && <ModelSelectorPopover client={client} />}
+
+          {/* 中间弹簧 */}
           <div className="flex-1" />
+
+          {/* 右侧：token 统计 + 新会话 + 发送 */}
+          {tokenStats && tokenStats.estimatedTokens > 0 && (
+            <>
+              <span className="font-mono text-text-secondary whitespace-nowrap">
+                {formatTokenCount(tokenStats.estimatedTokens)} / 200k
+              </span>
+              <div className="w-12 h-1 rounded-full bg-surface-3 overflow-hidden flex shrink-0">
+                <div
+                  className="h-full bg-brand transition-[width] duration-500"
+                  style={{
+                    width: `${Math.min((tokenStats.estimatedInputTokens / MAX_CONTEXT_TOKENS) * 100, 100)}%`,
+                  }}
+                />
+                <div
+                  className="h-full bg-accent-green transition-[width] duration-500"
+                  style={{
+                    width: `${Math.min((tokenStats.estimatedOutputTokens / MAX_CONTEXT_TOKENS) * 100, 100)}%`,
+                  }}
+                />
+              </div>
+              <span className="font-mono text-text-primary font-semibold min-w-[28px] text-right">
+                {Math.min(Math.round((tokenStats.estimatedTokens / MAX_CONTEXT_TOKENS) * 100), 100)}%
+              </span>
+              <span className="chat-composer-divider" />
+            </>
+          )}
+
+          {showNewSession && onNewSession && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onNewSession}
+              className="h-7 px-2 text-[11px] text-text-muted hover:text-text-primary gap-1"
+            >
+              + {t("chatComposer.newSession")}
+            </Button>
+          )}
+
           <Button
             type="button"
             variant="ghost"
