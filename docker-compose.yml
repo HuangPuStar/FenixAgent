@@ -15,7 +15,6 @@ services:
             MYSQL_PORT: 3306
             MYSQL_USER: root
             MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
-            MYSQL_DB: ragflow
             # Redis 连接（RagFlow 缓存/任务队列）
             REDIS_HOST: ragflow-redis
             REDIS_PORT: 6379
@@ -45,7 +44,7 @@ services:
         restart: unless-stopped
         environment:
             MYSQL_ROOT_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
-            MYSQL_DATABASE: ragflow
+            MYSQL_DATABASE: rag_flow
         ports:
             - "127.0.0.1:13306:3306"
         volumes:
