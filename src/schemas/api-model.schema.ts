@@ -1,17 +1,15 @@
 import { z } from "zod/v4";
 
-export const ApiProviderIdParamsSchema = z.object({
-  id: z.string().describe("Provider name."),
-});
+export const ApiProviderIdParamsSchema = z.object({ id: z.string() });
 
 export const ApiProviderUpsertBodySchema = z.object({
-  name: z.string().describe("Provider name (unique ID)."),
-  displayName: z.string().optional().describe("Display name."),
-  protocol: z.enum(["openai", "anthropic"]).default("openai").describe("Protocol type."),
-  baseUrl: z.string().optional().describe("API base URL."),
-  apiKey: z.string().optional().describe("API key, supports {env:VAR_NAME} placeholder."),
-  extraOptions: z.record(z.unknown()).optional().describe("Extra options."),
-  publicReadable: z.boolean().optional().describe("Whether publicly readable."),
+  name: z.string(),
+  displayName: z.string().optional(),
+  protocol: z.enum(["openai", "anthropic"]).default("openai"),
+  baseUrl: z.string().optional(),
+  apiKey: z.string().optional(),
+  extraOptions: z.record(z.unknown()).optional(),
+  publicReadable: z.boolean().optional(),
 });
 
 export const ApiProviderUpdateBodySchema = ApiProviderUpsertBodySchema.partial();
@@ -67,19 +65,14 @@ export const ApiProviderDetailSchema = z.object({
 export const ApiProviderDeleteResponseSchema = z.object({ id: z.string(), deleted: z.literal(true) });
 
 export const ApiProviderOnlyParamsSchema = z.object({ providerId: z.string() });
-
 export const ApiModelIdParamsSchema = z.object({ providerId: z.string(), modelId: z.string() });
 
 export const ApiModelUpsertBodySchema = z.object({
-  modelId: z.string().describe("Model unique ID."),
-  displayName: z.string().optional().describe("Display name."),
-  modalities: z.unknown().optional().describe("Modality configuration."),
-  limitConfig: z
-    .object({ context: z.number().int().positive().optional(), output: z.number().int().positive().optional() })
-    .optional(),
-  cost: z
-    .object({ input: z.number().nonnegative().optional(), output: z.number().nonnegative().optional() })
-    .optional(),
+  modelId: z.string(),
+  displayName: z.string().optional(),
+  modalities: z.unknown().optional(),
+  limitConfig: z.object({ context: z.number().int().optional(), output: z.number().int().optional() }).optional(),
+  cost: z.object({ input: z.number().optional(), output: z.number().optional() }).optional(),
   options: z.record(z.unknown()).optional(),
 });
 
