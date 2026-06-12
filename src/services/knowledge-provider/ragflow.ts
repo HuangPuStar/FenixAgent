@@ -370,7 +370,8 @@ export async function checkRagFlowHealth(): Promise<{ ok: boolean; message: stri
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(`${config.ragflowApiUrl}/api/v1/version`, {
+    // RagFlow v0.26.0 没有 /api/v1/version 端点，通过任意 API 可达性验证
+    const response = await fetch(`${config.ragflowApiUrl}`, {
       signal: controller.signal,
       headers: { Authorization: `Bearer ${config.ragflowApiKey}` },
     });

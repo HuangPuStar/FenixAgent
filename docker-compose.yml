@@ -32,12 +32,6 @@ services:
             infinity:
                 condition: service_healthy
         restart: unless-stopped
-        healthcheck:
-            test: ["CMD-SHELL", "wget -q -O- http://localhost:9380/api/v1/version || exit 1"]
-            interval: 10s
-            timeout: 5s
-            retries: 12
-            start_period: 60s
 
     # RagFlow 依赖：MySQL 8.0（元数据存储）
     ragflow-mysql:
