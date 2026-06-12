@@ -20,10 +20,9 @@ export function StatusHeader({ agentName, modelName, entries = [] }: StatusHeade
 
   return (
     <div
-      className="px-4 py-3 border-b border-border flex items-center gap-3 shrink-0"
+      className="mx-3 mt-3 px-4 py-3 flex items-center gap-3 shrink-0 rounded-xl bg-surface-1"
       style={{
-        background:
-          "linear-gradient(135deg, color-mix(in srgb, var(--color-brand) 5%, transparent) 0%, transparent 60%)",
+        boxShadow: "var(--shadow-card)",
       }}
     >
       {/* 智能体头像 */}
