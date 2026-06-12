@@ -21,8 +21,8 @@ export function ChangedFilesSection({ files }: ChangedFilesSectionProps) {
   if (files.length === 0) return null;
 
   return (
-    // shrink-0 防止被下方 flex-1 文件树压缩到不可见；底部 border 与文件树分隔
-    <div className="border-b border-border shrink-0">
+    // shrink-0 防止被下方 flex-1 文件树压缩到不可见；无 border 风格，靠间距与文件树分隔
+    <div className="shrink-0">
       {/* 标题行 */}
       <div className="flex items-center justify-between px-2 py-1.5">
         <span className="text-base font-semibold text-text-primary flex items-center gap-1.5">

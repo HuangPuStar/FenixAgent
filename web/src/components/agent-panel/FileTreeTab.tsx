@@ -1,4 +1,4 @@
-import { Download, File, Folder, FolderInput, FolderOpen, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Download, File, Folder, FolderInput, FolderOpen, FolderTree, RefreshCw, Trash2, Upload } from "lucide-react";
 import { forwardRef, type ReactNode, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -109,6 +109,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   ref,
 ) {
   const { t } = useTranslation(NS.COMPONENTS);
+  const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const treeDataRef = useRef<ParsedNode[]>([]);
@@ -550,49 +551,55 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
-      {/* 工具栏 */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border flex-shrink-0">
-        <ToolbarTip label={t("fileTree.refresh")}>
-          <button
-            type="button"
-            onClick={loadTree}
-            disabled={loading || !envId}
-            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </ToolbarTip>
-        <ToolbarTip label={t("fileTree.upload")}>
-          <button
-            type="button"
-            onClick={handleUploadClick}
-            disabled={uploading || !envId}
-            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          >
-            <Upload className="h-4 w-4" />
-          </button>
-        </ToolbarTip>
-        <ToolbarTip label={t("fileTree.uploadFolder")}>
-          <button
-            type="button"
-            onClick={handleFolderUploadClick}
-            disabled={uploading || !envId}
-            className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          >
-            <FolderInput className="h-4 w-4" />
-          </button>
-        </ToolbarTip>
-        <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileInputChange} />
-        <input
-          ref={folderInputRef}
-          type="file"
-          multiple
-          style={{ display: "none" }}
-          onChange={handleFolderInputChange}
-          // @ts-expect-error webkitdirectory is non-standard but widely supported
-          webkitdirectory=""
-          directory=""
-        />
+      {/* 标题栏 + 工具按钮合并为一行 */}
+      <div className="flex items-center justify-between px-2 py-1.5 flex-shrink-0">
+        <span className="text-base font-semibold text-text-primary flex items-center gap-1.5">
+          <FolderTree className="h-4 w-4" />
+          {tPanel("tabFiles")}
+        </span>
+        <div className="flex items-center gap-1">
+          <ToolbarTip label={t("fileTree.refresh")}>
+            <button
+              type="button"
+              onClick={loadTree}
+              disabled={loading || !envId}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          </ToolbarTip>
+          <ToolbarTip label={t("fileTree.upload")}>
+            <button
+              type="button"
+              onClick={handleUploadClick}
+              disabled={uploading || !envId}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" />
+            </button>
+          </ToolbarTip>
+          <ToolbarTip label={t("fileTree.uploadFolder")}>
+            <button
+              type="button"
+              onClick={handleFolderUploadClick}
+              disabled={uploading || !envId}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+            >
+              <FolderInput className="h-4 w-4" />
+            </button>
+          </ToolbarTip>
+          <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileInputChange} />
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleFolderInputChange}
+            // @ts-expect-error webkitdirectory is non-standard but widely supported
+            webkitdirectory=""
+            directory=""
+          />
+        </div>
       </div>
 
       {/* 文件树 */}

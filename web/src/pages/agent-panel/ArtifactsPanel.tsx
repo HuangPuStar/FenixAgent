@@ -1,4 +1,4 @@
-import { FolderTree, Upload, X } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -20,7 +20,6 @@ interface ArtifactsPanelProps {
 
 export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
-  const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const [dialogOffset, setDialogOffset] = useState({ x: 0, y: 0 });
   const initialDialogSize = useMemo(
@@ -199,14 +198,10 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
         <div className="agent-artifacts-resize-handle" onMouseDown={handleMouseDown} />
 
         <div className="flex flex-col overflow-hidden" style={{ width }}>
-          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {/* px-2 让标题/文件项/tree 统一内缩 8px，仿照 sidebar 的呼吸感，
+              同时 hover 背景不会贴到 panel 圆角边缘 */}
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-2">
             <ChangedFilesSection files={changedFiles} />
-            <div className="flex items-center px-2 py-1.5 border-b border-border shrink-0">
-              <span className="text-base font-semibold text-text-primary flex items-center gap-1.5">
-                <FolderTree className="h-4 w-4" />
-                {tPanel("tabFiles")}
-              </span>
-            </div>
             <div className="flex-1 min-h-0">
               <FileTreeTab
                 ref={fileTreeRef}
@@ -249,12 +244,13 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
         onOpenChange={(open) => {
           if (!open) closePreview();
         }}
+        modal={false}
       >
         <DialogContent
           ref={dialogResizeRef}
           className="flex flex-col p-0 gap-0 overflow-hidden sm:max-w-none !translate-x-0 !translate-y-0 shadow-[0_0_40px_rgba(0,0,0,0.4)] !transition-none"
           style={effectiveStyle}
-          showOverlay
+          showOverlay={false}
           disableOverlayClose
           showCloseButton={false}
         >
