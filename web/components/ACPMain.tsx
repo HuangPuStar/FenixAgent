@@ -123,14 +123,15 @@ export function ACPMain({
   }, [client, handleSelectSession]);
 
   return (
-    <div className="flex h-full w-full">
+    <div className="flex h-full w-full gap-3">
       {/* 侧边栏 — Anthropic warm sidebar, hidden on mobile / hidden in readonly share mode */}
       {!readonly && !hideSidebar && (
         <div
           className={cn(
-            "hidden md:flex flex-col border-r border-border/60 bg-surface-1/50 transition-all duration-200 flex-shrink-0",
+            "hidden md:flex flex-col bg-surface-1 transition-all duration-200 flex-shrink-0 rounded-xl",
             sidebarCollapsed ? "w-12" : "w-64",
           )}
+          style={{ boxShadow: "var(--shadow-card)" }}
         >
           {/* 头部 */}
           <div className="flex items-center justify-between px-3 py-4">
