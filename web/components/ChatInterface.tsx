@@ -8,7 +8,6 @@ import type {
   ImageContent,
   PermissionOption,
   PermissionRequestPayload,
-  SessionMode,
   SessionUpdate,
 } from "../src/acp/types";
 import { useCommands } from "../src/hooks/useCommands";
@@ -28,6 +27,7 @@ import { ContextPanel } from "./ContextPanel";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatView } from "./chat/ChatView";
 import { PermissionPanel } from "./chat/PermissionPanel";
+import { SessionModeSelector } from "./chat/SessionModeSelector";
 import type { TodoItem } from "./chat/TodoPanel";
 import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
 import { ModelSelectorPopover } from "./model-selector";
@@ -67,9 +67,8 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mimeType });
 }
 
-import { Check, ChevronDown, ChevronUp, Plus, Shield } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 // =============================================================================
@@ -86,60 +85,6 @@ interface ChatInterfaceProps {
   scenePrompt?: string;
   onPromptComplete?: () => void;
 }
-
-// =============================================================================
-// Session Mode Selector (dynamic from agent)
-// =============================================================================
-
-function SessionModeSelector({
-  modes,
-  currentModeId,
-  onModeChange,
-}: {
-  modes: SessionMode[];
-  currentModeId: string | null;
-  onModeChange: (modeId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const current = modes.find((m) => m.id === currentModeId) ?? modes[0];
-
-  if (modes.length === 0) return null;
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground h-7 px-2">
-          <Shield className="h-3 w-3" />
-          <span className="max-w-24 truncate">{current?.name ?? "默认"}</span>
-          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-1" align="start">
-        {modes.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => {
-              onModeChange(m.id);
-              setOpen(false);
-            }}
-            className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left hover:bg-surface-2 transition-colors"
-          >
-            <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center">
-              {currentModeId === m.id && <Check className="h-3.5 w-3.5 text-brand" />}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-text-primary">{m.name}</div>
-              {m.description && <div className="text-xs text-text-muted">{m.description}</div>}
-            </div>
-          </button>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// =============================================================================
 // Helper Functions
 // =============================================================================
 
