@@ -22,9 +22,10 @@ describe("ChatComposer", () => {
     expect(html).toContain("给智能体发送消息");
   });
 
+  // i18n 未初始化，t() 返回原始 key
   test("renders send button", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} client={{} as any} />);
-    expect(html).toContain("发送");
+    expect(html).toContain("chatComposer.send");
   });
 });
