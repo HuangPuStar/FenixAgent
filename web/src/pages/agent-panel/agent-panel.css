@@ -438,6 +438,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: transparent;
 }
 
 /* ---------- 右侧 Artifacts 面板 ---------- */
