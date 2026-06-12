@@ -21,6 +21,7 @@ import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
 import apiAgentsRoutes from "./routes/api/agents";
+import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
 import apiSkillsRoutes from "./routes/api/skills";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
@@ -332,6 +333,7 @@ const app = new Elysia()
   .use(apiAgentsRoutes)
   .use(apiSkillsRoutes)
   .use(apiModelsRoutes)
+  .use(apiMcpRoutes)
   // Workflow proxy (not under /web prefix)
   .use(workflowStaticApp)
   // MCP routes
