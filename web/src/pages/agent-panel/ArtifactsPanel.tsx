@@ -199,14 +199,14 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
         <div className="agent-artifacts-resize-handle" onMouseDown={handleMouseDown} />
 
         <div className="flex flex-col overflow-hidden" style={{ width }}>
-          <div className="flex items-center px-2 py-1.5 border-b border-border shrink-0">
-            <span className="text-xs text-text-primary flex items-center gap-1">
-              <FolderTree className="h-3 w-3" />
-              {tPanel("tabFiles")}
-            </span>
-          </div>
-
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <ChangedFilesSection files={changedFiles} />
+            <div className="flex items-center px-2 py-1.5 border-b border-border shrink-0">
+              <span className="text-base font-semibold text-text-primary flex items-center gap-1.5">
+                <FolderTree className="h-4 w-4" />
+                {tPanel("tabFiles")}
+              </span>
+            </div>
             <div className="flex-1 min-h-0">
               <FileTreeTab
                 ref={fileTreeRef}
@@ -215,7 +215,6 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
                 onReferenceFile={handleReferenceFile}
               />
             </div>
-            <ChangedFilesSection files={changedFiles} />
           </div>
         </div>
 

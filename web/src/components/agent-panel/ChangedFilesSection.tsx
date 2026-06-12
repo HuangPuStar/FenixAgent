@@ -9,7 +9,7 @@ interface ChangedFilesSectionProps {
 }
 
 /**
- * 在 ArtifactsPanel 文件树下方展示本次会话中被 Agent 修改的文件列表。
+ * 在 ArtifactsPanel 文件树上方展示本次会话中被 Agent 修改的文件列表。
  * edit（修改）显示橙色图标，write（新建/覆盖）显示绿色图标。
  * 只显示文件名，hover title 展示完整路径。
  * 无变更时不渲染（返回 null）。
@@ -21,12 +21,12 @@ export function ChangedFilesSection({ files }: ChangedFilesSectionProps) {
   if (files.length === 0) return null;
 
   return (
-    // shrink-0 防止被上方 flex-1 文件树压缩到不可见
-    <div className="border-t border-border shrink-0">
+    // shrink-0 防止被下方 flex-1 文件树压缩到不可见；底部 border 与文件树分隔
+    <div className="border-b border-border shrink-0">
       {/* 标题行 */}
       <div className="flex items-center justify-between px-2 py-1.5">
-        <span className="text-xs text-text-primary flex items-center gap-1">
-          <FilePen className="h-3 w-3" />
+        <span className="text-base font-semibold text-text-primary flex items-center gap-1.5">
+          <FilePen className="h-4 w-4" />
           {t("changedFiles.title")}
         </span>
         {/* 文件数徽章 */}
@@ -43,13 +43,13 @@ export function ChangedFilesSection({ files }: ChangedFilesSectionProps) {
             <li
               key={path}
               title={path}
-              className="flex items-center gap-1.5 px-3 py-0.5 text-xs text-text-muted hover:bg-surface-2 cursor-default"
+              className="flex items-center gap-1.5 px-3 py-1 text-base text-text-muted hover:bg-surface-2 cursor-default"
             >
               {/* edit 橙色（修改已有文件），write 绿色（新建/覆盖） */}
               {type === "write" ? (
-                <FilePlus className="h-3 w-3 shrink-0 text-green-500" />
+                <FilePlus className="h-4 w-4 shrink-0 text-green-500" />
               ) : (
-                <FilePen className="h-3 w-3 shrink-0 text-orange-400" />
+                <FilePen className="h-4 w-4 shrink-0 text-orange-400" />
               )}
               <span className="truncate">{fileName}</span>
             </li>

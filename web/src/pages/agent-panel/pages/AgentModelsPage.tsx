@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
 import { ModelConfigDialog, mergeModelConfigUpdate } from "@/components/config/ModelConfigDialog";
+import { ModelIcon } from "@/components/model-icon/ModelIcon";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -37,32 +38,22 @@ function getErrorDataRecord(data: unknown): Record<string, unknown> {
   return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
 }
 
-export function getProviderKey(provider: ProviderInfo): string {
-  return provider.resourceAccess?.resourceKey ?? provider.resourceKey ?? provider.id;
-}
+// Provider 工具函数从独立模块导入，避免组件文件加载 @lobehub/icons 后影响单元测试
+import {
+  buildProviderPublicReadablePayload,
+  canWriteProvider,
+  getProviderDisplayName,
+  getProviderKey,
+  getProviderResourceBadgeKey,
+} from "./agent-models-utils";
 
-export function getProviderDisplayName(provider: ProviderInfo): string {
-  const source = provider.resourceAccess?.sourceOrganizationName;
-  if (source) return `${source}/${provider.id}`;
-  return provider.id;
-}
-
-export function getProviderResourceBadgeKey(provider: ProviderInfo): string {
-  if (provider.resourceAccess?.ownership === "external") return "resource.external";
-  if (provider.resourceAccess?.publicReadable) return "resource.public";
-  return "resource.internal";
-}
-
-export function canWriteProvider(provider: ProviderInfo): boolean {
-  return provider.resourceAccess?.writable !== false;
-}
-
-export function buildProviderPublicReadablePayload(
-  options: Record<string, unknown>,
-  publicReadable: boolean,
-): Record<string, unknown> {
-  return { ...options, publicReadable };
-}
+export {
+  buildProviderPublicReadablePayload,
+  canWriteProvider,
+  getProviderDisplayName,
+  getProviderKey,
+  getProviderResourceBadgeKey,
+};
 
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
@@ -794,6 +785,7 @@ export function AgentModelsPage() {
                         >
                           <div className="min-w-0 flex-1 basis-0">
                             <div className="flex items-center gap-2">
+                              <ModelIcon modelId={m.id} size={16} />
                               <span className="font-mono text-xs font-medium text-text-bright">{m.id}</span>
                               {m.name && m.name !== m.id && (
                                 <span className="text-xs text-text-secondary">{m.name}</span>

@@ -3,6 +3,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
 import { fileApi, userFileApi } from "@/src/api/sdk";
@@ -420,28 +421,36 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
       return (
         <>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDownload(node.id, isDir);
-            }}
-            className="h-5 w-5 flex items-center justify-center rounded text-text-muted hover:text-text-primary"
-            title={isDir ? t("fileTree.downloadZip") : t("fileTree.download")}
-          >
-            <Download className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteConfirm({ path: node.id, name: node.label });
-            }}
-            className="h-5 w-5 flex items-center justify-center rounded text-text-muted hover:text-status-error"
-            title={t("fileTree.contextMenu.delete")}
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownload(node.id, isDir);
+                }}
+                className="h-6 w-6 flex items-center justify-center rounded text-text-muted hover:text-text-primary"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{isDir ? t("fileTree.downloadZip") : t("fileTree.download")}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteConfirm({ path: node.id, name: node.label });
+                }}
+                className="h-6 w-6 flex items-center justify-center rounded text-text-muted hover:text-status-error"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{t("fileTree.contextMenu.delete")}</TooltipContent>
+          </Tooltip>
         </>
       );
     },
@@ -474,7 +483,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
     return (
       <span className="flex items-center gap-1.5">
-        <IconComp className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+        <IconComp className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
         <span className="truncate" title={node.label}>
           {node.label}
         </span>
@@ -488,42 +497,58 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* 工具栏 */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border flex-shrink-0">
-        <button
-          type="button"
-          onClick={loadTree}
-          disabled={loading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.refresh")}
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-        </button>
-        <button
-          type="button"
-          onClick={handleUploadClick}
-          disabled={uploading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.upload")}
-        >
-          <Upload className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleFolderUploadClick}
-          disabled={uploading || !envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.uploadFolder")}
-        >
-          <FolderInput className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleNewFile}
-          disabled={!envId}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
-          title={t("fileTree.newFile")}
-        >
-          <FilePlus className="h-3.5 w-3.5" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={loadTree}
+              disabled={loading || !envId}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{t("fileTree.refresh")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleUploadClick}
+              disabled={uploading || !envId}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{t("fileTree.upload")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleFolderUploadClick}
+              disabled={uploading || !envId}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+            >
+              <FolderInput className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{t("fileTree.uploadFolder")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleNewFile}
+              disabled={!envId}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+            >
+              <FilePlus className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{t("fileTree.newFile")}</TooltipContent>
+        </Tooltip>
         <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileInputChange} />
         <input
           ref={folderInputRef}
