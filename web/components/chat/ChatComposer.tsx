@@ -1,5 +1,5 @@
 import imageCompression from "browser-image-compression";
-import { Send, Square } from "lucide-react";
+import { Hexagon, Send, Square } from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -69,7 +69,7 @@ interface ChatComposerProps {
  * ChatComposer — 玻璃磨砂命令岛输入组件
  *
  * 从 ChatInput 迁移全部输入逻辑（state/handlers/effects/图片处理/文件拖拽/slash 命令），
- * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。底部元信息条在 Task 5 实现：
+ * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。底部元信息条包含：
  * 环境名 / SessionModeSelector / ModelSelectorPopover / token 统计 / 新会话 / 发送。
  */
 export function ChatComposer({
@@ -442,12 +442,12 @@ export function ChatComposer({
             <>
               <span className="flex items-center gap-1 text-text-primary font-medium max-w-[140px]">
                 <span
-                  className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center text-[10px] shrink-0"
+                  className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center shrink-0"
                   style={{
                     background: "color-mix(in srgb, var(--color-brand) 12%, transparent)",
                   }}
                 >
-                  ⬡
+                  <Hexagon className="h-2.5 w-2.5 text-brand" />
                 </span>
                 <span className="truncate">{envName ?? envId}</span>
               </span>
