@@ -422,18 +422,37 @@ export function ChatComposer({
           </div>
         )}
 
-        {/* 编辑区 —— textarea 默认 2 行高，无边框，透明背景 */}
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder={_placeholder}
-          disabled={disabled}
-          rows={1}
-          className="chat-composer-textarea w-full resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[48px] max-h-[200px] leading-relaxed px-4 pt-4 pb-2"
-        />
+        {/* 编辑区 —— textarea + 发送按钮，按钮在右下 */}
+        <div className="flex items-end gap-2 px-4 pt-4 pb-2">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={handleInput}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder={_placeholder}
+            disabled={disabled}
+            rows={1}
+            className="chat-composer-textarea flex-1 resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[48px] max-h-[200px] leading-relaxed"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={isLoading ? onInterrupt : handleSubmit}
+            disabled={!isLoading && !canSend}
+            className={cn(
+              "h-9 w-9 shrink-0 p-0 rounded-lg flex items-center justify-center",
+              isLoading
+                ? "bg-text-primary text-surface-2 hover:bg-text-secondary"
+                : canSend
+                  ? "bg-brand text-white hover:bg-brand-light"
+                  : "bg-surface-3 text-text-muted",
+            )}
+          >
+            {isLoading ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
 
         {/* 底部元信息条 —— flex-wrap 允许数据多时换行到第二行 */}
         <div className="chat-composer-meta flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[11px]">
@@ -468,12 +487,9 @@ export function ChatComposer({
           {/* 中间弹簧 */}
           <div className="flex-1" />
 
-          {/* 右侧：token 统计 + 新会话 + 发送 */}
+          {/* 右侧：token 进度条 + 百分比 + 新会话 */}
           {tokenStats && tokenStats.estimatedTokens > 0 && (
             <>
-              <span className="font-mono text-text-secondary whitespace-nowrap">
-                {formatTokenCount(tokenStats.estimatedTokens)} / 200k
-              </span>
               <div className="w-12 h-1 rounded-full bg-surface-3 overflow-hidden flex shrink-0">
                 <div
                   className="h-full bg-brand transition-[width] duration-500"
@@ -506,34 +522,6 @@ export function ChatComposer({
               + {t("chatComposer.newSession")}
             </Button>
           )}
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={isLoading ? onInterrupt : handleSubmit}
-            disabled={!isLoading && !canSend}
-            className={cn(
-              "h-8 gap-1.5 text-xs font-medium rounded-lg",
-              isLoading
-                ? "bg-text-primary text-surface-2 hover:bg-text-secondary"
-                : canSend
-                  ? "bg-brand text-white hover:bg-brand-light"
-                  : "bg-surface-3 text-text-muted",
-            )}
-          >
-            {isLoading ? (
-              <>
-                <Square className="h-3 w-3" fill="currentColor" />
-                {t("chatComposer.stop")}
-              </>
-            ) : (
-              <>
-                <Send className="h-3.5 w-3.5" />
-                {t("chatComposer.send")}
-              </>
-            )}
-          </Button>
         </div>
       </div>
 

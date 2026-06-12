@@ -26,11 +26,11 @@ describe("ChatComposer", () => {
     expect(html).toContain("给智能体发送消息");
   });
 
-  // i18n 未初始化，t() 返回原始 key
+  // 发送按钮现在是纯图标（无文字），检查 lucide Send 图标存在
   test("renders send button", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} client={mockClient} />);
-    expect(html).toContain("chatComposer.send");
+    expect(html).toContain("lucide-send");
   });
 
   // 元信息条：传入 envId 时应渲染环境标识
@@ -42,7 +42,7 @@ describe("ChatComposer", () => {
     expect(html).toContain("env_123");
   });
 
-  // 元信息条：token 统计应格式化为 k 单位 + 百分比
+  // 元信息条：token 进度条宽度 + 百分比（数字文字已移除）
   test("renders token stats when tokenStats provided", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(
@@ -52,8 +52,8 @@ describe("ChatComposer", () => {
         tokenStats={{ estimatedTokens: 12300, estimatedInputTokens: 5000, estimatedOutputTokens: 7300 }}
       />,
     );
-    expect(html).toContain("12.3k");
-    expect(html).toContain("200k");
+    // 进度条 input token 宽度 2.5%（5000/200000）
+    expect(html).toContain("width:2.5%");
     // React SSR 在 JSX 表达式和文本之间插入 HTML 注释（6<!-- -->%），需匹配 SSR 格式
     expect(html).toContain("6<!-- -->%");
   });
