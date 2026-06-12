@@ -103,7 +103,15 @@ export class ACPState extends EventEmitter<StateEvents> {
       } else if (state === "connecting") {
         this.setConnectionState("connecting");
       } else if (state === "error") {
-        const error = detail?.code === 4001 ? "登录已过期" : detail?.reason || "连接已断开，请刷新页面重试";
+        // 4500 = 远程节点不可用，使用专用 sentinel 供前端识别并展示 i18n 文案
+        // 4001 = 登录已过期
+        // 其他情况使用 reason 或默认提示
+        const error =
+          detail?.code === 4500
+            ? "machine_unavailable"
+            : detail?.code === 4001
+              ? "登录已过期"
+              : detail?.reason || "连接已断开，请刷新页面重试";
         this.setConnectionState("error", error);
       } else if (state === "disconnected") {
         this.resetSessionState();

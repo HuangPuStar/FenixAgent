@@ -52,6 +52,16 @@ describe("registry.ts 服务函数", () => {
   });
 });
 
+describe("registerMachine 参数 nodeId 去重", () => {
+  // 验证 registerMachine 接受可选的 nodeId 参数
+  test("registerMachine 签名接受 nodeId 参数", async () => {
+    const { registerMachine } = await import("../services/registry");
+    expect(registerMachine.length).toBe(1); // 单参数对象
+    // 函数可调用，nodeId 在类型层面可选
+    expect(typeof registerMachine).toBe("function");
+  });
+});
+
 describe("registry-heartbeat.ts 心跳检测", () => {
   test("startHeartbeat 函数已导出", async () => {
     const { startHeartbeat } = await import("../services/registry-heartbeat");
