@@ -435,8 +435,8 @@ export function ChatComposer({
           className="chat-composer-textarea w-full resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[48px] max-h-[200px] leading-relaxed px-4 pt-4 pb-2"
         />
 
-        {/* 底部元信息条 */}
-        <div className="chat-composer-meta flex items-center gap-2.5 px-4 py-2.5 text-[11px]">
+        {/* 底部元信息条 —— flex-wrap 允许数据多时换行到第二行 */}
+        <div className="chat-composer-meta flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[11px]">
           {/* 左侧：环境名 + 模式 + 模型 */}
           {envId && (
             <>
