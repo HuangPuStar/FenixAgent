@@ -24,6 +24,8 @@ import apiAgentsRoutes from "./routes/api/agents";
 import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
 import apiSkillsRoutes from "./routes/api/skills";
+import apiInstanceRoutes from "./routes/api/instances";
+import apiWorkspaceRoutes from "./routes/api/workspaces";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";
 import sessionIngress from "./routes/v2/session-ingress";
@@ -57,6 +59,14 @@ const EXTERNAL_OPENAPI_TAGS = [
   {
     name: "External Skill",
     description: "面向外部系统的 Skill 管理接口。",
+  },
+  {
+    name: "External Instance",
+    description: "面向外部系统的 Agent 实例连接接口。",
+  },
+  {
+    name: "External Workspace",
+    description: "面向外部系统的 Environment Workspace 文件接口。",
   },
 ];
 
@@ -334,6 +344,8 @@ const app = new Elysia()
   .use(apiSkillsRoutes)
   .use(apiModelsRoutes)
   .use(apiMcpRoutes)
+  .use(apiInstanceRoutes)
+  .use(apiWorkspaceRoutes)
   // Workflow proxy (not under /web prefix)
   .use(workflowStaticApp)
   // MCP routes
