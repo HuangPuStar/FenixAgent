@@ -1,18 +1,18 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, KeyRound, LogOut } from "lucide-react";
+import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, LogOut, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
-import { getAppBrand } from "@/src/lib/app-brand";
 import { ChangePasswordDialog } from "../../../components/ChangePasswordDialog";
 import { signOut, useSession } from "../../../src/lib/auth-client";
-import { OrgSwitcher } from "../../components/OrgSwitcher";
+import { useOrg } from "../../contexts/OrgContext";
 import { AgentSidebarQuickNav } from "./AgentSidebarConfig";
 import { AgentSidebarTree } from "./AgentSidebarTree";
 
 interface AgentSidebarProps {
   activeNav: string | null;
   selectedInstanceId?: string | null;
+  selectedEnvironmentId?: string | null;
   onSelectInstance: (instanceId: string, envId: string, sessionId: string | null) => void;
   onNavigate: (pageId: string) => void;
   onCreateAgent?: () => void;
@@ -22,6 +22,7 @@ interface AgentSidebarProps {
 export function AgentSidebar({
   activeNav,
   selectedInstanceId = null,
+  selectedEnvironmentId = null,
   onSelectInstance,
   onNavigate,
   onCreateAgent,
@@ -29,25 +30,27 @@ export function AgentSidebar({
 }: AgentSidebarProps) {
   const { t: tSidebar } = useTranslation(NS.SIDEBAR);
   const { data: session } = useSession();
+  const { org, orgs, switchOrg } = useOrg();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [orgMenuOpen, setOrgMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("agent-panel:sidebar-collapsed") === "true");
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const brand = getAppBrand();
 
   const userEmail = session?.user?.email ?? "";
-  const avatarLetter = userEmail.charAt(0).toUpperCase() || "U";
+  const userName = session?.user?.name || userEmail.split("@")[0] || "User";
 
   useEffect(() => {
-    if (!userMenuOpen) return;
+    if (!userMenuOpen && !orgMenuOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
+        setOrgMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [userMenuOpen]);
+  }, [userMenuOpen, orgMenuOpen]);
 
   useEffect(() => {
     localStorage.setItem("agent-panel:sidebar-collapsed", String(collapsed));
@@ -58,11 +61,17 @@ export function AgentSidebar({
     await signOut({ fetchOptions: { credentials: "include" } });
   };
 
+  const handleSwitchOrg = async (orgId: string) => {
+    setOrgMenuOpen(false);
+    await switchOrg(orgId);
+  };
+
   return (
     <aside className={`agent-sidebar${collapsed ? " collapsed" : ""}`}>
       {/* 品牌区 */}
       <Link
         to="/agent/home"
+        aria-label="Fenix Agent"
         className={[
           "agent-sidebar-brand",
           "flex items-center gap-2.5 px-4",
@@ -72,9 +81,6 @@ export function AgentSidebar({
         ].join(" ")}
       >
         <FenixSidebarLogo />
-        <span className="agent-sidebar-brand-text text-sm font-bold tracking-[0.02em] text-text-bright whitespace-nowrap overflow-hidden">
-          {brand.name}
-        </span>
       </Link>
       <button
         type="button"
@@ -93,87 +99,87 @@ export function AgentSidebar({
       <div className="agent-sidebar-tree-wrap border-t border-border-subtle flex-1 min-h-0 overflow-hidden">
         <AgentSidebarTree
           selectedInstanceId={selectedInstanceId}
+          selectedEnvironmentId={selectedEnvironmentId}
           onSelectInstance={onSelectInstance}
           onCreateAgent={onCreateAgent}
           onEditAgent={onEditAgent}
         />
       </div>
 
-      {/* 底部：组织切换 + 用户头像 */}
+      {/* 底部：用户 + 组织 */}
       <div className="agent-sidebar-footer border-t border-border-subtle">
-        {/* 组织切换 */}
-        <div className="px-2 py-1.5">
-          <OrgSwitcher />
-        </div>
-
-        {/* 用户头像 */}
-        <div className="agent-sidebar-user border-t border-border-subtle relative">
-          <button
-            type="button"
-            onClick={() => setUserMenuOpen((v) => !v)}
-            className="agent-sidebar-user-button flex items-center gap-2.5 w-full px-4 py-2.5 cursor-pointer transition-colors duration-150"
-          >
-            <div
-              className={[
-                "agent-sidebar-avatar",
-                "w-8 h-8 rounded-full flex-shrink-0",
-                "flex items-center justify-center",
-                "bg-gradient-to-br from-brand to-brand-light",
-                "text-white text-[13px] font-semibold",
-                "transition-shadow duration-150",
-                "hover:shadow-[0_0_0_3px_rgba(99,102,241,0.15)]",
-              ].join(" ")}
-            >
-              {avatarLetter}
-            </div>
-            <span className="agent-sidebar-user-email text-[12px] text-text-dim truncate">{userEmail}</span>
-          </button>
-
+        <div ref={userMenuRef} className="agent-sidebar-user-panel relative">
           {userMenuOpen && (
-            <div
-              ref={userMenuRef}
-              className={[
-                "absolute left-2 right-2 bottom-full mb-1",
-                "py-1.5",
-                "rounded-[var(--radius-lg)]",
-                "border border-border-default bg-surface-2",
-                "shadow-lg shadow-black/10",
-                "z-50",
-              ].join(" ")}
-            >
-              <div className="px-3 py-2 border-b border-border-subtle">
-                <p className="text-[13px] font-medium text-text-bright truncate">{userEmail}</p>
+            <div className="agent-sidebar-user-menu absolute rounded-[var(--radius-lg)] shadow-lg shadow-black/10 z-50">
+              <div className="agent-sidebar-user-menu-section">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setChangePasswordOpen(true);
+                  }}
+                  className="agent-sidebar-user-menu-item"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  {tSidebar("personalSettings", { defaultValue: "个人设置" })}
+                </button>
+                <button type="button" onClick={handleLogout} className="agent-sidebar-user-menu-item danger">
+                  <LogOut className="w-3.5 h-3.5" />
+                  {tSidebar("logout")}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setUserMenuOpen(false);
-                  setChangePasswordOpen(true);
-                }}
-                className={[
-                  "flex items-center gap-2 w-full px-3 py-2",
-                  "text-[13px] text-text-default",
-                  "hover:bg-surface-elevated rounded-[var(--radius)] mx-0.5",
-                  "transition-colors duration-100",
-                ].join(" ")}
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                {tSidebar("changePassword")}
-              </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className={[
-                  "flex items-center gap-2 w-full px-3 py-2",
-                  "text-[13px] text-text-default",
-                  "hover:bg-surface-elevated rounded-[var(--radius)] mx-0.5",
-                  "transition-colors duration-100",
-                ].join(" ")}
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                {tSidebar("logout")}
-              </button>
             </div>
+          )}
+
+          <div className="agent-sidebar-user">
+            <button
+              type="button"
+              onClick={() => {
+                setOrgMenuOpen(false);
+                setUserMenuOpen((v) => !v);
+              }}
+              className="agent-sidebar-user-button"
+            >
+              <div className="agent-sidebar-avatar">
+                <UserRound className="w-4 h-4" />
+              </div>
+              <span className="agent-sidebar-user-name truncate">{userName}</span>
+              <ChevronRight className="agent-sidebar-user-chevron w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {orgMenuOpen && (
+            <div className="agent-sidebar-org-menu absolute rounded-[var(--radius-lg)] shadow-lg shadow-black/10 z-50">
+              <div className="agent-sidebar-user-menu-section orgs">
+                {orgs.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => void handleSwitchOrg(item.id)}
+                    className={["agent-sidebar-user-menu-item", item.id === org?.id ? "active" : ""].join(" ")}
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span className="truncate">{item.name}</span>
+                    {item.id === org?.id && <Check className="ml-auto w-3.5 h-3.5" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {org && (
+            <button
+              type="button"
+              className="agent-sidebar-org-row"
+              onClick={() => {
+                setUserMenuOpen(false);
+                setOrgMenuOpen((v) => !v);
+              }}
+            >
+              <Building2 className="agent-sidebar-org-icon w-4 h-4" />
+              <span className="agent-sidebar-org-name truncate">{org.name}</span>
+              <ChevronRight className="agent-sidebar-org-chevron w-3.5 h-3.5" />
+            </button>
           )}
         </div>
       </div>
@@ -183,19 +189,17 @@ export function AgentSidebar({
 }
 
 function FenixSidebarLogo() {
+  const assetBase = import.meta.env.BASE_URL;
+
   return (
-    <svg className="agent-sidebar-logo w-8 h-8 flex-shrink-0" viewBox="0 0 200 200" aria-hidden="true">
-      <path
-        d="M100 20C130 40 150 70 150 100C150 130 130 160 100 180C70 160 50 130 50 100C50 70 70 40 100 20Z"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="6"
+    <span className="fenix-sidebar-logo">
+      <img
+        className="fenix-sidebar-logo-mark"
+        src={`${assetBase}brand/fenix-agent-logo-mark.png`}
+        alt=""
+        aria-hidden="true"
       />
-      <path d="M70 60Q100 30 130 60" fill="none" stroke="#6BE6FF" strokeWidth="4" />
-      <path d="M60 80Q100 40 140 80" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="3" />
-      <path d="M60 120Q100 160 140 120" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="3" />
-      <path d="M70 140Q100 170 130 140" fill="none" stroke="#6BE6FF" strokeWidth="4" />
-      <rect x="92" y="92" width="16" height="16" rx="2" fill="#6BE6FF" transform="rotate(45 100 100)" />
-    </svg>
+      <span className="fenix-sidebar-logo-text">Fenix Agent</span>
+    </span>
   );
 }

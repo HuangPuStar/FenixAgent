@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BookOpen,
+  Bot,
   Brain,
   Clock,
   Cpu,
@@ -33,6 +34,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "home", labelKey: "agentPanel:createAgent", icon: Plus },
       { id: "workflow", labelKey: "agentPanel:workflow", icon: Workflow },
+      { id: "agents", labelKey: "agentPanel:agentManagement", icon: Bot },
       { id: "sessions", labelKey: "agentPanel:sessions", icon: MessageSquare },
     ],
   },
