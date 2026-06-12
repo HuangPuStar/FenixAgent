@@ -45,6 +45,8 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  padding: 12px;
+  gap: 12px;
 }
 
 /* ---------- 左侧边栏 ---------- */
