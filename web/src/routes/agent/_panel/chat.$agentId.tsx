@@ -2,10 +2,8 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { envApi } from "../../../../src/api/sdk";
 import { extractChangedFiles } from "../../../../src/lib/extract-changed-files";
 import type { ThreadEntry } from "../../../../src/lib/types";
-import { StatusHeader } from "../../../components/agent-panel/StatusHeader";
 
 const ChatPanel = lazy(() => import("../../../pages/agent-panel/ChatPanel").then((m) => ({ default: m.ChatPanel })));
 const ArtifactsPanel = lazy(() =>
@@ -30,30 +28,16 @@ function ChatRoute() {
     return saved === "true";
   });
 
-  const [envName, setEnvName] = useState<string | null>(null);
-
-  const [stats, setStats] = useState<{ agentName?: string; modelName?: string; entries: ThreadEntry[] }>({
-    entries: [],
-  });
+  // 路由层只需 entries 派生 changedFiles，环境名/token 由 ChatComposer 内部获取
+  const [entries, setEntries] = useState<ThreadEntry[]>([]);
 
   // 从 entries 派生变更文件列表，实时跟随对话更新
-  const changedFiles = useMemo(() => extractChangedFiles(stats.entries), [stats.entries]);
-
-  // 加载 environment 名称
-  useEffect(() => {
-    if (!agentId) {
-      setEnvName(null);
-      return;
-    }
-    envApi
-      .get({ id: agentId })
-      .then(({ data }) => setEnvName(data?.name ?? null))
-      .catch(() => setEnvName(null));
-  }, [agentId]);
+  const changedFiles = useMemo(() => extractChangedFiles(entries), [entries]);
 
   useEffect(() => {
     const handler = (e: Event) => {
-      setStats((e as CustomEvent).detail);
+      const detail = (e as CustomEvent).detail;
+      setEntries(detail.entries ?? []);
     };
     window.addEventListener("chat:stats", handler);
     return () => window.removeEventListener("chat:stats", handler);
@@ -80,7 +64,6 @@ function ChatRoute() {
         </div>
       }
     >
-      <StatusHeader agentName={envName || stats.agentName} modelName={stats.modelName} entries={stats.entries} />
       <div className="agent-panel-content">
         <div className="agent-chat-area">
           <ChatPanel agentId={agentId} />

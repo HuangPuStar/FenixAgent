@@ -587,7 +587,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // 复用 entries 派生结果，避免重复遍历；chat:stats dispatch 仍独立维护以便外部监听
   const tokenStats: TokenStats = useMemo(() => computeStats(entries), [entries]);
 
-  // Broadcast stats to AgentAppShell via custom event (for top-level StatusHeader)
+  // Broadcast entries via custom event（路由层 chat.$agentId.tsx 据此派生 changedFiles 给 ArtifactsPanel）
   useEffect(() => {
     const modelName = client.modelState
       ? (client.modelState.availableModels.find((m) => m.modelId === client.modelState!.currentModelId)?.name ??

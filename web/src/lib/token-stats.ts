@@ -15,7 +15,7 @@ export interface TokenStats {
  * - `assistant_message` 的 chunks 文本计入 output tokens
  * - `tool_call` 的 rawOutput（JSON 序列化后）计入 output tokens
  *
- * 估算方式为 字符数 / 4（粗略近似，与 StatusHeader 原始实现保持一致）。
+ * 估算方式为 字符数 / 4（粗略近似，沿用了早期 StatusHeader 的估算口径）。
  *
  * @param entries 对话线程条目列表
  * @returns 按 input/output 拆分的 token 估算
