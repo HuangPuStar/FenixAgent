@@ -330,6 +330,8 @@
   "chatComposer": {
     "send": "Send",
     "stop": "Stop",
-    "newSession": "New Thread"
+    "newSession": "New Thread",
+    "placeholder": "Send a message to the agent…",
+    "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file"
   }
 }

@@ -42,8 +42,9 @@ interface ChatComposerProps {
   commands?: AvailableCommand[];
   /** 环境 ID，用于文件上传/浏览（workspace 按环境隔离） */
   envId?: string;
-  /** ACP 客户端实例，用于获取 Agent 能力 */
-  client: ACPClient;
+  /** ACP 客户端实例，用于获取 Agent 能力。
+   *  Task 3 骨架阶段未使用；Task 5 接入 ModelSelectorPopover 时才会真正调用 client。 */
+  client?: ACPClient;
   /** 可用会话模式列表（Task 5 元信息条用到） */
   availableModes?: SessionMode[];
   /** 当前会话模式 ID（Task 5 元信息条用到） */
@@ -84,7 +85,7 @@ export function ChatComposer({
   className,
 }: ChatComposerProps) {
   const { t } = useTranslation("components");
-  const _placeholder = placeholder ?? t("chatComposer.send");
+  const _placeholder = placeholder ?? t("chatComposer.placeholder");
 
   // ---------------------------------------------------------------------------
   // State — 从 ChatInput 原样迁移
@@ -463,7 +464,7 @@ export function ChatComposer({
 
       {/* 提示文本 */}
       <div className="text-center mt-1.5">
-        <span className="text-[11px] text-text-muted">Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件</span>
+        <span className="text-[11px] text-text-muted">{t("chatComposer.hint")}</span>
       </div>
     </div>
   );
