@@ -47,6 +47,7 @@
   overflow: hidden;
   padding: 12px;
   gap: 12px;
+  position: relative;
 }
 
 /* ---------- 左侧边栏 ---------- */
@@ -470,7 +471,7 @@
 /* ---------- Artifacts 折叠展开按钮 ---------- */
 .agent-artifacts-expand-btn {
   position: absolute;
-  right: 0;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
   width: 28px;
@@ -511,7 +512,7 @@
   transition: background 150ms;
   flex-shrink: 0;
   position: absolute;
-  left: 0;
+  left: -6px;
   top: 0;
   bottom: 0;
   z-index: 2;
