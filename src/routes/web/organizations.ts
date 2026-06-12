@@ -52,7 +52,6 @@ interface OrgApi {
       prefix: string;
       expiresIn: number | null;
       metadata: unknown;
-      rateLimitEnabled?: boolean;
     };
     headers: Headers;
   }) => Promise<unknown>;
@@ -334,9 +333,6 @@ app.post(
             prefix: "rcs_",
             expiresIn: b.expiresAt ? Math.ceil((new Date(b.expiresAt).getTime() - Date.now()) / 1000) : null,
             metadata: buildApiKeyMetadata(b.metadata, authContext),
-            // External API demo / ACP relay 会在短时间内触发多次校验；
-            // better-auth 默认 10 次/天的限流对平台 API key 过于激进，这里默认关闭。
-            rateLimitEnabled: false,
           },
           headers: request.headers,
         });
