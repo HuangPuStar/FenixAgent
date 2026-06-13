@@ -36,6 +36,11 @@ export const auth = betterAuth({
     apiKey({
       defaultPrefix: "rcs_",
       enableMetadata: true,
+      // 平台 API key 主要用于 External API / ACP relay，这类调用会高频校验；
+      // better-auth 默认 10 次/天的限流过于激进，因此统一在服务端配置层关闭。
+      rateLimit: {
+        enabled: false,
+      },
     }),
   ],
   databaseHooks: {

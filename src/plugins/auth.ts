@@ -40,6 +40,13 @@ interface AuthSessionInfo {
   token: string;
 }
 
+export interface RequestAuthResult {
+  user: UserInfo;
+  authSession: AuthSessionInfo | null;
+  authEnvironmentId: string | null;
+  authContext: AuthContext | null;
+}
+
 /** 统一认证上下文：替代散参数 userId */
 export interface AuthContext {
   organizationId: string;
@@ -97,6 +104,9 @@ async function tryApiKeyAuth(
   // 1. better-auth API Key 验证
   // biome-ignore lint/suspicious/noExplicitAny: better-auth verifyApiKey return type is untyped
   const result: any = await auth.api.verifyApiKey({ body: { key: token } });
+  if (!result.valid && result?.error?.code === "RATE_LIMITED") {
+    throw new AppError("API key rate limit exceeded", "RATE_LIMITED", 429);
+  }
   if (result.valid && result.key) {
     // biome-ignore lint/suspicious/noExplicitAny: better-auth API key metadata shape is untyped
     const apiKeyMeta = result.key as any;
@@ -120,6 +130,55 @@ async function tryApiKeyAuth(
   }
 
   return false;
+}
+
+/**
+ * 统一解析 HTTP / WebSocket 升级请求的认证结果。
+ * 优先尝试 session cookie，失败后再 fallback 到 API key / environment secret。
+ */
+export async function authenticateRequest(request: Request): Promise<RequestAuthResult | null> {
+  if (_testAuth) {
+    return {
+      user: _testAuth.user,
+      authSession: _testAuth.session,
+      authEnvironmentId: null,
+      authContext: _testAuth.authContext,
+    };
+  }
+
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (session?.user) {
+    const user = { id: session.user.id, email: session.user.email, name: session.user.name };
+    const authSession = {
+      id: session.session.id,
+      userId: session.session.userId,
+      token: session.session.token,
+    };
+    const { loadOrgContext } = await import("../services/org-context");
+    const authContext = await loadOrgContext(user, request);
+
+    return {
+      user,
+      authSession,
+      authEnvironmentId: null,
+      authContext,
+    };
+  }
+
+  const store = {
+    user: null as UserInfo | null,
+    authEnvironmentId: null as string | null,
+    authContext: null as AuthContext | null,
+  };
+  const ok = await tryApiKeyAuth(store, request);
+  if (!ok || !store.user) return null;
+
+  return {
+    user: store.user,
+    authSession: null,
+    authEnvironmentId: store.authEnvironmentId,
+    authContext: store.authContext,
+  };
 }
 
 export async function lookupUserById(userId: string): Promise<UserInfo | null> {
@@ -237,41 +296,15 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
       return {
         // biome-ignore lint/suspicious/noExplicitAny: Elysia macro context type not fully expressible
         beforeHandle: async ({ store, request, error }: any) => {
-          // 测试注入：直接设置 user 和 authContext，跳过 real auth
-          if (_testAuth) {
-            store.user = _testAuth.user;
-            store.authSession = _testAuth.session;
-            // 测试注入需要显式覆盖为空，避免前一次请求残留的组织上下文污染当前断言。
-            store.authContext = _testAuth.authContext;
-            enrichAlsContext(_testAuth.user, _testAuth.authContext);
-            return;
-          }
-          const session = await auth.api.getSession({ headers: request.headers });
-          if (session?.user) {
-            store.user = { id: session.user.id, email: session.user.email, name: session.user.name };
-            store.authSession = {
-              id: session.session.id,
-              userId: session.session.userId,
-              token: session.session.token,
-            };
-            // 加载组织上下文
-            const { loadOrgContext } = await import("../services/org-context");
-            const ctx = await loadOrgContext(store.user, request);
-            if (ctx) {
-              store.authContext = ctx;
-            }
-            enrichAlsContext(store.user, store.authContext);
-            return;
-          }
-          // Cookie 认证失败，fallback 到 API key / environment secret
-          const apiKeyOk = await tryApiKeyAuth(store, request);
-          if (!apiKeyOk) {
+          const authResult = await authenticateRequest(request);
+          if (!authResult) {
             return error(401, { error: { type: "unauthorized", message: "Not authenticated" } });
           }
-          // API key 认证成功，store 中已有 user 和 authContext
-          if (store.user) {
-            enrichAlsContext(store.user, store.authContext);
-          }
+          store.user = authResult.user;
+          store.authSession = authResult.authSession;
+          store.authEnvironmentId = authResult.authEnvironmentId;
+          store.authContext = authResult.authContext;
+          enrichAlsContext(store.user, store.authContext);
         },
       };
     },

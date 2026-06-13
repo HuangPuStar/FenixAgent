@@ -1,19 +1,34 @@
 import Elysia from "elysia";
-import * as z from "zod/v4";
 import { AppError } from "../../errors";
 import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
+import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
 import {
+  ApiModelDeleteResponseSchema,
+  ApiModelDetailSchema,
   ApiModelIdParamsSchema,
+  type ApiModelListQuery,
+  ApiModelListQuerySchema,
+  ApiModelListResponseSchema,
+  type ApiModelUpdateBody,
   ApiModelUpdateBodySchema,
+  type ApiModelUpsertBody,
   ApiModelUpsertBodySchema,
+  ApiProviderDeleteResponseSchema,
+  ApiProviderDetailSchema,
   ApiProviderIdParamsSchema,
+  ApiProviderListResponseSchema,
   ApiProviderOnlyParamsSchema,
+  type ApiProviderUpdateBody,
   ApiProviderUpdateBodySchema,
+  type ApiProviderUpsertBody,
   ApiProviderUpsertBodySchema,
 } from "../../schemas/api-model.schema";
 import * as configPg from "../../services/config/index";
 import { buildModelData } from "../../services/config/provider";
 
+/**
+ * 将业务异常映射到对外 API 的稳定错误结构。
+ */
 function mapApiError(error: unknown): { status: number; body: { error: { code: string; message: string } } } {
   if (error instanceof AppError) {
     return { status: error.statusCode, body: { error: { code: error.code, message: error.message } } };
@@ -24,7 +39,93 @@ function mapApiError(error: unknown): { status: number; body: { error: { code: s
   };
 }
 
-const app = new Elysia({ name: "api-models", prefix: "/api/model" }).use(authGuardPlugin).model({
+/**
+ * 组装对外 Provider 列表项，避免把内部字段和敏感细节直接暴露给列表接口。
+ */
+function toProviderListItem(provider: Awaited<ReturnType<typeof configPg.listProviders>>[number]) {
+  return {
+    id: provider.id,
+    name: provider.name,
+    displayName: provider.displayName ?? null,
+    protocol: provider.protocol,
+    baseUrl: provider.baseUrl ?? null,
+    modelCount: provider.modelCount ?? 0,
+    resourceAccess: provider.resourceAccess,
+  };
+}
+
+/**
+ * 组装对外 Provider 详情。
+ */
+function toProviderDetail(detail: NonNullable<Awaited<ReturnType<typeof configPg.getProvider>>>) {
+  return {
+    id: detail.id,
+    name: detail.name,
+    displayName: detail.displayName ?? null,
+    protocol: detail.protocol,
+    baseUrl: detail.baseUrl ?? null,
+    extraOptions: detail.extraOptions ?? null,
+    models: (detail.models ?? []).map((model) => ({
+      providerId: detail.id,
+      id: model.id,
+      modelId: model.modelId,
+      displayName: model.displayName ?? null,
+      modalities: model.modalities ?? null,
+      limitConfig: model.limitConfig ?? null,
+      cost: model.cost ?? null,
+    })),
+    resourceAccess: detail.resourceAccess,
+  };
+}
+
+/**
+ * 组装对外 Model 详情。
+ */
+function toModelDetail(
+  providerId: string,
+  providerName: string,
+  detail: {
+    id: string;
+    modelId: string;
+    displayName: string | null;
+    modalities: unknown;
+    limitConfig: unknown;
+    cost: unknown;
+    options: unknown;
+  },
+) {
+  return {
+    providerId,
+    id: detail.id,
+    modelId: detail.modelId,
+    providerName,
+    displayName: detail.displayName ?? null,
+    modalities: detail.modalities ?? null,
+    limitConfig: detail.limitConfig ?? null,
+    cost: detail.cost ?? null,
+    options:
+      detail.options && typeof detail.options === "object" && !Array.isArray(detail.options)
+        ? (detail.options as Record<string, unknown>)
+        : null,
+  };
+}
+
+/**
+ * 将对外 API 的字段命名转换为内部 config 服务需要的结构。
+ * 对外使用 displayName / limitConfig，内部仍沿用 name / limit。
+ */
+function toModelWriteData(body: ApiModelUpsertBody | ApiModelUpdateBody) {
+  return buildModelData({
+    name: body.displayName ?? undefined,
+    modalities: body.modalities,
+    limit: body.limitConfig,
+    cost: body.cost,
+    options: body.options,
+  });
+}
+
+const app = new Elysia({ name: "api-models", prefix: "/api/models" }).use(authGuardPlugin).model({
+  "api-model-list-query": ApiModelListQuerySchema,
   "api-provider-id-params": ApiProviderIdParamsSchema,
   "api-model-id-params": ApiModelIdParamsSchema,
   "api-provider-only-params": ApiProviderOnlyParamsSchema,
@@ -32,22 +133,29 @@ const app = new Elysia({ name: "api-models", prefix: "/api/model" }).use(authGua
   "api-provider-update-body": ApiProviderUpdateBodySchema,
   "api-model-create-body": ApiModelUpsertBodySchema,
   "api-model-update-body": ApiModelUpdateBodySchema,
+  "api-provider-list-response": ApiProviderListResponseSchema,
+  "api-provider-detail": ApiProviderDetailSchema,
+  "api-provider-delete-response": ApiProviderDeleteResponseSchema,
+  "api-model-list-response": ApiModelListResponseSchema,
+  "api-model-detail": ApiModelDetailSchema,
+  "api-model-delete-response": ApiModelDeleteResponseSchema,
 });
 
 // ── Provider CRUD ────────────────────────────────────────────
 
-/** GET /api/model/providers — 获取提供商列表 */
 app.get(
   "/providers",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
-  async ({ store, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+  async ({ store, query, error }: any) => {
+    const authCtx = store.authContext as AuthContext;
+    const { page, pageSize } = query as ApiModelListQuery;
+
     try {
       const providers = await configPg.listProviders(authCtx);
-      return { providers };
+      const total = providers.length;
+      const start = (page - 1) * pageSize;
+      const items = providers.slice(start, start + pageSize).map((provider) => toProviderListItem(provider));
+      return { items, total, page, pageSize };
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -55,28 +163,127 @@ app.get(
   },
   {
     sessionAuth: true,
+    query: "api-model-list-query",
+    response: {
+      200: "api-provider-list-response",
+      400: ApiErrorResponseSchema,
+      401: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
     detail: {
       tags: ["External Model"],
-      summary: "获取模型列表",
-      description: "返回当前组织可见的所有模型（含共享模型）。",
+      summary: "获取 Provider 列表",
+      description: "返回当前组织可见的 Provider 列表，采用稳定分页结构。",
     },
   },
 );
 
-/** POST /api/model/providers — 创建提供商 */
 app.post(
   "/providers",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, body, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
-    const payload = body as z.infer<typeof ApiProviderUpsertBodySchema>;
+    const authCtx = store.authContext as AuthContext;
+    const payload = body as ApiProviderUpsertBody;
+
     try {
+      const existing = await configPg.getProvider(authCtx, payload.name);
+      if (existing) {
+        return error(409, { error: { code: "CONFLICT", message: `Provider '${payload.name}' already exists` } });
+      }
+
       await configPg.upsertProvider(
         authCtx,
         payload.name,
+        {
+          displayName: payload.displayName ?? undefined,
+          protocol: payload.protocol,
+          baseUrl: payload.baseUrl ?? undefined,
+          apiKey: payload.apiKey ?? undefined,
+          extraOptions: payload.extraOptions ?? undefined,
+        },
+        { publicReadable: payload.publicReadable },
+      );
+
+      const detail = await configPg.getProvider(authCtx, payload.name);
+      if (!detail) {
+        return error(500, { error: { code: "INTERNAL_ERROR", message: "Provider could not be reloaded" } });
+      }
+      return toProviderDetail(detail);
+    } catch (err) {
+      const mapped = mapApiError(err);
+      return error(mapped.status, mapped.body);
+    }
+  },
+  {
+    sessionAuth: true,
+    body: "api-provider-create-body",
+    response: {
+      200: "api-provider-detail",
+      400: ApiErrorResponseSchema,
+      401: ApiErrorResponseSchema,
+      409: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
+    detail: {
+      tags: ["External Model"],
+      summary: "创建 Provider",
+      description: "创建一个新的 Provider 配置。名称已存在时返回冲突错误。",
+    },
+  },
+);
+
+app.get(
+  "/providers/:providerId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext as AuthContext;
+    const { providerId } = params as { providerId: string };
+
+    try {
+      const detail = await configPg.getProviderById(authCtx, providerId);
+      if (!detail) {
+        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
+      }
+      return toProviderDetail(detail);
+    } catch (err) {
+      const mapped = mapApiError(err);
+      return error(mapped.status, mapped.body);
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "api-provider-id-params",
+    response: {
+      200: "api-provider-detail",
+      401: ApiErrorResponseSchema,
+      404: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
+    detail: {
+      tags: ["External Model"],
+      summary: "获取 Provider 详情",
+      description: "按 Provider 唯一 ID 返回配置详情以及其下的模型摘要。",
+    },
+  },
+);
+
+app.put(
+  "/providers/:providerId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext as AuthContext;
+    const { providerId } = params as { providerId: string };
+    const payload = body as ApiProviderUpdateBody;
+
+    try {
+      const existing = await configPg.assertProviderInternalWritableById(authCtx, providerId);
+      if (!existing) {
+        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
+      }
+
+      const updated = await configPg.updateProviderById(
+        authCtx,
+        providerId,
         {
           displayName: payload.displayName,
           protocol: payload.protocol,
@@ -86,128 +293,15 @@ app.post(
         },
         { publicReadable: payload.publicReadable },
       );
-      const detail = await configPg.getProvider(authCtx, payload.name);
-      if (!detail) throw new AppError("Provider creation failed", "INTERNAL_ERROR", 500);
-      return {
-        id: detail.name,
-        name: detail.name,
-        displayName: detail.displayName ?? null,
-        protocol: detail.protocol,
-        baseUrl: detail.baseUrl ?? null,
-        apiKey: detail.apiKey ?? null,
-        extraOptions: detail.extraOptions ?? null,
-        models: (detail.models ?? []).map((m) => ({
-          id: m.modelId,
-          name: m.displayName ?? null,
-          modalities: m.modalities ?? null,
-          limitConfig: m.limitConfig ?? null,
-          cost: m.cost ?? null,
-        })),
-        resourceAccess: detail.resourceAccess,
-      };
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    body: "api-provider-create-body",
-    detail: { tags: ["External Model"], summary: "创建模型", description: "向指定提供商添加一个新的模型配置。" },
-  },
-);
+      if (!updated) {
+        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
+      }
 
-/** GET /api/model/providers/:id — 获取单个提供商 */
-app.get(
-  "/providers/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
-  async ({ store, params, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
-    const { id } = params as { id: string };
-    try {
-      const detail = await configPg.getProvider(authCtx, id);
+      const detail = await configPg.getProviderById(authCtx, providerId);
       if (!detail) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${id}' not found` } });
+        return error(500, { error: { code: "INTERNAL_ERROR", message: "Provider could not be reloaded" } });
       }
-      return {
-        id: detail.name,
-        name: detail.name,
-        displayName: detail.displayName ?? null,
-        protocol: detail.protocol,
-        baseUrl: detail.baseUrl ?? null,
-        apiKey: detail.apiKey ?? null,
-        extraOptions: detail.extraOptions ?? null,
-        models: (detail.models ?? []).map((m) => ({
-          id: m.modelId,
-          name: m.displayName ?? null,
-          modalities: m.modalities ?? null,
-          limitConfig: m.limitConfig ?? null,
-          cost: m.cost ?? null,
-        })),
-        resourceAccess: detail.resourceAccess,
-      };
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-provider-id-params",
-    detail: { tags: ["External Model"], summary: "获取模型详细信息", description: "按模型 ID 返回模型配置详情。" },
-  },
-);
-
-/** PUT /api/model/providers/:id — 修改供应商 */
-app.put(
-  "/providers/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
-  async ({ store, params, body, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
-    const { id } = params as { id: string };
-    const payload = body as z.infer<typeof ApiProviderUpdateBodySchema>;
-    try {
-      const existing = await configPg.assertProviderInternalWritable(authCtx, id);
-      if (!existing) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${id}' not found` } });
-      }
-      await configPg.upsertProvider(
-        authCtx,
-        id,
-        {
-          displayName: payload.displayName ?? existing.displayName ?? undefined,
-          protocol: payload.protocol ?? existing.protocol,
-          baseUrl: payload.baseUrl ?? existing.baseUrl ?? undefined,
-          apiKey: payload.apiKey ?? existing.apiKey ?? undefined,
-          extraOptions: payload.extraOptions ?? ((existing.extraOptions ?? undefined) as any),
-        },
-        { publicReadable: payload.publicReadable },
-      );
-      const detail = await configPg.getProvider(authCtx, id);
-      if (!detail) throw new AppError("Provider update failed", "INTERNAL_ERROR", 500);
-      return {
-        id: detail.name,
-        name: detail.name,
-        displayName: detail.displayName ?? null,
-        protocol: detail.protocol,
-        baseUrl: detail.baseUrl ?? null,
-        apiKey: detail.apiKey ?? null,
-        extraOptions: detail.extraOptions ?? null,
-        models: (detail.models ?? []).map((m) => ({
-          id: m.modelId,
-          name: m.displayName ?? null,
-          modalities: m.modalities ?? null,
-          limitConfig: m.limitConfig ?? null,
-          cost: m.cost ?? null,
-        })),
-        resourceAccess: detail.resourceAccess,
-      };
+      return toProviderDetail(detail);
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -217,30 +311,34 @@ app.put(
     sessionAuth: true,
     params: "api-provider-id-params",
     body: "api-provider-update-body",
+    response: {
+      200: "api-provider-detail",
+      400: ApiErrorResponseSchema,
+      401: ApiErrorResponseSchema,
+      404: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
     detail: {
       tags: ["External Model"],
-      summary: "修改模型配置",
-      description: "修改指定模型的显示名称、模态、使用限制等配置。",
+      summary: "更新 Provider",
+      description: "更新指定 Provider 的基础配置与共享访问设置。",
     },
   },
 );
 
-/** DELETE /api/model/providers/:id — 删除提供商 */
 app.delete(
-  "/providers/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
+  "/providers/:providerId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
-    const { id } = params as { id: string };
+    const authCtx = store.authContext as AuthContext;
+    const { providerId } = params as { providerId: string };
+
     try {
-      const deleted = await configPg.deleteProvider(authCtx, id);
+      const deleted = await configPg.deleteProviderById(authCtx, providerId);
       if (!deleted) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${id}' not found` } });
+        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
       }
-      return { id, deleted: true as const };
+      return { id: providerId, deleted: true as const };
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -249,38 +347,50 @@ app.delete(
   {
     sessionAuth: true,
     params: "api-provider-id-params",
-    detail: { tags: ["External Model"], summary: "删除模型配置", description: "删除指定提供商的指定模型配置。" },
+    response: {
+      200: "api-provider-delete-response",
+      401: ApiErrorResponseSchema,
+      404: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
+    detail: {
+      tags: ["External Model"],
+      summary: "删除 Provider",
+      description: "删除指定 Provider 及其关联的模型配置。",
+    },
   },
 );
 
 // ── Model CRUD ───────────────────────────────────────────────
 
-/** POST /api/model/:providerId/models — 创建模型 */
 app.post(
-  "/:providerId/models",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
+  "/providers/:providerId/models",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, body, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
+    const authCtx = store.authContext as AuthContext;
     const { providerId } = params as { providerId: string };
-    const payload = body as z.infer<typeof ApiModelUpsertBodySchema>;
+    const payload = body as ApiModelUpsertBody;
+
     try {
-      const p = await configPg.assertProviderInternalWritable(authCtx, providerId);
-      if (!p) {
+      const provider = await configPg.assertProviderInternalWritableById(authCtx, providerId);
+      if (!provider) {
         return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
       }
-      await configPg.addModel(authCtx, p.id, { modelId: payload.modelId, ...buildModelData(payload) });
-      return {
-        id: payload.modelId,
-        providerName: providerId,
-        displayName: payload.displayName ?? null,
-        modalities: payload.modalities ?? null,
-        limitConfig: payload.limitConfig ?? null,
-        cost: payload.cost ?? null,
-        options: payload.options ?? null,
-      };
+      if ((provider.models ?? []).some((model) => model.modelId === payload.modelId)) {
+        return error(409, { error: { code: "CONFLICT", message: `Model '${payload.modelId}' already exists` } });
+      }
+
+      const createdId = await configPg.addModel(authCtx, provider.id, {
+        modelId: payload.modelId,
+        ...toModelWriteData(payload),
+      });
+
+      const detail = await configPg.getProviderById(authCtx, providerId);
+      const modelDetail = detail?.models?.find((model) => model.id === createdId);
+      if (!detail || !modelDetail) {
+        return error(500, { error: { code: "INTERNAL_ERROR", message: "Model could not be reloaded" } });
+      }
+      return toModelDetail(detail.id, detail.name, modelDetail);
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -290,34 +400,50 @@ app.post(
     sessionAuth: true,
     params: "api-provider-only-params",
     body: "api-model-create-body",
-    detail: { tags: ["External Model"], summary: "创建模型", description: "向指定提供商添加一个新的模型配置。" },
+    response: {
+      200: "api-model-detail",
+      400: ApiErrorResponseSchema,
+      401: ApiErrorResponseSchema,
+      404: ApiErrorResponseSchema,
+      409: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
+    detail: {
+      tags: ["External Model"],
+      summary: "创建 Model",
+      description: "向指定 Provider ID 对应的 Provider 添加一个新的 Model 配置。",
+    },
   },
 );
 
-/** GET /api/model/:providerId/models — 获取模型列表 */
 app.get(
-  "/:providerId/models",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
-  async ({ store, params, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
+  "/providers/:providerId/models",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+  async ({ store, params, query, error }: any) => {
+    const authCtx = store.authContext as AuthContext;
     const { providerId } = params as { providerId: string };
+    const { page, pageSize } = query as ApiModelListQuery;
+
     try {
-      const detail = await configPg.getProvider(authCtx, providerId);
+      const detail = await configPg.getProviderById(authCtx, providerId);
       if (!detail) {
         return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
       }
-      const models = (detail.models ?? []).map((m) => ({
-        id: m.modelId,
-        providerName: providerId,
-        displayName: m.displayName ?? null,
-        modalities: m.modalities ?? null,
-        limitConfig: m.limitConfig ?? null,
-        cost: m.cost ?? null,
+
+      const models = (detail.models ?? []).map((model) => ({
+        providerId: detail.id,
+        id: model.id,
+        modelId: model.modelId,
+        providerName: detail.name,
+        displayName: model.displayName ?? null,
+        modalities: model.modalities ?? null,
+        limitConfig: model.limitConfig ?? null,
+        cost: model.cost ?? null,
       }));
-      return { models };
+      const total = models.length;
+      const start = (page - 1) * pageSize;
+      const items = models.slice(start, start + pageSize);
+      return { items, total, page, pageSize };
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -326,38 +452,40 @@ app.get(
   {
     sessionAuth: true,
     params: "api-provider-only-params",
-    detail: { tags: ["External Model"], summary: "获取模型列表", description: "返回指定提供商下的所有模型列表。" },
+    query: "api-model-list-query",
+    response: {
+      200: "api-model-list-response",
+      400: ApiErrorResponseSchema,
+      401: ApiErrorResponseSchema,
+      404: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
+    detail: {
+      tags: ["External Model"],
+      summary: "获取 Model 列表",
+      description: "返回指定 Provider ID 对应 Provider 下的 Model 列表，采用稳定分页结构。",
+    },
   },
 );
 
-/** GET /api/model/:providerId/models/:modelId — 获取模型详情 */
 app.get(
-  "/:providerId/models/:modelId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
+  "/providers/:providerId/models/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
-    const { providerId, modelId } = params as { providerId: string; modelId: string };
+    const authCtx = store.authContext as AuthContext;
+    const { providerId, id } = params as { providerId: string; id: string };
+
     try {
-      const detail = await configPg.getProvider(authCtx, providerId);
+      const detail = await configPg.getProviderById(authCtx, providerId);
       if (!detail) {
         return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
       }
-      const modelDetail = detail.models?.find((m) => m.modelId === modelId);
+
+      const modelDetail = detail.models?.find((model) => model.id === id);
       if (!modelDetail) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Model '${modelId}' not found` } });
+        return error(404, { error: { code: "NOT_FOUND", message: `Model '${id}' not found` } });
       }
-      return {
-        id: modelDetail.modelId,
-        providerName: providerId,
-        displayName: modelDetail.displayName ?? null,
-        modalities: modelDetail.modalities ?? null,
-        limitConfig: modelDetail.limitConfig ?? null,
-        cost: modelDetail.cost ?? null,
-        options: modelDetail.options ?? null,
-      };
+      return toModelDetail(detail.id, detail.name, modelDetail);
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -366,39 +494,45 @@ app.get(
   {
     sessionAuth: true,
     params: "api-model-id-params",
-    detail: { tags: ["External Model"], summary: "获取模型详细信息", description: "按模型 ID 返回模型配置详情。" },
+    response: {
+      200: "api-model-detail",
+      401: ApiErrorResponseSchema,
+      404: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
+    detail: {
+      tags: ["External Model"],
+      summary: "获取 Model 详情",
+      description: "按 Provider 唯一 ID 和 Model 唯一 ID 返回 Model 配置详情。",
+    },
   },
 );
 
-/** PUT /api/model/:providerId/models/:modelId — 修改模型 */
 app.put(
-  "/:providerId/models/:modelId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
+  "/providers/:providerId/models/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, body, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
-    const { providerId, modelId } = params as { providerId: string; modelId: string };
-    const payload = body as z.infer<typeof ApiModelUpdateBodySchema>;
+    const authCtx = store.authContext as AuthContext;
+    const { providerId, id } = params as { providerId: string; id: string };
+    const payload = body as ApiModelUpdateBody;
+
     try {
-      const p = await configPg.assertProviderInternalWritable(authCtx, providerId);
-      if (!p) {
+      const provider = await configPg.assertProviderInternalWritableById(authCtx, providerId);
+      if (!provider) {
         return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
       }
-      const updated = await configPg.updateModel(authCtx, p.id, modelId, buildModelData(payload));
+
+      const updated = await configPg.updateModelById(authCtx, provider.id, id, toModelWriteData(payload));
       if (!updated) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Model '${modelId}' not found` } });
+        return error(404, { error: { code: "NOT_FOUND", message: `Model '${id}' not found` } });
       }
-      return {
-        id: modelId,
-        providerName: providerId,
-        displayName: payload.displayName ?? null,
-        modalities: payload.modalities ?? null,
-        limitConfig: payload.limitConfig ?? null,
-        cost: payload.cost ?? null,
-        options: payload.options ?? null,
-      };
+
+      const detail = await configPg.getProviderById(authCtx, providerId);
+      const modelDetail = detail?.models?.find((model) => model.id === id);
+      if (!detail || !modelDetail) {
+        return error(500, { error: { code: "INTERNAL_ERROR", message: "Model could not be reloaded" } });
+      }
+      return toModelDetail(detail.id, detail.name, modelDetail);
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -408,30 +542,44 @@ app.put(
     sessionAuth: true,
     params: "api-model-id-params",
     body: "api-model-update-body",
+    response: {
+      200: "api-model-detail",
+      400: ApiErrorResponseSchema,
+      401: ApiErrorResponseSchema,
+      404: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
     detail: {
       tags: ["External Model"],
-      summary: "修改模型配置",
-      description: "修改指定模型的显示名称、模态、使用限制等配置。",
+      summary: "更新 Model",
+      description: "更新指定 Provider ID 下 Model 的展示名称、模态、限制和成本配置。",
     },
   },
 );
 
-/** DELETE /api/model/:providerId/models/:modelId — 删除模型 */
 app.delete(
-  "/:providerId/models/:modelId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 类型推断限制
+  "/providers/:providerId/models/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, error }: any) => {
-    const authCtx = store.authContext as AuthContext | null;
-    if (!authCtx) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
-    }
-    const { providerId, modelId } = params as { providerId: string; modelId: string };
+    const authCtx = store.authContext as AuthContext;
+    const { providerId, id } = params as { providerId: string; id: string };
+
     try {
-      const deleted = await configPg.removeModel(authCtx, providerId, modelId);
-      if (!deleted) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Model '${modelId}' not found` } });
+      const provider = await configPg.assertProviderInternalWritableById(authCtx, providerId);
+      if (!provider) {
+        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
       }
-      return { providerId, modelId, deleted: true as const };
+
+      const existing = provider.models?.find((model) => model.id === id);
+      if (!existing) {
+        return error(404, { error: { code: "NOT_FOUND", message: `Model '${id}' not found` } });
+      }
+
+      const deleted = await configPg.removeModelById(authCtx, provider.id, id);
+      if (!deleted) {
+        return error(404, { error: { code: "NOT_FOUND", message: `Model '${id}' not found` } });
+      }
+      return { providerId, id, modelId: existing.modelId, deleted: true as const };
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -440,7 +588,17 @@ app.delete(
   {
     sessionAuth: true,
     params: "api-model-id-params",
-    detail: { tags: ["External Model"], summary: "删除模型配置", description: "删除指定提供商的指定模型配置。" },
+    response: {
+      200: "api-model-delete-response",
+      401: ApiErrorResponseSchema,
+      404: ApiErrorResponseSchema,
+      500: ApiErrorResponseSchema,
+    },
+    detail: {
+      tags: ["External Model"],
+      summary: "删除 Model",
+      description: "删除指定 Provider ID 下的 Model 配置。",
+    },
   },
 );
 

@@ -158,7 +158,6 @@ export interface ProviderDetail {
   protocol: "openai" | "anthropic";
   keyHint: string | null;
   baseURL: string | null;
-  options: Record<string, unknown>;
   models: ProviderModel[];
   resourceAccess?: ResourceAccess;
   resourceKey?: string;

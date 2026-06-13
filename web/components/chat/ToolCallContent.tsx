@@ -245,7 +245,7 @@ export function ToolCardContent({ tool }: { tool: ToolCallData }) {
   }
 
   // ---- 兜底：通过 rawInput 结构推断工具类型 ----
-  const inferredType = inferToolTypeFromInput(input, lower);
+  const inferredType = inferToolTypeFromInput(input);
   if (inferredType === "search") {
     const pattern = input?.pattern;
     const path = input?.path;
