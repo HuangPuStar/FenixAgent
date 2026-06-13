@@ -27,6 +27,7 @@ export interface SkillInfo {
 }
 
 export interface SkillDetail {
+  id?: string;
   name: string;
   description: string;
   content: string;

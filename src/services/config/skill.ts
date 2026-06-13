@@ -69,6 +69,22 @@ export async function getSkill(ctx: AuthContext, name: string): Promise<SkillCon
   return decorated;
 }
 
+export async function getSkillById(ctx: AuthContext, id: string): Promise<SkillConfigRowWithAccess | null> {
+  const rows = await db.select().from(skill).where(eq(skill.id, id)).limit(1);
+  const row = (rows[0] ?? null) as SkillConfigRow | null;
+  if (!row) return null;
+
+  if (row.organizationId === ctx.organizationId) {
+    const [decorated] = await decorateResourceAccess(ctx, "skill", [row]);
+    return decorated;
+  }
+
+  const canRead = await canReadResource(ctx, "skill", row.id, row.organizationId);
+  if (!canRead) return null;
+  const [decorated] = await decorateResourceAccess(ctx, "skill", [row]);
+  return decorated;
+}
+
 export async function getSkillByResourceKey(
   ctx: AuthContext,
   resourceKey: string,
@@ -143,6 +159,18 @@ export async function deleteSkill(ctx: AuthContext, name: string): Promise<boole
   const result = await db.delete(skill).where(eq(skill.id, row.id)).returning({ id: skill.id });
   if (result.length > 0) {
     logger.info(`[SkillConfig] skill_delete user=${ctx.userId} org=${ctx.organizationId} skill=${name}`);
+  }
+  return result.length > 0;
+}
+
+export async function deleteSkillById(ctx: AuthContext, id: string): Promise<boolean> {
+  const row = await getSkillById(ctx, id);
+  if (!row) return false;
+
+  assertInternalWritable(ctx, "skill", row.id, row.organizationId);
+  const result = await db.delete(skill).where(eq(skill.id, row.id)).returning({ id: skill.id });
+  if (result.length > 0) {
+    logger.info(`[SkillConfig] skill_delete user=${ctx.userId} org=${ctx.organizationId} skill=${row.name}`);
   }
   return result.length > 0;
 }

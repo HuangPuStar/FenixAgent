@@ -15,6 +15,7 @@ interface ConfigPgStubs {
   deleteProviderById: StubFn;
   deleteProvider: StubFn;
   deleteSkill: StubFn;
+  deleteSkillById: StubFn;
   assertMcpServerInternalWritableById: StubFn;
   assertMcpServerInternalWritable: StubFn;
   assertAgentConfigInternalWritable: StubFn;
@@ -31,6 +32,7 @@ interface ConfigPgStubs {
   getProvider: StubFn;
   getProviderByResourceKey: StubFn;
   getSkill: StubFn;
+  getSkillById: StubFn;
   getSkillByResourceKey: StubFn;
   getUserConfig: StubFn;
   listAgentConfigs: StubFn;

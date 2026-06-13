@@ -51,7 +51,9 @@ export {
 } from "./provider";
 export {
   deleteSkill,
+  deleteSkillById,
   getSkill,
+  getSkillById,
   getSkillByResourceKey,
   listSkills,
   upsertSkill,
