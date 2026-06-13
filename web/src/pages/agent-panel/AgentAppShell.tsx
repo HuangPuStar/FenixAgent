@@ -56,6 +56,12 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
     localStorage.setItem("agent-panel:artifacts-collapsed", String(artifactsCollapsed));
   }, [artifactsCollapsed]);
 
+  useEffect(() => {
+    setSelectedAgentId(agentId);
+    setCurrentSessionId(sessionId ?? null);
+    setSelectedInstanceId(null);
+  }, [agentId, sessionId]);
+
   const handleSelectInstance = useCallback(
     (instanceId: string, envId: string, newSessionId: string | null) => {
       setSelectedInstanceId(instanceId);
@@ -82,6 +88,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
       <AgentSidebar
         activeNav={null}
         selectedInstanceId={selectedInstanceId}
+        selectedEnvironmentId={selectedAgentId}
         onSelectInstance={handleSelectInstance}
         onNavigate={handleNavigate}
         onCreateAgent={() => setCreateDialogOpen(true)}

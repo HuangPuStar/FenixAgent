@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { BookOpen, FileCode, FileText, Pencil, Search, Wand2 } from "lucide-react";
+import { ArrowLeft, BookOpen, FileCode, FileText, Pencil, Search, Wand2 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -42,7 +42,6 @@ export function AgentHomePage() {
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [generationResult, setGenerationResult] = useState<GenerationFormData | null>(null);
   const [creating, setCreating] = useState(false);
-  const [templateCreating, setTemplateCreating] = useState<string | null>(null);
 
   // 加载模板列表
   useEffect(() => {
@@ -173,24 +172,20 @@ export function AgentHomePage() {
     [createAndNavigate, t],
   );
 
-  // 模板一键创建
-  const handleTemplateClick = useCallback(
-    async (template: AgentTemplate) => {
-      setTemplateCreating(template.id);
-      try {
-        await createAndNavigate(template.name, {
-          prompt: template.prompt,
-          skillIds: template.skills,
-        });
-      } catch (err) {
-        console.error("[agent-home] Template create failed:", err);
-        toast.error(t("createFailed"));
-      } finally {
-        setTemplateCreating(null);
-      }
-    },
-    [createAndNavigate, t],
-  );
+  // 模板先进入表单确认，保存后再创建
+  const handleTemplateClick = useCallback((template: AgentTemplate) => {
+    setInputValue(template.description || template.name);
+    setGenerationResult({
+      name: template.name,
+      systemPrompt: template.prompt,
+      skills: template.skills.map((skillId) => ({
+        id: skillId,
+        name: skillId,
+        description: "",
+      })),
+    });
+    setPhase("form");
+  }, []);
 
   // 返回 idle 状态
   const handleReset = useCallback(() => {
@@ -233,7 +228,7 @@ export function AgentHomePage() {
                 />
                 <button type="button" onClick={() => void handleSubmit()} className="agent-home-polish-btn">
                   <Wand2 className="h-4 w-4" />
-                  一键润色
+                  一键创建
                 </button>
               </div>
             </>
@@ -257,6 +252,12 @@ export function AgentHomePage() {
 
         {phase === "form" && generationResult && (
           <div className="agent-home-form">
+            <div className="agent-home-form-header">
+              <button type="button" className="agent-home-back-btn" onClick={handleReset}>
+                <ArrowLeft className="h-4 w-4" />
+                返回
+              </button>
+            </div>
             <AgentGenerationForm
               initialData={generationResult}
               onCreate={handleCreateFromGeneration}
@@ -272,14 +273,12 @@ export function AgentHomePage() {
               {templates.map((template, index) => {
                 const color = TEMPLATE_COLORS[index % TEMPLATE_COLORS.length];
                 const Icon = TEMPLATE_ICONS[index % TEMPLATE_ICONS.length];
-                const isLoading = templateCreating === template.id;
 
                 return (
                   <button
                     key={template.id}
                     type="button"
-                    onClick={() => void handleTemplateClick(template)}
-                    disabled={!!templateCreating}
+                    onClick={() => handleTemplateClick(template)}
                     className="agent-home-template-pill"
                     style={
                       {
@@ -290,7 +289,7 @@ export function AgentHomePage() {
                     }
                   >
                     <span className="pill-icon">
-                      {isLoading ? <span className="pill-spinner" /> : <Icon className="h-4 w-4" />}
+                      <Icon className="h-4 w-4" />
                     </span>
                     <span className="pill-copy">
                       <span className="pill-title">{template.name}</span>
@@ -486,6 +485,29 @@ export function AgentHomePage() {
         .agent-home-form {
           max-width: 760px;
           padding: 28px;
+        }
+        .agent-home-form-header {
+          display: flex;
+          align-items: center;
+          margin-bottom: 18px;
+        }
+        .agent-home-back-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border: 0;
+          border-radius: 9px;
+          background: rgba(15,107,255,0.08);
+          color: #0f6bff;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 700;
+          padding: 8px 12px;
+          transition: background 0.2s, transform 0.2s;
+        }
+        .agent-home-back-btn:hover {
+          background: rgba(15,107,255,0.12);
+          transform: translateY(-1px);
         }
         .agent-home-template-label {
           margin-bottom: 16px;
