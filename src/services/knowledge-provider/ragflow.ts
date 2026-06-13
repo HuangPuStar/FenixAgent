@@ -370,19 +370,15 @@ export async function checkRagFlowHealth(): Promise<{ ok: boolean; message: stri
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    // RagFlow v0.26.0 没有 /api/v1/version 端点，通过任意 API 可达性验证
+    // RagFlow v0.26.0 没有公开的 health/version 端点，只要 TCP 可达即视为健康
     const response = await fetch(`${config.ragflowApiUrl}`, {
       signal: controller.signal,
       headers: { Authorization: `Bearer ${config.ragflowApiKey}` },
     });
     clearTimeout(timeout);
 
-    if (!response.ok) {
-      return { ok: false, message: `RagFlow returned status ${response.status}` };
-    }
-
-    const data = await response.json();
-    return { ok: true, message: `RagFlow v${data.data?.version || "unknown"} connected` };
+    // 任何 HTTP 响应（包括 404）都说明服务可达
+    return { ok: true, message: `RagFlow is reachable (status=${response.status})` };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, message: `Cannot reach RagFlow: ${message}` };
