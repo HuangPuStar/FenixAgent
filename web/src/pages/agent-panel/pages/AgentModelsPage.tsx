@@ -57,11 +57,8 @@ export function canWriteProvider(provider: ProviderInfo): boolean {
   return provider.resourceAccess?.writable !== false;
 }
 
-export function buildProviderPublicReadablePayload(
-  options: Record<string, unknown>,
-  publicReadable: boolean,
-): Record<string, unknown> {
-  return { ...options, publicReadable };
+export function buildProviderPublicReadablePayload(publicReadable: boolean): Record<string, unknown> {
+  return { publicReadable };
 }
 
 export function AgentModelsPage() {
@@ -220,16 +217,6 @@ export function AgentModelsPage() {
     setFormApiKey("");
     resetFormModelState();
     setDialogOpen(true);
-    // 异步获取完整 provider 数据填充 API Key 等保存字段
-    const providerKey = getProviderKey(provider);
-    void providerApi.get(providerKey).then((response) => {
-      if (response?.data?.options?.apiKey) {
-        setFormApiKey(response.data.options.apiKey as string);
-      }
-      if (response?.data?.options?.baseURL) {
-        setFormBaseURL(response.data.options.baseURL as string);
-      }
-    });
   };
 
   const handleSave = async () => {
@@ -274,16 +261,7 @@ export function AgentModelsPage() {
     const providerKey = getProviderKey(provider);
     setSharingProviderKey(providerKey);
     try {
-      const { data: detail, error: getError } = await providerApi.get(providerKey);
-      if (getError) {
-        toast.error(t("loadProviderDetailError", { message: getError.message }));
-        return;
-      }
-      const options = ((detail as unknown as { options?: Record<string, unknown> })?.options ?? {}) as Record<
-        string,
-        unknown
-      >;
-      const { error } = await providerApi.set(provider.id, buildProviderPublicReadablePayload(options, next));
+      const { error } = await providerApi.set(provider.id, buildProviderPublicReadablePayload(next));
       if (error) {
         toast.error(t("saveProvider.errorGeneric", { message: error.message }));
         return;
