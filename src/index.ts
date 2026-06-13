@@ -21,10 +21,10 @@ import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
 import apiAgentsRoutes from "./routes/api/agents";
+import apiInstanceRoutes from "./routes/api/instances";
 import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
 import apiSkillsRoutes from "./routes/api/skills";
-import apiInstanceRoutes from "./routes/api/instances";
 import apiWorkspaceRoutes from "./routes/api/workspaces";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";
@@ -59,6 +59,14 @@ const EXTERNAL_OPENAPI_TAGS = [
   {
     name: "External Skill",
     description: "面向外部系统的 Skill 管理接口。",
+  },
+  {
+    name: "External Model",
+    description: "面向外部系统的 Provider 与 Model 配置管理接口。",
+  },
+  {
+    name: "External MCP",
+    description: "面向外部系统的 MCP Server 配置管理接口。",
   },
   {
     name: "External Instance",
