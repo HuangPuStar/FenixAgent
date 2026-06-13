@@ -7,7 +7,7 @@ services:
     ragflow:
         image: infiniflow/ragflow:${RAGFLOW_VERSION:-v0.26.0}
         ports:
-            - "127.0.0.1:9380:9380"
+            - "127.0.0.1:9380:80"
         environment:
             TZ: "${TZ:-Asia/Shanghai}"
             # MySQL 连接（RagFlow 元数据存储）
