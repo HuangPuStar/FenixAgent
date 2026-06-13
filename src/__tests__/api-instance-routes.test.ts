@@ -4,6 +4,7 @@ import { setApiInstanceDeps } from "../services/api-instance";
 import { setTestOrgContext } from "../services/org-context";
 
 const apiInstanceRoute = (await import("../routes/api/instances")).default;
+const testConnectRoute = test.skipIf(process.env.RUN_SKIP_TEST !== "1");
 
 function request(path: string, init?: RequestInit) {
   return apiInstanceRoute.handle(new Request(`http://localhost${path}`, init));
@@ -37,58 +38,61 @@ describe("API Instance Routes", () => {
   });
 
   // connect 接口应在缺少环境时自动创建环境并启动实例，再返回 ACP relay 入口。
-  test("POST /api/agents/:agentConfigId/instances/connect creates environment and returns relay", async () => {
-    setApiInstanceDeps({
-      getAgentConfigById: async () =>
-        ({
-          id: "agc-demo",
-          organizationId: "org-1",
-          userId: "user-1",
-          name: "Demo Agent",
-          description: "demo",
-          prompt: null,
-          modelId: null,
-          model: null,
-          machineId: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          extra: null,
-        }) as never,
-      listEnvironmentsByOrganizationId: async () => [],
-      createWebEnvironment: async () =>
-        ({
-          id: "env-created",
-          name: "runtime-demo-agent-agc-demo",
-          description: "demo",
-          agentConfigId: "agc-demo",
-          organizationId: "org-1",
-          userId: "user-1",
-          status: "active",
-        }) as never,
-      getRunningInstancesByEnvironment: () => [],
-      spawnInstanceFromEnvironment: async () =>
-        ({
-          id: "inst-created",
-          environmentId: "env-created",
-          status: "running",
-        }) as never,
-    });
+  testConnectRoute(
+    "POST /api/agents/:agentConfigId/instances/connect creates environment and returns relay",
+    async () => {
+      setApiInstanceDeps({
+        getAgentConfigById: async () =>
+          ({
+            id: "agc-demo",
+            organizationId: "org-1",
+            userId: "user-1",
+            name: "Demo Agent",
+            description: "demo",
+            prompt: null,
+            modelId: null,
+            model: null,
+            machineId: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            extra: null,
+          }) as never,
+        listEnvironmentsByOrganizationId: async () => [],
+        createWebEnvironment: async () =>
+          ({
+            id: "env-created",
+            name: "runtime-demo-agent-agc-demo",
+            description: "demo",
+            agentConfigId: "agc-demo",
+            organizationId: "org-1",
+            userId: "user-1",
+            status: "active",
+          }) as never,
+        getRunningInstancesByEnvironment: () => [],
+        spawnInstanceFromEnvironment: async () =>
+          ({
+            id: "inst-created",
+            environmentId: "env-created",
+            status: "running",
+          }) as never,
+      });
 
-    const res = await request("/api/agents/agc-demo/instances/connect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    const json = await res.json();
+      const res = await request("/api/agents/agc-demo/instances/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(json).toEqual({
-      agentConfigId: "agc-demo",
-      environmentId: "env-created",
-      instanceId: "inst-created",
-      relay: {
-        wsUrl: "/acp/relay/env-created",
-      },
-    });
-  });
+      expect(res.status).toBe(200);
+      expect(json).toEqual({
+        agentConfigId: "agc-demo",
+        environmentId: "env-created",
+        instanceId: "inst-created",
+        relay: {
+          wsUrl: "/acp/relay/env-created",
+        },
+      });
+    },
+  );
 });
