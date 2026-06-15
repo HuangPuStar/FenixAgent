@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { agentConfigSkill, mcpServer, model, provider } from "../db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { buildLaunchSpec } from "../services/launch-spec-builder";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
@@ -19,7 +19,8 @@ function createAgentConfig(overrides: Record<string, unknown> = {}) {
     organizationId: "org_current",
     name: "demo",
     prompt: null,
-    model: "openai/gpt-4o",
+    modelId: "model_internal",
+    model: null,
     steps: 10,
     mode: "primary",
     permission: null,
@@ -105,7 +106,7 @@ describe("launch spec provider model access", () => {
                 },
               ]);
             }
-            if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigSkill || table === agentConfigMcp) return queryResult([]);
             if (table === mcpServer) return queryResult([]);
             return queryResult([]);
           },
@@ -162,7 +163,7 @@ describe("launch spec provider model access", () => {
                 },
               ]);
             }
-            if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigSkill || table === agentConfigMcp) return queryResult([]);
             if (table === mcpServer) return queryResult([]);
             return queryResult([]);
           },
@@ -186,7 +187,8 @@ describe("launch spec provider model access", () => {
           writable: false,
           publicReadable: true,
         },
-        model: "org_source/provider_external/shared-model",
+        model: null,
+        modelId: "model_external",
       }),
       environmentSecret: "secret",
     });
@@ -207,7 +209,7 @@ describe("launch spec provider model access", () => {
           where: () => {
             if (table === provider) return queryResult([]);
             if (table === model) return queryResult([]);
-            if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigSkill || table === agentConfigMcp) return queryResult([]);
             if (table === mcpServer) return queryResult([]);
             return queryResult([]);
           },
@@ -220,7 +222,8 @@ describe("launch spec provider model access", () => {
         organizationId: "org_current",
         userId: "user_owner",
         agentConfig: createAgentConfig({
-          model: "org_source/provider_external/shared-model",
+          model: null,
+          modelId: "missing_model",
         }),
         environmentSecret: "secret",
       }),
@@ -241,7 +244,7 @@ describe("launch spec provider model access", () => {
               ]);
             }
             if (table === model) return queryResult([]);
-            if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigSkill || table === agentConfigMcp) return queryResult([]);
             if (table === mcpServer) return queryResult([]);
             return queryResult([]);
           },
@@ -253,12 +256,12 @@ describe("launch spec provider model access", () => {
       buildLaunchSpec({
         organizationId: "org_current",
         userId: "user_owner",
-        agentConfig: createAgentConfig(),
+        agentConfig: createAgentConfig({ modelId: "missing_model" }),
         environmentSecret: "secret",
       }),
     ).rejects.toMatchObject({
       code: "INVALID_CONFIG",
-      message: "AgentConfig 'agc_demo' references missing model 'gpt-4o'",
+      message: "AgentConfig 'agc_demo' references missing model id 'missing_model'",
     });
   });
 });

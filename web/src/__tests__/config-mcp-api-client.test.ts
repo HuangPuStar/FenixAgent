@@ -21,14 +21,16 @@ describe("MCP SDK module", () => {
   test("mcpApi.list returns servers", async () => {
     fetchMock.body = {
       success: true,
-      data: { servers: [{ name: "my-local", type: "local", enabled: true, summary: "npx" }] },
+      data: { servers: [{ id: "mcp_1", name: "my-local", type: "local", enabled: true, summary: "npx" }] },
     };
     const { mcpApi } = await import("../api/sdk");
     const { data, error } = await mcpApi.list();
     expect(error).toBeUndefined();
     const result = data as any;
     expect(result.servers).toHaveLength(1);
+    expect(result.servers[0].id).toBe("mcp_1");
     expect(result.servers[0].name).toBe("my-local");
+    expect("resourceKey" in result.servers[0]).toBe(false);
   });
 
   // 测试 MCP 列表发送正确请求

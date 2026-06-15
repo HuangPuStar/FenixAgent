@@ -1,6 +1,6 @@
 {
   "title": "Agent Templates",
-  "subtitle": "Manage AI Agent models, prompts, and permissions",
+  "subtitle": "Manage AI Agent models, prompts, and runtime resources",
   "createButton": "New Agent Template",
   "searchPlaceholder": "Search agents...",
   "emptyMessage": "No agents yet. Click \"New Agent Template\" to add one",
@@ -35,10 +35,7 @@
     "createConfirm": "Create",
     "tabs": {
       "basic": "Basic",
-      "knowledge": "Knowledge Base",
-      "permission": "Permissions",
-      "skills": "Skills",
-      "more": "More"
+      "knowledge": "Knowledge Base"
     }
   },
   "templates": {
@@ -92,6 +89,15 @@
     "tabTitle": "Bind Skills",
     "selectedCount": "{{count}} skill(s) selected",
     "noOptions": "No skills available"
+  },
+  "mcps": {
+    "tabTitle": "Bind MCP Servers",
+    "selectedCount": "{{count}} MCP server(s) selected",
+    "noOptions": "No MCP servers available"
+  },
+  "memory": {
+    "enableTitle": "Agent Memory",
+    "enableDescription": "Enable agent memory across conversations"
   },
   "resource": {
     "publicDescription": "Allow other teams to read this agent",

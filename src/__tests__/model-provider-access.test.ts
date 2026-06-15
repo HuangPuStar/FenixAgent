@@ -157,11 +157,13 @@ describe("model provider access", () => {
     const res = await post({ action: "get" }, "models");
     const json = await res.json();
 
-    const externalModel = json.data.available.find((item: { id: string }) => item.id === "shared-model");
+    const externalModel = json.data.available.find((item: { id: string }) => item.id === "model_external");
     expect(externalModel).toMatchObject({
-      provider: "OpenAI Shared",
-      fullId: "OpenAI Shared/shared-model",
-      stableFullId: "org_source/provider_external/shared-model",
+      id: "model_external",
+      modelId: "shared-model",
+      displayName: "Shared Model",
+      provider: "openai",
+      providerDisplayName: "OpenAI Shared",
       providerResourceKey: "org_source/provider_external",
     });
     expect(externalModel.providerResourceAccess.writable).toBe(false);

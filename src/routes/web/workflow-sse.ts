@@ -7,9 +7,18 @@
 
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
+import {
+  WorkflowEventStreamParamsSchema,
+  WorkflowEventStreamQuerySchema,
+  WorkflowStreamEventPayloadSchema,
+} from "../../schemas";
 import { getWorkflowEventBus } from "../../services/workflow/workflow-events";
 
-const app = new Elysia({ name: "web-workflow-sse" }).use(authGuardPlugin);
+const app = new Elysia({ name: "web-workflow-sse" }).use(authGuardPlugin).model({
+  "workflow-event-stream-params": WorkflowEventStreamParamsSchema,
+  "workflow-event-stream-query": WorkflowEventStreamQuerySchema,
+  "workflow-stream-event-payload": WorkflowStreamEventPayloadSchema,
+});
 
 app.get(
   "/workflow/:workflowId/events",
@@ -87,7 +96,35 @@ app.get(
       },
     });
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    params: "workflow-event-stream-params",
+    query: "workflow-event-stream-query",
+    detail: {
+      tags: ["Workflow Engine"],
+      summary: "订阅工作流事件流",
+      description: "通过 SSE 订阅指定工作流的实时事件，支持 `Last-Event-ID` 或 `fromSeqNum` 断线续传。",
+      responses: {
+        200: {
+          description: "SSE 事件流，事件负载为工作流事件对象。",
+          content: {
+            "text/event-stream": {
+              schema: {
+                type: "string",
+                format: "binary",
+              },
+              examples: {
+                event: {
+                  summary: "事件示例",
+                  value: 'id: 12\nevent: message\ndata: {"type":"workflow.run_started","workflowId":"wf_123"}\n\n',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
 );
 
 export default app;

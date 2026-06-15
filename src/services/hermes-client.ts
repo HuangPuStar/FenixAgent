@@ -117,7 +117,7 @@ export class HermesClient {
   }
 
   send(platform: string, chatId: string, text: string, replyTo?: string): void {
-    if (!this.ws || this.ws.readyState !== 1) return;
+    if (this.ws?.readyState !== 1) return;
     const id = `rcs_${crypto.randomUUID().replace(/-/g, "")}`;
     const msg: Record<string, unknown> = { type: "send", id, platform, chat_id: chatId, content: text };
     if (replyTo) msg.reply_to = replyTo;
@@ -132,7 +132,7 @@ export class HermesClient {
   // --- Private methods ---
 
   private subscribePlatforms(platforms: string[]): void {
-    if (!this.ws || this.ws.readyState !== 1) return;
+    if (this.ws?.readyState !== 1) return;
     if (platforms.length === 0) return;
     try {
       this.ws.send(JSON.stringify({ type: "subscribe", platforms }));
@@ -290,9 +290,9 @@ export class HermesClient {
         const inner = payload.payload as Record<string, unknown> | undefined;
         if (!inner) return;
         const update = inner.update as Record<string, unknown> | undefined;
-        if (!update || update.sessionUpdate !== "agent_message_chunk") return;
+        if (update?.sessionUpdate !== "agent_message_chunk") return;
         const content = update.content as Record<string, unknown> | undefined;
-        if (!content || content.type !== "text" || typeof content.text !== "string") return;
+        if (content?.type !== "text" || typeof content.text !== "string") return;
         accumulated += content.text;
         return;
       }

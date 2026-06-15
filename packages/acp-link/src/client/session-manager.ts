@@ -264,7 +264,14 @@ export class SessionManager {
         case "list_sessions":
           try {
             const r = await this.sharedConnection.listSessions({});
-            this.emit(sessionId, "session_data", { type: "session_list", payload: r });
+            // 过滤掉标题为空或以 "New session" 开头的会话
+            const filtered = {
+              ...r,
+              sessions: r.sessions.filter(
+                (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
+              ),
+            };
+            this.emit(sessionId, "session_data", { type: "session_list", payload: filtered });
           } catch (err) {
             this.emit(sessionId, "session_error", String(err));
           }
@@ -378,7 +385,14 @@ export class SessionManager {
         }
         case ACP_METHOD.SESSION_LIST: {
           const r = await this.sharedConnection!.listSessions({});
-          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          // 过滤掉标题为空或以 "New session" 开头的会话
+          const filtered = {
+            ...r,
+            sessions: r.sessions.filter(
+              (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
+            ),
+          };
+          this.emit(sessionId, "session_data", createSuccessResponse(id, filtered));
           break;
         }
         case ACP_METHOD.SESSION_LOAD: {

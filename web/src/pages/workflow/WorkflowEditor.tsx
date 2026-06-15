@@ -38,9 +38,10 @@ import {
   Terminal,
   Upload,
 } from "lucide-react";
+import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { workflowDefApi } from "../../api/workflow-defs";
+import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
   type DAGSnapshot,
@@ -49,11 +50,11 @@ import {
   workflowEngineApi,
 } from "../../api/workflow-engine";
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
-import { MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigPopover } from "./components/NodeConfigPopover";
 import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
 import { TriggerPanel } from "./components/TriggerPanel";
+import { VersionIndicator } from "./components/VersionIndicator";
 import { VersionPanel } from "./components/VersionPanel";
 import { WorkflowMetaPopover } from "./components/WorkflowMetaPopover";
 import { YamlSlidePanel } from "./components/YamlSlidePanel";
@@ -64,18 +65,17 @@ import { useWorkflowPersistence } from "./hooks/useWorkflowPersistence";
 import { useWorkflowRun } from "./hooks/useWorkflowRun";
 import { autoLayout } from "./layout";
 import { nodeTypes } from "./nodes";
+import { TRANSFORM_PRESETS } from "./presets";
 import { dedupEvents } from "./utils";
 import { createStartNode, defaultMeta, START_NODE_ID, type WfMeta, yamlToFlow } from "./yaml-utils";
 import "./workflow.css";
 
-const PALETTE_ITEMS = [
+const BASIC_PALETTE_ITEMS = [
   { type: "shell", labelKey: "nodes.shell", icon: Terminal, color: "#3b82f6" },
   { type: "python", labelKey: "nodes.python", icon: Code, color: "#0ea5e9" },
   { type: "agent", labelKey: "nodes.agent", icon: Bot, color: "#22c55e" },
   { type: "api", labelKey: "nodes.api", icon: Globe, color: "#8b5cf6" },
   { type: "audit", labelKey: "editor.palette_audit", icon: ShieldCheck, color: "#f59e0b" },
-  // { type: "workflow", labelKey: "editor.palette_subworkflow", icon: GitBranch, color: "#ec4899" },
-  // { type: "loop", labelKey: "editor.palette_loop", icon: RefreshCw, color: "#06b6d4" },
 ] as const;
 
 interface WorkflowEditorProps {
@@ -95,6 +95,10 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [yamlText, setYamlText] = useState("");
   const [yamlBaseText, setYamlBaseText] = useState("");
   const [readOnly, setReadOnly] = useState(false);
+
+  // ── 版本预览状态 ──
+  const [previewVersion, setPreviewVersion] = useState<number | null>(null);
+  const [wfData, setWfData] = useState<WorkflowDefItem | null>(null);
 
   // ── 运行模式状态（顶层持有，传给 Run hook） ──
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -152,7 +156,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setMeta,
     setDryRunResult: (r) => setDryRunResultRef.current(r),
     setYamlOpen,
-    readOnly: readOnly || activeRunId !== null,
+    readOnly: readOnly || activeRunId !== null || previewVersion !== null,
   });
 
   // ── Canvas hook ──
@@ -176,7 +180,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setEdges,
     setMeta,
     setSelectedNode,
-    readOnly: readOnly || activeRunId !== null,
+    readOnly: readOnly || activeRunId !== null || previewVersion !== null,
     activeRunId,
     selectedNode,
     screenToFlowPosition,
@@ -244,8 +248,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setDryRunResultRef.current = setDryRunResult;
   });
 
-  // ── 运行模式下画布自动只读 ──
-  const effectiveReadOnly = readOnly || isRunMode;
+  // ── 运行模式/版本预览下画布自动只读 ──
+  const effectiveReadOnly = readOnly || isRunMode || previewVersion !== null;
 
   // ── 保存状态 toast ──
   useEffect(() => {
@@ -274,7 +278,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     connectWorkflowSSE(workflowId, (event) => {
       switch (event.type) {
         case "workflow.draft_updated":
-          if (!hasUnsavedChanges) {
+          if (!hasUnsavedChanges && previewVersion === null) {
             handleRefreshDraft();
           }
           break;
@@ -292,7 +296,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     return () => {
       disconnectWorkflowSSE();
     };
-  }, [workflowId, handleRefreshDraft, handleWorkflowEvent, hasUnsavedChanges]);
+  }, [workflowId, handleRefreshDraft, handleWorkflowEvent, hasUnsavedChanges, previewVersion]);
 
   // ── Derived state ──
   const onSelectionChange: OnSelectionChangeFunc = canvasOnSelectionChange;
@@ -327,6 +331,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   useEffect(() => {
     if (!workflowId) return;
     // workflowId 切换时清理所有旧状态
+    setPreviewVersion(null);
     setActiveRunId(null);
     setRunSnapshot(null);
     setRunEvents([]);
@@ -342,6 +347,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     (async () => {
       try {
         const wf = await workflowDefApi.get(workflowId);
+        setWfData(wf);
         if (wf.draftYaml) {
           const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
           const laid = autoLayout(newNodes, newEdges);
@@ -428,6 +434,55 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     [handleRun],
   );
 
+  // ── 版本预览：切换到指定版本 ──
+  const handlePreviewVersion = useCallback(
+    async (version: number) => {
+      if (!workflowId) return;
+      try {
+        const result = await workflowDefApi.getVersion(workflowId, version);
+        const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(result.yaml);
+        const laid = autoLayout(newNodes, newEdges);
+        setNodes(laid);
+        setEdges(newEdges);
+        setMeta(newMeta);
+        setYamlText(result.yaml);
+        setYamlBaseText(result.yaml);
+        setPreviewVersion(version);
+        setSelectedNode(null);
+        setPopoverOpen(false);
+        setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
+      } catch (err) {
+        console.error("Failed to preview version:", err);
+        toast.error(t("editor.load_failed"));
+      }
+    },
+    [workflowId, setNodes, setEdges, fitView, t],
+  );
+
+  // ── 版本预览：切回草稿 ──
+  const handleBackToDraft = useCallback(async () => {
+    if (!workflowId) return;
+    try {
+      const wf = await workflowDefApi.get(workflowId);
+      setWfData(wf);
+      if (wf.draftYaml) {
+        const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
+        const laid = autoLayout(newNodes, newEdges);
+        setNodes(laid);
+        setEdges(newEdges);
+        setMeta(newMeta);
+        setLastSavedYaml(wf.draftYaml);
+      }
+      setPreviewVersion(null);
+      setSelectedNode(null);
+      setPopoverOpen(false);
+      setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
+    } catch (err) {
+      console.error("Failed to load draft:", err);
+      toast.error(t("editor.load_failed"));
+    }
+  }, [workflowId, setNodes, setEdges, setLastSavedYaml, fitView, t]);
+
   return (
     <div className="flex w-full h-full bg-surface-0">
       <input
@@ -439,7 +494,15 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       />
 
       <div className="flex-1 relative overflow-hidden">
-        {effectiveReadOnly && (
+        {previewVersion !== null && (
+          <div
+            className="wf-readonly-badge"
+            style={{ right: 12, borderColor: "#3b82f6", color: "#3b82f6", background: "rgba(239,246,255,0.9)" }}
+          >
+            {t("editor.vi_preview_mode")} v{previewVersion}
+          </div>
+        )}
+        {effectiveReadOnly && previewVersion === null && (
           <div className="wf-readonly-badge" style={{ right: 12 }}>
             <Lock size={12} /> {t("editor.readonly_mode")}
           </div>
@@ -486,22 +549,45 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             <Panel position="top-left" className="wf-panel-palette">
               <div className="wf-palette">
                 <div className="wf-palette-title">{t("editor.palette_drag_hint")}</div>
-                {PALETTE_ITEMS.map(({ type, labelKey, icon: Icon, color }) => (
+                {/* 基础节点 */}
+                {BASIC_PALETTE_ITEMS.map((item) => (
                   <button
-                    key={type}
+                    key={item.type}
                     type="button"
                     className="wf-palette-btn"
                     draggable
                     onDragStart={(e) => {
-                      e.dataTransfer.setData("application/workflow-node", type);
+                      e.dataTransfer.setData("application/workflow-node", item.type);
                       e.dataTransfer.effectAllowed = "move";
                     }}
-                    onClick={() => addNode(type)}
+                    onClick={() => addNode(item.type)}
                   >
-                    <span className="wf-palette-icon" style={{ background: color }}>
-                      <Icon size={14} />
+                    <span className="wf-palette-icon" style={{ background: item.color }}>
+                      <item.icon size={14} />
                     </span>
-                    {t(labelKey)}
+                    {t(item.labelKey)}
+                  </button>
+                ))}
+                {/* 分隔线 */}
+                <div className="wf-palette-divider" />
+                {/* 数据变换预设 */}
+                {TRANSFORM_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className="wf-palette-btn"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/workflow-node", "transform");
+                      e.dataTransfer.setData("application/workflow-preset", preset.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onClick={() => addNode("transform", preset.id)}
+                  >
+                    <span className="wf-palette-icon" style={{ background: preset.color }}>
+                      <preset.icon size={14} />
+                    </span>
+                    {t(preset.labelKey)}
                   </button>
                 ))}
               </div>
@@ -564,7 +650,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                     type="button"
                     className={`wf-toolbar-btn ${saveStatus === "unsaved" ? "text-amber-500" : ""}`}
                     onClick={handleSaveDraft}
-                    disabled={saveStatus === "saving"}
+                    disabled={saveStatus === "saving" || previewVersion !== null}
                     data-tooltip={
                       saveStatus === "saving"
                         ? t("editor.saving")
@@ -691,17 +777,18 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           agentList={agentList}
         />
 
-        {/* 工作流元数据 Popover（右下角齿轮） */}
-        <WorkflowMetaPopover
-          open={metaPopoverOpen}
-          onOpenChange={setMetaPopoverOpen}
-          readOnly={effectiveReadOnly}
-          meta={meta}
-          updateMeta={updateMeta}
-        />
+        {/* 右下角按钮组 */}
+        <div className="wf-bottom-actions">
+          {/* 工作流元数据 Popover（齿轮） */}
+          <WorkflowMetaPopover
+            open={metaPopoverOpen}
+            onOpenChange={setMetaPopoverOpen}
+            readOnly={effectiveReadOnly}
+            meta={meta}
+            updateMeta={updateMeta}
+          />
 
-        {/* 运行日志 Popover（右下角，齿轮左侧） */}
-        <div className="wf-run-popover-anchor">
+          {/* 运行日志 Popover */}
           <Popover open={runSheetOpen} onOpenChange={setRunSheetOpen}>
             <PopoverTrigger asChild>
               <button
@@ -759,6 +846,20 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               />
             </PopoverContent>
           </Popover>
+
+          {/* 版本指示器（最右侧） */}
+          <VersionIndicator
+            workflowId={workflowId}
+            latestVersion={wfData?.latestVersion ?? null}
+            previewVersion={previewVersion}
+            onPreview={handlePreviewVersion}
+            onBackToDraft={handleBackToDraft}
+            onViewAll={() => {
+              setVersionsSheetOpen(true);
+              setRunSheetOpen(false);
+              setTriggersSheetOpen(false);
+            }}
+          />
         </div>
       </div>
 

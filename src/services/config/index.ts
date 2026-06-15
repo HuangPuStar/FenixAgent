@@ -11,39 +11,49 @@ export {
   isBuiltInAgent,
   listAgentConfigs,
   normalizeKnowledgeConfig,
-  toolsToPermission,
   updateAgentConfig,
   validateAgentData,
 } from "./agent-config";
+export { listAgentMcpIds, syncAgentMcps } from "./agent-config-mcp";
 export { listAgentSkillIds, syncAgentSkills } from "./agent-config-skill";
 export { parseJsonb, parseJsonbOr } from "./jsonb";
 export {
   assertMcpServerInternalWritable,
+  assertMcpServerInternalWritableById,
   createMcpServer,
   deleteMcpServer,
+  deleteMcpServerById,
   getMcpServer,
+  getMcpServerById,
   getMcpServerByResourceKey,
   isValidMcpName,
   listMcpServers,
   setMcpServerEnabled,
   toServerInfo,
   updateMcpServer,
+  updateMcpServerById,
   validateMcpConfig,
 } from "./mcp-server";
-export { addModel, removeModel, updateModel } from "./model";
+export { addModel, removeModel, removeModelById, updateModel, updateModelById } from "./model";
 export {
   assertProviderInternalWritable,
+  assertProviderInternalWritableById,
   buildModelData,
   deleteProvider,
+  deleteProviderById,
   getProvider,
+  getProviderById,
   getProviderByResourceKey,
   listProviders,
   listReadableProviders,
+  updateProviderById,
   upsertProvider,
 } from "./provider";
 export {
   deleteSkill,
+  deleteSkillById,
   getSkill,
+  getSkillById,
   getSkillByResourceKey,
   listSkills,
   upsertSkill,
@@ -52,6 +62,7 @@ export type {
   AgentConfigDetailWithAccess,
   AgentConfigRowWithAccess,
   AgentConfigUpsertData,
+  AgentExtraConfig,
   AgentKnowledgeConfig,
   McpServerConfig,
   McpServerInfoOutput,

@@ -76,3 +76,4 @@ packages/plugin-claude-code/plugin-claude-code
 packages/plugin-ccb/node_modules/
 
 tmp
+.bunenv/

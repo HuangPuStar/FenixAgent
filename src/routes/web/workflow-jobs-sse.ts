@@ -8,9 +8,13 @@
 
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WorkflowEventStreamQuerySchema, WorkflowJobStreamEventPayloadSchema } from "../../schemas";
 import { getKanbanEventBus } from "../../services/workflow/workflow-job-events";
 
-const app = new Elysia({ name: "web-workflow-jobs-sse" }).use(authGuardPlugin);
+const app = new Elysia({ name: "web-workflow-jobs-sse" }).use(authGuardPlugin).model({
+  "workflow-event-stream-query": WorkflowEventStreamQuerySchema,
+  "workflow-job-stream-event-payload": WorkflowJobStreamEventPayloadSchema,
+});
 
 app.get(
   "/workflow-jobs/events",
@@ -80,7 +84,34 @@ app.get(
       },
     });
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    query: "workflow-event-stream-query",
+    detail: {
+      tags: ["Workflow Engine"],
+      summary: "订阅 Job 看板事件流",
+      description: "通过 SSE 订阅当前组织下所有工作流 Job 的状态变更事件，支持断线续传。",
+      responses: {
+        200: {
+          description: "SSE 事件流，事件负载为 Job 变更事件对象。",
+          content: {
+            "text/event-stream": {
+              schema: {
+                type: "string",
+                format: "binary",
+              },
+              examples: {
+                event: {
+                  summary: "事件示例",
+                  value: 'id: 34\nevent: message\ndata: {"type":"job.started","jobId":"job_123","runId":"run_456"}\n\n',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
 );
 
 export default app;

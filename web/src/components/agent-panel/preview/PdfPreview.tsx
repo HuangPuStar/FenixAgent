@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../../i18n";
-import { encodePathSegment } from "./utils";
+import { buildPreviewUrl } from "./utils";
 
 interface PdfPreviewProps {
   envId: string;
@@ -11,7 +11,7 @@ interface PdfPreviewProps {
 export function PdfPreview({ envId, filePath }: PdfPreviewProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const [error, setError] = useState(false);
-  const src = `/web/environments/${envId}/user/${filePath.split("/").map(encodePathSegment).join("/")}?preview=true`;
+  const src = buildPreviewUrl(envId, filePath);
 
   const handleError = useCallback(() => {
     setError(true);

@@ -1,52 +1,74 @@
 import * as z from "zod/v4";
 import { StatusOkResponseSchema } from "./common.schema";
 
-export const SessionResponseSchema = z.object({
-  id: z.string(),
-  environment_id: z.string().nullable(),
-  agent_name: z.string().nullable(),
-  title: z.string().nullable(),
-  status: z.string(),
-  source: z.string(),
-  username: z.string().nullable(),
-  created_at: z.number(),
-  updated_at: z.number(),
-});
+/** 会话详情模型 */
+export const SessionDetailSchema = z
+  .object({
+    id: z.string().describe("RCS 会话 ID。"),
+    environment_id: z.string().nullable().describe("所属环境 ID；游离会话时为 null。"),
+    agent_name: z.string().nullable().describe("运行时上报的 Agent 名称。"),
+    title: z.string().nullable().describe("会话标题。"),
+    status: z.string().describe("当前会话状态。"),
+    source: z.string().nullable().describe("会话来源，例如 ui、relay。"),
+    created_at: z.number().describe("会话创建时间，单位为秒级时间戳。"),
+    updated_at: z.number().describe("会话更新时间，单位为秒级时间戳。"),
+  })
+  .describe("会话详情。");
 
-export const SessionSummarySchema = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  status: z.string(),
-  username: z.string().nullable(),
-  updated_at: z.number(),
-});
+/** 会话列表项模型 */
+export const SessionListItemSchema = z
+  .object({
+    id: z.string().describe("RCS 会话 ID。"),
+    title: z.string().nullable().describe("会话标题。"),
+    status: z.string().describe("当前会话状态。"),
+    environment_id: z.string().nullable().describe("所属环境 ID；游离会话时为 null。"),
+    agent_name: z.string().nullable().describe("运行时上报的 Agent 名称。"),
+    source: z.string().nullable().describe("会话来源，例如 ui、relay。"),
+    created_at: z.number().describe("会话创建时间，单位为秒级时间戳。"),
+    updated_at: z.number().describe("会话更新时间，单位为秒级时间戳。"),
+  })
+  .describe("会话列表项。");
 
-export const SessionEventPayloadSchema = z.record(z.string(), z.unknown());
+/** 会话事件负载 */
+export const SessionEventPayloadSchema = z.record(z.string(), z.unknown()).describe("会话事件负载。");
 
-export const SessionEventSchema = z.object({
-  id: z.string(),
-  sessionId: z.string(),
-  type: z.string(),
-  timestamp: z.number(),
-  payload: SessionEventPayloadSchema,
-});
+/** 会话事件模型 */
+export const SessionEventSchema = z
+  .object({
+    id: z.string().describe("事件 ID。"),
+    sessionId: z.string().describe("所属会话 ID。"),
+    type: z.string().describe("事件类型。"),
+    timestamp: z.number().describe("事件时间，单位为毫秒级时间戳。"),
+    payload: SessionEventPayloadSchema.describe("事件负载内容。"),
+  })
+  .describe("会话事件。");
 
-export const SessionHistorySchema = z.object({
-  events: SessionEventSchema.array(),
-});
+/** 会话历史响应模型 */
+export const SessionHistorySchema = z
+  .object({
+    events: SessionEventSchema.array().describe("按时间顺序返回的会话事件列表。"),
+  })
+  .describe("会话事件历史。");
 
 /** GET /web/sessions — 会话列表响应 */
-export const SessionListResponseSchema = SessionSummarySchema.array();
+export const SessionListResponseSchema = SessionListItemSchema.array().describe("会话列表响应。");
 
 /** POST /web/sessions/:id/events / control — 事件发送响应 */
-export const SendEventResponseSchema = z.object({
-  status: z.literal("ok"),
-  event: SessionEventSchema,
-});
+export const SendEventResponseSchema = z
+  .object({
+    status: z.literal("ok").describe("操作状态。"),
+    event: SessionEventSchema.describe("后端接收并返回的事件。"),
+  })
+  .describe("发送会话事件后的响应。");
 
 /** POST /web/sessions/:id/interrupt — 中断响应 */
 export const InterruptResponseSchema = StatusOkResponseSchema;
 
+export const SessionResponseSchema = SessionDetailSchema;
+export const SessionSummarySchema = SessionListItemSchema;
+
+export type SessionDetail = z.infer<typeof SessionDetailSchema>;
+export type SessionListItem = z.infer<typeof SessionListItemSchema>;
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 export type SessionEvent = z.infer<typeof SessionEventSchema>;

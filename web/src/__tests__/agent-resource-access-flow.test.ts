@@ -75,18 +75,18 @@ describe("agent resource access frontend flow", () => {
     expect(canManageAgentSharing(external)).toBe(false);
   });
 
-  // 公开开关仍通过原 agents set action 发送 publicReadable。
-  test("公开开关 set action 携带 publicReadable", async () => {
+  // 公开开关改为走独立 PUT 接口，但仍保持 data 结构稳定。
+  test("公开开关 PUT 请求携带 publicReadable", async () => {
     await agentApi.set("shared-agent", {
       prompt: "shared",
       publicReadable: true,
     });
 
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toBe("/web/config/agents?name=shared-agent");
+    expect(call[1].method).toBe("PUT");
     const body = JSON.parse(call[1].body);
     expect(body).toEqual({
-      action: "set",
-      name: "shared-agent",
       data: {
         prompt: "shared",
         publicReadable: true,

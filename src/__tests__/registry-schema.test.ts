@@ -13,6 +13,7 @@ describe("machine 表", () => {
       "organizationId",
       "userId",
       "agentName",
+      "name",
       "status",
       "machineInfo",
       "labels",

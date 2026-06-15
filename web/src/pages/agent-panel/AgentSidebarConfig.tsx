@@ -1,28 +1,21 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BookOpen,
+  Bot,
+  Brain,
   Clock,
   Cpu,
   KeyRound,
-  Menu,
   MessageSquare,
   Monitor,
   Plug,
+  Plus,
+  Send,
   Settings,
   Users,
   Workflow,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { NS } from "../../i18n";
 
 interface NavEntry {
   id: string;
@@ -31,34 +24,38 @@ interface NavEntry {
 }
 
 interface NavGroup {
-  labelKey: string;
+  label: string;
   items: NavEntry[];
 }
 
-/** 直接显示的快捷入口（模型、技能、MCP、组织管理） */
-const QUICK_NAV: NavEntry[] = [
-  { id: "models", labelKey: "agentPanel:models", icon: Cpu },
-  { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
-  { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
-  { id: "organizations", labelKey: "sidebar:organizations", icon: Users },
-];
-
-/** 折叠到下拉菜单的其余导航 */
 const NAV_GROUPS: NavGroup[] = [
   {
-    labelKey: "agentPanel:console",
+    label: "核心",
     items: [
-      { id: "dashboard", labelKey: "agentPanel:overview", icon: Monitor },
+      { id: "home", labelKey: "agentPanel:createAgent", icon: Plus },
       { id: "workflow", labelKey: "agentPanel:workflow", icon: Workflow },
+      { id: "agents", labelKey: "agentPanel:agentManagement", icon: Bot },
       { id: "sessions", labelKey: "agentPanel:sessions", icon: MessageSquare },
     ],
   },
   {
-    labelKey: "agentPanel:config",
+    label: "配置",
     items: [
+      { id: "models", labelKey: "agentPanel:models", icon: Cpu },
+      { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
+      { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
       { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
+      { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
       { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
+      { id: "channels", labelKey: "agentPanel:channels", icon: Send },
       { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },
+    ],
+  },
+  {
+    label: "系统",
+    items: [
+      { id: "dashboard", labelKey: "agentPanel:overview", icon: Monitor },
+      { id: "organizations", labelKey: "sidebar:organizations", icon: Users },
     ],
   },
 ];
@@ -75,66 +72,38 @@ export function AgentSidebarQuickNav({
   const { t } = useTranslation();
 
   return (
-    <div className="px-2 py-1.5">
-      {QUICK_NAV.map((item) => {
-        const Icon = item.icon;
-        const isActive = activeNav === item.id;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onNavigate(item.id)}
-            className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius)] text-[13px] font-medium transition-all duration-150 cursor-pointer ${
-              isActive
-                ? "bg-brand-subtle text-brand-light border-l-2 border-brand"
-                : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
-            }`}
-          >
-            <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-            <span>{t(item.labelKey)}</span>
-          </button>
-        );
-      })}
+    <div className="agent-sidebar-nav px-2 py-1.5">
+      {NAV_GROUPS.map((group) => (
+        <div className="agent-sidebar-nav-group" key={group.label}>
+          <div className="agent-sidebar-section-label">{group.label}</div>
+          {group.items.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeNav === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onNavigate(item.id)}
+                title={t(item.labelKey)}
+                className={`agent-sidebar-nav-item flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius)] text-[13px] font-medium transition-all duration-150 cursor-pointer ${
+                  isActive
+                    ? "active bg-brand-subtle text-brand-light border-l-2 border-brand"
+                    : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+                }`}
+              >
+                <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                <span>{t(item.labelKey)}</span>
+              </button>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
 
-/** 智能体树下方的更多导航（下拉菜单） */
+/** 预留给旧布局的底部导航，现在菜单已在 QuickNav 中直出。 */
 export function AgentSidebarConfig({ onNavigate }: AgentSidebarConfigProps) {
-  const { t } = useTranslation(NS.AGENT_PANEL);
-
-  return (
-    <div className="px-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius)] text-[13px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all duration-150 cursor-pointer"
-          >
-            <Menu className="w-[18px] h-[18px] flex-shrink-0" />
-            <span>{t("navigation")}</span>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start" className="w-48">
-          {NAV_GROUPS.map((group, gi) => (
-            <DropdownMenuGroup key={group.labelKey}>
-              {gi > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel className="text-[11px] font-semibold uppercase tracking-[0.06em] text-text-dim">
-                {t(group.labelKey)}
-              </DropdownMenuLabel>
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <DropdownMenuItem key={item.id} onClick={() => onNavigate(item.id)}>
-                    <Icon className="w-4 h-4" />
-                    <span>{t(item.labelKey)}</span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuGroup>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
+  void onNavigate;
+  return null;
 }

@@ -2,10 +2,17 @@ import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import {
   CreateKnowledgeBaseRequestSchema,
+  DeleteKnowledgeBaseResponseSchema,
+  DeleteKnowledgeResourceResponseSchema,
   ImportKnowledgeUrlRequestSchema,
+  ImportKnowledgeUrlResponseSchema,
+  KnowledgeBaseDetailResponseSchema,
   KnowledgeBaseInfoSchema,
+  KnowledgeBaseListResponseSchema,
   KnowledgeResourceItemSchema,
+  KnowledgeResourceListResponseSchema,
   UpdateKnowledgeBaseRequestSchema,
+  UploadKnowledgeResourcesResponseSchema,
 } from "../../schemas/knowledge.schema";
 import {
   createKnowledgeBaseRecord,
@@ -23,12 +30,17 @@ import {
 
 const app = new Elysia({ name: "web-knowledge-bases" }).use(authGuardPlugin).model({
   "knowledge-base-info": KnowledgeBaseInfoSchema,
-  "knowledge-base-list": KnowledgeBaseInfoSchema.array(),
+  "knowledge-base-detail": KnowledgeBaseDetailResponseSchema,
+  "knowledge-base-list": KnowledgeBaseListResponseSchema,
   "knowledge-resource-item": KnowledgeResourceItemSchema,
-  "knowledge-resource-list": KnowledgeResourceItemSchema.array(),
+  "knowledge-resource-list": KnowledgeResourceListResponseSchema,
   "create-knowledge-base-request": CreateKnowledgeBaseRequestSchema,
   "update-knowledge-base-request": UpdateKnowledgeBaseRequestSchema,
   "import-knowledge-url-request": ImportKnowledgeUrlRequestSchema,
+  "upload-knowledge-resources-response": UploadKnowledgeResourcesResponseSchema,
+  "import-knowledge-url-response": ImportKnowledgeUrlResponseSchema,
+  "delete-knowledge-base-response": DeleteKnowledgeBaseResponseSchema,
+  "delete-knowledge-resource-response": DeleteKnowledgeResourceResponseSchema,
 });
 
 app.get(
@@ -38,7 +50,15 @@ app.get(
     const authCtx = store.authContext!;
     return await listKnowledgeBasesByTeamId(authCtx.organizationId);
   },
-  { sessionAuth: true, response: "knowledge-base-list" },
+  {
+    sessionAuth: true,
+    response: "knowledge-base-list",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "获取知识库列表",
+      description: "返回当前组织下的知识库列表及其资源统计信息。",
+    },
+  },
 );
 
 app.post(
@@ -61,7 +81,16 @@ app.post(
     }
     return result.data;
   },
-  { sessionAuth: true, body: "create-knowledge-base-request" },
+  {
+    sessionAuth: true,
+    body: "create-knowledge-base-request",
+    response: "knowledge-base-info",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "创建知识库",
+      description: "创建一个新的知识库记录，并初始化远端知识库信息。",
+    },
+  },
 );
 
 app.get(
@@ -76,7 +105,15 @@ app.get(
     }
     return detail;
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "knowledge-base-detail",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "获取知识库详情",
+      description: "根据知识库 ID 返回知识库详情及最近的资源列表。",
+    },
+  },
 );
 
 app.patch(
@@ -97,7 +134,16 @@ app.patch(
     }
     return result.data;
   },
-  { sessionAuth: true, body: "update-knowledge-base-request" },
+  {
+    sessionAuth: true,
+    body: "update-knowledge-base-request",
+    response: "knowledge-base-info",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "更新知识库",
+      description: "更新知识库名称、slug 或描述信息。",
+    },
+  },
 );
 
 app.delete(
@@ -121,12 +167,21 @@ app.delete(
       });
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "delete-knowledge-base-response",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "删除知识库",
+      description: "删除指定知识库及其关联资源绑定。",
+    },
+  },
 );
 
 app.post(
   "/knowledgeBases/:id/resources/upload",
-  async ({ store, params, request, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 multipart/response 组合下类型推断不稳定
+  async ({ store, params, request, error }: any) => {
     const authCtx = store.authContext!;
     const id = params.id;
     try {
@@ -157,7 +212,15 @@ app.post(
       return error(status, { error: { type: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR", message } });
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "upload-knowledge-resources-response",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "上传知识资源",
+      description: "向指定知识库上传一个或多个文件资源，并返回本次处理后的资源列表。",
+    },
+  },
 );
 
 app.post(
@@ -184,7 +247,16 @@ app.post(
       return error(status, { error: { type: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR", message } });
     }
   },
-  { sessionAuth: true, body: "import-knowledge-url-request" },
+  {
+    sessionAuth: true,
+    body: "import-knowledge-url-request",
+    response: "import-knowledge-url-response",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "通过 URL 导入资源",
+      description: "从指定 URL 拉取内容并导入到知识库，返回创建后的资源记录。",
+    },
+  },
 );
 
 app.get(
@@ -199,7 +271,15 @@ app.get(
     }
     return items;
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "knowledge-resource-list",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "获取知识资源列表",
+      description: "返回指定知识库下的全部知识资源记录。",
+    },
+  },
 );
 
 app.delete(
@@ -224,7 +304,15 @@ app.delete(
       });
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "delete-knowledge-resource-response",
+    detail: {
+      tags: ["Knowledge"],
+      summary: "删除知识资源",
+      description: "删除指定知识库下的单个资源记录及其远端资源。",
+    },
+  },
 );
 
 export default app;

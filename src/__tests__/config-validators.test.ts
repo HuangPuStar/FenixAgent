@@ -3,9 +3,7 @@ import { describe, expect, it } from "bun:test";
 // 纯函数验证逻辑的单元测试，不依赖数据库
 const { validateMcpConfig, isValidMcpName, toServerInfo } = await import("../services/config/mcp-server");
 
-const { validateAgentData, toolsToPermission, isBuiltInAgent, normalizeKnowledgeConfig } = await import(
-  "../services/config/agent-config"
-);
+const { validateAgentData, isBuiltInAgent, normalizeKnowledgeConfig } = await import("../services/config/agent-config");
 
 const { validateWorkspacePath, KEBAB_CASE_RE } = await import("../services/environment-core");
 
@@ -190,84 +188,18 @@ describe("toServerInfo", () => {
 describe("validateAgentData", () => {
   // 合法数据
   it("接受合法数据", () => {
-    expect(validateAgentData({ mode: "primary", steps: 10, temperature: 0.7 })).toBeNull();
+    expect(validateAgentData({ extra: { panel: "compact" } })).toBeNull();
   });
 
-  // 无效 mode
-  it("拒绝无效 mode", () => {
-    expect(validateAgentData({ mode: "invalid" })).toBe("INVALID_MODE");
+  // extra 类型检查
+  it("拒绝非法 extra", () => {
+    expect(validateAgentData({ extra: "bad" })).toBe("INVALID_EXTRA");
+    expect(validateAgentData({ extra: [] })).toBe("INVALID_EXTRA");
   });
 
-  // 无效 steps
-  it("拒绝无效 steps（负数或超限）", () => {
-    expect(validateAgentData({ steps: 0 })).toBe("INVALID_STEPS");
-    expect(validateAgentData({ steps: 201 })).toBe("INVALID_STEPS");
-  });
-
-  // 无效 temperature
-  it("拒绝无效 temperature", () => {
-    expect(validateAgentData({ temperature: -0.1 })).toBe("INVALID_TEMPERATURE");
-    expect(validateAgentData({ temperature: 2.1 })).toBe("INVALID_TEMPERATURE");
-  });
-
-  // 合法 color
-  it("接受合法 color（hex 或预设）", () => {
-    expect(validateAgentData({ color: "#FF5733" })).toBeNull();
-    expect(validateAgentData({ color: "primary" })).toBeNull();
-  });
-
-  // 无效 color
-  it("拒绝无效 color", () => {
-    expect(validateAgentData({ color: "not-a-color" })).toBe("INVALID_COLOR");
-    expect(validateAgentData({ color: "#xyz" })).toBe("INVALID_COLOR");
-  });
-
-  // permission 类型检查
-  it("拒绝字符串类型的 permission", () => {
-    expect(validateAgentData({ permission: "allow" })).toBe("INVALID_PERMISSION");
-  });
-
-  it("接受对象类型的 permission", () => {
-    expect(validateAgentData({ permission: { bash: "allow" } })).toBeNull();
-  });
-
-  it("接受 null permission", () => {
-    expect(validateAgentData({ permission: null })).toBeNull();
-  });
-
-  // 类型安全：非数字 temperature 不崩溃
-  it("非数字 temperature 返回 INVALID_TEMPERATURE", () => {
-    expect(validateAgentData({ temperature: "hot" as any })).toBe("INVALID_TEMPERATURE");
-    expect(validateAgentData({ temperature: null as any })).toBe("INVALID_TEMPERATURE");
-  });
-
-  // 类型安全：非数字 top_p 不崩溃
-  it("非数字 top_p 返回 INVALID_TOP_P", () => {
-    expect(validateAgentData({ top_p: "high" as any })).toBe("INVALID_TOP_P");
-  });
-
-  // 类型安全：非字符串 color 返回 INVALID_COLOR
-  it("非字符串 color 返回 INVALID_COLOR", () => {
-    expect(validateAgentData({ color: 123 as any })).toBe("INVALID_COLOR");
-  });
-
-  // 类型安全：非字符串 mode 跳过校验（不崩溃）
-  it("非字符串 mode 跳过校验（不崩溃）", () => {
-    expect(validateAgentData({ mode: 123 as any })).toBeNull();
-  });
-
-  // 类型安全：非数字 steps 跳过校验（不崩溃）
-  it("非数字 steps 跳过校验（不崩溃）", () => {
-    expect(validateAgentData({ steps: "ten" as any })).toBeNull();
-  });
-});
-
-// ── toolsToPermission ──
-
-describe("toolsToPermission", () => {
-  it("将布尔值转为三态", () => {
-    const result = toolsToPermission({ bash: true, edit: false });
-    expect(result).toEqual({ bash: "allow", edit: "deny" });
+  // knowledge 结构校验仍然保留
+  it("拒绝非法 knowledge", () => {
+    expect(validateAgentData({ knowledge: { knowledgeBaseIds: ["", "kb_a"] } })).toBe("INVALID_KNOWLEDGE_BASE_IDS");
   });
 });
 

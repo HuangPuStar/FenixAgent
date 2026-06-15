@@ -6,6 +6,7 @@
   "console": "Console",
   "overview": "Overview",
   "workflow": "Workflow",
+  "agentManagement": "Agent Management",
   "models": "Models",
   "sessions": "Sessions",
   "config": "Configuration",
@@ -66,5 +67,11 @@
   "metaAgentStarting": "Starting Meta Agent...",
   "metaAgentFailed": "Failed to start Meta Agent",
   "cancel": "Cancel",
-  "remoteNode": "Remote"
+  "remoteNode": "Remote",
+  "memories": "Memories",
+  "changedFiles": {
+    "title": "Changed Files",
+    "count_one": "{{count}} file",
+    "count_other": "{{count}} files"
+  }
 }

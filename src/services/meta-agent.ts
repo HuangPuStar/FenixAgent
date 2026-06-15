@@ -15,7 +15,7 @@ import { log } from "@fenix/logger";
 import { auth } from "../auth/better-auth";
 import type { AuthContext } from "../plugins/auth";
 import { spawnInstanceFromEnvironment } from "../transport/relay";
-import { createAgentConfig, getAgentConfig } from "./config/agent-config";
+import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
 import { deleteSkill, getSkill, listSkills } from "./config/skill";
@@ -24,6 +24,26 @@ import { getGlobalSkillsDir, setSkill } from "./skill";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
+
+/** Meta Agent 系统提示词 — 约束其只能通过 API 操作，不能直接读写文件 */
+const META_AGENT_PROMPT = [
+  "你是 Meta Agent，一个通过 API 管理系统的运维助手。",
+  "",
+  "## 核心原则",
+  "",
+  "1. 你只能通过 **agent-platform-api** skill 提供的 API 来读写系统配置。",
+  "2. 你不能使用普通的文件读写工具（read/write/edit/bash）来修改系统数据。",
+  "3. 你可以使用 bash/read 来查看信息，但不能用于更改配置、创建/修改文件。",
+  "4. 如果某个操作没有对应的 API，告知用户当前不支持，不要尝试绕过。",
+  "",
+  "## 可管理的资源",
+  "",
+  "通过 API 你可以：创建/编辑/删除 Skill、管理 AgentConfig、管理 MCP Server 配置、查询模型和 Provider 信息。",
+  "",
+  "## 工作方式",
+  "",
+  "收到用户请求后，先确认该操作是否可以通过 API 完成。如果可以，调用对应的 API 端点完成操作。",
+].join("\n");
 const META_AGENT_CONFIG_NAME = "meta";
 const META_KEY_LABEL = "Meta Agent";
 
@@ -91,7 +111,11 @@ function parseSkillFrontmatter(raw: string): { name: string; description: string
 }
 
 /** 扫描仓库内置 skill 源目录；这里读取的是源码模板，不是运行时组织目录。 */
-function scanBuiltinSkills(): { name: string; description: string; content: string }[] {
+function scanBuiltinSkills(): {
+  name: string;
+  description: string;
+  content: string;
+}[] {
   const skillsDir = join(process.cwd(), BUILTIN_SKILLS_DIR);
   if (!existsSync(skillsDir)) {
     log(`[meta-agent] Built-in skills directory not found: ${skillsDir}`);
@@ -254,12 +278,32 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
       description: "Meta Agent — 工作流编排助手",
       model: defaultModelRef,
       prompt: null,
-      steps: null,
     });
     agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
     if (!agentConfig) {
       throw new Error("Failed to create meta agent config");
     }
+  }
+
+  // 已有配置但 model 为空时，自动解析并填充默认模型
+  if (!agentConfig.model?.trim()) {
+    const defaultModelRef = await resolveDefaultMetaModelRef(ctx);
+    if (defaultModelRef) {
+      log(`[meta-agent] Auto-filling empty model for meta AgentConfig: ${defaultModelRef}`);
+      await updateAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
+        model: defaultModelRef,
+      });
+    } else {
+      log(`[meta-agent] No provider/model available to auto-fill meta AgentConfig model`);
+    }
+  }
+
+  // 已有配置但 prompt 为空时，自动填充系统提示词
+  if (!agentConfig.prompt?.trim()) {
+    log("[meta-agent] Auto-filling system prompt for meta AgentConfig");
+    await updateAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
+      prompt: META_AGENT_PROMPT,
+    });
   }
 
   // 收集所有应绑定到 meta AgentConfig 的 skill ID
@@ -285,9 +329,13 @@ async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
   for (const old of existingKeys.filter((k) => k.name === META_KEY_LABEL)) {
     try {
       // biome-ignore lint/suspicious/noExplicitAny: better-auth deleteApiKey return type is untyped
-      await (auth.api as any).deleteApiKey({ body: { id: old.id }, headers });
-    } catch {
-      // 旧 key 删除失败不阻断
+      await (auth.api as any).deleteApiKey({
+        body: { keyId: old.id },
+        headers,
+      });
+    } catch (err) {
+      // 旧 key 删除失败不阻断，但需要记录以便排查
+      console.error(`[meta-agent] Failed to delete old key ${old.id}:`, err);
     }
   }
 
@@ -297,7 +345,7 @@ async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
     body: {
       name: META_KEY_LABEL,
       prefix: "rcs_",
-      expiresIn: null,
+      expiresIn: 86400, // 1 天过期（秒），避免 key 永久残留
       metadata: { organizationId: ctx.organizationId, role: ctx.role },
     },
     headers,

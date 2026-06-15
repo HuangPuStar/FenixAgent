@@ -312,7 +312,11 @@ export class AcpDispatcher {
         cursor: params.cursor,
       });
       const MAX_SESSIONS = 20;
-      const sessions = result.sessions.slice(0, MAX_SESSIONS);
+      // 过滤掉标题为空或以 "New session" 开头的会话
+      const filtered = result.sessions.filter(
+        (s: acp.SessionInfo) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
+      );
+      const sessions = filtered.slice(0, MAX_SESSIONS);
       this.send(
         createSuccessResponse(id, {
           sessions: sessions.map((s: acp.SessionInfo) => ({

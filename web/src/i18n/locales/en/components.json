@@ -35,7 +35,9 @@
     "uploadFile": "Upload file",
     "noFiles": "No files",
     "loadFailed": "Failed to load files",
-    "uploadFailed": "Upload failed"
+    "uploadFailed": "Upload failed",
+    "fileTooLarge": "{{name}} is too large (max {{max}})",
+    "uploadTooLarge": "Upload failed: file size exceeds the 100MB limit"
   },
   "identity": {
     "title": "Identity",
@@ -138,6 +140,8 @@
     "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
+    "fileTooLarge": "{{name}} is too large (max {{max}})",
+    "uploadTooLarge": "Upload failed: file size exceeds the 100MB limit",
     "dropToUpload": "Drop files to upload",
     "hintDragUpload": "Drag to upload",
     "hintDoubleClick": "Double-click to preview",
@@ -310,5 +314,15 @@
     "makePublic": "Make public",
     "makePrivate": "Make private",
     "readOnly": "Read-only"
+  },
+  "metaAgent": {
+    "title": "Meta Agent",
+    "history_title": "Session History",
+    "history_today": "Today",
+    "history_yesterday": "Yesterday",
+    "history_earlier": "Earlier",
+    "history_empty": "No sessions",
+    "history_untitled": "Untitled",
+    "chat_collapse": "Collapse Panel"
   }
 }

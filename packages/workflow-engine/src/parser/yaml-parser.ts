@@ -9,7 +9,7 @@ import { parse as yamlParse } from "yaml";
 import type { NodeDef, NodeType, WorkflowDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 
-const VALID_NODE_TYPES: NodeType[] = ["shell", "python", "agent", "api", "audit", "workflow", "loop"];
+const VALID_NODE_TYPES: NodeType[] = ["shell", "python", "agent", "api", "audit", "workflow", "loop", "transform"];
 
 /**
  * 将 YAML 源码解析为 WorkflowDef
@@ -235,6 +235,20 @@ function parseNode(raw: unknown, index: number): NodeDef {
         body: {
           nodes: bodyNodes.map((bn, bi) => parseNode(bn, bi)),
         },
+      };
+    }
+    case "transform": {
+      if (!("output" in n) || !isRecord(n.output) || Object.keys(n.output as Record<string, unknown>).length === 0) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): transform node requires non-empty 'output' mapping`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      return {
+        ...base,
+        type: "transform",
+        inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
+        output: n.output as Record<string, string>,
       };
     }
   }

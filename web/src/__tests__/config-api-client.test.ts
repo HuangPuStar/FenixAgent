@@ -61,14 +61,33 @@ describe("config SDK modules", () => {
     expect((data as any).current.model).toBe("gpt-4");
   });
 
-  // 测试 create agent 发送 create action
-  test("agentApi.create sends create action", async () => {
+  // 测试 create agent 使用独立创建接口
+  test("agentApi.create sends create payload to dedicated endpoint", async () => {
     fetchMock.body = { success: true, data: { name: "my-agent" } };
     const { agentApi } = await import("../api/sdk");
-    await agentApi.create("my-agent", { model: "gpt-4" });
+    await agentApi.create("my-agent", { modelId: "model-1" });
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toBe("/web/config/agents");
+    expect(call[1].method).toBe("POST");
     const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("create");
+    expect(body).toEqual({
+      name: "my-agent",
+      data: { modelId: "model-1" },
+    });
+  });
+
+  // 测试 update agent 使用 PUT 接口并携带 data 载荷
+  test("agentApi.set sends update payload to PUT endpoint", async () => {
+    fetchMock.body = { success: true, data: { name: "my-agent" } };
+    const { agentApi } = await import("../api/sdk");
+    await agentApi.set("my-agent", { prompt: "updated" });
+    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toBe("/web/config/agents?name=my-agent");
+    expect(call[1].method).toBe("PUT");
+    const body = JSON.parse(call[1].body);
+    expect(body).toEqual({
+      data: { prompt: "updated" },
+    });
   });
 
   // 测试 delete skill 发送 delete action

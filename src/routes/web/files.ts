@@ -1,8 +1,9 @@
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import Elysia from "elysia";
 import { NotFoundError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
+import { OkResponseSchema } from "../../schemas/common.schema";
 import {
   FileContentSchema,
   FileListResponseSchema,
@@ -36,6 +37,7 @@ import {
 } from "../../services/workspace-fs";
 
 const app = new Elysia({ name: "web-files", prefix: "/environments" }).use(authGuardPlugin).model({
+  "delete-file-response": OkResponseSchema,
   "file-list-response": FileListResponseSchema,
   "file-content": FileContentSchema,
   "file-upload-response": FileUploadResponseSchema,
@@ -57,7 +59,8 @@ async function requireEnv(envId: string, orgId: string, errorFn: (status: number
 // GET /:id/user — List directory
 app.get(
   "/:id/user",
-  async ({ store, params, query, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, query, error }: any) => {
     const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
@@ -85,13 +88,22 @@ app.get(
     const items = await listDirectory(resolved, userDir, workspaceDir);
     return { entries: items };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "file-list-response",
+    detail: {
+      tags: ["Files"],
+      summary: "获取目录列表",
+      description: "返回指定环境工作区目录下的文件和目录列表，用于文件树浏览。",
+    },
+  },
 );
 
 // GET /:id/user/* — Read file
 app.get(
   "/:id/user/*",
-  async ({ store, params, query, error, set }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, query, error, set }: any) => {
     const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
@@ -99,13 +111,13 @@ app.get(
     const rawFilePath = (params as any)["*"] as string;
     const preview = (query as Record<string, string | undefined>)?.preview === "true";
 
-    // 远程环境
+    // 远程环境：路由通配符不含 "user/" 前缀，需补全后发给远程节点
     const machineId = await getRemoteMachineId(envId);
     if (machineId) {
-      // 远程节点支持 workspace 全路径，不强制 user/ 前缀
+      const filePath = normalizeUserRoutePath(rawFilePath);
       try {
         if (preview) {
-          const binResult = await remoteReadBinaryFile(machineId, envId, rawFilePath);
+          const binResult = await remoteReadBinaryFile(machineId, envId, filePath);
           const buffer = Buffer.from(binResult.data, "base64");
           set.headers["Content-Type"] = binResult.mimeType || "application/octet-stream";
           set.headers["Content-Security-Policy"] =
@@ -114,7 +126,7 @@ app.get(
         }
         // 非预览：先尝试文本，失败则走二进制下载
         try {
-          const textResult = await remoteReadFile(machineId, envId, rawFilePath);
+          const textResult = await remoteReadFile(machineId, envId, filePath);
           return {
             name: textResult.name,
             path: textResult.path,
@@ -123,7 +135,7 @@ app.get(
             encoding: "utf-8",
           };
         } catch {
-          const binResult = await remoteReadBinaryFile(machineId, envId, rawFilePath);
+          const binResult = await remoteReadBinaryFile(machineId, envId, filePath);
           const buffer = Buffer.from(binResult.data, "base64");
           set.headers["Content-Disposition"] = `attachment; filename="${binResult.name}"`;
           set.headers["Content-Type"] = "application/octet-stream";
@@ -180,13 +192,23 @@ app.get(
     // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch with Response constructor
     return new Response(createFileStream(resolved) as any);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "file-content",
+    detail: {
+      tags: ["Files"],
+      summary: "读取文件内容",
+      description:
+        "读取指定文件。文本文件默认返回 JSON 内容；当 preview=true 或目标为二进制文件时，接口会直接返回文件流而不是 JSON。",
+    },
+  },
 );
 
 // POST /:id/user/* — Upload files (支持文件夹上传，通过 relativePaths 字段传递相对路径)
 app.post(
   "/:id/user/*",
-  async ({ store, params, request, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, request, error }: any) => {
     const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
@@ -217,7 +239,7 @@ app.post(
         const remoteFiles = await Promise.all(
           files.map(async (file, i) => {
             const buffer = Buffer.from(await file.arrayBuffer());
-            if (buffer.length > 50 * 1024 * 1024) throw new Error(`File ${file.name} exceeds 50MB limit`);
+            if (buffer.length > 100 * 1024 * 1024) throw new Error(`File ${file.name} exceeds 100MB limit`);
             return {
               name: file.name,
               content: buffer.toString("base64"),
@@ -248,14 +270,14 @@ app.post(
     for (let i = 0; i < files.length; i++) {
       const file = files[i]!;
       const buffer = Buffer.from(await file.arrayBuffer());
-      if (buffer.length > 50 * 1024 * 1024) {
-        return error(413, { error: { type: "validation_error", message: `File ${file.name} exceeds 50MB limit` } });
+      if (buffer.length > 100 * 1024 * 1024) {
+        return error(413, { error: { type: "validation_error", message: `File ${file.name} exceeds 100MB limit` } });
       }
 
       // 如果有对应的相对路径，保留目录结构；否则直接用文件名
       const relPath = relativePaths[i] || file.name;
       const destPath = join(resolved, relPath);
-      const destDir = destPath.substring(0, destPath.lastIndexOf("/"));
+      const destDir = dirname(destPath);
       await mkdir(destDir, { recursive: true });
       await writeFileAsync(destPath, buffer);
 
@@ -267,13 +289,22 @@ app.post(
     }
     return { files: uploaded };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "file-upload-response",
+    detail: {
+      tags: ["Files"],
+      summary: "上传文件",
+      description: "向指定环境目录上传一个或多个文件；支持通过 relativePaths 保留文件夹层级。",
+    },
+  },
 );
 
 // PUT /:id/user/* — Write file content
 app.put(
   "/:id/user/*",
-  async ({ store, params, body, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, body, error }: any) => {
     const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
@@ -313,13 +344,23 @@ app.put(
     const normalizedPath = filePath.startsWith("user/") ? filePath : `user/${filePath}`;
     return { name: fileName, path: normalizedPath, size: Buffer.byteLength(b.content) };
   },
-  { sessionAuth: true, body: "write-file-request" },
+  {
+    sessionAuth: true,
+    body: "write-file-request",
+    response: "file-write-result",
+    detail: {
+      tags: ["Files"],
+      summary: "写入文件内容",
+      description: "将文本内容写入指定文件；本地环境仅允许写入 user/ 目录，远程环境按远程节点能力处理。",
+    },
+  },
 );
 
 // DELETE /:id/user/* — Delete file
 app.delete(
   "/:id/user/*",
-  async ({ store, params, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, error);
@@ -357,7 +398,15 @@ app.delete(
     await deleteFile(result.resolved);
     return { ok: true as const };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "delete-file-response",
+    detail: {
+      tags: ["Files"],
+      summary: "删除文件",
+      description: "删除指定文件。该接口仅处理单个文件，不支持删除目录。",
+    },
+  },
 );
 
 export default app;

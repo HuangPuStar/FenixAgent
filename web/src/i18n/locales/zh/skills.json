@@ -35,6 +35,12 @@
     "nameRequired": "名称不能为空",
     "contentRequired": "内容不能为空"
   },
+  "section": {
+    "private": "私有技能",
+    "privateEmpty": "暂无私有技能",
+    "shared": "他人共享技能",
+    "sharedEmpty": "暂无他人共享技能"
+  },
   "resource": {},
   "upload": {
     "selectFolder": "点击选择包含技能的文件夹",

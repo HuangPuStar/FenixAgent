@@ -60,6 +60,7 @@ export interface AgentInfo extends Indexable {
   id: string;
   name: string;
   model?: string;
+  modelId?: string | null;
   modelLabel?: string | null;
   description?: string;
   builtIn?: boolean;
@@ -73,12 +74,14 @@ export interface AgentInfo extends Indexable {
 export interface AgentDetail extends AgentInfo {
   systemPrompt?: string;
   prompt?: string | null;
+  extra?: Record<string, unknown> | null;
   skillIds?: string[];
   machineId?: string | null;
   relatedResources?: {
     modelLabel?: string | null;
     machineLabel?: string | null;
     skills?: Array<{ id: string; label: string }>;
+    mcps?: Array<{ id: string; label: string }>;
     knowledgeBases?: Array<{ id: string; label: string; slug?: string | null }>;
   };
 }
@@ -132,15 +135,14 @@ export interface ModelConfig extends Indexable {
 }
 export interface ModelEntry {
   id: string;
+  modelId: string;
+  displayName: string;
   provider: string;
-  name?: string;
-  fullId?: string;
-  label?: string;
+  providerDisplayName: string;
   contextLimit?: number | null;
   outputLimit?: number | null;
   providerResourceAccess?: ResourceAccess;
   providerResourceKey?: string;
-  stableFullId?: string;
 }
 export interface ProviderDetail extends Indexable {
   id?: string;

@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { environmentRepo } from "../repositories";
 import { resolveWorkspacePath as computeWorkspacePath } from "./workspace-resolver";
 
@@ -24,6 +24,7 @@ const TEXT_EXTENSIONS = new Set([
   ".xml",
   ".toml",
   ".ini",
+  ".properties",
   ".cfg",
   ".sh",
   ".bash",
@@ -135,9 +136,9 @@ export async function resolveWorkspacePath(
   }
 
   const resolvedPath = resolve(baseDir, cleanPath);
-  if (!resolvedPath.startsWith(`${baseDir}/`) && resolvedPath !== baseDir) return null;
-
   const relativeToBase = relative(baseDir, resolvedPath);
+  if (relativeToBase.startsWith("..") || isAbsolute(relativeToBase)) return null;
+
   const displayPath = userScoped ? (relativeToBase ? `user/${relativeToBase}` : "user") : relativeToBase || ".";
 
   return { workspaceDir, userDir, resolved: resolvedPath, displayPath };

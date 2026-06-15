@@ -67,21 +67,13 @@ skill-name/
 
 SKILL.md 写好后，通过平台 API 注册。参考 `agent-platform-api` 的 Skill 配置文档（`references/config.md` 中的「四、Skill」章节）。
 
-**注册方式**：使用 `POST /web/config/skills` + `action: "set"`，将 SKILL.md 完整内容作为 `content` 字段提交。
+**注册方式**：先用 Write tool 将 SKILL.md 写到 `.agents/skills/<name>/SKILL.md`，再用 `jq --rawfile` 从文件读取内容构造 JSON，通过 `POST /web/config/skills` + `action: "set"` 提交。
 
 ```bash
-SKILL_CONTENT=$(cat << 'EOF'
----
-name: my-skill
-description: 描述...
----
-# My Skill
-内容...
-EOF
-)
-
-jq -n --arg content "$SKILL_CONTENT" --arg desc "描述..." \
-  '{action:"set", name:"my-skill", data:{description:$desc, content:$content}}' | \
+# --rawfile 直接从磁盘读文件，不经过 shell 解析，天然支持中文和特殊字符
+jq -n --rawfile content .agents/skills/my-skill/SKILL.md \
+  --arg name "my-skill" --arg desc "描述..." \
+  '{action:"set", name:$name, data:{description:$desc, content:$content}}' | \
   curl -s -X POST "$USER_META_BASE_URL/web/config/skills" \
     -H "Authorization: Bearer $USER_META_API_KEY" \
     -H "Content-Type: application/json" \

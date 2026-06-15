@@ -15,10 +15,14 @@ import {
   listBoards,
   updateBoard,
 } from "../../repositories/workflow-board";
+import { WorkflowBoardActionRequestSchema, WorkflowBoardActionResponseSchema } from "../../schemas";
 
 const logger = createLogger("wf-boards");
 
-const app = new Elysia({ name: "web-workflow-boards" }).use(authGuardPlugin);
+const app = new Elysia({ name: "web-workflow-boards" }).use(authGuardPlugin).model({
+  "workflow-board-action-request": WorkflowBoardActionRequestSchema,
+  "workflow-board-action-response": WorkflowBoardActionResponseSchema,
+});
 
 app.post(
   "/workflow-boards",
@@ -111,7 +115,16 @@ app.post(
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "workflow-board-action-request",
+    response: "workflow-board-action-response",
+    detail: {
+      tags: ["Workflow Engine"],
+      summary: "工作流看板管理",
+      description: "通过 action 分发管理工作流看板，包括列表查询、详情读取、创建、重命名和删除。",
+    },
+  },
 );
 
 export default app;

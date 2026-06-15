@@ -201,6 +201,7 @@ const TYPE_PREFIXES: Record<string, string> = {
   audit: "audit",
   workflow: "wf",
   loop: "loop",
+  transform: "tf",
 };
 
 export function nextNodeId(type: string): string {

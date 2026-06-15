@@ -1,0 +1,26 @@
+# Sandbox 镜像 — 独立启动，连接远程 RCS 主服务器
+# Usage:
+#   docker compose -f docker/sandbox/docker-compose.yml build
+#   docker compose -f docker/sandbox/docker-compose.yml up -d
+#   docker compose -f docker/sandbox/docker-compose.yml up -d --scale sandbox=3
+
+services:
+    sandbox:
+        build:
+            context: ../../
+            dockerfile: docker/sandbox/Dockerfile
+        container_name: rcs-sandbox
+        restart: unless-stopped
+        environment:
+            RCS_URL: ws://host.docker.internal:3000
+            # client 端的 secret, 用于鉴权
+            RCS_SECRET: 340b6908-031d-47de-9cfb-26f75818f969
+            # 用于远程注册机器的 id
+            RCS_TENANT_ID: sbFAPs2nyyL0ZNxTE8CSqXUu6AIPULfL
+            RCS_MACHINE_NAME: sandbox-01
+            AGENT_TYPE: opencode
+        volumes:
+            - sandbox-workspaces:/app/workspaces
+
+volumes:
+    sandbox-workspaces:

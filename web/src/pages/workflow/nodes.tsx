@@ -11,6 +11,7 @@ import {
   Play,
   RefreshCw,
   ShieldCheck,
+  Shuffle,
   Terminal,
   XCircle,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const NODE_COLORS: Record<string, { main: string; light: string; headerText: str
   audit: { main: "#f59e0b", light: "rgba(245,158,11,0.08)", headerText: "#fff" },
   workflow: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
   loop: { main: "#818cf8", light: "rgba(129,140,248,0.08)", headerText: "#fff" },
+  transform: { main: "#f97316", light: "rgba(249,115,22,0.08)", headerText: "#fff" },
 };
 
 const NODE_ICONS: Record<string, React.ReactNode> = {
@@ -37,6 +39,7 @@ const NODE_ICONS: Record<string, React.ReactNode> = {
   audit: <ShieldCheck size={12} />,
   workflow: <GitBranch size={12} />,
   loop: <RefreshCw size={12} />,
+  transform: <Shuffle size={12} />,
 };
 
 const NODE_LABEL_KEYS: Record<string, string> = {
@@ -48,6 +51,7 @@ const NODE_LABEL_KEYS: Record<string, string> = {
   audit: "nodes.audit",
   workflow: "nodes.workflow",
   loop: "nodes.loop",
+  transform: "nodes.transform",
 };
 
 const RUN_STATUS_COLORS: Record<string, { color: string; bg: string }> = {
@@ -99,6 +103,8 @@ function getPreview(type: string, data: Record<string, unknown>): string {
       return String(data.ref || "");
     case "loop":
       return String(data.condition || "");
+    case "transform":
+      return Object.keys((data.output as Record<string, unknown>) ?? {}).join(", ");
     default:
       return "";
   }
@@ -349,4 +355,5 @@ export const nodeTypes = {
   audit: WorkflowNode,
   workflow: WorkflowNode,
   loop: WorkflowNode,
+  transform: WorkflowNode,
 };

@@ -13,10 +13,14 @@ import {
   getRecentFailedRuns,
   getStatsOverview,
 } from "../../repositories/workflow-stats";
+import { WorkflowStatsActionRequestSchema, WorkflowStatsActionResponseSchema } from "../../schemas";
 
 const logger = createLogger("wf-stats");
 
-const app = new Elysia({ name: "web-workflow-stats" }).use(authGuardPlugin);
+const app = new Elysia({ name: "web-workflow-stats" }).use(authGuardPlugin).model({
+  "workflow-stats-action-request": WorkflowStatsActionRequestSchema,
+  "workflow-stats-action-response": WorkflowStatsActionResponseSchema,
+});
 
 app.post(
   "/workflow-stats",
@@ -58,7 +62,16 @@ app.post(
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "workflow-stats-action-request",
+    response: "workflow-stats-action-response",
+    detail: {
+      tags: ["Workflow Engine"],
+      summary: "工作流统计查询",
+      description: "通过 action 分发返回工作流运行概览、趋势、Token 消耗和最近失败运行列表。",
+    },
+  },
 );
 
 export default app;

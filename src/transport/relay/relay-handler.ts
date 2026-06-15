@@ -125,7 +125,7 @@ async function openLocalRelay(
   // 3. 所有异步工作完成，一次性创建完整 entry 并加入 manager
   const relayKeepalive = setInterval(() => {
     const entry = manager.get(relayWsId);
-    if (!entry || entry.ws.readyState !== 1) {
+    if (entry?.ws.readyState !== 1) {
       clearInterval(relayKeepalive);
       return;
     }
@@ -173,7 +173,7 @@ async function openLocalRelay(
         return;
       }
       const e = manager.get(relayWsId);
-      if (!e || e.ws.readyState !== 1) return;
+      if (e?.ws.readyState !== 1) return;
       sendToRelayWs(e.ws, message);
     });
   }

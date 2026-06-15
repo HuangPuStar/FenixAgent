@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import * as XLSX from "xlsx";
 import { NS } from "../../../i18n";
-import { encodePathSegment } from "./utils";
+import { buildPreviewUrl } from "./utils";
 
 interface TablePreviewProps {
   envId: string;
@@ -75,7 +75,7 @@ export function TablePreview({ envId, filePath, content }: TablePreviewProps) {
         // CSV: 使用传入的 content 或 fetch 文本
         let text = content;
         if (text === null) {
-          const src = `/web/environments/${envId}/user/${filePath.split("/").map(encodePathSegment).join("/")}?preview=true`;
+          const src = buildPreviewUrl(envId, filePath);
           const res = await fetch(src, { credentials: "include" });
           text = await res.text();
         }
@@ -84,7 +84,7 @@ export function TablePreview({ envId, filePath, content }: TablePreviewProps) {
         setRows(normalizeRows(parsed, maxCols));
       } else {
         // xlsx / xls / xlsm
-        const src = `/web/environments/${envId}/user/${filePath.split("/").map(encodePathSegment).join("/")}?preview=true`;
+        const src = buildPreviewUrl(envId, filePath);
         const res = await fetch(src, { credentials: "include" });
         const buf = await res.arrayBuffer();
         const wb = XLSX.read(new Uint8Array(buf), { type: "array" });

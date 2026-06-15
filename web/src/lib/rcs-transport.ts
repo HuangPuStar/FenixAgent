@@ -92,7 +92,7 @@ export class RCSTransport implements ChatTransport<UIMessage> {
     abortSignal,
   }: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0]): Promise<ReadableStream<UIMessageChunk>> {
     const lastMessage = messages[messages.length - 1];
-    if (!lastMessage || lastMessage.role !== "user") {
+    if (lastMessage?.role !== "user") {
       // Return empty stream if no user message
       return new ReadableStream({ start: (c) => c.close() });
     }

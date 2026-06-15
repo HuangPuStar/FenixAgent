@@ -81,12 +81,18 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const switchOrg = useCallback(
     async (orgId: string) => {
+      // 从已加载列表中立即更新 UI 状态
+      const target = orgs.find((o) => o.id === orgId);
+      if (target) {
+        setOrg(target);
+        setRole(target.role ?? "");
+      }
       localStorage.setItem(STORAGE_KEY, orgId);
       await orgApi.setActive(orgId);
-      // 切换组织后导航回新聊天页，避免停留在旧组织的资源详情页
-      void navigate({ to: "/agent/chat/$agentId", params: { agentId: "_new" }, replace: true });
+      // 切换组织后导航回首页
+      void navigate({ to: "/agent/home", replace: true });
     },
-    [navigate],
+    [navigate, orgs],
   );
 
   return (

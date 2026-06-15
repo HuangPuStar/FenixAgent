@@ -33,6 +33,8 @@ export interface IKnowledgeBaseRepo {
 export interface IKnowledgeResourceRepo {
   getById(resourceId: string): Promise<KnowledgeResourceRow | null>;
   getByRemoteId(knowledgeBaseId: string, remoteId: string): Promise<KnowledgeResourceRow | null>;
+  /** 按知识库 + 文件名查找资源，用于上传幂等检查 */
+  getBySourceName(knowledgeBaseId: string, sourceName: string): Promise<KnowledgeResourceRow | null>;
   listByKnowledgeBase(knowledgeBaseId: string, limit?: number): Promise<KnowledgeResourceRow[]>;
   countByKnowledgeBase(knowledgeBaseId: string): Promise<number>;
   getStatusSummary(knowledgeBaseId: string): Promise<{
@@ -74,6 +76,7 @@ export interface IAgentKnowledgeBindingRepo {
   getResourceWithKnowledgeBase(resourceId: string): Promise<{
     resource: KnowledgeResourceRow;
     kbUserId: string;
+    kbRemoteId: string | null;
     kbRemoteAccountId: string | null;
     kbRemoteUserId: string | null;
   } | null>;
@@ -174,6 +177,15 @@ class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
     return rows[0] ?? null;
   }
 
+  async getBySourceName(knowledgeBaseId: string, sourceName: string) {
+    const rows = await db
+      .select()
+      .from(knowledgeResource)
+      .where(and(eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId), eq(knowledgeResource.sourceName, sourceName)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async listByKnowledgeBase(knowledgeBaseId: string, limit?: number) {
     return db
       .select()
@@ -254,7 +266,8 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
     return db
       .select()
       .from(agentKnowledgeBinding)
-      .where(and(eq(agentKnowledgeBinding.agentConfigId, agentConfigId), eq(agentKnowledgeBinding.enabled, true)));
+      .where(and(eq(agentKnowledgeBinding.agentConfigId, agentConfigId), eq(agentKnowledgeBinding.enabled, true)))
+      .orderBy(agentKnowledgeBinding.priority);
   }
 
   async listByKnowledgeBaseId(knowledgeBaseId: string) {
@@ -338,6 +351,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
         lastError: knowledgeResource.lastError,
         createdAt: knowledgeResource.createdAt,
         updatedAt: knowledgeResource.updatedAt,
+        kbRemoteId: knowledgeBase.remoteId,
         kbUserId: knowledgeBase.userId,
         kbRemoteAccountId: knowledgeBase.remoteAccountId,
         kbRemoteUserId: knowledgeBase.remoteUserId,
@@ -363,6 +377,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       },
+      kbRemoteId: row.kbRemoteId,
       kbUserId: row.kbUserId,
       kbRemoteAccountId: row.kbRemoteAccountId,
       kbRemoteUserId: row.kbRemoteUserId,

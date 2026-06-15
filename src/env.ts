@@ -26,11 +26,10 @@ const envSchema = z.object({
   RCS_DISCONNECT_TIMEOUT: z.coerce.number().int().positive().default(120),
   RCS_JWT_EXPIRES_IN: z.coerce.number().int().positive().default(3600),
 
-  // ── 可选：知识库 ──
-  RCS_KNOWLEDGE_PROVIDER: z.string().default("openviking"),
-  RCS_KNOWLEDGE_BASE_URL: z.string().default("http://localhost:8090"),
-  RCS_KNOWLEDGE_API_KEY: z.string().default(""),
-  RCS_KNOWLEDGE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  // ── 可选：知识库（RagFlow）──
+  RAGFLOW_API_URL: z.string().default("http://localhost:9380"),
+  RAGFLOW_API_KEY: z.string().default(""),
+  RAGFLOW_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
 
   // ── 可选：S3 ──
   RCS_S3_ENABLED: z
@@ -55,6 +54,13 @@ const envSchema = z.object({
   // ── 可选：Hermes ──
   HERMES_URL: z.string().optional(),
   HERMES_PLATFORMS: z.string().optional(),
+
+  // ── 可选：Hindsight 记忆 MCP ──
+  HINDSIGHT_MCP_URL: z.string().optional(),
+
+  // ── 可选：Agent 智能生成（使用标准 OpenAI 环境变量）──
+  // OPENAI_API_KEY 和 OPENAI_BASE_URL 由 OpenAI SDK 自动读取，此处仅声明模型名
+  OPENAI_MODEL: z.string().optional(),
 
   // ── 可选：Workflow ──
 

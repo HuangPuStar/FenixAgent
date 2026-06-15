@@ -80,7 +80,14 @@ app.get(
     }
     return { paths, mtimes };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["Files"],
+      summary: "获取文件树",
+      description: "递归返回指定环境 user 目录下的文件与目录路径，用于构建完整文件树。",
+    },
+  },
 );
 
 // POST /:id/user-file/rename — 重命名/移动文件或目录
@@ -122,7 +129,15 @@ app.post(
     await renamePath(oldResolved.resolved, newResolved.resolved);
     return { oldPath, newPath };
   },
-  { sessionAuth: true, body: "rename-request" },
+  {
+    sessionAuth: true,
+    body: "rename-request",
+    detail: {
+      tags: ["Files"],
+      summary: "重命名文件或目录",
+      description: "重命名或移动 user 目录中的文件或目录，保留原有工作区路径语义。",
+    },
+  },
 );
 
 // POST /:id/user-file/mkdir — 创建目录
@@ -155,7 +170,15 @@ app.post(
     await mkdirp(resolved.resolved);
     return { path };
   },
-  { sessionAuth: true, body: "mkdir-request" },
+  {
+    sessionAuth: true,
+    body: "mkdir-request",
+    detail: {
+      tags: ["Files"],
+      summary: "创建目录",
+      description: "在指定环境的 user 目录下创建新目录。",
+    },
+  },
 );
 
 // DELETE /:id/user-file/batch — 批量删除
@@ -212,7 +235,15 @@ app.delete(
 
     return { deleted, failed };
   },
-  { sessionAuth: true, body: "batch-delete-request" },
+  {
+    sessionAuth: true,
+    body: "batch-delete-request",
+    detail: {
+      tags: ["Files"],
+      summary: "批量删除文件",
+      description: "批量删除指定路径的文件，并分别返回成功与失败结果。",
+    },
+  },
 );
 
 // GET /:id/user-file/download-zip — 打包下载目录为 zip
@@ -259,7 +290,14 @@ app.get(
     // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch
     return new Response(zipProcess.stdout as any);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["Files"],
+      summary: "下载目录压缩包",
+      description: "将指定 user 目录打包为 zip 文件并直接返回下载流；当前仅支持本地环境。",
+    },
+  },
 );
 
 export default app;

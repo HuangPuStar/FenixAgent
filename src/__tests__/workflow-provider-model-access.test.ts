@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { agentConfigSkill, mcpServer, model, provider } from "../db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { buildLaunchSpec } from "../services/launch-spec-builder";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
@@ -19,7 +19,8 @@ function createWorkflowAgentConfig() {
     organizationId: "org_source",
     name: "workflow-agent",
     prompt: null,
-    model: "org_source/provider_external/shared-model",
+    modelId: "model_external",
+    model: null,
     steps: 10,
     mode: "primary",
     permission: null,
@@ -92,7 +93,7 @@ describe("workflow provider model access", () => {
                 },
               ]);
             }
-            if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigSkill || table === agentConfigMcp) return queryResult([]);
             if (table === mcpServer) return queryResult([]);
             return queryResult([]);
           },
@@ -123,7 +124,7 @@ describe("workflow provider model access", () => {
           where: () => {
             if (table === provider) return queryResult([]);
             if (table === model) return queryResult([]);
-            if (table === agentConfigSkill) return queryResult([]);
+            if (table === agentConfigSkill || table === agentConfigMcp) return queryResult([]);
             if (table === mcpServer) return queryResult([]);
             return queryResult([]);
           },

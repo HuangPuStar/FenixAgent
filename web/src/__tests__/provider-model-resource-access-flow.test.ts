@@ -48,11 +48,11 @@ const externalProvider: ProviderInfo = {
 };
 
 const externalModel: ModelEntry = {
-  id: "shared-model",
+  id: "model-uuid-shared",
+  modelId: "shared-model",
+  displayName: "Shared Model",
   provider: "openai",
-  fullId: "openai/shared-model",
-  stableFullId: "org-source/provider-external/shared-model",
-  label: "Shared Model",
+  providerDisplayName: "OpenAI Shared",
   contextLimit: 128000,
   outputLimit: 4096,
   providerResourceKey: "org-source/provider-external",
@@ -78,29 +78,22 @@ describe("provider model resource access flow", () => {
 
   // 内部 provider 公开开关复用原 set API payload，并携带 publicReadable
   test("builds public readable provider set payload", () => {
-    expect(
-      buildProviderPublicReadablePayload(
-        { apiKey: "{env:RCS_SECRET_OPENAI}", baseURL: "https://api.example.com" },
-        true,
-      ),
-    ).toEqual({
-      apiKey: "{env:RCS_SECRET_OPENAI}",
-      baseURL: "https://api.example.com",
+    expect(buildProviderPublicReadablePayload(true)).toEqual({
       publicReadable: true,
     });
   });
 
-  // ModelConfigDialog 优先提交 stableFullId，并展示来源组织
-  test("model config dialog options prefer stableFullId", () => {
+  // ModelConfigDialog 使用资源 key 生成稳定引用，展示文案由前端拼 provider/source
+  test("model config dialog options use resource key and display name", () => {
     expect(buildModelOptions([externalModel])).toEqual([
-      { value: "org-source/provider-external/shared-model", label: "Source Team/openai/shared-model" },
+      { value: "org-source/provider-external/shared-model", label: "Source Team/OpenAI Shared/Shared Model" },
     ]);
   });
 
-  // AgentFormDialog 模型选项同样优先提交 stableFullId
-  test("agent form model options prefer stableFullId", () => {
+  // AgentFormDialog 保存模型 UUID，并展示由前端拼接的 provider/source 文案
+  test("agent form model options use modelId and display name", () => {
     expect(mapModelOptions([externalModel])).toEqual([
-      { value: "org-source/provider-external/shared-model", label: "Source Team/openai/shared-model" },
+      { value: "model-uuid-shared", label: "Source Team/OpenAI Shared/Shared Model" },
     ]);
   });
 });

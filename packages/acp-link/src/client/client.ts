@@ -93,6 +93,44 @@ export class ACPClient {
   private sessionLoadedHandler: SessionLoadedHandler | null = null;
   private sessionSwitchingHandler: SessionSwitchingHandler | null = null;
 
+  /**
+   * 兼容不同服务端返回形态，保证 session/load 和 session/resume 最终都能拿到 sessionId。
+   * 某些实现只返回字符串，或返回对象但不带 sessionId，这里统一回填到 state 初始化结构。
+   */
+  private normalizeSessionSwitchResult(
+    result: unknown,
+    requestedSessionId: string,
+  ): {
+    sessionId: string;
+    promptCapabilities?: PromptCapabilities;
+    models?: SessionModelState | null;
+    modes?: SessionModeState | null;
+  } {
+    if (typeof result === "string" && result.length > 0) {
+      return { sessionId: result };
+    }
+
+    if (typeof result === "object" && result !== null) {
+      const record = result as {
+        sessionId?: unknown;
+        promptCapabilities?: PromptCapabilities;
+        models?: SessionModelState | null;
+        modes?: SessionModeState | null;
+      };
+      const sessionId =
+        typeof record.sessionId === "string" && record.sessionId.length > 0 ? record.sessionId : requestedSessionId;
+
+      return {
+        sessionId,
+        promptCapabilities: record.promptCapabilities,
+        models: record.models,
+        modes: record.modes,
+      };
+    }
+
+    return { sessionId: requestedSessionId };
+  }
+
   constructor(settings: ACPSettings) {
     this.transport = new WSTransport();
     this.protocol = new ACPProtocol();
@@ -348,12 +386,7 @@ export class ACPClient {
     this.sessionSwitchingHandler?.(request.sessionId);
     const req = createRequest(ACP_METHOD.SESSION_LOAD, request);
     return this.sendJsonRpcAndWait<string>(req, 60_000).then((result) => {
-      const r = result as unknown as {
-        sessionId: string;
-        promptCapabilities?: PromptCapabilities;
-        models?: SessionModelState | null;
-        modes?: SessionModeState | null;
-      };
+      const r = this.normalizeSessionSwitchResult(result, request.sessionId);
       this.state.initSession(r);
       this.sessionLoadedHandler?.(r.sessionId);
       return r.sessionId;
@@ -367,12 +400,7 @@ export class ACPClient {
     this.sessionSwitchingHandler?.(request.sessionId);
     const req = createRequest(ACP_METHOD.SESSION_RESUME, request);
     return this.sendJsonRpcAndWait<string>(req, 30_000).then((result) => {
-      const r = result as unknown as {
-        sessionId: string;
-        promptCapabilities?: PromptCapabilities;
-        models?: SessionModelState | null;
-        modes?: SessionModeState | null;
-      };
+      const r = this.normalizeSessionSwitchResult(result, request.sessionId);
       this.state.initSession(r);
       this.sessionLoadedHandler?.(r.sessionId);
       return r.sessionId;

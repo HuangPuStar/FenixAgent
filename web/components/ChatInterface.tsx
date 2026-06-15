@@ -349,6 +349,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const scenePromptUsedRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 追踪用户主动取消操作，避免取消后触发错误提示
+  const userCancelledRef = useRef(false);
   // Todo 面板状态 — 每次 todowrite 调用替换
   const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
   // Reference: Zed's supports_images() checks prompt_capabilities.image
@@ -367,6 +369,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     setIsLoading(false);
     setSessionReady(false);
     setTodoItems([]);
+    // 清除残留的错误提示和定时器，避免切换会话后错误横幅持续显示
+    setErrorMessage(null);
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+    userCancelledRef.current = false;
     wasLoadingBeforeDisconnect.current = false;
   }, []);
 
@@ -585,11 +594,16 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       // Note: Tool calls are already marked as "canceled" in handleCancel before this fires
       setIsLoading(false);
 
-      // inputTokens === 0 indicates the prompt was not processed (error)
-      if (usage && usage.inputTokens === 0) {
-        setErrorMessage("请求未能正常处理，请检查 Agent 或大模型状态后重试");
-        if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-        errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
+      // 用户主动取消时跳过错误提示，避免误导用户
+      if (userCancelledRef.current) {
+        userCancelledRef.current = false;
+      } else {
+        // inputTokens === 0 indicates the prompt was not processed (error)
+        if (usage && usage.inputTokens === 0) {
+          setErrorMessage("请求未能正常处理，请检查 Agent 或大模型状态后重试");
+          if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+          errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
+        }
       }
 
       onPromptComplete?.();
@@ -629,6 +643,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     client.setErrorMessageHandler((msg) => {
       console.error("[ChatInterface] Agent error:", msg);
+      // 用户主动取消后，忽略服务端回传的错误消息
+      if (userCancelledRef.current) return;
       setErrorMessage(msg);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       errorTimerRef.current = setTimeout(() => setErrorMessage(null), 5000);
@@ -709,6 +725,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const handleCancel = useCallback(() => {
     console.log("[ChatInterface] Cancel requested");
 
+    // 标记为用户主动取消，后续 promptComplete/errorMessage 不弹出错误提示
+    userCancelledRef.current = true;
     // Like Zed: iterate all entries, mark Pending/WaitingForConfirmation/InProgress tool calls as Canceled
     setEntries((prev) =>
       prev.map((entry) => {
@@ -931,6 +949,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       setEntries((prev) => [...prev, userEntry]);
       setIsLoading(true);
 
+      userCancelledRef.current = false;
       try {
         await client.sendPrompt(contentBlocks);
       } catch (error) {

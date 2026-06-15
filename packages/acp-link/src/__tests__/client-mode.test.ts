@@ -115,3 +115,36 @@ describe("createAcpClient rcsUrl 为空时抛错", () => {
     ).toThrow("rcsUrl");
   });
 });
+
+describe("buildRegisterMessage name 字段", () => {
+  // 传入 name 时应透传
+  test("传入 name 时透传到注册消息", async () => {
+    const { buildRegisterMessage } = await import("../server");
+    const config: ServerConfig = {
+      port: 9315,
+      host: "localhost",
+      command: "opencode",
+      args: ["acp"],
+      cwd: "/app",
+      labels: ["remote-runtime"],
+      name: "sandbox-01",
+    };
+    const msg = buildRegisterMessage(config) as Record<string, unknown>;
+    expect(msg.name).toBe("sandbox-01");
+  });
+
+  // 不传 name 时应为 null
+  test("不传 name 时默认为 null", async () => {
+    const { buildRegisterMessage } = await import("../server");
+    const config: ServerConfig = {
+      port: 9315,
+      host: "localhost",
+      command: "opencode",
+      args: ["acp"],
+      cwd: "/app",
+      labels: ["remote-runtime"],
+    };
+    const msg = buildRegisterMessage(config) as Record<string, unknown>;
+    expect(msg.name).toBeNull();
+  });
+});

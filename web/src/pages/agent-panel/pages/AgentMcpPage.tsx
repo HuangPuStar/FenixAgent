@@ -35,7 +35,7 @@ function validateMcpForm(
 ): string | null {
   if (!name.trim()) return t("validation.nameRequired");
   if (/--/.test(name)) return t("validation.nameNoDoubleHyphen");
-  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name)) return t("validation.namePattern");
+  if (!/^[\p{L}0-9](?:[\p{L}0-9-]*[\p{L}0-9])?$/u.test(name)) return t("validation.namePattern");
   if (name.length > 64) return t("validation.nameTooLong");
   if (type === "local") {
     if (!command.trim()) return t("validation.commandRequired");
@@ -285,7 +285,10 @@ export function AgentMcpPage() {
   };
 
   const handleToggle = async (server: McpServerInfo) => {
-    if (!canWriteMcp(server)) return;
+    if (!canWriteMcp(server)) {
+      // 外部只读 MCP server 也允许检测工具列表
+    } else {
+    }
     if (server.enabled) {
       const { error } = await mcpApi.disable(server.name);
       if (error) {
@@ -320,10 +323,12 @@ export function AgentMcpPage() {
   };
 
   const handleInspect = async (server: McpServerInfo) => {
-    if (!canWriteMcp(server)) return;
+    const writable = canWriteMcp(server);
     const serverKey = getMcpKey(server);
     setInspectingServer(serverKey);
-    const { data: result, error } = (await mcpApi.inspect(server.name)) as unknown as {
+    // 外部只读 MCP server 用 listTools 获取缓存工具，内部用 inspect 连接实时检测
+    const apiCall = writable ? mcpApi.inspect(server.name) : mcpApi.listTools(server.name);
+    const { data: result, error } = (await apiCall) as unknown as {
       data: McpInspectResult;
       error: { message: string } | null;
     };
@@ -333,25 +338,43 @@ export function AgentMcpPage() {
       setInspectingServer(null);
       return;
     }
-    toast.success(
-      t("toast.inspectSuccess", {
-        name: server.name,
-        serverInfo: result.serverInfo.name ?? "",
-        version: result.serverInfo.version ?? "",
-        toolCount: result.tools.length,
-      }),
-    );
-    loadServers();
-    setToolsCache((prev) => ({
-      ...prev,
-      [serverKey]: result.tools.map((toolItem) => ({
-        id: `${serverKey}:${toolItem.name}`,
-        toolName: toolItem.name,
-        description: toolItem.description ?? null,
-        inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
-        inspectedAt: Date.now(),
-      })),
-    }));
+    if (writable) {
+      // inspect 返回格式：{ serverInfo, tools: [{ name, description, inputSchema }] }
+      const inspectResult = result as unknown as McpInspectResult;
+      toast.success(
+        t("toast.inspectSuccess", {
+          name: server.name,
+          serverInfo: inspectResult.serverInfo.name ?? "",
+          version: inspectResult.serverInfo.version ?? "",
+          toolCount: inspectResult.tools.length,
+        }),
+      );
+      loadServers();
+      setToolsCache((prev) => ({
+        ...prev,
+        [serverKey]: inspectResult.tools.map((toolItem) => ({
+          id: `${serverKey}:${toolItem.name}`,
+          toolName: toolItem.name,
+          description: toolItem.description ?? null,
+          inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
+          inspectedAt: Date.now(),
+        })),
+      }));
+    } else {
+      // listTools 返回格式：{ name, tools: [{ id, toolName, description, inputSchema, inspectedAt }] }
+      const listResult = result as unknown as { name: string; tools: McpToolInfo[] };
+      toast.success(t("toast.inspectSuccess", { name: server.name, version: "", toolCount: listResult.tools.length }));
+      setToolsCache((prev) => ({
+        ...prev,
+        [serverKey]: listResult.tools.map((toolItem) => ({
+          id: toolItem.id || `${serverKey}:${toolItem.toolName}`,
+          toolName: toolItem.toolName,
+          description: toolItem.description ?? null,
+          inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
+          inspectedAt: toolItem.inspectedAt ?? Date.now(),
+        })),
+      }));
+    }
     setExpandedServer(serverKey);
     setInspectingServer(null);
   };
@@ -547,16 +570,14 @@ export function AgentMcpPage() {
                   )}
                 </div>
                 <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {writable && (
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      disabled={inspectingServer === serverKey}
-                      onClick={() => handleInspect(server)}
-                    >
-                      {inspectingServer === serverKey ? t("btn.inspecting") : t("btn.inspect")}
-                    </Button>
-                  )}
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={inspectingServer === serverKey}
+                    onClick={() => handleInspect(server)}
+                  >
+                    {inspectingServer === serverKey ? t("btn.inspecting") : t("btn.inspect")}
+                  </Button>
                   {writable && (
                     <Button size="xs" variant="outline" onClick={() => handleToggle(server)}>
                       {server.enabled ? t("btn.disable") : t("btn.enable")}
@@ -584,8 +605,22 @@ export function AgentMcpPage() {
                       {t("btn.delete")}
                     </Button>
                   )}
-                  {tools && tools.length > 0 && (
-                    <Button size="xs" variant="ghost" onClick={() => setExpandedServer(isExpanded ? null : serverKey)}>
+                  {(server.toolsCount ?? 0) > 0 && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => {
+                        if (isExpanded) {
+                          setExpandedServer(null);
+                        } else {
+                          if (tools && tools.length > 0) {
+                            setExpandedServer(serverKey);
+                          } else {
+                            void handleInspect(server);
+                          }
+                        }
+                      }}
+                    >
                       {isExpanded ? "▲" : "▼"}
                     </Button>
                   )}

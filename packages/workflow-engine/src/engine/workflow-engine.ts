@@ -16,6 +16,7 @@ import { NodeExecutorRegistry } from "../executor/node-executor";
 import { ProcessExecutor } from "../executor/process-executor";
 import { PythonExecutor } from "../executor/python-executor";
 import { SubWorkflowExecutor } from "../executor/sub-workflow-executor";
+import { TransformExecutor } from "../executor/transform-executor";
 import type { ValidationIssue, ValidationResult } from "../parser/dag-validator";
 import { validateDAG } from "../parser/dag-validator";
 import { parseWorkflowYaml } from "../parser/yaml-parser";
@@ -135,6 +136,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     registry.register("audit", new AuditExecutor(hmacSecret));
     registry.register("workflow", new SubWorkflowExecutor(runId, registry, baseDir));
     registry.register("loop", new LoopExecutor(runId, registry));
+    registry.register("transform", new TransformExecutor());
     return registry;
   }
 
@@ -219,9 +221,13 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       try {
         const scheduler = new DAGScheduler(context);
         result = await scheduler.run();
+        const ns = result.summary.node_summary;
+        console.log(
+          `[workflow] Run completed: runId=${runId} status=${result.status} nodes=${ns.total} completed=${ns.completed} failed=${ns.failed}`,
+        );
         return result;
       } catch (err) {
-        console.error(`[workflow-engine] runAsync ${runId} failed:`, err);
+        console.error(`[workflow] Run error: runId=${runId}`, err);
         throw err;
       } finally {
         if (result?.status !== "SUSPENDED") {

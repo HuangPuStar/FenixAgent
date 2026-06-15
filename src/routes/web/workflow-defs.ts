@@ -22,6 +22,7 @@ import {
   setLatestVersion,
   updateWorkflowMeta,
 } from "../../repositories/workflow-def";
+import { WorkflowDefsActionRequestSchema, WorkflowDefsActionResponseSchema } from "../../schemas";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 import {
   createTrigger,
@@ -34,7 +35,10 @@ import {
 
 const logger = createLogger("wf-defs");
 
-const app = new Elysia({ name: "web-workflow-defs" }).use(authGuardPlugin);
+const app = new Elysia({ name: "web-workflow-defs" }).use(authGuardPlugin).model({
+  "workflow-defs-action-request": WorkflowDefsActionRequestSchema,
+  "workflow-defs-action-response": WorkflowDefsActionResponseSchema,
+});
 
 app.post(
   "/workflow-defs",
@@ -274,7 +278,17 @@ app.post(
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "workflow-defs-action-request",
+    response: "workflow-defs-action-response",
+    detail: {
+      tags: ["Workflow Engine"],
+      summary: "工作流定义管理",
+      description:
+        "通过 action 分发管理工作流定义、版本、草稿恢复、触发器和参数提取。不同 action 对应不同请求体和返回数据结构。",
+    },
+  },
 );
 
 export default app;

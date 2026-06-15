@@ -18,6 +18,19 @@
   "members": "成员 ({{count}})",
   "inviteMember": "添加成员",
   "noMembers": "暂无成员",
+  "machines": "机器 ({{count}})",
+  "noMachines": "暂无机器",
+  "machineStatus": {
+    "online": "在线",
+    "offline": "离线"
+  },
+  "machineAgent": "Agent",
+  "machineHost": "主机",
+  "machineLabels": "标签",
+  "machineLastSeen": "最近心跳",
+  "machineNever": "无",
+  "machineRefresh": "刷新",
+  "machineRefreshing": "刷新中...",
   "table": {
     "user": "用户",
     "role": "角色",

@@ -12,13 +12,17 @@ import Elysia from "elysia";
 import { db } from "../../db";
 import { workflowSnapshot } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WorkflowEngineActionRequestSchema, WorkflowEngineActionResponseSchema } from "../../schemas";
 import { cleanupSpawnedEnvironments, getTeamEngine } from "../../services/workflow";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
 const logger = createLogger("wf-engine");
 
-const app = new Elysia({ name: "web-workflow-engine" }).use(authGuardPlugin);
+const app = new Elysia({ name: "web-workflow-engine" }).use(authGuardPlugin).model({
+  "workflow-engine-action-request": WorkflowEngineActionRequestSchema,
+  "workflow-engine-action-response": WorkflowEngineActionResponseSchema,
+});
 
 // POST /web/workflow-engine — action 分发
 app.post(
@@ -220,7 +224,17 @@ app.post(
       return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message || "Unknown error" } });
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "workflow-engine-action-request",
+    response: "workflow-engine-action-response",
+    detail: {
+      tags: ["Workflow Engine"],
+      summary: "工作流引擎控制",
+      description:
+        "通过 action 分发提供工作流执行、干运行、取消、审批、状态查询、事件读取、输出读取、恢复和重跑等引擎能力。",
+    },
+  },
 );
 
 export default app;

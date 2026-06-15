@@ -66,7 +66,7 @@ afterEach(() => {
 import { importSkillDirectories } from "../services/skill";
 import type { UploadSkillFile } from "../services/skill-fs";
 
-describe("importSkillDirectories PG deletes 并行化", () => {
+describe("importSkillDirectories PG rollback semantics", () => {
   beforeEach(() => {
     deleteSkillMock.mockClear();
     upsertSkillMock.mockClear();
@@ -77,10 +77,12 @@ describe("importSkillDirectories PG deletes 并行化", () => {
     return { skillName, relativePath: "SKILL.md", content: `---\nname: ${skillName}\n---\nContent` };
   }
 
-  test("overwrite 策略下冲突 skill 的 PG delete 应并行执行", async () => {
+  test("overwrite 策略下冲突 skill 不应在写入前删除 PG 记录", async () => {
     getSkillMock.mockImplementation(async (_ctx: any, name: string) => ({
       name,
       organizationId: "test-org",
+      description: `${name} desc`,
+      metadata: {},
     }));
 
     await importSkillDirectories(
@@ -89,9 +91,8 @@ describe("importSkillDirectories PG deletes 并行化", () => {
       "overwrite",
     );
 
-    expect(deleteSkillMock).toHaveBeenCalledTimes(3);
-    const deletedNames = deleteSkillMock.mock.calls.map((c: unknown[]) => c[1] as string).sort();
-    expect(deletedNames).toEqual(["skill-a", "skill-b", "skill-c"]);
+    expect(deleteSkillMock).not.toHaveBeenCalled();
+    expect(upsertSkillMock).toHaveBeenCalledTimes(3);
   });
 
   test("无冲突时不应调用 deleteSkill", async () => {
@@ -107,7 +108,7 @@ describe("importSkillDirectories PG deletes 并行化", () => {
     expect(upsertSkillMock).toHaveBeenCalledTimes(1);
   });
 
-  test("rollback 路径下 PG delete 应并行执行（不掩盖原始错误）", async () => {
+  test("rollback 路径下新增 skill 仍会删除 PG 记录（不掩盖原始错误）", async () => {
     const buildMock = _deps.skillFs.buildImportedSkillInfos as ReturnType<typeof mock>;
     buildMock.mockImplementationOnce(async () => {
       throw new Error("disk full");
@@ -138,5 +139,35 @@ describe("importSkillDirectories PG deletes 并行化", () => {
     await expect(
       importSkillDirectories({ organizationId: "test-org", userId: "user_1", role: "owner" }, [makeFile("fail2")]),
     ).rejects.toThrow("original error");
+  });
+
+  test("overwrite rollback 会恢复旧 PG 元数据而不是删除记录", async () => {
+    const buildMock = _deps.skillFs.buildImportedSkillInfos as ReturnType<typeof mock>;
+    buildMock.mockImplementationOnce(async () => {
+      throw new Error("restore me");
+    });
+
+    getSkillMock.mockImplementation(async (_ctx: any, name: string) => ({
+      name,
+      organizationId: "test-org",
+      description: `${name} old`,
+      metadata: {},
+    }));
+
+    await expect(
+      importSkillDirectories(
+        { organizationId: "test-org", userId: "user_1", role: "owner" },
+        [makeFile("skill-a")],
+        "overwrite",
+      ),
+    ).rejects.toThrow("restore me");
+
+    expect(deleteSkillMock).not.toHaveBeenCalled();
+    expect(upsertSkillMock).toHaveBeenCalledWith(
+      { organizationId: "test-org", userId: "user_1", role: "owner" },
+      "skill-a",
+      { description: "skill-a old", metadata: {} },
+      { auditAction: "upload_overwrite" },
+    );
   });
 });

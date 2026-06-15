@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AppError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { setTestOrgContext } from "../services/org-context";
 import { resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
 
@@ -13,6 +14,7 @@ function request(path: string, init?: RequestInit) {
 describe("Config Route Integration", () => {
   beforeEach(() => {
     resetAllStubs();
+    setListAgentKnowledgeBindingsById(async () => []);
     stubConfigPg({
       listProviders: async () => [],
       getProvider: async () => null,
@@ -42,7 +44,9 @@ describe("Config Route Integration", () => {
       upsertSkill: async () => "skill-id",
       deleteSkill: async () => true,
       listAgentSkillIds: async () => [],
+      listAgentMcpIds: async () => [],
       syncAgentSkills: async () => {},
+      syncAgentMcps: async () => {},
     });
     setTestAuth({
       user: { id: "test-user", email: "test@test.com", name: "Test" },
@@ -52,6 +56,7 @@ describe("Config Route Integration", () => {
   });
 
   afterEach(() => {
+    setListAgentKnowledgeBindingsById(null);
     resetTestAuth();
     setTestOrgContext(null);
   });
@@ -99,9 +104,7 @@ describe("Config Route Integration", () => {
 
   test("agents 路由可达", async () => {
     const res = await request("/web/config/agents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "list" }),
+      method: "GET",
     });
     expect(res.status).not.toBe(404);
     const json = await res.json();
@@ -121,8 +124,11 @@ describe("Config Route Integration", () => {
       listAgentConfigs: async () => [
         {
           id: "agc-external",
+          userId: "user-source",
+          organizationId: "org-source",
           name: "shared-agent",
           model: "provider/model",
+          modelId: null,
           mode: "primary",
           description: "shared",
           color: null,
@@ -139,19 +145,19 @@ describe("Config Route Integration", () => {
         },
       ],
       listAgentSkillIds: async () => ["skill-1"],
+      listAgentMcpIds: async () => [],
     });
 
     const res = await request("/web/config/agents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "list" }),
+      method: "GET",
     });
     const json = await res.json();
 
     expect(json.success).toBe(true);
     expect(json.data.agents[0].resourceAccess.resourceKey).toBe("org-source/agc-external");
     expect(json.data.agents[0].resourceAccess.ownership).toBe("external");
-    expect(json.data.agents[0].modelLabel).toBe("provider/model");
+    expect(json.data.agents[0].model).toBe("provider/model");
+    expect(json.data.agents[0].modelLabel).toBe(null);
     expect(json.data.agents[0].skillLabels).toEqual([{ id: "skill-1", label: "skill-1" }]);
   });
 
@@ -159,8 +165,11 @@ describe("Config Route Integration", () => {
     stubConfigPg({
       getAgentConfig: async () => ({
         id: "agc-external",
+        userId: "user-source",
+        organizationId: "org-source",
         name: "shared-agent",
         model: "provider/model",
+        modelId: null,
         prompt: "shared prompt",
         steps: 20,
         mode: "primary",
@@ -185,18 +194,41 @@ describe("Config Route Integration", () => {
         },
       }),
       listAgentSkillIds: async () => ["skill-1"],
+      listAgentMcpIds: async () => [],
+    });
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: async () => [],
+          limit: async () => [],
+        }),
+      }),
     });
 
-    const res = await request("/web/config/agents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get", name: "org-source/agc-external" }),
-    });
+    const res = await request("/web/config/agents?name=org-source%2Fagc-external", { method: "GET" });
     const json = await res.json();
 
     expect(json.success).toBe(true);
     expect(json.data.resourceAccess.resourceKey).toBe("org-source/agc-external");
     expect(json.data.machineId).toBe("machine-1");
+  });
+
+  test("agents set 缺少 name 时返回校验错误", async () => {
+    stubConfigPg({
+      assertAgentConfigInternalWritable: async () => {
+        throw new AppError("forbidden", "FORBIDDEN", 403);
+      },
+    });
+
+    const res = await request("/web/config/agents", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: { prompt: "x" } }),
+    });
+    const json = await res.json();
+
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("VALIDATION_ERROR");
   });
 
   test("agents set 拒绝修改外部共享 Agent", async () => {
@@ -206,10 +238,10 @@ describe("Config Route Integration", () => {
       },
     });
 
-    const res = await request("/web/config/agents", {
-      method: "POST",
+    const res = await request("/web/config/agents?name=org-source%2Fagc-external", {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "set", name: "org-source/agc-external", data: { prompt: "x" } }),
+      body: JSON.stringify({ data: { prompt: "x" } }),
     });
     const json = await res.json();
 

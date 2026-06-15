@@ -22,6 +22,7 @@ export interface AgentKnowledgeBindingRecord {
   knowledgeBaseId: string;
   priority: number;
   enabled: boolean;
+  config?: AgentKnowledgePolicy | null;
 }
 
 export class InvalidKnowledgeBindingError extends Error {
@@ -94,7 +95,24 @@ export async function listAgentKnowledgeBindingsById(agentConfigId: string): Pro
     knowledgeBaseId: row.knowledgeBaseId,
     priority: row.priority,
     enabled: row.enabled,
+    config: (row.config as AgentKnowledgePolicy | null | undefined) ?? null,
   }));
+}
+
+/**
+ * Rebuilds the legacy agent knowledge payload from binding rows.
+ */
+export async function getAgentKnowledgeConfigById(agentConfigId: string): Promise<AgentKnowledgeConfig | null> {
+  const bindings = await listAgentKnowledgeBindingsById(agentConfigId);
+  if (bindings.length === 0) {
+    return null;
+  }
+
+  const firstConfig = bindings.find((binding) => binding.config && typeof binding.config === "object")?.config ?? null;
+  return {
+    knowledgeBaseIds: bindings.map((binding) => binding.knowledgeBaseId),
+    policy: firstConfig,
+  };
 }
 
 /**
@@ -106,6 +124,7 @@ export async function syncAgentKnowledgeBindingsById(
   knowledge: AgentKnowledgeConfig | null | undefined,
 ): Promise<void> {
   const knowledgeBaseIds = normalizeKnowledgeBaseIds(knowledge?.knowledgeBaseIds);
+  const normalizedPolicy = knowledge?.policy ? resolveAgentKnowledgePolicy(knowledge.policy) : null;
   await agentKnowledgeBindingRepo.deleteByAgentConfigId(agentConfigId);
 
   if (knowledgeBaseIds.length === 0) {
@@ -130,6 +149,7 @@ export async function syncAgentKnowledgeBindingsById(
       id: generateBindingId(),
       agentConfigId,
       knowledgeBaseId,
+      config: normalizedPolicy,
       priority,
       enabled: true,
       createdAt: now,

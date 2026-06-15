@@ -4,6 +4,7 @@
 import type { Node } from "@xyflow/react";
 import { Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { syncOutputOnRename } from "../preset-utils";
 import type { WfMeta } from "../yaml-utils";
 import { START_NODE_ID } from "../yaml-utils";
 import { InputsEditor } from "./InputsEditor";
@@ -92,6 +93,7 @@ export function NodeConfigPanel({
                 <option value="audit">{t("editor.type_audit")}</option>
                 <option value="workflow">{t("editor.type_workflow")}</option>
                 <option value="loop">{t("editor.type_loop")}</option>
+                <option value="transform">{t("nodes.transform")}</option>
               </select>
             </div>
             <div className="wf-prop-field">
@@ -382,6 +384,52 @@ export function NodeConfigPanel({
                 </div>
                 <div className="wf-prop-hint" style={{ marginTop: 4 }}>
                   <p>{t("editor.loop_body_hint")}</p>
+                </div>
+              </>
+            )}
+
+            {nodeType === "transform" && (
+              <>
+                <div className="wf-prop-field">
+                  <label>{t("editor.transform_inputs_title")}</label>
+                  <InputsEditor
+                    value={sd?.inputs as Record<string, string> | undefined}
+                    onChange={(val) => {
+                      const cleaned: Record<string, string> = {};
+                      if (val) {
+                        for (const [k, v] of Object.entries(val)) {
+                          if (k.trim()) cleaned[k.trim()] = v;
+                        }
+                      }
+                      updateNodeData({ inputs: Object.keys(cleaned).length ? cleaned : undefined });
+                    }}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.transform_inputs_key_placeholder")}
+                    valuePlaceholder={t("editor.transform_inputs_value_placeholder")}
+                    addLabel={t("editor.transform_inputs_add")}
+                  />
+                </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.transform_output_title")}</label>
+                  <InputsEditor
+                    value={sd?.output as Record<string, string> | undefined}
+                    onChange={(val) => {
+                      const cleaned: Record<string, string> = {};
+                      if (val) {
+                        for (const [k, v] of Object.entries(val)) {
+                          if (k.trim()) cleaned[k.trim()] = v;
+                        }
+                      }
+                      // 检测 key 名变更并自动同步表达式中的同名引用
+                      const oldOutput = (sd?.output as Record<string, string>) ?? {};
+                      const synced = syncOutputOnRename(oldOutput, cleaned);
+                      updateNodeData({ output: Object.keys(synced).length ? synced : undefined });
+                    }}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.transform_output_key_placeholder")}
+                    valuePlaceholder={t("editor.transform_output_value_placeholder")}
+                    addLabel={t("editor.transform_output_add")}
+                  />
                 </div>
               </>
             )}

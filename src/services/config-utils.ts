@@ -30,7 +30,7 @@ export function isValidResourceName(name: string): boolean {
     name.length >= 1 &&
     name.length <= 64 &&
     !name.includes("--") &&
-    /^[\p{L}0-9](?:[\p{L}0-9-]*[\p{L}0-9])?$/u.test(name)
+    /^[\p{L}0-9][\p{L}0-9 -]*[\p{L}0-9]$|^[\p{L}0-9]$/u.test(name)
   );
 }
 

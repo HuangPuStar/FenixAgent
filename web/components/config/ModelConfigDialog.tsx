@@ -10,10 +10,15 @@ import { dispatchConfigChange } from "@/src/lib/config-events";
 import type { ModelConfig, ModelEntry } from "@/src/types/config";
 
 export function buildModelOptions(available: ModelEntry[]): { value: string; label: string }[] {
-  return available.map((m) => {
-    const source = m.providerResourceAccess?.sourceOrganizationName;
-    const label = source ? `${source}/${m.fullId}` : m.fullId;
-    return { value: m.stableFullId ?? m.fullId, label };
+  return available.map((model) => {
+    const source = model.providerResourceAccess?.sourceOrganizationName;
+    const providerLabel = source ? `${source}/${model.providerDisplayName}` : model.providerDisplayName;
+    return {
+      value: model.providerResourceKey
+        ? `${model.providerResourceKey}/${model.modelId}`
+        : `${model.provider}/${model.modelId}`,
+      label: `${providerLabel}/${model.displayName}`,
+    };
   });
 }
 

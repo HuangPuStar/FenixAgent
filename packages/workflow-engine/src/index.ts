@@ -56,6 +56,7 @@ export type {
   RetryConfig,
   ShellNodeDef,
   SubWorkflowNodeDef,
+  TransformNodeDef,
   WorkflowDef,
 } from "./types/dag";
 // 错误类型（enum 和 class 用 export）

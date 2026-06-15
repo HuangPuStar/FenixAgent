@@ -3,13 +3,39 @@ import { config } from "../../config";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo, sessionRepo } from "../../repositories";
 import type { S3DeleteBody, S3PresignPutBody } from "../../schemas/s3-file.schema";
+import {
+  S3DeleteBodySchema,
+  S3DeleteResponseSchema,
+  S3FileListQuerySchema,
+  S3FileListResponseSchema,
+  S3PresignGetQuerySchema,
+  S3PresignGetResponseSchema,
+  S3PresignPutBodySchema,
+  S3PresignPutResponseSchema,
+  S3UploadQuerySchema,
+  S3UploadResponseSchema,
+} from "../../schemas/s3-file.schema";
 import * as s3 from "../../services/s3-storage";
 
-const app = new Elysia({ name: "web-s3-files", prefix: "/s3" }).use(authGuardPlugin).onBeforeHandle(({ error }) => {
-  if (!config.s3.enabled) {
-    return error(503, { error: { type: "service_unavailable", message: "S3 storage is not enabled" } });
-  }
-});
+const app = new Elysia({ name: "web-s3-files", prefix: "/s3" })
+  .use(authGuardPlugin)
+  .onBeforeHandle(({ error }) => {
+    if (!config.s3.enabled) {
+      return error(503, { error: { type: "service_unavailable", message: "S3 storage is not enabled" } });
+    }
+  })
+  .model({
+    "s3-delete-body": S3DeleteBodySchema,
+    "s3-delete-response": S3DeleteResponseSchema,
+    "s3-file-list-query": S3FileListQuerySchema,
+    "s3-file-list-response": S3FileListResponseSchema,
+    "s3-presign-get-query": S3PresignGetQuerySchema,
+    "s3-presign-get-response": S3PresignGetResponseSchema,
+    "s3-presign-put-body": S3PresignPutBodySchema,
+    "s3-presign-put-response": S3PresignPutResponseSchema,
+    "s3-upload-query": S3UploadQuerySchema,
+    "s3-upload-response": S3UploadResponseSchema,
+  });
 
 /** 验证 sessionId 所属环境属于指定组织 */
 async function requireSessionInOrg(
@@ -31,7 +57,8 @@ async function requireSessionInOrg(
 // 列出会话文件
 app.get(
   "/files",
-  async ({ query, error, store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 query/response 组合下类型推断不稳定
+  async ({ query, error, store }: any) => {
     const orgId = store.authContext?.organizationId;
     if (!orgId) return error(403, { error: { type: "forbidden", message: "No organization context" } });
 
@@ -55,13 +82,23 @@ app.get(
 
     return { entries, prefix };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    query: "s3-file-list-query",
+    response: "s3-file-list-response",
+    detail: {
+      tags: ["Files"],
+      summary: "【S3】获取 S3 文件列表",
+      description: "列出指定会话在 S3 中保存的文件，可通过 prefix 过滤子目录。",
+    },
+  },
 );
 
 // 获取下载 presigned URL
 app.get(
   "/files/presign",
-  async ({ query, error, store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 query/response 组合下类型推断不稳定
+  async ({ query, error, store }: any) => {
     const orgId = store.authContext?.organizationId;
     if (!orgId) return error(403, { error: { type: "forbidden", message: "No organization context" } });
 
@@ -78,13 +115,23 @@ app.get(
     const expiresAt = Date.now() + config.s3.presignExpires * 1000;
     return { url, key, expiresAt };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    query: "s3-presign-get-query",
+    response: "s3-presign-get-response",
+    detail: {
+      tags: ["Files"],
+      summary: "【S3】获取 S3 下载地址",
+      description: "为指定会话文件生成一个临时可用的 S3 下载链接。",
+    },
+  },
 );
 
 // 获取上传 presigned URL
 app.post(
   "/files/presign",
-  async ({ body, error, store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 body/response 组合下类型推断不稳定
+  async ({ body, error, store }: any) => {
     const orgId = store.authContext?.organizationId;
     if (!orgId) return error(403, { error: { type: "forbidden", message: "No organization context" } });
 
@@ -102,13 +149,23 @@ app.post(
     const expiresAt = Date.now() + config.s3.presignUploadExpires * 1000;
     return { url, key: b.key, expiresAt };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "s3-presign-put-body",
+    response: "s3-presign-put-response",
+    detail: {
+      tags: ["Files"],
+      summary: "【S3】获取 S3 上传地址",
+      description: "为指定会话文件生成一个临时可用的 S3 上传链接。",
+    },
+  },
 );
 
 // 服务端中转上传（fallback，用于浏览器无法直连 S3 的场景）
 app.post(
   "/files/upload",
-  async ({ query, request, error, store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 query/response 组合下类型推断不稳定
+  async ({ query, request, error, store }: any) => {
     const orgId = store.authContext?.organizationId;
     if (!orgId) return error(403, { error: { type: "forbidden", message: "No organization context" } });
 
@@ -138,13 +195,23 @@ app.post(
     }
     return { files: uploaded };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    query: "s3-upload-query",
+    response: "s3-upload-response",
+    detail: {
+      tags: ["Files"],
+      summary: "【S3】上传文件到 S3",
+      description: "通过服务端中转将文件上传到指定会话的 S3 存储空间，适用于浏览器无法直连 S3 的场景。",
+    },
+  },
 );
 
 // 删除文件
 app.delete(
   "/files",
-  async ({ body, error, store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 body/response 组合下类型推断不稳定
+  async ({ body, error, store }: any) => {
     const orgId = store.authContext?.organizationId;
     if (!orgId) return error(403, { error: { type: "forbidden", message: "No organization context" } });
 
@@ -159,7 +226,16 @@ app.delete(
     await s3.deleteSessionFile(b.sessionId, b.key);
     return { ok: true as const };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "s3-delete-body",
+    response: "s3-delete-response",
+    detail: {
+      tags: ["Files"],
+      summary: "【S3】删除 S3 文件",
+      description: "删除指定会话在 S3 中保存的单个文件。",
+    },
+  },
 );
 
 export default app;

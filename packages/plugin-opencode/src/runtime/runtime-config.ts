@@ -48,6 +48,7 @@ export type OpencodeMcpConfig = OpencodeStdioMcpConfig | OpencodeRemoteMcpConfig
 
 export interface OpencodeRuntimeConfig {
   $schema: string;
+  autoupdate: boolean;
   default_agent: string;
   provider: Record<string, OpencodeProviderConfig>;
   model: string;
@@ -107,6 +108,8 @@ export function buildOpencodeRuntimeConfig(
 
   return {
     $schema: "https://opencode.ai/config.json",
+    // 禁止 opencode 自动更新，避免新版本在未验证前引入兼容性问题。
+    autoupdate: false,
     default_agent: agentName,
     provider: {
       [providerId]: {

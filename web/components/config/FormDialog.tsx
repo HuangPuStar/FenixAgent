@@ -17,6 +17,7 @@ interface FormDialogProps {
   children: React.ReactNode;
   onSubmit: () => void;
   submitLabel?: string;
+  cancelLabel?: string;
   loading?: boolean;
   disabled?: boolean;
   hideSubmit?: boolean;
@@ -31,6 +32,7 @@ export function FormDialog({
   children,
   onSubmit,
   submitLabel = "保存",
+  cancelLabel = "取消",
   loading,
   disabled,
   hideSubmit,
@@ -55,7 +57,7 @@ export function FormDialog({
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">{children}</div>
       <DialogFooter className="shrink-0 border-t bg-background pt-4">
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-          取消
+          {cancelLabel}
         </Button>
         {!hideSubmit && (
           <Button type="submit" disabled={loading || disabled}>

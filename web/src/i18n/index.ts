@@ -1,7 +1,7 @@
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
-
+import agentHomeEN from "./locales/en/agentHome.json";
 import agentPanelEN from "./locales/en/agentPanel.json";
 import agentsEN from "./locales/en/agents.json";
 import apikeyEN from "./locales/en/apikey.json";
@@ -10,6 +10,7 @@ import commonEN from "./locales/en/common.json";
 import componentsEN from "./locales/en/components.json";
 import dashboardEN from "./locales/en/dashboard.json";
 import environmentsEN from "./locales/en/environments.json";
+import hindsightEN from "./locales/en/hindsight.json";
 import kanbanEN from "./locales/en/kanban.json";
 import knowledgeEN from "./locales/en/knowledge.json";
 import loginEN from "./locales/en/login.json";
@@ -17,10 +18,12 @@ import mcpEN from "./locales/en/mcp.json";
 import modelsEN from "./locales/en/models.json";
 import orgsEN from "./locales/en/orgs.json";
 import sessionsEN from "./locales/en/sessions.json";
+import settingsEN from "./locales/en/settings.json";
 import sidebarEN from "./locales/en/sidebar.json";
 import skillsEN from "./locales/en/skills.json";
 import tasksEN from "./locales/en/tasks.json";
 import workflowsEN from "./locales/en/workflows.json";
+import agentHomeZH from "./locales/zh/agentHome.json";
 import agentPanelZH from "./locales/zh/agentPanel.json";
 import agentsZH from "./locales/zh/agents.json";
 import apikeyZH from "./locales/zh/apikey.json";
@@ -29,6 +32,7 @@ import commonZH from "./locales/zh/common.json";
 import componentsZH from "./locales/zh/components.json";
 import dashboardZH from "./locales/zh/dashboard.json";
 import environmentsZH from "./locales/zh/environments.json";
+import hindsightZH from "./locales/zh/hindsight.json";
 import kanbanZH from "./locales/zh/kanban.json";
 import knowledgeZH from "./locales/zh/knowledge.json";
 import loginZH from "./locales/zh/login.json";
@@ -36,6 +40,7 @@ import mcpZH from "./locales/zh/mcp.json";
 import modelsZH from "./locales/zh/models.json";
 import orgsZH from "./locales/zh/orgs.json";
 import sessionsZH from "./locales/zh/sessions.json";
+import settingsZH from "./locales/zh/settings.json";
 import sidebarZH from "./locales/zh/sidebar.json";
 import skillsZH from "./locales/zh/skills.json";
 import tasksZH from "./locales/zh/tasks.json";
@@ -52,6 +57,7 @@ export const NS = {
   MCP: "mcp",
   TASKS: "tasks",
   WORKFLOWS: "workflows",
+  SETTINGS: "settings",
   SESSIONS: "sessions",
   ENVIRONMENTS: "environments",
   ORGS: "orgs",
@@ -61,6 +67,8 @@ export const NS = {
   AGENT_PANEL: "agentPanel",
   COMPONENTS: "components",
   KANBAN: "kanban",
+  HINDSIGHT: "hindsight",
+  AGENT_HOME: "agentHome",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];
@@ -89,7 +97,10 @@ i18n
         [NS.KNOWLEDGE]: knowledgeEN,
         [NS.COMPONENTS]: componentsEN,
         [NS.WORKFLOWS]: workflowsEN,
+        [NS.SETTINGS]: settingsEN,
         [NS.KANBAN]: kanbanEN,
+        [NS.HINDSIGHT]: hindsightEN,
+        [NS.AGENT_HOME]: agentHomeEN,
       },
       zh: {
         [NS.COMMON]: commonZH,
@@ -110,7 +121,10 @@ i18n
         [NS.KNOWLEDGE]: knowledgeZH,
         [NS.COMPONENTS]: componentsZH,
         [NS.WORKFLOWS]: workflowsZH,
+        [NS.SETTINGS]: settingsZH,
         [NS.KANBAN]: kanbanZH,
+        [NS.HINDSIGHT]: hindsightZH,
+        [NS.AGENT_HOME]: agentHomeZH,
       },
     },
     fallbackLng: "en",
@@ -132,7 +146,10 @@ i18n
       NS.KNOWLEDGE,
       NS.COMPONENTS,
       NS.WORKFLOWS,
+      NS.SETTINGS,
       NS.KANBAN,
+      NS.HINDSIGHT,
+      NS.AGENT_HOME,
     ],
     interpolation: { escapeValue: false },
     detection: {

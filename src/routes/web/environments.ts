@@ -3,10 +3,18 @@ import Elysia from "elysia";
 import { ValidationError as AppValidationError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
 import {
+  CreateEnvironmentRequestSchema,
+  CreateEnvironmentResponseSchema,
+  DeleteEnvironmentResponseSchema,
   EnterEnvironmentRequestSchema,
+  EnterEnvironmentResponseSchema,
+  EnvironmentDetailResponseSchema,
   EnvironmentInfoSchema,
   EnvironmentListResponseSchema,
+  EnvironmentListSchema,
+  ListInstancesResponseSchema,
   UpdateEnvironmentRequestSchema,
+  UpdateEnvironmentResponseSchema,
 } from "../../schemas/environment.schema";
 import {
   createWebEnvironment,
@@ -21,26 +29,44 @@ import { enterEnvironment, listInstancesResponse, spawnInstanceFromEnvironment }
 const logger = createLogger("env-route");
 
 const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model({
+  "create-environment-request": CreateEnvironmentRequestSchema,
+  "create-environment-response": CreateEnvironmentResponseSchema,
+  "delete-environment-response": DeleteEnvironmentResponseSchema,
+  "enter-environment-response": EnterEnvironmentResponseSchema,
+  "environment-detail-response": EnvironmentDetailResponseSchema,
   "environment-info": EnvironmentInfoSchema,
+  "environment-instances-response": ListInstancesResponseSchema,
+  "environment-list": EnvironmentListSchema,
   "environment-list-response": EnvironmentListResponseSchema,
   "update-environment-request": UpdateEnvironmentRequestSchema,
+  "update-environment-response": UpdateEnvironmentResponseSchema,
   "enter-environment-request": EnterEnvironmentRequestSchema,
 });
 
 /** GET /web/environments — List environments for the current team */
 app.get(
   "/environments",
-  async ({ store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store }: any) => {
     const authCtx = store.authContext!;
     return listEnvironmentsWithInstances(authCtx.organizationId);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "environment-list",
+    detail: {
+      tags: ["Environments"],
+      summary: "获取环境列表",
+      description: "返回当前组织下的环境列表，并附带每个环境的活跃实例摘要。",
+    },
+  },
 );
 
 /** POST /web/environments — Register a new environment */
 app.post(
   "/environments",
-  async ({ store, body, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, body, error }: any) => {
     const user = store.user!;
     const authCtx = store.authContext!;
     const b = body as {
@@ -78,13 +104,23 @@ app.post(
 
     return { ...sanitizeResponse(record), secret: record.secret };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "create-environment-request",
+    response: "create-environment-response",
+    detail: {
+      tags: ["Environments"],
+      summary: "创建环境",
+      description: "创建一个新的环境，并可选绑定 Agent 配置与自动启动选项。",
+    },
+  },
 );
 
 /** GET /web/environments/:id — Get environment detail (with secret) */
 app.get(
   "/environments/:id",
-  async ({ store, params, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     try {
       const env = await getOwnedEnvironment(params.id, authCtx.organizationId);
@@ -95,13 +131,22 @@ app.get(
       throw err;
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "environment-detail-response",
+    detail: {
+      tags: ["Environments"],
+      summary: "获取环境详情",
+      description: "根据环境 ID 返回环境详情，其中包含环境密钥等完整信息。",
+    },
+  },
 );
 
 /** PUT /web/environments/:id — Update environment metadata */
 app.put(
   "/environments/:id",
-  async ({ store, params, body, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, body, error }: any) => {
     const authCtx = store.authContext!;
     const b = body as {
       name?: string;
@@ -131,13 +176,23 @@ app.put(
     }
     return sanitizeResponse(updated!);
   },
-  { sessionAuth: true, body: "update-environment-request" },
+  {
+    sessionAuth: true,
+    body: "update-environment-request",
+    response: "update-environment-response",
+    detail: {
+      tags: ["Environments"],
+      summary: "更新环境",
+      description: "更新环境名称、描述、绑定的 Agent 配置以及自动启动设置。",
+    },
+  },
 );
 
 /** POST /web/environments/:id/enter — Enter an environment */
 app.post(
   "/environments/:id/enter",
-  async ({ store, params, body, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, body, error }: any) => {
     const user = store.user!;
     const authCtx = store.authContext!;
     try {
@@ -158,13 +213,23 @@ app.post(
       return error(500, { error: { type: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
     }
   },
-  { sessionAuth: true, body: "enter-environment-request" },
+  {
+    sessionAuth: true,
+    body: "enter-environment-request",
+    response: "enter-environment-response",
+    detail: {
+      tags: ["Environments"],
+      summary: "进入环境",
+      description: "为环境选择或拉起实例，并返回进入该环境所需的实例和会话信息。",
+    },
+  },
 );
 
 /** DELETE /web/environments/:id — Delete environment */
 app.delete(
   "/environments/:id",
-  async ({ store, params, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     try {
       await getOwnedEnvironment(params.id, authCtx.organizationId);
@@ -176,13 +241,22 @@ app.delete(
     await deleteEnvironment(params.id);
     return { ok: true as const };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "delete-environment-response",
+    detail: {
+      tags: ["Environments"],
+      summary: "删除环境",
+      description: "删除指定环境。删除前会先校验该环境是否属于当前组织。",
+    },
+  },
 );
 
 /** GET /web/environments/:id/instances — List instances for an environment */
 app.get(
   "/environments/:id/instances",
-  async ({ store, params, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     try {
       await getOwnedEnvironment(params.id, authCtx.organizationId);
@@ -193,7 +267,15 @@ app.get(
     }
     return listInstancesResponse(params.id);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "environment-instances-response",
+    detail: {
+      tags: ["Environments"],
+      summary: "获取环境实例列表",
+      description: "返回指定环境下当前活跃的实例列表。",
+    },
+  },
 );
 
 export default app;

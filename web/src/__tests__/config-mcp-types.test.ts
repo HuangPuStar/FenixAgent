@@ -59,7 +59,8 @@ describe("MCP 类型定义", () => {
   });
 
   test("McpServerInfo 列表项构造", () => {
-    const info: McpServerInfo = { name: "test", type: "local", enabled: true, summary: "npx" };
+    const info: McpServerInfo = { id: "mcp_1", name: "test", type: "local", enabled: true, summary: "npx" };
+    expect(info.id).toBe("mcp_1");
     expect(info.name).toBe("test");
     expect(info.type).toBe("local");
     expect(info.enabled).toBe(true);

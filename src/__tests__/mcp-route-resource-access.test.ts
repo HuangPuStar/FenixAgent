@@ -38,7 +38,7 @@ describe("MCP route resource access", () => {
     setAuth();
   });
 
-  // list 返回 resourceAccess/resourceKey，并使用源 organization 统计工具数量
+  // list 返回 resourceAccess，并使用源 organization 统计工具数量
   test("list 返回来源字段", async () => {
     stubConfigPg({
       listMcpServers: async () => [
@@ -77,8 +77,8 @@ describe("MCP route resource access", () => {
 
     expect(json.success).toBe(true);
     expect(json.data.servers[0]).toMatchObject({
+      id: "mcp_external",
       name: "shared",
-      resourceKey: "org_source/mcp_external",
       toolsCount: 2,
     });
     expect(json.data.servers[0].resourceAccess).toMatchObject({
@@ -121,7 +121,7 @@ describe("MCP route resource access", () => {
     expect(json.data.config.url).toBe("https://example.com/org_source/mcp_external");
   });
 
-  // 外部 MCP delete/enable/disable/inspect/list_tools 全部返回 403
+  // 外部 MCP write 动作返回 403（list_tools 已允许外部只读访问）
   test("外部 MCP 写动作返回 403", async () => {
     stubConfigPg({
       assertMcpServerInternalWritable: async () => {
@@ -129,7 +129,7 @@ describe("MCP route resource access", () => {
       },
     });
 
-    const actions = ["delete", "enable", "disable", "inspect", "list_tools"];
+    const actions = ["delete", "enable", "disable", "inspect"];
     for (const action of actions) {
       const res = await post({ action, name: "shared" });
       const json = await res.json();

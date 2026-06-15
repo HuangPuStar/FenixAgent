@@ -1,23 +1,38 @@
 import { and, eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { db } from "../../../db";
-import { knowledgeBase, machine, model, provider, skill } from "../../../db/schema";
+import { knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import {
+  AgentMutationBodySchema,
+  AgentNameQuerySchema,
+  AgentTemplatesResponseSchema,
+  CreateAgentResponseSchema,
+  DeleteAgentResponseSchema,
+  GetAgentResponseSchema,
+  SetDefaultAgentRequestSchema,
+  SetDefaultAgentResponseSchema,
+  UpdateAgentRequestSchema,
+  UpdateAgentResponseSchema,
+} from "../../../schemas/config.schema";
+import {
   type AgentKnowledgeConfig,
+  getAgentKnowledgeConfigById,
   InvalidKnowledgeBindingError,
   listAgentKnowledgeBindingsById,
   syncAgentKnowledgeBindingsById,
 } from "../../../services/agent-knowledge";
+import { loadAgentTemplates } from "../../../services/agent-templates";
 import {
   AGENT_SETTABLE_FIELDS,
   isBuiltInAgent,
   normalizeKnowledgeConfig,
-  toolsToPermission,
   validateAgentData,
 } from "../../../services/config/agent-config";
 import * as configPg from "../../../services/config/index";
+import { listSkills } from "../../../services/config/skill";
 import {
   configError,
   configNotFound,
@@ -25,53 +40,36 @@ import {
   configValidationError,
   isValidResourceName,
 } from "../../../services/config-utils";
+import { ensureHindsightMcpServer } from "../../../services/hindsight";
 
 interface AgentRelatedResourceView {
   modelLabel: string | null;
   machineLabel: string | null;
   skills: Array<{ id: string; label: string }>;
+  mcps: Array<{ id: string; label: string }>;
   knowledgeBases: Array<{ id: string; label: string; slug?: string | null }>;
 }
 
 interface AgentResourceDisplayInput {
   id: string;
   organizationId: string;
-  model: string | null;
+  modelId: string | null;
   machineId: string | null;
   resourceAccess?: {
     sourceOrganizationId: string;
   };
 }
 
-function parseModelRef(modelRef: string) {
-  const parts = modelRef.split("/");
-  if (parts.length >= 3) {
-    return {
-      providerOrganizationId: parts[0],
-      providerId: parts[1],
-      providerName: null,
-      modelId: parts.slice(2).join("/"),
-    };
-  }
-  if (parts.length === 2) {
-    return {
-      providerOrganizationId: null,
-      providerId: null,
-      providerName: parts[0],
-      modelId: parts[1],
-    };
-  }
-  return null;
-}
-
 async function buildAgentRelatedResourceView(
   agent: AgentResourceDisplayInput,
   skillIds: string[],
+  mcpIds: string[],
 ): Promise<AgentRelatedResourceView> {
   const fallback: AgentRelatedResourceView = {
-    modelLabel: agent.model ?? null,
+    modelLabel: agent.modelId ?? null,
     machineLabel: agent.machineId ?? null,
     skills: skillIds.map((id) => ({ id, label: id })),
+    mcps: mcpIds.map((id) => ({ id, label: id })),
     knowledgeBases: [],
   };
 
@@ -79,60 +77,42 @@ async function buildAgentRelatedResourceView(
     const sourceOrganizationId = agent.resourceAccess?.sourceOrganizationId ?? agent.organizationId;
     let modelLabel: string | null = null;
 
-    if (agent.model) {
-      const parsedModel = parseModelRef(agent.model);
-      if (parsedModel) {
-        let providerRow:
-          | {
-              id: string;
-              name: string;
-              displayName: string | null;
-            }
-          | undefined;
-
-        if (parsedModel.providerId && parsedModel.providerOrganizationId) {
-          const rows = await db
-            .select({ id: provider.id, name: provider.name, displayName: provider.displayName })
-            .from(provider)
-            .where(
-              and(
-                eq(provider.id, parsedModel.providerId),
-                eq(provider.organizationId, parsedModel.providerOrganizationId),
-              ),
-            )
-            .limit(1);
-          providerRow = rows[0];
-        } else if (parsedModel.providerName) {
-          const rows = await db
-            .select({ id: provider.id, name: provider.name, displayName: provider.displayName })
-            .from(provider)
-            .where(and(eq(provider.name, parsedModel.providerName), eq(provider.organizationId, sourceOrganizationId)))
-            .limit(1);
-          providerRow = rows[0];
-        }
-
+    if (agent.modelId) {
+      const modelRows = await db
+        .select({
+          id: model.id,
+          modelName: model.modelId,
+          displayName: model.displayName,
+          providerId: model.providerId,
+          providerOrganizationId: model.organizationId,
+        })
+        .from(model)
+        .where(eq(model.id, agent.modelId))
+        .limit(1);
+      const modelRow = modelRows[0];
+      if (modelRow) {
+        const providerRows = await db
+          .select({ id: provider.id, name: provider.name, displayName: provider.displayName })
+          .from(provider)
+          .where(
+            and(eq(provider.id, modelRow.providerId), eq(provider.organizationId, modelRow.providerOrganizationId)),
+          )
+          .limit(1);
+        const providerRow = providerRows[0];
         if (providerRow) {
-          const modelRows = await db
-            .select({ modelId: model.modelId, displayName: model.displayName })
-            .from(model)
-            .where(and(eq(model.providerId, providerRow.id), eq(model.modelId, parsedModel.modelId)))
-            .limit(1);
-          const modelRow = modelRows[0];
           const providerName = providerRow.displayName ?? providerRow.name;
-          const modelName = modelRow?.displayName ?? modelRow?.modelId ?? parsedModel.modelId;
+          const modelName = modelRow.displayName ?? modelRow.modelName;
           modelLabel = `${providerName}/${modelName}`;
         }
       }
 
-      if (!modelLabel) {
-        modelLabel = agent.model;
-      }
+      if (!modelLabel) modelLabel = agent.modelId;
     }
 
     let machineLabel: string | null = null;
     if (agent.machineId) {
       const machineRows = await db
-        .select({ id: machine.id, agentName: machine.agentName, machineInfo: machine.machineInfo })
+        .select({ id: machine.id, agentName: machine.agentName, name: machine.name, machineInfo: machine.machineInfo })
         .from(machine)
         .where(eq(machine.id, agent.machineId))
         .limit(1);
@@ -142,7 +122,7 @@ async function buildAgentRelatedResourceView(
           machineRow.machineInfo && typeof machineRow.machineInfo === "object"
             ? ((machineRow.machineInfo as { hostname?: string }).hostname ?? "")
             : "";
-        machineLabel = hostname || machineRow.agentName;
+        machineLabel = machineRow.name || hostname || machineRow.agentName;
       } else {
         machineLabel = agent.machineId;
       }
@@ -153,6 +133,14 @@ async function buildAgentRelatedResourceView(
         ? await db.select({ id: skill.id, label: skill.name }).from(skill).where(inArray(skill.id, skillIds))
         : [];
     const skillLabelMap = new Map(skillLabels.map((item) => [item.id, item.label]));
+    const mcpLabels =
+      mcpIds.length > 0
+        ? await db
+            .select({ id: mcpServer.id, label: mcpServer.name })
+            .from(mcpServer)
+            .where(inArray(mcpServer.id, mcpIds))
+        : [];
+    const mcpLabelMap = new Map(mcpLabels.map((item) => [item.id, item.label]));
 
     const knowledgeBindings = await listAgentKnowledgeBindingsById(agent.id);
     const knowledgeBaseIds = knowledgeBindings.map((binding) => binding.knowledgeBaseId);
@@ -171,6 +159,7 @@ async function buildAgentRelatedResourceView(
       modelLabel,
       machineLabel,
       skills: skillIds.map((id) => ({ id, label: skillLabelMap.get(id) ?? id })),
+      mcps: mcpIds.map((id) => ({ id, label: mcpLabelMap.get(id) ?? id })),
       knowledgeBases: knowledgeBaseIds.map((id) => {
         const item = knowledgeBaseMap.get(id);
         return { id, label: item?.name ?? id, slug: item?.slug ?? null };
@@ -181,31 +170,7 @@ async function buildAgentRelatedResourceView(
   }
 }
 
-/** 将 PG 行数据映射为前端兼容的 agent 字段 */
-function _pgRowToAgentFields(
-  row: typeof configPg extends { listAgentConfigs: (ctx: AuthContext) => Promise<(infer T)[]> } ? T : never,
-) {
-  const r = row as unknown as Record<string, unknown>;
-  // tools → permission 兼容转换：PG 中不再有 tools，但保留接口
-  const permission = (r.permission ?? null) as unknown;
-  return {
-    name: r.name as string,
-    model: (r.model as string) ?? null,
-    mode: (r.mode as string) ?? null,
-    description: (r.description as string) ?? null,
-    color: (r.color as string) ?? null,
-    disable: (r.disable as boolean) ?? false,
-    hidden: (r.hidden as boolean) ?? false,
-    steps: (r.steps as number) ?? null,
-    variant: (r.variant as string) ?? null,
-    temperature: (r.temperature as number) ?? null,
-    top_p: (r.topP as number) ?? null,
-    prompt: (r.prompt as string) ?? null,
-    permission,
-    knowledge: (r.knowledge as unknown) ?? null,
-  };
-}
-
+/** 构建 agent 列表视图，并补齐前端展示依赖的资源标签。 */
 async function handleList(ctx: AuthContext) {
   const agents = await configPg.listAgentConfigs(ctx);
   const uc = await configPg.getUserConfig(ctx);
@@ -213,25 +178,26 @@ async function handleList(ctx: AuthContext) {
   const list = await Promise.all(
     agents.map(async (a) => {
       const skillIds = await configPg.listAgentSkillIds(a.id);
+      const mcpIds = await configPg.listAgentMcpIds(a.id);
       const relatedResources = await buildAgentRelatedResourceView(
         {
           id: a.id,
           organizationId: a.organizationId,
-          model: a.model ?? null,
+          modelId: a.modelId ?? null,
           machineId: a.machineId ?? null,
           resourceAccess: a.resourceAccess,
         },
         skillIds,
+        mcpIds,
       );
       return {
         id: a.id,
         name: a.name,
         builtIn: isBuiltInAgent(a.name),
         model: a.model ?? null,
+        modelId: a.modelId ?? null,
         modelLabel: relatedResources.modelLabel,
-        mode: a.mode ?? null,
         description: a.description ?? null,
-        color: a.color ?? null,
         machineId: a.machineId ?? null,
         engineType: (a as unknown as Record<string, unknown>).engineType ?? "opencode",
         knowledgeBaseCount: (await listAgentKnowledgeBindingsById(a.id)).length,
@@ -243,45 +209,36 @@ async function handleList(ctx: AuthContext) {
   return configSuccess({ default_agent: defaultAgent, agents: list });
 }
 
+/** 读取单个 agent 详情，保留原接口返回结构以兼容现有前端状态。 */
 async function handleGet(ctx: AuthContext, name: string) {
   const agent = await configPg.getAgentConfig(ctx, name);
   if (!agent) return configNotFound(`Agent '${name}' not found`);
 
-  let permission = agent.permission ?? null;
-  // tools→permission 兼容：旧数据可能只有 tools 没有 permission
-  const tools = (agent as unknown as Record<string, unknown>).tools;
-  if (permission == null && tools && typeof tools === "object" && !Array.isArray(tools)) {
-    permission = toolsToPermission(tools as Record<string, boolean>);
-  }
-
   const skillIds = await configPg.listAgentSkillIds(agent.id);
-  const relatedResources = await buildAgentRelatedResourceView(agent, skillIds);
+  const mcpIds = await configPg.listAgentMcpIds(agent.id);
+  const relatedResources = await buildAgentRelatedResourceView(agent, skillIds, mcpIds);
+  const knowledge = await getAgentKnowledgeConfigById(agent.id);
 
   return configSuccess({
     id: agent.id,
     name: agent.name,
     builtIn: isBuiltInAgent(agent.name),
     model: agent.model ?? null,
+    modelId: agent.modelId ?? null,
     prompt: agent.prompt ?? null,
-    steps: agent.steps ?? null,
-    mode: agent.mode ?? null,
-    permission,
-    variant: agent.variant ?? null,
-    temperature: agent.temperature ?? null,
-    top_p: agent.topP ?? null,
-    disable: agent.disable ?? false,
-    hidden: agent.hidden ?? false,
-    color: agent.color ?? null,
     description: agent.description ?? null,
-    knowledge: normalizeKnowledgeConfig(agent.knowledge ?? null),
+    extra: agent.extra ?? null,
+    knowledge: normalizeKnowledgeConfig(knowledge ?? null),
     machineId: agent.machineId ?? null,
     engineType: (agent as unknown as Record<string, unknown>).engineType ?? "opencode",
     skillIds,
+    mcpIds,
     relatedResources,
     resourceAccess: agent.resourceAccess,
   });
 }
 
+/** 更新 agent 配置，并同步 knowledge / skills / MCP 等关联资源。 */
 async function handleSet(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
@@ -309,12 +266,8 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   if (!existing) return configNotFound(`Agent '${name}' not found`);
   const updateData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(filtered)) {
-    if (key === "permission" && value == null) {
+    if (key === "knowledge" && value == null) {
       updateData[key] = null;
-    } else if (key === "knowledge" && value == null) {
-      updateData[key] = null;
-    } else if (key === "top_p") {
-      updateData.topP = value;
     } else {
       updateData[key] = value;
     }
@@ -329,15 +282,56 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
       filtered.knowledge as AgentKnowledgeConfig | null | undefined,
     );
     if (data.skillIds !== undefined) {
-      await configPg.syncAgentSkills(updatedAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
+      const rawIds = Array.isArray(data.skillIds) ? (data.skillIds as string[]) : [];
+      const resolvedIds = await resolveSkillIds(ctx, rawIds);
+      await configPg.syncAgentSkills(updatedAgent.id, resolvedIds);
+    }
+    if (data.mcpIds !== undefined) {
+      await configPg.syncAgentMcps(updatedAgent.id, Array.isArray(data.mcpIds) ? (data.mcpIds as string[]) : []);
     }
   }
+
+  // 记忆 MCP 开关：勾选创建 mcpServer 记录 + 确保 bank，取消则删除 mcpServer 记录
+  if (data.enableMemory === true) {
+    const result = await ensureHindsightMcpServer(ctx);
+    if (!result.ok) {
+      console.warn(`[hindsight] Failed for agent '${name}': ${result.error}`);
+    }
+  }
+
   return configSuccess({ name, ...filtered, resourceAccess: updatedAgent?.resourceAccess });
 }
 
+/** UUID 格式正则 */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 将 skill 标识符数组（可能是 UUID 或名称）统一解析为 UUID。
+ * 模板和 AI 生成的流程可能传入 skill 名称而非 UUID，需要在此解析。
+ */
+async function resolveSkillIds(ctx: AuthContext, identifiers: string[]): Promise<string[]> {
+  if (identifiers.length === 0) return [];
+
+  // 已经全部是 UUID 则直接返回
+  if (identifiers.every((id) => UUID_RE.test(id))) return identifiers;
+
+  const skills = await listSkills(ctx);
+  const nameToId = new Map(skills.map((s) => [s.name.toLowerCase(), s.id]));
+
+  return identifiers
+    .map((id) => {
+      if (UUID_RE.test(id)) return id;
+      return nameToId.get(id.toLowerCase()) ?? null;
+    })
+    .filter((id): id is string => !!id);
+}
+
+/** 创建 agent 配置，并在创建后补齐所有关联资源绑定。 */
 async function handleCreate(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   if (!isValidResourceName(name)) {
-    return configValidationError("Invalid agent name: must be 1-64 characters (letters, numbers, single hyphens)");
+    return configValidationError(
+      "Invalid agent name: must be 1-64 characters (letters, numbers, spaces, single hyphens)",
+    );
   }
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
@@ -350,23 +344,12 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
       filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
     }
   }
-  if (filtered.permission == null) delete filtered.permission;
-
-  // 映射 snake_case → camelCase for PG storage
-  const pgData: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(filtered)) {
-    if (key === "top_p") {
-      pgData.topP = value;
-    } else {
-      pgData[key] = value;
-    }
-  }
 
   // 检查是否已存在
   const existing = await configPg.getAgentConfig(ctx, name);
   if (existing) return configError("ALREADY_EXISTS", `Agent '${name}' already exists`);
 
-  await configPg.createAgentConfig(ctx, name, pgData, { publicReadable });
+  await configPg.createAgentConfig(ctx, name, filtered, { publicReadable });
   const createdAgent = await configPg.getAgentConfig(ctx, name);
   if (createdAgent) {
     await syncAgentKnowledgeBindingsById(
@@ -375,12 +358,27 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
       filtered.knowledge as AgentKnowledgeConfig | null | undefined,
     );
     if (data.skillIds !== undefined) {
-      await configPg.syncAgentSkills(createdAgent.id, Array.isArray(data.skillIds) ? (data.skillIds as string[]) : []);
+      const rawIds = Array.isArray(data.skillIds) ? (data.skillIds as string[]) : [];
+      const resolvedIds = await resolveSkillIds(ctx, rawIds);
+      await configPg.syncAgentSkills(createdAgent.id, resolvedIds);
+    }
+    if (data.mcpIds !== undefined) {
+      await configPg.syncAgentMcps(createdAgent.id, Array.isArray(data.mcpIds) ? (data.mcpIds as string[]) : []);
     }
   }
-  return configSuccess({ name, resourceAccess: createdAgent?.resourceAccess });
+
+  // 勾选记忆 MCP 时，创建 mcpServer 表记录 + 确保 bank 存在
+  if (data.enableMemory === true) {
+    const result = await ensureHindsightMcpServer(ctx);
+    if (!result.ok) {
+      console.warn(`[hindsight] Failed for agent '${name}': ${result.error}`);
+    }
+  }
+
+  return configSuccess({ name, id: createdAgent?.id, resourceAccess: createdAgent?.resourceAccess });
 }
 
+/** 删除 agent，内置 agent 永远不可删除。 */
 async function handleDelete(ctx: AuthContext, name: string) {
   if (isBuiltInAgent(name)) {
     return configError("FORBIDDEN", `Cannot delete built-in agent '${name}'`);
@@ -400,74 +398,318 @@ async function handleDelete(ctx: AuthContext, name: string) {
   return configSuccess(null);
 }
 
-import { loadAgentTemplates } from "../../../services/agent-templates";
-
 function handleTemplates() {
   return configSuccess({ templates: loadAgentTemplates() });
 }
 
+/** 设置当前用户的默认 agent。 */
 async function handleSetDefault(ctx: AuthContext, name: string) {
   const agent = await configPg.getAgentConfig(ctx, name);
   if (!agent) return configNotFound(`Agent '${name}' not found`);
-  await configPg.setUserConfig(ctx, { defaultAgent: name });
-  return configSuccess({ default_agent: name, resourceAccess: agent.resourceAccess });
+  await configPg.setUserConfig(ctx, { defaultAgent: agent.name });
+  return configSuccess({ default_agent: agent.name, resourceAccess: agent.resourceAccess });
 }
-
-import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
+const AgentErrorResponseSchema = z.unknown();
 
 const app = new Elysia({ name: "web-config-agents" }).use(authGuardPlugin).model({
-  "config-body": ConfigBodySchema,
+  "agent-name-query": AgentNameQuerySchema,
+  "agent-mutation-body": AgentMutationBodySchema,
+  "agent-update-body": UpdateAgentRequestSchema,
+  "agent-set-default-body": SetDefaultAgentRequestSchema,
+  "agent-templates-response": AgentTemplatesResponseSchema,
+  "agent-get-response": GetAgentResponseSchema,
+  "agent-create-response": CreateAgentResponseSchema,
+  "agent-update-response": UpdateAgentResponseSchema,
+  "agent-delete-response": DeleteAgentResponseSchema,
+  "agent-set-default-response": SetDefaultAgentResponseSchema,
 });
+
+function requireName(
+  name: string | undefined,
+  errorFn: (status: number, body: unknown) => unknown,
+): string | ReturnType<typeof errorFn> {
+  if (!name) {
+    return errorFn(400, configValidationError("Missing 'name' field"));
+  }
+  return name;
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function isConfigErrorResult(value: unknown): value is { success: false; error: { code?: string; message?: string } } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "success" in value &&
+    (value as { success?: unknown }).success === false &&
+    "error" in value
+  );
+}
+
+function mapConfigErrorStatus(code: string | undefined): number {
+  switch (code) {
+    case "VALIDATION_ERROR":
+    case "INVALID_KNOWLEDGE_BINDINGS":
+      return 400;
+    case "FORBIDDEN":
+      return 403;
+    case "NOT_FOUND":
+      return 404;
+    case "ALREADY_EXISTS":
+      return 409;
+    default:
+      return 400;
+  }
+}
+
+/** 统一映射 agent 配置路由的业务异常，避免每个 handler 重复 try/catch。 */
+async function runAgentAction<T>(
+  fn: () => Promise<T> | T,
+  errorFn: (status: number, body: unknown) => unknown,
+): Promise<T | ReturnType<typeof errorFn>> {
+  try {
+    const result = await fn();
+    if (isConfigErrorResult(result)) {
+      return errorFn(mapConfigErrorStatus(result.error.code), result);
+    }
+    return result;
+  } catch (error_) {
+    if (
+      error_ instanceof InvalidKnowledgeBindingError ||
+      (typeof error_ === "object" &&
+        error_ !== null &&
+        "code" in error_ &&
+        (error_ as { code?: string }).code === "INVALID_KNOWLEDGE_BINDINGS")
+    ) {
+      const message = error_ instanceof Error ? error_.message : "知识库绑定无效";
+      return errorFn(400, configError("INVALID_KNOWLEDGE_BINDINGS", message));
+    }
+    if (error_ instanceof AppError && error_.code === "VALIDATION_ERROR") {
+      return errorFn(400, configValidationError(error_.message));
+    }
+    throw error_;
+  }
+}
+
+app.get("/config/agents/templates", () => handleTemplates(), {
+  sessionAuth: true,
+  response: {
+    200: "agent-templates-response",
+    400: AgentErrorResponseSchema,
+    401: AgentErrorResponseSchema,
+    403: AgentErrorResponseSchema,
+    404: AgentErrorResponseSchema,
+  },
+  detail: {
+    tags: ["AgentConfig"],
+    summary: "获取 Agent 模板列表",
+    description: "返回系统内置的 Agent 模板列表，供前端创建 Agent 时选择预设 prompt 与默认 skill。",
+  },
+});
+
+app.get(
+  "/config/agents",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
+  async ({ store, query, error }: any) => {
+    const authCtx = store.authContext!;
+    const name = typeof query?.name === "string" ? query.name : undefined;
+    if (!name) {
+      return await runAgentAction(
+        () => handleList(authCtx),
+        (status, body) => error(status, body),
+      );
+    }
+    return await runAgentAction(
+      () => handleGet(authCtx, name),
+      (status, body) => error(status, body),
+    );
+  },
+  {
+    sessionAuth: true,
+    query: "agent-name-query",
+    response: {
+      200: "agent-get-response",
+      400: AgentErrorResponseSchema,
+      401: AgentErrorResponseSchema,
+      403: AgentErrorResponseSchema,
+      404: AgentErrorResponseSchema,
+    },
+    detail: {
+      tags: ["AgentConfig"],
+      summary: "获取 Agent 列表或详情",
+      description:
+        "不带 `name` 查询参数时返回当前可见的 Agent 列表；带 `name` 时返回指定 Agent 的完整详情，包括 skill、MCP 和知识库关联信息。",
+      parameters: [
+        {
+          name: "name",
+          in: "query",
+          required: false,
+          description: "Agent 名称或共享资源键；传入后接口切换为详情查询模式。",
+          schema: { type: "string" },
+        },
+      ],
+    },
+  },
+);
 
 app.post(
   "/config/agents",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
-    const b = (body as ConfigBody) ?? {};
-    const { action, name, data } = {
-      action: b.action ?? "",
-      name: b.name,
-      data: b.data as Record<string, unknown> | undefined,
-    };
-    // get/set/create/delete/set_default 都需要 name
-    if (action !== "list" && action !== "templates" && !name) {
-      return error(400, configValidationError("Missing 'name' field"));
+    const name = requireName(typeof body?.name === "string" ? body.name : undefined, (status, payload) =>
+      error(status, payload),
+    );
+    if (typeof name !== "string") {
+      return name;
     }
-    try {
-      switch (action) {
-        case "templates":
-          return handleTemplates();
-        case "list":
-          return await handleList(authCtx);
-        case "get":
-          return await handleGet(authCtx, name!);
-        case "set":
-          return await handleSet(authCtx, name!, data!);
-        case "create":
-          return await handleCreate(authCtx, name!, data!);
-        case "delete":
-          return await handleDelete(authCtx, name!);
-        case "set_default":
-          return await handleSetDefault(authCtx, name!);
-        default:
-          return error(400, configValidationError(`Unknown action '${action}'`));
-      }
-    } catch (error_) {
-      if (
-        error_ instanceof InvalidKnowledgeBindingError ||
-        (typeof error_ === "object" &&
-          error_ !== null &&
-          "code" in error_ &&
-          (error_ as { code?: string }).code === "INVALID_KNOWLEDGE_BINDINGS")
-      ) {
-        const message = error_ instanceof Error ? error_.message : "知识库绑定无效";
-        return error(400, configError("INVALID_KNOWLEDGE_BINDINGS", message));
-      }
-      throw error_;
-    }
+    return await runAgentAction(
+      () => handleCreate(authCtx, name, toRecord(body?.data)),
+      (status, payload) => error(status, payload),
+    );
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "Agent 配置管理" } },
+  {
+    sessionAuth: true,
+    body: "agent-mutation-body",
+    response: {
+      200: "agent-create-response",
+      400: AgentErrorResponseSchema,
+      401: AgentErrorResponseSchema,
+      403: AgentErrorResponseSchema,
+      404: AgentErrorResponseSchema,
+      409: AgentErrorResponseSchema,
+    },
+    detail: {
+      tags: ["AgentConfig"],
+      summary: "创建 Agent 配置",
+      description: "创建新的 Agent 配置，并根据请求内容同步知识库绑定、Skill 绑定和 MCP 绑定。",
+    },
+  },
+);
+
+app.put(
+  "/config/agents",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
+  async ({ store, query, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const name = requireName(typeof query?.name === "string" ? query.name : undefined, (status, payload) =>
+      error(status, payload),
+    );
+    if (typeof name !== "string") {
+      return name;
+    }
+    return await runAgentAction(
+      () => handleSet(authCtx, name, toRecord(body?.data)),
+      (status, payload) => error(status, payload),
+    );
+  },
+  {
+    sessionAuth: true,
+    query: z.object({ name: AgentNameQuerySchema.shape.name }),
+    body: "agent-update-body",
+    response: {
+      200: "agent-update-response",
+      400: AgentErrorResponseSchema,
+      401: AgentErrorResponseSchema,
+      403: AgentErrorResponseSchema,
+      404: AgentErrorResponseSchema,
+      409: AgentErrorResponseSchema,
+    },
+    detail: {
+      tags: ["AgentConfig"],
+      summary: "更新 Agent 配置",
+      description:
+        "更新指定 Agent 的可变更字段，并在保存后同步知识库、Skill 与 MCP 关联；仅当前组织可写的 Agent 允许修改。",
+      parameters: [
+        {
+          name: "name",
+          in: "query",
+          required: true,
+          description: "待更新的 Agent 名称或共享资源键。",
+          schema: { type: "string" },
+        },
+      ],
+    },
+  },
+);
+
+app.delete(
+  "/config/agents",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
+  async ({ store, query, error }: any) => {
+    const authCtx = store.authContext!;
+    const name = requireName(typeof query?.name === "string" ? query.name : undefined, (status, payload) =>
+      error(status, payload),
+    );
+    if (typeof name !== "string") {
+      return name;
+    }
+    return await runAgentAction(
+      () => handleDelete(authCtx, name),
+      (status, payload) => error(status, payload),
+    );
+  },
+  {
+    sessionAuth: true,
+    query: z.object({ name: AgentNameQuerySchema.shape.name }),
+    response: {
+      200: "agent-delete-response",
+      400: AgentErrorResponseSchema,
+      401: AgentErrorResponseSchema,
+      403: AgentErrorResponseSchema,
+      404: AgentErrorResponseSchema,
+    },
+    detail: {
+      tags: ["AgentConfig"],
+      summary: "删除 Agent 配置",
+      description: "删除指定 Agent 配置。内置 Agent 不允许删除，共享只读 Agent 也不允许删除。",
+      parameters: [
+        {
+          name: "name",
+          in: "query",
+          required: true,
+          description: "待删除的 Agent 名称或共享资源键。",
+          schema: { type: "string" },
+        },
+      ],
+    },
+  },
+);
+
+app.post(
+  "/config/agents/default",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const name = requireName(typeof body?.name === "string" ? body.name : undefined, (status, payload) =>
+      error(status, payload),
+    );
+    if (typeof name !== "string") {
+      return name;
+    }
+    return await runAgentAction(
+      () => handleSetDefault(authCtx, name),
+      (status, payload) => error(status, payload),
+    );
+  },
+  {
+    sessionAuth: true,
+    body: "agent-set-default-body",
+    response: {
+      200: "agent-set-default-response",
+      400: AgentErrorResponseSchema,
+      401: AgentErrorResponseSchema,
+      403: AgentErrorResponseSchema,
+      404: AgentErrorResponseSchema,
+    },
+    detail: {
+      tags: ["AgentConfig"],
+      summary: "设置默认 Agent",
+      description: "将指定 Agent 设置为当前用户的默认 Agent，后续创建会话或打开面板时可作为默认选择。",
+    },
+  },
 );
 
 export default app;

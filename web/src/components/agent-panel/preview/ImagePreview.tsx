@@ -2,7 +2,7 @@ import { Loader2, Minus, Plus, RotateCw } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../../i18n";
-import { encodePathSegment } from "./utils";
+import { buildPreviewUrl } from "./utils";
 
 interface ImagePreviewProps {
   envId: string;
@@ -18,7 +18,7 @@ export function ImagePreview({ envId, filePath }: ImagePreviewProps) {
   const isPanning = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
 
-  const src = `/web/environments/${envId}/user/${filePath.split("/").map(encodePathSegment).join("/")}?preview=true`;
+  const src = buildPreviewUrl(envId, filePath);
 
   const handleLoad = useCallback(() => setLoading(false), []);
   const handleError = useCallback(() => {

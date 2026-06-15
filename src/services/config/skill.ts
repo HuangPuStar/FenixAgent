@@ -1,4 +1,5 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { createLogger } from "@fenix/logger";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { skill } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
@@ -10,6 +11,8 @@ import {
   setPublicRead,
 } from "../resource-permission";
 import type { SkillConfigRowWithAccess, SkillSetOptions, SkillUpsertData } from "./types";
+
+const logger = createLogger("config-skill");
 
 // ────────────────────────────────────────────
 // Skill 操作（全局技能库）
@@ -40,7 +43,8 @@ export async function listSkills(ctx: AuthContext): Promise<SkillConfigRowWithAc
   const internal = (await db
     .select()
     .from(skill)
-    .where(eq(skill.organizationId, ctx.organizationId))) as SkillConfigRow[];
+    .where(eq(skill.organizationId, ctx.organizationId))
+    .orderBy(desc(skill.createdAt))) as SkillConfigRow[];
   const external = await listExternalSkills(ctx);
   return decorateResourceAccess(ctx, "skill", [...internal, ...external]);
 }
@@ -62,6 +66,22 @@ export async function getSkill(ctx: AuthContext, name: string): Promise<SkillCon
   const canRead = await canReadResource(ctx, "skill", external.id, external.organizationId);
   if (!canRead) return null;
   const [decorated] = await decorateResourceAccess(ctx, "skill", [external]);
+  return decorated;
+}
+
+export async function getSkillById(ctx: AuthContext, id: string): Promise<SkillConfigRowWithAccess | null> {
+  const rows = await db.select().from(skill).where(eq(skill.id, id)).limit(1);
+  const row = (rows[0] ?? null) as SkillConfigRow | null;
+  if (!row) return null;
+
+  if (row.organizationId === ctx.organizationId) {
+    const [decorated] = await decorateResourceAccess(ctx, "skill", [row]);
+    return decorated;
+  }
+
+  const canRead = await canReadResource(ctx, "skill", row.id, row.organizationId);
+  if (!canRead) return null;
+  const [decorated] = await decorateResourceAccess(ctx, "skill", [row]);
   return decorated;
 }
 
@@ -104,6 +124,9 @@ export async function upsertSkill(
   if (existing.length > 0) {
     assertInternalWritable(ctx, "skill", existing[0].id, ctx.organizationId);
     await db.update(skill).set(commonFields).where(eq(skill.id, existing[0].id));
+    logger.info(
+      `[SkillConfig] skill_write user=${ctx.userId} org=${ctx.organizationId} skill=${name} action=${options.auditAction ?? "set"} mode=update`,
+    );
     if (options.publicReadable !== undefined) {
       await setPublicRead(ctx, "skill", ctx.organizationId, existing[0].id, options.publicReadable);
     }
@@ -119,6 +142,9 @@ export async function upsertSkill(
       ...commonFields,
     })
     .returning({ id: skill.id });
+  logger.info(
+    `[SkillConfig] skill_write user=${ctx.userId} org=${ctx.organizationId} skill=${name} action=${options.auditAction ?? "set"} mode=insert`,
+  );
   if (options.publicReadable !== undefined) {
     await setPublicRead(ctx, "skill", ctx.organizationId, inserted[0].id, options.publicReadable);
   }
@@ -131,5 +157,20 @@ export async function deleteSkill(ctx: AuthContext, name: string): Promise<boole
 
   assertInternalWritable(ctx, "skill", row.id, row.organizationId);
   const result = await db.delete(skill).where(eq(skill.id, row.id)).returning({ id: skill.id });
+  if (result.length > 0) {
+    logger.info(`[SkillConfig] skill_delete user=${ctx.userId} org=${ctx.organizationId} skill=${name}`);
+  }
+  return result.length > 0;
+}
+
+export async function deleteSkillById(ctx: AuthContext, id: string): Promise<boolean> {
+  const row = await getSkillById(ctx, id);
+  if (!row) return false;
+
+  assertInternalWritable(ctx, "skill", row.id, row.organizationId);
+  const result = await db.delete(skill).where(eq(skill.id, row.id)).returning({ id: skill.id });
+  if (result.length > 0) {
+    logger.info(`[SkillConfig] skill_delete user=${ctx.userId} org=${ctx.organizationId} skill=${row.name}`);
+  }
   return result.length > 0;
 }

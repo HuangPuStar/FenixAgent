@@ -11,7 +11,7 @@ export type DAGStatus = "PENDING" | "RUNNING" | "SUSPENDED" | "FAILED" | "CANCEL
 
 export type NodeStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "SKIPPED";
 
-export type NodeType = "shell" | "agent" | "api" | "audit" | "workflow" | "loop";
+export type NodeType = "shell" | "python" | "agent" | "api" | "audit" | "workflow" | "loop" | "transform";
 
 export type EventType =
   | "dag.started"

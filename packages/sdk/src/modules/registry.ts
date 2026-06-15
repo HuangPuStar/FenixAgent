@@ -4,6 +4,7 @@ import type { ApiResult } from "../result";
 export interface MachineRecord {
   id: string;
   agentName: string;
+  name: string | null;
   status: string;
   machineInfo: { hostname?: string; ip?: string; os?: string; arch?: string } | null;
   labels: string[] | null;
