@@ -122,6 +122,7 @@ export async function listEvents(
 
 export async function registerMachine(params: {
   agentName: string;
+  name?: string | null;
   machineInfo: Record<string, unknown> | null;
   labels: string[];
   heartbeatIntervalMs: number;
@@ -157,6 +158,7 @@ export async function registerMachine(params: {
         machineInfo: params.machineInfo,
         labels: params.labels,
         supportedEngineTypes: params.supportedEngineTypes,
+        name: params.name ?? null,
         heartbeatIntervalMs: params.heartbeatIntervalMs,
         lastHeartbeatAt: now,
         updatedAt: now,
@@ -183,6 +185,7 @@ export async function registerMachine(params: {
     machineInfo: params.machineInfo,
     labels: params.labels,
     supportedEngineTypes: params.supportedEngineTypes,
+    name: params.name ?? null,
     heartbeatIntervalMs: params.heartbeatIntervalMs,
     lastHeartbeatAt: now,
     registeredAt: now,
