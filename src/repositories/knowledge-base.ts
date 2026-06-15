@@ -309,6 +309,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
         id: agentKnowledgeBinding.id,
         agentConfigId: agentKnowledgeBinding.agentConfigId,
         knowledgeBaseId: agentKnowledgeBinding.knowledgeBaseId,
+        config: agentKnowledgeBinding.config,
         priority: agentKnowledgeBinding.priority,
         enabled: agentKnowledgeBinding.enabled,
         createdAt: agentKnowledgeBinding.createdAt,

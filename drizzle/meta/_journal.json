@@ -33,8 +33,43 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1780890601802,
-      "tag": "0004_add-engine-type-fields",
+      "when": 1780918304424,
+      "tag": "0004_agent-config-optimization",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780987849936,
+      "tag": "0005_agent-config-mcp-bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780992115461,
+      "tag": "0006_agent-config-extra-cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781062113675,
+      "tag": "0007_machine-name",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781164411166,
+      "tag": "0008_ragflow-provider-default",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781514125782,
+      "tag": "0009_add-engine-type-fields",
       "breakpoints": true
     }
   ]

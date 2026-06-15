@@ -1,6 +1,6 @@
 {
-  "id": "8ed5eb55-feb8-4e18-853f-f68a9807b762",
-  "prevId": "34b791f7-3376-4f39-ad81-284b1f607bef",
+  "id": "63676977-f5a6-4a7c-b094-668fe6c7fa28",
+  "prevId": "e168acbe-2b4e-47b2-ae10-36d21b7c4e79",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -158,62 +158,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "steps": {
-          "name": "steps",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mode": {
-          "name": "mode",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "permission": {
-          "name": "permission",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "variant": {
-          "name": "variant",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "temperature": {
-          "name": "temperature",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "top_p": {
-          "name": "top_p",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "disable": {
-          "name": "disable",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "hidden": {
-          "name": "hidden",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "color": {
-          "name": "color",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        },
         "description": {
           "name": "description",
           "type": "text",
@@ -223,6 +167,12 @@
         "machine_id": {
           "name": "machine_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "extra": {
+          "name": "extra",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -302,6 +252,87 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.agent_config_mcp": {
+      "name": "agent_config_mcp",
+      "schema": "",
+      "columns": {
+        "agent_config_id": {
+          "name": "agent_config_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mcp_server_id": {
+          "name": "mcp_server_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_agent_config_mcp_pk": {
+          "name": "idx_agent_config_mcp_pk",
+          "columns": [
+            {
+              "expression": "agent_config_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mcp_server_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agent_config_mcp_agent_config_id_agent_config_id_fk": {
+          "name": "agent_config_mcp_agent_config_id_agent_config_id_fk",
+          "tableFrom": "agent_config_mcp",
+          "tableTo": "agent_config",
+          "columnsFrom": [
+            "agent_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_config_mcp_mcp_server_id_mcp_server_id_fk": {
+          "name": "agent_config_mcp_mcp_server_id_mcp_server_id_fk",
+          "tableFrom": "agent_config_mcp",
+          "tableTo": "mcp_server",
+          "columnsFrom": [
+            "mcp_server_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

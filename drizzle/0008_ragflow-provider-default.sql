@@ -1,0 +1,1 @@
+ALTER TABLE "knowledge_base" ALTER COLUMN "provider" SET DEFAULT 'ragflow';

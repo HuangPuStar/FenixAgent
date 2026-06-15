@@ -3,7 +3,6 @@ import {
   index,
   integer,
   jsonb,
-  numeric,
   pgEnum,
   pgTable,
   text,
@@ -270,7 +269,7 @@ export const knowledgeBase = pgTable(
     name: varchar("name").notNull(),
     slug: varchar("slug").notNull(),
     description: text("description"),
-    provider: varchar("provider").notNull().default("openviking"),
+    provider: varchar("provider").notNull().default("ragflow"),
     remoteId: varchar("remote_id"),
     remoteAccountId: varchar("remote_account_id"),
     remoteUserId: varchar("remote_user_id"),
@@ -317,6 +316,8 @@ export const agentKnowledgeBinding = pgTable(
     knowledgeBaseId: uuid("knowledge_base_id")
       .notNull()
       .references(() => knowledgeBase.id, { onDelete: "cascade" }),
+    // 仅保存知识库策略等配置；knowledgeBaseId 仍由绑定关系本身表达，避免重复存 ID 列表。
+    config: jsonb("config"),
     priority: integer("priority").notNull().default(0),
     enabled: boolean("enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -505,20 +506,15 @@ export const agentConfig = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     organizationId: text("organization_id").notNull(),
     name: varchar("name").notNull(),
+    // 已废弃：不再被读取，后面使用 modelId
     model: varchar("model"),
+    // 运行时正式使用 modelId 关联模型表主键。
+    modelId: uuid("model_id").references(() => model.id, { onDelete: "set null" }),
     prompt: text("prompt"),
-    steps: integer("steps"),
-    mode: varchar("mode", { length: 20 }),
-    permission: jsonb("permission"),
-    variant: varchar("variant"),
-    temperature: numeric("temperature"),
-    topP: numeric("top_p"),
-    disable: boolean("disable").notNull().default(false),
-    hidden: boolean("hidden").notNull().default(false),
-    color: varchar("color"),
     description: text("description"),
-    knowledge: jsonb("knowledge"),
     machineId: text("machine_id").references(() => machine.id, { onDelete: "set null" }),
+    // 预留给未来可变扩展，避免为低频碎片配置反复加列。
+    extra: jsonb("extra"),
     engineType: varchar("engine_type", { length: 32 }).default("opencode"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -631,6 +627,23 @@ export const agentConfigSkill = pgTable(
   },
   (table) => ({
     pk: uniqueIndex("idx_agent_config_skill_pk").on(table.agentConfigId, table.skillId),
+  }),
+);
+
+// Agent↔MCP 多对多关联
+export const agentConfigMcp = pgTable(
+  "agent_config_mcp",
+  {
+    agentConfigId: uuid("agent_config_id")
+      .notNull()
+      .references(() => agentConfig.id, { onDelete: "cascade" }),
+    mcpServerId: uuid("mcp_server_id")
+      .notNull()
+      .references(() => mcpServer.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: uniqueIndex("idx_agent_config_mcp_pk").on(table.agentConfigId, table.mcpServerId),
   }),
 );
 
@@ -883,6 +896,7 @@ export const machine = pgTable(
     organizationId: text("organization_id"),
     userId: text("user_id"),
     agentName: varchar("agent_name").notNull(),
+    name: varchar("name"),
     status: varchar("status").default("online").notNull(),
     machineInfo: jsonb("machine_info"),
     labels: jsonb("labels"),
