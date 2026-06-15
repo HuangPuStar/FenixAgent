@@ -73,12 +73,24 @@ describe("RagFlowKnowledgeProvider", () => {
     ).rejects.toThrow("102");
   });
 
-  test("addResource 上传文件并轮询解析状态直到 SUCCESS", async () => {
+  test("addResource 上传文件并轮询解析状态直到 DONE", async () => {
     const responses = [
       { ok: true, json: async () => ({ code: 0, data: [{ id: "doc_xyz" }] }) },
       { ok: true, json: async () => ({ code: 0 }) },
-      { ok: true, json: async () => ({ code: 0, data: { docs: [{ id: "doc_xyz", run: { status: "RUNNING" } }] } }) },
-      { ok: true, json: async () => ({ code: 0, data: { docs: [{ id: "doc_xyz", run: { status: "SUCCESS" } }] } }) },
+      {
+        ok: true,
+        json: async () => ({
+          code: 0,
+          data: { docs: [{ id: "doc_xyz", run: "RUNNING", progress: 0.35, chunk_count: 0, token_count: 0 }] },
+        }),
+      },
+      {
+        ok: true,
+        json: async () => ({
+          code: 0,
+          data: { docs: [{ id: "doc_xyz", run: "DONE", progress: 1, chunk_count: 3, token_count: 128 }] },
+        }),
+      },
     ];
     let callIndex = 0;
     const fetchSpy = mock(async () => {
@@ -176,7 +188,7 @@ describe("RagFlowKnowledgeProvider", () => {
           ok: true,
           json: async () => ({
             code: 0,
-            data: { docs: [{ id: "doc_fail", run: { status: "FAIL", message: "File corrupted" } }] },
+            data: { docs: [{ id: "doc_fail", run: "FAIL", progress_msg: "File corrupted" }] },
           }),
         };
       }
@@ -196,7 +208,7 @@ describe("RagFlowKnowledgeProvider", () => {
     ).rejects.toThrow("File corrupted");
   });
 
-  test("listResources 正确映射 RagFlow run.status 到接口状态", async () => {
+  test("listResources 正确映射 RagFlow run 到接口状态", async () => {
     globalThis.fetch = mock(async () => ({
       ok: true,
       json: async () => ({
@@ -204,10 +216,10 @@ describe("RagFlowKnowledgeProvider", () => {
         data: {
           total: 4,
           docs: [
-            { id: "d1", name: "doc1.pdf", run: { status: "UNSTART" } },
-            { id: "d2", name: "doc2.pdf", run: { status: "RUNNING" } },
-            { id: "d3", name: "doc3.pdf", run: { status: "SUCCESS" } },
-            { id: "d4", name: "doc4.pdf", run: { status: "FAIL", message: "error" } },
+            { id: "d1", name: "doc1.pdf", run: "UNSTART" },
+            { id: "d2", name: "doc2.pdf", run: "RUNNING" },
+            { id: "d3", name: "doc3.pdf", run: "DONE" },
+            { id: "d4", name: "doc4.pdf", run: "FAIL", progress_msg: "error" },
           ],
         },
       }),
@@ -239,7 +251,7 @@ describe("RagFlowKnowledgeProvider", () => {
             docs: Array.from({ length: 50 }, (_, i) => ({
               id: `doc_${i}`,
               name: `f${i}.pdf`,
-              run: { status: "SUCCESS" },
+              run: "DONE",
             })),
           },
         }),
@@ -253,7 +265,7 @@ describe("RagFlowKnowledgeProvider", () => {
             docs: Array.from({ length: 50 }, (_, i) => ({
               id: `doc_${i + 50}`,
               name: `f${i + 50}.pdf`,
-              run: { status: "SUCCESS" },
+              run: "DONE",
             })),
           },
         }),
@@ -267,7 +279,7 @@ describe("RagFlowKnowledgeProvider", () => {
             docs: Array.from({ length: 20 }, (_, i) => ({
               id: `doc_${i + 100}`,
               name: `f${i + 100}.pdf`,
-              run: { status: "SUCCESS" },
+              run: "DONE",
             })),
           },
         }),

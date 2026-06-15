@@ -8,8 +8,8 @@ import type {
 } from "./types";
 
 /**
- * 将 RagFlow run.status 映射为统一的 KnowledgeResourceStatus
- * UNSTART/DEFAULT → pending, RUNNING → processing, SUCCESS → ready, FAIL/CANCEL → error
+ * 将 RagFlow 文档 run 字段映射为统一的 KnowledgeResourceStatus。
+ * RagFlow 文档列表接口直接返回 run 字符串，DONE 表示解析完成。
  */
 function mapRunStatus(runStatus: string | undefined): "pending" | "processing" | "ready" | "error" {
   switch (runStatus) {
@@ -17,10 +17,9 @@ function mapRunStatus(runStatus: string | undefined): "pending" | "processing" |
       return "pending";
     case "RUNNING":
       return "processing";
-    case "SUCCESS":
+    case "DONE":
       return "ready";
     case "FAIL":
-    case "CANCEL":
       return "error";
     default:
       return "pending";
@@ -195,7 +194,15 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
 
       const statusPayload = await this.request<
         RagFlowResponse<{
-          docs: Array<{ id: string; name?: string; run?: { status: string; message?: string } }>;
+          docs: Array<{
+            id: string;
+            name?: string;
+            run?: string;
+            progress?: number;
+            progress_msg?: string;
+            chunk_count?: number;
+            token_count?: number;
+          }>;
         }>
       >(`/api/v1/datasets/${datasetId}/documents?page=1&page_size=50`);
 
@@ -206,9 +213,21 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         throw new Error("document not found during polling");
       }
 
-      const runStatus = targetDoc.run?.status;
+      const targetRunStatus = targetDoc.run;
+      const targetRunMessage = targetDoc.progress_msg;
 
-      if (runStatus === "SUCCESS") {
+      // 解析状态异常时，进度与分块/Token 计数是定位 RagFlow 解析卡住的关键上下文。
+      console.log("[ragflow] polling document parse status", {
+        datasetId,
+        documentId,
+        run: targetRunStatus,
+        progress: targetDoc.progress,
+        progress_msg: targetRunMessage,
+        chunk_count: targetDoc.chunk_count,
+        token_count: targetDoc.token_count,
+      });
+
+      if (targetRunStatus === "DONE") {
         return {
           remoteId: documentId,
           knowledgeBaseRemoteId: datasetId,
@@ -220,11 +239,20 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         };
       }
 
-      if (runStatus === "FAIL" || runStatus === "CANCEL") {
-        throw new Error(targetDoc.run?.message ?? `parse ${runStatus}`);
+      if (targetRunStatus === "FAIL") {
+        console.error("[ragflow] document parse failed", {
+          datasetId,
+          documentId,
+          run: targetRunStatus,
+          progress: targetDoc.progress,
+          progress_msg: targetRunMessage,
+          chunk_count: targetDoc.chunk_count,
+          token_count: targetDoc.token_count,
+        });
+        throw new Error(targetRunMessage ?? `parse ${targetRunStatus}`);
       }
 
-      // RUNNING / UNSTART 继续轮询
+      // RUNNING / UNSTART 继续轮询，未知状态也保守等待，避免 RagFlow 新状态导致误判失败。
     }
   }
 
@@ -248,7 +276,8 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
             name?: string;
             type?: string;
             source_url?: string;
-            run?: { status: string; message?: string };
+            run?: string;
+            progress_msg?: string;
           }>;
         }>
       >(`/api/v1/datasets/${datasetId}/documents?page=${page}&page_size=${pageSize}`);
@@ -265,9 +294,9 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
           knowledgeBaseRemoteId: datasetId,
           sourceName: doc.name ?? doc.id,
           sourceType: doc.type ?? "unknown",
-          status: mapRunStatus(doc.run?.status),
+          status: mapRunStatus(doc.run),
           source: doc.source_url ?? null,
-          lastError: doc.run?.message ?? null,
+          lastError: doc.progress_msg ?? null,
         });
       }
 
