@@ -351,5 +351,6 @@
     "skills": "Loaded Skills",
     "skillsHint": "Type / to open skill menu",
     "noSkills": "No skills bound"
-  }
+  },
+  "orgSwitchFailed": "Failed to switch organization"
 }

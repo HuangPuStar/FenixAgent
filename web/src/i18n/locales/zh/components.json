@@ -351,5 +351,6 @@
     "skills": "已加载 Skills",
     "skillsHint": "输入 / 打开 Skill 弹窗",
     "noSkills": "暂无绑定 Skills"
-  }
+  },
+  "orgSwitchFailed": "切换组织失败"
 }
