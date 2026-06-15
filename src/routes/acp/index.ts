@@ -1,9 +1,10 @@
 import { log, error as logError } from "@fenix/logger";
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
-import { auth } from "../../auth/better-auth";
 import { validateEnv } from "../../env";
-import { authGuardPlugin } from "../../plugins/auth";
+import { AppError } from "../../errors";
+import type { RequestAuthResult } from "../../plugins/auth";
+import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import {
   AcpAgentListResponseSchema,
@@ -187,15 +188,24 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       (ws.data as any).__relayWsId = relayWsId;
 
-      // Authenticate via better-auth session
-      const session = await auth.api.getSession({ headers: ws.data.request.headers });
-      if (!session?.user) {
+      let authResult: RequestAuthResult | null = null;
+      try {
+        authResult = await authenticateRequest(ws.data.request);
+      } catch (err) {
+        if (err instanceof AppError && err.code === "RATE_LIMITED") {
+          log("[ACP-Relay] Upgrade rejected: API key rate limited");
+          adaptWs(ws).close(4008, "rate_limited");
+          return;
+        }
+        throw err;
+      }
+      if (!authResult?.user) {
         log("[ACP-Relay] Upgrade rejected: not authenticated");
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
 
-      const userId = session.user.id;
+      const userId = authResult.user.id;
       const agentId = ws.data.params.agentId;
       const sessionId = ws.data.query?.sessionId as string | undefined;
 
@@ -207,8 +217,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         return;
       }
       // 验证团队归属：env.organizationId 或 env.userId 必须匹配
-      const { loadOrgContext } = await import("../../services/org-context");
-      const authCtx = await loadOrgContext({ id: userId }, ws.data.request);
+      const authCtx = authResult.authContext;
       if (!authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
         log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not owned by user ${userId}'s team`);
         adaptWs(ws).close(4003, "unauthorized");

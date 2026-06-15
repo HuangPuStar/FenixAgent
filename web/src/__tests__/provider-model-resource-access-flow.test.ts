@@ -78,14 +78,7 @@ describe("provider model resource access flow", () => {
 
   // 内部 provider 公开开关复用原 set API payload，并携带 publicReadable
   test("builds public readable provider set payload", () => {
-    expect(
-      buildProviderPublicReadablePayload(
-        { apiKey: "{env:RCS_SECRET_OPENAI}", baseURL: "https://api.example.com" },
-        true,
-      ),
-    ).toEqual({
-      apiKey: "{env:RCS_SECRET_OPENAI}",
-      baseURL: "https://api.example.com",
+    expect(buildProviderPublicReadablePayload(true)).toEqual({
       publicReadable: true,
     });
   });

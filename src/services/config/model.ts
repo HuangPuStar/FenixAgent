@@ -52,13 +52,15 @@ export async function addModel(
 ) {
   const providerRow = await getWritableProvider(ctx, providerId);
   const fields = buildModelValues(data);
-  await db
+  const [row] = await db
     .insert(model)
     .values({ organizationId: providerRow.organizationId, providerId, modelId: data.modelId, ...fields })
     .onConflictDoUpdate({
       target: [model.providerId, model.modelId],
       set: fields,
-    });
+    })
+    .returning({ id: model.id });
+  return row?.id ?? null;
 }
 
 export async function updateModel(
@@ -95,6 +97,36 @@ export async function updateModel(
   return result.length > 0;
 }
 
+export async function updateModelById(
+  ctx: AuthContext,
+  providerId: string,
+  id: string,
+  data: {
+    displayName?: string;
+    modalities?: ModelModalities | null;
+    limitConfig?: ModelLimitConfig | null;
+    cost?: ModelCostConfig | null;
+    options?: ModelOptions | null;
+  },
+): Promise<boolean> {
+  const providerRow = await getWritableProvider(ctx, providerId);
+  const set: Partial<typeof model.$inferInsert> = { updatedAt: new Date() };
+  if (data.displayName !== undefined) set.displayName = data.displayName;
+  if (data.modalities !== undefined) set.modalities = data.modalities;
+  if (data.limitConfig !== undefined) set.limitConfig = data.limitConfig;
+  if (data.cost !== undefined) set.cost = data.cost;
+  if (data.options !== undefined) set.options = data.options;
+
+  const result = await db
+    .update(model)
+    .set(set)
+    .where(
+      and(eq(model.organizationId, providerRow.organizationId), eq(model.providerId, providerId), eq(model.id, id)),
+    )
+    .returning({ id: model.id });
+  return result.length > 0;
+}
+
 export async function removeModel(ctx: AuthContext, providerId: string, modelId: string): Promise<boolean> {
   const providerRow = await getWritableProvider(ctx, providerId);
   const result = await db
@@ -105,6 +137,17 @@ export async function removeModel(ctx: AuthContext, providerId: string, modelId:
         eq(model.providerId, providerId),
         eq(model.modelId, modelId),
       ),
+    )
+    .returning({ id: model.id });
+  return result.length > 0;
+}
+
+export async function removeModelById(ctx: AuthContext, providerId: string, id: string): Promise<boolean> {
+  const providerRow = await getWritableProvider(ctx, providerId);
+  const result = await db
+    .delete(model)
+    .where(
+      and(eq(model.organizationId, providerRow.organizationId), eq(model.providerId, providerId), eq(model.id, id)),
     )
     .returning({ id: model.id });
   return result.length > 0;

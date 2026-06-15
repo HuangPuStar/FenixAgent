@@ -47,7 +47,12 @@ interface OrgApi {
   }) => Promise<void>;
   listApiKeys: (opts: { headers: Headers }) => Promise<unknown>;
   createApiKey: (opts: {
-    body: { name: string; prefix: string; expiresIn: number | null; metadata: unknown };
+    body: {
+      name: string;
+      prefix: string;
+      expiresIn: number | null;
+      metadata: unknown;
+    };
     headers: Headers;
   }) => Promise<unknown>;
   deleteApiKey: (opts: { body: { keyId: string }; headers: Headers }) => Promise<void>;

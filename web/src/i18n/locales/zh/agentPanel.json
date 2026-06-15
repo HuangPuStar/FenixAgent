@@ -6,6 +6,7 @@
   "console": "控制台",
   "overview": "概览",
   "workflow": "智能体编排",
+  "agentManagement": "智能体管理",
   "models": "模型",
   "sessions": "会话",
   "config": "配置",

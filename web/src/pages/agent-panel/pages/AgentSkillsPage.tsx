@@ -1,4 +1,4 @@
-import { Bot, Search, Share2, Sparkles } from "lucide-react";
+import { ChevronDown, Search, Share2, Sparkles, Upload } from "lucide-react";
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -6,6 +6,12 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -30,7 +36,6 @@ import type {
   SkillUploadConflictStrategy,
   UploadSkillSummary,
 } from "../../../types/config";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 type SkillInfo = { id: string; name: string; description: string; resourceAccess?: ResourceAccess };
 type CreateMode = "text" | "upload";
@@ -86,7 +91,6 @@ const directoryInputProps = { webkitdirectory: "", directory: "" } as Record<str
 export function AgentSkillsPage() {
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
-  const { t: tAgentPanel } = useTranslation(NS.AGENT_PANEL);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -309,12 +313,15 @@ export function AgentSkillsPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
-        <div className="flex-1 overflow-y-auto p-6 space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
+      <div className="flex min-h-0 flex-1 flex-col bg-[#f4f7fb]">
+        <div className="border-b border-[#e7edf5] bg-white px-6 py-4">
+          <Skeleton className="h-7 w-28 rounded-md" />
+          <Skeleton className="mt-2 h-4 w-64 rounded-md" />
+        </div>
+        <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-6 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+            <Skeleton key={i} className="h-36 w-full rounded-xl" />
           ))}
         </div>
       </div>
@@ -329,45 +336,53 @@ export function AgentSkillsPage() {
     const manageable = skill.resourceAccess?.manageable === true;
 
     return (
-      <div className="group relative rounded-xl border border-border-light bg-surface-1 p-4 transition-all hover:border-border-active hover:shadow-md flex flex-col min-h-[140px]">
+      <div className="group relative flex min-h-[138px] flex-col rounded-xl border border-[#e5ebf3] bg-white p-4 shadow-[0_6px_18px_rgba(38,65,103,0.04)] transition-all hover:-translate-y-0.5 hover:border-[#cddceb] hover:shadow-[0_14px_30px_rgba(38,65,103,0.08)]">
         {writable ? (
-          <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
+          <div className="absolute right-3 bottom-3 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <Button size="xs" variant="ghost" className="h-6 px-2 text-[#69788f]" onClick={() => handleOpenEdit(skill)}>
               {t("btn.edit")}
             </Button>
-            <Button size="xs" variant="destructive" onClick={() => handleDeleteClick(skill)}>
+            <Button
+              size="xs"
+              variant="ghost"
+              className="h-6 px-2 text-[#e5484d] hover:bg-[#fff0f0]"
+              onClick={() => handleDeleteClick(skill)}
+            >
               {t("btn.delete")}
             </Button>
           </div>
         ) : (
-          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button size="xs" variant="outline" onClick={() => handleOpenEdit(skill)}>
+          <div className="absolute right-3 bottom-3 opacity-0 transition-opacity group-hover:opacity-100">
+            <Button size="xs" variant="ghost" className="h-6 px-2 text-[#69788f]" onClick={() => handleOpenEdit(skill)}>
               {t("btn.view")}
             </Button>
           </div>
         )}
         {/* 内容区域：图标+名称+描述，可弹性伸缩 */}
-        <div className="flex-1 min-w-0 pr-20">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {showOrgPrefix ? (
-              <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400 shrink-0">
-                <Share2 className="w-3.5 h-3.5" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#eef5ff] text-[#477bff]">
+                <Share2 className="h-3.5 w-3.5" />
               </div>
             ) : (
-              <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand-subtle text-brand shrink-0">
-                <Sparkles className="w-3.5 h-3.5" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#f0f5ff] text-[#6b6ff7]">
+                <Sparkles className="h-3.5 w-3.5" />
               </div>
             )}
-            <span className="font-mono text-sm font-semibold text-text-bright truncate">
+            <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold text-[#1a2944]">
               {showOrgPrefix ? getSkillOptionLabel(skill) : skill.name}
             </span>
+            <span className="min-w-[34px] shrink-0 whitespace-nowrap rounded-full bg-[#eef3f8] px-1.5 py-1 text-center text-[10px] font-medium leading-none text-[#8a98ab] [word-break:keep-all] [writing-mode:horizontal-tb]">
+              {showOrgPrefix ? "共享" : "私有"}
+            </span>
           </div>
-          <p className="text-xs text-text-secondary line-clamp-3 mt-2 leading-relaxed">{skill.description || "—"}</p>
+          <p className="mt-3 line-clamp-3 text-[12px] leading-5 text-[#718198]">{skill.description || "—"}</p>
         </div>
         {/* 底部固定区域：公开开关 / 只读标签，始终贴底 */}
-        <div className="mt-auto pt-3">
+        <div className="mt-auto pr-24 pt-3">
           {manageable && (
-            <label className="flex items-center gap-2 text-xs text-text-muted">
+            <label className="flex items-center gap-2 text-[12px] text-[#8a98ab]">
               <Switch
                 checked={Boolean(skill.resourceAccess?.publicReadable)}
                 onCheckedChange={() => void handleToggleSharing(skill)}
@@ -375,7 +390,7 @@ export function AgentSkillsPage() {
               {tComponents("resource.public")}
             </label>
           )}
-          {!writable && <p className="text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>}
+          {!writable && <p className="text-[12px] font-medium text-[#8a98ab]">{tComponents("resource.readOnly")}</p>}
         </div>
       </div>
     );
@@ -383,62 +398,79 @@ export function AgentSkillsPage() {
 
   // 区域标题组件
   const sectionTitle = (label: string, count: number) => (
-    <div className="flex items-center gap-2 text-sm font-medium text-text-secondary border-b border-border-subtle pb-2 mb-3">
+    <div className="mb-3 flex items-center gap-2 border-b border-[#d6dde8] pb-2 text-[13px] font-medium text-[#6b788e]">
       <span>{label}</span>
-      <span className="inline-flex items-center justify-center rounded-full bg-surface-2 px-2 py-0.5 text-xs text-text-muted min-w-[20px] text-center">
+      <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-[#e9eff7] px-2 py-0.5 text-center text-[11px] text-[#7b899d]">
         {count}
       </span>
     </div>
   );
 
   return (
-    <div className="flex flex-1 min-h-0">
-      <div className="flex flex-col flex-1 min-h-0">
-        <AgentPageHeader
-          title={t("title")}
-          subtitle={t("subtitle")}
-          actions={
-            <div className="flex gap-2">
-              <Button
-                variant={chatOpen ? "default" : "outline"}
-                size="icon"
-                onClick={() => setChatOpen((prev) => !prev)}
-                title={tAgentPanel("metaAgentToggle")}
-              >
-                <Bot className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" onClick={() => handleOpenCreate("upload")}>
-                {t("btn.uploadSkill")}
-              </Button>
-              <Button onClick={() => handleOpenCreate("text")}>{t("btn.createSkill")}</Button>
-            </div>
-          }
-        />
+    <div className="flex min-h-0 flex-1 bg-[#f4f7fb]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <div className="mb-7 flex items-center justify-between gap-4">
+          <h1 className="text-[28px] font-bold tracking-tight text-[#1474ff]">{t("title")}</h1>
+        </div>
 
         {/* 共享搜索框：同时过滤两个区域 */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-border-subtle">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
+        <div className="mb-6 flex items-center gap-5">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-[#98a8bd]" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("search")}
-              className="pl-9 h-8 text-sm"
+              className="h-11 w-full rounded-lg border-[#dce5ef] bg-white px-11 text-[14px] text-[#1a2944] shadow-sm transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
             />
           </div>
+          <Button
+            variant="outline"
+            className="h-11 shrink-0 gap-2 rounded-lg px-4 text-[14px] font-semibold"
+            onClick={() => handleOpenCreate("upload")}
+          >
+            <Upload className="h-4 w-4" />
+            {t("btn.uploadSkill")}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="h-11 shrink-0 gap-2 rounded-lg bg-[#6965f6] px-6 text-[14px] font-semibold text-white shadow-[0_10px_20px_rgba(105,101,246,0.24)] transition hover:bg-[#5d59df]">
+                {t("btn.createSkill")}
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              sideOffset={8}
+              className="w-[180px] rounded-none border-[#e5e7eb] bg-white p-0 text-[#374151] shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
+            >
+              <DropdownMenuItem
+                className="h-14 justify-center rounded-none text-[14px] text-[#3f4655] focus:bg-[#f7f9fc] focus:text-[#1677ff]"
+                onClick={() => setChatOpen(true)}
+              >
+                对话创建
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="h-14 justify-center rounded-none border-t border-[#eef1f5] text-[14px] text-[#3f4655] focus:bg-[#f7f9fc] focus:text-[#1677ff]"
+                onClick={() => handleOpenCreate("text")}
+              >
+                markdown创建
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* 两区域滚动容器 */}
-        <div className="flex-1 overflow-y-auto">
+        <div>
           {/* 私有技能 */}
-          <section className="px-6 pt-4">
+          <section>
             {sectionTitle(t("section.private"), privateSkills.length)}
             {privateSkills.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-text-muted">
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#d8e2ef] bg-white/70 py-8 text-[#8a98ab]">
                 <p className="text-sm">{t("section.privateEmpty")}</p>
               </div>
             ) : (
-              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {privateSkills.map((skill) => (
                   <div key={getSkillKey(skill)}>{renderSkillCard(skill, false)}</div>
                 ))}
@@ -447,14 +479,14 @@ export function AgentSkillsPage() {
           </section>
 
           {/* 共享技能 */}
-          <section className="px-6 pt-6 pb-4">
+          <section className="pt-6 pb-4">
             {sectionTitle(t("section.shared"), sharedSkills.length)}
             {sharedSkills.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-text-muted">
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#d8e2ef] bg-white/70 py-8 text-[#8a98ab]">
                 <p className="text-sm">{t("section.sharedEmpty")}</p>
               </div>
             ) : (
-              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {sharedSkills.map((skill) => (
                   <div key={getSkillKey(skill)}>{renderSkillCard(skill, true)}</div>
                 ))}

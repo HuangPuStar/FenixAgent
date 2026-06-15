@@ -170,6 +170,26 @@ export async function getSkill(ctx: AuthContext, nameOrResourceKey: string): Pro
   const detail = await _deps.skillFs.readSkillDetailFromMd(contentPath);
 
   return {
+    id: meta.id,
+    name: meta.name,
+    description: meta.description ?? detail?.metadata.description ?? "",
+    content: detail?.content ?? "",
+    enabled: true,
+    path: contentPath,
+    metadata: stripNameAndDescription(detail?.metadata ?? {}),
+    resourceAccess: meta.resourceAccess,
+  };
+}
+
+export async function getSkillById(ctx: AuthContext, id: string): Promise<SkillDetail | null> {
+  const meta = await _deps.configPg.getSkillById(ctx, id);
+  if (!meta) return null;
+
+  const contentPath = skillContentPath(resolveSkillSourceOrganizationId(meta, ctx.organizationId), meta.name);
+  const detail = await _deps.skillFs.readSkillDetailFromMd(contentPath);
+
+  return {
+    id: meta.id,
     name: meta.name,
     description: meta.description ?? detail?.metadata.description ?? "",
     content: detail?.content ?? "",
@@ -263,6 +283,26 @@ export async function deleteSkill(ctx: AuthContext, name: string): Promise<boole
   });
   await _deps.skillFs.deleteSkillArchive(getGlobalSkillsDir(), sourceOrganizationId, safeName).catch((e) => {
     logError(`[Skill] Failed to cleanup skill archive ${safeName}:`, e);
+  });
+  return true;
+}
+
+export async function deleteSkillById(ctx: AuthContext, id: string): Promise<boolean> {
+  const meta = await _deps.configPg.getSkillById(ctx, id);
+  if (!meta) return false;
+  if (meta.resourceAccess?.writable === false) {
+    throw new AppError("External skill is read-only", "FORBIDDEN", 403);
+  }
+
+  const deleted = await _deps.configPg.deleteSkillById(ctx, id);
+  if (!deleted) return false;
+  const sourceOrganizationId = resolveSkillSourceOrganizationId(meta, ctx.organizationId);
+  const skillDir = skillSourceDir(sourceOrganizationId, meta.name);
+  await _deps.skillFs.deleteSkillDir(skillDir).catch((e) => {
+    logError(`[Skill] Failed to cleanup skill directory ${skillDir}:`, e);
+  });
+  await _deps.skillFs.deleteSkillArchive(getGlobalSkillsDir(), sourceOrganizationId, meta.name).catch((e) => {
+    logError(`[Skill] Failed to cleanup skill archive ${meta.name}:`, e);
   });
   return true;
 }

@@ -60,6 +60,7 @@ interface AgentTreeNode {
 
 interface AgentSidebarTreeProps {
   selectedInstanceId: string | null;
+  selectedEnvironmentId?: string | null;
   onSelectInstance: (instanceId: string, envId: string, sessionId: string | null) => void;
   onCreateAgent?: () => void;
   onEditAgent?: (agentName: string) => void;
@@ -67,6 +68,7 @@ interface AgentSidebarTreeProps {
 
 export function AgentSidebarTree({
   selectedInstanceId,
+  selectedEnvironmentId = null,
   onSelectInstance,
   onCreateAgent,
   onEditAgent,
@@ -442,7 +444,8 @@ export function AgentSidebarTree({
         const collapsed = !expandedAgents[agent.id];
         const isEntering = enteringAgentId === agent.id;
         const runningInstances = getRunningInstances(node);
-        const isAgentSelected = instances.some((inst) => inst.id === selectedInstanceId);
+        const isAgentSelected =
+          node.environment?.id === selectedEnvironmentId || instances.some((inst) => inst.id === selectedInstanceId);
         const isRestarting = runningInstances.some((inst) => restartingIds.has(inst.id));
         const writable = isAgentWritable(agent);
         const displayName = getAgentDisplayName(agent);

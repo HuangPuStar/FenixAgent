@@ -65,13 +65,6 @@ async function handleGet(ctx: AuthContext, name: string) {
     baseURL: p.baseUrl ?? null,
     resourceAccess: p.resourceAccess,
     resourceKey: p.resourceAccess?.resourceKey,
-    options: {
-      ...(p.baseUrl ? { baseURL: p.baseUrl } : {}),
-      ...(p.apiKey ? { apiKey: p.apiKey } : {}),
-      ...(typeof p.extraOptions === "object" && p.extraOptions !== null
-        ? (p.extraOptions as Record<string, unknown>)
-        : {}),
-    },
     models,
   });
 }

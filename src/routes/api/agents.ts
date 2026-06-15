@@ -182,7 +182,7 @@ const app = new Elysia({ name: "api-agents", prefix: "/api/agents" }).use(authGu
 });
 
 app.get(
-  "/",
+  "",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, query, error }: any) => {
     const authCtx = store.authContext as AuthContext;
@@ -254,7 +254,7 @@ app.get(
 );
 
 app.post(
-  "/",
+  "",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext as AuthContext;

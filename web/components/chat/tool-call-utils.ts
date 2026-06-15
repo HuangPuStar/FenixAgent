@@ -217,7 +217,6 @@ function formatOutput(tool: ToolCallData): string {
 /** 从 rawInput 结构推断工具类型（当 title 无法匹配时兜底使用） */
 function inferToolTypeFromInput(
   input: Record<string, unknown> | undefined,
-  _lower: string,
 ): "search" | "read" | "write" | "edit" | "skill" | null {
   if (!input) return null;
   // 有 pattern → search（grep/glob 无论有无 include 都是搜索）

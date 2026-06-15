@@ -27,6 +27,7 @@ import { Route as AgentPanelHomeRouteImport } from "./routes/agent/_panel/home"
 import { Route as AgentPanelDashboardRouteImport } from "./routes/agent/_panel/dashboard"
 import { Route as AgentPanelChannelsRouteImport } from "./routes/agent/_panel/channels"
 import { Route as AgentPanelApikeysRouteImport } from "./routes/agent/_panel/apikeys"
+import { Route as AgentPanelAgentsRouteImport } from "./routes/agent/_panel/agents"
 import { Route as AgentAgentIdSessionIdRouteImport } from "./routes/agent/$agentId_.$sessionId"
 import { Route as AgentPanelChatAgentIdRouteImport } from "./routes/agent/_panel/chat.$agentId"
 import { Route as AgentPanelWorkflowIdVersionsRouteImport } from "./routes/agent/_panel/workflow_.$id.versions"
@@ -124,6 +125,11 @@ const AgentPanelApikeysRoute = AgentPanelApikeysRouteImport.update({
   path: "/apikeys",
   getParentRoute: () => AgentPanelRoute,
 } as any)
+const AgentPanelAgentsRoute = AgentPanelAgentsRouteImport.update({
+  id: "/agents",
+  path: "/agents",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
 const AgentAgentIdSessionIdRoute = AgentAgentIdSessionIdRouteImport.update({
   id: "/agent/$agentId_/$sessionId",
   path: "/agent/$agentId/$sessionId",
@@ -159,6 +165,7 @@ export interface FileRoutesByFullPath {
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
+  "/agent/agents": typeof AgentPanelAgentsRoute
   "/agent/apikeys": typeof AgentPanelApikeysRoute
   "/agent/channels": typeof AgentPanelChannelsRoute
   "/agent/dashboard": typeof AgentPanelDashboardRoute
@@ -183,6 +190,7 @@ export interface FileRoutesByTo {
   "/login": typeof LoginRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
+  "/agent/agents": typeof AgentPanelAgentsRoute
   "/agent/apikeys": typeof AgentPanelApikeysRoute
   "/agent/channels": typeof AgentPanelChannelsRoute
   "/agent/dashboard": typeof AgentPanelDashboardRoute
@@ -209,6 +217,7 @@ export interface FileRoutesById {
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
   "/agent/$agentId_/$sessionId": typeof AgentAgentIdSessionIdRoute
+  "/agent/_panel/agents": typeof AgentPanelAgentsRoute
   "/agent/_panel/apikeys": typeof AgentPanelApikeysRoute
   "/agent/_panel/channels": typeof AgentPanelChannelsRoute
   "/agent/_panel/dashboard": typeof AgentPanelDashboardRoute
@@ -236,6 +245,7 @@ export interface FileRouteTypes {
     | "/agent/$agentId"
     | "/agent"
     | "/agent/$agentId/$sessionId"
+    | "/agent/agents"
     | "/agent/apikeys"
     | "/agent/channels"
     | "/agent/dashboard"
@@ -260,6 +270,7 @@ export interface FileRouteTypes {
     | "/login"
     | "/agent/$agentId"
     | "/agent/$agentId/$sessionId"
+    | "/agent/agents"
     | "/agent/apikeys"
     | "/agent/channels"
     | "/agent/dashboard"
@@ -285,6 +296,7 @@ export interface FileRouteTypes {
     | "/agent/$agentId"
     | "/agent/_panel"
     | "/agent/$agentId_/$sessionId"
+    | "/agent/_panel/agents"
     | "/agent/_panel/apikeys"
     | "/agent/_panel/channels"
     | "/agent/_panel/dashboard"
@@ -441,6 +453,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AgentPanelApikeysRouteImport
       parentRoute: typeof AgentPanelRoute
     }
+    "/agent/_panel/agents": {
+      id: "/agent/_panel/agents"
+      path: "/agents"
+      fullPath: "/agent/agents"
+      preLoaderRoute: typeof AgentPanelAgentsRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
     "/agent/$agentId_/$sessionId": {
       id: "/agent/$agentId_/$sessionId"
       path: "/agent/$agentId/$sessionId"
@@ -480,6 +499,7 @@ declare module "@tanstack/react-router" {
 }
 
 interface AgentPanelRouteChildren {
+  AgentPanelAgentsRoute: typeof AgentPanelAgentsRoute
   AgentPanelApikeysRoute: typeof AgentPanelApikeysRoute
   AgentPanelChannelsRoute: typeof AgentPanelChannelsRoute
   AgentPanelDashboardRoute: typeof AgentPanelDashboardRoute
@@ -501,6 +521,7 @@ interface AgentPanelRouteChildren {
 }
 
 const AgentPanelRouteChildren: AgentPanelRouteChildren = {
+  AgentPanelAgentsRoute: AgentPanelAgentsRoute,
   AgentPanelApikeysRoute: AgentPanelApikeysRoute,
   AgentPanelChannelsRoute: AgentPanelChannelsRoute,
   AgentPanelDashboardRoute: AgentPanelDashboardRoute,

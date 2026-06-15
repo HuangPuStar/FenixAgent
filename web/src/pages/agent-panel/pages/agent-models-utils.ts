@@ -27,9 +27,6 @@ export function canWriteProvider(provider: ProviderInfo): boolean {
   return provider.resourceAccess?.writable !== false;
 }
 
-export function buildProviderPublicReadablePayload(
-  options: Record<string, unknown>,
-  publicReadable: boolean,
-): Record<string, unknown> {
-  return { ...options, publicReadable };
+export function buildProviderPublicReadablePayload(publicReadable: boolean): Record<string, unknown> {
+  return { publicReadable };
 }

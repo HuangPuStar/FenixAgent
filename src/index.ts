@@ -21,7 +21,11 @@ import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
 import apiAgentsRoutes from "./routes/api/agents";
+import apiInstanceRoutes from "./routes/api/instances";
+import apiMcpRoutes from "./routes/api/mcp";
+import apiModelsRoutes from "./routes/api/models";
 import apiSkillsRoutes from "./routes/api/skills";
+import apiWorkspaceRoutes from "./routes/api/workspaces";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";
 import sessionIngress from "./routes/v2/session-ingress";
@@ -49,12 +53,28 @@ const WEB_OPENAPI_SPEC_PATH = `${WEB_OPENAPI_PATH}/json`;
 
 const EXTERNAL_OPENAPI_TAGS = [
   {
-    name: "External AgentConfig",
-    description: "面向外部系统的 Agent 配置 CRUD 接口。",
+    name: "External Model",
+    description: "面向外部系统的 Provider 与 Model 配置管理接口。",
   },
   {
     name: "External Skill",
     description: "面向外部系统的 Skill 管理接口。",
+  },
+  {
+    name: "External MCP",
+    description: "面向外部系统的 MCP Server 配置管理接口。",
+  },
+  {
+    name: "External AgentConfig",
+    description: "面向外部系统的 Agent 配置 CRUD 接口。",
+  },
+  {
+    name: "External Instance",
+    description: "面向外部系统的 Agent 实例连接接口。",
+  },
+  {
+    name: "External Workspace",
+    description: "面向外部系统的 Environment Workspace 文件接口。",
   },
 ];
 
@@ -330,6 +350,10 @@ const app = new Elysia()
   // External API routes
   .use(apiAgentsRoutes)
   .use(apiSkillsRoutes)
+  .use(apiModelsRoutes)
+  .use(apiMcpRoutes)
+  .use(apiInstanceRoutes)
+  .use(apiWorkspaceRoutes)
   // Workflow proxy (not under /web prefix)
   .use(workflowStaticApp)
   // MCP routes

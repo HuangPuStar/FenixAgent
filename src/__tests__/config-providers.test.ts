@@ -292,6 +292,7 @@ describe("Providers Config Route", () => {
     expect(json.data.keyHint).toBe("***1234");
     expect(json.data.models).toHaveLength(1);
     expect(json.data.models[0].id).toBe("qwen3.6-plus");
+    expect("options" in json.data).toBe(false);
   });
 
   test("get action — 短 key 返回固定 7 位掩码", async () => {

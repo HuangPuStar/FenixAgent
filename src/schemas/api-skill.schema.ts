@@ -19,31 +19,49 @@ export const ApiSkillListQuerySchema = z
 
 /**
  * Skill 路径参数。
- * 对外统一使用 Skill 名称作为标识符（组织内唯一）。
+ * 对外统一使用 Skill 唯一 ID 作为资源标识符。
  */
-export const ApiSkillNameParamsSchema = z
+export const ApiSkillIdParamsSchema = z
   .object({
-    name: z.string().min(1).describe("Skill 名称。"),
+    id: z.string().min(1).describe("Skill 唯一 ID。"),
   })
   .describe("Skill 路径参数。");
 
 /**
- * 创建 Skill 请求体。
+ * Skill 上传 manifest 条目。
+ */
+export const ApiSkillUploadManifestEntrySchema = z
+  .object({
+    skillName: z.string().min(1).describe("待导入的 Skill 名称。一次请求内所有条目必须属于同一个 Skill。"),
+    relativePath: z.string().min(1).describe("Skill 目录内文件相对路径，例如 `SKILL.md` 或 `scripts/tool.sh`。"),
+  })
+  .describe("Skill 上传 manifest 条目。");
+
+/**
+ * 创建 Skill 的 multipart/form-data 表单。
+ * 与 `/web/config/skills/upload` 采用相同上传协议，但对外接口仅允许单次导入一个 Skill。
  */
 export const ApiSkillCreateBodySchema = z
   .object({
-    name: z.string().min(1).max(64).describe("Skill 名称，组织内唯一。"),
-    description: z.string().max(500).nullable().optional().describe("Skill 描述；传 null 表示清空。"),
-    content: z.string().min(1).describe("SKILL.md 正文内容。"),
-    metadata: z.record(z.string(), z.string()).nullable().optional().describe("额外元数据；传 null 表示清空。"),
+    manifest: z
+      .string()
+      .describe(
+        "上传 manifest 的 JSON 字符串。其内容应为 `ApiSkillUploadManifestEntry` 数组，并且一次请求内只允许包含同一个 Skill 的文件条目。",
+      ),
+    files: z.array(z.unknown()).describe("与 manifest 条目顺序一一对应的上传文件列表。"),
+    overwrite: z
+      .enum(["true", "false"])
+      .optional()
+      .describe("是否允许覆盖同名 Skill。传 `true` 表示覆盖；缺省或传 `false` 时同名冲突返回 409。"),
   })
-  .describe("创建 Skill 请求体。");
+  .describe("创建 Skill 的 multipart/form-data 表单。");
 
 /**
  * 对外 Skill 列表项。
  */
 export const ApiSkillListItemSchema = z
   .object({
+    id: z.string().describe("Skill 唯一 ID。"),
     name: z.string().describe("Skill 名称。"),
     description: z.string().nullable().describe("Skill 描述。"),
     resourceAccess: AgentResourceAccessSchema.optional().describe("资源访问控制信息。"),
@@ -64,9 +82,12 @@ export const ApiSkillListResponseSchema = z
 
 /**
  * 对外 Skill 详情。
+ * metadata 来源于 SKILL.md frontmatter 中除 name / description 外的其余字段，
+ * 当前为保持兼容统一收敛为 string map。
  */
 export const ApiSkillDetailSchema = z
   .object({
+    id: z.string().describe("Skill 唯一 ID。"),
     name: z.string().describe("Skill 名称。"),
     description: z.string().nullable().describe("Skill 描述。"),
     content: z.string().describe("SKILL.md 正文内容。"),
@@ -80,6 +101,7 @@ export const ApiSkillDetailSchema = z
  */
 export const ApiSkillDeleteResponseSchema = z
   .object({
+    id: z.string().describe("已删除的 Skill 唯一 ID。"),
     name: z.string().describe("已删除的 Skill 名称。"),
     deleted: z.literal(true).describe("删除结果。"),
   })
@@ -88,5 +110,5 @@ export const ApiSkillDeleteResponseSchema = z
 // ── 类型导出 ──
 
 export type ApiSkillListQuery = z.infer<typeof ApiSkillListQuerySchema>;
-export type ApiSkillNameParams = z.infer<typeof ApiSkillNameParamsSchema>;
+export type ApiSkillIdParams = z.infer<typeof ApiSkillIdParamsSchema>;
 export type ApiSkillCreateBody = z.infer<typeof ApiSkillCreateBodySchema>;

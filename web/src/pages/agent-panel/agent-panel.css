@@ -64,7 +64,7 @@
   transition:
     width 300ms cubic-bezier(0.4, 0, 0.2, 1),
     min-width 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
   z-index: 10;
   position: relative;
@@ -127,21 +127,41 @@
 .agent-sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 20px 16px;
+  justify-content: flex-start;
+  padding: 14px 18px;
   border-color: rgba(255, 255, 255, 0.1);
   background: transparent;
-  min-height: 0;
+  min-height: 72px;
   text-decoration: none;
 }
 
-.agent-sidebar-logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.22),
-    0 8px 24px rgba(15, 107, 255, 0.3);
+.fenix-sidebar-logo {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.fenix-sidebar-logo-mark {
+  display: block;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  object-fit: contain;
+  object-position: center;
+  filter: drop-shadow(0 8px 18px rgba(3, 32, 110, 0.28));
+}
+
+.fenix-sidebar-logo-text {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-shadow: 0 5px 18px rgba(3, 32, 110, 0.28);
+  white-space: nowrap;
 }
 
 .agent-sidebar-brand-text {
@@ -156,6 +176,7 @@
   flex: 0 1 auto;
   max-height: min(55dvh, 560px);
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
@@ -253,6 +274,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px 0 12px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
@@ -375,47 +397,198 @@
 
 .agent-sidebar-footer {
   flex-shrink: 0;
-  background: rgba(7, 22, 61, 0.16);
+  background: rgba(7, 22, 61, 0.08);
 }
 
-.agent-sidebar-user-button:hover {
-  background: rgba(255, 255, 255, 0.08);
+.agent-sidebar-user-panel {
+  overflow: visible;
+}
+
+.agent-sidebar-user,
+.agent-sidebar-org-row {
+  width: 100%;
+}
+
+.agent-sidebar-user-button,
+.agent-sidebar-org-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 0;
+  color: #0c1a3a;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.agent-sidebar-user-button {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(223, 235, 250, 0.72);
+}
+
+.agent-sidebar-org-row {
+  padding: 10px 14px;
+  background: rgba(239, 248, 255, 0.9);
+  color: rgba(12, 26, 58, 0.68);
+}
+
+.agent-sidebar-user-button:hover,
+.agent-sidebar-org-row:hover {
+  background: rgba(235, 246, 255, 0.98);
 }
 
 .agent-sidebar-avatar {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #1f7bff, #4aa3ff);
+  color: #fff;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.18),
     0 6px 16px rgba(15, 107, 255, 0.25);
 }
 
-.agent-sidebar-user-email {
-  color: rgba(255, 255, 255, 0.62);
+.agent-sidebar-user-name {
+  flex: 1;
+  min-width: 0;
+  color: #17233d;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.agent-sidebar-user-chevron,
+.agent-sidebar-org-chevron {
+  flex-shrink: 0;
+  color: rgba(12, 26, 58, 0.48);
+  stroke-width: 2.2;
+}
+
+.agent-sidebar-org-icon {
+  flex-shrink: 0;
+  color: rgba(12, 26, 58, 0.52);
+}
+
+.agent-sidebar-org-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agent-sidebar-user-menu {
+  left: calc(100% + 10px);
+  bottom: 18px;
+  width: 192px;
+  max-height: min(240px, calc(100dvh - 24px));
+  overflow-y: auto;
+  color: #253452;
+}
+
+.agent-sidebar-org-menu {
+  left: calc(100% + 10px);
+  bottom: 0;
+  width: 224px;
+  max-height: min(260px, calc(100dvh - 24px));
+  overflow-y: auto;
+  color: #253452;
+}
+
+.agent-sidebar-user-menu-section {
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid rgba(196, 219, 242, 0.82);
+  border-radius: 2px;
+  background: rgba(235, 248, 255, 0.96);
+  box-shadow: 0 8px 24px rgba(10, 36, 82, 0.12);
+}
+
+.agent-sidebar-user-menu-section.orgs {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.agent-sidebar-user-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #4f607b;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.agent-sidebar-user-menu-item:hover,
+.agent-sidebar-user-menu-item.active {
+  background: rgba(255, 255, 255, 0.72);
+  color: #0f6bff;
+}
+
+.agent-sidebar-user-menu-item.danger {
+  color: #f04438;
+}
+
+.agent-sidebar-user-menu button {
+  white-space: nowrap;
 }
 
 .agent-sidebar.collapsed .agent-sidebar-brand {
   justify-content: center;
-  padding: 20px 0;
+  padding: 14px 0;
+  min-height: 72px;
 }
 
+.agent-sidebar.collapsed .fenix-sidebar-logo {
+  justify-content: center;
+  gap: 0;
+}
+
+.agent-sidebar.collapsed .fenix-sidebar-logo-text,
 .agent-sidebar.collapsed .agent-sidebar-brand-text,
 .agent-sidebar.collapsed .agent-sidebar-section-label,
 .agent-sidebar.collapsed .agent-sidebar-nav-item span,
-.agent-sidebar.collapsed .agent-sidebar-tree-wrap,
 .agent-sidebar.collapsed .agent-sidebar-more,
-.agent-sidebar.collapsed .agent-sidebar-footer .px-2,
-.agent-sidebar.collapsed .agent-sidebar-user-email {
+.agent-sidebar.collapsed .agent-sidebar-user-name,
+.agent-sidebar.collapsed .agent-sidebar-user-chevron,
+.agent-sidebar.collapsed .agent-sidebar-org-row {
   display: none;
 }
 
 .agent-sidebar.collapsed .agent-sidebar-nav {
   padding: 0;
+  overflow-x: hidden;
 }
 
 .agent-sidebar.collapsed .agent-sidebar-nav-item {
   justify-content: center;
+  min-width: 0;
   width: 48px;
   margin: 1px 8px;
   padding: 10px 0;
+}
+
+.agent-sidebar.collapsed .agent-sidebar-tree-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .agent-sidebar.collapsed .agent-sidebar-nav-item.active::before {
@@ -423,13 +596,23 @@
 }
 
 .agent-sidebar.collapsed .agent-sidebar-footer {
-  padding: 6px 0;
+  padding: 8px 0 10px;
 }
 
 .agent-sidebar.collapsed .agent-sidebar-user-button {
   justify-content: center;
-  padding-right: 0;
-  padding-left: 0;
+  min-height: 48px;
+  padding: 8px 0;
+  background: rgba(7, 22, 61, 0.1);
+}
+
+.agent-sidebar.collapsed .agent-sidebar-user-menu {
+  width: 224px;
+  min-width: 224px;
+}
+
+.agent-sidebar.collapsed .agent-sidebar-org-menu {
+  display: none;
 }
 
 /* ---------- 中间聊天区域 ---------- */
@@ -694,6 +877,36 @@ file-tree-container {
 /* =============================================================================
    ChatComposer —— 玻璃磨砂命令岛
    ============================================================================= */
+
+/* ChatHeader —— 顶部浮动玻璃卡片，与 ChatComposer 形成视觉对称。
+ * 替代原先的 border-b 横条分隔；通过外层 ACPMain 的 padding 让卡片悬浮于子页面顶部。 */
+.chat-header-card {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* 暗色模式 */
+:root.dark .chat-header-card,
+.dark .chat-header-card {
+  background: rgba(45, 45, 47, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* backdrop-filter 不支持时的 fallback */
+@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
+  .chat-header-card {
+    background: var(--color-surface-1);
+  }
+}
 
 .chat-composer-card {
   background: rgba(255, 255, 255, 0.72);

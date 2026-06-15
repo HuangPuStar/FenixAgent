@@ -6,6 +6,7 @@
   "console": "Console",
   "overview": "Overview",
   "workflow": "Workflow",
+  "agentManagement": "Agent Management",
   "models": "Models",
   "sessions": "Sessions",
   "config": "Configuration",
