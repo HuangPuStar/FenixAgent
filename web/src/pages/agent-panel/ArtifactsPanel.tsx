@@ -1,4 +1,4 @@
-import { PanelLeft, Upload } from "lucide-react";
+import { FilesIcon, PanelLeft, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -159,7 +159,7 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
     // flex-1：与左侧 .agent-chat-area（flex:1）均分父容器宽度，形成 1:1 布局；
     // collapsed 时本组件直接 return null，chat-area 自然占满整行
     <div
-      className="relative flex flex-1 flex-col bg-surface-1 rounded-xl overflow-hidden border border-border/75"
+      className="relative flex flex-1 flex-col bg-surface-1 rounded-xl border border-border/75"
       style={{ boxShadow: "var(--shadow-card)" }}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -184,33 +184,33 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
         <div className="flex-1 min-h-0 min-w-0 flex flex-col border-r border-solid border-border/75">
           <PreviewTab envId={envId} filePath={activeFile} />
         </div>
-        {/* 常驻 toggle 条：文件树开关，无论开/关都可见 */}
-        <div className="flex items-center justify-center w-7 border-l border-border/20 flex-shrink-0">
+        {/* 浮动 toggle 按钮：absolute 定位在文件树面板左边缘 */}
+        <div className="relative flex-shrink-0">
           <button
             type="button"
             onClick={() => setFileTreeOpen((v) => !v)}
             className={cn(
-              "h-6 w-6 flex items-center justify-center rounded-md transition-colors",
+              "absolute -left-12 z-20 h-10 w-10 flex items-center justify-center rounded-lg shadow-sm transition-colors",
               fileTreeOpen
-                ? "text-text-primary bg-surface-2/60"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
+                ? "bg-surface-1 border border-border/30 text-text-primary"
+                : "bg-surface-1 border border-border/20 text-text-muted hover:text-text-primary hover:bg-surface-2/60",
             )}
             title={fileTreeOpen ? t("fileTree.hideTree") : t("fileTree.showTree")}
             aria-label={fileTreeOpen ? t("fileTree.hideTree") : t("fileTree.showTree")}
           >
-            <PanelLeft className="h-3.5 w-3.5" />
+            <FilesIcon className="h-4 w-4" />
           </button>
+          {fileTreeOpen && (
+            <div className="w-60 flex flex-col overflow-hidden">
+              <FileTreeTab
+                ref={fileTreeRef}
+                envId={envId}
+                onPreviewFile={openFile}
+                onReferenceFile={handleReferenceFile}
+              />
+            </div>
+          )}
         </div>
-        {fileTreeOpen && (
-          <div className="w-60 flex flex-col flex-shrink-0 overflow-hidden">
-            <FileTreeTab
-              ref={fileTreeRef}
-              envId={envId}
-              onPreviewFile={openFile}
-              onReferenceFile={handleReferenceFile}
-            />
-          </div>
-        )}
       </div>
 
       {/* 拖拽上传遮罩（覆盖整个 panel） */}
