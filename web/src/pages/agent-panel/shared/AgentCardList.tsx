@@ -1,6 +1,5 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
-import { Input } from "@/components/ui/input";
 
 interface AgentCardListProps<T> {
   items: T[];
@@ -58,27 +57,27 @@ export function AgentCardList<T>({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      {/* Search + Batch Actions */}
+      {/* 搜索栏 + 批量操作 */}
       {(searchPlaceholder || (selectable && selectedItems.length > 0)) && (
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-border-subtle">
+        <div className="flex items-center gap-3 px-6 py-3">
           {searchPlaceholder && (
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
-              <Input
+            <div className="relative w-full max-w-md">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a8bd]" />
+              <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="pl-9 h-8 text-sm"
+                className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
               />
             </div>
           )}
           {selectable && selectedItems.length > 0 && (
             <div className="flex items-center gap-2 ml-auto">
-              <span className="text-xs text-text-muted">{selectedItems.length} selected</span>
+              <span className="text-xs text-[#94a3b8]">{selectedItems.length} selected</span>
               <button
                 type="button"
                 onClick={() => onSelectionChange?.([])}
-                className="text-xs text-text-muted hover:text-text-primary"
+                className="text-xs text-[#94a3b8] hover:text-[#1a2944]"
               >
                 Clear
               </button>
@@ -88,9 +87,9 @@ export function AgentCardList<T>({
         </div>
       )}
 
-      {/* Select All */}
+      {/* 全选栏 */}
       {selectable && filtered.length > 0 && (
-        <div className="flex items-center gap-3 px-6 py-2 border-b border-border-subtle bg-surface-1">
+        <div className="flex items-center gap-3 px-6 py-2 border-b border-[#e8edf4] bg-surface-1">
           <input
             type="checkbox"
             checked={selectedItems.length === filtered.length && filtered.length > 0}
@@ -101,8 +100,8 @@ export function AgentCardList<T>({
         </div>
       )}
 
-      {/* Card List */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      {/* 卡片列表 */}
+      <div className="flex-1 overflow-y-auto py-4">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-text-muted">
             <p className="text-sm">{emptyMessage}</p>

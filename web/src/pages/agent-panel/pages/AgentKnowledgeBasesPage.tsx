@@ -165,7 +165,7 @@ export function AgentKnowledgeBasesPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex flex-col flex-1 min-h-0 bg-[#f4f7fb]">
         <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -178,7 +178,7 @@ export function AgentKnowledgeBasesPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#f4f7fb]">
       <AgentPageHeader
         title={t("title")}
         subtitle={t("subtitle")}

@@ -41,7 +41,6 @@ import {
   buildProviderPublicReadablePayload,
   canWriteProvider,
   getProviderColor,
-  getProviderDisplayName,
   getProviderKey,
 } from "./agent-models-utils";
 
@@ -639,10 +638,10 @@ export function AgentModelsPage() {
         gridCols="grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
         renderCard={(provider) => {
           const providerKey = getProviderKey(provider);
-          const providerDisplayName = getProviderDisplayName(provider);
           const writable = canWriteProvider(provider);
           const models = providerModels[providerKey] ?? [];
           const brandColor = getProviderColor(provider.id);
+          const sourceName = provider.resourceAccess?.sourceOrganizationName;
           const hasModels = models.length > 0;
 
           return (
@@ -656,19 +655,15 @@ export function AgentModelsPage() {
                   className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-base font-extrabold text-white"
                   style={{ backgroundColor: brandColor }}
                 >
-                  {providerDisplayName.charAt(0).toUpperCase()}
+                  {provider.id.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-text-bright truncate">{providerDisplayName}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-text-bright truncate">{provider.id}</span>
+                    {sourceName && <span className="text-xs text-text-muted flex-shrink-0">{sourceName}</span>}
+                  </div>
                   <div className="text-[11px] text-text-muted mt-0.5">
-                    {writable ? null : (
-                      <span className="mr-2">
-                        {provider.resourceAccess?.sourceOrganizationName
-                          ? `${tComponents("resource.external")} · ${provider.resourceAccess.sourceOrganizationName}`
-                          : tComponents("resource.readOnly")}
-                      </span>
-                    )}
-                    {t("columns.models")} ({models.length})
+                    {t(`protocolOptions.${provider.protocol}`)} · {t("columns.models")} ({models.length})
                   </div>
                 </div>
               </div>
@@ -680,7 +675,7 @@ export function AgentModelsPage() {
                     {models.map((m) => {
                       const limit = (m.limit as Record<string, number | undefined>) ?? {};
                       return (
-                        <div key={m.id} className="flex items-center gap-2 py-1.5 min-w-0">
+                        <div key={m.id} className="flex items-center gap-2 py-1.5 min-w-0 group/model">
                           <ModelIcon modelId={m.id} size={14} />
                           <span className="font-mono text-[11px] font-medium text-text-bright truncate">{m.id}</span>
                           {limit.context ? (
@@ -688,6 +683,55 @@ export function AgentModelsPage() {
                               {Number(limit.context).toLocaleString()}
                             </span>
                           ) : null}
+                          {/* 模型操作按钮 — hover 时渐显 */}
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto opacity-0 group-hover/model:opacity-100 transition-opacity duration-200">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleTestModel(providerKey, m.id);
+                              }}
+                              disabled={testingModelKey === `${providerKey}:${m.id}`}
+                              className="text-[10px] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                            >
+                              {testingModelKey === `${providerKey}:${m.id}` ? t("actions.testing") : t("actions.test")}
+                            </button>
+                            {writable ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openEditModel(providerKey, m);
+                                  }}
+                                  className="text-[10px] text-text-secondary hover:text-text-primary transition-colors"
+                                >
+                                  {t("actions.edit")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setDeleteModelConfirm({ providerId: providerKey, modelId: m.id });
+                                  }}
+                                  className="text-[10px] text-red-500 hover:text-red-600 transition-colors"
+                                >
+                                  {t("actions.delete")}
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openViewModel(providerKey, m);
+                                }}
+                                className="text-[10px] text-text-secondary hover:text-text-primary transition-colors"
+                              >
+                                {t("actions.view")}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

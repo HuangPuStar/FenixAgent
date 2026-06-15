@@ -275,7 +275,7 @@ export function AgentOrganizationsPage() {
   const members = detail?.members ?? [];
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#f4f7fb]">
       <AgentPageHeader
         title={t("title")}
         subtitle={t("subtitle")}
