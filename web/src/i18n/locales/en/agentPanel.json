@@ -1,6 +1,7 @@
 {
   "brand": "Fenix",
   "showArtifacts": "Show artifacts panel",
+  "hideArtifacts": "Hide artifacts panel",
   "collapseSidebar": "Collapse sidebar",
   "expandSidebar": "Expand sidebar",
   "console": "Console",

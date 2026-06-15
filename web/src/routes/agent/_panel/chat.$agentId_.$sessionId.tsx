@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { extractChangedFiles } from "../../../../src/lib/extract-changed-files";
 import type { ThreadEntry } from "../../../../src/lib/types";
+import { cn } from "../../../../src/lib/utils";
 
 const ChatPanel = lazy(() => import("../../../pages/agent-panel/ChatPanel").then((m) => ({ default: m.ChatPanel })));
 const ArtifactsPanel = lazy(() =>
@@ -58,16 +59,18 @@ function ChatWithSessionRoute() {
           <ChatPanel agentId={agentId} sessionId={sessionId} />
         </div>
         <ArtifactsPanel collapsed={artifactsCollapsed} envId={agentId} changedFiles={changedFiles} />
-        {artifactsCollapsed && (
-          <button
-            type="button"
-            className="agent-artifacts-expand-btn"
-            onClick={() => setArtifactsCollapsed(false)}
-            title={t("showArtifacts")}
-          >
+        <button
+          type="button"
+          className={cn("agent-artifacts-expand-btn", !artifactsCollapsed && "open")}
+          onClick={() => setArtifactsCollapsed((v) => !v)}
+          title={artifactsCollapsed ? t("showArtifacts") : t("hideArtifacts")}
+        >
+          {artifactsCollapsed ? (
             <PanelRight className="h-3.5 w-3.5" />
-          </button>
-        )}
+          ) : (
+            <PanelRight className="h-3.5 w-3.5 -scale-x-100" />
+          )}
+        </button>
       </div>
     </Suspense>
   );

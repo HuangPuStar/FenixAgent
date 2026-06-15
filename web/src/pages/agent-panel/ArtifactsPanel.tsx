@@ -1,4 +1,4 @@
-import { Upload } from "lucide-react";
+import { PanelLeft, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { FileTreeTab, type FileTreeTabHandle } from "../../components/agent-pane
 import { PreviewTab } from "../../components/agent-panel/PreviewTab";
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
+import { cn } from "../../lib/utils";
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
 const MAX_OPEN_FILES = 8;
@@ -40,7 +41,14 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
   // 当前激活文件，控制 PreviewTab 展示内容
   const [activeFile, setActiveFile] = useState<string | null>(null);
   // 文件树是否展开（默认 false，由顶部 PanelLeft 按钮切换）
+  // 当没有任何打开的文件时自动展开文件树，引导用户选择
   const [fileTreeOpen, setFileTreeOpen] = useState(false);
+
+  useEffect(() => {
+    if (openFiles.length === 0 && !fileTreeOpen) {
+      setFileTreeOpen(true);
+    }
+  }, [openFiles.length, fileTreeOpen]);
 
   // 拖拽上传遮罩状态
   const [isDragging, setIsDragging] = useState(false);
@@ -151,27 +159,18 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
     // flex-1：与左侧 .agent-chat-area（flex:1）均分父容器宽度，形成 1:1 布局；
     // collapsed 时本组件直接 return null，chat-area 自然占满整行
     <div
-      className="relative flex flex-1 flex-col bg-surface-1 rounded-xl overflow-hidden"
+      className="relative flex flex-1 flex-col bg-surface-1 rounded-xl overflow-hidden border border-border/75"
       style={{ boxShadow: "var(--shadow-card)" }}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* 顶部 tab 栏：文件树 popover / 变更文件 badge / 文件 tabs */}
+      {/* 顶部 tab 栏：文件树 toggle / 变更文件 badge / 文件 tabs */}
       <FileTabsBar
         openFiles={openFiles}
         activeFile={activeFile}
         changedFiles={changedFiles}
-        fileTreeOpen={fileTreeOpen}
-        onFileTreeOpenChange={setFileTreeOpen}
-        // 把 FileTreeTab 实例作为 ReactNode 交给 FileTabsBar 放到 popover 中渲染；
-        // ref 直接挂在这个 JSX 上，即便最终走 Radix Portal 挂到 body 下，
-        // React fiber 关系仍能保证 fileTreeRef.current 在挂载后被正确填充，
-        // 因此外部上传等命令式调用不受影响
-        fileTreeContent={
-          <FileTreeTab ref={fileTreeRef} envId={envId} onPreviewFile={openFile} onReferenceFile={handleReferenceFile} />
-        }
         // 点击已有 tab / +N popover 中的项：仅切换 active，不重排顺序
         // （用户偏好：tab 位置稳定，不希望每次点击都把文件提到最前）
         // 真正"打开新文件"（双击文件树 / 变更 badge）才走 openFile 触发 LRU 入列
@@ -180,9 +179,38 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
         onPreviewChangedFile={openFile}
       />
 
-      {/* 主体：预览占满整个剩余空间（文件树已上提到 popover，不再占用主区域） */}
-      <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-        <PreviewTab envId={envId} filePath={activeFile} />
+      {/* 主体：文件树固定右侧 + 预览区自适应剩余空间 */}
+      <div className="flex-1 min-h-0 min-w-0 flex">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col border-r border-solid border-border/75">
+          <PreviewTab envId={envId} filePath={activeFile} />
+        </div>
+        {/* 常驻 toggle 条：文件树开关，无论开/关都可见 */}
+        <div className="flex items-center justify-center w-7 border-l border-border/20 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setFileTreeOpen((v) => !v)}
+            className={cn(
+              "h-6 w-6 flex items-center justify-center rounded-md transition-colors",
+              fileTreeOpen
+                ? "text-text-primary bg-surface-2/60"
+                : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
+            )}
+            title={fileTreeOpen ? t("fileTree.hideTree") : t("fileTree.showTree")}
+            aria-label={fileTreeOpen ? t("fileTree.hideTree") : t("fileTree.showTree")}
+          >
+            <PanelLeft className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {fileTreeOpen && (
+          <div className="w-60 flex flex-col flex-shrink-0 overflow-hidden">
+            <FileTreeTab
+              ref={fileTreeRef}
+              envId={envId}
+              onPreviewFile={openFile}
+              onReferenceFile={handleReferenceFile}
+            />
+          </div>
+        )}
       </div>
 
       {/* 拖拽上传遮罩（覆盖整个 panel） */}

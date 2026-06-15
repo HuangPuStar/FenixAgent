@@ -348,18 +348,9 @@ export function ChatComposer({
   // ---------------------------------------------------------------------------
   return (
     <div className={cn("w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2", className)}>
-      <div className="chat-composer-card relative" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-        {/* File Picker Dialog */}
-        {showFilePicker && fileWorkspaceId && (
-          <FilePickerDialog
-            open={showFilePicker}
-            envId={fileWorkspaceId}
-            onClose={() => setShowFilePicker(false)}
-            onSelect={handleFilePickerSelect}
-          />
-        )}
-
-        {/* Slash command menu */}
+      {/* relative wrapper：CommandMenu 在此层定位，不受 .chat-composer-card 的 overflow: clip 裁剪 */}
+      <div className="relative">
+        {/* Slash command menu —— 浮在 composer-card 上方，不被 overflow 裁剪 */}
         {showCommandMenu && commands && commands.length > 0 && (
           <CommandMenu
             commands={commands}
@@ -373,120 +364,132 @@ export function ChatComposer({
           />
         )}
 
-        {/* 图片预览 */}
-        {images.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-4 pt-3">
-            {images.map((img, i) => (
-              <div key={img.data} className="relative group">
-                <img
-                  src={`data:${img.mimeType};base64,${img.data}`}
-                  alt={`Attached image ${i + 1}`}
-                  className="h-14 w-14 object-cover rounded-lg border border-border"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeImage(i)}
-                  className="absolute -top-1.5 -right-1.5 h-5 w-5 min-h-[32px] min-w-[32px] rounded-full bg-surface-2 border border-border text-text-muted hover:text-text-primary text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-label={`Remove image ${i + 1}`}
-                >
-                  {"\u00D7"}
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* 编辑区 —— textarea + 发送按钮，按钮在右下 */}
-        <div className="flex items-end gap-2 px-4 pt-4 pb-2">
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={_placeholder}
-            disabled={disabled}
-            rows={1}
-            className="chat-composer-textarea flex-1 resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[48px] max-h-[200px] leading-relaxed"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={isLoading ? onInterrupt : handleSubmit}
-            disabled={!isLoading && !canSend}
-            className={cn(
-              "h-9 w-9 shrink-0 p-0 rounded-lg flex items-center justify-center",
-              isLoading
-                ? "bg-text-primary text-surface-2 hover:bg-text-secondary"
-                : canSend
-                  ? "bg-brand text-white hover:bg-brand-light"
-                  : "bg-surface-3 text-text-muted",
-            )}
-          >
-            {isLoading ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Send className="h-4 w-4" />}
-          </Button>
-        </div>
-
-        {/* 底部元信息条 —— flex-wrap 允许数据多时换行到第二行 */}
-        <div className="chat-composer-meta flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[11px]">
-          {/* 左侧：模式 + 模型 */}
-          {availableModes && availableModes.length > 0 && onModeChange && (
-            <SessionModeSelector
-              modes={availableModes}
-              currentModeId={currentModeId ?? null}
-              onModeChange={onModeChange}
+        <div className="chat-composer-card" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+          {/* File Picker Dialog */}
+          {showFilePicker && fileWorkspaceId && (
+            <FilePickerDialog
+              open={showFilePicker}
+              envId={fileWorkspaceId}
+              onClose={() => setShowFilePicker(false)}
+              onSelect={handleFilePickerSelect}
             />
           )}
 
-          {client && <ModelSelectorPopover client={client} />}
-
-          {/* 中间弹簧 */}
-          <div className="flex-1" />
-
-          {/* 右侧：token 进度条 + 百分比 + 新会话 */}
-          {tokenStats && tokenStats.estimatedTokens > 0 && (
-            <>
-              <div className="w-12 h-1 rounded-full bg-surface-3 overflow-hidden flex shrink-0">
-                <div
-                  className="h-full bg-brand transition-[width] duration-500"
-                  style={{
-                    width: `${Math.min((tokenStats.estimatedInputTokens / MAX_CONTEXT_TOKENS) * 100, 100)}%`,
-                  }}
-                />
-                <div
-                  className="h-full bg-accent-green transition-[width] duration-500"
-                  style={{
-                    width: `${Math.min((tokenStats.estimatedOutputTokens / MAX_CONTEXT_TOKENS) * 100, 100)}%`,
-                  }}
-                />
-              </div>
-              <span className="font-mono text-text-primary font-semibold min-w-[28px] text-right">
-                {Math.min(Math.round((tokenStats.estimatedTokens / MAX_CONTEXT_TOKENS) * 100), 100)}%
-              </span>
-              <span className="chat-composer-divider" />
-            </>
+          {/* 图片预览 */}
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-4 pt-3">
+              {images.map((img, i) => (
+                <div key={img.data} className="relative group">
+                  <img
+                    src={`data:${img.mimeType};base64,${img.data}`}
+                    alt={`Attached image ${i + 1}`}
+                    className="h-14 w-14 object-cover rounded-lg border border-border"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeImage(i)}
+                    className="absolute -top-1.5 -right-1.5 h-5 w-5 min-h-[32px] min-w-[32px] rounded-full bg-surface-2 border border-border text-text-muted hover:text-text-primary text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label={`Remove image ${i + 1}`}
+                  >
+                    {"\u00D7"}
+                  </Button>
+                </div>
+              ))}
+            </div>
           )}
 
-          {showNewSession && onNewSession && (
+          {/* 编辑区 —— textarea + 发送按钮，按钮在右下 */}
+          <div className="flex items-end gap-2 px-4 pt-4 pb-2">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={_placeholder}
+              disabled={disabled}
+              rows={1}
+              className="chat-composer-textarea flex-1 resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[48px] max-h-[200px] leading-relaxed"
+            />
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={onNewSession}
-              className="h-7 px-2 text-[11px] text-text-muted hover:text-text-primary gap-1"
+              onClick={isLoading ? onInterrupt : handleSubmit}
+              disabled={!isLoading && !canSend}
+              className={cn(
+                "h-9 w-9 shrink-0 p-0 rounded-lg flex items-center justify-center",
+                isLoading
+                  ? "bg-text-primary text-surface-2 hover:bg-text-secondary"
+                  : canSend
+                    ? "bg-brand text-white hover:bg-brand-light"
+                    : "bg-surface-3 text-text-muted",
+              )}
             >
-              + {t("chatComposer.newSession")}
+              {isLoading ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Send className="h-4 w-4" />}
             </Button>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* 提示文本 */}
-      <div className="text-center mt-1.5">
-        <span className="text-[11px] text-text-muted">{t("chatComposer.hint")}</span>
+          {/* 底部元信息条 —— flex-wrap 允许数据多时换行到第二行 */}
+          <div className="chat-composer-meta flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[11px]">
+            {/* 左侧：模式 + 模型 */}
+            {availableModes && availableModes.length > 0 && onModeChange && (
+              <SessionModeSelector
+                modes={availableModes}
+                currentModeId={currentModeId ?? null}
+                onModeChange={onModeChange}
+              />
+            )}
+
+            {client && <ModelSelectorPopover client={client} />}
+
+            {/* 中间弹簧 */}
+            <div className="flex-1" />
+
+            {/* 右侧：token 进度条 + 百分比 + 新会话 */}
+            {tokenStats && tokenStats.estimatedTokens > 0 && (
+              <>
+                <div className="w-12 h-1 rounded-full bg-surface-3 overflow-hidden flex shrink-0">
+                  <div
+                    className="h-full bg-brand transition-[width] duration-500"
+                    style={{
+                      width: `${Math.min((tokenStats.estimatedInputTokens / MAX_CONTEXT_TOKENS) * 100, 100)}%`,
+                    }}
+                  />
+                  <div
+                    className="h-full bg-accent-green transition-[width] duration-500"
+                    style={{
+                      width: `${Math.min((tokenStats.estimatedOutputTokens / MAX_CONTEXT_TOKENS) * 100, 100)}%`,
+                    }}
+                  />
+                </div>
+                <span className="font-mono text-text-primary font-semibold min-w-[28px] text-right">
+                  {Math.min(Math.round((tokenStats.estimatedTokens / MAX_CONTEXT_TOKENS) * 100), 100)}%
+                </span>
+                <span className="chat-composer-divider" />
+              </>
+            )}
+
+            {showNewSession && onNewSession && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onNewSession}
+                className="h-7 px-2 text-[11px] text-text-muted hover:text-text-primary gap-1"
+              >
+                + {t("chatComposer.newSession")}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* 提示文本 */}
+        <div className="text-center mt-1.5">
+          <span className="text-[11px] text-text-muted">{t("chatComposer.hint")}</span>
+        </div>
       </div>
     </div>
   );

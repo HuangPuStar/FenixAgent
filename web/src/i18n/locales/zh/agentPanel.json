@@ -1,6 +1,7 @@
 {
   "brand": "Fenix",
   "showArtifacts": "显示内容面板",
+  "hideArtifacts": "隐藏内容面板",
   "collapseSidebar": "收起侧栏",
   "expandSidebar": "展开侧栏",
   "console": "控制台",

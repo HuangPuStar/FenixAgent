@@ -687,6 +687,11 @@
   width: 32px;
 }
 
+/* 展开时：按钮跟着 ArtifactsPanel 左边缘走（两栏 1:1 中间分界线） */
+.agent-artifacts-expand-btn.open {
+  right: calc(50% - 6px);
+}
+
 /* ---------- 拖拽分隔线 ---------- */
 .agent-artifacts-resize-handle {
   width: 4px;
@@ -886,11 +891,15 @@ file-tree-container {
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  box-shadow: none;
   overflow: hidden;
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
+}
+
+.chat-header-card:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
 }
 
 /* 暗色模式 */
@@ -898,6 +907,10 @@ file-tree-container {
 .dark .chat-header-card {
   background: rgba(45, 45, 47, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.chat-header-card:hover {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -915,7 +928,7 @@ file-tree-container {
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 20px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  overflow: clip;
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
@@ -929,12 +942,10 @@ file-tree-container {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-/* focus-within：品牌色边框 + 柔和光环 */
+/* focus-within：不显示聚焦高亮，保持与页面背景融合 */
 .chat-composer-card:focus-within {
-  border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-brand) 12%, transparent),
-    0 4px 20px rgba(0, 0, 0, 0.06);
+  border-color: color-mix(in srgb, var(--color-brand) 8%, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
 }
 
 /* backdrop-filter 不支持时的 fallback */

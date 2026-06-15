@@ -1,5 +1,5 @@
-import { ChevronDown, FilePen, FilePlus, PanelLeft, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ChevronDown, FilePen, FilePlus, X } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,12 +17,6 @@ interface FileTabsBarProps {
   activeFile: string | null;
   /** 本次会话被 Agent 修改的文件列表，用于左侧 badge + popover */
   changedFiles: ChangedFile[];
-  /** 文件树 popover 是否展开 */
-  fileTreeOpen: boolean;
-  /** 文件树 popover 开/关回调（受控） */
-  onFileTreeOpenChange: (open: boolean) => void;
-  /** 文件树 popover 内容（FileTreeTab 实例，由 ArtifactsPanel 持有 ref） */
-  fileTreeContent: ReactNode;
   /** 选中某个 tab（点击 tab 或从 popover 中选） */
   onSelectFile: (path: string) => void;
   /** 关闭某个 tab（点击 tab 上的 ×） */
@@ -35,19 +29,16 @@ interface FileTabsBarProps {
  * FileTabsBar —— ArtifactsPanel 顶部的文件 tab 栏（VSCode 风格）。
  *
  * 布局从左到右：
- *   1. PanelLeft 按钮 → popover 弹出文件树（受控于 fileTreeOpen / onFileTreeOpenChange）
- *   2. 变更文件 badge（✎N） → popover 展示本次会话被 Agent 修改的文件，点击项可预览
- *   3. 文件 tab 列表：最近打开的文件（伪多 tab，最多 5 个可见，超出折叠到 +N popover）
+ *   1. 变更文件 badge（✎N） → popover 展示本次会话被 Agent 修改的文件，点击项可预览
+ *   2. 文件 tab 列表：最近打开的文件（伪多 tab，最多 5 个可见，超出折叠到 +N popover）
  *
+ * 文件树 toggle 已移到主体区域右侧的常驻窄条中，不再占用 tab 栏空间。
  * 关闭按钮 hover 才显示，避免视觉噪音；激活 tab 有 surface-2 背景区分。
  */
 export function FileTabsBar({
   openFiles,
   activeFile,
   changedFiles,
-  fileTreeOpen,
-  onFileTreeOpenChange,
-  fileTreeContent,
   onSelectFile,
   onCloseFile,
   onPreviewChangedFile,
@@ -63,36 +54,7 @@ export function FileTabsBar({
 
   return (
     <div className="flex items-center gap-1 h-10 px-2 border-b border-border/40 flex-shrink-0 bg-surface-1/50">
-      {/* 1. 文件树按钮 + popover（受控展开/收起） */}
-      <Popover open={fileTreeOpen} onOpenChange={onFileTreeOpenChange}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "h-7 w-7 flex-shrink-0",
-              fileTreeOpen
-                ? "text-text-primary bg-surface-2/60"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
-            )}
-            title={t("fileTree.showTree")}
-            aria-label={t("fileTree.showTree")}
-            aria-expanded={fileTreeOpen}
-          >
-            <PanelLeft className="h-4 w-4" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          // 文件树需要足够空间展示层级结构，宽 384px (w-96)、高 480px
-          sideOffset={4}
-          className="w-96 p-0"
-        >
-          {/* 固定高度容器，让内部 FileTreeTab 自己管理滚动；pointer-events-auto 防止 portal 误吞事件 */}
-          <div className="h-[480px] flex flex-col pointer-events-auto">{fileTreeContent}</div>
-        </PopoverContent>
-      </Popover>
-
+      {/* 1. 文件树 toggle 按钮（文件树浮层由 ArtifactsPanel 渲染） */}
       {/* 2. 变更文件 badge + popover（无变更时不渲染） */}
       {changedFiles.length > 0 && (
         <Popover open={changedOpen} onOpenChange={setChangedOpen}>
