@@ -41,6 +41,7 @@ function getErrorDataRecord(data: unknown): Record<string, unknown> {
 import {
   buildProviderPublicReadablePayload,
   canWriteProvider,
+  getProviderColor,
   getProviderDisplayName,
   getProviderKey,
   getProviderResourceBadgeKey,
@@ -56,8 +57,6 @@ export function AgentModelsPage() {
   const [editingProvider, setEditingProvider] = useState<ProviderInfo | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [selected, setSelected] = useState<ProviderInfo[]>([]);
-  const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [testResult, setTestResult] = useState<
     | { kind: "provider"; name: string; models: string[]; warning?: string }
     | { kind: "provider"; name: string; error: TestDialogError }
@@ -428,15 +427,6 @@ export function AgentModelsPage() {
     dispatchConfigChange("providers");
   };
 
-  const confirmBatchDelete = async () => {
-    await Promise.all(selected.map((p) => providerApi.delete(p.id)));
-    toast.success(t("batchDeleteCount", { count: selected.length }));
-    setBatchConfirmOpen(false);
-    setSelected([]);
-    loadAll();
-    dispatchConfigChange("providers");
-  };
-
   // Model CRUD
   const openNewModel = (providerId: string) => {
     setModelProviderId(providerId);
@@ -601,239 +591,197 @@ export function AgentModelsPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <AgentPageHeader
-        title={t("title")}
-        subtitle={t("subtitle")}
-        actions={
-          <div className="flex items-center gap-2">
-            <ModelConfigDialog
-              currentModel={modelConfig?.current.model ?? null}
-              currentSmallModel={modelConfig?.current.small_model ?? null}
-              available={modelConfig?.available ?? []}
-              onConfigChange={(update) =>
-                setModelConfig((current) => (current ? mergeModelConfigUpdate(current, update) : current))
-              }
-            />
-            <Button onClick={handleOpenCreate}>{t("createButton")}</Button>
-          </div>
-        }
-      />
+    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      {/* 标题行 */}
+      <div className="mb-3 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-bold tracking-tight text-[#1a2944]">{t("title")}</h1>
+          <p className="mt-0.5 text-[12px] text-[#94a3b8]">{t("subtitle")}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ModelConfigDialog
+            currentModel={modelConfig?.current.model ?? null}
+            currentSmallModel={modelConfig?.current.small_model ?? null}
+            available={modelConfig?.available ?? []}
+            onConfigChange={(update) =>
+              setModelConfig((current) => (current ? mergeModelConfigUpdate(current, update) : current))
+            }
+          />
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
+          >
+            <Plus className="h-4 w-4" />
+            {t("createButton")}
+          </button>
+        </div>
+      </div>
+
+      {/* 分隔线 */}
+      <div className="mb-3.5 h-px bg-[#e8edf4]" />
+
+      {/* 搜索栏 */}
+      <div className="mb-7 flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-md">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a8bd]" />
+          <input
+            value={providerSearch}
+            onChange={(e) => setProviderSearch(e.target.value)}
+            placeholder={t("searchPlaceholder")}
+            className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
+          />
+        </div>
+      </div>
+
       <AgentCardList
-        items={providers}
+        items={filteredProviders}
         cardKey={getProviderKey}
-        searchPlaceholder={t("searchPlaceholder")}
-        searchFn={(p, q) => p.id.toLowerCase().includes(q) || (p.name?.toLowerCase().includes(q) ?? false)}
-        selectable
-        selectedItems={selected}
-        onSelectionChange={setSelected}
         emptyMessage={t("emptyMessage")}
-        batchActions={
-          <Button size="xs" variant="destructive" onClick={() => setBatchConfirmOpen(true)}>
-            {t("batchDelete")}
-          </Button>
-        }
-        renderCard={(provider, isSelected, toggleSelect) => {
+        gridCols="grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+        renderCard={(provider) => {
           const providerKey = getProviderKey(provider);
           const providerDisplayName = getProviderDisplayName(provider);
           const writable = canWriteProvider(provider);
           const models = providerModels[providerKey] ?? [];
+          const brandColor = getProviderColor(provider.id);
+          const hasModels = models.length > 0;
+
           return (
-            <Collapsible
+            <div
               key={providerKey}
-              className="group rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm"
+              className="group rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm overflow-hidden"
             >
-              <CollapsibleTrigger asChild>
-                <div className="px-4 py-3 cursor-pointer group/trigger">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={toggleSelect}
-                      disabled={!writable}
-                      onClick={(event) => event.stopPropagation()}
-                      className="rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-sm font-medium text-text-bright">{providerDisplayName}</span>
-                        {provider.name && provider.name !== provider.id && (
-                          <span className="text-xs text-text-secondary">{provider.name}</span>
-                        )}
-                        {(() => {
-                          const opt = PROTOCOL_OPTIONS.find((o) => o.id === provider.protocol);
-                          return (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-secondary">
-                              {opt ? getProtocolLabel(opt) : provider.protocol}
-                            </span>
-                          );
-                        })()}
-                        {provider.keyHint && (
-                          <span className="font-mono text-xs text-text-muted bg-surface-2 px-2 py-0.5 rounded">
-                            {provider.keyHint}
-                          </span>
-                        )}
-                        <span className="inline-flex items-center rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-secondary">
-                          {tComponents(getProviderResourceBadgeKey(provider))}
-                        </span>
-                      </div>
-                      {writable && (
-                        <label
-                          className="mt-3 flex items-center gap-2 text-xs text-text-muted"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <Switch
-                            checked={Boolean(provider.resourceAccess?.publicReadable)}
-                            disabled={
-                              sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true
-                            }
-                            onCheckedChange={() =>
-                              void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
-                            }
-                          />
-                          {tComponents("resource.public")}
-                        </label>
-                      )}
-                      {!writable && (
-                        <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {writable && (
-                        <>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleTest(providerKey);
-                            }}
-                            disabled={testing === providerKey}
-                          >
-                            {testing === providerKey ? t("actions.testing") : t("actions.test")}
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleOpenEdit(provider);
-                            }}
-                          >
-                            {t("actions.edit")}
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="destructive"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleDelete(provider.id);
-                            }}
-                          >
-                            {t("actions.delete")}
-                          </Button>
-                        </>
-                      )}
-                      {!writable && (
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleOpenEdit(provider);
-                          }}
-                        >
-                          {t("actions.view")}
-                        </Button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-text-muted px-2 py-1 rounded">
-                      <span>
-                        {t("columns.models")} ({models.length})
+              {/* ── 头像区 ── */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
+                <div
+                  className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-base font-extrabold text-white"
+                  style={{ backgroundColor: brandColor }}
+                >
+                  {providerDisplayName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-text-bright truncate">{providerDisplayName}</div>
+                  <div className="text-[11px] text-text-muted mt-0.5">
+                    {writable ? null : (
+                      <span className="mr-2">
+                        {provider.resourceAccess?.sourceOrganizationName
+                          ? `${tComponents("resource.external")} · ${provider.resourceAccess.sourceOrganizationName}`
+                          : tComponents("resource.readOnly")}
                       </span>
-                      <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/trigger:rotate-180" />
-                    </div>
+                    )}
+                    {t("columns.models")} ({models.length})
                   </div>
                 </div>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="px-4 pb-3 space-y-2 border-t border-border-subtle pt-3">
-                  {models.length === 0 ? (
-                    <p className="text-center text-text-muted text-sm py-4">{t("modelSubrow.emptyMessage")}</p>
-                  ) : (
-                    models.map((m) => {
+              </div>
+
+              {/* ── Model 列表区 ── */}
+              <div className="px-4 py-2">
+                {hasModels ? (
+                  <div className="space-y-1">
+                    {models.map((m) => {
                       const limit = (m.limit as Record<string, number | undefined>) ?? {};
-                      const cost = (m.cost as Record<string, number | undefined>) ?? {};
-                      const modelWritable = writable && m.providerResourceAccess?.writable !== false;
-                      const modelTesting = testingModelKey === `${providerKey}:${m.id}`;
                       return (
-                        <div
-                          key={m.id}
-                          className="flex flex-wrap items-center gap-3 rounded-md border border-border-light bg-surface-0 px-3 py-2"
-                        >
-                          <div className="min-w-0 flex-1 basis-0">
-                            <div className="flex items-center gap-2">
-                              <ModelIcon modelId={m.id} size={16} />
-                              <span className="font-mono text-xs font-medium text-text-bright">{m.id}</span>
-                              {m.name && m.name !== m.id && (
-                                <span className="text-xs text-text-secondary">{m.name}</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 mt-0.5 text-[11px] text-text-muted">
-                              {limit.context ? <span>ctx {Number(limit.context).toLocaleString()}</span> : null}
-                              {limit.output ? <span>out {Number(limit.output).toLocaleString()}</span> : null}
-                              {cost.input || cost.output ? (
-                                <span className="text-amber-600">
-                                  ${Number(cost.input ?? 0)}/{Number(cost.output ?? 0)}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="ml-auto flex shrink-0 items-center gap-2">
-                            {modelWritable ? (
-                              <>
-                                <Button
-                                  size="xs"
-                                  variant="outline"
-                                  onClick={() => handleTestModel(providerKey, m.id)}
-                                  disabled={modelTesting}
-                                >
-                                  {modelTesting ? t("actions.testing") : t("actions.test")}
-                                </Button>
-                                <Button size="xs" variant="outline" onClick={() => openEditModel(providerKey, m)}>
-                                  {t("actions.edit")}
-                                </Button>
-                                <Button
-                                  size="xs"
-                                  variant="destructive"
-                                  onClick={() => setDeleteModelConfirm({ providerId: providerKey, modelId: m.id })}
-                                >
-                                  {t("actions.delete")}
-                                </Button>
-                              </>
-                            ) : (
-                              <Button size="xs" variant="outline" onClick={() => openViewModel(providerKey, m)}>
-                                {t("actions.view")}
-                              </Button>
-                            )}
-                          </div>
+                        <div key={m.id} className="flex items-center gap-2 py-1.5 min-w-0">
+                          <ModelIcon modelId={m.id} size={14} />
+                          <span className="font-mono text-[11px] font-medium text-text-bright truncate">{m.id}</span>
+                          {limit.context ? (
+                            <span className="text-[10px] text-text-muted ml-auto flex-shrink-0">
+                              {Number(limit.context).toLocaleString()}
+                            </span>
+                          ) : null}
                         </div>
                       );
-                    })
-                  )}
-                  {writable && (
-                    <Button
-                      size="sm"
-                      variant="outline"
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-3 text-center">
+                    <button
+                      type="button"
                       onClick={() => openNewModel(providerKey)}
-                      className="w-full border-dashed text-text-secondary hover:text-text-primary hover:border-brand"
+                      className="text-xs text-text-muted hover:text-text-primary transition-colors"
                     >
                       {t("modelSubrow.addButton")}
-                    </Button>
-                  )}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── 操作栏 ── */}
+              <div className="flex items-center gap-3 px-4 py-2 border-t border-border-subtle bg-surface-0 text-[11px]">
+                {writable ? (
+                  <>
+                    {/* 左侧：测试 & 编辑 */}
+                    <div className="flex items-center gap-2">
+                      {hasModels && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleTest(providerKey);
+                          }}
+                          disabled={testing === providerKey}
+                          className="text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                        >
+                          {testing === providerKey ? t("actions.testing") : t("actions.test")}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenEdit(provider);
+                        }}
+                        className="text-text-secondary hover:text-text-primary transition-colors"
+                      >
+                        {t("actions.edit")}
+                      </button>
+                    </div>
+                    {/* 右侧：公开开关 & 删除 */}
+                    <div className="flex items-center gap-2 ml-auto">
+                      <label
+                        className="flex items-center gap-1.5 cursor-pointer"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <span className="text-text-muted">
+                          {provider.resourceAccess?.publicReadable
+                            ? tComponents("resource.public")
+                            : tComponents("resource.internal")}
+                        </span>
+                        <Switch
+                          checked={Boolean(provider.resourceAccess?.publicReadable)}
+                          disabled={sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true}
+                          onCheckedChange={() =>
+                            void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDelete(provider.id);
+                        }}
+                        className="text-red-500 hover:text-red-600 transition-colors"
+                      >
+                        {t("actions.delete")}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleOpenEdit(provider);
+                    }}
+                    className="text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    {t("actions.view")}
+                  </button>
+                )}
+              </div>
+            </div>
           );
         }}
       />
@@ -1200,14 +1148,6 @@ export function AgentModelsPage() {
         description={t("deleteProvider.confirmDesc", { name: deleteTarget ?? "" })}
         variant="destructive"
         onConfirm={confirmDelete}
-      />
-      <ConfirmDialog
-        open={batchConfirmOpen}
-        onOpenChange={setBatchConfirmOpen}
-        title={t("batchDeleteConfirmTitle")}
-        description={t("batchDeleteConfirmDesc", { count: selected.length })}
-        variant="destructive"
-        onConfirm={confirmBatchDelete}
       />
       <ConfirmDialog
         open={!!deleteModelConfirm}
