@@ -2,6 +2,7 @@ import {
   ACP_METHOD,
   isJsonRpcMessage,
   isJsonRpcNotification,
+  isJsonRpcRequest,
   isJsonRpcResponse,
   isTransportMessage,
   type JsonRpcMessage,
@@ -79,6 +80,14 @@ export class ACPProtocol extends EventEmitter<ProtocolEvents> {
       return;
     }
 
+    // 兼容旧格式 transport message：permission_request / permission_response
+    // relay 路径下 opencode 通过 onMessage 转发旧格式，不是 JSON-RPC
+    const t = (parsed as Record<string, unknown>).type;
+    if (t === "permission_request" || t === "permission_response") {
+      this.handleTransportMessage(parsed as Record<string, unknown>);
+      return;
+    }
+
     console.warn("[ACPProtocol] Unknown message format:", parsed);
   }
 
@@ -97,10 +106,13 @@ export class ACPProtocol extends EventEmitter<ProtocolEvents> {
         this.emit("prompt_complete", msg.payload as ProtocolEvents["prompt_complete"]);
         break;
       case "permission_request":
-        this.emit("permission_request", msg.payload as ProtocolEvents["permission_request"]);
+        this.emit("permission_request", msg.payload as PermissionRequestPayload);
         break;
       case "interactive_question":
         this.emit("interactive_question", msg.payload as ProtocolEvents["interactive_question"]);
+        break;
+      case "permission_response":
+        // 旧格式 permission_response（relay 路径）— 直接透传
         break;
     }
   }
@@ -112,6 +124,13 @@ export class ACPProtocol extends EventEmitter<ProtocolEvents> {
       } else if ("error" in msg) {
         this.emit("rpc_response", { id: msg.id as number | string, result: msg });
       }
+      return;
+    }
+
+    // JSON-RPC 请求（有 id）：服务器发送 requestPermission 等请求等待前端回应
+    if (isJsonRpcRequest(msg)) {
+      // 将 Request 当作 Notification 处理，同时保存 id 供后续 respond 使用
+      this.handleNotification(msg.method, msg.params);
       return;
     }
 
