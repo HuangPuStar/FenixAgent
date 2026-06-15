@@ -19,14 +19,14 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 const NODE_COLORS: Record<string, { main: string; light: string; headerText: string }> = {
-  start: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
-  shell: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
-  python: { main: "#818cf8", light: "rgba(129,140,248,0.08)", headerText: "#fff" },
+  start: { main: "#1677ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
+  shell: { main: "#1677ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
+  python: { main: "#4096ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
   agent: { main: "#10b981", light: "rgba(16,185,129,0.08)", headerText: "#fff" },
-  api: { main: "#818cf8", light: "rgba(129,140,248,0.08)", headerText: "#fff" },
+  api: { main: "#4096ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
   audit: { main: "#f59e0b", light: "rgba(245,158,11,0.08)", headerText: "#fff" },
-  workflow: { main: "#6366f1", light: "rgba(99,102,241,0.08)", headerText: "#fff" },
-  loop: { main: "#818cf8", light: "rgba(129,140,248,0.08)", headerText: "#fff" },
+  workflow: { main: "#1677ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
+  loop: { main: "#4096ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
   transform: { main: "#f97316", light: "rgba(249,115,22,0.08)", headerText: "#fff" },
 };
 
@@ -56,7 +56,7 @@ const NODE_LABEL_KEYS: Record<string, string> = {
 
 const RUN_STATUS_COLORS: Record<string, { color: string; bg: string }> = {
   PENDING: { color: "#94a3b8", bg: "#f1f5f9" },
-  RUNNING: { color: "#6366f1", bg: "rgba(99,102,241,0.08)" },
+  RUNNING: { color: "#1677ff", bg: "rgba(22,119,255,0.08)" },
   COMPLETED: { color: "#10b981", bg: "rgba(16,185,129,0.08)" },
   FAILED: { color: "#ef4444", bg: "rgba(239,68,68,0.08)" },
   CANCELLED: { color: "#94a3b8", bg: "#f8fafc" },

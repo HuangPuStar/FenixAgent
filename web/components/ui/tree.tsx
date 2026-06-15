@@ -339,7 +339,7 @@ export function Tree({
 
   return (
     <TreeContext.Provider value={ctx}>
-      <div role="tree" data-slot="tree" className={cn("text-sm select-none", className)}>
+      <div role="tree" data-slot="tree" className={cn("text-base select-none", className)}>
         {childContent}
       </div>
     </TreeContext.Provider>
@@ -422,31 +422,31 @@ export function TreeItem({
       {/* Node row */}
       <div
         className={cn(
-          "group relative flex items-center gap-0.5 h-7 px-0.5 rounded-sm cursor-pointer",
+          "group relative flex items-center gap-0.5 h-8 pr-2 rounded-sm cursor-pointer",
           "hover:bg-accent/50",
           state.selected && "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px]",
           data.isDisabled && "opacity-50 pointer-events-none",
           className,
         )}
-        style={{ paddingLeft: `${depth * 12}px` }}
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleRowClick}
       >
         {/* Chevron */}
         <span
-          className={cn("flex items-center justify-center flex-shrink-0 w-4 h-4")}
+          className={cn("flex items-center justify-center", showChevron ? "flex-shrink-0 w-6 h-6" : "w-0")}
           onClick={showChevron ? handleChevronClick : undefined}
         >
           {state.loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           ) : state.error ? (
             <button type="button" onClick={handleRetry} className="text-destructive hover:text-destructive/80">
-              <RotateCw className="h-3.5 w-3.5" />
+              <RotateCw className="h-5 w-5" />
             </button>
           ) : showChevron ? (
             state.expanded ? (
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <ChevronDown className="h-5 w-5 text-muted-foreground" />
             ) : (
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
             )
           ) : null}
         </span>
@@ -454,9 +454,9 @@ export function TreeItem({
         {/* Icon — renderLabel 自带图标时跳过，避免重复间距 */}
         {!renderLabel &&
           (data.icon ? (
-            <data.icon className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+            <data.icon className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
           ) : (
-            <span className="w-4 flex-shrink-0" />
+            <span className="w-5 flex-shrink-0" />
           ))}
 
         {/* Label area — 鼠标悬停时跟随光标显示全名浮窗 */}
@@ -589,8 +589,8 @@ function ShowMoreButton({ remaining, onClick, depth }: ShowMoreButtonProps) {
   return (
     <button
       type="button"
-      className="flex items-center gap-1 h-7 px-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm cursor-pointer w-full"
-      style={{ paddingLeft: `${(depth + 1) * 12}px` }}
+      className="flex items-center gap-1 h-8 pr-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm cursor-pointer w-full"
+      style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
       onClick={onClick}
     >
       {t("tree.showMore", { count: remaining })}

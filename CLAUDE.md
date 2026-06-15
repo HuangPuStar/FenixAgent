@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **⚡ 速查**：提交前 `bun run precheck` / 改 schema 后 `bun run db:generate` + `db:push` / 改前端后 `bun run build:web` / [常见陷阱](#常见陷阱) 16 条必读，违反直接导致 bug
+
 ## 项目概述
 
 Remote Control Server (RCS) 是一个基于 Elysia + Bun 的 AI Agent 控制面板后端（package name: `fenix`），配合 React 19 + Vite 前端，使用 PostgreSQL + Drizzle ORM 持久化。支持多租户组织隔离（better-auth）、ACP 协议实时通信、DAG 工作流引擎、知识库管理、定时任务、IM 通道集成。可选依赖：S3 文件存储、Redis 缓存、Hermes 消息推送。`packages/` 下当前有 9 个内部 workspace 包。
@@ -105,6 +107,16 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 - **工作目录漂移**：Bash `cd web` 后相对路径会出错，使用绝对路径或每次回 cd
 - 首次启动会自动引导系统管理员 `admin@fenix.com`，随机密码写入 `RCS_SYSTEM_ADMIN_PASSWORD_FILE`（默认 `data/password.txt`）
 
+### 关键环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `DATABASE_URL` | PostgreSQL 连接串 | — |
+| `RCS_SECRET_<name>` | Provider API Key 密文（通过 `{env:RCS_SECRET_<name>}` 引用） | — |
+| `SKILL_DIR` | Skill 文件系统存储目录 | `./data/skills` |
+| `WORKSPACE_ROOT` | 工作区根目录 | `./workspaces` |
+| `RCS_SYSTEM_ADMIN_PASSWORD_FILE` | 首次启动管理员密码存放路径 | `data/password.txt` |
+
 ## 架构关键点
 
 ### 后端架构 (Elysia + Bun)
@@ -148,7 +160,12 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 ### 前端架构 (React 19 + Vite + TanStack Router)
 
-**UI 技术栈**：Radix UI（通过 shadcn/ui 包装，`web/components/ui/`，禁止手写 Radix 原生组件）、lucide-react（**唯一图标来源**，禁止内联 SVG）、Tailwind CSS v4、Vercel AI SDK（`ai` + `@ai-sdk/react`，消息类型 `UIMessage`/`UIMessageChunk`）
+**UI 技术栈**：Radix UI（通过 shadcn/ui 包装，`web/components/ui/`，禁止手写 Radix 原生组件）、lucide-react（**通用 UI 图标唯一来源**，禁止内联 SVG）、`@lobehub/icons`（**AI 模型/品牌图标来源**，200+ LLM 品牌 SVG 组件，所有图标本地打包不使用 CDN）、Tailwind CSS v4、Vercel AI SDK（`ai` + `@ai-sdk/react`，消息类型 `UIMessage`/`UIMessageChunk`）
+
+**模型图标对照表**（`web/components/model-icon/`）：
+
+- `model-icon-map.ts`：模型 ID → `@lobehub/icons` 组件的显式对照表（仅收录常用主流模型：OpenAI/Claude/Gemini/DeepSeek/Qwen/Kimi/Meta Llama/Mistral/Grok），正则匹配模型 ID 前缀，自上而下首次命中即返回。新增模型时在此追加规则
+- `ModelIcon.tsx`：`<ModelIcon modelId="gpt-4o" size={16} />`，优先查本地对照表，未命中兜底到 `@lobehub/icons` 内置 `ModelIcon` helper（内置 400+ 关键字匹配）。禁止在业务代码中直接 import `@lobehub/icons` 的图标组件，统一通过 `<ModelIcon>` 渲染
 
 **路径别名**：`@/src` → `web/src`、`@/components` → `web/components`、`@server` → `../src`、`@fenix/sdk` → `packages/sdk/src/index.ts`
 
@@ -355,6 +372,7 @@ VALUES ('<sha256哈希值>', <journal中的when时间戳>);
 13. **relay 必须转发 agent `status`**：前端依赖 `capabilities` 判断 ACP 能力
 14. **Skill DB+文件系统双同步**：必须通过 `setSkill`/`importSkillDirectories` 创建，禁止直接调 `upsertSkill`
 15. **JSON-RPC 请求 id 不可重复生成**：`createRequest()` 内部已调用 `nextRpcId()` 生成 id，外部不得再单独调 `nextRpcId()` 取 `reqId`，否则请求实际 id 与 handler 匹配的 id 差 1，导致 JSON-RPC 响应永远匹配不上。正确做法：`const req = createRequest(...); const reqId = req.id;`（见 `acp-transport.ts`）
+16. **`@lobehub/icons` 不可被后端/纯逻辑测试间接加载**：该包依赖 `antd-style`，后者在模块加载时通过 `@emotion/cache` 调用 `document.querySelectorAll` 创建样式缓存，在 happy-dom 测试环境中会崩溃（`window.SyntaxError` 未定义）。**约束**：含 `@lobehub/icons` import 的组件文件不得导出纯工具函数供测试使用——纯逻辑须提取到不依赖 UI 的独立模块（参考 `web/src/pages/agent-panel/pages/agent-models-utils.ts` 从 `AgentModelsPage.tsx` 拆出 provider 工具函数的先例）。`mock.module("antd-style")` 无法彻底解决，因 `@lobehub/icons` 从 `antd-style` 按需导入 `keyframes`/`createStaticStyles`/`cssVar` 等命名导出，枚举不全仍会报 `Export named 'xxx' not found`
 
 **API/路由**：文件 API 用 `/web/sessions/:id/user/*`（不是 `/files/*`）；API 改造保留旧字段直到前端迁移；Workflow 节点 inputs 引用须在 `depends_on` 节点中存在
 

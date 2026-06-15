@@ -1,21 +1,7 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  BookOpen,
-  Bot,
-  Brain,
-  Clock,
-  Cpu,
-  KeyRound,
-  MessageSquare,
-  Monitor,
-  Plug,
-  Plus,
-  Send,
-  Settings,
-  Users,
-  Workflow,
-} from "lucide-react";
+import { BookOpen, Bot, Brain, Clock, Cpu, KeyRound, Plug, Plus, Settings, Users, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { NS } from "@/src/i18n";
 
 interface NavEntry {
   id: string;
@@ -28,37 +14,34 @@ interface NavGroup {
   items: NavEntry[];
 }
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "核心",
-    items: [
-      { id: "home", labelKey: "agentPanel:createAgent", icon: Plus },
-      { id: "workflow", labelKey: "agentPanel:workflow", icon: Workflow },
-      { id: "agents", labelKey: "agentPanel:agentManagement", icon: Bot },
-      { id: "sessions", labelKey: "agentPanel:sessions", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "配置",
-    items: [
-      { id: "models", labelKey: "agentPanel:models", icon: Cpu },
-      { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
-      { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
-      { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
-      { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
-      { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
-      { id: "channels", labelKey: "agentPanel:channels", icon: Send },
-      { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },
-    ],
-  },
-  {
-    label: "系统",
-    items: [
-      { id: "dashboard", labelKey: "agentPanel:overview", icon: Monitor },
-      { id: "organizations", labelKey: "sidebar:organizations", icon: Users },
-    ],
-  },
-];
+/** 导航分组定义，labelKey 统一在组件内通过 t() 翻译 */
+function useNavGroups(): NavGroup[] {
+  const { t } = useTranslation(NS.SIDEBAR);
+
+  return [
+    {
+      label: t("navGroupCore"),
+      items: [
+        { id: "home", labelKey: "agentPanel:createAgent", icon: Plus },
+        { id: "agents", labelKey: "agentPanel:agentManagement", icon: Bot },
+        { id: "workflow", labelKey: "agentPanel:workflow", icon: Workflow },
+      ],
+    },
+    {
+      label: t("navGroupConfig"),
+      items: [
+        { id: "models", labelKey: "agentPanel:models", icon: Cpu },
+        { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
+        { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
+        { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
+        { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
+        { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
+        { id: "organizations", labelKey: "sidebar:organizations", icon: Users },
+        { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },
+      ],
+    },
+  ];
+}
 
 interface AgentSidebarConfigProps {
   onNavigate: (pageId: string) => void;
@@ -70,10 +53,11 @@ export function AgentSidebarQuickNav({
   activeNav,
 }: AgentSidebarConfigProps & { activeNav: string | null }) {
   const { t } = useTranslation();
+  const navGroups = useNavGroups();
 
   return (
-    <div className="agent-sidebar-nav px-2 py-1.5">
-      {NAV_GROUPS.map((group) => (
+    <div className="agent-sidebar-nav px-2 py-1">
+      {navGroups.map((group) => (
         <div className="agent-sidebar-nav-group" key={group.label}>
           <div className="agent-sidebar-section-label">{group.label}</div>
           {group.items.map((item) => {
@@ -85,7 +69,7 @@ export function AgentSidebarQuickNav({
                 type="button"
                 onClick={() => onNavigate(item.id)}
                 title={t(item.labelKey)}
-                className={`agent-sidebar-nav-item flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--radius)] text-[13px] font-medium transition-all duration-150 cursor-pointer ${
+                className={`agent-sidebar-nav-item flex items-center gap-2 w-full px-3 py-1.5 rounded-[var(--radius)] text-[12px] font-medium transition-all duration-150 cursor-pointer ${
                   isActive
                     ? "active bg-brand-subtle text-brand-light border-l-2 border-brand"
                     : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"

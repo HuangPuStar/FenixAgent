@@ -1,6 +1,7 @@
 {
   "brand": "Fenix",
   "showArtifacts": "Show artifacts panel",
+  "hideArtifacts": "Hide artifacts panel",
   "collapseSidebar": "Collapse sidebar",
   "expandSidebar": "Expand sidebar",
   "console": "Console",
@@ -29,6 +30,10 @@
   "connectingAgent": "Connecting to Agent...",
   "agentDisconnected": "Agent not connected",
   "agentOfflineDesc": "Agent is not online. Please make sure acp-link is started.",
+  "machineUnavailable": "Remote node disconnected",
+  "machineUnavailableDesc": "The remote machine hosting the agent is unavailable. Verify the machine is online, then click reconnect.",
+  "reconnect": "Reconnect",
+  "reconnecting": "Reconnecting...",
   "connecting": "Connecting...",
   "enterFailed": "Failed to enter instance",
   "loading_agent_panel": "Loading agent panel...",

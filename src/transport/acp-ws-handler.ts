@@ -3,6 +3,7 @@ import { config } from "../config";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
+import { handleHeartbeat, startHeartbeat, stopHeartbeat } from "../services/registry-heartbeat";
 import type { AcpConnectionEntry } from "../types/store";
 import type { WsConnection } from "./ws-types";
 
@@ -131,6 +132,8 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   const heartbeatIntervalMs = typeof msg.heartbeat_interval_ms === "number" ? msg.heartbeat_interval_ms : 30000;
   const tenantId = (msg.tenant_id as string) || null;
   const userId = (msg.user_id as string) || null;
+  // 客户端持久化的 node_id，用于精确去重（避免 IP/MAC 变化导致重复注册）
+  const nodeId = (msg.node_id as string) || null;
 
   try {
     const result = await registerMachine({
@@ -141,17 +144,36 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
       heartbeatIntervalMs,
       tenantId,
       userId,
+      nodeId,
     });
 
     entry.machineId = result.id;
-    logger.debug(`Machine registered: id=${result.id} agent=${agentName}`);
+    logger.debug(`Machine registered: id=${result.id} agent=${agentName} isNew=${result.isNew}`);
 
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
     registerRemoteNode(result.id, entry.ws, entry);
 
+    // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
+    if (!result.isNew) {
+      import("./relay/relay-handler").then(({ handleMachineReconnect }) => {
+        handleMachineReconnect(result.id);
+      });
+    }
+
     sendToWs(entry.ws, {
       type: "registered",
       machine_id: result.id,
+      is_new: result.isNew,
+    });
+
+    // 启动心跳超时检测：远程服务直接关闭时 TCP 不会发 FIN，
+    // 依赖心跳超时触发完整断连清理（包括关闭前端 relay WS）
+    logger.info(
+      `[MACHINE-REGISTER] Starting heartbeat for machineId=${result.id} interval=${heartbeatIntervalMs}ms timeout=${heartbeatIntervalMs * 3}ms`,
+    );
+    startHeartbeat(result.id, heartbeatIntervalMs, () => {
+      logger.info(`[MACHINE-HEARTBEAT] Timeout triggered for machineId=${result.id}`);
+      triggerMachineDisconnect(wsId, result.id, "heartbeat timeout");
     });
   } catch (err) {
     logError("Machine register error:", err);
@@ -215,7 +237,6 @@ export async function handleAcpWsMessage(
 
     if (msg.type === "heartbeat") {
       if (entry.isMachine && entry.machineId) {
-        const { handleHeartbeat } = await import("../services/registry-heartbeat");
         handleHeartbeat(entry.machineId).catch((err) => {
           logError("Heartbeat handling error:", err);
         });
@@ -292,38 +313,110 @@ export async function handleAcpWsMessage(
   }
 }
 
+/**
+ * 机器断连的完整清理流程。
+ * 同时被 handleAcpWsClose（WS 正常关闭）、triggerMachineDisconnect（心跳超时/sweep 检测）复用。
+ */
+function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void {
+  const machineId = entry.machineId;
+  if (!machineId) return;
+
+  // 检查是否已有更新的 WS 连接接管了此 machineId（快速重连场景）
+  const activeConn = findMachineConnectionById(machineId);
+  if (activeConn) {
+    logger.info(
+      `[MACHINE-CLEANUP] Machine ${machineId} has newer active connection (wsId=${activeConn.wsId}) — closing stale relay connections`,
+    );
+    // 即使有新连接接管，仍需关闭旧 relay 连接，让前端重连使用新 transport
+    // 跳过 DB/core 清理（新连接已接管），但必须触发 relay 层刷新
+    import("./relay/relay-handler").then(({ handleMachineReconnect }) => {
+      handleMachineReconnect(machineId);
+    });
+    return;
+  }
+
+  logger.info(`[MACHINE-CLEANUP] Starting full cleanup for machineId=${machineId} reason=${reason ?? "unknown"}`);
+
+  // 无其他活跃连接，执行完整断连清理
+  handleMachineDisconnect(entry, reason).catch(() => {});
+  unregisterRemoteNode(machineId);
+  stopHeartbeat(machineId);
+  // 清理 RCS registry 中对应 machineId 的孤儿 supplement
+  import("../services/instance-registry").then(({ globalInstanceRegistry }) => {
+    const facade = getCoreRuntime();
+    globalInstanceRegistry.reconcile(() => facade.listInstances());
+  });
+  import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
+    logger.info(`[MACHINE-CLEANUP] Calling handleMachineDisconnected for machineId=${machineId}`);
+    handleMachineDisconnected(machineId);
+  });
+}
+
+/**
+ * 心跳超时或 sweep 检测到断连时，主动触发完整清理。
+ * 需要关闭残留的 WS 并执行 performMachineCleanup。
+ */
+function triggerMachineDisconnect(wsId: string, machineId: string, reason: string): void {
+  const entry = connections.get(wsId);
+  if (!entry) {
+    // entry 已被删除（例如 WS 已正常关闭），直接按 machineId 做清理
+    triggerMachineCleanupByMachineId(machineId, reason);
+    return;
+  }
+
+  logger.debug(`Triggering machine disconnect: wsId=${wsId} machineId=${machineId} reason=${reason}`);
+
+  // 关闭残留 WS 连接
+  if (entry.ws.readyState === 1) {
+    try {
+      entry.ws.close(1011, reason);
+    } catch {
+      /* ignore */
+    }
+  }
+  connections.delete(wsId);
+  performMachineCleanup(entry, reason);
+}
+
+/** 仅凭 machineId 做清理（entry 已不存在时由 sweep 使用）。导出供 registry-heartbeat sweep 调用。 */
+export function triggerMachineCleanupByMachineId(machineId: string, reason: string): void {
+  // 先检查是否有活跃连接（可能已重连）
+  const activeConn = findMachineConnectionById(machineId);
+  if (activeConn) return;
+
+  // 更新 DB 状态
+  disconnectMachine(machineId, reason).catch((err) => {
+    logError("Machine disconnect error:", err);
+  });
+
+  unregisterRemoteNode(machineId);
+  stopHeartbeat(machineId);
+  import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
+    handleMachineDisconnected(machineId);
+  });
+}
+
 /** Called from onClose — marks agent offline and cleans up */
 export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number, reason?: string): void {
   const entry = connections.get(wsId);
   if (!entry) return;
 
   const duration = Math.round((Date.now() - entry.openTime) / 1000);
-  logger.debug(
-    `Connection closed: wsId=${wsId} agentId=${entry.agentId} code=${code ?? "none"} reason=${reason || "(none)"} duration=${duration}s`,
+  logger.info(
+    `[ACP-WS-CLOSE] wsId=${wsId} isMachine=${entry.isMachine} machineId=${entry.machineId ?? "none"} code=${code ?? "none"} reason=${reason || "(none)"} duration=${duration}s`,
   );
 
   if (entry.unsub) entry.unsub();
   if (entry.keepalive) clearInterval(entry.keepalive);
 
-  // machine 连接断连处理
-  if (entry.isMachine) {
-    const reasonStr = reason ?? undefined;
-    handleMachineDisconnect(entry, reasonStr).catch(() => {});
-
-    if (entry.machineId) {
-      unregisterRemoteNode(entry.machineId);
-      // 清理 RCS registry 中对应 machineId 的孤儿 supplement
-      import("../services/instance-registry").then(({ globalInstanceRegistry }) => {
-        const facade = getCoreRuntime();
-        globalInstanceRegistry.reconcile(() => facade.listInstances());
-      });
-      import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
-        handleMachineDisconnected(entry.machineId!);
-      });
-    }
-  }
-
+  // 先删除连接记录，避免后续清理逻辑查到已失效的旧 entry
   connections.delete(wsId);
+
+  // machine 连接断连处理
+  if (entry.isMachine && entry.machineId) {
+    logger.info(`[ACP-WS-CLOSE] calling performMachineCleanup for machineId=${entry.machineId}`);
+    performMachineCleanup(entry, reason ?? undefined);
+  }
 }
 
 /** agentId (environment.id) → machineId 缓存，供同步 sendToAgentWs 使用 */

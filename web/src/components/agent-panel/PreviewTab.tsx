@@ -5,6 +5,7 @@ import { fileApi } from "@/src/api/sdk";
 import { NS } from "../../i18n";
 import { BinaryInfoPreview } from "./preview/BinaryInfoPreview";
 import { CodePreview } from "./preview/CodePreview";
+import { HtmlPreview } from "./preview/HtmlPreview";
 import { ImagePreview } from "./preview/ImagePreview";
 import { MarkdownPreview } from "./preview/MarkdownPreview";
 import { PdfPreview } from "./preview/PdfPreview";
@@ -37,8 +38,8 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
 
     const cat = classifyFile(filePath);
 
-    // 图片、PDF、表格 不需要通过 readFile API，直接由子组件处理
-    if (cat === "image" || cat === "pdf" || cat === "table") {
+    // 图片、PDF、表格、HTML 不需要通过 readFile API，直接由子组件通过 URL 处理
+    if (cat === "image" || cat === "pdf" || cat === "table" || cat === "html") {
       setContent(null);
       setFileName(filePath.split("/").pop() ?? filePath);
       setError(null);
@@ -106,6 +107,7 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
         )}
         {!loading && !error && category === "markdown" && content !== null && <MarkdownPreview content={content} />}
         {!loading && !error && category === "image" && envId && <ImagePreview envId={envId} filePath={filePath!} />}
+        {!loading && !error && category === "html" && envId && <HtmlPreview envId={envId} filePath={filePath!} />}
         {!loading && !error && category === "pdf" && envId && <PdfPreview envId={envId} filePath={filePath!} />}
         {!loading && !error && category === "table" && envId && (
           <TablePreview envId={envId} filePath={filePath!} content={content} />

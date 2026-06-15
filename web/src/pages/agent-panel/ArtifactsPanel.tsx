@@ -1,83 +1,57 @@
-import { FolderTree, PanelRightClose, Upload, X } from "lucide-react";
+import { FilesIcon, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { ChangedFilesSection } from "../../components/agent-panel/ChangedFilesSection";
+import { FileTabsBar } from "../../components/agent-panel/FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
 import { PreviewTab } from "../../components/agent-panel/PreviewTab";
-import { useResizable } from "../../hooks/useResizable";
+import { normalizeToUserPath } from "../../components/agent-panel/preview/utils";
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
+import { cn } from "../../lib/utils";
+
+/** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
+const MAX_OPEN_FILES = 8;
 
 interface ArtifactsPanelProps {
   collapsed: boolean;
-  onToggleCollapse: () => void;
   envId: string | null;
   /** 本次会话中被 Agent 修改的文件列表，已去重排序，含操作类型 */
   changedFiles?: ChangedFile[];
 }
 
-export function ArtifactsPanel({ collapsed, onToggleCollapse, envId, changedFiles = [] }: ArtifactsPanelProps) {
+/**
+ * ArtifactsPanel —— 文件区域，VSCode 风格三段式布局（Popover 变体）。
+ *
+ * 顶部 FileTabsBar 承担：文件树 popover（点击 PanelLeft 展开，与历史会话 popover 一致）
+ * / 变更文件 badge / 文件 tab 列表；主体全部留给 PreviewTab 预览区，文件树不再占用主区域。
+ *
+ * 预览改造：原先点击文件弹出可拖拽 Dialog，现已废弃；点击文件等于在 PreviewTab
+ * 中打开，并加入顶部 tab 列表（最近 8 个，tab 栏仅展示最近 5 个，超出折叠）。
+ *
+ * 文件树改造：从原"主体左侧常驻"改为"popover 浮层"，与 ChatHeader 的历史会话交互一致；
+ * ArtifactsPanel 把 `<FileTreeTab ref={fileTreeRef}>` 作为 ReactNode 交给 FileTabsBar
+ * 渲染到 PopoverContent 内，ref 仍由 ArtifactsPanel 持有以便上传等命令式调用。
+ */
+export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
-  const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
-  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
-  const [dialogOffset, setDialogOffset] = useState({ x: 0, y: 0 });
-  const initialDialogSize = useMemo(
-    () => ({
-      width: Math.round(window.innerWidth * 0.66),
-      height: Math.round(window.innerHeight * 0.75),
-    }),
-    [],
-  );
-  const {
-    size: dialogSize,
-    resizeHandle,
-    targetRef: dialogResizeRef,
-  } = useResizable({
-    initialWidth: initialDialogSize.width,
-    initialHeight: initialDialogSize.height,
-    externalOffsetX: dialogOffset.x,
-    externalOffsetY: dialogOffset.y,
-  });
-  const dragStartRef = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
 
-  const effectiveStyle: React.CSSProperties = {
-    width: dialogSize.width,
-    height: dialogSize.height,
-    transform: `translate(calc(-50% + ${dialogSize.offsetX + dialogOffset.x}px), calc(-50% + ${
-      dialogSize.offsetY + dialogOffset.y
-    }px))`,
-  };
+  // 打开的文件列表（LRU 顺序：最前为最新打开），上限 MAX_OPEN_FILES
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  // 当前激活文件，控制 PreviewTab 展示内容
+  const [activeFile, setActiveFile] = useState<string | null>(null);
+  // 文件树是否展开（默认 false，由顶部 PanelLeft 按钮切换）
+  // 当没有任何打开的文件时自动展开文件树，引导用户选择
+  const [fileTreeOpen, setFileTreeOpen] = useState(false);
 
-  const handleHeaderDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      if ((e.target as HTMLElement).closest("button")) return;
-      e.preventDefault();
-      dragStartRef.current = { x: e.clientX, y: e.clientY, ox: dialogOffset.x, oy: dialogOffset.y };
+  useEffect(() => {
+    if (openFiles.length === 0 && !fileTreeOpen) {
+      setFileTreeOpen(true);
+    }
+  }, [openFiles.length, fileTreeOpen]);
 
-      const onMove = (ev: MouseEvent) => {
-        const ds = dragStartRef.current;
-        setDialogOffset({ x: ds.ox + ev.clientX - ds.x, y: ds.oy + ev.clientY - ds.y });
-      };
-
-      const onUp = () => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-      };
-
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    },
-    [dialogOffset],
-  );
-
-  const closePreview = useCallback(() => {
-    setPreviewFilePath(null);
-    setDialogOffset({ x: 0, y: 0 });
-  }, []);
-
+  // 拖拽上传遮罩状态
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{
     active: boolean;
@@ -87,47 +61,50 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId, changedFile
   const dragCounterRef = useRef(0);
   const fileTreeRef = useRef<FileTreeTabHandle>(null);
 
-  const [width, setWidth] = useState(() => {
-    const saved = localStorage.getItem("agent-panel:artifacts-width");
-    return saved ? Number(saved) : 260;
-  });
+  // 打开文件预览：把 path 提到 openFiles 最前（去重），超过上限丢弃末尾，并设为 active
+  const openFile = useCallback((path: string) => {
+    setOpenFiles((prev) => {
+      const filtered = prev.filter((p) => p !== path);
+      return [path, ...filtered].slice(0, MAX_OPEN_FILES);
+    });
+    setActiveFile(path);
+  }, []);
 
-  const resizingRef = useRef(false);
-  const startXRef = useRef(0);
-  const startWidthRef = useRef(0);
-
-  useEffect(() => {
-    localStorage.setItem("agent-panel:artifacts-width", String(width));
-  }, [width]);
-
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      resizingRef.current = true;
-      startXRef.current = e.clientX;
-      startWidthRef.current = width;
-
-      const handleMouseMove = (ev: MouseEvent) => {
-        if (!resizingRef.current) return;
-        const delta = startXRef.current - ev.clientX;
-        const newWidth = Math.min(500, Math.max(200, startWidthRef.current + delta));
-        setWidth(newWidth);
-      };
-
-      const handleMouseUp = () => {
-        resizingRef.current = false;
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
-      };
-
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-    },
-    [width],
+  // 把 Agent 上报的任意格式 path（相对路径 / workspace 绝对路径）统一规范化为
+  // 「相对 user/ 的路径」，与文件树 tree API 返回的格式一致（user/foo/bar.html）。
+  // 集中规范化一次：useEffect 自动展开 + FileTabsBar badge 点击都消费同一份数据，
+  // 避免 badge 回调把原始绝对路径直接喂给 openFile 导致 buildPreviewUrl 拼出双 user/。
+  const normalizedChangedFiles = useMemo<ChangedFile[]>(
+    () => changedFiles.map((f) => ({ ...f, path: normalizeToUserPath(f.path) })),
+    [changedFiles],
   );
 
-  const handlePreviewFile = useCallback((path: string) => {
-    setPreviewFilePath(path);
+  // changedFiles 变化时自动将 diff 文件加入 openFiles（新文件前置），并激活第一个 diff 文件
+  // path 已在 normalizedChangedFiles 中规范化为带 user/ 前缀，无需再次处理
+  useEffect(() => {
+    const paths = normalizedChangedFiles.map((f) => f.path);
+    if (paths.length === 0) return;
+    setOpenFiles((prev) => {
+      const newPaths = paths.filter((p) => !prev.includes(p));
+      if (newPaths.length === 0) return prev;
+      return [...newPaths, ...prev].slice(0, MAX_OPEN_FILES);
+    });
+    setActiveFile((cur) => cur ?? paths[0]);
+  }, [normalizedChangedFiles]);
+
+  // 关闭 tab：从 openFiles 移除；若关闭的是当前激活文件，激活相邻 tab（优先右侧，再左侧）
+  const handleCloseFile = useCallback((path: string) => {
+    setOpenFiles((prev) => {
+      const next = prev.filter((p) => p !== path);
+      setActiveFile((cur) => {
+        if (cur !== path) return cur;
+        const closedIdx = prev.indexOf(path);
+        // 优先选右侧第一个；越界则回退左侧最后一个；都没有则置空
+        const fallback = next[closedIdx] ?? next[closedIdx - 1] ?? null;
+        return fallback ?? null;
+      });
+      return next;
+    });
   }, []);
 
   const handleReferenceFile = useCallback((path: string, name: string) => {
@@ -188,117 +165,88 @@ export function ArtifactsPanel({ collapsed, onToggleCollapse, envId, changedFile
   }
 
   return (
-    <>
-      <div
-        className="relative flex shrink-0 border-l border-border bg-surface-1"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <button
-          className="absolute left-0 -translate-x-full top-1/2 -translate-y-1/2 z-10 w-6 h-12 flex items-center justify-center rounded-l-lg border border-border border-r-0 bg-surface-1 text-text-muted cursor-pointer transition-colors duration-150 hover:bg-surface-2 hover:text-text-primary"
-          onClick={onToggleCollapse}
-          title={t("closePanel")}
-          aria-label={t("closePanel")}
-        >
-          <PanelRightClose className="h-3.5 w-3.5" />
-        </button>
+    // flex-1：与左侧 .agent-chat-area（flex:1）均分父容器宽度，形成 1:1 布局；
+    // collapsed 时本组件直接 return null，chat-area 自然占满整行
+    <div
+      className="relative flex flex-1 flex-col bg-surface-1 rounded-xl border border-border/75"
+      style={{ boxShadow: "var(--shadow-card)" }}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* 顶部 tab 栏：文件树 toggle / 变更文件 badge / 文件 tabs */}
+      <FileTabsBar
+        openFiles={openFiles}
+        activeFile={activeFile}
+        changedFiles={normalizedChangedFiles}
+        // 点击已有 tab / +N popover 中的项：仅切换 active，不重排顺序
+        // （用户偏好：tab 位置稳定，不希望每次点击都把文件提到最前）
+        // 真正"打开新文件"（双击文件树 / 变更 badge）才走 openFile 触发 LRU 入列
+        onSelectFile={setActiveFile}
+        onCloseFile={handleCloseFile}
+        onPreviewChangedFile={openFile}
+      />
 
-        <div className="agent-artifacts-resize-handle" style={{ left: 0 }} onMouseDown={handleMouseDown} />
-
-        <div className="flex flex-col overflow-hidden" style={{ width }}>
-          <div className="flex items-center px-2 py-1.5 border-b border-border shrink-0">
-            <span className="text-xs text-text-primary flex items-center gap-1">
-              <FolderTree className="h-3 w-3" />
-              {tPanel("tabFiles")}
-            </span>
-          </div>
-
-          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            <div className="flex-1 min-h-0">
+      {/* 主体：文件树固定右侧 + 预览区自适应剩余空间 */}
+      <div className="flex-1 min-h-0 min-w-0 flex">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col border-r border-solid border-border/75">
+          <PreviewTab envId={envId} filePath={activeFile} />
+        </div>
+        {/* 浮动 toggle 按钮：absolute 定位在文件树面板左边缘 */}
+        <div className="relative flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setFileTreeOpen((v) => !v)}
+            className={cn(
+              "absolute -left-12 z-20 h-10 w-10 flex items-center justify-center rounded-lg shadow-sm transition-colors",
+              fileTreeOpen
+                ? "bg-surface-1 border border-border/30 text-text-primary"
+                : "bg-surface-1 border border-border/20 text-text-muted hover:text-text-primary hover:bg-surface-2/60",
+            )}
+            title={fileTreeOpen ? t("fileTree.hideTree") : t("fileTree.showTree")}
+            aria-label={fileTreeOpen ? t("fileTree.hideTree") : t("fileTree.showTree")}
+          >
+            <FilesIcon className="h-4 w-4" />
+          </button>
+          {fileTreeOpen && (
+            <div className="w-60 flex flex-col overflow-hidden">
               <FileTreeTab
                 ref={fileTreeRef}
                 envId={envId}
-                onPreviewFile={handlePreviewFile}
+                onPreviewFile={openFile}
                 onReferenceFile={handleReferenceFile}
               />
             </div>
-            <ChangedFilesSection files={changedFiles} />
-          </div>
+          )}
         </div>
-
-        {(isDragging || uploadProgress.active) && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-lg bg-background/80 backdrop-blur-sm">
-            {uploadProgress.active ? (
-              <>
-                <Upload className="h-8 w-8 mb-3 text-brand animate-pulse" />
-                <p className="text-sm text-text-primary mb-2">
-                  {t("fileTree.uploadingFile", { name: uploadProgress.fileName })}
-                </p>
-                <div className="w-48">
-                  <Progress value={uploadProgress.percent} className="h-1.5" />
-                </div>
-                <p className="text-xs text-text-muted mt-1">
-                  {t("fileTree.uploadingProgress", { percent: uploadProgress.percent })}
-                </p>
-              </>
-            ) : (
-              <>
-                <Upload className="h-10 w-10 mb-3 text-brand" />
-                <p className="text-sm font-medium text-text-primary mb-1">{t("fileTree.dropToUpload")}</p>
-                <p className="text-xs text-text-muted">{t("fileTree.uploadTo", { path: "user/" })}</p>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
-      <Dialog
-        open={!!previewFilePath}
-        onOpenChange={(open) => {
-          if (!open) closePreview();
-        }}
-      >
-        <DialogContent
-          ref={dialogResizeRef}
-          className="flex flex-col p-0 gap-0 overflow-hidden sm:max-w-none !translate-x-0 !translate-y-0 shadow-[0_0_40px_rgba(0,0,0,0.4)] !transition-none"
-          style={effectiveStyle}
-          showOverlay
-          disableOverlayClose
-          showCloseButton={false}
-        >
-          <DialogHeader
-            className="flex-row items-center justify-between px-4 py-3 border-b shrink-0 gap-2 cursor-grab active:cursor-grabbing select-none"
-            onMouseDown={handleHeaderDragStart}
-          >
-            <DialogTitle className="text-sm font-medium truncate max-w-[70%]">
-              {previewFilePath?.split("/").pop() ?? t("fileTree.preview.title")}
-            </DialogTitle>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={closePreview}
-                className="h-6 w-6 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors"
-                title="关闭"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-auto">
-            {previewFilePath && <PreviewTab envId={envId} filePath={previewFilePath} />}
-          </div>
-          <div {...resizeHandle("n")} />
-          <div {...resizeHandle("s")} />
-          <div {...resizeHandle("e")} />
-          <div {...resizeHandle("w")} />
-          <div {...resizeHandle("ne")} />
-          <div {...resizeHandle("nw")} />
-          <div {...resizeHandle("se")} />
-          <div {...resizeHandle("sw")} />
-        </DialogContent>
-      </Dialog>
-    </>
+      {/* 拖拽上传遮罩（覆盖整个 panel） */}
+      {(isDragging || uploadProgress.active) && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-lg bg-background/80 backdrop-blur-sm">
+          {uploadProgress.active ? (
+            <>
+              <Upload className="h-8 w-8 mb-3 text-brand animate-pulse" />
+              <p className="text-sm text-text-primary mb-2">
+                {t("fileTree.uploadingFile", { name: uploadProgress.fileName })}
+              </p>
+              <div className="w-48">
+                <Progress value={uploadProgress.percent} className="h-1.5" />
+              </div>
+              <p className="text-xs text-text-muted mt-1">
+                {t("fileTree.uploadingProgress", { percent: uploadProgress.percent })}
+              </p>
+            </>
+          ) : (
+            <>
+              <Upload className="h-10 w-10 mb-3 text-brand" />
+              <p className="text-sm font-medium text-text-primary mb-1">{t("fileTree.dropToUpload")}</p>
+              <p className="text-xs text-text-muted">{t("fileTree.uploadTo", { path: "user/" })}</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

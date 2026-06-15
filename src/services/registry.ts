@@ -8,13 +8,6 @@ function genId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 22)}`;
 }
 
-function deriveMachineId(machineInfo: Record<string, unknown> | null): string {
-  const ip = (machineInfo?.ip as string) ?? "0.0.0.0";
-  const mac = (machineInfo?.mac as string) ?? "";
-  const os = (machineInfo?.os as string) ?? "unknown";
-  return `mach_${ip}_${os}_${mac}`;
-}
-
 export async function listMachines(
   ctx: AuthContext,
   filters: { status?: "online" | "offline"; labels?: string[]; limit?: number; offset?: number },
@@ -128,17 +121,21 @@ export async function registerMachine(params: {
   heartbeatIntervalMs: number;
   tenantId: string | null;
   userId: string | null;
-}): Promise<{ id: string }> {
+  /** 客户端持久化的 node_id，用于精确去重（避免 IP/MAC 变化导致重复注册） */
+  nodeId?: string | null;
+}): Promise<{ id: string; isNew: boolean }> {
   const hostname = params.machineInfo?.hostname as string | undefined;
-  const id = deriveMachineId(params.machineInfo);
   let existingId: string | null = null;
 
-  // dedup by derived ID (ip+os+mac → same ID)
-  const existing = await db.select({ id: machine.id }).from(machine).where(eq(machine.id, id)).limit(1);
-  existingId = existing[0]?.id ?? null;
+  // ── 去重策略 ──
+  // 优先级 1：按客户端持久化的 node_id 精确匹配（最可靠，跨 IP/MAC 变化稳定）
+  if (params.nodeId) {
+    const byNodeId = await db.select({ id: machine.id }).from(machine).where(eq(machine.id, params.nodeId)).limit(1);
+    existingId = byNodeId[0]?.id ?? null;
+  }
 
+  // 优先级 2：fallback 按 hostname + agentName 查找（兼容旧客户端或 node_id 丢失）
   if (!existingId && hostname) {
-    // fallback dedup by hostname + agentName
     const byHostname = await db
       .select({ id: machine.id })
       .from(machine)
@@ -149,6 +146,7 @@ export async function registerMachine(params: {
 
   const now = new Date();
 
+  // ── 已存在的机器重连：更新状态，写 reconnect 事件 ──
   if (existingId) {
     await db
       .update(machine)
@@ -163,17 +161,20 @@ export async function registerMachine(params: {
       })
       .where(eq(machine.id, existingId));
 
+    // 重连事件与首次注册区分，避免 registry_event 表堆积无意义的重复 register 记录
     await db.insert(registryEvent).values({
       id: genId("evt"),
       machineId: existingId,
-      type: "register",
+      type: "reconnect",
       detail: { machine_info: params.machineInfo, labels: params.labels },
     });
 
     await bindAgentConfigs(existingId, params.agentName, params.tenantId);
-    return { id: existingId };
+    return { id: existingId, isNew: false };
   }
 
+  // ── 新机器首次注册：生成随机 ID，写 register 事件 ──
+  const id = genId("mach");
   await db.insert(machine).values({
     id,
     organizationId: params.tenantId ?? null,
@@ -198,7 +199,7 @@ export async function registerMachine(params: {
   });
 
   await bindAgentConfigs(id, params.agentName, params.tenantId);
-  return { id };
+  return { id, isNew: true };
 }
 
 export async function disconnectMachine(machineId: string, reason: string): Promise<void> {

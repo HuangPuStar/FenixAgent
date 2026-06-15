@@ -70,13 +70,16 @@ function toLaunchModelProtocol(
   );
 }
 
-/** 运行时只认正式的 modelId 外键，避免继续读取迁移期字符串字段。 */
+/** 运行时只认正式的 modelId 外键；未指定时回退到当前组织第一个可用模型。 */
 async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Promise<ModelConfig> {
   if (!agentConfig.modelId) {
-    throwInvalidConfig(
-      `AgentConfig '${agentConfig.id}' has no model configured`,
-      `[launch-spec-builder] missing modelId for agentConfig='${agentConfig.id}', org='${agentConfig.organizationId}'`,
+    log(
+      `[launch-spec-builder] agentConfig '${agentConfig.id}' has no modelId, falling back to first available model in org '${agentConfig.organizationId}'`,
     );
+    return resolveFirstReadableModelConfig({
+      organizationId: agentConfig.organizationId,
+      userId: agentConfig.userId ?? agentConfig.organizationId,
+    });
   }
 
   const modelRows = await db.select().from(model).where(eq(model.id, agentConfig.modelId)).limit(1);

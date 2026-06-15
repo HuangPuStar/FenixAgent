@@ -98,6 +98,12 @@ export class WSTransport extends EventEmitter<TransportEvents> {
           return;
         }
 
+        // 4500 = 远程节点不可用（machine_unavailable），不自动重连，等待用户手动触发
+        if (event.code === 4500) {
+          this.setState("error", event);
+          return;
+        }
+
         // 连接稳定超过阈值才视为有效连接，重置重连计数器
         // 防止 relay 接受连接但 agent 不可达时立即断开导致的无限重连循环
         const wasStable = this.connectedAt > 0 && Date.now() - this.connectedAt >= WSTransport.STABLE_THRESHOLD_MS;

@@ -1,8 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Bot, Loader2, MessageSquare, Pencil, Plus, Search, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Bot, Loader2, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { agentApi, envApi } from "@/src/api/sdk";
+import { AgentBadge } from "../../../../components/chat/AgentBadge";
 import { getAgentConfigLookupKey, getAgentDisplayName, isAgentWritable } from "../../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../../lib/config-events";
 import type { ResourceAccess } from "../../../types/config";
@@ -18,7 +19,7 @@ interface AgentConfigItem {
   modelLabel?: string | null;
   description?: string | null;
   resourceAccess?: ResourceAccess;
-  skillLabels?: string[];
+  skillLabels?: Array<{ id: string; label: string }>;
   machineId?: string | null;
 }
 
@@ -37,8 +38,6 @@ const FILTERS = [
   { id: "custom", label: "自定义" },
 ] as const;
 
-const CARD_ACCENTS = ["#21c792", "#f5aa18", "#ff5a62", "#6a72f6", "#36a2ff", "#23bfd4"];
-
 type FilterId = (typeof FILTERS)[number]["id"];
 
 function inferCategory(agent: AgentConfigItem): FilterId {
@@ -51,31 +50,6 @@ function inferCategory(agent: AgentConfigItem): FilterId {
   return "custom";
 }
 
-function getSkillCount(agent: AgentConfigItem) {
-  if (Array.isArray(agent.skillLabels)) return agent.skillLabels.length;
-  return 0;
-}
-
-function getStatus(node: AgentManageNode) {
-  const env = node.environment;
-  if (!env) return "stopped";
-  if ((env.instances_count ?? 0) > 0) return "running";
-  if (env.status === "running" || env.status === "starting") return "running";
-  return "stopped";
-}
-
-function AgentInitial({ agent, accent }: { agent: AgentConfigItem; accent: string }) {
-  const displayName = getAgentDisplayName(agent);
-  return (
-    <div
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-bold text-white"
-      style={{ background: accent }}
-    >
-      {displayName.charAt(0).toUpperCase()}
-    </div>
-  );
-}
-
 export function AgentManagementPage() {
   const navigate = useNavigate();
   const [nodes, setNodes] = useState<AgentManageNode[]>([]);
@@ -83,7 +57,6 @@ export function AgentManagementPage() {
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [loading, setLoading] = useState(true);
   const [enteringId, setEnteringId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editAgentName, setEditAgentName] = useState<string | null>(null);
 
@@ -175,64 +148,47 @@ export function AgentManagementPage() {
     [navigate],
   );
 
-  const handleDeleteAgent = useCallback(
-    async (agent: AgentConfigItem) => {
-      if (!window.confirm(`确定删除智能体「${getAgentDisplayName(agent)}」吗？`)) return;
-      setDeletingId(agent.id);
-      try {
-        const { error } = await agentApi.delete(agent.name);
-        if (error) {
-          toast.error(error.message || "删除失败");
-          return;
-        }
-        toast.success("已删除智能体");
-        await loadData();
-      } catch (err) {
-        console.error("Failed to delete agent:", err);
-        toast.error("删除失败");
-      } finally {
-        setDeletingId(null);
-      }
-    },
-    [loadData],
-  );
-
   return (
     <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-      <div className="mb-7 flex items-center justify-between gap-4">
-        <h1 className="text-[28px] font-bold tracking-tight text-[#1474ff]">智能体管理</h1>
-      </div>
-
-      <div className="mb-6 flex items-center gap-5">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-[#98a8bd]" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索智能体名称..."
-            className="h-11 w-full rounded-lg border border-[#dce5ef] bg-white px-11 text-[14px] text-[#1a2944] shadow-sm outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
-          />
+      {/* 标题行：标题 + 副标题 + 创建按钮 */}
+      <div className="mb-3 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-bold tracking-tight text-[#1a2944]">智能体管理</h1>
+          <p className="mt-0.5 text-[12px] text-[#94a3b8]">管理您的所有 AI 智能体，支持创建、编辑和对话</p>
         </div>
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
-          className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-6 text-[14px] font-semibold text-white shadow-[0_10px_20px_rgba(22,119,255,0.22)] transition hover:bg-[#0f67df]"
+          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
         >
           <Plus className="h-4 w-4" />
           创建智能体
         </button>
       </div>
 
-      <div className="mb-7 flex flex-wrap gap-3">
+      {/* 分隔线 */}
+      <div className="mb-3.5 h-px bg-[#e8edf4]" />
+
+      {/* 搜索 + 筛选 */}
+      <div className="mb-7 flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-md">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a8bd]" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索智能体名称..."
+            className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
+          />
+        </div>
         {FILTERS.map((filter) => (
           <button
             key={filter.id}
             type="button"
             onClick={() => setActiveFilter(filter.id)}
             className={[
-              "h-9 rounded-full px-5 text-[13px] font-semibold transition",
+              "rounded-full px-3.5 py-1.5 text-[12px] font-medium transition",
               activeFilter === filter.id
-                ? "bg-[#1677ff] text-white shadow-[0_8px_18px_rgba(22,119,255,0.2)]"
+                ? "bg-[#1677ff] text-white shadow-[0_4px_10px_rgba(22,119,255,0.18)]"
                 : "border border-[#e0e7f0] bg-white text-[#6f7f95] hover:border-[#b9cee8] hover:text-[#1677ff]",
             ].join(" ")}
           >
@@ -253,115 +209,23 @@ export function AgentManagementPage() {
           <div className="mt-1 text-[13px]">点击右上角创建第一个智能体</div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-4">
-          {filteredNodes.map((node, index) => {
+        <div className="grid grid-cols-[repeat(auto-fill,224px)] gap-5 justify-center">
+          {filteredNodes.map((node) => {
             const { agent } = node;
-            const accent = CARD_ACCENTS[index % CARD_ACCENTS.length];
-            const category = FILTERS.find((filter) => filter.id === inferCategory(agent))?.label ?? "自定义";
-            const status = getStatus(node);
             const writable = isAgentWritable(agent);
             const isBusy = enteringId === agent.id;
-            const isDeleting = deletingId === agent.id;
 
             return (
-              <article
+              <AgentBadge
                 key={agent.id}
-                className="group overflow-hidden rounded-sm border border-[#e1e8f2] bg-white shadow-[0_10px_24px_rgba(43,71,112,0.05)]"
-              >
-                <div className="h-[3px]" style={{ background: accent }} />
-                <div className="relative p-5">
-                  <div className="absolute right-3 top-3 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                    <button
-                      type="button"
-                      onClick={() => setEditAgentName(getAgentConfigLookupKey(agent))}
-                      className="flex h-6 w-6 items-center justify-center rounded text-[#8a9ab0] hover:bg-[#eef4fb] hover:text-[#1677ff]"
-                      title={writable ? "编辑" : "查看"}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    {writable && (
-                      <button
-                        type="button"
-                        disabled={isDeleting}
-                        onClick={() => void handleDeleteAgent(agent)}
-                        className="flex h-6 w-6 items-center justify-center rounded text-[#8a9ab0] hover:bg-[#fff0f0] hover:text-[#e5484d] disabled:opacity-60"
-                        title="删除"
-                      >
-                        {isDeleting ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex items-start gap-3 pr-12">
-                    <AgentInitial agent={agent} accent={accent} />
-                    <div className="min-w-0">
-                      <div className="truncate text-[16px] font-bold text-[#17233d]">{getAgentDisplayName(agent)}</div>
-                      <div className="mt-1 inline-flex max-w-full items-center rounded-full bg-[#eef3f9] px-2 py-0.5 text-[12px] font-medium text-[#8a98ab]">
-                        <span className="truncate">{category}智能体</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className={[
-                      "mt-4 inline-flex items-center rounded-full px-3 py-1 text-[12px] font-semibold",
-                      status === "running" ? "bg-[#e7fbf2] text-[#20b877]" : "bg-[#eef2f7] text-[#8998ad]",
-                    ].join(" ")}
-                  >
-                    <span
-                      className={[
-                        "mr-1.5 h-1.5 w-1.5 rounded-full",
-                        status === "running" ? "bg-[#23c982]" : "bg-[#96a6ba]",
-                      ].join(" ")}
-                    />
-                    {status === "running" ? "运行中" : "已停止"}
-                  </div>
-
-                  <p className="mt-4 line-clamp-2 min-h-[44px] text-[14px] leading-[22px] text-[#69788f]">
-                    {agent.description || "暂无描述"}
-                  </p>
-
-                  <div className="mt-5 flex items-center gap-5 border-t border-[#e8eef5] pt-4 text-[12px] font-semibold text-[#8796ab]">
-                    <span>
-                      模型{" "}
-                      <b className="ml-1 text-[#34435b]">{agent.modelLabel ?? agent.model ?? agent.modelId ?? "-"}</b>
-                    </span>
-                    <span>
-                      技能 <b className="ml-1 text-[#34435b]">{getSkillCount(agent)}</b>
-                    </span>
-                    {agent.machineId && (
-                      <span className="inline-flex items-center gap-1">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        远程
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 border-t border-[#e8eef5] bg-[#f8fbff] p-3">
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    onClick={() => void handleEnterAgent(node)}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1677ff] text-[13px] font-semibold text-white transition hover:bg-[#0f67df] disabled:opacity-60"
-                  >
-                    {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-                    进入对话
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditAgentName(getAgentConfigLookupKey(agent))}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#d9e2ee] bg-white text-[13px] font-semibold text-[#65748a] transition hover:border-[#b9cee8] hover:text-[#1677ff]"
-                  >
-                    <UserRound className="h-4 w-4" />
-                    {writable ? "编辑" : "查看"}
-                  </button>
-                </div>
-              </article>
+                name={agent.name}
+                description={agent.description || undefined}
+                skills={agent.skillLabels ?? []}
+                sourceOrg={agent.resourceAccess?.sourceOrganizationName}
+                onEnter={() => void handleEnterAgent(node)}
+                onEdit={writable ? () => setEditAgentName(getAgentConfigLookupKey(agent)) : undefined}
+                isBusy={isBusy}
+              />
             );
           })}
         </div>

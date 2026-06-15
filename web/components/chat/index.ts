@@ -1,4 +1,3 @@
-export { ChatInput } from "./ChatInput";
 export { ChatView } from "./ChatView";
 export { CommandMenu } from "./CommandMenu";
 export { AssistantBubble, UserBubble } from "./MessageBubble";

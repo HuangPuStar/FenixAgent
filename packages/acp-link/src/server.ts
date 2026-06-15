@@ -1,5 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
+import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
@@ -116,10 +118,35 @@ function cancelPendingPermissions(clientState: ClientState): void {
 }
 
 // ---------------------------------------------------------------------------
+// Node identity persistence: 持久化 machine_id 避免重复注册
+// ---------------------------------------------------------------------------
+
+const NODE_ID_FILENAME = ".acp-link-node-id";
+
+/** 从 cwd 加载持久化的 node_id（上次注册时服务器分配的 machine_id） */
+async function loadNodeId(cwd: string): Promise<string | null> {
+  try {
+    const id = (await readFile(join(cwd, NODE_ID_FILENAME), "utf-8")).trim();
+    return id || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 将 node_id 持久化到 cwd，后续重连时携带以精确匹配已有 machine 记录 */
+async function saveNodeId(cwd: string, machineId: string): Promise<void> {
+  try {
+    await writeFile(join(cwd, NODE_ID_FILENAME), machineId, "utf-8");
+  } catch (err) {
+    console.error("[acp-client] Failed to persist node_id:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Registry helpers: build register message for RCS client mode
 // ---------------------------------------------------------------------------
 
-export function buildRegisterMessage(config: ServerConfig): object {
+export function buildRegisterMessage(config: ServerConfig, nodeId?: string | null): object {
   let ip = "127.0.0.1";
   let mac = "";
   try {
@@ -139,7 +166,7 @@ export function buildRegisterMessage(config: ServerConfig): object {
     // fallback to 127.0.0.1
   }
 
-  return {
+  const msg: Record<string, unknown> = {
     type: "register",
     agent_name: config.command,
     name: config.name ?? null,
@@ -157,6 +184,13 @@ export function buildRegisterMessage(config: ServerConfig): object {
     tenant_id: config.tenantId ?? null,
     user_id: config.userId ?? null,
   };
+
+  // 携带持久化的 node_id，服务端据此精确匹配已有记录，避免重复注册
+  if (nodeId) {
+    msg.node_id = nodeId;
+  }
+
+  return msg;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,11 +202,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     throw new Error("rcsUrl is required for client mode");
   }
 
+  const cwd = config.cwd || process.cwd();
   const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
   const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd(), config.args, config.agentType);
 
   // 从磁盘加载 workspace 映射（acp-link 重启后恢复）
-  initRegistry(config.cwd || process.cwd()).catch((err) => {
+  initRegistry(cwd).catch((err) => {
     console.error("[acp-client] Failed to load workspace registry:", err);
   });
   const url = `${config.rcsUrl}/acp/ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
@@ -183,6 +218,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   let reconnectAttempt = 0;
   const MAX_RECONNECT_MS = 30_000;
   let manualClose = false;
+  // 持久化的 node_id，首次注册后由服务器分配，后续重连携带以精确匹配
+  let cachedNodeId: string | null = null;
 
   function setupSessionCallbacks(): void {
     sessionMgr.on("session_data", (sessionId: string, payload: unknown) => {
@@ -210,7 +247,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
     ws.onopen = () => {
       reconnectAttempt = 0;
-      ws!.send(JSON.stringify(buildRegisterMessage(config)));
+      ws!.send(JSON.stringify(buildRegisterMessage(config, cachedNodeId)));
 
       // 重连后：为所有存活的子进程发送 session_resumed
       for (const sessionId of sessionMgr.getAliveSessionIds()) {
@@ -228,6 +265,11 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         switch (msg.type) {
           case "registered": {
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
+            // 持久化服务器分配的 machine_id 作为 node_id，后续重连精确匹配
+            if (msg.machine_id && msg.machine_id !== cachedNodeId) {
+              cachedNodeId = msg.machine_id;
+              saveNodeId(cwd, msg.machine_id).catch(() => {});
+            }
             heartbeatTimer = setInterval(() => {
               if (ws && ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: "heartbeat" }));
@@ -525,7 +567,15 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     };
   }
 
-  connect();
+  // 先加载持久化的 node_id，完成后建立连接（确保首次注册即带上 node_id）
+  loadNodeId(cwd)
+    .then((id) => {
+      cachedNodeId = id;
+      if (!manualClose) connect();
+    })
+    .catch(() => {
+      if (!manualClose) connect();
+    });
 
   return {
     close: () => {

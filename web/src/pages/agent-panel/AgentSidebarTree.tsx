@@ -391,7 +391,7 @@ export function AgentSidebarTree({
 
   return (
     <div className="agent-sidebar-tree flex-1 overflow-y-auto py-2">
-      <div className="flex items-center justify-between px-4 pt-1 pb-2">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pt-1 pb-2">
         <span className="agent-tree-section-title">{t("agents")}</span>
         <div className="flex items-center gap-1">
           <label
@@ -449,6 +449,10 @@ export function AgentSidebarTree({
         const isRestarting = runningInstances.some((inst) => restartingIds.has(inst.id));
         const writable = isAgentWritable(agent);
         const displayName = getAgentDisplayName(agent);
+        // 拆分 key/名称 格式：前半为标识键，后半为显示名
+        const slashIdx = displayName.indexOf("/");
+        const agentLabel = slashIdx >= 0 ? displayName.slice(slashIdx + 1) : displayName;
+        const agentKey = slashIdx >= 0 ? displayName.slice(0, slashIdx) : "";
 
         return (
           <div key={agent.id} className="agent-sidebar-agent group relative">
@@ -479,26 +483,27 @@ export function AgentSidebarTree({
                 )}
               </div> */}
 
-              {/* 名称 + 描述 */}
+              {/* 两行：显示名 + 标识键 */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <div className="text-[13px] font-semibold text-text-primary truncate">{displayName}</div>
-                  <span className="agent-sidebar-badge rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
-                    {tComponents(getAgentAccessBadgeKey(agent))}
-                  </span>
+                  <div className="text-[13px] font-semibold text-text-primary truncate">{agentLabel}</div>
+                  {/* 仅公有/外部显示标签 */}
+                  {agent.resourceAccess && getAgentAccessBadgeKey(agent) !== "resource.internal" && (
+                    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
+                      {tComponents(getAgentAccessBadgeKey(agent))}
+                    </span>
+                  )}
                 </div>
-                <div className="mt-0.5 min-h-[16px] text-[11px] text-text-dim truncate">{agent.description ?? ""}</div>
-                {agent.resourceAccess?.ownership === "external" && (
-                  <div className="text-[10px] text-text-muted mt-0.5">
-                    {t("sharedFrom", {
-                      source: agent.resourceAccess.sourceOrganizationName ?? agent.resourceAccess.sourceOrganizationId,
-                    })}
-                  </div>
-                )}
-                {agent.machineId && (
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                    <span className="text-[10px] text-text-muted">{t("remoteNode")}</span>
+                {/* 第二行：标识键 + 远程标记 */}
+                {(agentKey || agent.machineId) && (
+                  <div className="text-[10px] text-text-muted truncate flex items-center gap-1.5">
+                    {agentKey && <span className="font-mono truncate">{agentKey}</span>}
+                    {agent.machineId && (
+                      <>
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                        <span className="shrink-0">{t("remoteNode")}</span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

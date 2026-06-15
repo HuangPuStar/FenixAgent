@@ -151,6 +151,11 @@
     "uploadingProgress": "{{percent}}%",
     "downloadZip": "下载 ZIP",
     "downloadFailed": "下载失败",
+    "showTree": "展开文件树",
+    "hideTree": "收起文件树",
+    "closeTab": "关闭标签",
+    "moreTabs": "还有 {{count}} 个标签",
+    "noTabsHint": "从左侧文件树选择文件预览",
     "contextMenu": {
       "reference": "引用到聊天",
       "rename": "重命名",
@@ -171,7 +176,9 @@
       "pdfLoadFailed": "加载 PDF 失败",
       "tableLoadFailed": "加载表格文件失败",
       "emptyTable": "表格为空",
-      "tableTruncated": "显示 {{shown}} / {{total}} 行"
+      "tableTruncated": "显示 {{shown}} / {{total}} 行",
+      "htmlPreview": "预览",
+      "htmlSource": "源码"
     }
   },
   "tool": {
@@ -280,6 +287,14 @@
     "waitingSession": "等待会话...",
     "readonlyMode": "只读模式 — 无法发送消息"
   },
+  "chatHeader": {
+    "newSession": "新会话",
+    "searchPlaceholder": "搜索历史会话…",
+    "noResults": "没有匹配的会话",
+    "refresh": "刷新会话列表",
+    "showSessions": "展开会话面板",
+    "hideSessions": "收起会话面板"
+  },
   "chatMessage": {
     "you": "你",
     "agent": "智能体"
@@ -324,5 +339,24 @@
     "history_empty": "暂无会话",
     "history_untitled": "未命名",
     "chat_collapse": "收起面板"
-  }
+  },
+  "chatComposer": {
+    "send": "发送",
+    "stop": "停止",
+    "newSession": "新会话",
+    "placeholder": "给智能体发送消息…",
+    "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件"
+  },
+  "chatEmpty": {
+    "skills": "已加载 Skills",
+    "skillsHint": "输入 / 打开 Skill 弹窗",
+    "noSkills": "暂无绑定 Skills"
+  },
+  "agentBadge": {
+    "enterChat": "进入对话",
+    "edit": "编辑",
+    "statusRunning": "运行中",
+    "statusStopped": "已停止"
+  },
+  "orgSwitchFailed": "切换组织失败"
 }

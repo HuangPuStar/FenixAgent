@@ -1,3 +1,4 @@
+import { Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -13,7 +14,6 @@ import { mcpApi } from "@/src/api/sdk";
 import {
   canManageMcpSharing,
   canWriteMcp,
-  filterWritableMcps,
   getMcpDisplayName,
   getMcpKey,
   getMcpLookupKey,
@@ -22,7 +22,6 @@ import {
 import { NS } from "../../../i18n";
 import type { McpInspectResult, McpServerConfig, McpServerInfo, McpToolInfo } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 type KeyValueEntry = { key: string; value: string };
 
@@ -124,9 +123,7 @@ export function AgentMcpPage() {
   const [editingServer, setEditingServer] = useState<McpServerInfo | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [selected, setSelected] = useState<McpServerInfo[]>([]);
-  const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
-  const [batchAction, setBatchAction] = useState<"enable" | "disable" | "delete" | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [formName, setFormName] = useState("");
   const [formType, setFormType] = useState<"local" | "remote">("remote");
@@ -285,10 +282,6 @@ export function AgentMcpPage() {
   };
 
   const handleToggle = async (server: McpServerInfo) => {
-    if (!canWriteMcp(server)) {
-      // 外部只读 MCP server 也允许检测工具列表
-    } else {
-    }
     if (server.enabled) {
       const { error } = await mcpApi.disable(server.name);
       if (error) {
@@ -430,101 +423,103 @@ export function AgentMcpPage() {
     setTestingUrl(false);
   };
 
-  const handleBatchAction = (action: "enable" | "disable" | "delete") => {
-    setBatchAction(action);
-    setBatchConfirmOpen(true);
-  };
-
-  const confirmBatchAction = async () => {
-    if (batchAction === "delete") {
-      await Promise.all(selected.map((s) => mcpApi.delete(s.name)));
-      toast.success(t("toast.batchDeleted", { count: selected.length }));
-    } else if (batchAction === "enable") {
-      await Promise.all(selected.filter((s) => !s.enabled).map((s) => mcpApi.enable(s.name)));
-      toast.success(t("toast.batchEnabled", { count: selected.length }));
-    } else {
-      await Promise.all(selected.filter((s) => s.enabled).map((s) => mcpApi.disable(s.name)));
-      toast.success(t("toast.batchDisabled", { count: selected.length }));
-    }
-    setBatchConfirmOpen(false);
-    setSelected([]);
-    loadServers();
-  };
+  // 基于外部搜索过滤服务器列表
+  const filteredServers = searchQuery.trim()
+    ? servers.filter(
+        (s) =>
+          getMcpDisplayName(s).toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (s.summary ?? "").toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : servers;
 
   if (loading) {
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
-        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <Skeleton className="h-[22px] w-28 rounded-md" />
+            <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
+          </div>
+          <Skeleton className="h-10 w-28 rounded-lg" />
+        </div>
+        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+        <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+            <Skeleton key={i} className="h-20 w-full rounded-lg" />
           ))}
         </div>
       </div>
     );
   }
 
-  const batchActionLabel =
-    batchAction === "delete" ? t("btn.delete") : batchAction === "enable" ? t("btn.enable") : t("btn.disable");
-
-  const handleSelectedChange = (items: McpServerInfo[]) => {
-    setSelected(filterWritableMcps(items));
-  };
-
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <AgentPageHeader
-        title={t("title")}
-        subtitle={t("subtitle")}
-        actions={<Button onClick={handleOpenCreate}>{t("btn.newServer")}</Button>}
-      />
-      <div className="px-6 py-3 border-b border-border-subtle bg-warning/10 text-sm text-text-secondary">
+    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      {/* 标题行 */}
+      <div className="mb-3 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-bold tracking-tight text-[#1a2944]">{t("title")}</h1>
+          <p className="mt-0.5 text-[12px] text-[#94a3b8]">{t("subtitle")}</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleOpenCreate}
+          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
+        >
+          <Plus className="h-4 w-4" />
+          {t("btn.newServer")}
+        </button>
+      </div>
+
+      {/* 分隔线 */}
+      <div className="mb-3.5 h-px bg-[#e8edf4]" />
+
+      {/* 通知条 */}
+      <div className="mb-3.5 rounded-lg border border-border-light bg-warning/10 px-4 py-3 text-sm text-text-secondary">
         {t("resource.trustedNotice")}
       </div>
+
+      {/* 搜索栏 */}
+      <div className="mb-3.5 flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-md">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a8bd]" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t("search")}
+            className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
+          />
+        </div>
+      </div>
+
       <AgentCardList
-        items={servers}
+        items={filteredServers}
         cardKey={(s) => getMcpKey(s)}
-        searchPlaceholder={t("search")}
-        searchFn={(s, q) =>
-          getMcpDisplayName(s).toLowerCase().includes(q) || (s.summary ?? "").toLowerCase().includes(q)
-        }
-        selectable
-        selectedItems={selected}
-        onSelectionChange={handleSelectedChange}
         emptyMessage={t("empty")}
-        batchActions={
-          <div className="flex gap-1.5">
-            <Button size="xs" variant="outline" onClick={() => handleBatchAction("enable")}>
-              {t("btn.batchEnable")}
-            </Button>
-            <Button size="xs" variant="outline" onClick={() => handleBatchAction("disable")}>
-              {t("btn.batchDisable")}
-            </Button>
-            <Button size="xs" variant="destructive" onClick={() => handleBatchAction("delete")}>
-              {t("btn.batchDelete")}
-            </Button>
-          </div>
-        }
-        renderCard={(server, isSelected, toggleSelect) => {
+        gridCols="grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+        renderCard={(server) => {
           const serverKey = getMcpKey(server);
           const isExpanded = expandedServer === serverKey;
           const tools = toolsCache[serverKey];
           const writable = canWriteMcp(server);
           const manageable = canManageMcpSharing(server);
+
           return (
             <div className="rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm overflow-hidden">
-              <div className="group flex items-center gap-3 px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={toggleSelect}
-                  disabled={!writable}
-                  className="rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
-                />
+              {/* ── 头部：类型标识 + 名称 + 徽章 ── */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
+                <div
+                  className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-base font-extrabold text-white ${
+                    server.type === "local" ? "bg-amber-500" : server.type === "remote" ? "bg-cyan-500" : "bg-surface-2"
+                  }`}
+                >
+                  {server.type === "local" ? "L" : server.type === "remote" ? "R" : "—"}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-medium text-text-bright">{getMcpDisplayName(server)}</span>
+                    <span className="font-mono text-sm font-semibold text-text-bright truncate">
+                      {getMcpDisplayName(server)}
+                    </span>
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
                         server.type === "local"
@@ -536,80 +531,86 @@ export function AgentMcpPage() {
                     >
                       {server.type === "local" ? "Local" : server.type === "remote" ? "Remote" : t("disabled")}
                     </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-muted">
-                      {tComponents(getMcpResourceBadgeKey(server))}
-                    </span>
-                    <span
-                      className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-xs font-medium ${
-                        server.enabled
-                          ? "bg-brand-subtle text-brand dark:text-brand-light"
-                          : "bg-surface-2 text-text-muted"
-                      }`}
-                    >
-                      {server.enabled ? t("btn.enable") : t("btn.disable")}
-                    </span>
                   </div>
-                  <p className="text-xs font-mono text-text-secondary mt-1 truncate">{server.summary || "—"}</p>
+                  <p className="text-[11px] text-text-muted mt-0.5 truncate">{server.summary || "—"}</p>
+                </div>
+              </div>
+
+              {/* ── 信息区：资源来源 + 状态 + 工具数 + 共享开关 ── */}
+              <div className="px-4 py-2.5 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-muted">
+                    {tComponents(getMcpResourceBadgeKey(server))}
+                  </span>
+                  <span
+                    className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-xs font-medium ${
+                      server.enabled
+                        ? "bg-brand-subtle text-brand dark:text-brand-light"
+                        : "bg-surface-2 text-text-muted"
+                    }`}
+                  >
+                    {server.enabled ? t("btn.enable") : t("btn.disable")}
+                  </span>
                   {(server.toolsCount ?? 0) > 0 && (
-                    <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs bg-surface-2 text-text-muted">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-surface-2 text-text-muted">
                       {server.toolsCount} {t("column.tools").toLowerCase()}
                     </span>
                   )}
-                  {manageable && (
-                    <label className="mt-3 flex items-center gap-2 text-xs text-text-muted">
-                      <Switch
-                        checked={Boolean(server.resourceAccess?.publicReadable)}
-                        disabled={sharingServer === serverKey}
-                        onCheckedChange={() => void handleTogglePublicReadable(server)}
-                      />
-                      {tComponents("resource.public")}
-                    </label>
-                  )}
-                  {!writable && (
-                    <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
-                  )}
                 </div>
-                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    size="xs"
-                    variant="outline"
+                {manageable && (
+                  <label className="flex items-center gap-2 text-xs text-text-muted">
+                    <Switch
+                      checked={Boolean(server.resourceAccess?.publicReadable)}
+                      disabled={sharingServer === serverKey}
+                      onCheckedChange={() => void handleTogglePublicReadable(server)}
+                    />
+                    {tComponents("resource.public")}
+                  </label>
+                )}
+                {!writable && <p className="text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>}
+              </div>
+
+              {/* ── 操作栏 ── */}
+              <div className="flex items-center gap-3 px-4 py-2.5 border-t border-border-subtle bg-surface-0 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleInspect(server);
+                    }}
                     disabled={inspectingServer === serverKey}
-                    onClick={() => handleInspect(server)}
+                    className="text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
                   >
                     {inspectingServer === serverKey ? t("btn.inspecting") : t("btn.inspect")}
-                  </Button>
+                  </button>
                   {writable && (
-                    <Button size="xs" variant="outline" onClick={() => handleToggle(server)}>
-                      {server.enabled ? t("btn.disable") : t("btn.enable")}
-                    </Button>
-                  )}
-                  {writable && (
-                    <Button size="xs" variant="outline" onClick={() => handleOpenEdit(server)}>
-                      {t("btn.edit")}
-                    </Button>
-                  )}
-                  {!writable && (
-                    <Button size="xs" variant="outline" onClick={() => handleOpenEdit(server)}>
-                      {t("btn.view")}
-                    </Button>
-                  )}
-                  {writable && (
-                    <Button
-                      size="xs"
-                      variant="destructive"
-                      onClick={() => {
-                        setDeleteTarget(server.name);
-                        setConfirmOpen(true);
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleToggle(server);
                       }}
+                      className="text-text-secondary hover:text-text-primary transition-colors"
                     >
-                      {t("btn.delete")}
-                    </Button>
+                      {server.enabled ? t("btn.disable") : t("btn.enable")}
+                    </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleOpenEdit(server);
+                    }}
+                    className="text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    {writable ? t("btn.edit") : t("btn.view")}
+                  </button>
                   {(server.toolsCount ?? 0) > 0 && (
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      onClick={() => {
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
                         if (isExpanded) {
                           setExpandedServer(null);
                         } else {
@@ -620,12 +621,28 @@ export function AgentMcpPage() {
                           }
                         }
                       }}
+                      className="text-text-secondary hover:text-text-primary transition-colors"
                     >
                       {isExpanded ? "▲" : "▼"}
-                    </Button>
+                    </button>
                   )}
                 </div>
+                {writable && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeleteTarget(server.name);
+                      setConfirmOpen(true);
+                    }}
+                    className="text-red-500 hover:text-red-600 transition-colors ml-auto"
+                  >
+                    {t("btn.delete")}
+                  </button>
+                )}
               </div>
+
+              {/* ── 展开的工具列表 ── */}
               {isExpanded && tools && tools.length > 0 && (
                 <div className="border-t border-border-subtle px-4 py-3 bg-surface-2/30 grid gap-2 max-h-72 overflow-y-auto">
                   {tools.map((tool) => (
@@ -933,18 +950,6 @@ export function AgentMcpPage() {
         description={t("confirm.deleteDescription", { name: deleteTarget ?? "" })}
         variant="destructive"
         onConfirm={confirmDelete}
-      />
-      <ConfirmDialog
-        open={batchConfirmOpen}
-        onOpenChange={setBatchConfirmOpen}
-        title={t("confirm.batchTitle", { action: batchActionLabel })}
-        description={t("confirm.batchDescription", {
-          action: batchActionLabel,
-          count: selected.length,
-          hint: batchAction === "delete" ? t("confirm.batchDeleteHint") : "",
-        })}
-        variant={batchAction === "delete" ? "destructive" : "default"}
-        onConfirm={confirmBatchAction}
       />
     </div>
   );
