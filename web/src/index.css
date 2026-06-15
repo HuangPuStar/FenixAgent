@@ -18,10 +18,10 @@
   --font-mono: ui-monospace, "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
 
   /* Brand — Nexus Indigo */
-  --color-brand: #6366f1;
-  --color-brand-light: #818cf8;
-  --color-brand-subtle: rgba(99, 102, 241, 0.08);
-  --color-brand-glow: rgba(99, 102, 241, 0.15);
+  --color-brand: #1677ff;
+  --color-brand-light: #4096ff;
+  --color-brand-subtle: rgba(22, 119, 255, 0.08);
+  --color-brand-glow: rgba(22, 119, 255, 0.15);
 
   /* Cyan accent */
   --color-cyan: #22d3ee;
@@ -32,7 +32,7 @@
   --color-surface-1: #ffffff;
   --color-surface-2: #f1f5f9;
   --color-surface-3: #e2e8f0;
-  --color-surface-hover: #eef2ff;
+  --color-surface-hover: #e6f0ff;
   --color-surface-elevated: #ffffff;
   --color-surface-overlay: #f1f5f9;
 
@@ -44,12 +44,12 @@
   --color-text-dim: #94a3b8;
 
   /* Inverted — for user message bubbles */
-  --color-bg-inverted: #6366f1;
+  --color-bg-inverted: #1677ff;
   --color-text-inverted: #ffffff;
 
   /* User bubble */
-  --color-user-bubble: #6366f1;
-  --color-user-bubble-border: #818cf8;
+  --color-user-bubble: #1677ff;
+  --color-user-bubble-border: #4096ff;
 
   /* Warning */
   --color-warning-bg: #fef3c7;
@@ -59,7 +59,7 @@
   /* Status — semantic */
   --color-status-active: #10b981;
   --color-status-running: #10b981;
-  --color-status-idle: #6366f1;
+  --color-status-idle: #1677ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
 
@@ -80,7 +80,7 @@
   --color-card-foreground: #0f172a;
   --color-popover: #ffffff;
   --color-popover-foreground: #0f172a;
-  --color-primary: #6366f1;
+  --color-primary: #1677ff;
   --color-primary-foreground: #ffffff;
   --color-secondary: #f1f5f9;
   --color-secondary-foreground: #334155;
@@ -93,15 +93,15 @@
   /* Border / Input / Ring */
   --color-border: rgba(0, 0, 0, 0.1);
   --color-border-light: rgba(0, 0, 0, 0.06);
-  --color-border-active: rgba(99, 102, 241, 0.35);
+  --color-border-active: rgba(22, 119, 255, 0.35);
   --color-border-subtle: rgba(0, 0, 0, 0.06);
   --color-border-default: rgba(0, 0, 0, 0.1);
   --color-input: rgba(0, 0, 0, 0.1);
-  --color-ring: #6366f1;
+  --color-ring: #1677ff;
 
   /* Shadows */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-elevated: 0 4px 16px rgba(99, 102, 241, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
 
   /* Default utility values */
   --default-border-color: var(--color-border);
@@ -122,10 +122,10 @@
    Dark mode — Nexus Indigo dark palette
    ============================================================ */
 .dark {
-  --color-brand: #818cf8;
-  --color-brand-light: #a5b4fc;
-  --color-brand-subtle: rgba(129, 140, 248, 0.1);
-  --color-brand-glow: rgba(129, 140, 248, 0.18);
+  --color-brand: #4096ff;
+  --color-brand-light: #69b1ff;
+  --color-brand-subtle: rgba(22, 119, 255, 0.12);
+  --color-brand-glow: rgba(22, 119, 255, 0.2);
 
   --color-cyan: #22d3ee;
   --color-cyan-subtle: rgba(34, 211, 238, 0.1);
@@ -134,7 +134,7 @@
   --color-surface-1: #1e293b;
   --color-surface-2: #334155;
   --color-surface-3: #475569;
-  --color-surface-hover: #312e81;
+  --color-surface-hover: #1a3a6b;
   --color-surface-elevated: #1e293b;
   --color-surface-overlay: #334155;
 
@@ -144,14 +144,14 @@
   --color-text-muted: #64748b;
   --color-text-dim: #475569;
 
-  --color-bg-inverted: #6366f1;
+  --color-bg-inverted: #1677ff;
   --color-text-inverted: #ffffff;
-  --color-user-bubble: #6366f1;
-  --color-user-bubble-border: #818cf8;
+  --color-user-bubble: #1677ff;
+  --color-user-bubble-border: #4096ff;
 
   --color-border: rgba(255, 255, 255, 0.1);
   --color-border-light: rgba(255, 255, 255, 0.06);
-  --color-border-active: rgba(129, 140, 248, 0.4);
+  --color-border-active: rgba(22, 119, 255, 0.4);
   --color-border-subtle: rgba(255, 255, 255, 0.06);
   --color-border-default: rgba(255, 255, 255, 0.1);
   --color-tool-card: #1e293b;
@@ -162,7 +162,7 @@
 
   --color-status-active: #10b981;
   --color-status-running: #10b981;
-  --color-status-idle: #818cf8;
+  --color-status-idle: #4096ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
 
@@ -172,7 +172,7 @@
   --color-card-foreground: #f1f5f9;
   --color-popover: #1e293b;
   --color-popover-foreground: #f1f5f9;
-  --color-primary: #6366f1;
+  --color-primary: #1677ff;
   --color-primary-foreground: #ffffff;
   --color-secondary: #334155;
   --color-secondary-foreground: #e2e8f0;
@@ -183,10 +183,10 @@
   --color-destructive: #ef4444;
 
   --color-input: rgba(255, 255, 255, 0.1);
-  --color-ring: #818cf8;
+  --color-ring: #4096ff;
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12);
-  --shadow-elevated: 0 4px 16px rgba(99, 102, 241, 0.12), 0 1px 4px rgba(0, 0, 0, 0.1);
+  --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.12), 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* ============================================================
@@ -418,17 +418,17 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   100% {
     transform: scale(0.4);
     opacity: 0.3;
-    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
   }
   40% {
     transform: scale(1);
     opacity: 1;
-    box-shadow: 0 0 8px 2px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 0 8px 2px rgba(22, 119, 255, 0.3);
   }
 }
 
 .dark .chat-loading-dots span {
-  box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
+  box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
 }
 
 @keyframes loadingDotBounceDark {
@@ -437,12 +437,12 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   100% {
     transform: scale(0.4);
     opacity: 0.3;
-    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
   }
   40% {
     transform: scale(1);
     opacity: 1;
-    box-shadow: 0 0 8px 2px rgba(129, 140, 248, 0.35);
+    box-shadow: 0 0 8px 2px rgba(22, 119, 255, 0.35);
   }
 }
 
