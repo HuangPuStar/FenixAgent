@@ -685,19 +685,21 @@ export function AgentModelsPage() {
                           ) : null}
                           {/* 模型操作按钮 — hover 时渐显 */}
                           <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto opacity-0 group-hover/model:opacity-100 transition-opacity duration-200">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleTestModel(providerKey, m.id);
-                              }}
-                              disabled={testingModelKey === `${providerKey}:${m.id}`}
-                              className="text-[10px] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
-                            >
-                              {testingModelKey === `${providerKey}:${m.id}` ? t("actions.testing") : t("actions.test")}
-                            </button>
                             {writable ? (
                               <>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleTestModel(providerKey, m.id);
+                                  }}
+                                  disabled={testingModelKey === `${providerKey}:${m.id}`}
+                                  className="text-[10px] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                                >
+                                  {testingModelKey === `${providerKey}:${m.id}`
+                                    ? t("actions.testing")
+                                    : t("actions.test")}
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(event) => {
