@@ -99,6 +99,21 @@ async function assertUniqueSlug(organizationId: string, slug: string, excludeId?
   }
 }
 
+/**
+ * 判断远端删除失败是否只是“对象已不存在”。
+ * 本地删除要保持幂等：远端已被人工清理时，仍应清掉本地知识库和绑定。
+ */
+export function isRemoteKnowledgeBaseMissingError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return (
+    message.includes("not found") ||
+    message.includes("not exist") ||
+    message.includes("nonexistent") ||
+    message.includes("dataset not found") ||
+    message.includes("http 404")
+  );
+}
+
 export async function countKnowledgeBaseBindings(knowledgeBaseId: string): Promise<number> {
   return knowledgeBaseRepo.countBindings(knowledgeBaseId);
 }
@@ -249,11 +264,23 @@ export async function deleteKnowledgeBase(organizationId: string, knowledgeBaseI
   }
   if (row.remoteId) {
     const tenantIdentity = resolveKnowledgeTenantIdentity(row);
-    await getKnowledgeProvider().deleteKnowledgeBase({
-      knowledgeBaseRemoteId: row.remoteId,
-      remoteAccountId: tenantIdentity.remoteAccountId,
-      remoteUserId: tenantIdentity.remoteUserId,
-    });
+    try {
+      await getKnowledgeProvider().deleteKnowledgeBase({
+        knowledgeBaseRemoteId: row.remoteId,
+        remoteAccountId: tenantIdentity.remoteAccountId,
+        remoteUserId: tenantIdentity.remoteUserId,
+      });
+    } catch (err) {
+      console.error(err);
+      if (!isRemoteKnowledgeBaseMissingError(err)) {
+        throw err;
+      }
+      console.warn("Remote knowledge base is already missing; continuing local deletion", {
+        knowledgeBaseId,
+        remoteId: row.remoteId,
+        organizationId,
+      });
+    }
   }
   await agentKnowledgeBindingRepo.deleteByKnowledgeBaseId(knowledgeBaseId);
   await knowledgeBaseRepo.delete(knowledgeBaseId);

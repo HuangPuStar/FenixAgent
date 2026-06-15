@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { kbApi } from "@/src/api/sdk";
+import { NS } from "@/src/i18n";
 import type { KnowledgeBaseDetail, KnowledgeBaseInfo, KnowledgeResourceInfo } from "../../../types/knowledge";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
@@ -19,7 +20,7 @@ function formatTimestamp(timestamp: number | null | undefined): string {
 }
 
 export function AgentKnowledgeBasesPage() {
-  const { t } = useTranslation("knowledge");
+  const { t } = useTranslation(NS.KNOWLEDGE);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<KnowledgeBaseInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);

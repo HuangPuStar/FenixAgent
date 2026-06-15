@@ -159,6 +159,7 @@ app.delete(
       }
       return { ok: true as const };
     } catch (err) {
+      console.error(err);
       return error(400, {
         error: {
           type: "DELETE_FAILED",
@@ -207,6 +208,7 @@ app.post(
       }
       return { items };
     } catch (err) {
+      console.error(err);
       const message = (err as Error).message;
       const status = message.includes("不存在") ? 404 : 400;
       return error(status, { error: { type: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR", message } });
@@ -242,6 +244,7 @@ app.post(
       if (status >= 400) return error(status, item);
       return item;
     } catch (err) {
+      console.error(err);
       const message = (err as Error).message;
       const status = message.includes("不存在") ? 404 : 400;
       return error(status, { error: { type: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR", message } });
@@ -296,6 +299,7 @@ app.delete(
       }
       return result.data;
     } catch (err) {
+      console.error(err);
       return error(400, {
         error: {
           type: "DELETE_FAILED",

@@ -1,6 +1,11 @@
 {
   "title": "知识库",
   "subtitle": "管理知识库、查看资源状态并上传索引材料",
+  "loadError": "加载知识库失败",
+  "loadDetailError": "加载知识库详情失败",
+  "searchPlaceholder": "搜索知识库...",
+  "emptyMessage": "暂无知识库",
+  "selectHint": "选择左侧知识库查看详情",
   "newKnowledgeBase": "新建知识库",
   "loadFailed": "加载知识库失败",
   "loadDetailFailed": "加载知识库详情失败",
@@ -20,6 +25,35 @@
   "urlResourceSubmitted": "URL 资源已提交",
   "deleteResourceFailed": "删除资源失败",
   "resourceDeleted": "资源已删除",
+  "btn": {
+    "create": "新建知识库",
+    "edit": "编辑",
+    "delete": "删除",
+    "upload": "上传",
+    "uploading": "上传中..."
+  },
+  "validation": {
+    "nameRequired": "名称为必填项"
+  },
+  "toast": {
+    "updated": "知识库已更新",
+    "created": "知识库已创建",
+    "saveFailed": "保存失败",
+    "deleted": "知识库已删除",
+    "deleteFailed": "删除失败",
+    "uploaded": "资源已上传",
+    "uploadFailed": "上传失败",
+    "resourceDeleted": "资源已删除",
+    "deleteResourceFailed": "删除资源失败"
+  },
+  "resources": {
+    "title": "资源（{{count}}）",
+    "empty": "暂无资源"
+  },
+  "dialog": {
+    "editTitle": "编辑知识库",
+    "createTitle": "新建知识库"
+  },
   "columns": {
     "name": "名称",
     "status": "状态",
@@ -67,6 +101,8 @@
     "descriptionPlaceholder": "可选，简要描述知识库用途"
   },
   "confirm": {
+    "deleteTitle": "确认删除知识库",
+    "deleteDescription": "确定删除知识库 \"{{name}}\" 吗？",
     "title": "确认删除知识库",
     "description": "确定删除知识库 \"{{name}}\" 吗？"
   }
