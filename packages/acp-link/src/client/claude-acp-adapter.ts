@@ -1,5 +1,5 @@
-import { readdirSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
 import { getSessionMessages, type Query, query } from "@anthropic-ai/claude-agent-sdk";
@@ -13,6 +13,9 @@ interface SessionState {
   title: string;
   /** SDK session UUID，用于 resume。首次 prompt 后由 SDK init 消息填充 */
   ccSessionId?: string;
+  /** 会话隔离目录。每个 RCS session 使用独立 subdirectory 作为 CC SDK 的 cwd，
+   *  避免所有 RCS session 共享同一个 CC 内部 session。 */
+  sessionCwd?: string;
 }
 
 /** Claude Code 支持的模式列表 */
@@ -92,10 +95,43 @@ function loadSessionFromDiskSync(workspace: string, sessionId: string): SessionS
       createdAt: (parsed.createdAt as number) || Date.now(),
       title: (parsed.title as string) || `Conversation ${sessionId.slice(-4)}`,
       ccSessionId: parsed.ccSessionId as string | undefined,
+      sessionCwd: parsed.sessionCwd as string | undefined,
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * 为 RCS session 创建独立的 working directory，确保 CC SDK 为每个 session
+ * 创建独立的内部 session，避免所有 RCS session 共享同一个 CC session 导致消息混合。
+ */
+async function ensureSessionDir(workspace: string, sessionId: string): Promise<string> {
+  const sessionDir = join(workspace, ".cc-sessions", sessionId);
+  await mkdir(sessionDir, { recursive: true });
+
+  // 为 CC SDK 准备 .claude 子目录
+  const ccDir = join(sessionDir, ".claude");
+  await mkdir(ccDir, { recursive: true });
+
+  // Symlink 父 workspace 的关键配置文件到 session 目录
+  const links: Array<[string, string]> = [
+    [join(workspace, "CLAUDE.md"), join(sessionDir, "CLAUDE.md")],
+    [join(workspace, ".mcp.json"), join(sessionDir, ".mcp.json")],
+    [join(workspace, ".claude", "settings.local.json"), join(ccDir, "settings.local.json")],
+  ];
+
+  for (const [src, dest] of links) {
+    try {
+      if (existsSync(src) && !existsSync(dest)) {
+        await symlink(src, dest);
+      }
+    } catch {
+      /* best effort — 配置文件非必需 */
+    }
+  }
+
+  return sessionDir;
 }
 
 /** 异步队列：支持 push 端的 AsyncIterable */
@@ -288,10 +324,26 @@ export function createClaudeAcpConnection(
       const resumeId = pendingResumeSessionId;
       pendingResumeSessionId = null;
 
+      // 每个 RCS session 使用独立的 CC SDK cwd，避免所有 session 共享同一个 CC 内部 session
+      let sessionCwd = cwd;
+      if (activeSessionId) {
+        const sess = sessions.get(activeSessionId);
+        if (sess?.sessionCwd) {
+          sessionCwd = sess.sessionCwd;
+        } else if (!resumeId && !isFollowUp) {
+          // 新 session：创建隔离目录
+          sessionCwd = await ensureSessionDir(cwd, activeSessionId);
+          if (sess) {
+            sess.sessionCwd = sessionCwd;
+            saveSessionState(cwd, sess);
+          }
+        }
+      }
+
       const q = query({
         prompt: resumeId && !historyReplayed ? "" : text,
         options: {
-          cwd,
+          cwd: sessionCwd,
           systemPrompt,
           model: currentModel,
           permissionMode: currentMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk",
@@ -477,7 +529,9 @@ export function createClaudeAcpConnection(
           // 标记 historyReplayed，避免 prompt() 中 SDK resume 再次回放
           historyReplayed = true;
           try {
-            const msgs = await getSessionMessages(ccId, { dir: cwd });
+            // 使用 session 隔离目录读取消息，避免不同 session 的消息混合
+            const msgDir = sess.sessionCwd || cwd;
+            const msgs = await getSessionMessages(ccId, { dir: msgDir });
             for (const m of msgs) {
               if (m.type === "user") {
                 const inner = (m.message as Record<string, unknown>) ?? {};
