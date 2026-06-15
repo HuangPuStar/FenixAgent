@@ -1,4 +1,4 @@
-import { MessageSquare, PanelLeft, PanelLeftClose, Plus } from "lucide-react";
+import { MessageSquare, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { retryWithBackoff } from "@/src/lib/retry";
@@ -6,6 +6,8 @@ import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
 import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
+import { ChatHeader } from "./chat/ChatHeader";
+import { groupByRecency } from "./chat/session-grouping";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 
@@ -34,7 +36,9 @@ export function ACPMain({
   onPromptComplete,
 }: ACPMainProps) {
   const { t } = useTranslation("components");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // 默认 false：进入 chat 子页面时左侧会话面板默认收起，需通过 ChatHeader 上的
+  // PanelLeft 切换按钮主动打开；与 Anthropic / ChatGPT 等默认隐藏历史会话的体验对齐
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
   const chatRef = useRef<ChatInterfaceHandle>(null);
   const bootstrappedRef = useRef(false);
@@ -45,6 +49,11 @@ export function ACPMain({
   }, [client]);
 
   // Handle session selection
+  // 历史会话切换由 ChatHeader popover 和 SidebarSessionList 共用：
+  // 调用 client 的 loadSession/resumeSession 后必须同步更新 initialActiveSessionId，
+  // 否则 ChatHeader 顶部展示的会话标题与 SidebarSessionList 的高亮会停留在旧值。
+  // （ChatInterface 内部的 activeSessionId 由 client.sessionLoaded handler 单独维护，
+  // 这里只是把当前选中 id 暴露给 header / sidebar。）
   const handleSelectSession = useCallback(
     async (session: AgentSessionInfo) => {
       try {
@@ -55,6 +64,8 @@ export function ACPMain({
         } else {
           throw new Error("Loading or resuming sessions is not supported by this agent.");
         }
+        // 立即同步激活会话 id，让 ChatHeader 标题与 SidebarSessionList 高亮跟随切换
+        setInitialActiveSessionId(session.sessionId);
       } catch (error) {
         console.error("Failed to load/resume session:", error);
       }
@@ -123,48 +134,48 @@ export function ACPMain({
   }, [client, handleSelectSession]);
 
   return (
-    <div className="flex h-full w-full gap-3">
-      {/* 侧边栏 — Anthropic warm sidebar, hidden on mobile / hidden in readonly share mode */}
-      {!readonly && !hideSidebar && (
-        <div
-          className={cn(
-            "hidden md:flex flex-col bg-surface-1 transition-all duration-200 flex-shrink-0 rounded-xl",
-            sidebarCollapsed ? "w-12" : "w-64",
-          )}
-          style={{ boxShadow: "var(--shadow-card)" }}
-        >
-          {/* 头部 */}
-          <div className="flex items-center justify-between px-3 py-4">
-            {!sidebarCollapsed && (
+    // root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
+    // 形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果
+    <div className="flex h-full w-full flex-col gap-3 p-3">
+      {/* 顶部 ChatHeader — 跨整个宽度，承担会话面板开关 + 当前会话标题 + popover 历史会话列表 */}
+      {/* readonly 模式下整体隐藏，保持分享视图简洁 */}
+      {!readonly && (
+        <ChatHeader
+          client={client}
+          activeSessionId={initialActiveSessionId}
+          onSelectSession={handleSelectSession}
+          onNewSession={() => chatRef.current?.newSession()}
+          // hideSidebar 场景（嵌入到外部）下不提供切换按钮，避免出现"开关一个永远不显示的面板"
+          onToggleSidebar={!hideSidebar ? () => setSidebarOpen((v) => !v) : undefined}
+          sidebarOpen={sidebarOpen}
+        />
+      )}
+
+      {/* 主体：横向 sidebar + chat */}
+      <div className="flex flex-1 min-h-0 gap-3">
+        {/* 左侧 sidebar — 仅在 sidebarOpen 且非 readonly/hideSidebar 时渲染，关闭时完全不占位 */}
+        {!readonly && !hideSidebar && sidebarOpen && (
+          <div
+            className="hidden md:flex flex-col bg-surface-1 transition-all duration-200 flex-shrink-0 w-64 rounded-xl"
+            style={{ boxShadow: "var(--shadow-card)" }}
+          >
+            {/* 头部：标题 + 新会话按钮（PanelLeft 切换按钮在 ChatHeader 中） */}
+            <div className="flex items-center justify-between px-3 py-4">
               <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
                 {t("acpMain.sessions")}
               </span>
-            )}
-            <div className={cn("flex items-center gap-0.5", sidebarCollapsed && "mx-auto")}>
-              {!sidebarCollapsed && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => chatRef.current?.newSession()}
-                  className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
-                  title={t("acpMain.newSession")}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              )}
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="h-7 w-7 text-text-muted hover:text-text-primary hover:bg-surface-2"
+                onClick={() => chatRef.current?.newSession()}
+                className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
+                title={t("acpMain.newSession")}
               >
-                {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
-          </div>
 
-          {/* 会话列表 */}
-          {!sidebarCollapsed && (
+            {/* 会话列表 */}
             <ScrollArea className="flex-1">
               <SidebarSessionList
                 client={client}
@@ -172,36 +183,23 @@ export function ACPMain({
                 onSelectSession={handleSelectSession}
               />
             </ScrollArea>
-          )}
-        </div>
-      )}
-
-      {/* 聊天区域 */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {hideSidebar && (
-          <div className="flex items-center justify-end px-2 py-1 border-b border-border/40">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => chatRef.current?.newSession()}
-              className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
-              title={t("acpMain.newSession")}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
           </div>
         )}
-        <ChatInterface
-          ref={chatRef}
-          client={client}
-          agentId={agentId}
-          readonly={readonly}
-          hideContextPanel={true}
-          rcsSessionId={rcsSessionId}
-          scenePrompt={scenePrompt}
-          onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
-          onPromptComplete={onPromptComplete}
-        />
+
+        {/* 聊天区域 */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <ChatInterface
+            ref={chatRef}
+            client={client}
+            agentId={agentId}
+            readonly={readonly}
+            hideContextPanel={true}
+            rcsSessionId={rcsSessionId}
+            scenePrompt={scenePrompt}
+            onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
+            onPromptComplete={onPromptComplete}
+          />
+        </div>
       </div>
     </div>
   );
@@ -310,7 +308,7 @@ function SidebarSessionList({
     );
   }
 
-  // 按日期分组
+  // 按日期分组（groupByRecency 内部已做 updatedAt 降序排序，sorted 变量保留供后续扩展使用）
   const groups = groupByRecency(sorted, {
     today: t("acpMain.today"),
     yesterday: t("acpMain.yesterday"),
@@ -357,37 +355,5 @@ function SidebarSessionList({
 
 // =============================================================================
 // 按日期分组：今天 / 昨天 / 更早
+// 分组逻辑已抽到 ./chat/session-grouping，ChatHeader 与 SidebarSessionList 共享
 // =============================================================================
-
-interface SessionGroup {
-  label: string;
-  sessions: AgentSessionInfo[];
-}
-
-function groupByRecency(
-  sessions: AgentSessionInfo[],
-  labels: { today: string; yesterday: string; earlier: string },
-): SessionGroup[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 86400000);
-
-  const groups: SessionGroup[] = [
-    { label: labels.today, sessions: [] },
-    { label: labels.yesterday, sessions: [] },
-    { label: labels.earlier, sessions: [] },
-  ];
-
-  for (const session of sessions) {
-    const date = session.updatedAt ? new Date(session.updatedAt) : new Date(0);
-    if (date >= today) {
-      groups[0].sessions.push(session);
-    } else if (date >= yesterday) {
-      groups[1].sessions.push(session);
-    } else {
-      groups[2].sessions.push(session);
-    }
-  }
-
-  return groups.filter((g) => g.sessions.length > 0);
-}

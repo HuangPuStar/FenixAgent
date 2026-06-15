@@ -282,6 +282,14 @@
     "waitingSession": "等待会话...",
     "readonlyMode": "只读模式 — 无法发送消息"
   },
+  "chatHeader": {
+    "newSession": "新会话",
+    "searchPlaceholder": "搜索历史会话…",
+    "noResults": "没有匹配的会话",
+    "refresh": "刷新会话列表",
+    "showSessions": "展开会话面板",
+    "hideSessions": "收起会话面板"
+  },
   "chatMessage": {
     "you": "你",
     "agent": "智能体"

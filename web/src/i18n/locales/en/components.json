@@ -282,6 +282,14 @@
     "waitingSession": "Waiting for session...",
     "readonlyMode": "Read-only mode — cannot send messages"
   },
+  "chatHeader": {
+    "newSession": "New Session",
+    "searchPlaceholder": "Search history sessions...",
+    "noResults": "No matching sessions",
+    "refresh": "Refresh sessions",
+    "showSessions": "Show sessions panel",
+    "hideSessions": "Hide sessions panel"
+  },
   "chatMessage": {
     "you": "You",
     "agent": "Agent"
