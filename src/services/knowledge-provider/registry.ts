@@ -1,11 +1,11 @@
-import { createKnowledgeProvider } from "./openviking";
+import { RagFlowKnowledgeProvider } from "./ragflow";
 import type { KnowledgeProvider } from "./types";
 
 let provider: KnowledgeProvider | null = null;
 
 export function getKnowledgeProvider(): KnowledgeProvider {
   if (!provider) {
-    provider = createKnowledgeProvider();
+    provider = new RagFlowKnowledgeProvider();
   }
   return provider;
 }

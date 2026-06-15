@@ -2,6 +2,124 @@
 # Usage: docker compose up -d
 
 services:
+    # RagFlow 知识库引擎 — 与 RCS 同机部署
+    # 依赖 MySQL + Redis，使用内置 Infinity 向量存储（无需 Elasticsearch）
+    ragflow:
+        image: infiniflow/ragflow:${RAGFLOW_VERSION:-v0.26.0}
+        ports:
+            - "127.0.0.1:9380:80"
+        environment:
+            TZ: "${TZ:-Asia/Shanghai}"
+            # MySQL 连接（RagFlow 元数据存储）
+            MYSQL_HOST: ragflow-mysql
+            MYSQL_PORT: 3306
+            MYSQL_USER: root
+            MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
+            # Redis 连接（RagFlow 缓存/任务队列）
+            REDIS_HOST: ragflow-redis
+            REDIS_PORT: 6379
+            REDIS_PASSWORD: ${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026}
+            # MinIO 连接（RagFlow 文件存储）
+            MINIO_HOST: minio
+            MINIO_USER: ${RAGFLOW_MINIO_USER:-rag_flow}
+            MINIO_PASSWORD: ${RAGFLOW_MINIO_PASSWORD:-infini_rag_flow}
+            # 使用内置 Infinity 向量数据库（无需 Elasticsearch）
+            DOC_ENGINE: infinity
+        volumes:
+            - ragflow_data:/ragflow/data
+            - ragflow_logs:/ragflow/logs
+        depends_on:
+            ragflow-mysql:
+                condition: service_healthy
+            ragflow-redis:
+                condition: service_healthy
+            minio:
+                condition: service_healthy
+            infinity:
+                condition: service_healthy
+        restart: unless-stopped
+
+    # RagFlow 依赖：MinIO（文件存储）
+    minio:
+        image: pgsty/minio:RELEASE.2026-03-25T00-00-00Z
+        container_name: fenix-ragflow-minio
+        restart: unless-stopped
+        command: ["server", "--console-address", ":9001", "/data"]
+        ports:
+            - "127.0.0.1:9000:9000"
+            - "127.0.0.1:9001:9001"
+        environment:
+            MINIO_ROOT_USER: ${RAGFLOW_MINIO_USER:-rag_flow}
+            MINIO_ROOT_PASSWORD: ${RAGFLOW_MINIO_PASSWORD:-infini_rag_flow}
+        volumes:
+            - ragflow_minio_data:/data
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+            interval: 10s
+            timeout: 5s
+            retries: 12
+            start_period: 10s
+
+    # RagFlow 依赖：MySQL 8.0（元数据存储）
+    ragflow-mysql:
+        image: mysql:8.0
+        container_name: fenix-ragflow-mysql
+        restart: unless-stopped
+        environment:
+            MYSQL_ROOT_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
+            MYSQL_DATABASE: rag_flow
+        ports:
+            - "127.0.0.1:13306:3306"
+        volumes:
+            - ragflow_mysql_data:/var/lib/mysql
+        command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}"]
+            interval: 5s
+            timeout: 5s
+            retries: 12
+            start_period: 20s
+
+    # RagFlow 依赖：Infinity 向量数据库
+    infinity:
+        image: infiniflow/infinity:v0.7.0
+        container_name: fenix-ragflow-infinity
+        restart: unless-stopped
+        command: ["-f", "/infinity_conf.toml"]
+        ports:
+            - "127.0.0.1:23817:23817"
+            - "127.0.0.1:23820:23820"
+        volumes:
+            - ragflow_infinity_data:/var/infinity
+            - ./infinity_conf.toml:/infinity_conf.toml:ro
+        ulimits:
+            nofile:
+                soft: 500000
+                hard: 500000
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:23820/admin/node/current"]
+            interval: 10s
+            timeout: 10s
+            retries: 12
+            start_period: 20s
+
+    # RagFlow 依赖：Redis 7（缓存与任务队列）
+    ragflow-redis:
+        image: redis:7-alpine
+        container_name: fenix-ragflow-redis
+        restart: unless-stopped
+        command: redis-server --requirepass ${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026} --appendonly yes
+        ports:
+            - "127.0.0.1:16379:6379"
+        volumes:
+            - ragflow_redis_data:/data
+        healthcheck:
+            test: ["CMD-SHELL", "redis-cli -a ${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026} ping | grep PONG"]
+            interval: 5s
+            timeout: 5s
+            retries: 6
+            start_period: 10s
+
     postgres:
         image: postgres:16-alpine
         container_name: fenix-postgres
@@ -11,7 +129,7 @@ services:
             POSTGRES_PASSWORD: rcs
             POSTGRES_DB: rcs
         ports:
-            - "5432:5432"
+            - "127.0.0.1:15432:5432"
         volumes:
             - postgres-data:/var/lib/postgresql/data
         healthcheck:
@@ -19,29 +137,6 @@ services:
             interval: 5s
             timeout: 5s
             retries: 5
-
-    openviking:
-        image: openviking/openviking:v0.3.14
-        container_name: fenix-openviking
-        profiles:
-            - openviking
-        restart: unless-stopped
-        ports:
-            - "1933:1933"
-            - "8020:8020"
-        volumes:
-            - ./deploy/openviking/ov.conf:/app/.openviking/ov.conf
-            - openviking-data:/app/data
-        healthcheck:
-            test:
-                [
-                    "CMD-SHELL",
-                    "curl -fsS http://127.0.0.1:1933/health || exit 1",
-                ]
-            interval: 30s
-            timeout: 5s
-            retries: 5
-            start_period: 20s
 
     rustfs:
         image: rustfs/rustfs:latest
@@ -94,6 +189,11 @@ services:
           "
 
 volumes:
+    ragflow_data:
+    ragflow_logs:
+    ragflow_minio_data:
+    ragflow_mysql_data:
+    ragflow_redis_data:
+    ragflow_infinity_data:
     postgres-data:
-    openviking-data:
     rustfs-data:

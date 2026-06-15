@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { config } from "../config";
 import type { KnowledgeBaseRow } from "../repositories/knowledge-base";
 import { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
 import { getKnowledgeProvider } from "./knowledge-provider/registry";
@@ -16,14 +15,6 @@ function _generateKnowledgeBaseId(): string {
 
 function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
-}
-
-function normalizeUriSegment(value: string): string {
-  return value.trim().replace(/[\\/]/g, "_");
-}
-
-export function buildKnowledgeBaseRemoteId(userId: string, slug: string): string {
-  return `viking://resources/kb/${normalizeUriSegment(userId)}/${normalizeUriSegment(normalizeSlug(slug))}/`;
 }
 
 function validateName(name: string): string | null {
@@ -183,14 +174,18 @@ export async function createKnowledgeBaseRecord(
   });
 
   const now = new Date();
-  const remoteId = remote.remoteId ?? buildKnowledgeBaseRemoteId(effectiveUserId, input.slug);
+  // RagFlow createKnowledgeBase always returns dataset_id; null means API error
+  const remoteId = remote.remoteId;
+  if (!remoteId) {
+    throw new Error("RagFlow createKnowledgeBase did not return a remoteId");
+  }
   const row = await knowledgeBaseRepo.create({
     userId: effectiveUserId,
     organizationId,
     name: input.name.trim(),
     slug: normalizeSlug(input.slug),
     description: input.description?.trim() || null,
-    provider: config.knowledgeProvider,
+    provider: "ragflow",
     remoteId,
     remoteAccountId: tenantIdentity.remoteAccountId,
     remoteUserId: tenantIdentity.remoteUserId,
@@ -254,11 +249,10 @@ export async function deleteKnowledgeBase(organizationId: string, knowledgeBaseI
   }
   if (row.remoteId) {
     const tenantIdentity = resolveKnowledgeTenantIdentity(row);
-    await getKnowledgeProvider().deleteResource({
-      resourceRemoteId: row.remoteId,
+    await getKnowledgeProvider().deleteKnowledgeBase({
+      knowledgeBaseRemoteId: row.remoteId,
       remoteAccountId: tenantIdentity.remoteAccountId,
       remoteUserId: tenantIdentity.remoteUserId,
-      recursive: true,
     });
   }
   await agentKnowledgeBindingRepo.deleteByKnowledgeBaseId(knowledgeBaseId);
