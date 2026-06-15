@@ -151,6 +151,11 @@
     "uploadingProgress": "{{percent}}%",
     "downloadZip": "Download ZIP",
     "downloadFailed": "Download failed",
+    "showTree": "Show file tree",
+    "hideTree": "Hide file tree",
+    "closeTab": "Close tab",
+    "moreTabs": "{{count}} more tabs",
+    "noTabsHint": "Pick a file from the tree to preview",
     "contextMenu": {
       "reference": "Reference in chat",
       "rename": "Rename",

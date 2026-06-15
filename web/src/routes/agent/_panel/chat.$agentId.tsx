@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { extractChangedFiles } from "../../../../src/lib/extract-changed-files";
 import type { ThreadEntry } from "../../../../src/lib/types";
@@ -23,10 +23,8 @@ function ChatRoute() {
   const { agentId } = Route.useParams();
   const { t } = useTranslation("agentPanel");
 
-  const [artifactsCollapsed, setArtifactsCollapsed] = useState(() => {
-    const saved = localStorage.getItem("agent-panel:artifacts-collapsed");
-    return saved === "true";
-  });
+  // 默认隐藏：只有 Agent 产出 diff 文件后才自动展开文件区域
+  const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
 
   // 路由层只需 entries 派生 changedFiles，环境名/token 由 ChatComposer 内部获取
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
@@ -43,6 +41,15 @@ function ChatRoute() {
     return () => window.removeEventListener("chat:stats", handler);
   }, []);
 
+  // 首次出现 diff 文件时自动展开文件区域（用户手动收起后不再自动展开）
+  const prevDiffCountRef = useRef(0);
+  useEffect(() => {
+    if (prevDiffCountRef.current === 0 && changedFiles.length > 0 && artifactsCollapsed) {
+      setArtifactsCollapsed(false);
+    }
+    prevDiffCountRef.current = changedFiles.length;
+  }, [changedFiles.length, artifactsCollapsed]);
+
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
     const handler = (e: MediaQueryListEvent) => {
@@ -51,10 +58,6 @@ function ChatRoute() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("agent-panel:artifacts-collapsed", String(artifactsCollapsed));
-  }, [artifactsCollapsed]);
 
   return (
     <Suspense

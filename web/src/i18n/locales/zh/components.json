@@ -151,6 +151,11 @@
     "uploadingProgress": "{{percent}}%",
     "downloadZip": "下载 ZIP",
     "downloadFailed": "下载失败",
+    "showTree": "展开文件树",
+    "hideTree": "收起文件树",
+    "closeTab": "关闭标签",
+    "moreTabs": "还有 {{count}} 个标签",
+    "noTabsHint": "从左侧文件树选择文件预览",
     "contextMenu": {
       "reference": "引用到聊天",
       "rename": "重命名",

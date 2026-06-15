@@ -21,10 +21,8 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId ?? null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const [artifactsCollapsed, setArtifactsCollapsed] = useState(() => {
-    const saved = localStorage.getItem("agent-panel:artifacts-collapsed");
-    return saved === "true";
-  });
+  // 默认隐藏文件区域（AgentAppShell 不传 changedFiles，手动展开）
+  const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
@@ -36,10 +34,6 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("agent-panel:artifacts-collapsed", String(artifactsCollapsed));
-  }, [artifactsCollapsed]);
 
   useEffect(() => {
     setSelectedAgentId(agentId);
