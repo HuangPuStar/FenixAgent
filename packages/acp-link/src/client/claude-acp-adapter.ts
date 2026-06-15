@@ -1,9 +1,9 @@
 import { readdirSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
 import { getSessionMessages, type Query, query } from "@anthropic-ai/claude-agent-sdk";
-import { ProtocolAdapter } from "../../../claude-bridge/src/protocol-adapter.js";
+import { ProtocolAdapter } from "./protocol-adapter.js";
 
 /** 会话状态 */
 interface SessionState {
