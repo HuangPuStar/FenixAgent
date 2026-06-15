@@ -67,6 +67,11 @@ docs/.vitepress/.temp/
 .tanstack
 docker/acp-link/acp-link-*
 packages/sdk/sdk
+packages/bridge-protocol/bridge-protocol
+packages/claude-bridge/claude-bridge
+packages/opencode-bridge/opencode-bridge
+packages/plugin-claude-code/plugin-claude-code
+.workspace-registry.json
 .worktrees/
 packages/plugin-ccb/node_modules/
 
