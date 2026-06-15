@@ -8,6 +8,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButtons,
 } from "../ai-elements/conversation";
+import { AgentBadge, AgentBadgeSkeleton, type AgentSkillInfo } from "./AgentBadge";
 import { AssistantBubble, UserBubble } from "./MessageBubble";
 import { PlanDisplay } from "./PlanView";
 import { ToolCallGroup } from "./ToolCallGroup";
@@ -23,6 +24,9 @@ interface ChatViewProps {
   onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
   emptyTitle?: string;
   emptyDescription?: string;
+  agentName?: string;
+  agentDescription?: string;
+  agentSkills?: AgentSkillInfo[];
   sessionId?: string;
   envId?: string;
 }
@@ -33,6 +37,9 @@ export function ChatView({
   onPermissionRespond,
   emptyTitle = "开始对话",
   emptyDescription = "输入消息开始聊天",
+  agentName,
+  agentDescription,
+  agentSkills,
   sessionId,
   envId,
 }: ChatViewProps) {
@@ -60,7 +67,13 @@ export function ChatView({
     <Conversation className="flex-1">
       <ConversationContent>
         {!hasMessages ? (
-          <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
+          isLoading && !agentName ? (
+            <AgentBadgeSkeleton />
+          ) : agentName ? (
+            <AgentBadge name={agentName} description={agentDescription} skills={agentSkills ?? []} />
+          ) : (
+            <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
+          )
         ) : (
           <>
             {grouped.map((item, i) => {

@@ -346,5 +346,10 @@
     "newSession": "New Thread",
     "placeholder": "Send a message to the agent…",
     "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file"
+  },
+  "chatEmpty": {
+    "skills": "Loaded Skills",
+    "skillsHint": "Type / to open skill menu",
+    "noSkills": "No skills bound"
   }
 }

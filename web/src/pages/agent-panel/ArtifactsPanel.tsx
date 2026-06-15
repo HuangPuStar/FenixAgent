@@ -1,11 +1,12 @@
 import { FilesIcon, PanelLeft, Upload } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { FileTabsBar } from "../../components/agent-panel/FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
 import { PreviewTab } from "../../components/agent-panel/PreviewTab";
+import { normalizeToUserPath } from "../../components/agent-panel/preview/utils";
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 import { cn } from "../../lib/utils";
@@ -69,11 +70,19 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
     setActiveFile(path);
   }, []);
 
+  // 把 Agent 上报的任意格式 path（相对路径 / workspace 绝对路径）统一规范化为
+  // 「相对 user/ 的路径」，与文件树 tree API 返回的格式一致（user/foo/bar.html）。
+  // 集中规范化一次：useEffect 自动展开 + FileTabsBar badge 点击都消费同一份数据，
+  // 避免 badge 回调把原始绝对路径直接喂给 openFile 导致 buildPreviewUrl 拼出双 user/。
+  const normalizedChangedFiles = useMemo<ChangedFile[]>(
+    () => changedFiles.map((f) => ({ ...f, path: normalizeToUserPath(f.path) })),
+    [changedFiles],
+  );
+
   // changedFiles 变化时自动将 diff 文件加入 openFiles（新文件前置），并激活第一个 diff 文件
-  // diff 路径（Agent 报告的相对路径如 src/index.ts）需规范化为 user/ 前缀，
-  // 与文件树 tree API 返回的路径格式一致（user/src/index.ts），避免同一文件出现两个 tab
+  // path 已在 normalizedChangedFiles 中规范化为带 user/ 前缀，无需再次处理
   useEffect(() => {
-    const paths = changedFiles.map((f) => (f.path.startsWith("user/") ? f.path : `user/${f.path}`));
+    const paths = normalizedChangedFiles.map((f) => f.path);
     if (paths.length === 0) return;
     setOpenFiles((prev) => {
       const newPaths = paths.filter((p) => !prev.includes(p));
@@ -81,7 +90,7 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
       return [...newPaths, ...prev].slice(0, MAX_OPEN_FILES);
     });
     setActiveFile((cur) => cur ?? paths[0]);
-  }, [changedFiles]);
+  }, [normalizedChangedFiles]);
 
   // 关闭 tab：从 openFiles 移除；若关闭的是当前激活文件，激活相邻 tab（优先右侧，再左侧）
   const handleCloseFile = useCallback((path: string) => {
@@ -170,7 +179,7 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
       <FileTabsBar
         openFiles={openFiles}
         activeFile={activeFile}
-        changedFiles={changedFiles}
+        changedFiles={normalizedChangedFiles}
         // 点击已有 tab / +N popover 中的项：仅切换 active，不重排顺序
         // （用户偏好：tab 位置稳定，不希望每次点击都把文件提到最前）
         // 真正"打开新文件"（双击文件树 / 变更 badge）才走 openFile 触发 LRU 入列
