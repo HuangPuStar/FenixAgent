@@ -352,6 +352,7 @@ export function createClaudeAcpConnection(
           allowedTools: [],
           mcpServers: {},
           maxTurns: 200,
+          includePartialMessages: true,
           pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH,
         },
       });
@@ -387,11 +388,6 @@ export function createClaudeAcpConnection(
       });
       const outputBlocks: Array<Record<string, unknown>> = [];
       for await (const msg of q) {
-        // 调试：记录 SDK 发出的所有消息类型及其子类型
-        console.log(
-          "[claude-acp] SDK msg:",
-          JSON.stringify({ type: msg.type, subtype: (msg as Record<string, unknown>).subtype }).slice(0, 200),
-        );
         adapter.handleSdkOutput(msg);
         if (msg.type === "system" && (msg as Record<string, unknown>).subtype === "init") {
           const ccSid = (msg as Record<string, unknown>).session_id as string | undefined;

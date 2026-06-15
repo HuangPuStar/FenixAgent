@@ -43,7 +43,38 @@ export class ProtocolAdapter {
 
   /** 处理 SDK 流式输出，转换为 ACP 事件。SDK 结构性在 message.content 中。 */
   handleSdkOutput(message: SDKMessage): void {
-    if (message.type === "assistant") {
+    if (message.type === "stream_event") {
+      // SDK 流式事件（includePartialMessages: true 时触发）
+      // event 是 Anthropic API 原生的 BetaRawMessageStreamEvent
+      const event = message.event as Record<string, unknown> | undefined;
+      if (!event) return;
+      switch (event.type) {
+        case "content_block_delta": {
+          const delta = event.delta as Record<string, unknown> | undefined;
+          if (delta?.type === "text_delta" && typeof delta.text === "string") {
+            this.send("agent_message_chunk", { type: "text", text: delta.text as string });
+          } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
+            this.send("agent_thought_chunk", { type: "text", text: delta.thinking as string });
+          } else if (delta?.type === "input_json_delta" && delta.partial_json) {
+            // tool_use 参数流式增量，透传
+            this.send("agent_message_chunk", { type: "tool_input_delta", partial: delta.partial_json });
+          }
+          break;
+        }
+        case "content_block_start": {
+          const contentBlock = event.content_block as Record<string, unknown> | undefined;
+          if (contentBlock?.type === "tool_use") {
+            this.send("tool_call", { id: contentBlock.id, name: contentBlock.name, input: {} });
+          }
+          break;
+        }
+        case "message_start":
+        case "message_delta":
+        case "message_stop":
+          // 消息边界事件，不需要转发给前端
+          break;
+      }
+    } else if (message.type === "assistant") {
       // SDK 的 assistant 消息内容在 message.content 中
       const sdkMsg = message as Record<string, unknown>;
       const inner = (sdkMsg.message ?? message) as Record<string, unknown>;
