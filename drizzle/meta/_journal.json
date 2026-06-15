@@ -57,6 +57,13 @@
       "when": 1781062113675,
       "tag": "0007_machine-name",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781164411166,
+      "tag": "0008_ragflow-provider-default",
+      "breakpoints": true
     }
   ]
 }

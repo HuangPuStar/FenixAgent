@@ -71,3 +71,4 @@ packages/sdk/sdk
 packages/plugin-ccb/node_modules/
 
 tmp
+.bunenv/

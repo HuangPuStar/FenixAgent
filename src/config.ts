@@ -26,14 +26,12 @@ function buildConfig(env: Env) {
     jwtExpiresIn: env.RCS_JWT_EXPIRES_IN,
     /** acpx-g workflow engine URL for reverse proxy. */
     acpxGUrl: env.ACPX_G_URL,
-    /** Knowledge provider selection. Phase 1 supports OpenViking only. */
-    knowledgeProvider: env.RCS_KNOWLEDGE_PROVIDER,
-    /** Knowledge provider HTTP base URL. */
-    knowledgeBaseUrl: env.RCS_KNOWLEDGE_BASE_URL,
-    /** Optional shared API key for the knowledge provider. */
-    knowledgeApiKey: env.RCS_KNOWLEDGE_API_KEY,
-    /** Timeout in milliseconds for knowledge provider requests. */
-    knowledgeRequestTimeoutMs: env.RCS_KNOWLEDGE_REQUEST_TIMEOUT_MS,
+    /** RagFlow API base URL (e.g. http://localhost:9380). */
+    ragflowApiUrl: process.env.RAGFLOW_API_URL || "http://localhost:9380",
+    /** RagFlow API key for authentication. */
+    ragflowApiKey: process.env.RAGFLOW_API_KEY || "",
+    /** Timeout in milliseconds for RagFlow API requests. */
+    ragflowRequestTimeoutMs: parseInt(process.env.RAGFLOW_REQUEST_TIMEOUT_MS || "30000", 10),
     /** S3-compatible object storage (RustFS / MinIO / AWS S3). */
     s3: {
       enabled: env.RCS_S3_ENABLED,
