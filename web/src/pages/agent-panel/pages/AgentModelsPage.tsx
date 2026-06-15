@@ -1,4 +1,4 @@
-import { ChevronDown, Plus, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -7,7 +7,6 @@ import { FormDialog } from "@/components/config/FormDialog";
 import { ModelConfigDialog, mergeModelConfigUpdate } from "@/components/config/ModelConfigDialog";
 import { ModelIcon } from "@/components/model-icon/ModelIcon";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -44,7 +43,6 @@ import {
   getProviderColor,
   getProviderDisplayName,
   getProviderKey,
-  getProviderResourceBadgeKey,
 } from "./agent-models-utils";
 
 export function AgentModelsPage() {
