@@ -346,5 +346,6 @@
     "newSession": "新会话",
     "placeholder": "给智能体发送消息…",
     "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件"
-  }
+  },
+  "orgSwitchFailed": "切换组织失败"
 }

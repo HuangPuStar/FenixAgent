@@ -119,10 +119,26 @@ async function tryApiKeyAuth(
       store.user = user;
       const orgId = apiKeyMeta.organizationId || apiKeyMeta.metadata?.organizationId;
       if (orgId) {
+        // 验证 API Key 持有者仍属于该组织（与 session cookie 路径的 loadOrgContext 一致）
+        try {
+          const memberRes: any = await auth.api.listMembers({
+            query: { organizationId: orgId },
+            headers: request.headers,
+          });
+          const memberList: any[] = Array.isArray(memberRes) ? memberRes : (memberRes?.members ?? []);
+          const isMember = memberList.some((m: any) => m.userId === user.id);
+          if (!isMember) {
+            return false; // 用户已不在该组织中，拒绝 API Key
+          }
+        } catch {
+          // listMembers 调用失败（网络/DB 异常）→ 保守拒绝，防止 DB 故障时绕过成员校验
+          return false;
+        }
+
         store.authContext = {
           organizationId: orgId,
           userId: user.id,
-          role: (apiKeyMeta.metadata?.role as "owner" | "admin" | "member") || "owner",
+          role: (apiKeyMeta.metadata?.role as "owner" | "admin" | "member") || "member",
         };
         return true;
       }

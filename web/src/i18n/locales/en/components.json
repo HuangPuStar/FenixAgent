@@ -346,5 +346,6 @@
     "newSession": "New Thread",
     "placeholder": "Send a message to the agent…",
     "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file"
-  }
+  },
+  "orgSwitchFailed": "Failed to switch organization"
 }

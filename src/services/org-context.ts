@@ -84,6 +84,12 @@ export async function loadOrgContext(user: { id: string }, request: Request): Pr
         };
         await orgCache.set(user.id, result);
         return result;
+      } else if (activeOrgId) {
+        // activeOrgId 指定了但用户不是成员 → 记录差异后回退
+        log.warn("active org not found in members, falling back to first org", {
+          requestedOrgId: activeOrgId,
+          userId: user.id,
+        });
       }
     }
 
@@ -93,6 +99,11 @@ export async function loadOrgContext(user: { id: string }, request: Request): Pr
     const orgList: any[] = Array.isArray(orgs) ? orgs : [];
     if (orgList.length > 0) {
       const org = orgList[0];
+      log.warn("org context resolved to first available organization", {
+        organizationId: org.id,
+        organizationName: org.name,
+        userId: user.id,
+      });
       const memberRes = await api.listMembers({
         query: { organizationId: org.id },
         headers: request.headers,

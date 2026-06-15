@@ -8,10 +8,13 @@ import type { ACPSettings } from "./types";
 export function buildRelayUrl(agentId: string, sessionId?: string): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const base = `${protocol}//${window.location.host}/acp/relay/${agentId}`;
-  if (sessionId) {
-    return `${base}?sessionId=${encodeURIComponent(sessionId)}`;
-  }
-  return base;
+  const params = new URLSearchParams();
+  // 与 SSE 连接保持一致，通过 URL query param 传递组织 ID（WebSocket 无法设自定义 header）
+  const activeOrgId = localStorage.getItem("active_org_id");
+  if (activeOrgId) params.set("activeOrganizationId", activeOrgId);
+  if (sessionId) params.set("sessionId", sessionId);
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 /**
