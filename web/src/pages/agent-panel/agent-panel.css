@@ -56,7 +56,6 @@
   min-width: var(--agent-sidebar-width);
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 48%),
     linear-gradient(180deg, var(--agent-sidebar-from), var(--agent-sidebar-to));
@@ -198,7 +197,7 @@
 .agent-sidebar-section-label,
 .agent-tree-section-title {
   display: block;
-  padding: 16px 16px 6px;
+  padding: 10px 16px 4px;
   color: rgba(255, 255, 255, 0.35);
   font-size: 10px;
   font-weight: 700;
@@ -215,14 +214,14 @@
   width: calc(100% - 16px);
   box-sizing: border-box;
   margin: 1px 8px;
-  padding: 9px 16px;
+  padding: 6px 16px;
   border: 0;
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.68);
   background: transparent;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 .agent-sidebar-nav-item svg {

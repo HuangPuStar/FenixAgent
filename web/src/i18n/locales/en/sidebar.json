@@ -20,5 +20,8 @@
   "logout": "Sign Out",
   "searchDev": "Global search coming soon",
   "agentPanel": "Agent Panel",
-  "dashboard": "Dashboard"
+  "dashboard": "Dashboard",
+  "navGroupCore": "Core",
+  "navGroupConfig": "Configuration",
+  "navGroupSystem": "System"
 }

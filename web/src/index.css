@@ -498,8 +498,8 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 
 /* ── 工牌容器 ── */
 .agent-badge {
-  width: 280px;
-  min-height: 420px;
+  width: 224px;
+  min-height: 340px;
   border-radius: 14px;
   border: 1px solid var(--color-border);
   box-shadow:
@@ -552,7 +552,7 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   background:
     radial-gradient(220px circle at 50% 0%, rgba(107, 230, 255, 0.22), transparent 68%),
     linear-gradient(180deg, #1759dc, #0d2a6e);
-  padding: 32px 20px 44px;
+  padding: 24px 18px 32px;
   text-align: center;
   position: relative;
   flex-shrink: 0;
@@ -585,7 +585,7 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 
 /* ── 头像 + 信息区 ── */
 .agent-badge-body {
-  padding: 0 24px;
+  padding: 0 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -593,14 +593,14 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   justify-content: center;
 }
 .agent-badge-avatar {
-  width: 64px;
-  height: 64px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: -40px;
+  margin-top: -30px;
   border: 3px solid #fff;
   box-shadow:
     0 0 0 1.5px var(--color-border, #e2e8f0),
@@ -610,14 +610,22 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   flex-shrink: 0;
 }
 .agent-badge-name {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--color-text-primary);
-  margin-top: 14px;
+  margin-top: 4px;
   flex-shrink: 0;
 }
+.agent-badge-source {
+  font-size: 9px;
+  color: var(--color-text-muted, #94a3b8);
+  margin-top: 8px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 .agent-badge-desc {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--color-text-muted, #64748b);
   margin-top: 5px;
   line-height: 1.5;
@@ -627,7 +635,7 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 
 /* ── 分隔线 ── */
 .agent-badge-divider {
-  margin: 0 24px;
+  margin: 0 20px;
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -653,7 +661,7 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 
 /* ── Skills  ── */
 .agent-badge-skills {
-  padding: 14px 24px 24px;
+  padding: 10px 20px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -720,6 +728,58 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   }
 }
 
+/* ── 管理模式下静态 skill tag（不可点击） ── */
+.skill-tag-static {
+  cursor: default;
+}
+.skill-tag-static:hover {
+  background: var(--color-surface-2, #f1f5f9);
+  border-color: var(--color-border, #e5e7eb);
+  color: var(--color-text-secondary, #475569);
+}
+
+/* ── 管理模式操作按钮 ── */
+.agent-badge-actions {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 14px;
+  flex-shrink: 0;
+}
+.agent-badge-action {
+  flex: 1;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+  border: 1px solid #d9e2ee;
+  background: #fff;
+  color: #65748a;
+}
+.agent-badge-action:hover {
+  border-color: #b9cee8;
+  color: #1677ff;
+}
+.agent-badge-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.agent-badge-action-primary {
+  border: none;
+  background: #1677ff;
+  color: #fff;
+}
+.agent-badge-action-primary:hover {
+  background: #0f67df;
+}
+
 /* ── 骨架屏 ── */
 @keyframes agent-badge-pulse {
   0%,
@@ -734,8 +794,8 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   animation: agent-badge-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 .agent-badge-skeleton-circle {
-  width: 64px;
-  height: 64px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   background: var(--color-border, #e2e8f0);
   border: 3px solid #fff;

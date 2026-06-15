@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -18,7 +18,6 @@ import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import type { ModelConfig, ProviderInfo, ProviderModel } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 type TestDialogError = {
   code: string;
@@ -70,6 +69,7 @@ export function AgentModelsPage() {
   const [testingModelKey, setTestingModelKey] = useState<string | null>(null);
   const [addedModelIds, setAddedModelIds] = useState<Set<string>>(new Set());
   const [sharingProviderKey, setSharingProviderKey] = useState<string | null>(null);
+  const [providerSearch, setProviderSearch] = useState("");
   const [formName, setFormName] = useState("");
   const [formApiKey, setFormApiKey] = useState("");
   const [formBaseURL, setFormBaseURL] = useState("");
@@ -571,11 +571,26 @@ export function AgentModelsPage() {
     setter(list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
   };
 
+  const filteredProviders = providerSearch.trim()
+    ? providers.filter(
+        (p) =>
+          p.id.toLowerCase().includes(providerSearch.toLowerCase()) ||
+          (p.name?.toLowerCase().includes(providerSearch.toLowerCase()) ?? false),
+      )
+    : providers;
+
   if (loading) {
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
-        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <Skeleton className="h-[22px] w-28 rounded-md" />
+            <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
+          </div>
+          <Skeleton className="h-10 w-28 rounded-lg" />
+        </div>
+        <div className="mb-7 h-px bg-[#e8edf4]" />
+        <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
             <Skeleton key={i} className="h-20 w-full rounded-lg" />

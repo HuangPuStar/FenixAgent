@@ -352,5 +352,11 @@
     "skillsHint": "Type / to open skill menu",
     "noSkills": "No skills bound"
   },
+  "agentBadge": {
+    "enterChat": "Enter Chat",
+    "edit": "Edit",
+    "statusRunning": "Running",
+    "statusStopped": "Stopped"
+  },
   "orgSwitchFailed": "Failed to switch organization"
 }

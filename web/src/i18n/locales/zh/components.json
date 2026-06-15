@@ -352,5 +352,11 @@
     "skillsHint": "输入 / 打开 Skill 弹窗",
     "noSkills": "暂无绑定 Skills"
   },
+  "agentBadge": {
+    "enterChat": "进入对话",
+    "edit": "编辑",
+    "statusRunning": "运行中",
+    "statusStopped": "已停止"
+  },
   "orgSwitchFailed": "切换组织失败"
 }
