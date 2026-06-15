@@ -30,3 +30,28 @@ export function canWriteProvider(provider: ProviderInfo): boolean {
 export function buildProviderPublicReadablePayload(publicReadable: boolean): Record<string, unknown> {
   return { publicReadable };
 }
+
+/** Provider 名称到品牌色的映射。用于工牌卡片头像背景色。 */
+const PROVIDER_COLORS: Record<string, string> = {
+  openai: "#10a37f",
+  anthropic: "#d4a574",
+  deepseek: "#6366f1",
+  google: "#f59e0b",
+  mistral: "#8b5cf6",
+  meta: "#1877f2",
+  grok: "#000000",
+  qwen: "#615ced",
+};
+
+/**
+ * 根据 Provider 名称获取品牌色。
+ * 匹配逻辑：名称转小写后，按 PROVIDER_COLORS 的 key 做 includes 匹配，返回第一个命中项。
+ * 未命中返回默认灰色 #64748b。
+ */
+export function getProviderColor(name: string): string {
+  const key = name.toLowerCase();
+  for (const [k, v] of Object.entries(PROVIDER_COLORS)) {
+    if (key.includes(k)) return v;
+  }
+  return "#64748b";
+}
