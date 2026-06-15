@@ -1,10 +1,17 @@
 import { log, error as logError } from "@fenix/logger";
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
-import { auth } from "../../auth/better-auth";
 import { validateEnv } from "../../env";
-import { authGuardPlugin } from "../../plugins/auth";
+import { AppError } from "../../errors";
+import type { RequestAuthResult } from "../../plugins/auth";
+import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
+import {
+  AcpAgentListResponseSchema,
+  AcpRegistrySecretQuerySchema,
+  AcpRelayParamsSchema,
+  AcpRelayQuerySchema,
+} from "../../schemas";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
@@ -30,7 +37,7 @@ function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environme
   return {
     id: env.id,
     agent_name: env.machineName,
-    status: env.status === "active" ? "online" : "offline",
+    status: (env.status === "active" ? "online" : "offline") as "online" | "offline",
     max_sessions: env.maxSessions,
     last_seen_at: env.lastPollAt ? env.lastPollAt.getTime() / 1000 : null,
     created_at: env.createdAt.getTime() / 1000,
@@ -39,22 +46,44 @@ function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environme
 
 const app = new Elysia({ name: "acp", prefix: "/acp" })
   .use(authGuardPlugin)
+  .model({
+    "acp-agent-list-response": AcpAgentListResponseSchema,
+    "acp-relay-params": AcpRelayParamsSchema,
+    "acp-relay-query": AcpRelayQuerySchema,
+    "acp-registry-secret-query": AcpRegistrySecretQuerySchema,
+  })
 
   /** GET /acp/agents — List current user's team ACP agents */
   .get(
     "/agents",
-    async ({ store }) => {
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema 下的类型推断过于严格
+    async ({ store }: any) => {
       const authCtx = store.authContext;
       const orgId = authCtx?.organizationId ?? store.user!.id;
       const teamEnvs = await environmentRepo.listByOrganizationId(orgId);
       const acpEnvs = teamEnvs.filter((e) => e.workerType === "acp");
       return acpEnvs.map((a) => toAcpAgentResponse(a));
     },
-    { sessionAuth: true },
+    {
+      sessionAuth: true,
+      response: "acp-agent-list-response",
+      detail: {
+        tags: ["ACP"],
+        summary: "获取 ACP Agent 列表",
+        description: "返回当前组织下所有使用 ACP worker 的环境列表及在线状态摘要。",
+      },
+    },
   )
 
   /** WS /acp/ws — WebSocket endpoint for acp-link connections */
   .ws("/ws", {
+    detail: {
+      tags: ["ACP"],
+      summary: "ACP 机器接入 WebSocket",
+      description:
+        "供 `acp-link` 或兼容机器侧运行时接入的 WebSocket 端点。连接时必须通过 query 参数提供 `secret`，且需与服务端 `REGISTRY_SECRET` 匹配。建立连接后，客户端按 ACP/注册中心协议发送消息帧，服务端负责机器注册、状态同步和消息转发。",
+    },
+    query: "acp-registry-secret-query",
     async open(ws) {
       const url = new URL(ws.data.request.url);
       const secret = url.searchParams.get("secret");
@@ -97,6 +126,13 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
 
   /** WS /acp/file-ws — WebSocket endpoint for remote file operations */
   .ws("/file-ws", {
+    detail: {
+      tags: ["ACP"],
+      summary: "ACP 远程文件 WebSocket",
+      description:
+        "供远端运行时执行文件读写操作的 WebSocket 端点。连接时同样要求 query 参数 `secret` 与服务端 `REGISTRY_SECRET` 匹配，消息帧格式由远程文件协议决定。",
+    },
+    query: "acp-registry-secret-query",
     async open(ws) {
       const url = new URL(ws.data.request.url);
       const secret = url.searchParams.get("secret");
@@ -137,16 +173,39 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
 
   /** WS /acp/relay/:agentId — WebSocket relay for frontend to interact with an agent */
   .ws("/relay/:agentId", {
+    detail: {
+      tags: ["ACP"],
+      summary: "ACP 前端 Relay WebSocket",
+      description:
+        "前端通过该 WebSocket 与指定 ACP Agent 建立中继连接。升级时要求已登录会话，服务端会校验 `agentId` 所属组织。可选 query 参数 `sessionId` 用于复用既有会话。",
+    },
+    params: "acp-relay-params",
+    query: "acp-relay-query",
     async open(ws) {
-      // Authenticate via better-auth session
-      const session = await auth.api.getSession({ headers: ws.data.request.headers });
-      if (!session?.user) {
+      // 在任何 await 之前先挂上 relayWsId，避免前端在握手刚完成时抢先发来的
+      // ping/connect 消息进入 message 分支后拿不到 ws 级别的 relay 标识，产生误报日志。
+      const relayWsId = `relay_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      (ws.data as any).__relayWsId = relayWsId;
+
+      let authResult: RequestAuthResult | null = null;
+      try {
+        authResult = await authenticateRequest(ws.data.request);
+      } catch (err) {
+        if (err instanceof AppError && err.code === "RATE_LIMITED") {
+          log("[ACP-Relay] Upgrade rejected: API key rate limited");
+          adaptWs(ws).close(4008, "rate_limited");
+          return;
+        }
+        throw err;
+      }
+      if (!authResult?.user) {
         log("[ACP-Relay] Upgrade rejected: not authenticated");
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
 
-      const userId = session.user.id;
+      const userId = authResult.user.id;
       const agentId = ws.data.params.agentId;
       const sessionId = ws.data.query?.sessionId as string | undefined;
 
@@ -158,17 +217,12 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         return;
       }
       // 验证团队归属：env.organizationId 或 env.userId 必须匹配
-      const { loadOrgContext } = await import("../../services/org-context");
-      const authCtx = await loadOrgContext({ id: userId }, ws.data.request);
+      const authCtx = authResult.authContext;
       if (!authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
         log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not owned by user ${userId}'s team`);
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
-
-      const relayWsId = `relay_${uuid().replace(/-/g, "")}`;
-      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
-      (ws.data as any).__relayWsId = relayWsId;
 
       log(`[ACP-Relay] Upgrade accepted: relayWsId=${relayWsId} agentId=${agentId}`);
       handleRelayOpen(adaptWs(ws), relayWsId, agentId, userId, sessionId);

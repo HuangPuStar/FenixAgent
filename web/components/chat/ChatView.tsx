@@ -1,3 +1,4 @@
+import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanDisplayEntry, ThreadEntry, ToolCallEntry } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
@@ -38,6 +39,22 @@ export function ChatView({
   // 将相邻的 ToolCallEntry 合并为一组
   const grouped = groupToolCalls(entries);
   const hasMessages = entries.length > 0;
+
+  // debug：Ctrl+P 打印 entries 到控制台
+  const handleDebugEntries = useCallback(() => {
+    console.log("[ChatView] entries:", JSON.parse(JSON.stringify(entries)));
+  }, [entries]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "p") {
+        e.preventDefault();
+        handleDebugEntries();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [handleDebugEntries]);
 
   return (
     <Conversation className="flex-1">

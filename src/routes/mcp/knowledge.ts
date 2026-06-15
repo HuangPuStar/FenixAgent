@@ -3,6 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { errorResponse } from "../../plugins/auth";
+import { McpKnowledgeAuthHeadersSchema } from "../../schemas";
 import { getEnvironmentBySecret } from "../../services/environment";
 import { readKnowledgeResourceForAgent, searchKnowledgeByConfigId } from "../../services/knowledge-runtime";
 
@@ -74,26 +75,41 @@ function createKnowledgeMcpServer(environment: {
   return server;
 }
 
-const app = new Elysia({ name: "mcp-knowledge" }).decorate({ error: errorResponse });
-
-app.all("/mcp/knowledge", async ({ request, error }) => {
-  const token = getBearerToken(request.headers.get("Authorization") ?? undefined);
-  if (!token) {
-    return error(401, { error: { message: "Missing bearer token" } });
-  }
-
-  const environment = await getEnvironmentBySecret(token);
-  if (!environment) {
-    return error(401, { error: { message: "Invalid bearer token" } });
-  }
-
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    enableJsonResponse: true,
-    sessionIdGenerator: undefined,
-  });
-  const server = createKnowledgeMcpServer(environment);
-  await server.connect(transport);
-  return transport.handleRequest(request);
+const app = new Elysia({ name: "mcp-knowledge" }).decorate({ error: errorResponse }).model({
+  "mcp-knowledge-auth-headers": McpKnowledgeAuthHeadersSchema,
 });
+
+app.all(
+  "/mcp/knowledge",
+  async ({ request, error }) => {
+    const token = getBearerToken(request.headers.get("Authorization") ?? undefined);
+    if (!token) {
+      return error(401, { error: { message: "Missing bearer token" } });
+    }
+
+    const environment = await getEnvironmentBySecret(token);
+    if (!environment) {
+      return error(401, { error: { message: "Invalid bearer token" } });
+    }
+
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse: true,
+      sessionIdGenerator: undefined,
+    });
+    const server = createKnowledgeMcpServer(environment);
+    await server.connect(transport);
+    return transport.handleRequest(request);
+  },
+  {
+    headers: "mcp-knowledge-auth-headers",
+    detail: {
+      hide: true,
+      tags: ["Knowledge"],
+      summary: "Agent 知识库 MCP 服务入口",
+      description:
+        "提供给底层 Agent 运行时调用的内部 MCP Streamable HTTP 服务入口。调用方需通过 `Authorization: Bearer <environment_secret>` 鉴权。当前暴露两个 MCP tools：`kb_search`（输入 `{ query, topK? }`，在 Agent 绑定知识库中检索）和 `kb_read`（输入 `{ resourceId }`，读取已绑定知识资源内容）。该接口为 MCP 协议入口，不按普通 REST 响应建模，因此在公开文档中隐藏。",
+    },
+  },
+);
 
 export default app;

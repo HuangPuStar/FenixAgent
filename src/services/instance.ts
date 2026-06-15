@@ -34,6 +34,19 @@ export interface SpawnedInstance {
   instanceNumber: number;
 }
 
+/** 对外 `/web/instances/*` API 使用的实例详情结构。 */
+export interface InstanceInfo {
+  id: string;
+  port: number;
+  status: "starting" | "running" | "stopped" | "error";
+  error: string | null;
+  group_id: string;
+  environment_id: string | null;
+  session_id: string | null;
+  instance_number: number;
+  created_at: number;
+}
+
 export interface EnsureRunningResult {
   instance: SpawnedInstance;
   status: "reused" | "spawned";
@@ -78,6 +91,29 @@ function toSpawnedInstance(snapshot: RuntimeInstanceSnapshot, supplement: Instan
     environmentId: supplement.environmentId,
     sessionId: undefined,
     instanceNumber: supplement.instanceNumber,
+  };
+}
+
+/**
+ * 将内部实例对象转换为对外 API 契约。
+ *
+ * 这里保留 snake_case，避免路由层直接暴露内部 camelCase 结构，
+ * 否则会和 Elysia 的 response schema 校验发生偏差。
+ */
+export function toInstanceInfo(instance: SpawnedInstance): InstanceInfo {
+  const environmentId = instance.environmentId ?? null;
+  return {
+    id: instance.id,
+    port: instance.port,
+    status: instance.status,
+    error: instance.error,
+    // 现有 API 契约要求 group_id 必填；当前实例域里没有独立 group 概念，
+    // 这里沿用 environmentId 作为兼容值，后续若拆分语义需同步调整 schema 与客户端。
+    group_id: environmentId ?? "",
+    environment_id: environmentId,
+    session_id: instance.sessionId ?? null,
+    instance_number: instance.instanceNumber,
+    created_at: Math.floor(instance.createdAt.getTime() / 1000),
   };
 }
 

@@ -173,7 +173,7 @@ app.post(
         return error(400, configValidationError(`Unknown action: ${action}`));
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "Skill 配置管理" } },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["SkillConfig"], summary: "Skill 配置管理" } },
 );
 
 app.post(
@@ -183,7 +183,16 @@ app.post(
     const authCtx = store.authContext!;
     return await handleUpload(authCtx, request, (status, data) => error(status, data));
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    detail: {
+      hide: true,
+      tags: ["SkillConfig"],
+      summary: "批量上传技能目录",
+      description:
+        "内部使用的技能目录导入接口，接收 `multipart/form-data` 表单、manifest 与文件内容，并按冲突策略批量导入技能。该接口主要服务于控制台内部导入流程，默认不在公开文档中展示。",
+    },
+  },
 );
 
 export default app;

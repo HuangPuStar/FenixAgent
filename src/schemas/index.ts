@@ -1,4 +1,29 @@
 // Common
+export {
+  type AcpAgent,
+  type AcpAgentListResponse,
+  AcpAgentListResponseSchema,
+  AcpAgentSchema,
+  AcpRegistrySecretQuerySchema,
+  AcpRelayParamsSchema,
+  AcpRelayQuerySchema,
+} from "./acp.schema";
+export {
+  type BindSessionQuery,
+  BindSessionQuerySchema,
+  type BindSessionRequest,
+  BindSessionRequestSchema,
+  type BindSessionResponse,
+  BindSessionResponseSchema,
+} from "./auth.schema";
+export {
+  type BrandingConfig,
+  type BrandingConfigResponse,
+  BrandingConfigResponseSchema,
+  BrandingConfigSchema,
+  type BrandingLogoNotFoundResponse,
+  BrandingLogoNotFoundResponseSchema,
+} from "./branding.schema";
 
 // Channels
 export {
@@ -20,6 +45,8 @@ export {
   DeleteChannelBindingResponseSchema,
   type HermesStatus,
   HermesStatusSchema,
+  type UpdateChannelBindingRequest,
+  UpdateChannelBindingRequestSchema,
   type UpdateChannelBindingResponse,
   UpdateChannelBindingResponseSchema,
 } from "./channel.schema";
@@ -103,6 +130,13 @@ export {
   FileWriteResultSchema,
   WriteFileRequestSchema,
 } from "./file.schema";
+// Hindsight
+export {
+  HindsightDisabledStatusSchema,
+  HindsightEnabledStatusSchema,
+  type HindsightStatusResponse,
+  HindsightStatusResponseSchema,
+} from "./hindsight.schema";
 // Instances
 export {
   type DeleteInstanceResponse,
@@ -115,6 +149,8 @@ export {
   InstanceStatusSchema,
   type SpawnInstanceFromEnvironmentRequest,
   SpawnInstanceFromEnvironmentRequestSchema,
+  type SpawnInstanceFromEnvironmentResponse,
+  SpawnInstanceFromEnvironmentResponseSchema,
 } from "./instance.schema";
 // Knowledge
 export {
@@ -127,6 +163,8 @@ export {
   ImportKnowledgeUrlRequestSchema,
   type ImportKnowledgeUrlResponse,
   ImportKnowledgeUrlResponseSchema,
+  type KnowledgeBaseDetailResponse,
+  KnowledgeBaseDetailResponseSchema,
   type KnowledgeBaseInfo,
   KnowledgeBaseInfoSchema,
   type KnowledgeBaseListResponse,
@@ -134,12 +172,44 @@ export {
   KnowledgeBaseStatusSchema,
   type KnowledgeResourceItem,
   KnowledgeResourceItemSchema,
+  type KnowledgeResourceListResponse,
+  KnowledgeResourceListResponseSchema,
   KnowledgeResourceStatusSchema,
   type UpdateKnowledgeBaseRequest,
   UpdateKnowledgeBaseRequestSchema,
   type UploadKnowledgeResourcesResponse,
   UploadKnowledgeResourcesResponseSchema,
 } from "./knowledge.schema";
+// MCP Knowledge
+export {
+  McpKnowledgeAuthHeadersSchema,
+  McpKnowledgeReadToolInputSchema,
+  McpKnowledgeSearchToolInputSchema,
+} from "./mcp-knowledge.schema";
+// Meta Agent
+export {
+  type EnsureMetaAgentResponse,
+  EnsureMetaAgentResponseSchema,
+} from "./meta-agent.schema";
+// Organizations
+export {
+  type ApiKeyActionRequest,
+  ApiKeyActionRequestSchema,
+  type ApiKeyActionResponse,
+  ApiKeyActionResponseSchema,
+  type ApiKeyInfo,
+  ApiKeyInfoSchema,
+  type OrganizationActionRequest,
+  OrganizationActionRequestSchema,
+  type OrganizationActionResponse,
+  OrganizationActionResponseSchema,
+  type OrganizationDetail,
+  OrganizationDetailSchema,
+  type OrganizationInfo,
+  OrganizationInfoSchema,
+  type OrganizationMember,
+  OrganizationMemberSchema,
+} from "./organization.schema";
 // Registry
 export {
   type EventQuery,
@@ -163,6 +233,8 @@ export {
 export {
   type S3DeleteBody,
   S3DeleteBodySchema,
+  type S3DeleteResponse,
+  S3DeleteResponseSchema,
   type S3FileEntry,
   S3FileEntrySchema,
   type S3FileListQuery,
@@ -213,6 +285,12 @@ export {
   PaginatedLogsSchema,
   type TaskInfo,
   TaskInfoSchema,
+  type TaskListResponse,
+  TaskListResponseSchema,
+  type TaskLogsResponse,
+  TaskLogsResponseSchema,
+  type TaskResponse,
+  TaskResponseSchema,
   type ToggleTaskResponse,
   ToggleTaskResponseSchema,
   type TriggerTaskResponse,
@@ -224,11 +302,20 @@ export {
 export {
   type CodeSessionBridgeResponse,
   CodeSessionBridgeResponseSchema,
+  CodeSessionIdParamsSchema,
   type CreateCodeSessionRequest,
   CreateCodeSessionRequestSchema,
   type CreateCodeSessionResponse,
   CreateCodeSessionResponseSchema,
 } from "./v2-code-session.schema";
+// V2 Session Ingress
+export {
+  SessionIngressEventSchema,
+  SessionIngressEventsRequestSchema,
+  SessionIngressEventsResponseSchema,
+  SessionIngressParamsSchema,
+  SessionIngressTokenQuerySchema,
+} from "./v2-session-ingress.schema";
 // V2 Worker
 export {
   type GetWorkerResponse,
@@ -243,10 +330,66 @@ export {
 } from "./v2-worker.schema";
 // V2 Worker Events
 export {
+  WorkerEventSchema,
   type WorkerEventsRequest,
   WorkerEventsRequestSchema,
   type WorkerEventsResponse,
   WorkerEventsResponseSchema,
   type WorkerStateRequest,
   WorkerStateRequestSchema,
+  WorkerStateResponseSchema,
 } from "./v2-worker-events.schema";
+export {
+  WorkflowDagEventSchema,
+  WorkflowDagRunResultSchema,
+  WorkflowDagSnapshotSchema,
+  WorkflowDefDetailSchema,
+  WorkflowDefSchema,
+  WorkflowDefsActionRequestSchema,
+  WorkflowDefsActionResponseSchema,
+  WorkflowDryRunResultSchema,
+  WorkflowEngineActionRequestSchema,
+  WorkflowEngineActionResponseSchema,
+  WorkflowEventStreamParamsSchema,
+  WorkflowEventStreamQuerySchema,
+  WorkflowFailedRunSchema,
+  WorkflowJobListItemSchema,
+  WorkflowJobLogsParamsSchema,
+  WorkflowJobOutputItemSchema,
+  WorkflowJobRunResultSchema,
+  WorkflowJobSchema,
+  WorkflowJobStreamEventPayloadSchema,
+  WorkflowJobsActionRequestSchema,
+  WorkflowJobsActionResponseSchema,
+  WorkflowNodeOutputSchema,
+  WorkflowParamDefsSchema,
+  WorkflowPendingApprovalSchema,
+  WorkflowRunStartedSchema,
+  WorkflowRunSummarySchema,
+  WorkflowStatsActionRequestSchema,
+  WorkflowStatsActionResponseSchema,
+  WorkflowStatsDailyCountSchema,
+  WorkflowStatsOverviewSchema,
+  WorkflowStatsTokenDailySchema,
+  WorkflowStreamEventPayloadSchema,
+  WorkflowTriggerSchema,
+  WorkflowVersionContentSchema,
+  WorkflowVersionSchema,
+  WorkflowVoidSuccessSchema,
+} from "./workflow.schema";
+// Workflow
+export {
+  BoardCreateSchema,
+  BoardDeleteSchema,
+  BoardGetSchema,
+  BoardListSchema,
+  BoardUpdateSchema,
+  type WorkflowBoard,
+  WorkflowBoardActionRequestSchema,
+  WorkflowBoardActionResponseSchema,
+  WorkflowBoardDeleteResponseSchema,
+  WorkflowBoardDetailResponseSchema,
+  WorkflowBoardListResponseSchema,
+  WorkflowBoardMutationResponseSchema,
+  WorkflowBoardSchema,
+} from "./workflow-board.schema";

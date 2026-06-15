@@ -2,21 +2,32 @@ import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import {
+  ChannelBindingListResponseSchema,
   ChannelBindingSchema,
   ChannelProviderDescriptorSchema,
+  ChannelProviderListResponseSchema,
   CreateChannelBindingRequestSchema,
+  CreateChannelBindingResponseSchema,
+  DeleteChannelBindingResponseSchema,
   HermesStatusSchema,
+  UpdateChannelBindingRequestSchema,
+  UpdateChannelBindingResponseSchema,
 } from "../../schemas/channel.schema";
 import { createBinding, deleteBinding, listBindings, updateBinding } from "../../services/channel-binding";
 import { getChannelProvider, listChannelProviders } from "../../services/channel-provider";
 import { getHermesClient } from "../../services/hermes-client";
 
 const app = new Elysia({ name: "web-channels" }).use(authGuardPlugin).model({
-  "channel-provider-list": ChannelProviderDescriptorSchema.array(),
+  "channel-provider": ChannelProviderDescriptorSchema,
+  "channel-provider-list": ChannelProviderListResponseSchema,
   "hermes-status": HermesStatusSchema,
   "channel-binding": ChannelBindingSchema,
-  "channel-binding-list": ChannelBindingSchema.array(),
+  "channel-binding-list": ChannelBindingListResponseSchema,
   "create-channel-binding-request": CreateChannelBindingRequestSchema,
+  "create-channel-binding-response": CreateChannelBindingResponseSchema,
+  "update-channel-binding-request": UpdateChannelBindingRequestSchema,
+  "update-channel-binding-response": UpdateChannelBindingResponseSchema,
+  "delete-channel-binding-response": DeleteChannelBindingResponseSchema,
 });
 
 app.get(
@@ -24,7 +35,15 @@ app.get(
   () => {
     return listChannelProviders();
   },
-  { sessionAuth: true, response: "channel-provider-list" },
+  {
+    sessionAuth: true,
+    response: "channel-provider-list",
+    detail: {
+      tags: ["Channels"],
+      summary: "获取通道平台列表",
+      description: "返回当前系统支持的 IM 通道平台及其启用状态。",
+    },
+  },
 );
 
 app.get(
@@ -32,18 +51,34 @@ app.get(
   () => {
     return [];
   },
-  { sessionAuth: true, response: "channel-binding-list" },
+  {
+    sessionAuth: true,
+    response: "channel-binding-list",
+    detail: {
+      tags: ["Channels"],
+      summary: "获取通道列表",
+      description: "历史兼容接口；当前返回空列表，不作为通道绑定数据源使用。",
+    },
+  },
 );
 
 app.post(
   "/channels",
-  async ({ body, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: 当前仅保留兼容入口，文档补充不改变现有错误分支
+  async ({ body, error }: any) => {
     const b = body as { type?: string };
     const provider = typeof b?.type === "string" ? getChannelProvider(b.type) : undefined;
     const status = provider ? 409 : 400;
     return error(status, { error: { type: "FORBIDDEN", message: "当前平台暂未开放" } });
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["Channels"],
+      summary: "创建通道",
+      description: "历史兼容接口；当前平台未开放该能力，请改用通道绑定接口。",
+    },
+  },
 );
 
 // --- Hermes Status ---
@@ -63,14 +98,23 @@ app.get(
     }
     return client.getStatus();
   },
-  { sessionAuth: true, response: "hermes-status" },
+  {
+    sessionAuth: true,
+    response: "hermes-status",
+    detail: {
+      tags: ["Channels"],
+      summary: "获取 Hermes 状态",
+      description: "返回 Hermes 通道网关的连接状态、可用平台和最近连接时间。",
+    },
+  },
 );
 
 // --- Bindings CRUD ---
 
 app.get(
   "/channels/bindings",
-  async ({ store, request: _request }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 异步分支组合下类型推断不稳定
+  async ({ store, request: _request }: any) => {
     const authCtx = store.authContext!;
     // 获取团队所有 environmentId
     const teamEnvs = await environmentRepo.listByOrganizationId(authCtx.organizationId);
@@ -85,12 +129,21 @@ app.get(
     }
     return enriched;
   },
-  { sessionAuth: true, response: "channel-binding-list" },
+  {
+    sessionAuth: true,
+    response: "channel-binding-list",
+    detail: {
+      tags: ["Channels"],
+      summary: "获取通道绑定列表",
+      description: "返回当前组织下的通道绑定列表，并附带关联环境名称。",
+    },
+  },
 );
 
 app.post(
   "/channels/bindings",
-  async ({ store, body, error, request: _request }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, body, error, request: _request }: any) => {
     const authCtx = store.authContext!;
     const b = body as { platform: string; chatId?: string | null; agentId: string; enabled?: boolean };
     if (!b.platform || !b.agentId) {
@@ -109,12 +162,22 @@ app.post(
     });
     return { ...binding, agentName: env?.name ?? null };
   },
-  { sessionAuth: true, body: "create-channel-binding-request" },
+  {
+    sessionAuth: true,
+    body: "create-channel-binding-request",
+    response: "create-channel-binding-response",
+    detail: {
+      tags: ["Channels"],
+      summary: "创建通道绑定",
+      description: "为指定平台和环境创建通道绑定，用于将外部消息路由到目标环境。",
+    },
+  },
 );
 
 app.delete(
   "/channels/bindings/:id",
-  async ({ store, params, error, request: _request }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error, request: _request }: any) => {
     const authCtx = store.authContext!;
     const id = params.id;
     // 验证绑定关联的 agent 属于当前团队
@@ -133,12 +196,21 @@ app.delete(
     }
     return { success: true as const };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "delete-channel-binding-response",
+    detail: {
+      tags: ["Channels"],
+      summary: "删除通道绑定",
+      description: "删除指定的通道绑定，并校验该绑定是否属于当前组织。",
+    },
+  },
 );
 
 app.patch(
   "/channels/bindings/:id",
-  async ({ store, params, body, error, request: _request }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, body, error, request: _request }: any) => {
     const authCtx = store.authContext!;
     const id = params.id;
     // 验证绑定关联的 agent 属于当前团队
@@ -159,7 +231,16 @@ app.patch(
     const updatedEnv = await environmentRepo.getById(updated.agentId);
     return { ...updated, agentName: updatedEnv?.name ?? null };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "update-channel-binding-request",
+    response: "update-channel-binding-response",
+    detail: {
+      tags: ["Channels"],
+      summary: "更新通道绑定",
+      description: "更新指定通道绑定的目标环境、聊天 ID 或启用状态。",
+    },
+  },
 );
 
 export default app;

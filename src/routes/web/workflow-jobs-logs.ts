@@ -9,6 +9,7 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { getJob } from "../../repositories/workflow-job";
+import { WorkflowDagEventSchema, WorkflowEventStreamQuerySchema, WorkflowJobLogsParamsSchema } from "../../schemas";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { getKanbanEventBus } from "../../services/workflow/workflow-job-events";
 
@@ -21,7 +22,11 @@ const NODE_EVENTS = [
   "dag.completed",
 ];
 
-const app = new Elysia({ name: "web-workflow-jobs-logs" }).use(authGuardPlugin);
+const app = new Elysia({ name: "web-workflow-jobs-logs" }).use(authGuardPlugin).model({
+  "workflow-event-stream-query": WorkflowEventStreamQuerySchema,
+  "workflow-job-logs-params": WorkflowJobLogsParamsSchema,
+  "workflow-dag-event": WorkflowDagEventSchema,
+});
 
 app.get(
   "/workflow-jobs/:jobId/logs",
@@ -109,7 +114,36 @@ app.get(
       },
     });
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    params: "workflow-job-logs-params",
+    query: "workflow-event-stream-query",
+    detail: {
+      tags: ["Workflow Engine"],
+      summary: "订阅 Job 运行日志流",
+      description: "通过 SSE 订阅指定 Job 最近一次运行的节点事件日志，支持从指定事件序号继续回放。",
+      responses: {
+        200: {
+          description: "SSE 事件流，事件负载为节点级 DAG 事件对象。",
+          content: {
+            "text/event-stream": {
+              schema: {
+                type: "string",
+                format: "binary",
+              },
+              examples: {
+                event: {
+                  summary: "事件示例",
+                  value:
+                    'id: 5\nevent: message\ndata: {"type":"node.completed","run_id":"run_1","node_id":"shell_1"}\n\n',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
 );
 
 export default app;

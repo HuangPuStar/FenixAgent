@@ -266,7 +266,10 @@ async function handleInspect(ctx: AuthContext, name: string) {
 }
 
 async function handleListTools(ctx: AuthContext, name: string) {
-  const server = await configPg.assertMcpServerInternalWritable(ctx, name);
+  // 支持内部和外部 MCP server
+  const server = name.includes("/")
+    ? await configPg.getMcpServerByResourceKey(ctx, name)
+    : await configPg.getMcpServer(ctx, name);
   if (!server) return { success: false, error: { code: "NOT_FOUND", message: `MCP server '${name}' not found` } };
   const tools = await listToolsByServer(server.organizationId, name);
 
@@ -350,7 +353,7 @@ app.post(
       return error(500, { success: false, error: { code: "CONFIG_READ_ERROR", message } });
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "MCP 服务器配置管理" } },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["McpConfig"], summary: "MCP 服务器配置管理" } },
 );
 
 export default app;

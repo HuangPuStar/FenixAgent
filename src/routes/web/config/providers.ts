@@ -65,13 +65,6 @@ async function handleGet(ctx: AuthContext, name: string) {
     baseURL: p.baseUrl ?? null,
     resourceAccess: p.resourceAccess,
     resourceKey: p.resourceAccess?.resourceKey,
-    options: {
-      ...(p.baseUrl ? { baseURL: p.baseUrl } : {}),
-      ...(p.apiKey ? { apiKey: p.apiKey } : {}),
-      ...(typeof p.extraOptions === "object" && p.extraOptions !== null
-        ? (p.extraOptions as Record<string, unknown>)
-        : {}),
-    },
     models,
   });
 }
@@ -153,7 +146,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
  */
 function normalizeProviderBaseUrl(baseUrl: string | null | undefined, protocol: "openai" | "anthropic"): string {
   const fallback = protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com";
-  return (baseUrl ?? fallback).replace(/\/+$/, "");
+  return (baseUrl || fallback).replace(/\/+$/, "");
 }
 
 /**
@@ -380,7 +373,7 @@ async function handleTest(
   if (inline?.apiKey || inline?.baseURL) {
     // inline 模式：直接使用传入的凭证，不查 DB（用于表单内预览模型列表）
     apiKey = inline.apiKey ?? "";
-    baseURL = inline.baseURL ? normalizeProviderBaseUrl(inline.baseURL, inline.protocol ?? "openai") : "";
+    baseURL = normalizeProviderBaseUrl(inline.baseURL, inline.protocol ?? "openai");
     protocol = inline.protocol === "anthropic" ? "anthropic" : "openai";
   } else {
     // 标准模式：从已保存的 provider 加载凭证
@@ -554,7 +547,7 @@ app.post(
       return error(500, configError("CONFIG_READ_ERROR", message));
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "Provider 配置管理" } },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["ProviderConfig"], summary: "Provider 配置管理" } },
 );
 
 export default app;

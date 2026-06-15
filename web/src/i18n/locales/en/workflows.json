@@ -332,7 +332,21 @@
     "history_earlier": "Earlier",
     "history_empty": "No conversations yet",
     "history_loading": "Loading...",
-    "history_untitled": "New conversation"
+    "history_untitled": "New conversation",
+    "tooltip_version_indicator": "Version status & preview",
+    "vi_status_draft": "Editing draft",
+    "vi_status_preview": "Previewing v{{version}}",
+    "vi_badge_draft": "draft",
+    "vi_back_to_draft": "Back to draft",
+    "vi_preview": "Preview",
+    "vi_set_latest": "Set as latest",
+    "vi_restore_to_draft": "Restore to draft",
+    "vi_restore_confirm": "Restore v{{version}} content to draft? Current draft will be overwritten.",
+    "vi_view_all": "View all versions",
+    "vi_no_versions": "No published versions",
+    "vi_no_versions_hint": "Publish to create the first version",
+    "vi_latest_badge": "latest: v{{version}}",
+    "vi_preview_mode": "Previewing"
   },
   "run_params": {
     "title": "Run Parameters",

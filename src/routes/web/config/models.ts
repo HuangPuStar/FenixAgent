@@ -180,7 +180,7 @@ app.post(
       return error(500, configError("CONFIG_READ_ERROR", message));
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["Config"], summary: "Model 配置管理" } },
+  { sessionAuth: true, body: "config-body", detail: { tags: ["ModelConfig"], summary: "Model 配置管理" } },
 );
 
 export default app;

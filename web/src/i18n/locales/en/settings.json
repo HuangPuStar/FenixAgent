@@ -1,0 +1,13 @@
+{
+  "changePassword": "Change Password",
+  "changePasswordDesc": "Enter your current password and a new password.",
+  "currentPassword": "Current Password",
+  "newPassword": "New Password",
+  "confirmPassword": "Confirm New Password",
+  "passwordTooShort": "New password must be at least 8 characters",
+  "passwordsMismatch": "New passwords do not match",
+  "changeFailed": "Failed to change password",
+  "changeSuccess": "Password changed successfully",
+  "pleaseWait": "Please wait...",
+  "unknownError": "Unknown error"
+}

@@ -38,10 +38,10 @@ export const CodeBlock = ({
         {...props}
       >
         {/* Header: language label + copy button */}
-        <div className="code-block-header">
+        {/* <div className="code-block-header">
           <span className="font-mono">{language || "text"}</span>
           {children ? <div className="flex items-center gap-1">{children}</div> : <CodeBlockCopyButton />}
-        </div>
+        </div> */}
 
         {/* Code area — font-mono 12px pre-wrap */}
         <div className="overflow-x-auto p-3">

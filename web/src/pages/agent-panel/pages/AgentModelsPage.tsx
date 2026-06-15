@@ -57,11 +57,8 @@ export function canWriteProvider(provider: ProviderInfo): boolean {
   return provider.resourceAccess?.writable !== false;
 }
 
-export function buildProviderPublicReadablePayload(
-  options: Record<string, unknown>,
-  publicReadable: boolean,
-): Record<string, unknown> {
-  return { ...options, publicReadable };
+export function buildProviderPublicReadablePayload(publicReadable: boolean): Record<string, unknown> {
+  return { publicReadable };
 }
 
 export function AgentModelsPage() {
@@ -214,10 +211,10 @@ export function AgentModelsPage() {
   const handleOpenEdit = (provider: ProviderInfo) => {
     setEditingProvider(provider);
     setFormName(provider.id);
-    setFormApiKey("");
     setFormBaseURL(provider.baseURL ?? "");
     setFormProtocol(provider.protocol);
     setFormDisplayName(provider.name !== provider.id ? provider.name : "");
+    setFormApiKey("");
     resetFormModelState();
     setDialogOpen(true);
   };
@@ -264,16 +261,7 @@ export function AgentModelsPage() {
     const providerKey = getProviderKey(provider);
     setSharingProviderKey(providerKey);
     try {
-      const { data: detail, error: getError } = await providerApi.get(providerKey);
-      if (getError) {
-        toast.error(t("loadProviderDetailError", { message: getError.message }));
-        return;
-      }
-      const options = ((detail as unknown as { options?: Record<string, unknown> })?.options ?? {}) as Record<
-        string,
-        unknown
-      >;
-      const { error } = await providerApi.set(provider.id, buildProviderPublicReadablePayload(options, next));
+      const { error } = await providerApi.set(provider.id, buildProviderPublicReadablePayload(next));
       if (error) {
         toast.error(t("saveProvider.errorGeneric", { message: error.message }));
         return;
@@ -336,9 +324,7 @@ export function AgentModelsPage() {
       setFormAvailableModels(modelIds);
       setFormModelsFetched(true);
 
-      // 已存在的模型默认选中
-      const existingIds = new Set((providerModels[formName] ?? []).map((m) => m.id));
-      setFormSelectedModels(existingIds);
+      // 不自动勾选任何模型，由用户手动选择
     } catch {
       setFormAvailableModels([]);
       setFormModelsFetched(true);
@@ -690,19 +676,23 @@ export function AgentModelsPage() {
                           {tComponents(getProviderResourceBadgeKey(provider))}
                         </span>
                       </div>
-                      <label
-                        className="mt-3 flex items-center gap-2 text-xs text-text-muted"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <Switch
-                          checked={Boolean(provider.resourceAccess?.publicReadable)}
-                          disabled={sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true}
-                          onCheckedChange={() =>
-                            void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
-                          }
-                        />
-                        {tComponents("resource.public")}
-                      </label>
+                      {writable && (
+                        <label
+                          className="mt-3 flex items-center gap-2 text-xs text-text-muted"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Switch
+                            checked={Boolean(provider.resourceAccess?.publicReadable)}
+                            disabled={
+                              sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true
+                            }
+                            onCheckedChange={() =>
+                              void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
+                            }
+                          />
+                          {tComponents("resource.public")}
+                        </label>
+                      )}
                       {!writable && (
                         <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
                       )}

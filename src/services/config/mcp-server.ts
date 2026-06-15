@@ -65,6 +65,23 @@ export async function getMcpServer(ctx: AuthContext, name: string): Promise<McpS
   return decorated;
 }
 
+export async function getMcpServerById(ctx: AuthContext, serverId: string): Promise<McpServerRowWithAccess | null> {
+  const rows = await db.select().from(mcpServer).where(eq(mcpServer.id, serverId)).limit(1);
+  const row = rows[0] ?? null;
+  if (!row) return null;
+
+  if (row.organizationId === ctx.organizationId) {
+    const [decorated] = await decorateResourceAccess(ctx, "mcp_server", [row]);
+    return decorated;
+  }
+
+  const readable = await canReadResource(ctx, "mcp_server", row.id, row.organizationId);
+  if (!readable) return null;
+
+  const [decorated] = await decorateResourceAccess(ctx, "mcp_server", [row]);
+  return decorated;
+}
+
 export async function getMcpServerByResourceKey(
   ctx: AuthContext,
   resourceKey: string,
@@ -142,8 +159,42 @@ export async function updateMcpServer(
   return result.length > 0;
 }
 
+export async function updateMcpServerById(
+  ctx: AuthContext,
+  serverId: string,
+  config: McpServerConfig,
+  options: McpServerSetOptions = {},
+): Promise<boolean> {
+  const existing = await getMcpServerById(ctx, serverId);
+  if (!existing) return false;
+
+  assertInternalWritable(ctx, "mcp_server", existing.id, existing.organizationId);
+  const updates: Partial<typeof mcpServer.$inferInsert> = { config, updatedAt: new Date() };
+  if ("type" in config && typeof config.type === "string" && VALID_MCP_TYPES.includes(config.type)) {
+    updates.type = config.type;
+  }
+  const result = await db
+    .update(mcpServer)
+    .set(updates)
+    .where(eq(mcpServer.id, existing.id))
+    .returning({ id: mcpServer.id });
+  if (result.length > 0 && options.publicReadable !== undefined) {
+    await setPublicRead(ctx, "mcp_server", ctx.organizationId, existing.id, options.publicReadable);
+  }
+  return result.length > 0;
+}
+
 export async function deleteMcpServer(ctx: AuthContext, name: string): Promise<boolean> {
   const row = await getMcpServer(ctx, name);
+  if (!row) return false;
+
+  assertInternalWritable(ctx, "mcp_server", row.id, row.organizationId);
+  const result = await db.delete(mcpServer).where(eq(mcpServer.id, row.id)).returning({ id: mcpServer.id });
+  return result.length > 0;
+}
+
+export async function deleteMcpServerById(ctx: AuthContext, serverId: string): Promise<boolean> {
+  const row = await getMcpServerById(ctx, serverId);
   if (!row) return false;
 
   assertInternalWritable(ctx, "mcp_server", row.id, row.organizationId);
@@ -169,6 +220,16 @@ export async function assertMcpServerInternalWritable(
   name: string,
 ): Promise<McpServerRowWithAccess | null> {
   const row = await getMcpServer(ctx, name);
+  if (!row) return null;
+  assertInternalWritable(ctx, "mcp_server", row.id, row.organizationId);
+  return row;
+}
+
+export async function assertMcpServerInternalWritableById(
+  ctx: AuthContext,
+  serverId: string,
+): Promise<McpServerRowWithAccess | null> {
+  const row = await getMcpServerById(ctx, serverId);
   if (!row) return null;
   assertInternalWritable(ctx, "mcp_server", row.id, row.organizationId);
   return row;

@@ -8,6 +8,10 @@ export function AgentPanelLayout() {
   const navigate = useNavigate();
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
+  const pathParts = pathname
+    .replace(/^\/agent\/?/, "")
+    .split("/")
+    .filter(Boolean);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
@@ -16,10 +20,12 @@ export function AgentPanelLayout() {
   });
 
   const activeNav = (() => {
-    const segment = pathname.replace("/ctrl/agent/", "").split("/")[0];
-    if (segment === "chat" || segment === "" || pathname === "/ctrl/agent") return null;
+    const segment = pathParts[0] ?? "";
+    if (segment === "" || segment === "home" || pathname === "/agent") return "home";
+    if (segment === "chat") return null;
     return segment;
   })();
+  const selectedEnvironmentId = pathParts[0] === "chat" ? (pathParts[1] ?? null) : null;
 
   const handleNavigate = useCallback(
     (pageId: string) => {
@@ -49,6 +55,7 @@ export function AgentPanelLayout() {
     <div className="agent-panel-layout">
       <AgentSidebar
         activeNav={activeNav}
+        selectedEnvironmentId={selectedEnvironmentId}
         onSelectInstance={handleSelectInstance}
         onNavigate={handleNavigate}
         onCreateAgent={() => setCreateDialogOpen(true)}

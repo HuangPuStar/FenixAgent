@@ -4,17 +4,27 @@ import { config, getBaseUrl } from "../../config";
 import { authGuardPlugin } from "../../plugins/auth";
 import { requireOrgScope } from "../../plugins/require-team-scope";
 import { environmentRepo, sessionRepo } from "../../repositories";
-import { type CreateCodeSessionRequest, CreateCodeSessionRequestSchema } from "../../schemas/v2-code-session.schema";
+import {
+  CodeSessionBridgeResponseSchema,
+  CodeSessionIdParamsSchema,
+  type CreateCodeSessionRequest,
+  CreateCodeSessionRequestSchema,
+  CreateCodeSessionResponseSchema,
+} from "../../schemas";
 import { createSession, getSession } from "../../services/session";
 
-const app = new Elysia({ name: "v1-code-sessions", prefix: "/v1/code/sessions" })
-  .use(authGuardPlugin)
-  .model({ "create-code-session-request": CreateCodeSessionRequestSchema });
+const app = new Elysia({ name: "v1-code-sessions", prefix: "/v1/code/sessions" }).use(authGuardPlugin).model({
+  "create-code-session-request": CreateCodeSessionRequestSchema,
+  "create-code-session-response": CreateCodeSessionResponseSchema,
+  "code-session-id-params": CodeSessionIdParamsSchema,
+  "code-session-bridge-response": CodeSessionBridgeResponseSchema,
+});
 
 /** POST /v1/code/sessions — Create code session (wrapped response for TUI compat) */
 app.post(
   "/",
-  async ({ store, body, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, body, error }: any) => {
     const authContext = store.authContext;
     if (!authContext) {
       return error(403, { error: { type: "forbidden", message: "No organization context" } });
@@ -23,13 +33,23 @@ app.post(
     const session = await createSession({ ...b, source: "code", userId: authContext.userId });
     return { session };
   },
-  { apiKeyAuth: true, body: "create-code-session-request" },
+  {
+    apiKeyAuth: true,
+    body: "create-code-session-request",
+    response: "create-code-session-response",
+    detail: {
+      tags: ["Code Session"],
+      summary: "创建 Code Session",
+      description: "创建一个供 TUI 或 worker 使用的 Code Session，并返回兼容旧客户端的包装响应。",
+    },
+  },
 );
 
 /** POST /v1/code/sessions/:id/bridge — Get connection info + worker JWT */
 app.post(
   "/:id/bridge",
-  async ({ store, params, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error }: any) => {
     const authContext = store.authContext;
     if (!authContext) {
       return error(403, { error: { type: "forbidden", message: "No organization context" } });
@@ -59,7 +79,16 @@ app.post(
       expires_in: expiresInSeconds,
     };
   },
-  { apiKeyAuth: true },
+  {
+    apiKeyAuth: true,
+    params: "code-session-id-params",
+    response: "code-session-bridge-response",
+    detail: {
+      tags: ["Code Session"],
+      summary: "获取 Session Bridge 连接信息",
+      description: "为指定 Code Session 生成 worker 接入所需的 API 地址和短期 JWT。",
+    },
+  },
 );
 
 export default app;

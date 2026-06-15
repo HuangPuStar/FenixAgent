@@ -17,13 +17,17 @@ import {
   updateJobParams,
   updateJobStatus,
 } from "../../repositories/workflow-job";
+import { WorkflowJobsActionRequestSchema, WorkflowJobsActionResponseSchema } from "../../schemas";
 import { getTeamEngine } from "../../services/workflow";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 import { publishJobEvent } from "../../services/workflow/workflow-job-events";
 
 const logger = createLogger("wf-jobs");
 
-const app = new Elysia({ name: "web-workflow-jobs" }).use(authGuardPlugin);
+const app = new Elysia({ name: "web-workflow-jobs" }).use(authGuardPlugin).model({
+  "workflow-jobs-action-request": WorkflowJobsActionRequestSchema,
+  "workflow-jobs-action-response": WorkflowJobsActionResponseSchema,
+});
 
 app.post(
   "/workflow-jobs",
@@ -278,7 +282,17 @@ app.post(
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    body: "workflow-jobs-action-request",
+    response: "workflow-jobs-action-response",
+    detail: {
+      tags: ["Workflow Engine"],
+      summary: "工作流 Job 管理",
+      description:
+        "通过 action 分发管理看板中的工作流 Job，包括创建、列表、详情、参数更新、运行、取消、审批和输出查询。",
+    },
+  },
 );
 
 export default app;

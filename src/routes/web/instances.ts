@@ -1,19 +1,25 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { DeleteInstanceResponseSchema, SpawnInstanceFromEnvironmentRequestSchema } from "../../schemas/instance.schema";
+import {
+  DeleteInstanceResponseSchema,
+  SpawnInstanceFromEnvironmentRequestSchema,
+  SpawnInstanceFromEnvironmentResponseSchema,
+} from "../../schemas/instance.schema";
 import { getCoreRuntime } from "../../services/core-bootstrap";
 import { getOwnedEnvironment } from "../../services/environment";
-import { spawnInstanceFromEnvironment, stopInstance } from "../../services/instance";
+import { spawnInstanceFromEnvironment, stopInstance, toInstanceInfo } from "../../services/instance";
 
 const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
-  "spawn-instance-request": SpawnInstanceFromEnvironmentRequestSchema,
   "delete-instance-response": DeleteInstanceResponseSchema,
+  "spawn-instance-request": SpawnInstanceFromEnvironmentRequestSchema,
+  "spawn-instance-response": SpawnInstanceFromEnvironmentResponseSchema,
 });
 
 /** POST /web/instances/from-environment — 为环境启动新实例 */
 app.post(
   "/instances/from-environment",
-  async ({ store, body, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, body, error }: any) => {
     const user = store.user!;
     const authCtx = store.authContext!;
     const b = body as { environmentId: string };
@@ -28,15 +34,25 @@ app.post(
     }
 
     const instance = await spawnInstanceFromEnvironment(user.id, b.environmentId);
-    return { success: true as const, data: instance };
+    return { success: true as const, data: toInstanceInfo(instance) };
   },
-  { sessionAuth: true, body: "spawn-instance-request" },
+  {
+    sessionAuth: true,
+    body: "spawn-instance-request",
+    response: "spawn-instance-response",
+    detail: {
+      tags: ["Instances"],
+      summary: "从环境启动实例",
+      description: "基于指定环境创建并启动一个新的运行实例，返回实例的当前状态与关联信息。",
+    },
+  },
 );
 
 /** DELETE /web/instances/:id — 停止并删除实例 */
 app.delete(
   "/instances/:id",
-  async ({ store, params, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     const result = await stopInstance(params.id, authCtx.organizationId);
 
@@ -54,7 +70,15 @@ app.delete(
     getCoreRuntime().deleteInstance(params.id);
     return { success: true as const, data: { ok: true as const } };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "delete-instance-response",
+    detail: {
+      tags: ["Instances"],
+      summary: "删除实例",
+      description: "停止并移除指定实例；如果实例已停止，会执行一次清理并返回成功。",
+    },
+  },
 );
 
 export default app;

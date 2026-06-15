@@ -140,6 +140,25 @@ export async function getProvider(ctx: AuthContext, name: string): Promise<Provi
   return { ...decorated, models };
 }
 
+export async function getProviderById(ctx: AuthContext, providerId: string): Promise<ProviderDetailWithAccess | null> {
+  const rows = await db.select().from(provider).where(eq(provider.id, providerId)).limit(1);
+  const row = rows[0] ?? null;
+  if (!row) return null;
+
+  if (row.organizationId === ctx.organizationId) {
+    const [decorated] = await decorateResourceAccess(ctx, "provider", [row]);
+    const models = await listModelsWithProviderAccess(decorated);
+    return { ...decorated, models };
+  }
+
+  const readable = await canReadResource(ctx, "provider", row.id, row.organizationId);
+  if (!readable) return null;
+
+  const [decorated] = await decorateResourceAccess(ctx, "provider", [row]);
+  const models = await listModelsWithProviderAccess(decorated);
+  return { ...decorated, models };
+}
+
 export async function upsertProvider(
   ctx: AuthContext,
   name: string,
@@ -176,8 +195,43 @@ export async function upsertProvider(
   return row.id;
 }
 
+export async function updateProviderById(
+  ctx: AuthContext,
+  providerId: string,
+  data: ProviderUpsertData,
+  options: ProviderSetOptions = {},
+): Promise<boolean> {
+  const existing = await getProviderById(ctx, providerId);
+  if (!existing) return false;
+
+  assertInternalWritable(ctx, "provider", existing.id, existing.organizationId);
+  const set: Partial<typeof provider.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+  if (data.displayName !== undefined) set.displayName = data.displayName;
+  if (data.protocol !== undefined) set.protocol = data.protocol;
+  if (data.baseUrl !== undefined) set.baseUrl = data.baseUrl;
+  if (data.apiKey !== undefined) set.apiKey = data.apiKey;
+  if (data.extraOptions !== undefined) set.extraOptions = data.extraOptions;
+
+  const result = await db.update(provider).set(set).where(eq(provider.id, existing.id)).returning({ id: provider.id });
+  if (result.length > 0 && options.publicReadable !== undefined) {
+    await setPublicRead(ctx, "provider", ctx.organizationId, existing.id, options.publicReadable);
+  }
+  return result.length > 0;
+}
+
 export async function deleteProvider(ctx: AuthContext, name: string): Promise<boolean> {
   const row = await getProvider(ctx, name);
+  if (!row) return false;
+
+  assertInternalWritable(ctx, "provider", row.id, row.organizationId);
+  const result = await db.delete(provider).where(eq(provider.id, row.id)).returning({ id: provider.id });
+  return result.length > 0;
+}
+
+export async function deleteProviderById(ctx: AuthContext, providerId: string): Promise<boolean> {
+  const row = await getProviderById(ctx, providerId);
   if (!row) return false;
 
   assertInternalWritable(ctx, "provider", row.id, row.organizationId);
@@ -192,6 +246,16 @@ export async function assertProviderInternalWritable(
   const row = parseResourceKey(nameOrResourceKey)
     ? await getProviderByResourceKey(ctx, nameOrResourceKey)
     : await getProvider(ctx, nameOrResourceKey);
+  if (!row) return null;
+  assertInternalWritable(ctx, "provider", row.id, row.organizationId);
+  return row;
+}
+
+export async function assertProviderInternalWritableById(
+  ctx: AuthContext,
+  providerId: string,
+): Promise<ProviderDetailWithAccess | null> {
+  const row = await getProviderById(ctx, providerId);
   if (!row) return null;
   assertInternalWritable(ctx, "provider", row.id, row.organizationId);
   return row;

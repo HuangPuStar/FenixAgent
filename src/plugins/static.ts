@@ -21,12 +21,29 @@ export const ctrlStaticPlugin = new Elysia({ name: "ctrl-static" })
       assets: webDir,
       prefix: "/ctrl",
       indexHTML: true,
+      detail: {
+        hide: true,
+        summary: "控制台静态资源入口",
+        description:
+          "控制台前端页面与静态资源的托管入口，包括 `/ctrl` 根页面和其下的脚本、样式、图片等资源。该入口属于前端静态分发能力，默认不在公开文档中展示。",
+      },
     }),
   )
   // /ctrl/:sessionId/user/* → redirect to file preview API (for iframe embedding)
-  .get("/ctrl/:sessionId/user/:filePath", ({ params, redirect }) => {
-    return redirect(`/web/sessions/${params.sessionId}/user/${params.filePath}?preview=true`);
-  })
+  .get(
+    "/ctrl/:sessionId/user/:filePath",
+    ({ params, redirect }) => {
+      return redirect(`/web/sessions/${params.sessionId}/user/${params.filePath}?preview=true`);
+    },
+    {
+      detail: {
+        hide: true,
+        summary: "控制台文件预览跳转",
+        description:
+          "将 `/ctrl/:sessionId/user/:filePath` 形式的控制台预览地址重定向到实际的文件预览 API，用于 iframe 等前端预览场景。该接口属于控制台内部跳转能力，默认不在公开文档中展示。",
+      },
+    },
+  )
   // SPA fallback: when static plugin returns 404 for /ctrl/* paths without file extensions,
   // serve index.html so the client-side router can handle SPA navigation on refresh
   .onError(({ error, request, set }) => {

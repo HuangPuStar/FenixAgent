@@ -2,6 +2,12 @@ import { log } from "@fenix/logger";
 import Elysia from "elysia";
 import { verifyWorkerJwt } from "../../auth/jwt";
 import { errorResponse } from "../../plugins/auth";
+import {
+  SessionIngressEventsRequestSchema,
+  SessionIngressEventsResponseSchema,
+  SessionIngressParamsSchema,
+  SessionIngressTokenQuerySchema,
+} from "../../schemas";
 import { getSession, resolveExistingSessionId } from "../../services/session";
 import {
   handleWebSocketClose,
@@ -44,36 +50,59 @@ function authenticateRequest(request: Request, label: string, expectedSessionId?
   return false;
 }
 
-const app = new Elysia({ name: "v2-session-ingress", prefix: "/v2/session_ingress" }).decorate({
-  error: errorResponse,
-});
+const app = new Elysia({ name: "v2-session-ingress", prefix: "/v2/session_ingress" })
+  .decorate({
+    error: errorResponse,
+  })
+  .model({
+    "session-ingress-events-request": SessionIngressEventsRequestSchema,
+    "session-ingress-events-response": SessionIngressEventsResponseSchema,
+    "session-ingress-params": SessionIngressParamsSchema,
+    "session-ingress-token-query": SessionIngressTokenQuerySchema,
+  });
 
 /** POST /v2/session_ingress/session/:sessionId/events — HTTP POST (HybridTransport writes) */
-app.post("/session/:sessionId/events", async ({ request, params, error }) => {
-  const requestedSessionId = params.sessionId;
-  const sessionId = (await resolveExistingSessionId(requestedSessionId)) ?? requestedSessionId;
+app.post(
+  "/session/:sessionId/events",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ request, params, error }: any) => {
+    const requestedSessionId = params.sessionId;
+    const sessionId = (await resolveExistingSessionId(requestedSessionId)) ?? requestedSessionId;
 
-  if (!authenticateRequest(request, `POST session/${sessionId}`, sessionId)) {
-    return error(401, { error: { type: "unauthorized", message: "Invalid auth" } });
-  }
+    if (!authenticateRequest(request, `POST session/${sessionId}`, sessionId)) {
+      return error(401, { error: { type: "unauthorized", message: "Invalid auth" } });
+    }
 
-  const session = getSession(sessionId);
-  if (!session) {
-    return error(404, { error: { type: "not_found", message: "Session not found" } });
-  }
+    const session = getSession(sessionId);
+    if (!session) {
+      return error(404, { error: { type: "not_found", message: "Session not found" } });
+    }
 
-  const body = await request.json();
-  const events = Array.isArray(body.events) ? body.events : [body];
+    const body = await request.json();
+    const events = Array.isArray(body.events) ? body.events : [body];
 
-  let _count = 0;
-  for (const msg of events) {
-    if (!msg || typeof msg !== "object") continue;
-    ingestBridgeMessage(sessionId, msg as Record<string, unknown>);
-    _count++;
-  }
+    let _count = 0;
+    for (const msg of events) {
+      if (!msg || typeof msg !== "object") continue;
+      ingestBridgeMessage(sessionId, msg as Record<string, unknown>);
+      _count++;
+    }
 
-  return { status: "ok" };
-});
+    return { status: "ok" };
+  },
+  {
+    body: "session-ingress-events-request",
+    params: "session-ingress-params",
+    query: "session-ingress-token-query",
+    response: "session-ingress-events-response",
+    detail: {
+      tags: ["Code Session"],
+      summary: "写入 Session Ingress 事件",
+      description:
+        "供 worker 或 bridge 通过 HTTP 批量写入会话事件。鉴权可通过 Authorization Bearer 或 query.token 传入 worker JWT。",
+    },
+  },
+);
 
 /** WS /v2/session_ingress/ws/:sessionId — WebSocket transport */
 app.ws("/ws/:sessionId", {

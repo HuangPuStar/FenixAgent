@@ -2,17 +2,20 @@ import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import { sessionRepo } from "../../repositories/session";
-import { SessionHistorySchema } from "../../schemas/session.schema";
+import { SessionDetailSchema, SessionHistorySchema, SessionListResponseSchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
 
 const app = new Elysia({ name: "web-sessions" }).use(authGuardPlugin).model({
+  "session-detail": SessionDetailSchema,
   "session-history": SessionHistorySchema,
+  "session-list": SessionListResponseSchema,
 });
 
 /** GET /web/sessions — List sessions for the current team */
 app.get(
   "/sessions",
-  async ({ store, request: _request }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, request: _request }: any) => {
     const authCtx = store.authContext!;
     // 获取团队所有 environmentId，再过滤 session
     const teamEnvs = await environmentRepo.listByOrganizationId(authCtx.organizationId);
@@ -30,13 +33,22 @@ app.get(
       updated_at: Math.floor(r.updatedAt.getTime() / 1000),
     }));
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "session-list",
+    detail: {
+      tags: ["Sessions"],
+      summary: "获取会话列表",
+      description: "返回当前组织下所有归属于环境的会话列表。",
+    },
+  },
 );
 
 /** GET /web/sessions/:id — Get session detail */
 app.get(
   "/sessions/:id",
-  async ({ store, params, error, request: _request }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error, request: _request }: any) => {
     const authCtx = store.authContext!;
     const row = await sessionRepo.getById(params.id);
     if (!row) {
@@ -60,14 +72,23 @@ app.get(
       updated_at: Math.floor(row.updatedAt.getTime() / 1000),
     };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "session-detail",
+    detail: {
+      tags: ["Sessions"],
+      summary: "获取会话详情",
+      description: "根据会话 ID 返回单个会话的详情信息，并校验该会话是否属于当前组织。",
+    },
+  },
 );
 
 /** GET /web/sessions/:id/history — Session event history (EventBus)
  *  Session 元数据已下沉到 Agent，此处仅保留事件流查询 */
 app.get(
   "/sessions/:id/history",
-  async ({ store, params, error, request: _request }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error, request: _request }: any) => {
     const authCtx = store.authContext!;
     const sessionId = params.id;
     // 验证 session 属于当前团队
@@ -88,7 +109,15 @@ app.get(
     const events = bus.getEventsSince(0);
     return { events };
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "session-history",
+    detail: {
+      tags: ["Sessions"],
+      summary: "获取会话事件历史",
+      description: "返回指定会话当前已缓存的事件历史，用于会话回放和问题排查。",
+    },
+  },
 );
 
 export default app;

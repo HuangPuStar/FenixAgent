@@ -110,6 +110,9 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Pro
     baseUrl: matchedProvider.baseUrl || "",
     apiKey: matchedProvider.apiKey || "",
     model: matchedModel.modelId,
+    // opencode / ccb 引擎用 modelName 作为运行时模型标识（如 ANTHROPIC_MODEL 环境变量）。
+    // 数据库 model.modelId 即用户配置的模型名（如 deepseek-v4-flash），直接透传。
+    modelName: matchedModel.modelId,
   };
 }
 
@@ -155,6 +158,7 @@ async function resolveFirstReadableModelConfig(input: {
       baseUrl: providerRow.baseUrl || "",
       apiKey: providerRow.apiKey || "",
       model: firstModel.modelId,
+      modelName: firstModel.modelId,
     };
   }
 

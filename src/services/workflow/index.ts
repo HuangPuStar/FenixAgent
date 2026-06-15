@@ -41,6 +41,8 @@ function getTransport(organizationId: string): Transport {
  */
 function createChannelFactory(organizationId: string) {
   return async (envName: string, options?: { spawnedEnvIds?: Set<string> }): Promise<AgentChannel> => {
+    console.error(`[workflow] ChannelFactory start: envName=${envName} orgId=${organizationId}`);
+
     // 1. 按 name 查 Environment
     const [envRow] = await db
       .select({ id: environment.id })
@@ -48,10 +50,16 @@ function createChannelFactory(organizationId: string) {
       .where(and(eq(environment.name, envName), eq(environment.organizationId, organizationId)))
       .limit(1);
 
-    if (!envRow) throw new Error(`Environment '${envName}' not found`);
+    if (!envRow) {
+      console.error(`[workflow] ChannelFactory environment not found: envName=${envName}`);
+      throw new Error(`Environment '${envName}' not found`);
+    }
 
     // 2. 确保实例运行
     const { instance, status } = await ensureRunning("system", envRow.id);
+    console.error(
+      `[workflow] ChannelFactory ensureRunning: envId=${envRow.id} instanceId=${instance.id} status=${status}`,
+    );
     if (status === "spawned") {
       options?.spawnedEnvIds?.add(envRow.id);
     }
@@ -65,18 +73,24 @@ function createChannelFactory(organizationId: string) {
       await handle.ready;
     }
 
+    const hasOnMessage = "onMessage" in handle && typeof (handle as { onMessage?: unknown }).onMessage === "function";
+    console.error(`[workflow] ChannelFactory relay ready: instanceId=${instance.id} hasOnMessage=${hasOnMessage}`);
+
     // 5. 适配为 AgentChannel
     return {
       send: (message: unknown) => {
         handle.send(message as { type: string; payload?: unknown });
       },
       onMessage: (handler: (msg: Record<string, unknown>) => void) => {
-        if ("onMessage" in handle && typeof (handle as { onMessage?: unknown }).onMessage === "function") {
+        if (hasOnMessage) {
           const opencodeHandle = handle as {
             onMessage: (listener: (msg: Record<string, unknown>) => void) => () => void;
           };
           return opencodeHandle.onMessage(handler);
         }
+        console.error(
+          `[workflow] ChannelFactory onMessage UNAVAILABLE: instanceId=${instance.id} — relay handle has no onMessage`,
+        );
         // 没有 onMessage 则返回空 unsub
         return () => {};
       },

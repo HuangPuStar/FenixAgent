@@ -1,11 +1,14 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
+import { CodeSessionIdParamsSchema } from "../../schemas";
 import { getSession } from "../../services/session";
 import { createWorkerEventStream } from "../../transport/sse-writer";
 
-const app = new Elysia({ name: "v1-code-sessions-worker-events-stream", prefix: "/v1/code/sessions" }).use(
-  authGuardPlugin,
-);
+const app = new Elysia({ name: "v1-code-sessions-worker-events-stream", prefix: "/v1/code/sessions" })
+  .use(authGuardPlugin)
+  .model({
+    "code-session-id-params": CodeSessionIdParamsSchema,
+  });
 
 /** SSE /v1/code/sessions/:id/worker/events/stream — SSE event stream */
 app.get(
@@ -25,7 +28,29 @@ app.get(
 
     return createWorkerEventStream(request, sessionId, fromSeqNum);
   },
-  { sessionIngressAuth: true },
+  {
+    sessionIngressAuth: true,
+    params: "code-session-id-params",
+    detail: {
+      tags: ["Code Session"],
+      summary: "订阅 Worker 事件流",
+      description:
+        "通过 SSE 订阅指定 Code Session 的 worker 事件流。支持 `Last-Event-ID` 或 `from_sequence_num` 断线续传。",
+      responses: {
+        200: {
+          description: "SSE 事件流。",
+          content: {
+            "text/event-stream": {
+              schema: {
+                type: "string",
+                format: "binary",
+              },
+            },
+          },
+        },
+      },
+    },
+  },
 );
 
 export default app;

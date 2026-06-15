@@ -1,7 +1,19 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import type { CreateTaskRequest, UpdateTaskRequest } from "../../schemas/task.schema";
-import { CreateTaskRequestSchema, TaskInfoSchema, UpdateTaskRequestSchema } from "../../schemas/task.schema";
+import {
+  ClearTaskLogsResponseSchema,
+  CreateTaskRequestSchema,
+  DeleteTaskResponseSchema,
+  PaginatedLogsSchema,
+  TaskInfoSchema,
+  TaskListResponseSchema,
+  TaskLogsResponseSchema,
+  TaskResponseSchema,
+  ToggleTaskResponseSchema,
+  TriggerTaskResponseSchema,
+  UpdateTaskRequestSchema,
+} from "../../schemas/task.schema";
 import type { CreateTaskInput } from "../../services/task";
 import {
   clearExecutionLogs,
@@ -16,10 +28,18 @@ import {
 } from "../../services/task";
 
 const app = new Elysia({ name: "web-tasks" }).use(authGuardPlugin).model({
+  "clear-task-logs-response": ClearTaskLogsResponseSchema,
   "task-info": TaskInfoSchema,
   "task-info-list": TaskInfoSchema.array(),
+  "task-list-response": TaskListResponseSchema,
+  "task-response": TaskResponseSchema,
+  "task-logs-response": TaskLogsResponseSchema,
+  "delete-task-response": DeleteTaskResponseSchema,
+  "toggle-task-response": ToggleTaskResponseSchema,
+  "trigger-task-response": TriggerTaskResponseSchema,
   "create-task-request": CreateTaskRequestSchema,
   "update-task-request": UpdateTaskRequestSchema,
+  "paginated-logs": PaginatedLogsSchema,
 });
 
 /** GET /tasks — List current team's scheduled tasks */
@@ -31,7 +51,15 @@ app.get(
     const result = await listTasks(authCtx.organizationId);
     return result;
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "task-list-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "获取任务列表",
+      description: "返回当前组织下的定时任务列表及其最近执行状态。",
+    },
+  },
 );
 
 /** POST /tasks — Create a new scheduled task */
@@ -51,7 +79,16 @@ app.post(
 
     return result;
   },
-  { sessionAuth: true, body: "create-task-request" },
+  {
+    sessionAuth: true,
+    body: "create-task-request",
+    response: "task-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "创建任务",
+      description: "创建一个新的定时 HTTP 任务，并在启用状态下注册到调度器。",
+    },
+  },
 );
 
 /** 安全执行任务操作，捕获无效 UUID 等 SQL 错误 */
@@ -86,7 +123,15 @@ app.get(
       return result;
     }, error);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "task-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "获取任务详情",
+      description: "根据任务 ID 获取单个任务的完整配置与状态信息。",
+    },
+  },
 );
 
 /** PUT /tasks/:id — Update task configuration */
@@ -109,7 +154,16 @@ app.put(
       return result;
     }, error);
   },
-  { sessionAuth: true, body: "update-task-request" },
+  {
+    sessionAuth: true,
+    body: "update-task-request",
+    response: "task-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "更新任务",
+      description: "更新任务配置；当 cron、时区或启用状态变化时会重新调度。",
+    },
+  },
 );
 
 /** DELETE /tasks/:id — Delete a task */
@@ -137,7 +191,15 @@ app.delete(
       throw err;
     }
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "delete-task-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "删除任务",
+      description: "删除指定任务，并同步取消其调度。",
+    },
+  },
 );
 
 /** POST /tasks/:id/toggle — Toggle task enabled/disabled */
@@ -153,7 +215,15 @@ app.post(
       return result;
     }, error);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "toggle-task-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "切换任务启用状态",
+      description: "在启用与停用之间切换任务状态，并同步更新调度器。",
+    },
+  },
 );
 
 /** POST /tasks/:id/trigger — Manually trigger a task execution */
@@ -169,7 +239,15 @@ app.post(
       return result;
     }, error);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "trigger-task-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "手动触发任务",
+      description: "立即执行一次指定任务，并返回本次执行生成的日志摘要。",
+    },
+  },
 );
 
 /** GET /tasks/:id/logs — Get execution logs (paginated) */
@@ -189,7 +267,15 @@ app.get(
       return await listExecutionLogs(taskId, page, pageSize);
     }, error);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "task-logs-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "获取任务执行日志",
+      description: "分页返回指定任务的执行日志记录。",
+    },
+  },
 );
 
 /** DELETE /tasks/:id/logs — Clear all execution logs for a task */
@@ -206,7 +292,15 @@ app.delete(
       return await clearExecutionLogs(authCtx.organizationId, taskId);
     }, error);
   },
-  { sessionAuth: true },
+  {
+    sessionAuth: true,
+    response: "clear-task-logs-response",
+    detail: {
+      tags: ["Tasks"],
+      summary: "清空任务日志",
+      description: "删除指定任务下的全部执行日志记录。",
+    },
+  },
 );
 
 export default app;

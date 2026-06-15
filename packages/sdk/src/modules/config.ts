@@ -70,30 +70,30 @@ export interface AgentTemplate {
 
 export class AgentApi extends BaseApi {
   async templates(): Promise<ApiResult<{ templates: AgentTemplate[] }>> {
-    return this.post<{ templates: AgentTemplate[] }>("/web/config/agents", { action: "templates" });
+    return this._get<{ templates: AgentTemplate[] }>("/web/config/agents/templates");
   }
   async list(): Promise<ApiResult<{ default_agent: string | null; agents: AgentInfo[] }>> {
-    return this.post<{ default_agent: string | null; agents: AgentInfo[] }>("/web/config/agents", { action: "list" });
+    return this._get<{ default_agent: string | null; agents: AgentInfo[] }>("/web/config/agents");
   }
   async get(name: string): Promise<ApiResult<AgentDetail>> {
-    return this.post<AgentDetail>("/web/config/agents", { action: "get", name });
+    return this._get<AgentDetail>("/web/config/agents", { query: { name } });
   }
   async set(name: string, data: Record<string, unknown>): Promise<ApiResult<AgentDetail>> {
-    return this.post<AgentDetail>("/web/config/agents", { action: "set", name, data });
+    return this.put<AgentDetail>("/web/config/agents", { data }, { query: { name } });
   }
   async create(name: string, data: Record<string, unknown>): Promise<ApiResult<AgentDetail>> {
-    return this.post<AgentDetail>("/web/config/agents", { action: "create", name, data });
+    return this.post<AgentDetail>("/web/config/agents", { name, data });
   }
   async delete(name: string): Promise<ApiResult<boolean>> {
-    return this.post("/web/config/agents", { action: "delete", name });
+    return this.del("/web/config/agents", { query: { name } });
   }
   async setDefault(
     name: string,
   ): Promise<ApiResult<{ default_agent: string; resourceAccess?: AgentDetail["resourceAccess"] }>> {
-    return this.post<{ default_agent: string; resourceAccess?: AgentDetail["resourceAccess"] }>("/web/config/agents", {
-      action: "set_default",
-      name,
-    });
+    return this.post<{ default_agent: string; resourceAccess?: AgentDetail["resourceAccess"] }>(
+      "/web/config/agents/default",
+      { name },
+    );
   }
 }
 

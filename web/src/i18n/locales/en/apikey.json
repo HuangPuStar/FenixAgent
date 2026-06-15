@@ -3,6 +3,7 @@
   "subtitle": "Manage API keys for agent authentication",
   "btn": {
     "create": "Create Key",
+    "copy": "Copy",
     "revoke": "Revoke"
   },
   "searchPlaceholder": "Search keys...",
@@ -13,8 +14,9 @@
   },
   "dialog": {
     "createTitle": "Create API Key",
-    "keyCreated": "Your new API key has been created. Copy it now — you won't be able to see it again.",
-    "keyWarning": "Make sure to copy this key now. You will not be able to view it again."
+    "close": "Close",
+    "keyCreated": "New API Key Created",
+    "keyWarning": "You will not be able to see this key again after closing this dialog. Make sure to copy it now."
   },
   "form": {
     "name": "Name"
@@ -30,6 +32,7 @@
     "loadFailed": "Failed to load API Keys",
     "createFailed": "Failed to create API Key",
     "created": "API Key created",
+    "copied": "Copied",
     "deleteFailed": "Failed to revoke API Key",
     "deleted": "API Key revoked"
   }

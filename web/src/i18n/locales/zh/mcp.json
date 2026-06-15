@@ -74,7 +74,7 @@
   "validation": {
     "nameRequired": "名称不能为空",
     "nameNoDoubleHyphen": "名称不能包含连续连字符",
-    "namePattern": "名称只能包含小写字母、数字和连字符，且不能以连字符开头/结尾",
+    "namePattern": "名称只能包含字母、数字和连字符，且不能以连字符开头/结尾",
     "nameTooLong": "名称长度不能超过 64 个字符",
     "commandRequired": "命令不能为空",
     "commandInvalid": "命令格式不正确",

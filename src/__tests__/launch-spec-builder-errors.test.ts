@@ -124,6 +124,7 @@ describe("launch spec builder errors", () => {
         baseUrl: "https://internal.example.com",
         apiKey: "internal-key",
         model: "gpt-4o",
+        modelName: "gpt-4o",
       },
       skills: [],
       mcpServers: [],

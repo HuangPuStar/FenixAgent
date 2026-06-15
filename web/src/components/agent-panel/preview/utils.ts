@@ -147,6 +147,7 @@ const EXT_TO_SHIKI_LANG: Record<string, string> = {
   hs: "haskell",
   tf: "hcl",
   hcl: "hcl",
+  properties: "properties",
 };
 
 function getExtension(filePath: string): string {
