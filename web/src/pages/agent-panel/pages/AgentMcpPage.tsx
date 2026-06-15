@@ -22,6 +22,7 @@ import {
 import { NS } from "../../../i18n";
 import type { McpInspectResult, McpServerConfig, McpServerInfo, McpToolInfo } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
+import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 type KeyValueEntry = { key: string; value: string };
 
@@ -455,24 +456,20 @@ export function AgentMcpPage() {
 
   return (
     <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-      {/* 标题行 */}
-      <div className="mb-3 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-[#1a2944]">{t("title")}</h1>
-          <p className="mt-0.5 text-[12px] text-[#94a3b8]">{t("subtitle")}</p>
-        </div>
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
-        >
-          <Plus className="h-4 w-4" />
-          {t("btn.newServer")}
-        </button>
-      </div>
-
-      {/* 分隔线 */}
-      <div className="mb-3.5 h-px bg-[#e8edf4]" />
+      <AgentPageHeader
+        title={t("title")}
+        subtitle={t("subtitle")}
+        actions={
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
+          >
+            <Plus className="h-4 w-4" />
+            {t("btn.newServer")}
+          </button>
+        }
+      />
 
       {/* 通知条 */}
       <div className="mb-3.5 rounded-lg border border-border-light bg-warning/10 px-4 py-3 text-sm text-text-secondary">

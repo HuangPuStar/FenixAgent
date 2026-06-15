@@ -1,6 +1,7 @@
 import { Eye, Fingerprint, Globe, Lightbulb, Network } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hindsightApi } from "@/src/api/hindsight";
 import { NS } from "@/src/i18n";
@@ -27,24 +28,39 @@ export function MemoriesPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-[#f4f7fb]">
-        <p className="text-[#94a3b8]">{t("status.loading")}</p>
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <Skeleton className="h-[22px] w-28 rounded-md" />
+            <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
+          </div>
+          <Skeleton className="h-9 w-64 rounded-lg" />
+        </div>
+        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+            <Skeleton key={i} className="h-12 w-full rounded-lg" />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (!enabled) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-[#f4f7fb]">
-        <p className="text-[#94a3b8]">{t("status.notConfigured")}</p>
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <div className="flex flex-col items-center justify-center py-16 text-text-muted">
+          <p className="text-sm">{t("status.notConfigured")}</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <Tabs defaultValue="world" className="flex min-h-full flex-col bg-[#f4f7fb] text-[#14213d]">
-      {/* 标题行：标题 + 副标题在左，Tab 选择器在右 */}
-      <div className="shrink-0 px-8 pt-7">
+    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      <Tabs defaultValue="world">
+        {/* 标题行：标题 + 副标题在左，Tab 选择器在右 */}
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
             <h1 className="flex items-center gap-2 text-[22px] font-bold tracking-tight text-[#1a2944]">
@@ -75,24 +91,25 @@ export function MemoriesPage() {
             </TabsTrigger>
           </TabsList>
         </div>
-        <div className="h-px bg-[#e8edf4]" />
-      </div>
 
-      <TabsContent value="world" className="min-h-0 flex-1 overflow-auto p-4">
-        <HindsightDataView factType="world" />
-      </TabsContent>
-      <TabsContent value="experience" className="min-h-0 flex-1 overflow-auto p-4">
-        <HindsightDataView factType="experience" />
-      </TabsContent>
-      <TabsContent value="observation" className="min-h-0 flex-1 overflow-auto p-4">
-        <HindsightDataView factType="observation" />
-      </TabsContent>
-      <TabsContent value="mental-models" className="min-h-0 flex-1 overflow-auto p-4">
-        <MentalModelsView />
-      </TabsContent>
-      <TabsContent value="entities" className="min-h-0 flex-1 overflow-auto p-4">
-        <EntitiesView />
-      </TabsContent>
-    </Tabs>
+        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+
+        <TabsContent value="world" className="p-4">
+          <HindsightDataView factType="world" />
+        </TabsContent>
+        <TabsContent value="experience" className="p-4">
+          <HindsightDataView factType="experience" />
+        </TabsContent>
+        <TabsContent value="observation" className="p-4">
+          <HindsightDataView factType="observation" />
+        </TabsContent>
+        <TabsContent value="mental-models" className="p-4">
+          <MentalModelsView />
+        </TabsContent>
+        <TabsContent value="entities" className="p-4">
+          <EntitiesView />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
