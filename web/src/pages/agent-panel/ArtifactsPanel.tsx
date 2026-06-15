@@ -1,4 +1,4 @@
-import { FilesIcon, PanelLeft, Upload } from "lucide-react";
+import { FilesIcon, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";

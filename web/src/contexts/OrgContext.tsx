@@ -87,7 +87,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     async (orgId: string) => {
       // 快照当前值，用于失败时回滚
       const oldOrgId = org?.id;
-      const oldRole = role;
+      const _oldRole = role;
       const storedOrgId = localStorage.getItem(STORAGE_KEY);
 
       // 乐观更新 UI 和 localStorage（即时反馈）

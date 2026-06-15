@@ -14,7 +14,7 @@ import type { ACPClient } from "../../src/acp/client";
 import type { AvailableCommand, SessionMode } from "../../src/acp/types";
 import { fileApi } from "../../src/api/sdk";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
-import { formatTokenCount, type TokenStats } from "../../src/lib/token-stats";
+import type { TokenStats } from "../../src/lib/token-stats";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import type { FileInfo } from "../../src/types";
@@ -324,7 +324,7 @@ export function ChatComposer({
     textareaRef.current?.focus();
   }, []);
 
-  const toggleCommandMenu = useCallback(() => {
+  const _toggleCommandMenu = useCallback(() => {
     if (showCommandMenu) {
       setShowCommandMenu(false);
       setCommandFilter("");

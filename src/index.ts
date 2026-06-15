@@ -38,7 +38,7 @@ import { closeCache } from "./services/cache";
 import { getCoreRuntime } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
-import { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment, stopAllInstances } from "./services/instance";
+import { stopAllInstances } from "./services/instance";
 import { checkRagFlowHealth } from "./services/knowledge-provider/ragflow";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { syncBuiltin } from "./services/sync-builtin";

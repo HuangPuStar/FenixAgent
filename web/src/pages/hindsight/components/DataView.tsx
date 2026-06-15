@@ -41,6 +41,7 @@ interface DataViewProps {
   onExpandToggle?: () => void;
 }
 
+// biome-ignore lint/suspicious/noShadowRestrictedNames: 组件命名为视图概念 DataView
 export function DataView({ factType, documentId, chunkId, compact = false, onExpandToggle }: DataViewProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [viewMode, setViewMode] = useState<ViewMode>("constellation");
@@ -136,12 +137,12 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   }, [data]);
 
   // 链接类型归一化
-  const getLinkTypeCategory = (type: string | undefined): string => {
+  const getLinkTypeCategory = useCallback((type: string | undefined): string => {
     if (!type) return "semantic";
     if (type === "semantic" || type === "temporal" || type === "entity") return type;
     if (["causes", "caused_by", "enables", "prevents"].includes(type)) return "causal";
     return "semantic";
-  };
+  }, []);
 
   // 转换 Graph2D 数据
   const graph2DData = useMemo(() => {
@@ -262,6 +263,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   }, []);
 
   // 组件挂载或 factType 变化时自动加载数据
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only load, loadData ref stable via ref pattern
   useEffect(() => {
     loadData();
   }, []);
@@ -901,7 +903,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
 
           {/* ── Timeline 视图 ── */}
           {!compactMode && viewMode === "timeline" && (
-            <TimelineView data={data} filteredRows={filteredTableRows} onMemoryClick={(id) => setModalMemoryId(id)} />
+            <TimelineView _data={data} filteredRows={filteredTableRows} onMemoryClick={(id) => setModalMemoryId(id)} />
           )}
         </>
       )}
@@ -916,11 +918,11 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
 type Granularity = "year" | "month" | "week" | "day";
 
 function TimelineView({
-  data,
+  _data,
   filteredRows,
   onMemoryClick,
 }: {
-  data: GraphApiData;
+  _data: GraphApiData;
   filteredRows: MemoryTableRow[];
   onMemoryClick: (id: string) => void;
 }) {

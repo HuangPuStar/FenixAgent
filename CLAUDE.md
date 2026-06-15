@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **⚡ 速查**：提交前 `bun run precheck` / 改 schema 后 `bun run db:generate` + `db:push` / 改前端后 `bun run build:web` / [常见陷阱](#常见陷阱) 16 条必读，违反直接导致 bug
+
 ## 项目概述
 
 Remote Control Server (RCS) 是一个基于 Elysia + Bun 的 AI Agent 控制面板后端（package name: `fenix`），配合 React 19 + Vite 前端，使用 PostgreSQL + Drizzle ORM 持久化。支持多租户组织隔离（better-auth）、ACP 协议实时通信、DAG 工作流引擎、知识库管理、定时任务、IM 通道集成。可选依赖：S3 文件存储、Redis 缓存、Hermes 消息推送。`packages/` 下当前有 9 个内部 workspace 包。
@@ -104,6 +106,16 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 - 后端挂载 `web/dist/` 提供前端静态文件，修改前端后**必须** `bun run build:web`
 - **工作目录漂移**：Bash `cd web` 后相对路径会出错，使用绝对路径或每次回 cd
 - 首次启动会自动引导系统管理员 `admin@fenix.com`，随机密码写入 `RCS_SYSTEM_ADMIN_PASSWORD_FILE`（默认 `data/password.txt`）
+
+### 关键环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `DATABASE_URL` | PostgreSQL 连接串 | — |
+| `RCS_SECRET_<name>` | Provider API Key 密文（通过 `{env:RCS_SECRET_<name>}` 引用） | — |
+| `SKILL_DIR` | Skill 文件系统存储目录 | `./data/skills` |
+| `WORKSPACE_ROOT` | 工作区根目录 | `./workspaces` |
+| `RCS_SYSTEM_ADMIN_PASSWORD_FILE` | 首次启动管理员密码存放路径 | `data/password.txt` |
 
 ## 架构关键点
 

@@ -121,11 +121,14 @@ async function tryApiKeyAuth(
       if (orgId) {
         // 验证 API Key 持有者仍属于该组织（与 session cookie 路径的 loadOrgContext 一致）
         try {
+          // biome-ignore lint/suspicious/noExplicitAny: better-auth listMembers 返回类型未导出
           const memberRes: any = await auth.api.listMembers({
             query: { organizationId: orgId },
             headers: request.headers,
           });
+          // biome-ignore lint/suspicious/noExplicitAny: better-auth listMembers 返回类型未导出
           const memberList: any[] = Array.isArray(memberRes) ? memberRes : (memberRes?.members ?? []);
+          // biome-ignore lint/suspicious/noExplicitAny: better-auth 成员项类型未导出
           const isMember = memberList.some((m: any) => m.userId === user.id);
           if (!isMember) {
             return false; // 用户已不在该组织中，拒绝 API Key
