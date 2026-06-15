@@ -58,15 +58,25 @@ function cancelPendingPermissions(state: AcpSessionState): void {
  * 通过 send 回调返回 JSON-RPC 响应/通知。
  * server mode 和 client mode 的 relay 共用此逻辑。
  */
+export interface AcpDispatcherOptions {
+  send: (message: unknown) => void;
+  workspace?: string;
+  /** 处理来自前端的 control_response / permission_response */
+  onControlResponse?: (requestId: string, approved: boolean, extra?: Record<string, unknown>) => void;
+}
+
 export class AcpDispatcher {
   private workspace: string;
+  private send: (message: unknown) => void;
+  private onControlResponse?: (requestId: string, approved: boolean, extra?: Record<string, unknown>) => void;
 
   constructor(
     private state: AcpSessionState,
-    private send: (message: unknown) => void,
-    workspace?: string,
+    options: AcpDispatcherOptions,
   ) {
-    this.workspace = workspace ?? process.cwd();
+    this.send = options.send;
+    this.workspace = options.workspace ?? process.cwd();
+    this.onControlResponse = options.onControlResponse;
   }
 
   /** 处理从 WS 收到的原始消息（可能是 JSON-RPC 或传输层消息） */
@@ -81,6 +91,19 @@ export class AcpDispatcher {
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id !== undefined) {
       console.log("[acp-dispatcher] ← rpc:", JSON.stringify(raw).slice(0, 500));
       await this.handleRequest(msg as unknown as JsonRpcRequest);
+      return;
+    }
+
+    // 处理来自前端的 JSON-RPC 响应（如 permission_response）
+    if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.result && msg.id !== undefined) {
+      const respId = msg.id as string;
+      if (respId.startsWith("perm_") && this.onControlResponse) {
+        const result = msg.result as Record<string, unknown>;
+        const outcome = (result?.outcome as Record<string, unknown>) ?? {};
+        const approved = outcome.outcome === "selected";
+        this.onControlResponse(respId, approved, result);
+      }
+      return;
     }
   }
 
@@ -104,6 +127,16 @@ export class AcpDispatcher {
       case "ping":
         this.send({ type: "pong" });
         break;
+      case "control_response":
+      case "permission_response": {
+        const requestId = (msg.request_id as string) ?? "";
+        const approved = (msg.approved as boolean) ?? false;
+        const extra = (msg.extra ?? msg.payload ?? {}) as Record<string, unknown>;
+        if (this.onControlResponse && requestId) {
+          this.onControlResponse(requestId, approved, extra);
+        }
+        break;
+      }
     }
   }
 

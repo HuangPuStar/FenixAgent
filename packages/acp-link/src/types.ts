@@ -21,6 +21,20 @@ export interface PermissionRequestPayload {
   };
 }
 
+export interface InteractiveQuestionPayload {
+  sessionId: string;
+  questionId: string;
+  toolId: string;
+  toolName: string;
+  questions: Array<{
+    question: string;
+    header: string;
+    options: Array<{ label: string; description: string }>;
+    multiSelect?: boolean;
+  }>;
+  description: string;
+}
+
 export interface PermissionResponsePayload {
   requestId: string;
   outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string };

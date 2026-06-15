@@ -1,22 +1,39 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import {
-  buildCcbMcpConfig,
-  buildCcbRuntimeConfig,
-  installSkills as ccbInstallSkills,
-  writeCcbConfig,
-} from "@fenix/ccb";
-import { buildOpencodeRuntimeConfig, installSkills, writeOpencodeConfig } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
-import { ACP_METHOD, createNotification } from "../json-rpc.js";
-import { resolveExecutable } from "./resolve-executable";
 import { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js";
 
-export type AgentType = "opencode" | "ccb";
+// 三种引擎类型
+export type AgentType = "opencode" | "ccb" | "claude-code";
+
+// ── EngineHandler 接口 ────────────────────────────────────────
+
+/** 引擎 start 阶段的上下文，handler 需要写入 state 的 connection/dispatcher/process 等字段 */
+export interface EngineStartContext {
+  state: InstanceState;
+  instanceId: string;
+  /** 发送回调，已由 InstanceManager.start() 包裹 relay 信封 */
+  send: (message: unknown) => void;
+}
+
+/**
+ * 引擎 handler：每种引擎类型提供自己的 prepare / start / stop 实现。
+ * 实现类放在各自的 plugin 包中（@fenix/opencode、@fenix/ccb、@fenix/claude-code），
+ * InstanceManager 只做调度，不感知具体引擎逻辑。
+ */
+export interface EngineHandler {
+  /** 准备 workspace 配置文件 */
+  prepareWorkspace(workspace: string, launchSpec: AgentLaunchSpec): Promise<void>;
+  /** 启动引擎实例，返回 capabilities */
+  startInstance(ctx: EngineStartContext): Promise<{ capabilities: Record<string, unknown> }>;
+  /** 停止引擎实例（可选，默认只清理 state） */
+  stopInstance?(state: InstanceState): Promise<void>;
+}
+
+// ── InstanceState ─────────────────────────────────────────────
 
 interface InstanceState {
   instanceId: string;
@@ -27,43 +44,56 @@ interface InstanceState {
   capabilities: Record<string, unknown> | null;
   sessionState: AcpSessionState;
   dispatcher: AcpDispatcher | null;
+  agentType: AgentType;
 }
+
+// ── InstanceManager ───────────────────────────────────────────
 
 /**
  * 远程实例管理器。
- * 处理 prepare（装配环境）→ start（spawn agent）→ stop（清理）的完整生命周期。
- * 每个 instance 维护独立的 AcpSessionState + AcpDispatcher 用于 ACP 消息分发。
+ * 处理 prepare（装配环境）→ start（启动引擎）→ stop（清理）的完整生命周期。
+ *
+ * 引擎相关逻辑通过 EngineHandler 接口委托给各 plugin 包实现，
+ * InstanceManager 自身只负责实例状态管理和公共流程（workspace 创建、注册等）。
  */
 export class InstanceManager {
   private instances = new Map<string, InstanceState>();
-  private readonly agentName: string;
-  private readonly agentArgs: string[];
   private readonly workspaceRoot: string;
-  private readonly agentType: AgentType;
+  private readonly defaultEngine: string;
+  private readonly handlers: Map<string, EngineHandler>;
 
-  constructor(agentName: string, workspaceRoot: string, agentArgs?: string[], agentType?: AgentType) {
-    this.agentName = agentName;
-    this.agentArgs = agentArgs ?? ["acp"];
+  /**
+   * @param handlers 引擎类型 → EngineHandler 的映射，如 { opencode: ..., ccb: ..., "claude-code": ... }
+   * @param workspaceRoot workspace 根目录
+   * @param defaultEngine 默认引擎类型（未指定 engineType 时使用）
+   */
+  constructor(handlers: Record<string, EngineHandler>, workspaceRoot: string, defaultEngine = "opencode") {
+    this.handlers = new Map(Object.entries(handlers));
     this.workspaceRoot = workspaceRoot;
-    this.agentType = agentType ?? "opencode";
+    this.defaultEngine = defaultEngine;
   }
 
-  async prepare(instanceId: string, launchSpec: AgentLaunchSpec): Promise<void> {
+  private getHandler(engineType?: string): EngineHandler {
+    const type = engineType ?? this.defaultEngine;
+    const handler = this.handlers.get(type);
+    if (!handler) {
+      throw new Error(`Unknown engine type: ${type}. Available: ${[...this.handlers.keys()].join(", ")}`);
+    }
+    return handler;
+  }
+
+  async prepare(instanceId: string, launchSpec: AgentLaunchSpec, engineType?: string): Promise<void> {
+    const effectiveType = (engineType ?? this.defaultEngine) as AgentType;
+    const handler = this.getHandler(effectiveType);
     const workspace = this.resolveWorkspace(launchSpec);
 
-    // Ensure workspace directory exists
     await mkdir(workspace, { recursive: true });
 
-    // Register workspace mapping for file operations
     if (launchSpec.environmentId) {
       await registerWorkspace(launchSpec.environmentId, workspace);
     }
 
-    if (this.agentType === "ccb") {
-      await this.prepareCcb(workspace, launchSpec);
-    } else {
-      await this.prepareOpencode(workspace, launchSpec);
-    }
+    await handler.prepareWorkspace(workspace, launchSpec);
 
     this.instances.set(instanceId, {
       instanceId,
@@ -74,36 +104,10 @@ export class InstanceManager {
       capabilities: null,
       sessionState: createAcpSessionState(),
       dispatcher: null,
+      agentType: effectiveType,
     });
 
-    console.log(`[instance-manager] prepared: ${instanceId} at ${workspace} (type=${this.agentType})`);
-  }
-
-  private async prepareOpencode(workspace: string, launchSpec: AgentLaunchSpec): Promise<void> {
-    const installedSkills = await installSkills(workspace, launchSpec.skills);
-    const runtimeConfig = buildOpencodeRuntimeConfig(launchSpec, installedSkills);
-    await writeOpencodeConfig(workspace, runtimeConfig);
-  }
-
-  private async prepareCcb(workspace: string, launchSpec: AgentLaunchSpec): Promise<void> {
-    const installedSkills = await ccbInstallSkills(workspace, launchSpec.skills);
-    const runtimeConfig = buildCcbRuntimeConfig(launchSpec, installedSkills);
-    await writeCcbConfig(workspace, runtimeConfig);
-
-    // MCP servers → .mcp.json
-    const mcpConfig = buildCcbMcpConfig(launchSpec);
-    if (mcpConfig) {
-      const { writeCcbMcpConfig } = await import("@fenix/ccb");
-      await writeCcbMcpConfig(workspace, mcpConfig);
-      console.log(`[instance-manager] wrote .mcp.json with ${Object.keys(mcpConfig.mcpServers).length} servers`);
-    }
-
-    // Agent prompt → .claude/CLAUDE.md
-    if (launchSpec.agent.prompt) {
-      const { writeClaudeMd } = await import("@fenix/ccb");
-      await writeClaudeMd(workspace, launchSpec.agent.prompt);
-      console.log(`[instance-manager] wrote .claude/CLAUDE.md`);
-    }
+    console.log(`[instance-manager] prepared: ${instanceId} at ${workspace} (type=${effectiveType})`);
   }
 
   async start(
@@ -113,89 +117,25 @@ export class InstanceManager {
     const state = this.instances.get(instanceId);
     if (!state) throw new Error(`Instance ${instanceId} not prepared`);
 
-    const opencodeExecutable = resolveExecutable(this.agentName);
-    const spawnEnv = state.launchSpec.env ? { ...process.env, ...state.launchSpec.env } : { ...process.env };
-
-    const proc = spawn(opencodeExecutable, this.agentArgs, {
-      cwd: state.workspace,
-      stdio: ["pipe", "pipe", "inherit"],
-      env: spawnEnv,
-    });
-
-    proc.on("exit", (code) => {
-      console.log(`[instance-manager] opencode exited: ${instanceId}, code=${code}`);
-      const s = this.instances.get(instanceId);
-      if (s) {
-        s.process = null;
-        s.connection = null;
-      }
-    });
-
-    const input = Writable.toWeb(proc.stdin!) as unknown as WritableStream<Uint8Array>;
-    const output = Readable.toWeb(proc.stdout!) as unknown as ReadableStream<Uint8Array>;
-    const stream = acp.ndJsonStream(input, output);
-
-    const connection = new acp.ClientSideConnection(
-      () => ({
-        requestPermission: async () => ({ outcome: { outcome: "selected" as const, optionId: "allow" } }),
-        sessionUpdate: async (params) => {
-          send(createNotification(ACP_METHOD.SESSION_UPDATE, params));
-        },
-        readTextFile: async () => ({ content: "" }),
-        writeTextFile: async () => ({}),
-      }),
-      stream,
-    );
-
-    const initResult = await connection.initialize({
-      protocolVersion: acp.PROTOCOL_VERSION,
-      clientInfo: { name: "rcs-remote", version: "1.0.0" },
-      clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
-    });
-
-    console.log(
-      `[instance-manager] initialized: ${instanceId}`,
-      `protocol=${initResult.protocolVersion}`,
-      `loadSession=${!!initResult.agentCapabilities?.loadSession}`,
-      `sessionList=${!!initResult.agentCapabilities?.sessionCapabilities?.list}`,
-      `sessionResume=${!!initResult.agentCapabilities?.sessionCapabilities?.resume}`,
-      `workspace=${state.workspace}`,
-    );
-
-    state.process = proc;
-    state.connection = connection;
-    state.capabilities = (initResult.agentCapabilities as Record<string, unknown>) ?? {};
-
-    // 创建 dispatcher，绑定 send 回调和 session state
-    state.sessionState.connection = connection;
-    state.sessionState.agentCapabilities = initResult.agentCapabilities
-      ? {
-          _meta: initResult.agentCapabilities._meta,
-          loadSession: initResult.agentCapabilities.loadSession,
-          mcpCapabilities: initResult.agentCapabilities.mcpCapabilities,
-          promptCapabilities: initResult.agentCapabilities.promptCapabilities,
-          sessionCapabilities: initResult.agentCapabilities.sessionCapabilities,
-        }
-      : null;
-    state.sessionState.promptCapabilities = initResult.agentCapabilities?.promptCapabilities ?? null;
-    state.dispatcher = new AcpDispatcher(state.sessionState, send, state.workspace);
-
-    console.log(`[instance-manager] started: ${instanceId}, capabilities:`, Object.keys(state.capabilities));
-
-    return { capabilities: state.capabilities };
+    const handler = this.getHandler(state.agentType);
+    return handler.startInstance({ state, instanceId, send });
   }
 
   async stop(instanceId: string): Promise<void> {
     const state = this.instances.get(instanceId);
     if (!state) return;
 
+    const handler = this.handlers.get(state.agentType);
+    if (handler?.stopInstance) {
+      await handler.stopInstance(state);
+    }
+
     if (state.process && !state.process.killed) {
       state.process.kill("SIGTERM");
     }
 
-    const launchSpec = state.launchSpec;
-    if (launchSpec?.environmentId) {
-      await unregisterWorkspace(launchSpec.environmentId).catch(() => {});
+    if (state.launchSpec?.environmentId) {
+      await unregisterWorkspace(state.launchSpec.environmentId).catch(() => {});
     }
 
     state.process = null;

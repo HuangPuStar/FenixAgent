@@ -144,7 +144,7 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 ### Workspace Packages
 
-`packages/` 下 10 个内部包（`private: true`，`tsconfig.base.json` 路径映射）：acp-link / acp-link-rs / @fenix/core（运行时抽象）/ @fenix/plugin-sdk / @fenix/opencode（plugin-opencode）/ @fenix/ccb（plugin-ccb）/ @fenix/remote-runtime / @fenix/sdk（前端 API SDK）/ @fenix/workflow-engine（开发中）/ @fenix/logger
+`packages/` 下 11 个内部包（`private: true`，`tsconfig.base.json` 路径映射）：acp-link / acp-link-rs / @fenix/core（运行时抽象）/ @fenix/plugin-sdk / @fenix/opencode（plugin-opencode）/ @fenix/ccb（plugin-ccb，历史遗留）/ @fenix/claude-code（plugin-claude-code）/ @fenix/remote-runtime / @fenix/sdk（前端 API SDK）/ @fenix/workflow-engine（开发中）/ @fenix/logger
 
 ### 前端架构 (React 19 + Vite + TanStack Router)
 

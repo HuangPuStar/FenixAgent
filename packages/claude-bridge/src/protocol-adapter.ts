@@ -41,12 +41,18 @@ export class ProtocolAdapter {
     }
   }
 
-  /** 处理 SDK 流式输出，转换为 ACP 事件 */
+  /** 处理 SDK 流式输出，转换为 ACP 事件。SDK 结构性在 message.content 中。 */
   handleSdkOutput(message: SDKMessage): void {
     if (message.type === "assistant") {
-      for (const block of message.content ?? []) {
-        if (block.type === "text") {
-          this.send("assistant", { type: "text", text: block.text });
+      // SDK 的 assistant 消息内容在 message.content 中
+      const sdkMsg = message as Record<string, unknown>;
+      const inner = (sdkMsg.message ?? message) as Record<string, unknown>;
+      const blocks = (inner.content ?? []) as Array<Record<string, unknown>>;
+      for (const block of blocks) {
+        if (block.type === "text" && block.text) {
+          this.send("agent_message_chunk", { type: "text", text: block.text });
+        } else if (block.type === "thinking" && block.thinking) {
+          this.send("agent_thought_chunk", { type: "text", text: block.thinking });
         } else if (block.type === "tool_use") {
           this.send("tool_call", block);
         }
@@ -54,7 +60,8 @@ export class ProtocolAdapter {
     } else if (message.type === "result") {
       this.send("prompt_complete", { stopReason: message.subtype ?? message.stopReason ?? "end_turn" });
     } else if (message.type === "system") {
-      if (message.subtype === "init") {
+      const subtype = message.subtype as string | undefined;
+      if (subtype === "init") {
         this.send("status", {
           connected: true,
           agentInfo: { name: "Claude Code", version: message.version ?? "unknown" },
@@ -64,6 +71,32 @@ export class ProtocolAdapter {
             sessionCapabilities: {},
           },
         });
+      } else if (subtype === "thinking_tokens") {
+        // 思考进度 → 前端显示 "思考中..."
+        this.send("agent_thought_chunk", {
+          type: "text",
+          text: "",
+          _meta: { thinkingTokens: (message as Record<string, unknown>).estimated_tokens },
+        });
+      } else {
+        // 其他 system 消息透传（如 hooks 事件、权限状态变更等）
+        this.send("status", {
+          connected: true,
+          _meta: { systemSubtype: subtype, systemMessage: message },
+        });
+      }
+    } else if (message.type === "user") {
+      // 用户消息回显（CC 可能会回放历史消息）
+      // 作为 user_message_chunk 转发
+      const blocks = (message as Record<string, unknown>).message
+        ? ((message as Record<string, unknown>).message as Record<string, unknown>)?.content
+        : undefined;
+      if (Array.isArray(blocks as unknown)) {
+        for (const block of blocks as Array<Record<string, unknown>>) {
+          if (block.type === "text" && block.text) {
+            this.send("user_message_chunk", { type: "text", text: block.text as string });
+          }
+        }
       }
     }
   }

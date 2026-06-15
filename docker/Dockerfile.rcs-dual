@@ -1,0 +1,9 @@
+# 基于对照组已构建的 RCS 镜像（含所有 apt/bun 依赖），只覆盖 Task 1 改动的源文件
+FROM fenix-main-test-rcs:latest
+COPY src ./src
+COPY packages ./packages
+COPY tsconfig.json tsconfig.base.json drizzle.config.ts ./
+COPY drizzle ./drizzle
+COPY node_modules ./node_modules
+# 用 bun run 源码运行（避免 bun build 的 kysely 版本兼容问题）
+CMD ["bun", "run", "src/index.ts"]

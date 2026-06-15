@@ -10,6 +10,7 @@ import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 interface SessionInfo {
   id: string;
+  title?: string | null;
   agentId?: string;
   agentName?: string;
   cwd?: string;
@@ -72,7 +73,7 @@ export function AgentSessionsPage() {
             <div className="flex items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-medium text-text-bright">{session.id}</span>
+                  <span className="font-mono text-sm font-medium text-text-bright">{session.title || session.id}</span>
                   {session.status && (
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-surface-2 text-text-muted">
                       {session.status}

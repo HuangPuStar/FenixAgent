@@ -2,12 +2,12 @@ import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import type { BridgeModule } from "@fenix/bridge-protocol";
-import { createClaudeBridge } from "@fenix/claude-bridge";
-import { createOpencodeBridge } from "@fenix/opencode-bridge";
+import { createCcbHandler } from "@fenix/ccb";
+import { createClaudeCodeHandler } from "@fenix/claude-code";
+import { createOpencodeHandler } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { handleFileOp } from "./client/file-operations.js";
-import { type AgentType, InstanceManager } from "./client/instance-manager.js";
+import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
 import {
@@ -64,7 +64,7 @@ export interface ServerConfig {
   tenantId?: string;
   userId?: string;
   labels?: string[];
-  /** Agent 类型：opencode（默认）或 ccb（Claude Code） */
+  /** Agent 类型：opencode（默认）、ccb、claude-code */
   agentType?: AgentType;
   /** 支持的引擎类型列表，注册时上报给 RCS */
   supportedEngineTypes?: { type: string; cliPath?: string }[];
@@ -175,33 +175,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   }
 
   const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
-  const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd(), config.args, config.agentType);
-
-  // 双引擎 bridge 模块（根据 engine_type 选择）
-  const workspaceRoot = config.cwd || process.cwd();
-  const bridges: Record<string, BridgeModule> = {
-    opencode: createOpencodeBridge(workspaceRoot, config.command),
-    "claude-code": createClaudeBridge(workspaceRoot),
+  const handlers: Record<string, EngineHandler> = {
+    opencode: createOpencodeHandler(config.command, config.args),
+    ccb: createCcbHandler(),
+    "claude-code": createClaudeCodeHandler(),
   };
-  const sessionBridge = new Map<string, BridgeModule>(); // sessionId → bridge
-
-  function selectBridge(engineType?: string): BridgeModule {
-    return bridges[engineType ?? "opencode"] ?? bridges.opencode;
-  }
-
-  // Bridge 事件 → WS 转发
-  for (const [engineType, bridge] of Object.entries(bridges)) {
-    bridge.on("session_data", (sessionId: string, payload: unknown) => {
-      if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: "session_data", session_id: sessionId, payload }));
-      }
-    });
-    bridge.on("session_error", (sessionId: string, error: unknown) => {
-      if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: String(error) }));
-      }
-    });
-  }
+  const instanceMgr = new InstanceManager(handlers, config.cwd || process.cwd(), config.agentType ?? "opencode");
 
   // 从磁盘加载 workspace 映射（acp-link 重启后恢复）
   initRegistry(config.cwd || process.cwd()).catch((err) => {
@@ -326,39 +305,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
           case "session_start": {
             const sessionId = msg.session_id as string;
             const launchSpec = msg.launch_spec;
-            const engineType = msg.engine_type as string | undefined;
 
-            // 双引擎 bridge 路径
-            if (engineType && bridges[engineType]) {
-              const bridge = selectBridge(engineType);
-              sessionBridge.set(sessionId, bridge);
-              console.log(`[acp-client] session_start via bridge engine=${engineType} sessionId=${sessionId}`);
-              try {
-                await bridge.prepare(workspaceRoot, launchSpec as AgentLaunchSpec);
-                const result = await bridge.start(sessionId, {
-                  cwd: workspaceRoot,
-                  systemPrompt: msg.agent_prompt as string | undefined,
-                });
-                ws!.send(
-                  JSON.stringify({
-                    type: "session_started",
-                    session_id: sessionId,
-                    payload: { capabilities: result.capabilities },
-                  }),
-                );
-              } catch (err) {
-                ws!.send(
-                  JSON.stringify({
-                    type: "session_error",
-                    session_id: sessionId,
-                    error: (err as Error).message,
-                  }),
-                );
-              }
-              break;
-            }
-
-            // 旧 SessionManager 路径（无 engine_type 时向后兼容）
+            // 旧 SessionManager 路径（向后兼容）
             if (launchSpec) {
               console.log(`[acp-client] session_start with launch_spec for ${sessionId}`);
               if (msg.agent_prompt) {
@@ -409,37 +357,31 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             break;
           }
           case "session_data": {
-            const sessionId = msg.session_id as string;
-            // 优先走 bridge 路径
-            const bridge = sessionBridge.get(sessionId);
-            if (bridge) {
-              await bridge.sendData(sessionId, msg.payload);
-            } else if (instanceMgr.hasInstance(sessionId)) {
-              const dispatcher = instanceMgr.getDispatcher(sessionId);
+            const instId = (msg.instance_id as string) ?? (msg.session_id as string);
+            if (instId && instanceMgr.hasInstance(instId)) {
+              const dispatcher = instanceMgr.getDispatcher(instId);
               if (dispatcher) await dispatcher.handleMessage(msg.payload);
             } else {
-              sessionMgr.sendData(sessionId, msg.payload);
+              sessionMgr.sendData(msg.session_id as string, msg.payload);
             }
             break;
           }
           case "session_end": {
-            const sessionId = msg.session_id as string;
-            const bridge = sessionBridge.get(sessionId);
-            if (bridge) {
-              await bridge.stop(sessionId);
-              sessionBridge.delete(sessionId);
-            } else if (instanceMgr.hasInstance(sessionId)) {
-              instanceMgr.stop(sessionId);
+            const instId = (msg.instance_id as string) ?? (msg.session_id as string);
+            if (instId && instanceMgr.hasInstance(instId)) {
+              instanceMgr.stop(instId);
             } else {
-              sessionMgr.endSession(sessionId);
+              sessionMgr.endSession(msg.session_id as string);
             }
             break;
           }
           case "prepare": {
             const instId = msg.instance_id as string;
             const launchSpec = msg.launch_spec as AgentLaunchSpec;
+            const engineType = msg.engine_type as string | undefined;
             try {
-              await instanceMgr.prepare(instId, launchSpec);
+              // InstanceManager 支持多引擎，传入 engine_type 即可切换引擎
+              await instanceMgr.prepare(instId, launchSpec, engineType);
               ws!.send(
                 JSON.stringify({
                   type: "prepare_result",
@@ -464,19 +406,17 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
           case "start": {
             const instId = msg.instance_id as string;
             try {
-              // send 回调：dispatcher 的 ACP 回复通过 relay 消息发回 RCS
-              // payload 直接传入消息对象（JSON-RPC 或传输层消息）
+              // start 统一走 InstanceManager（稳定路径）
               const relaySend = (msgObj: unknown) => {
                 if (ws && ws.readyState === 1) {
-                  const relayMsg = {
-                    type: "relay",
-                    instance_id: instId,
-                    session_id: instId,
-                    payload: msgObj,
-                  };
-                  // ── ACP 调试日志 ──
-                  console.log("[acp-client] → RCS relay:", JSON.stringify(relayMsg).slice(0, 500));
-                  ws.send(JSON.stringify(relayMsg));
+                  ws.send(
+                    JSON.stringify({
+                      type: "relay",
+                      instance_id: instId,
+                      session_id: instId,
+                      payload: msgObj,
+                    }),
+                  );
                 }
               };
               const result = await instanceMgr.start(instId, relaySend);
@@ -600,11 +540,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (fileWsHeartbeat) clearInterval(fileWsHeartbeat);
       fileWs?.close();
-      // 清理所有 bridge session
-      for (const [sessionId, bridge] of sessionBridge) {
-        bridge.stop(sessionId).catch(() => {});
-      }
-      sessionBridge.clear();
       sessionMgr.stopAll();
       ws?.close();
     },

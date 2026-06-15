@@ -1,3 +1,4 @@
+import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { log } from "@fenix/logger";
 import { createEnginePlugin as createOpencodePlugin } from "@fenix/opencode";
@@ -19,12 +20,12 @@ const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
   return createCoreRuntime({
-    plugins: [createOpencodePlugin(), createClaudeCodePlugin()],
+    plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin()],
     nodes: [
       {
         id: "local-default",
         mode: "local",
-        engineTypes: ["opencode", "claude-code"],
+        engineTypes: ["opencode", "claude-code", "ccb"],
         status: "online",
       },
     ],

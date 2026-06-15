@@ -16,6 +16,8 @@ export interface EnginePluginMeta {
 export interface PrepareEnvironmentInput {
   instanceId: string;
   launchSpec: AgentLaunchSpec;
+  /** 引擎类型（opencode / claude-code），远端 machine 据此选择 bridge 模块 */
+  engineType?: string;
 }
 
 /**

@@ -597,6 +597,36 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     client.setPermissionRequestHandler(handlePermissionRequest);
 
+    // InteractiveQuestion handler — 当 CC 使用 AskUserQuestion 等交互工具时触发
+    client.setInteractiveQuestionHandler((iq) => {
+      console.log("[ChatInterface] Interactive question:", iq);
+      // 将问题转为 pending permission 格式，复用 PermissionPanel 渲染
+      const question = iq.questions[0];
+      if (!question) return;
+      setEntries((prev) => [
+        ...prev,
+        {
+          type: "tool_call" as const,
+          id: `iq-${iq.questionId}`,
+          toolCall: {
+            id: iq.questionId,
+            title: question.header || iq.toolName,
+            status: "waiting_for_confirmation" as ToolCallStatus,
+            rawInput: { questions: iq.questions },
+            permissionRequest: {
+              requestId: iq.questionId,
+              options: question.options.map((opt, i) => ({
+                kind: (i === 0 ? "allow_always" : "allow_once") as PermissionOption["kind"],
+                name: `${opt.label}${opt.description ? ` — ${opt.description}` : ""}`,
+                optionId: opt.label,
+              })),
+            },
+            isStandalonePermission: true,
+          },
+        },
+      ]);
+    });
+
     client.setErrorMessageHandler((msg) => {
       console.error("[ChatInterface] Agent error:", msg);
       setErrorMessage(msg);

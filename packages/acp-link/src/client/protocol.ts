@@ -38,6 +38,7 @@ export interface ProtocolEvents {
   session_update: { sessionId: string; update: SessionUpdate };
   prompt_complete: { stopReason: string; usage?: import("../types.js").PromptUsage };
   permission_request: PermissionRequestPayload;
+  interactive_question: import("../types.js").InteractiveQuestionPayload;
   browser_tool_call: { callId: string; params: BrowserToolParams };
   model_changed: { modelId: string };
   mode_changed: { modeId: string };
@@ -94,6 +95,12 @@ export class ACPProtocol extends EventEmitter<ProtocolEvents> {
         break;
       case "prompt_complete":
         this.emit("prompt_complete", msg.payload as ProtocolEvents["prompt_complete"]);
+        break;
+      case "permission_request":
+        this.emit("permission_request", msg.payload as ProtocolEvents["permission_request"]);
+        break;
+      case "interactive_question":
+        this.emit("interactive_question", msg.payload as ProtocolEvents["interactive_question"]);
         break;
     }
   }

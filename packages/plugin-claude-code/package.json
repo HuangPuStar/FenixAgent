@@ -1,5 +1,5 @@
 {
-  "name": "@fenix/plugin-claude-code",
+  "name": "@fenix/claude-code",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,5 +12,8 @@
   "dependencies": {
     "@fenix/core": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@agentclientprotocol/sdk": "^0.21.1"
   }
 }

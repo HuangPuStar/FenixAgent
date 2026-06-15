@@ -104,7 +104,7 @@ export function buildAgentPayload(input: {
     hidden: input.hidden,
     disable: input.disable,
     permission: input.permission,
-    engineType: input.engineType || "opencode",
+    engineType: input.engineType ?? "opencode",
     knowledge: {
       knowledgeBaseIds: input.knowledge.knowledgeBaseIds,
       policy: {

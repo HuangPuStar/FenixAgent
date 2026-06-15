@@ -5,14 +5,15 @@ import { AGENT_SETTABLE_FIELDS, validateAgentData } from "../services/config/age
 import { ENGINE_TYPES } from "../services/config/types";
 
 describe("ENGINE_TYPES 常量", () => {
-  test("包含 opencode 和 claude-code", () => {
-    expect(ENGINE_TYPES).toEqual(["opencode", "claude-code"]);
+  test("包含 opencode、ccb 和 claude-code", () => {
+    expect(ENGINE_TYPES).toEqual(["opencode", "ccb", "claude-code"]);
   });
 
   test("是 readonly 元组", () => {
-    expect(ENGINE_TYPES.length).toBe(2);
+    expect(ENGINE_TYPES.length).toBe(3);
     expect(ENGINE_TYPES[0]).toBe("opencode");
-    expect(ENGINE_TYPES[1]).toBe("claude-code");
+    expect(ENGINE_TYPES[1]).toBe("ccb");
+    expect(ENGINE_TYPES[2]).toBe("claude-code");
   });
 });
 
@@ -25,6 +26,10 @@ describe("AGENT_SETTABLE_FIELDS", () => {
 describe("validateAgentData — engineType", () => {
   test('合法值 "opencode" 通过校验', () => {
     expect(validateAgentData({ engineType: "opencode" })).toBeNull();
+  });
+
+  test('合法值 "ccb" 通过校验', () => {
+    expect(validateAgentData({ engineType: "ccb" })).toBeNull();
   });
 
   test('合法值 "claude-code" 通过校验', () => {

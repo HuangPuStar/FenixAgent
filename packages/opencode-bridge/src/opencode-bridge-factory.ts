@@ -27,15 +27,17 @@ export function createOpencodeBridge(workspaceRoot: string, command = "opencode"
   }
 
   const bridge: BridgeModule = {
-    async prepare(_workspace, launchSpec) {
+    async prepare(key, launchSpec) {
       const prepared = await prepareWorkspace(workspaceRoot, launchSpec);
-      instances.set(launchSpec.environmentId ?? "default", {
+      // 使用调用方传入的 key（instanceId），与 start(sessionId) 的 key 一致
+      const stateKey = key as string;
+      instances.set(stateKey || (launchSpec.environmentId ?? "default"), {
         sessionId: "",
         prepared,
         spawnResult: null,
         sessionHandler: null,
       });
-      console.log(`[opencode-bridge] prepared: workspace=${prepared.workspace}`);
+      console.log(`[opencode-bridge] prepared: key=${stateKey} workspace=${prepared.workspace}`);
     },
 
     async start(sessionId, options) {

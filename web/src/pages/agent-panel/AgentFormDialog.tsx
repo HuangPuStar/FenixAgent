@@ -162,7 +162,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormHidden(Boolean(d.hidden));
           setFormDisable(Boolean(d.disable));
           setFormMachineId((d.machineId as string) || "local");
-          setFormEngineType((d.engineType as string) || "opencode");
+          setFormEngineType((d.engineType as string) ?? "opencode");
           setFormResourceAccess(d.resourceAccess as ResourceAccess | undefined);
           setFormPublicReadable(Boolean((d.resourceAccess as ResourceAccess | undefined)?.publicReadable));
           setRelatedResources((d.relatedResources as AgentRelatedResourcesView | undefined) ?? undefined);
@@ -408,6 +408,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             hidden: formHidden,
             disable: formDisable,
             permission: formPermission,
+            engineType: formEngineType,
             knowledge: {
               knowledgeBaseIds: formKnowledgeBaseIds,
               searchFirst: formKnowledgeSearchFirst,
@@ -462,6 +463,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     t,
     readOnlyAgent,
     formPublicReadable,
+    formEngineType,
   ]);
 
   const getRunningInstanceIds = useCallback(async () => {
@@ -626,6 +628,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="opencode">OpenCode</SelectItem>
+                        <SelectItem value="ccb">CCB</SelectItem>
                         <SelectItem value="claude-code">Claude Code</SelectItem>
                       </SelectContent>
                     </Select>

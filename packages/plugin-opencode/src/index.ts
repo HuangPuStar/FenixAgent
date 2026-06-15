@@ -1,3 +1,4 @@
+export { createOpencodeHandler } from "./opencode-handler.js";
 export { createEnginePlugin } from "./plugin";
 export type { PreparedWorkspacePaths } from "./runtime/environment-preparer";
 export { ensureWorkspaceRuntimeDirs, writeOpencodeConfig } from "./runtime/environment-preparer";

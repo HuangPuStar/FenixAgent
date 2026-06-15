@@ -1,9 +1,6 @@
-node_modules
 .git
-.DS_Store
-data
-docker/opencode-data
-docker/workspaces
-dist
+.claude
+node_modules/.bun
+**/__tests__
 spec
-*.log
+docs

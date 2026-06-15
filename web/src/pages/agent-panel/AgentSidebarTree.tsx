@@ -505,11 +505,17 @@ export function AgentSidebarTree({
                       CC
                     </span>
                   )}
-                  {(agent as unknown as Record<string, unknown>).engineType !== "claude-code" && (
-                    <span className="rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
-                      OC
+                  {(agent as unknown as Record<string, unknown>).engineType === "ccb" && (
+                    <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
+                      CCB
                     </span>
                   )}
+                  {(agent as unknown as Record<string, unknown>).engineType !== "claude-code" &&
+                    (agent as unknown as Record<string, unknown>).engineType !== "ccb" && (
+                      <span className="rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                        OC
+                      </span>
+                    )}
                 </div>
                 <div className="text-[11px] text-text-dim truncate mt-0.5">
                   {agent.description ||

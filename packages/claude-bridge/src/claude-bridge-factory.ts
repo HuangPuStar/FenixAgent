@@ -26,11 +26,11 @@ export function createClaudeBridge(workspaceRoot: string): BridgeModule {
   }
 
   const bridge: BridgeModule = {
-    async prepare(_workspace, launchSpec) {
+    async prepare(key, launchSpec) {
       await prepareClaudeWorkspace(workspaceRoot, "ask", launchSpec as AgentLaunchSpec);
-      const key = (launchSpec as AgentLaunchSpec).environmentId ?? "default";
-      instances.set(key, { sessionId: "", spawner: null, adapter: null });
-      console.log("[claude-bridge] prepared");
+      const stateKey = (key as string) || ((launchSpec as AgentLaunchSpec).environmentId ?? "default");
+      instances.set(stateKey, { sessionId: "", spawner: null, adapter: null });
+      console.log(`[claude-bridge] prepared: key=${stateKey}`);
     },
 
     async start(sessionId, options) {

@@ -115,7 +115,8 @@
       },
       "devDependencies": {
         "@agentclientprotocol/sdk": "^0.21.1",
-        "@fenix/ccb": "workspace:*",
+        "@anthropic-ai/claude-agent-sdk": "^0.2.112",
+        "@fenix/claude-code": "workspace:*",
         "@fenix/opencode": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "@stricli/auto-complete": "^1.2.4",
@@ -180,11 +181,14 @@
       },
     },
     "packages/plugin-claude-code": {
-      "name": "@fenix/plugin-claude-code",
+      "name": "@fenix/claude-code",
       "version": "0.1.0",
       "dependencies": {
         "@fenix/core": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@agentclientprotocol/sdk": "^0.21.1",
       },
     },
     "packages/plugin-opencode": {
@@ -491,6 +495,8 @@
 
     "@fenix/claude-bridge": ["@fenix/claude-bridge@workspace:packages/claude-bridge"],
 
+    "@fenix/claude-code": ["@fenix/claude-code@workspace:packages/plugin-claude-code"],
+
     "@fenix/core": ["@fenix/core@workspace:packages/core"],
 
     "@fenix/logger": ["@fenix/logger@workspace:packages/logger"],
@@ -498,8 +504,6 @@
     "@fenix/opencode": ["@fenix/opencode@workspace:packages/plugin-opencode"],
 
     "@fenix/opencode-bridge": ["@fenix/opencode-bridge@workspace:packages/opencode-bridge"],
-
-    "@fenix/plugin-claude-code": ["@fenix/plugin-claude-code@workspace:packages/plugin-claude-code"],
 
     "@fenix/plugin-sdk": ["@fenix/plugin-sdk@workspace:packages/plugin-sdk"],
 

@@ -7,6 +7,7 @@ export type {
   BrowserToolCallHandler,
   ConnectionStateHandler,
   ErrorMessageHandler,
+  InteractiveQuestionHandler,
   ModeChangedHandler,
   ModelChangedHandler,
   ModelStateChangedHandler,

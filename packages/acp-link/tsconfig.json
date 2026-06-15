@@ -2,6 +2,9 @@
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext"],
+    "paths": {
+      "@fenix/claude-code": ["../plugin-claude-code/src/index.ts"]
+    },
     "target": "ES2022",
     "module": "esnext",
     "moduleDetection": "force",

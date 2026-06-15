@@ -338,5 +338,5 @@ export interface AgentConfigDetailWithAccess extends AgentConfigRowWithAccess {
 // ────────────────────────────────────────────
 
 /** Supported engine type identifiers */
-export const ENGINE_TYPES = ["opencode", "claude-code"] as const;
+export const ENGINE_TYPES = ["opencode", "ccb", "claude-code"] as const;
 export type EngineType = (typeof ENGINE_TYPES)[number];
