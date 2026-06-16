@@ -76,6 +76,7 @@ services:
       LOG_FORMAT: json
       OPENCODE_DISABLE_AUTOUPDATE: "1"
       OPENCODE_DISABLE_TELEMETRY: "1"
+      RCS_SECRET_ANTHROPIC: ${ANTHROPIC_API_KEY}
       HTTP_PROXY: http://host.docker.internal:7897
       HTTPS_PROXY: http://host.docker.internal:7897
       http_proxy: http://host.docker.internal:7897

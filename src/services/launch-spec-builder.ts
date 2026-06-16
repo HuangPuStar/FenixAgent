@@ -9,6 +9,7 @@ import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider, skill } f
 import { AppError } from "../errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import type { AgentConfigDetailWithAccess } from "./config";
+import { resolveApiKey } from "./config-utils";
 import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
@@ -108,7 +109,7 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Pro
     provider: matchedProvider.name,
     protocol: toLaunchModelProtocol(matchedProvider.protocol, matchedProvider.name, agentConfig.id),
     baseUrl: matchedProvider.baseUrl || "",
-    apiKey: matchedProvider.apiKey || "",
+    apiKey: resolveApiKey(matchedProvider.apiKey) ?? matchedProvider.apiKey ?? "",
     model: matchedModel.modelId,
     // opencode / ccb 引擎用 modelName 作为运行时模型标识（如 ANTHROPIC_MODEL 环境变量）。
     // 数据库 model.modelId 即用户配置的模型名（如 deepseek-v4-flash），直接透传。

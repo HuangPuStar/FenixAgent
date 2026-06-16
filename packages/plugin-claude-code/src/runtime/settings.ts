@@ -85,8 +85,7 @@ export function buildSettings(
   const env: Record<string, string> = {};
   const { model } = launchSpec;
 
-  if (model.apiKey && !model.apiKey.startsWith("{env:")) {
-    // 非占位符的明文 key 直接使用
+  if (model.apiKey) {
     if (model.protocol === "anthropic") {
       env.ANTHROPIC_API_KEY = model.apiKey;
       if (model.baseUrl) env.ANTHROPIC_BASE_URL = model.baseUrl;
@@ -94,13 +93,6 @@ export function buildSettings(
       env.OPENAI_API_KEY = model.apiKey;
       if (model.baseUrl) env.OPENAI_BASE_URL = model.baseUrl;
     }
-  }
-  // 如果 machine 环境已经有 ANTHROPIC_API_KEY（如 docker-compose 注入），
-  // 且 model.apiKey 是占位符，则优先使用 machine 的环境变量
-  if (!env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY && model.protocol === "anthropic") {
-    env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-    if (model.baseUrl && model.baseUrl.startsWith("http")) env.ANTHROPIC_BASE_URL = model.baseUrl;
-    else if (process.env.ANTHROPIC_BASE_URL) env.ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL;
   }
 
   if (model.modelName) {
