@@ -22,14 +22,10 @@ function setAuth() {
   });
 }
 
-function post(body: Record<string, unknown>) {
-  return mcpRoute.handle(
-    new Request("http://localhost/config/mcp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
+function req(method: string, path: string, body?: unknown) {
+  const opts: RequestInit = { method, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  return mcpRoute.handle(new Request(`http://localhost/config/${path}`, opts));
 }
 
 describe("MCP route resource access", () => {
@@ -72,7 +68,7 @@ describe("MCP route resource access", () => {
       }),
     });
 
-    const res = await post({ action: "list" });
+    const res = await req("GET", "mcp");
     const json = await res.json();
 
     expect(json.success).toBe(true);
@@ -113,7 +109,7 @@ describe("MCP route resource access", () => {
       getMcpServer: async () => null,
     });
 
-    const res = await post({ action: "get", name: "org_source/mcp_external" });
+    const res = await req("GET", "mcp/org_source%2Fmcp_external");
     const json = await res.json();
 
     expect(json.success).toBe(true);
@@ -129,9 +125,14 @@ describe("MCP route resource access", () => {
       },
     });
 
-    const actions = ["delete", "enable", "disable", "inspect"];
-    for (const action of actions) {
-      const res = await post({ action, name: "shared" });
+    const actionMethods: Record<string, [string, string]> = {
+      delete: ["DELETE", "mcp/shared"],
+      enable: ["POST", "mcp/shared/enable"],
+      disable: ["POST", "mcp/shared/disable"],
+      inspect: ["POST", "mcp/shared/inspect"],
+    };
+    for (const [action, [method, urlPath]] of Object.entries(actionMethods)) {
+      const res = await req(method, urlPath);
       const json = await res.json();
       expect(res.status).toBe(403);
       expect(json.error.code).toBe("FORBIDDEN");
@@ -169,14 +170,10 @@ describe("MCP route resource access", () => {
       },
     });
 
-    const res = await post({
-      action: "update",
-      name: "shared",
-      config: {
-        type: "remote",
-        url: "https://new.example.com",
-        publicReadable: true,
-      },
+    const res = await req("PUT", "mcp/shared", {
+      type: "remote",
+      url: "https://new.example.com",
+      publicReadable: true,
     });
     const json = await res.json();
 

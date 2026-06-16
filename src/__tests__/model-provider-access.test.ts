@@ -21,7 +21,7 @@ const externalAccess = {
   sourceOrganizationId: "org_source",
   sourceOrganizationName: "Source Team",
   resourceUid: "provider_external",
-  resourceKey: "org_source/provider_external",
+  resourceKey: "org_source-provider_external",
   manageable: false,
   writable: false,
 };
@@ -84,15 +84,11 @@ let userConfig = {
   permission: null as unknown,
 };
 
-function post(body: unknown, path: "providers" | "models") {
-  const route = path === "providers" ? providersRoute : modelsRoute;
-  return route.handle(
-    new Request(`http://localhost/config/${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
+function req(method: string, path: string, body?: unknown) {
+  const base = path.startsWith("providers") ? providersRoute : modelsRoute;
+  const opts: RequestInit = { method, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  return base.handle(new Request(`http://localhost/config/${path}`, opts));
 }
 
 describe("model provider access", () => {
@@ -154,7 +150,7 @@ describe("model provider access", () => {
 
   // 外部 provider 下的 models 会进入 available，并携带来源 provider 的只读状态
   test("外部 provider models 出现在 available 中", async () => {
-    const res = await post({ action: "get" }, "models");
+    const res = await req("GET", "models");
     const json = await res.json();
 
     const externalModel = json.data.available.find((item: { id: string }) => item.id === "model_external");
@@ -164,25 +160,16 @@ describe("model provider access", () => {
       displayName: "Shared Model",
       provider: "openai",
       providerDisplayName: "OpenAI Shared",
-      providerResourceKey: "org_source/provider_external",
+      providerResourceKey: "org_source-provider_external",
     });
     expect(externalModel.providerResourceAccess.writable).toBe(false);
   });
 
   // 外部 provider 下的 add/update/remove model 写操作返回 403
   test("外部 provider 拒绝 add/update/remove model", async () => {
-    const add = await post(
-      { action: "add_model", name: externalAccess.resourceKey, data: { modelId: "new" } },
-      "providers",
-    );
-    const update = await post(
-      { action: "update_model", name: externalAccess.resourceKey, modelId: "shared-model", data: { name: "Next" } },
-      "providers",
-    );
-    const remove = await post(
-      { action: "remove_model", name: externalAccess.resourceKey, modelId: "shared-model" },
-      "providers",
-    );
+    const add = await req("POST", `providers/${externalAccess.resourceKey}/models`, { modelId: "new" });
+    const update = await req("PUT", `providers/${externalAccess.resourceKey}/models/shared-model`, { name: "Next" });
+    const remove = await req("DELETE", `providers/${externalAccess.resourceKey}/models/shared-model`);
 
     expect(add.status).toBe(403);
     expect(update.status).toBe(403);
@@ -191,16 +178,16 @@ describe("model provider access", () => {
 
   // handleSet 可保存可读外部 stable model ref
   test("handleSet 可保存可读外部 model ref", async () => {
-    const res = await post({ action: "set", data: { model: "org_source/provider_external/shared-model" } }, "models");
+    const res = await req("PUT", "models", { model: "org_source-provider_external/shared-model" });
     const json = await res.json();
 
     expect(json.success).toBe(true);
-    expect(userConfig.currentModel).toBe("org_source/provider_external/shared-model");
+    expect(userConfig.currentModel).toBe("org_source-provider_external/shared-model");
   });
 
   // handleSet 拒绝不可读 provider 或不存在 model ref
   test("handleSet 拒绝不可读 provider model ref", async () => {
-    const res = await post({ action: "set", data: { model: "org_missing/provider_missing/model" } }, "models");
+    const res = await req("PUT", "models", { model: "org_missing/provider_missing/model" });
     const json = await res.json();
 
     expect(json.success).toBe(false);
