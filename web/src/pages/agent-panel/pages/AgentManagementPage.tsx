@@ -163,7 +163,7 @@ export function AgentManagementPage() {
   );
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+    <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
       <AgentPageHeader
         title="智能体管理"
         subtitle="管理您的所有 AI 智能体，支持创建、编辑和对话"

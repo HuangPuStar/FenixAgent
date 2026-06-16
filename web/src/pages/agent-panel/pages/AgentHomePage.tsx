@@ -11,6 +11,8 @@ import { dispatchConfigChange } from "../../../lib/config-events";
 import type { GenerationFormData } from "../components/AgentGenerationForm";
 import { AgentGenerationForm } from "../components/AgentGenerationForm";
 
+const assetBase = import.meta.env.BASE_URL;
+
 // 模板卡片图标色系
 const TEMPLATE_COLORS = [
   { from: "#0891b2", to: "#22d3ee", shadow: "rgba(8,145,178,0.25)" },
@@ -201,7 +203,12 @@ export function AgentHomePage() {
       <div className="agent-home-container">
         <div className="agent-home-header">
           <div className="agent-home-brand-icon">
-            <FenixHomeLogo />
+            <img
+              className="fenix-sidebar-logo-mark"
+              src={`${assetBase}brand/fenix-agent-logo-mark.png`}
+              alt=""
+              aria-hidden="true"
+            />
           </div>
           <h1>{renderAgentTitle(titleText)}</h1>
           {phase !== "form" && <p>{t("subtitle")}</p>}
@@ -347,9 +354,10 @@ export function AgentHomePage() {
           background: linear-gradient(135deg, #0f6bff, #6be6ff);
           box-shadow: 0 4px 20px rgba(15,107,255,0.25);
         }
-        .agent-home-brand-icon svg {
+        .agent-home-brand-icon img {
           width: 30px;
           height: 30px;
+          object-fit: contain;
         }
         .agent-home-header h1 {
           margin: 0 0 8px;
@@ -635,22 +643,6 @@ export function AgentHomePage() {
         }
       `}</style>
     </div>
-  );
-}
-
-function FenixHomeLogo() {
-  return (
-    <svg viewBox="0 0 200 200" aria-hidden="true">
-      <path
-        d="M100 20C130 40 150 70 150 100C150 130 130 160 100 180C70 160 50 130 50 100C50 70 70 40 100 20Z"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="8"
-      />
-      <path d="M70 60Q100 30 130 60" fill="none" stroke="#fff" strokeWidth="5" />
-      <path d="M60 120Q100 160 140 120" fill="none" stroke="#fff" strokeWidth="5" />
-      <rect x="92" y="92" width="16" height="16" rx="2" fill="#fff" transform="rotate(45 100 100)" />
-    </svg>
   );
 }
 

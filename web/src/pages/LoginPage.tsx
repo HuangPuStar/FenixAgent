@@ -156,11 +156,10 @@ function AuthLightStyles() {
         margin: 0 auto 14px;
       }
 
-      .auth-light-logo svg {
+      .auth-light-logo img {
         width: 100%;
         height: 100%;
-        filter: drop-shadow(0 0 25px rgba(212, 175, 55, 0.35));
-        animation: authLogoPulse 4s ease-in-out infinite;
+        object-fit: contain;
       }
 
       .auth-light-logo-glow {
@@ -179,28 +178,6 @@ function AuthLightStyles() {
       .auth-light-logo-compact .auth-light-logo-glow {
         width: 92px;
         height: 92px;
-      }
-
-      .auth-light-phoenix {
-        fill: none;
-        stroke: #d4af37;
-        stroke-width: 1.8;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-      }
-
-      .auth-light-phoenix-thin {
-        fill: none;
-        stroke: #d4af37;
-        stroke-width: 1.2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        opacity: 0.6;
-      }
-
-      .auth-light-phoenix-core {
-        fill: #d4af37;
-        opacity: 0.9;
       }
 
       .auth-light-brand-title {
@@ -618,16 +595,6 @@ function AuthLightStyles() {
         }
       }
 
-      @keyframes authLogoPulse {
-        0%,
-        100% {
-          filter: drop-shadow(0 0 25px rgba(212, 175, 55, 0.35));
-        }
-        50% {
-          filter: drop-shadow(0 0 50px rgba(212, 175, 55, 0.55));
-        }
-      }
-
       @keyframes authRingExpand {
         0%,
         100% {
@@ -671,7 +638,7 @@ function AuthLightStyles() {
       @media (prefers-reduced-motion: reduce) {
         .auth-light-page::before,
         .auth-light-particle,
-        .auth-light-logo svg,
+        .auth-light-logo img,
         .auth-light-logo-glow,
         .auth-light-brand-title,
         .auth-light-brand-sub,
@@ -743,30 +710,18 @@ function AuthLightStyles() {
   );
 }
 
+const assetBase = import.meta.env.BASE_URL;
+
 function LoginBrandMark({ compact = false }: { compact?: boolean }) {
   return (
     <div className={compact ? "auth-light-logo auth-light-logo-compact" : "auth-light-logo"}>
       <div className="auth-light-logo-glow" />
-      <svg aria-label="Fenix Agent" role="img" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-        <circle className="auth-light-phoenix-thin" cx="50" cy="50" r="42" />
-        <path className="auth-light-phoenix" d="M30,60 Q50,35 70,60" />
-        <path className="auth-light-phoenix" d="M35,40 Q50,65 65,40" />
-        <path className="auth-light-phoenix" d="M42,38 Q50,20 65,30" />
-        <path className="auth-light-phoenix-thin" d="M38,42 Q28,28 40,22" />
-        <path className="auth-light-phoenix" d="M42,62 Q50,78 62,70" />
-        <path className="auth-light-phoenix-thin" d="M38,58 Q28,72 46,78" />
-        <path className="auth-light-phoenix-thin" d="M48,32 Q44,25 42,20" />
-        <path className="auth-light-phoenix-thin" d="M52,32 Q56,25 58,20" />
-        <rect
-          className="auth-light-phoenix-core"
-          height="6"
-          rx="1"
-          transform="rotate(45,50,50)"
-          width="6"
-          x="47"
-          y="47"
-        />
-      </svg>
+      <img
+        className="auth-light-logo-mark"
+        src={`${assetBase}brand/fenix-agent-logo-mark.png`}
+        alt=""
+        aria-hidden="true"
+      />
     </div>
   );
 }
