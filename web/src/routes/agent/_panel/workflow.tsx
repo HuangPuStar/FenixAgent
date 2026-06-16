@@ -80,7 +80,7 @@ function WorkflowTabPage() {
   ];
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d] dark:bg-[#1a1d23]">
+    <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d] dark:bg-[#1a1d23]">
       <AgentPageHeader
         title={t("page.workflow_title")}
         subtitle={t("page.workflow_subtitle")}

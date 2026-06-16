@@ -364,7 +364,10 @@ export function DataTable<T>({
           <span>
             {t("dataTable.pagination", {
               start: table.getState().pagination.pageIndex * pageSize + 1,
-              end: Math.min((table.getState().pagination.pageIndex + 1) * pageSize, table.getFilteredRowModel().rows.length),
+              end: Math.min(
+                (table.getState().pagination.pageIndex + 1) * pageSize,
+                table.getFilteredRowModel().rows.length,
+              ),
               total: table.getFilteredRowModel().rows.length,
             })}
           </span>

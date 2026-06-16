@@ -18,7 +18,7 @@ function WorkflowVersionsPage() {
   );
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d] dark:bg-[#1a1d23]">
+    <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d] dark:bg-[#1a1d23]">
       <WorkflowVersions workflowId={id} onEditWorkflow={onEditWorkflow} />
     </div>
   );
