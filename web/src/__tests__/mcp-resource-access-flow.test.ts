@@ -93,15 +93,13 @@ describe("mcp resource access frontend flow", () => {
     });
 
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toBe("/web/config/mcp/shared");
+    expect(call[1].method).toBe("PUT");
     const body = JSON.parse(call[1].body);
     expect(body).toEqual({
-      action: "set",
-      name: "shared",
-      data: {
-        type: "remote",
-        url: "https://example.com/mcp",
-        publicReadable: true,
-      },
+      type: "remote",
+      url: "https://example.com/mcp",
+      publicReadable: true,
     });
   });
 

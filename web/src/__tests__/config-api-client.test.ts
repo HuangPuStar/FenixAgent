@@ -37,10 +37,10 @@ describe("config SDK modules", () => {
     const { providerApi } = await import("../api/sdk");
     await providerApi.set("openai", { apiKey: "sk-test" });
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toBe("/web/config/providers/openai");
+    expect(call[1].method).toBe("PUT");
     const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("set");
-    expect(body.name).toBe("openai");
-    expect(body.data).toEqual({ apiKey: "sk-test" });
+    expect(body).toEqual({ apiKey: "sk-test" });
   });
 
   // 测试 test provider 返回模型列表

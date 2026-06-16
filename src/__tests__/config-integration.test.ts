@@ -63,9 +63,8 @@ describe("Config Route Integration", () => {
 
   test("mocked sessionAuth 通过后返回成功", async () => {
     const res = await request("/web/config/providers", {
-      method: "POST",
+      method: "GET",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "list" }),
     });
     const json = await res.json();
     expect(json.success).toBe(true);
@@ -82,9 +81,8 @@ describe("Config Route Integration", () => {
 
   test("providers 路由可达", async () => {
     const res = await request("/web/config/providers", {
-      method: "POST",
+      method: "GET",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "list" }),
     });
     expect(res.status).not.toBe(404);
     const json = await res.json();
@@ -93,9 +91,8 @@ describe("Config Route Integration", () => {
 
   test("models 路由可达", async () => {
     const res = await request("/web/config/models", {
-      method: "POST",
+      method: "GET",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get" }),
     });
     expect(res.status).not.toBe(404);
     const json = await res.json();
