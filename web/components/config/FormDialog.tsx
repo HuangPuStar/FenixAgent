@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FormProvider, useForm } from "react-hook-form";
+import { useTranslation } from "react-i18next";
 import type { z } from "zod";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -31,14 +32,17 @@ export function FormDialog({
   title,
   children,
   onSubmit,
-  submitLabel = "保存",
-  cancelLabel = "取消",
+  submitLabel,
+  cancelLabel,
   loading,
   disabled,
   hideSubmit,
   width = "sm:max-w-lg",
   formConfig,
 }: FormDialogProps) {
+  const { t } = useTranslation("components");
+  const sbmLabel = submitLabel ?? t("formDialog.save");
+  const cnlLabel = cancelLabel ?? t("formDialog.cancel");
   const methods = useForm<Record<string, unknown>>({
     // biome-ignore lint/suspicious/noExplicitAny: shadcn/react-hook-form zodResolver requires ZodTypeAny
     resolver: formConfig?.schema ? zodResolver(formConfig.schema as any) : undefined,
@@ -57,11 +61,11 @@ export function FormDialog({
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">{children}</div>
       <DialogFooter className="shrink-0 border-t bg-background pt-4">
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-          {cancelLabel}
+          {cnlLabel}
         </Button>
         {!hideSubmit && (
           <Button type="submit" disabled={loading || disabled}>
-            {loading ? "保存中..." : submitLabel}
+            {loading ? t("formDialog.saving") : sbmLabel}
           </Button>
         )}
       </DialogFooter>
