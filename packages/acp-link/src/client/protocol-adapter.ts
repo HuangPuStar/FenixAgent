@@ -48,12 +48,20 @@ export class ProtocolAdapter {
       // event 是 Anthropic API 原生的 BetaRawMessageStreamEvent
       const event = message.event as Record<string, unknown> | undefined;
       if (!event) return;
+      console.log(
+        "[protocol-debug] stream_event type:",
+        event.type,
+        "delta:",
+        JSON.stringify((event as any).delta?.type ?? "none").slice(0, 60),
+      );
       switch (event.type) {
         case "content_block_delta": {
           const delta = event.delta as Record<string, unknown> | undefined;
           if (delta?.type === "text_delta" && typeof delta.text === "string") {
+            console.log("[protocol-debug] → agent_message_chunk:", (delta.text as string).slice(0, 50));
             this.send("agent_message_chunk", { type: "text", text: delta.text as string });
           } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
+            console.log("[protocol-debug] → agent_thought_chunk:", (delta.thinking as string).slice(0, 50));
             this.send("agent_thought_chunk", { type: "text", text: delta.thinking as string });
           } else if (delta?.type === "input_json_delta" && delta.partial_json) {
             // tool_use 参数流式增量，透传
