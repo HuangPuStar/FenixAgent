@@ -140,8 +140,6 @@
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
-    "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
-    "uploadTooLarge": "上传失败：文件大小超过 100MB 限制",
     "dropToUpload": "释放文件以上传",
     "hintDragUpload": "拖拽上传",
     "hintDoubleClick": "双击预览",
@@ -350,9 +348,6 @@
   "metaAgent": {
     "title": "Meta Agent",
     "history_title": "会话历史",
-    "history_today": "今天",
-    "history_yesterday": "昨天",
-    "history_earlier": "更早",
     "history_empty": "暂无会话",
     "history_untitled": "未命名",
     "chat_collapse": "收起面板",
@@ -362,7 +357,6 @@
     "send": "发送",
     "stop": "停止",
     "newSession": "新会话",
-    "placeholder": "给智能体发送消息…",
     "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件"
   },
   "chatEmpty": {
