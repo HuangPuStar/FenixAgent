@@ -93,7 +93,7 @@ export function AgentManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     setLoading(true);
@@ -159,7 +159,7 @@ export function AgentManagementPage() {
         setEnteringId(null);
       }
     },
-    [navigate],
+    [navigate, t],
   );
 
   return (

@@ -856,13 +856,13 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 
 /* 隐藏信息流中的 Agent avatar —— 头部已无 title 文字，再保留头像反而拥挤 */
 .meta-agent-panel .agent-avatar {
-  display: none !important;
+  display: none;
 }
 
 /* 隐藏 ChatComposer 元信息条中的 token 进度条 / 百分比 / 分隔线
    保留模式选择器、模型选择器与新会话按钮 */
 .meta-agent-panel .chat-composer-token-stats {
-  display: none !important;
+  display: none;
 }
 
 /* 收紧 ACPMain 顶层 padding/gap —— 释放外层边距给输入区 */

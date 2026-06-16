@@ -117,7 +117,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
     <div>
       <AgentPageHeader
         title={wf?.name ?? t("versions.title", { name: "" })}
-        subtitle={wf?.description}
+        subtitle={wf?.description ?? undefined}
         actions={
           <>
             <Button variant="outline" size="sm" onClick={loadData}>

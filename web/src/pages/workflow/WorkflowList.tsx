@@ -15,7 +15,7 @@ import { SkeletonTable } from "./components/SkeletonRows";
 interface WorkflowListProps {
   onEditWorkflow: (workflowId: string) => void;
   onViewVersions: (workflowId: string) => void;
-  createRequested?: boolean;
+  createRequested?: number;
 }
 
 export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }: WorkflowListProps) {
@@ -34,7 +34,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
   const [selectedRecoverIds, setSelectedRecoverIds] = useState<Set<string>>(new Set());
   const [showRecoverPanel, setShowRecoverPanel] = useState(false);
   const [recovering, setRecovering] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery] = useState("");
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -93,7 +93,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     }
   }, [deleteTarget, loadList, t]);
 
-  const handleScanRecover = useCallback(async () => {
+  const _handleScanRecover = useCallback(async () => {
     try {
       const ids = await workflowDefApi.recover();
       setRecoverableIds(ids);

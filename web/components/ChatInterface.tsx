@@ -581,6 +581,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     resetThreadState,
     onSessionCreated,
     onPromptComplete,
+    t,
   ]);
 
   // 计算 token 统计，传给 ChatComposer 元信息条

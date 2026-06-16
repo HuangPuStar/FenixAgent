@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader } from "lucide-react";
-import { lazy, Suspense, useCallback } from "react";
+import { Suspense, useCallback } from "react";
 import { WorkflowVersions } from "../../../pages/workflow/WorkflowVersions";
 
 function WorkflowVersionsPage() {
