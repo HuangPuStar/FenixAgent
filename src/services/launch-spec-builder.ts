@@ -2,21 +2,34 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { getBaseUrl } from "../config";
 import { db } from "../db";
-import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider, skill } from "../db/schema";
+import { agentConfigSkill, mcpServer, model, provider, skill } from "../db/schema";
 import { AppError } from "../errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import type { AgentConfigDetailWithAccess } from "./config";
-import { resolveApiKey } from "./config-utils";
 import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
 type LaunchModelProtocol = ModelConfig["protocol"];
+type ProviderRow = typeof provider.$inferSelect;
+type ModelRow = typeof model.$inferSelect;
 type SkillRow = typeof skill.$inferSelect;
 type McpServerRow = typeof mcpServer.$inferSelect;
+
+function summarizeProviders(providers: ProviderRow[]) {
+  return providers.map((row) => ({
+    id: row.id,
+    organizationId: row.organizationId,
+    name: row.name,
+    displayName: row.displayName ?? null,
+    protocol: row.protocol ?? null,
+    baseUrl: row.baseUrl || "",
+    hasApiKey: Boolean(row.apiKey),
+  }));
+}
 
 function summarizeSkills(skills: SkillRow[]) {
   return skills.map((row) => ({
@@ -48,6 +61,16 @@ function summarizeLaunchMcpServers(mcpServers: McpServerConfig[]) {
   }));
 }
 
+function summarizeModels(models: ModelRow[]) {
+  return models.map((row) => ({
+    id: row.id,
+    organizationId: row.organizationId,
+    providerId: row.providerId,
+    modelId: row.modelId,
+    displayName: row.displayName ?? null,
+  }));
+}
+
 /** 统一记录上下文日志并抛配置错误，保证前端拿到的是启动前失败而不是运行时伪成功。 */
 function throwInvalidConfig(message: string, detail: string, error?: unknown): never {
   if (error) {
@@ -56,6 +79,27 @@ function throwInvalidConfig(message: string, detail: string, error?: unknown): n
     logError(detail);
   }
   throw new AppError(message, "INVALID_CONFIG", 400);
+}
+
+/** 共享资源格式固定为 `sourceOrg/providerId/modelId`，这里显式拆开供后续精准查库。 */
+function parseSharedModelRef(modelRef: string) {
+  const parts = modelRef.split("/");
+  if (parts.length < 3) return null;
+  return {
+    organizationId: parts[0] ?? "",
+    providerId: parts[1] ?? "",
+    modelId: parts.slice(2).join("/"),
+  };
+}
+
+/** 兼容旧格式 `providerName/modelId`，仅用于历史 AgentConfig 的迁移期读取。 */
+function parseLegacyModelRef(modelRef: string) {
+  const slashIndex = modelRef.indexOf("/");
+  if (slashIndex < 0) return null;
+  return {
+    providerName: modelRef.slice(0, slashIndex),
+    modelId: modelRef.slice(slashIndex + 1),
+  };
 }
 
 /** 运行时目前只支持 plugin-sdk 明确声明的协议，未知协议直接阻断启动以暴露配置问题。 */
@@ -71,49 +115,155 @@ function toLaunchModelProtocol(
   );
 }
 
-/** 运行时只认正式的 modelId 外键，避免继续读取迁移期字符串字段。 */
+/**
+ * 直接按 AgentConfig 当前声明的 modelRef 查 provider。
+ *
+ * 这里不再接受“上游聚合好的 providers”，是为了避免再出现
+ * “先取一包候选数据、再在 builder 内二次筛选”的职责重叠。
+ */
 async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Promise<ModelConfig> {
-  if (!agentConfig.modelId) {
+  // Phase 1: 先收紧最基础的输入约束，避免后面查库时把“空 modelRef”误判成资源缺失。
+  const modelRef = agentConfig.model?.trim();
+  if (!modelRef) {
     throwInvalidConfig(
       `AgentConfig '${agentConfig.id}' has no model configured`,
-      `[launch-spec-builder] missing modelId for agentConfig='${agentConfig.id}', org='${agentConfig.organizationId}'`,
+      `[launch-spec-builder] missing modelRef for agentConfig='${agentConfig.id}', org='${agentConfig.organizationId}'`,
     );
   }
 
-  const modelRows = await db.select().from(model).where(eq(model.id, agentConfig.modelId)).limit(1);
-  const matchedModel = modelRows[0];
-  if (!matchedModel) {
+  log(`[launch-spec-builder] resolveModelConfig: start agentConfig='${agentConfig.id}', modelRef='${modelRef}'`);
+
+  // Phase 2: 优先处理稳定共享引用 `sourceOrg/providerId/modelId`，这是跨组织场景的主路径。
+  const sharedModelRef = parseSharedModelRef(modelRef);
+  if (sharedModelRef) {
+    const rows = await db
+      .select()
+      .from(provider)
+      .where(
+        and(eq(provider.organizationId, sharedModelRef.organizationId), eq(provider.id, sharedModelRef.providerId)),
+      )
+      .limit(1);
+    const matched = rows[0];
+    if (!matched) {
+      throwInvalidConfig(
+        `AgentConfig '${agentConfig.id}' references missing model provider '${sharedModelRef.organizationId}/${sharedModelRef.providerId}'`,
+        `[launch-spec-builder] missing shared provider for agentConfig='${agentConfig.id}', modelRef='${modelRef}', providerRef='${sharedModelRef.organizationId}/${sharedModelRef.providerId}'`,
+      );
+    }
+
+    log(
+      `[launch-spec-builder] resolveModelConfig: matched shared provider=${JSON.stringify(
+        summarizeProviders([matched])[0],
+      )}, modelId='${sharedModelRef.modelId}'`,
+    );
+
+    const modelRows = await db
+      .select()
+      .from(model)
+      .where(
+        and(
+          eq(model.organizationId, matched.organizationId),
+          eq(model.providerId, matched.id),
+          eq(model.modelId, sharedModelRef.modelId),
+        ),
+      )
+      .limit(1);
+    const matchedModel = modelRows[0];
+    if (!matchedModel) {
+      throwInvalidConfig(
+        `AgentConfig '${agentConfig.id}' references missing model '${sharedModelRef.modelId}'`,
+        `[launch-spec-builder] missing shared model row for agentConfig='${agentConfig.id}', provider='${matched.organizationId}/${matched.id}', modelId='${sharedModelRef.modelId}', available=${JSON.stringify(
+          summarizeModels(modelRows),
+        )}`,
+      );
+    }
+
+    return {
+      provider: matched.name,
+      protocol: toLaunchModelProtocol(matched.protocol, matched.name, agentConfig.id),
+      baseUrl: matched.baseUrl || "",
+      apiKey: matched.apiKey || "",
+      model: matchedModel.modelId,
+    };
+  }
+
+  // Phase 3: 兼容历史 `providerName/modelId` 格式，只在当前 AgentConfig 所属组织内解析 provider。
+  const legacyModelRef = parseLegacyModelRef(modelRef);
+  if (!legacyModelRef) {
     throwInvalidConfig(
-      `AgentConfig '${agentConfig.id}' references missing model id '${agentConfig.modelId}'`,
-      `[launch-spec-builder] missing model row by modelId for agentConfig='${agentConfig.id}', modelId='${agentConfig.modelId}'`,
+      `AgentConfig '${agentConfig.id}' has invalid model ref '${modelRef}'`,
+      `[launch-spec-builder] invalid legacy modelRef for agentConfig='${agentConfig.id}', modelRef='${modelRef}'`,
     );
   }
 
-  const providerRows = await db
+  const rows = await db
     .select()
     .from(provider)
-    .where(and(eq(provider.id, matchedModel.providerId), eq(provider.organizationId, matchedModel.organizationId)))
-    .limit(1);
-  const matchedProvider = providerRows[0];
-  if (!matchedProvider) {
+    .where(
+      and(
+        eq(provider.organizationId, agentConfig.organizationId),
+        or(eq(provider.name, legacyModelRef.providerName), eq(provider.displayName, legacyModelRef.providerName)),
+      ),
+    )
+    .limit(5);
+
+  if (rows.length === 0) {
     throwInvalidConfig(
-      `AgentConfig '${agentConfig.id}' references missing provider for model '${agentConfig.modelId}'`,
-      `[launch-spec-builder] missing provider row for agentConfig='${agentConfig.id}', modelId='${agentConfig.modelId}', providerId='${matchedModel.providerId}'`,
+      `AgentConfig '${agentConfig.id}' references missing model provider '${legacyModelRef.providerName}'`,
+      `[launch-spec-builder] missing legacy provider for agentConfig='${agentConfig.id}', modelRef='${modelRef}', providerName='${legacyModelRef.providerName}'`,
+    );
+  }
+
+  const matched =
+    rows.find((row) => row.name === legacyModelRef.providerName) ??
+    rows.find((row) => row.displayName === legacyModelRef.providerName) ??
+    rows[0];
+  if (!matched) {
+    throwInvalidConfig(
+      `AgentConfig '${agentConfig.id}' references missing model provider '${legacyModelRef.providerName}'`,
+      `[launch-spec-builder] empty provider candidates after lookup for agentConfig='${agentConfig.id}', modelRef='${modelRef}'`,
+    );
+  }
+
+  if (rows.length > 1) {
+    log(
+      `[launch-spec-builder] resolveModelConfig: multiple legacy providers matched for agentConfig='${agentConfig.id}', providerName='${legacyModelRef.providerName}', chosen='${matched.organizationId}/${matched.id}'`,
     );
   }
 
   log(
-    `[launch-spec-builder] resolveModelConfig: resolved modelId='${agentConfig.modelId}' to provider='${matchedProvider.organizationId}/${matchedProvider.id}', model='${matchedModel.modelId}'`,
+    `[launch-spec-builder] resolveModelConfig: matched legacy provider=${JSON.stringify(
+      summarizeProviders([matched])[0],
+    )}, modelId='${legacyModelRef.modelId}'`,
   );
+
+  const modelRows = await db
+    .select()
+    .from(model)
+    .where(
+      and(
+        eq(model.organizationId, matched.organizationId),
+        eq(model.providerId, matched.id),
+        eq(model.modelId, legacyModelRef.modelId),
+      ),
+    )
+    .limit(1);
+  const matchedModel = modelRows[0];
+  if (!matchedModel) {
+    throwInvalidConfig(
+      `AgentConfig '${agentConfig.id}' references missing model '${legacyModelRef.modelId}'`,
+      `[launch-spec-builder] missing legacy model row for agentConfig='${agentConfig.id}', provider='${matched.organizationId}/${matched.id}', modelId='${legacyModelRef.modelId}', available=${JSON.stringify(
+        summarizeModels(modelRows),
+      )}`,
+    );
+  }
+
   return {
-    provider: matchedProvider.name,
-    protocol: toLaunchModelProtocol(matchedProvider.protocol, matchedProvider.name, agentConfig.id),
-    baseUrl: matchedProvider.baseUrl || "",
-    apiKey: resolveApiKey(matchedProvider.apiKey) ?? "",
+    provider: matched.name,
+    protocol: toLaunchModelProtocol(matched.protocol, matched.name, agentConfig.id),
+    baseUrl: matched.baseUrl || "",
+    apiKey: matched.apiKey || "",
     model: matchedModel.modelId,
-    // opencode / ccb 引擎用 modelName 作为运行时模型标识（如 ANTHROPIC_MODEL 环境变量）。
-    // 数据库 model.modelId 即用户配置的模型名（如 deepseek-v4-flash），直接透传。
-    modelName: matchedModel.modelId,
   };
 }
 
@@ -157,9 +307,8 @@ async function resolveFirstReadableModelConfig(input: {
       provider: providerRow.name,
       protocol: toLaunchModelProtocol(providerRow.protocol, providerRow.name, input.environmentId ?? "minimal"),
       baseUrl: providerRow.baseUrl || "",
-      apiKey: resolveApiKey(providerRow.apiKey) ?? "",
+      apiKey: providerRow.apiKey || "",
       model: firstModel.modelId,
-      modelName: firstModel.modelId,
     };
   }
 
@@ -228,43 +377,12 @@ async function loadAgentSkills(agentConfig: AgentConfigDetailWithAccess): Promis
   return skillIds.map((skillId) => skillById.get(skillId) as SkillRow);
 }
 
-/**
- * 读取 Agent 显式绑定的 MCP，并保持与绑定顺序一致。
- *
- * AgentConfig 现在采用“显式勾选”语义，因此空绑定就代表不注入任何 MCP，
- * 这里不能再回退到组织下全部可用 MCP。
- */
-async function loadAgentMcpServers(agentConfig: AgentConfigDetailWithAccess): Promise<McpServerRow[]> {
-  const bindings = await db
-    .select({ mcpServerId: agentConfigMcp.mcpServerId })
-    .from(agentConfigMcp)
-    .where(eq(agentConfigMcp.agentConfigId, agentConfig.id));
-  if (bindings.length === 0) {
-    return [];
-  }
-
-  const mcpIds = bindings.map((row) => row.mcpServerId);
-  const mcpRows = await db.select().from(mcpServer).where(inArray(mcpServer.id, mcpIds));
-  const mcpById = new Map(mcpRows.map((row) => [row.id, row]));
-  const missingMcpIds = mcpIds.filter((mcpId) => !mcpById.has(mcpId));
-  if (missingMcpIds.length > 0) {
-    throwInvalidConfig(
-      `AgentConfig '${agentConfig.id}' references missing MCP servers`,
-      `[launch-spec-builder] missing mcp rows for agentConfig='${agentConfig.id}', missingMcpIds=${JSON.stringify(missingMcpIds)}, available=${JSON.stringify(
-        summarizeRawMcpServers(mcpRows),
-      )}`,
-    );
-  }
-
-  const disabledMcpRows = mcpRows.filter((row) => !row.enabled);
-  if (disabledMcpRows.length > 0) {
-    throwInvalidConfig(
-      `AgentConfig '${agentConfig.id}' references disabled MCP servers`,
-      `[launch-spec-builder] disabled mcp rows for agentConfig='${agentConfig.id}', disabled=${JSON.stringify(summarizeRawMcpServers(disabledMcpRows))}`,
-    );
-  }
-
-  return mcpIds.map((mcpId) => mcpById.get(mcpId) as McpServerRow);
+/** MCP 仍按 AgentConfig 所属组织加载 enabled 项，builder 不再承担权限判定职责。 */
+async function loadEnabledMcpServers(agentConfig: AgentConfigDetailWithAccess): Promise<McpServerRow[]> {
+  return db
+    .select()
+    .from(mcpServer)
+    .where(and(eq(mcpServer.organizationId, agentConfig.organizationId), eq(mcpServer.enabled, true)));
 }
 
 /**
@@ -424,14 +542,14 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
 
   const { organizationId, userId, environmentId, agentConfig, environmentSecret } = input;
   log(
-    `[launch-spec-builder] buildLaunchSpec: agent='${agentConfig.name}', agentConfigId='${agentConfig.id}', modelId='${agentConfig.modelId ?? ""}', org='${agentConfig.organizationId}'`,
+    `[launch-spec-builder] buildLaunchSpec: agent='${agentConfig.name}', agentConfigId='${agentConfig.id}', modelRef='${agentConfig.model ?? ""}', org='${agentConfig.organizationId}'`,
   );
 
   // Phase 1: 先并行拿到构造 launchSpec 的原始资源，确保错误尽早暴露。
   const [model, skillRows, rawMcpServers, knowledgeBindings] = await Promise.all([
     resolveModelConfig(agentConfig),
     loadAgentSkills(agentConfig),
-    loadAgentMcpServers(agentConfig),
+    loadEnabledMcpServers(agentConfig),
     listAgentKnowledgeBindingsById(agentConfig.id),
   ]);
 
