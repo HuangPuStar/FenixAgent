@@ -1,7 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, LogOut, UserRound } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { NS } from "@/src/i18n";
 import { ChangePasswordDialog } from "../../../components/ChangePasswordDialog";
 import { signOut, useSession } from "../../../src/lib/auth-client";
@@ -35,22 +41,9 @@ export function AgentSidebar({
   const [orgMenuOpen, setOrgMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("agent-panel:sidebar-collapsed") === "true");
-  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const userEmail = session?.user?.email ?? "";
   const userName = session?.user?.name || userEmail.split("@")[0] || "User";
-
-  useEffect(() => {
-    if (!userMenuOpen && !orgMenuOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-        setOrgMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [userMenuOpen, orgMenuOpen]);
 
   useEffect(() => {
     localStorage.setItem("agent-panel:sidebar-collapsed", String(collapsed));
@@ -108,79 +101,73 @@ export function AgentSidebar({
 
       {/* 底部：用户 + 组织 */}
       <div className="agent-sidebar-footer border-t border-border-subtle">
-        <div ref={userMenuRef} className="agent-sidebar-user-panel relative">
-          {userMenuOpen && (
-            <div className="agent-sidebar-user-menu absolute rounded-[var(--radius-lg)] shadow-lg shadow-black/10 z-50">
-              <div className="agent-sidebar-user-menu-section">
-                <button
-                  type="button"
+        <div className="agent-sidebar-user-panel">
+          {/* 统一底部卡片 */}
+          <div className="agent-sidebar-footer-card">
+            <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <button type="button" onClick={() => setOrgMenuOpen(false)} className="agent-sidebar-user-button">
+                  <div className="agent-sidebar-avatar-slot">
+                    <div className="agent-sidebar-avatar">
+                      <UserRound className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <span className="agent-sidebar-user-name truncate">{userName}</span>
+                  <ChevronRight className="agent-sidebar-user-chevron w-3.5 h-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="end" sideOffset={4} className="min-w-48 p-1.5">
+                <DropdownMenuItem
                   onClick={() => {
                     setUserMenuOpen(false);
                     setChangePasswordOpen(true);
                   }}
-                  className="agent-sidebar-user-menu-item"
+                  className="px-3 py-2.5 focus:outline-none focus-visible:ring-0"
                 >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  {tSidebar("personalSettings", { defaultValue: "个人设置" })}
-                </button>
-                <button type="button" onClick={handleLogout} className="agent-sidebar-user-menu-item danger">
-                  <LogOut className="w-3.5 h-3.5" />
+                  <KeyRound className="w-4 h-4" />
+                  {tSidebar("changePassword", { defaultValue: "修改密码" })}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={handleLogout}
+                  className="px-3 py-2.5 focus:outline-none focus-visible:ring-0"
+                >
+                  <LogOut className="w-4 h-4" />
                   {tSidebar("logout")}
-                </button>
-              </div>
-            </div>
-          )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <div className="agent-sidebar-user">
-            <button
-              type="button"
-              onClick={() => {
-                setOrgMenuOpen(false);
-                setUserMenuOpen((v) => !v);
-              }}
-              className="agent-sidebar-user-button"
-            >
-              <div className="agent-sidebar-avatar">
-                <UserRound className="w-4 h-4" />
-              </div>
-              <span className="agent-sidebar-user-name truncate">{userName}</span>
-              <ChevronRight className="agent-sidebar-user-chevron w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {orgMenuOpen && (
-            <div className="agent-sidebar-org-menu absolute rounded-[var(--radius-lg)] shadow-lg shadow-black/10 z-50">
-              <div className="agent-sidebar-user-menu-section orgs">
-                {orgs.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => void handleSwitchOrg(item.id)}
-                    className={["agent-sidebar-user-menu-item", item.id === org?.id ? "active" : ""].join(" ")}
-                  >
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span className="truncate">{item.name}</span>
-                    {item.id === org?.id && <Check className="ml-auto w-3.5 h-3.5" />}
+            {org && (
+              <DropdownMenu open={orgMenuOpen} onOpenChange={setOrgMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" onClick={() => setUserMenuOpen(false)} className="agent-sidebar-org-row">
+                    <div className="agent-sidebar-org-icon-wrap">
+                      <Building2 className="agent-sidebar-org-icon w-4 h-4" />
+                    </div>
+                    <span className="agent-sidebar-org-name truncate">{org.name}</span>
+                    <ChevronRight className="agent-sidebar-org-chevron w-3.5 h-3.5" />
                   </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {org && (
-            <button
-              type="button"
-              className="agent-sidebar-org-row"
-              onClick={() => {
-                setUserMenuOpen(false);
-                setOrgMenuOpen((v) => !v);
-              }}
-            >
-              <Building2 className="agent-sidebar-org-icon w-4 h-4" />
-              <span className="agent-sidebar-org-name truncate">{org.name}</span>
-              <ChevronRight className="agent-sidebar-org-chevron w-3.5 h-3.5" />
-            </button>
-          )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="end" sideOffset={4} className="min-w-48 p-1.5">
+                  <div className="px-3 py-2 text-xs text-muted-foreground font-medium">
+                    {tSidebar("switchOrgHint", { defaultValue: "点击切换组织" })}
+                  </div>
+                  {orgs.map((item) => (
+                    <DropdownMenuItem
+                      key={item.id}
+                      onClick={() => void handleSwitchOrg(item.id)}
+                      className="px-3 py-2.5 focus:outline-none focus-visible:ring-0"
+                    >
+                      <Building2 className="w-4 h-4" />
+                      <span className="truncate">{item.name}</span>
+                      {item.id === org?.id && <Check className="ml-auto w-4 h-4" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
       </div>
       <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />

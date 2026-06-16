@@ -1,4 +1,4 @@
-import { ChevronDown, Search, Share2, Sparkles, Upload } from "lucide-react";
+import { Search, Share2, Sparkles, Upload } from "lucide-react";
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -6,12 +6,6 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -36,6 +30,8 @@ import type {
   SkillUploadConflictStrategy,
   UploadSkillSummary,
 } from "../../../types/config";
+
+import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 type SkillInfo = { id: string; name: string; description: string; resourceAccess?: ResourceAccess };
 type CreateMode = "text" | "upload";
@@ -313,16 +309,25 @@ export function AgentSkillsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col bg-[#f4f7fb]">
-        <div className="border-b border-[#e7edf5] bg-white px-6 py-4">
-          <Skeleton className="h-7 w-28 rounded-md" />
-          <Skeleton className="mt-2 h-4 w-64 rounded-md" />
-        </div>
-        <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-6 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-            <Skeleton key={i} className="h-36 w-full rounded-xl" />
-          ))}
+      <div className="flex min-h-0 flex-1 bg-[#f4f7fb]">
+        <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+          <div className="mb-3 flex items-start justify-between gap-4">
+            <div>
+              <Skeleton className="h-[22px] w-28 rounded-md" />
+              <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-10 w-28 rounded-lg" />
+              <Skeleton className="h-10 w-32 rounded-lg" />
+            </div>
+          </div>
+          <div className="mb-3.5 h-px bg-[#e8edf4]" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+              <Skeleton key={i} className="h-36 w-full rounded-xl" />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -409,55 +414,41 @@ export function AgentSkillsPage() {
   return (
     <div className="flex min-h-0 flex-1 bg-[#f4f7fb]">
       <div className="min-h-0 flex-1 overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-        <div className="mb-7 flex items-center justify-between gap-4">
-          <h1 className="text-[28px] font-bold tracking-tight text-[#1474ff]">{t("title")}</h1>
-        </div>
+        <AgentPageHeader
+          title={t("title")}
+          subtitle={t("subtitle")}
+          actions={
+            <>
+              <Button
+                variant="outline"
+                className="h-10 shrink-0 gap-2 rounded-lg px-4 text-[13px] font-semibold"
+                onClick={() => handleOpenCreate("upload")}
+              >
+                <Upload className="h-4 w-4" />
+                {t("btn.uploadSkill")}
+              </Button>
+              <Button
+                className="h-10 shrink-0 gap-2 rounded-lg px-4 text-[13px] font-semibold"
+                onClick={() => setChatOpen(true)}
+              >
+                <Sparkles className="h-4 w-4" />
+                对话创建
+              </Button>
+            </>
+          }
+        />
 
-        {/* 共享搜索框：同时过滤两个区域 */}
-        <div className="mb-6 flex items-center gap-5">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-[#98a8bd]" />
-            <Input
+        {/* 搜索框 */}
+        <div className="mb-7 flex items-center gap-2">
+          <div className="relative w-full max-w-md">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a8bd]" />
+            <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("search")}
-              className="h-11 w-full rounded-lg border-[#dce5ef] bg-white px-11 text-[14px] text-[#1a2944] shadow-sm transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
+              className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
             />
           </div>
-          <Button
-            variant="outline"
-            className="h-11 shrink-0 gap-2 rounded-lg px-4 text-[14px] font-semibold"
-            onClick={() => handleOpenCreate("upload")}
-          >
-            <Upload className="h-4 w-4" />
-            {t("btn.uploadSkill")}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="h-11 shrink-0 gap-2 rounded-lg bg-[#6965f6] px-6 text-[14px] font-semibold text-white shadow-[0_10px_20px_rgba(105,101,246,0.24)] transition hover:bg-[#5d59df]">
-                {t("btn.createSkill")}
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              sideOffset={8}
-              className="w-[180px] rounded-none border-[#e5e7eb] bg-white p-0 text-[#374151] shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
-            >
-              <DropdownMenuItem
-                className="h-14 justify-center rounded-none text-[14px] text-[#3f4655] focus:bg-[#f7f9fc] focus:text-[#1677ff]"
-                onClick={() => setChatOpen(true)}
-              >
-                对话创建
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="h-14 justify-center rounded-none border-t border-[#eef1f5] text-[14px] text-[#3f4655] focus:bg-[#f7f9fc] focus:text-[#1677ff]"
-                onClick={() => handleOpenCreate("text")}
-              >
-                markdown创建
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
 
         {/* 两区域滚动容器 */}

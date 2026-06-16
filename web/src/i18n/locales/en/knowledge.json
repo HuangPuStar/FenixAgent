@@ -1,6 +1,11 @@
 {
   "title": "Knowledge Bases",
   "subtitle": "Manage knowledge bases, view resource status and upload indexed materials",
+  "loadError": "Failed to load knowledge bases",
+  "loadDetailError": "Failed to load knowledge base details",
+  "searchPlaceholder": "Search knowledge bases...",
+  "emptyMessage": "No knowledge bases",
+  "selectHint": "Select a knowledge base on the left to view details",
   "newKnowledgeBase": "New Knowledge Base",
   "loadFailed": "Failed to load knowledge bases",
   "loadDetailFailed": "Failed to load knowledge base details",
@@ -20,6 +25,35 @@
   "urlResourceSubmitted": "URL resource submitted",
   "deleteResourceFailed": "Failed to delete resource",
   "resourceDeleted": "Resource deleted",
+  "btn": {
+    "create": "New Knowledge Base",
+    "edit": "Edit",
+    "delete": "Delete",
+    "upload": "Upload",
+    "uploading": "Uploading..."
+  },
+  "validation": {
+    "nameRequired": "Name is required"
+  },
+  "toast": {
+    "updated": "Knowledge base updated",
+    "created": "Knowledge base created",
+    "saveFailed": "Save failed",
+    "deleted": "Knowledge base deleted",
+    "deleteFailed": "Delete failed",
+    "uploaded": "Resources uploaded",
+    "uploadFailed": "Upload failed",
+    "resourceDeleted": "Resource deleted",
+    "deleteResourceFailed": "Failed to delete resource"
+  },
+  "resources": {
+    "title": "Resources ({{count}})",
+    "empty": "No resources"
+  },
+  "dialog": {
+    "editTitle": "Edit Knowledge Base",
+    "createTitle": "New Knowledge Base"
+  },
   "columns": {
     "name": "Name",
     "status": "Status",
@@ -67,6 +101,8 @@
     "descriptionPlaceholder": "Optional, briefly describe the knowledge base purpose"
   },
   "confirm": {
+    "deleteTitle": "Confirm Delete Knowledge Base",
+    "deleteDescription": "Are you sure you want to delete knowledge base \"{{name}}\"?",
     "title": "Confirm Delete Knowledge Base",
     "description": "Are you sure you want to delete knowledge base \"{{name}}\"?"
   }

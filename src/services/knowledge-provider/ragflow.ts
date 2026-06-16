@@ -8,8 +8,8 @@ import type {
 } from "./types";
 
 /**
- * 将 RagFlow run.status 映射为统一的 KnowledgeResourceStatus
- * UNSTART/DEFAULT → pending, RUNNING → processing, SUCCESS → ready, FAIL/CANCEL → error
+ * 将 RagFlow 文档 run 字段映射为统一的 KnowledgeResourceStatus。
+ * RagFlow 文档列表接口直接返回 run 字符串，DONE 表示解析完成。
  */
 function mapRunStatus(runStatus: string | undefined): "pending" | "processing" | "ready" | "error" {
   switch (runStatus) {
@@ -17,10 +17,9 @@ function mapRunStatus(runStatus: string | undefined): "pending" | "processing" |
       return "pending";
     case "RUNNING":
       return "processing";
-    case "SUCCESS":
+    case "DONE":
       return "ready";
     case "FAIL":
-    case "CANCEL":
       return "error";
     default:
       return "pending";
@@ -40,6 +39,11 @@ interface RagFlowResponse<T = unknown> {
   code: number;
   message?: string;
   data?: T;
+}
+
+/** 判断 RagFlow 返回体是否是业务响应对象。 */
+function isRagFlowResponse(value: unknown): value is RagFlowResponse {
+  return typeof value === "object" && value !== null && "code" in value;
 }
 
 /**
@@ -74,15 +78,40 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         signal: controller.signal,
       });
 
-      const payload = await response.json();
+      let payload: unknown = null;
+      if (typeof response.text === "function") {
+        const rawText = await response.text();
+        if (rawText.trim().length > 0) {
+          try {
+            payload = JSON.parse(rawText);
+          } catch (err) {
+            console.error(err);
+            throw new Error(`RagFlow returned non-JSON response: HTTP ${response.status}`);
+          }
+        }
+      } else {
+        // 兼容测试里的轻量 fetch stub；真实 Response 始终提供 text()。
+        payload = await response.json();
+      }
 
       if (!response.ok) {
-        const message = (payload as RagFlowResponse).message ?? `HTTP ${response.status}`;
+        const message = isRagFlowResponse(payload)
+          ? (payload.message ?? `HTTP ${response.status}`)
+          : `HTTP ${response.status}`;
         throw new Error(message);
       }
 
-      if ((payload as RagFlowResponse).code !== 0) {
-        const { code, message } = payload as RagFlowResponse;
+      // DELETE 类接口有些 RagFlow 部署返回 204/空响应，视作 HTTP 层成功。
+      if (payload === null && response.status === 204) {
+        return { code: 0 } as T;
+      }
+
+      if (!isRagFlowResponse(payload)) {
+        throw new Error("RagFlow returned unexpected response");
+      }
+
+      if (payload.code !== 0) {
+        const { code, message } = payload;
         throw new Error(`code=${code}: ${message}`);
       }
 
@@ -121,9 +150,25 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
     remoteAccountId: string;
     remoteUserId: string;
   }): Promise<void> {
-    await this.request(`/api/v1/datasets/${input.knowledgeBaseRemoteId}`, {
-      method: "DELETE",
-    });
+    try {
+      await this.request(`/api/v1/datasets/${input.knowledgeBaseRemoteId}`, {
+        method: "DELETE",
+      });
+    } catch (err) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("MethodNotAllowed") && !message.includes("405")) {
+        throw err;
+      }
+
+      // RagFlow v0.26 的 dataset 删除接口使用集合端点 + ids body，
+      // 保留上面的旧路径优先尝试以兼容已经部署过的旧版本。
+      await this.request("/api/v1/datasets", {
+        method: "DELETE",
+        body: JSON.stringify({ ids: [input.knowledgeBaseRemoteId] }),
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 
   async addResource(input: {
@@ -195,7 +240,15 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
 
       const statusPayload = await this.request<
         RagFlowResponse<{
-          docs: Array<{ id: string; name?: string; run?: { status: string; message?: string } }>;
+          docs: Array<{
+            id: string;
+            name?: string;
+            run?: string;
+            progress?: number;
+            progress_msg?: string;
+            chunk_count?: number;
+            token_count?: number;
+          }>;
         }>
       >(`/api/v1/datasets/${datasetId}/documents?page=1&page_size=50`);
 
@@ -206,9 +259,21 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         throw new Error("document not found during polling");
       }
 
-      const runStatus = targetDoc.run?.status;
+      const targetRunStatus = targetDoc.run;
+      const targetRunMessage = targetDoc.progress_msg;
 
-      if (runStatus === "SUCCESS") {
+      // 解析状态异常时，进度与分块/Token 计数是定位 RagFlow 解析卡住的关键上下文。
+      console.log("[ragflow] polling document parse status", {
+        datasetId,
+        documentId,
+        run: targetRunStatus,
+        progress: targetDoc.progress,
+        progress_msg: targetRunMessage,
+        chunk_count: targetDoc.chunk_count,
+        token_count: targetDoc.token_count,
+      });
+
+      if (targetRunStatus === "DONE") {
         return {
           remoteId: documentId,
           knowledgeBaseRemoteId: datasetId,
@@ -220,11 +285,20 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         };
       }
 
-      if (runStatus === "FAIL" || runStatus === "CANCEL") {
-        throw new Error(targetDoc.run?.message ?? `parse ${runStatus}`);
+      if (targetRunStatus === "FAIL") {
+        console.error("[ragflow] document parse failed", {
+          datasetId,
+          documentId,
+          run: targetRunStatus,
+          progress: targetDoc.progress,
+          progress_msg: targetRunMessage,
+          chunk_count: targetDoc.chunk_count,
+          token_count: targetDoc.token_count,
+        });
+        throw new Error(targetRunMessage ?? `parse ${targetRunStatus}`);
       }
 
-      // RUNNING / UNSTART 继续轮询
+      // RUNNING / UNSTART 继续轮询，未知状态也保守等待，避免 RagFlow 新状态导致误判失败。
     }
   }
 
@@ -248,7 +322,8 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
             name?: string;
             type?: string;
             source_url?: string;
-            run?: { status: string; message?: string };
+            run?: string;
+            progress_msg?: string;
           }>;
         }>
       >(`/api/v1/datasets/${datasetId}/documents?page=${page}&page_size=${pageSize}`);
@@ -265,9 +340,9 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
           knowledgeBaseRemoteId: datasetId,
           sourceName: doc.name ?? doc.id,
           sourceType: doc.type ?? "unknown",
-          status: mapRunStatus(doc.run?.status),
+          status: mapRunStatus(doc.run),
           source: doc.source_url ?? null,
-          lastError: doc.run?.message ?? null,
+          lastError: doc.progress_msg ?? null,
         });
       }
 
@@ -289,9 +364,24 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
     remoteUserId: string;
     recursive?: boolean;
   }): Promise<void> {
-    await this.request(`/api/v1/datasets/${input.knowledgeBaseRemoteId}/documents/${input.resourceRemoteId}`, {
-      method: "DELETE",
-    });
+    try {
+      await this.request(`/api/v1/datasets/${input.knowledgeBaseRemoteId}/documents/${input.resourceRemoteId}`, {
+        method: "DELETE",
+      });
+    } catch (err) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("MethodNotAllowed") && !message.includes("405")) {
+        throw err;
+      }
+
+      // RagFlow v0.26 的 document 删除接口使用集合端点 + ids body。
+      await this.request(`/api/v1/datasets/${input.knowledgeBaseRemoteId}/documents`, {
+        method: "DELETE",
+        body: JSON.stringify({ ids: [input.resourceRemoteId] }),
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 
   async search(input: {

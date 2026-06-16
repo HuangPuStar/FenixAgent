@@ -1,10 +1,9 @@
-import { AlertTriangle, Copy } from "lucide-react";
+import { AlertTriangle, Copy, KeyRound, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +29,7 @@ export function AgentApiKeysPage() {
   const [formName, setFormName] = useState("");
   const [formSaving, setFormSaving] = useState(false);
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const loadKeys = useCallback(async () => {
     setLoading(true);
@@ -96,14 +96,26 @@ export function AgentApiKeysPage() {
     return new Date(ts).toLocaleDateString();
   };
 
+  // 基于外部搜索过滤密钥列表
+  const filteredKeys = searchQuery.trim()
+    ? keys.filter((k) => k.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : keys;
+
   if (loading) {
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
-        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <Skeleton className="h-[22px] w-28 rounded-md" />
+            <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
+          </div>
+          <Skeleton className="h-10 w-28 rounded-lg" />
+        </div>
+        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+        <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+            <Skeleton key={i} className="h-20 w-full rounded-lg" />
           ))}
         </div>
       </div>
@@ -111,45 +123,74 @@ export function AgentApiKeysPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
       <AgentPageHeader
         title={t("title")}
         subtitle={t("subtitle")}
-        actions={<Button onClick={handleCreate}>{t("btn.create")}</Button>}
+        actions={
+          <button
+            type="button"
+            onClick={handleCreate}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
+          >
+            <Plus className="h-4 w-4" />
+            {t("btn.create")}
+          </button>
+        }
       />
+
+      {/* 搜索栏 */}
+      <div className="mb-3.5 flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-md">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a8bd]" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t("searchPlaceholder")}
+            className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
+          />
+        </div>
+      </div>
+
       <AgentCardList
-        items={keys}
+        items={filteredKeys}
         cardKey={(k) => k.id}
-        searchPlaceholder={t("searchPlaceholder")}
-        searchFn={(k, q) => k.name.toLowerCase().includes(q)}
         emptyMessage={t("emptyMessage")}
+        gridCols="grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
         renderCard={(key) => (
-          <div className="group rounded-lg border border-border-light bg-surface-1 px-4 py-3 transition-colors hover:border-border-active hover:shadow-sm">
-            <div className="flex items-center gap-3">
+          <div className="rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm overflow-hidden">
+            {/* ── 头部：图标 + 名称 + 前缀 ── */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
+              <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center text-base font-extrabold text-white">
+                <KeyRound className="h-4 w-4" />
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-text-bright">{key.name}</span>
-                  <span className="font-mono text-xs text-text-muted bg-surface-2 px-1.5 py-0.5 rounded">
+                  <span className="text-sm font-semibold text-text-bright truncate">{key.name}</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium font-mono bg-surface-2 text-text-muted truncate">
                     {key.prefix}...
                   </span>
                 </div>
-                <p className="text-xs text-text-dim mt-1">
+                <p className="text-[11px] text-text-muted mt-0.5">
                   {t("column.created")}: {formatDate(key.createdAt)}
                   {key.expiresAt && ` · ${t("column.expires")}: ${formatDate(key.expiresAt)}`}
                 </p>
               </div>
-              <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  size="xs"
-                  variant="destructive"
-                  onClick={() => {
-                    setDeleteTarget(key.id);
-                    setConfirmOpen(true);
-                  }}
-                >
-                  {t("btn.revoke")}
-                </Button>
-              </div>
+            </div>
+
+            {/* ── 操作栏 ── */}
+            <div className="flex items-center px-4 py-2.5 border-t border-border-subtle bg-surface-0 text-[11px]">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDeleteTarget(key.id);
+                  setConfirmOpen(true);
+                }}
+                className="text-red-500 hover:text-red-600 transition-colors ml-auto"
+              >
+                {t("btn.revoke")}
+              </button>
             </div>
           </div>
         )}

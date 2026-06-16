@@ -151,6 +151,11 @@
     "uploadingProgress": "{{percent}}%",
     "downloadZip": "Download ZIP",
     "downloadFailed": "Download failed",
+    "showTree": "Show file tree",
+    "hideTree": "Hide file tree",
+    "closeTab": "Close tab",
+    "moreTabs": "{{count}} more tabs",
+    "noTabsHint": "Pick a file from the tree to preview",
     "contextMenu": {
       "reference": "Reference in chat",
       "rename": "Rename",
@@ -171,7 +176,9 @@
       "pdfLoadFailed": "Failed to load PDF",
       "tableLoadFailed": "Failed to load table file",
       "emptyTable": "The table is empty",
-      "tableTruncated": "Showing {{shown}} of {{total}} rows"
+      "tableTruncated": "Showing {{shown}} of {{total}} rows",
+      "htmlPreview": "Preview",
+      "htmlSource": "Source"
     }
   },
   "tool": {
@@ -280,6 +287,14 @@
     "waitingSession": "Waiting for session...",
     "readonlyMode": "Read-only mode — cannot send messages"
   },
+  "chatHeader": {
+    "newSession": "New Session",
+    "searchPlaceholder": "Search history sessions...",
+    "noResults": "No matching sessions",
+    "refresh": "Refresh sessions",
+    "showSessions": "Show sessions panel",
+    "hideSessions": "Hide sessions panel"
+  },
   "chatMessage": {
     "you": "You",
     "agent": "Agent"
@@ -323,6 +338,26 @@
     "history_earlier": "Earlier",
     "history_empty": "No sessions",
     "history_untitled": "Untitled",
-    "chat_collapse": "Collapse Panel"
-  }
+    "chat_collapse": "Collapse Panel",
+    "chat_expand": "Expand Panel"
+  },
+  "chatComposer": {
+    "send": "Send",
+    "stop": "Stop",
+    "newSession": "New Thread",
+    "placeholder": "Send a message to the agent…",
+    "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file"
+  },
+  "chatEmpty": {
+    "skills": "Loaded Skills",
+    "skillsHint": "Type / to open skill menu",
+    "noSkills": "No skills bound"
+  },
+  "agentBadge": {
+    "enterChat": "Enter Chat",
+    "edit": "Edit",
+    "statusRunning": "Running",
+    "statusStopped": "Stopped"
+  },
+  "orgSwitchFailed": "Failed to switch organization"
 }

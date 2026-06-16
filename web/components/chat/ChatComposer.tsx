@@ -1,5 +1,5 @@
 import imageCompression from "browser-image-compression";
-import { AtSign, Send, Slash, Square } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -10,14 +10,18 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { AvailableCommand } from "../../src/acp/types";
+import type { ACPClient } from "../../src/acp/client";
+import type { AvailableCommand, SessionMode } from "../../src/acp/types";
 import { fileApi } from "../../src/api/sdk";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
+import type { TokenStats } from "../../src/lib/token-stats";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import type { FileInfo } from "../../src/types";
+import { ModelSelectorPopover } from "../model-selector/ModelSelectorPopover";
 import { Button } from "../ui/button";
 import { CommandMenu } from "./CommandMenu";
+import { SessionModeSelector } from "./SessionModeSelector";
 
 // 图片压缩配置
 const IMAGE_COMPRESSION_OPTIONS = {
@@ -27,11 +31,11 @@ const IMAGE_COMPRESSION_OPTIONS = {
   fileType: "image/jpeg" as const,
 };
 
-// =============================================================================
-// Anthropic 风格聊天输入框 — 底部居中浮动卡片，橙色焦点环
-// =============================================================================
+// 元信息条 token 统计所用的上下文窗口假设上限，用于进度条和百分比归一化
+const MAX_CONTEXT_TOKENS = 200000;
 
-interface ChatInputProps {
+/** ChatComposer 属性 — 新玻璃磨砂命令岛输入组件 */
+interface ChatComposerProps {
   onSubmit: (message: ChatInputMessage) => void;
   isLoading?: boolean;
   onInterrupt?: () => void;
@@ -43,10 +47,32 @@ interface ChatInputProps {
   commands?: AvailableCommand[];
   /** 环境 ID，用于文件上传/浏览（workspace 按环境隔离） */
   envId?: string;
+  /** ACP 客户端实例，用于获取 Agent 能力。
+   *  Task 3 骨架阶段未使用；Task 5 接入 ModelSelectorPopover 时才会真正调用 client。 */
+  client?: ACPClient;
+  /** 可用会话模式列表（Task 5 元信息条用到） */
+  availableModes?: SessionMode[];
+  /** 当前会话模式 ID（Task 5 元信息条用到） */
+  currentModeId?: string | null;
+  /** 模式切换回调（Task 5 元信息条用到） */
+  onModeChange?: (modeId: string) => void;
+  /** Token 统计信息（Task 5 元信息条用到） */
+  tokenStats?: TokenStats;
+  /** 新建会话回调（Task 5 元信息条用到） */
+  onNewSession?: () => void;
+  /** 是否显示新建会话按钮（Task 5 元信息条用到） */
+  showNewSession?: boolean;
   className?: string;
 }
 
-export function ChatInput({
+/**
+ * ChatComposer — 玻璃磨砂命令岛输入组件
+ *
+ * 从 ChatInput 迁移全部输入逻辑（state/handlers/effects/图片处理/文件拖拽/slash 命令），
+ * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。底部元信息条包含：
+ * SessionModeSelector / ModelSelectorPopover / token 统计 / 新会话 / 发送。
+ */
+export function ChatComposer({
   onSubmit,
   isLoading = false,
   onInterrupt,
@@ -55,21 +81,40 @@ export function ChatInput({
   supportsImages = false,
   commands,
   envId,
+  client,
+  availableModes,
+  currentModeId,
+  onModeChange,
+  tokenStats,
+  onNewSession,
+  showNewSession,
   className,
-}: ChatInputProps) {
+}: ChatComposerProps) {
   const { t } = useTranslation("components");
-  const _placeholder = placeholder ?? t("chatInput.placeholder");
+  const _placeholder = placeholder ?? t("chatComposer.placeholder");
+
+  // ---------------------------------------------------------------------------
+  // State — 从 ChatInput 原样迁移
+  // ---------------------------------------------------------------------------
   const [text, setText] = useState("");
   const [images, setImages] = useState<UserMessageImage[]>([]);
   const [showCommandMenu, setShowCommandMenu] = useState(false);
   const [commandFilter, setCommandFilter] = useState("");
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+
+  // ---------------------------------------------------------------------------
+  // Refs — 从 ChatInput 原样迁移
+  // ---------------------------------------------------------------------------
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 文件上传和浏览使用 envId（environment ID），后端路由为 /web/environments/:envId/user/*
   const fileWorkspaceId = envId;
+
+  // ---------------------------------------------------------------------------
+  // Effects — 从 ChatInput 原样迁移
+  // ---------------------------------------------------------------------------
 
   // 监听文件树引用事件（右键菜单"引用到聊天"）
   useEffect(() => {
@@ -85,6 +130,10 @@ export function ChatInput({
     window.addEventListener("file-tree:reference", handler);
     return () => window.removeEventListener("file-tree:reference", handler);
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Handlers — 从 ChatInput 原样迁移
+  // ---------------------------------------------------------------------------
 
   // 拖拽文件路径到输入框（从文件树拖拽）
   const handleDrop = useCallback((e: DragEvent) => {
@@ -275,7 +324,7 @@ export function ChatInput({
     textareaRef.current?.focus();
   }, []);
 
-  const toggleCommandMenu = useCallback(() => {
+  const _toggleCommandMenu = useCallback(() => {
     if (showCommandMenu) {
       setShowCommandMenu(false);
       setCommandFilter("");
@@ -289,22 +338,25 @@ export function ChatInput({
     }
   }, [showCommandMenu, text]);
 
+  // ---------------------------------------------------------------------------
+  // canSend 计算 — 从 ChatInput 原样迁移
+  // ---------------------------------------------------------------------------
   const canSend = (text.trim() || images.length > 0) && !disabled;
 
+  // ---------------------------------------------------------------------------
+  // Render — 玻璃磨砂容器 + 大 textarea + 底部脚标行
+  // ---------------------------------------------------------------------------
   return (
-    <div className={cn("w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2", className)}>
+    <div
+      className={cn(
+        // chat-composer-wrapper：作为窄屏容器（如 MetaAgentPanel）收紧外边距的 CSS 作用域钩子
+        "chat-composer-wrapper w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2",
+        className,
+      )}
+    >
+      {/* relative wrapper：CommandMenu 在此层定位，不受 .chat-composer-card 的 overflow: clip 裁剪 */}
       <div className="relative">
-        {/* File Picker Dialog */}
-        {showFilePicker && fileWorkspaceId && (
-          <FilePickerDialog
-            open={showFilePicker}
-            envId={fileWorkspaceId}
-            onClose={() => setShowFilePicker(false)}
-            onSelect={handleFilePickerSelect}
-          />
-        )}
-
-        {/* Slash command menu — floating above input */}
+        {/* Slash command menu —— 浮在 composer-card 上方，不被 overflow 裁剪 */}
         {showCommandMenu && commands && commands.length > 0 && (
           <CommandMenu
             commands={commands}
@@ -317,17 +369,21 @@ export function ChatInput({
             className="absolute bottom-full left-0 right-0 mb-1 z-50"
           />
         )}
-        <div
-          className={cn(
-            "rounded-xl border border-border bg-surface-2 overflow-hidden",
-            "focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.15)] transition-all",
+
+        <div className="chat-composer-card" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+          {/* File Picker Dialog */}
+          {showFilePicker && fileWorkspaceId && (
+            <FilePickerDialog
+              open={showFilePicker}
+              envId={fileWorkspaceId}
+              onClose={() => setShowFilePicker(false)}
+              onSelect={handleFilePickerSelect}
+            />
           )}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-        >
+
           {/* 图片预览 */}
           {images.length > 0 && (
-            <div className="flex flex-wrap gap-2 px-3 pt-3">
+            <div className="flex flex-wrap gap-2 px-4 pt-3">
               {images.map((img, i) => (
                 <div key={img.data} className="relative group">
                   <img
@@ -350,44 +406,8 @@ export function ChatInput({
             </div>
           )}
 
-          {/* 输入区域 — Anthropic 单行紧凑布局 */}
-          <div className="flex items-end gap-2 px-3 py-2.5">
-            {/* Slash 命令按钮 */}
-            {commands && commands.length > 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={toggleCommandMenu}
-                className={cn(
-                  "flex-shrink-0 h-8 w-8",
-                  showCommandMenu
-                    ? "bg-brand/15 text-brand"
-                    : "text-text-muted hover:text-text-secondary hover:bg-surface-1/50",
-                )}
-                disabled={disabled}
-                title={t("chatInput.commandList")}
-              >
-                <Slash className="h-4 w-4" />
-              </Button>
-            )}
-
-            {/* @ 文件引用按钮 */}
-            {fileWorkspaceId && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowFilePicker(true)}
-                className="flex-shrink-0 h-8 w-8 text-text-muted hover:text-text-secondary hover:bg-surface-1/50"
-                disabled={disabled}
-                title={t("chatInput.referenceFile")}
-              >
-                <AtSign className="h-4 w-4" />
-              </Button>
-            )}
-
-            {/* Textarea — Poppins font */}
+          {/* 编辑区 —— textarea + 发送按钮，按钮在右下 */}
+          <div className="flex items-end gap-2 px-4 pt-4 pb-2">
             <textarea
               ref={textareaRef}
               value={text}
@@ -397,48 +417,94 @@ export function ChatInput({
               placeholder={_placeholder}
               disabled={disabled}
               rows={1}
-              className={cn(
-                "flex-1 resize-none border-none bg-transparent outline-none",
-                "text-sm text-text-primary placeholder:text-text-muted font-display",
-                "max-h-[200px] min-h-[24px] leading-normal",
-              )}
+              className="chat-composer-textarea flex-1 resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[48px] max-h-[200px] leading-relaxed"
             />
-
-            {/* 右侧发送/取消按钮 */}
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="sm"
               onClick={isLoading ? onInterrupt : handleSubmit}
               disabled={!isLoading && !canSend}
               className={cn(
-                "flex-shrink-0 h-8 w-8",
+                "h-9 w-9 shrink-0 p-0 rounded-lg flex items-center justify-center",
                 isLoading
                   ? "bg-text-primary text-surface-2 hover:bg-text-secondary"
                   : canSend
-                    ? "bg-brand text-white hover:bg-brand-light hover:scale-[1.05] active:scale-[0.97]"
-                    : "bg-surface-1 text-text-muted",
+                    ? "bg-brand text-white hover:bg-brand-light"
+                    : "bg-surface-3 text-text-muted",
               )}
             >
               {isLoading ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
-        </div>
-      </div>
-      {/* end relative */}
 
-      {/* 提示文本 */}
-      <div className="text-center mt-1.5">
-        <span className="text-[11px] text-text-muted font-display">
-          Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件
-        </span>
+          {/* 底部元信息条 —— flex-wrap 允许数据多时换行到第二行 */}
+          <div className="chat-composer-meta flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[11px]">
+            {/* 左侧：模式 + 模型 */}
+            {availableModes && availableModes.length > 0 && onModeChange && (
+              <SessionModeSelector
+                modes={availableModes}
+                currentModeId={currentModeId ?? null}
+                onModeChange={onModeChange}
+              />
+            )}
+
+            {client && <ModelSelectorPopover client={client} />}
+
+            {/* 中间弹簧 */}
+            <div className="flex-1" />
+
+            {/* 右侧：token 进度条 + 百分比 + 新会话 */}
+            {tokenStats && tokenStats.estimatedTokens > 0 && (
+              // chat-composer-token-stats：包裹 token 进度条/百分比/分隔线，作为窄屏容器隐藏的 CSS 作用域钩子。
+              // 使用 contents 让该 wrapper 不参与 flex 布局，子元素照常作为 meta 条的直接 flex item
+              <div className="chat-composer-token-stats contents">
+                <div className="w-12 h-1 rounded-full bg-surface-3 overflow-hidden flex shrink-0">
+                  <div
+                    className="h-full bg-brand transition-[width] duration-500"
+                    style={{
+                      width: `${Math.min((tokenStats.estimatedInputTokens / MAX_CONTEXT_TOKENS) * 100, 100)}%`,
+                    }}
+                  />
+                  <div
+                    className="h-full bg-accent-green transition-[width] duration-500"
+                    style={{
+                      width: `${Math.min((tokenStats.estimatedOutputTokens / MAX_CONTEXT_TOKENS) * 100, 100)}%`,
+                    }}
+                  />
+                </div>
+                <span className="font-mono text-text-primary font-semibold min-w-[28px] text-right">
+                  {Math.min(Math.round((tokenStats.estimatedTokens / MAX_CONTEXT_TOKENS) * 100), 100)}%
+                </span>
+                <span className="chat-composer-divider" />
+              </div>
+            )}
+
+            {showNewSession && onNewSession && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onNewSession}
+                className="h-7 px-2 text-[11px] text-text-muted hover:text-text-primary gap-1"
+              >
+                + {t("chatComposer.newSession")}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* 提示文本 */}
+        <div className="text-center mt-1.5">
+          <span className="text-[11px] text-text-muted">{t("chatComposer.hint")}</span>
+        </div>
       </div>
     </div>
   );
 }
 
 // =============================================================================
-// 图片处理工具
+// 图片处理工具 — 从 ChatInput 原样迁移
 // =============================================================================
 
 async function processImageFiles(files: File[]): Promise<UserMessageImage[]> {

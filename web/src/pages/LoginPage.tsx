@@ -1,25 +1,795 @@
 import { useNavigate } from "@tanstack/react-router";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { CirclePlus, Eye, EyeOff, MessageSquare, ShieldCheck, Users } from "lucide-react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authClient } from "../lib/auth-client";
 import { encryptPassword } from "../lib/password-crypto";
 
-function LoginBrandMark({ compact = false }: { compact?: boolean }) {
-  const assetBase = import.meta.env.BASE_URL;
+const brandFeatures = [
+  {
+    icon: <CirclePlus />,
+    title: "智能编排",
+    description: "多智能体协同调度",
+  },
+  {
+    icon: <ShieldCheck />,
+    title: "安全可靠",
+    description: "企业级数据安全保障",
+  },
+  {
+    icon: <MessageSquare />,
+    title: "智能对话",
+    description: "多模态自然语言交互",
+  },
+  {
+    icon: <Users />,
+    title: "组织管理",
+    description: "团队协作与权限管控",
+  },
+];
 
+const brandTags = ["AI Orchestration", "Multi-Agent", "Intelligent Core"];
+const particleKeys = ["particle-1", "particle-2", "particle-3", "particle-4", "particle-5", "particle-6"];
+
+function AuthLightStyles() {
   return (
-    <div
-      className={
-        compact
-          ? "mx-auto flex h-16 w-16 items-center justify-center rounded-[18px] border border-white/35 bg-white/12 shadow-[0_18px_42px_rgba(11,40,118,0.22)]"
-          : "mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-white/24 bg-white/12 shadow-[0_22px_55px_rgba(11,40,118,0.28)]"
+    <style>{`
+      .auth-light-page,
+      .auth-light-page * {
+        box-sizing: border-box;
       }
-    >
-      <img
-        src={`${assetBase}brand/fenix-agent-logo-mark.png`}
-        alt="Fenix Agent"
-        className={compact ? "h-12 w-12 object-contain" : "h-[72px] w-[72px] object-contain"}
-      />
+
+      .auth-light-page {
+        position: relative;
+        display: flex;
+        min-height: 100dvh;
+        overflow: hidden;
+        background: #f0f3f8;
+        color: #1a1a2e;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .auth-light-page::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(900px circle at 15% 50%, rgba(18, 46, 141, 0.06), transparent 55%),
+          radial-gradient(700px circle at 75% 25%, rgba(19, 85, 216, 0.04), transparent 50%),
+          radial-gradient(500px circle at 85% 75%, rgba(18, 46, 141, 0.03), transparent 50%);
+        animation: authBgBreathe 12s ease-in-out infinite alternate;
+      }
+
+      .auth-light-particles {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+
+      .auth-light-particle {
+        position: absolute;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(19, 85, 216, 0.35), transparent 70%);
+        animation: authParticleFloat linear infinite;
+      }
+
+      .auth-light-particle:nth-child(1) {
+        width: 4px;
+        height: 4px;
+        left: 12%;
+        top: 20%;
+        animation-duration: 18s;
+      }
+
+      .auth-light-particle:nth-child(2) {
+        width: 6px;
+        height: 6px;
+        left: 25%;
+        top: 60%;
+        animation-duration: 22s;
+        animation-delay: 2s;
+        background: radial-gradient(circle, rgba(18, 46, 141, 0.3), transparent 70%);
+      }
+
+      .auth-light-particle:nth-child(3) {
+        width: 3px;
+        height: 3px;
+        left: 40%;
+        top: 30%;
+        animation-duration: 15s;
+        animation-delay: 4s;
+      }
+
+      .auth-light-particle:nth-child(4) {
+        width: 5px;
+        height: 5px;
+        left: 55%;
+        top: 70%;
+        animation-duration: 20s;
+        animation-delay: 1s;
+        background: radial-gradient(circle, rgba(19, 85, 216, 0.3), transparent 70%);
+      }
+
+      .auth-light-particle:nth-child(5) {
+        width: 4px;
+        height: 4px;
+        left: 70%;
+        top: 15%;
+        animation-duration: 25s;
+        animation-delay: 3s;
+      }
+
+      .auth-light-particle:nth-child(6) {
+        width: 7px;
+        height: 7px;
+        left: 82%;
+        top: 55%;
+        animation-duration: 17s;
+        animation-delay: 5s;
+        background: radial-gradient(circle, rgba(18, 46, 141, 0.2), transparent 70%);
+      }
+
+      .auth-light-brand-panel {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex: 1.15;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        padding: 60px;
+        background: linear-gradient(135deg, #122e8d, #1a4aad);
+      }
+
+      .auth-light-brand-panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(800px circle at 30% 40%, rgba(255, 255, 255, 0.08), transparent 60%);
+      }
+
+      .auth-light-brand-panel::after {
+        content: "";
+        position: absolute;
+        top: 8%;
+        right: 0;
+        width: 1px;
+        height: 84%;
+        background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.12), transparent);
+        animation: authDividerPulse 4s ease-in-out infinite;
+      }
+
+      .auth-light-logo {
+        position: relative;
+        width: 110px;
+        height: 110px;
+        margin-bottom: 28px;
+      }
+
+      .auth-light-logo.auth-light-logo-compact {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 14px;
+      }
+
+      .auth-light-logo svg {
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(0 0 25px rgba(212, 175, 55, 0.35));
+        animation: authLogoPulse 4s ease-in-out infinite;
+      }
+
+      .auth-light-logo-glow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        background: radial-gradient(circle, rgba(255, 215, 0, 0.08), transparent 70%);
+        animation: authRingExpand 4s ease-in-out infinite;
+      }
+
+      .auth-light-logo-compact .auth-light-logo-glow {
+        width: 92px;
+        height: 92px;
+      }
+
+      .auth-light-phoenix {
+        fill: none;
+        stroke: #d4af37;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .auth-light-phoenix-thin {
+        fill: none;
+        stroke: #d4af37;
+        stroke-width: 1.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: 0.6;
+      }
+
+      .auth-light-phoenix-core {
+        fill: #d4af37;
+        opacity: 0.9;
+      }
+
+      .auth-light-brand-title {
+        margin-bottom: 10px;
+        color: #fff;
+        font-size: 38px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        animation: authTitleFade 0.8s ease-out both;
+      }
+
+      .auth-light-brand-sub {
+        margin-bottom: 44px;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 17px;
+        font-weight: 300;
+        letter-spacing: 0.08em;
+        animation: authTitleFade 0.8s 0.15s ease-out both;
+      }
+
+      .auth-light-features {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        width: 100%;
+        max-width: 400px;
+        animation: authTitleFade 0.8s 0.3s ease-out both;
+      }
+
+      .auth-light-feature {
+        padding: 14px 18px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.08);
+        transition: all 0.3s;
+      }
+
+      .auth-light-feature:hover {
+        border-color: rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.14);
+        transform: translateY(-2px);
+      }
+
+      .auth-light-feature-icon {
+        width: 28px;
+        height: 28px;
+        margin-bottom: 8px;
+        color: #b8d4ff;
+      }
+
+      .auth-light-feature-icon svg {
+        width: 100%;
+        height: 100%;
+        stroke-width: 1.6;
+      }
+
+      .auth-light-feature-label {
+        color: rgba(255, 255, 255, 0.55);
+        font-size: 12px;
+        line-height: 1.4;
+        letter-spacing: 0.04em;
+      }
+
+      .auth-light-feature-label strong {
+        display: block;
+        margin-bottom: 2px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .auth-light-tags {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 32px;
+        animation: authTitleFade 0.8s 0.45s ease-out both;
+      }
+
+      .auth-light-tags span {
+        padding: 5px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 20px;
+        color: rgba(255, 255, 255, 0.35);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        transition: all 0.3s;
+      }
+
+      .auth-light-tags span:hover {
+        border-color: rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .auth-light-panel {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex: 0.95;
+        flex-direction: column;
+        justify-content: center;
+        padding: 60px 80px;
+      }
+
+      .auth-light-box {
+        width: 100%;
+        max-width: 420px;
+        animation: authPanelSlide 0.7s 0.2s ease-out both;
+      }
+
+      .auth-light-mobile-brand {
+        display: none;
+        margin-bottom: 32px;
+        text-align: center;
+      }
+
+      .auth-light-mobile-title {
+        color: #122e8d;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+      }
+
+      .auth-light-title {
+        margin: 0 0 4px;
+        color: #122e8d;
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1.2;
+        letter-spacing: 0.04em;
+      }
+
+      .auth-light-sub {
+        margin: 0 0 36px;
+        color: rgba(26, 26, 46, 0.4);
+        font-size: 13px;
+        letter-spacing: 0.02em;
+      }
+
+      .auth-light-form {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .auth-light-field {
+        position: relative;
+      }
+
+      .auth-light-field label {
+        display: block;
+        margin-bottom: 6px;
+        color: rgba(26, 26, 46, 0.5);
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+      }
+
+      .auth-light-input-wrap {
+        position: relative;
+      }
+
+      .auth-light-input {
+        width: 100%;
+        padding: 13px 16px;
+        border: 1px solid #dce0e8;
+        border-radius: 10px;
+        outline: none;
+        background: #fff;
+        color: #1a1a2e;
+        font-size: 15px;
+        transition: all 0.25s;
+      }
+
+      .auth-light-input.auth-light-has-toggle {
+        padding-right: 42px;
+      }
+
+      .auth-light-input:focus {
+        border-color: #1355d8;
+        box-shadow: 0 0 0 3px rgba(19, 85, 216, 0.1);
+      }
+
+      .auth-light-input::placeholder {
+        color: rgba(26, 26, 46, 0.2);
+      }
+
+      .auth-light-input:-webkit-autofill {
+        -webkit-box-shadow: 0 0 0 30px #fff inset !important;
+        -webkit-text-fill-color: #1a1a2e !important;
+      }
+
+      .auth-light-toggle {
+        position: absolute;
+        top: 50%;
+        right: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: rgba(26, 26, 46, 0.25);
+        cursor: pointer;
+        transform: translateY(-50%);
+        transition: color 0.2s;
+      }
+
+      .auth-light-toggle:hover {
+        color: rgba(26, 26, 46, 0.5);
+      }
+
+      .auth-light-toggle svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .auth-light-options,
+      .auth-light-terms {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: -2px;
+        margin-bottom: 8px;
+        color: rgba(26, 26, 46, 0.45);
+        font-size: 13px;
+      }
+
+      .auth-light-terms {
+        align-items: flex-start;
+        justify-content: flex-start;
+        gap: 8px;
+        line-height: 1.5;
+      }
+
+      .auth-light-checkbox {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: color 0.2s;
+      }
+
+      .auth-light-checkbox:hover,
+      .auth-light-terms:hover {
+        color: rgba(26, 26, 46, 0.65);
+      }
+
+      .auth-light-checkbox input,
+      .auth-light-terms input {
+        width: 16px;
+        height: 16px;
+        accent-color: #1355d8;
+        cursor: pointer;
+      }
+
+      .auth-light-terms input {
+        flex: 0 0 auto;
+        margin-top: 2px;
+      }
+
+      .auth-light-link {
+        position: relative;
+        border: 0;
+        background: transparent;
+        color: #1355d8;
+        font-size: 13px;
+        text-decoration: none;
+        opacity: 0.7;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+
+      .auth-light-link::after {
+        content: "";
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        width: 0;
+        height: 1px;
+        background: #1355d8;
+        transition: width 0.25s;
+      }
+
+      .auth-light-link:hover {
+        opacity: 1;
+      }
+
+      .auth-light-link:hover::after {
+        width: 100%;
+      }
+
+      .auth-light-error {
+        margin: -4px 0 0;
+        padding: 10px 12px;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        border-radius: 10px;
+        background: rgba(239, 68, 68, 0.06);
+        color: rgba(200, 38, 38, 0.86);
+        font-size: 13px;
+      }
+
+      .auth-light-submit {
+        position: relative;
+        width: 100%;
+        min-height: 50px;
+        overflow: hidden;
+        padding: 15px;
+        border: 0;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #122e8d, #1355d8);
+        color: #fff;
+        cursor: pointer;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        transition: all 0.35s;
+      }
+
+      .auth-light-submit::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+        transform: translateX(-100%);
+        transition: transform 0.6s;
+      }
+
+      .auth-light-submit:hover {
+        box-shadow: 0 8px 32px rgba(18, 46, 141, 0.3);
+        filter: brightness(1.08);
+        transform: translateY(-2px);
+      }
+
+      .auth-light-submit:hover::before {
+        transform: translateX(100%);
+      }
+
+      .auth-light-submit:active {
+        transform: translateY(0);
+      }
+
+      .auth-light-submit:disabled {
+        cursor: not-allowed;
+        opacity: 0.78;
+      }
+
+      .auth-light-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: authSpin 0.6s linear infinite;
+      }
+
+      .auth-light-switch {
+        margin-top: 24px;
+        color: rgba(26, 26, 46, 0.35);
+        font-size: 13px;
+        text-align: center;
+      }
+
+      .auth-light-footer {
+        position: absolute;
+        right: 0;
+        bottom: 28px;
+        left: 0;
+        z-index: 1;
+        margin: 0;
+        color: rgba(26, 26, 46, 0.15);
+        font-size: 12px;
+        letter-spacing: 0.03em;
+        text-align: center;
+      }
+
+      @keyframes authBgBreathe {
+        0% {
+          opacity: 0.8;
+          transform: scale(1);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1.04);
+        }
+      }
+
+      @keyframes authParticleFloat {
+        0% {
+          opacity: 0;
+          transform: translateY(0) translateX(0);
+        }
+        10%,
+        90% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          transform: translateY(-120vh) translateX(40px);
+        }
+      }
+
+      @keyframes authDividerPulse {
+        0%,
+        100% {
+          opacity: 0.6;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      @keyframes authLogoPulse {
+        0%,
+        100% {
+          filter: drop-shadow(0 0 25px rgba(212, 175, 55, 0.35));
+        }
+        50% {
+          filter: drop-shadow(0 0 50px rgba(212, 175, 55, 0.55));
+        }
+      }
+
+      @keyframes authRingExpand {
+        0%,
+        100% {
+          opacity: 0.6;
+          transform: translate(-50%, -50%) scale(1);
+        }
+        50% {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1.25);
+        }
+      }
+
+      @keyframes authTitleFade {
+        0% {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes authPanelSlide {
+        0% {
+          opacity: 0;
+          transform: translateX(20px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      @keyframes authSpin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .auth-light-page::before,
+        .auth-light-particle,
+        .auth-light-logo svg,
+        .auth-light-logo-glow,
+        .auth-light-brand-title,
+        .auth-light-brand-sub,
+        .auth-light-features,
+        .auth-light-tags,
+        .auth-light-box {
+          animation: none;
+        }
+      }
+
+      @media (max-width: 1024px) {
+        .auth-light-brand-panel {
+          padding: 40px;
+        }
+
+        .auth-light-panel {
+          padding: 40px 48px;
+        }
+
+        .auth-light-brand-title {
+          font-size: 32px;
+        }
+
+        .auth-light-features {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 820px) {
+        .auth-light-brand-panel {
+          display: none;
+        }
+
+        .auth-light-panel {
+          flex: 1;
+          align-items: center;
+          padding: 48px 32px;
+        }
+
+        .auth-light-box {
+          max-width: 420px;
+        }
+
+        .auth-light-mobile-brand {
+          display: block;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .auth-light-panel {
+          padding: 32px 20px 64px;
+        }
+
+        .auth-light-title {
+          font-size: 24px;
+        }
+
+        .auth-light-options {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .auth-light-footer {
+          bottom: 18px;
+        }
+      }
+    `}</style>
+  );
+}
+
+function LoginBrandMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={compact ? "auth-light-logo auth-light-logo-compact" : "auth-light-logo"}>
+      <div className="auth-light-logo-glow" />
+      <svg aria-label="Fenix Agent" role="img" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <circle className="auth-light-phoenix-thin" cx="50" cy="50" r="42" />
+        <path className="auth-light-phoenix" d="M30,60 Q50,35 70,60" />
+        <path className="auth-light-phoenix" d="M35,40 Q50,65 65,40" />
+        <path className="auth-light-phoenix" d="M42,38 Q50,20 65,30" />
+        <path className="auth-light-phoenix-thin" d="M38,42 Q28,28 40,22" />
+        <path className="auth-light-phoenix" d="M42,62 Q50,78 62,70" />
+        <path className="auth-light-phoenix-thin" d="M38,58 Q28,72 46,78" />
+        <path className="auth-light-phoenix-thin" d="M48,32 Q44,25 42,20" />
+        <path className="auth-light-phoenix-thin" d="M52,32 Q56,25 58,20" />
+        <rect
+          className="auth-light-phoenix-core"
+          height="6"
+          rx="1"
+          transform="rotate(45,50,50)"
+          width="6"
+          x="47"
+          y="47"
+        />
+      </svg>
     </div>
   );
 }
@@ -43,22 +813,48 @@ function AuthInput({
   required?: boolean;
   onChange: (value: string) => void;
 }) {
+  const [visible, setVisible] = useState(false);
+  const isPassword = type === "password";
+  const inputType = isPassword && visible ? "text" : type;
+
   return (
-    <div>
-      <label htmlFor={id} className="mb-2 block text-[13px] font-semibold text-[#31415e]">
-        {label}
-      </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        required={required}
-        minLength={type === "password" ? 8 : undefined}
-        className="h-11 w-full rounded-md border border-[#d8e2ef] bg-white/85 px-4 text-[14px] text-[#17233d] shadow-[0_5px_18px_rgba(38,75,123,0.06)] outline-none transition placeholder:text-[#9aa9bf] focus:border-[#2386ff] focus:bg-white focus:ring-4 focus:ring-[#2386ff]/10"
-      />
+    <div className="auth-light-field">
+      <label htmlFor={id}>{label}</label>
+      <div className="auth-light-input-wrap">
+        <input
+          autoComplete={autoComplete}
+          className={isPassword ? "auth-light-input auth-light-has-toggle" : "auth-light-input"}
+          id={id}
+          minLength={isPassword ? 8 : undefined}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          required={required}
+          type={inputType}
+          value={value}
+        />
+        {isPassword && (
+          <button
+            aria-label={visible ? "隐藏密码" : "显示密码"}
+            className="auth-light-toggle"
+            onClick={() => setVisible((current) => !current)}
+            type="button"
+          >
+            {visible ? <EyeOff /> : <Eye />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FeatureCard({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+  return (
+    <div className="auth-light-feature">
+      <div className="auth-light-feature-icon">{icon}</div>
+      <div className="auth-light-feature-label">
+        <strong>{title}</strong>
+        {description}
+      </div>
     </div>
   );
 }
@@ -141,168 +937,139 @@ export function LoginPage() {
   );
 
   return (
-    <div className="flex min-h-screen w-full overflow-hidden bg-[#f6f9fd] text-[#14213d]">
-      <section
-        className="relative hidden min-h-screen w-[55.5%] items-center justify-center overflow-hidden lg:flex"
-        style={{ background: "linear-gradient(135deg, #071846 0%, #1043B7 52%, #268DFF 100%)" }}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_28%,rgba(91,177,255,0.34),transparent_31%),radial-gradient(circle_at_78%_73%,rgba(255,255,255,0.14),transparent_30%)]" />
-        <div className="relative z-10 -mt-6 text-center">
-          <LoginBrandMark />
-          <h1 className="mt-9 text-[44px] font-bold tracking-[0.16em] text-white">FENIX AGENT</h1>
-          <p className="mt-5 text-[18px] font-medium tracking-[0.18em] text-white/82">{t("brandSubtitle")}</p>
-          <div className="mt-11 flex flex-wrap justify-center gap-4">
-            {["AI Orchestration", "Multi-Agent", "Intelligent Core"].map((label) => (
-              <span
-                key={label}
-                className="rounded-full border border-white/22 bg-white/10 px-5 py-2 text-[13px] font-medium text-white/78 backdrop-blur"
-              >
-                {label}
-              </span>
-            ))}
-          </div>
+    <div className="auth-light-page">
+      <AuthLightStyles />
+      <div aria-hidden="true" className="auth-light-particles">
+        {particleKeys.map((key) => (
+          <div className="auth-light-particle" key={key} />
+        ))}
+      </div>
+
+      <section className="auth-light-brand-panel">
+        <LoginBrandMark />
+        <div className="auth-light-brand-title">FENIX AGENT</div>
+        <div className="auth-light-brand-sub">企业级 AI 智能体中枢</div>
+
+        <div className="auth-light-features">
+          {brandFeatures.map((feature) => (
+            <FeatureCard
+              description={feature.description}
+              icon={feature.icon}
+              key={feature.title}
+              title={feature.title}
+            />
+          ))}
+        </div>
+
+        <div className="auth-light-tags">
+          {brandTags.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
         </div>
       </section>
 
-      <main className="relative flex min-h-screen flex-1 items-center justify-center overflow-hidden px-6 py-12 sm:px-10">
-        <div className="pointer-events-none absolute left-[8%] top-[28%] hidden h-[430px] w-[430px] opacity-70 lg:block">
-          <div className="absolute left-0 top-16 h-[330px] w-[150px] rounded-[10px] bg-[#e9f1f9]" />
-          <div className="absolute left-[110px] top-0 h-[152px] w-[315px] rounded-[10px] bg-[#edf4fb]" />
-          <div className="absolute left-[110px] top-[205px] h-[152px] w-[255px] rounded-[10px] bg-[#edf4fb]" />
-        </div>
-        <div className="pointer-events-none absolute right-[-18%] top-[-10%] h-[420px] w-[420px] rounded-full bg-[#dfeeff]/70 blur-3xl" />
-
-        <div className="relative z-10 w-full max-w-[410px]">
-          <div className="mb-9 text-center lg:hidden">
+      <main className="auth-light-panel">
+        <div className="auth-light-box">
+          <div className="auth-light-mobile-brand">
             <LoginBrandMark compact />
-            <p className="mt-4 text-[18px] font-bold tracking-[0.12em] text-[#176cff]">FENIX AGENT</p>
+            <p className="auth-light-mobile-title">FENIX AGENT</p>
           </div>
 
-          <div className="mb-8">
-            <h1 className="text-[28px] font-bold leading-tight text-[#111c35]">
-              {isSignUp ? t("createAccountTitle") : t("welcomeBack")}
-            </h1>
-            <p className="mt-3 text-[14px] font-medium text-[#7888a0]">
-              {isSignUp ? t("createAccountSubtitle") : t("welcomeBackSubtitle")}
-            </p>
-          </div>
+          <h1 className="auth-light-title">{isSignUp ? t("createAccountTitle") : t("welcomeBack")}</h1>
+          <p className="auth-light-sub">{isSignUp ? t("createAccountSubtitle") : t("welcomeBackSubtitle")}</p>
 
-          <form onSubmit={handleSubmit} className="space-y-[18px]">
+          <form className="auth-light-form" onSubmit={handleSubmit}>
             {isSignUp && (
               <AuthInput
+                autoComplete="name"
                 id="signup-name"
                 label={t("username")}
-                value={name}
                 onChange={setName}
                 placeholder={t("usernamePlaceholder")}
-                autoComplete="name"
                 required
+                value={name}
               />
             )}
 
             <AuthInput
+              autoComplete="email"
               id="auth-email"
               label={isSignUp ? t("email") : t("account")}
-              type="email"
-              value={email}
               onChange={setEmail}
               placeholder={isSignUp ? t("enterpriseEmailPlaceholder") : t("accountPlaceholder")}
-              autoComplete="email"
               required
+              type="email"
+              value={email}
             />
 
             <AuthInput
+              autoComplete={isSignUp ? "new-password" : "current-password"}
               id="auth-password"
               label={isSignUp ? t("setPassword") : t("password")}
-              type="password"
-              value={password}
               onChange={setPassword}
               placeholder={isSignUp ? t("setPasswordPlaceholder") : t("passwordPlaceholder")}
-              autoComplete={isSignUp ? "new-password" : "current-password"}
               required
+              type="password"
+              value={password}
             />
 
             {isSignUp && (
               <AuthInput
+                autoComplete="new-password"
                 id="signup-confirm-password"
                 label={t("confirmPassword")}
-                type="password"
-                value={confirmPassword}
                 onChange={setConfirmPassword}
                 placeholder={t("confirmPasswordPlaceholder")}
-                autoComplete="new-password"
                 required
+                type="password"
+                value={confirmPassword}
               />
             )}
 
             {!isSignUp ? (
-              <div className="flex items-center justify-between pt-1 text-[13px] text-[#7f8da4]">
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={rememberLogin}
-                    onChange={(e) => setRememberLogin(e.target.checked)}
-                    className="h-4 w-4 rounded border-[#c7d3e2] accent-[#1f7cff]"
-                  />
+              <div className="auth-light-options">
+                <label className="auth-light-checkbox">
+                  <input checked={rememberLogin} onChange={(e) => setRememberLogin(e.target.checked)} type="checkbox" />
                   <span>{t("rememberLogin")}</span>
                 </label>
-                {/* <button type="button" className="font-medium text-[#2078ff] transition hover:text-[#0d5fe5]">
+                <button className="auth-light-link" type="button">
                   {t("forgotPassword")}
-                </button> */}
+                </button>
               </div>
             ) : (
-              <label className="flex cursor-pointer items-start gap-2 pt-1 text-[13px] leading-5 text-[#7f8da4]">
-                <input
-                  type="checkbox"
-                  checked={acceptedTerms}
-                  onChange={(e) => setAcceptedTerms(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-[#c7d3e2] accent-[#1f7cff]"
-                />
+              <label className="auth-light-terms">
+                <input checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} type="checkbox" />
                 <span>
                   {t("termsPrefix")}
-                  <button type="button" className="mx-0.5 font-medium text-[#2078ff]">
+                  <button className="auth-light-link" type="button">
                     {t("userAgreement")}
                   </button>
                   {t("termsConnector")}
-                  <button type="button" className="mx-0.5 font-medium text-[#2078ff]">
+                  <button className="auth-light-link" type="button">
                     {t("privacyPolicy")}
                   </button>
                 </span>
               </label>
             )}
 
-            {error && (
-              <p className="rounded-md border border-[#ffd6d6] bg-[#fff2f2] px-3 py-2 text-[13px] text-[#d73535]">
-                {error}
-              </p>
-            )}
+            {error && <p className="auth-light-error">{error}</p>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="h-12 w-full rounded-md bg-[linear-gradient(90deg,#0f74ff_0%,#2fb9ff_100%)] text-[15px] font-bold text-white shadow-[0_12px_28px_rgba(27,126,255,0.28)] transition hover:shadow-[0_16px_32px_rgba(27,126,255,0.32)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? t("pleaseWait") : isSignUp ? t("signupButton") : t("loginButton")}
+            <button className="auth-light-submit" disabled={loading} type="submit">
+              {loading ? <span className="auth-light-spinner" /> : isSignUp ? t("signupButton") : t("loginButton")}
             </button>
           </form>
 
           {signupAllowed && (
-            <div className="mt-7 text-center text-[14px] font-medium text-[#7f8da4]">
+            <div className="auth-light-switch">
               {isSignUp ? t("alreadyHaveAccount") : t("noAccount")}{" "}
-              <button
-                type="button"
-                onClick={() => switchMode(!isSignUp)}
-                className="font-semibold text-[#2078ff] transition hover:text-[#0d5fe5]"
-              >
+              <button className="auth-light-link" onClick={() => switchMode(!isSignUp)} type="button">
                 {isSignUp ? t("backToSignIn") : t("clickSignUp")}
               </button>
             </div>
           )}
         </div>
 
-        <p className="absolute bottom-7 left-1/2 hidden -translate-x-1/2 text-[12px] text-[#9aa9bf] sm:block">
-          © 2026 Fenix Agent. All rights reserved.
-        </p>
+        <p className="auth-light-footer">© 2026 Fenix Agent. All rights reserved.</p>
       </main>
     </div>
   );

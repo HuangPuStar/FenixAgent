@@ -35,6 +35,21 @@ function sanitizeResource(row: KnowledgeResourceRow) {
   };
 }
 
+/**
+ * 判断远端文档删除失败是否只是“对象已不存在”。
+ * 本地资源删除保持幂等，避免 RagFlow 侧人工清理后前端无法移除残留记录。
+ */
+function isRemoteKnowledgeResourceMissingError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return (
+    message.includes("not found") ||
+    message.includes("not exist") ||
+    message.includes("nonexistent") ||
+    message.includes("document not found") ||
+    message.includes("http 404")
+  );
+}
+
 async function createOrReusePendingResource(
   knowledgeBaseId: string,
   sourceType: string,
@@ -209,13 +224,25 @@ export async function deleteKnowledgeResource(userId: string, knowledgeBaseId: s
 
   if (resourceRow.remoteId) {
     const tenantIdentity = resolveKnowledgeTenantIdentity(kb);
-    await getKnowledgeProvider().deleteResource({
-      resourceRemoteId: resourceRow.remoteId,
-      knowledgeBaseRemoteId: kb.remoteId!,
-      remoteAccountId: tenantIdentity.remoteAccountId,
-      remoteUserId: tenantIdentity.remoteUserId,
-      recursive: true,
-    });
+    try {
+      await getKnowledgeProvider().deleteResource({
+        resourceRemoteId: resourceRow.remoteId,
+        knowledgeBaseRemoteId: kb.remoteId!,
+        remoteAccountId: tenantIdentity.remoteAccountId,
+        remoteUserId: tenantIdentity.remoteUserId,
+        recursive: true,
+      });
+    } catch (err) {
+      console.error(err);
+      if (!isRemoteKnowledgeResourceMissingError(err)) {
+        throw err;
+      }
+      console.warn("Remote knowledge resource is already missing; continuing local deletion", {
+        resourceId,
+        remoteId: resourceRow.remoteId,
+        knowledgeBaseId,
+      });
+    }
   }
 
   await knowledgeResourceRepo.delete(resourceId);

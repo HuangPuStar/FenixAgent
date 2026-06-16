@@ -18,10 +18,10 @@
   --font-mono: ui-monospace, "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
 
   /* Brand — Nexus Indigo */
-  --color-brand: #6366f1;
-  --color-brand-light: #818cf8;
-  --color-brand-subtle: rgba(99, 102, 241, 0.08);
-  --color-brand-glow: rgba(99, 102, 241, 0.15);
+  --color-brand: #1677ff;
+  --color-brand-light: #4096ff;
+  --color-brand-subtle: rgba(22, 119, 255, 0.08);
+  --color-brand-glow: rgba(22, 119, 255, 0.15);
 
   /* Cyan accent */
   --color-cyan: #22d3ee;
@@ -32,7 +32,7 @@
   --color-surface-1: #ffffff;
   --color-surface-2: #f1f5f9;
   --color-surface-3: #e2e8f0;
-  --color-surface-hover: #eef2ff;
+  --color-surface-hover: #e6f0ff;
   --color-surface-elevated: #ffffff;
   --color-surface-overlay: #f1f5f9;
 
@@ -44,12 +44,12 @@
   --color-text-dim: #94a3b8;
 
   /* Inverted — for user message bubbles */
-  --color-bg-inverted: #6366f1;
+  --color-bg-inverted: #1677ff;
   --color-text-inverted: #ffffff;
 
   /* User bubble */
-  --color-user-bubble: #6366f1;
-  --color-user-bubble-border: #818cf8;
+  --color-user-bubble: #1677ff;
+  --color-user-bubble-border: #4096ff;
 
   /* Warning */
   --color-warning-bg: #fef3c7;
@@ -59,7 +59,7 @@
   /* Status — semantic */
   --color-status-active: #10b981;
   --color-status-running: #10b981;
-  --color-status-idle: #6366f1;
+  --color-status-idle: #1677ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
 
@@ -80,7 +80,7 @@
   --color-card-foreground: #0f172a;
   --color-popover: #ffffff;
   --color-popover-foreground: #0f172a;
-  --color-primary: #6366f1;
+  --color-primary: #1677ff;
   --color-primary-foreground: #ffffff;
   --color-secondary: #f1f5f9;
   --color-secondary-foreground: #334155;
@@ -93,15 +93,15 @@
   /* Border / Input / Ring */
   --color-border: rgba(0, 0, 0, 0.1);
   --color-border-light: rgba(0, 0, 0, 0.06);
-  --color-border-active: rgba(99, 102, 241, 0.35);
+  --color-border-active: rgba(22, 119, 255, 0.35);
   --color-border-subtle: rgba(0, 0, 0, 0.06);
   --color-border-default: rgba(0, 0, 0, 0.1);
   --color-input: rgba(0, 0, 0, 0.1);
-  --color-ring: #6366f1;
+  --color-ring: #1677ff;
 
   /* Shadows */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-elevated: 0 4px 16px rgba(99, 102, 241, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
 
   /* Default utility values */
   --default-border-color: var(--color-border);
@@ -122,10 +122,10 @@
    Dark mode — Nexus Indigo dark palette
    ============================================================ */
 .dark {
-  --color-brand: #818cf8;
-  --color-brand-light: #a5b4fc;
-  --color-brand-subtle: rgba(129, 140, 248, 0.1);
-  --color-brand-glow: rgba(129, 140, 248, 0.18);
+  --color-brand: #4096ff;
+  --color-brand-light: #69b1ff;
+  --color-brand-subtle: rgba(22, 119, 255, 0.12);
+  --color-brand-glow: rgba(22, 119, 255, 0.2);
 
   --color-cyan: #22d3ee;
   --color-cyan-subtle: rgba(34, 211, 238, 0.1);
@@ -134,7 +134,7 @@
   --color-surface-1: #1e293b;
   --color-surface-2: #334155;
   --color-surface-3: #475569;
-  --color-surface-hover: #312e81;
+  --color-surface-hover: #1a3a6b;
   --color-surface-elevated: #1e293b;
   --color-surface-overlay: #334155;
 
@@ -144,14 +144,14 @@
   --color-text-muted: #64748b;
   --color-text-dim: #475569;
 
-  --color-bg-inverted: #6366f1;
+  --color-bg-inverted: #1677ff;
   --color-text-inverted: #ffffff;
-  --color-user-bubble: #6366f1;
-  --color-user-bubble-border: #818cf8;
+  --color-user-bubble: #1677ff;
+  --color-user-bubble-border: #4096ff;
 
   --color-border: rgba(255, 255, 255, 0.1);
   --color-border-light: rgba(255, 255, 255, 0.06);
-  --color-border-active: rgba(129, 140, 248, 0.4);
+  --color-border-active: rgba(22, 119, 255, 0.4);
   --color-border-subtle: rgba(255, 255, 255, 0.06);
   --color-border-default: rgba(255, 255, 255, 0.1);
   --color-tool-card: #1e293b;
@@ -162,7 +162,7 @@
 
   --color-status-active: #10b981;
   --color-status-running: #10b981;
-  --color-status-idle: #818cf8;
+  --color-status-idle: #4096ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
 
@@ -172,7 +172,7 @@
   --color-card-foreground: #f1f5f9;
   --color-popover: #1e293b;
   --color-popover-foreground: #f1f5f9;
-  --color-primary: #6366f1;
+  --color-primary: #1677ff;
   --color-primary-foreground: #ffffff;
   --color-secondary: #334155;
   --color-secondary-foreground: #e2e8f0;
@@ -183,10 +183,10 @@
   --color-destructive: #ef4444;
 
   --color-input: rgba(255, 255, 255, 0.1);
-  --color-ring: #818cf8;
+  --color-ring: #4096ff;
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12);
-  --shadow-elevated: 0 4px 16px rgba(99, 102, 241, 0.12), 0 1px 4px rgba(0, 0, 0, 0.1);
+  --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.12), 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* ============================================================
@@ -206,6 +206,9 @@
   ::before,
   ::after {
     border-color: var(--color-border);
+  }
+  :focus-visible {
+    outline: none;
   }
 }
 
@@ -418,17 +421,17 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   100% {
     transform: scale(0.4);
     opacity: 0.3;
-    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
   }
   40% {
     transform: scale(1);
     opacity: 1;
-    box-shadow: 0 0 8px 2px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 0 8px 2px rgba(22, 119, 255, 0.3);
   }
 }
 
 .dark .chat-loading-dots span {
-  box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
+  box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
 }
 
 @keyframes loadingDotBounceDark {
@@ -437,12 +440,12 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   100% {
     transform: scale(0.4);
     opacity: 0.3;
-    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
   }
   40% {
     transform: scale(1);
     opacity: 1;
-    box-shadow: 0 0 8px 2px rgba(129, 140, 248, 0.35);
+    box-shadow: 0 0 8px 2px rgba(22, 119, 255, 0.35);
   }
 }
 
@@ -490,4 +493,390 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 /* 隐藏 streamdown 渲染的代码块头部（由 Agent 消息 markdown 产生） */
 [data-streamdown="code-block-header"] {
   display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/* 工牌卡空状态 (Agent Badge Card Empty State)                 */
+/* ═══════════════════════════════════════════════════════════ */
+
+/* ── 工牌容器 ── */
+.agent-badge {
+  width: 224px;
+  min-height: 340px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 4px 16px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle, var(--color-border, #e2e8f0) 0.8px, transparent 0.8px) 0 0 / 60px 60px,
+    var(--color-surface-1, #fff);
+}
+.agent-badge > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── 水印 ── */
+.agent-badge::before,
+.agent-badge::after {
+  content: attr(data-badge-name) "  " attr(data-badge-name) "  " attr(data-badge-name) "  " attr(data-badge-name);
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 80px;
+  font-weight: 900;
+  color: var(--color-border, #e2e8f0);
+  pointer-events: none;
+  z-index: 0;
+  transform: rotate(-10deg);
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+}
+.agent-badge::before {
+  top: 41%;
+  opacity: 0.16;
+}
+.agent-badge::after {
+  top: 80%;
+  opacity: 0.16;
+}
+
+/* ── 渐变头部 ── */
+.agent-badge-header {
+  background:
+    radial-gradient(220px circle at 50% 0%, rgba(107, 230, 255, 0.22), transparent 68%),
+    linear-gradient(180deg, #1759dc, #0d2a6e);
+  padding: 24px 18px 32px;
+  text-align: center;
+  position: relative;
+  flex-shrink: 0;
+}
+.agent-badge-header::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.agent-badge-tag {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ── 头像 + 信息区 ── */
+.agent-badge-body {
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  justify-content: center;
+}
+.agent-badge-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -30px;
+  border: 3px solid #fff;
+  box-shadow:
+    0 0 0 1.5px var(--color-border, #e2e8f0),
+    0 2px 12px rgba(23, 89, 220, 0.08);
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+.agent-badge-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.agent-badge-source {
+  font-size: 9px;
+  color: var(--color-text-muted, #94a3b8);
+  margin-top: 8px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.agent-badge-desc {
+  font-size: 10px;
+  color: var(--color-text-muted, #64748b);
+  margin-top: 5px;
+  line-height: 1.5;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── 分隔线 ── */
+.agent-badge-divider {
+  margin: 0 20px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.agent-badge-divider::before,
+.agent-badge-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--color-border, #e2e8f0);
+}
+.agent-badge-dots {
+  display: flex;
+  gap: 6px;
+  margin: 0 10px;
+}
+.agent-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+
+/* ── Skills  ── */
+.agent-badge-skills {
+  padding: 10px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.agent-badge-skills-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.agent-badge-skills-row {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  max-width: 100%;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+.agent-badge-skills-hint {
+  font-size: 10px;
+  color: var(--color-text-muted, #94a3b8);
+}
+.agent-badge-skills-none {
+  font-size: 12px;
+  color: var(--color-text-muted, #94a3b8);
+}
+
+/* ── Skill Tag ── */
+.skill-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 9999px;
+  background: var(--color-surface-2, #f1f5f9);
+  color: var(--color-text-secondary, #475569);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-family: var(--font-display, inherit);
+  border: 1px solid var(--color-border, #e5e7eb);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.skill-tag:hover {
+  background: var(--color-surface-3, #e5e7eb);
+  border-color: var(--color-border-hover, #d1d5db);
+  color: var(--color-text-primary, #374151);
+}
+@media (prefers-color-scheme: dark) {
+  .skill-tag {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  .skill-tag:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+}
+
+/* ── 管理模式下静态 skill tag（不可点击） ── */
+.skill-tag-static {
+  cursor: default;
+}
+.skill-tag-static:hover {
+  background: var(--color-surface-2, #f1f5f9);
+  border-color: var(--color-border, #e5e7eb);
+  color: var(--color-text-secondary, #475569);
+}
+
+/* ── 管理模式操作按钮 ── */
+.agent-badge-actions {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 14px;
+  flex-shrink: 0;
+}
+.agent-badge-action {
+  flex: 1;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+  border: 1px solid #d9e2ee;
+  background: #fff;
+  color: #65748a;
+}
+.agent-badge-action:hover {
+  border-color: #b9cee8;
+  color: #1677ff;
+}
+.agent-badge-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.agent-badge-action-primary {
+  border: none;
+  background: #1677ff;
+  color: #fff;
+}
+.agent-badge-action-primary:hover {
+  background: #0f67df;
+}
+
+/* ── 骨架屏 ── */
+@keyframes agent-badge-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.agent-badge-skeleton {
+  animation: agent-badge-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.agent-badge-skeleton-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--color-border, #e2e8f0);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  flex-shrink: 0;
+}
+.agent-badge-skeleton-line {
+  border-radius: 6px;
+  background: var(--color-border, #e2e8f0);
+  flex-shrink: 0;
+}
+.agent-badge-skeleton-tag {
+  border-radius: 999px;
+  background: var(--color-surface-2, #f1f5f9);
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   MetaAgentPanel 窄屏样式 — 仅作用于 .meta-agent-panel 作用域内
+   设计目标：面板宽度恒定 400px，需通过收紧 padding + 隐藏次要元素
+            来腾出更多有效输入区域，与桌面端宽松布局区分。
+   ============================================================ */
+
+/* 左侧拉手按钮 — 仿照 .agent-artifacts-expand-btn 的 vertical tab 设计
+   按钮作为 flex item 渲染在最左侧，圆角朝外（左）、右侧贴面板（无边框无圆角） */
+.meta-agent-toggle-btn {
+  align-self: center;
+  width: 28px;
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid var(--color-border-subtle);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  background: var(--color-surface-1);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms;
+  font-size: 10px;
+  font-weight: 500;
+  writing-mode: vertical-lr;
+  letter-spacing: 0.05em;
+}
+
+.meta-agent-toggle-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+/* 隐藏信息流中的 Agent avatar —— 头部已无 title 文字，再保留头像反而拥挤 */
+.meta-agent-panel .agent-avatar {
+  display: none !important;
+}
+
+/* 隐藏 ChatComposer 元信息条中的 token 进度条 / 百分比 / 分隔线
+   保留模式选择器、模型选择器与新会话按钮 */
+.meta-agent-panel .chat-composer-token-stats {
+  display: none !important;
+}
+
+/* 收紧 ACPMain 顶层 padding/gap —— 释放外层边距给输入区 */
+.meta-agent-panel .acp-main-root {
+  padding: 8px;
+  gap: 8px;
+}
+
+/* 收紧 ChatComposer wrapper 外边距 —— 覆盖 px-4 sm:px-8 pb-4 pt-2 的默认值 */
+.meta-agent-panel .chat-composer-wrapper {
+  padding: 4px 8px 8px;
+}
+
+/* 工具调用组的 padding-left 置零 —— 原本 pl-10 用于与 avatar 右侧对齐，avatar 隐藏后不再需要 */
+.meta-agent-panel .tool-call-group {
+  padding-left: 0;
 }

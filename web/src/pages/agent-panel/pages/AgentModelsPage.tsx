@@ -1,21 +1,20 @@
-import { ChevronDown } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
-import { ModelConfigDialog, mergeModelConfigUpdate } from "@/components/config/ModelConfigDialog";
+import { ModelIcon } from "@/components/model-icon/ModelIcon";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { modelApi, providerApi } from "@/src/api/sdk";
+import { providerApi } from "@/src/api/sdk";
 import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
-import type { ModelConfig, ProviderInfo, ProviderModel } from "../../../types/config";
+import type { ProviderInfo, ProviderModel } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -37,29 +36,13 @@ function getErrorDataRecord(data: unknown): Record<string, unknown> {
   return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
 }
 
-export function getProviderKey(provider: ProviderInfo): string {
-  return provider.resourceAccess?.resourceKey ?? provider.resourceKey ?? provider.id;
-}
-
-export function getProviderDisplayName(provider: ProviderInfo): string {
-  const source = provider.resourceAccess?.sourceOrganizationName;
-  if (source) return `${source}/${provider.id}`;
-  return provider.id;
-}
-
-export function getProviderResourceBadgeKey(provider: ProviderInfo): string {
-  if (provider.resourceAccess?.ownership === "external") return "resource.external";
-  if (provider.resourceAccess?.publicReadable) return "resource.public";
-  return "resource.internal";
-}
-
-export function canWriteProvider(provider: ProviderInfo): boolean {
-  return provider.resourceAccess?.writable !== false;
-}
-
-export function buildProviderPublicReadablePayload(publicReadable: boolean): Record<string, unknown> {
-  return { publicReadable };
-}
+// Provider 工具函数从独立模块导入，避免组件文件加载 @lobehub/icons 后影响单元测试
+import {
+  buildProviderPublicReadablePayload,
+  canWriteProvider,
+  getProviderColor,
+  getProviderKey,
+} from "./agent-models-utils";
 
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
@@ -71,8 +54,6 @@ export function AgentModelsPage() {
   const [editingProvider, setEditingProvider] = useState<ProviderInfo | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [selected, setSelected] = useState<ProviderInfo[]>([]);
-  const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [testResult, setTestResult] = useState<
     | { kind: "provider"; name: string; models: string[]; warning?: string }
     | { kind: "provider"; name: string; error: TestDialogError }
@@ -84,13 +65,13 @@ export function AgentModelsPage() {
   const [testingModelKey, setTestingModelKey] = useState<string | null>(null);
   const [addedModelIds, setAddedModelIds] = useState<Set<string>>(new Set());
   const [sharingProviderKey, setSharingProviderKey] = useState<string | null>(null);
+  const [providerSearch, setProviderSearch] = useState("");
   const [formName, setFormName] = useState("");
   const [formApiKey, setFormApiKey] = useState("");
   const [formBaseURL, setFormBaseURL] = useState("");
   const [formProtocol, setFormProtocol] = useState<"openai" | "anthropic">("openai");
   const [formDisplayName, setFormDisplayName] = useState("");
   const [formSaving, setFormSaving] = useState(false);
-  const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const editingReadOnly = editingProvider ? !canWriteProvider(editingProvider) : false;
 
   // 表单内模型获取相关状态
@@ -159,32 +140,25 @@ export function AgentModelsPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [providersResult, modelConfigResult] = await Promise.all([
-        (async () => {
-          const { data: listResult, error: listErr } = await providerApi.list();
-          if (listErr) throw new Error(listErr.message);
-          const data = Array.isArray(listResult)
-            ? (listResult as unknown as ProviderInfo[])
-            : (((listResult as unknown as Record<string, unknown>)?.providers ?? []) as unknown as ProviderInfo[]);
-          const modelsMap: Record<string, ProviderModel[]> = {};
-          await Promise.all(
-            data.map(async (p) => {
-              const providerKey = getProviderKey(p);
-              try {
-                const { data: detail } = await providerApi.get(providerKey);
-                modelsMap[providerKey] = (detail as unknown as { models?: ProviderModel[] }).models ?? [];
-              } catch {
-                modelsMap[providerKey] = [];
-              }
-            }),
-          );
-          return { providers: data, providerModels: modelsMap };
-        })(),
-        modelApi.get(),
-      ]);
-      setProviders(providersResult.providers);
-      setProviderModels(providersResult.providerModels);
-      if (modelConfigResult.data) setModelConfig(modelConfigResult.data as unknown as ModelConfig);
+      const { data: listResult, error: listErr } = await providerApi.list();
+      if (listErr) throw new Error(listErr.message);
+      const data = Array.isArray(listResult)
+        ? (listResult as unknown as ProviderInfo[])
+        : (((listResult as unknown as Record<string, unknown>)?.providers ?? []) as unknown as ProviderInfo[]);
+      const modelsMap: Record<string, ProviderModel[]> = {};
+      await Promise.all(
+        data.map(async (p) => {
+          const providerKey = getProviderKey(p);
+          try {
+            const { data: detail } = await providerApi.get(providerKey);
+            modelsMap[providerKey] = (detail as unknown as { models?: ProviderModel[] }).models ?? [];
+          } catch {
+            modelsMap[providerKey] = [];
+          }
+        }),
+      );
+      setProviders(data);
+      setProviderModels(modelsMap);
     } catch (e) {
       console.error(t("loadModelsError"), e);
       toast.error(t("loadError", { message: e instanceof Error ? e.message : t("unknownError") }));
@@ -442,15 +416,6 @@ export function AgentModelsPage() {
     dispatchConfigChange("providers");
   };
 
-  const confirmBatchDelete = async () => {
-    await Promise.all(selected.map((p) => providerApi.delete(p.id)));
-    toast.success(t("batchDeleteCount", { count: selected.length }));
-    setBatchConfirmOpen(false);
-    setSelected([]);
-    loadAll();
-    dispatchConfigChange("providers");
-  };
-
   // Model CRUD
   const openNewModel = (providerId: string) => {
     setModelProviderId(providerId);
@@ -585,11 +550,26 @@ export function AgentModelsPage() {
     setter(list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
   };
 
+  const filteredProviders = providerSearch.trim()
+    ? providers.filter(
+        (p) =>
+          p.id.toLowerCase().includes(providerSearch.toLowerCase()) ||
+          (p.name?.toLowerCase().includes(providerSearch.toLowerCase()) ?? false),
+      )
+    : providers;
+
   if (loading) {
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
-        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <Skeleton className="h-[22px] w-28 rounded-md" />
+            <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
+          </div>
+          <Skeleton className="h-10 w-28 rounded-lg" />
+        </div>
+        <div className="mb-7 h-px bg-[#e8edf4]" />
+        <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
             <Skeleton key={i} className="h-20 w-full rounded-lg" />
@@ -600,238 +580,230 @@ export function AgentModelsPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
       <AgentPageHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
-          <div className="flex items-center gap-2">
-            <ModelConfigDialog
-              currentModel={modelConfig?.current.model ?? null}
-              currentSmallModel={modelConfig?.current.small_model ?? null}
-              available={modelConfig?.available ?? []}
-              onConfigChange={(update) =>
-                setModelConfig((current) => (current ? mergeModelConfigUpdate(current, update) : current))
-              }
-            />
-            <Button onClick={handleOpenCreate}>{t("createButton")}</Button>
-          </div>
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
+          >
+            <Plus className="h-4 w-4" />
+            {t("createButton")}
+          </button>
         }
       />
+
+      {/* 搜索栏 */}
+      <div className="mb-7 flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-md">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a8bd]" />
+          <input
+            value={providerSearch}
+            onChange={(e) => setProviderSearch(e.target.value)}
+            placeholder={t("searchPlaceholder")}
+            className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
+          />
+        </div>
+      </div>
+
       <AgentCardList
-        items={providers}
+        items={filteredProviders}
         cardKey={getProviderKey}
-        searchPlaceholder={t("searchPlaceholder")}
-        searchFn={(p, q) => p.id.toLowerCase().includes(q) || (p.name?.toLowerCase().includes(q) ?? false)}
-        selectable
-        selectedItems={selected}
-        onSelectionChange={setSelected}
         emptyMessage={t("emptyMessage")}
-        batchActions={
-          <Button size="xs" variant="destructive" onClick={() => setBatchConfirmOpen(true)}>
-            {t("batchDelete")}
-          </Button>
-        }
-        renderCard={(provider, isSelected, toggleSelect) => {
+        gridCols="grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+        renderCard={(provider) => {
           const providerKey = getProviderKey(provider);
-          const providerDisplayName = getProviderDisplayName(provider);
           const writable = canWriteProvider(provider);
           const models = providerModels[providerKey] ?? [];
+          const brandColor = getProviderColor(provider.id);
+          const sourceName = provider.resourceAccess?.sourceOrganizationName;
+          const hasModels = models.length > 0;
+
           return (
-            <Collapsible
+            <div
               key={providerKey}
-              className="group rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm"
+              className="group rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm overflow-hidden"
             >
-              <CollapsibleTrigger asChild>
-                <div className="px-4 py-3 cursor-pointer group/trigger">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={toggleSelect}
-                      disabled={!writable}
-                      onClick={(event) => event.stopPropagation()}
-                      className="rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-sm font-medium text-text-bright">{providerDisplayName}</span>
-                        {provider.name && provider.name !== provider.id && (
-                          <span className="text-xs text-text-secondary">{provider.name}</span>
-                        )}
-                        {(() => {
-                          const opt = PROTOCOL_OPTIONS.find((o) => o.id === provider.protocol);
-                          return (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-2 text-text-secondary">
-                              {opt ? getProtocolLabel(opt) : provider.protocol}
-                            </span>
-                          );
-                        })()}
-                        {provider.keyHint && (
-                          <span className="font-mono text-xs text-text-muted bg-surface-2 px-2 py-0.5 rounded">
-                            {provider.keyHint}
-                          </span>
-                        )}
-                        <span className="inline-flex items-center rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-secondary">
-                          {tComponents(getProviderResourceBadgeKey(provider))}
-                        </span>
-                      </div>
-                      {writable && (
-                        <label
-                          className="mt-3 flex items-center gap-2 text-xs text-text-muted"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <Switch
-                            checked={Boolean(provider.resourceAccess?.publicReadable)}
-                            disabled={
-                              sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true
-                            }
-                            onCheckedChange={() =>
-                              void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
-                            }
-                          />
-                          {tComponents("resource.public")}
-                        </label>
-                      )}
-                      {!writable && (
-                        <p className="mt-3 text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {writable && (
-                        <>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleTest(providerKey);
-                            }}
-                            disabled={testing === providerKey}
-                          >
-                            {testing === providerKey ? t("actions.testing") : t("actions.test")}
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleOpenEdit(provider);
-                            }}
-                          >
-                            {t("actions.edit")}
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="destructive"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleDelete(provider.id);
-                            }}
-                          >
-                            {t("actions.delete")}
-                          </Button>
-                        </>
-                      )}
-                      {!writable && (
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleOpenEdit(provider);
-                          }}
-                        >
-                          {t("actions.view")}
-                        </Button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-text-muted px-2 py-1 rounded">
-                      <span>
-                        {t("columns.models")} ({models.length})
-                      </span>
-                      <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/trigger:rotate-180" />
-                    </div>
+              {/* ── 头像区 ── */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
+                <div
+                  className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-base font-extrabold text-white"
+                  style={{ backgroundColor: brandColor }}
+                >
+                  {provider.id.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-text-bright truncate">{provider.id}</span>
+                    {sourceName && <span className="text-xs text-text-muted flex-shrink-0">{sourceName}</span>}
+                  </div>
+                  <div className="text-[11px] text-text-muted mt-0.5">
+                    {t(`protocolOptions.${provider.protocol}`)} · {t("columns.models")} ({models.length})
                   </div>
                 </div>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="px-4 pb-3 space-y-2 border-t border-border-subtle pt-3">
-                  {models.length === 0 ? (
-                    <p className="text-center text-text-muted text-sm py-4">{t("modelSubrow.emptyMessage")}</p>
-                  ) : (
-                    models.map((m) => {
+              </div>
+
+              {/* ── Model 列表区 ── */}
+              <div className="px-4 py-2">
+                {hasModels ? (
+                  <div className="space-y-1">
+                    {models.map((m) => {
                       const limit = (m.limit as Record<string, number | undefined>) ?? {};
-                      const cost = (m.cost as Record<string, number | undefined>) ?? {};
-                      const modelWritable = writable && m.providerResourceAccess?.writable !== false;
-                      const modelTesting = testingModelKey === `${providerKey}:${m.id}`;
                       return (
-                        <div
-                          key={m.id}
-                          className="flex flex-wrap items-center gap-3 rounded-md border border-border-light bg-surface-0 px-3 py-2"
-                        >
-                          <div className="min-w-0 flex-1 basis-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs font-medium text-text-bright">{m.id}</span>
-                              {m.name && m.name !== m.id && (
-                                <span className="text-xs text-text-secondary">{m.name}</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 mt-0.5 text-[11px] text-text-muted">
-                              {limit.context ? <span>ctx {Number(limit.context).toLocaleString()}</span> : null}
-                              {limit.output ? <span>out {Number(limit.output).toLocaleString()}</span> : null}
-                              {cost.input || cost.output ? (
-                                <span className="text-amber-600">
-                                  ${Number(cost.input ?? 0)}/{Number(cost.output ?? 0)}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="ml-auto flex shrink-0 items-center gap-2">
-                            {modelWritable ? (
+                        <div key={m.id} className="flex items-center gap-2 py-1.5 min-w-0 group/model">
+                          <ModelIcon modelId={m.id} size={14} />
+                          <span className="font-mono text-[11px] font-medium text-text-bright truncate">{m.id}</span>
+                          {limit.context ? (
+                            <span className="text-[10px] text-text-muted ml-auto flex-shrink-0">
+                              {Number(limit.context).toLocaleString()}
+                            </span>
+                          ) : null}
+                          {/* 模型操作按钮 — hover 时渐显 */}
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto opacity-0 group-hover/model:opacity-100 transition-opacity duration-200">
+                            {writable ? (
                               <>
-                                <Button
-                                  size="xs"
-                                  variant="outline"
-                                  onClick={() => handleTestModel(providerKey, m.id)}
-                                  disabled={modelTesting}
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleTestModel(providerKey, m.id);
+                                  }}
+                                  disabled={testingModelKey === `${providerKey}:${m.id}`}
+                                  className="text-[10px] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
                                 >
-                                  {modelTesting ? t("actions.testing") : t("actions.test")}
-                                </Button>
-                                <Button size="xs" variant="outline" onClick={() => openEditModel(providerKey, m)}>
+                                  {testingModelKey === `${providerKey}:${m.id}`
+                                    ? t("actions.testing")
+                                    : t("actions.test")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openEditModel(providerKey, m);
+                                  }}
+                                  className="text-[10px] text-text-secondary hover:text-text-primary transition-colors"
+                                >
                                   {t("actions.edit")}
-                                </Button>
-                                <Button
-                                  size="xs"
-                                  variant="destructive"
-                                  onClick={() => setDeleteModelConfirm({ providerId: providerKey, modelId: m.id })}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setDeleteModelConfirm({ providerId: providerKey, modelId: m.id });
+                                  }}
+                                  className="text-[10px] text-red-500 hover:text-red-600 transition-colors"
                                 >
                                   {t("actions.delete")}
-                                </Button>
+                                </button>
                               </>
                             ) : (
-                              <Button size="xs" variant="outline" onClick={() => openViewModel(providerKey, m)}>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openViewModel(providerKey, m);
+                                }}
+                                className="text-[10px] text-text-secondary hover:text-text-primary transition-colors"
+                              >
                                 {t("actions.view")}
-                              </Button>
+                              </button>
                             )}
                           </div>
                         </div>
                       );
-                    })
-                  )}
-                  {writable && (
-                    <Button
-                      size="sm"
-                      variant="outline"
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-3 text-center">
+                    <button
+                      type="button"
                       onClick={() => openNewModel(providerKey)}
-                      className="w-full border-dashed text-text-secondary hover:text-text-primary hover:border-brand"
+                      className="text-xs text-text-muted hover:text-text-primary transition-colors"
                     >
                       {t("modelSubrow.addButton")}
-                    </Button>
-                  )}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── 操作栏 ── */}
+              <div className="flex items-center gap-3 px-4 py-2 border-t border-border-subtle bg-surface-0 text-[11px]">
+                {writable ? (
+                  <>
+                    {/* 左侧：测试 & 编辑 */}
+                    <div className="flex items-center gap-2">
+                      {hasModels && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleTest(providerKey);
+                          }}
+                          disabled={testing === providerKey}
+                          className="text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                        >
+                          {testing === providerKey ? t("actions.testing") : t("actions.test")}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenEdit(provider);
+                        }}
+                        className="text-text-secondary hover:text-text-primary transition-colors"
+                      >
+                        {t("actions.edit")}
+                      </button>
+                    </div>
+                    {/* 右侧：公开开关 & 删除 */}
+                    <div className="flex items-center gap-2 ml-auto">
+                      <label
+                        className="flex items-center gap-1.5 cursor-pointer"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <span className="text-text-muted">
+                          {provider.resourceAccess?.publicReadable
+                            ? tComponents("resource.public")
+                            : tComponents("resource.internal")}
+                        </span>
+                        <Switch
+                          checked={Boolean(provider.resourceAccess?.publicReadable)}
+                          disabled={sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true}
+                          onCheckedChange={() =>
+                            void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDelete(provider.id);
+                        }}
+                        className="text-red-500 hover:text-red-600 transition-colors"
+                      >
+                        {t("actions.delete")}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleOpenEdit(provider);
+                    }}
+                    className="text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    {t("actions.view")}
+                  </button>
+                )}
+              </div>
+            </div>
           );
         }}
       />
@@ -1198,14 +1170,6 @@ export function AgentModelsPage() {
         description={t("deleteProvider.confirmDesc", { name: deleteTarget ?? "" })}
         variant="destructive"
         onConfirm={confirmDelete}
-      />
-      <ConfirmDialog
-        open={batchConfirmOpen}
-        onOpenChange={setBatchConfirmOpen}
-        title={t("batchDeleteConfirmTitle")}
-        description={t("batchDeleteConfirmDesc", { count: selected.length })}
-        variant="destructive"
-        onConfirm={confirmBatchDelete}
       />
       <ConfirmDialog
         open={!!deleteModelConfirm}

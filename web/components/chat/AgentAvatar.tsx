@@ -9,7 +9,10 @@ interface AgentAvatarProps {
 
 export function AgentAvatar({ className }: AgentAvatarProps) {
   return (
-    <div className={cn("w-8 h-8 rounded-lg bg-brand/8 items-center justify-center flex-shrink-0", className)}>
+    <div
+      // agent-avatar：作为窄屏容器（如 MetaAgentPanel）隐藏头像的 CSS 作用域钩子
+      className={cn("agent-avatar w-8 h-8 rounded-lg bg-brand/8 items-center justify-center flex-shrink-0", className)}
+    >
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <circle cx="12" cy="6" r="2.5" fill="var(--color-brand)" />
         <circle cx="6" cy="16" r="2.5" fill="var(--color-brand)" opacity=".85" />

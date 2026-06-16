@@ -20,5 +20,8 @@
   "logout": "退出登录",
   "searchDev": "全局搜索功能开发中",
   "agentPanel": "Agent 面板",
-  "dashboard": "仪表盘"
+  "dashboard": "仪表盘",
+  "navGroupCore": "核心",
+  "navGroupConfig": "配置",
+  "navGroupSystem": "系统"
 }

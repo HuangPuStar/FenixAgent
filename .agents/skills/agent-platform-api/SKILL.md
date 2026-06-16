@@ -8,14 +8,20 @@ allowed-tools: Bash
 
 ## 认证
 
-两个环境变量由系统自动注入，所有请求必须携带：
+以下环境变量由系统自动注入：
+
+- `$USER_META_BASE_URL` — API 服务器地址
+- `$USER_META_API_KEY` — Bearer token，所有请求必须携带
+- `$USER_META_USER_ID` — 当前请求用户 ID，用于标注资源归属或调用 user-scoped API
+- `$USER_META_ORG_ID` — 当前组织 ID，多租户隔离/调用 organization-scoped API 时使用
+
+所有请求必须携带 `Authorization` 头：
 
 ```bash
 AUTH="-H 'Authorization: Bearer $USER_META_API_KEY' -H 'Content-Type: application/json'"
 ```
 
-- `$USER_META_BASE_URL` — API 服务器地址
-- `$USER_META_API_KEY` — Bearer token
+> **关于组织隔离**：绝大多数 `/web/*` 路由后端会从 API Key 元数据自动取 `$USER_META_ORG_ID` 作为隔离范围，**无需在 URL query 或 body 中显式传 `organizationId`**。`$USER_META_ORG_ID` / `$USER_META_USER_ID` 仅在少数需要明确指定目标组织/用户的接口（如 `/web/organizations` 的 action 类操作）中作为 body 字段传入。
 
 ## 响应格式
 

@@ -23,7 +23,9 @@ export function ToolCallGroup({ entries, onPermissionRespond }: ToolCallGroupPro
   const error = toolEntries.filter((e) => e.toolCall.status === "error").length;
 
   return (
-    <div className="pl-10">
+    // tool-call-group：pl-10 原用于让工具调用与 avatar 右侧的助手内容对齐。
+    // 当 meta-agent-panel 隐藏 avatar 后，padding-left 由 CSS 作用域规则置零，避免内容偏右
+    <div className="tool-call-group pl-10">
       {(running > 0 || error > 0) && (
         <div className="flex items-center gap-2 mb-1.5">
           {running > 0 && (

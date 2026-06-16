@@ -406,7 +406,7 @@ export function AgentHomePage() {
           min-height: 48px;
           max-height: 160px;
           flex: 1;
-          resize: vertical;
+          resize: none;
           border: 0;
           outline: 0;
           background: transparent;

@@ -1,11 +1,10 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { envApi } from "../../../../src/api/sdk";
 import { extractChangedFiles } from "../../../../src/lib/extract-changed-files";
 import type { ThreadEntry } from "../../../../src/lib/types";
-import { StatusHeader } from "../../../components/agent-panel/StatusHeader";
+import { cn } from "../../../../src/lib/utils";
 
 const ChatPanel = lazy(() => import("../../../pages/agent-panel/ChatPanel").then((m) => ({ default: m.ChatPanel })));
 const ArtifactsPanel = lazy(() =>
@@ -25,39 +24,32 @@ function ChatRoute() {
   const { agentId } = Route.useParams();
   const { t } = useTranslation("agentPanel");
 
-  const [artifactsCollapsed, setArtifactsCollapsed] = useState(() => {
-    const saved = localStorage.getItem("agent-panel:artifacts-collapsed");
-    return saved === "true";
-  });
+  // 默认隐藏：只有 Agent 产出 diff 文件后才自动展开文件区域
+  const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
 
-  const [envName, setEnvName] = useState<string | null>(null);
-
-  const [stats, setStats] = useState<{ agentName?: string; modelName?: string; entries: ThreadEntry[] }>({
-    entries: [],
-  });
+  // 路由层只需 entries 派生 changedFiles，环境名/token 由 ChatComposer 内部获取
+  const [entries, setEntries] = useState<ThreadEntry[]>([]);
 
   // 从 entries 派生变更文件列表，实时跟随对话更新
-  const changedFiles = useMemo(() => extractChangedFiles(stats.entries), [stats.entries]);
-
-  // 加载 environment 名称
-  useEffect(() => {
-    if (!agentId) {
-      setEnvName(null);
-      return;
-    }
-    envApi
-      .get({ id: agentId })
-      .then(({ data }) => setEnvName(data?.name ?? null))
-      .catch(() => setEnvName(null));
-  }, [agentId]);
+  const changedFiles = useMemo(() => extractChangedFiles(entries), [entries]);
 
   useEffect(() => {
     const handler = (e: Event) => {
-      setStats((e as CustomEvent).detail);
+      const detail = (e as CustomEvent).detail;
+      setEntries(detail.entries ?? []);
     };
     window.addEventListener("chat:stats", handler);
     return () => window.removeEventListener("chat:stats", handler);
   }, []);
+
+  // 首次出现 diff 文件时自动展开文件区域（用户手动收起后不再自动展开）
+  const prevDiffCountRef = useRef(0);
+  useEffect(() => {
+    if (prevDiffCountRef.current === 0 && changedFiles.length > 0 && artifactsCollapsed) {
+      setArtifactsCollapsed(false);
+    }
+    prevDiffCountRef.current = changedFiles.length;
+  }, [changedFiles.length, artifactsCollapsed]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
@@ -68,10 +60,6 @@ function ChatRoute() {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("agent-panel:artifacts-collapsed", String(artifactsCollapsed));
-  }, [artifactsCollapsed]);
-
   return (
     <Suspense
       fallback={
@@ -80,27 +68,23 @@ function ChatRoute() {
         </div>
       }
     >
-      <StatusHeader agentName={envName || stats.agentName} modelName={stats.modelName} entries={stats.entries} />
       <div className="agent-panel-content">
         <div className="agent-chat-area">
           <ChatPanel agentId={agentId} />
         </div>
-        <ArtifactsPanel
-          collapsed={artifactsCollapsed}
-          onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
-          envId={agentId}
-          changedFiles={changedFiles}
-        />
-        {artifactsCollapsed && (
-          <button
-            type="button"
-            className="agent-artifacts-expand-btn"
-            onClick={() => setArtifactsCollapsed(false)}
-            title={t("showArtifacts")}
-          >
+        <ArtifactsPanel key={agentId} collapsed={artifactsCollapsed} envId={agentId} changedFiles={changedFiles} />
+        <button
+          type="button"
+          className={cn("agent-artifacts-expand-btn", !artifactsCollapsed && "open")}
+          onClick={() => setArtifactsCollapsed((v) => !v)}
+          title={artifactsCollapsed ? t("showArtifacts") : t("hideArtifacts")}
+        >
+          {artifactsCollapsed ? (
             <PanelRight className="h-3.5 w-3.5" />
-          </button>
-        )}
+          ) : (
+            <PanelRight className="h-3.5 w-3.5 -scale-x-100" />
+          )}
+        </button>
       </div>
     </Suspense>
   );

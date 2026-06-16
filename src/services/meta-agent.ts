@@ -359,7 +359,15 @@ async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
 export async function ensureMetaEnvironment(ctx: AuthContext, request: Request): Promise<EnsureMetaResult> {
   const agentConfigId = await ensureMetaConfig(ctx);
   const apiKey = await ensureMetaApiKey(ctx, request.headers);
-  const extraEnv: Record<string, string> = { USER_META_API_KEY: apiKey };
+  // meta-agent 是组织内共享的 environment（名为 meta-agent），
+  // environment 记录中的 userId/organizationId 是创建者的信息，与"当前请求者"不一定一致。
+  // 这里通过 extraEnv 覆盖 instance.ts 的默认值，把当前 ctx 的 user/org 注入进程环境变量，
+  // 让 meta agent 在回调平台 API 时能定位到正确的用户与组织上下文。
+  const extraEnv: Record<string, string> = {
+    USER_META_API_KEY: apiKey,
+    USER_META_USER_ID: ctx.userId,
+    USER_META_ORG_ID: ctx.organizationId,
+  };
 
   const existing = await findMetaEnvironment(ctx);
   if (existing) {

@@ -42,7 +42,7 @@ export interface KnowledgeProvider {
     name: string;
     description?: string;
   }): Promise<KnowledgeBaseSnapshot>;
-  /** 删除整个知识库（RagFlow DELETE /api/v1/datasets/{id}） */
+  /** 删除整个知识库；RagFlow 不同版本可能使用单资源路径或集合端点。 */
   deleteKnowledgeBase(input: {
     knowledgeBaseRemoteId: string;
     remoteAccountId: string;

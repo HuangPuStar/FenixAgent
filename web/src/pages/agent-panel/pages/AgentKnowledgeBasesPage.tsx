@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { kbApi } from "@/src/api/sdk";
+import { NS } from "@/src/i18n";
 import type { KnowledgeBaseDetail, KnowledgeBaseInfo, KnowledgeResourceInfo } from "../../../types/knowledge";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
@@ -19,7 +20,7 @@ function formatTimestamp(timestamp: number | null | undefined): string {
 }
 
 export function AgentKnowledgeBasesPage() {
-  const { t } = useTranslation("knowledge");
+  const { t } = useTranslation(NS.KNOWLEDGE);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<KnowledgeBaseInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -165,9 +166,16 @@ export function AgentKnowledgeBasesPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
-        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <Skeleton className="h-[22px] w-28 rounded-md" />
+            <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
+          </div>
+          <Skeleton className="h-10 w-28 rounded-lg" />
+        </div>
+        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+        <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
@@ -178,7 +186,7 @@ export function AgentKnowledgeBasesPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
       <AgentPageHeader
         title={t("title")}
         subtitle={t("subtitle")}

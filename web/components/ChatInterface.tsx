@@ -1,6 +1,6 @@
 import { getParentToolUseId } from "acp-link/types";
 import imageCompression from "browser-image-compression";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ACPClient } from "../src/acp/client";
 import type {
@@ -8,12 +8,12 @@ import type {
   ImageContent,
   PermissionOption,
   PermissionRequestPayload,
-  SessionMode,
   SessionUpdate,
 } from "../src/acp/types";
 import { useCommands } from "../src/hooks/useCommands";
 import { useModes } from "../src/hooks/useModes";
 import { flushContext, isVisibleContentBlock } from "../src/lib/context-queue";
+import { computeStats, type TokenStats } from "../src/lib/token-stats";
 import type {
   ChatInputMessage,
   PendingPermission,
@@ -25,12 +25,11 @@ import type {
   UserMessageImage,
 } from "../src/lib/types";
 import { ContextPanel } from "./ContextPanel";
-import { ChatInput } from "./chat/ChatInput";
+import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import type { TodoItem } from "./chat/TodoPanel";
 import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
-import { ModelSelectorPopover } from "./model-selector";
 
 // Image compression options
 // Claude API has a 5MB limit, so we target 2MB to be safe
@@ -67,10 +66,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mimeType });
 }
 
-import { Check, ChevronDown, ChevronUp, Plus, Shield } from "lucide-react";
 import { Button } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 // =============================================================================
 // Type Definitions - imported from shared types module
@@ -86,60 +82,6 @@ interface ChatInterfaceProps {
   scenePrompt?: string;
   onPromptComplete?: () => void;
 }
-
-// =============================================================================
-// Session Mode Selector (dynamic from agent)
-// =============================================================================
-
-function SessionModeSelector({
-  modes,
-  currentModeId,
-  onModeChange,
-}: {
-  modes: SessionMode[];
-  currentModeId: string | null;
-  onModeChange: (modeId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const current = modes.find((m) => m.id === currentModeId) ?? modes[0];
-
-  if (modes.length === 0) return null;
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground h-7 px-2">
-          <Shield className="h-3 w-3" />
-          <span className="max-w-24 truncate">{current?.name ?? "默认"}</span>
-          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-1" align="start">
-        {modes.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => {
-              onModeChange(m.id);
-              setOpen(false);
-            }}
-            className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left hover:bg-surface-2 transition-colors"
-          >
-            <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center">
-              {currentModeId === m.id && <Check className="h-3.5 w-3.5 text-brand" />}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-text-primary">{m.name}</div>
-              {m.description && <div className="text-xs text-text-muted">{m.description}</div>}
-            </div>
-          </button>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// =============================================================================
 // Helper Functions
 // =============================================================================
 
@@ -671,7 +613,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onPromptComplete,
   ]);
 
-  // Broadcast stats to AgentAppShell via custom event (for top-level StatusHeader)
+  // 计算 token 统计，传给 ChatComposer 元信息条
+  // 复用 entries 派生结果，避免重复遍历；chat:stats dispatch 仍独立维护以便外部监听
+  const tokenStats: TokenStats = useMemo(() => computeStats(entries), [entries]);
+
+  // Broadcast entries via custom event（路由层 chat.$agentId.tsx 据此派生 changedFiles 给 ArtifactsPanel）
   useEffect(() => {
     const modelName = client.modelState
       ? (client.modelState.availableModels.find((m) => m.modelId === client.modelState!.currentModelId)?.name ??
@@ -999,32 +945,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           </div>
         )}
 
-        {/* Model selector + New thread + ChatInput */}
+        {/* ChatComposer — 玻璃磨砂命令岛，整合输入框 + 元信息条 */}
         {!readonly && (
           <div className="flex-shrink-0">
-            <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 pb-1 flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <SessionModeSelector modes={availableModes} currentModeId={currentModeId} onModeChange={setMode} />
-                <ModelSelectorPopover client={client} />
-              </div>
-              {entries.length > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-text-muted hover:text-brand font-display gap-1"
-                      onClick={handleNewSession}
-                    >
-                      <Plus className="h-3 w-3" />
-                      新会话
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("chatInterface.newThread")}</TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-            <ChatInput
+            <ChatComposer
               onSubmit={handleChatInputSubmit}
               isLoading={isLoading}
               onInterrupt={handleCancel}
@@ -1033,6 +957,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               supportsImages={supportsImages}
               commands={availableCommands.length > 0 ? availableCommands : undefined}
               envId={agentId}
+              client={client}
+              availableModes={availableModes}
+              currentModeId={currentModeId}
+              onModeChange={setMode}
+              tokenStats={tokenStats}
+              onNewSession={handleNewSession}
+              showNewSession={entries.length > 0}
             />
           </div>
         )}

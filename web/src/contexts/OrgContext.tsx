@@ -1,6 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { orgApi } from "@/src/api/sdk";
+import { NS } from "@/src/i18n";
 
 interface OrgInfo {
   id: string;
@@ -45,6 +48,7 @@ function installFetchInterceptor() {
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const { t } = useTranslation(NS.COMPONENTS);
   const [org, setOrg] = useState<OrgInfo | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<OrgWithRole[]>([]);
@@ -81,18 +85,44 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const switchOrg = useCallback(
     async (orgId: string) => {
-      // 从已加载列表中立即更新 UI 状态
+      // 快照当前值，用于失败时回滚
+      const oldOrgId = org?.id;
+      const _oldRole = role;
+      const storedOrgId = localStorage.getItem(STORAGE_KEY);
+
+      // 乐观更新 UI 和 localStorage（即时反馈）
       const target = orgs.find((o) => o.id === orgId);
       if (target) {
         setOrg(target);
         setRole(target.role ?? "");
       }
       localStorage.setItem(STORAGE_KEY, orgId);
-      await orgApi.setActive(orgId);
-      // 切换组织后导航回首页
-      void navigate({ to: "/agent/home", replace: true });
+
+      try {
+        const { error } = await orgApi.setActive(orgId);
+        if (error) throw new Error(error.message);
+        // 成功后导航到首页，触发组件重建和数据重载
+        void navigate({ to: "/agent/home", replace: true });
+      } catch (err) {
+        console.error("Failed to switch org:", err);
+        // 回滚 localStorage
+        if (storedOrgId) {
+          localStorage.setItem(STORAGE_KEY, storedOrgId);
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+        // 回滚 React state
+        if (oldOrgId) {
+          const oldTarget = orgs.find((o) => o.id === oldOrgId);
+          if (oldTarget) {
+            setOrg(oldTarget);
+            setRole(oldTarget.role ?? "");
+          }
+        }
+        toast.error(t("orgSwitchFailed", { message: (err as Error).message }));
+      }
     },
-    [navigate, orgs],
+    [navigate, orgs, org, role, t],
   );
 
   return (

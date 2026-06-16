@@ -62,18 +62,24 @@ export function stopHeartbeat(machineId: string): void {
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 
-/** 定期巡检：对 DB 中标记为 online 的 machine，检查是否仍有活跃 WS 连接，没有则标 offline */
+/**
+ * 定期巡检：对 DB 中标记为 online 的 machine，检查是否仍有活跃 WS 连接。
+ * 没有 active WS 的 machine 视为断连：标记 offline 并触发 relay 清理，
+ * 使前端能感知远程节点已不可达。
+ */
 export function startMachineSweep(intervalMs = 60_000): void {
   if (sweepTimer) return;
   sweepTimer = setInterval(async () => {
     try {
-      const { findMachineConnectionById } = await import("../transport/acp-ws-handler");
+      const mod = await import("../transport/acp-ws-handler");
       const onlineMachines = await db.select().from(machine).where(eq(machine.status, "online"));
       for (const m of onlineMachines) {
-        const conn = findMachineConnectionById(m.id);
+        const conn = mod.findMachineConnectionById(m.id);
         if (!conn) {
-          log(`[registry-sweep] Machine ${m.id} has no active WS connection, marking offline`);
+          log(`[registry-sweep] Machine ${m.id} has no active WS connection, triggering disconnect cleanup`);
           await markHeartbeatTimeout(m.id);
+          // sweep 检测到的断连无法关联具体 wsId，走 machineId 维度的清理
+          mod.triggerMachineCleanupByMachineId(m.id, "sweep: no active WS connection");
         }
       }
     } catch (err) {

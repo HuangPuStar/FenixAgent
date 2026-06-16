@@ -131,19 +131,71 @@ describe("launch spec builder errors", () => {
     });
   });
 
-  // agentConfig 没有 model 时必须直接失败，不能再走默认模型兜底
-  test("agentConfig missing model throws INVALID_CONFIG", async () => {
-    await expect(
-      buildLaunchSpec({
-        organizationId: "org_current",
-        userId: "user_owner",
-        agentConfig: createAgentConfig({ modelId: null }),
-        environmentSecret: "secret",
+  // agentConfig 未指定 model 时回退到组织第一个可用模型
+  test("agentConfig missing model falls back to first available model", async () => {
+    stubDb({
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => {
+            if (table === provider) {
+              return {
+                orderBy: () =>
+                  Promise.resolve([
+                    {
+                      id: "provider_demo",
+                      userId: "user_owner",
+                      organizationId: "org_current",
+                      name: "openai",
+                      displayName: "OpenAI",
+                      protocol: "openai",
+                      baseUrl: "https://internal.example.com",
+                      apiKey: "internal-key",
+                      extraOptions: {},
+                      createdAt: now,
+                      updatedAt: now,
+                    },
+                  ]),
+              };
+            }
+            if (table === model) {
+              return {
+                orderBy: () => ({
+                  limit: () =>
+                    Promise.resolve([
+                      {
+                        id: "model_demo",
+                        userId: "user_owner",
+                        organizationId: "org_current",
+                        providerId: "provider_demo",
+                        modelId: "gpt-4o",
+                        name: null,
+                        displayName: null,
+                        capability: { vision: false, functionCalling: true },
+                        defaultParams: {},
+                        contextLimit: 128000,
+                        cost: {},
+                        permission: null,
+                        supported: true,
+                        customParams: {},
+                        createdAt: now,
+                        updatedAt: now,
+                      },
+                    ]),
+                }),
+              };
+            }
+            return queryResult([]);
+          },
+        }),
       }),
-    ).rejects.toMatchObject({
-      code: "INVALID_CONFIG",
-      message: "AgentConfig 'agc_demo' has no model configured",
     });
+    const spec = await buildLaunchSpec({
+      organizationId: "org_current",
+      userId: "user_owner",
+      agentConfig: createAgentConfig({ modelId: null }),
+      environmentSecret: "secret",
+    });
+    expect(spec.model.model).toBe("gpt-4o");
   });
 
   // MCP 配置非法时必须直接失败，避免把错误推迟到运行时

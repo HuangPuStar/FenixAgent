@@ -2,8 +2,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ThreadEntry } from "../../../src/lib/types";
-import { StatusHeader } from "../../components/agent-panel/StatusHeader";
 import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
 import { ArtifactsPanel } from "./ArtifactsPanel";
@@ -23,23 +21,8 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId ?? null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  // Listen for stats broadcast from ChatInterface
-  const [stats, setStats] = useState<{ agentName?: string; modelName?: string; entries: ThreadEntry[] }>({
-    entries: [],
-  });
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      setStats((e as CustomEvent).detail);
-    };
-    window.addEventListener("chat:stats", handler);
-    return () => window.removeEventListener("chat:stats", handler);
-  }, []);
-
-  const [artifactsCollapsed, setArtifactsCollapsed] = useState(() => {
-    const saved = localStorage.getItem("agent-panel:artifacts-collapsed");
-    return saved === "true";
-  });
+  // 默认隐藏文件区域（AgentAppShell 不传 changedFiles，手动展开）
+  const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
@@ -51,10 +34,6 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("agent-panel:artifacts-collapsed", String(artifactsCollapsed));
-  }, [artifactsCollapsed]);
 
   useEffect(() => {
     setSelectedAgentId(agentId);
@@ -94,16 +73,11 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
         onCreateAgent={() => setCreateDialogOpen(true)}
       />
       <div className="agent-panel-body">
-        <StatusHeader agentName={stats.agentName} modelName={stats.modelName} entries={stats.entries} />
         <div className="agent-panel-content">
           <div className="agent-chat-area">
             <ChatPanel agentId={selectedAgentId} sessionId={currentSessionId} />
           </div>
-          <ArtifactsPanel
-            collapsed={artifactsCollapsed}
-            onToggleCollapse={() => setArtifactsCollapsed(!artifactsCollapsed)}
-            envId={selectedAgentId}
-          />
+          <ArtifactsPanel collapsed={artifactsCollapsed} envId={selectedAgentId} />
           {artifactsCollapsed && (
             <button
               type="button"

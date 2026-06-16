@@ -8,6 +8,8 @@ allowed-tools: Bash
 
 管理组织（多租户）和 API Key。
 
+> **提示**：下面示例中的 `<ORG_ID>` 占位符，操作"当前调用者所属组织"时直接用环境变量 `$USER_META_ORG_ID` 替代；对应地，涉及用户身份的 `<MEMBER_ID>` / `<USER_ID>` 在指代当前调用者本人时可用 `$USER_META_USER_ID`。
+
 ---
 
 ## 一、组织管理 — `/web/organizations`

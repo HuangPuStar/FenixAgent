@@ -7,7 +7,7 @@ import {
   getProviderDisplayName,
   getProviderKey,
   getProviderResourceBadgeKey,
-} from "../pages/agent-panel/pages/AgentModelsPage";
+} from "../pages/agent-panel/pages/agent-models-utils";
 import type { ModelEntry, ProviderInfo } from "../types/config";
 
 const internalProvider: ProviderInfo = {
