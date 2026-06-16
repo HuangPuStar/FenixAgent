@@ -23,11 +23,11 @@
 ├─────────────────────────────────────────┤
 │  knowledge-provider/                     │
 │    ├── types.ts       Provider 接口定义  │
-│    └── openviking.ts  OpenViking 实现    │
+│    └── ragflow.ts     RagFlow 实现       │
 └──────────┬──────────────────────────────┘
            │
            ▼
-    外部知识库服务（OpenViking）
+    外部知识库服务（RagFlow）
     做向量索引和检索
 
 Agent 运行时
@@ -44,7 +44,7 @@ Agent 运行时
 知识库的 CRUD 管理。每个知识库属于一个用户，核心字段：
 
 - `name` / `slug`：名称和 URL 标识
-- `provider`：后端提供者（目前只有 openviking）
+- `provider`：后端提供者（目前默认 ragflow）
 - `remoteId`：在远程 Provider 那边的资源 ID
 - `status`：empty / indexing / ready / error
 
@@ -66,15 +66,15 @@ Agent 运行时
 
 ### KnowledgeProvider（`knowledge-provider/`）
 
-Provider 是对外部索引服务的抽象。目前只实现了 OpenViking：
+Provider 是对外部索引服务的抽象。目前只实现了 RagFlow：
 
 - `types.ts`：定义 `KnowledgeProvider` 接口（createKnowledgeBase、uploadResource、deleteResource、search）
-- `openviking.ts`：OpenViking 的 HTTP API 实现
+- `ragflow.ts`：RagFlow 的 HTTP API 实现
 
 Provider 的配置来自 `config.ts`：
-- `RCS_KNOWLEDGE_PROVIDER`：选择哪个 provider（默认 openviking）
-- `RCS_KNOWLEDGE_BASE_URL`：Provider 的 HTTP 地址
-- `RCS_KNOWLEDGE_API_KEY`：认证 key
+- `RAGFLOW_API_URL`：Provider 的 HTTP 地址
+- `RAGFLOW_API_KEY`：认证 key
+- `RAGFLOW_REQUEST_TIMEOUT_MS`：请求超时
 
 ### MCP 端点（`routes/mcp/knowledge.ts`）
 
@@ -103,7 +103,7 @@ Agent 运行时通过这个 MCP 端点查询知识库。它在 Agent 的 workspa
 ## 和其他模块的关系
 
 - → `db/schema.ts`：操作 knowledge 系列表
-- → `knowledge-provider/openviking.ts`：远程索引服务调用
+- → `knowledge-provider/ragflow.ts`：远程索引服务调用
 - → `config.ts`：读取 Provider 配置
 - ← `services/instance.ts`：spawn 时注入 MCP 知识库端点
 - ← `routes/web/knowledge-bases.ts`：前端 CRUD API
