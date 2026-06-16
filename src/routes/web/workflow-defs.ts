@@ -274,7 +274,16 @@ app.post(
       }
     } catch (err: unknown) {
       logger.error("Error:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
+      // 从 DrizzleQueryError.cause 中提取底层 PG 错误信息
+      const cause = err instanceof Error ? err.cause : null;
+      const pgMessage = cause instanceof Error ? cause.message : null;
+      // 唯一约束冲突 → 409 Conflict
+      if (pgMessage?.includes("duplicate key") || pgMessage?.includes("unique constraint")) {
+        return error(409, {
+          error: { type: "CONFLICT", message: pgMessage || "Duplicate key violation" },
+        });
+      }
+      const message = pgMessage || (err instanceof Error ? err.message : "Unknown error");
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }
   },

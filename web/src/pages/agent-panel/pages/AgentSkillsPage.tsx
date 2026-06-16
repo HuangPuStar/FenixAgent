@@ -379,7 +379,7 @@ export function AgentSkillsPage() {
               {showOrgPrefix ? getSkillOptionLabel(skill) : skill.name}
             </span>
             <span className="min-w-[34px] shrink-0 whitespace-nowrap rounded-full bg-[#eef3f8] px-1.5 py-1 text-center text-[10px] font-medium leading-none text-[#8a98ab] [word-break:keep-all] [writing-mode:horizontal-tb]">
-              {showOrgPrefix ? "共享" : "私有"}
+              {showOrgPrefix ? tComponents("resource.external") : tComponents("resource.internal")}
             </span>
           </div>
           <p className="mt-3 line-clamp-3 text-[12px] leading-5 text-[#718198]">{skill.description || "—"}</p>
@@ -432,7 +432,7 @@ export function AgentSkillsPage() {
                 onClick={() => setChatOpen(true)}
               >
                 <Sparkles className="h-4 w-4" />
-                对话创建
+                {tComponents("chatEmpty.startConversation")}
               </Button>
             </>
           }

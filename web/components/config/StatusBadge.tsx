@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "../../src/lib/utils";
 import { Badge } from "../ui/badge";
 
@@ -10,16 +11,10 @@ export function getBadgeVariant(status: string): string {
   const map: Record<string, string> = {
     configured: "green",
     enabled: "green",
-    已配置: "green",
-    已启用: "green",
     unconfigured: "secondary",
     disabled: "secondary",
-    未配置: "secondary",
-    已禁用: "secondary",
     builtIn: "blue",
-    内置: "blue",
     custom: "outline",
-    自定义: "outline",
   };
   return map[status] || "outline";
 }
@@ -31,22 +26,12 @@ const variantMap: Record<string, "default" | "secondary" | "outline" | "destruct
   outline: "outline",
 };
 
-const labelMap: Record<string, string> = {
-  configured: "已配置",
-  enabled: "已启用",
-  unconfigured: "未配置",
-  disabled: "已禁用",
-  builtIn: "内置",
-  custom: "自定义",
-  primary: "主模型",
-  subagent: "子Agent",
-  all: "全部",
-};
-
 export function StatusBadge({ status }: StatusBadgeProps) {
+  const { t } = useTranslation("components");
   const variant = getBadgeVariant(status);
   const badgeVariant = variantMap[variant] || "outline";
   const isActive = status === "enabled" || status === "configured";
+  const label = t(`statusBadge.${status}`, status);
   return (
     <Badge
       variant={badgeVariant}
@@ -56,7 +41,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
         isActive && "status-badge-active",
       )}
     >
-      {labelMap[status] || status}
+      {label}
     </Badge>
   );
 }

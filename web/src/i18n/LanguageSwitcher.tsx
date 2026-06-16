@@ -22,7 +22,7 @@ export function LanguageSwitcher() {
       ].join(" ")}
     >
       <Globe className="w-3.5 h-3.5" />
-      <span>{i18n.language === "zh" ? "中文" : "EN"}</span>
+      <span>{i18n.language === "zh" ? t("language.zh") : t("language.en")}</span>
     </button>
   );
 }

@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, BookOpen, FileCode, FileText, Pencil, Search, Wand2 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentApi, envApi, modelApi } from "@/src/api/sdk";
 import type { AgentTemplate } from "../../../../../packages/sdk/src/modules/config";
@@ -10,6 +10,8 @@ import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import type { GenerationFormData } from "../components/AgentGenerationForm";
 import { AgentGenerationForm } from "../components/AgentGenerationForm";
+
+const assetBase = import.meta.env.BASE_URL;
 
 // 模板卡片图标色系
 const TEMPLATE_COLORS = [
@@ -201,7 +203,12 @@ export function AgentHomePage() {
       <div className="agent-home-container">
         <div className="agent-home-header">
           <div className="agent-home-brand-icon">
-            <FenixHomeLogo />
+            <img
+              className="fenix-sidebar-logo-mark"
+              src={`${assetBase}brand/fenix-agent-logo-mark.png`}
+              alt=""
+              aria-hidden="true"
+            />
           </div>
           <h1>{renderAgentTitle(titleText)}</h1>
           {phase !== "form" && <p>{t("subtitle")}</p>}
@@ -211,7 +218,12 @@ export function AgentHomePage() {
           {phase === "idle" ? (
             <>
               <div className="agent-home-greeting">
-                <strong>你好，</strong>告诉我你想创建一个怎样的智能体。描述它做什么、为谁服务，我会帮你生成配置。
+                <Trans
+                  i18nKey="greeting"
+                  ns={NS.AGENT_HOME}
+                  defaults="<strong>你好，</strong>告诉我你想创建一个怎样的智能体。描述它做什么、为谁服务，我会帮你生成配置。"
+                  components={{ strong: <strong /> }}
+                />
               </div>
               <div className="agent-home-input-wrap">
                 <textarea
@@ -228,7 +240,7 @@ export function AgentHomePage() {
                 />
                 <button type="button" onClick={() => void handleSubmit()} className="agent-home-polish-btn">
                   <Wand2 className="h-4 w-4" />
-                  一键创建
+                  {t("oneClickCreate", { defaultValue: "一键创建" })}
                 </button>
               </div>
             </>
@@ -255,7 +267,7 @@ export function AgentHomePage() {
             <div className="agent-home-form-header">
               <button type="button" className="agent-home-back-btn" onClick={handleReset}>
                 <ArrowLeft className="h-4 w-4" />
-                返回
+                {t("back", { defaultValue: "返回" })}
               </button>
             </div>
             <AgentGenerationForm
@@ -342,9 +354,10 @@ export function AgentHomePage() {
           background: linear-gradient(135deg, #0f6bff, #6be6ff);
           box-shadow: 0 4px 20px rgba(15,107,255,0.25);
         }
-        .agent-home-brand-icon svg {
+        .agent-home-brand-icon img {
           width: 30px;
           height: 30px;
+          object-fit: contain;
         }
         .agent-home-header h1 {
           margin: 0 0 8px;
@@ -630,22 +643,6 @@ export function AgentHomePage() {
         }
       `}</style>
     </div>
-  );
-}
-
-function FenixHomeLogo() {
-  return (
-    <svg viewBox="0 0 200 200" aria-hidden="true">
-      <path
-        d="M100 20C130 40 150 70 150 100C150 130 130 160 100 180C70 160 50 130 50 100C50 70 70 40 100 20Z"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="8"
-      />
-      <path d="M70 60Q100 30 130 60" fill="none" stroke="#fff" strokeWidth="5" />
-      <path d="M60 120Q100 160 140 120" fill="none" stroke="#fff" strokeWidth="5" />
-      <rect x="92" y="92" width="16" height="16" rx="2" fill="#fff" transform="rotate(45 100 100)" />
-    </svg>
   );
 }
 

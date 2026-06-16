@@ -1,6 +1,7 @@
 import { Loader, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import type { WorkflowJob } from "../../api/workflow-jobs";
 import { workflowJobsApi } from "../../api/workflow-jobs";
 import { useSession } from "../../lib/auth-client";
@@ -107,27 +108,30 @@ export function WorkflowKanban() {
             onSelect={setBoardId}
             onBoardsChange={loadJobs}
           />
-          <button
+          <Button
             type="button"
+            size="sm"
             onClick={() => {
               setEditJob(null);
               setDialogOpen(true);
             }}
             disabled={!boardId}
-            className="flex items-center gap-1 px-2 py-1 bg-brand text-white text-[10px] font-medium hover:bg-brand-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-6 px-2 text-[10px]"
           >
-            <Plus size={13} />
+            <Plus size={13} className="mr-0.5" />
             {t("dialog_create_title")}
-          </button>
+          </Button>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={loadJobs}
-          className="flex items-center gap-1 px-2 py-1 text-text-secondary text-[10px] hover:bg-surface-hover transition-colors"
+          className="h-6 px-2 text-[10px] text-text-secondary"
         >
-          <RefreshCw size={12} />
+          <RefreshCw size={12} className="mr-0.5" />
           {t("refresh")}
-        </button>
+        </Button>
       </div>
 
       {/* Board */}

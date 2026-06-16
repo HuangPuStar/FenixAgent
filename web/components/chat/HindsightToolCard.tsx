@@ -1,5 +1,6 @@
 import { Brain, ChevronRight, Loader2 } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolCallData } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -17,6 +18,7 @@ interface HindsightToolCardProps {
 }
 
 export function HindsightToolCard({ tool }: HindsightToolCardProps) {
+  const { t } = useTranslation("components");
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const action = getAction(tool.title);
@@ -58,7 +60,9 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none bg-violet-100/80 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
               {action}
             </span>
-            {isError && <span className="text-[10px] text-status-error font-medium">失败</span>}
+            {isError && (
+              <span className="text-[10px] text-status-error font-medium">{t("hindsightToolCard.failed")}</span>
+            )}
           </div>
           <div className="text-[12px] text-text-secondary mt-1.5 leading-relaxed">{summary}</div>
         </div>

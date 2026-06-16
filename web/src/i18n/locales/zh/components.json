@@ -140,8 +140,6 @@
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
-    "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
-    "uploadTooLarge": "上传失败：文件大小超过 100MB 限制",
     "dropToUpload": "释放文件以上传",
     "hintDragUpload": "拖拽上传",
     "hintDoubleClick": "双击预览",
@@ -232,6 +230,8 @@
     "submit": "提交"
   },
   "chatView": {
+    "startConversation": "开始对话",
+    "startConversationDesc": "输入消息开始聊天",
     "thinking": "思考中"
   },
   "commandMenu": {
@@ -242,14 +242,23 @@
     "uploadedImage": "已上传图片"
   },
   "planView": {
+    "high": "高",
+    "medium": "中",
+    "low": "低",
     "executionPlan": "执行计划"
   },
   "sessionSidebar": {
+    "today": "今天",
+    "yesterday": "昨天",
+    "earlier": "更早",
+    "header": "会话",
     "sessions": "会话",
     "historySessions": "历史会话",
     "noSessions": "暂无会话"
   },
   "toolCallGroup": {
+    "running": "运行中",
+    "failed": "{{count}} 失败",
     "input": "输入",
     "output": "输出"
   },
@@ -282,6 +291,7 @@
     "earlier": "更早"
   },
   "chatInterface": {
+    "processingError": "请求未能正常处理，请检查 Agent 或大模型状态后重试",
     "newThread": "新对话",
     "agentPlaceholder": "给智能体发送消息…",
     "waitingSession": "等待会话...",
@@ -300,6 +310,10 @@
     "agent": "智能体"
   },
   "contextPanel": {
+    "unknownModel": "未知",
+    "input": "输入",
+    "output": "输出",
+    "defaultSession": "默认",
     "showContext": "显示上下文面板",
     "hideContext": "隐藏上下文面板",
     "running": "运行中",
@@ -319,6 +333,7 @@
     "empty": "暂无内容"
   },
   "todoPanel": {
+    "collapse": "收起",
     "completed": "已完成",
     "inProgress": "进行中"
   },
@@ -333,9 +348,6 @@
   "metaAgent": {
     "title": "Meta Agent",
     "history_title": "会话历史",
-    "history_today": "今天",
-    "history_yesterday": "昨天",
-    "history_earlier": "更早",
     "history_empty": "暂无会话",
     "history_untitled": "未命名",
     "chat_collapse": "收起面板",
@@ -345,10 +357,11 @@
     "send": "发送",
     "stop": "停止",
     "newSession": "新会话",
-    "placeholder": "给智能体发送消息…",
     "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件"
   },
   "chatEmpty": {
+    "startConversation": "开始对话",
+    "startConversationDesc": "输入消息开始与 ACP agent 聊天",
     "skills": "已加载 Skills",
     "skillsHint": "输入 / 打开 Skill 弹窗",
     "noSkills": "暂无绑定 Skills"
@@ -359,5 +372,76 @@
     "statusRunning": "运行中",
     "statusStopped": "已停止"
   },
-  "orgSwitchFailed": "切换组织失败"
+  "orgSwitchFailed": "切换组织失败",
+  "imagePreview": {
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "reset": "还原"
+  },
+  "hindsightToolCard": {
+    "failed": "失败"
+  },
+  "statusBadge": {
+    "configured": "已配置",
+    "enabled": "已启用",
+    "unconfigured": "未配置",
+    "disabled": "已禁用",
+    "builtin": "内置",
+    "custom": "自定义",
+    "primaryModel": "主模型",
+    "subAgent": "子Agent",
+    "all": "全部"
+  },
+  "dataTable": {
+    "actions": "操作",
+    "noData": "暂无数据",
+    "searchPlaceholder": "搜索...",
+    "pagination": "第 {{start}}-{{end}} 条，共 {{total}} 条"
+  },
+  "confirmDialog": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "processing": "处理中..."
+  },
+  "formDialog": {
+    "save": "保存",
+    "cancel": "取消",
+    "saving": "保存中..."
+  },
+  "batchActionBar": {
+    "selected": "已选择 {{count}} 项",
+    "clear": "清除"
+  },
+  "datePicker": {
+    "placeholder": "选择日期"
+  },
+  "toolCallContent": {
+    "changes": "{{count}} 处变更",
+    "results": "{{count}} 结果",
+    "files": "{{count}} 个文件",
+    "taskRunning": "子任务执行中",
+    "agentCalling": "Agent 调用",
+    "todos": "{{count}} 个待办项",
+    "updateTodoList": "更新待办列表",
+    "toolsAndMessages": "{{toolCount}} 工具{{msgPart}}",
+    "messages": "{{count}} 消息"
+  },
+  "toolCallRow": {
+    "failed": "失败",
+    "pendingConfirmation": "待确认",
+    "viewParams": "查看参数"
+  },
+  "toolCallUtils": {
+    "filesAndMore": "{{first}} 等 {{count}} 个文件"
+  },
+  "permissionPanel": {
+    "allow": "允许",
+    "deny": "拒绝"
+  },
+  "sessionModeSelector": {
+    "default": "默认"
+  },
+  "modelIconMap": {
+    "qwen": "Qwen / 通义千问"
+  }
 }

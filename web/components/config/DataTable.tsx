@@ -13,6 +13,7 @@ import {
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -93,6 +94,7 @@ function buildColumnDefs<T>(
   selectable: boolean,
   expandableRow: ((row: T) => React.ReactNode) | undefined,
   actions: ((row: T) => React.ReactNode) | undefined,
+  actionsHeader: string,
 ): ColumnDef<T>[] {
   const defs: ColumnDef<T>[] = [];
 
@@ -145,7 +147,7 @@ function buildColumnDefs<T>(
     defs.push({
       id: "actions",
       size: 120,
-      header: "操作",
+      header: actionsHeader,
       cell: ({ row }) => (
         <div className="table-row-actions opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           {actions(row.original)}
@@ -167,12 +169,13 @@ export function DataTable<T>({
   actions,
   expandableRow,
   rowKey,
-  emptyMessage = "暂无数据",
+  emptyMessage,
   pageSize = 10,
   defaultExpandAll,
   expandedState: controlledExpanded,
   onExpandedChange,
 }: DataTableProps<T>) {
+  const { t } = useTranslation("components");
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [internalExpanded, setInternalExpanded] = useState<ExpandedState>(() => {
@@ -212,8 +215,8 @@ export function DataTable<T>({
   const table = useReactTable({
     data,
     columns: useMemo(
-      () => buildColumnDefs(columns, !!selectable, expandableRow, actions),
-      [columns, selectable, expandableRow, actions],
+      () => buildColumnDefs(columns, !!selectable, expandableRow, actions, t("dataTable.actions")),
+      [columns, selectable, expandableRow, actions, t],
     ),
     state: {
       sorting,
@@ -254,7 +257,7 @@ export function DataTable<T>({
           <Input
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            placeholder={searchPlaceholder || "搜索..."}
+            placeholder={searchPlaceholder || t("dataTable.searchPlaceholder")}
             className="pl-9 focus-visible:border-brand focus-visible:ring-brand/25"
           />
         </div>
@@ -289,7 +292,7 @@ export function DataTable<T>({
             {table.getRowModel().rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={colSpan} className="py-8 text-center text-muted-foreground">
-                  {emptyMessage}
+                  {emptyMessage ?? t("dataTable.noData")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -359,9 +362,14 @@ export function DataTable<T>({
       {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            第 {table.getState().pagination.pageIndex * pageSize + 1}-
-            {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, table.getFilteredRowModel().rows.length)}{" "}
-            条，共 {table.getFilteredRowModel().rows.length} 条
+            {t("dataTable.pagination", {
+              start: table.getState().pagination.pageIndex * pageSize + 1,
+              end: Math.min(
+                (table.getState().pagination.pageIndex + 1) * pageSize,
+                table.getFilteredRowModel().rows.length,
+              ),
+              total: table.getFilteredRowModel().rows.length,
+            })}
           </span>
           <div className="flex gap-1">
             <Button

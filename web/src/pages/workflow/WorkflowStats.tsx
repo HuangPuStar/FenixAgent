@@ -30,7 +30,7 @@ function formatTokens(n: number): string {
 
 function MetricCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-lg border border-border-subtle bg-surface-base p-4">
+    <div className="rounded-lg border border-border-light bg-surface-1 px-4 py-3">
       <div className="text-xs text-text-secondary">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-text-primary">{value}</div>
       {sub && <div className="mt-0.5 text-xs text-text-tertiary">{sub}</div>}
@@ -89,11 +89,10 @@ export function WorkflowStats() {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6 overflow-y-auto flex-1">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-text-primary">{t("page.tab_stats")}</h2>
-        <div className="flex items-center gap-1 rounded-lg border border-border-subtle p-0.5">
+    <div className="flex flex-col gap-4 flex-1 min-h-0">
+      {/* 范围切换器 */}
+      <div className="flex items-center justify-end">
+        <div className="flex items-center gap-1 rounded-lg border border-border-light p-0.5">
           {RANGES.map((r) => (
             <button
               key={r}
@@ -132,7 +131,7 @@ export function WorkflowStats() {
       {/* Charts */}
       <div className="grid grid-cols-2 gap-4">
         {/* Run Trend */}
-        <div className="rounded-lg border border-border-subtle bg-surface-base p-4">
+        <div className="rounded-lg border border-border-light bg-surface-1 p-4">
           <h3 className="mb-3 text-sm font-medium text-text-primary">{t("stats_trend_title")}</h3>
           {trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
@@ -152,7 +151,7 @@ export function WorkflowStats() {
         </div>
 
         {/* Token Consumption */}
-        <div className="rounded-lg border border-border-subtle bg-surface-base p-4">
+        <div className="rounded-lg border border-border-light bg-surface-1 p-4">
           <h3 className="mb-3 text-sm font-medium text-text-primary">{t("stats_tokens_title")}</h3>
           {tokens.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
@@ -187,12 +186,15 @@ export function WorkflowStats() {
       </div>
 
       {/* Recent Failures */}
-      <div className="rounded-lg border border-border-subtle bg-surface-base p-4">
+      <div className="rounded-lg border border-border-light bg-surface-1 p-4">
         <h3 className="mb-3 text-sm font-medium text-text-primary">{t("stats_failed_title")}</h3>
         {failedRuns.length > 0 ? (
           <div className="flex flex-col gap-2">
             {failedRuns.map((run) => (
-              <div key={run.runId} className="flex items-center gap-3 rounded-md border border-border-subtle px-3 py-2">
+              <div
+                key={run.runId}
+                className="flex items-center gap-3 rounded-md border border-border-light bg-surface-1 px-3 py-2"
+              >
                 <AlertTriangle size={14} className="shrink-0 text-red-500" />
                 <div className="flex-1 min-w-0">
                   <div className="truncate text-sm font-medium text-text-primary">{run.workflowName}</div>
