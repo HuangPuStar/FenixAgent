@@ -1,5 +1,5 @@
 import { AlertTriangle, Inbox, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -15,9 +15,10 @@ import { SkeletonTable } from "./components/SkeletonRows";
 interface WorkflowListProps {
   onEditWorkflow: (workflowId: string) => void;
   onViewVersions: (workflowId: string) => void;
+  createRequested?: boolean;
 }
 
-export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListProps) {
+export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }: WorkflowListProps) {
   const { t } = useTranslation("workflows");
   const [workflows, setWorkflows] = useState<WorkflowDefItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +53,15 @@ export function WorkflowList({ onEditWorkflow, onViewVersions }: WorkflowListPro
   useEffect(() => {
     loadList();
   }, [loadList]);
+
+  // 响应外部新建请求（createRequested 递增时触发）
+  const prevCreateRequestedRef = useRef(createRequested);
+  useEffect(() => {
+    if (createRequested !== 0 && createRequested !== prevCreateRequestedRef.current) {
+      setShowCreateDialog(true);
+    }
+    prevCreateRequestedRef.current = createRequested;
+  }, [createRequested]);
 
   const handleCreate = useCallback(async () => {
     if (!createName.trim()) return;

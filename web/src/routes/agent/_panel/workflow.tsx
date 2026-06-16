@@ -1,7 +1,8 @@
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { BarChart3, History, KanbanSquare, Loader, Pencil } from "lucide-react";
-import { lazy, Suspense, useCallback } from "react";
+import { BarChart3, History, KanbanSquare, Loader, Pencil, Plus } from "lucide-react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { AgentPageHeader } from "../../../pages/agent-panel/shared/AgentPageHeader";
 
 const WorkflowList = lazy(() =>
@@ -23,6 +24,8 @@ function WorkflowTabPage() {
   const search = useSearch({ strict: false }) as { tab?: string };
   const activeTab =
     search.tab === "kanban" ? "kanban" : search.tab === "runs" ? "runs" : search.tab === "stats" ? "stats" : "list";
+
+  const [createTrigger, setCreateTrigger] = useState(0);
 
   const onEditWorkflow = useCallback(
     (workflowId: string) => {
@@ -57,6 +60,10 @@ function WorkflowTabPage() {
     [navigate],
   );
 
+  const handleCreateClick = useCallback(() => {
+    setCreateTrigger((n) => n + 1);
+  }, []);
+
   const tabs = [
     { id: "list" as const, label: t("page.tab_workflows"), icon: Pencil, search: {} },
     { id: "kanban" as const, label: t("page.tab_kanban"), icon: KanbanSquare, search: { tab: "kanban" } },
@@ -66,7 +73,16 @@ function WorkflowTabPage() {
 
   return (
     <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d] dark:bg-[#1a1d23]">
-      <AgentPageHeader title={t("page.workflow_title")} subtitle={t("page.workflow_subtitle")} />
+      <AgentPageHeader
+        title={t("page.workflow_title")}
+        subtitle={t("page.workflow_subtitle")}
+        actions={
+          <Button size="sm" onClick={handleCreateClick}>
+            <Plus size={14} className="mr-1" />
+            {t("list.create")}
+          </Button>
+        }
+      />
 
       {/* 子 tab 栏：下划线式，嵌入页面内部 */}
       <div className="mb-4 flex items-center gap-1 border-b border-border-subtle">
@@ -96,7 +112,11 @@ function WorkflowTabPage() {
         ) : activeTab === "stats" ? (
           <WorkflowStats />
         ) : activeTab === "list" ? (
-          <WorkflowList onEditWorkflow={onEditWorkflow} onViewVersions={onViewVersions} />
+          <WorkflowList
+            onEditWorkflow={onEditWorkflow}
+            onViewVersions={onViewVersions}
+            createRequested={createTrigger}
+          />
         ) : (
           <WorkflowRuns onSelectRun={onSelectRun} />
         )}
