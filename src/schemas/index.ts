@@ -229,30 +229,6 @@ export {
   RegistryEventListResponseSchema,
   RegistryEventSchema,
 } from "./registry.schema";
-// S3 Files
-export {
-  type S3DeleteBody,
-  S3DeleteBodySchema,
-  type S3DeleteResponse,
-  S3DeleteResponseSchema,
-  type S3FileEntry,
-  S3FileEntrySchema,
-  type S3FileListQuery,
-  S3FileListQuerySchema,
-  type S3FileListResponse,
-  S3FileListResponseSchema,
-  type S3PresignGetQuery,
-  S3PresignGetQuerySchema,
-  type S3PresignGetResponse,
-  S3PresignGetResponseSchema,
-  type S3PresignPutBody,
-  S3PresignPutBodySchema,
-  type S3PresignPutResponse,
-  S3PresignPutResponseSchema,
-  S3UploadQuerySchema,
-  type S3UploadResponse,
-  S3UploadResponseSchema,
-} from "./s3-file.schema";
 // Sessions
 export {
   type InterruptResponse,

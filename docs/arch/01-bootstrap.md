@@ -55,7 +55,6 @@
 | `RCS_WS_KEEPALIVE_INTERVAL` | 20 | 服务端→客户端心跳间隔（秒） |
 | `RCS_DISCONNECT_TIMEOUT` | 120 | 无活动判定断连的超时（秒） |
 | `HERMES_URL` | 空 | Hermes IM 网关地址，不配则不启动 |
-| `RCS_S3_ENABLED` | false | 是否启用 S3 对象存储 |
 
 ## 和其他模块的关系
 

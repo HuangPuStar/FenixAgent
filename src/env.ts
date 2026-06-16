@@ -31,20 +31,6 @@ const envSchema = z.object({
   RAGFLOW_API_KEY: z.string().default(""),
   RAGFLOW_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
 
-  // ── 可选：S3 ──
-  RCS_S3_ENABLED: z
-    .string()
-    .default("false")
-    .transform((v) => v === "true"),
-  RCS_S3_ENDPOINT: z.string().default("http://localhost:9000"),
-  RCS_S3_REGION: z.string().default("us-east-1"),
-  RCS_S3_ACCESS_KEY: z.string().default(""),
-  RCS_S3_SECRET_KEY: z.string().default(""),
-  RCS_S3_BUCKET_SESSIONS: z.string().default("rcs-sessions"),
-  RCS_S3_BUCKET_ASSETS: z.string().default("rcs-assets"),
-  RCS_S3_PRESIGN_EXPIRES: z.coerce.number().int().positive().default(3600),
-  RCS_S3_PRESIGN_UPLOAD_EXPIRES: z.coerce.number().int().positive().default(600),
-
   // ── 可选：认证 ──
   RCS_DISABLE_SIGNUP: z
     .string()

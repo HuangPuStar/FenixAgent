@@ -333,38 +333,6 @@ export interface ImportKnowledgeUrlResponse {
 }
 export type DeleteKnowledgeResourceResponse = Record<string, unknown>;
 
-// ── S3 File ──
-export interface S3FileEntry {
-  key: string;
-  size: number;
-  lastModified: number;
-}
-export interface S3FileListQuery {
-  sessionId: string;
-  prefix?: string;
-}
-export interface S3FileListResponse {
-  files: S3FileEntry[];
-}
-export interface S3PresignGetQuery {
-  sessionId: string;
-  key: string;
-}
-export interface S3PresignGetResponse {
-  url: string;
-}
-export interface S3PresignPutBody {
-  sessionId: string;
-  key: string;
-  contentType: string;
-}
-export interface S3PresignPutResponse {
-  url: string;
-}
-export interface S3UploadResponse {
-  key: string;
-}
-
 // ── Session ──
 export interface SessionEvent extends Indexable {
   seqNum?: number;

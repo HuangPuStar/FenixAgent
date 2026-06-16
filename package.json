@@ -37,8 +37,6 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.192",
-    "@aws-sdk/client-s3": "^3.1052.0",
-    "@aws-sdk/s3-request-presigner": "^3.1052.0",
     "@better-auth/api-key": "1.6.11",
     "@elysiajs/cors": "^1.4.2",
     "@elysiajs/openapi": "^1.4.15",
