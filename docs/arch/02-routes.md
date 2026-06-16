@@ -31,7 +31,6 @@
 | `web/channels.ts` | `/web/channels` | Channel 绑定管理、Hermes 状态查询 |
 | `web/knowledge-bases.ts` | `/web/knowledge-bases` | 知识库 CRUD、资源管理、Agent 绑定 |
 | `web/files.ts` | `/web/sessions/:id/user/*` | 会话文件系统的读写上传 |
-| `web/s3-files.ts` | `/web/s3/*` | S3 presigned URL 生成 |
 | `web/control.ts` | `/web/control` | 会话控制（发消息、中断） |
 | `web/auth.ts` | `/web/auth` | 当前用户信息 |
 | `web/workflow-proxy.ts` | `/workflow/*` | 反向代理到 acpx-g 工作流引擎 |

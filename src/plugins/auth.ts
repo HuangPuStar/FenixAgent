@@ -119,22 +119,13 @@ async function tryApiKeyAuth(
       store.user = user;
       const orgId = apiKeyMeta.organizationId || apiKeyMeta.metadata?.organizationId;
       if (orgId) {
-        // 验证 API Key 持有者仍属于该组织（与 session cookie 路径的 loadOrgContext 一致）
         try {
-          // biome-ignore lint/suspicious/noExplicitAny: better-auth listMembers 返回类型未导出
-          const memberRes: any = await auth.api.listMembers({
-            query: { organizationId: orgId },
-            headers: request.headers,
-          });
-          // biome-ignore lint/suspicious/noExplicitAny: better-auth listMembers 返回类型未导出
-          const memberList: any[] = Array.isArray(memberRes) ? memberRes : (memberRes?.members ?? []);
-          // biome-ignore lint/suspicious/noExplicitAny: better-auth 成员项类型未导出
-          const isMember = memberList.some((m: any) => m.userId === user.id);
+          const isMember = await isUserMemberOfOrganization(user.id, orgId);
           if (!isMember) {
-            return false; // 用户已不在该组织中，拒绝 API Key
+            return false;
           }
         } catch {
-          // listMembers 调用失败（网络/DB 异常）→ 保守拒绝，防止 DB 故障时绕过成员校验
+          // DB 查询异常时保守拒绝，避免在成员关系不可验证时放行 API key。
           return false;
         }
 
@@ -206,6 +197,23 @@ export async function lookupUserById(userId: string): Promise<UserInfo | null> {
   const { eq } = await import("drizzle-orm");
   const [row] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
   return row ? { id: row.id, email: row.email, name: row.name } : null;
+}
+
+/**
+ * 直接从本地 member 表判断用户是否仍属于指定组织。
+ * API key 请求本身没有 session/cookie，上游 better-auth 组织接口未必接受这类请求头；
+ * 这里改查本地表，避免把“成员校验接口不可用”误判成“调用者未认证”。
+ */
+export async function isUserMemberOfOrganization(userId: string, organizationId: string): Promise<boolean> {
+  const { db } = await import("../db");
+  const { member } = await import("../db/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const rows = await db
+    .select({ id: member.id })
+    .from(member)
+    .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId)))
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** Mounts better-auth handler at /api/auth/* */

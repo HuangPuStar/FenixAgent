@@ -178,7 +178,6 @@ describe("bundle-entry exports", () => {
       "MetaAgentApi",
       "ApiKeyApi",
       "OrganizationApi",
-      "S3FileApi",
       "ControlApi",
       "SessionApi",
       "TaskApi",

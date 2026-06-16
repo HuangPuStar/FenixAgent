@@ -620,18 +620,6 @@ export type {
   FileWriteResult,
 } from "../../../src/schemas/file.schema";
 
-// ── S3 File ──
-export type {
-  S3PresignGetQuery,
-  S3PresignGetResponse,
-  S3PresignPutBody,
-  S3PresignPutResponse,
-  S3FileListQuery,
-  S3FileEntry,
-  S3FileListResponse,
-  S3UploadResponse,
-} from "../../../src/schemas/s3-file.schema";
-
 // ── Knowledge ──
 export type {
   KnowledgeBaseInfo,

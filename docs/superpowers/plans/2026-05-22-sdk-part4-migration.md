@@ -89,7 +89,6 @@ import {
   TaskApi,
   FileApi,
   UserFileApi,
-  S3FileApi,
   KnowledgeBaseApi,
   ChannelApi,
   ProviderApi,
@@ -117,7 +116,6 @@ export const instanceApi = new InstanceApi();
 export const taskApi = new TaskApi();
 export const fileApi = new FileApi();
 export const userFileApi = new UserFileApi();
-export const s3FileApi = new S3FileApi();
 export const kbApi = new KnowledgeBaseApi();
 export const channelApi = new ChannelApi();
 export const providerApi = new ProviderApi();

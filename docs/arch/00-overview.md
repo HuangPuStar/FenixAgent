@@ -17,7 +17,7 @@
 | 定时任务 | [09-scheduler.md](./09-scheduler.md) | Cron 调度、任务执行、日志记录 |
 | Channel 与 Hermes | [10-hermes.md](./10-hermes.md) | 多平台 IM 消息网关，聊天平台到 Agent 的桥接 |
 | 知识库 | [11-knowledge.md](./11-knowledge.md) | 知识库 CRUD、文件上传索引、Agent 绑定 |
-| 文件与 S3 | [12-files.md](./12-files.md) | 会话文件系统、S3 对象存储集成 |
+| 文件 | [12-files.md](./12-files.md) | 会话文件系统 |
 | 插件层 | [13-plugins.md](./13-plugins.md) | Elysia 插件：CORS、日志、错误处理、静态文件 |
 | 用户与权限 | [14-auth-and-permissions.md](./14-auth-and-permissions.md) | 认证链路、资源隔离方式、当前缺失的权限能力 |
 | 团队权限方案 | [15-team-permissions-design.md](./15-team-permissions-design.md) | 从用户隔离→团队共享+管理员全局可见的设计（未实施） |

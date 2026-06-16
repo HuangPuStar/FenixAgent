@@ -1,7 +1,7 @@
 // src/__tests__/knowledge-provider-ragflow.test.ts
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetConfig, setConfig } from "../config";
-import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
+import { checkRagFlowHealth, RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 
 const originalFetch = globalThis.fetch;
 
@@ -20,6 +20,25 @@ afterEach(() => {
 });
 
 describe("RagFlowKnowledgeProvider", () => {
+  test("createKnowledgeBase 在未配置 API key 时抛出明确错误", async () => {
+    setConfig({ ragflowApiKey: "" });
+    const fetchSpy = mock(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ code: 0, data: { id: "unused" } }),
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(
+      provider.createKnowledgeBase({
+        userId: "user1",
+        slug: "test-kb",
+        name: "Test KB",
+      }),
+    ).rejects.toThrow("RAGFLOW_API_KEY is not configured");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   test("createKnowledgeBase 调用 RagFlow API 创建 dataset 并返回 dataset_id 作为 remoteId", async () => {
     globalThis.fetch = mock(async () => ({
       ok: true,
@@ -458,5 +477,23 @@ describe("RagFlowKnowledgeProvider", () => {
     expect(url).toContain("/api/v1/datasets/ds_abc123/documents/doc_xyz/chunks");
     expect(result.content).toBe("first chunk\n\nsecond chunk");
     expect(result.title).toBe("test.pdf");
+  });
+
+  test("checkRagFlowHealth 使用 system healthz 端点且不携带 Authorization", async () => {
+    const fetchSpy = mock(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "ok" }),
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const result = await checkRagFlowHealth();
+
+    expect(result.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect((fetchSpy as ReturnType<typeof mock>).mock.calls[0]?.[0]).toBe("http://ragflow.test/api/v1/system/healthz");
+    expect(((fetchSpy as ReturnType<typeof mock>).mock.calls[0]?.[1] as RequestInit | undefined)?.headers).toEqual({
+      "Content-Type": "application/json",
+    });
   });
 });

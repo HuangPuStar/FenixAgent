@@ -38,7 +38,6 @@ export { InstanceApi } from "./modules/instance";
 export { KnowledgeBaseApi } from "./modules/knowledge";
 export { MetaAgentApi } from "./modules/meta-agent";
 export { ApiKeyApi, OrganizationApi } from "./modules/organization";
-export { S3FileApi } from "./modules/s3-file";
 export { ControlApi, SessionApi } from "./modules/session";
 export { TaskApi } from "./modules/task";
 export { V2CodeSessionApi } from "./modules/v2-code-session";

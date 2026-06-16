@@ -127,10 +127,10 @@ describe("ProcessExecutor", () => {
   // inputs 注入 secrets 为环境变量
   test("inputs 注入 secrets 为环境变量", async () => {
     const ctx = makeCtx({
-      secrets: { MY_SECRET: "s3cret" },
+      secrets: { MY_SECRET: "secrets" },
       resolvedInputs: {
         command: 'echo "$MY_SECRET"',
-        inputs: { MY_SECRET: { value: "s3cret", rawExpression: "secrets.MY_SECRET" } },
+        inputs: { MY_SECRET: { value: "secrets", rawExpression: "secrets.MY_SECRET" } },
       },
     });
     const node = shellNode('echo "$MY_SECRET"', {
@@ -139,7 +139,7 @@ describe("ProcessExecutor", () => {
     const output = await executor.execute(node, ctx);
 
     expect(output.exit_code).toBe(0);
-    expect(output.stdout).toBe("s3cret\n");
+    expect(output.stdout).toBe("secrets\n");
   });
 
   // 环境变量注入
