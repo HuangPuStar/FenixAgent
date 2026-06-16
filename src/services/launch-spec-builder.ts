@@ -9,6 +9,7 @@ import { agentConfigSkill, mcpServer, model, provider, skill } from "../db/schem
 import { AppError } from "../errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import type { AgentConfigDetailWithAccess } from "./config";
+import { resolveApiKey } from "./config-utils";
 import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
@@ -182,7 +183,7 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Pro
       provider: matched.name,
       protocol: toLaunchModelProtocol(matched.protocol, matched.name, agentConfig.id),
       baseUrl: matched.baseUrl || "",
-      apiKey: matched.apiKey || "",
+      apiKey: resolveApiKey(matched.apiKey) ?? "",
       model: matchedModel.modelId,
     };
   }
@@ -262,7 +263,7 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Pro
     provider: matched.name,
     protocol: toLaunchModelProtocol(matched.protocol, matched.name, agentConfig.id),
     baseUrl: matched.baseUrl || "",
-    apiKey: matched.apiKey || "",
+    apiKey: resolveApiKey(matched.apiKey) ?? "",
     model: matchedModel.modelId,
   };
 }
@@ -307,7 +308,7 @@ async function resolveFirstReadableModelConfig(input: {
       provider: providerRow.name,
       protocol: toLaunchModelProtocol(providerRow.protocol, providerRow.name, input.environmentId ?? "minimal"),
       baseUrl: providerRow.baseUrl || "",
-      apiKey: providerRow.apiKey || "",
+      apiKey: resolveApiKey(providerRow.apiKey) ?? "",
       model: firstModel.modelId,
     };
   }
