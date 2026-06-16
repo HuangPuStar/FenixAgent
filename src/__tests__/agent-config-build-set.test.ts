@@ -42,6 +42,6 @@ describe("buildSetFromData 字段映射", () => {
 
   // 所有字段均在 settable 列表中
   test("AGENT_SETTABLE_FIELDS 数量稳定", () => {
-    expect(AGENT_SETTABLE_FIELDS.length).toBe(18);
+    expect(AGENT_SETTABLE_FIELDS.length).toBe(8);
   });
 });

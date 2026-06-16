@@ -22,20 +22,10 @@ const AGENT_SETTABLE_FIELDS = [
   "model",
   "modelId",
   "prompt",
-  "steps",
-  "mode",
-  "permission",
-  "variant",
-  "temperature",
-  "topP",
-  "top_p",
-  "disable",
-  "hidden",
-  "color",
   "description",
+  "extra",
   "machineId",
   "knowledge",
-  "extra",
   "engineType",
 ] as const;
 
@@ -274,6 +264,9 @@ export function validateAgentData(data: Record<string, unknown>): string | null 
   if (data.permission !== undefined && data.permission !== null) {
     if (typeof data.permission === "string") return "INVALID_PERMISSION";
     if (typeof data.permission !== "object" || Array.isArray(data.permission)) return "INVALID_PERMISSION";
+  }
+  if (data.extra !== undefined && data.extra !== null) {
+    if (typeof data.extra !== "object" || Array.isArray(data.extra)) return "INVALID_EXTRA";
   }
   if (data.knowledge !== undefined) {
     const error = validateKnowledgeConfig(data.knowledge);
