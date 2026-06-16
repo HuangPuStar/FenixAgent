@@ -1,16 +1,137 @@
 import { randomBytes } from "node:crypto";
+import { createLogger } from "@fenix/logger";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { agentConfig, environment, machine } from "../db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
-import type { EnvironmentUpdateParams } from "../repositories";
+import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories";
 import { environmentRepo } from "../repositories";
 import * as configPg from "./config/index";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "./environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "./environment-core";
 import { groupActiveInstancesByEnvironment } from "./instance";
+import { resolveWorkspacePath } from "./workspace-resolver";
 
 export type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams };
+
+const logger = createLogger("environment-web");
+
+/**
+ * 判断数据库错误是否由唯一索引冲突触发。
+ */
+function isUniqueConstraintError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.message?.includes("unique") || err.message?.includes("duplicate") || err.message?.includes("UNIQUE"))
+  );
+}
+
+/**
+ * 将 environment 表行转换为 service 层统一使用的记录结构。
+ */
+function toEnvironmentRecord(row: typeof environment.$inferSelect): EnvironmentRecord {
+  const computedWorkspace = resolveWorkspacePath(row.organizationId ?? row.userId ?? "", row.userId ?? "", row.id);
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    workspacePath: computedWorkspace,
+    agentConfigId: row.agentConfigId ?? null,
+    secret: row.secret,
+    machineName: row.machineName,
+    directory: computedWorkspace,
+    branch: row.branch,
+    gitRepoUrl: row.gitRepoUrl,
+    maxSessions: row.maxSessions,
+    workerType: row.workerType,
+    capabilities: (row.capabilities as Record<string, unknown>) ?? null,
+    status: row.status,
+    username: null,
+    userId: row.userId,
+    organizationId: row.organizationId ?? null,
+    autoStart: row.autoStart ?? false,
+    lastPollAt: row.lastPollAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/**
+ * 为“创建或复用 environment”场景查找现有记录。
+ * 优先按 agentConfigId 复用，避免模板创建后立刻点击时重复创建同一智能体的 environment。
+ */
+async function findReusableEnvironment(params: CreateWebEnvironmentParams): Promise<EnvironmentRecord | null> {
+  const organizationId = params.organizationId ?? params.userId;
+  const environments = await db.select().from(environment).where(eq(environment.organizationId, organizationId));
+
+  if (params.agentConfigId) {
+    const sameAgentEnvironments = environments.filter((env) => env.agentConfigId === params.agentConfigId);
+    const matched = sameAgentEnvironments.find((env) => env.name === params.name) ?? sameAgentEnvironments[0] ?? null;
+    return matched ? toEnvironmentRecord(matched) : null;
+  }
+
+  const matched = environments.find((env) => env.name === params.name) ?? null;
+  return matched ? toEnvironmentRecord(matched) : null;
+}
+
+/**
+ * 直接插入 environment 表并返回完整记录。
+ * 这里不走 repository.create，避免不同入口在测试桩下出现行为分叉。
+ */
+async function insertEnvironmentRecord(params: {
+  id: string;
+  name: string;
+  description?: string;
+  secret: string;
+  userId: string;
+  organizationId: string;
+  autoStart: boolean;
+  agentConfigId: string | null;
+  machineName?: string;
+}): Promise<EnvironmentRecord> {
+  const now = new Date();
+  await db.insert(environment).values({
+    id: params.id,
+    name: params.name,
+    description: params.description ?? null,
+    workspacePath: "",
+    agentConfigId: params.agentConfigId,
+    status: "idle",
+    secret: params.secret,
+    userId: params.userId,
+    organizationId: params.organizationId,
+    autoStart: params.autoStart,
+    machineName: params.machineName ?? null,
+    maxSessions: 1,
+    workerType: "acp",
+    capabilities: null,
+    branch: null,
+    gitRepoUrl: null,
+    lastPollAt: now,
+  });
+
+  return toEnvironmentRecord({
+    id: params.id,
+    name: params.name,
+    description: params.description ?? null,
+    workspacePath: "",
+    agentConfigId: params.agentConfigId,
+    status: "idle",
+    machineName: params.machineName ?? null,
+    branch: null,
+    gitRepoUrl: null,
+    maxSessions: 1,
+    workerType: "acp",
+    capabilities: null,
+    secret: params.secret,
+    userId: params.userId,
+    organizationId: params.organizationId,
+    autoStart: params.autoStart,
+    lastPollAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
 
 /** 创建 Web 控制面板 Environment — workspace 路径运行时实时计算，创建时写空字符串 */
 export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
@@ -40,19 +161,26 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
     }
   }
 
+  // 先复用已有 environment，避免“模板创建后马上点击”时两个入口为同一 agent 重复建环境。
+  const existing = await findReusableEnvironment(params);
+  if (existing) {
+    logger.info(
+      `[createWebEnvironment] reuse existing environment id='${existing.id}', name='${existing.name}', agentConfigId='${existing.agentConfigId ?? ""}'`,
+    );
+    return existing;
+  }
+
   // 预生成 environment ID（workspace 路径运行时实时计算）
   const envId = `env_${randomBytes(12).toString("hex")}`;
 
   // 创建记录，workspacePath 写空字符串
   const secret = generateEnvSecret();
-  let record: Awaited<ReturnType<typeof environmentRepo.create>>;
+  let record: EnvironmentRecord;
   try {
-    record = await environmentRepo.create({
+    record = await insertEnvironmentRecord({
       id: envId,
       name,
       description,
-      workspacePath: "",
-      status: "idle",
       secret,
       userId,
       organizationId: organizationId ?? userId,
@@ -61,10 +189,15 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
       machineName,
     });
   } catch (err: unknown) {
-    if (
-      err instanceof Error &&
-      (err.message?.includes("unique") || err.message?.includes("duplicate") || err.message?.includes("UNIQUE"))
-    ) {
+    // 这里保留二次回查，覆盖“两个请求几乎同时都查不到，再由唯一索引挡住第二个插入”的竞态窗口。
+    if (isUniqueConstraintError(err)) {
+      const existingAfterConflict = await findReusableEnvironment(params);
+      if (existingAfterConflict) {
+        logger.warn(
+          `[createWebEnvironment] detected concurrent create, reuse existing environment id='${existingAfterConflict.id}', name='${existingAfterConflict.name}', agentConfigId='${existingAfterConflict.agentConfigId ?? ""}'`,
+        );
+        return existingAfterConflict;
+      }
       throw new ConflictError(`环境名称 '${name}' 已存在`);
     }
     throw err;
