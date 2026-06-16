@@ -18,6 +18,14 @@ const WorkflowStats = lazy(() =>
   import("../../../pages/workflow/WorkflowStats").then((m) => ({ default: m.WorkflowStats })),
 );
 
+function TabContentFallback() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <Loader className="h-6 w-6 animate-spin text-text-muted" />
+    </div>
+  );
+}
+
 function WorkflowTabPage() {
   const { t } = useTranslation("workflows");
   const navigate = useNavigate();
@@ -105,36 +113,28 @@ function WorkflowTabPage() {
         })}
       </div>
 
-      {/* tab 内容区 */}
-      <div className="flex flex-1 flex-col min-h-0">
-        {activeTab === "kanban" ? (
-          <WorkflowKanban />
-        ) : activeTab === "stats" ? (
-          <WorkflowStats />
-        ) : activeTab === "list" ? (
-          <WorkflowList
-            onEditWorkflow={onEditWorkflow}
-            onViewVersions={onViewVersions}
-            createRequested={createTrigger}
-          />
-        ) : (
-          <WorkflowRuns onSelectRun={onSelectRun} />
-        )}
-      </div>
+      {/* tab 内容区 — Suspense 在内容区内部，避免切换 tab 时顶栏闪烁 */}
+      <Suspense fallback={<TabContentFallback />}>
+        <div className="flex flex-1 flex-col min-h-0">
+          {activeTab === "kanban" ? (
+            <WorkflowKanban />
+          ) : activeTab === "stats" ? (
+            <WorkflowStats />
+          ) : activeTab === "list" ? (
+            <WorkflowList
+              onEditWorkflow={onEditWorkflow}
+              onViewVersions={onViewVersions}
+              createRequested={createTrigger}
+            />
+          ) : (
+            <WorkflowRuns onSelectRun={onSelectRun} />
+          )}
+        </div>
+      </Suspense>
     </div>
   );
 }
 
 export const Route = createFileRoute("/agent/_panel/workflow")({
-  component: () => (
-    <Suspense
-      fallback={
-        <div className="flex flex-1 items-center justify-center">
-          <Loader className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-        </div>
-      }
-    >
-      <WorkflowTabPage />
-    </Suspense>
-  ),
+  component: WorkflowTabPage,
 });
