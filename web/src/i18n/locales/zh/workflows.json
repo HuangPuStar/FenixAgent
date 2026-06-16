@@ -18,8 +18,6 @@
     "no_match": "没有匹配的工作流",
     "no_workflows": "暂无工作流",
     "no_workflows_hint": "点击「新建工作流」创建你的第一个工作流",
-    "table_name": "名称",
-    "table_version": "最新版本",
     "table_modified": "最后修改",
     "not_published": "未发布",
     "version_history": "版本历史",
@@ -67,7 +65,6 @@
     "status_skipped": "已跳过"
   },
   "runs": {
-    "title": "运行记录",
     "refresh": "刷新",
     "search_placeholder": "搜索工作流名称...",
     "filter_all": "全部",
@@ -84,11 +81,6 @@
     "no_runs": "暂无运行记录",
     "no_runs_filter_hint": "尝试调整筛选条件",
     "no_runs_hint": "在编辑器中执行工作流后，运行记录将显示在这里",
-    "table_workflow": "工作流",
-    "table_status": "状态",
-    "table_nodes": "节点",
-    "table_start": "开始时间",
-    "table_duration": "耗时",
     "cancel": "取消",
     "view_details": "查看详情",
     "total_records": "共 {{count}} 条记录",
