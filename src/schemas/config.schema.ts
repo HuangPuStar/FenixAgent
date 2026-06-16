@@ -155,6 +155,11 @@ export const AgentInfoSchema = z
     machineId: z.string().nullable().optional().describe("绑定的机器 ID；未设置时为 null。"),
     knowledgeBaseCount: z.number().describe("绑定的知识库数量。"),
     skillLabels: z.array(AgentLabelSchema).optional().describe("Skill 展示标签列表；仅列表场景返回。"),
+    engineType: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("执行引擎类型：opencode / ccb / claude-code；未设置时默认 opencode。"),
     resourceAccess: AgentResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
   })
   .describe("Agent 列表项。");
