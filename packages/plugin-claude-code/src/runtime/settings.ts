@@ -87,7 +87,7 @@ export function buildSettings(
 
   if (model.apiKey) {
     if (model.protocol === "anthropic") {
-      env.ANTHROPIC_API_KEY = model.apiKey;
+      env.ANTHROPIC_AUTH_TOKEN = model.apiKey;
       if (model.baseUrl) env.ANTHROPIC_BASE_URL = model.baseUrl;
     } else {
       env.OPENAI_API_KEY = model.apiKey;
