@@ -5,29 +5,6 @@ import { useTranslation } from "react-i18next";
 import { authClient } from "../lib/auth-client";
 import { encryptPassword } from "../lib/password-crypto";
 
-const brandFeatures = [
-  {
-    icon: <CirclePlus />,
-    title: "智能编排",
-    description: "多智能体协同调度",
-  },
-  {
-    icon: <ShieldCheck />,
-    title: "安全可靠",
-    description: "企业级数据安全保障",
-  },
-  {
-    icon: <MessageSquare />,
-    title: "智能对话",
-    description: "多模态自然语言交互",
-  },
-  {
-    icon: <Users />,
-    title: "组织管理",
-    description: "团队协作与权限管控",
-  },
-];
-
 const brandTags = ["AI Orchestration", "Multi-Agent", "Intelligent Core"];
 const particleKeys = ["particle-1", "particle-2", "particle-3", "particle-4", "particle-5", "particle-6"];
 
@@ -813,6 +790,7 @@ function AuthInput({
   required?: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation("login");
   const [visible, setVisible] = useState(false);
   const isPassword = type === "password";
   const inputType = isPassword && visible ? "text" : type;
@@ -834,7 +812,7 @@ function AuthInput({
         />
         {isPassword && (
           <button
-            aria-label={visible ? "隐藏密码" : "显示密码"}
+            aria-label={visible ? t("hidePassword") : t("showPassword")}
             className="auth-light-toggle"
             onClick={() => setVisible((current) => !current)}
             type="button"
@@ -948,15 +926,20 @@ export function LoginPage() {
       <section className="auth-light-brand-panel">
         <LoginBrandMark />
         <div className="auth-light-brand-title">FENIX AGENT</div>
-        <div className="auth-light-brand-sub">企业级 AI 智能体中枢</div>
+        <div className="auth-light-brand-sub">{t("brandSubtitle")}</div>
 
         <div className="auth-light-features">
-          {brandFeatures.map((feature) => (
+          {[
+            { icon: <CirclePlus />, titleKey: "features.orchestration", descKey: "features.orchestrationDesc" },
+            { icon: <ShieldCheck />, titleKey: "features.security", descKey: "features.securityDesc" },
+            { icon: <MessageSquare />, titleKey: "features.conversation", descKey: "features.conversationDesc" },
+            { icon: <Users />, titleKey: "features.organization", descKey: "features.organizationDesc" },
+          ].map((feature) => (
             <FeatureCard
-              description={feature.description}
+              description={t(feature.descKey)}
               icon={feature.icon}
-              key={feature.title}
-              title={feature.title}
+              key={feature.titleKey}
+              title={t(feature.titleKey)}
             />
           ))}
         </div>

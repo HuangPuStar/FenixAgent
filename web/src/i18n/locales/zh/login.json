@@ -39,5 +39,17 @@
   "noAccount": "没有账户？",
   "signUpFailed": "注册失败",
   "signInFailed": "登录失败",
-  "unknownError": "未知错误"
+  "unknownError": "未知错误",
+  "showPassword": "显示密码",
+  "hidePassword": "隐藏密码",
+  "features": {
+    "orchestration": "智能编排",
+    "orchestrationDesc": "多智能体协同调度",
+    "security": "安全可靠",
+    "securityDesc": "企业级数据安全保障",
+    "conversation": "智能对话",
+    "conversationDesc": "多模态自然语言交互",
+    "organization": "组织管理",
+    "organizationDesc": "团队协作与权限管控"
+  }
 }
