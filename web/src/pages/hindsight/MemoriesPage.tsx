@@ -28,7 +28,7 @@ export function MemoriesPage() {
 
   if (loading) {
     return (
-      <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
             <Skeleton className="h-[22px] w-28 rounded-md" />
@@ -49,7 +49,7 @@ export function MemoriesPage() {
 
   if (!enabled) {
     return (
-      <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
         <div className="flex flex-col items-center justify-center py-16 text-text-muted">
           <p className="text-sm">{t("status.notConfigured")}</p>
         </div>
@@ -58,7 +58,7 @@ export function MemoriesPage() {
   }
 
   return (
-    <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
       <Tabs defaultValue="world">
         {/* 标题行：标题 + 副标题在左，Tab 选择器在右 */}
         <div className="mb-3 flex items-start justify-between gap-4">

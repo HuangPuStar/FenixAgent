@@ -275,7 +275,7 @@ export function AgentOrganizationsPage() {
   const members = detail?.members ?? [];
 
   return (
-    <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
       <AgentPageHeader
         title={t("title")}
         subtitle={t("subtitle")}
