@@ -120,8 +120,8 @@ services:
       RCS_SECRET: ${REGISTRY_SECRET:-dual-secret}
       RCS_LABELS: dual-engine,dev
       SUPPORTED_ENGINE_TYPES: '[{"type":"opencode"},{"type":"ccb"},{"type":"claude-code"}]'
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-db2185422c5b46a7ad83f6ad6c146b08}
-      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://anapi-uat.annto.com/api-sse-anthropic}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL}
       CLAUDE_CODE_CLI_PATH: /app/node_modules/@anthropic-ai/claude-agent-sdk/cli.js
       HTTP_PROXY: http://host.docker.internal:7897
       HTTPS_PROXY: http://host.docker.internal:7897
