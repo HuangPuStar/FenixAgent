@@ -20,6 +20,7 @@ import { ENGINE_TYPES, type EngineType } from "./types";
 
 const AGENT_SETTABLE_FIELDS = [
   "model",
+  "modelId",
   "prompt",
   "steps",
   "mode",
@@ -34,6 +35,7 @@ const AGENT_SETTABLE_FIELDS = [
   "description",
   "machineId",
   "knowledge",
+  "extra",
   "engineType",
 ] as const;
 

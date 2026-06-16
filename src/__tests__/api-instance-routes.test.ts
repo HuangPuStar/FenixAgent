@@ -20,7 +20,7 @@ describe("API Instance Routes", () => {
     setApiInstanceDeps({
       listEnvironmentsByOrganizationId: async () => [],
       groupActiveInstancesByEnvironment: () => new Map(),
-      getAgentConfigById: async () => null,
+      getAgentConfigById: async () => null as any,
       createWebEnvironment: async () => {
         throw new Error("not stubbed");
       },

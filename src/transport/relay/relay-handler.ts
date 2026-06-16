@@ -175,7 +175,7 @@ async function openLocalRelay(
   const full = handle as FullRelayHandle;
   if (full.onMessage) {
     entry.relayUnsub = full.onMessage((message) => {
-      const msgType = (message as Record<string, unknown>).type as string | undefined;
+      const msgType = (message as unknown as Record<string, unknown>).type as string | undefined;
       // 转发 agent 的 status（含 capabilities），使前端能检测 session/list 等能力
       if (msgType === "status") {
         log("Relay ← agent status", { relayWsId, agentId, instanceId, payload: JSON.stringify(message).slice(0, 300) });
