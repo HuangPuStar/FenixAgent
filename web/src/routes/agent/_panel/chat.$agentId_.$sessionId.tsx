@@ -58,7 +58,7 @@ function ChatWithSessionRoute() {
         <div className="agent-chat-area">
           <ChatPanel agentId={agentId} sessionId={sessionId} />
         </div>
-        <ArtifactsPanel collapsed={artifactsCollapsed} envId={agentId} changedFiles={changedFiles} />
+        <ArtifactsPanel key={agentId} collapsed={artifactsCollapsed} envId={agentId} changedFiles={changedFiles} />
         <button
           type="button"
           className={cn("agent-artifacts-expand-btn", !artifactsCollapsed && "open")}

@@ -390,8 +390,8 @@ export function AgentSidebarTree({
   }
 
   return (
-    <div className="agent-sidebar-tree flex-1 overflow-y-auto py-2">
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pt-1 pb-2">
+    <div className="agent-sidebar-tree flex-1 overflow-y-auto pb-2">
+      <div className="sticky top-0 z-10 flex items-center justify-between pr-4 pb-4">
         <span className="agent-tree-section-title">{t("agents")}</span>
         <div className="flex items-center gap-1">
           <label

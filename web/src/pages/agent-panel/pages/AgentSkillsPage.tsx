@@ -1,4 +1,4 @@
-import { ChevronDown, Search, Share2, Sparkles, Upload } from "lucide-react";
+import { Search, Share2, Sparkles, Upload } from "lucide-react";
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -6,12 +6,6 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -433,35 +427,13 @@ export function AgentSkillsPage() {
                 <Upload className="h-4 w-4" />
                 {t("btn.uploadSkill")}
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
-                  >
-                    {t("btn.createSkill")}
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  sideOffset={8}
-                  className="w-[180px] rounded-none border-[#e5e7eb] bg-white p-0 text-[#374151] shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
-                >
-                  <DropdownMenuItem
-                    className="h-14 justify-center rounded-none text-[14px] text-[#3f4655] focus:bg-[#f7f9fc] focus:text-[#1677ff]"
-                    onClick={() => setChatOpen(true)}
-                  >
-                    对话创建
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="h-14 justify-center rounded-none border-t border-[#eef1f5] text-[14px] text-[#3f4655] focus:bg-[#f7f9fc] focus:text-[#1677ff]"
-                    onClick={() => handleOpenCreate("text")}
-                  >
-                    markdown创建
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                className="h-10 shrink-0 gap-2 rounded-lg px-4 text-[13px] font-semibold"
+                onClick={() => setChatOpen(true)}
+              >
+                <Sparkles className="h-4 w-4" />
+                对话创建
+              </Button>
             </>
           }
         />

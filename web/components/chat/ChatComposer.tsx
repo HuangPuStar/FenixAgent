@@ -347,7 +347,13 @@ export function ChatComposer({
   // Render — 玻璃磨砂容器 + 大 textarea + 底部脚标行
   // ---------------------------------------------------------------------------
   return (
-    <div className={cn("w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2", className)}>
+    <div
+      className={cn(
+        // chat-composer-wrapper：作为窄屏容器（如 MetaAgentPanel）收紧外边距的 CSS 作用域钩子
+        "chat-composer-wrapper w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2",
+        className,
+      )}
+    >
       {/* relative wrapper：CommandMenu 在此层定位，不受 .chat-composer-card 的 overflow: clip 裁剪 */}
       <div className="relative">
         {/* Slash command menu —— 浮在 composer-card 上方，不被 overflow 裁剪 */}
@@ -450,7 +456,9 @@ export function ChatComposer({
 
             {/* 右侧：token 进度条 + 百分比 + 新会话 */}
             {tokenStats && tokenStats.estimatedTokens > 0 && (
-              <>
+              // chat-composer-token-stats：包裹 token 进度条/百分比/分隔线，作为窄屏容器隐藏的 CSS 作用域钩子。
+              // 使用 contents 让该 wrapper 不参与 flex 布局，子元素照常作为 meta 条的直接 flex item
+              <div className="chat-composer-token-stats contents">
                 <div className="w-12 h-1 rounded-full bg-surface-3 overflow-hidden flex shrink-0">
                   <div
                     className="h-full bg-brand transition-[width] duration-500"
@@ -469,7 +477,7 @@ export function ChatComposer({
                   {Math.min(Math.round((tokenStats.estimatedTokens / MAX_CONTEXT_TOKENS) * 100), 100)}%
                 </span>
                 <span className="chat-composer-divider" />
-              </>
+              </div>
             )}
 
             {showNewSession && onNewSession && (

@@ -157,9 +157,13 @@ export async function spawnInstanceFromEnvironment(
   );
 
   // Phase 1: 注入平台级环境变量，调用方仍可通过 extraEnv 覆盖这些默认值。
+  // USER_META_USER_ID/ORG_ID 取 environment 记录中的所有者；
+  // meta-agent 等共享环境会在 ensureMetaEnvironment 中通过 extraEnv 覆盖为当前请求者的 ctx。
   const platformEnv: Record<string, string> = {
     USER_META_API_KEY: env.secret,
     USER_META_BASE_URL: getBaseUrl(),
+    USER_META_USER_ID: env.userId ?? userId,
+    USER_META_ORG_ID: env.organizationId ?? "",
   };
   const mergedExtraEnv = { ...platformEnv, ...extraEnv };
 

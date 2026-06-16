@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Bot, Loader2, Plus, Search } from "lucide-react";
+import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { agentApi, envApi } from "@/src/api/sdk";
@@ -155,14 +155,24 @@ export function AgentManagementPage() {
         title="智能体管理"
         subtitle="管理您的所有 AI 智能体，支持创建、编辑和对话"
         actions={
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
-          >
-            <Plus className="h-4 w-4" />
-            创建智能体
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => navigate({ to: "/agent/home" })}
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-[#d0d9e8] bg-white px-[22px] text-[13px] font-semibold text-[#4f607b] transition hover:border-[#b9cee8] hover:text-[#1677ff]"
+            >
+              <Sparkles className="h-4 w-4" />
+              对话创建
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
+            >
+              <Plus className="h-4 w-4" />
+              创建智能体
+            </button>
+          </>
         }
       />
 

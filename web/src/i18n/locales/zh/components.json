@@ -338,7 +338,8 @@
     "history_earlier": "更早",
     "history_empty": "暂无会话",
     "history_untitled": "未命名",
-    "chat_collapse": "收起面板"
+    "chat_collapse": "收起面板",
+    "chat_expand": "展开面板"
   },
   "chatComposer": {
     "send": "发送",

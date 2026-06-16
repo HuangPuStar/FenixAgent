@@ -135,8 +135,9 @@ export function ACPMain({
 
   return (
     // root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
-    // 形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果
-    <div className="flex h-full w-full flex-col gap-3 p-3">
+    // 形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
+    // acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子
+    <div className="acp-main-root flex h-full w-full flex-col gap-3 p-3">
       {/* 顶部 ChatHeader — 跨整个宽度，承担会话面板开关 + 当前会话标题 + popover 历史会话列表 */}
       {/* readonly 模式下整体隐藏，保持分享视图简洁 */}
       {!readonly && (
