@@ -344,7 +344,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const maxSize = 100 * 1024 * 1024;
       for (const file of files) {
         if (file.size > maxSize) {
-          toast.error(t("fileTree.fileTooLarge", { name: file.name, max: "100MB" }));
+          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
           return;
         }
       }
@@ -357,7 +357,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const { error: uploadErr } = await fileApi.upload({ id: envId, path: targetSubdir }, formData);
       if (uploadErr) {
         if (uploadErr.status === 413) {
-          toast.error(t("fileTree.uploadTooLarge"));
+          toast.error(t("filePicker.uploadTooLarge"));
         } else {
           toast.error(uploadErr.message || t("fileTree.uploadFailed"));
         }
@@ -387,7 +387,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const maxSize = 100 * 1024 * 1024;
       for (const file of files) {
         if (file.size > maxSize) {
-          toast.error(t("fileTree.fileTooLarge", { name: file.name, max: "100MB" }));
+          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
           return;
         }
       }
@@ -405,7 +405,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         const { error: uploadErr } = await fileApi.upload({ id: envId, path: targetDir }, formData);
         if (uploadErr) {
           if (uploadErr.status === 413) {
-            toast.error(t("fileTree.uploadTooLarge"));
+            toast.error(t("filePicker.uploadTooLarge"));
           } else {
             toast.error(uploadErr.message || t("fileTree.uploadFailed"));
           }

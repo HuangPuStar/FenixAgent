@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { ToolCallData } from "../../src/lib/types";
 import {
   countDiffs,
@@ -14,6 +15,7 @@ import {
 // =============================================================================
 
 export function ToolCardContent({ tool }: { tool: ToolCallData }) {
+  const { t } = useTranslation("components");
   const input = tool.rawInput;
   const lower = tool.title.toLowerCase();
   const hasSubEntries = (tool.subEntries?.length ?? 0) > 0;
@@ -33,7 +35,7 @@ export function ToolCardContent({ tool }: { tool: ToolCallData }) {
         </div>
         <div className="text-[11px] text-text-dim mt-0.5 truncate">
           {truncate(simplifyToolName(tool.title), 30)}
-          {hasSubEntries && <SubCountBadge toolCount={subToolCount} msgCount={subMsgCount} />}
+          {hasSubEntries && <SubCountBadge t={t} toolCount={subToolCount} msgCount={subMsgCount} />}
           {streamingPreview && <StreamingPreview text={streamingPreview} />}
         </div>
       </>
@@ -90,8 +92,12 @@ export function ToolCardContent({ tool }: { tool: ToolCallData }) {
         </div>
         <div className="text-[11px] text-text-dim mt-0.5 flex items-center gap-1.5">
           <span>Edit</span>
-          {diffCount > 0 && <span className="text-amber-600 dark:text-amber-400">{diffCount} 处变更</span>}
-          {hasSubEntries && <SubCountBadge toolCount={subToolCount} msgCount={subMsgCount} />}
+          {diffCount > 0 && (
+            <span className="text-amber-600 dark:text-amber-400">
+              {t("toolCallContent.changes", { count: diffCount })}
+            </span>
+          )}
+          {hasSubEntries && <SubCountBadge t={t} toolCount={subToolCount} msgCount={subMsgCount} />}
           {streamingPreview && <StreamingPreview text={streamingPreview} />}
         </div>
       </>
@@ -134,7 +140,9 @@ export function ToolCardContent({ tool }: { tool: ToolCallData }) {
         </div>
         <div className="text-[11px] text-text-dim mt-0.5 truncate">
           <span>Grep</span>
-          {resultCount !== null && <span className="ml-1.5">{resultCount} 结果</span>}
+          {resultCount !== null && (
+            <span className="ml-1.5">{t("toolCallContent.results", { count: resultCount })}</span>
+          )}
           {shortPath && (
             <span className="ml-1.5 opacity-60" title={String(path)}>
               {shortPath}
@@ -161,7 +169,7 @@ export function ToolCardContent({ tool }: { tool: ToolCallData }) {
         </div>
         <div className="text-[11px] text-text-dim mt-0.5 truncate">
           <span>Glob</span>
-          {resultCount !== null && <span className="ml-1.5">{resultCount} 个文件</span>}
+          {resultCount !== null && <span className="ml-1.5">{t("toolCallContent.files", { count: resultCount })}</span>}
           {shortPath && (
             <span className="ml-1.5 opacity-60" title={String(path)}>
               {shortPath}
@@ -203,10 +211,10 @@ export function ToolCardContent({ tool }: { tool: ToolCallData }) {
     return (
       <>
         <div className="text-[13px] text-text-primary truncate">
-          {lower.startsWith("task") ? "子任务执行中" : "Agent 调用"}
+          {lower.startsWith("task") ? t("toolCallContent.taskRunning") : t("toolCallContent.agentCalling")}
         </div>
         <div className="text-[11px] text-text-dim mt-0.5">
-          Task{hasSubEntries && <SubCountBadge toolCount={subToolCount} msgCount={subMsgCount} />}
+          Task{hasSubEntries && <SubCountBadge t={t} toolCount={subToolCount} msgCount={subMsgCount} />}
         </div>
       </>
     );
@@ -218,7 +226,9 @@ export function ToolCardContent({ tool }: { tool: ToolCallData }) {
     const count = Array.isArray(todos) ? todos.length : 0;
     return (
       <>
-        <div className="text-[13px] text-text-primary">{count > 0 ? `${count} 个待办项` : "更新待办列表"}</div>
+        <div className="text-[13px] text-text-primary">
+          {count > 0 ? t("toolCallContent.todos", { count }) : t("toolCallContent.updateTodoList")}
+        </div>
         <div className="text-[11px] text-text-dim mt-0.5">Todo</div>
       </>
     );
@@ -266,7 +276,9 @@ export function ToolCardContent({ tool }: { tool: ToolCallData }) {
         <div className="text-[11px] text-text-dim mt-0.5 truncate">
           <span>{label}</span>
           {typeof include === "string" && <span className="ml-1 opacity-70">{include}</span>}
-          {resultCount !== null && <span className="ml-1.5">{resultCount} 结果</span>}
+          {resultCount !== null && (
+            <span className="ml-1.5">{t("toolCallContent.results", { count: resultCount })}</span>
+          )}
           {shortPath && (
             <span className="ml-1.5 opacity-60" title={typeof path === "string" ? path : undefined}>
               {shortPath}
@@ -341,11 +353,22 @@ function shortenPath(path: string, segments = 2): string {
 }
 
 /** 子 agent 条目计数 */
-function SubCountBadge({ toolCount, msgCount }: { toolCount: number; msgCount: number }) {
+function SubCountBadge({
+  toolCount,
+  msgCount,
+  t,
+}: {
+  toolCount: number;
+  msgCount: number;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
   return (
     <span className="text-text-dim">
       {" "}
-      · {toolCount} 工具{msgCount > 0 ? ` · ${msgCount} 消息` : ""}
+      {t("toolCallContent.toolsAndMessages", {
+        toolCount,
+        msgPart: msgCount > 0 ? ` · ${msgCount} ${t("toolCallContent.messages", { count: msgCount })}` : "",
+      })}
     </span>
   );
 }

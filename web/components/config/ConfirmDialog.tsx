@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "../../src/lib/utils";
 import {
   AlertDialog,
@@ -27,12 +28,15 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "确认",
-  cancelLabel = "取消",
+  confirmLabel,
+  cancelLabel,
   variant = "default",
   onConfirm,
   loading,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation("components");
+  const confLabel = confirmLabel ?? t("confirmDialog.confirm");
+  const cnlLabel = cancelLabel ?? t("confirmDialog.cancel");
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -41,7 +45,7 @@ export function ConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading}>{cnlLabel}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             disabled={loading}
@@ -49,7 +53,7 @@ export function ConfirmDialog({
               variant === "destructive" && "bg-destructive text-white hover:bg-destructive/90 focus:ring-destructive",
             )}
           >
-            {loading ? "处理中..." : confirmLabel}
+            {loading ? t("confirmDialog.processing") : confLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -13,9 +13,9 @@ function syncToContextQueue(): void {
     removeContext("workflow-events");
     return;
   }
-  const lines: string[] = ["[工作流事件]"];
+  const lines: string[] = ["[Workflow Event]"];
   if (runStatusSummary) {
-    lines.push(`运行状态: ${runStatusSummary}`);
+    lines.push(`Run Status: ${runStatusSummary}`);
   }
   for (const err of errors) {
     lines.push(err);
@@ -24,7 +24,7 @@ function syncToContextQueue(): void {
 }
 
 export function pushWorkflowError(source: string, message: string): void {
-  errors.push(`错误 (${source}): ${message}`);
+  errors.push(`Error (${source}): ${message}`);
   syncToContextQueue();
 }
 
@@ -51,26 +51,26 @@ export function buildRunSummary(snap: DAGSnapshot): string | null {
   const failedNodes = entries.filter(([, s]) => s.status === "FAILED").map(([id]) => id);
 
   if (dag_status === "SUCCESS") {
-    return `运行成功 (${completed}/${total} 完成)`;
+    return `Run Succeeded (${completed}/${total} completed)`;
   }
 
   if (dag_status === "FAILED" || dag_status === "ERROR") {
-    const parts = [`运行失败 (${completed}/${total} 完成, ${failed} 失败`];
+    const parts = [`Run Failed (${completed}/${total} completed, ${failed} failed`];
     if (failedNodes.length > 0) parts.push(`: ${failedNodes.join(", ")}`);
     parts.push(")");
     return parts.join("");
   }
 
   if (dag_status === "CANCELLED") {
-    return `已取消 (${completed}/${total} 完成)`;
+    return `Cancelled (${completed}/${total} completed)`;
   }
 
   if (dag_status === "SUSPENDED") {
     const suspendedNodes = entries.filter(([, s]) => s.status === "RUNNING").map(([id]) => id);
-    return `等待审批 (${completed}/${total} 完成, 等待: ${suspendedNodes.join(", ") || "无"})`;
+    return `Awaiting Approval (${completed}/${total} completed, waiting: ${suspendedNodes.join(", ") || "none"})`;
   }
 
-  return `运行中 (${completed}/${total} 完成)`;
+  return `Running (${completed}/${total} completed)`;
 }
 
 export function useWorkflowEvents() {

@@ -1,5 +1,6 @@
 import { Check, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { SessionMode } from "../../src/acp/types";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -17,6 +18,7 @@ interface SessionModeSelectorProps {
  * 被提取为独立组件以便后续 ChatComposer 复用。
  */
 export function SessionModeSelector({ modes, currentModeId, onModeChange }: SessionModeSelectorProps) {
+  const { t } = useTranslation("components");
   const [open, setOpen] = useState(false);
   const current = modes.find((m) => m.id === currentModeId) ?? modes[0];
 
@@ -27,7 +29,7 @@ export function SessionModeSelector({ modes, currentModeId, onModeChange }: Sess
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground h-7 px-2">
           <Shield className="h-3 w-3" />
-          <span className="max-w-24 truncate">{current?.name ?? "默认"}</span>
+          <span className="max-w-24 truncate">{current?.name ?? t("sessionModeSelector.default")}</span>
           {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </Button>
       </PopoverTrigger>

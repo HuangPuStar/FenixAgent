@@ -166,7 +166,7 @@ function extractFilePath(input: Record<string, unknown> | undefined): string | n
   if (Array.isArray(edits) && edits.length > 0) {
     const first = (edits[0] as Record<string, unknown>)?.file_path;
     if (typeof first === "string") {
-      return edits.length > 1 ? `${first} 等 ${edits.length} 个文件` : first;
+      return edits.length > 1 ? `${first} +${edits.length - 1} more` : first;
     }
   }
   return null;
@@ -176,7 +176,7 @@ function extractFilePath(input: Record<string, unknown> | undefined): string | n
 function formatFileName(path: string, lower: string): string {
   if (lower.includes("multiedit") || lower.includes("multi_edit")) {
     // extractFilePath 返回 "fullPath 等 N 个文件"，需要从第一段提取文件名
-    const firstPath = path.split(" 等 ")[0];
+    const firstPath = path.split(" +")[0];
     return firstPath.split("/").pop() ?? firstPath;
   }
   return path.split("/").pop() ?? path;

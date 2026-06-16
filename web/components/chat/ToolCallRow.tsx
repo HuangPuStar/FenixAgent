@@ -82,8 +82,12 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
         </div>
 
         {/* 右侧状态 */}
-        {isError && <span className="text-[10px] text-status-error font-medium shrink-0">失败</span>}
-        {isPending && <span className="text-[10px] text-brand font-medium shrink-0">待确认</span>}
+        {isError && (
+          <span className="text-[10px] text-status-error font-medium shrink-0">{t("toolCallRow.failed")}</span>
+        )}
+        {isPending && (
+          <span className="text-[10px] text-brand font-medium shrink-0">{t("toolCallRow.pendingConfirmation")}</span>
+        )}
 
         {/* 参数弹窗按钮 — 点击打开入参出参弹窗 */}
         {hasParams && !isPending && (
@@ -94,7 +98,7 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
               openDialog();
             }}
             className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-text-dim hover:text-text-muted hover:bg-surface-2/80 transition-colors"
-            title="查看参数"
+            title={t("toolCallRow.viewParams")}
           >
             <CodeXml className="h-3 w-3" />
           </button>
