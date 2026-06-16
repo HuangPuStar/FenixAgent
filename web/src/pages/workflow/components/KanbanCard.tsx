@@ -115,7 +115,7 @@ export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanC
 
   return (
     <div
-      className={`group border border-border-subtle border-l-[3px] bg-surface-elevated transition-colors hover:border-border ${accent}`}
+      className={`group border border-border-light border-l-[3px] bg-surface-1 transition-colors hover:border-border-active ${accent}`}
     >
       <div className="px-2 py-1.5 space-y-0.5">
         {/* Name */}
@@ -189,7 +189,7 @@ export function KanbanCard({ job, onRefresh, onEditParams, onViewLogs }: KanbanC
           type="button"
           onClick={() => handleAction(primaryAction.action)}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-1 py-0.5 text-[10px] font-medium border-t border-border-subtle text-text-secondary hover:text-brand hover:bg-brand-subtle transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-1 py-0.5 text-[10px] font-medium border-t border-border-light text-text-secondary hover:text-brand hover:bg-brand-subtle transition-colors disabled:opacity-50"
         >
           <PrimaryIcon size={10} />
           {primaryAction.label}
