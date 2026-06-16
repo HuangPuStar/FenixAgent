@@ -12,7 +12,7 @@ export function WorkflowBreadcrumb({ workflowName, children }: WorkflowBreadcrum
   const { t } = useTranslation("workflows");
 
   return (
-    <div className="flex items-center gap-2 px-4 h-9 border-b border-border-subtle bg-surface-base flex-shrink-0">
+    <div className="flex items-center gap-2 px-4 h-9 border-b border-border-subtle bg-[#f4f7fb] dark:bg-[#1a1d23] flex-shrink-0">
       <Link
         to="/agent/workflow"
         className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
