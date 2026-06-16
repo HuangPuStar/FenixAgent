@@ -228,7 +228,6 @@ export function createClaudeAcpConnection(
     if (id != null) {
       send({ jsonrpc: "2.0", id, result: payload });
     } else {
-      console.log("[claude-acp-debug] sending session/update:", JSON.stringify(payload).slice(0, 200));
       send({ jsonrpc: "2.0", method: "session/update", params: payload });
     }
   }
@@ -389,7 +388,6 @@ export function createClaudeAcpConnection(
       });
       const outputBlocks: Array<Record<string, unknown>> = [];
       for await (const msg of q) {
-        console.log("[claude-acp-debug] msg type:", msg.type, "subtype:", (msg as Record<string, unknown>).subtype);
         adapter.handleSdkOutput(msg);
         if (msg.type === "system" && (msg as Record<string, unknown>).subtype === "init") {
           const ccSid = (msg as Record<string, unknown>).session_id as string | undefined;
