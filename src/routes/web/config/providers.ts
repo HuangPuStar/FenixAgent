@@ -501,66 +501,201 @@ async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId
   return configSuccess(null);
 }
 
-app.post(
+// ────────────────────────────────────────────
+// Provider 管理（RESTful 接口）
+// ────────────────────────────────────────────
+
+/** 获取 Provider 列表 */
+app.get(
   "/config/providers",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, error }: any) => {
+  async ({ store }) => {
     const authCtx = store.authContext!;
-    const b = body as ConfigBody;
-    const payload: ProviderBody = {
-      action: b.action ?? "",
-      name: b.name,
-      modelId: b.modelId,
-      data: b.data,
-      apiKey: b.apiKey,
-      baseURL: b.baseURL,
-      protocol: b.protocol,
-    };
     try {
-      switch (payload.action) {
-        case "list":
-          return await handleList(authCtx);
-        case "get":
-          return await handleGet(authCtx, payload.name!);
-        case "create":
-          return await handleCreate(authCtx, payload.name!, payload.data!);
-        case "set":
-          return await handleSet(authCtx, payload.name!, payload.data!);
-        case "test": {
-          const protocol =
-            payload.protocol === "anthropic"
-              ? ("anthropic" as const)
-              : payload.protocol === "openai"
-                ? ("openai" as const)
-                : undefined;
-          return await handleTest(authCtx, payload.name!, {
-            apiKey: payload.apiKey,
-            baseURL: payload.baseURL,
-            protocol,
-          });
-        }
-        case "test_model":
-          return await handleTestModel(authCtx, payload.name!, payload.modelId!);
-        case "delete":
-          return await handleDelete(authCtx, payload.name!);
-        case "add_model":
-          return await handleAddModel(authCtx, payload.name!, payload.data!);
-        case "update_model":
-          return await handleUpdateModel(authCtx, payload.name!, payload.modelId!, payload.data!);
-        case "remove_model":
-          return await handleRemoveModel(authCtx, payload.name!, payload.modelId!);
-        default:
-          return error(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
-      }
+      return await handleList(authCtx);
     } catch (e: unknown) {
-      if (e instanceof AppError) {
-        return error(e.statusCode, configError(e.code, e.message));
-      }
-      const message = e instanceof Error ? e.message : "Unknown error";
-      return error(500, configError("CONFIG_READ_ERROR", message));
+      if (e instanceof AppError) return configError(e.code, e.message);
+      return configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error");
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["ProviderConfig"], summary: "Provider 配置管理" } },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "获取 Provider 列表" },
+  },
+);
+
+/** 获取单个 Provider 详情 */
+app.get(
+  "/config/providers/:name",
+  async ({ store, params }) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleGet(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return configError(e.code, e.message);
+      return configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error");
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "获取 Provider 详情" },
+  },
+);
+
+/** 创建新 Provider */
+app.post(
+  "/config/providers",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const { name, ...data } = body ?? {};
+    try {
+      if (!name) return error(400, configError("VALIDATION_ERROR", "name is required"));
+      return await handleCreate(authCtx, name, data);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "创建 Provider" },
+  },
+);
+
+/** 更新 Provider */
+app.put(
+  "/config/providers/:name",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleSet(authCtx, params.name, body ?? {});
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "更新 Provider" },
+  },
+);
+
+/** 删除 Provider */
+app.delete(
+  "/config/providers/:name",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleDelete(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "删除 Provider" },
+  },
+);
+
+/** 测试 Provider 连接 */
+app.post(
+  "/config/providers/:name/test",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = body ?? {};
+    try {
+      const protocol =
+        b.protocol === "anthropic" ? ("anthropic" as const) : b.protocol === "openai" ? ("openai" as const) : undefined;
+      return await handleTest(authCtx, params.name, { apiKey: b.apiKey, baseURL: b.baseURL, protocol });
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "测试 Provider 连接" },
+  },
+);
+
+/** 添加 Provider 下的模型 */
+app.post(
+  "/config/providers/:name/models",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleAddModel(authCtx, params.name, body ?? {});
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "添加 Provider 下的模型" },
+  },
+);
+
+/** 更新 Provider 下的模型 */
+app.put(
+  "/config/providers/:name/models/:modelId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleUpdateModel(authCtx, params.name, params.modelId, body ?? {});
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "更新 Provider 下的模型" },
+  },
+);
+
+/** 删除 Provider 下的模型 */
+app.delete(
+  "/config/providers/:name/models/:modelId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleRemoveModel(authCtx, params.name, params.modelId);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "删除 Provider 下的模型" },
+  },
+);
+
+/** 测试 Provider 下某个模型的对话能力 */
+app.post(
+  "/config/providers/:name/models/:modelId/test",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleTestModel(authCtx, params.name, params.modelId);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ProviderConfig"], summary: "测试模型对话能力" },
+  },
 );
 
 export default app;

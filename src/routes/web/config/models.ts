@@ -151,36 +151,64 @@ async function handleRefresh(ctx: AuthContext) {
   return configSuccess({ count: available.length });
 }
 
-app.post(
+// ────────────────────────────────────────────
+// Model 用户偏好管理（RESTful 接口）
+// ────────────────────────────────────────────
+
+/** 获取当前用户的模型偏好配置和可用模型列表 */
+app.get(
   "/config/models",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, error }: any) => {
+  async ({ store }) => {
     const authCtx = store.authContext!;
-    const b = (body as ConfigBody) ?? {};
-    const payload = {
-      action: b.action ?? "",
-      data: b.data as { model?: string; small_model?: string; permission?: unknown } | undefined,
-    };
     try {
-      switch (payload.action) {
-        case "get":
-          return await handleGet(authCtx);
-        case "set":
-          return await handleSet(authCtx, payload.data ?? {});
-        case "refresh":
-          return await handleRefresh(authCtx);
-        default:
-          return error(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
-      }
+      return await handleGet(authCtx);
     } catch (e: unknown) {
-      if (e instanceof AppError) {
-        return error(e.statusCode, configError(e.code, e.message));
-      }
-      const message = e instanceof Error ? e.message : "Unknown error";
-      return error(500, configError("CONFIG_READ_ERROR", message));
+      if (e instanceof AppError) return configError(e.code, e.message);
+      return configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error");
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["ModelConfig"], summary: "Model 配置管理" } },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ModelConfig"], summary: "获取模型偏好与可用模型列表" },
+  },
+);
+
+/** 更新当前用户的模型偏好（current model、small model、permission） */
+app.put(
+  "/config/models",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = (body ?? {}) as { model?: string; small_model?: string; permission?: unknown };
+    try {
+      return await handleSet(authCtx, b);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ModelConfig"], summary: "更新模型偏好" },
+  },
+);
+
+/** 刷新可用模型缓存 */
+app.post(
+  "/config/models/refresh",
+  async ({ store }) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleRefresh(authCtx);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return configError(e.code, e.message);
+      return configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error");
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["ModelConfig"], summary: "刷新可用模型缓存" },
+  },
 );
 
 export default app;

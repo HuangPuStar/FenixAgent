@@ -293,67 +293,264 @@ const app = new Elysia({ name: "web-config-mcp" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
 });
 
-app.post(
-  "/config/mcp",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, error }: any) => {
-    const authCtx = store.authContext!;
-    const b = body as ConfigBody;
-    const { action, name, config, url, headers, timeout, publicReadable } = {
-      action: b.action ?? "",
-      name: b.name as string | undefined,
-      config: (b.config ?? b.data) as McpServerConfig | undefined,
-      url: b.url as string | undefined,
-      headers: b.headers as Record<string, string> | undefined,
-      timeout: b.timeout as number | undefined,
-      publicReadable:
-        typeof (b.data as Record<string, unknown> | undefined)?.publicReadable === "boolean"
-          ? ((b.data as Record<string, unknown>).publicReadable as boolean)
-          : typeof (b.config as Record<string, unknown> | undefined)?.publicReadable === "boolean"
-            ? ((b.config as Record<string, unknown>).publicReadable as boolean)
-            : undefined,
-    };
+// ────────────────────────────────────────────
+// MCP Server 管理（RESTful 接口）
+// ────────────────────────────────────────────
 
+/** 获取 MCP Server 列表 */
+app.get(
+  "/config/mcp",
+  async ({ store }) => {
+    const authCtx = store.authContext!;
     try {
-      switch (action) {
-        case "list":
-          return await handleList(authCtx);
-        case "get":
-          return await handleGet(authCtx, name!);
-        case "create":
-          return await handleCreate(authCtx, name!, config, publicReadable);
-        case "set":
-        case "update":
-          return await handleUpdate(authCtx, name!, config, publicReadable);
-        case "delete":
-          return await handleDelete(authCtx, name!);
-        case "enable":
-          return await handleEnable(authCtx, name!);
-        case "disable":
-          return await handleDisable(authCtx, name!);
-        case "test":
-          return await handleTest(authCtx, name!);
-        case "test_url":
-          return await handleTestUrl(url!, headers, timeout);
-        case "inspect":
-          return await handleInspect(authCtx, name!);
-        case "list_tools":
-          return await handleListTools(authCtx, name!);
-        default:
-          return error(400, {
-            success: false,
-            error: { code: "VALIDATION_ERROR", message: `Unknown action '${action}'` },
-          });
-      }
+      return await handleList(authCtx);
     } catch (e: unknown) {
-      if (e instanceof AppError) {
-        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
-      }
-      const message = e instanceof Error ? e.message : "Unknown error";
-      return error(500, { success: false, error: { code: "CONFIG_READ_ERROR", message } });
+      if (e instanceof AppError) return { success: false, error: { code: e.code, message: e.message } };
+      return {
+        success: false,
+        error: { code: "CONFIG_READ_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      };
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["McpConfig"], summary: "MCP 服务器配置管理" } },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "获取 MCP Server 列表" },
+  },
+);
+
+/** 获取单个 MCP Server 详情 */
+app.get(
+  "/config/mcp/:name",
+  async ({ store, params }) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleGet(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return { success: false, error: { code: e.code, message: e.message } };
+      return {
+        success: false,
+        error: { code: "CONFIG_READ_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      };
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "获取 MCP Server 详情" },
+  },
+);
+
+/** 创建 MCP Server */
+app.post(
+  "/config/mcp",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = body ?? {};
+    const name = b.name as string | undefined;
+    const { name: _ignored, publicReadable: bodyPublicReadable, ...rest } = b;
+    try {
+      if (!name)
+        return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name is required" } });
+      return await handleCreate(authCtx, name, rest, bodyPublicReadable);
+    } catch (e: unknown) {
+      if (e instanceof AppError)
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      return error(500, {
+        success: false,
+        error: { code: "CONFIG_WRITE_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      });
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "创建 MCP Server" },
+  },
+);
+
+/** 更新 MCP Server */
+app.put(
+  "/config/mcp/:name",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = body ?? {};
+    const { publicReadable: bodyPublicReadable, ...rest } = b;
+    try {
+      return await handleUpdate(authCtx, params.name, rest, bodyPublicReadable);
+    } catch (e: unknown) {
+      if (e instanceof AppError)
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      return error(500, {
+        success: false,
+        error: { code: "CONFIG_WRITE_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      });
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "更新 MCP Server" },
+  },
+);
+
+/** 删除 MCP Server */
+app.delete(
+  "/config/mcp/:name",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleDelete(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError)
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      return error(500, {
+        success: false,
+        error: { code: "CONFIG_WRITE_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      });
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "删除 MCP Server" },
+  },
+);
+
+/** 启用 MCP Server */
+app.post(
+  "/config/mcp/:name/enable",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleEnable(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError)
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      return error(500, {
+        success: false,
+        error: { code: "CONFIG_WRITE_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      });
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "启用 MCP Server" },
+  },
+);
+
+/** 禁用 MCP Server */
+app.post(
+  "/config/mcp/:name/disable",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleDisable(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError)
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      return error(500, {
+        success: false,
+        error: { code: "CONFIG_WRITE_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      });
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "禁用 MCP Server" },
+  },
+);
+
+/** 测试 MCP Server 连接 */
+app.post(
+  "/config/mcp/:name/test",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleTest(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError)
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      return error(500, {
+        success: false,
+        error: { code: "CONFIG_READ_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      });
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "测试 MCP Server 连接" },
+  },
+);
+
+/** 测试远端 MCP URL */
+app.post(
+  "/config/mcp/test-url",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, body, error }: any) => {
+    const b = body ?? {};
+    const { url, headers, timeout } = b as { url?: string; headers?: Record<string, string>; timeout?: number };
+    try {
+      if (!url) return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "URL is required" } });
+      return await handleTestUrl(url, headers, timeout);
+    } catch (e: unknown) {
+      if (e instanceof AppError)
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      return error(500, {
+        success: false,
+        error: { code: "CONFIG_READ_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      });
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "测试远端 MCP URL" },
+  },
+);
+
+/** 检查远程 MCP Server 并导入工具 */
+app.post(
+  "/config/mcp/:name/inspect",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleInspect(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError)
+        return error(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      return error(500, {
+        success: false,
+        error: { code: "CONFIG_READ_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      });
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "检查 MCP Server 并导入工具" },
+  },
+);
+
+/** 获取 MCP Server 的工具列表 */
+app.get(
+  "/config/mcp/:name/tools",
+  async ({ store, params }) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleListTools(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return { success: false, error: { code: e.code, message: e.message } };
+      return {
+        success: false,
+        error: { code: "CONFIG_READ_ERROR", message: e instanceof Error ? e.message : "Unknown error" },
+      };
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: { tags: ["McpConfig"], summary: "获取 MCP Server 的工具列表" },
+  },
 );
 
 export default app;
