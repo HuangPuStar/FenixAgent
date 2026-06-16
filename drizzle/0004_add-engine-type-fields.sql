@@ -1,2 +1,0 @@
-ALTER TABLE "agent_config" ADD COLUMN "engine_type" varchar(32) DEFAULT 'opencode';--> statement-breakpoint
-ALTER TABLE "machine" ADD COLUMN "supported_engine_types" jsonb DEFAULT '[{"type":"opencode"}]'::jsonb;
