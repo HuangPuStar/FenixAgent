@@ -23,6 +23,7 @@
     "table_modified": "最后修改",
     "not_published": "未发布",
     "version_history": "版本历史",
+    "edit": "编辑",
     "delete": "删除",
     "delete_confirm": "确定要删除「{{name}}」吗？数据库记录将被删除，但文件系统保留。",
     "delete_failed": "删除失败",
@@ -354,6 +355,8 @@
     "all_optional_hint": "所有参数均有默认值，可直接运行。"
   },
   "page": {
+    "workflow_title": "智能体编排",
+    "workflow_subtitle": "管理 DAG 工作流、看板、运行历史与统计",
     "back_to_list": "返回列表",
     "editor": "编辑器",
     "tab_workflows": "工作流",

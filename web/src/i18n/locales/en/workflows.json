@@ -23,6 +23,7 @@
     "table_modified": "Last Modified",
     "not_published": "Unpublished",
     "version_history": "Version History",
+    "edit": "Edit",
     "delete": "Delete",
     "delete_confirm": "Are you sure you want to delete \"{{name}}\"? The database record will be deleted, but files are preserved.",
     "delete_failed": "Delete failed",
@@ -354,6 +355,8 @@
     "all_optional_hint": "All parameters have defaults — you can leave them unchanged."
   },
   "page": {
+    "workflow_title": "Workflow Orchestration",
+    "workflow_subtitle": "Manage DAG workflows, kanban, run history and stats",
     "back_to_list": "Back to list",
     "editor": "Editor",
     "tab_workflows": "Workflows",
