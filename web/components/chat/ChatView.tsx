@@ -35,14 +35,17 @@ export function ChatView({
   entries,
   isLoading = false,
   onPermissionRespond,
-  emptyTitle = "开始对话",
-  emptyDescription = "输入消息开始聊天",
+  emptyTitle,
+  emptyDescription,
   agentName,
   agentDescription,
   agentSkills,
   sessionId,
   envId,
 }: ChatViewProps) {
+  const { t } = useTranslation("components");
+  const finalEmptyTitle = emptyTitle ?? t("chatView.startConversation");
+  const finalEmptyDescription = emptyDescription ?? t("chatView.startConversationDesc");
   // 将相邻的 ToolCallEntry 合并为一组
   const grouped = groupToolCalls(entries);
   const hasMessages = entries.length > 0;
@@ -72,7 +75,7 @@ export function ChatView({
           ) : agentName ? (
             <AgentBadge name={agentName} description={agentDescription} skills={agentSkills ?? []} />
           ) : (
-            <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
+            <ConversationEmptyState title={finalEmptyTitle} description={finalEmptyDescription} />
           )
         ) : (
           <>

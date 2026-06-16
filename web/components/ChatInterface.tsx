@@ -542,7 +542,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       } else {
         // inputTokens === 0 indicates the prompt was not processed (error)
         if (usage && usage.inputTokens === 0) {
-          setErrorMessage("请求未能正常处理，请检查 Agent 或大模型状态后重试");
+          setErrorMessage(t("chatInterface.processingError"));
           if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
           errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
         }
@@ -886,8 +886,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           onPermissionRespond={(requestId, optionId, optionKind) => {
             handlePermissionResponse(requestId, optionId, optionKind as PermissionOption["kind"] | null);
           }}
-          emptyTitle={sessionReady ? "开始对话" : undefined}
-          emptyDescription={sessionReady ? "输入消息开始与 ACP agent 聊天" : undefined}
+          emptyTitle={sessionReady ? t("chatEmpty.startConversation") : undefined}
+          emptyDescription={sessionReady ? t("chatEmpty.startConversationDesc") : undefined}
           sessionId={rcsSessionId ?? activeSessionId ?? undefined}
           envId={agentId}
         />
