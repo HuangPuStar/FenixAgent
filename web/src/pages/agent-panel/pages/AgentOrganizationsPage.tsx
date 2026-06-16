@@ -1,6 +1,6 @@
 import type { MachineRecord } from "@fenix/sdk";
 import { Copy, Monitor, Plus, RefreshCw, Shield, ShieldCheck, Trash2, User, UserPlus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -75,6 +75,9 @@ export function AgentOrganizationsPage() {
   const [addMemberEmail, setAddMemberEmail] = useState("");
   const [addMemberRole, setAddMemberRole] = useState("member");
   const [addMemberSaving, setAddMemberSaving] = useState(false);
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [searchingUser, setSearchingUser] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
@@ -160,6 +163,26 @@ export function AgentOrganizationsPage() {
     }
   }, [selectedOrgId, loadMachines]);
 
+  // 防抖搜索用户：输入变化后 300ms 调用 searchUsers API
+  const handleEmailChange = useCallback((value: string) => {
+    setAddMemberEmail(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!value.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      setSearchingUser(true);
+      const { data } = await orgApi.searchUsers(value.trim());
+      if (Array.isArray(data)) {
+        setSearchResults(data);
+      } else {
+        setSearchResults([]);
+      }
+      setSearchingUser(false);
+    }, 300);
+  }, []);
+
   const selectedOrgRole = myOrgs.find((o) => o.id === selectedOrgId)?.role;
   const canManage = selectedOrgRole === "owner" || selectedOrgRole === "admin";
   const isOwner = selectedOrgRole === "owner";
@@ -222,6 +245,7 @@ export function AgentOrganizationsPage() {
     toast.success(t("toast.inviteSent"));
     setAddMemberOpen(false);
     setAddMemberEmail("");
+    setSearchResults([]);
     const { data: d2 } = await orgApi.get(selectedOrgId);
     if (d2) setDetail(d2);
     setAddMemberSaving(false);
@@ -580,12 +604,40 @@ export function AgentOrganizationsPage() {
           <div className="space-y-3 py-2">
             <div>
               <label className="text-sm font-medium text-text-primary">{t("inviteDialog.email")}</label>
-              <Input
-                className="mt-1"
-                value={addMemberEmail}
-                onChange={(e) => setAddMemberEmail(e.target.value)}
-                placeholder={t("inviteDialog.emailPlaceholder")}
-              />
+              <div className="relative mt-1">
+                <Input
+                  value={addMemberEmail}
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  placeholder={t("inviteDialog.searchPlaceholder")}
+                  onFocus={() => {
+                    if (addMemberEmail.trim() && searchResults.length === 0 && !searchingUser) {
+                      handleEmailChange(addMemberEmail);
+                    }
+                  }}
+                />
+                {(searchResults.length > 0 || searchingUser) && (
+                  <div className="absolute z-50 mt-1 w-full rounded-md border border-border-light bg-surface-1 shadow-lg max-h-48 overflow-y-auto">
+                    {searchingUser ? (
+                      <div className="px-3 py-2 text-xs text-text-dim">{t("searching")}</div>
+                    ) : (
+                      searchResults.map((user) => (
+                        <button
+                          key={user.id}
+                          type="button"
+                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-surface-hover transition-colors"
+                          onClick={() => {
+                            setAddMemberEmail(user.email);
+                            setSearchResults([]);
+                          }}
+                        >
+                          <span className="flex-1 truncate">{user.email}</span>
+                          {user.name && <span className="text-xs text-text-dim">{user.name}</span>}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-text-primary">{t("inviteDialog.role")}</label>

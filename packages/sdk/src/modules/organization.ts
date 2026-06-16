@@ -57,6 +57,11 @@ export class OrganizationApi extends BaseApi {
   async listMembers(organizationId: string): Promise<ApiResult<OrgMember[]>> {
     return this.post<OrgMember[]>("/web/organizations", { action: "list-members", organizationId });
   }
+  async searchUsers(
+    query: string,
+  ): Promise<ApiResult<Array<{ id: string; name: string; email: string; image?: string }>>> {
+    return this.post("/web/organizations", { action: "search-users", query });
+  }
   async addMember(organizationId: string, body: { email: string; role: string }): Promise<ApiResult<OrgMember>> {
     return this.post<OrgMember>("/web/organizations", { action: "add-member", organizationId, ...body });
   }

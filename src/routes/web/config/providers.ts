@@ -69,6 +69,17 @@ async function handleGet(ctx: AuthContext, name: string) {
   });
 }
 
+/** 新建提供商（含名称重复校验） */
+async function handleCreate(ctx: AuthContext, name: string, data: Record<string, unknown>) {
+  if (!name || typeof name !== "string") return configError("VALIDATION_ERROR", "Provider name is required");
+
+  const existing = await configPg.getProvider(ctx, name);
+  if (existing) {
+    return configError("ALREADY_EXISTS", `Provider '${name}' already exists`);
+  }
+  return handleSet(ctx, name, data);
+}
+
 async function handleSet(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   if (!name || typeof name !== "string") return configError("VALIDATION_ERROR", "Provider name is required");
 
@@ -511,6 +522,8 @@ app.post(
           return await handleList(authCtx);
         case "get":
           return await handleGet(authCtx, payload.name!);
+        case "create":
+          return await handleCreate(authCtx, payload.name!, payload.data!);
         case "set":
           return await handleSet(authCtx, payload.name!, payload.data!);
         case "test": {

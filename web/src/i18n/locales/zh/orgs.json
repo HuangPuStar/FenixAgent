@@ -56,8 +56,11 @@
     "emailPlaceholder": "输入邮箱地址",
     "role": "角色",
     "invite": "添加",
-    "inviting": "添加中..."
+    "inviting": "添加中...",
+    "searchPlaceholder": "按邮箱搜索...",
+    "searchNoResults": "未找到用户"
   },
+  "searching": "搜索中...",
   "deleteDialog": {
     "title": "确认删除组织",
     "description": "即将删除组织「{{name}}」，所有关联资源将被永久删除。此操作不可撤销。",

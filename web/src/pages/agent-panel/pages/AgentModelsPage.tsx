@@ -205,7 +205,13 @@ export function AgentModelsPage() {
       if (formBaseURL) data.baseURL = formBaseURL;
       data.protocol = formProtocol;
       if (formDisplayName) data.name = formDisplayName;
-      await providerApi.set(formName, data);
+      const { error: saveError } = await (editingProvider
+        ? providerApi.set(formName, data)
+        : providerApi.create(formName, data));
+      if (saveError) {
+        toast.error(t("saveProvider.errorGeneric", { message: saveError.message }));
+        return;
+      }
 
       // 导入勾选的模型（逐个添加，忽略失败）
       let modelsAdded = false;
@@ -271,7 +277,13 @@ export function AgentModelsPage() {
         if (formBaseURL) data.baseURL = formBaseURL;
         data.protocol = formProtocol;
         if (formDisplayName) data.name = formDisplayName;
-        await providerApi.set(formName, data);
+        const { error: saveError } = await (editingProvider
+          ? providerApi.set(formName, data)
+          : providerApi.create(formName, data));
+        if (saveError) {
+          toast.error(t("saveProvider.errorGeneric", { message: saveError.message }));
+          return;
+        }
         const res = await providerApi.test(formName);
         result = res.data;
         testErr = res.error;

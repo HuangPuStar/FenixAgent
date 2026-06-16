@@ -22,6 +22,9 @@ export class ProviderApi extends BaseApi {
   async get(name: string): Promise<ApiResult<ProviderDetail>> {
     return this.post<ProviderDetail>("/web/config/providers", { action: "get", name });
   }
+  async create(name: string, data: Record<string, unknown>): Promise<ApiResult<ProviderInfo>> {
+    return this.post<ProviderInfo>("/web/config/providers", { action: "create", name, data });
+  }
   async set(name: string, data: Record<string, unknown>): Promise<ApiResult<ProviderInfo>> {
     return this.post<ProviderInfo>("/web/config/providers", { action: "set", name, data });
   }
