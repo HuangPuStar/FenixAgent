@@ -86,7 +86,7 @@ async function handleList(ctx: AuthContext) {
   }
 
   const list = providers.map((p) => ({
-    id: p.name,
+    id: p.id,
     name: p.displayName ?? "",
     protocol: p.protocol,
     keyHint: toKeyHint(p.apiKey),
