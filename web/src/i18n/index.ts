@@ -21,6 +21,7 @@ import settingsEN from "./locales/en/settings.json";
 import sidebarEN from "./locales/en/sidebar.json";
 import skillsEN from "./locales/en/skills.json";
 import tasksEN from "./locales/en/tasks.json";
+import toolNarratorEN from "./locales/en/toolNarrator.json";
 import workflowsEN from "./locales/en/workflows.json";
 import agentHomeZH from "./locales/zh/agentHome.json";
 import agentPanelZH from "./locales/zh/agentPanel.json";
@@ -42,6 +43,7 @@ import settingsZH from "./locales/zh/settings.json";
 import sidebarZH from "./locales/zh/sidebar.json";
 import skillsZH from "./locales/zh/skills.json";
 import tasksZH from "./locales/zh/tasks.json";
+import toolNarratorZH from "./locales/zh/toolNarrator.json";
 import workflowsZH from "./locales/zh/workflows.json";
 
 export const NS = {
@@ -66,6 +68,7 @@ export const NS = {
   COMPONENTS: "components",
   HINDSIGHT: "hindsight",
   AGENT_HOME: "agentHome",
+  TOOL_NARRATOR: "toolNarrator",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];
@@ -97,6 +100,7 @@ i18n
         [NS.SETTINGS]: settingsEN,
         [NS.HINDSIGHT]: hindsightEN,
         [NS.AGENT_HOME]: agentHomeEN,
+        [NS.TOOL_NARRATOR]: toolNarratorEN,
       },
       zh: {
         [NS.COMMON]: commonZH,
@@ -120,6 +124,7 @@ i18n
         [NS.SETTINGS]: settingsZH,
         [NS.HINDSIGHT]: hindsightZH,
         [NS.AGENT_HOME]: agentHomeZH,
+        [NS.TOOL_NARRATOR]: toolNarratorZH,
       },
     },
     fallbackLng: "en",
@@ -144,6 +149,7 @@ i18n
       NS.SETTINGS,
       NS.HINDSIGHT,
       NS.AGENT_HOME,
+      NS.TOOL_NARRATOR,
     ],
     interpolation: { escapeValue: false },
     detection: {

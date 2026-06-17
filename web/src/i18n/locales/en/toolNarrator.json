@@ -1,0 +1,35 @@
+{
+  "common": {
+    "status": {
+      "running": "Running",
+      "complete": "Done",
+      "error": "Failed",
+      "waiting_for_confirmation": "Pending",
+      "canceled": "Canceled"
+    },
+    "subtitle": "{{verb}} {{object}}",
+    "subtitleRunning": "Reading {{object}}…",
+    "lineRange": "lines {{range}}",
+    "inPath": "in {{path}}"
+  },
+  "edit": {
+    "changes": "{{count}} change(s)"
+  },
+  "grep": {
+    "results": "{{count}} match(es)"
+  },
+  "glob": {
+    "files": "{{count}} file(s)"
+  },
+  "webSearch": {
+    "results": "{{count}} result(s)"
+  },
+  "todo": {
+    "items": "{{count}} todo(s)"
+  },
+  "detail": {
+    "showRawInput": "Show raw input",
+    "showRawOutput": "Show raw output",
+    "noOutput": "No output"
+  }
+}

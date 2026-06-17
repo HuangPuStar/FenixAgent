@@ -1,0 +1,35 @@
+{
+  "common": {
+    "status": {
+      "running": "进行中",
+      "complete": "已完成",
+      "error": "失败",
+      "waiting_for_confirmation": "待确认",
+      "canceled": "已取消"
+    },
+    "subtitle": "{{verb}} {{object}}",
+    "subtitleRunning": "正在{{verb}} {{object}}",
+    "lineRange": "第 {{range}} 行",
+    "inPath": "在 {{path}}"
+  },
+  "edit": {
+    "changes": "{{count}} 处"
+  },
+  "grep": {
+    "results": "找到 {{count}} 个"
+  },
+  "glob": {
+    "files": "{{count}} 个文件"
+  },
+  "webSearch": {
+    "results": "找到 {{count}} 个"
+  },
+  "todo": {
+    "items": "{{count}} 个待办"
+  },
+  "detail": {
+    "showRawInput": "查看原始输入",
+    "showRawOutput": "查看原始输出",
+    "noOutput": "无输出"
+  }
+}

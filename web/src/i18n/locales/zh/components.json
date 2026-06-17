@@ -415,24 +415,8 @@
   "datePicker": {
     "placeholder": "选择日期"
   },
-  "toolCallContent": {
-    "changes": "{{count}} 处变更",
-    "results": "{{count}} 结果",
-    "files": "{{count}} 个文件",
-    "taskRunning": "子任务执行中",
-    "agentCalling": "Agent 调用",
-    "todos": "{{count}} 个待办项",
-    "updateTodoList": "更新待办列表",
-    "toolsAndMessages": "{{toolCount}} 工具{{msgPart}}",
-    "messages": "{{count}} 消息"
-  },
   "toolCallRow": {
-    "failed": "失败",
-    "pendingConfirmation": "待确认",
     "viewParams": "查看参数"
-  },
-  "toolCallUtils": {
-    "filesAndMore": "{{first}} 等 {{count}} 个文件"
   },
   "permissionPanel": {
     "allow": "允许",
