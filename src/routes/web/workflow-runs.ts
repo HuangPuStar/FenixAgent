@@ -25,7 +25,7 @@ app.get(
     const storage = createPgStorageAdapter(authCtx.organizationId);
     const result = await storage.listRuns({ page, pageSize, status, q });
 
-    return { success: true, data: result };
+    return { success: true, data: { ...result, page, pageSize } };
   },
   {
     sessionAuth: true,
