@@ -90,14 +90,15 @@ describe("config SDK modules", () => {
     });
   });
 
-  // 测试 delete skill 发送 delete action
-  test("skillConfigApi.delete sends delete action", async () => {
+  // 测试 delete skill 使用 DELETE 方法且 URL 带技能名称
+  test("skillConfigApi.delete uses DELETE method", async () => {
     fetchMock.body = { success: true, data: null };
     const { skillConfigApi } = await import("../api/sdk");
     await skillConfigApi.delete("my-skill");
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("delete");
+    expect(call[0]).toContain("/web/config/skills/my-skill");
+    expect(call[1].method).toBe("DELETE");
+    expect(call[1].body).toBeUndefined();
   });
 
   // 测试非 200 状态码返回 error

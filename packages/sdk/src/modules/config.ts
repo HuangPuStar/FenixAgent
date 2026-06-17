@@ -1,5 +1,5 @@
 import { BaseApi } from "../base";
-import type { ApiResult } from "../result";
+import { type ApiResult, ok } from "../result";
 import type {
   AgentDetail,
   AgentInfo,
@@ -104,16 +104,31 @@ export class AgentApi extends BaseApi {
 
 export class SkillConfigApi extends BaseApi {
   async list(): Promise<ApiResult<SkillInfo[]>> {
-    return this.post<SkillInfo[]>("/web/config/skills", { action: "list" });
+    const result = await this._get<{ skills: SkillInfo[] }>("/web/config/skills");
+    if (result.error) return result;
+    return ok(result.data.skills);
   }
   async get(name: string): Promise<ApiResult<SkillDetail>> {
-    return this.post<SkillDetail>("/web/config/skills", { action: "get", name });
+    return this._get<SkillDetail>("/web/config/skills/:name", {
+      params: { name: encodeURIComponent(name) },
+    });
   }
-  async set(name: string, data: Record<string, unknown>): Promise<ApiResult<SkillInfo>> {
-    return this.post<SkillInfo>("/web/config/skills", { action: "set", name, data });
+  async create(name: string, data: Record<string, unknown>): Promise<ApiResult<SkillInfo>> {
+    return this.post<SkillInfo>("/web/config/skills", { name, data });
+  }
+  async update(name: string, data: Record<string, unknown>): Promise<ApiResult<SkillInfo>> {
+    return this.put<SkillInfo>(
+      "/web/config/skills/:name",
+      { data },
+      {
+        params: { name: encodeURIComponent(name) },
+      },
+    );
   }
   async delete(name: string): Promise<ApiResult<boolean>> {
-    return this.post("/web/config/skills", { action: "delete", name });
+    return this.del("/web/config/skills/:name", {
+      params: { name: encodeURIComponent(name) },
+    });
   }
   async upload(formData: FormData): Promise<ApiResult<SkillInfo>> {
     return this._upload<SkillInfo>("/web/config/skills/upload", formData);

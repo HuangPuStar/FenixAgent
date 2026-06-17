@@ -16,7 +16,7 @@ import { validateEnv } from "./env";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
-import { deriveRequestId, logError, logRequest, logResponse } from "./plugins/logger";
+import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } from "./plugins/logger";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
@@ -296,6 +296,7 @@ const app = new Elysia()
   .derive(deriveRequestId)
   .onBeforeHandle(logRequest)
   .onAfterHandle(logResponse)
+  .onAfterHandle(injectRequestId)
   .onError(({ request, error, set }) => logError({ request, error, set }))
   .use(errorPlugin)
   .use(rateLimitPlugin)
