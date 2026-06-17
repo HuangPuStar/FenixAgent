@@ -9,6 +9,9 @@ type SDKMessage = Record<string, any>;
 export class ProtocolAdapter {
   private abortController: AbortController | null = null;
 
+  /** 跟踪当前回合是否已经通过 stream_event 流式推送过文本内容 */
+  private streamedTextThisTurn = false;
+
   constructor(private send: (type: string, payload?: unknown) => void) {}
 
   /** 处理来自 relay 的 ACP 消息，转换为 SDK 操作 */
@@ -58,9 +61,11 @@ export class ProtocolAdapter {
         case "content_block_delta": {
           const delta = event.delta as Record<string, unknown> | undefined;
           if (delta?.type === "text_delta" && typeof delta.text === "string") {
+            this.streamedTextThisTurn = true;
             console.log("[protocol-debug] → agent_message_chunk:", (delta.text as string).slice(0, 50));
             this.send("agent_message_chunk", { type: "text", text: delta.text as string });
           } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
+            this.streamedTextThisTurn = true;
             console.log("[protocol-debug] → agent_thought_chunk:", (delta.thinking as string).slice(0, 50));
             this.send("agent_thought_chunk", { type: "text", text: delta.thinking as string });
           } else if (delta?.type === "input_json_delta" && delta.partial_json) {
@@ -84,19 +89,25 @@ export class ProtocolAdapter {
       }
     } else if (message.type === "assistant") {
       // SDK 的 assistant 消息内容在 message.content 中
+      // 如果已经通过 stream_event 流式推送过文本，跳过 text/thinking 块避免重复
       const sdkMsg = message as Record<string, unknown>;
       const inner = (sdkMsg.message ?? message) as Record<string, unknown>;
       const blocks = (inner.content ?? []) as Array<Record<string, unknown>>;
       for (const block of blocks) {
         if (block.type === "text" && block.text) {
-          this.send("agent_message_chunk", { type: "text", text: block.text });
+          if (!this.streamedTextThisTurn) {
+            this.send("agent_message_chunk", { type: "text", text: block.text });
+          }
         } else if (block.type === "thinking" && block.thinking) {
-          this.send("agent_thought_chunk", { type: "text", text: block.thinking });
+          if (!this.streamedTextThisTurn) {
+            this.send("agent_thought_chunk", { type: "text", text: block.thinking });
+          }
         } else if (block.type === "tool_use") {
           this.send("tool_call", block);
         }
       }
     } else if (message.type === "result") {
+      this.streamedTextThisTurn = false;
       this.send("prompt_complete", { stopReason: message.subtype ?? message.stopReason ?? "end_turn" });
     } else if (message.type === "system") {
       const subtype = message.subtype as string | undefined;

@@ -540,8 +540,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       if (userCancelledRef.current) {
         userCancelledRef.current = false;
       } else {
-        // inputTokens === 0 indicates the prompt was not processed (error)
-        if (usage && usage.inputTokens === 0) {
+        // inputTokens === 0 且 outputTokens === 0 说明 prompt 未被处理（真错误）
+        // 仅 inputTokens === 0 可能是 prompt caching 导致的正常情况（CCB/OC 引擎常见）
+        if (usage && usage.inputTokens === 0 && (usage.outputTokens ?? 0) === 0) {
           setErrorMessage("请求未能正常处理，请检查 Agent 或大模型状态后重试");
           if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
           errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
