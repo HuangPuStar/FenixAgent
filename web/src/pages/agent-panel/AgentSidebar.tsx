@@ -79,8 +79,8 @@ export function AgentSidebar({
         type="button"
         className="agent-sidebar-toggle"
         onClick={() => setCollapsed((value) => !value)}
-        title={collapsed ? "展开侧栏" : "收起侧栏"}
-        aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+        title={collapsed ? tSidebar("expand") : tSidebar("collapse")}
+        aria-label={collapsed ? tSidebar("expand") : tSidebar("collapse")}
       >
         {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
       </button>

@@ -32,18 +32,6 @@ function buildConfig(env: Env) {
     ragflowApiKey: process.env.RAGFLOW_API_KEY || "",
     /** Timeout in milliseconds for RagFlow API requests. */
     ragflowRequestTimeoutMs: parseInt(process.env.RAGFLOW_REQUEST_TIMEOUT_MS || "30000", 10),
-    /** S3-compatible object storage (RustFS / MinIO / AWS S3). */
-    s3: {
-      enabled: env.RCS_S3_ENABLED,
-      endpoint: env.RCS_S3_ENDPOINT,
-      region: env.RCS_S3_REGION,
-      accessKey: env.RCS_S3_ACCESS_KEY,
-      secretKey: env.RCS_S3_SECRET_KEY,
-      bucketSessions: env.RCS_S3_BUCKET_SESSIONS,
-      bucketAssets: env.RCS_S3_BUCKET_ASSETS,
-      presignExpires: env.RCS_S3_PRESIGN_EXPIRES,
-      presignUploadExpires: env.RCS_S3_PRESIGN_UPLOAD_EXPIRES,
-    },
     disableSignup: env.RCS_DISABLE_SIGNUP,
   };
 }
@@ -58,7 +46,7 @@ export let config: AppConfig = buildConfig(
 
 /** 测试用：注入自定义配置 */
 export function setConfig(overrides: Partial<AppConfig>) {
-  config = { ...config, ...overrides, s3: { ...config.s3, ...overrides.s3 } } as AppConfig;
+  config = { ...config, ...overrides } as AppConfig;
 }
 
 /** 测试用：恢复默认配置 */

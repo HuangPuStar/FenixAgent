@@ -1,9 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentApi, envApi } from "@/src/api/sdk";
 import { AgentBadge } from "../../../../components/chat/AgentBadge";
+import { NS } from "../../../i18n";
 import { getAgentConfigLookupKey, getAgentDisplayName, isAgentWritable } from "../../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../../lib/config-events";
 import type { ResourceAccess } from "../../../types/config";
@@ -29,17 +31,26 @@ interface AgentManageNode {
   environment: Environment | null;
 }
 
-const FILTERS = [
-  { id: "all", label: "全部" },
-  { id: "general", label: "通用助理" },
-  { id: "data", label: "数据分析" },
-  { id: "search", label: "搜索检索" },
-  { id: "monitor", label: "监控告警" },
-  { id: "code", label: "代码助手" },
-  { id: "custom", label: "自定义" },
-] as const;
+type FilterId = "all" | "general" | "data" | "search" | "monitor" | "code" | "custom";
 
-type FilterId = (typeof FILTERS)[number]["id"];
+const FILTER_IDS: readonly FilterId[] = ["all", "general", "data", "search", "monitor", "code", "custom"] as const;
+
+function useFilterLabels() {
+  const { t } = useTranslation(NS.AGENTS);
+  const { t: tc } = useTranslation(NS.COMPONENTS);
+  return useMemo(
+    () => ({
+      all: tc("statusBadge.all"),
+      general: t("categories.general", { defaultValue: "通用助理" }),
+      data: t("categories.data", { defaultValue: "数据分析" }),
+      search: t("categories.search", { defaultValue: "搜索检索" }),
+      monitor: t("categories.monitor", { defaultValue: "监控告警" }),
+      code: t("categories.code", { defaultValue: "代码助手" }),
+      custom: t("categories.custom", { defaultValue: "自定义" }),
+    }),
+    [t, tc],
+  );
+}
 
 function inferCategory(agent: AgentConfigItem): FilterId {
   const text = `${agent.name} ${agent.description ?? ""}`.toLowerCase();
@@ -53,6 +64,8 @@ function inferCategory(agent: AgentConfigItem): FilterId {
 
 export function AgentManagementPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation(NS.AGENTS);
+  const filterLabels = useFilterLabels();
   const [nodes, setNodes] = useState<AgentManageNode[]>([]);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
@@ -76,11 +89,11 @@ export function AgentManagementPage() {
       setNodes(agents.map((agent) => ({ agent, environment: envByConfigId.get(agent.id) ?? null })));
     } catch (err) {
       console.error("Failed to load agents:", err);
-      toast.error("加载智能体失败");
+      toast.error(t("loadFailed", { defaultValue: "加载智能体失败" }));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     setLoading(true);
@@ -124,7 +137,7 @@ export function AgentManagementPage() {
         }
 
         if (!envId) {
-          toast.error("创建运行环境失败");
+          toast.error(t("envCreateFailed", { defaultValue: "创建运行环境失败" }));
           return;
         }
 
@@ -141,12 +154,12 @@ export function AgentManagementPage() {
         }
       } catch (err) {
         console.error("Failed to enter agent:", err);
-        toast.error("进入对话失败");
+        toast.error(t("enterFailed", { defaultValue: "进入对话失败" }));
       } finally {
         setEnteringId(null);
       }
     },
-    [navigate],
+    [navigate, t],
   );
 
   return (
@@ -187,19 +200,19 @@ export function AgentManagementPage() {
             className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
           />
         </div>
-        {FILTERS.map((filter) => (
+        {FILTER_IDS.map((filterId) => (
           <button
-            key={filter.id}
+            key={filterId}
             type="button"
-            onClick={() => setActiveFilter(filter.id)}
+            onClick={() => setActiveFilter(filterId)}
             className={[
               "rounded-full px-3.5 py-1.5 text-[12px] font-medium transition",
-              activeFilter === filter.id
+              activeFilter === filterId
                 ? "bg-[#1677ff] text-white shadow-[0_4px_10px_rgba(22,119,255,0.18)]"
                 : "border border-[#e0e7f0] bg-white text-[#6f7f95] hover:border-[#b9cee8] hover:text-[#1677ff]",
             ].join(" ")}
           >
-            {filter.label}
+            {filterLabels[filterId]}
           </button>
         ))}
       </div>

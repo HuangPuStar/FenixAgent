@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE_NAME="rcs"
+IMAGE_NAME="fenix"
 IMAGE_TAG="latest"
 PLATFORM="linux/amd64"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-OUTPUT_FILE="rcs-amd64-${TIMESTAMP}.tar.gz"
+OUTPUT_FILE=""
+OUTPUT_SPECIFIED="0"
+
+usage() {
+  echo "Usage: $0 [-t tag] [-p platform] [-o output.tar.gz]"
+}
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -13,16 +18,26 @@ while [[ $# -gt 0 ]]; do
       IMAGE_TAG="$2"
       shift 2
       ;;
+    -p|--platform)
+      PLATFORM="$2"
+      shift 2
+      ;;
     -o|--output)
       OUTPUT_FILE="$2"
+      OUTPUT_SPECIFIED="1"
       shift 2
       ;;
     *)
-      echo "Usage: $0 [-t tag] [-o output.tar.gz]"
+      usage
       exit 1
       ;;
   esac
 done
+
+if [[ "$OUTPUT_SPECIFIED" != "1" ]]; then
+  PLATFORM_SLUG="${PLATFORM//\//-}"
+  OUTPUT_FILE="${IMAGE_NAME}:${IMAGE_TAG}-${PLATFORM_SLUG}-${TIMESTAMP}.tar.gz"
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "=> Building frontend..."

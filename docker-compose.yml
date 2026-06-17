@@ -42,7 +42,6 @@ services:
     # RagFlow 依赖：MinIO（文件存储）
     minio:
         image: pgsty/minio:RELEASE.2026-03-25T00-00-00Z
-        container_name: fenix-ragflow-minio
         restart: unless-stopped
         command: ["server", "--console-address", ":9001", "/data"]
         ports:
@@ -63,7 +62,6 @@ services:
     # RagFlow 依赖：MySQL 8.0（元数据存储）
     ragflow-mysql:
         image: mysql:8.0
-        container_name: fenix-ragflow-mysql
         restart: unless-stopped
         environment:
             MYSQL_ROOT_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
@@ -83,7 +81,6 @@ services:
     # RagFlow 依赖：Infinity 向量数据库
     infinity:
         image: infiniflow/infinity:v0.7.0
-        container_name: fenix-ragflow-infinity
         restart: unless-stopped
         command: ["-f", "/infinity_conf.toml"]
         ports:
@@ -106,7 +103,6 @@ services:
     # RagFlow 依赖：Redis 7（缓存与任务队列）
     ragflow-redis:
         image: redis:7-alpine
-        container_name: fenix-ragflow-redis
         restart: unless-stopped
         command: redis-server --requirepass ${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026} --appendonly yes
         ports:
@@ -122,14 +118,13 @@ services:
 
     postgres:
         image: postgres:16-alpine
-        container_name: fenix-postgres
         restart: unless-stopped
         environment:
             POSTGRES_USER: rcs
             POSTGRES_PASSWORD: rcs
             POSTGRES_DB: rcs
         ports:
-            - "127.0.0.1:15432:5432"
+            - "5432:5432"
         volumes:
             - postgres-data:/var/lib/postgresql/data
         healthcheck:
@@ -137,56 +132,6 @@ services:
             interval: 5s
             timeout: 5s
             retries: 5
-
-    rustfs:
-        image: rustfs/rustfs:latest
-        container_name: fenix-rustfs
-        restart: unless-stopped
-        ports:
-            - "9000:9000"
-            - "9001:9001"
-        environment:
-            RUSTFS_VOLUMES: /data/rustfs{0..1}
-            RUSTFS_ADDRESS: 0.0.0.0:9000
-            RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
-            RUSTFS_CONSOLE_ENABLE: "true"
-            RUSTFS_ACCESS_KEY: rustfsadmin
-            RUSTFS_SECRET_KEY: rustfsadmin@123
-            RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
-        volumes:
-            - rustfs-data:/data
-        depends_on:
-            rustfs-setup:
-                condition: service_completed_successfully
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/health"]
-            interval: 15s
-            timeout: 5s
-            retries: 3
-            start_period: 10s
-
-    rustfs-setup:
-        image: alpine:latest
-        container_name: fenix-rustfs-setup
-        user: root
-        volumes:
-            - rustfs-data:/data
-        command: chown -R 10001:10001 /data
-
-    rustfs-init:
-        image: minio/mc:latest
-        container_name: fenix-rustfs-init
-        depends_on:
-            rustfs:
-                condition: service_healthy
-        entrypoint: >
-          /bin/sh -c "
-            mc alias set rustfs http://rustfs:9000 rustfsadmin rustfsadmin@123 &&
-            mc mb --ignore-existing rustfs/rcs-sessions &&
-            mc mb --ignore-existing rustfs/rcs-assets &&
-            mc admin config set rustfs api cors_allow_origin='*' &&
-              echo 'Buckets created, CORS configured.'
-          "
 
 volumes:
     ragflow_data:
@@ -196,4 +141,3 @@ volumes:
     ragflow_redis_data:
     ragflow_infinity_data:
     postgres-data:
-    rustfs-data:

@@ -22,7 +22,7 @@ export function SessionSidebar({ sessions, activeId, onSelect, onNew, className 
   const [collapsed, setCollapsed] = useState(false);
 
   // 按日期分组
-  const groups = groupByRecency(sessions);
+  const groups = groupByRecency(sessions, t);
 
   return (
     <div
@@ -110,15 +110,15 @@ interface SessionGroup {
   sessions: SessionListItem[];
 }
 
-function groupByRecency(sessions: SessionListItem[]): SessionGroup[] {
+function groupByRecency(sessions: SessionListItem[], t: (key: string) => string): SessionGroup[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 86400000);
 
   const groups: SessionGroup[] = [
-    { label: "今天", sessions: [] },
-    { label: "昨天", sessions: [] },
-    { label: "更早", sessions: [] },
+    { label: t("sessionSidebar.today"), sessions: [] },
+    { label: t("sessionSidebar.yesterday"), sessions: [] },
+    { label: t("sessionSidebar.earlier"), sessions: [] },
   ];
 
   for (const session of sessions) {

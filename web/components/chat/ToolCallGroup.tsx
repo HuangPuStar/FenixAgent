@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { ToolCallEntry } from "../../src/lib/types";
 import { HindsightToolCard, isHindsightTool } from "./HindsightToolCard";
 import { ToolCallRow } from "./ToolCallRow";
@@ -13,6 +14,7 @@ interface ToolCallGroupProps {
 }
 
 export function ToolCallGroup({ entries, onPermissionRespond }: ToolCallGroupProps) {
+  const { t } = useTranslation("components");
   if (entries.length === 0) return null;
 
   // 将 hindsight 工具与普通工具分离，各自独立渲染
@@ -31,10 +33,12 @@ export function ToolCallGroup({ entries, onPermissionRespond }: ToolCallGroupPro
           {running > 0 && (
             <span className="inline-flex items-center gap-1 text-[10px] text-status-running">
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              {running} 运行中
+              {running} {t("toolCallGroup.running")}
             </span>
           )}
-          {error > 0 && <span className="text-[10px] text-status-error">{error} 失败</span>}
+          {error > 0 && (
+            <span className="text-[10px] text-status-error">{t("toolCallGroup.failed", { count: error })}</span>
+          )}
         </div>
       )}
 

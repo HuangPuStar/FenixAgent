@@ -17,7 +17,7 @@ export function KanbanColumn({ titleKey, jobs, onRefresh, onEditParams, onViewLo
   return (
     <div className="flex flex-col min-w-[260px] flex-1 border-r border-border-subtle last:border-r-0">
       {/* Column header — uppercase section label */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle flex-shrink-0">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-light flex-shrink-0">
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] font-semibold tracking-widest uppercase text-text-dim">{t(titleKey)}</span>
           {jobs.length > 0 && (

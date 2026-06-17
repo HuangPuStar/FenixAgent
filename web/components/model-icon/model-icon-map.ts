@@ -62,7 +62,7 @@ export const modelIconMap: ModelIconEntry[] = [
 
   // ─── 阿里通义千问 / Qwen ────────────────────────────────────────────
   {
-    label: "Qwen / 通义千问",
+    label: "Qwen",
     patterns: [/^qwen/, /^qwq/, /^qvq/],
     Icon: Qwen,
     Color: Qwen.Color,

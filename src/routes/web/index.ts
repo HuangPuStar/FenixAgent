@@ -13,7 +13,6 @@ import webKnowledgeBases from "./knowledge-bases";
 import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
 import webRegistry from "./registry";
-import webS3Files from "./s3-files";
 import webSessions from "./sessions";
 import webSkills from "./skills";
 import webTasks from "./tasks";
@@ -39,7 +38,6 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webKnowledgeBases)
   .use(webMetaAgent)
   .use(webOrganizations)
-  .use(webS3Files)
   .use(webSessions)
   .use(webSkills)
   .use(webTasks)

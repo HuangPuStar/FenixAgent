@@ -122,6 +122,7 @@ function StatusIcon({ status }: { status: PlanEntryStatus }) {
 // =============================================================================
 
 function PriorityBadge({ priority }: { priority: PlanEntryPriority }) {
+  const { t } = useTranslation("components");
   const styles: Record<PlanEntryPriority, string> = {
     high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
     medium: "bg-brand/10 text-brand dark:bg-brand/20",
@@ -129,9 +130,9 @@ function PriorityBadge({ priority }: { priority: PlanEntryPriority }) {
   };
 
   const labels: Record<PlanEntryPriority, string> = {
-    high: "高",
-    medium: "中",
-    low: "低",
+    high: t("planView.high"),
+    medium: t("planView.medium"),
+    low: t("planView.low"),
   };
 
   return (

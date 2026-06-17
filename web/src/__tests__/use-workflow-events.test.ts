@@ -31,7 +31,7 @@ describe("buildRunSummary", () => {
     };
     const result = buildRunSummary(snap);
     expect(result).toContain("2/4");
-    expect(result).toContain("运行中");
+    expect(result).toContain("Running");
   });
 
   test("返回运行成功摘要", () => {
@@ -47,7 +47,7 @@ describe("buildRunSummary", () => {
       },
     };
     const result = buildRunSummary(snap);
-    expect(result).toContain("成功");
+    expect(result).toContain("Succeeded");
     expect(result).toContain("2/2");
   });
 
@@ -65,7 +65,7 @@ describe("buildRunSummary", () => {
       },
     };
     const result = buildRunSummary(snap);
-    expect(result).toContain("失败");
+    expect(result).toContain("Failed");
     expect(result).toContain("python_1");
   });
 
@@ -82,7 +82,7 @@ describe("buildRunSummary", () => {
       },
     };
     const result = buildRunSummary(snap);
-    expect(result).toContain("等待审批");
+    expect(result).toContain("Awaiting Approval");
     expect(result).toContain("audit_1");
   });
 });

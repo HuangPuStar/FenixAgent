@@ -5,29 +5,6 @@ import { useTranslation } from "react-i18next";
 import { authClient } from "../lib/auth-client";
 import { encryptPassword } from "../lib/password-crypto";
 
-const brandFeatures = [
-  {
-    icon: <CirclePlus />,
-    title: "智能编排",
-    description: "多智能体协同调度",
-  },
-  {
-    icon: <ShieldCheck />,
-    title: "安全可靠",
-    description: "企业级数据安全保障",
-  },
-  {
-    icon: <MessageSquare />,
-    title: "智能对话",
-    description: "多模态自然语言交互",
-  },
-  {
-    icon: <Users />,
-    title: "组织管理",
-    description: "团队协作与权限管控",
-  },
-];
-
 const brandTags = ["AI Orchestration", "Multi-Agent", "Intelligent Core"];
 const particleKeys = ["particle-1", "particle-2", "particle-3", "particle-4", "particle-5", "particle-6"];
 
@@ -179,11 +156,10 @@ function AuthLightStyles() {
         margin: 0 auto 14px;
       }
 
-      .auth-light-logo svg {
+      .auth-light-logo img {
         width: 100%;
         height: 100%;
-        filter: drop-shadow(0 0 25px rgba(212, 175, 55, 0.35));
-        animation: authLogoPulse 4s ease-in-out infinite;
+        object-fit: contain;
       }
 
       .auth-light-logo-glow {
@@ -202,28 +178,6 @@ function AuthLightStyles() {
       .auth-light-logo-compact .auth-light-logo-glow {
         width: 92px;
         height: 92px;
-      }
-
-      .auth-light-phoenix {
-        fill: none;
-        stroke: #d4af37;
-        stroke-width: 1.8;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-      }
-
-      .auth-light-phoenix-thin {
-        fill: none;
-        stroke: #d4af37;
-        stroke-width: 1.2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        opacity: 0.6;
-      }
-
-      .auth-light-phoenix-core {
-        fill: #d4af37;
-        opacity: 0.9;
       }
 
       .auth-light-brand-title {
@@ -641,16 +595,6 @@ function AuthLightStyles() {
         }
       }
 
-      @keyframes authLogoPulse {
-        0%,
-        100% {
-          filter: drop-shadow(0 0 25px rgba(212, 175, 55, 0.35));
-        }
-        50% {
-          filter: drop-shadow(0 0 50px rgba(212, 175, 55, 0.55));
-        }
-      }
-
       @keyframes authRingExpand {
         0%,
         100% {
@@ -694,7 +638,7 @@ function AuthLightStyles() {
       @media (prefers-reduced-motion: reduce) {
         .auth-light-page::before,
         .auth-light-particle,
-        .auth-light-logo svg,
+        .auth-light-logo img,
         .auth-light-logo-glow,
         .auth-light-brand-title,
         .auth-light-brand-sub,
@@ -766,30 +710,18 @@ function AuthLightStyles() {
   );
 }
 
+const assetBase = import.meta.env.BASE_URL;
+
 function LoginBrandMark({ compact = false }: { compact?: boolean }) {
   return (
     <div className={compact ? "auth-light-logo auth-light-logo-compact" : "auth-light-logo"}>
       <div className="auth-light-logo-glow" />
-      <svg aria-label="Fenix Agent" role="img" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-        <circle className="auth-light-phoenix-thin" cx="50" cy="50" r="42" />
-        <path className="auth-light-phoenix" d="M30,60 Q50,35 70,60" />
-        <path className="auth-light-phoenix" d="M35,40 Q50,65 65,40" />
-        <path className="auth-light-phoenix" d="M42,38 Q50,20 65,30" />
-        <path className="auth-light-phoenix-thin" d="M38,42 Q28,28 40,22" />
-        <path className="auth-light-phoenix" d="M42,62 Q50,78 62,70" />
-        <path className="auth-light-phoenix-thin" d="M38,58 Q28,72 46,78" />
-        <path className="auth-light-phoenix-thin" d="M48,32 Q44,25 42,20" />
-        <path className="auth-light-phoenix-thin" d="M52,32 Q56,25 58,20" />
-        <rect
-          className="auth-light-phoenix-core"
-          height="6"
-          rx="1"
-          transform="rotate(45,50,50)"
-          width="6"
-          x="47"
-          y="47"
-        />
-      </svg>
+      <img
+        className="auth-light-logo-mark"
+        src={`${assetBase}brand/fenix-agent-logo-mark.png`}
+        alt=""
+        aria-hidden="true"
+      />
     </div>
   );
 }
@@ -813,6 +745,7 @@ function AuthInput({
   required?: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation("login");
   const [visible, setVisible] = useState(false);
   const isPassword = type === "password";
   const inputType = isPassword && visible ? "text" : type;
@@ -834,7 +767,7 @@ function AuthInput({
         />
         {isPassword && (
           <button
-            aria-label={visible ? "隐藏密码" : "显示密码"}
+            aria-label={visible ? t("hidePassword") : t("showPassword")}
             className="auth-light-toggle"
             onClick={() => setVisible((current) => !current)}
             type="button"
@@ -948,15 +881,20 @@ export function LoginPage() {
       <section className="auth-light-brand-panel">
         <LoginBrandMark />
         <div className="auth-light-brand-title">FENIX AGENT</div>
-        <div className="auth-light-brand-sub">企业级 AI 智能体中枢</div>
+        <div className="auth-light-brand-sub">{t("brandSubtitle")}</div>
 
         <div className="auth-light-features">
-          {brandFeatures.map((feature) => (
+          {[
+            { icon: <CirclePlus />, titleKey: "features.orchestration", descKey: "features.orchestrationDesc" },
+            { icon: <ShieldCheck />, titleKey: "features.security", descKey: "features.securityDesc" },
+            { icon: <MessageSquare />, titleKey: "features.conversation", descKey: "features.conversationDesc" },
+            { icon: <Users />, titleKey: "features.organization", descKey: "features.organizationDesc" },
+          ].map((feature) => (
             <FeatureCard
-              description={feature.description}
+              description={t(feature.descKey)}
               icon={feature.icon}
-              key={feature.title}
-              title={feature.title}
+              key={feature.titleKey}
+              title={t(feature.titleKey)}
             />
           ))}
         </div>

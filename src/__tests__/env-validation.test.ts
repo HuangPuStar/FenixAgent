@@ -11,7 +11,6 @@ describe("env validation", () => {
     delete process.env.RCS_PORT;
     delete process.env.RCS_CORS_ORIGIN;
     delete process.env.RCS_TRUSTED_ORIGINS;
-    delete process.env.RCS_S3_ENABLED;
     delete process.env.SKILL_DIR;
     delete process.env.APP_BRAND_NAME;
     delete process.env.APP_LOGO_PATH;
@@ -49,7 +48,6 @@ describe("env validation", () => {
     expect(env.RCS_HOST).toBe("0.0.0.0");
     expect(env.RCS_CORS_ORIGIN).toBe("*");
     expect(env.RCS_TRUSTED_ORIGINS).toBe("");
-    expect(env.RCS_S3_ENABLED).toBe(false);
     expect(env.SKILL_DIR).toBe("./data/skills");
     expect(env.APP_BRAND_NAME).toBe("Fenix");
     expect(env.APP_LOGO_PATH).toBe("");

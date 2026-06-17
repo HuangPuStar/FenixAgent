@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 
 const JsonObjectSchema = z.record(z.string(), z.unknown()).describe("任意 JSON 对象。");
 const JsonArraySchema = z.array(z.unknown()).describe("任意 JSON 数组。");
-const IsoDateTimeSchema = z.string().describe("时间值，通常为 ISO 8601 字符串。");
+const IsoDateTimeSchema = z.union([z.string(), z.date()]).describe("时间值，ISO 8601 字符串或 Date 对象。");
 
 /** 通用成功响应工厂 */
 const WorkflowSuccessSchema = <T extends z.ZodTypeAny>(data: T) =>
@@ -16,7 +16,8 @@ export const WorkflowVoidSuccessSchema = z
   .object({
     success: z.literal(true).describe("请求是否成功。"),
   })
-  .describe("工作流接口通用成功响应。");
+  .strict()
+  .describe("工作流接口通用成功响应（无 data 字段）。");
 
 /** 工作流定义基础信息 */
 export const WorkflowDefSchema = z

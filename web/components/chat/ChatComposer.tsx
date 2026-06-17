@@ -91,7 +91,7 @@ export function ChatComposer({
   className,
 }: ChatComposerProps) {
   const { t } = useTranslation("components");
-  const _placeholder = placeholder ?? t("chatComposer.placeholder");
+  const _placeholder = placeholder ?? t("chatInput.placeholder");
 
   // ---------------------------------------------------------------------------
   // State — 从 ChatInput 原样迁移
