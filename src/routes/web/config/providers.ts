@@ -71,7 +71,10 @@ async function handleList(ctx: AuthContext) {
 }
 
 async function handleGet(ctx: AuthContext, name: string) {
-  const p = await configPg.getProvider(ctx, name);
+  // 同时支持按名称和跨组织共享资源键（resourceKey）查找，与 MCP 的 handleGet 逻辑一致
+  const p = name.includes("/")
+    ? await configPg.getProviderByResourceKey(ctx, name)
+    : await configPg.getProvider(ctx, name);
   if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
 
   const models = (p.models ?? []).map((m) => ({
