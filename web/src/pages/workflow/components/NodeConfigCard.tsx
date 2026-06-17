@@ -117,7 +117,7 @@ export function NodeConfigCard({
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.inputs_key_placeholder")}
-                    valuePlaceholder={t("editor.inputs_value_placeholder")}
+                    valuePlaceholder={t("editor.inputs_value_hint")}
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
@@ -178,7 +178,7 @@ export function NodeConfigCard({
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.inputs_key_placeholder")}
-                    valuePlaceholder={t("editor.inputs_value_placeholder")}
+                    valuePlaceholder={t("editor.inputs_value_hint")}
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
@@ -362,7 +362,7 @@ export function NodeConfigCard({
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.transform_inputs_key_placeholder")}
-                    valuePlaceholder={t("editor.transform_inputs_value_placeholder")}
+                    valuePlaceholder={t("editor.inputs_value_hint")}
                     addLabel={t("editor.transform_inputs_add")}
                   />
                 </div>
@@ -382,7 +382,7 @@ export function NodeConfigCard({
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.transform_output_key_placeholder")}
-                    valuePlaceholder={t("editor.transform_output_value_placeholder")}
+                    valuePlaceholder={t("editor.output_value_hint")}
                     addLabel={t("editor.transform_output_add")}
                   />
                 </div>
