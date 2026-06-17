@@ -1,4 +1,5 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import {
@@ -300,6 +301,11 @@ const app = new Elysia({ name: "web-config-mcp" }).use(authGuardPlugin).model({
   "mcp-create-request": McpServerCreateRequestSchema,
   "mcp-update-request": McpServerUpdateRequestSchema,
   "mcp-test-url-request": McpTestUrlRequestSchema,
+  "mcp-name-param": z
+    .object({
+      name: z.string().describe("MCP Server 名称或跨组织共享资源键（resourceKey）。"),
+    })
+    .describe("MCP Server 路径参数。"),
 });
 
 // ────────────────────────────────────────────
@@ -348,6 +354,7 @@ app.get(
   },
   {
     sessionAuth: true,
+    params: "mcp-name-param",
     detail: {
       tags: ["McpConfig"],
       summary: "获取 MCP Server 详情",
@@ -386,7 +393,7 @@ app.post(
       tags: ["McpConfig"],
       summary: "创建 MCP Server",
       description:
-        "创建一个新的 MCP 服务器配置。支持 local（本地子进程）和 remote（远端 HTTP SSE）两种类型。名称必须为 1-64 位小写字母数字加单连字符。创建时会检查名称是否已存在。",
+        "创建一个新的 MCP 服务器配置。支持 local（本地子进程）和 remote（远端 HTTP SSE）两种类型。请求体需包含服务器名称 name 和类型 type。local 类型需提供 command 命令数组，remote 类型需提供 url。名称必须为 1-64 位小写字母数字加单连字符。创建时会检查名称是否已存在。",
     },
   },
 );
@@ -412,12 +419,13 @@ app.put(
   },
   {
     sessionAuth: true,
+    params: "mcp-name-param",
     body: "mcp-update-request",
     detail: {
       tags: ["McpConfig"],
       summary: "更新 MCP Server",
       description:
-        "更新指定 MCP 服务器的配置。支持修改服务器类型、连接参数、环境变量和公开可读状态。外部共享服务器不可更新。",
+        "更新指定 MCP 服务器的配置。支持修改服务器类型、连接参数、环境变量和公开可读状态。请求体只需包含需要更新的字段。外部共享服务器不可更新。",
     },
   },
 );
@@ -441,6 +449,7 @@ app.delete(
   },
   {
     sessionAuth: true,
+    params: "mcp-name-param",
     detail: {
       tags: ["McpConfig"],
       summary: "删除 MCP Server",
@@ -468,6 +477,7 @@ app.post(
   },
   {
     sessionAuth: true,
+    params: "mcp-name-param",
     detail: {
       tags: ["McpConfig"],
       summary: "启用 MCP Server",
@@ -495,6 +505,7 @@ app.post(
   },
   {
     sessionAuth: true,
+    params: "mcp-name-param",
     detail: {
       tags: ["McpConfig"],
       summary: "禁用 MCP Server",
@@ -522,6 +533,7 @@ app.post(
   },
   {
     sessionAuth: true,
+    params: "mcp-name-param",
     detail: {
       tags: ["McpConfig"],
       summary: "测试 MCP Server 连接",
@@ -557,7 +569,7 @@ app.post(
       tags: ["McpConfig"],
       summary: "测试远端 MCP URL",
       description:
-        "直接测试一个远端 URL 是否为可用的 MCP HTTP 服务端点，无需提前保存 MCP 服务器配置。支持自定义请求头和超时时间。",
+        "直接测试一个远端 URL 是否为可用的 MCP HTTP 服务端点，无需提前创建 MCP 服务器配置。请求体需提交 url 地址，可选自定义请求头和超时时间。返回远端服务器的可达性、MCP 协议兼容性、服务器版本和工具数量。",
     },
   },
 );
@@ -581,6 +593,7 @@ app.post(
   },
   {
     sessionAuth: true,
+    params: "mcp-name-param",
     detail: {
       tags: ["McpConfig"],
       summary: "检查 MCP Server 并导入工具",
@@ -607,6 +620,7 @@ app.get(
   },
   {
     sessionAuth: true,
+    params: "mcp-name-param",
     detail: {
       tags: ["McpConfig"],
       summary: "获取 MCP Server 的工具列表",
