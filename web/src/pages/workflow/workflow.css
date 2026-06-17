@@ -484,6 +484,33 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
+/* ── Dropdown Item (用于右下角弹出菜单) ── */
+.wf-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.12s;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+.wf-dropdown-item:hover {
+  background: #f3f4f6;
+}
+.wf-dropdown-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.wf-dropdown-item:disabled:hover {
+  background: transparent;
+}
+
 /* ── Workflow Sheet ── */
 .wf-sheet-body {
   flex: 1;

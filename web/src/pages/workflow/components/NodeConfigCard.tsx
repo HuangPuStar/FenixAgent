@@ -1,5 +1,6 @@
 import type { Node } from "@xyflow/react";
 import { useTranslation } from "react-i18next";
+import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
 import { syncOutputOnRename } from "../preset-utils";
 import { START_NODE_ID } from "../yaml-utils";
 import { InputsEditor } from "./InputsEditor";
@@ -13,7 +14,7 @@ export interface NodeConfigCardProps {
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>;
   updateNodeData: (patch: Record<string, unknown>) => void;
-  agentList: Array<{ name: string; description: string | null }>;
+  agentList: AgentNodeOption[];
 }
 
 export function NodeConfigCard({
@@ -196,9 +197,13 @@ export function NodeConfigCard({
                   >
                     <option value="">{t("editor.agent_select_env")}</option>
                     {agentList.map((a) => (
-                      <option key={a.name} value={a.name}>
+                      // option 的 value 是 environment 名字（yaml agent 字段语义需要），
+                      // 但展示给用户的是智能体名 + 描述，跟左侧 AgentSidebar 一致。
+                      // 没绑定 environment 的智能体无法被运行时解析，置灰禁选。
+                      <option key={a.name} value={a.envName ?? ""} disabled={!a.envName}>
                         {a.name}
                         {a.description ? ` - ${a.description}` : ""}
+                        {!a.envName ? ` (${t("editor.agent_no_env")})` : ""}
                       </option>
                     ))}
                   </select>
