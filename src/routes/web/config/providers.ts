@@ -58,7 +58,7 @@ const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin).mo
 async function handleList(ctx: AuthContext) {
   const providers = await configPg.listProviders(ctx);
   const list = providers.map((p) => ({
-    id: p.name,
+    id: p.id,
     name: p.displayName ?? "",
     protocol: p.protocol,
     keyHint: toKeyHint(p.apiKey),
