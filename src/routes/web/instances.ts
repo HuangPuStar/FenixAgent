@@ -25,7 +25,7 @@ app.post(
     const b = body as { environmentId: string };
 
     try {
-      await getOwnedEnvironment(b.environmentId, authCtx.organizationId);
+      await getOwnedEnvironment(b.environmentId, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && "code" in err && (err as { code?: string }).code === "NOT_FOUND") {
         return error(404, { error: { type: "NOT_FOUND", message: (err as Error).message } });

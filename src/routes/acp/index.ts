@@ -216,9 +216,15 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
-      // 验证团队归属：env.organizationId 或 env.userId 必须匹配
+      // 共享 agent 的 runtime environment 按用户隔离；
+      // 同组织成员不能直接接入他人的个人 runtime，否则会落到错误 workspace。
       const authCtx = authResult.authContext;
-      if (!authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
+      const forbiddenSharedRuntime = Boolean(env.agentConfigId && env.userId !== userId);
+      if (
+        !authCtx ||
+        forbiddenSharedRuntime ||
+        (env.organizationId !== authCtx.organizationId && env.userId !== userId)
+      ) {
         log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not owned by user ${userId}'s team`);
         adaptWs(ws).close(4003, "unauthorized");
         return;

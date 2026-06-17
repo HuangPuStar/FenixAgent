@@ -51,7 +51,7 @@ export async function uploadWorkspaceFiles(
   environmentId: string,
   formData: FormData,
 ): Promise<WorkspaceFileUploadResult> {
-  await deps.getOwnedEnvironment(environmentId, ctx.organizationId);
+  await deps.getOwnedEnvironment(environmentId, ctx.organizationId, ctx.userId);
 
   const files = formData
     .getAll("files")
