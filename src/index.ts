@@ -25,6 +25,7 @@ import apiInstanceRoutes from "./routes/api/instances";
 import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
 import apiSkillsRoutes from "./routes/api/skills";
+import apiSystemRoutes from "./routes/api/system";
 import apiWorkspaceRoutes from "./routes/api/workspaces";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import v2CodeSessions from "./routes/v2/code-sessions";
@@ -76,6 +77,18 @@ const EXTERNAL_OPENAPI_TAGS = [
   {
     name: "External Workspace",
     description: "面向外部系统的 Environment Workspace 文件接口。",
+  },
+  {
+    name: "System User",
+    description: "系统级用户管理接口，用于平台侧创建和查询全局用户。",
+  },
+  {
+    name: "System Organization",
+    description: "系统级组织管理接口，用于平台侧创建组织、查询组织和维护成员关系。",
+  },
+  {
+    name: "System ApiKey",
+    description: "系统级 API Key 管理接口，用于代指定用户签发兼容现有外部 API 的用户级 API key。",
   },
 ];
 
@@ -362,6 +375,7 @@ const app = new Elysia()
   .use(apiSkillsRoutes)
   .use(apiModelsRoutes)
   .use(apiMcpRoutes)
+  .use(apiSystemRoutes)
   .use(apiInstanceRoutes)
   .use(apiWorkspaceRoutes)
   // Workflow proxy (not under /web prefix)
