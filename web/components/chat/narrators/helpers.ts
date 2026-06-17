@@ -100,3 +100,85 @@ export function findFirstStringValue(rawInput: unknown): string | undefined {
     if (typeof v === "string" && v.length > 0) return v;
   }
 }
+
+/**
+ * 从 opencode read 工具读目录的 rawOutput 中提取条目数。
+ *
+ * opencode 输出格式：
+ * ```
+ * {
+ *   output: "<path>...</path>\n<type>directory</type>\n<entries>\na\nb\n\n(2 entries)\n</entries>",
+ *   metadata: { preview: "a\nb", truncated: false, loaded: [] }
+ * }
+ * ```
+ *
+ * 解析优先级（宽容兜底，任一命中即返回）：
+ * 1. metadata.preview：按非空行计数（最稳定，opencode 必带）
+ * 2. output 里的 `(N entries)` 文案（兜底，preview 缺失时）
+ * 3. output 里 <entries>...</entries> 块的非空行计数（再兜底）
+ *
+ * 返回 N>0 的整数；解析失败或为 0 时返回 undefined（detail 不显示）。
+ */
+export function extractDirectoryEntryCount(rawOutput: unknown): number | undefined {
+  if (!rawOutput || typeof rawOutput !== "object") return;
+  const o = rawOutput as Record<string, unknown>;
+
+  // 1. metadata.preview：按非空行计数
+  const meta = o.metadata as Record<string, unknown> | undefined;
+  if (typeof meta?.preview === "string") {
+    const count = countNonEmptyLines(meta.preview);
+    if (count > 0) return count;
+  }
+
+  const output = typeof o.output === "string" ? o.output : "";
+  if (!output) return;
+
+  // 2. (N entries) 文案
+  const entriesMatch = output.match(/\((\d+)\s+entries?\)/i);
+  if (entriesMatch) {
+    const n = Number(entriesMatch[1]);
+    if (n > 0) return n;
+  }
+
+  // 3. <entries>...</entries> 块的非空行
+  const blockMatch = output.match(/<entries>([\s\S]*?)<\/entries>/i);
+  if (blockMatch?.[1]) {
+    const count = countNonEmptyLines(blockMatch[1]);
+    if (count > 0) return count;
+  }
+
+  return;
+}
+
+/**
+ * 计算字符串中的非空行数（trim 后为空的不计）。
+ * 内部辅助，仅 extractDirectoryEntryCount 使用。
+ */
+function countNonEmptyLines(s: string): number {
+  return s
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .reduce((acc) => acc + 1, 0);
+}
+
+/**
+ * 判断 rawOutput 是否为 opencode read 工具读目录的输出。
+ * 通过 `<type>directory</type>` 标签精确识别，避免误伤其他工具。
+ */
+export function isOpencodeDirectoryOutput(rawOutput: unknown): boolean {
+  if (!rawOutput || typeof rawOutput !== "object") return false;
+  const o = rawOutput as Record<string, unknown>;
+  if (typeof o.output !== "string") return false;
+  return o.output.includes("<type>directory</type>");
+}
+
+/**
+ * 判断 rawOutput 是否为 opencode read 工具读文件的输出。
+ * 同时要求 `<path>` 和 `<type>file</type>` 标签，提高识别精度。
+ */
+export function isOpencodeFileOutput(rawOutput: unknown): boolean {
+  if (!rawOutput || typeof rawOutput !== "object") return false;
+  const o = rawOutput as Record<string, unknown>;
+  if (typeof o.output !== "string") return false;
+  return o.output.includes("<path>") && o.output.includes("<type>file</type>");
+}

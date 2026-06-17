@@ -15,6 +15,9 @@
   "edit": {
     "changes": "{{count}} 处"
   },
+  "read": {
+    "entries": "{{count}} 个条目"
+  },
   "grep": {
     "results": "找到 {{count}} 个"
   },

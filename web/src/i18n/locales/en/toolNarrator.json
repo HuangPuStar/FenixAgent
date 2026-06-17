@@ -15,6 +15,9 @@
   "edit": {
     "changes": "{{count}} change(s)"
   },
+  "read": {
+    "entries": "{{count}} entries"
+  },
   "grep": {
     "results": "{{count}} match(es)"
   },

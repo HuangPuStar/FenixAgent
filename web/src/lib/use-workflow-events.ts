@@ -41,7 +41,7 @@ export function clearWorkflowEvents(): void {
 
 export function buildRunSummary(snap: DAGSnapshot): string | null {
   const { dag_status, node_states } = snap;
-  const entries = Object.entries(node_states);
+  const entries = Object.entries(node_states ?? {});
   const total = entries.length;
 
   if (total === 0 && dag_status === "PENDING") return null;

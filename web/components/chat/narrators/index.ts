@@ -63,7 +63,8 @@ export function narrate(
   // 第 2 阶段：查注册表匹配 narrator
   const ctx: NarrationContext = { tool, status: normalizedStatus, elapsedMs, t };
   const lower = tool.title.toLowerCase();
-  const narrator = narrators.find((n) => n.match(lower)) ?? fallbackNarrator;
+  // 把 tool 一并传给 match，允许 narrator 在 title 关键字不命中时基于 rawInput/rawOutput 兜底
+  const narrator = narrators.find((n) => n.match(lower, tool)) ?? fallbackNarrator;
 
   // 第 3 阶段：调用 narrator 的 getDisplay 拿到 object 和可选 detail
   const { object, detail } = narrator.getDisplay(ctx);

@@ -341,15 +341,18 @@ function mapRowToEvent(row: typeof workflowEvent.$inferSelect): DAGEvent {
 
 /** 将数据库行映射为 DAGSnapshot */
 function mapRowToSnapshot(row: typeof workflowSnapshot.$inferSelect): DAGSnapshot {
+  // JSONB 列可能被意外写入非对象值（string/number/null），运行时规范化
+  const raw = row.nodeStates;
+  const nodeStates: Record<string, { status: import("@fenix/workflow-engine").NodeStatus; exit_code?: number }> =
+    raw != null && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, { status: import("@fenix/workflow-engine").NodeStatus; exit_code?: number }>)
+      : {};
   return {
     snapshot_id: row.snapshotId,
     run_id: row.runId,
     last_event_id: row.lastEventId,
     timestamp: row.timestamp.toISOString(),
-    node_states: row.nodeStates as Record<
-      string,
-      { status: import("@fenix/workflow-engine").NodeStatus; exit_code?: number }
-    >,
+    node_states: nodeStates,
     dag_status: row.dagStatus as DAGStatus,
   };
 }
@@ -363,7 +366,12 @@ function mapSnapshotToRunSummary(row: {
   timestamp: Date;
   nodeStates: unknown;
 }): RunSummary {
-  const nodeStates = row.nodeStates as Record<string, { status: string }>;
+  // JSONB 列可能被意外写入非对象值，运行时规范化
+  const rawStates = row.nodeStates;
+  const nodeStates: Record<string, { status: string }> =
+    rawStates != null && typeof rawStates === "object" && !Array.isArray(rawStates)
+      ? (rawStates as Record<string, { status: string }>)
+      : {};
   const nodes = Object.values(nodeStates);
 
   let completed = 0;
