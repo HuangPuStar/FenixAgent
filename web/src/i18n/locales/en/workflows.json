@@ -62,7 +62,11 @@
     "status_completed": "Completed",
     "status_failed": "Failed",
     "status_cancelled": "Cancelled",
-    "status_skipped": "Skipped"
+    "status_skipped": "Skipped",
+    "inputs_label": "INPUTS",
+    "no_inputs": "no inputs",
+    "outputs_label": "OUTPUTS",
+    "no_outputs": "no outputs"
   },
   "runs": {
     "refresh": "Refresh",

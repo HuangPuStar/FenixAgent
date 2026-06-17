@@ -144,11 +144,11 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
           }}
         >
           <div style={{ fontSize: 8, fontWeight: 700, color: "#92400e", marginBottom: 3, textTransform: "uppercase" }}>
-            INPUTS
+            {t("nodes.inputs_label")}
           </div>
           {inputPoints.length === 0 ? (
             <div style={{ fontSize: 9, color: "var(--color-text-muted)", textAlign: "center", padding: "2px 0" }}>
-              no inputs
+              {t("nodes.no_inputs")}
             </div>
           ) : (
             inputPoints.map((param, i) => (
@@ -202,11 +202,11 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
       {!isStart ? (
         <div style={{ padding: "4px 8px", minWidth: 160 }}>
           <div style={{ fontSize: 8, fontWeight: 700, color: "#166534", marginBottom: 3, textTransform: "uppercase" }}>
-            OUTPUTS
+            {t("nodes.outputs_label")}
           </div>
           {outputPoints.length === 0 ? (
             <div style={{ fontSize: 9, color: "var(--color-text-muted)", textAlign: "center", padding: "2px 0" }}>
-              no outputs
+              {t("nodes.no_outputs")}
             </div>
           ) : (
             outputPoints.map((field, i) => (
