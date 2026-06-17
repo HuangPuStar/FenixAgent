@@ -1,7 +1,13 @@
 import Elysia from "elysia";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
-import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
+import {
+  type ConfigBody,
+  ConfigBodySchema,
+  McpServerCreateRequestSchema,
+  McpServerUpdateRequestSchema,
+  McpTestUrlRequestSchema,
+} from "../../../schemas/config.schema";
 import * as configPg from "../../../services/config/index";
 import {
   countToolsByServer,
@@ -291,6 +297,9 @@ async function handleListTools(ctx: AuthContext, name: string) {
 // --- 路由注册 ---
 const app = new Elysia({ name: "web-config-mcp" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
+  "mcp-create-request": McpServerCreateRequestSchema,
+  "mcp-update-request": McpServerUpdateRequestSchema,
+  "mcp-test-url-request": McpTestUrlRequestSchema,
 });
 
 // ────────────────────────────────────────────
@@ -314,7 +323,11 @@ app.get(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "获取 MCP Server 列表" },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "获取 MCP Server 列表",
+      description: "返回当前用户可见的所有 MCP 服务器列表，包含服务器基本信息、关联工具数量和跨组织共享访问控制信息。",
+    },
   },
 );
 
@@ -335,7 +348,12 @@ app.get(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "获取 MCP Server 详情" },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "获取 MCP Server 详情",
+      description:
+        "根据名称或跨组织共享资源键（resourceKey）获取单个 MCP 服务器的详细配置。支持通过 resourceKey 读取外部组织共享的服务器。",
+    },
   },
 );
 
@@ -363,7 +381,13 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "创建 MCP Server" },
+    body: "mcp-create-request",
+    detail: {
+      tags: ["McpConfig"],
+      summary: "创建 MCP Server",
+      description:
+        "创建一个新的 MCP 服务器配置。支持 local（本地子进程）和 remote（远端 HTTP SSE）两种类型。名称必须为 1-64 位小写字母数字加单连字符。创建时会检查名称是否已存在。",
+    },
   },
 );
 
@@ -388,7 +412,13 @@ app.put(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "更新 MCP Server" },
+    body: "mcp-update-request",
+    detail: {
+      tags: ["McpConfig"],
+      summary: "更新 MCP Server",
+      description:
+        "更新指定 MCP 服务器的配置。支持修改服务器类型、连接参数、环境变量和公开可读状态。外部共享服务器不可更新。",
+    },
   },
 );
 
@@ -411,7 +441,11 @@ app.delete(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "删除 MCP Server" },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "删除 MCP Server",
+      description: "删除指定的 MCP 服务器配置，同时清理关联的工具缓存。仅可删除内部可写服务器。",
+    },
   },
 );
 
@@ -434,7 +468,11 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "启用 MCP Server" },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "启用 MCP Server",
+      description: "启用指定的 MCP 服务器，使其可被 Agent 用于工具查询调用。",
+    },
   },
 );
 
@@ -457,7 +495,11 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "禁用 MCP Server" },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "禁用 MCP Server",
+      description: "禁用指定的 MCP 服务器，使其不再对 Agent 可用。",
+    },
   },
 );
 
@@ -480,7 +522,12 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "测试 MCP Server 连接" },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "测试 MCP Server 连接",
+      description:
+        "测试指定 MCP 服务器的连接可达性。remote 类型尝试连接远端 URL 并检查 MCP 协议兼容性；local 类型检查对应的可执行命令是否已安装。",
+    },
   },
 );
 
@@ -505,7 +552,13 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "测试远端 MCP URL" },
+    body: "mcp-test-url-request",
+    detail: {
+      tags: ["McpConfig"],
+      summary: "测试远端 MCP URL",
+      description:
+        "直接测试一个远端 URL 是否为可用的 MCP HTTP 服务端点，无需提前保存 MCP 服务器配置。支持自定义请求头和超时时间。",
+    },
   },
 );
 
@@ -528,7 +581,12 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "检查 MCP Server 并导入工具" },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "检查 MCP Server 并导入工具",
+      description:
+        "连接指定远程 MCP 服务器的远端 URL，获取其工具列表并自动导入存储。仅支持 remote 类型服务器。导入的工具会替换已有工具缓存。",
+    },
   },
 );
 
@@ -549,7 +607,11 @@ app.get(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["McpConfig"], summary: "获取 MCP Server 的工具列表" },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "获取 MCP Server 的工具列表",
+      description: "获取指定 MCP 服务器已检查导入的工具列表，包括工具名称、描述、输入 Schema 和检查时间。",
+    },
   },
 );
 
