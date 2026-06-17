@@ -83,7 +83,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
     setError(null);
     try {
       const data = await workflowEngineApi.listRuns();
-      setRuns(Array.isArray(data) ? data : []);
+      setRuns(Array.isArray(data.items) ? data.items : []);
     } catch (err) {
       console.error(err);
       setError((err as Error).message);

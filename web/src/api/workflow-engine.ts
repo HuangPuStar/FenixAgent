@@ -165,11 +165,16 @@ export const workflowEngineApi = {
     if (error) throw new Error((error as { message?: string }).message);
   },
 
-  /** 列出运行记录 */
-  async listRuns(): Promise<RunSummary[]> {
-    return _sdkEngineApi.listRuns().then(({ data, error }: { data?: unknown; error?: unknown }) => {
+  /** 列出运行记录（支持分页） */
+  async listRuns(params?: { page?: number; pageSize?: number; status?: string; q?: string }): Promise<{
+    items: RunSummary[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    return _sdkEngineApi.listRuns(params).then(({ data, error }: { data?: unknown; error?: unknown }) => {
       if (error) throw new Error((error as { message?: string }).message);
-      return (data ?? []) as RunSummary[];
+      return data as { items: RunSummary[]; total: number; page: number; pageSize: number };
     });
   },
 
