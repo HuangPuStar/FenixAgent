@@ -17,6 +17,7 @@ export * from "./hover-card";
 export * from "./input";
 export * from "./input-group";
 export * from "./label";
+export * from "./pagination";
 export * from "./popover";
 export * from "./resizable";
 export * from "./scroll-area";

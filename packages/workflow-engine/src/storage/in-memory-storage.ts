@@ -77,12 +77,31 @@ export function createInMemoryStorage(): StorageAdapter {
 
     // ---------- 运行查询 ----------
 
-    async listRuns(projectId?: string): Promise<RunSummary[]> {
-      const all = Array.from(runSummaries.values());
-      if (projectId) {
-        return all.filter((r) => r.project_id === projectId);
+    /**
+     * 列出运行摘要，支持分页、状态过滤和名称搜索。
+     * 对内存中的 runSummaries 进行过滤和分页。
+     */
+    async listRuns(params: {
+      page: number;
+      pageSize: number;
+      status?: string;
+      q?: string;
+    }): Promise<{ items: RunSummary[]; total: number }> {
+      let filtered = Array.from(runSummaries.values());
+
+      if (params.status) {
+        filtered = filtered.filter((r) => r.status === params.status);
       }
-      return all;
+      if (params.q) {
+        const q = params.q.toLowerCase();
+        filtered = filtered.filter((r) => r.workflow_name.toLowerCase().includes(q));
+      }
+
+      const total = filtered.length;
+      const start = (params.page - 1) * params.pageSize;
+      const items = filtered.slice(start, start + params.pageSize);
+
+      return { items, total };
     },
 
     async getRunStatus(runId: string): Promise<DAGStatus | null> {

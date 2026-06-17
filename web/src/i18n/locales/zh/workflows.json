@@ -87,7 +87,18 @@
     "relative_now": "刚刚",
     "relative_minutes": "{{count}} 分钟前",
     "relative_hours": "{{count}} 小时前",
-    "relative_days": "{{count}} 天前"
+    "relative_days": "{{count}} 天前",
+    "col_workflow": "工作流名称",
+    "col_status": "状态",
+    "col_progress": "进度",
+    "col_started": "开始时间",
+    "col_duration": "耗时",
+    "col_actions": "操作",
+    "pagination_total": "共 {{total}} 条",
+    "pagination_page": "第 {{current}}/{{total}} 页",
+    "pagination_prev": "上一页",
+    "pagination_next": "下一页",
+    "pagination_page_size": "{{size}} 条/页"
   },
   "versions": {
     "title": "版本历史 — {{name}}",
@@ -348,29 +359,13 @@
   },
   "page": {
     "workflow_title": "智能体编排",
-    "workflow_subtitle": "管理 DAG 工作流、看板、运行历史与统计",
+    "workflow_subtitle": "管理工作流与运行历史",
     "back_to_list": "返回列表",
     "editor": "编辑器",
     "tab_workflows": "工作流",
-    "tab_kanban": "看板",
     "tab_runs": "运行记录",
-    "tab_stats": "统计",
     "breadcrumb_back": "工作流",
     "breadcrumb_edit": "编辑",
     "breadcrumb_versions": "版本"
-  },
-  "stats_total_runs": "总运行",
-  "stats_success_rate": "成功率",
-  "stats_avg_duration": "平均耗时",
-  "stats_total_tokens": "Token",
-  "stats_input": "输入",
-  "stats_output": "输出",
-  "stats_7d": "7 天",
-  "stats_30d": "30 天",
-  "stats_all": "全部",
-  "stats_trend_title": "运行趋势",
-  "stats_tokens_title": "Token 消耗",
-  "stats_failed_title": "最近失败",
-  "stats_no_data": "暂无数据",
-  "stats_loading": "加载统计中..."
+  }
 }

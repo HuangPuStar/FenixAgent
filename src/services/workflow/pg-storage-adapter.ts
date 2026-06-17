@@ -18,7 +18,7 @@ import type {
 } from "@fenix/workflow-engine";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { workflowEvent, workflowNodeOutput, workflowSnapshot } from "../../db/schema";
+import { workflow, workflowEvent, workflowNodeOutput, workflowSnapshot } from "../../db/schema";
 
 /** 创建 PostgreSQL 存储适配器，所有查询限定在指定 team 内 */
 export function createPgStorageAdapter(organizationId: string): StorageAdapter {
@@ -168,35 +168,74 @@ export function createPgStorageAdapter(organizationId: string): StorageAdapter {
 
     // ---------- 运行查询 ----------
 
-    /** 列出所有运行摘要，可按 projectId 过滤。从快照表聚合 */
-    async listRuns(projectId?: string): Promise<RunSummary[]> {
-      // 使用 DISTINCT ON 获取每个 runId 的最新快照
-      const latestSnapshots = db
-        .selectDistinctOn([workflowSnapshot.runId])
+    /**
+     * 列出运行摘要，支持分页、状态过滤和名称搜索。
+     * 使用 DISTINCT ON 获取每个 runId 的最新快照，关联 workflow 表获取名称。
+     */
+    async listRuns(params: {
+      page: number;
+      pageSize: number;
+      status?: string;
+      q?: string;
+    }): Promise<{ items: RunSummary[]; total: number }> {
+      const { page, pageSize, status, q } = params;
+
+      // 子查询：每个 runId 的最新快照，关联 workflow 获取名称
+      const latest = db
+        .selectDistinctOn([workflowSnapshot.runId], {
+          runId: workflowSnapshot.runId,
+          dagStatus: workflowSnapshot.dagStatus,
+          workflowId: workflowSnapshot.workflowId,
+          workflowName: workflow.name,
+          timestamp: workflowSnapshot.timestamp,
+          nodeStates: workflowSnapshot.nodeStates,
+          createdAt: workflowSnapshot.createdAt,
+          snapshotId: workflowSnapshot.snapshotId,
+          lastEventId: workflowSnapshot.lastEventId,
+          organizationId: workflowSnapshot.organizationId,
+        })
         .from(workflowSnapshot)
+        .leftJoin(workflow, eq(workflowSnapshot.workflowId, workflow.id))
         .where(eq(workflowSnapshot.organizationId, organizationId))
         .orderBy(workflowSnapshot.runId, desc(workflowSnapshot.createdAt))
         .as("latest");
 
-      let rows: (typeof workflowSnapshot.$inferSelect)[];
-      if (projectId) {
-        // 需要关联 event 表获取 projectId，但 event 表不一定有对应记录
-        // 简单方案：通过 event 表的 projectId 过滤 runId
-        const projectRunIds = db
-          .selectDistinct({ runId: workflowEvent.runId })
-          .from(workflowEvent)
-          .where(and(eq(workflowEvent.organizationId, organizationId), eq(workflowEvent.projectId, projectId)));
-
-        rows = await db
-          .select()
-          .from(latestSnapshots)
-          .where(sql`${latestSnapshots.runId} in (${sql`select run_id from ${projectRunIds}`})`)
-          .orderBy(desc(latestSnapshots.createdAt));
-      } else {
-        rows = await db.select().from(latestSnapshots).orderBy(desc(latestSnapshots.createdAt));
+      // 构建 where 条件
+      const conditions: ReturnType<typeof eq>[] = [];
+      if (status) {
+        conditions.push(eq(latest.dagStatus, status as DAGStatus));
+      }
+      if (q) {
+        conditions.push(sql`${latest.workflowName} ILIKE ${`%${q}%`}`);
       }
 
-      return rows.map(mapSnapshotToRunSummary);
+      // 计数查询
+      const totalQuery =
+        conditions.length > 0
+          ? db
+              .select({ count: sql<number>`count(*)` })
+              .from(latest)
+              .where(and(...conditions))
+          : db.select({ count: sql<number>`count(*)` }).from(latest);
+
+      const [totalRow] = await totalQuery;
+      const total = Number(totalRow?.count ?? 0);
+
+      // 分页查询
+      const dataQuery =
+        conditions.length > 0
+          ? db
+              .select()
+              .from(latest)
+              .where(and(...conditions))
+          : db.select().from(latest);
+
+      const rows = await dataQuery
+        .orderBy(desc(latest.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
+
+      return { items: rows.map(mapSnapshotToRunSummary), total };
     },
 
     /** 获取运行状态，从最新快照读取 dagStatus */
@@ -315,8 +354,15 @@ function mapRowToSnapshot(row: typeof workflowSnapshot.$inferSelect): DAGSnapsho
   };
 }
 
-/** 将快照行映射为 RunSummary */
-function mapSnapshotToRunSummary(row: typeof workflowSnapshot.$inferSelect): RunSummary {
+/** 将快照行（含 workflow 名称）映射为 RunSummary */
+function mapSnapshotToRunSummary(row: {
+  runId: string;
+  workflowId?: string | null;
+  workflowName?: string | null;
+  dagStatus: string;
+  timestamp: Date;
+  nodeStates: unknown;
+}): RunSummary {
   const nodeStates = row.nodeStates as Record<string, { status: string }>;
   const nodes = Object.values(nodeStates);
 
@@ -334,7 +380,7 @@ function mapSnapshotToRunSummary(row: typeof workflowSnapshot.$inferSelect): Run
   return {
     run_id: row.runId,
     workflow_id: row.workflowId ?? undefined,
-    workflow_name: "",
+    workflow_name: row.workflowName ?? "",
     status: row.dagStatus as DAGStatus,
     started_at: row.timestamp.toISOString(),
     completed_at: isTerminal ? row.timestamp.toISOString() : undefined,

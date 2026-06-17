@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { BarChart3, History, KanbanSquare, Loader, Pencil, Plus } from "lucide-react";
+import { History, Loader, Pencil, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,6 @@ const WorkflowList = lazy(() =>
 );
 const WorkflowRuns = lazy(() =>
   import("../../../pages/workflow/WorkflowRuns").then((m) => ({ default: m.WorkflowRuns })),
-);
-const WorkflowKanban = lazy(() =>
-  import("../../../pages/workflow/WorkflowKanban").then((m) => ({ default: m.WorkflowKanban })),
-);
-const WorkflowStats = lazy(() =>
-  import("../../../pages/workflow/WorkflowStats").then((m) => ({ default: m.WorkflowStats })),
 );
 
 function TabContentFallback() {
@@ -30,8 +24,7 @@ function WorkflowTabPage() {
   const { t } = useTranslation("workflows");
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { tab?: string };
-  const activeTab =
-    search.tab === "kanban" ? "kanban" : search.tab === "runs" ? "runs" : search.tab === "stats" ? "stats" : "list";
+  const activeTab = search.tab === "runs" ? "runs" : "list";
 
   const [createTrigger, setCreateTrigger] = useState(0);
 
@@ -74,9 +67,7 @@ function WorkflowTabPage() {
 
   const tabs = [
     { id: "list" as const, label: t("page.tab_workflows"), icon: Pencil, search: {} },
-    { id: "kanban" as const, label: t("page.tab_kanban"), icon: KanbanSquare, search: { tab: "kanban" } },
     { id: "runs" as const, label: t("page.tab_runs"), icon: History, search: { tab: "runs" } },
-    { id: "stats" as const, label: t("page.tab_stats"), icon: BarChart3, search: { tab: "stats" } },
   ];
 
   return (
@@ -116,11 +107,7 @@ function WorkflowTabPage() {
       {/* tab 内容区 — Suspense 在内容区内部，避免切换 tab 时顶栏闪烁 */}
       <Suspense fallback={<TabContentFallback />}>
         <div className="flex flex-1 flex-col min-h-0">
-          {activeTab === "kanban" ? (
-            <WorkflowKanban />
-          ) : activeTab === "stats" ? (
-            <WorkflowStats />
-          ) : activeTab === "list" ? (
+          {activeTab === "list" ? (
             <WorkflowList
               onEditWorkflow={onEditWorkflow}
               onViewVersions={onViewVersions}

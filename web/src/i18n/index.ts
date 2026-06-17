@@ -11,7 +11,6 @@ import componentsEN from "./locales/en/components.json";
 import dashboardEN from "./locales/en/dashboard.json";
 import environmentsEN from "./locales/en/environments.json";
 import hindsightEN from "./locales/en/hindsight.json";
-import kanbanEN from "./locales/en/kanban.json";
 import knowledgeEN from "./locales/en/knowledge.json";
 import loginEN from "./locales/en/login.json";
 import mcpEN from "./locales/en/mcp.json";
@@ -33,7 +32,6 @@ import componentsZH from "./locales/zh/components.json";
 import dashboardZH from "./locales/zh/dashboard.json";
 import environmentsZH from "./locales/zh/environments.json";
 import hindsightZH from "./locales/zh/hindsight.json";
-import kanbanZH from "./locales/zh/kanban.json";
 import knowledgeZH from "./locales/zh/knowledge.json";
 import loginZH from "./locales/zh/login.json";
 import mcpZH from "./locales/zh/mcp.json";
@@ -66,7 +64,6 @@ export const NS = {
   KNOWLEDGE: "knowledge",
   AGENT_PANEL: "agentPanel",
   COMPONENTS: "components",
-  KANBAN: "kanban",
   HINDSIGHT: "hindsight",
   AGENT_HOME: "agentHome",
 } as const;
@@ -98,7 +95,6 @@ i18n
         [NS.COMPONENTS]: componentsEN,
         [NS.WORKFLOWS]: workflowsEN,
         [NS.SETTINGS]: settingsEN,
-        [NS.KANBAN]: kanbanEN,
         [NS.HINDSIGHT]: hindsightEN,
         [NS.AGENT_HOME]: agentHomeEN,
       },
@@ -122,7 +118,6 @@ i18n
         [NS.COMPONENTS]: componentsZH,
         [NS.WORKFLOWS]: workflowsZH,
         [NS.SETTINGS]: settingsZH,
-        [NS.KANBAN]: kanbanZH,
         [NS.HINDSIGHT]: hindsightZH,
         [NS.AGENT_HOME]: agentHomeZH,
       },
@@ -147,7 +142,6 @@ i18n
       NS.COMPONENTS,
       NS.WORKFLOWS,
       NS.SETTINGS,
-      NS.KANBAN,
       NS.HINDSIGHT,
       NS.AGENT_HOME,
     ],
