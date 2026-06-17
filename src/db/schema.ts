@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -236,7 +237,9 @@ export const environment = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    orgNameIdx: uniqueIndex("idx_environment_org_name").on(table.organizationId, table.name),
+    orgUserAgentConfigIdx: uniqueIndex("idx_environment_org_user_agent_config")
+      .on(table.organizationId, table.userId, table.agentConfigId)
+      .where(sql`${table.agentConfigId} is not null`),
   }),
 );
 

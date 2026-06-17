@@ -100,7 +100,7 @@ export async function connectAgentInstance(
 
   const activeMap = deps.groupActiveInstancesByEnvironment();
   const existingEnvironments = (await deps.listEnvironmentsByOrganizationId(ctx.organizationId)).filter(
-    (env) => env.agentConfigId === agent.id,
+    (env) => env.agentConfigId === agent.id && env.userId === ctx.userId,
   );
   let environment = pickEnvironment(existingEnvironments, activeMap);
 

@@ -20,9 +20,19 @@ const logger = createLogger("environment-web");
  * 判断数据库错误是否由唯一索引冲突触发。
  */
 function isUniqueConstraintError(err: unknown): boolean {
+  const candidate = err as {
+    message?: string;
+    code?: string;
+    cause?: { message?: string; code?: string } | null;
+  } | null;
+  const message = candidate?.message ?? candidate?.cause?.message ?? "";
+  const code = candidate?.code ?? candidate?.cause?.code ?? "";
   return (
-    err instanceof Error &&
-    (err.message?.includes("unique") || err.message?.includes("duplicate") || err.message?.includes("UNIQUE"))
+    code === "23505" ||
+    message.includes("unique") ||
+    message.includes("duplicate") ||
+    message.includes("UNIQUE") ||
+    message.includes("23505")
   );
 }
 
@@ -65,8 +75,10 @@ async function findReusableEnvironment(params: CreateWebEnvironmentParams): Prom
   const environments = await db.select().from(environment).where(eq(environment.organizationId, organizationId));
 
   if (params.agentConfigId) {
-    const sameAgentEnvironments = environments.filter((env) => env.agentConfigId === params.agentConfigId);
-    const matched = sameAgentEnvironments.find((env) => env.name === params.name) ?? sameAgentEnvironments[0] ?? null;
+    // 绑定 agent 的 runtime environment 需要和访问者一一对应；
+    // 否则同组织成员会复用彼此的 workspace，导致环境准备和文件视图都落到错误用户目录。
+    const matched =
+      environments.find((env) => env.agentConfigId === params.agentConfigId && env.userId === params.userId) ?? null;
     return matched ? toEnvironmentRecord(matched) : null;
   }
 
@@ -135,7 +147,8 @@ async function insertEnvironmentRecord(params: {
 
 /** 创建 Web 控制面板 Environment — workspace 路径运行时实时计算，创建时写空字符串 */
 export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
-  const { name, description, autoStart, userId, organizationId } = params;
+  const { name } = params;
+  const { description, autoStart, userId, organizationId } = params;
 
   // 名称校验
   if (!name || !KEBAB_CASE_RE.test(name)) {
@@ -198,7 +211,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
         );
         return existingAfterConflict;
       }
-      throw new ConflictError(`环境名称 '${name}' 已存在`);
+      throw new ConflictError("环境创建冲突，请稍后重试");
     }
     throw err;
   }
@@ -254,7 +267,7 @@ export async function updateWebEnvironment(envId: string, organizationId: string
 }
 
 /** 获取团队所有环境并组装实例信息（web/environments 路由用） */
-export async function listEnvironmentsWithInstances(organizationId: string) {
+export async function listEnvironmentsWithInstances(organizationId: string, viewerUserId?: string) {
   // LEFT JOIN agentConfig 一次性拿到 environment + agent_name
   const rows = await db
     .select({
@@ -269,6 +282,11 @@ export async function listEnvironmentsWithInstances(organizationId: string) {
   const instanceMap = groupActiveInstancesByEnvironment();
   const results = [];
   for (const { env, agentName } of rows) {
+    // agent 绑定的 runtime environment 是按用户隔离的；列表页只暴露当前用户自己的 runtime，
+    // 避免前端把其他成员的 env 误挂到自己看到的 agent 上。
+    if (viewerUserId && env.agentConfigId && env.userId !== viewerUserId) {
+      continue;
+    }
     const activeInstances = instanceMap.get(env.id) ?? [];
     const firstInstance = activeInstances[0];
     results.push({
