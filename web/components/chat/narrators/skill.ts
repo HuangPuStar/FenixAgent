@@ -15,11 +15,11 @@ export const skillNarrator: ToolNarrator = {
   getDisplay(ctx) {
     // 优先 description（结构化字段，Agent 显式提供）
     if (ctx.tool.description) {
-      return { title: ctx.tool.description, object: ctx.tool.description };
+      return { object: ctx.tool.description };
     }
     // 从 "Loaded Skill: xxx" 提取 xxx 部分
     const match = ctx.tool.title.match(/skill:\s*(.+)/i);
     const name = match ? match[1].trim() : ctx.tool.title;
-    return { title: name, object: name };
+    return { object: name };
   },
 };

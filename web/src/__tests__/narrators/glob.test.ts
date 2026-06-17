@@ -6,8 +6,8 @@ import type { ToolCallData } from "@/src/lib/types";
 /**
  * globNarrator 单测。
  *
- * 覆盖：match 规则（glob/find/listfiles/list_files）、verb、pattern 作为 title、
- * complete 状态从 rawOutput.files 提取文件数徽章。
+ * 覆盖：match 规则（glob/find/listfiles/list_files）、verb、pattern 作为 object、
+ * complete 状态从 rawOutput.files 提取文件数作为 detail。
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
@@ -47,22 +47,22 @@ describe("globNarrator", () => {
     expect(globNarrator.verb).toBe("找");
   });
 
-  // pattern 同时作为 title 和 object
-  test("title 和 object 都是 pattern", () => {
-    const { title, object } = globNarrator.getDisplay(makeCtx({ pattern: "**/*.ts" }));
-    expect(title).toBe("**/*.ts");
+  // pattern 作为 object（与 verb 拼 title 时为"找 {pattern}"）
+  test("object 是 pattern", () => {
+    const { object, detail } = globNarrator.getDisplay(makeCtx({ pattern: "**/*.ts" }));
     expect(object).toBe("**/*.ts");
+    expect(detail).toBeUndefined();
   });
 
-  // complete 状态下从 rawOutput.files 数组长度提取文件数徽章
-  test("complete 状态有文件数徽章", () => {
-    const ctx = makeCtx({ pattern: "**/*.ts" }, { files: ["a.ts", "b.ts"] });
-    expect(globNarrator.badge?.(ctx)?.text).toBe("2 个文件");
+  // complete 状态下从 rawOutput.files 数组长度提取文件数作为 detail
+  test("complete 状态有文件数 detail", () => {
+    const { detail } = globNarrator.getDisplay(makeCtx({ pattern: "**/*.ts" }, { files: ["a.ts", "b.ts"] }));
+    expect(detail).toBe("2 个文件");
   });
 
-  // 空文件列表不显示徽章（0 个文件无信息价值）
-  test("无文件时无徽章", () => {
-    const ctx = makeCtx({ pattern: "**/*.ts" }, { files: [] });
-    expect(globNarrator.badge?.(ctx)).toBeUndefined();
+  // 空文件列表不显示 detail（0 个文件无信息价值）
+  test("无文件时无 detail", () => {
+    const { detail } = globNarrator.getDisplay(makeCtx({ pattern: "**/*.ts" }, { files: [] }));
+    expect(detail).toBeUndefined();
   });
 });

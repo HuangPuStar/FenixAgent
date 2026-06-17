@@ -39,12 +39,17 @@ export interface NarrationBadge {
 }
 
 /**
- * 卡片展示用的双字段：title 是第一行（文件名/命令/URL），
- * object 是副标题里的"对象"部分（与 verb 拼成副标题）。
+ * 卡片展示数据。narrator 在 getDisplay 里返回。
+ *
+ * - object: 与 verb 拼接成 title 行的"对象"部分（文件名/命令/URL 等），
+ *   narrate() 用 common.subtitle / subtitleRunning 模板拼成完整句子
+ *   （如"读 src/index.ts" / "正在读 src/index.ts"）
+ * - detail: 可选的补充信息，显示在 subtitle 行（如"第 1-50 行"/"3 处变更"）。
+ *   不提供则 subtitle 行只显示耗时徽章
  */
 export interface ToolDisplay {
-  title: ReactNode;
   object: ReactNode;
+  detail?: ReactNode;
 }
 
 /**
@@ -70,16 +75,14 @@ export interface NarrationResult {
  * - match: 工具名匹配（已转小写），注册表按顺序匹配
  * - verb: 中文动词
  * - icon: 卡片图标
- * - getDisplay: 同时返回 title 和 object，narrator 完全自包含
- * - badge: 可选的计数徽章
+ * - getDisplay: 提供 object（与 verb 拼成 title）和可选 detail（subtitle 补充信息）
  *
- * 副标题拼接完全在中央 narrate() 完成（用 common.subtitle / subtitleRunning 模板），
- * narrator 不参与文案拼接，保证格式一致。
+ * title 拼接完全在中央 narrate() 完成（用 common.subtitle / subtitleRunning 模板），
+ * narrator 不参与 title 文案拼接，保证格式一致。
  */
 export interface ToolNarrator {
   match: (toolNameLower: string) => boolean;
   verb: string;
   icon: LucideIcon;
   getDisplay: (ctx: NarrationContext) => ToolDisplay;
-  badge?: (ctx: NarrationContext) => NarrationBadge | undefined;
 }

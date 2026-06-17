@@ -39,22 +39,22 @@ describe("questionNarrator", () => {
     expect(questionNarrator.verb).toBe("问");
   });
 
-  // 优先用 description（Agent 提供的完整问题）
+  // 优先用 description（Agent 提供的完整问题）作为 object
   test("从 description 提取问题文本", () => {
-    const { title } = questionNarrator.getDisplay(makeCtx({}, "要不要继续？"));
-    expect(title).toBe('"要不要继续？"');
+    const { object } = questionNarrator.getDisplay(makeCtx({}, "要不要继续？"));
+    expect(object).toBe('"要不要继续？"');
   });
 
   // 无 description 时从 rawInput.question 取
   test("从 rawInput.question 提取", () => {
-    const { title } = questionNarrator.getDisplay(makeCtx({ question: "用什么方案？" }));
-    expect(title).toBe('"用什么方案？"');
+    const { object } = questionNarrator.getDisplay(makeCtx({ question: "用什么方案？" }));
+    expect(object).toBe('"用什么方案？"');
   });
 
   // 长问题截断：truncate(40) = 41 字符 + 前后双引号 = 43 字符
   test("长问题截断到 40 字符", () => {
     const long = "x".repeat(50);
-    const { title } = questionNarrator.getDisplay(makeCtx({}, long));
-    expect((title as string).length).toBe(43); // 40 + 省略号 + 前后双引号
+    const { object } = questionNarrator.getDisplay(makeCtx({}, long));
+    expect((object as string).length).toBe(43); // 40 + 省略号 + 前后双引号
   });
 });

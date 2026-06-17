@@ -15,6 +15,6 @@ export const webFetchNarrator: ToolNarrator = {
   getDisplay(ctx) {
     const url = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.url ?? "");
     const display = truncate(url, 80);
-    return { title: display, object: display };
+    return { object: display };
   },
 };

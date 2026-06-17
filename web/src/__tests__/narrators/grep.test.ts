@@ -6,8 +6,8 @@ import type { ToolCallData } from "@/src/lib/types";
 /**
  * grepNarrator 单测。
  *
- * 覆盖：match 规则、verb、pattern 引号包裹、路径后缀、
- * 从 rawOutput 提取结果数（两种结构变体）、running 状态无徽章。
+ * 覆盖：match 规则、verb、pattern 引号包裹（object）、
+ * detail 由路径和结果数拼接（subtitle 行）、running 状态无 detail 计数部分。
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
@@ -47,39 +47,41 @@ describe("grepNarrator", () => {
     expect(grepNarrator.verb).toBe("搜");
   });
 
-  // title 是带双引号的 pattern
-  test("title 是带引号的 pattern", () => {
-    const { title } = grepNarrator.getDisplay(makeCtx({ pattern: "useEffect" }));
-    expect(title).toBe('"useEffect"');
-  });
-
-  // 有 path 时 object 拼接路径后缀
-  test("有 path 时 object 加路径后缀", () => {
-    const { object } = grepNarrator.getDisplay(makeCtx({ pattern: "useEffect", path: "/src" }));
-    expect(object).toBe('"useEffect" 在 /src');
-  });
-
-  // 无 path 时 object 与 title 一致
-  test("无 path 时 object 只有 pattern", () => {
+  // object 是带双引号的 pattern（与 verb 拼 title 时为"搜 \"useEffect\""）
+  test("object 是带引号的 pattern", () => {
     const { object } = grepNarrator.getDisplay(makeCtx({ pattern: "useEffect" }));
     expect(object).toBe('"useEffect"');
   });
 
-  // 从 rawOutput.count 提取结果数
-  test("complete 状态从 count 字段提取结果数徽章", () => {
-    const ctx = makeCtx({ pattern: "x" }, { count: 5 });
-    expect(grepNarrator.badge?.(ctx)?.text).toBe("找到 5 个");
+  // 无 path 无 complete 计数时无 detail
+  test("无 path 时无 detail（无结果数）", () => {
+    const { detail } = grepNarrator.getDisplay(makeCtx({ pattern: "useEffect" }));
+    expect(detail).toBeUndefined();
+  });
+
+  // 有 path 时 detail 包含路径
+  test("有 path 时 detail 含路径", () => {
+    const { detail } = grepNarrator.getDisplay(makeCtx({ pattern: "useEffect", path: "/src" }));
+    expect(detail).toBe("在 /src");
+  });
+
+  // complete 状态从 count 字段提取结果数，detail 拼接路径和结果数
+  test("complete 状态 detail 含路径和结果数", () => {
+    const { detail } = grepNarrator.getDisplay(makeCtx({ pattern: "x", path: "/src" }, { count: 5 }));
+    expect(detail).toBe("在 /src · 找到 5 个");
   });
 
   // 从 content 文本正则提取结果数（兼容不同 Agent 输出风格）
   test("complete 状态从 content 文本提取结果数", () => {
-    const ctx = makeCtx({ pattern: "x" }, { content: [{ type: "text", text: "3 matches found" }] });
-    expect(grepNarrator.badge?.(ctx)?.text).toBe("找到 3 个");
+    const { detail } = grepNarrator.getDisplay(
+      makeCtx({ pattern: "x" }, { content: [{ type: "text", text: "3 matches found" }] }),
+    );
+    expect(detail).toBe("找到 3 个");
   });
 
-  // running 状态下不应显示徽章（结果还没出来）
-  test("running 状态无徽章", () => {
-    const ctx = makeCtx({ pattern: "x" }, { count: 5 }, "running");
-    expect(grepNarrator.badge?.(ctx)).toBeUndefined();
+  // running 状态下 detail 不含结果数（结果还没出来），但仍可有路径
+  test("running 状态 detail 只有路径无结果数", () => {
+    const { detail } = grepNarrator.getDisplay(makeCtx({ pattern: "x", path: "/src" }, { count: 5 }, "running"));
+    expect(detail).toBe("在 /src");
   });
 });

@@ -37,16 +37,15 @@ describe("writeNarrator", () => {
     expect(writeNarrator.verb).toBe("写");
   });
 
-  // 从 file_path 提取文件名
+  // 从 file_path 提取文件名作为 object
   test("提取文件名", () => {
-    const { title, object } = writeNarrator.getDisplay(makeCtx({ file_path: "/a/b/new.ts" }));
-    expect(title).toBe("new.ts");
+    const { object } = writeNarrator.getDisplay(makeCtx({ file_path: "/a/b/new.ts" }));
     expect(object).toBe("new.ts");
   });
 
   // 兼容 path 字段
   test("兼容 path 字段", () => {
-    const { title } = writeNarrator.getDisplay(makeCtx({ path: "/x.ts" }));
-    expect(title).toBe("x.ts");
+    const { object } = writeNarrator.getDisplay(makeCtx({ path: "/x.ts" }));
+    expect(object).toBe("x.ts");
   });
 });

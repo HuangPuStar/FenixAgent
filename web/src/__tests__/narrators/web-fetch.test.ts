@@ -6,7 +6,7 @@ import type { ToolCallData } from "@/src/lib/types";
 /**
  * webFetchNarrator 单测。
  *
- * 覆盖：match 规则（fetch/webfetch/curl）、verb、URL 作为 title、长 URL 截断。
+ * 覆盖：match 规则（fetch/webfetch/curl）、verb、URL 作为 object、长 URL 截断。
  */
 
 const mockT = ((key: string) => key) as unknown as NarrationContext["t"];
@@ -38,17 +38,16 @@ describe("webFetchNarrator", () => {
     expect(webFetchNarrator.verb).toBe("抓");
   });
 
-  // URL 同时作为 title 和 object
-  test("URL 作为 title 和 object", () => {
-    const { title, object } = webFetchNarrator.getDisplay(makeCtx({ url: "https://example.com/page" }));
-    expect(title).toBe("https://example.com/page");
+  // URL 作为 object
+  test("URL 作为 object", () => {
+    const { object } = webFetchNarrator.getDisplay(makeCtx({ url: "https://example.com/page" }));
     expect(object).toBe("https://example.com/page");
   });
 
   // 长 URL 截断到 80 字符 + 省略号
   test("长 URL 截断到 80 字符", () => {
     const longUrl = `https://example.com/${"x".repeat(100)}`;
-    const { title } = webFetchNarrator.getDisplay(makeCtx({ url: longUrl }));
-    expect((title as string).length).toBe(81); // 80 + 省略号
+    const { object } = webFetchNarrator.getDisplay(makeCtx({ url: longUrl }));
+    expect((object as string).length).toBe(81); // 80 + 省略号
   });
 });

@@ -41,22 +41,22 @@ describe("taskNarrator", () => {
     expect(taskNarrator.verb).toBe("派");
   });
 
-  // 优先使用 tool.description（Agent 提供的简短描述）
+  // 优先使用 tool.description（Agent 提供的简短描述）作为 object
   test("优先使用 description 字段", () => {
-    const { title } = taskNarrator.getDisplay(makeCtx({}, "重构认证模块"));
-    expect(title).toBe("重构认证模块");
+    const { object } = taskNarrator.getDisplay(makeCtx({}, "重构认证模块"));
+    expect(object).toBe("重构认证模块");
   });
 
   // 无 tool.description 时从 rawInput.description 取
   test("无 description 时从 rawInput 取", () => {
-    const { title } = taskNarrator.getDisplay(makeCtx({ description: "完成某个任务" }));
-    expect(title).toBe("完成某个任务");
+    const { object } = taskNarrator.getDisplay(makeCtx({ description: "完成某个任务" }));
+    expect(object).toBe("完成某个任务");
   });
 
-  // description 过长截断到 40 字符（避免卡片副标题过长）
+  // description 过长截断到 40 字符（避免 title 行过长）
   test("description 过长截断到 40 字符", () => {
     const long = "x".repeat(50);
-    const { title } = taskNarrator.getDisplay(makeCtx({}, long));
-    expect((title as string).length).toBe(41); // 40 + 省略号
+    const { object } = taskNarrator.getDisplay(makeCtx({}, long));
+    expect((object as string).length).toBe(41); // 40 + 省略号
   });
 });

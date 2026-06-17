@@ -6,7 +6,7 @@ import type { ToolCallData } from "@/src/lib/types";
 /**
  * bashNarrator 单测。
  *
- * 覆盖：match 规则、verb、title 的 $ 前缀、object 不带前缀、命令截断、字段缺失降级。
+ * 覆盖：match 规则、verb、object 的 $ 前缀、命令截断、字段缺失降级。
  */
 
 const mockT = ((key: string) => key) as unknown as NarrationContext["t"];
@@ -39,30 +39,22 @@ describe("bashNarrator", () => {
     expect(bashNarrator.verb).toBe("跑");
   });
 
-  // title 加 $ 前缀作为终端命令的视觉提示
-  test("title 加 $ 前缀", () => {
-    const { title } = bashNarrator.getDisplay(makeCtx({ command: "npm install" }));
-    expect(title).toBe("$ npm install");
-  });
-
-  // object 不带 $ 前缀（副标题里已经有动词"跑"）
-  test("object 不带 $ 前缀", () => {
+  // object 加 $ 前缀作为终端命令的视觉提示（与 verb 拼 title 时为"跑 $ npm install"）
+  test("object 加 $ 前缀", () => {
     const { object } = bashNarrator.getDisplay(makeCtx({ command: "npm install" }));
-    expect(object).toBe("npm install");
+    expect(object).toBe("$ npm install");
   });
 
-  // 超长命令截断到 120 字符 + 省略号
+  // 超长命令截断到 120 字符 + 省略号（加 "$ " 前缀后总长 ≤ 123）
   test("长命令截断到 120 字符", () => {
     const longCmd = "x".repeat(200);
-    const { title, object } = bashNarrator.getDisplay(makeCtx({ command: longCmd }));
-    expect((title as string).length).toBeLessThanOrEqual(123); // "$ " + 120 + …
-    expect((object as string).length).toBeLessThanOrEqual(121);
+    const { object } = bashNarrator.getDisplay(makeCtx({ command: longCmd }));
+    expect((object as string).length).toBeLessThanOrEqual(123); // "$ " + 120 + …
   });
 
-  // 缺失 command 字段时降级为空字符串
+  // 缺失 command 字段时降级为 "$ "
   test("无 command 字段时降级", () => {
-    const { title, object } = bashNarrator.getDisplay(makeCtx({}));
-    expect(title).toBe("$ ");
-    expect(object).toBe("");
+    const { object } = bashNarrator.getDisplay(makeCtx({}));
+    expect(object).toBe("$ ");
   });
 });

@@ -17,6 +17,6 @@ export const taskNarrator: ToolNarrator = {
     // tool.description 由 Agent 显式提供，比 rawInput.description 更可靠（结构化字段）
     const desc = ctx.tool.description ?? rawDesc ?? "子任务";
     const display = truncate(desc, 40);
-    return { title: display, object: display };
+    return { object: display };
   },
 };

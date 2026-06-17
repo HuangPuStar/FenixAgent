@@ -14,6 +14,6 @@ export const writeNarrator: ToolNarrator = {
   icon: FilePlus,
   getDisplay(ctx) {
     const file = extractFileName(ctx.tool.rawInput);
-    return { title: file, object: file };
+    return { object: file };
   },
 };

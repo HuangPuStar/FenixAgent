@@ -5,13 +5,13 @@ import type { ToolNarrator } from "./types";
 /**
  * Read 工具 narrator。处理文件读取调用。
  *
- * 副标题样例：
- * - running: "正在读 config.ts 第 120-180 行"
- * - complete: "读 config.ts 第 120-180 行"（+ 耗时徽章）
- * - error: "读 config.ts 第 120-180 行"（+ 错误细节在 title 下方）
+ * 渲染效果（title 是 verb+object 完整句子，detail 是行号补充）：
+ * - running: title="正在读 config.ts", detail="第 120-180 行"
+ * - complete: title="读 config.ts", detail="第 120-180 行 · 1.2s"
+ * - error: title="读 config.ts", detail="第 120-180 行"（错误细节单独一行）
  *
- * title 只显示文件名（保持卡片简洁），
- * object 额外拼接行号区间作为副标题里的位置信息。
+ * 行号区间作为 detail 显示在 subtitle 行（与耗时徽章并列），
+ * title 只保留 verb + 文件名，避免上下文重复。
  */
 export const readNarrator: ToolNarrator = {
   match: (name) => name.includes("read"),
@@ -20,8 +20,8 @@ export const readNarrator: ToolNarrator = {
   getDisplay(ctx) {
     const file = extractFileName(ctx.tool.rawInput);
     const range = extractLineRange(ctx.tool.rawInput);
-    // 有行号限制时拼接"第 X-Y 行"后缀
-    const object = range ? `${file} ${ctx.t("common.lineRange", { range })}` : file;
-    return { title: file, object };
+    // 行号区间作为 subtitle 的 detail，与耗时徽章并列显示
+    const detail = range ? ctx.t("common.lineRange", { range }) : undefined;
+    return { object: file, detail };
   },
 };

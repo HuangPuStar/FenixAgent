@@ -7,7 +7,7 @@ import type { ToolCallData } from "@/src/lib/types";
  * editNarrator 单测。
  *
  * 覆盖：match 规则（edit/str_replace/multiedit）、verb、文件名提取、
- * complete 状态的变更数徽章。
+ * complete 状态的变更数作为 detail。
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
@@ -15,16 +15,20 @@ const mockT = ((key: string, opts?: Record<string, unknown>) => {
   return key;
 }) as unknown as NarrationContext["t"];
 
-function makeCtx(rawInput: unknown, content?: unknown): NarrationContext {
+function makeCtx(
+  rawInput: unknown,
+  content?: unknown,
+  status: NarrationContext["status"] = "complete",
+): NarrationContext {
   return {
     tool: {
       id: "t1",
       title: "Edit",
-      status: "complete",
+      status: status as ToolCallData["status"],
       rawInput: rawInput as Record<string, unknown>,
       content: content as ToolCallData["content"],
     } as ToolCallData,
-    status: "complete",
+    status,
     t: mockT,
   };
 }
@@ -43,34 +47,34 @@ describe("editNarrator", () => {
     expect(editNarrator.verb).toBe("改");
   });
 
-  // 从 file_path 提取文件名
+  // 从 file_path 提取文件名作为 object
   test("提取文件名", () => {
-    const { title } = editNarrator.getDisplay(makeCtx({ file_path: "/x/y.ts" }));
-    expect(title).toBe("y.ts");
+    const { object, detail } = editNarrator.getDisplay(makeCtx({ file_path: "/x/y.ts" }));
+    expect(object).toBe("y.ts");
+    expect(detail).toBeUndefined();
   });
 
-  // complete 状态下从 content 数组数 diff 条目作为徽章
-  test("complete 状态有变更数徽章（content 含 diff）", () => {
+  // complete 状态下从 content 数组数 diff 条目作为 detail
+  test("complete 状态有变更数 detail（content 含 diff）", () => {
     const content = [
       { type: "diff", content: "..." },
       { type: "diff", content: "..." },
     ];
-    const ctx = makeCtx({ file_path: "/x.ts" }, content);
-    const badge = editNarrator.badge?.(ctx);
-    expect(badge?.tone).toBe("success");
-    expect(badge?.text).toBe("2 处");
+    const { detail } = editNarrator.getDisplay(makeCtx({ file_path: "/x.ts" }, content));
+    expect(detail).toBe("2 处");
   });
 
-  // content 为空或无 diff 条目时不显示徽章
-  test("无 diff 时无徽章", () => {
-    const ctx = makeCtx({ file_path: "/x.ts" }, []);
-    expect(editNarrator.badge?.(ctx)).toBeUndefined();
+  // content 为空或无 diff 条目时不显示 detail
+  test("无 diff 时无 detail", () => {
+    const { detail } = editNarrator.getDisplay(makeCtx({ file_path: "/x.ts" }, []));
+    expect(detail).toBeUndefined();
   });
 
-  // 非 complete 状态（如 running）不显示徽章
-  test("非 complete 状态无徽章", () => {
-    const ctx = makeCtx({ file_path: "/x.ts" }, [{ type: "diff", content: "..." }]);
-    ctx.status = "running";
-    expect(editNarrator.badge?.(ctx)).toBeUndefined();
+  // 非 complete 状态（如 running）不显示 detail（diff 还未生成）
+  test("非 complete 状态无 detail", () => {
+    const { detail } = editNarrator.getDisplay(
+      makeCtx({ file_path: "/x.ts" }, [{ type: "diff", content: "..." }], "running"),
+    );
+    expect(detail).toBeUndefined();
   });
 });

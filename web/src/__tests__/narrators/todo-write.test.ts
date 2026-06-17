@@ -42,21 +42,21 @@ describe("todoWriteNarrator", () => {
     expect(todoWriteNarrator.verb).toBe("列");
   });
 
-  // todos 数组长度作为待办数
+  // todos 数组长度作为待办数渲染到 object（与 verb 拼 title 为"列 N 个待办"）
   test("todos 数组长度作为待办数", () => {
-    const { title } = todoWriteNarrator.getDisplay(makeCtx({ todos: [{}, {}, {}] }));
-    expect(title).toBe("3 个待办");
+    const { object } = todoWriteNarrator.getDisplay(makeCtx({ todos: [{}, {}, {}] }));
+    expect(object).toBe("3 个待办");
   });
 
   // 兼容 tasks 字段（不同 Agent 命名差异）
   test("兼容 tasks 字段", () => {
-    const { title } = todoWriteNarrator.getDisplay(makeCtx({ tasks: [{}, {}] }));
-    expect(title).toBe("2 个待办");
+    const { object } = todoWriteNarrator.getDisplay(makeCtx({ tasks: [{}, {}] }));
+    expect(object).toBe("2 个待办");
   });
 
   // 无字段兜底显示 0 个待办（保持卡片有内容）
   test("无待办时兜底", () => {
-    const { title } = todoWriteNarrator.getDisplay(makeCtx({}));
-    expect(title).toBe("0 个待办");
+    const { object } = todoWriteNarrator.getDisplay(makeCtx({}));
+    expect(object).toBe("0 个待办");
   });
 });

@@ -18,6 +18,6 @@ export const questionNarrator: ToolNarrator = {
       ctx.tool.description ?? String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.question ?? "");
     // 加双引号强调问题文本本身
     const quoted = `"${truncate(text, 40)}"`;
-    return { title: quoted, object: quoted };
+    return { object: quoted };
   },
 };

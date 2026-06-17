@@ -7,7 +7,7 @@ import type { ToolCallData } from "@/src/lib/types";
  * skillNarrator 单测。
  *
  * 覆盖：match 规则（skill/loadedskill/loaded skill）、verb、description 优先、
- * title 提取 skill 名、兜底逻辑。
+ * 从 tool.title 提取 skill 名、兜底逻辑。
  */
 
 const mockT = ((key: string) => key) as unknown as NarrationContext["t"];
@@ -39,21 +39,21 @@ describe("skillNarrator", () => {
     expect(skillNarrator.verb).toBe("载");
   });
 
-  // 有 description 时优先使用 description（比 title 中的 skill 名更可读）
-  test("title 包含 loaded skill 时直接用 description", () => {
-    const { title } = skillNarrator.getDisplay(makeCtx("Loaded Skill: commit", "Git 提交助手"));
-    expect(title).toBe("Git 提交助手");
+  // 有 description 时优先使用 description 作为 object（比 title 中的 skill 名更可读）
+  test("有 description 时优先用 description", () => {
+    const { object } = skillNarrator.getDisplay(makeCtx("Loaded Skill: commit", "Git 提交助手"));
+    expect(object).toBe("Git 提交助手");
   });
 
-  // 无 description 时从 title "Loaded Skill: xxx" 提取 xxx
+  // 无 description 时从 tool.title "Loaded Skill: xxx" 提取 xxx
   test("无 description 时从 title 提取 skill 名", () => {
-    const { title } = skillNarrator.getDisplay(makeCtx("Loaded Skill: commit"));
-    expect(title).toBe("commit");
+    const { object } = skillNarrator.getDisplay(makeCtx("Loaded Skill: commit"));
+    expect(object).toBe("commit");
   });
 
   // title 只是 "skill" 时（无冒号），原样返回兜底
   test("title 只是 'skill' 时兜底", () => {
-    const { title } = skillNarrator.getDisplay(makeCtx("skill"));
-    expect(title).toBe("skill");
+    const { object } = skillNarrator.getDisplay(makeCtx("skill"));
+    expect(object).toBe("skill");
   });
 });

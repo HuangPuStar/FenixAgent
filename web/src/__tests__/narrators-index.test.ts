@@ -37,25 +37,25 @@ function makeTool(overrides: Partial<ToolCallData> = {}): ToolCallData {
 }
 
 describe("narrate 中央入口", () => {
-  // 未匹配任何专用 narrator 时走 fallback，副标题动词应该是"用"
+  // 未匹配任何专用 narrator 时走 fallback，title 句子里的动词应该是"用"
   test("未匹配工具走 fallback，verb 为'用'", () => {
     const tool = makeTool({ title: "SomeUnknownTool" });
     const result = narrate(tool, "complete", undefined, t);
-    expect(result.subtitle).toContain("用");
+    expect(result.title).toContain("用");
   });
 
-  // complete 状态副标题不应包含进行时前缀"正在"
-  test("complete 状态副标题用过去时模板", () => {
+  // complete 状态 title 不应包含进行时前缀"正在"
+  test("complete 状态 title 用过去时模板", () => {
     const tool = makeTool({ title: "SomeUnknownTool" });
     const result = narrate(tool, "complete", undefined, t);
-    expect(result.subtitle).not.toContain("正在");
+    expect(result.title).not.toContain("正在");
   });
 
-  // running 状态副标题应该带"正在"前缀
-  test("running 状态副标题用进行时模板（含'正在'）", () => {
+  // running 状态 title 应该带"正在"前缀
+  test("running 状态 title 用进行时模板（含'正在'）", () => {
     const tool = makeTool({ title: "SomeUnknownTool" });
     const result = narrate(tool, "running", undefined, t);
-    expect(result.subtitle).toContain("正在");
+    expect(result.title).toContain("正在");
   });
 
   // rejected 状态应归一化为 canceled，状态词显示"已取消"
