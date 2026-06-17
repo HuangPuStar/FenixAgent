@@ -5,17 +5,17 @@ import type { ToolNarrator } from "./types";
 /**
  * Glob / Find / ListFiles 工具 narrator。处理文件通配符匹配。
  *
- * title 行："找 {pattern}"（运行中："正在找 ..."）
+ * title 行："查找 {pattern}"（运行中："正在查找 ..."）
  * detail 行（subtitle）：complete 状态下从 rawOutput.files 提取文件数
  *
  * 完整示例：
- *   [图标] 找 某个 pattern               [完成]
+ *   [图标] 查找 某个 pattern               [完成]
  *          15 个文件 · 0.3s
  */
 export const globNarrator: ToolNarrator = {
   match: (name) =>
     name.includes("glob") || name.includes("find") || name.includes("listfiles") || name.includes("list_files"),
-  verb: "找",
+  verb: "查找",
   icon: FolderSearch,
   getDisplay(ctx) {
     const pattern = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.pattern ?? "");

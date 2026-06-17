@@ -42,9 +42,9 @@ describe("webSearchNarrator", () => {
     expect(webSearchNarrator.match("grep")).toBe(false);
   });
 
-  // 中文动词必须是"搜"（与 Grep 同字，但 Grep 是本地代码搜索）
-  test("verb 是 '搜'", () => {
-    expect(webSearchNarrator.verb).toBe("搜");
+  // 中文动词必须是"搜索"（与 Grep 同词，但 Grep 是本地代码搜索）
+  test("verb 是 '搜索'", () => {
+    expect(webSearchNarrator.verb).toBe("搜索");
   });
 
   // query 字段加双引号作为 object（强调搜索词文本）

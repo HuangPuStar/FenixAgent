@@ -42,12 +42,12 @@ describe("globNarrator", () => {
     expect(globNarrator.match("list_files")).toBe(true);
   });
 
-  // 中文动词必须是"找"（区别于 Grep 的"搜"）
-  test("verb 是 '找'", () => {
-    expect(globNarrator.verb).toBe("找");
+  // 中文动词必须是"查找"（区别于 Grep 的"搜索"）
+  test("verb 是 '查找'", () => {
+    expect(globNarrator.verb).toBe("查找");
   });
 
-  // pattern 作为 object（与 verb 拼 title 时为"找 {pattern}"）
+  // pattern 作为 object（与 verb 拼 title 时为"查找 {pattern}"）
   test("object 是 pattern", () => {
     const { object, detail } = globNarrator.getDisplay(makeCtx({ pattern: "**/*.ts" }));
     expect(object).toBe("**/*.ts");

@@ -6,16 +6,16 @@ import type { ToolNarrator } from "./types";
  * Read 工具 narrator。处理文件读取调用。
  *
  * 渲染效果（title 是 verb+object 完整句子，detail 是行号补充）：
- * - running: title="正在读 config.ts", detail="第 120-180 行"
- * - complete: title="读 config.ts", detail="第 120-180 行 · 1.2s"
- * - error: title="读 config.ts", detail="第 120-180 行"（错误细节单独一行）
+ * - running: title="正在读取 config.ts", detail="第 120-180 行"
+ * - complete: title="读取 config.ts", detail="第 120-180 行 · 1.2s"
+ * - error: title="读取 config.ts", detail="第 120-180 行"（错误细节单独一行）
  *
  * 行号区间作为 detail 显示在 subtitle 行（与耗时徽章并列），
  * title 只保留 verb + 文件名，避免上下文重复。
  */
 export const readNarrator: ToolNarrator = {
   match: (name) => name.includes("read"),
-  verb: "读",
+  verb: "读取",
   icon: FileText,
   getDisplay(ctx) {
     const file = extractFileName(ctx.tool.rawInput);

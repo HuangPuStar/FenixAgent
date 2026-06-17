@@ -34,12 +34,12 @@ describe("bashNarrator", () => {
     expect(bashNarrator.match("read")).toBe(false);
   });
 
-  // 中文动词必须是"跑"
-  test("verb 是 '跑'", () => {
-    expect(bashNarrator.verb).toBe("跑");
+  // 中文动词必须是"执行"
+  test("verb 是 '执行'", () => {
+    expect(bashNarrator.verb).toBe("执行");
   });
 
-  // object 加 $ 前缀作为终端命令的视觉提示（与 verb 拼 title 时为"跑 $ npm install"）
+  // object 加 $ 前缀作为终端命令的视觉提示（与 verb 拼 title 时为"执行 $ npm install"）
   test("object 加 $ 前缀", () => {
     const { object } = bashNarrator.getDisplay(makeCtx({ command: "npm install" }));
     expect(object).toBe("$ npm install");

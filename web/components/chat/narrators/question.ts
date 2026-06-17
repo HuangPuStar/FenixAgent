@@ -11,7 +11,7 @@ import type { ToolNarrator } from "./types";
  */
 export const questionNarrator: ToolNarrator = {
   match: (name) => name.includes("question") || name.includes("ask"),
-  verb: "问",
+  verb: "询问",
   icon: HelpCircle,
   getDisplay(ctx) {
     const text =

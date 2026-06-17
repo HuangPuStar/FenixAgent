@@ -5,7 +5,7 @@ import type { ToolNarrator } from "./types";
 /**
  * WebSearch 工具 narrator。处理互联网搜索场景。
  *
- * title 行："搜 \"query\""（运行中："正在搜 ..."）
+ * title 行："搜索 \"query\""（运行中："正在搜索 ..."）
  * detail 行（subtitle）：complete 状态下显示结果数
  *
  * 与 webFetchNarrator 的 match 不冲突（search vs fetch），
@@ -13,7 +13,7 @@ import type { ToolNarrator } from "./types";
  */
 export const webSearchNarrator: ToolNarrator = {
   match: (name) => name.includes("search"),
-  verb: "搜",
+  verb: "搜索",
   icon: Search,
   getDisplay(ctx) {
     const raw = ctx.tool.rawInput as Record<string, unknown> | undefined;

@@ -42,9 +42,9 @@ describe("editNarrator", () => {
     expect(editNarrator.match("read")).toBe(false);
   });
 
-  // 中文动词必须是"改"
-  test("verb 是 '改'", () => {
-    expect(editNarrator.verb).toBe("改");
+  // 中文动词必须是"修改"
+  test("verb 是 '修改'", () => {
+    expect(editNarrator.verb).toBe("修改");
   });
 
   // 从 file_path 提取文件名作为 object

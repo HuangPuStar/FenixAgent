@@ -43,7 +43,7 @@ export interface NarrationBadge {
  *
  * - object: 与 verb 拼接成 title 行的"对象"部分（文件名/命令/URL 等），
  *   narrate() 用 common.subtitle / subtitleRunning 模板拼成完整句子
- *   （如"读 src/index.ts" / "正在读 src/index.ts"）
+ *   （如"读取 src/index.ts" / "正在读取 src/index.ts"）
  * - detail: 可选的补充信息，显示在 subtitle 行（如"第 1-50 行"/"3 处变更"）。
  *   不提供则 subtitle 行只显示耗时徽章
  */

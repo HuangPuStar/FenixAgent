@@ -33,9 +33,9 @@ describe("webFetchNarrator", () => {
     expect(webFetchNarrator.match("read")).toBe(false);
   });
 
-  // 中文动词必须是"抓"（区别于 WebSearch 的"搜"）
-  test("verb 是 '抓'", () => {
-    expect(webFetchNarrator.verb).toBe("抓");
+  // 中文动词必须是"抓取"（区别于 WebSearch 的"搜索"）
+  test("verb 是 '抓取'", () => {
+    expect(webFetchNarrator.verb).toBe("抓取");
   });
 
   // URL 作为 object

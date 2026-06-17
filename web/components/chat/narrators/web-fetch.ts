@@ -10,7 +10,7 @@ import type { ToolNarrator } from "./types";
  */
 export const webFetchNarrator: ToolNarrator = {
   match: (name) => name.includes("fetch") || name.includes("curl"),
-  verb: "抓",
+  verb: "抓取",
   icon: Globe,
   getDisplay(ctx) {
     const url = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.url ?? "");

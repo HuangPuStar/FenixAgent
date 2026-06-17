@@ -13,7 +13,7 @@ import type { ToolNarrator } from "./types";
  */
 export const editNarrator: ToolNarrator = {
   match: (name) => name.includes("edit") || name.includes("str_replace") || name.includes("multiedit"),
-  verb: "改",
+  verb: "修改",
   icon: FilePen,
   getDisplay(ctx) {
     const file = extractFileName(ctx.tool.rawInput);

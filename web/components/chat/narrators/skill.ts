@@ -10,7 +10,7 @@ import type { ToolNarrator } from "./types";
  */
 export const skillNarrator: ToolNarrator = {
   match: (name) => name.includes("skill"),
-  verb: "载",
+  verb: "加载",
   icon: Sparkles,
   getDisplay(ctx) {
     // 优先 description（结构化字段，Agent 显式提供）

@@ -10,7 +10,7 @@ import type { ToolNarrator } from "./types";
  */
 export const writeNarrator: ToolNarrator = {
   match: (name) => name.includes("write"),
-  verb: "写",
+  verb: "写入",
   icon: FilePlus,
   getDisplay(ctx) {
     const file = extractFileName(ctx.tool.rawInput);

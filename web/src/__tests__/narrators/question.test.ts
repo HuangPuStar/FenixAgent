@@ -34,9 +34,9 @@ describe("questionNarrator", () => {
     expect(questionNarrator.match("read")).toBe(false);
   });
 
-  // 中文动词"问"——传达"向用户提问"语义
-  test("verb 是 '问'", () => {
-    expect(questionNarrator.verb).toBe("问");
+  // 中文动词"询问"——传达"向用户提问"语义
+  test("verb 是 '询问'", () => {
+    expect(questionNarrator.verb).toBe("询问");
   });
 
   // 优先用 description（Agent 提供的完整问题）作为 object

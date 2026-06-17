@@ -5,8 +5,8 @@ import type { ToolNarrator } from "./types";
 /**
  * Bash / Shell / Exec / Command 工具 narrator。
  *
- * object 加 $ 前缀（视觉上提示这是终端命令），与 verb "跑" 拼成 title：
- *   [图标] 跑 $ npm install            [完成]
+ * object 加 $ 前缀（视觉上提示这是终端命令），与 verb "执行" 拼成 title：
+ *   [图标] 执行 $ npm install            [完成]
  *          12.5s
  *
  * 注意：match 严格匹配 `name === "command"` 而非 includes，
@@ -14,7 +14,7 @@ import type { ToolNarrator } from "./types";
  */
 export const bashNarrator: ToolNarrator = {
   match: (name) => name.includes("bash") || name.includes("shell") || name.includes("exec") || name === "command",
-  verb: "跑",
+  verb: "执行",
   icon: Terminal,
   getDisplay(ctx) {
     const cmd = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.command ?? "");

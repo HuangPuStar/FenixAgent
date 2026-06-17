@@ -5,18 +5,18 @@ import type { ToolNarrator } from "./types";
 /**
  * Grep / Rg 工具 narrator。处理代码搜索。
  *
- * title 行："搜 \"pattern\""（运行中："正在搜 ..."）
+ * title 行："搜索 \"pattern\""（运行中："正在搜索 ..."）
  * detail 行（subtitle）：路径 + 命中数（complete 状态才有）
  *   - "在 src/ · 找到 8 个"
  *   - "找到 8 个"（无路径时）
  *
  * 完整示例：
- *   [图标] 搜 "useEffect"               [完成]
+ *   [图标] 搜索 "useEffect"               [完成]
  *          在 src/ · 找到 8 个 · 0.5s
  */
 export const grepNarrator: ToolNarrator = {
   match: (name) => name.includes("grep") || name.includes("rg"),
-  verb: "搜",
+  verb: "搜索",
   icon: Search,
   getDisplay(ctx) {
     const raw = ctx.tool.rawInput as Record<string, unknown> | undefined;

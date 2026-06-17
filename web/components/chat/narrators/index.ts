@@ -69,8 +69,8 @@ export function narrate(
   const { object, detail } = narrator.getDisplay(ctx);
   const verb = narrator.verb;
 
-  // 第 4 阶段：拼接 title（verb + object 完整句子）。running 用进行时模板（"正在读 X"），
-  // 其他状态用过去时模板（"读 X"）
+  // 第 4 阶段：拼接 title（verb + object 完整句子）。running 用进行时模板（"正在读取 X"），
+  // 其他状态用过去时模板（"读取 X"）
   const titleKey = normalizedStatus === "running" ? "common.subtitleRunning" : "common.subtitle";
   const title = t(titleKey, { verb, object });
 

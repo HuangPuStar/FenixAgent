@@ -42,12 +42,12 @@ describe("grepNarrator", () => {
     expect(grepNarrator.match("read")).toBe(false);
   });
 
-  // 中文动词必须是"搜"
-  test("verb 是 '搜'", () => {
-    expect(grepNarrator.verb).toBe("搜");
+  // 中文动词必须是"搜索"
+  test("verb 是 '搜索'", () => {
+    expect(grepNarrator.verb).toBe("搜索");
   });
 
-  // object 是带双引号的 pattern（与 verb 拼 title 时为"搜 \"useEffect\""）
+  // object 是带双引号的 pattern（与 verb 拼 title 时为"搜索 \"useEffect\""）
   test("object 是带引号的 pattern", () => {
     const { object } = grepNarrator.getDisplay(makeCtx({ pattern: "useEffect" }));
     expect(object).toBe('"useEffect"');

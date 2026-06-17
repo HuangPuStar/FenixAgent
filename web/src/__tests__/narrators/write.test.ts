@@ -32,9 +32,9 @@ describe("writeNarrator", () => {
     expect(writeNarrator.match("read")).toBe(false);
   });
 
-  // 中文动词必须是"写"
-  test("verb 是 '写'", () => {
-    expect(writeNarrator.verb).toBe("写");
+  // 中文动词必须是"写入"
+  test("verb 是 '写入'", () => {
+    expect(writeNarrator.verb).toBe("写入");
   });
 
   // 从 file_path 提取文件名作为 object

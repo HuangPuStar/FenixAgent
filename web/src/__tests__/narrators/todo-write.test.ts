@@ -37,12 +37,12 @@ describe("todoWriteNarrator", () => {
     expect(todoWriteNarrator.match("read")).toBe(false);
   });
 
-  // 中文动词"列"——传达"列出待办"语义
-  test("verb 是 '列'", () => {
-    expect(todoWriteNarrator.verb).toBe("列");
+  // 中文动词"列出"——传达"列出待办"语义
+  test("verb 是 '列出'", () => {
+    expect(todoWriteNarrator.verb).toBe("列出");
   });
 
-  // todos 数组长度作为待办数渲染到 object（与 verb 拼 title 为"列 N 个待办"）
+  // todos 数组长度作为待办数渲染到 object（与 verb 拼 title 为"列出 N 个待办"）
   test("todos 数组长度作为待办数", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({ todos: [{}, {}, {}] }));
     expect(object).toBe("3 个待办");

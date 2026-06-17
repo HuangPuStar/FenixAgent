@@ -35,9 +35,9 @@ describe("readNarrator", () => {
     expect(readNarrator.match("write")).toBe(false);
   });
 
-  // 中文动词必须是"读"
-  test("verb 是 '读'", () => {
-    expect(readNarrator.verb).toBe("读");
+  // 中文动词必须是"读取"
+  test("verb 是 '读取'", () => {
+    expect(readNarrator.verb).toBe("读取");
   });
 
   // 基本场景：从 file_path 提取文件名作为 object

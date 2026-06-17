@@ -10,7 +10,7 @@ import type { ToolNarrator } from "./types";
  */
 export const taskNarrator: ToolNarrator = {
   match: (name) => name.includes("task") || name.includes("agent") || name.includes("subagent"),
-  verb: "派",
+  verb: "派发",
   icon: Workflow,
   getDisplay(ctx) {
     const rawDesc = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.description ?? "");
