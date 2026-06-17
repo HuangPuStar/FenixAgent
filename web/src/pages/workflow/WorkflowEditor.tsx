@@ -130,7 +130,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const selectedNodeInfo = useMemo(() => {
     if (!selectedNode) return null;
     return { id: selectedNode.id, type: selectedNode.type ?? "unknown" };
-  }, [selectedNode?.id, selectedNode?.type]);
+  }, [selectedNode?.id, selectedNode?.type, selectedNode]);
 
   const { scenePrompt, contextKey, chatOpen, setChatOpen, metaAgentId, agentList } = useWorkflowMetaAgent({
     workflowId,
@@ -146,7 +146,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       lines.push(`- ${t("editor.selected_node")}: ${selectedNodeInfo.id} (type: ${selectedNodeInfo.type})`);
     }
     return lines.join("\n");
-  }, [meta.name, selectedNodeInfo?.id, selectedNodeInfo?.type, t]);
+  }, [meta.name, selectedNodeInfo, t]);
 
   useContextQueue("workflow-editor-context", editorContextText);
 
