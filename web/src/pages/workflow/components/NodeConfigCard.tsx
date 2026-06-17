@@ -113,13 +113,7 @@ export function NodeConfigCard({
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
                     onChange={(val) => {
-                      const cleaned: Record<string, string> = {};
-                      if (val) {
-                        for (const [k, v] of Object.entries(val)) {
-                          if (k.trim()) cleaned[k.trim()] = v;
-                        }
-                      }
-                      updateNodeData({ inputs: Object.keys(cleaned).length ? cleaned : undefined });
+                      updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.inputs_key_placeholder")}
@@ -180,13 +174,7 @@ export function NodeConfigCard({
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
                     onChange={(val) => {
-                      const cleaned: Record<string, string> = {};
-                      if (val) {
-                        for (const [k, v] of Object.entries(val)) {
-                          if (k.trim()) cleaned[k.trim()] = v;
-                        }
-                      }
-                      updateNodeData({ inputs: Object.keys(cleaned).length ? cleaned : undefined });
+                      updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.inputs_key_placeholder")}
@@ -370,13 +358,7 @@ export function NodeConfigCard({
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
                     onChange={(val) => {
-                      const cleaned: Record<string, string> = {};
-                      if (val) {
-                        for (const [k, v] of Object.entries(val)) {
-                          if (k.trim()) cleaned[k.trim()] = v;
-                        }
-                      }
-                      updateNodeData({ inputs: Object.keys(cleaned).length ? cleaned : undefined });
+                      updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.transform_inputs_key_placeholder")}
@@ -389,16 +371,14 @@ export function NodeConfigCard({
                   <InputsEditor
                     value={sd?.output as Record<string, string> | undefined}
                     onChange={(val) => {
-                      const cleaned: Record<string, string> = {};
-                      if (val) {
-                        for (const [k, v] of Object.entries(val)) {
-                          if (k.trim()) cleaned[k.trim()] = v;
-                        }
+                      if (!val || Object.keys(val).length === 0) {
+                        updateNodeData({ output: undefined });
+                        return;
                       }
                       // 检测 key 名变更并自动同步表达式中的同名引用
                       const oldOutput = (sd?.output as Record<string, string>) ?? {};
-                      const synced = syncOutputOnRename(oldOutput, cleaned);
-                      updateNodeData({ output: Object.keys(synced).length ? synced : undefined });
+                      const synced = syncOutputOnRename(oldOutput, val);
+                      updateNodeData({ output: synced });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.transform_output_key_placeholder")}
