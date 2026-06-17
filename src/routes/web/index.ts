@@ -23,6 +23,7 @@ import webWorkflowEngine from "./workflow-engine";
 import webWorkflowJobs from "./workflow-jobs";
 import webWorkflowJobsLogs from "./workflow-jobs-logs";
 import webWorkflowJobsSse from "./workflow-jobs-sse";
+import { workflowRunsRoutes } from "./workflow-runs";
 import webWorkflowSse from "./workflow-sse";
 import webWorkflowStats from "./workflow-stats";
 
@@ -52,6 +53,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webWorkflowStats)
   .use(webWorkflowBoards)
   .use(webWorkflowSse)
+  .use(workflowRunsRoutes)
   .use(webAgentGeneration);
 
 export default webApp;

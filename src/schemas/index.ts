@@ -369,3 +369,10 @@ export {
   WorkflowBoardMutationResponseSchema,
   WorkflowBoardSchema,
 } from "./workflow-board.schema";
+// Workflow Runs
+export {
+  type WorkflowRunsQuery,
+  WorkflowRunsQuerySchema,
+  type WorkflowRunsResponse,
+  WorkflowRunsResponseSchema,
+} from "./workflow-runs.schema";

@@ -362,9 +362,6 @@ export const WorkflowEngineActionRequestSchema = z
       runId: z.string().describe("运行 ID。"),
     }),
     z.object({
-      action: z.literal("listRuns").describe("列出运行记录。"),
-    }),
-    z.object({
       action: z.literal("recover").describe("从快照恢复运行。"),
       runId: z.string().describe("运行 ID。"),
       yaml: z.string().describe("恢复时使用的工作流 YAML。"),
@@ -388,7 +385,6 @@ export const WorkflowEngineActionResponseSchema = z
     WorkflowSuccessSchema(WorkflowDagEventSchema.array().describe("运行事件列表。")),
     WorkflowSuccessSchema(WorkflowNodeOutputSchema.nullable().describe("节点输出；尚未产生时为 null。")),
     WorkflowSuccessSchema(WorkflowPendingApprovalSchema.array().describe("待审批节点列表。")),
-    WorkflowSuccessSchema(WorkflowRunSummarySchema.array().describe("运行摘要列表。")),
     WorkflowSuccessSchema(WorkflowDagRunResultSchema),
     WorkflowVoidSuccessSchema,
   ])
