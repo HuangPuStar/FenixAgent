@@ -146,17 +146,16 @@ export function AgentModelsPage() {
         ? (listResult as unknown as ProviderInfo[])
         : (((listResult as unknown as Record<string, unknown>)?.providers ?? []) as unknown as ProviderInfo[]);
       const modelsMap: Record<string, ProviderModel[]> = {};
-      await Promise.all(
-        data.map(async (p) => {
-          const providerKey = getProviderKey(p);
-          try {
-            const { data: detail } = await providerApi.get(providerKey);
-            modelsMap[providerKey] = (detail as unknown as { models?: ProviderModel[] }).models ?? [];
-          } catch {
-            modelsMap[providerKey] = [];
-          }
-        }),
-      );
+      data.forEach((p) => {
+        const providerKey = getProviderKey(p);
+        // biome-ignore lint/suspicious/noExplicitAny: API response includes extra fields
+        const pAny = p as any;
+        // @ts-ignore
+        modelsMap[providerKey] = (pAny.models ?? []).map((m) => ({
+          id: m.modelId,
+          name: m.name,
+        }));
+      });
       setProviders(data);
       setProviderModels(modelsMap);
     } catch (e) {
@@ -204,7 +203,7 @@ export function AgentModelsPage() {
       if (formApiKey) data.apiKey = formApiKey;
       if (formBaseURL) data.baseURL = formBaseURL;
       data.protocol = formProtocol;
-      if (formDisplayName) data.name = formDisplayName;
+      if (formDisplayName) data.displayName = formDisplayName;
       const { error: saveError } = await (editingProvider
         ? providerApi.set(formName, data)
         : providerApi.create(formName, data));
@@ -213,8 +212,19 @@ export function AgentModelsPage() {
         return;
       }
 
-      // 导入勾选的模型（逐个添加，忽略失败）
+      // 编辑时先删除所有已有模型，再添加当前选择的模型（确保数据库只存勾选的模型）
       let modelsAdded = false;
+      if (editingProvider) {
+        const existingKey = getProviderKey(editingProvider);
+        const existingModels = providerModels[existingKey] ?? [];
+        for (const model of existingModels) {
+          try {
+            await providerApi.removeModel(formName, model.id);
+          } catch {
+            // 删除失败时静默处理
+          }
+        }
+      }
       for (const modelId of formSelectedModels) {
         try {
           await providerApi.addModel(formName, { modelId, name: modelId });
@@ -276,7 +286,7 @@ export function AgentModelsPage() {
         if (formApiKey) data.apiKey = formApiKey;
         if (formBaseURL) data.baseURL = formBaseURL;
         data.protocol = formProtocol;
-        if (formDisplayName) data.name = formDisplayName;
+        if (formDisplayName) data.displayName = formDisplayName;
         const { error: saveError } = await (editingProvider
           ? providerApi.set(formName, data)
           : providerApi.create(formName, data));

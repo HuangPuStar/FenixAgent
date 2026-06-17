@@ -2,7 +2,7 @@ import { inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { db } from "../../../db";
-import { member, model as modelTable, user } from "../../../db/schema";
+import { model as modelTable } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
@@ -61,32 +61,31 @@ const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin).mo
 async function handleList(ctx: AuthContext) {
   const providers = await configPg.listProviders(ctx);
 
-  // 批量加载所有 provider 的模型
-  const providerIds = providers.map((p) => p.id).filter(Boolean);
-  const modelRows =
-    providerIds.length > 0
-      ? await db
-          .select({
-            providerId: modelTable.providerId,
-            modelId: modelTable.modelId,
-            displayName: modelTable.displayName,
-            modalities: modelTable.modalities,
-            limitConfig: modelTable.limitConfig,
-            cost: modelTable.cost,
-          })
-          .from(modelTable)
-          .where(inArray(modelTable.providerId, providerIds))
-      : [];
-
-  const modelsByProviderId: Record<string, typeof modelRows> = {};
-  for (const m of modelRows) {
-    const pid = m.providerId;
-    if (!modelsByProviderId[pid]) modelsByProviderId[pid] = [];
-    modelsByProviderId[pid].push(m);
+  // 批量加载模型（加载失败时返回空列表，不影响 provider 列表）
+  const modelsByProviderId: Record<string, Array<{ modelId: string; displayName: string | null }>> = {};
+  try {
+    const providerIds = providers.map((p) => p.id).filter(Boolean);
+    if (providerIds.length > 0) {
+      const modelRows = await db
+        .select({
+          providerId: modelTable.providerId,
+          modelId: modelTable.modelId,
+          displayName: modelTable.displayName,
+        })
+        .from(modelTable)
+        .where(inArray(modelTable.providerId, providerIds));
+      for (const m of modelRows) {
+        const pid = m.providerId;
+        if (!modelsByProviderId[pid]) modelsByProviderId[pid] = [];
+        modelsByProviderId[pid].push(m);
+      }
+    }
+  } catch {
+    // 模型加载失败时忽略，仅返回 modelCount
   }
 
   const list = providers.map((p) => ({
-    id: p.id,
+    id: p.name,
     name: p.displayName ?? "",
     protocol: p.protocol,
     keyHint: toKeyHint(p.apiKey),
@@ -95,9 +94,6 @@ async function handleList(ctx: AuthContext) {
     models: (modelsByProviderId[p.id] ?? []).map((m) => ({
       modelId: m.modelId,
       name: m.displayName ?? m.modelId,
-      modalities: m.modalities ?? null,
-      limit: m.limitConfig ?? null,
-      cost: m.cost ?? null,
     })),
     resourceAccess: p.resourceAccess,
     resourceKey: p.resourceKey,
@@ -106,7 +102,10 @@ async function handleList(ctx: AuthContext) {
 }
 
 async function handleGet(ctx: AuthContext, name: string) {
-  const p = await configPg.getProvider(ctx, name);
+  // 同时支持按名称和跨组织共享资源键（resourceKey）查找，与 MCP 的 handleGet 逻辑一致
+  const p = name.includes("/")
+    ? await configPg.getProviderByResourceKey(ctx, name)
+    : await configPg.getProvider(ctx, name);
   if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
 
   const models = (p.models ?? []).map((m) => ({
@@ -156,7 +155,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   const rawProtocol = data.protocol;
   const protocol =
     rawProtocol === "anthropic" || rawProtocol === "openai" ? rawProtocol : (existing?.protocol ?? "openai");
-  const displayName = (data.name as string) ?? existing?.displayName ?? undefined;
+  const displayName = (data.displayName as string) ?? existing?.displayName ?? undefined;
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
   // 收集 extraOptions：data 中除已知字段外的其他 options
