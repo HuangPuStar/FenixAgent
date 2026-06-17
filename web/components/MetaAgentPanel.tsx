@@ -50,6 +50,7 @@ export function MetaAgentPanel({
             display: "flex",
             flexDirection: "column",
             background: "#fff",
+            borderRight: "1px solid var(--color-border-subtle)",
             position: "relative",
           }}
         >
