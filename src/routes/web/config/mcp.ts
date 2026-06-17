@@ -333,6 +333,130 @@ app.get(
       tags: ["McpConfig"],
       summary: "获取 MCP Server 列表",
       description: "返回当前用户可见的所有 MCP 服务器列表，包含服务器基本信息、关联工具数量和跨组织共享访问控制信息。",
+      responses: {
+        "200": {
+          description: "成功返回 MCP 服务器列表。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      servers: {
+                        type: "array",
+                        description: "MCP 服务器列表。",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string", description: "服务器 ID。" },
+                            name: { type: "string", description: "服务器名称。" },
+                            type: {
+                              type: "string",
+                              enum: ["local", "remote", "disabled"],
+                              description: "服务器类型。",
+                            },
+                            enabled: { type: "boolean", description: "是否已启用。" },
+                            summary: { type: "string", description: "功能摘要。" },
+                            timeout: { type: "number", description: "超时时间（毫秒）。" },
+                            toolsCount: { type: "number", description: "关联工具数量。" },
+                            resourceAccess: {
+                              type: "object",
+                              description: "访问控制信息，内部服务器有全部权限，外部只读。",
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -360,6 +484,109 @@ app.get(
       summary: "获取 MCP Server 详情",
       description:
         "根据名称或跨组织共享资源键（resourceKey）获取单个 MCP 服务器的详细配置。支持通过 resourceKey 读取外部组织共享的服务器。",
+      responses: {
+        "200": {
+          description: "成功返回 MCP Server 详情。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "服务器名称。" },
+                      config: { type: "object", description: "服务器完整配置对象，包含 type/command/url/headers 等。" },
+                      resourceAccess: { type: "object", description: "跨组织访问控制信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -394,6 +621,107 @@ app.post(
       summary: "创建 MCP Server",
       description:
         "创建一个新的 MCP 服务器配置。支持 local（本地子进程）和 remote（远端 HTTP SSE）两种类型。请求体需包含服务器名称 name 和类型 type。local 类型需提供 command 命令数组，remote 类型需提供 url。名称必须为 1-64 位小写字母数字加单连字符。创建时会检查名称是否已存在。",
+      responses: {
+        "200": {
+          description: "操作成功。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "MCP Server 名称。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -426,6 +754,107 @@ app.put(
       summary: "更新 MCP Server",
       description:
         "更新指定 MCP 服务器的配置。支持修改服务器类型、连接参数、环境变量和公开可读状态。请求体只需包含需要更新的字段。外部共享服务器不可更新。",
+      responses: {
+        "200": {
+          description: "操作成功。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "MCP Server 名称。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -454,6 +883,102 @@ app.delete(
       tags: ["McpConfig"],
       summary: "删除 MCP Server",
       description: "删除指定的 MCP 服务器配置，同时清理关联的工具缓存。仅可删除内部可写服务器。",
+      responses: {
+        "200": {
+          description: "删除成功。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: { type: "null", description: "删除成功后固定返回 null。" },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -482,6 +1007,108 @@ app.post(
       tags: ["McpConfig"],
       summary: "启用 MCP Server",
       description: "启用指定的 MCP 服务器，使其可被 Agent 用于工具查询调用。",
+      responses: {
+        "200": {
+          description: "操作成功。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "MCP Server 名称。" },
+                      enabled: { type: "boolean", description: "启停状态。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -510,6 +1137,108 @@ app.post(
       tags: ["McpConfig"],
       summary: "禁用 MCP Server",
       description: "禁用指定的 MCP 服务器，使其不再对 Agent 可用。",
+      responses: {
+        "200": {
+          description: "操作成功。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "MCP Server 名称。" },
+                      enabled: { type: "boolean", description: "启停状态。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -539,6 +1268,114 @@ app.post(
       summary: "测试 MCP Server 连接",
       description:
         "测试指定 MCP 服务器的连接可达性。remote 类型尝试连接远端 URL 并检查 MCP 协议兼容性；local 类型检查对应的可执行命令是否已安装。",
+      responses: {
+        "200": {
+          description: "测试结果，返回连接可达性和服务器信息。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "服务器名称。" },
+                      reachable: { type: "boolean", description: "服务器是否可达。" },
+                      protocol: { type: "boolean", description: "是否兼容 MCP 协议。" },
+                      serverName: { type: "string", description: "远端服务器名称。" },
+                      serverVersion: { type: "string", description: "远端服务器版本。" },
+                      toolsCount: { type: "number", description: "发现的工具数量。" },
+                      transport: { type: "string", description: "传输协议。" },
+                      message: { type: "string", description: "附加消息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -570,6 +1407,113 @@ app.post(
       summary: "测试远端 MCP URL",
       description:
         "直接测试一个远端 URL 是否为可用的 MCP HTTP 服务端点，无需提前创建 MCP 服务器配置。请求体需提交 url 地址，可选自定义请求头和超时时间。返回远端服务器的可达性、MCP 协议兼容性、服务器版本和工具数量。",
+      responses: {
+        "200": {
+          description: "测试结果，返回 URL 可达性和服务器信息。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      reachable: { type: "boolean", description: "URL 是否可达。" },
+                      protocol: { type: "boolean", description: "是否兼容 MCP 协议。" },
+                      serverName: { type: "string", description: "远端服务器名称。" },
+                      serverVersion: { type: "string", description: "远端服务器版本。" },
+                      toolsCount: { type: "number", description: "发现的工具数量。" },
+                      transport: { type: "string", description: "传输协议。" },
+                      message: { type: "string", description: "附加消息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -599,6 +1543,128 @@ app.post(
       summary: "检查 MCP Server 并导入工具",
       description:
         "连接指定远程 MCP 服务器的远端 URL，获取其工具列表并自动导入存储。仅支持 remote 类型服务器。导入的工具会替换已有工具缓存。",
+      responses: {
+        "200": {
+          description: "成功检查并导入工具列表。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "服务器名称。" },
+                      serverInfo: {
+                        type: "object",
+                        properties: {
+                          name: { type: "string", description: "远端服务器名称。" },
+                          version: { type: "string", description: "远端服务器版本。" },
+                        },
+                      },
+                      tools: {
+                        type: "array",
+                        description: "发现的工具列表。",
+                        items: {
+                          type: "object",
+                          properties: {
+                            name: { type: "string", description: "工具名称。" },
+                            description: { type: "string", description: "工具描述。" },
+                            inputSchema: { type: "object", description: "工具输入 JSON Schema。" },
+                          },
+                        },
+                      },
+                      transport: { type: "string", description: "传输协议类型。" },
+                      stored: { type: "boolean", description: "工具是否已存储。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -625,6 +1691,121 @@ app.get(
       tags: ["McpConfig"],
       summary: "获取 MCP Server 的工具列表",
       description: "获取指定 MCP 服务器已检查导入的工具列表，包括工具名称、描述、输入 Schema 和检查时间。",
+      responses: {
+        "200": {
+          description: "成功返回工具列表。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true, description: "接口调用成功。" },
+                  data: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "服务器名称。" },
+                      tools: {
+                        type: "array",
+                        description: "工具列表。",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string", description: "工具 ID。" },
+                            toolName: { type: "string", description: "工具名称。" },
+                            description: { type: "string", description: "工具描述。" },
+                            inputSchema: { type: "string", description: "工具输入 JSON Schema（序列化字符串）。" },
+                            inspectedAt: { type: "number", description: "最近检查时间戳。" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误，缺少必填字段或参数格式不合法。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false, description: "是否成功。false 表示失败。" },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 VALIDATION_ERROR。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 FORBIDDEN。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码，如 NOT_FOUND。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: {
+                    type: "object",
+                    properties: {
+                      code: { type: "string", description: "错误码。" },
+                      message: { type: "string", description: "错误描述信息。" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
