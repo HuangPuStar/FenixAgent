@@ -130,6 +130,10 @@ beforeAll(() => {
   if (!g.window) g.window = win;
   if (!g.document) g.document = win.document;
   if (!g.navigator) g.navigator = win.navigator;
+  // happy-dom select 元素 SSR 需要 window.SyntaxError
+  if (!(win as unknown as Record<string, unknown>).SyntaxError) {
+    (win as unknown as Record<string, unknown>).SyntaxError = SyntaxError;
+  }
 });
 
 beforeEach(() => {

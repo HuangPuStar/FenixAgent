@@ -31,8 +31,6 @@ export function Pagination({ page, totalPages, total, pageSize, onPageChange, on
     return pages;
   }, [page, totalPages]);
 
-  if (totalPages <= 1 && total <= pageSize) return null;
-
   const pageNumbers = getPageNumbers();
 
   return (

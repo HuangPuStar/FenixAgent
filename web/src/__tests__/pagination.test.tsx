@@ -15,12 +15,18 @@ const t = mock((key: string, opts?: Record<string, unknown>) => {
 // ── SSR 结构测试 ──
 
 describe("Pagination", () => {
-  // 总页数为 1 时不渲染
-  test("总页数为 1 时不渲染", () => {
+  // 总页数为 1 时仍然渲染，但翻页按钮禁用
+  test("总页数为 1 时渲染但翻页按钮禁用", () => {
     const html = ReactDOMServer.renderToStaticMarkup(
       createElement(Pagination, { page: 1, totalPages: 1, total: 5, pageSize: 20, onPageChange: () => {}, t }),
     );
-    expect(html).toBe("");
+    // 渲染而非空：包含总数文本
+    expect(html).toContain("共 5 条");
+    // 上一页和下一页都应有 disabled="" 属性
+    const disabledCount = (html.match(/disabled=""/g) ?? []).length;
+    expect(disabledCount).toBe(2);
+    // 页码按钮存在
+    expect(html).toContain(">1<");
   });
 
   // 渲染当前页高亮
