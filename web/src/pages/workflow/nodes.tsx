@@ -137,8 +137,9 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
       {/* INPUT LIST */}
       {!isStart && (
         <div
+          // 左 padding 收到 4px，让每行的 target Handle 凸出 item div 左边缘 4px 后正好骑在节点左边缘上
           style={{
-            padding: "4px 8px",
+            padding: "4px 8px 4px 4px",
             borderBottom: inputPoints.length > 0 ? "1px solid var(--color-border-subtle)" : undefined,
             minWidth: 160,
           }}
@@ -151,7 +152,7 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
               {t("nodes.no_inputs")}
             </div>
           ) : (
-            inputPoints.map((param, i) => (
+            inputPoints.map((param) => (
               <div
                 key={param}
                 style={{
@@ -163,20 +164,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                   fontSize: 10,
                 }}
               >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "#f59e0b",
-                    border: "2px solid #fff",
-                    boxShadow: "0 0 0 1px #f59e0b",
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ color: "#92400e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {param}
-                </span>
+                {/* Input Handle 直接作为可见圆点：position=Left 让 React Flow 自动把它对齐到 item div 左边缘外，
+                    top=50% 让它在行内垂直居中。Handle 的 DOM 位置 = 用户看到的圆点 = 连线端点，三者一致，连线不再漂移。 */}
                 <Handle
                   key={`in-${param}`}
                   type="target"
@@ -186,12 +175,15 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                     background: "#f59e0b",
                     width: 8,
                     height: 8,
+                    borderRadius: "50%",
                     border: "2px solid #fff",
-                    top: `${16 + i * 22}px`,
-                    left: -4,
-                    opacity: 0,
+                    boxShadow: "0 0 0 1px #f59e0b",
+                    top: "50%",
                   }}
                 />
+                <span style={{ color: "#92400e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {param}
+                </span>
               </div>
             ))
           )}
@@ -200,7 +192,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
 
       {/* OUTPUT LIST */}
       {!isStart ? (
-        <div style={{ padding: "4px 8px", minWidth: 160 }}>
+        // 右 padding 收到 4px，让每行的 source Handle 凸出 item div 右边缘 4px 后正好骑在节点右边缘上
+        <div style={{ padding: "4px 4px 4px 8px", minWidth: 160 }}>
           <div style={{ fontSize: 8, fontWeight: 700, color: "#166534", marginBottom: 3, textTransform: "uppercase" }}>
             {t("nodes.outputs_label")}
           </div>
@@ -209,32 +202,24 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
               {t("nodes.no_outputs")}
             </div>
           ) : (
-            outputPoints.map((field, i) => (
+            outputPoints.map((field) => (
               <div
                 key={field}
                 style={{
                   position: "relative",
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "space-between",
                   gap: 6,
                   padding: "1px 0",
                   fontSize: 10,
                 }}
               >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "#22c55e",
-                    border: "2px solid #fff",
-                    boxShadow: "0 0 0 1px #22c55e",
-                    flexShrink: 0,
-                  }}
-                />
                 <span style={{ color: "#166534", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {field}
                 </span>
+                {/* Output Handle 直接作为可见圆点：position=Right 让 React Flow 自动对齐到节点右边缘，
+                    top=50% 让它在行内垂直居中，与 input 行的 Handle 同样保证 DOM 位置 = 圆点 = 连线端点。 */}
                 <Handle
                   key={`out-${field}`}
                   type="source"
@@ -244,10 +229,10 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                     background: "#22c55e",
                     width: 8,
                     height: 8,
+                    borderRadius: "50%",
                     border: "2px solid #fff",
-                    top: `${16 + i * 22}px`,
-                    right: -4,
-                    opacity: 0,
+                    boxShadow: "0 0 0 1px #22c55e",
+                    top: "50%",
                   }}
                 />
               </div>
@@ -256,34 +241,23 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
         </div>
       ) : (
         /* start 节点的 outputs */
-        outputPoints.map((field, i) => (
+        outputPoints.map((field) => (
           <div
             key={field}
             style={{
               position: "relative",
               display: "flex",
               alignItems: "center",
+              justifyContent: "space-between",
               gap: 6,
-              padding: "1px 0",
+              padding: "1px 8px",
               fontSize: 10,
-              paddingLeft: 8,
-              paddingRight: 8,
             }}
           >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: "#22c55e",
-                border: "2px solid #fff",
-                boxShadow: "0 0 0 1px #22c55e",
-                flexShrink: 0,
-              }}
-            />
             <span style={{ color: "#166534", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {field}
             </span>
+            {/* Start 节点的 output Handle 同样直接作为可见圆点，position=Right 自动对齐节点右边缘 */}
             <Handle
               key={`out-${field}`}
               type="source"
@@ -293,10 +267,10 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                 background: "#22c55e",
                 width: 8,
                 height: 8,
+                borderRadius: "50%",
                 border: "2px solid #fff",
-                top: `${16 + i * 22}px`,
-                right: -4,
-                opacity: 0,
+                boxShadow: "0 0 0 1px #22c55e",
+                top: "50%",
               }}
             />
           </div>
