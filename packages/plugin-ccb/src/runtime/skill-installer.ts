@@ -20,6 +20,25 @@ async function defaultExtractArchive(archivePath: string, targetDir: string): Pr
 }
 
 /**
+ * 根据 RCS_URL 环境变量替换下载 URL 的 origin。
+ *
+ * RCS_URL 是 WebSocket 地址（ws:// 或 wss://），
+ * 转换为对应的 HTTP 协议后替换原始 URL 的 origin 部分。
+ * 未设置 RCS_URL 时维持原样。
+ */
+function resolveDownloadUrl(originalUrl: string): string {
+  const rcsUrl = process.env.RCS_URL;
+  if (!rcsUrl) return originalUrl;
+
+  // ws://host:port → http://host:port  /  wss://host:port → https://host:port
+  const httpUrl = rcsUrl.replace(/^ws(s?):\/\//, "http$1://");
+  const base = new URL(httpUrl);
+  const original = new URL(originalUrl);
+
+  return `${base.origin}${original.pathname}${original.search}`;
+}
+
+/**
  * 下载并安装 launchSpec 中声明的 skills 到 .claude/skills/ 目录。
  */
 export async function installSkills(
@@ -48,12 +67,13 @@ export async function installSkills(
       const archivePath = join(tempRoot, `${skill.name}.zip`);
       const targetDir = join(skillsDir, skill.name);
 
-      console.log(`[ccb-skill-installer] 下载 skill "${skill.name}"`);
+      const downloadUrl = resolveDownloadUrl(skill.url);
+      console.log(`[ccb-skill-installer] 下载 skill "${skill.name}": url=${downloadUrl.slice(0, 120)}...`);
       await rm(targetDir, { recursive: true, force: true });
       await mkdir(targetDir, { recursive: true });
       await mkdir(dirname(archivePath), { recursive: true });
 
-      const response = await fetchImpl(skill.url);
+      const response = await fetchImpl(downloadUrl);
       if (!response.ok) {
         console.error(
           `[ccb-skill-installer] 下载 skill "${skill.name}" 失败: status=${response.status} ${response.statusText}`,
