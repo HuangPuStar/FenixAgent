@@ -281,6 +281,7 @@
     "workflow_id": "工作流 ID",
     "workflow_name": "名称",
     "workflow_unnamed": "(未命名)",
+    "selected_node": "选中节点",
     "workflow_desc_label": "描述",
     "workflow_no_desc": "(无)",
     "workflow_draft_path": "草稿路径",
