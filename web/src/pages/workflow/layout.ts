@@ -9,7 +9,7 @@ export function autoLayout(nodes: Node[], edges: Edge[]): Node[] {
 
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
+  g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 80 });
 
   for (const node of nodes) {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });

@@ -180,15 +180,15 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                 <Handle
                   key={`in-${param}`}
                   type="target"
-                  position={Position.Top}
+                  position={Position.Left}
                   id={`in-${param}`}
                   style={{
                     background: "#f59e0b",
                     width: 8,
                     height: 8,
                     border: "2px solid #fff",
-                    left: 16,
-                    top: `${-4 - i * 22}px`,
+                    top: 16,
+                    left: `${-4 - i * 22}px`,
                     opacity: 0,
                   }}
                 />
@@ -238,15 +238,15 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                 <Handle
                   key={`out-${field}`}
                   type="source"
-                  position={Position.Bottom}
+                  position={Position.Right}
                   id={`out-${field}`}
                   style={{
                     background: "#22c55e",
                     width: 8,
                     height: 8,
                     border: "2px solid #fff",
-                    left: 16,
-                    bottom: `${-4 - (outputPoints.length - 1 - i) * 22}px`,
+                    top: 16,
+                    right: `${-4 - (outputPoints.length - 1 - i) * 22}px`,
                     opacity: 0,
                   }}
                 />
@@ -287,15 +287,15 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
             <Handle
               key={`out-${field}`}
               type="source"
-              position={Position.Bottom}
+              position={Position.Right}
               id={`out-${field}`}
               style={{
                 background: "#22c55e",
                 width: 8,
                 height: 8,
                 border: "2px solid #fff",
-                left: 16,
-                bottom: `${-4 - (outputPoints.length - 1 - i) * 22}px`,
+                top: 16,
+                right: `${-4 - (outputPoints.length - 1 - i) * 22}px`,
                 opacity: 0,
               }}
             />
@@ -307,12 +307,12 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
       {!isStart && (
         <Handle
           type="target"
-          position={Position.Top}
+          position={Position.Left}
           className="!w-2 !h-2 !border-2 !border-white"
           style={{
             background: colors.main,
-            left: inputPoints.length === 0 ? "50%" : `${16 + inputPoints.length * 22 - 8}px`,
-            top: -4,
+            top: inputPoints.length === 0 ? "50%" : `${16 + inputPoints.length * 22 - 8}px`,
+            left: -4,
           }}
         />
       )}
@@ -320,12 +320,12 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
       {/* 逻辑边 source Handle */}
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         className="!w-2 !h-2 !border-2 !border-white"
         style={{
           background: colors.main,
-          left: outputPoints.length === 0 ? "50%" : `${16 + outputPoints.length * 22 - 8}px`,
-          bottom: -4,
+          top: outputPoints.length === 0 ? "50%" : `${16 + outputPoints.length * 22 - 8}px`,
+          right: -4,
         }}
       />
     </div>
