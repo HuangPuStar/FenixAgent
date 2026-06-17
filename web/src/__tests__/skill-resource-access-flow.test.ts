@@ -59,11 +59,11 @@ describe("skill resource access frontend flow", () => {
     expect(canManageSkillSharing(external)).toBe(false);
   });
 
-  // 公开开关仍通过原 skills set action 发送 publicReadable。
-  test("公开开关 set action 携带 publicReadable", async () => {
+  // 公开开关仍通过 update 方法发送 publicReadable。
+  test("公开开关 update 请求携带 publicReadable", async () => {
     const { skillConfigApi } = await import("../api/sdk");
 
-    await skillConfigApi.set("shared", {
+    await skillConfigApi.update("shared", {
       description: "Shared",
       content: "# Shared",
       metadata: {},
@@ -71,10 +71,10 @@ describe("skill resource access frontend flow", () => {
     });
 
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toContain("/web/config/skills/shared");
+    expect(call[1].method).toBe("PUT");
     const body = JSON.parse(call[1].body);
     expect(body).toEqual({
-      action: "set",
-      name: "shared",
       data: {
         description: "Shared",
         content: "# Shared",
