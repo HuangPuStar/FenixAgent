@@ -7,6 +7,8 @@ import type { WfMeta } from "../yaml-utils";
 export interface UseWorkflowMetaAgentParams {
   workflowId: string | undefined;
   meta: WfMeta;
+  /** 当前选中的节点信息（id + type），用于 context queue */
+  selectedNodeInfo?: { id: string; type: string } | null;
 }
 
 export interface UseWorkflowMetaAgentReturn {
@@ -17,13 +19,19 @@ export interface UseWorkflowMetaAgentReturn {
   agentList: Array<{ name: string; description: string | null }>;
   agentOverrideOpen: boolean;
   setAgentOverrideOpen: (open: boolean) => void;
+  /** 上下文标识（workflowId），变化时触发新会话 */
+  contextKey: string | undefined;
 }
 
 /**
  * Workflow 场景专用 Meta Agent hook。
  * 内部调用通用 useMetaAgent，并添加 workflow 特有的 scenePrompt/agentList 等逻辑。
  */
-export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentParams): UseWorkflowMetaAgentReturn {
+export function useWorkflowMetaAgent({
+  workflowId,
+  meta,
+  selectedNodeInfo,
+}: UseWorkflowMetaAgentParams): UseWorkflowMetaAgentReturn {
   const { t } = useTranslation("workflows");
   const { metaAgentId, chatOpen, setChatOpen } = useMetaAgent({ storageKey: "wf-editor:chat-open" });
 
@@ -60,6 +68,7 @@ export function useWorkflowMetaAgent({ workflowId, meta }: UseWorkflowMetaAgentP
 
   return {
     scenePrompt,
+    contextKey: workflowId,
     chatOpen,
     setChatOpen,
     metaAgentId,

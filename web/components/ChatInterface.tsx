@@ -81,6 +81,8 @@ interface ChatInterfaceProps {
   onSessionCreated?: (sessionId: string) => void;
   scenePrompt?: string;
   onPromptComplete?: () => void;
+  /** 上下文标识：变化时自动触发 newSession（如工作流 ID 变化） */
+  contextKey?: string;
 }
 // Helper Functions
 // =============================================================================
@@ -276,7 +278,17 @@ export interface ChatInterfaceHandle {
 }
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
-  { client, agentId, readonly, hideContextPanel, rcsSessionId, onSessionCreated, scenePrompt, onPromptComplete },
+  {
+    client,
+    agentId,
+    readonly,
+    hideContextPanel,
+    rcsSessionId,
+    onSessionCreated,
+    scenePrompt,
+    contextKey,
+    onPromptComplete,
+  },
   ref,
 ) {
   const { t } = useTranslation("components");
@@ -625,6 +637,15 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // The session_created handler will set sessionReady=true when ready
     requestCreateSession();
   }, [isLoading, resetThreadState, requestCreateSession, client.cancel]);
+
+  // 当 contextKey 变化时自动开始新会话（仅在 contextKey 有值且发生变化时触发）
+  const contextKeyRef = useRef(contextKey);
+  useEffect(() => {
+    if (contextKey !== undefined && contextKeyRef.current !== undefined && contextKeyRef.current !== contextKey) {
+      handleNewSession();
+    }
+    contextKeyRef.current = contextKey;
+  }, [contextKey, handleNewSession]);
 
   useImperativeHandle(
     ref,

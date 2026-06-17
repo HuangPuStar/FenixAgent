@@ -281,6 +281,7 @@
     "workflow_id": "Workflow ID",
     "workflow_name": "Name",
     "workflow_unnamed": "(Untitled)",
+    "selected_node": "Selected node",
     "workflow_desc_label": "Description",
     "workflow_no_desc": "(None)",
     "workflow_draft_path": "Draft Path",
