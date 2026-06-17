@@ -351,7 +351,13 @@
     "vi_no_versions": "暂无发布版本",
     "vi_no_versions_hint": "发布后创建第一个版本",
     "vi_latest_badge": "latest: v{{version}}",
-    "vi_preview_mode": "预览中"
+    "vi_preview_mode": "预览中",
+    "inputs_delete_confirm": "删除此输入？",
+    "inputs_value_hint": "如 nodes.shell_1.output",
+    "inputs_enter_to_add": "按 Enter 新增一行",
+    "output_delete_confirm": "删除此输出？",
+    "output_value_hint": "如 data.items.map(i => i.name)",
+    "output_enter_to_add": "按 Enter 新增一行"
   },
   "run_params": {
     "title": "运行参数",

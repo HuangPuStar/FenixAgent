@@ -351,7 +351,13 @@
     "vi_no_versions": "No published versions",
     "vi_no_versions_hint": "Publish to create the first version",
     "vi_latest_badge": "latest: v{{version}}",
-    "vi_preview_mode": "Previewing"
+    "vi_preview_mode": "Previewing",
+    "inputs_delete_confirm": "Delete this input?",
+    "inputs_value_hint": "e.g. nodes.shell_1.output",
+    "inputs_enter_to_add": "Press Enter to add a row",
+    "output_delete_confirm": "Delete this output?",
+    "output_value_hint": "e.g. data.items.map(i => i.name)",
+    "output_enter_to_add": "Press Enter to add a row"
   },
   "run_params": {
     "title": "Run Parameters",
