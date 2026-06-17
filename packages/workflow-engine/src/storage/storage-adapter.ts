@@ -46,8 +46,16 @@ export interface StorageAdapter {
 
   // ---------- 运行查询 ----------
 
-  /** 列出所有运行摘要，可按 projectId 过滤 */
-  listRuns(projectId?: string): Promise<RunSummary[]>;
+  /**
+   * 列出所有运行摘要，支持分页、状态过滤和名称搜索。
+   * @returns 分页结果，包含 items 和 total
+   */
+  listRuns(params: {
+    page: number;
+    pageSize: number;
+    status?: string;
+    q?: string;
+  }): Promise<{ items: RunSummary[]; total: number }>;
 
   /** 获取运行状态，不存在返回 null */
   getRunStatus(runId: string): Promise<DAGStatus | null>;

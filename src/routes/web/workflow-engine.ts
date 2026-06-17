@@ -164,7 +164,7 @@ app.post(
         // 列出运行记录（直接调用 StorageAdapter）
         case "listRuns": {
           const storage = createPgStorageAdapter(authCtx.organizationId);
-          const runs = await storage.listRuns();
+          const runs = await storage.listRuns({ page: 1, pageSize: 50 });
           return { success: true, data: runs };
         }
 
