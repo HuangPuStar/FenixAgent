@@ -1,5 +1,8 @@
+import { inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
+import { db } from "../../../db";
+import { member, model as modelTable, user } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
@@ -57,6 +60,31 @@ const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin).mo
 
 async function handleList(ctx: AuthContext) {
   const providers = await configPg.listProviders(ctx);
+
+  // 批量加载所有 provider 的模型
+  const providerIds = providers.map((p) => p.id).filter(Boolean);
+  const modelRows =
+    providerIds.length > 0
+      ? await db
+          .select({
+            providerId: modelTable.providerId,
+            modelId: modelTable.modelId,
+            displayName: modelTable.displayName,
+            modalities: modelTable.modalities,
+            limitConfig: modelTable.limitConfig,
+            cost: modelTable.cost,
+          })
+          .from(modelTable)
+          .where(inArray(modelTable.providerId, providerIds))
+      : [];
+
+  const modelsByProviderId: Record<string, typeof modelRows> = {};
+  for (const m of modelRows) {
+    const pid = m.providerId;
+    if (!modelsByProviderId[pid]) modelsByProviderId[pid] = [];
+    modelsByProviderId[pid].push(m);
+  }
+
   const list = providers.map((p) => ({
     id: p.name,
     name: p.displayName ?? "",
@@ -64,6 +92,13 @@ async function handleList(ctx: AuthContext) {
     keyHint: toKeyHint(p.apiKey),
     baseURL: p.baseUrl ?? null,
     modelCount: p.modelCount,
+    models: (modelsByProviderId[p.id] ?? []).map((m) => ({
+      modelId: m.modelId,
+      name: m.displayName ?? m.modelId,
+      modalities: m.modalities ?? null,
+      limit: m.limitConfig ?? null,
+      cost: m.cost ?? null,
+    })),
     resourceAccess: p.resourceAccess,
     resourceKey: p.resourceKey,
   }));
@@ -71,10 +106,7 @@ async function handleList(ctx: AuthContext) {
 }
 
 async function handleGet(ctx: AuthContext, name: string) {
-  // 同时支持按名称和跨组织共享资源键（resourceKey）查找，与 MCP 的 handleGet 逻辑一致
-  const p = name.includes("/")
-    ? await configPg.getProviderByResourceKey(ctx, name)
-    : await configPg.getProvider(ctx, name);
+  const p = await configPg.getProvider(ctx, name);
   if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
 
   const models = (p.models ?? []).map((m) => ({
