@@ -12,7 +12,7 @@ import {
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
@@ -41,6 +41,7 @@ import {
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useContextQueue } from "@/src/lib/use-context-queue";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
@@ -126,7 +127,28 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   >(() => {});
 
   // ── Meta Agent Chat ──
-  const { scenePrompt, chatOpen, setChatOpen, metaAgentId, agentList } = useWorkflowMetaAgent({ workflowId, meta });
+  const selectedNodeInfo = useMemo(() => {
+    if (!selectedNode) return null;
+    return { id: selectedNode.id, type: selectedNode.type ?? "unknown" };
+  }, [selectedNode?.id, selectedNode?.type]);
+
+  const { scenePrompt, contextKey, chatOpen, setChatOpen, metaAgentId, agentList } = useWorkflowMetaAgent({
+    workflowId,
+    meta,
+    selectedNodeInfo,
+  });
+
+  // 将当前编辑器上下文推入 Context Queue，每次消息发送时 agent 可感知
+  const editorContextText = useMemo(() => {
+    const lines = ["[Workflow Editor Context]"];
+    lines.push(`- ${t("editor.workflow_name")}: ${meta.name || t("editor.workflow_unnamed")}`);
+    if (selectedNodeInfo) {
+      lines.push(`- ${t("editor.selected_node")}: ${selectedNodeInfo.id} (type: ${selectedNodeInfo.type})`);
+    }
+    return lines.join("\n");
+  }, [meta.name, selectedNodeInfo?.id, selectedNodeInfo?.type, t]);
+
+  useContextQueue("workflow-editor-context", editorContextText);
 
   // ── Persistence hook ──
   const {
@@ -898,6 +920,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setChatOpen={setChatOpen}
         metaAgentId={metaAgentId}
         scenePrompt={scenePrompt}
+        contextKey={contextKey}
         onPromptComplete={handleRefreshDraft}
       />
 
