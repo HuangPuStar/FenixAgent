@@ -4,17 +4,22 @@
  * resolveYaml 通过依赖注入接受 getWorkflowDef / getVersionYaml，测试时传入 mock 即可。
  */
 import { describe, expect, mock, test } from "bun:test";
+import type { ResolveYamlDeps } from "../services/workflow/resolve-yaml";
 import { resolveYaml } from "../services/workflow/resolve-yaml";
 
 function makeDeps(opts: {
   workflow?: { latestVersion: number | null; storagePath: string | null } | null;
   yamlByVersion?: Record<number, string | null>;
-}) {
-  const getWorkflowDef = mock(async (_id: string, _orgId: string) => opts.workflow ?? null);
-  const getVersionYaml = mock(
-    async (_id: string, version: number, _storagePath?: string | null) => opts.yamlByVersion?.[version] ?? null,
-  );
-  return { getWorkflowDef, getVersionYaml };
+}): ResolveYamlDeps {
+  // mock 返回类型与 ResolveYamlDeps 不完全兼容，通过双重断言处理
+  return {
+    getWorkflowDef: mock(
+      async (_id: string, _orgId: string) => opts.workflow ?? null,
+    ) as unknown as ResolveYamlDeps["getWorkflowDef"],
+    getVersionYaml: mock(
+      async (_id: string, version: number, _storagePath?: string | null) => opts.yamlByVersion?.[version] ?? null,
+    ) as unknown as ResolveYamlDeps["getVersionYaml"],
+  };
 }
 
 describe("resolveYaml", () => {
