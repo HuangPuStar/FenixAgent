@@ -1,20 +1,6 @@
 FROM oven/bun:1 AS base
 WORKDIR /app
 
-# Proxy build args — 通过 docker compose build args 或 --build-arg 传入
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-ARG http_proxy
-ARG https_proxy
-ARG NO_PROXY
-ARG no_proxy
-ENV HTTP_PROXY=${HTTP_PROXY} \
-    HTTPS_PROXY=${HTTPS_PROXY} \
-    http_proxy=${http_proxy} \
-    https_proxy=${https_proxy} \
-    NO_PROXY=${NO_PROXY} \
-    no_proxy=${no_proxy}
-
 FROM base AS deps
 COPY package.json bun.lock ./
 COPY packages ./packages
@@ -25,7 +11,7 @@ COPY tsconfig.json tsconfig.base.json ./
 COPY src ./src
 COPY web ./web
 COPY components.json drizzle.config.ts ./
-RUN cd web && bun ../node_modules/vite/bin/vite.js build
+RUN bun run build:web
 RUN bun build src/index.ts --target=bun --sourcemap=external --outdir dist
 
 ############### migration image ###############
