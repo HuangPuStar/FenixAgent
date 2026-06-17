@@ -1,10 +1,8 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import {
-  ArrowRight,
   Bot,
   CheckCircle,
   Code,
-  Eye,
   GitBranch,
   Globe,
   Loader,
@@ -63,15 +61,6 @@ const RUN_STATUS_COLORS: Record<string, { color: string; bg: string }> = {
   SKIPPED: { color: "#d1d5db", bg: "#f9fafb" },
 };
 
-const RUN_STATUS_KEYS: Record<string, string> = {
-  PENDING: "nodes.status_pending",
-  RUNNING: "nodes.status_running",
-  COMPLETED: "nodes.status_completed",
-  FAILED: "nodes.status_failed",
-  CANCELLED: "nodes.status_cancelled",
-  SKIPPED: "nodes.status_skipped",
-};
-
 function StatusDot({ status }: { status: string }) {
   if (status === "RUNNING") return <Loader size={11} className="text-white animate-spin" />;
   if (status === "COMPLETED") return <CheckCircle size={11} className="text-white" />;
@@ -84,32 +73,6 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
-function getPreview(type: string, data: Record<string, unknown>): string {
-  switch (type) {
-    case "shell":
-      return String(data.command || "");
-    case "python":
-      return String(data.code || "");
-    case "agent":
-      return String(data.prompt || "");
-    case "api":
-      return String(data.url || "");
-    case "audit": {
-      const dd = data.display_data;
-      if (dd && typeof dd === "object") return String((dd as Record<string, string>).message || "");
-      return "";
-    }
-    case "workflow":
-      return String(data.ref || "");
-    case "loop":
-      return String(data.condition || "");
-    case "transform":
-      return Object.keys((data.output as Record<string, unknown>) ?? {}).join(", ");
-    default:
-      return "";
-  }
-}
-
 export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   const { t } = useTranslation("workflows");
   const nodeType = type ?? "shell";
@@ -118,18 +81,9 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   const icon = NODE_ICONS[nodeType] ?? <Terminal size={12} />;
   const d = data as Record<string, unknown>;
   const isStart = nodeType === "start";
-  const preview = getPreview(nodeType, d);
 
   const runStatus = d._runStatus as string | undefined;
-  const exitCode = d._exitCode as number | undefined;
   const statusColors = runStatus ? (RUN_STATUS_COLORS[runStatus] ?? RUN_STATUS_COLORS.PENDING) : null;
-  const statusLabel = runStatus ? t(RUN_STATUS_KEYS[runStatus] ?? "nodes.status_pending") : null;
-
-  const onViewOutput = d._onViewOutput as ((nodeId: string) => void) | undefined;
-  const onRerunFrom = d._onRerunFrom as ((nodeId: string) => void) | undefined;
-
-  const isTerminal = runStatus === "COMPLETED" || runStatus === "FAILED";
-  const showActions = isTerminal && !isStart;
 
   const borderColor = statusColors ? statusColors.color : selected ? colors.main : "var(--color-border-subtle)";
   const boxShadow = statusColors
@@ -180,84 +134,176 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
         {statusColors && !isStart && <StatusDot status={runStatus!} />}
       </div>
 
+      {/* INPUT LIST */}
       {!isStart && (
-        <div className="px-2.5 py-1.5" style={{ background: statusColors?.bg ?? colors.light }}>
-          {d.description ? (
-            <div className="text-text-secondary whitespace-nowrap overflow-hidden text-ellipsis text-[11px] mb-0.5">
-              {String(d.description)}
-            </div>
-          ) : null}
-          {preview ? (
-            <div className="text-text-primary whitespace-nowrap overflow-hidden text-ellipsis text-[11px] font-mono">
-              {preview.substring(0, 40)}
-            </div>
-          ) : !d.description ? (
-            <div className="text-text-muted text-[11px] italic">{t("nodes.not_configured")}</div>
-          ) : null}
-        </div>
-      )}
-
-      {statusColors && !isStart && (
         <div
-          className="flex items-center gap-1 text-[10px] font-medium"
           style={{
-            padding: "3px 10px",
-            background: statusColors.bg,
-            borderTop: `1px solid ${statusColors.color}20`,
-            color: statusColors.color,
+            padding: "4px 8px",
+            borderBottom: inputPoints.length > 0 ? "1px solid var(--color-border-subtle)" : undefined,
+            minWidth: 160,
           }}
         >
-          <span className="flex-1">{statusLabel}</span>
-          {exitCode != null && <span>exit: {exitCode}</span>}
-          {showActions && onViewOutput && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewOutput(id);
-              }}
-              title={t("nodes.view_output")}
-              className="flex items-center justify-center w-[18px] h-[18px] rounded-sm bg-surface-1 cursor-pointer p-0 hover:brightness-95 transition-all"
-              style={{ border: `1px solid ${statusColors.color}40`, color: statusColors.color }}
-            >
-              <Eye size={10} />
-            </button>
-          )}
-          {showActions && onRerunFrom && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRerunFrom(id);
-              }}
-              title={t("nodes.rerun_from")}
-              className="flex items-center justify-center w-[18px] h-[18px] rounded-sm bg-surface-1 cursor-pointer p-0 hover:brightness-95 transition-all"
-              style={{ border: `1px solid ${statusColors.color}40`, color: statusColors.color }}
-            >
-              <ArrowRight size={9} />
-            </button>
+          <div style={{ fontSize: 8, fontWeight: 700, color: "#92400e", marginBottom: 3, textTransform: "uppercase" }}>
+            INPUTS
+          </div>
+          {inputPoints.length === 0 ? (
+            <div style={{ fontSize: 9, color: "var(--color-text-muted)", textAlign: "center", padding: "2px 0" }}>
+              no inputs
+            </div>
+          ) : (
+            inputPoints.map((param, i) => (
+              <div
+                key={param}
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "1px 0",
+                  fontSize: 10,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "#f59e0b",
+                    border: "2px solid #fff",
+                    boxShadow: "0 0 0 1px #f59e0b",
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ color: "#92400e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {param}
+                </span>
+                <Handle
+                  key={`in-${param}`}
+                  type="target"
+                  position={Position.Top}
+                  id={`in-${param}`}
+                  style={{
+                    background: "#f59e0b",
+                    width: 8,
+                    height: 8,
+                    border: "2px solid #fff",
+                    left: 16,
+                    top: `${-4 - i * 22}px`,
+                    opacity: 0,
+                  }}
+                />
+              </div>
+            ))
           )}
         </div>
       )}
 
-      {/* 顶部：数据流入口 Handles + 逻辑边 Handle，一起水平分散 */}
-      {!isStart &&
-        inputPoints.length > 0 &&
-        inputPoints.map((param, i) => {
-          const total = inputPoints.length + 1;
-          const p = total === 1 ? 50 : ((i + 1) / (total + 1)) * 100;
-          return (
-            <Handle
-              key={`in-${param}`}
-              type="target"
-              position={Position.Top}
-              id={`in-${param}`}
-              className="![width:8px] ![height:8px] !border-2 !border-white"
-              style={{ background: "#f59e0b", left: `${p}%` }}
+      {/* OUTPUT LIST */}
+      {!isStart ? (
+        <div style={{ padding: "4px 8px", minWidth: 160 }}>
+          <div style={{ fontSize: 8, fontWeight: 700, color: "#166534", marginBottom: 3, textTransform: "uppercase" }}>
+            OUTPUTS
+          </div>
+          {outputPoints.length === 0 ? (
+            <div style={{ fontSize: 9, color: "var(--color-text-muted)", textAlign: "center", padding: "2px 0" }}>
+              no outputs
+            </div>
+          ) : (
+            outputPoints.map((field, i) => (
+              <div
+                key={field}
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "1px 0",
+                  fontSize: 10,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "#22c55e",
+                    border: "2px solid #fff",
+                    boxShadow: "0 0 0 1px #22c55e",
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ color: "#166534", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {field}
+                </span>
+                <Handle
+                  key={`out-${field}`}
+                  type="source"
+                  position={Position.Bottom}
+                  id={`out-${field}`}
+                  style={{
+                    background: "#22c55e",
+                    width: 8,
+                    height: 8,
+                    border: "2px solid #fff",
+                    left: 16,
+                    bottom: `${-4 - (outputPoints.length - 1 - i) * 22}px`,
+                    opacity: 0,
+                  }}
+                />
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        /* start 节点的 outputs */
+        outputPoints.map((field, i) => (
+          <div
+            key={field}
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "1px 0",
+              fontSize: 10,
+              paddingLeft: 8,
+              paddingRight: 8,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#22c55e",
+                border: "2px solid #fff",
+                boxShadow: "0 0 0 1px #22c55e",
+                flexShrink: 0,
+              }}
             />
-          );
-        })}
-      {/* 逻辑边 target Handle — 排在数据流入口后面 */}
+            <span style={{ color: "#166534", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {field}
+            </span>
+            <Handle
+              key={`out-${field}`}
+              type="source"
+              position={Position.Bottom}
+              id={`out-${field}`}
+              style={{
+                background: "#22c55e",
+                width: 8,
+                height: 8,
+                border: "2px solid #fff",
+                left: 16,
+                bottom: `${-4 - (outputPoints.length - 1 - i) * 22}px`,
+                opacity: 0,
+              }}
+            />
+          </div>
+        ))
+      )}
+
+      {/* 逻辑边 target Handle — 排在数据流 Handle 后面 */}
       {!isStart && (
         <Handle
           type="target"
@@ -265,83 +311,23 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
           className="!w-2 !h-2 !border-2 !border-white"
           style={{
             background: colors.main,
-            left: inputPoints.length === 0 ? "50%" : `${((inputPoints.length + 1) / (inputPoints.length + 2)) * 100}%`,
+            left: inputPoints.length === 0 ? "50%" : `${16 + inputPoints.length * 22 - 8}px`,
+            top: -4,
           }}
         />
       )}
-      {/* 入口标签 — 覆盖层，不影响 Handle 定位 */}
-      {!isStart &&
-        inputPoints.map((param, i) => {
-          const pct = inputPoints.length === 1 ? 50 : ((i + 1) / (inputPoints.length + 1)) * 100;
-          return (
-            <div
-              key={`label-in-${param}`}
-              className="wf-point-label-overlay"
-              style={{
-                position: "absolute",
-                top: -20,
-                left: `${pct}%`,
-                transform: "translateX(-50%)",
-                pointerEvents: "none",
-                zIndex: 3,
-              }}
-            >
-              <span className="wf-point-label wf-point-label-in">{param}</span>
-            </div>
-          );
-        })}
-      {/* 底部：数据流出口 Handles + 逻辑边 Handle，一起水平分散 */}
-      {!isStart
-        ? outputPoints.map((field, i) => {
-            const total = outputPoints.length + 1;
-            const p = total === 1 ? 50 : ((i + 1) / (total + 1)) * 100;
-            return (
-              <Handle
-                key={`out-${field}`}
-                type="source"
-                position={Position.Bottom}
-                id={`out-${field}`}
-                className="![width:8px] ![height:8px] !border-2 !border-white"
-                style={{ background: "#10b981", left: `${p}%` }}
-              />
-            );
-          })
-        : null}
-      {/* 逻辑边默认 Handle — start 节点居中，其他节点排在数据流 Handle 后面 */}
+
+      {/* 逻辑边 source Handle */}
       <Handle
         type="source"
         position={Position.Bottom}
         className="!w-2 !h-2 !border-2 !border-white"
         style={{
           background: colors.main,
-          left: isStart
-            ? "50%"
-            : outputPoints.length === 0
-              ? "50%"
-              : `${((outputPoints.length + 1) / (outputPoints.length + 2)) * 100}%`,
+          left: outputPoints.length === 0 ? "50%" : `${16 + outputPoints.length * 22 - 8}px`,
+          bottom: -4,
         }}
       />
-      {/* 出口标签 — 覆盖层 */}
-      {!isStart &&
-        outputPoints.map((field, i) => {
-          const total = outputPoints.length + 1;
-          const p = total === 1 ? 50 : ((i + 1) / (total + 1)) * 100;
-          return (
-            <div
-              key={`label-out-${field}`}
-              style={{
-                position: "absolute",
-                bottom: -20,
-                left: `${p}%`,
-                transform: "translateX(-50%)",
-                pointerEvents: "none",
-                zIndex: 3,
-              }}
-            >
-              <span className="wf-point-label wf-point-label-out">{field}</span>
-            </div>
-          );
-        })}
     </div>
   );
 }
