@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createLogger } from "@fenix/logger";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { agentConfig, environment, machine } from "../db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
@@ -253,8 +253,19 @@ export async function updateWebEnvironment(envId: string, organizationId: string
   return updated;
 }
 
-/** 获取团队所有环境并组装实例信息（web/environments 路由用） */
-export async function listEnvironmentsWithInstances(organizationId: string) {
+/**
+ * 获取团队所有环境并组装实例信息（web/environments 路由用）。
+ *
+ * 默认返回当前组织下所有环境；传入 options.userId 时进一步过滤为该用户创建的环境，
+ * 用于 workflow agent 节点等只需要"我的环境"的场景。
+ */
+export async function listEnvironmentsWithInstances(organizationId: string, options?: { userId?: string }) {
+  // 组织隔离始终生效，userId 仅在显式传入时附加，避免影响 findMetaEnvironment 等不带过滤的调用方
+  const conditions = [eq(environment.organizationId, organizationId)];
+  if (options?.userId) {
+    conditions.push(eq(environment.userId, options.userId));
+  }
+
   // LEFT JOIN agentConfig 一次性拿到 environment + agent_name
   const rows = await db
     .select({
@@ -263,7 +274,7 @@ export async function listEnvironmentsWithInstances(organizationId: string) {
     })
     .from(environment)
     .leftJoin(agentConfig, eq(environment.agentConfigId, agentConfig.id))
-    .where(eq(environment.organizationId, organizationId));
+    .where(and(...conditions));
 
   // 单次遍历按 environmentId 分组实例，避免 N 次 listInstances 调用
   const instanceMap = groupActiveInstancesByEnvironment();

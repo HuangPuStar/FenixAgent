@@ -44,6 +44,13 @@ export const EnvironmentListResponseSchema = EnvironmentInfoSchema.extend({
 /** 环境列表响应 */
 export const EnvironmentListSchema = EnvironmentListResponseSchema.array().describe("环境列表响应。");
 
+/** 环境列表查询参数 */
+export const EnvironmentListQuerySchema = z
+  .object({
+    mine: z.boolean().optional().describe("仅返回当前用户创建的环境；未传或为 false 时返回当前组织下所有环境。"),
+  })
+  .describe("环境列表查询参数。");
+
 /** 环境详情响应 */
 export const EnvironmentDetailResponseSchema = EnvironmentInfoSchema.extend({
   secret: z.string().describe("环境密钥，用于环境级鉴权。"),
@@ -113,6 +120,7 @@ export const DeleteEnvironmentResponseSchema = OkResponseSchema;
 
 export type EnvironmentInfo = z.infer<typeof EnvironmentInfoSchema>;
 export type EnvironmentListResponse = z.infer<typeof EnvironmentListResponseSchema>;
+export type EnvironmentListQuery = z.infer<typeof EnvironmentListQuerySchema>;
 export type EnvironmentDetailResponse = z.infer<typeof EnvironmentDetailResponseSchema>;
 export type CreateEnvironmentRequest = z.infer<typeof CreateEnvironmentRequestSchema>;
 export type UpdateEnvironmentRequest = z.infer<typeof UpdateEnvironmentRequestSchema>;

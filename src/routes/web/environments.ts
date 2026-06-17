@@ -10,6 +10,7 @@ import {
   EnterEnvironmentResponseSchema,
   EnvironmentDetailResponseSchema,
   EnvironmentInfoSchema,
+  EnvironmentListQuerySchema,
   EnvironmentListResponseSchema,
   EnvironmentListSchema,
   ListInstancesResponseSchema,
@@ -37,6 +38,7 @@ const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model(
   "environment-info": EnvironmentInfoSchema,
   "environment-instances-response": ListInstancesResponseSchema,
   "environment-list": EnvironmentListSchema,
+  "environment-list-query": EnvironmentListQuerySchema,
   "environment-list-response": EnvironmentListResponseSchema,
   "update-environment-request": UpdateEnvironmentRequestSchema,
   "update-environment-response": UpdateEnvironmentResponseSchema,
@@ -47,17 +49,22 @@ const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model(
 app.get(
   "/environments",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store }: any) => {
+  async ({ store, query }: any) => {
+    const user = store.user!;
     const authCtx = store.authContext!;
-    return listEnvironmentsWithInstances(authCtx.organizationId);
+    // mine=true 时仅返回当前 session 用户创建的环境；不传或 false 时维持旧行为，返回组织下全部环境。
+    const userId = query?.mine === true || query?.mine === "true" ? user.id : undefined;
+    return listEnvironmentsWithInstances(authCtx.organizationId, userId ? { userId } : undefined);
   },
   {
     sessionAuth: true,
+    query: "environment-list-query",
     response: "environment-list",
     detail: {
       tags: ["Environments"],
       summary: "获取环境列表",
-      description: "返回当前组织下的环境列表，并附带每个环境的活跃实例摘要。",
+      description:
+        "返回当前组织下的环境列表，并附带每个环境的活跃实例摘要。传入 mine=true 时仅返回当前用户创建的环境。",
     },
   },
 );
