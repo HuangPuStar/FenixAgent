@@ -416,7 +416,8 @@
     "placeholder": "Select date"
   },
   "toolCallRow": {
-    "viewParams": "View Parameters"
+    "viewParams": "View Parameters",
+    "toolName": "Tool"
   },
   "permissionPanel": {
     "allow": "Allow",

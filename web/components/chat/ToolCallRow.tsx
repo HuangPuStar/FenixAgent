@@ -8,7 +8,7 @@ import { ToolPermissionButtons } from "../ai-elements/permission-request";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
-import { CARD_STYLES, formatOutput, getCardCategory, truncate } from "./tool-call-utils";
+import { CARD_STYLES, formatOutput, getCardCategory, simplifyToolName, truncate } from "./tool-call-utils";
 
 // =============================================================================
 // 单张工具卡片 — 调用 narrate() 生成统一格式的人话文案
@@ -201,10 +201,16 @@ function ToolCallDialog({ open, onOpenChange, tool, style, icon: Icon, title, t 
       <DialogContent className="sm:max-w-lg p-0 gap-0">
         <DialogHeader className="px-4 py-3 border-b border-border">
           <DialogTitle className="text-sm font-medium flex items-center gap-2.5">
-            <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center", style.iconBg)}>
+            <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center shrink-0", style.iconBg)}>
               <Icon className={cn("h-3.5 w-3.5", style.iconColor)} />
             </div>
-            <span className="truncate">{title}</span>
+            {/* 主标题为人性化句子；下方附原始工具名，便于用户识别工具类型 */}
+            <div className="flex flex-col min-w-0 gap-0.5">
+              <span className="truncate">{title}</span>
+              <span className="text-[10px] text-text-dim font-mono truncate leading-tight">
+                {t("toolCallRow.toolName")}: {simplifyToolName(tool.title)}
+              </span>
+            </div>
           </DialogTitle>
         </DialogHeader>
 

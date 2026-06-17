@@ -416,7 +416,8 @@
     "placeholder": "选择日期"
   },
   "toolCallRow": {
-    "viewParams": "查看参数"
+    "viewParams": "查看参数",
+    "toolName": "工具"
   },
   "permissionPanel": {
     "allow": "允许",
