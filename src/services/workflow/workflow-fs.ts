@@ -28,11 +28,20 @@ export async function writeYamlFile(dir: string, fileName: string, content: stri
   await writeFile(join(dir, fileName), content, "utf-8");
 }
 
-/** 读取 YAML 文件，不存在返回 null */
+/** 读取 YAML 文件，不存在或读取失败返回 null */
 export async function readYamlFile(dir: string, fileName: string): Promise<string | null> {
   const filePath = join(dir, fileName);
-  if (!existsSync(filePath)) return null;
-  return readFile(filePath, "utf-8");
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT") {
+      return null;
+    }
+    // 权限错误或其他异常也返回 null，但打印警告以便排查
+    console.warn(`[workflow-fs] Failed to read ${filePath}: ${(err as Error).message}`);
+    return null;
+  }
 }
 
 /**
