@@ -63,8 +63,10 @@ mock.module("sonner", () => ({
   },
 }));
 
+import type { RunSummary } from "../api/workflow-engine";
+
 // ── 构造 RunSummary 工厂 ──
-function makeRun(overrides: Partial<import("../pages/workflow/WorkflowRuns").RunSummary> = {}) {
+function makeRun(overrides: Partial<RunSummary> = {}) {
   return {
     run_id: "run_test_001",
     workflow_name: "测试工作流",
@@ -176,14 +178,14 @@ describe("WorkflowRuns 页面", () => {
   // 加载时显示骨架屏
   test("加载时显示骨架屏", async () => {
     // 让 fetch 不立即 resolve，以保持 loading 状态
-    let resolveFetch: (value: Response) => void;
+    let resolveFetch!: (value: Response) => void;
     const pendingPromise = new Promise<Response>((r) => {
       resolveFetch = r;
     });
 
     globalThis.fetch = (async () => {
       return await pendingPromise;
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const { WorkflowRuns } = await import("../pages/workflow/WorkflowRuns");
     const container = win.document.createElement("div");
