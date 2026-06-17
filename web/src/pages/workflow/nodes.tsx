@@ -187,8 +187,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                     width: 8,
                     height: 8,
                     border: "2px solid #fff",
-                    top: 16,
-                    left: `${-4 - i * 22}px`,
+                    top: `${16 + i * 22}px`,
+                    left: -4,
                     opacity: 0,
                   }}
                 />
@@ -245,8 +245,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                     width: 8,
                     height: 8,
                     border: "2px solid #fff",
-                    top: 16,
-                    right: `${-4 - (outputPoints.length - 1 - i) * 22}px`,
+                    top: `${16 + i * 22}px`,
+                    right: -4,
                     opacity: 0,
                   }}
                 />
@@ -294,8 +294,8 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
                 width: 8,
                 height: 8,
                 border: "2px solid #fff",
-                top: 16,
-                right: `${-4 - (outputPoints.length - 1 - i) * 22}px`,
+                top: `${16 + i * 22}px`,
+                right: -4,
                 opacity: 0,
               }}
             />
