@@ -181,6 +181,9 @@ export const WorkflowDefsActionRequestSchema = z
   .describe("工作流定义接口的 action 分发请求体。");
 
 /** workflow-defs 响应 */
+
+// ⚠️ 变体顺序敏感：WorkflowDefDetailSchema（含 draftYaml）必须排在 WorkflowDefSchema 前，
+// 否则 get action 返回的 { ...wf, draftYaml } 会被 Zod strip 模式默认剥离未知键。
 export const WorkflowDefsActionResponseSchema = z
   .union([
     WorkflowSuccessSchema(WorkflowDefDetailSchema),
@@ -323,12 +326,18 @@ export const WorkflowEngineActionRequestSchema = z
       action: z.literal("run").describe("执行工作流。"),
       yaml: z.string().optional().describe("待执行的工作流 YAML；与 workflowId 二选一。"),
       params: JsonObjectSchema.optional().describe("运行参数。"),
-      workflowId: z.string().optional().describe("可选工作流 ID；传入后从草稿读取 YAML，用于事件归档。"),
+      workflowId: z
+        .string()
+        .optional()
+        .describe("可选工作流 ID；传入后从最新发布版本（latestVersion ?? 0）读取 YAML，用于事件归档。"),
     }),
     z.object({
       action: z.literal("dryRun").describe("对工作流进行干运行校验。"),
       yaml: z.string().optional().describe("待校验的工作流 YAML；与 workflowId 二选一。"),
-      workflowId: z.string().optional().describe("可选工作流 ID；传入后从草稿读取 YAML，用于发布干运行事件。"),
+      workflowId: z
+        .string()
+        .optional()
+        .describe("可选工作流 ID；传入后从最新发布版本（latestVersion ?? 0）读取 YAML，用于发布干运行事件。"),
     }),
     z.object({
       action: z.literal("cancel").describe("取消运行。"),
