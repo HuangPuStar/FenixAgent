@@ -147,7 +147,6 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
       heartbeatIntervalMs,
       tenantId,
       userId,
-      supportedEngineTypes,
       nodeId,
     });
 

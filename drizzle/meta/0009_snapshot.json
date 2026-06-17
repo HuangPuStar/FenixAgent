@@ -1,5 +1,5 @@
 {
-  "id": "409c9c6d-3329-456e-900c-d5237d30b7f1",
+  "id": "4de4f48b-28a0-4057-8c50-ce9f5ad6eb32",
   "prevId": "34db17e7-b389-43aa-8fd7-14ffe9a24b25",
   "version": "7",
   "dialect": "postgresql",
@@ -1867,13 +1867,6 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
-        },
-        "supported_engine_types": {
-          "name": "supported_engine_types",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "'[{\"type\":\"opencode\"}]'::jsonb"
         },
         "max_sessions": {
           "name": "max_sessions",

@@ -900,7 +900,6 @@ export const machine = pgTable(
     status: varchar("status").default("online").notNull(),
     machineInfo: jsonb("machine_info"),
     labels: jsonb("labels"),
-    supportedEngineTypes: jsonb("supported_engine_types").default([{ type: "opencode" }]),
     maxSessions: integer("max_sessions").default(5),
     heartbeatIntervalMs: integer("heartbeat_interval_ms").default(30000),
     lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { AgentDetailSchema } from "../schemas/config.schema";
-import { MachineSchema } from "../schemas/registry.schema";
 import { AGENT_SETTABLE_FIELDS, validateAgentData } from "../services/config/agent-config";
 import { ENGINE_TYPES } from "../services/config/types";
 
@@ -78,48 +77,6 @@ describe("AgentDetailSchema — engineType", () => {
       description: null,
       knowledge: null,
       engineType: null,
-    });
-    expect(result.success).toBe(true);
-  });
-});
-
-describe("MachineSchema — supportedEngineTypes", () => {
-  const baseMachine = {
-    id: "mach_test",
-    organizationId: null,
-    userId: null,
-    agentName: "opencode",
-    status: "online",
-    machineInfo: null,
-    labels: null,
-    maxSessions: 5,
-    heartbeatIntervalMs: 30000,
-    lastHeartbeatAt: null,
-    registeredAt: 0,
-    createdAt: 0,
-    updatedAt: 0,
-  };
-
-  test("支持 supportedEngineTypes 字段", () => {
-    const result = MachineSchema.safeParse({
-      ...baseMachine,
-      supportedEngineTypes: [{ type: "opencode" }],
-    });
-    expect(result.success).toBe(true);
-  });
-
-  test("supportedEngineTypes 为 null 时通过", () => {
-    const result = MachineSchema.safeParse({
-      ...baseMachine,
-      supportedEngineTypes: null,
-    });
-    expect(result.success).toBe(true);
-  });
-
-  test("supportedEngineTypes 含 cliPath 时通过", () => {
-    const result = MachineSchema.safeParse({
-      ...baseMachine,
-      supportedEngineTypes: [{ type: "claude-code", cliPath: "/usr/bin/claude" }],
     });
     expect(result.success).toBe(true);
   });

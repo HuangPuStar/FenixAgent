@@ -123,7 +123,6 @@ export async function registerMachine(params: {
   userId: string | null;
   /** 客户端持久化的 node_id，用于精确去重（避免 IP/MAC 变化导致重复注册） */
   nodeId?: string | null;
-  supportedEngineTypes?: { type: string; cliPath?: string }[];
 }): Promise<{ id: string; isNew: boolean }> {
   const hostname = params.machineInfo?.hostname as string | undefined;
   let existingId: string | null = null;
@@ -155,7 +154,6 @@ export async function registerMachine(params: {
         status: "online",
         machineInfo: params.machineInfo,
         labels: params.labels,
-        supportedEngineTypes: params.supportedEngineTypes,
         name: params.name,
         heartbeatIntervalMs: params.heartbeatIntervalMs,
         lastHeartbeatAt: now,
@@ -186,7 +184,6 @@ export async function registerMachine(params: {
     status: "online",
     machineInfo: params.machineInfo,
     labels: params.labels,
-    supportedEngineTypes: params.supportedEngineTypes,
     heartbeatIntervalMs: params.heartbeatIntervalMs,
     lastHeartbeatAt: now,
     registeredAt: now,
