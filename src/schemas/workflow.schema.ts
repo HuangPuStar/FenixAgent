@@ -183,8 +183,8 @@ export const WorkflowDefsActionRequestSchema = z
 /** workflow-defs 响应 */
 export const WorkflowDefsActionResponseSchema = z
   .union([
-    WorkflowSuccessSchema(WorkflowDefSchema),
     WorkflowSuccessSchema(WorkflowDefDetailSchema),
+    WorkflowSuccessSchema(WorkflowDefSchema),
     WorkflowSuccessSchema(WorkflowDefSchema.array()),
     WorkflowSuccessSchema(WorkflowVersionSchema),
     WorkflowSuccessSchema(WorkflowVersionSchema.array()),
@@ -321,14 +321,14 @@ export const WorkflowEngineActionRequestSchema = z
   .discriminatedUnion("action", [
     z.object({
       action: z.literal("run").describe("执行工作流。"),
-      yaml: z.string().describe("待执行的工作流 YAML。"),
+      yaml: z.string().optional().describe("待执行的工作流 YAML；与 workflowId 二选一。"),
       params: JsonObjectSchema.optional().describe("运行参数。"),
-      workflowId: z.string().optional().describe("可选工作流 ID，用于事件归档。"),
+      workflowId: z.string().optional().describe("可选工作流 ID；传入后从草稿读取 YAML，用于事件归档。"),
     }),
     z.object({
       action: z.literal("dryRun").describe("对工作流进行干运行校验。"),
-      yaml: z.string().describe("待校验的工作流 YAML。"),
-      workflowId: z.string().optional().describe("可选工作流 ID，用于发布干运行事件。"),
+      yaml: z.string().optional().describe("待校验的工作流 YAML；与 workflowId 二选一。"),
+      workflowId: z.string().optional().describe("可选工作流 ID；传入后从草稿读取 YAML，用于发布干运行事件。"),
     }),
     z.object({
       action: z.literal("cancel").describe("取消运行。"),

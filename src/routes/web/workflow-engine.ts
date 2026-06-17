@@ -11,11 +11,28 @@ import Elysia from "elysia";
 import { db } from "../../db";
 import { workflowSnapshot } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
+import { getVersionYaml } from "../../repositories/workflow-def";
 import { WorkflowEngineActionRequestSchema, WorkflowEngineActionResponseSchema } from "../../schemas";
 import { cleanupSpawnedEnvironments, getTeamEngine } from "../../services/workflow";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
 const logger = createLogger("wf-engine");
+
+/** 从 payload 中解析 YAML：优先用直接传入的 yaml，否则尝试通过 workflowId 从草稿读取 */
+async function resolveYaml(payload: Record<string, unknown>): Promise<string | null> {
+  const yaml = payload.yaml as string | undefined;
+  if (yaml) return yaml;
+
+  const workflowId = payload.workflowId as string | undefined;
+  if (!workflowId) return null;
+
+  // 从草稿（version=0）读取 YAML
+  const draft = await getVersionYaml(workflowId, 0);
+  if (!draft) {
+    logger.warn(`resolveYaml: no draft found for workflowId=${workflowId}`);
+  }
+  return draft;
+}
 
 const app = new Elysia({ name: "web-workflow-engine" }).use(authGuardPlugin).model({
   "workflow-engine-action-request": WorkflowEngineActionRequestSchema,
@@ -36,7 +53,10 @@ app.post(
       switch (action) {
         // 执行工作流（异步启动，立即返回 runId）
         case "run": {
-          const yaml = payload.yaml as string;
+          const yaml = await resolveYaml(payload);
+          if (!yaml) {
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "yaml or workflowId is required" } });
+          }
           const params = payload.params as Record<string, unknown> | undefined;
           const workflowId = payload.workflowId as string | undefined;
           const { runId, result } = engine.runAsync(yaml, params);
@@ -85,7 +105,10 @@ app.post(
 
         // 干运行：校验 + 展示执行计划
         case "dryRun": {
-          const yaml = payload.yaml as string;
+          const yaml = await resolveYaml(payload);
+          if (!yaml) {
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "yaml or workflowId is required" } });
+          }
           const result = engine.dryRun(yaml);
           const dryRunWorkflowId = payload.workflowId as string | undefined;
           if (dryRunWorkflowId) {
