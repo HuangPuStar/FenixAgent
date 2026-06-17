@@ -12,6 +12,8 @@ export interface MetaAgentPanelProps {
   metaAgentId: string | null;
   /** 可选的场景提示，workflow 场景传入 workflow 上下文，skills 场景不传 */
   scenePrompt?: string;
+  /** 上下文标识：变化时自动触发新会话 */
+  contextKey?: string;
   /** 会话完成后的回调，如刷新数据 */
   onPromptComplete?: () => void;
 }
@@ -29,6 +31,7 @@ export function MetaAgentPanel({
   setChatOpen,
   metaAgentId,
   scenePrompt,
+  contextKey,
   onPromptComplete,
 }: MetaAgentPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
@@ -69,6 +72,7 @@ export function MetaAgentPanel({
               agentId={metaAgentId}
               hideSidebar
               scenePrompt={scenePrompt}
+              contextKey={contextKey}
               onPromptComplete={onPromptComplete}
             />
           </div>
