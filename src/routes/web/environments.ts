@@ -10,7 +10,6 @@ import {
   EnterEnvironmentResponseSchema,
   EnvironmentDetailResponseSchema,
   EnvironmentInfoSchema,
-  EnvironmentListQuerySchema,
   EnvironmentListResponseSchema,
   EnvironmentListSchema,
   ListInstancesResponseSchema,
@@ -38,7 +37,6 @@ const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model(
   "environment-info": EnvironmentInfoSchema,
   "environment-instances-response": ListInstancesResponseSchema,
   "environment-list": EnvironmentListSchema,
-  "environment-list-query": EnvironmentListQuerySchema,
   "environment-list-response": EnvironmentListResponseSchema,
   "update-environment-request": UpdateEnvironmentRequestSchema,
   "update-environment-response": UpdateEnvironmentResponseSchema,
@@ -49,22 +47,20 @@ const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model(
 app.get(
   "/environments",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store, query }: any) => {
-    const user = store.user!;
+  async ({ store }: any) => {
     const authCtx = store.authContext!;
-    // mine=true 时仅返回当前 session 用户创建的环境；不传或 false 时维持旧行为，返回组织下全部环境。
-    const userId = query?.mine === true || query?.mine === "true" ? user.id : undefined;
-    return listEnvironmentsWithInstances(authCtx.organizationId, userId ? { userId } : undefined);
+    const user = store.user!;
+    // 始终按当前用户视角过滤：绑定 agent 的 runtime env 按 userId 隔离，
+    // 未绑 agent 的手动环境仍组织内可见，避免前端把他人 runtime 挂到自己的 agent 上。
+    return listEnvironmentsWithInstances(authCtx.organizationId, user.id);
   },
   {
     sessionAuth: true,
-    query: "environment-list-query",
     response: "environment-list",
     detail: {
       tags: ["Environments"],
       summary: "获取环境列表",
-      description:
-        "返回当前组织下的环境列表，并附带每个环境的活跃实例摘要。传入 mine=true 时仅返回当前用户创建的环境。",
+      description: "返回当前组织下的环境列表，并附带每个环境的活跃实例摘要。绑定 agent 的 runtime 环境按当前用户隔离。",
     },
   },
 );
@@ -129,8 +125,9 @@ app.get(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     try {
-      const env = await getOwnedEnvironment(params.id, authCtx.organizationId);
+      const env = await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
       return { ...sanitizeResponse(env), secret: env.secret };
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
@@ -155,6 +152,7 @@ app.put(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, body, error }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     const b = body as {
       name?: string;
       description?: string | null;
@@ -164,6 +162,7 @@ app.put(
 
     let updated: Awaited<ReturnType<typeof updateWebEnvironment>>;
     try {
+      await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
       updated = await updateWebEnvironment(params.id, authCtx.organizationId, {
         name: b.name,
         description: b.description,
@@ -203,7 +202,7 @@ app.post(
     const user = store.user!;
     const authCtx = store.authContext!;
     try {
-      await getOwnedEnvironment(params.id, authCtx.organizationId);
+      await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
         return error(404, { error: { type: "NOT_FOUND", message: err.message } });
@@ -238,8 +237,9 @@ app.delete(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     try {
-      await getOwnedEnvironment(params.id, authCtx.organizationId);
+      await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
         return error(404, { error: { type: "NOT_FOUND", message: err.message } });
@@ -265,8 +265,9 @@ app.get(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     try {
-      await getOwnedEnvironment(params.id, authCtx.organizationId);
+      await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
         return error(404, { error: { type: "NOT_FOUND", message: err.message } });

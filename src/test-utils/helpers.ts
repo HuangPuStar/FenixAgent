@@ -3,6 +3,7 @@ import { resetConfigPgStubs } from "./stubs/config-pg-stub";
 import { resetDbStub } from "./stubs/db-stub";
 import { resetEnvironmentRepoStub, resetModuleStubs } from "./stubs/module-stubs";
 import { resetResourcePermissionRepoStub } from "./stubs/resource-permission-repo-stub";
+import { resetSystemApiStubs } from "./stubs/system-api-stub";
 
 export function resetAllStubs() {
   resetConfigPgStubs();
@@ -11,6 +12,7 @@ export function resetAllStubs() {
   resetModuleStubs();
   resetEnvironmentRepoStub();
   resetResourcePermissionRepoStub();
+  resetSystemApiStubs();
 }
 
 export { getApiKeyServiceStub, getAuthApiStub, stubApiKeyService, stubAuthApi } from "./stubs/auth-stub";
@@ -39,3 +41,4 @@ export {
   stubWorkflowTriggerService,
 } from "./stubs/module-stubs";
 export { stubResourcePermissionRepo } from "./stubs/resource-permission-repo-stub";
+export { stubSystemApi } from "./stubs/system-api-stub";

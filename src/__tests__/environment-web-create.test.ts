@@ -74,8 +74,40 @@ describe("createWebEnvironment", () => {
     expect(insertCalled).toBe(0);
   });
 
-  // 并发请求撞上唯一索引后应回查并返回已创建的 environment，而不是直接报错。
-  test("returns existing environment after unique conflict during concurrent create", async () => {
+  // 同组织下不同用户访问同一 agent 时，不应复用其他用户的 runtime environment。
+  test("does not reuse another user's environment for the same agentConfigId", async () => {
+    const insertedNames: string[] = [];
+    stubConfigPg({
+      getReadableAgentConfigById: async () => ({
+        id: "127f5beb-c4a5-4b6e-8ce3-26fa4bac514b",
+        machineId: null,
+      }),
+    });
+    stubDb({
+      select: createSelectChain([[makeEnvironmentRow({ userId: "user-1" })]]),
+      insert: () => ({
+        values: async (payload: { name: string }) => {
+          insertedNames.push(payload.name);
+        },
+      }),
+    });
+
+    const result = await createWebEnvironment({
+      name: "env-127f5beb",
+      agentConfigId: "127f5beb-c4a5-4b6e-8ce3-26fa4bac514b",
+      autoStart: true,
+      userId: "user-2",
+      organizationId: "org-1",
+    });
+
+    expect(result.id).not.toBe("env_existing");
+    expect(result.userId).toBe("user-2");
+    expect(result.name).toBe("env-127f5beb");
+    expect(insertedNames).toEqual(["env-127f5beb"]);
+  });
+
+  // 同一用户对同一 agent 的并发创建撞上唯一索引后，应回查并返回已创建的 environment。
+  test("returns existing environment after unique conflict on org user agentConfig tuple", async () => {
     stubConfigPg({
       getReadableAgentConfigById: async () => ({
         id: "127f5beb-c4a5-4b6e-8ce3-26fa4bac514b",
@@ -86,7 +118,7 @@ describe("createWebEnvironment", () => {
       select: createSelectChain([[], [makeEnvironmentRow()]]),
       insert: () => ({
         values: async () => {
-          throw new Error('duplicate key value violates unique constraint "idx_environment_org_name"');
+          throw new Error('duplicate key value violates unique constraint "idx_environment_org_user_agent_config"');
         },
       }),
     });

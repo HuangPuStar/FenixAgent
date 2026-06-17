@@ -25,10 +25,10 @@ beforeEach(() => {
 
     CREATE TABLE environment (
       id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
       description TEXT,
       workspace_path TEXT NOT NULL,
-      agent_name TEXT,
+      agent_config_id TEXT,
       status TEXT NOT NULL DEFAULT 'idle',
       machine_name TEXT,
       branch TEXT,
@@ -38,6 +38,7 @@ beforeEach(() => {
       capabilities TEXT,
       secret TEXT NOT NULL,
       user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      organization_id TEXT NOT NULL,
       auto_start INTEGER NOT NULL DEFAULT 0,
       last_poll_at INTEGER,
       created_at INTEGER NOT NULL,
@@ -85,7 +86,9 @@ beforeEach(() => {
 
     CREATE INDEX idx_environment_user_id ON environment(user_id);
     CREATE UNIQUE INDEX idx_environment_secret ON environment(secret);
-    CREATE UNIQUE INDEX idx_environment_name ON environment(name);
+    CREATE UNIQUE INDEX idx_environment_org_user_agent_config
+      ON environment(organization_id, user_id, agent_config_id)
+      WHERE agent_config_id IS NOT NULL;
     CREATE UNIQUE INDEX idx_knowledge_base_user_slug ON knowledge_base(user_id, slug);
     CREATE INDEX idx_knowledge_resource_kb ON knowledge_resource(knowledge_base_id);
     CREATE INDEX idx_agent_knowledge_binding_agent ON agent_knowledge_binding(agent_name);
@@ -101,15 +104,16 @@ describe("environment table schema", () => {
     expect(colNames).toContain("workspace_path");
     expect(colNames).toContain("secret");
     expect(colNames).toContain("user_id");
+    expect(colNames).toContain("organization_id");
     expect(colNames).toContain("status");
     expect(colNames).toContain("description");
-    expect(colNames).toContain("agent_name");
+    expect(colNames).toContain("agent_config_id");
     expect(colNames).toContain("capabilities");
     expect(colNames).toContain("created_at");
     expect(colNames).toContain("updated_at");
   });
 
-  test("name unique constraint", () => {
+  test("org user agentConfig unique constraint only applies to non-null agentConfig", () => {
     const now = Math.floor(Date.now() / 1000);
     sqlite
       .prepare("INSERT INTO user (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
@@ -117,17 +121,29 @@ describe("environment table schema", () => {
 
     sqlite
       .prepare(
-        "INSERT INTO environment (id, name, workspace_path, secret, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO environment (id, name, workspace_path, agent_config_id, secret, user_id, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run("e1", "env-a", "/tmp/ws", "secret1", "u1", now, now);
+      .run("e1", "env-a", "/tmp/ws", "agc-1", "secret1", "u1", "org-1", now, now);
 
     expect(() => {
       sqlite
         .prepare(
-          "INSERT INTO environment (id, name, workspace_path, secret, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO environment (id, name, workspace_path, agent_config_id, secret, user_id, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .run("e2", "env-a", "/tmp/ws2", "secret2", "u1", now, now);
+        .run("e2", "env-b", "/tmp/ws2", "agc-1", "secret2", "u1", "org-1", now, now);
     }).toThrow();
+
+    sqlite
+      .prepare(
+        "INSERT INTO environment (id, name, workspace_path, agent_config_id, secret, user_id, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("e3", "env-c", "/tmp/ws3", null, "secret3", "u1", "org-1", now, now);
+
+    sqlite
+      .prepare(
+        "INSERT INTO environment (id, name, workspace_path, agent_config_id, secret, user_id, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("e4", "env-d", "/tmp/ws4", null, "secret4", "u1", "org-1", now, now);
   });
 
   test("secret unique constraint", () => {
@@ -138,16 +154,16 @@ describe("environment table schema", () => {
 
     sqlite
       .prepare(
-        "INSERT INTO environment (id, name, workspace_path, secret, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO environment (id, name, workspace_path, secret, user_id, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run("e1", "env-a", "/tmp/ws", "secret1", "u1", now, now);
+      .run("e1", "env-a", "/tmp/ws", "secret1", "u1", "org-1", now, now);
 
     expect(() => {
       sqlite
         .prepare(
-          "INSERT INTO environment (id, name, workspace_path, secret, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO environment (id, name, workspace_path, secret, user_id, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .run("e2", "env-b", "/tmp/ws2", "secret1", "u1", now, now);
+        .run("e2", "env-b", "/tmp/ws2", "secret1", "u1", "org-1", now, now);
     }).toThrow();
   });
 
@@ -159,9 +175,9 @@ describe("environment table schema", () => {
 
     sqlite
       .prepare(
-        "INSERT INTO environment (id, name, workspace_path, secret, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO environment (id, name, workspace_path, secret, user_id, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run("e1", "env-a", "/tmp/ws", "secret1", "u1", now, now);
+      .run("e1", "env-a", "/tmp/ws", "secret1", "u1", "org-1", now, now);
 
     sqlite.prepare("DELETE FROM user WHERE id = ?").run("u1");
 

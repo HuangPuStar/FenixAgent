@@ -87,6 +87,17 @@ export function logResponse({ request, set }: { request: Request; set: { status?
   }
 }
 
+/**
+ * 向响应注入 X-Request-Id 响应头和 JSON 响应体中的 requestId 字段。
+ * 挂到主 app 的 onAfterHandle 上（紧接 logResponse 之后）。
+ */
+// biome-ignore lint/suspicious/noExplicitAny: Elysia AfterHandler context 签名与 set.headers 不兼容
+export function injectRequestId({ request, set }: any) {
+  const requestId = (request as any).__requestId as string | undefined;
+  if (!requestId) return;
+  set.headers["X-Request-Id"] = requestId;
+}
+
 /** 请求错误日志。挂到主 app 的 onError 上。 */
 export function logError({
   request,

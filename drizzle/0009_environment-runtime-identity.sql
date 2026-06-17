@@ -1,0 +1,2 @@
+DROP INDEX "idx_environment_org_name";--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_environment_org_user_agent_config" ON "environment" USING btree ("organization_id","user_id","agent_config_id") WHERE "environment"."agent_config_id" is not null;
