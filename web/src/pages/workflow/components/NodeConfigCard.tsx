@@ -1,5 +1,6 @@
 import type { Node } from "@xyflow/react";
 import { useTranslation } from "react-i18next";
+import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
 import { syncOutputOnRename } from "../preset-utils";
 import { START_NODE_ID } from "../yaml-utils";
 import { InputsEditor } from "./InputsEditor";
@@ -13,7 +14,7 @@ export interface NodeConfigCardProps {
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>;
   updateNodeData: (patch: Record<string, unknown>) => void;
-  agentList: Array<{ name: string; description: string | null }>;
+  agentList: AgentNodeOption[];
 }
 
 export function NodeConfigCard({
@@ -113,17 +114,11 @@ export function NodeConfigCard({
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
                     onChange={(val) => {
-                      const cleaned: Record<string, string> = {};
-                      if (val) {
-                        for (const [k, v] of Object.entries(val)) {
-                          if (k.trim()) cleaned[k.trim()] = v;
-                        }
-                      }
-                      updateNodeData({ inputs: Object.keys(cleaned).length ? cleaned : undefined });
+                      updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.inputs_key_placeholder")}
-                    valuePlaceholder={t("editor.inputs_value_placeholder")}
+                    valuePlaceholder={t("editor.inputs_value_hint")}
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
@@ -180,17 +175,11 @@ export function NodeConfigCard({
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
                     onChange={(val) => {
-                      const cleaned: Record<string, string> = {};
-                      if (val) {
-                        for (const [k, v] of Object.entries(val)) {
-                          if (k.trim()) cleaned[k.trim()] = v;
-                        }
-                      }
-                      updateNodeData({ inputs: Object.keys(cleaned).length ? cleaned : undefined });
+                      updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.inputs_key_placeholder")}
-                    valuePlaceholder={t("editor.inputs_value_placeholder")}
+                    valuePlaceholder={t("editor.inputs_value_hint")}
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
@@ -208,9 +197,13 @@ export function NodeConfigCard({
                   >
                     <option value="">{t("editor.agent_select_env")}</option>
                     {agentList.map((a) => (
-                      <option key={a.name} value={a.name}>
+                      // option 的 value 是 environment 名字（yaml agent 字段语义需要），
+                      // 但展示给用户的是智能体名 + 描述，跟左侧 AgentSidebar 一致。
+                      // 没绑定 environment 的智能体无法被运行时解析，置灰禁选。
+                      <option key={a.name} value={a.envName ?? ""} disabled={!a.envName}>
                         {a.name}
                         {a.description ? ` - ${a.description}` : ""}
+                        {!a.envName ? ` (${t("editor.agent_no_env")})` : ""}
                       </option>
                     ))}
                   </select>
@@ -370,17 +363,11 @@ export function NodeConfigCard({
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
                     onChange={(val) => {
-                      const cleaned: Record<string, string> = {};
-                      if (val) {
-                        for (const [k, v] of Object.entries(val)) {
-                          if (k.trim()) cleaned[k.trim()] = v;
-                        }
-                      }
-                      updateNodeData({ inputs: Object.keys(cleaned).length ? cleaned : undefined });
+                      updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.transform_inputs_key_placeholder")}
-                    valuePlaceholder={t("editor.transform_inputs_value_placeholder")}
+                    valuePlaceholder={t("editor.inputs_value_hint")}
                     addLabel={t("editor.transform_inputs_add")}
                   />
                 </div>
@@ -389,20 +376,18 @@ export function NodeConfigCard({
                   <InputsEditor
                     value={sd?.output as Record<string, string> | undefined}
                     onChange={(val) => {
-                      const cleaned: Record<string, string> = {};
-                      if (val) {
-                        for (const [k, v] of Object.entries(val)) {
-                          if (k.trim()) cleaned[k.trim()] = v;
-                        }
+                      if (!val || Object.keys(val).length === 0) {
+                        updateNodeData({ output: undefined });
+                        return;
                       }
                       // 检测 key 名变更并自动同步表达式中的同名引用
                       const oldOutput = (sd?.output as Record<string, string>) ?? {};
-                      const synced = syncOutputOnRename(oldOutput, cleaned);
-                      updateNodeData({ output: Object.keys(synced).length ? synced : undefined });
+                      const synced = syncOutputOnRename(oldOutput, val);
+                      updateNodeData({ output: synced });
                     }}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.transform_output_key_placeholder")}
-                    valuePlaceholder={t("editor.transform_output_value_placeholder")}
+                    valuePlaceholder={t("editor.output_value_hint")}
                     addLabel={t("editor.transform_output_add")}
                   />
                 </div>

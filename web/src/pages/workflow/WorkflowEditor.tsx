@@ -12,7 +12,7 @@ import {
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
@@ -21,18 +21,13 @@ import {
   CheckCircle,
   Code,
   Download,
-  Edit3,
-  Eye,
   FilePlus,
   Globe,
   LayoutGrid,
-  Link,
   List,
   Lock,
-  MessageSquare,
   Play,
   RefreshCw,
-  Rocket,
   Save,
   ShieldCheck,
   Terminal,
@@ -41,6 +36,7 @@ import {
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useContextQueue } from "@/src/lib/use-context-queue";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
@@ -94,7 +90,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [yamlOpen, setYamlOpen] = useState(false);
   const [yamlText, setYamlText] = useState("");
   const [yamlBaseText, setYamlBaseText] = useState("");
-  const [readOnly, setReadOnly] = useState(false);
 
   // ── 版本预览状态 ──
   const [previewVersion, setPreviewVersion] = useState<number | null>(null);
@@ -116,6 +111,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   // ── Popover 状态 ──
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [metaPopoverOpen, setMetaPopoverOpen] = useState(false);
+  const [filePopoverOpen, setFilePopoverOpen] = useState(false);
 
   // ── Refs ──
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -126,7 +122,34 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   >(() => {});
 
   // ── Meta Agent Chat ──
-  const { scenePrompt, chatOpen, setChatOpen, metaAgentId, agentList } = useWorkflowMetaAgent({ workflowId, meta });
+  const selectedNodeInfo = useMemo(() => {
+    if (!selectedNode) return null;
+    return { id: selectedNode.id, type: selectedNode.type ?? "unknown" };
+  }, [selectedNode?.id, selectedNode?.type, selectedNode]);
+
+  const { scenePrompt, contextKey, chatOpen, setChatOpen, metaAgentId, agentList } = useWorkflowMetaAgent({
+    workflowId,
+    meta,
+    selectedNodeInfo,
+  });
+
+  // 将当前编辑器上下文推入 Context Queue，每次消息发送时 agent 可感知
+  const editorContextText = useMemo(() => {
+    const lines = ["[Workflow Editor Context]"];
+    lines.push(`- ${t("editor.workflow_name")}: ${meta.name || t("editor.workflow_unnamed")}`);
+    if (selectedNodeInfo) {
+      lines.push(`- ${t("editor.selected_node")}: ${selectedNodeInfo.id} (type: ${selectedNodeInfo.type})`);
+    }
+    return lines.join("\n");
+  }, [meta.name, selectedNodeInfo, t]);
+
+  useContextQueue("workflow-editor-context", editorContextText);
+
+  // 运行完成后画布自动退出只读模式（runSnapshot 顶层已有，无需等 useWorkflowRun）
+  const isRunDone = runSnapshot?.dag_status
+    ? ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(runSnapshot.dag_status)
+    : false;
+  const forceReadOnly = activeRunId !== null && !isRunDone;
 
   // ── Persistence hook ──
   const {
@@ -156,7 +179,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setMeta,
     setDryRunResult: (r) => setDryRunResultRef.current(r),
     setYamlOpen,
-    readOnly: readOnly || activeRunId !== null || previewVersion !== null,
+    readOnly: forceReadOnly || previewVersion !== null,
   });
 
   // ── Canvas hook ──
@@ -180,7 +203,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setEdges,
     setMeta,
     setSelectedNode,
-    readOnly: readOnly || activeRunId !== null || previewVersion !== null,
+    readOnly: forceReadOnly || previewVersion !== null,
     activeRunId,
     selectedNode,
     screenToFlowPosition,
@@ -206,7 +229,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setDryRunResult,
     running,
     isRunMode,
-    isRunDone,
     dagStatus,
     runRightTab,
     setRunRightTab,
@@ -249,7 +271,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   });
 
   // ── 运行模式/版本预览下画布自动只读 ──
-  const effectiveReadOnly = readOnly || isRunMode || previewVersion !== null;
+  const effectiveReadOnly = (isRunMode && !isRunDone) || previewVersion !== null;
 
   // ── 保存状态 toast ──
   useEffect(() => {
@@ -493,6 +515,15 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         style={{ display: "none" }}
       />
 
+      {/* Meta Agent Chat 左侧面板 */}
+      <MetaAgentPanel
+        chatOpen={chatOpen}
+        setChatOpen={setChatOpen}
+        metaAgentId={metaAgentId}
+        scenePrompt={scenePrompt}
+        contextKey={contextKey}
+        onPromptComplete={handleRefreshDraft}
+      />
       <div className="flex-1 relative overflow-hidden">
         {previewVersion !== null && (
           <div
@@ -610,39 +641,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               <button
                 type="button"
                 className="wf-toolbar-btn"
-                onClick={() => fileInputRef.current?.click()}
-                data-tooltip={t("editor.tooltip_import")}
-              >
-                <Upload size={15} />
-              </button>
-              <button
-                type="button"
-                className="wf-toolbar-btn"
-                onClick={handleExportYaml}
-                data-tooltip={t("editor.tooltip_export")}
-              >
-                <Download size={15} />
-              </button>
-              <div className="wf-toolbar-divider" />
-              <button
-                type="button"
-                className="wf-toolbar-btn"
                 onClick={handleAutoLayout}
                 data-tooltip={t("editor.tooltip_layout")}
               >
                 <LayoutGrid size={15} />
               </button>
-              {workflowId && (
-                <button
-                  type="button"
-                  className="wf-toolbar-btn"
-                  onClick={handleRefreshDraft}
-                  disabled={isRunMode && !isRunDone}
-                  data-tooltip={t("editor.tooltip_refresh")}
-                >
-                  <RefreshCw size={15} />
-                </button>
-              )}
               {workflowId && (
                 <>
                   <div className="wf-toolbar-divider" />
@@ -660,34 +663,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                     }
                   >
                     {saveStatus === "saving" ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
-                  </button>
-                  <button
-                    type="button"
-                    className={`wf-toolbar-btn ${versionsSheetOpen ? "active" : ""}`}
-                    onClick={() => {
-                      setVersionsSheetOpen(!versionsSheetOpen);
-                      if (!versionsSheetOpen) {
-                        setRunSheetOpen(false);
-                        setTriggersSheetOpen(false);
-                      }
-                    }}
-                    data-tooltip={t("editor.tooltip_versions")}
-                  >
-                    <Rocket size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`wf-toolbar-btn ${triggersSheetOpen ? "active" : ""}`}
-                    onClick={() => {
-                      setTriggersSheetOpen(!triggersSheetOpen);
-                      if (!triggersSheetOpen) {
-                        setRunSheetOpen(false);
-                        setVersionsSheetOpen(false);
-                      }
-                    }}
-                    data-tooltip={t("editor.tab_triggers")}
-                  >
-                    <Link size={15} />
                   </button>
                 </>
               )}
@@ -725,24 +700,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               >
                 <Play size={15} />
               </button>
-              <div className="wf-toolbar-divider" />
-              <button
-                type="button"
-                className={`wf-toolbar-btn ${readOnly ? "active" : ""}`}
-                onClick={() => setReadOnly(!readOnly)}
-                data-tooltip={readOnly ? t("editor.tooltip_readonly_off") : t("editor.tooltip_readonly_on")}
-              >
-                {readOnly ? <Eye size={15} /> : <Edit3 size={15} />}
-              </button>
-              <div className="wf-toolbar-divider" />
-              <button
-                type="button"
-                className={`wf-toolbar-btn ${chatOpen ? "active" : ""}`}
-                onClick={() => setChatOpen(!chatOpen)}
-                data-tooltip={t("editor.tooltip_chat")}
-              >
-                <MessageSquare size={15} />
-              </button>
             </div>
           </Panel>
         </ReactFlow>
@@ -779,6 +736,51 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
 
         {/* 右下角按钮组 */}
         <div className="wf-bottom-actions">
+          {/* 文件操作菜单 */}
+          <Popover open={filePopoverOpen} onOpenChange={setFilePopoverOpen}>
+            <PopoverTrigger asChild>
+              <button type="button" className="wf-meta-trigger-btn" title={t("editor.tooltip_file_menu")}>
+                <Upload size={14} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="end"
+              sideOffset={8}
+              collisionPadding={16}
+              className="wf-meta-popover"
+              style={{ width: 180 }}
+            >
+              <div className="wf-popover-header">
+                <span className="wf-popover-title">{t("editor.file_menu_title")}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 py-1">
+                <button
+                  type="button"
+                  className="wf-dropdown-item"
+                  onClick={() => {
+                    fileInputRef.current?.click();
+                    setFilePopoverOpen(false);
+                  }}
+                >
+                  <Upload size={14} />
+                  <span>{t("editor.import_yaml")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="wf-dropdown-item"
+                  onClick={() => {
+                    handleExportYaml();
+                    setFilePopoverOpen(false);
+                  }}
+                >
+                  <Download size={14} />
+                  <span>{t("editor.export_yaml")}</span>
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
           {/* 工作流元数据 Popover（齿轮） */}
           <WorkflowMetaPopover
             open={metaPopoverOpen}
@@ -847,7 +849,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             </PopoverContent>
           </Popover>
 
-          {/* 版本指示器（最右侧） */}
+          {/* 版本指示器 */}
           <VersionIndicator
             workflowId={workflowId}
             latestVersion={wfData?.latestVersion ?? null}
@@ -860,6 +862,19 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
               setTriggersSheetOpen(false);
             }}
           />
+
+          {/* 刷新草稿 */}
+          {workflowId && (
+            <button
+              type="button"
+              className="wf-meta-trigger-btn"
+              disabled={isRunMode && !isRunDone}
+              title={t("editor.tooltip_refresh")}
+              onClick={handleRefreshDraft}
+            >
+              <RefreshCw size={14} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -891,15 +906,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Meta Agent Chat 侧边栏 */}
-      <MetaAgentPanel
-        chatOpen={chatOpen}
-        setChatOpen={setChatOpen}
-        metaAgentId={metaAgentId}
-        scenePrompt={scenePrompt}
-        onPromptComplete={handleRefreshDraft}
-      />
 
       {/* 运行参数输入对话框 */}
       {hasParams && (

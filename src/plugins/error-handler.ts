@@ -1,4 +1,4 @@
-import Elysia from "elysia";
+import Elysia, { ValidationError } from "elysia";
 import { AppError } from "../errors";
 
 export const errorPlugin = new Elysia({ name: "error-handler" }).onError(({ error, set, code }) => {
@@ -8,8 +8,24 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(({ erro
     return { error: { type: error.code, message: error.message } };
   }
 
-  const status = code === "NOT_FOUND" ? 404 : code === "VALIDATION" ? 400 : 500;
-  const type = code === "NOT_FOUND" ? "NOT_FOUND" : code === "VALIDATION" ? "VALIDATION_ERROR" : "INTERNAL_ERROR";
+  // Elysia schema 校验失败 — ValidationError.message 默认是 ZodError 完整序列化 JSON
+  // （含 unionErrors 所有分支的 issues），原样返回会让前端控制台也被垃圾 JSON 刷屏。
+  // 这里只回首个错误的 path + 摘要，详细诊断走 server logger。
+  if (error instanceof ValidationError) {
+    set.status = 400;
+    const firstError = error.all[0];
+    const path = firstError?.path ?? "";
+    const summary = firstError?.summary ?? firstError?.message ?? "validation failed";
+    return {
+      error: {
+        type: "VALIDATION_ERROR",
+        message: path ? `${path}: ${summary}` : summary,
+      },
+    };
+  }
+
+  const status = code === "NOT_FOUND" ? 404 : 500;
+  const type = code === "NOT_FOUND" ? "NOT_FOUND" : "INTERNAL_ERROR";
   const message = error instanceof Error ? error.message : String(error);
 
   set.status = status;

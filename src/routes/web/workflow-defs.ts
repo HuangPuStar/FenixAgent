@@ -58,6 +58,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "name is required" } });
           }
           const row = await createWorkflowDef(authCtx, { name: name.trim(), description });
+          publishWorkflowEvent(row.id, "workflow.created", {});
           return { success: true, data: row };
         }
 
@@ -95,7 +96,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
           if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
-          const draftYaml = await getVersionYaml(workflowId, 0);
+          const draftYaml = await getVersionYaml(workflowId, 0, wf.storagePath);
           return { success: true, data: { ...wf, draftYaml } };
         }
 
@@ -134,6 +135,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const deleted = await deleteWorkflowDef(workflowId, authCtx.organizationId);
           if (!deleted) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          publishWorkflowEvent(workflowId, "workflow.deleted", {});
           return { success: true };
         }
 
@@ -145,6 +147,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const updated = await updateWorkflowMeta(workflowId, authCtx.organizationId, { name, description });
           if (!updated) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          publishWorkflowEvent(workflowId, "workflow.meta_updated", { name, description });
           return { success: true, data: updated };
         }
 
@@ -169,6 +172,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and version are required" } });
           }
           await restoreVersionToDraft(workflowId, authCtx, version);
+          publishWorkflowEvent(workflowId, "workflow.draft_restored", { version });
           return { success: true };
         }
 

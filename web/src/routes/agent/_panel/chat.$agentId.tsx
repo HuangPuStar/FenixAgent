@@ -59,6 +59,15 @@ function ChatRoute() {
     }
   }, [artifactsPanelRef]);
 
+  // mount 时：默认折叠右侧面板
+  // 原因：ResizablePanel 的 defaultSize="40%" 会让面板初始就展开 40%，与 React state 的初始 true（折叠）不一致；
+  // 用户希望"右侧面板只有有文件时才展开"，这里在 mount 时立即 collapse 对齐初始意图。
+  // 后续 changedFiles 出现 diff 时由下面的 useEffect 触发自动展开。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅 mount 时执行一次，artifactsPanelRef 是 usePanelRef() 返回的稳定 RefObject
+  useEffect(() => {
+    artifactsPanelRef.current?.collapse();
+  }, []);
+
   // 首次出现 diff 文件时自动展开文件区域（用户手动收起后不再自动展开）
   const prevDiffCountRef = useRef(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: artifactsPanelRef 是 usePanelRef() 返回的稳定 RefObject，依赖项只需感知 changedFiles.length 变化

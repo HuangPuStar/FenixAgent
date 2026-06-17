@@ -40,15 +40,9 @@ export function ArtifactsPanel({ envId, changedFiles = [] }: ArtifactsPanelProps
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   // 当前激活文件，控制 PreviewTab 展示内容
   const [activeFile, setActiveFile] = useState<string | null>(null);
-  // 文件树是否展开（默认 false，由顶部 PanelLeft 按钮切换）
-  // 当没有任何打开的文件时自动展开文件树，引导用户选择
+  // 文件树是否展开（默认 false，由顶部 FilesIcon 按钮切换）
+  // 改进：不再因为 openFiles 为空就自动展开，避免初始抢占主区域；用户需要时手动点开
   const [fileTreeOpen, setFileTreeOpen] = useState(false);
-
-  useEffect(() => {
-    if (openFiles.length === 0 && !fileTreeOpen) {
-      setFileTreeOpen(true);
-    }
-  }, [openFiles.length, fileTreeOpen]);
 
   // 拖拽上传遮罩状态
   const [isDragging, setIsDragging] = useState(false);

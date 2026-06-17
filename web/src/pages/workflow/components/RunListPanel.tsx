@@ -17,7 +17,7 @@ export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSel
     setError(null);
     workflowEngineApi
       .listRuns()
-      .then((data) => setRuns(Array.isArray(data) ? data : []))
+      .then((data) => setRuns(Array.isArray(data.items) ? data.items : []))
       .catch((err) => {
         console.error(err);
         setError(err.message);

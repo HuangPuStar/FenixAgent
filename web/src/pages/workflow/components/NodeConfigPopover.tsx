@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 type Measurable = { getBoundingClientRect(): DOMRect };
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
 import { NodeConfigCard } from "./NodeConfigCard";
 
 export interface NodeConfigPopoverProps {
@@ -18,7 +19,7 @@ export interface NodeConfigPopoverProps {
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>;
   updateNodeData: (patch: Record<string, unknown>) => void;
-  agentList: Array<{ name: string; description: string | null }>;
+  agentList: AgentNodeOption[];
 }
 
 export function NodeConfigPopover({

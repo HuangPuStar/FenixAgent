@@ -170,13 +170,30 @@ export async function getVersions(workflowId: string, organizationId: string): P
     .orderBy(desc(workflowVersion.version));
 }
 
-/** 获取特定版本的 YAML 内容 */
-export async function getVersionYaml(workflowId: string, version: number): Promise<string | null> {
-  const [wf] = await db.select().from(workflow).where(eq(workflow.id, workflowId)).limit(1);
-  if (!wf?.storagePath) return null;
+/** 获取特定版本的 YAML 内容。
+ * 传入 storagePath 可跳过 DB 查询（用于调用方已有 workflow 对象时避免冗余查询）。 */
+export async function getVersionYaml(
+  workflowId: string,
+  version: number,
+  /** 已知 storagePath 时传入，避免再次查 DB */
+  storagePath?: string | null,
+): Promise<string | null> {
+  // 优先使用传入的 storagePath，否则查 DB
+  const dir =
+    storagePath ??
+    (await db
+      .select()
+      .from(workflow)
+      .where(eq(workflow.id, workflowId))
+      .limit(1)
+      .then(([r]) => r?.storagePath));
+  if (!dir) {
+    console.warn(`[workflow-def] getVersionYaml: storagePath is empty for workflow=${workflowId} version=${version}`);
+    return null;
+  }
 
   const fileName = version === 0 ? "draft.yaml" : `v${version}.yaml`;
-  return readYamlFile(wf.storagePath, fileName);
+  return readYamlFile(dir, fileName);
 }
 
 /** 设置 latest 指针到指定版本（回滚） */

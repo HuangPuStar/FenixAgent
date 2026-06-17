@@ -1,5 +1,3 @@
-import { BookOpen, Bot, Eye, FilePen, Files, FileText, Globe, ListChecks, Search, Terminal, Zap } from "lucide-react";
-import type { ComponentType } from "react";
 import type { ToolCallData } from "../../src/lib/types";
 
 // =============================================================================
@@ -60,15 +58,6 @@ const CARD_STYLES: Record<ToolCategory, CardStyle> = {
   },
 };
 
-const STATUS_BAR: Record<string, string> = {
-  running: "bg-status-running",
-  complete: "bg-status-active/30",
-  error: "bg-status-error",
-  waiting_for_confirmation: "bg-brand",
-  canceled: "bg-surface-3",
-  rejected: "bg-status-error/40",
-};
-
 // =============================================================================
 // 工具类型分类 — 比 category 更细粒度，区分 write 和 edit
 // =============================================================================
@@ -105,37 +94,15 @@ function getCardCategory(title: string, rawInput?: Record<string, unknown>): Too
   return "default";
 }
 
-/** 按工具名选择图标（最细粒度） */
-function getToolIcon(title: string, rawInput?: Record<string, unknown>): ComponentType<{ className?: string }> {
-  const lower = title.toLowerCase();
-  if (lower.includes("bash") || lower.includes("shell") || lower === "command") return Terminal;
-  if (lower.includes("write")) return FileText;
-  if (lower.includes("edit") || lower.includes("str_replace") || lower.includes("multiedit")) return FilePen;
-  if (lower.includes("read")) return Eye;
-  if (lower.includes("grep") || lower.includes("search")) return Search;
-  if (lower.includes("glob") || lower.includes("list")) return Files;
-  if (lower.includes("webfetch") || lower.includes("websearch") || lower.includes("web_")) return Globe;
-  if (lower.includes("todowrite") || lower.includes("todo_write")) return ListChecks;
-  if (lower.startsWith("task") || lower.startsWith("agent")) return Bot;
-  if (lower.startsWith("loaded skill")) return BookOpen;
-  // 兜底：与 getCardCategory 一致的 rawInput 推断
-  if (rawInput) {
-    if (typeof rawInput.filePath === "string" || typeof rawInput.path === "string") {
-      if (typeof rawInput.newText === "string" || typeof rawInput.content === "string") return FileText;
-      if (typeof rawInput.oldText === "string" || typeof rawInput.old_string === "string") return FilePen;
-      return Eye;
-    }
-    if (typeof rawInput.pattern === "string") return Search;
-    if (typeof rawInput.command === "string" || typeof rawInput.cmd === "string") return Terminal;
-    if (typeof rawInput.url === "string") return Globe;
-  }
-  return Zap;
-}
-
 // =============================================================================
 // 工具函数
 // =============================================================================
 
+/**
+ * 把工具 title 简化为可读的简短名称（首字母大写）。
+ * 例如 "Bash" → "Bash"，"MultiEdit" → "MultiEdit"，"web_fetch" → "Fetch"。
+ * fallback narrator 和 ContextPanel 都用到此函数。
+ */
 function simplifyToolName(title: string): string {
   const lower = title.toLowerCase();
   if (lower.includes("multiedit") || lower.includes("multi_edit")) return "MultiEdit";
@@ -158,48 +125,15 @@ function truncate(str: string, max: number): string {
   return str.length > max ? `${str.slice(0, max)}…` : str;
 }
 
-function extractFilePath(input: Record<string, unknown> | undefined): string | null {
-  if (!input) return null;
-  const directPath = input.file_path ?? input.path;
-  if (typeof directPath === "string" && directPath) return directPath;
-  const edits = input.edits;
-  if (Array.isArray(edits) && edits.length > 0) {
-    const first = (edits[0] as Record<string, unknown>)?.file_path;
-    if (typeof first === "string") {
-      return edits.length > 1 ? `${first} +${edits.length - 1} more` : first;
-    }
-  }
-  return null;
+/** 判断是否为 hindsight 工具（HindsightToolCard 用此函数过滤） */
+function isHindsightTool(title: string): boolean {
+  return title.toLowerCase().startsWith("hindsight_");
 }
 
-/** 把路径格式化为文件名（multiedit 特殊处理："utils.ts 等 3 个文件"） */
-function formatFileName(path: string, lower: string): string {
-  if (lower.includes("multiedit") || lower.includes("multi_edit")) {
-    // extractFilePath 返回 "fullPath 等 N 个文件"，需要从第一段提取文件名
-    const firstPath = path.split(" +")[0];
-    return firstPath.split("/").pop() ?? firstPath;
-  }
-  return path.split("/").pop() ?? path;
-}
-
-/** 从 rawInput 提取第一个文件路径（用于 title 属性 tooltip） */
-function extractFirstPath(input: Record<string, unknown> | undefined): string {
-  if (!input) return "";
-  const direct = input.file_path ?? input.path;
-  if (typeof direct === "string") return direct;
-  const edits = input.edits;
-  if (Array.isArray(edits) && edits.length > 0) {
-    const first = (edits[0] as Record<string, unknown>)?.file_path;
-    if (typeof first === "string") return first;
-  }
-  return "";
-}
-
-function countDiffs(content: ToolCallData["content"]): number {
-  if (!content) return 0;
-  return content.filter((c) => c.type === "diff").length;
-}
-
+/**
+ * 把工具调用的输出（content 数组或 rawOutput）格式化为单行字符串，
+ * 供 ToolCallDialog 的"输出"区域渲染。
+ */
 function formatOutput(tool: ToolCallData): string {
   if (tool.content && tool.content.length > 0) {
     const texts = tool.content
@@ -214,24 +148,6 @@ function formatOutput(tool: ToolCallData): string {
   return "";
 }
 
-/** 从 rawInput 结构推断工具类型（当 title 无法匹配时兜底使用） */
-function inferToolTypeFromInput(
-  input: Record<string, unknown> | undefined,
-): "search" | "read" | "write" | "edit" | "skill" | null {
-  if (!input) return null;
-  // 有 pattern → search（grep/glob 无论有无 include 都是搜索）
-  if (typeof input.pattern === "string") return "search";
-  // 有 filePath（无 newText）→ read
-  if (typeof input.filePath === "string" && typeof input.newText !== "string" && typeof input.oldText !== "string")
-    return "read";
-  return null;
-}
-
-/** 判断是否为 hindsight 工具 */
-function isHindsightTool(title: string): boolean {
-  return title.toLowerCase().startsWith("hindsight_");
-}
-
 // =============================================================================
 // 导出
 // =============================================================================
@@ -239,16 +155,9 @@ function isHindsightTool(title: string): boolean {
 export {
   CARD_STYLES,
   type CardStyle,
-  countDiffs,
-  extractFilePath,
-  extractFirstPath,
-  formatFileName,
   formatOutput,
   getCardCategory,
-  getToolIcon,
-  inferToolTypeFromInput,
   isHindsightTool,
-  STATUS_BAR,
   simplifyToolName,
   type ToolCategory,
   truncate,

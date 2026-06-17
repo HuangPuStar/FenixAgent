@@ -11,6 +11,10 @@ import { type EventBus, getEventBus, removeEventBus } from "../../transport/even
 /** Workflow SSE 事件类型 */
 export type WorkflowEventType =
   | "workflow.draft_updated"
+  | "workflow.created"
+  | "workflow.deleted"
+  | "workflow.meta_updated"
+  | "workflow.draft_restored"
   | "workflow.run_started"
   | "workflow.run_status_changed"
   | "workflow.run_cancelled"

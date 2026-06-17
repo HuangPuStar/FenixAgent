@@ -49,18 +49,9 @@ describe("WorkflowEditor trigger integration", () => {
     expect(src).toContain("./components/TriggerPanel");
   });
 
-  // 测试 editor 包含 triggers sheet 状态
-  test("editor includes triggers sheet state", () => {
+  // triggers 按钮已从 toolbar 移除，Sheet/TriggerPanel 组件仍保留
+  test("editor retains triggers sheet and TriggerPanel", () => {
     expect(src).toContain("triggersSheetOpen");
-  });
-
-  // 测试 editor 包含 triggers tab header
-  test("editor includes triggers tab header", () => {
-    expect(src).toContain('t("editor.tab_triggers")');
-  });
-
-  // 测试 editor 渲染 TriggerPanel
-  test("editor renders TriggerPanel component", () => {
     expect(src).toContain("<TriggerPanel");
   });
 });

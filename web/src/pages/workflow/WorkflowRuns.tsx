@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type DAGStatus, type RunSummary, workflowEngineApi } from "../../api/workflow-engine";
 
@@ -77,30 +78,49 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+
+  // 搜索防抖：输入即时更新，API 请求 300ms 后触发
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // 筛选条件或搜索词变化时，重置到第 1 页
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 筛选/搜索变化时需重置页码，但 effect 体只用 setPage
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
 
   const loadRuns = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await workflowEngineApi.listRuns();
-      setRuns(Array.isArray(data) ? data : []);
+      const params: { page?: number; pageSize?: number; status?: string; q?: string } = {
+        page,
+        pageSize,
+      };
+      if (statusFilter !== "all") params.status = statusFilter;
+      if (debouncedSearch) params.q = debouncedSearch;
+
+      const data = await workflowEngineApi.listRuns(params);
+      setRuns(Array.isArray(data.items) ? data.items : []);
+      setTotal(data.total ?? 0);
     } catch (err) {
       console.error(err);
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, statusFilter, debouncedSearch]);
 
+  // 分页/筛选/搜索变化时重新加载
   useEffect(() => {
     loadRuns();
   }, [loadRuns]);
-
-  const filtered = runs.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (searchQuery && !r.workflow_name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
 
   const _isTerminal = (s: DAGStatus) => ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(s);
 
@@ -113,6 +133,9 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
       toast.error(t("runs.cancel"), { description: (err as Error).message });
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const showEmpty = !loading && !error && runs.length === 0;
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -163,79 +186,119 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
           <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
           <p className="text-[13px] text-text-secondary">{t("runs.load_failed", { error })}</p>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : showEmpty ? (
         <div className="text-center py-10">
-          {statusFilter !== "all" || searchQuery ? (
+          {statusFilter !== "all" || debouncedSearch ? (
             <Search size={32} className="text-text-secondary mx-auto mb-2" />
           ) : (
             <Inbox size={32} className="text-text-secondary mx-auto mb-2" />
           )}
           <p className="text-[13px] text-text-secondary font-medium">
-            {statusFilter !== "all" || searchQuery ? t("runs.no_match") : t("runs.no_runs")}
+            {statusFilter !== "all" || debouncedSearch ? t("runs.no_match") : t("runs.no_runs")}
           </p>
           <p className="text-[11px] text-text-dim mt-1">
-            {statusFilter !== "all" || searchQuery ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
+            {statusFilter !== "all" || debouncedSearch ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((r) => (
-            <div
-              key={r.run_id}
-              onClick={() => onSelectRun?.(r.run_id)}
-              className="group rounded-lg border border-border-light bg-surface-1 px-4 py-3 transition-colors hover:border-border-active hover:shadow-sm cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-text-bright">{r.workflow_name}</span>
-                    <StatusBadge status={r.status} />
-                  </div>
-                  <div className="flex items-center gap-3 mt-1.5 text-xs text-text-dim">
-                    <span className="font-mono">{r.run_id.substring(0, 16)}...</span>
-                    <span>
-                      <span className="text-status-running">{r.node_summary.completed}</span>
-                      <span className="text-text-muted">/{r.node_summary.total}</span>
-                    </span>
-                    <span>{relativeTime(r.started_at, t)}</span>
-                    <span className="font-mono">{formatDuration(r.started_at, r.completed_at)}</span>
-                  </div>
-                </div>
-                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {r.status === "RUNNING" && (
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      title={t("runs.cancel")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCancel(r.run_id);
-                      }}
-                    >
-                      <Square size={12} className="text-status-error" />
-                    </Button>
-                  )}
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    title={t("runs.view_details")}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectRun?.(r.run_id, r.workflow_id);
-                    }}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* 数据表格 */}
+          <div className="flex-1 overflow-auto">
+            <table className="w-full">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground">
+                    {t("runs.col_workflow")}
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[100px]">
+                    {t("runs.col_status")}
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[90px]">
+                    {t("runs.col_progress")}
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[130px]">
+                    {t("runs.col_started")}
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[100px]">
+                    {t("runs.col_duration")}
+                  </th>
+                  <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground w-[80px]">
+                    {t("runs.col_actions")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((r) => (
+                  <tr
+                    key={r.run_id}
+                    onClick={() => onSelectRun?.(r.run_id)}
+                    className="border-b border-border hover:bg-muted/50 cursor-pointer transition-colors"
                   >
-                    <ArrowRight size={12} />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+                    <td className="py-3 px-4">
+                      <span className="text-sm font-medium">{r.workflow_name}</span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <StatusBadge status={r.status} />
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {r.node_summary.completed}/{r.node_summary.total}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-xs text-muted-foreground">{relativeTime(r.started_at, t)}</span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {formatDuration(r.started_at, r.completed_at)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {r.status === "RUNNING" && (
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            title={t("runs.cancel")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCancel(r.run_id);
+                            }}
+                          >
+                            <Square size={12} className="text-destructive" />
+                          </Button>
+                        )}
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          title={t("runs.view_details")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectRun?.(r.run_id, r.workflow_id);
+                          }}
+                        >
+                          <ArrowRight size={12} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      {runs.length > 0 && (
-        <div className="mt-3 text-[11px] text-text-muted text-center">
-          {t("runs.total_records", { count: runs.length })}
+          {/* 底部分页 */}
+          <div className="border-t border-border px-4 shrink-0">
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              t={t}
+            />
+          </div>
         </div>
       )}
     </div>

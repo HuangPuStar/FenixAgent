@@ -12,8 +12,16 @@ import type {
 } from "../types/schemas";
 
 export class EnvironmentApi extends BaseApi {
-  async list(): Promise<ApiResult<EnvironmentListResponse[]>> {
-    return this._get<EnvironmentListResponse[]>("/web/environments");
+  /**
+   * 获取环境列表。
+   *
+   * @param params.mine 传入 true 时仅返回当前用户创建的环境（用于 workflow 等只需"我的环境"的场景）；
+   *                    不传或 false 时返回当前组织下的全部环境。
+   */
+  async list(params?: { mine?: boolean }): Promise<ApiResult<EnvironmentListResponse[]>> {
+    return this._get<EnvironmentListResponse[]>("/web/environments", {
+      query: params?.mine !== undefined ? { mine: params.mine } : undefined,
+    });
   }
   async create(body: CreateEnvironmentRequest): Promise<ApiResult<EnvironmentDetailResponse>> {
     return this.post<EnvironmentDetailResponse>("/web/environments", body);

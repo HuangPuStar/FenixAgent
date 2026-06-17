@@ -34,8 +34,21 @@ export class WorkflowEngineApi extends BaseApi {
   async getPendingApprovals(runId: string): Promise<ApiResult<unknown>> {
     return this.post("/web/workflow-engine", { action: "getPendingApprovals", runId });
   }
-  async listRuns(workflowId?: string): Promise<ApiResult<unknown>> {
-    return this.post("/web/workflow-engine", { action: "listRuns", workflowId });
+  /** 分页查询运行记录 */
+  async listRuns(params?: {
+    page?: number;
+    pageSize?: number;
+    status?: string;
+    q?: string;
+  }): Promise<ApiResult<unknown>> {
+    return this._get("/web/workflow-runs", {
+      query: {
+        page: params?.page,
+        pageSize: params?.pageSize,
+        status: params?.status,
+        q: params?.q,
+      },
+    });
   }
   async recover(runId: string, opts?: { yaml?: string }): Promise<ApiResult<unknown>> {
     return this.post("/web/workflow-engine", { action: "recover", runId, ...opts });

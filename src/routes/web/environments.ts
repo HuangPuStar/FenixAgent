@@ -50,6 +50,8 @@ app.get(
   async ({ store }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
+    // 始终按当前用户视角过滤：绑定 agent 的 runtime env 按 userId 隔离，
+    // 未绑 agent 的手动环境仍组织内可见，避免前端把他人 runtime 挂到自己的 agent 上。
     return listEnvironmentsWithInstances(authCtx.organizationId, user.id);
   },
   {
@@ -58,7 +60,7 @@ app.get(
     detail: {
       tags: ["Environments"],
       summary: "获取环境列表",
-      description: "返回当前组织下的环境列表，并附带每个环境的活跃实例摘要。",
+      description: "返回当前组织下的环境列表，并附带每个环境的活跃实例摘要。绑定 agent 的 runtime 环境按当前用户隔离。",
     },
   },
 );

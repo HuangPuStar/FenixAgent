@@ -177,8 +177,8 @@ export function RunStatusPanel({
         <div className="px-3 py-1 border-b border-border-subtle text-[10px] text-text-secondary flex justify-between">
           <span>
             {t("editor.progress_nodes", {
-              completed: Object.values(runSnapshot.node_states).filter((s) => s.status === "COMPLETED").length,
-              total: Object.keys(runSnapshot.node_states).length,
+              completed: Object.values(runSnapshot.node_states ?? {}).filter((s) => s.status === "COMPLETED").length,
+              total: Object.keys(runSnapshot.node_states ?? {}).length,
             })}
           </span>
           <span className="font-mono text-[9px]">{activeRunId?.substring(0, 16)}...</span>

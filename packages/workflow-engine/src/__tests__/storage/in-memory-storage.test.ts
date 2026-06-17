@@ -141,9 +141,8 @@ test("getOutput 不存在返回 null", async () => {
 test("listRuns 返回所有运行摘要", async () => {
   const s = createInMemoryStorage();
   // listRuns 内部读取 runSummaries map，但该 map 只通过 atomicNodeComplete 间接写入
-  // 直接测试 getRunStatus
-  const result = await s.listRuns();
-  expect(result).toEqual([]);
+  const result = await s.listRuns({ page: 1, pageSize: 20 });
+  expect(result).toEqual({ items: [], total: 0 });
 });
 
 // getRunStatus 不存在返回 null

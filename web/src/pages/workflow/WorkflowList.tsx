@@ -54,6 +54,23 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     loadList();
   }, [loadList]);
 
+  // 静默轮询：meta agent 等外部修改后自动刷新列表，不触发 loading 骨架屏
+  const pollList = useCallback(async () => {
+    try {
+      const data = await workflowDefApi.list();
+      setWorkflows(Array.isArray(data) ? data : []);
+      // 轮询成功时清除之前的错误
+      setError(null);
+    } catch {
+      // 轮询失败静默处理，保留上次数据
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(pollList, 15_000);
+    return () => clearInterval(timer);
+  }, [pollList]);
+
   // 响应外部新建请求（createRequested 递增时触发）
   const prevCreateRequestedRef = useRef(createRequested);
   useEffect(() => {

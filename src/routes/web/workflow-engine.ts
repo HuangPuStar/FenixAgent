@@ -2,7 +2,6 @@
  * Workflow Engine API 路由。
  *
  * 通过 POST /web/workflow-engine + action 分发，提供工作流的执行、取消、审批、状态查询等能力。
- * listRuns 直接调用 StorageAdapter（不走引擎门面）。
  */
 
 import { createLogger } from "@fenix/logger";
@@ -12,9 +11,10 @@ import Elysia from "elysia";
 import { db } from "../../db";
 import { workflowSnapshot } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
+import { getVersionYaml, getWorkflowDef } from "../../repositories/workflow-def";
 import { WorkflowEngineActionRequestSchema, WorkflowEngineActionResponseSchema } from "../../schemas";
 import { cleanupSpawnedEnvironments, getTeamEngine } from "../../services/workflow";
-import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
+import { resolveYaml } from "../../services/workflow/resolve-yaml";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
 const logger = createLogger("wf-engine");
@@ -33,12 +33,16 @@ app.post(
     const payload = body as Record<string, unknown>;
     const action = payload.action as string;
     const engine = getTeamEngine(authCtx.organizationId);
+    const deps = { getWorkflowDef, getVersionYaml };
 
     try {
       switch (action) {
         // 执行工作流（异步启动，立即返回 runId）
         case "run": {
-          const yaml = payload.yaml as string;
+          const yaml = await resolveYaml(payload, authCtx.organizationId, deps);
+          if (!yaml) {
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "yaml or workflowId is required" } });
+          }
           const params = payload.params as Record<string, unknown> | undefined;
           const workflowId = payload.workflowId as string | undefined;
           const { runId, result } = engine.runAsync(yaml, params);
@@ -87,7 +91,10 @@ app.post(
 
         // 干运行：校验 + 展示执行计划
         case "dryRun": {
-          const yaml = payload.yaml as string;
+          const yaml = await resolveYaml(payload, authCtx.organizationId, deps);
+          if (!yaml) {
+            return error(400, { error: { type: "VALIDATION_ERROR", message: "yaml or workflowId is required" } });
+          }
           const result = engine.dryRun(yaml);
           const dryRunWorkflowId = payload.workflowId as string | undefined;
           if (dryRunWorkflowId) {
@@ -159,13 +166,6 @@ app.post(
           const runId = payload.runId as string;
           const approvals = await engine.getPendingApprovals(runId);
           return { success: true, data: approvals };
-        }
-
-        // 列出运行记录（直接调用 StorageAdapter）
-        case "listRuns": {
-          const storage = createPgStorageAdapter(authCtx.organizationId);
-          const runs = await storage.listRuns();
-          return { success: true, data: runs };
         }
 
         // 从快照恢复运行

@@ -2,14 +2,14 @@ import type { Edge, Node } from "@xyflow/react";
 import dagre from "dagre";
 
 const NODE_WIDTH = 220;
-const NODE_HEIGHT = 72;
+const NODE_HEIGHT = 180;
 
 export function autoLayout(nodes: Node[], edges: Edge[]): Node[] {
   if (nodes.length === 0) return nodes;
 
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
+  g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 80 });
 
   for (const node of nodes) {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });

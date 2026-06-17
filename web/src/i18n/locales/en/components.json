@@ -415,24 +415,9 @@
   "datePicker": {
     "placeholder": "Select date"
   },
-  "toolCallContent": {
-    "changes": "{{count}} changes",
-    "results": "{{count}} results",
-    "files": "{{count}} files",
-    "taskRunning": "Sub-task running",
-    "agentCalling": "Agent Calling",
-    "todos": "{{count}} todos",
-    "updateTodoList": "Update todo list",
-    "toolsAndMessages": "{{toolCount}} tools{{msgPart}}",
-    "messages": "{{count}} messages"
-  },
   "toolCallRow": {
-    "failed": "Failed",
-    "pendingConfirmation": "Awaiting Confirmation",
-    "viewParams": "View Parameters"
-  },
-  "toolCallUtils": {
-    "filesAndMore": "{{first}} and {{count}} more files"
+    "viewParams": "View Parameters",
+    "toolName": "Tool"
   },
   "permissionPanel": {
     "allow": "Allow",
