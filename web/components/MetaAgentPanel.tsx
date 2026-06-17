@@ -23,7 +23,7 @@ export interface MetaAgentPanelProps {
  *
  * 设计要点：
  * - 不再自带顶部 header（ChatPanel 内部的 ChatHeader 已提供会话标题/历史 popover）
- * - 左侧始终保留一个 16px 宽的拉手按钮，双向 toggle 展开/收起
+ * - 右侧始终保留一个 16px 宽的拉手按钮，位于聊天面板与画布之间，双向 toggle 展开/收起
  * - 收起状态下仅渲染拉手，避免占用过多横向空间
  */
 export function MetaAgentPanel({
@@ -38,19 +38,6 @@ export function MetaAgentPanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "row", height: "100%" }}>
-      {/* 左侧拉手 — 始终渲染，点击切换展开/收起。样式仿照 .agent-artifacts-expand-btn 的 vertical tab */}
-      <button
-        type="button"
-        className={`meta-agent-toggle-btn${chatOpen ? " open" : ""}`}
-        onClick={() => setChatOpen(!chatOpen)}
-        title={chatOpen ? t("metaAgent.chat_collapse") : t("metaAgent.chat_expand")}
-        aria-label={chatOpen ? t("metaAgent.chat_collapse") : t("metaAgent.chat_expand")}
-        aria-expanded={chatOpen}
-      >
-        {/* 展开时显示收起箭头（右指），收起时显示展开箭头（左指） */}
-        {chatOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-      </button>
-
       {/* 主面板 — 仅在展开时渲染，避免收起后继续持有 ACP 连接 */}
       {chatOpen && (
         <div
@@ -78,6 +65,19 @@ export function MetaAgentPanel({
           </div>
         </div>
       )}
+
+      {/* 右侧拉手 — 始终渲染，位于聊天面板与画布之间，样式仿照 .agent-artifacts-expand-btn 的 vertical tab */}
+      <button
+        type="button"
+        className={`meta-agent-toggle-btn${chatOpen ? " open" : ""}`}
+        onClick={() => setChatOpen(!chatOpen)}
+        title={chatOpen ? t("metaAgent.chat_collapse") : t("metaAgent.chat_expand")}
+        aria-label={chatOpen ? t("metaAgent.chat_collapse") : t("metaAgent.chat_expand")}
+        aria-expanded={chatOpen}
+      >
+        {/* 展开时显示左箭头（收起聊天），收起时显示右箭头（展开聊天） */}
+        {chatOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+      </button>
     </div>
   );
 }
