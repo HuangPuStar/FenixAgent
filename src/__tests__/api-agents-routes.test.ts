@@ -23,6 +23,7 @@ describe("API Agents Routes", () => {
       AGENT_SETTABLE_FIELDS: ["modelId", "prompt", "description", "extra", "machineId", "knowledge"],
       listAgentConfigs: async () => [],
       getAgentConfigById: async () => null,
+      getReadableAgentConfigById: async () => null,
       createAgentConfig: async () => "agc-created",
       updateAgentConfig: async () => true,
       deleteAgentConfig: async () => true,
@@ -40,8 +41,8 @@ describe("API Agents Routes", () => {
     setTestOrgContext(null);
   });
 
-  // 仅返回当前组织内部 Agent，并保持稳定分页结构。
-  test("GET /api/agents returns paginated internal agents", async () => {
+  // 列表接口应返回当前调用方可读的 Agent，包含本组织和外部共享资源。
+  test("GET /api/agents returns paginated readable agents", async () => {
     stubConfigPg({
       listAgentConfigs: async () => [
         {
@@ -89,18 +90,18 @@ describe("API Agents Routes", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.total).toBe(1);
-    expect(json.items).toHaveLength(1);
-    expect(json.items[0].id).toBe("agc-internal");
+    expect(json.total).toBe(2);
+    expect(json.items).toHaveLength(2);
+    expect(json.items.map((item: { id: string }) => item.id)).toEqual(["agc-internal", "agc-external"]);
   });
 
-  // 详情接口按 Agent 配置 ID 返回当前组织的完整配置。
-  test("GET /api/agents/:id returns detail", async () => {
+  // 详情接口应支持读取外部共享 Agent，并透传 resourceAccess。
+  test("GET /api/agents/:id returns readable detail", async () => {
     stubConfigPg({
-      getAgentConfigById: async () => ({
+      getReadableAgentConfigById: async () => ({
         id: "agc-demo",
-        organizationId: "org-1",
-        userId: "user-1",
+        organizationId: "org-2",
+        userId: "user-2",
         name: "demo-agent",
         model: "provider/model",
         modelId: "mdl-1",
@@ -108,6 +109,15 @@ describe("API Agents Routes", () => {
         description: "desc",
         extra: { mode: "safe" },
         machineId: "machine-1",
+        resourceAccess: {
+          ownership: "external",
+          sourceOrganizationId: "org-2",
+          resourceUid: "agc-demo",
+          resourceKey: "org-2/agc-demo",
+          manageable: false,
+          writable: false,
+          publicReadable: true,
+        },
       }),
       listAgentSkillIds: async () => ["skill-1"],
       listAgentMcpIds: async () => ["mcp-1"],
@@ -124,6 +134,7 @@ describe("API Agents Routes", () => {
     expect(json.skillIds).toEqual(["skill-1"]);
     expect(json.mcpIds).toEqual(["mcp-1"]);
     expect(json.knowledge.knowledgeBaseIds).toEqual(["kb-1"]);
+    expect(json.resourceAccess?.ownership).toBe("external");
   });
 
   // 创建接口接收标准 JSON body，并同步 Skill / MCP 关联。
@@ -134,7 +145,7 @@ describe("API Agents Routes", () => {
     stubConfigPg({
       listAgentConfigs: async () => [],
       createAgentConfig: async () => "agc-created",
-      getAgentConfigById: async () => ({
+      getReadableAgentConfigById: async () => ({
         id: "agc-created",
         organizationId: "org-1",
         userId: "user-1",
@@ -187,6 +198,27 @@ describe("API Agents Routes", () => {
         description: "desc",
         extra: null,
         machineId: null,
+      }),
+      getReadableAgentConfigById: async () => ({
+        id: "agc-demo",
+        organizationId: "org-1",
+        userId: "user-1",
+        name: "demo-agent",
+        model: null,
+        modelId: "mdl-1",
+        prompt: "prompt",
+        description: "updated",
+        extra: null,
+        machineId: null,
+        resourceAccess: {
+          ownership: "internal",
+          sourceOrganizationId: "org-1",
+          resourceUid: "agc-demo",
+          resourceKey: "org-1/agc-demo",
+          manageable: true,
+          writable: true,
+          publicReadable: false,
+        },
       }),
       updateAgentConfig: updateAgent,
       deleteAgentConfig: deleteAgent,
