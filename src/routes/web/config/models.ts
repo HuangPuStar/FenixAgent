@@ -185,12 +185,69 @@ app.get(
   },
   {
     sessionAuth: true,
-    response: "config-response" as any,
     detail: {
       tags: ["ModelConfig"],
       summary: "获取模型偏好与可用模型列表",
       description:
         "返回当前用户的模型偏好配置和所有可用的模型列表。\n\n200 成功响应: data — 包含 current (model, small_model, permission) 和 available[] (可用模型列表)\n400 参数错误 / 500 内部错误",
+      responses: {
+        "200": {
+          description:
+            "成功返回模型偏好和可用模型列表。data.current: model, small_model, permission。data.available[]: 可用模型列表。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      current: {
+                        type: "object",
+                        properties: {
+                          model: { type: "string" },
+                          small_model: { type: "string" },
+                          permission: { type: "object" },
+                        },
+                      },
+                      available: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            modelId: { type: "string" },
+                            displayName: { type: "string" },
+                            provider: { type: "string" },
+                            providerDisplayName: { type: "string" },
+                            contextLimit: { type: "number" },
+                            outputLimit: { type: "number" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -211,12 +268,62 @@ app.put(
   },
   {
     sessionAuth: true,
-    response: "config-response" as any,
     detail: {
       tags: ["ModelConfig"],
       summary: "更新模型偏好",
       description:
         "更新当前用户的模型偏好设置，包括主模型（model）、轻量模型（small_model）和权限配置（permission）。请求体中只需包含需要更新的字段。\n\n200 成功响应: data — 包含 model, small_model, permission\n400 参数错误 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "更新成功。data: model, small_model, permission。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      model: { type: "string" },
+                      small_model: { type: "string" },
+                      permission: { type: "object" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -236,12 +343,41 @@ app.post(
   },
   {
     sessionAuth: true,
-    response: "config-response" as any,
     detail: {
       tags: ["ModelConfig"],
       summary: "刷新可用模型缓存",
       description:
         "强制刷新可用模型列表的缓存。可用模型每 5 分钟自动刷新一次，调用此接口可立即更新缓存。\n\n200 成功响应: data.count — 可用模型数量\n500 内部错误",
+      responses: {
+        "200": {
+          description: "刷新缓存成功。data.count: 可用模型数量。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: { type: "object", properties: { count: { type: "number", description: "可用模型数量" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );

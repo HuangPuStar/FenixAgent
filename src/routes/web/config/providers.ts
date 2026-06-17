@@ -546,12 +546,105 @@ app.get(
   },
   {
     sessionAuth: true,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "获取 Provider 列表",
       description:
         "返回当前组织下所有 Provider 供应商列表。每项包含供应商名称、协议类型（openai/anthropic）、API Key 掩码、Base URL、模型数量和跨组织访问控制信息。\n\n200 成功响应: data.providers[] — 包含 id, name, protocol, keyHint, baseURL, modelCount, resourceAccess\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description:
+            "成功返回 Provider 列表。data.providers[]: id, name, protocol(openai/anthropic), keyHint, baseURL, modelCount, resourceAccess, resourceKey。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      providers: {
+                        type: "array",
+                        description: "Provider 列表",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            name: { type: "string" },
+                            protocol: { type: "string", enum: ["openai", "anthropic"] },
+                            keyHint: { type: "string" },
+                            baseURL: { type: "string" },
+                            modelCount: { type: "number" },
+                            resourceAccess: { type: "object" },
+                            resourceKey: { type: "string" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -572,12 +665,80 @@ app.get(
   {
     sessionAuth: true,
     params: "provider-name-param" as any,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "获取 Provider 详情",
       description:
         "根据名称获取单个 Provider 的详细配置，包括协议类型、API Key 掩码、Base URL 和该 Provider 下的所有模型列表。支持通过 resourceKey 访问外部共享 Provider。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint, baseURL, models[], resourceAccess\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description:
+            "成功返回 Provider 详情。data: id, name, protocol, keyHint, baseURL, resourceAccess, resourceKey, models[]。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      protocol: { type: "string", enum: ["openai", "anthropic"] },
+                      keyHint: { type: "string" },
+                      baseURL: { type: "string" },
+                      resourceAccess: { type: "object" },
+                      resourceKey: { type: "string" },
+                      models: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            name: { type: "string" },
+                            modalities: { type: "string" },
+                            limit: { type: "object" },
+                            cost: { type: "object" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -599,12 +760,91 @@ app.post(
   },
   {
     sessionAuth: true,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "创建 Provider",
       description:
         "创建一个新的 Provider 供应商配置。请求体需包含 name（唯一标识）和协议相关参数（apiKey、baseURL、protocol）。创建时会检查名称是否已存在。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint\n400 参数错误 / 409 名称已存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "操作成功。data: id, name, protocol, keyHint。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      protocol: { type: "string", enum: ["openai", "anthropic"] },
+                      keyHint: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -625,12 +865,77 @@ app.put(
   {
     sessionAuth: true,
     params: "provider-name-param" as any,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "更新 Provider",
       description:
         "更新指定 Provider 的配置信息。支持修改协议类型、API Key、Base URL 和展示名称。请求体中只包含需要更新的字段，未提供的字段保持不变。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "操作成功。data: id, name, protocol, keyHint。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      protocol: { type: "string", enum: ["openai", "anthropic"] },
+                      keyHint: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -651,12 +956,66 @@ app.delete(
   {
     sessionAuth: true,
     params: "provider-name-param" as any,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "删除 Provider",
       description:
         "删除指定的 Provider 及其下的所有模型。外部共享 Provider 不可删除。\n\n200 成功响应: data — null\n403 无权限 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "删除成功。data: null。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { success: { type: "boolean", const: true }, data: { type: "null" } },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -680,12 +1039,74 @@ app.post(
   {
     sessionAuth: true,
     params: "provider-name-param" as any,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "测试 Provider 连接",
       description:
         "测试指定 Provider 的连接有效性。通过调用 Provider 的 models 列表 API 验证凭据和可达性，返回可用的模型 ID 列表。\n\n200 成功响应: data.models[] — 从 API 获取的可用模型 ID 列表\n400 参数错误 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "测试结果。data.models: 可用模型 ID 列表。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      models: { type: "array", items: { type: "string" }, description: "可用模型 ID 列表" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -706,12 +1127,69 @@ app.post(
   {
     sessionAuth: true,
     params: "provider-name-param" as any,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "添加 Provider 下的模型",
       description:
         "向指定 Provider 添加一个新模型。请求体需提供 modelId 和可选的展示名称、limit 限制和 cost 费用配置。\n\n200 成功响应: data.modelId — 模型 ID\n400 参数错误 / 404 Provider 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "操作成功。data.modelId: 模型 ID。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: { type: "object", properties: { modelId: { type: "string", description: "模型 ID" } } },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -732,12 +1210,69 @@ app.put(
   {
     sessionAuth: true,
     params: "provider-name-modelid-params" as any,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "更新 Provider 下的模型",
       description:
         "更新指定 Provider 下某个模型的配置。支持修改模型名称、上下文限制、输出限制和费用信息。\n\n200 成功响应: data.modelId — 模型 ID\n400 参数错误 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "操作成功。data.modelId: 模型 ID。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: { type: "object", properties: { modelId: { type: "string", description: "模型 ID" } } },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -758,11 +1293,79 @@ app.delete(
   {
     sessionAuth: true,
     params: "provider-name-modelid-params" as any,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "删除 Provider 下的模型",
       description: "删除指定 Provider 下的某个模型。\n\n200 成功响应: data — null\n404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "删除成功。data: null。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { success: { type: "boolean", const: true }, data: { type: "null" } },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
@@ -783,12 +1386,75 @@ app.post(
   {
     sessionAuth: true,
     params: "provider-name-modelid-params" as any,
-    response: "config-response" as any,
     detail: {
       tags: ["ProviderConfig"],
       summary: "测试模型对话能力",
       description:
         "测试指定模型的实际对话生成能力。向 Provider 发送测试消息并返回模型响应的文本内容。\n\n200 成功响应: data — 包含 ok(bool) 和 content(string)\n400 参数错误 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "测试结果。data: ok, content。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      ok: { type: "boolean", description: "测试是否成功" },
+                      content: { type: "string", description: "模型返回的文本内容" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
     },
   },
 );
