@@ -515,6 +515,15 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         style={{ display: "none" }}
       />
 
+      {/* Meta Agent Chat 左侧面板 */}
+      <MetaAgentPanel
+        chatOpen={chatOpen}
+        setChatOpen={setChatOpen}
+        metaAgentId={metaAgentId}
+        scenePrompt={scenePrompt}
+        contextKey={contextKey}
+        onPromptComplete={handleRefreshDraft}
+      />
       <div className="flex-1 relative overflow-hidden">
         {previewVersion !== null && (
           <div
@@ -913,16 +922,6 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Meta Agent Chat 侧边栏 */}
-      <MetaAgentPanel
-        chatOpen={chatOpen}
-        setChatOpen={setChatOpen}
-        metaAgentId={metaAgentId}
-        scenePrompt={scenePrompt}
-        contextKey={contextKey}
-        onPromptComplete={handleRefreshDraft}
-      />
 
       {/* 运行参数输入对话框 */}
       {hasParams && (
