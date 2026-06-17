@@ -4,6 +4,7 @@ const envSchema = z.object({
   // ── 必填 ──
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   RCS_API_KEYS: z.string().min(1, "RCS_API_KEYS is required — used for acp-link / worker JWT signing"),
+  RCS_SYSTEM_API_KEYS: z.string().optional(),
 
   // ── 可选：服务器 ──
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
