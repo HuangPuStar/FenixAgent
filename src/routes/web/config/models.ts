@@ -1,4 +1,5 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
@@ -7,6 +8,20 @@ import { configError, configSuccess } from "../../../services/config-utils";
 
 const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
+  "config-response": z
+    .object({
+      success: z.boolean().describe("接口调用是否成功。true 表示成功，false 表示失败。"),
+      data: z.any().optional().describe("成功时的响应数据。"),
+      error: z
+        .object({
+          code: z.string().describe("错误码。"),
+          message: z.string().describe("错误描述信息。"),
+        })
+        .optional()
+        .describe("失败时的错误信息。"),
+    })
+    .passthrough()
+    .describe("Model 配置通用响应。"),
 });
 
 /** 可用模型缓存（按 organizationId 隔离） */
@@ -158,7 +173,8 @@ async function handleRefresh(ctx: AuthContext) {
 /** 获取当前用户的模型偏好配置和可用模型列表 */
 app.get(
   "/config/models",
-  async ({ store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store }: any) => {
     const authCtx = store.authContext!;
     try {
       return await handleGet(authCtx);
@@ -169,7 +185,13 @@ app.get(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ModelConfig"], summary: "获取模型偏好与可用模型列表" },
+    response: "config-response" as any,
+    detail: {
+      tags: ["ModelConfig"],
+      summary: "获取模型偏好与可用模型列表",
+      description:
+        "返回当前用户的模型偏好配置和所有可用的模型列表。\n\n200 成功响应: data — 包含 current (model, small_model, permission) 和 available[] (可用模型列表)\n400 参数错误 / 500 内部错误",
+    },
   },
 );
 
@@ -189,14 +211,21 @@ app.put(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ModelConfig"], summary: "更新模型偏好" },
+    response: "config-response" as any,
+    detail: {
+      tags: ["ModelConfig"],
+      summary: "更新模型偏好",
+      description:
+        "更新当前用户的模型偏好设置，包括主模型（model）、轻量模型（small_model）和权限配置（permission）。请求体中只需包含需要更新的字段。\n\n200 成功响应: data — 包含 model, small_model, permission\n400 参数错误 / 500 内部错误",
+    },
   },
 );
 
 /** 刷新可用模型缓存 */
 app.post(
   "/config/models/refresh",
-  async ({ store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store }: any) => {
     const authCtx = store.authContext!;
     try {
       return await handleRefresh(authCtx);
@@ -207,7 +236,13 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ModelConfig"], summary: "刷新可用模型缓存" },
+    response: "config-response" as any,
+    detail: {
+      tags: ["ModelConfig"],
+      summary: "刷新可用模型缓存",
+      description:
+        "强制刷新可用模型列表的缓存。可用模型每 5 分钟自动刷新一次，调用此接口可立即更新缓存。\n\n200 成功响应: data.count — 可用模型数量\n500 内部错误",
+    },
   },
 );
 

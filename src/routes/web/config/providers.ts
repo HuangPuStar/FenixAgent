@@ -1,4 +1,5 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
@@ -27,6 +28,31 @@ type TestErrorCode =
 
 const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
+  "provider-name-param": z
+    .object({
+      name: z.string().describe("Provider 名称或跨组织共享资源键（resourceKey）。"),
+    })
+    .describe("Provider 路径参数。"),
+  "provider-name-modelid-params": z
+    .object({
+      name: z.string().describe("Provider 名称或跨组织共享资源键（resourceKey）。"),
+      modelId: z.string().describe("模型 ID。"),
+    })
+    .describe("Provider 模型嵌套路径参数。"),
+  "config-response": z
+    .object({
+      success: z.boolean().describe("接口调用是否成功。true 表示成功，false 表示失败。"),
+      data: z.any().optional().describe("成功时的响应数据，不同接口返回结构不同。"),
+      error: z
+        .object({
+          code: z.string().describe("错误码。"),
+          message: z.string().describe("错误描述信息。"),
+        })
+        .optional()
+        .describe("失败时的错误信息。"),
+    })
+    .passthrough()
+    .describe("Provider 配置通用响应。"),
 });
 
 async function handleList(ctx: AuthContext) {
@@ -508,7 +534,8 @@ async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId
 /** 获取 Provider 列表 */
 app.get(
   "/config/providers",
-  async ({ store }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store }: any) => {
     const authCtx = store.authContext!;
     try {
       return await handleList(authCtx);
@@ -519,14 +546,21 @@ app.get(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "获取 Provider 列表" },
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "获取 Provider 列表",
+      description:
+        "返回当前组织下所有 Provider 供应商列表。每项包含供应商名称、协议类型（openai/anthropic）、API Key 掩码、Base URL、模型数量和跨组织访问控制信息。\n\n200 成功响应: data.providers[] — 包含 id, name, protocol, keyHint, baseURL, modelCount, resourceAccess\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+    },
   },
 );
 
 /** 获取单个 Provider 详情 */
 app.get(
   "/config/providers/:name",
-  async ({ store, params }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store, params }: any) => {
     const authCtx = store.authContext!;
     try {
       return await handleGet(authCtx, params.name);
@@ -537,7 +571,14 @@ app.get(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "获取 Provider 详情" },
+    params: "provider-name-param" as any,
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "获取 Provider 详情",
+      description:
+        "根据名称获取单个 Provider 的详细配置，包括协议类型、API Key 掩码、Base URL 和该 Provider 下的所有模型列表。支持通过 resourceKey 访问外部共享 Provider。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint, baseURL, models[], resourceAccess\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+    },
   },
 );
 
@@ -558,7 +599,13 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "创建 Provider" },
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "创建 Provider",
+      description:
+        "创建一个新的 Provider 供应商配置。请求体需包含 name（唯一标识）和协议相关参数（apiKey、baseURL、protocol）。创建时会检查名称是否已存在。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint\n400 参数错误 / 409 名称已存在 / 500 内部错误",
+    },
   },
 );
 
@@ -577,7 +624,14 @@ app.put(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "更新 Provider" },
+    params: "provider-name-param" as any,
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "更新 Provider",
+      description:
+        "更新指定 Provider 的配置信息。支持修改协议类型、API Key、Base URL 和展示名称。请求体中只包含需要更新的字段，未提供的字段保持不变。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+    },
   },
 );
 
@@ -596,7 +650,14 @@ app.delete(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "删除 Provider" },
+    params: "provider-name-param" as any,
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "删除 Provider",
+      description:
+        "删除指定的 Provider 及其下的所有模型。外部共享 Provider 不可删除。\n\n200 成功响应: data — null\n403 无权限 / 404 不存在 / 500 内部错误",
+    },
   },
 );
 
@@ -618,7 +679,14 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "测试 Provider 连接" },
+    params: "provider-name-param" as any,
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "测试 Provider 连接",
+      description:
+        "测试指定 Provider 的连接有效性。通过调用 Provider 的 models 列表 API 验证凭据和可达性，返回可用的模型 ID 列表。\n\n200 成功响应: data.models[] — 从 API 获取的可用模型 ID 列表\n400 参数错误 / 404 不存在 / 500 内部错误",
+    },
   },
 );
 
@@ -637,7 +705,14 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "添加 Provider 下的模型" },
+    params: "provider-name-param" as any,
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "添加 Provider 下的模型",
+      description:
+        "向指定 Provider 添加一个新模型。请求体需提供 modelId 和可选的展示名称、limit 限制和 cost 费用配置。\n\n200 成功响应: data.modelId — 模型 ID\n400 参数错误 / 404 Provider 不存在 / 500 内部错误",
+    },
   },
 );
 
@@ -656,7 +731,14 @@ app.put(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "更新 Provider 下的模型" },
+    params: "provider-name-modelid-params" as any,
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "更新 Provider 下的模型",
+      description:
+        "更新指定 Provider 下某个模型的配置。支持修改模型名称、上下文限制、输出限制和费用信息。\n\n200 成功响应: data.modelId — 模型 ID\n400 参数错误 / 404 不存在 / 500 内部错误",
+    },
   },
 );
 
@@ -675,7 +757,13 @@ app.delete(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "删除 Provider 下的模型" },
+    params: "provider-name-modelid-params" as any,
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "删除 Provider 下的模型",
+      description: "删除指定 Provider 下的某个模型。\n\n200 成功响应: data — null\n404 不存在 / 500 内部错误",
+    },
   },
 );
 
@@ -694,7 +782,14 @@ app.post(
   },
   {
     sessionAuth: true,
-    detail: { tags: ["ProviderConfig"], summary: "测试模型对话能力" },
+    params: "provider-name-modelid-params" as any,
+    response: "config-response" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "测试模型对话能力",
+      description:
+        "测试指定模型的实际对话生成能力。向 Provider 发送测试消息并返回模型响应的文本内容。\n\n200 成功响应: data — 包含 ok(bool) 和 content(string)\n400 参数错误 / 404 不存在 / 500 内部错误",
+    },
   },
 );
 
