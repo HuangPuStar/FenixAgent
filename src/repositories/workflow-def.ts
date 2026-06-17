@@ -187,7 +187,10 @@ export async function getVersionYaml(
       .where(eq(workflow.id, workflowId))
       .limit(1)
       .then(([r]) => r?.storagePath));
-  if (!dir) return null;
+  if (!dir) {
+    console.warn(`[workflow-def] getVersionYaml: storagePath is empty for workflow=${workflowId} version=${version}`);
+    return null;
+  }
 
   const fileName = version === 0 ? "draft.yaml" : `v${version}.yaml`;
   return readYamlFile(dir, fileName);
