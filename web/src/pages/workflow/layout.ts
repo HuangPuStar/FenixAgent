@@ -2,7 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import dagre from "dagre";
 
 const NODE_WIDTH = 220;
-const NODE_HEIGHT = 72;
+const NODE_HEIGHT = 180;
 
 export function autoLayout(nodes: Node[], edges: Edge[]): Node[] {
   if (nodes.length === 0) return nodes;
