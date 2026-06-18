@@ -807,64 +807,16 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             updateMeta={updateMeta}
           />
 
-          {/* 运行日志 Popover */}
-          <Popover open={runSheetOpen} onOpenChange={setRunSheetOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className={`wf-meta-trigger-btn ${runSheetOpen ? "active" : ""}`}
-                title={t("editor.tooltip_run_history")}
-              >
-                <List size={14} />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="end"
-              sideOffset={8}
-              collisionPadding={16}
-              className="wf-meta-popover"
-              style={{ width: 360, maxHeight: 520 }}
-            >
-              <div className="wf-popover-header">
-                <span className="wf-popover-title">{t("editor.run_history")}</span>
-              </div>
-              <RunStatusPanel
-                activeRunId={activeRunId}
-                runSnapshot={runSnapshot}
-                dagStatus={dagStatus}
-                isRunMode={isRunMode}
-                isRunDone={isRunDone}
-                running={running}
-                runEvents={runEvents}
-                runApprovals={runApprovals}
-                runRightTab={runRightTab}
-                setRunRightTab={setRunRightTab}
-                selectedRunNodeId={selectedRunNodeId}
-                setSelectedRunNodeId={setSelectedRunNodeId}
-                selectedNodeOutput={selectedNodeOutput}
-                nodeOutputLoading={nodeOutputLoading}
-                handleCancelRun={handleCancelRun}
-                handleBackToEdit={() => {
-                  handleBackToEdit();
-                  setRunSheetOpen(false);
-                }}
-                handleBackToList={() => {
-                  handleBackToList();
-                  setRunSheetOpen(false);
-                }}
-                handleApprove={handleApprove}
-                handleRerunFrom={handleRerunFrom}
-                setActiveRunId={setActiveRunId}
-                setRunSnapshot={setRunSnapshot}
-                setRunEvents={setRunEvents}
-                setRunApprovals={setRunApprovals}
-                setSelectedNodeOutput={setSelectedNodeOutput}
-                updateNodesFromSnapshot={updateNodesFromSnapshot}
-                setRightTab={() => setRunSheetOpen(false)}
-              />
-            </PopoverContent>
-          </Popover>
+          {/* 运行记录侧栏开关：原来用 Popover 浮窗，与 run mode 下的右侧栏重复。
+              统一为开关侧栏，运行状态/历史/事件/输出都在侧栏里。 */}
+          <button
+            type="button"
+            className={`wf-meta-trigger-btn ${runSheetOpen ? "active" : ""}`}
+            title={t("editor.tooltip_run_history")}
+            onClick={() => setRunSheetOpen((prev) => !prev)}
+          >
+            <List size={14} />
+          </button>
 
           {/* 版本指示器 */}
           <VersionIndicator
@@ -935,9 +887,10 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         />
       )}
 
-      {/* 运行状态固定侧栏：run mode 下持续显示，避免运行情况被画布遮挡或弹到角落浮窗里看不见。
-          原 List 按钮触发的 Popover 仍保留，用于非运行态查看历史 run 列表。 */}
-      {isRunMode && (
+      {/* 运行记录侧栏：原 List 按钮触发的 Popover 已统一到这里。
+          - isRunMode=true 强制显示，避免运行情况被画布遮挡或弹到角落浮窗看不见
+          - 非 run mode 时由 List 按钮 toggle（runSheetOpen）控制，显示历史 run 列表 */}
+      {(runSheetOpen || isRunMode) && (
         <aside className="wf-run-panel">
           <RunStatusPanel
             activeRunId={activeRunId}
@@ -955,7 +908,10 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             selectedNodeOutput={selectedNodeOutput}
             nodeOutputLoading={nodeOutputLoading}
             handleCancelRun={handleCancelRun}
-            handleBackToEdit={handleBackToEdit}
+            handleBackToEdit={() => {
+              handleBackToEdit();
+              setRunSheetOpen(false);
+            }}
             handleBackToList={handleBackToList}
             handleApprove={handleApprove}
             handleRerunFrom={handleRerunFrom}
@@ -965,7 +921,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             setRunApprovals={setRunApprovals}
             setSelectedNodeOutput={setSelectedNodeOutput}
             updateNodesFromSnapshot={updateNodesFromSnapshot}
-            setRightTab={() => {}}
+            setRightTab={() => setRunSheetOpen(false)}
           />
         </aside>
       )}
