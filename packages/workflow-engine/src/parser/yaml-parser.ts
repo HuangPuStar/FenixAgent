@@ -6,10 +6,27 @@
  */
 
 import { parse as yamlParse } from "yaml";
+import type { CustomNodeRegistry } from "../plugins/registry";
 import type { NodeDef, NodeType, WorkflowDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 
-const VALID_NODE_TYPES: NodeType[] = ["shell", "python", "agent", "api", "audit", "workflow", "loop", "transform"];
+const VALID_NODE_TYPES: NodeType[] = [
+  "shell",
+  "python",
+  "agent",
+  "api",
+  "audit",
+  "workflow",
+  "loop",
+  "transform",
+  "custom",
+];
+
+/** parseWorkflowYaml 的额外选项 */
+export interface ParseOptions {
+  /** CustomNodeRegistry 实例，用于校验 tool 存在性 + produces 匹配 */
+  customRegistry?: CustomNodeRegistry;
+}
 
 /**
  * 将 YAML 源码解析为 WorkflowDef
@@ -17,7 +34,7 @@ const VALID_NODE_TYPES: NodeType[] = ["shell", "python", "agent", "api", "audit"
  * @param baseDir 工作流定义所在目录，默认 process.cwd()
  * @throws WorkflowError(INVALID_YAML) 格式错误
  */
-export function parseWorkflowYaml(source: string, baseDir?: string): WorkflowDef {
+export function parseWorkflowYaml(source: string, baseDir?: string, opts?: ParseOptions): WorkflowDef {
   let doc: unknown;
   try {
     doc = yamlParse(source);
@@ -68,7 +85,7 @@ export function parseWorkflowYaml(source: string, baseDir?: string): WorkflowDef
     throw new WorkflowError("Missing required field: 'nodes' (must be an array)", WorkflowErrorCode.INVALID_YAML);
   }
 
-  const nodes: NodeDef[] = raw.nodes.map((n: unknown, i: number) => parseNode(n, i));
+  const nodes: NodeDef[] = raw.nodes.map((n: unknown, i: number) => parseNode(n, i, opts));
 
   // 识别隐式起始节点：无 depends_on 或 depends_on 为空数组
   const startNodes = nodes.filter((n) => !n.depends_on || n.depends_on.length === 0);
@@ -89,7 +106,7 @@ export function parseWorkflowYaml(source: string, baseDir?: string): WorkflowDef
 /**
  * 解析单个节点定义
  */
-function parseNode(raw: unknown, index: number): NodeDef {
+function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new WorkflowError(`nodes[${index}] must be a mapping`, WorkflowErrorCode.INVALID_YAML);
   }
@@ -251,7 +268,71 @@ function parseNode(raw: unknown, index: number): NodeDef {
         output: n.output as Record<string, string>,
       };
     }
+    case "custom": {
+      if (!("tool" in n) || typeof n.tool !== "string" || !n.tool.trim()) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): custom node requires 'tool'`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      const registry = opts?.customRegistry;
+      const toolDef = registry?.get(n.tool);
+      if (registry && !toolDef) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): custom tool '${n.tool}' not registered`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      if (!n.outputs || !isRecord(n.outputs)) {
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): custom node requires 'outputs' mapping`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
+      if (toolDef) {
+        const producesSet = new Set(toolDef.produces);
+        for (const key of Object.keys(n.outputs as Record<string, unknown>)) {
+          if (!producesSet.has(key)) {
+            throw new WorkflowError(
+              `nodes[${index}] (${n.id}): output '${key}' not declared in tool '${n.tool}' produces list [${toolDef.produces.join(", ")}]`,
+              WorkflowErrorCode.INVALID_YAML,
+            );
+          }
+        }
+      }
+      return {
+        ...base,
+        type: "custom",
+        tool: n.tool as string,
+        inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
+        outputs: parseOutputs(n.outputs),
+        foreach: typeof n.foreach === "string" ? n.foreach : undefined,
+        maxConcurrent: typeof n.maxConcurrent === "number" ? n.maxConcurrent : undefined,
+        continueOnError: typeof n.continueOnError === "boolean" ? n.continueOnError : undefined,
+      };
+    }
   }
+}
+
+/** 解析 outputs 字段为 { pattern, type } 结构 */
+function parseOutputs(raw: unknown): Record<string, { pattern: string; type: "file" | "file-list" | "dir" }> {
+  if (!isRecord(raw)) return {};
+  const result: Record<string, { pattern: string; type: "file" | "file-list" | "dir" }> = {};
+  for (const [key, val] of Object.entries(raw)) {
+    if (!isRecord(val)) {
+      throw new WorkflowError(
+        `outputs.${key}: must be a mapping with 'pattern' and 'type'`,
+        WorkflowErrorCode.INVALID_YAML,
+      );
+    }
+    const pattern = typeof val.pattern === "string" ? val.pattern : "";
+    const type =
+      typeof val.type === "string" && ["file", "file-list", "dir"].includes(val.type)
+        ? (val.type as "file" | "file-list" | "dir")
+        : "file";
+    result[key] = { pattern, type };
+  }
+  return result;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
