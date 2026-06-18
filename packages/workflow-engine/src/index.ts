@@ -26,7 +26,12 @@ export type { ResolvedInput } from "./parser/inputs-resolver";
 // Inputs 解析器
 export { generatePythonPreamble, generateShellEnvVars, resolveInputs } from "./parser/inputs-resolver";
 // 解析器
+export type { ParseOptions } from "./parser/yaml-parser";
 export { parseWorkflowYaml } from "./parser/yaml-parser";
+export { CustomNodeExecutor } from "./plugins/custom-executor";
+export { CustomNodeRegistry } from "./plugins/registry";
+// 自定义节点插件系统
+export type { CustomNode, ExecuteContext, InputDef } from "./plugins/types";
 export type { RecoveryResult } from "./recovery/snapshot-recovery";
 export { recoverRun } from "./recovery/snapshot-recovery";
 export { CancellationManager } from "./scheduler/cancellation";
@@ -48,6 +53,7 @@ export type {
   ApiNodeDef,
   AuditNodeDef,
   BaseNodeDef,
+  CustomNodeDef,
   LoopBody,
   LoopNodeDef,
   NodeDef,
