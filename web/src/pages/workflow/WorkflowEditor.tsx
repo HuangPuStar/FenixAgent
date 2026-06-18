@@ -327,13 +327,10 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       if (isRunMode) {
-        // run mode 下点击节点要"跳转到该节点的运行情况"：
-        // 1. setSelectedRunNodeId 触发 useWorkflowRun 拉 getOutput 并切到 output 子 tab
-        // 2. setRunSheetOpen(true) 打开右侧运行历史 Popover（RunStatusPanel 才显示出来）
-        // 只设 selectedNode 不会触发任何运行面板变化，用户看不见节点输出。
+        // run mode 下运行情况显示在固定右侧栏（wf-run-panel），点击节点只需切换
+        // selectedRunNodeId，useWorkflowRun 会自动拉 getOutput 并切到 output 子 tab。
         setSelectedRunNodeId(node.id);
         setSelectedNode(node);
-        setRunSheetOpen(true);
         return;
       }
       if (selectedNode?.id === node.id && popoverOpen) {
@@ -936,6 +933,41 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           params={workflowParams as any}
           onSubmit={onParamsSubmit}
         />
+      )}
+
+      {/* 运行状态固定侧栏：run mode 下持续显示，避免运行情况被画布遮挡或弹到角落浮窗里看不见。
+          原 List 按钮触发的 Popover 仍保留，用于非运行态查看历史 run 列表。 */}
+      {isRunMode && (
+        <aside className="wf-run-panel">
+          <RunStatusPanel
+            activeRunId={activeRunId}
+            runSnapshot={runSnapshot}
+            dagStatus={dagStatus}
+            isRunMode={isRunMode}
+            isRunDone={isRunDone}
+            running={running}
+            runEvents={runEvents}
+            runApprovals={runApprovals}
+            runRightTab={runRightTab}
+            setRunRightTab={setRunRightTab}
+            selectedRunNodeId={selectedRunNodeId}
+            setSelectedRunNodeId={setSelectedRunNodeId}
+            selectedNodeOutput={selectedNodeOutput}
+            nodeOutputLoading={nodeOutputLoading}
+            handleCancelRun={handleCancelRun}
+            handleBackToEdit={handleBackToEdit}
+            handleBackToList={handleBackToList}
+            handleApprove={handleApprove}
+            handleRerunFrom={handleRerunFrom}
+            setActiveRunId={setActiveRunId}
+            setRunSnapshot={setRunSnapshot}
+            setRunEvents={setRunEvents}
+            setRunApprovals={setRunApprovals}
+            setSelectedNodeOutput={setSelectedNodeOutput}
+            updateNodesFromSnapshot={updateNodesFromSnapshot}
+            setRightTab={() => {}}
+          />
+        </aside>
       )}
     </div>
   );
