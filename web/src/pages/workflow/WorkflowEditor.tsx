@@ -327,11 +327,13 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       if (isRunMode) {
-        // run mode 下点击节点要触发右侧"节点输出"面板加载：useWorkflowRun 监听
-        // selectedRunNodeId 拉 getOutput 并自动切到 output tab；只设 selectedNode
-        // 不会触发 output 加载，导致用户点节点看不到输出。
+        // run mode 下点击节点要"跳转到该节点的运行情况"：
+        // 1. setSelectedRunNodeId 触发 useWorkflowRun 拉 getOutput 并切到 output 子 tab
+        // 2. setRunSheetOpen(true) 打开右侧运行历史 Popover（RunStatusPanel 才显示出来）
+        // 只设 selectedNode 不会触发任何运行面板变化，用户看不见节点输出。
         setSelectedRunNodeId(node.id);
         setSelectedNode(node);
+        setRunSheetOpen(true);
         return;
       }
       if (selectedNode?.id === node.id && popoverOpen) {
