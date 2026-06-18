@@ -226,6 +226,8 @@
     "hint_drag_add": "Click or drag from the left panel to add nodes",
     "hint_connect": "Drag from the right port of a node to quickly create a successor",
     "hint_delete": "Press Delete to remove selected node or connection",
+    "delete_node_tooltip": "Delete this node",
+    "delete_node_confirm": "Delete node \"{{nodeId}}\"? Related connections will also be removed.",
     "run_result": "Run Result",
     "waiting_approval": "Awaiting Approval",
     "approval_node": "Node: {{nodeId}}",

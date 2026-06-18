@@ -226,6 +226,8 @@
     "hint_drag_add": "从左侧面板点击或拖拽添加节点",
     "hint_connect": "从节点右侧端口拖出可快速创建后续节点",
     "hint_delete": "按 Delete 键删除选中的节点或连线",
+    "delete_node_tooltip": "删除此节点",
+    "delete_node_confirm": "确定要删除节点「{{nodeId}}」吗？相关连线会一并移除。",
     "run_result": "运行结果",
     "waiting_approval": "等待审批",
     "approval_node": "节点: {{nodeId}}",

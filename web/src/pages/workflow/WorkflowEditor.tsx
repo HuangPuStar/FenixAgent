@@ -327,6 +327,10 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       if (isRunMode) {
+        // run mode 下点击节点要触发右侧"节点输出"面板加载：useWorkflowRun 监听
+        // selectedRunNodeId 拉 getOutput 并自动切到 output tab；只设 selectedNode
+        // 不会触发 output 加载，导致用户点节点看不到输出。
+        setSelectedRunNodeId(node.id);
         setSelectedNode(node);
         return;
       }
@@ -348,6 +352,19 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       setSelectedNode(null);
     }
   }, [popoverOpen]);
+
+  // ── 从 popover 删除当前选中节点 ──
+  // 与 ReactFlow 内置 deleteKeyCode 不同，这里是手动触发，需要同时清理 nodes、edges、popover 状态。
+  // 开始节点（START_NODE_ID）和只读模式下由 NodeConfigPopover 自身屏蔽，不进入此回调。
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      setPopoverOpen(false);
+      setSelectedNode(null);
+    },
+    [setNodes, setEdges],
+  );
 
   // 加载已保存的工作流草稿
   useEffect(() => {
@@ -732,6 +749,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           setSelectedNode={setSelectedNode}
           updateNodeData={updateNodeData}
           agentList={agentList}
+          onDeleteNode={handleDeleteNode}
         />
 
         {/* 右下角按钮组 */}
