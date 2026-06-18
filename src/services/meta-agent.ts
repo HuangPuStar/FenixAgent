@@ -86,9 +86,7 @@ async function resolveDefaultMetaModelRef(ctx: AuthContext): Promise<string | nu
     const detail = await getProvider(ctx, providerKey);
     const firstModel = detail?.models?.[0];
     if (!firstModel) continue;
-    return provider.resourceAccess?.ownership === "external"
-      ? `${provider.resourceAccess.resourceKey}/${firstModel.modelId}`
-      : `${provider.name}/${firstModel.modelId}`;
+    return firstModel.id; // 返回 model UUID，运行时通过 modelId FK 直接定位
   }
   return null;
 }
@@ -276,7 +274,7 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     const defaultModelRef = await resolveDefaultMetaModelRef(ctx);
     await createAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
       description: "Meta Agent — 工作流编排助手",
-      model: defaultModelRef,
+      modelId: defaultModelRef,
       prompt: null,
     });
     agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
@@ -291,7 +289,7 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     if (defaultModelRef) {
       log(`[meta-agent] Auto-filling empty model for meta AgentConfig: ${defaultModelRef}`);
       await updateAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
-        model: defaultModelRef,
+        modelId: defaultModelRef,
       });
     } else {
       log(`[meta-agent] No provider/model available to auto-fill meta AgentConfig model`);
