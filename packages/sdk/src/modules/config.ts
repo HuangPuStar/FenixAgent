@@ -17,46 +17,51 @@ import type {
 
 export class ProviderApi extends BaseApi {
   async list(): Promise<ApiResult<ProviderInfo[]>> {
-    return this.post<ProviderInfo[]>("/web/config/providers", { action: "list" });
+    return this._get<ProviderInfo[]>("/web/config/providers");
   }
   async get(name: string): Promise<ApiResult<ProviderDetail>> {
-    return this.post<ProviderDetail>("/web/config/providers", { action: "get", name });
+    return this._get<ProviderDetail>("/web/config/providers/:name", { params: { name } });
+  }
+  async create(name: string, data: Record<string, unknown>): Promise<ApiResult<ProviderInfo>> {
+    return this.post<ProviderInfo>("/web/config/providers", { name, ...data });
   }
   async set(name: string, data: Record<string, unknown>): Promise<ApiResult<ProviderInfo>> {
-    return this.post<ProviderInfo>("/web/config/providers", { action: "set", name, data });
+    return this.put<ProviderInfo>("/web/config/providers/:name", data, { params: { name } });
   }
   async test(
     name: string,
     inline?: { apiKey?: string; baseURL?: string; protocol?: string },
   ): Promise<ApiResult<{ success: boolean; error?: string }>> {
-    return this.post("/web/config/providers", { action: "test", name, ...inline });
+    return this.post("/web/config/providers/:name/test", inline ?? {}, { params: { name } });
   }
   async testModel(name: string, modelId: string): Promise<ApiResult<{ ok: boolean; content: string }>> {
-    return this.post("/web/config/providers", { action: "test_model", name, modelId });
+    return this.post("/web/config/providers/:name/models/:modelId/test", {}, { params: { name, modelId } });
   }
   async delete(name: string): Promise<ApiResult<boolean>> {
-    return this.post("/web/config/providers", { action: "delete", name });
+    return this.del<boolean>("/web/config/providers/:name", { params: { name } });
   }
   async addModel(name: string, modelData: Record<string, unknown>): Promise<ApiResult<ModelEntry>> {
-    return this.post("/web/config/providers", { action: "add_model", name, data: modelData });
+    return this.post<ModelEntry>("/web/config/providers/:name/models", modelData, { params: { name } });
   }
   async updateModel(name: string, modelId: string, modelData: Record<string, unknown>): Promise<ApiResult<ModelEntry>> {
-    return this.post("/web/config/providers", { action: "update_model", name, modelId, data: modelData });
+    return this.put<ModelEntry>("/web/config/providers/:name/models/:modelId", modelData, {
+      params: { name, modelId },
+    });
   }
   async removeModel(name: string, modelId: string): Promise<ApiResult<boolean>> {
-    return this.post("/web/config/providers", { action: "remove_model", name, modelId });
+    return this.del<boolean>("/web/config/providers/:name/models/:modelId", { params: { name, modelId } });
   }
 }
 
 export class ModelApi extends BaseApi {
   async get(): Promise<ApiResult<ModelConfig>> {
-    return this.post<ModelConfig>("/web/config/models", { action: "get" });
+    return this._get<ModelConfig>("/web/config/models");
   }
   async set(data: Record<string, unknown>): Promise<ApiResult<ModelConfig>> {
-    return this.post<ModelConfig>("/web/config/models", { action: "set", data });
+    return this.put<ModelConfig>("/web/config/models", data);
   }
-  async refresh(): Promise<ApiResult<ModelEntry[]>> {
-    return this.post<ModelEntry[]>("/web/config/models", { action: "refresh" });
+  async refresh(): Promise<ApiResult<{ count: number }>> {
+    return this.post<{ count: number }>("/web/config/models/refresh");
   }
 }
 
@@ -132,36 +137,36 @@ export class SkillConfigApi extends BaseApi {
 
 export class McpApi extends BaseApi {
   async list(): Promise<ApiResult<McpServerInfo[]>> {
-    return this.post<McpServerInfo[]>("/web/config/mcp", { action: "list" });
+    return this._get<McpServerInfo[]>("/web/config/mcp");
   }
   async get(name: string): Promise<ApiResult<McpServerDetail>> {
-    return this.post<McpServerDetail>("/web/config/mcp", { action: "get", name });
+    return this._get<McpServerDetail>("/web/config/mcp/:name", { params: { name } });
   }
   async create(name: string, data: Record<string, unknown>): Promise<ApiResult<McpServerInfo>> {
-    return this.post<McpServerInfo>("/web/config/mcp", { action: "create", name, data });
+    return this.post<McpServerInfo>("/web/config/mcp", { name, ...data });
   }
   async set(name: string, data: Record<string, unknown>): Promise<ApiResult<McpServerInfo>> {
-    return this.post<McpServerInfo>("/web/config/mcp", { action: "set", name, data });
+    return this.put<McpServerInfo>("/web/config/mcp/:name", data, { params: { name } });
   }
   async delete(name: string): Promise<ApiResult<boolean>> {
-    return this.post("/web/config/mcp", { action: "delete", name });
+    return this.del<boolean>("/web/config/mcp/:name", { params: { name } });
   }
   async enable(name: string): Promise<ApiResult<McpServerInfo>> {
-    return this.post<McpServerInfo>("/web/config/mcp", { action: "enable", name });
+    return this.post<McpServerInfo>("/web/config/mcp/:name/enable", {}, { params: { name } });
   }
   async disable(name: string): Promise<ApiResult<McpServerInfo>> {
-    return this.post<McpServerInfo>("/web/config/mcp", { action: "disable", name });
+    return this.post<McpServerInfo>("/web/config/mcp/:name/disable", {}, { params: { name } });
   }
   async test(name: string): Promise<ApiResult<{ success: boolean; error?: string }>> {
-    return this.post("/web/config/mcp", { action: "test", name });
+    return this.post("/web/config/mcp/:name/test", {}, { params: { name } });
   }
   async testUrl(url: string): Promise<ApiResult<{ success: boolean; error?: string }>> {
-    return this.post("/web/config/mcp", { action: "test_url", url });
+    return this.post("/web/config/mcp/test-url", { url });
   }
   async inspect(name: string): Promise<ApiResult<McpInspectResult>> {
-    return this.post<McpInspectResult>("/web/config/mcp", { action: "inspect", name });
+    return this.post<McpInspectResult>("/web/config/mcp/:name/inspect", {}, { params: { name } });
   }
   async listTools(name: string): Promise<ApiResult<McpToolInfo[]>> {
-    return this.post<McpToolInfo[]>("/web/config/mcp", { action: "list_tools", name });
+    return this._get<McpToolInfo[]>("/web/config/mcp/:name/tools", { params: { name } });
   }
 }

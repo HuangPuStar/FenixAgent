@@ -1,4 +1,5 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
@@ -7,6 +8,20 @@ import { configError, configSuccess } from "../../../services/config-utils";
 
 const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
+  "config-response": z
+    .object({
+      success: z.boolean().describe("接口调用是否成功。true 表示成功，false 表示失败。"),
+      data: z.any().optional().describe("成功时的响应数据。"),
+      error: z
+        .object({
+          code: z.string().describe("错误码。"),
+          message: z.string().describe("错误描述信息。"),
+        })
+        .optional()
+        .describe("失败时的错误信息。"),
+    })
+    .passthrough()
+    .describe("Model 配置通用响应。"),
 });
 
 /** 可用模型缓存（按 organizationId 隔离） */
@@ -151,36 +166,220 @@ async function handleRefresh(ctx: AuthContext) {
   return configSuccess({ count: available.length });
 }
 
-app.post(
+// ────────────────────────────────────────────
+// Model 用户偏好管理（RESTful 接口）
+// ────────────────────────────────────────────
+
+/** 获取当前用户的模型偏好配置和可用模型列表 */
+app.get(
   "/config/models",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, error }: any) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store }: any) => {
     const authCtx = store.authContext!;
-    const b = (body as ConfigBody) ?? {};
-    const payload = {
-      action: b.action ?? "",
-      data: b.data as { model?: string; small_model?: string; permission?: unknown } | undefined,
-    };
     try {
-      switch (payload.action) {
-        case "get":
-          return await handleGet(authCtx);
-        case "set":
-          return await handleSet(authCtx, payload.data ?? {});
-        case "refresh":
-          return await handleRefresh(authCtx);
-        default:
-          return error(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
-      }
+      return await handleGet(authCtx);
     } catch (e: unknown) {
-      if (e instanceof AppError) {
-        return error(e.statusCode, configError(e.code, e.message));
-      }
-      const message = e instanceof Error ? e.message : "Unknown error";
-      return error(500, configError("CONFIG_READ_ERROR", message));
+      if (e instanceof AppError) return configError(e.code, e.message);
+      return configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error");
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["ModelConfig"], summary: "Model 配置管理" } },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["ModelConfig"],
+      summary: "获取模型偏好与可用模型列表",
+      description:
+        "返回当前用户的模型偏好配置和所有可用的模型列表。\n\n200 成功响应: data — 包含 current (model, small_model, permission) 和 available[] (可用模型列表)\n400 参数错误 / 500 内部错误",
+      responses: {
+        "200": {
+          description:
+            "成功返回模型偏好和可用模型列表。data.current: model, small_model, permission。data.available[]: 可用模型列表。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      current: {
+                        type: "object",
+                        properties: {
+                          model: { type: "string" },
+                          small_model: { type: "string" },
+                          permission: { type: "object" },
+                        },
+                      },
+                      available: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            modelId: { type: "string" },
+                            displayName: { type: "string" },
+                            provider: { type: "string" },
+                            providerDisplayName: { type: "string" },
+                            contextLimit: { type: "number" },
+                            outputLimit: { type: "number" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 更新当前用户的模型偏好（current model、small model、permission） */
+app.put(
+  "/config/models",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = (body ?? {}) as { model?: string; small_model?: string; permission?: unknown };
+    try {
+      return await handleSet(authCtx, b);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["ModelConfig"],
+      summary: "更新模型偏好",
+      description:
+        "更新当前用户的模型偏好设置，包括主模型（model）、轻量模型（small_model）和权限配置（permission）。请求体中只需包含需要更新的字段。\n\n200 成功响应: data — 包含 model, small_model, permission\n400 参数错误 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "更新成功。data: model, small_model, permission。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      model: { type: "string" },
+                      small_model: { type: "string" },
+                      permission: { type: "object" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 刷新可用模型缓存 */
+app.post(
+  "/config/models/refresh",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleRefresh(authCtx);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return configError(e.code, e.message);
+      return configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error");
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["ModelConfig"],
+      summary: "刷新可用模型缓存",
+      description:
+        "强制刷新可用模型列表的缓存。可用模型每 5 分钟自动刷新一次，调用此接口可立即更新缓存。\n\n200 成功响应: data.count — 可用模型数量\n500 内部错误",
+      responses: {
+        "200": {
+          description: "刷新缓存成功。data.count: 可用模型数量。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: { type: "object", properties: { count: { type: "number", description: "可用模型数量" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
 );
 
 export default app;

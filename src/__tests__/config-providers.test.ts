@@ -196,9 +196,8 @@ describe("Providers Config Route", () => {
   test("list action — 空配置", async () => {
     const res = await providersRoute.handle(
       new Request("http://localhost/config/providers", {
-        method: "POST",
+        method: "GET",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list" }),
       }),
     );
     const json = await res.json();
@@ -232,9 +231,8 @@ describe("Providers Config Route", () => {
     });
     const res = await providersRoute.handle(
       new Request("http://localhost/config/providers", {
-        method: "POST",
+        method: "GET",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list" }),
       }),
     );
     const json = await res.json();
@@ -275,13 +273,9 @@ describe("Providers Config Route", () => {
       ]),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/bailian-token-plan", {
+        method: "GET",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "get",
-          name: "bailian-token-plan",
-        }),
       }),
     );
     const json = await res.json();
@@ -307,10 +301,9 @@ describe("Providers Config Route", () => {
       models: new Map(),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/short-key-provider", {
+        method: "GET",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get", name: "short-key-provider" }),
       }),
     );
     const json = await res.json();
@@ -330,10 +323,9 @@ describe("Providers Config Route", () => {
       models: new Map(),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/empty-key-provider", {
+        method: "GET",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get", name: "empty-key-provider" }),
       }),
     );
     const json = await res.json();
@@ -343,10 +335,9 @@ describe("Providers Config Route", () => {
 
   test("get action — 不存在", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/unknown", {
+        method: "GET",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get", name: "unknown" }),
       }),
     );
     const json = await res.json();
@@ -356,18 +347,14 @@ describe("Providers Config Route", () => {
 
   test("set action — 创建新 provider", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/ollama", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "set",
-          name: "ollama",
-          data: {
-            apiKey: "sk-test",
-            baseURL: "http://localhost:11434",
-            protocol: "openai",
-            name: "Ollama",
-          },
+          apiKey: "sk-test",
+          baseURL: "http://localhost:11434",
+          protocol: "openai",
+          name: "Ollama",
         }),
       }),
     );
@@ -393,13 +380,11 @@ describe("Providers Config Route", () => {
       models: new Map([["qwen3.6-plus", { displayName: "Qwen3.6 Plus" }]]),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/bailian-token-plan", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "set",
-          name: "bailian-token-plan",
-          data: { baseURL: "https://new.api.com" },
+          baseURL: "https://new.api.com",
         }),
       }),
     );
@@ -411,17 +396,16 @@ describe("Providers Config Route", () => {
     expect(p!.baseUrl).toBe("https://new.api.com");
   });
 
-  test("set action — 缺少 name 返回 VALIDATION_ERROR", async () => {
+  test("GET 不存在的 provider 返回 NOT_FOUND", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/nonexistent", {
+        method: "GET",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", data: { apiKey: "x" } }),
       }),
     );
     const json = await res.json();
     expect(json.success).toBe(false);
-    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.code).toBe("NOT_FOUND");
   });
 
   test("delete action — 存在", async () => {
@@ -446,10 +430,9 @@ describe("Providers Config Route", () => {
       models: new Map(),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/anthropic", {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", name: "anthropic" }),
       }),
     );
     const json = await res.json();
@@ -460,10 +443,9 @@ describe("Providers Config Route", () => {
 
   test("delete action — 不存在", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/ghost", {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", name: "ghost" }),
       }),
     );
     const json = await res.json();
@@ -495,10 +477,9 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/openai/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", name: "openai" }),
       }),
     );
     const json = await res.json();
@@ -536,10 +517,9 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/anthropic/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", name: "anthropic" }),
       }),
     );
     const json = await res.json();
@@ -578,10 +558,9 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/anthropic/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", name: "anthropic" }),
       }),
     );
     const json = await res.json();
@@ -621,10 +600,9 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/anthropic/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", name: "anthropic" }),
       }),
     );
     const json = await res.json();
@@ -666,10 +644,9 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/anthropic/models/claude-3-7-sonnet/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test_model", name: "anthropic", modelId: "claude-3-7-sonnet" }),
       }),
     );
     const json = await res.json();
@@ -708,10 +685,9 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/openai/models/gpt-4o-mini/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test_model", name: "openai", modelId: "gpt-4o-mini" }),
       }),
     );
     const json = await res.json();
@@ -739,10 +715,9 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/anthropic/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", name: "anthropic" }),
       }),
     );
     const json = await res.json();
@@ -760,10 +735,9 @@ describe("Providers Config Route", () => {
 
   test("test action — provider 不存在", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/nonexistent/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", name: "nonexistent" }),
       }),
     );
     const json = await res.json();
@@ -792,10 +766,9 @@ describe("Providers Config Route", () => {
     );
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/openai/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", name: "openai" }),
       }),
     );
     const json = await res.json();
@@ -809,18 +782,18 @@ describe("Providers Config Route", () => {
     globalThis.fetch = originalFetch;
   });
 
-  // 未知 action 被 Elysia body schema 验证拦截
-  test("未知 action 返回验证错误", async () => {
+  // POST 缺少 name 返回 VALIDATION_ERROR
+  test("创建 Provider 缺少 name 返回验证错误", async () => {
     const res = await providersRoute.handle(
       new Request("http://localhost/config/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "invalid" }),
+        body: JSON.stringify({ apiKey: "x" }),
       }),
     );
-    expect(res.status).toBe(422);
     const json = await res.json();
-    expect(json.type).toBe("validation");
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("VALIDATION_ERROR");
   });
 
   // === Model CRUD ===
@@ -837,17 +810,19 @@ describe("Providers Config Route", () => {
       models: new Map([["gpt-4o", { displayName: "GPT-4o" }]]),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/openai/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "add_model",
-          name: "openai",
-          data: {
-            modelId: "gpt-4o-mini",
-            name: "GPT-4o Mini",
-            limit: { context: 128000, output: 16384 },
-            cost: { input: 0.15, output: 0.6 },
+          modelId: "gpt-4o-mini",
+          name: "GPT-4o Mini",
+          limit: {
+            context: 128000,
+            output: 16384,
+          },
+          cost: {
+            input: 0.15,
+            output: 0.6,
           },
         }),
       }),
@@ -872,13 +847,11 @@ describe("Providers Config Route", () => {
       models: new Map(),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/openai/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "add_model",
-          name: "openai",
-          data: { name: "test" },
+          name: "test",
         }),
       }),
     );
@@ -899,13 +872,11 @@ describe("Providers Config Route", () => {
       models: new Map([["gpt-4o", { displayName: "GPT-4o" }]]),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/openai/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "add_model",
-          name: "openai",
-          data: { modelId: "gpt-4o" },
+          modelId: "gpt-4o",
         }),
       }),
     );
@@ -926,16 +897,14 @@ describe("Providers Config Route", () => {
       models: new Map([["gpt-4o", { displayName: "GPT-4o", limitConfig: { context: 128000 } }]]),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/openai/models/gpt-4o", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "update_model",
-          name: "openai",
-          modelId: "gpt-4o",
-          data: {
-            name: "GPT-4o Updated",
-            cost: { input: 2.5, output: 10 },
+          name: "GPT-4o Updated",
+          cost: {
+            input: 2.5,
+            output: 10,
           },
         }),
       }),
@@ -961,15 +930,9 @@ describe("Providers Config Route", () => {
       models: new Map(),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/openai/models/nonexistent", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_model",
-          name: "openai",
-          modelId: "nonexistent",
-          data: {},
-        }),
       }),
     );
     const json = await res.json();
@@ -992,14 +955,9 @@ describe("Providers Config Route", () => {
       ]),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/openai/models/gpt-3.5", {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "remove_model",
-          name: "openai",
-          modelId: "gpt-3.5",
-        }),
       }),
     );
     const json = await res.json();
@@ -1021,14 +979,9 @@ describe("Providers Config Route", () => {
       models: new Map(),
     });
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
-        method: "POST",
+      new Request("http://localhost/config/providers/openai/models/ghost", {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "remove_model",
-          name: "openai",
-          modelId: "ghost",
-        }),
       }),
     );
     const json = await res.json();
@@ -1038,13 +991,11 @@ describe("Providers Config Route", () => {
 
   test("add_model — provider 不存在返回 NOT_FOUND", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/ghost/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "add_model",
-          name: "ghost",
-          data: { modelId: "m1" },
+          modelId: "m1",
         }),
       }),
     );
@@ -1076,10 +1027,9 @@ describe("Provider Test action - edge cases", () => {
 
   test("test non-existent provider returns NOT_FOUND", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers", {
+      new Request("http://localhost/config/providers/nonexistent/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test", name: "nonexistent" }),
       }),
     );
     const json = await res.json();
@@ -1132,24 +1082,20 @@ describe("Provider atomic write", () => {
 
     const [res1, res2] = await Promise.all([
       providersRoute.handle(
-        new Request("http://localhost/config/providers", {
-          method: "POST",
+        new Request("http://localhost/config/providers/provider-a", {
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "set",
-            name: "provider-a",
-            data: { apiKey: "new-key-a" },
+            apiKey: "new-key-a",
           }),
         }),
       ),
       providersRoute.handle(
-        new Request("http://localhost/config/providers", {
-          method: "POST",
+        new Request("http://localhost/config/providers/provider-b", {
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "set",
-            name: "provider-b",
-            data: { apiKey: "new-key-b" },
+            apiKey: "new-key-b",
           }),
         }),
       ),

@@ -1,4 +1,8 @@
+import { inArray } from "drizzle-orm";
 import Elysia from "elysia";
+import * as z from "zod/v4";
+import { db } from "../../../db";
+import { model as modelTable } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
@@ -27,10 +31,59 @@ type TestErrorCode =
 
 const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
+  "provider-name-param": z
+    .object({
+      name: z.string().describe("Provider 名称或跨组织共享资源键（resourceKey）。"),
+    })
+    .describe("Provider 路径参数。"),
+  "provider-name-modelid-params": z
+    .object({
+      name: z.string().describe("Provider 名称或跨组织共享资源键（resourceKey）。"),
+      modelId: z.string().describe("模型 ID。"),
+    })
+    .describe("Provider 模型嵌套路径参数。"),
+  "config-response": z
+    .object({
+      success: z.boolean().describe("接口调用是否成功。true 表示成功，false 表示失败。"),
+      data: z.any().optional().describe("成功时的响应数据，不同接口返回结构不同。"),
+      error: z
+        .object({
+          code: z.string().describe("错误码。"),
+          message: z.string().describe("错误描述信息。"),
+        })
+        .optional()
+        .describe("失败时的错误信息。"),
+    })
+    .passthrough()
+    .describe("Provider 配置通用响应。"),
 });
 
 async function handleList(ctx: AuthContext) {
   const providers = await configPg.listProviders(ctx);
+
+  // 批量加载模型（加载失败时返回空列表，不影响 provider 列表）
+  const modelsByProviderId: Record<string, Array<{ modelId: string; displayName: string | null }>> = {};
+  try {
+    const providerIds = providers.map((p) => p.id).filter(Boolean);
+    if (providerIds.length > 0) {
+      const modelRows = await db
+        .select({
+          providerId: modelTable.providerId,
+          modelId: modelTable.modelId,
+          displayName: modelTable.displayName,
+        })
+        .from(modelTable)
+        .where(inArray(modelTable.providerId, providerIds));
+      for (const m of modelRows) {
+        const pid = m.providerId;
+        if (!modelsByProviderId[pid]) modelsByProviderId[pid] = [];
+        modelsByProviderId[pid].push(m);
+      }
+    }
+  } catch {
+    // 模型加载失败时忽略，仅返回 modelCount
+  }
+
   const list = providers.map((p) => ({
     id: p.name,
     name: p.displayName ?? "",
@@ -38,6 +91,10 @@ async function handleList(ctx: AuthContext) {
     keyHint: toKeyHint(p.apiKey),
     baseURL: p.baseUrl ?? null,
     modelCount: p.modelCount,
+    models: (modelsByProviderId[p.id] ?? []).map((m) => ({
+      modelId: m.modelId,
+      name: m.displayName ?? m.modelId,
+    })),
     resourceAccess: p.resourceAccess,
     resourceKey: p.resourceKey,
   }));
@@ -45,7 +102,10 @@ async function handleList(ctx: AuthContext) {
 }
 
 async function handleGet(ctx: AuthContext, name: string) {
-  const p = await configPg.getProvider(ctx, name);
+  // 同时支持按名称和跨组织共享资源键（resourceKey）查找，与 MCP 的 handleGet 逻辑一致
+  const p = name.includes("/")
+    ? await configPg.getProviderByResourceKey(ctx, name)
+    : await configPg.getProvider(ctx, name);
   if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
 
   const models = (p.models ?? []).map((m) => ({
@@ -69,6 +129,17 @@ async function handleGet(ctx: AuthContext, name: string) {
   });
 }
 
+/** 新建提供商（含名称重复校验） */
+async function handleCreate(ctx: AuthContext, name: string, data: Record<string, unknown>) {
+  if (!name || typeof name !== "string") return configError("VALIDATION_ERROR", "Provider name is required");
+
+  const existing = await configPg.getProvider(ctx, name);
+  if (existing) {
+    return configError("ALREADY_EXISTS", `Provider '${name}' already exists`);
+  }
+  return handleSet(ctx, name, data);
+}
+
 async function handleSet(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   if (!name || typeof name !== "string") return configError("VALIDATION_ERROR", "Provider name is required");
 
@@ -84,7 +155,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   const rawProtocol = data.protocol;
   const protocol =
     rawProtocol === "anthropic" || rawProtocol === "openai" ? rawProtocol : (existing?.protocol ?? "openai");
-  const displayName = (data.name as string) ?? existing?.displayName ?? undefined;
+  const displayName = (data.displayName as string) ?? existing?.displayName ?? undefined;
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
   // 收集 extraOptions：data 中除已知字段外的其他 options
@@ -490,64 +561,936 @@ async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId
   return configSuccess(null);
 }
 
-app.post(
+// ────────────────────────────────────────────
+// Provider 管理（RESTful 接口）
+// ────────────────────────────────────────────
+
+/** 获取 Provider 列表 */
+app.get(
   "/config/providers",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, error }: any) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store }: any) => {
     const authCtx = store.authContext!;
-    const b = body as ConfigBody;
-    const payload: ProviderBody = {
-      action: b.action ?? "",
-      name: b.name,
-      modelId: b.modelId,
-      data: b.data,
-      apiKey: b.apiKey,
-      baseURL: b.baseURL,
-      protocol: b.protocol,
-    };
     try {
-      switch (payload.action) {
-        case "list":
-          return await handleList(authCtx);
-        case "get":
-          return await handleGet(authCtx, payload.name!);
-        case "set":
-          return await handleSet(authCtx, payload.name!, payload.data!);
-        case "test": {
-          const protocol =
-            payload.protocol === "anthropic"
-              ? ("anthropic" as const)
-              : payload.protocol === "openai"
-                ? ("openai" as const)
-                : undefined;
-          return await handleTest(authCtx, payload.name!, {
-            apiKey: payload.apiKey,
-            baseURL: payload.baseURL,
-            protocol,
-          });
-        }
-        case "test_model":
-          return await handleTestModel(authCtx, payload.name!, payload.modelId!);
-        case "delete":
-          return await handleDelete(authCtx, payload.name!);
-        case "add_model":
-          return await handleAddModel(authCtx, payload.name!, payload.data!);
-        case "update_model":
-          return await handleUpdateModel(authCtx, payload.name!, payload.modelId!, payload.data!);
-        case "remove_model":
-          return await handleRemoveModel(authCtx, payload.name!, payload.modelId!);
-        default:
-          return error(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
-      }
+      return await handleList(authCtx);
     } catch (e: unknown) {
-      if (e instanceof AppError) {
-        return error(e.statusCode, configError(e.code, e.message));
-      }
-      const message = e instanceof Error ? e.message : "Unknown error";
-      return error(500, configError("CONFIG_READ_ERROR", message));
+      if (e instanceof AppError) return configError(e.code, e.message);
+      return configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error");
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["ProviderConfig"], summary: "Provider 配置管理" } },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "获取 Provider 列表",
+      description:
+        "返回当前组织下所有 Provider 供应商列表。每项包含供应商名称、协议类型（openai/anthropic）、API Key 掩码、Base URL、模型数量和跨组织访问控制信息。\n\n200 成功响应: data.providers[] — 包含 id, name, protocol, keyHint, baseURL, modelCount, resourceAccess\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description:
+            "成功返回 Provider 列表。data.providers[]: id, name, protocol(openai/anthropic), keyHint, baseURL, modelCount, resourceAccess, resourceKey。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      providers: {
+                        type: "array",
+                        description: "Provider 列表",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            name: { type: "string" },
+                            protocol: { type: "string", enum: ["openai", "anthropic"] },
+                            keyHint: { type: "string" },
+                            baseURL: { type: "string" },
+                            modelCount: { type: "number" },
+                            resourceAccess: { type: "object" },
+                            resourceKey: { type: "string" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 获取单个 Provider 详情 */
+app.get(
+  "/config/providers/:name",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+  async ({ store, params }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleGet(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return configError(e.code, e.message);
+      return configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error");
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "provider-name-param" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "获取 Provider 详情",
+      description:
+        "根据名称获取单个 Provider 的详细配置，包括协议类型、API Key 掩码、Base URL 和该 Provider 下的所有模型列表。支持通过 resourceKey 访问外部共享 Provider。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint, baseURL, models[], resourceAccess\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description:
+            "成功返回 Provider 详情。data: id, name, protocol, keyHint, baseURL, resourceAccess, resourceKey, models[]。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      protocol: { type: "string", enum: ["openai", "anthropic"] },
+                      keyHint: { type: "string" },
+                      baseURL: { type: "string" },
+                      resourceAccess: { type: "object" },
+                      resourceKey: { type: "string" },
+                      models: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            name: { type: "string" },
+                            modalities: { type: "string" },
+                            limit: { type: "object" },
+                            cost: { type: "object" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 创建新 Provider */
+app.post(
+  "/config/providers",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const { name, ...data } = body ?? {};
+    try {
+      if (!name) return error(400, configError("VALIDATION_ERROR", "name is required"));
+      return await handleCreate(authCtx, name, data);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "创建 Provider",
+      description:
+        "创建一个新的 Provider 供应商配置。请求体需包含 name（唯一标识）和协议相关参数（apiKey、baseURL、protocol）。创建时会检查名称是否已存在。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint\n400 参数错误 / 409 名称已存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "操作成功。data: id, name, protocol, keyHint。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      protocol: { type: "string", enum: ["openai", "anthropic"] },
+                      keyHint: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 更新 Provider */
+app.put(
+  "/config/providers/:name",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleSet(authCtx, params.name, body ?? {});
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "provider-name-param" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "更新 Provider",
+      description:
+        "更新指定 Provider 的配置信息。支持修改协议类型、API Key、Base URL 和展示名称。请求体中只包含需要更新的字段，未提供的字段保持不变。\n\n200 成功响应: data — 包含 id, name, protocol, keyHint\n400 参数错误 / 403 无权限 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "操作成功。data: id, name, protocol, keyHint。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      protocol: { type: "string", enum: ["openai", "anthropic"] },
+                      keyHint: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 删除 Provider */
+app.delete(
+  "/config/providers/:name",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleDelete(authCtx, params.name);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "provider-name-param" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "删除 Provider",
+      description:
+        "删除指定的 Provider 及其下的所有模型。外部共享 Provider 不可删除。\n\n200 成功响应: data — null\n403 无权限 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "删除成功。data: null。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { success: { type: "boolean", const: true }, data: { type: "null" } },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 测试 Provider 连接 */
+app.post(
+  "/config/providers/:name/test",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const b = body ?? {};
+    try {
+      const protocol =
+        b.protocol === "anthropic" ? ("anthropic" as const) : b.protocol === "openai" ? ("openai" as const) : undefined;
+      return await handleTest(authCtx, params.name, { apiKey: b.apiKey, baseURL: b.baseURL, protocol });
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "provider-name-param" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "测试 Provider 连接",
+      description:
+        "测试指定 Provider 的连接有效性。通过调用 Provider 的 models 列表 API 验证凭据和可达性，返回可用的模型 ID 列表。\n\n200 成功响应: data.models[] — 从 API 获取的可用模型 ID 列表\n400 参数错误 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "测试结果。data.models: 可用模型 ID 列表。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      models: { type: "array", items: { type: "string" }, description: "可用模型 ID 列表" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 添加 Provider 下的模型 */
+app.post(
+  "/config/providers/:name/models",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleAddModel(authCtx, params.name, body ?? {});
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "provider-name-param" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "添加 Provider 下的模型",
+      description:
+        "向指定 Provider 添加一个新模型。请求体需提供 modelId 和可选的展示名称、limit 限制和 cost 费用配置。\n\n200 成功响应: data.modelId — 模型 ID\n400 参数错误 / 404 Provider 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "操作成功。data.modelId: 模型 ID。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: { type: "object", properties: { modelId: { type: "string", description: "模型 ID" } } },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 更新 Provider 下的模型 */
+app.put(
+  "/config/providers/:name/models/:modelId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleUpdateModel(authCtx, params.name, params.modelId, body ?? {});
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "provider-name-modelid-params" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "更新 Provider 下的模型",
+      description:
+        "更新指定 Provider 下某个模型的配置。支持修改模型名称、上下文限制、输出限制和费用信息。\n\n200 成功响应: data.modelId — 模型 ID\n400 参数错误 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "操作成功。data.modelId: 模型 ID。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: { type: "object", properties: { modelId: { type: "string", description: "模型 ID" } } },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 删除 Provider 下的模型 */
+app.delete(
+  "/config/providers/:name/models/:modelId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleRemoveModel(authCtx, params.name, params.modelId);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_WRITE_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "provider-name-modelid-params" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "删除 Provider 下的模型",
+      description: "删除指定 Provider 下的某个模型。\n\n200 成功响应: data — null\n404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "删除成功。data: null。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { success: { type: "boolean", const: true }, data: { type: "null" } },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "403": {
+          description: "无权限操作，外部共享资源不可写。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
+);
+
+/** 测试 Provider 下某个模型的对话能力 */
+app.post(
+  "/config/providers/:name/models/:modelId/test",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      return await handleTestModel(authCtx, params.name, params.modelId);
+    } catch (e: unknown) {
+      if (e instanceof AppError) return error(e.statusCode, configError(e.code, e.message));
+      return error(500, configError("CONFIG_READ_ERROR", e instanceof Error ? e.message : "Unknown error"));
+    }
+  },
+  {
+    sessionAuth: true,
+    params: "provider-name-modelid-params" as any,
+    detail: {
+      tags: ["ProviderConfig"],
+      summary: "测试模型对话能力",
+      description:
+        "测试指定模型的实际对话生成能力。向 Provider 发送测试消息并返回模型响应的文本内容。\n\n200 成功响应: data — 包含 ok(bool) 和 content(string)\n400 参数错误 / 404 不存在 / 500 内部错误",
+      responses: {
+        "200": {
+          description: "测试结果。data: ok, content。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      ok: { type: "boolean", description: "测试是否成功" },
+                      content: { type: "string", description: "模型返回的文本内容" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "请求参数错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "404": {
+          description: "资源不存在。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+        "500": {
+          description: "服务器内部错误。",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", const: false },
+                  error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    },
+  },
 );
 
 export default app;

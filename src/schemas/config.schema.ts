@@ -360,3 +360,41 @@ export type McpServerInfo = z.infer<typeof McpServerInfoSchema>;
 export type McpServerDetail = z.infer<typeof McpServerDetailSchema>;
 export type McpToolInfo = z.infer<typeof McpToolInfoSchema>;
 export type McpInspectResult = z.infer<typeof McpInspectResultSchema>;
+
+// ── MCP 请求 Schema ──
+
+/** MCP Server 创建请求体 */
+export const McpServerCreateRequestSchema = z
+  .object({
+    name: z.string().min(1).max(64).describe("MCP Server 名称，1-64 位小写字母数字加单连字符。"),
+    type: z.enum(["local", "remote"]).describe("MCP 服务器类型：local-本地子进程，remote-远端 HTTP SSE。"),
+    command: z.array(z.string()).optional().describe("local 类型时执行的命令及参数数组。"),
+    url: z.string().optional().describe("remote 类型时的远端 URL。"),
+    timeout: z.number().optional().describe("请求超时时间，单位为毫秒。"),
+    headers: z.record(z.string(), z.string()).optional().describe("附加自定义请求头。"),
+    env: z.record(z.string(), z.string()).optional().describe("local 类型时子进程的环境变量。"),
+    publicReadable: z.boolean().optional().describe("是否对其他组织公开可读。"),
+  })
+  .describe("MCP Server 创建请求体。");
+
+/** MCP Server 更新请求体 */
+export const McpServerUpdateRequestSchema = z
+  .object({
+    type: z.enum(["local", "remote"]).optional().describe("MCP 服务器类型。"),
+    command: z.array(z.string()).optional().describe("local 类型时执行的命令及参数数组。"),
+    url: z.string().optional().describe("remote 类型时的远端 URL。"),
+    timeout: z.number().optional().describe("请求超时时间，单位为毫秒。"),
+    headers: z.record(z.string(), z.string()).optional().describe("附加自定义请求头。"),
+    env: z.record(z.string(), z.string()).optional().describe("local 类型时子进程的环境变量。"),
+    publicReadable: z.boolean().optional().describe("是否对其他组织公开可读。"),
+  })
+  .describe("MCP Server 更新请求体。");
+
+/** 测试远端 MCP URL 请求体 */
+export const McpTestUrlRequestSchema = z
+  .object({
+    url: z.string().describe("要测试的远端 MCP 服务器 URL。"),
+    headers: z.record(z.string(), z.string()).optional().describe("附加请求头。"),
+    timeout: z.number().optional().describe("超时时间，单位为毫秒。"),
+  })
+  .describe("测试远端 MCP URL 请求体。");

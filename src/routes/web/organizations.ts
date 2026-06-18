@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, like, not, or } from "drizzle-orm";
 import Elysia from "elysia";
 import { auth } from "../../auth/better-auth";
 import { db } from "../../db";
@@ -110,6 +110,26 @@ app.post(
   async ({ store, body, error, request }: any) => {
     const b = body ?? {};
 
+    if (b.action === "search-users") {
+      if (!b.query || typeof b.query !== "string" || b.query.length < 1)
+        return error(400, { error: { code: "VALIDATION_ERROR", message: "query required" } });
+      try {
+        const members = await db
+          .select({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+          })
+          .from(user)
+          .where(and(or(like(user.email, `%${b.query}%`), like(user.name, `%${b.query}%`)), not(like(user.email, ""))))
+          .limit(20);
+        return { success: true, data: members };
+      } catch (err) {
+        console.error("search-users query failed:", err);
+        return error(500, { error: { code: "INTERNAL_ERROR", message: "搜索用户失败" } });
+      }
+    }
     switch (b.action) {
       case "list": {
         const orgs = await api.listOrganizations({ headers: request.headers });
@@ -248,6 +268,19 @@ app.post(
         } else {
           memberUserId = rawId;
         }
+        // 检查是否已是成员，避免重复添加
+        const existingMembers = await api.listMembers({
+          query: { organizationId: b.organizationId },
+          headers: request.headers,
+        });
+        const memberList = extractMembers(existingMembers);
+        const isAlreadyMember = memberList.some((m) => m.userId === memberUserId);
+        if (isAlreadyMember) {
+          return error(409, {
+            success: false,
+            error: { code: "ALREADY_MEMBER", message: "该用户已是此组织成员" },
+          });
+        }
         const result = await api.addMember({
           body: { userId: memberUserId, role: b.role, organizationId: b.organizationId },
           headers: request.headers,
@@ -307,6 +340,26 @@ app.post(
   async ({ store, body, error, request }: any) => {
     const b = body ?? {};
 
+    if (b.action === "search-users") {
+      if (!b.query || typeof b.query !== "string" || b.query.length < 1)
+        return error(400, { error: { code: "VALIDATION_ERROR", message: "query required" } });
+      try {
+        const members = await db
+          .select({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+          })
+          .from(user)
+          .where(and(or(like(user.email, `%${b.query}%`), like(user.name, `%${b.query}%`)), not(like(user.email, ""))))
+          .limit(20);
+        return { success: true, data: members };
+      } catch (err) {
+        console.error("search-users query failed:", err);
+        return error(500, { error: { code: "INTERNAL_ERROR", message: "搜索用户失败" } });
+      }
+    }
     switch (b.action) {
       case "list": {
         const result = (await api.listApiKeys({ headers: request.headers })) as {

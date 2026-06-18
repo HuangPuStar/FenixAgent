@@ -56,8 +56,11 @@
     "emailPlaceholder": "Enter email address",
     "role": "Role",
     "invite": "Add",
-    "inviting": "Adding..."
+    "inviting": "Adding...",
+    "searchPlaceholder": "Type to search users...",
+    "searchNoResults": "No users found"
   },
+  "searching": "Searching...",
   "deleteDialog": {
     "title": "Confirm Delete Organization",
     "description": "You are about to delete organization \"{{name}}\". All associated resources will be permanently deleted. This action cannot be undone.",

@@ -101,7 +101,19 @@ export const OrganizationActionRequestSchema = z.discriminatedUnion("action", [
     memberId: z.string().describe("成员 ID。"),
     role: z.string().describe("新的成员角色。"),
   }),
+  z.object({
+    action: z.literal("search-users").describe("按邮箱模糊搜索用户。"),
+    query: z.string().describe("搜索关键词。"),
+  }),
 ]);
+
+/** 搜索结果用户信息 */
+const SearchUserSchema = z.object({
+  id: z.string().describe("用户 ID。"),
+  name: z.string().describe("用户名。"),
+  email: z.string().describe("用户邮箱。"),
+  image: z.string().nullable().optional().describe("用户头像 URL。"),
+});
 
 /** 通用成功响应 */
 const ActionSuccessSchema = z
@@ -130,6 +142,9 @@ export const OrganizationActionResponseSchema = z.union([
   }),
   ActionSuccessSchema.extend({
     data: z.object({ deleted: z.literal(true).describe("删除操作已执行。") }).describe("删除结果。"),
+  }),
+  ActionSuccessSchema.extend({
+    data: SearchUserSchema.array().describe("搜索结果用户列表。"),
   }),
   ActionSuccessSchema,
 ]);

@@ -8,7 +8,8 @@ import type { ProviderInfo } from "../../../types/config";
  */
 
 export function getProviderKey(provider: ProviderInfo): string {
-  return provider.resourceAccess?.resourceKey ?? provider.resourceKey ?? provider.id;
+  // 优先使用 resourceAccess.resourceKey（外部共享 Provider）；外部 Provider 使用 name 避免 URL 路径中的 "/" 导致路由不匹配
+  return provider.resourceAccess?.resourceKey ?? provider.name ?? provider.id;
 }
 
 export function getProviderDisplayName(provider: ProviderInfo): string {

@@ -39,8 +39,8 @@ describe("MCP SDK module", () => {
     const { mcpApi } = await import("../api/sdk");
     await mcpApi.list();
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("list");
+    expect(call[0]).toBe("/web/config/mcp");
+    expect(call[1].method).toBe("GET");
   });
 
   // 测试获取 MCP 服务器详情正常返回
@@ -62,9 +62,8 @@ describe("MCP SDK module", () => {
     const { mcpApi } = await import("../api/sdk");
     await mcpApi.get("test-server");
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("get");
-    expect(body.name).toBe("test-server");
+    expect(call[0]).toBe("/web/config/mcp/test-server");
+    expect(call[1].method).toBe("GET");
   });
 
   // 测试创建 MCP 服务器正常返回
@@ -84,9 +83,7 @@ describe("MCP SDK module", () => {
     await mcpApi.create("new-server", config);
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("create");
-    expect(body.name).toBe("new-server");
-    expect(body.data.type).toBe("local");
+    expect(body).toEqual({ name: "new-server", type: "local", command: ["npx", "mcp-server"] });
   });
 
   // 测试更新 MCP 服务器发送正确 payload
@@ -96,10 +93,10 @@ describe("MCP SDK module", () => {
     const config = { type: "local" as const, command: ["npx", "updated"] };
     await mcpApi.set("my-local", config);
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toBe("/web/config/mcp/my-local");
+    expect(call[1].method).toBe("PUT");
     const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("set");
-    expect(body.name).toBe("my-local");
-    expect(body.data.command).toEqual(["npx", "updated"]);
+    expect(body).toEqual({ type: "local", command: ["npx", "updated"] });
   });
 
   // 测试删除 MCP 服务器发送 delete action
@@ -108,9 +105,8 @@ describe("MCP SDK module", () => {
     const { mcpApi } = await import("../api/sdk");
     await mcpApi.delete("test-srv");
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    const body = JSON.parse(call[1].body);
-    expect(body.action).toBe("delete");
-    expect(body.name).toBe("test-srv");
+    expect(call[0]).toBe("/web/config/mcp/test-srv");
+    expect(call[1].method).toBe("DELETE");
   });
 
   // 测试启用 MCP 服务器正常返回
