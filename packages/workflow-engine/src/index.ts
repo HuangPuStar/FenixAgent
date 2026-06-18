@@ -30,6 +30,9 @@ export type { ParseOptions } from "./parser/yaml-parser";
 export { parseWorkflowYaml } from "./parser/yaml-parser";
 export { CustomNodeExecutor } from "./plugins/custom-executor";
 export { CustomNodeRegistry } from "./plugins/registry";
+export { BunSshExecutor, mapSlurmState, SlurmNode } from "./plugins/slurm-node";
+// SlurmNode 插件
+export type { JobResult, SlurmConfig, SshExecutor } from "./plugins/slurm-types";
 // 自定义节点插件系统
 export type { CustomNode, ExecuteContext, InputDef } from "./plugins/types";
 export type { RecoveryResult } from "./recovery/snapshot-recovery";

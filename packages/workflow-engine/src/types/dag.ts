@@ -15,7 +15,7 @@ export interface RetryConfig {
 }
 
 /** 节点类型 */
-export type NodeType = "shell" | "python" | "agent" | "api" | "audit" | "workflow" | "loop" | "transform";
+export type NodeType = "shell" | "python" | "agent" | "api" | "audit" | "workflow" | "loop" | "transform" | "custom";
 
 /** 基础节点定义 */
 export interface BaseNodeDef {
@@ -107,6 +107,29 @@ export interface TransformNodeDef extends BaseNodeDef {
   output: Record<string, string>;
 }
 
+/** Custom 节点 — 用户自定义工具，通过 tools/ 文件夹注册 */
+export interface CustomNodeDef extends BaseNodeDef {
+  type: "custom";
+  /** 对应 CustomNode.name，从 CustomNodeRegistry 查找 */
+  tool: string;
+  /** 输入绑定，key 对应 CustomNode.inputs 的 key，value 为表达式字符串 */
+  inputs?: Record<string, string>;
+  /** 输出声明，key 对应 CustomNode.produces 的元素 */
+  outputs: Record<
+    string,
+    {
+      pattern: string;
+      type: "file" | "file-list" | "dir";
+    }
+  >;
+  /** 迭代数据源表达式 */
+  foreach?: string;
+  /** 最大并发子任务数 */
+  maxConcurrent?: number;
+  /** 子任务失败是否继续，默认 false */
+  continueOnError?: boolean;
+}
+
 /** 节点定义判别联合 */
 export type NodeDef =
   | ShellNodeDef
@@ -116,7 +139,8 @@ export type NodeDef =
   | AuditNodeDef
   | SubWorkflowNodeDef
   | LoopNodeDef
-  | TransformNodeDef;
+  | TransformNodeDef
+  | CustomNodeDef;
 
 /** WorkflowDef — YAML 根结构 */
 export interface WorkflowDef {
