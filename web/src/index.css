@@ -823,7 +823,8 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
    ============================================================ */
 
 /* 右侧拉手按钮 — 仿照 .agent-artifacts-expand-btn 的 vertical tab 设计
-   按钮作为 flex item 渲染在面板右侧，圆角朝外（右）、左侧贴面板（无边框无圆角） */
+   按钮作为 flex item 渲染在面板右侧（默认），圆角朝外（右）、左侧贴面板（无边框无圆角）。
+   当添加 .left 修饰符时按钮渲染在面板左侧，圆角朝外（左）、右侧贴面板。 */
 .meta-agent-toggle-btn {
   align-self: center;
   width: 28px;
@@ -847,6 +848,13 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   font-weight: 500;
   writing-mode: vertical-lr;
   letter-spacing: 0.05em;
+}
+
+/* 拉手在左侧：贴面板一侧（右）无边框、圆角朝外（左） */
+.meta-agent-toggle-btn.left {
+  border: 1px solid var(--color-border-subtle);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
 }
 
 .meta-agent-toggle-btn:hover {

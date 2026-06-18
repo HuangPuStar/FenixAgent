@@ -691,6 +691,7 @@ export function AgentSkillsPage() {
         metaAgentId={metaAgentId}
         scenePrompt={undefined}
         onPromptComplete={refreshSkills}
+        togglePosition="left"
       />
     </div>
   );
