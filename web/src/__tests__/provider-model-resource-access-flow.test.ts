@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildModelOptions } from "@/components/config/ModelConfigDialog";
 import { mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
 import {
+  buildProviderInlineTestPayload,
   buildProviderPublicReadablePayload,
   canWriteProvider,
   getProviderDisplayName,
@@ -80,6 +81,33 @@ describe("provider model resource access flow", () => {
   test("builds public readable provider set payload", () => {
     expect(buildProviderPublicReadablePayload(true)).toEqual({
       publicReadable: true,
+    });
+  });
+
+  // 预取模型列表只应使用当前表单值测试，未填写的字段不应触发隐式落库。
+  test("builds inline provider test payload without forcing persistence fields", () => {
+    expect(
+      buildProviderInlineTestPayload({
+        apiKey: "sk-temp",
+        baseURL: "https://proxy.example.com",
+        protocol: "openai",
+      }),
+    ).toEqual({
+      apiKey: "sk-temp",
+      baseURL: "https://proxy.example.com",
+      protocol: "openai",
+    });
+
+    expect(
+      buildProviderInlineTestPayload({
+        apiKey: "   ",
+        baseURL: "",
+        protocol: "anthropic",
+      }),
+    ).toEqual({
+      apiKey: undefined,
+      baseURL: undefined,
+      protocol: "anthropic",
     });
   });
 
