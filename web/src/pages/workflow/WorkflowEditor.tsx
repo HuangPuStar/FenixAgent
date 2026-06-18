@@ -33,6 +33,7 @@ import {
   Terminal,
   Upload,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -107,6 +108,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [versionsSheetOpen, setVersionsSheetOpen] = useState(false);
   const [triggersSheetOpen, setTriggersSheetOpen] = useState(false);
   const [paramsDialogOpen, setParamsDialogOpen] = useState(false);
+  // 节点删除确认：与 popover 解耦，避免 popover outside-click 关闭时
+  // 把 ConfirmDialog 一起卸载（之前的版本点了 Trash 弹窗就闪没）
+  const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null);
 
   // ── Popover 状态 ──
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -748,7 +752,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           setSelectedNode={setSelectedNode}
           updateNodeData={updateNodeData}
           agentList={agentList}
-          onDeleteNode={handleDeleteNode}
+          onDeleteRequest={setDeleteConfirmNodeId}
         />
 
         {/* 右下角按钮组 */}
@@ -886,6 +890,24 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           onSubmit={onParamsSubmit}
         />
       )}
+
+      {/* 节点删除确认：放在顶层（与 Popover/Sheet 同级），生命周期独立于
+          NodeConfigPopover，避免被 popover 的 outside-click 关闭连带卸载。 */}
+      <ConfirmDialog
+        open={deleteConfirmNodeId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmNodeId(null);
+        }}
+        title={t("editor.delete_node_tooltip")}
+        description={t("editor.delete_node_confirm", { nodeId: deleteConfirmNodeId ?? "" })}
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteConfirmNodeId) {
+            handleDeleteNode(deleteConfirmNodeId);
+          }
+          setDeleteConfirmNodeId(null);
+        }}
+      />
 
       {/* 运行记录侧栏：原 List 按钮触发的 Popover 已统一到这里。
           - isRunMode=true 强制显示，避免运行情况被画布遮挡或弹到角落浮窗看不见
