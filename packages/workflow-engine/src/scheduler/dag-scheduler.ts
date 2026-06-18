@@ -425,6 +425,14 @@ export class DAGScheduler {
         }
         break;
       }
+      case "custom": {
+        // Custom 节点：通过 inputs 注入上游数据，executor 内做 Zod 校验
+        const customNode = node as import("../types/dag").CustomNodeDef;
+        if (customNode.inputs) {
+          resolved.inputs = resolveInputs(customNode.inputs, evalContext);
+        }
+        break;
+      }
     }
 
     // 通用字段
