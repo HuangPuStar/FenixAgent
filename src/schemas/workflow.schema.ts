@@ -2,8 +2,12 @@ import * as z from "zod/v4";
 
 const JsonObjectSchema = z.record(z.string(), z.unknown()).describe("任意 JSON 对象。");
 const JsonArraySchema = z.array(z.unknown()).describe("任意 JSON 数组。");
-// OpenAPI/JSON Schema 生成阶段不支持 z.date()，这里统一约定对外只暴露可序列化的时间值。
-const IsoDateTimeSchema = z.union([z.string(), z.number()]).describe("时间值，ISO 8601 字符串或时间戳。");
+// Drizzle 查询返回的 Date 对象需要序列化为 ISO 字符串才能通过校验；
+// preprocess 把 Date 转 ISO 字符串后，外层只剩 union(string, number)，
+// 既兼容 Drizzle 的 Date 输入，又保证 OpenAPI 文档只暴露 string/number。
+const IsoDateTimeSchema = z
+  .preprocess((v) => (v instanceof Date ? v.toISOString() : v), z.union([z.string(), z.number()]))
+  .describe("时间值，ISO 8601 字符串或时间戳。");
 
 /** 通用成功响应工厂 */
 const WorkflowSuccessSchema = <T extends z.ZodTypeAny>(data: T) =>

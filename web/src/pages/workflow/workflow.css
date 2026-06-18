@@ -446,6 +446,25 @@
   border-radius: 99;
 }
 
+.wf-popover-delete-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #ef4444;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.wf-popover-delete-btn:hover {
+  background: #fef2f2;
+}
+
 .wf-popover-body {
   padding: 4px 0;
 }

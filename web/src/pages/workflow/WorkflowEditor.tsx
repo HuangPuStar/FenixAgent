@@ -33,6 +33,7 @@ import {
   Terminal,
   Upload,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -107,6 +108,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [versionsSheetOpen, setVersionsSheetOpen] = useState(false);
   const [triggersSheetOpen, setTriggersSheetOpen] = useState(false);
   const [paramsDialogOpen, setParamsDialogOpen] = useState(false);
+  // 节点删除确认：与 popover 解耦，避免 popover outside-click 关闭时
+  // 把 ConfirmDialog 一起卸载（之前的版本点了 Trash 弹窗就闪没）
+  const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null);
 
   // ── Popover 状态 ──
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -327,6 +331,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       if (isRunMode) {
+        // run mode 下运行情况显示在固定右侧栏（wf-run-panel），点击节点只需切换
+        // selectedRunNodeId，useWorkflowRun 会自动拉 getOutput 并切到 output 子 tab。
+        setSelectedRunNodeId(node.id);
         setSelectedNode(node);
         return;
       }
@@ -348,6 +355,19 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       setSelectedNode(null);
     }
   }, [popoverOpen]);
+
+  // ── 从 popover 删除当前选中节点 ──
+  // 与 ReactFlow 内置 deleteKeyCode 不同，这里是手动触发，需要同时清理 nodes、edges、popover 状态。
+  // 开始节点（START_NODE_ID）和只读模式下由 NodeConfigPopover 自身屏蔽，不进入此回调。
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      setPopoverOpen(false);
+      setSelectedNode(null);
+    },
+    [setNodes, setEdges],
+  );
 
   // 加载已保存的工作流草稿
   useEffect(() => {
@@ -732,6 +752,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           setSelectedNode={setSelectedNode}
           updateNodeData={updateNodeData}
           agentList={agentList}
+          onDeleteRequest={setDeleteConfirmNodeId}
         />
 
         {/* 右下角按钮组 */}
@@ -790,64 +811,16 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             updateMeta={updateMeta}
           />
 
-          {/* 运行日志 Popover */}
-          <Popover open={runSheetOpen} onOpenChange={setRunSheetOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className={`wf-meta-trigger-btn ${runSheetOpen ? "active" : ""}`}
-                title={t("editor.tooltip_run_history")}
-              >
-                <List size={14} />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="end"
-              sideOffset={8}
-              collisionPadding={16}
-              className="wf-meta-popover"
-              style={{ width: 360, maxHeight: 520 }}
-            >
-              <div className="wf-popover-header">
-                <span className="wf-popover-title">{t("editor.run_history")}</span>
-              </div>
-              <RunStatusPanel
-                activeRunId={activeRunId}
-                runSnapshot={runSnapshot}
-                dagStatus={dagStatus}
-                isRunMode={isRunMode}
-                isRunDone={isRunDone}
-                running={running}
-                runEvents={runEvents}
-                runApprovals={runApprovals}
-                runRightTab={runRightTab}
-                setRunRightTab={setRunRightTab}
-                selectedRunNodeId={selectedRunNodeId}
-                setSelectedRunNodeId={setSelectedRunNodeId}
-                selectedNodeOutput={selectedNodeOutput}
-                nodeOutputLoading={nodeOutputLoading}
-                handleCancelRun={handleCancelRun}
-                handleBackToEdit={() => {
-                  handleBackToEdit();
-                  setRunSheetOpen(false);
-                }}
-                handleBackToList={() => {
-                  handleBackToList();
-                  setRunSheetOpen(false);
-                }}
-                handleApprove={handleApprove}
-                handleRerunFrom={handleRerunFrom}
-                setActiveRunId={setActiveRunId}
-                setRunSnapshot={setRunSnapshot}
-                setRunEvents={setRunEvents}
-                setRunApprovals={setRunApprovals}
-                setSelectedNodeOutput={setSelectedNodeOutput}
-                updateNodesFromSnapshot={updateNodesFromSnapshot}
-                setRightTab={() => setRunSheetOpen(false)}
-              />
-            </PopoverContent>
-          </Popover>
+          {/* 运行记录侧栏开关：原来用 Popover 浮窗，与 run mode 下的右侧栏重复。
+              统一为开关侧栏，运行状态/历史/事件/输出都在侧栏里。 */}
+          <button
+            type="button"
+            className={`wf-meta-trigger-btn ${runSheetOpen ? "active" : ""}`}
+            title={t("editor.tooltip_run_history")}
+            onClick={() => setRunSheetOpen((prev) => !prev)}
+          >
+            <List size={14} />
+          </button>
 
           {/* 版本指示器 */}
           <VersionIndicator
@@ -916,6 +889,63 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           params={workflowParams as any}
           onSubmit={onParamsSubmit}
         />
+      )}
+
+      {/* 节点删除确认：放在顶层（与 Popover/Sheet 同级），生命周期独立于
+          NodeConfigPopover，避免被 popover 的 outside-click 关闭连带卸载。 */}
+      <ConfirmDialog
+        open={deleteConfirmNodeId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmNodeId(null);
+        }}
+        title={t("editor.delete_node_tooltip")}
+        description={t("editor.delete_node_confirm", { nodeId: deleteConfirmNodeId ?? "" })}
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteConfirmNodeId) {
+            handleDeleteNode(deleteConfirmNodeId);
+          }
+          setDeleteConfirmNodeId(null);
+        }}
+      />
+
+      {/* 运行记录侧栏：原 List 按钮触发的 Popover 已统一到这里。
+          - isRunMode=true 强制显示，避免运行情况被画布遮挡或弹到角落浮窗看不见
+          - 非 run mode 时由 List 按钮 toggle（runSheetOpen）控制，显示历史 run 列表 */}
+      {(runSheetOpen || isRunMode) && (
+        <aside className="wf-run-panel">
+          <RunStatusPanel
+            activeRunId={activeRunId}
+            runSnapshot={runSnapshot}
+            dagStatus={dagStatus}
+            isRunMode={isRunMode}
+            isRunDone={isRunDone}
+            running={running}
+            runEvents={runEvents}
+            runApprovals={runApprovals}
+            runRightTab={runRightTab}
+            setRunRightTab={setRunRightTab}
+            selectedRunNodeId={selectedRunNodeId}
+            setSelectedRunNodeId={setSelectedRunNodeId}
+            selectedNodeOutput={selectedNodeOutput}
+            nodeOutputLoading={nodeOutputLoading}
+            handleCancelRun={handleCancelRun}
+            handleBackToEdit={() => {
+              handleBackToEdit();
+              setRunSheetOpen(false);
+            }}
+            handleBackToList={handleBackToList}
+            handleApprove={handleApprove}
+            handleRerunFrom={handleRerunFrom}
+            setActiveRunId={setActiveRunId}
+            setRunSnapshot={setRunSnapshot}
+            setRunEvents={setRunEvents}
+            setRunApprovals={setRunApprovals}
+            setSelectedNodeOutput={setSelectedNodeOutput}
+            updateNodesFromSnapshot={updateNodesFromSnapshot}
+            setRightTab={() => setRunSheetOpen(false)}
+          />
+        </aside>
       )}
     </div>
   );
