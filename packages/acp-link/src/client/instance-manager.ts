@@ -168,15 +168,8 @@ export class InstanceManager {
 
     // 创建 dispatcher，绑定 send 回调和 session state
     state.sessionState.connection = connection;
-    state.sessionState.agentCapabilities = initResult.agentCapabilities
-      ? {
-          _meta: initResult.agentCapabilities._meta,
-          loadSession: initResult.agentCapabilities.loadSession,
-          mcpCapabilities: initResult.agentCapabilities.mcpCapabilities,
-          promptCapabilities: initResult.agentCapabilities.promptCapabilities,
-          sessionCapabilities: initResult.agentCapabilities.sessionCapabilities,
-        }
-      : null;
+    // 透传 SDK 返回的全部 capabilities，包括 configOptions 等未知字段
+    state.sessionState.agentCapabilities = initResult.agentCapabilities ?? null;
     state.sessionState.promptCapabilities = initResult.agentCapabilities?.promptCapabilities ?? null;
     state.dispatcher = new AcpDispatcher(state.sessionState, send, state.workspace);
 

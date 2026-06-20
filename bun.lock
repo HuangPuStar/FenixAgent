@@ -118,7 +118,7 @@
         "acp-link": "./dist/acp-link.js",
       },
       "devDependencies": {
-        "@agentclientprotocol/sdk": "^0.21.1",
+        "@agentclientprotocol/sdk": "^0.28.1",
         "@fenix/ccb": "workspace:*",
         "@fenix/opencode": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
@@ -198,7 +198,7 @@
     "kysely": "0.28.17",
   },
   "packages": {
-    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@0.21.1", "https://registry.npmmirror.com/@agentclientprotocol/sdk/-/sdk-0.21.1.tgz", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-ZTLH+o9QxcZDLX/9ww+W7C2iExnXFM+vD/uGFVSlR61Kzj9FaxUqBC6Rv/kwgA7qVWYUEI9c5ZNqCuO9PM4rKg=="],
+    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@0.28.1", "https://registry.npmmirror.com/@agentclientprotocol/sdk/-/sdk-0.28.1.tgz", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-Z2Frs6YtPhnZZ+XwFXyQkRDXY0fn8FjCalEs0W4yUhQnY4TztmNq0/RnfzWdFN3vqT3h0jTz5klzYbZHGxCDyQ=="],
 
     "@ai-sdk/gateway": ["@ai-sdk/gateway@3.0.125", "https://registry.npmmirror.com/@ai-sdk/gateway/-/gateway-3.0.125.tgz", { "dependencies": { "@ai-sdk/provider": "3.0.10", "@ai-sdk/provider-utils": "4.0.27", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-tocl7cUDoTpmhZqeW8XVKMMznZQwwQAEunF0VyNKmf64qt8NbMIAEiet/vRMzh7Jr9WcFeb6EZjmhLTP4Qx2Og=="],
 
