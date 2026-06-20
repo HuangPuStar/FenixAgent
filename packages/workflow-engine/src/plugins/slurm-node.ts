@@ -61,12 +61,34 @@ export abstract class SlurmNode implements CustomNode {
 
     // 5. sacct 轮询（带重试）
     let attempt = 0;
+    // sacct 连续返回空数据的次数：slurmdbd 提交后 1-3 秒延迟，前几次拿不到数据正常；
+    // 但若作业真的不存在（如 sbatch 解析失败但 stdout 形似合法），需在阈值后放弃避免无限轮询。
+    // 默认 20 次 × pollInterval(15s) = 5 分钟，足够覆盖 slurmdbd 最坏延迟。
+    let noDataCount = 0;
+    const maxNoData = 20;
     let result: JobResult;
     while (true) {
       result = await this.pollJob(host, ctx.workDir, jobId);
 
       // 成功：跳出循环进入输出收集
       if (result.state === "COMPLETED") break;
+
+      // sacct 暂无数据（slurmdbd 延迟）：累加计数，达上限才判 FAILED
+      if (result.sacctEmpty) {
+        noDataCount++;
+        if (noDataCount >= maxNoData) {
+          throw new WorkflowError(
+            `Slurm job ${jobId} not found in sacct after ${maxNoData} polls (~${Math.round((maxNoData * this.pollInterval) / 1000)}s). ` +
+              `Possible causes: sbatch output mis-parsed, job purged from slurmdbd, or sacct permission issue.`,
+            WorkflowErrorCode.NODE_FAILED,
+            { node_id: ctx.nodeId, slurm_job_id: jobId },
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, this.pollInterval));
+        continue;
+      }
+      // 拿到真实状态后重置 noDataCount（防御性，理论上不需要）
+      noDataCount = 0;
 
       // 取消：不重试，直接抛错（带 stderr 用于诊断）
       if (result.state === "CANCELLED") {
@@ -205,12 +227,17 @@ export abstract class SlurmNode implements CustomNode {
       .filter((l) => l);
     const mainJob = lines[0];
     if (!mainJob) {
+      // sbatch 提交后 slurmdbd 有 1-3 秒延迟才记录作业，首次（甚至前几次）sacct 拿不到数据是正常的。
+      // 此前这里直接判 FAILED，导致用户看到 "sacct returned no data for job xxx" 而 sacct 实际能查到 COMPLETED。
+      // 改为返回 PENDING + sacctEmpty 标记，让 execute() 区分"无数据"和"真实 PENDING"，
+      // 维护 noDataCount 防止作业真的不存在时无限轮询。
       return {
         jobId,
-        state: "FAILED" as const,
+        state: "PENDING" as const,
         exitCode: null,
         stdout: "",
-        stderr: `sacct returned no data for job ${jobId}`,
+        stderr: "",
+        sacctEmpty: true,
       };
     }
 

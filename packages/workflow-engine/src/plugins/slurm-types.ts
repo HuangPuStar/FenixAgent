@@ -46,4 +46,10 @@ export interface JobResult {
   exitCode: number | null;
   stdout: string;
   stderr: string;
+  /**
+   * sacct 返回空数据标记（与 state === "PENDING" 但属不同语义）。
+   * slurmdbd 提交后 1-3 秒延迟，首次甚至前几次 sacct 拿不到数据正常；
+   * execute() 据此累加 noDataCount，达上限才判 FAILED，避免无限轮询。
+   */
+  sacctEmpty?: boolean;
 }
