@@ -7,50 +7,34 @@
  */
 import type { SessionModelState } from "./types.js";
 
-/** configOptions 元素的精简类型（避免直接依赖 SDK schema 子模块） */
-interface ConfigOption {
-  type: string;
-  id?: string;
-  category?: string | null;
-  value?: string | null;
-  options?: Array<
-    | { value: string; name: string; description?: string | null; _meta?: Record<string, unknown> | null }
-    | {
-        group: string;
-        name: string;
-        options?: Array<{
-          value: string;
-          name: string;
-          description?: string | null;
-          _meta?: Record<string, unknown> | null;
-        }>;
-      }
-  >;
-}
-
-export function extractModelState(configOptions: Array<ConfigOption> | null | undefined): SessionModelState | null {
+export function extractModelState(
+  configOptions: Array<Record<string, unknown>> | null | undefined,
+): SessionModelState | null {
   if (!configOptions) return null;
 
   // 通过 id 或 category 定位模型选项（不同 agent 实现可能只用其一）
   const modelOption = configOptions.find((o) => o.type === "select" && (o.id === "model" || o.category === "model"));
   if (!modelOption) return null;
 
+  // 部分 agent 返回 currentValue，部分使用 value
+  const rawOptions: Array<Record<string, unknown>> = Array.isArray(modelOption.options) ? modelOption.options : [];
+
   // 将选项拍平（configOptions 可能是分组结构）
-  const flatOptions: Array<{ value: string; name: string; description?: string | null }> = [];
-  for (const opt of modelOption.options ?? []) {
-    if ("group" in opt) {
-      flatOptions.push(...(opt.options ?? []));
+  const flatOptions: Array<Record<string, unknown>> = [];
+  for (const opt of rawOptions) {
+    if ("group" in opt && Array.isArray(opt.options)) {
+      flatOptions.push(...(opt.options as Array<Record<string, unknown>>));
     } else {
       flatOptions.push(opt);
     }
   }
 
   return {
-    currentModelId: modelOption.value ?? "",
+    currentModelId: String(modelOption.currentValue ?? modelOption.value ?? ""),
     availableModels: flatOptions.map((o) => ({
-      modelId: o.value,
-      name: o.name,
-      description: o.description ?? null,
+      modelId: String(o.value ?? ""),
+      name: String(o.name ?? ""),
+      description: (o.description as string) ?? null,
     })),
   };
 }
