@@ -1,6 +1,7 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import {
   Bot,
+  Boxes,
   CheckCircle,
   Code,
   GitBranch,
@@ -26,6 +27,8 @@ const NODE_COLORS: Record<string, { main: string; light: string; headerText: str
   workflow: { main: "#1677ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
   loop: { main: "#4096ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
   transform: { main: "#f97316", light: "rgba(249,115,22,0.08)", headerText: "#fff" },
+  // 自定义节点（SlurmNode 等用户工具）：紫色突出区别于内置类型
+  custom: { main: "#8b5cf6", light: "rgba(139,92,246,0.08)", headerText: "#fff" },
 };
 
 const NODE_ICONS: Record<string, React.ReactNode> = {
@@ -38,6 +41,8 @@ const NODE_ICONS: Record<string, React.ReactNode> = {
   workflow: <GitBranch size={12} />,
   loop: <RefreshCw size={12} />,
   transform: <Shuffle size={12} />,
+  // Boxes 表达"工具集合"语义（对应 WORKFLOW_TOOLS_DIR 注册的 CustomNode 工具）
+  custom: <Boxes size={12} />,
 };
 
 const NODE_LABEL_KEYS: Record<string, string> = {
@@ -50,6 +55,7 @@ const NODE_LABEL_KEYS: Record<string, string> = {
   workflow: "nodes.workflow",
   loop: "nodes.loop",
   transform: "nodes.transform",
+  custom: "nodes.custom",
 };
 
 const RUN_STATUS_COLORS: Record<string, { color: string; bg: string }> = {
@@ -99,11 +105,24 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
     return Object.keys(inputs as Record<string, string>);
   }, [d.inputs]);
 
-  // 出口：从内部注入的 _outputFields 解析
+  // 出口：合并两源（之前只读 _outputFields，导致下游用 ${{ params.x }} 而非 nodes.X.output.Y 引用时，
+  // 节点卡片右侧完全不显示产物端口，用户看不到节点声明了哪些 outputs）
+  // 1. yaml 中声明的 outputs 字段 key（custom 节点产物声明，结构 { 字段名: { pattern, type } }）
+  // 2. transform 节点的单数 output 字段（结构 { 字段名: 表达式 }）
+  // 3. _outputFields（yaml-utils 根据"下游 inputs 引用 nodes.X.output.Y"反向推断注入，
+  //    仅用于在节点上画出 dataFlow 连线的 source handle，未必覆盖全部声明字段）
+  // 取并集去重，声明在前。
   const outputPoints = useMemo(() => {
-    const fields = d._outputFields as string[] | undefined;
-    return fields ?? [];
-  }, [d._outputFields]);
+    const declaredKeys: string[] = [];
+    if (d.outputs && typeof d.outputs === "object") {
+      declaredKeys.push(...Object.keys(d.outputs as Record<string, unknown>));
+    }
+    if (d.output && typeof d.output === "object") {
+      declaredKeys.push(...Object.keys(d.output as Record<string, unknown>));
+    }
+    const inferred = (d._outputFields as string[] | undefined) ?? [];
+    return [...new Set([...declaredKeys, ...inferred])];
+  }, [d.outputs, d.output, d._outputFields]);
 
   return (
     <div
@@ -316,4 +335,7 @@ export const nodeTypes = {
   workflow: WorkflowNode,
   loop: WorkflowNode,
   transform: WorkflowNode,
+  // 自定义节点：复用 WorkflowNode 渲染外壳，type === "custom" 时颜色/图标走 NODE_COLORS.custom
+  // 没有 custom 注册项时，ReactFlow 对未知 type 渲染空元素，导致用户看到"白框"——这是核心 bug 根因
+  custom: WorkflowNode,
 };

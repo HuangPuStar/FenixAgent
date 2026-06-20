@@ -70,6 +70,7 @@ export function NodeConfigCard({
                 <option value="workflow">{t("editor.type_workflow")}</option>
                 <option value="loop">{t("editor.type_loop")}</option>
                 <option value="transform">{t("nodes.transform")}</option>
+                <option value="custom">{t("editor.type_custom")}</option>
               </select>
             </div>
             <div className="wf-prop-field">
@@ -389,6 +390,36 @@ export function NodeConfigCard({
                     keyPlaceholder={t("editor.transform_output_key_placeholder")}
                     valuePlaceholder={t("editor.output_value_hint")}
                     addLabel={t("editor.transform_output_add")}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* custom 节点：tool 字段指向 WORKFLOW_TOOLS_DIR 下注册的 CustomNode 工具名；
+                inputs 由具体 tool 的 input schema 决定，outputs 由 tool 的 produces 声明决定。
+                此处只暴露 inputs 编辑（键值对），outputs 由后端 tool 定义驱动，不在前端手编辑。 */}
+            {nodeType === "custom" && (
+              <>
+                <div className="wf-prop-field">
+                  <label>{t("editor.custom_tool")}</label>
+                  <input
+                    value={String(sd?.tool ?? "")}
+                    onChange={(e) => updateNodeData({ tool: e.target.value || undefined })}
+                    placeholder={t("editor.custom_tool_placeholder")}
+                    readOnly={readOnly}
+                  />
+                </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.inputs_title")}</label>
+                  <InputsEditor
+                    value={sd?.inputs as Record<string, string> | undefined}
+                    onChange={(val) => {
+                      updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
+                    }}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.inputs_key_placeholder")}
+                    valuePlaceholder={t("editor.inputs_value_hint")}
+                    addLabel={t("editor.inputs_add")}
                   />
                 </div>
               </>
