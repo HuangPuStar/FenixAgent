@@ -65,20 +65,26 @@ export abstract class SlurmNode implements CustomNode {
     while (true) {
       result = await this.pollJob(host, ctx.workDir, jobId);
 
+      // 成功：跳出循环进入输出收集
       if (result.state === "COMPLETED") break;
 
+      // 取消：不重试，直接抛错（带 stderr 用于诊断）
       if (result.state === "CANCELLED") {
         throw new WorkflowError(`Slurm job ${jobId} was cancelled`, WorkflowErrorCode.NODE_FAILED, {
           node_id: ctx.nodeId,
           slurm_job_id: jobId,
+          stderr: result.stderr,
+          stdout: result.stdout,
         });
       }
 
-      // OUT_OF_MEMORY 不重试
+      // OUT_OF_MEMORY 不重试（重试也是 OOM）
       if (result.state === "OUT_OF_MEMORY") {
         throw new WorkflowError(`Slurm job ${jobId} ran out of memory`, WorkflowErrorCode.NODE_FAILED, {
           node_id: ctx.nodeId,
           slurm_job_id: jobId,
+          stderr: result.stderr,
+          stdout: result.stdout,
         });
       }
 
@@ -91,14 +97,23 @@ export abstract class SlurmNode implements CustomNode {
           jobId = await this.sbatch(host, remotePath);
           continue;
         }
+        // 关键：把 sacct 收集到的 stderr/stdout 带进 context，否则前端只能看到
+        // "failed with state FAILED (exit null)" 而不知道脚本里哪条命令挂了。
         throw new WorkflowError(
           `Slurm job ${jobId} failed with state ${result.state} (exit ${result.exitCode}) after ${attempt} retries`,
           WorkflowErrorCode.NODE_FAILED,
-          { node_id: ctx.nodeId, slurm_job_id: jobId, exit_code: result.exitCode },
+          {
+            node_id: ctx.nodeId,
+            slurm_job_id: jobId,
+            exit_code: result.exitCode,
+            stderr: result.stderr,
+            stdout: result.stdout,
+          },
         );
       }
 
-      // PENDING / RUNNING → 继续轮询
+      // PENDING / RUNNING / CONFIGURING 等非终态：等待下一轮轮询。
+      // 此前这里走不到（pollJob 把非终态映射成 FAILED），修复后才会正常进入此分支。
       await new Promise((resolve) => setTimeout(resolve, this.pollInterval));
     }
 
@@ -226,7 +241,11 @@ export abstract class SlurmNode implements CustomNode {
       }
     }
 
-    return { jobId, state: mappedState ?? "FAILED", exitCode, stdout, stderr };
+    // mappedState === null 表示 mapSlurmState 判定为非终态（PENDING/RUNNING/CONFIGURING 等）。
+    // 关键：不能用 "FAILED" 作为默认值——否则任何还在运行/排队的作业都会被立即当作失败抛错，
+    // 表现为前端看到 "Slurm job xxx failed with state FAILED (exit null)" 而 sacct 实际是 RUNNING。
+    // 用 "PENDING" 让调用方继续轮询；exit/stderr 在非终态时保持空，避免 cat 不存在的 .out/.err。
+    return { jobId, state: mappedState ?? "PENDING", exitCode, stdout, stderr };
   }
 
   /** 将 JobResult 转换为引擎 NodeOutput */

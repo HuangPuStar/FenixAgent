@@ -325,6 +325,35 @@ describe("SlurmNode retry logic", () => {
 
     await expect(node.execute(makeCtx())).rejects.toThrow(/was cancelled/);
   });
+
+  // 回归测试：非终态（PENDING/RUNNING）不得被误判为 FAILED。
+  // 修复前 pollJob 用 `mappedState ?? "FAILED"`，导致任何还在运行的作业都立即抛错，
+  // 错误消息形如 "failed with state FAILED (exit null)"，而 sacct 实际是 RUNNING。
+  test("should keep polling on non-terminal states (RUNNING/PENDING) instead of failing", async () => {
+    const fakeSsh = new FakeSshExecutor();
+    fakeSsh.mockCommand(/mkdir/, { stdout: "", stderr: "", exitCode: 0 });
+    fakeSsh.mockCommand(/cat >/, { stdout: "", stderr: "", exitCode: 0 });
+    fakeSsh.mockCommand(/sbatch/, { stdout: "Submitted batch job 800", stderr: "", exitCode: 0 });
+
+    let sacctCallCount = 0;
+    fakeSsh.mockCommand(/sacct/, () => {
+      sacctCallCount++;
+      if (sacctCallCount === 1) return { stdout: "800|PENDING|0:0", stderr: "", exitCode: 0 };
+      if (sacctCallCount === 2) return { stdout: "800|RUNNING|0:0", stderr: "", exitCode: 0 };
+      return { stdout: "800|COMPLETED|0:0", stderr: "", exitCode: 0 };
+    });
+
+    fakeSsh.mockCommand(/cat .*\.out/, { stdout: '{"result":"ok"}', stderr: "", exitCode: 0 });
+    fakeSsh.mockCommand(/cat .*\.err/, { stdout: "", stderr: "", exitCode: 0 });
+
+    const node = new TestSlurmNode({ partition: "xahcnormal", cores: 4 }, fakeSsh);
+    node.pollInterval = 10;
+    node.maxRetries = 0; // 即使不重试，也应该等待 PENDING/RUNNING 完成
+
+    const output = await node.execute(makeCtx());
+    expect(sacctCallCount).toBe(3); // 必须 3 次：PENDING → RUNNING → COMPLETED
+    expect(output.exit_code).toBe(0);
+  });
 });
 
 // ── computeRetryDelay 测试 ──

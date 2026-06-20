@@ -36,8 +36,13 @@ export interface SshExecutor {
 
 /** sacct 轮询结果 */
 export interface JobResult {
+  /**
+   * 作业状态。终态：COMPLETED/FAILED/TIMEOUT/NODE_FAIL/OUT_OF_MEMORY/CANCELLED；
+   * 非终态：PENDING/RUNNING（mapSlurmState 返回 null 时由 pollJob 填入，
+   * 调用方据此决定继续轮询而非抛错）。
+   */
+  state: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "TIMEOUT" | "NODE_FAIL" | "OUT_OF_MEMORY" | "CANCELLED";
   jobId: string;
-  state: "COMPLETED" | "FAILED" | "TIMEOUT" | "NODE_FAIL" | "OUT_OF_MEMORY" | "CANCELLED";
   exitCode: number | null;
   stdout: string;
   stderr: string;
