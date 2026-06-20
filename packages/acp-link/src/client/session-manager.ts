@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
+import { extractModelState } from "../config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -182,7 +183,10 @@ export class SessionManager {
               mcpServers: [],
             });
             this.currentAcpSessionId = r.sessionId;
-            this.emit(sessionId, "session_data", { type: "session_created", payload: r });
+            this.emit(sessionId, "session_data", {
+              type: "session_created",
+              payload: { ...r, models: extractModelState(r.configOptions) },
+            });
           } catch (err) {
             this.emit(sessionId, "session_error", String(err));
           }
@@ -191,7 +195,10 @@ export class SessionManager {
           if (!this.currentAcpSessionId) {
             const r = await this.sharedConnection.newSession({ cwd: this.cwd, mcpServers: [] });
             this.currentAcpSessionId = r.sessionId;
-            this.emit(sessionId, "session_data", { type: "session_created", payload: r });
+            this.emit(sessionId, "session_data", {
+              type: "session_created",
+              payload: { ...r, models: extractModelState(r.configOptions) },
+            });
           }
           const blocks = (payload.content as acp.ContentBlock[]) ?? [];
           if (this.systemPrompt) {
@@ -256,7 +263,10 @@ export class SessionManager {
               cwd: this.cwd,
             });
             this.currentAcpSessionId = r.sessionId ?? (payload.sessionId as string);
-            this.emit(sessionId, "session_data", { type: "session_resumed", payload: r });
+            this.emit(sessionId, "session_data", {
+              type: "session_resumed",
+              payload: { ...r, models: extractModelState(r.configOptions) },
+            });
           } catch (err) {
             console.error("[session-manager] resumeSession failed:", String(err));
             this.emit(sessionId, "session_error", String(err));
@@ -286,7 +296,10 @@ export class SessionManager {
               mcpServers: [],
             });
             this.currentAcpSessionId = targetSid;
-            this.emit(sessionId, "session_data", { type: "session_loaded", payload: r });
+            this.emit(sessionId, "session_data", {
+              type: "session_loaded",
+              payload: { ...r, models: extractModelState(r.configOptions) },
+            });
           } catch (err) {
             console.error("[session-manager] loadSession failed:", String(err));
             this.emit(sessionId, "session_error", String(err));
@@ -315,7 +328,11 @@ export class SessionManager {
             mcpServers: [],
           });
           this.currentAcpSessionId = r.sessionId;
-          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          this.emit(
+            sessionId,
+            "session_data",
+            createSuccessResponse(id, { ...r, models: extractModelState(r.configOptions) }),
+          );
           break;
         }
         case ACP_METHOD.SESSION_PROMPT: {
@@ -382,7 +399,11 @@ export class SessionManager {
             cwd: this.cwd,
           });
           this.currentAcpSessionId = r.sessionId ?? (p.sessionId as string);
-          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          this.emit(
+            sessionId,
+            "session_data",
+            createSuccessResponse(id, { ...r, models: extractModelState((r as any).configOptions) }),
+          );
           break;
         }
         case ACP_METHOD.SESSION_LIST: {
@@ -405,7 +426,11 @@ export class SessionManager {
             mcpServers: [],
           });
           this.currentAcpSessionId = targetSid;
-          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          this.emit(
+            sessionId,
+            "session_data",
+            createSuccessResponse(id, { ...r, models: extractModelState(r.configOptions) }),
+          );
           break;
         }
         default:

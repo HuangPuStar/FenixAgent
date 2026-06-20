@@ -31,7 +31,8 @@ interface ConfigOption {
 export function extractModelState(configOptions: Array<ConfigOption> | null | undefined): SessionModelState | null {
   if (!configOptions) return null;
 
-  const modelOption = configOptions.find((o) => o.category === "model" && o.type === "select");
+  // 通过 id 或 category 定位模型选项（不同 agent 实现可能只用其一）
+  const modelOption = configOptions.find((o) => o.type === "select" && (o.id === "model" || o.category === "model"));
   if (!modelOption) return null;
 
   // 将选项拍平（configOptions 可能是分组结构）
