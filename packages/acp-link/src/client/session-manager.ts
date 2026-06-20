@@ -226,9 +226,10 @@ export class SessionManager {
             break;
           }
           this.sharedConnection
-            .unstable_setSessionModel({
+            .setSessionConfigOption?.({
               sessionId: this.currentAcpSessionId,
-              modelId: (payload.modelId as string) ?? "",
+              configId: "model",
+              value: (payload.modelId as string) ?? "",
             })
             .then(() =>
               this.emit(sessionId, "session_data", { type: "model_changed", payload: { modelId: payload.modelId } }),
@@ -354,9 +355,10 @@ export class SessionManager {
             this.emit(sessionId, "session_data", createErrorResponse(id, -32000, "No active session"));
             break;
           }
-          await this.sharedConnection!.unstable_setSessionModel({
+          await this.sharedConnection!.setSessionConfigOption?.({
             sessionId: this.currentAcpSessionId,
-            modelId: (p.modelId as string) ?? "",
+            configId: "model",
+            value: (p.modelId as string) ?? "",
           });
           this.emit(sessionId, "session_data", createSuccessResponse(id, { modelId: p.modelId }));
           break;
