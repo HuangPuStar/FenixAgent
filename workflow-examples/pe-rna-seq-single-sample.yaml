@@ -1,0 +1,226 @@
+# PE RNA-Seq (Mouse) 工作流 — 单样本参数化版本
+#
+# 对应 Galaxy 公共流程 c5010e456e9d3445（11 步 PE RNA-Seq Data (Mouse)）。
+# 由于当前 workflow-engine 的 foreach 多样本展开尚未实现，本 YAML 以"单样本"形态工作：
+# 默认跑 SRR36782078，用户可在创建 workflow run 时覆盖 params 中的 sample_* 字段跑其他样本。
+#
+# 节点拓扑（单样本视角）：
+#
+#                ┌─────────────────────────────────────────────┐
+#                │                                             │
+#                ▼                                             │
+#   ④ Trim Galore ──► ⑤ Flatten (no-op)                       │
+#                │                                             │
+#                ├──► ⑥ Salmon quant ──────────┐               │
+#                ├──► ⑦ RNA STAR ──► ⑨ featCounts ┤ ⑩ MultiQC ──► ⑪ Column Join
+#                └──► ⑧ FastQC ─────────────────┘               │
+#
+# 关于 foreach：8 个 custom 节点都声明了 foreach/maxConcurrent 字段（自定义节点 def 内），
+# 引擎后续支持 foreach 展开后即可平滑升级为多样本并行；当前先以单样本形态跑通。
+
+schema_version: '1'
+
+name: pe-rna-seq-single-sample
+description: |
+  PE RNA-Seq (Mouse) 11 步流程（单样本默认 SRR36782078）。
+  基于 Slurm HPC + Apptainer 远程执行，参考 Galaxy 公共流程 c5010e456e9d3445。
+
+# ── 全局参数 ──
+# 用户在创建 workflow run 时可以覆盖任意字段；未覆盖则走 default
+params:
+  # ── 集群连接 ──
+  cluster_host:
+    type: string
+    default: shuguang
+    description: SSH config 别名（~/.ssh/config 已配置），SlurmNode 通过此连接投递作业
+    required: true
+
+  work_dir:
+    type: string
+    default: /work/home/liwei_agent/test
+    description: 集群工作目录根（绝对路径），所有 step_N 子目录在其下生成
+    required: true
+
+  # ── Apptainer ──
+  sif:
+    type: string
+    default: /work/home/liwei_agent/test/pe_rna_seq.sif
+    description: PE RNA-Seq 工作流统一的 Apptainer SIF 镜像路径
+    required: true
+
+  apptainer_bind:
+    type: string
+    default: /work/home:/work/home
+    description: Apptainer bind 路径，需要覆盖所有 step_N 与 SIF 可访问目录
+
+  # ── 参考文件 ──
+  transcriptome_fa:
+    type: string
+    default: /work/home/liwei_agent/test/Mus_musculus.GRCm39.cdna.all.fa
+    description: 转录组 FASTA（仅 build_salmon_index 节点使用）
+  gtf:
+    type: string
+    default: /work/home/liwei_agent/test/Mus_musculus.GRCm39.115.gtf
+    description: 基因组注释 GTF（featureCounts 用）
+    required: true
+
+  salmon_index:
+    type: string
+    default: /work/home/liwei_agent/test/salmon_index_v2
+    description: Salmon 索引目录（必须 --gencode 构建，已就绪）
+    required: true
+  star_index:
+    type: string
+    default: /work/home/liwei_agent/test/star_index
+    description: STAR genome 索引目录（已就绪）
+    required: true
+
+  # ── 样本参数 ──
+  # 单样本默认 SRR36782078；foreach 支持后可整体替换为 samples 列表
+  sample_id:
+    type: string
+    default: SRR36782078
+    description: 当前样本 ID（命名输出文件）
+    required: true
+  sample_r1:
+    type: string
+    default: /work/home/liwei_agent/test/SRR36782078_1.fastq.gz
+    description: 原始 Read 1 FASTQ（绝对路径）
+    required: true
+  sample_r2:
+    type: string
+    default: /work/home/liwei_agent/test/SRR36782078_2.fastq.gz
+    description: 原始 Read 2 FASTQ（绝对路径）
+    required: true
+
+# ── DAG 节点 ──
+nodes:
+  # ④ Trim Galore — 接头切除 + 质控（4 cores, ~8 min）
+  - id: trim_galore
+    type: custom
+    tool: trim_galore
+    description: ④ Trim Galore 接头切除与质控
+    depends_on: []
+    inputs:
+      r1: "${{ params.sample_r1 }}"
+      r2: "${{ params.sample_r2 }}"
+      output_dir: "${{ params.work_dir }}/step_4"
+      sample_id: "${{ params.sample_id }}"
+    outputs:
+      trimmed_r1:
+        pattern: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz"
+        type: file
+      trimmed_r2:
+        pattern: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz"
+        type: file
+
+  # ⑤ Flatten — Galaxy 占位 no-op（1 core）
+  - id: flatten
+    type: custom
+    tool: flatten
+    description: ⑤ Flatten collection（Galaxy 占位 no-op）
+    depends_on: [trim_galore]
+    inputs:
+      sample_id: "${{ params.sample_id }}"
+    outputs:
+      ok:
+        pattern: ""
+        type: file
+
+  # ⑥ Salmon quant — 转录本定量（8 cores, ~5 min）
+  - id: salmon_quant
+    type: custom
+    tool: salmon_quant
+    description: ⑥ Salmon quant 转录本表达定量
+    depends_on: [trim_galore]
+    inputs:
+      r1: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz"
+      r2: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz"
+      index: "${{ params.salmon_index }}"
+      output_dir: "${{ params.work_dir }}/step_6/${{ params.sample_id }}"
+    outputs:
+      quant_sf:
+        pattern: "${{ params.work_dir }}/step_6/${{ params.sample_id }}/quant.sf"
+        type: file
+
+  # ⑦ RNA STAR — 比对（32 cores, 100G mem, ~5 min）
+  - id: rna_star
+    type: custom
+    tool: rna_star
+    description: ⑦ RNA STAR 基因组比对，输出排序 BAM
+    depends_on: [trim_galore]
+    inputs:
+      r1: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz"
+      r2: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz"
+      genome_dir: "${{ params.star_index }}"
+      # output_prefix 必须以 / 结尾，STAR 不会自动补
+      output_prefix: "${{ params.work_dir }}/step_7/${{ params.sample_id }}/"
+    outputs:
+      bam:
+        pattern: "${{ params.work_dir }}/step_7/${{ params.sample_id }}/Aligned.sortedByCoord.out.bam"
+        type: file
+
+  # ⑧ FastQC — 单样本 FASTQ 质控报告（32 cores, ~5 min）
+  # Reduce 节点，多样本场景下可在 yaml 把全部 sample 的 R1/R2 拼成 CSV
+  - id: fastqc
+    type: custom
+    tool: fastqc
+    description: ⑧ FastQC 质控报告（单样本 R1+R2）
+    depends_on: [trim_galore]
+    inputs:
+      input_files: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz,${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz"
+      output_dir: "${{ params.work_dir }}/step_8/reports"
+    outputs:
+      report_dir:
+        pattern: "${{ params.work_dir }}/step_8/reports"
+        type: dir
+
+  # ⑨ featureCounts — 基因水平 read 计数（8 cores, ~30 s）
+  - id: featurecounts
+    type: custom
+    tool: featurecounts
+    description: ⑨ featureCounts 基因水平表达计数
+    depends_on: [rna_star]
+    inputs:
+      bam: "${{ params.work_dir }}/step_7/${{ params.sample_id }}/Aligned.sortedByCoord.out.bam"
+      gtf: "${{ params.gtf }}"
+      output_file: "${{ params.work_dir }}/step_9/${{ params.sample_id }}.txt"
+    outputs:
+      counts:
+        pattern: "${{ params.work_dir }}/step_9/${{ params.sample_id }}.txt"
+        type: file
+
+  # ⑩ MultiQC — 全流程质控报告汇总（8 cores, ~15 s）
+  # Reduce 节点：必须等 salmon/star/fastqc/featurecounts 全部完成才能扫描
+  - id: multiqc
+    type: custom
+    tool: multiqc
+    description: ⑩ MultiQC 全流程质控汇总
+    depends_on: [salmon_quant, rna_star, fastqc, featurecounts]
+    inputs:
+      # 精确指定扫描目录，避免纳入历史残留（design.md §5.5）
+      scan_dirs: "${{ params.work_dir }}/step_4,${{ params.work_dir }}/step_6,${{ params.work_dir }}/step_7,${{ params.work_dir }}/step_8,${{ params.work_dir }}/step_9"
+      output_dir: "${{ params.work_dir }}/step_10"
+      title: "PE RNA-Seq Workflow Report"
+    outputs:
+      report:
+        pattern: "${{ params.work_dir }}/step_10/PE-RNA-Seq-Workflow-Report_multiqc_report.html"
+        type: file
+
+  # ⑪ Column Join — featureCounts 结果汇总（1 core, ~5 s）
+  - id: column_join
+    type: custom
+    tool: column_join
+    description: ⑪ Column join featureCounts 计数汇总
+    depends_on: [featurecounts]
+    inputs:
+      input_dir: "${{ params.work_dir }}/step_9"
+      output_dir: "${{ params.work_dir }}/step_11"
+      pattern: "SRR*.txt"
+    outputs:
+      joined_dir:
+        pattern: "${{ params.work_dir }}/step_11"
+        type: dir
+
+# 工作流级别超时 4 小时（单样本实测总耗时约 30 分钟，留足容错）
+timeout: 14400

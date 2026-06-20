@@ -33,6 +33,7 @@ function makeEnv(skillDir: string): Env {
     RCS_ENGINE_TYPE: "opencode" as const,
     RCS_CCB_COMMAND: "ccb",
     RCS_CCB_ARGS: "--acp",
+    WORKFLOW_TOOLS_DIR: "./tools",
   };
 }
 
