@@ -1,4 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
+import { extractModelState } from "./config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -167,10 +168,11 @@ export class AcpDispatcher {
         mcpServers: [],
       });
       this.state.sessionId = result.sessionId;
-      this.state.modelState = result.models ?? null;
+      this.state.modelState = extractModelState(result.configOptions);
       this.state.modeState = result.modes ?? null;
       this.send(
         createSuccessResponse(id, {
+          ...result,
           sessionId: result.sessionId,
           promptCapabilities: this.state.promptCapabilities,
           models: this.state.modelState,
@@ -232,9 +234,10 @@ export class AcpDispatcher {
       return;
     }
     try {
-      await this.state.connection.unstable_setSessionModel({
+      await this.state.connection.setSessionConfigOption?.({
         sessionId: this.state.sessionId,
-        modelId: params.modelId,
+        configId: "model",
+        value: params.modelId,
       });
       this.state.modelState = { ...this.state.modelState, currentModelId: params.modelId };
       this.send(createSuccessResponse(id, { modelId: params.modelId }));
@@ -287,11 +290,7 @@ export class AcpDispatcher {
       this.send(
         createSuccessResponse(id, {
           sessions: sessions.map((s: acp.SessionInfo) => ({
-            _meta: s._meta,
-            cwd: s.cwd,
-            sessionId: s.sessionId,
-            title: s.title,
-            updatedAt: s.updatedAt,
+            ...s,
           })),
           nextCursor: result.nextCursor,
           _meta: result._meta,
@@ -318,10 +317,11 @@ export class AcpDispatcher {
         mcpServers: [],
       });
       this.state.sessionId = params.sessionId;
-      this.state.modelState = result.models ?? null;
+      this.state.modelState = extractModelState(result.configOptions);
       this.state.modeState = result.modes ?? null;
       this.send(
         createSuccessResponse(id, {
+          ...result,
           sessionId: params.sessionId,
           promptCapabilities: this.state.promptCapabilities,
           models: this.state.modelState,
@@ -349,10 +349,11 @@ export class AcpDispatcher {
         cwd: this.workspace,
       });
       this.state.sessionId = params.sessionId;
-      this.state.modelState = result.models ?? null;
+      this.state.modelState = extractModelState(result.configOptions);
       this.state.modeState = result.modes ?? null;
       this.send(
         createSuccessResponse(id, {
+          ...result,
           sessionId: params.sessionId,
           promptCapabilities: this.state.promptCapabilities,
           models: this.state.modelState,

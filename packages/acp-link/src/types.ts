@@ -403,6 +403,7 @@ export interface SessionCapabilities {
 }
 
 export interface AgentCapabilities {
+  [key: string]: unknown;
   _meta?: Record<string, unknown> | null;
   loadSession?: boolean;
   mcpCapabilities?: McpCapabilities;

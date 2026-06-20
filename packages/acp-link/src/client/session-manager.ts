@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
+import { extractModelState } from "../config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -182,7 +183,10 @@ export class SessionManager {
               mcpServers: [],
             });
             this.currentAcpSessionId = r.sessionId;
-            this.emit(sessionId, "session_data", { type: "session_created", payload: r });
+            this.emit(sessionId, "session_data", {
+              type: "session_created",
+              payload: { ...r, models: extractModelState(r.configOptions) },
+            });
           } catch (err) {
             this.emit(sessionId, "session_error", String(err));
           }
@@ -191,7 +195,10 @@ export class SessionManager {
           if (!this.currentAcpSessionId) {
             const r = await this.sharedConnection.newSession({ cwd: this.cwd, mcpServers: [] });
             this.currentAcpSessionId = r.sessionId;
-            this.emit(sessionId, "session_data", { type: "session_created", payload: r });
+            this.emit(sessionId, "session_data", {
+              type: "session_created",
+              payload: { ...r, models: extractModelState(r.configOptions) },
+            });
           }
           const blocks = (payload.content as acp.ContentBlock[]) ?? [];
           if (this.systemPrompt) {
@@ -226,9 +233,10 @@ export class SessionManager {
             break;
           }
           this.sharedConnection
-            .unstable_setSessionModel({
+            .setSessionConfigOption?.({
               sessionId: this.currentAcpSessionId,
-              modelId: (payload.modelId as string) ?? "",
+              configId: "model",
+              value: (payload.modelId as string) ?? "",
             })
             .then(() =>
               this.emit(sessionId, "session_data", { type: "model_changed", payload: { modelId: payload.modelId } }),
@@ -255,7 +263,10 @@ export class SessionManager {
               cwd: this.cwd,
             });
             this.currentAcpSessionId = r.sessionId ?? (payload.sessionId as string);
-            this.emit(sessionId, "session_data", { type: "session_resumed", payload: r });
+            this.emit(sessionId, "session_data", {
+              type: "session_resumed",
+              payload: { ...r, models: extractModelState(r.configOptions) },
+            });
           } catch (err) {
             console.error("[session-manager] resumeSession failed:", String(err));
             this.emit(sessionId, "session_error", String(err));
@@ -285,7 +296,10 @@ export class SessionManager {
               mcpServers: [],
             });
             this.currentAcpSessionId = targetSid;
-            this.emit(sessionId, "session_data", { type: "session_loaded", payload: r });
+            this.emit(sessionId, "session_data", {
+              type: "session_loaded",
+              payload: { ...r, models: extractModelState(r.configOptions) },
+            });
           } catch (err) {
             console.error("[session-manager] loadSession failed:", String(err));
             this.emit(sessionId, "session_error", String(err));
@@ -314,7 +328,11 @@ export class SessionManager {
             mcpServers: [],
           });
           this.currentAcpSessionId = r.sessionId;
-          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          this.emit(
+            sessionId,
+            "session_data",
+            createSuccessResponse(id, { ...r, models: extractModelState(r.configOptions) }),
+          );
           break;
         }
         case ACP_METHOD.SESSION_PROMPT: {
@@ -354,9 +372,10 @@ export class SessionManager {
             this.emit(sessionId, "session_data", createErrorResponse(id, -32000, "No active session"));
             break;
           }
-          await this.sharedConnection!.unstable_setSessionModel({
+          await this.sharedConnection!.setSessionConfigOption?.({
             sessionId: this.currentAcpSessionId,
-            modelId: (p.modelId as string) ?? "",
+            configId: "model",
+            value: (p.modelId as string) ?? "",
           });
           this.emit(sessionId, "session_data", createSuccessResponse(id, { modelId: p.modelId }));
           break;
@@ -380,7 +399,11 @@ export class SessionManager {
             cwd: this.cwd,
           });
           this.currentAcpSessionId = r.sessionId ?? (p.sessionId as string);
-          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          this.emit(
+            sessionId,
+            "session_data",
+            createSuccessResponse(id, { ...r, models: extractModelState((r as any).configOptions) }),
+          );
           break;
         }
         case ACP_METHOD.SESSION_LIST: {
@@ -403,7 +426,11 @@ export class SessionManager {
             mcpServers: [],
           });
           this.currentAcpSessionId = targetSid;
-          this.emit(sessionId, "session_data", createSuccessResponse(id, r));
+          this.emit(
+            sessionId,
+            "session_data",
+            createSuccessResponse(id, { ...r, models: extractModelState(r.configOptions) }),
+          );
           break;
         }
         default:
