@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * ACP Runtime 节点启动入口 — 可通过 `bun build` 打包为独立 JS 文件。
  *
