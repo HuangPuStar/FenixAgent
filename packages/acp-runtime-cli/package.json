@@ -1,0 +1,30 @@
+{
+  "name": "@fenix-agent/acp-runtime-cli",
+  "version": "0.1.0",
+  "description": "ACP Runtime CLI — 在远程节点启动 ACP bridge 并向 RCS 主服务器注册",
+  "author": "3446798488@qq.com",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "acp-runtime": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun build src/bin.ts --outfile dist/bin.js --target=bun --minify",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "acp-link": "workspace:*",
+    "@types/bun": "^1.3.14"
+  },
+  "engines": {
+    "bun": ">=1"
+  }
+}
