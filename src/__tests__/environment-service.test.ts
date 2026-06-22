@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { validateWorkspacePath } from "../services/environment";
+// 从 environment-core 直接导入，绕过 environment barrel re-export 的 preload mock
+import { validateWorkspacePath } from "../services/environment-core";
 
 // 路径校验函数测试
 describe("validateWorkspacePath", () => {

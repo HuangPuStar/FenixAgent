@@ -9,7 +9,15 @@ import * as actualKnowledgeBaseService from "../services/knowledge-base";
 import { getApiKeyServiceStub, getAuthApiStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
-import { getEnvironmentRepoStub, knowledgeBaseServiceRegistry, pgStorageAdapterRegistry } from "./stubs/module-stubs";
+import {
+  coreBootstrapRegistry,
+  environmentServiceRegistry,
+  getEnvironmentRepoStub,
+  knowledgeBaseServiceRegistry,
+  pgStorageAdapterRegistry,
+  registryHeartbeatRegistry,
+  registryRegistry,
+} from "./stubs/module-stubs";
 import { resourcePermissionRepoStub } from "./stubs/resource-permission-repo-stub";
 import { getSystemApiStub } from "./stubs/system-api-stub";
 
@@ -216,31 +224,80 @@ mock.module("../services/knowledge-base", () => ({
     knowledgeBaseServiceRegistry.get("listKnowledgeBasesByTeamId")(...args),
 }));
 
-// ── pg-storage-adapter: 从 workflow-runs.test.ts 的 mock.module() 迁移到 preload ──
-// 只有 1 个测试文件使用，安全 preload mock。
-// 注意：registry/environment/core-bootstrap 等模块无法安全 preload mock，
-// 因为 mock.module 注册后无法通过 dynamic import 获取真实模块（Bun 限制），
-// 而 fallback 到真实模块需要在 preload 阶段 import（触发依赖链副作用）。
-// 这些模块的 mock.module() 暂保留在各自测试文件中。
+// ── registry / registry-heartbeat / environment / core-bootstrap ──
+// 从 acp-machine-connection-lookup.test.ts 的 mock.module() 迁移到 preload。
+// 使用 createLazyMock 模式（与 config/index、repositories 完全一致），
+// 默认返回空函数（throwOnMissing=false）。各测试文件通过 stubXxx() 配置行为。
+// beforeEach 中的 resetAllStubs() 会清除 stub，使其他测试得到空函数（无害）。
 
-mock.module("../services/workflow/pg-storage-adapter", () => ({
-  createPgStorageAdapter: () => {
-    const storageObj: Record<string, unknown> = {};
-    return new Proxy(storageObj, {
-      get: (_target, prop) => {
-        if (typeof prop !== "string") return undefined;
-        return (...args: unknown[]) => pgStorageAdapterRegistry.get(prop)(...args);
-      },
-    });
-  },
-}));
+const REGISTRY_KEYS = [
+  "listMachines",
+  "getMachine",
+  "listEvents",
+  "registerMachine",
+  "disconnectMachine",
+  "markHeartbeatTimeout",
+  "updateHeartbeat",
+  "resetAllMachinesOffline",
+] as const;
+mock.module("../services/registry", () => createLazyMock(REGISTRY_KEYS, (name) => registryRegistry.get(name) as AnyFn));
 
-// ── pg-storage-adapter: 从 workflow-runs.test.ts 的 mock.module() 迁移到 preload ──
-// 只有 1 个测试文件使用，安全 preload mock。
-// 注意：registry/environment/core-bootstrap 等模块无法安全 preload mock，
-// 因为 mock.module 注册后无法通过 dynamic import 获取真实模块（Bun 限制），
-// 而 fallback 到真实模块需要在 preload 阶段 import（触发依赖链副作用）。
-// 这些模块的 mock.module() 暂保留在各自测试文件中。
+const REGISTRY_HEARTBEAT_KEYS = [
+  "startHeartbeat",
+  "handleHeartbeat",
+  "stopHeartbeat",
+  "startMachineSweep",
+  "stopMachineSweep",
+] as const;
+mock.module("../services/registry-heartbeat", () =>
+  createLazyMock(REGISTRY_HEARTBEAT_KEYS, (name) => registryHeartbeatRegistry.get(name) as AnyFn),
+);
+
+const ENVIRONMENT_KEYS = [
+  "createTemporaryEnvironment",
+  "deregisterEnvironment",
+  "getEnvironment",
+  "getEnvironmentBySecret",
+  "handleAcpConnect",
+  "handleAcpDisconnect",
+  "handleAcpIdentify",
+  "handleAcpRegister",
+  "listActiveEnvironments",
+  "listActiveEnvironmentsByUsername",
+  "listActiveEnvironmentsResponse",
+  "markEnvironmentActive",
+  "markEnvironmentIdle",
+  "reconnectEnvironment",
+  "registerEnvironment",
+  "touchEnvironmentPoll",
+  "updateEnvironmentCapabilities",
+  "deleteEnvironment",
+  "ensureWorkspaceDir",
+  "generateEnvSecret",
+  "getOwnedEnvironment",
+  "sanitizeResponse",
+  "toResponse",
+  "validateWorkspacePath",
+  "createWebEnvironment",
+  "listEnvironmentsWithInstances",
+  "updateWebEnvironment",
+] as const;
+mock.module("../services/environment", () =>
+  createLazyMock(ENVIRONMENT_KEYS, (name) => environmentServiceRegistry.get(name) as AnyFn),
+);
+
+const CORE_BOOTSTRAP_KEYS = [
+  "getCoreRuntime",
+  "setCoreRuntimeFactory",
+  "resetCoreRuntime",
+  "registerRemoteNode",
+  "unregisterRemoteNode",
+] as const;
+mock.module("../services/core-bootstrap", () =>
+  createLazyMock(CORE_BOOTSTRAP_KEYS, (name) => coreBootstrapRegistry.get(name) as AnyFn),
+);
+
+// ── pg-storage-adapter ──
 
 mock.module("../services/workflow/pg-storage-adapter", () => ({
   createPgStorageAdapter: () => {
