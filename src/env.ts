@@ -50,6 +50,8 @@ const envSchema = z.object({
   OPENAI_MODEL: z.string().optional(),
 
   // ── 可选：Workflow ──
+  // 自定义节点（CustomNode）工具目录，启动时扫描 .ts 文件并实例化注册到 CustomNodeRegistry
+  WORKFLOW_TOOLS_DIR: z.string().default("./tools"),
 
   // ── 可选：注册中心 ──
   REGISTRY_SECRET: z.string().default("rcs-registry-secret"),

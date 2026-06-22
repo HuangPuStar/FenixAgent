@@ -107,6 +107,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
   const [formMcpIds, setFormMcpIds] = useState<string[]>([]);
   const [formMachineId, setFormMachineId] = useState<string>("local");
+  const [formEngineType, setFormEngineType] = useState<string>("opencode");
   const [formResourceAccess, setFormResourceAccess] = useState<ResourceAccess | undefined>(undefined);
   const [formPublicReadable, setFormPublicReadable] = useState(false);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
@@ -195,6 +196,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormPrompt(String(d.prompt ?? ""));
           setFormDescription(String(d.description ?? ""));
           setFormMachineId((d.machineId as string) || "local");
+          setFormEngineType((d.engineType as string) ?? "opencode");
           setFormResourceAccess(d.resourceAccess as ResourceAccess | undefined);
           setFormPublicReadable(Boolean((d.resourceAccess as ResourceAccess | undefined)?.publicReadable));
           setRelatedResources((d.relatedResources as AgentRelatedResourcesView | undefined) ?? undefined);
@@ -427,6 +429,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             modelId: formModel,
             prompt: formPrompt,
             description: formDescription,
+            engineType: formEngineType,
             knowledge: {
               knowledgeBaseIds: validKnowledgeBaseIds,
               searchFirst: formKnowledgeSearchFirst,
@@ -455,6 +458,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             modelId: formModel,
             prompt: formPrompt,
             description: formDescription,
+            engineType: formEngineType,
             knowledge: {
               knowledgeBaseIds: formKnowledgeBaseIds,
               searchFirst: formKnowledgeSearchFirst,
@@ -503,6 +507,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     t,
     readOnlyAgent,
     formPublicReadable,
+    formEngineType,
     formEnableMemory,
   ]);
 
@@ -677,6 +682,19 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                             {m.name || m.hostname || m.agentName} ({m.id.slice(0, 8)})
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t("form.engineType")}</Label>
+                    <Select value={formEngineType} onValueChange={setFormEngineType} disabled={readOnlyAgent}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder={t("form.engineTypePlaceholder")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="opencode">OpenCode</SelectItem>
+                        <SelectItem value="ccb">CCB</SelectItem>
+                        <SelectItem value="claude-code">Claude Code</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

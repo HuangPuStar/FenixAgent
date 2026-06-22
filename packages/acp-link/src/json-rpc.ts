@@ -48,7 +48,19 @@ export const ACP_METHOD = {
 } as const;
 
 // 传输层消息类型（非 JSON-RPC）
-export const TRANSPORT_TYPES = ["connect", "disconnect", "status", "error", "ping", "pong", "keep_alive"] as const;
+export const TRANSPORT_TYPES = [
+  "connect",
+  "disconnect",
+  "status",
+  "error",
+  "ping",
+  "pong",
+  "keep_alive",
+  "control_response",
+  "permission_response",
+  "permission_request",
+  "interactive_question",
+] as const;
 
 // ── 工具函数 ──────────────────────────
 

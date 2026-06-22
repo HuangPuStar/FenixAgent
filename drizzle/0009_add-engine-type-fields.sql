@@ -1,0 +1,1 @@
+ALTER TABLE "agent_config" ADD COLUMN "engine_type" varchar(32) DEFAULT 'opencode';

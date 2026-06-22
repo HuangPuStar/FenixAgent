@@ -1,3 +1,4 @@
+export { createCcbHandler } from "./ccb-handler.js";
 export { createEnginePlugin } from "./plugin";
 export type { CcbRuntime, CcbRuntimeDependencies } from "./runtime/ccb-runtime";
 export { createCcbRuntime } from "./runtime/ccb-runtime";

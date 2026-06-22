@@ -21,6 +21,10 @@ export interface EngineRelayHandle {
   send(message: EngineRelayMessage): Promise<void> | void;
   /** 主动关闭 relay 连接。 */
   close(code?: number, reason?: string): Promise<void> | void;
+  /** 监听 engine 侧推送的实时消息。返回 unsub 函数。 */
+  onMessage?(listener: (message: EngineRelayMessage) => void): () => void;
+  /** relay 连接就绪后的 resolve Promise（WS open / bridge 模块初始化完成）。 */
+  ready?: Promise<void>;
 }
 
 /**

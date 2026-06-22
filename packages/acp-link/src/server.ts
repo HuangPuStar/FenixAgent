@@ -4,9 +4,12 @@ import os from "node:os";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
+import { createCcbHandler } from "@fenix/ccb";
+import { createClaudeCodeHandler } from "@fenix/claude-code";
+import { createOpencodeHandler } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { handleFileOp } from "./client/file-operations.js";
-import { type AgentType, InstanceManager } from "./client/instance-manager.js";
+import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
 import { extractModelState } from "./config-options-utils.js";
@@ -64,8 +67,10 @@ export interface ServerConfig {
   tenantId?: string;
   userId?: string;
   labels?: string[];
-  /** Agent 类型：opencode（默认）或 ccb（Claude Code） */
+  /** Agent 类型：opencode（默认）、ccb、claude-code */
   agentType?: AgentType;
+  /** 支持的引擎类型列表，注册时上报给 RCS */
+  supportedEngineTypes?: { type: string; cliPath?: string }[];
   /** 用户指定的机器显示名称，可选 */
   name?: string;
 }
@@ -186,6 +191,10 @@ export function buildRegisterMessage(config: ServerConfig, nodeId?: string | nul
     },
     labels: config.labels ?? [],
     heartbeat_interval_ms: 30000,
+    supported_engine_types: config.supportedEngineTypes ?? [
+      { type: "opencode" },
+      ...(process.env.CLAUDE_CODE_CLI_PATH ? [{ type: "claude-code", cliPath: process.env.CLAUDE_CODE_CLI_PATH }] : []),
+    ],
     tenant_id: config.tenantId ?? null,
     user_id: config.userId ?? null,
   };
@@ -209,7 +218,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
   const cwd = config.cwd || process.cwd();
   const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
-  const instanceMgr = new InstanceManager(config.command, config.cwd || process.cwd(), config.args, config.agentType);
+  const handlers: Record<string, EngineHandler> = {
+    opencode: createOpencodeHandler(config.command, config.args),
+    ccb: createCcbHandler(),
+    "claude-code": createClaudeCodeHandler(),
+  };
+  const instanceMgr = new InstanceManager(handlers, config.cwd || process.cwd(), config.agentType ?? "opencode");
 
   // 从磁盘加载 workspace 映射（acp-link 重启后恢复）
   initRegistry(cwd).catch((err) => {
@@ -374,13 +388,13 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const sessionId = msg.session_id as string;
             const launchSpec = msg.launch_spec;
 
+            // 旧 SessionManager 路径（向后兼容）
             if (launchSpec) {
               console.log(`[acp-client] session_start with launch_spec for ${sessionId}`);
               if (msg.agent_prompt) {
                 sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
               }
               sessionMgr.startSession(sessionId, launchSpec as Record<string, unknown>).then((result) => {
-                console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
                 if (ws && ws.readyState === 1) {
                   if (result === "started") {
                     const caps = sessionMgr.getCapabilities?.() ?? {};
@@ -409,8 +423,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                       }),
                     );
                   }
-                } else {
-                  console.log("[acp-client] ws not ready, state:", ws?.readyState);
                 }
               });
             } else {
@@ -419,7 +431,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
               }
               sessionMgr.startSession(sessionId).then((result) => {
-                console.log("[acp-client] startSession done:", result, "ws:", ws?.readyState);
                 if (ws && ws.readyState === 1) {
                   if (result === "started") {
                     const caps = sessionMgr.getCapabilities?.() ?? {};
@@ -448,36 +459,37 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                       }),
                     );
                   }
-                } else {
-                  console.log("[acp-client] ws not ready, state:", ws?.readyState);
                 }
               });
             }
             break;
           }
-          case "session_data":
-            // 优先走 InstanceManager AcpDispatcher，否则走旧 SessionManager
-            if (instanceMgr.hasInstance(msg.session_id)) {
-              const dispatcher = instanceMgr.getDispatcher(msg.session_id);
-              if (dispatcher) {
-                await dispatcher.handleMessage(msg.payload);
-              }
+          case "session_data": {
+            const instId = (msg.instance_id as string) ?? (msg.session_id as string);
+            if (instId && instanceMgr.hasInstance(instId)) {
+              const dispatcher = instanceMgr.getDispatcher(instId);
+              if (dispatcher) await dispatcher.handleMessage(msg.payload);
             } else {
-              sessionMgr.sendData(msg.session_id, msg.payload);
+              sessionMgr.sendData(msg.session_id as string, msg.payload);
             }
             break;
-          case "session_end":
-            if (instanceMgr.hasInstance(msg.session_id)) {
-              instanceMgr.stop(msg.session_id);
+          }
+          case "session_end": {
+            const instId = (msg.instance_id as string) ?? (msg.session_id as string);
+            if (instId && instanceMgr.hasInstance(instId)) {
+              instanceMgr.stop(instId);
             } else {
-              sessionMgr.endSession(msg.session_id);
+              sessionMgr.endSession(msg.session_id as string);
             }
             break;
+          }
           case "prepare": {
             const instId = msg.instance_id as string;
             const launchSpec = msg.launch_spec as AgentLaunchSpec;
+            const engineType = msg.engine_type as string | undefined;
             try {
-              await instanceMgr.prepare(instId, launchSpec);
+              // InstanceManager 支持多引擎，传入 engine_type 即可切换引擎
+              await instanceMgr.prepare(instId, launchSpec, engineType);
               ws!.send(
                 JSON.stringify({
                   type: "prepare_result",
@@ -502,19 +514,17 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
           case "start": {
             const instId = msg.instance_id as string;
             try {
-              // send 回调：dispatcher 的 ACP 回复通过 relay 消息发回 RCS
-              // payload 直接传入消息对象（JSON-RPC 或传输层消息）
+              // start 统一走 InstanceManager（稳定路径）
               const relaySend = (msgObj: unknown) => {
                 if (ws && ws.readyState === 1) {
-                  const relayMsg = {
-                    type: "relay",
-                    instance_id: instId,
-                    session_id: instId,
-                    payload: msgObj,
-                  };
-                  // ── ACP 调试日志 ──
-                  console.log("[acp-client] → RCS relay:", JSON.stringify(relayMsg).slice(0, 500));
-                  ws.send(JSON.stringify(relayMsg));
+                  ws.send(
+                    JSON.stringify({
+                      type: "relay",
+                      instance_id: instId,
+                      session_id: instId,
+                      payload: msgObj,
+                    }),
+                  );
                 }
               };
               const result = await instanceMgr.start(instId, relaySend);
@@ -915,12 +925,17 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       const MAX_SESSIONS = 20;
-      // 过滤掉标题为空或以 "New session" 开头的会话
+      // 过滤掉标题为空或以 "New session" 开头的会话（与 acp-dispatcher/session-manager 保持一致）
       const filtered = result.sessions.filter(
-        (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
+        (s: acp.SessionInfo) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
       );
       const sessions = filtered.slice(0, MAX_SESSIONS);
-      console.log("sessions listed:", `total=${result.sessions.length}`, `returned=${sessions.length}`);
+      console.log(
+        "sessions listed:",
+        `total=${result.sessions.length}`,
+        `filtered=${filtered.length}`,
+        `returned=${sessions.length}`,
+      );
 
       sendMsg(
         ws,

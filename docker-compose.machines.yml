@@ -16,7 +16,8 @@ services:
   machine-a:
     build:
       context: .
-      dockerfile: docker/machine-agent/Dockerfile
+      dockerfile: Dockerfile
+      target: remote-runtime
       args:
         - HTTP_PROXY=
         - HTTPS_PROXY=
@@ -51,7 +52,8 @@ services:
   machine-b:
     build:
       context: .
-      dockerfile: docker/machine-agent/Dockerfile
+      dockerfile: Dockerfile
+      target: remote-runtime
       args:
         - HTTP_PROXY=
         - HTTPS_PROXY=

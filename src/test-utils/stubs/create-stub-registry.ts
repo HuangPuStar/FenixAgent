@@ -8,6 +8,7 @@ export interface StubRegistry {
   stub: (overrides: StubMap) => void;
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   get: (name: string) => any;
+  has: (name: string) => boolean;
   reset: () => void;
 }
 
@@ -29,6 +30,9 @@ export function createStubRegistry(moduleName: string, throwOnMissing = true): S
         return () => {};
       }
       return fn;
+    },
+    has(name: string) {
+      return name in _stubs;
     },
     reset() {
       _stubs = {};

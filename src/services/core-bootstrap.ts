@@ -1,14 +1,14 @@
 import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { log } from "@fenix/logger";
-import { createEnginePlugin as createOpencodePlugin, type OpencodeRuntime } from "@fenix/opencode";
+import { createEnginePlugin as createOpencodePlugin } from "@fenix/opencode";
+import { createClaudeCodePlugin } from "@fenix/plugin-claude-code";
 import {
   createRemoteRuntime,
   createWsRemoteTransport,
   type RemoteTransport,
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
-import { validateEnv } from "../env";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 import { globalInstanceRegistry } from "./instance-registry";
@@ -19,36 +19,18 @@ let facade: CoreRuntimeFacade | null = null;
 const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
-  const env = validateEnv();
-  const engineType = env.RCS_ENGINE_TYPE;
-  const plugin =
-    engineType === "ccb"
-      ? createCcbPlugin({ command: env.RCS_CCB_COMMAND, args: env.RCS_CCB_ARGS.split(/\s+/).filter(Boolean) })
-      : createOpencodePlugin();
-
   return createCoreRuntime({
-    plugins: [plugin],
+    plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin()],
     nodes: [
       {
         id: "local-default",
         mode: "local",
-        engineTypes: [engineType],
+        engineTypes: ["opencode", "claude-code", "ccb"],
         status: "online",
       },
     ],
-    onInstanceStarted(instanceId, runtime, updateMetadata) {
-      // ccb 引擎没有 getInstanceState，跳过
-      if (engineType === "ccb") return;
-      // 远程实例没有 getInstanceState，跳过 metadata 写入
-      if (typeof (runtime as OpencodeRuntime).getInstanceState !== "function") return;
-      const opencode = runtime as OpencodeRuntime;
-      const state = opencode.getInstanceState(instanceId);
-      if (state) {
-        updateMetadata({
-          port: state.port ?? 0,
-          token: state.token ?? "",
-        });
-      }
+    onInstanceStarted(_instanceId, _runtime, _updateMetadata) {
+      // port/token/pid 由 AcpLinkProcessManager 写入 pluginMetadata
     },
     runtimeResolver(_engineType, node) {
       if (node.mode === "remote") {
@@ -94,7 +76,12 @@ export function resetCoreRuntime(): void {
  * 远程 machine 注册成功后，动态注册 remote node 到 core。
  * @param acpEntry 对应的 AcpConnectionEntry，用于在消息路由时注入到 transport
  */
-export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry: AcpConnectionEntry): void {
+export function registerRemoteNode(
+  machineId: string,
+  ws: WsConnection,
+  acpEntry: AcpConnectionEntry,
+  engineTypes?: string[],
+): void {
   const runtime = getCoreRuntime();
 
   // WsConnection 没有 onmessage，通过 injectMessage 由 handleAcpWsMessage 路由
@@ -124,7 +111,7 @@ export function registerRemoteNode(machineId: string, ws: WsConnection, acpEntry
   runtime.registerNode({
     id: machineId,
     mode: "remote",
-    engineTypes: [validateEnv().RCS_ENGINE_TYPE],
+    engineTypes: engineTypes ?? ["opencode"],
     status: "online",
     metadata: { machineId },
   });

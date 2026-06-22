@@ -1,37 +1,18 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { setConfig } from "../config";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import {
+  resetAllStubs,
+  stubCoreBootstrap,
+  stubDb,
+  stubEnvironmentService,
+  stubRegistry,
+  stubRegistryHeartbeat,
+} from "../test-utils/helpers";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 
-// Mock registry services
-mock.module("../services/registry", () => ({
-  registerMachine: mock(async () => ({ id: "mach_test_001" })),
-  disconnectMachine: mock(async () => {}),
-}));
-
-// Mock registry-heartbeat
-mock.module("../services/registry-heartbeat", () => ({
-  startHeartbeat: mock(() => {}),
-  handleHeartbeat: mock(async () => {}),
-  stopHeartbeat: mock(() => {}),
-  startMachineSweep: mock(() => {}),
-  stopMachineSweep: mock(() => {}),
-}));
-
-// Mock environment service
-mock.module("../services/environment", () => ({
-  touchEnvironmentPoll: mock(async () => {}),
-}));
-
-// Mock core-bootstrap — acp-ws-handler 导入了 getCoreRuntime 等
-mock.module("../services/core-bootstrap", () => ({
-  getCoreRuntime: () => null,
-  registerRemoteNode: mock(() => {}),
-  unregisterRemoteNode: mock(() => {}),
-}));
-
-// repositories/environment 已在 setup-mocks.ts 中通过 stub 注册表 mock
+// registry / registry-heartbeat / environment / core-bootstrap 已在 setup-mocks.ts 中
+// 通过 preload mock 注册（createLazyMock 模式），stub 行为通过 stubXxx() 在 beforeEach 中配置。
 
 beforeEach(() => {
   resetAllStubs();
@@ -40,6 +21,25 @@ beforeEach(() => {
     select: mock(() => {
       throw new Error("unexpected db call in test");
     }),
+  });
+  stubRegistry({
+    registerMachine: async () => ({ id: "mach_test_001" }),
+    disconnectMachine: async () => {},
+  });
+  stubRegistryHeartbeat({
+    startHeartbeat: () => {},
+    handleHeartbeat: async () => {},
+    stopHeartbeat: () => {},
+    startMachineSweep: () => {},
+    stopMachineSweep: () => {},
+  });
+  stubEnvironmentService({
+    touchEnvironmentPoll: async () => {},
+  });
+  stubCoreBootstrap({
+    getCoreRuntime: () => null,
+    registerRemoteNode: () => {},
+    unregisterRemoteNode: () => {},
   });
 });
 

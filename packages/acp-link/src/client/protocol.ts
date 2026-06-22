@@ -39,6 +39,7 @@ export interface ProtocolEvents {
   session_update: { sessionId: string; update: SessionUpdate };
   prompt_complete: { stopReason: string; usage?: import("../types.js").PromptUsage };
   permission_request: PermissionRequestPayload;
+  interactive_question: import("../types.js").InteractiveQuestionPayload;
   browser_tool_call: { callId: string; params: BrowserToolParams };
   model_changed: { modelId: string };
   mode_changed: { modeId: string };
@@ -106,6 +107,9 @@ export class ACPProtocol extends EventEmitter<ProtocolEvents> {
         break;
       case "permission_request":
         this.emit("permission_request", msg.payload as PermissionRequestPayload);
+        break;
+      case "interactive_question":
+        this.emit("interactive_question", msg.payload as ProtocolEvents["interactive_question"]);
         break;
       case "permission_response":
         // 旧格式 permission_response（relay 路径）— 直接透传

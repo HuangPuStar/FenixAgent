@@ -169,6 +169,7 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         await runtime.prepareEnvironment({
           instanceId: request.instanceId,
           launchSpec: request.launchSpec,
+          engineType: request.engineType,
         });
         store.update(request.instanceId, { status: "prepared" });
         store.update(request.instanceId, { status: "starting" });

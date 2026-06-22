@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { agentConfig, model, provider } from "../../db/schema";
+import { agentConfig } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
 import type { AgentKnowledgeConfig, AgentKnowledgePolicy } from "../agent-knowledge";
 import { resolveAgentKnowledgePolicy } from "../agent-knowledge";
@@ -12,12 +12,25 @@ import {
   setPublicRead,
 } from "../resource-permission";
 import type { AgentConfigDetailWithAccess, AgentConfigRowWithAccess } from "./types";
+import { ENGINE_TYPES, type EngineType } from "./types";
 
 // ────────────────────────────────────────────
 // Agent Config 操作
 // ────────────────────────────────────────────
 
-const AGENT_SETTABLE_FIELDS = ["modelId", "prompt", "description", "extra", "machineId", "knowledge"] as const;
+const AGENT_SETTABLE_FIELDS = [
+  "model",
+  "modelId",
+  "prompt",
+  "description",
+  "extra",
+  "machineId",
+  "knowledge",
+  "engineType",
+] as const;
+
+/** 前端字段名 → Drizzle 列名映射（路由层已做映射，此处为防御性兜底） */
+const FIELD_ALIAS: Record<string, string> = { top_p: "topP" };
 
 type AgentConfigRow = typeof agentConfig.$inferSelect;
 type AgentConfigSetOptions = { publicReadable?: boolean };
@@ -29,43 +42,6 @@ function parseResourceKey(resourceKey: string) {
     sourceOrganizationId: resourceKey.slice(0, slashIndex),
     resourceUid: resourceKey.slice(slashIndex + 1),
   };
-}
-
-/**
- * Hydrates agent rows with derived model refs so callers can keep the old response contract.
- */
-async function hydrateAgentConfigRows(rows: AgentConfigRow[]): Promise<AgentConfigRow[]> {
-  const modelIds = Array.from(
-    new Set(rows.map((row) => row.modelId).filter((value): value is string => Boolean(value))),
-  );
-  if (modelIds.length === 0) return rows.map((row) => ({ ...row, model: null }));
-
-  const modelRows = await db
-    .select({
-      id: model.id,
-      modelName: model.modelId,
-      providerId: model.providerId,
-    })
-    .from(model)
-    .where(inArray(model.id, modelIds));
-  const providerIds = Array.from(new Set(modelRows.map((row) => row.providerId)));
-  const providerRows =
-    providerIds.length > 0 ? await db.select().from(provider).where(inArray(provider.id, providerIds)) : [];
-  const providerMap = new Map(providerRows.map((row) => [row.id, row]));
-  const modelMap = new Map(modelRows.map((row) => [row.id, row]));
-
-  return rows.map((row) => ({
-    ...row,
-    model: (() => {
-      if (!row.modelId) return null;
-      const modelRow = modelMap.get(row.modelId);
-      const providerRow = modelRow ? providerMap.get(modelRow.providerId) : null;
-      if (!modelRow || !providerRow) return null;
-      return providerRow.organizationId === row.organizationId
-        ? `${providerRow.name}/${modelRow.modelName}`
-        : `${providerRow.organizationId}/${providerRow.id}/${modelRow.modelName}`;
-    })(),
-  }));
 }
 
 async function listExternalAgentConfigs(ctx: AuthContext): Promise<AgentConfigRow[]> {
@@ -81,8 +57,10 @@ async function listExternalAgentConfigs(ctx: AuthContext): Promise<AgentConfigRo
 export async function listAgentConfigs(ctx: AuthContext): Promise<AgentConfigRowWithAccess[]> {
   const internal = await db.select().from(agentConfig).where(eq(agentConfig.organizationId, ctx.organizationId));
   const external = await listExternalAgentConfigs(ctx);
-  const hydratedRows = await hydrateAgentConfigRows([...internal, ...external]);
-  return (await decorateResourceAccess(ctx, "agent_config", hydratedRows)) as unknown as AgentConfigRowWithAccess[];
+  return (await decorateResourceAccess(ctx, "agent_config", [
+    ...internal,
+    ...external,
+  ])) as unknown as AgentConfigRowWithAccess[];
 }
 
 export async function getAgentConfigByResourceKey(
@@ -99,8 +77,7 @@ export async function getAgentConfigByResourceKey(
   const readable = await canReadResource(ctx, "agent_config", row.id, row.organizationId);
   if (!readable) return null;
 
-  const [hydratedRow] = await hydrateAgentConfigRows([row]);
-  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [hydratedRow]);
+  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [row]);
   return decorated as unknown as AgentConfigDetailWithAccess;
 }
 
@@ -119,8 +96,7 @@ export async function getAgentConfig(
     .limit(1);
   const internal = rows[0] ?? null;
   if (internal) {
-    const [hydratedRow] = await hydrateAgentConfigRows([internal]);
-    const [decorated] = await decorateResourceAccess(ctx, "agent_config", [hydratedRow]);
+    const [decorated] = await decorateResourceAccess(ctx, "agent_config", [internal]);
     return decorated as unknown as AgentConfigDetailWithAccess;
   }
 
@@ -130,8 +106,7 @@ export async function getAgentConfig(
   const readable = await canReadResource(ctx, "agent_config", external.id, external.organizationId);
   if (!readable) return null;
 
-  const [hydratedRow] = await hydrateAgentConfigRows([external]);
-  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [hydratedRow]);
+  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [external]);
   return decorated as unknown as AgentConfigDetailWithAccess;
 }
 
@@ -145,12 +120,7 @@ export async function getAgentConfigById(id: string, orgId?: string) {
     .from(agentConfig)
     .where(and(...conditions))
     .limit(1);
-  const row = rows[0] ?? null;
-  if (!row) {
-    return null;
-  }
-  const [hydratedRow] = await hydrateAgentConfigRows([row]);
-  return hydratedRow;
+  return rows[0] ?? null;
 }
 
 export async function getReadableAgentConfigById(
@@ -169,20 +139,14 @@ export async function getReadableAgentConfigById(
   return decorated as unknown as AgentConfigDetailWithAccess;
 }
 
-/** 将 data 中 AGENT_SETTABLE_FIELDS 范围内的字段映射为 Drizzle set 对象。 */
-async function buildSetFromData(data: Record<string, unknown>): Promise<Partial<typeof agentConfig.$inferInsert>> {
+/** 将 data 中 AGENT_SETTABLE_FIELDS 范围内的字段映射为 Drizzle set 对象 */
+function buildSetFromData(data: Record<string, unknown>): Partial<typeof agentConfig.$inferInsert> {
   const set: Partial<typeof agentConfig.$inferInsert> = { updatedAt: new Date() };
   for (const field of AGENT_SETTABLE_FIELDS) {
-    if (data[field] === undefined) continue;
-    if (field === "knowledge") continue;
-    if (field === "modelId") {
-      set.modelId = typeof data.modelId === "string" && data.modelId.trim().length > 0 ? data.modelId : null;
-      // model 只保留给启动迁移读取；新写入统一清空，避免双写再次漂移。
-      set.model = null;
-      continue;
+    if (data[field] !== undefined) {
+      const drizzleKey = FIELD_ALIAS[field] ?? field;
+      (set as Record<string, unknown>)[drizzleKey] = data[field] ?? null;
     }
-
-    (set as Record<string, unknown>)[field] = data[field] ?? null;
   }
   return set;
 }
@@ -193,7 +157,7 @@ export async function createAgentConfig(
   data: Record<string, unknown>,
   options: AgentConfigSetOptions = {},
 ) {
-  const set = await buildSetFromData(data);
+  const set = buildSetFromData(data);
   const [row] = await db
     .insert(agentConfig)
     .values({
@@ -225,7 +189,7 @@ export async function updateAgentConfig(
   if (!existing) return false;
 
   assertInternalWritable(ctx, "agent_config", existing.id, existing.organizationId);
-  const set = await buildSetFromData(data);
+  const set = buildSetFromData(data);
   const result = await db
     .update(agentConfig)
     .set(set)
@@ -264,10 +228,43 @@ export { AGENT_SETTABLE_FIELDS };
 // Agent Config 验证与转换
 // ────────────────────────────────────────────
 
+type PermissionAction = "ask" | "allow" | "deny";
+
 const BUILT_IN_AGENTS = new Set(["build", "plan", "general", "explore", "title", "summary", "compaction", "meta"]);
+
+function isValidMode(mode: string): boolean {
+  return ["primary", "subagent", "all"].includes(mode);
+}
+
+function isValidSteps(steps: number): boolean {
+  return Number.isInteger(steps) && steps >= 1 && steps <= 200;
+}
 
 /** 校验 agent 数据字段，返回错误码或 null */
 export function validateAgentData(data: Record<string, unknown>): string | null {
+  if (data.mode !== undefined && typeof data.mode === "string" && !isValidMode(data.mode)) return "INVALID_MODE";
+  if (data.steps !== undefined && typeof data.steps === "number" && !isValidSteps(data.steps)) return "INVALID_STEPS";
+  if (data.temperature !== undefined) {
+    if (typeof data.temperature !== "number" || data.temperature < 0 || data.temperature > 2)
+      return "INVALID_TEMPERATURE";
+  }
+  if (data.top_p !== undefined) {
+    if (typeof data.top_p !== "number" || data.top_p < 0 || data.top_p > 1) return "INVALID_TOP_P";
+  }
+  if (data.topP !== undefined) {
+    if (typeof data.topP !== "number" || data.topP < 0 || data.topP > 1) return "INVALID_TOP_P";
+  }
+  if (data.color !== undefined) {
+    if (typeof data.color !== "string") return "INVALID_COLOR";
+    const c = data.color;
+    const PRESET_COLORS = ["primary", "secondary", "accent", "success", "warning", "error", "info"];
+    const isHex = /^#[0-9a-fA-F]{6}$/.test(c);
+    if (!isHex && !PRESET_COLORS.includes(c)) return "INVALID_COLOR";
+  }
+  if (data.permission !== undefined && data.permission !== null) {
+    if (typeof data.permission === "string") return "INVALID_PERMISSION";
+    if (typeof data.permission !== "object" || Array.isArray(data.permission)) return "INVALID_PERMISSION";
+  }
   if (data.extra !== undefined && data.extra !== null) {
     if (typeof data.extra !== "object" || Array.isArray(data.extra)) return "INVALID_EXTRA";
   }
@@ -275,6 +272,13 @@ export function validateAgentData(data: Record<string, unknown>): string | null 
     const error = validateKnowledgeConfig(data.knowledge);
     if (error) return error;
   }
+
+  if (data.engineType !== undefined && data.engineType !== null) {
+    if (typeof data.engineType !== "string" || !ENGINE_TYPES.includes(data.engineType as EngineType)) {
+      return "INVALID_ENGINE_TYPE";
+    }
+  }
+
   return null;
 }
 
@@ -314,6 +318,15 @@ function validateKnowledgeConfig(value: unknown): string | null {
   }
 
   return null;
+}
+
+/** 将旧 tools 格式转换为 permission 格式 */
+export function toolsToPermission(tools: Record<string, boolean>): Record<string, PermissionAction> {
+  const result: Record<string, PermissionAction> = {};
+  for (const [key, val] of Object.entries(tools)) {
+    result[key] = val ? "allow" : "deny";
+  }
+  return result;
 }
 
 /** 规范化 knowledge config：去重、trim */

@@ -1,5 +1,5 @@
 {
-  "id": "bd0f7975-5a05-4b15-b330-843a69265e28",
+  "id": "4de4f48b-28a0-4057-8c50-ce9f5ad6eb32",
   "prevId": "34db17e7-b389-43aa-8fd7-14ffe9a24b25",
   "version": "7",
   "dialect": "postgresql",
@@ -175,6 +175,13 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "engine_type": {
+          "name": "engine_type",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'opencode'"
         },
         "created_at": {
           "name": "created_at",
@@ -1110,8 +1117,8 @@
         }
       },
       "indexes": {
-        "idx_environment_org_user_agent_config": {
-          "name": "idx_environment_org_user_agent_config",
+        "idx_environment_org_name": {
+          "name": "idx_environment_org_name",
           "columns": [
             {
               "expression": "organization_id",
@@ -1120,20 +1127,13 @@
               "nulls": "last"
             },
             {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_config_id",
+              "expression": "name",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "where": "\"environment\".\"agent_config_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -37,11 +37,13 @@ export function buildAgentPayload(input: {
   prompt: string;
   description: string;
   knowledge: AgentKnowledgeFormState;
+  engineType?: string;
 }) {
   return {
     modelId: input.modelId || undefined,
     prompt: input.prompt || undefined,
     description: input.description || undefined,
+    engineType: input.engineType ?? "opencode",
     knowledge: {
       knowledgeBaseIds: input.knowledge.knowledgeBaseIds,
       policy: {

@@ -337,3 +337,59 @@ describe("createWorkflowEngine", () => {
     expect(step3Output?.stdout).toContain("after audit");
   });
 });
+
+// ── custom 节点集成测试 ──
+
+import { CustomNodeRegistry } from "../../plugins/registry";
+import type { CustomNode } from "../../plugins/types";
+
+/** 构建带 customRegistry 的测试引擎 */
+function createTestEngineWithCustom(tools: CustomNode[]) {
+  const registry = new CustomNodeRegistry();
+  for (const t of tools) registry.register(t);
+  return createTestEngine({ customRegistry: registry });
+}
+
+test("引擎运行 custom 节点", async () => {
+  const tool: CustomNode = {
+    name: "simple_echo",
+    description: "Echo tool",
+    inputs: {},
+    produces: ["out"],
+    execute: async () => ({ stdout: "echo from custom", exit_code: 0 }),
+  };
+  const engine = createTestEngineWithCustom([tool]);
+  const yaml = `
+name: custom-test
+schema_version: "1"
+nodes:
+  - id: c1
+    type: custom
+    tool: simple_echo
+    outputs:
+      out:
+        pattern: /tmp/x.txt
+        type: file
+`;
+  const result = await engine.run(yaml);
+  expect(result.status).toBe("SUCCESS");
+  expect(result.summary.node_summary.total).toBe(1);
+  expect(result.summary.node_summary.completed).toBe(1);
+});
+
+test("custom 节点 tool 未注册时 parse 阶段报错", async () => {
+  const engine = createTestEngineWithCustom([]);
+  const yaml = `
+name: custom-test
+schema_version: "1"
+nodes:
+  - id: c1
+    type: custom
+    tool: nonexistent
+    outputs:
+      out:
+        pattern: /tmp/x.txt
+        type: file
+`;
+  await expect(engine.run(yaml)).rejects.toThrow(/not registered/);
+});

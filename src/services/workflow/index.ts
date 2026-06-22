@@ -11,6 +11,7 @@
  * - workflow 结束后统一销毁启动的实例
  */
 
+import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import type { Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
 import { and, eq } from "drizzle-orm";
@@ -19,6 +20,7 @@ import { environment } from "../../db/schema";
 import { getCoreRuntime } from "../../services/core-bootstrap";
 import { ensureRunning, getRunningInstancesByEnvironment, stopInstance } from "../instance";
 import { type AgentChannel, createAcpTransport, setChannelFactory } from "./acp-transport";
+import { getCustomToolsRegistry } from "./custom-tools";
 import { createPgStorageAdapter } from "./pg-storage-adapter";
 
 // 每个 team 一个引擎实例，lazy 创建
@@ -41,8 +43,6 @@ function getTransport(organizationId: string): Transport {
  */
 function createChannelFactory(organizationId: string) {
   return async (envName: string, options?: { spawnedEnvIds?: Set<string> }): Promise<AgentChannel> => {
-    console.error(`[workflow] ChannelFactory start: envName=${envName} orgId=${organizationId}`);
-
     // 1. 按 name 查 Environment
     const [envRow] = await db
       .select({ id: environment.id })
@@ -50,16 +50,10 @@ function createChannelFactory(organizationId: string) {
       .where(and(eq(environment.name, envName), eq(environment.organizationId, organizationId)))
       .limit(1);
 
-    if (!envRow) {
-      console.error(`[workflow] ChannelFactory environment not found: envName=${envName}`);
-      throw new Error(`Environment '${envName}' not found`);
-    }
+    if (!envRow) throw new Error(`Environment '${envName}' not found`);
 
     // 2. 确保实例运行
     const { instance, status } = await ensureRunning("system", envRow.id);
-    console.error(
-      `[workflow] ChannelFactory ensureRunning: envId=${envRow.id} instanceId=${instance.id} status=${status}`,
-    );
     if (status === "spawned") {
       options?.spawnedEnvIds?.add(envRow.id);
     }
@@ -68,13 +62,10 @@ function createChannelFactory(organizationId: string) {
     const facade = getCoreRuntime();
     const handle = await facade.connectInstanceRelay({ instanceId: instance.id });
 
-    // 4. 等待 relay ready（handle 内部会等 WS open）
-    if ("ready" in handle && handle.ready instanceof Promise) {
+    // 4. 等待 relay ready（ready 已在 EngineRelayHandle 中声明）
+    if (handle.ready) {
       await handle.ready;
     }
-
-    const hasOnMessage = "onMessage" in handle && typeof (handle as { onMessage?: unknown }).onMessage === "function";
-    console.error(`[workflow] ChannelFactory relay ready: instanceId=${instance.id} hasOnMessage=${hasOnMessage}`);
 
     // 5. 适配为 AgentChannel
     return {
@@ -82,16 +73,9 @@ function createChannelFactory(organizationId: string) {
         handle.send(message as { type: string; payload?: unknown });
       },
       onMessage: (handler: (msg: Record<string, unknown>) => void) => {
-        if (hasOnMessage) {
-          const opencodeHandle = handle as {
-            onMessage: (listener: (msg: Record<string, unknown>) => void) => () => void;
-          };
-          return opencodeHandle.onMessage(handler);
+        if (handle.onMessage) {
+          return handle.onMessage(handler as unknown as (message: EngineRelayMessage) => void);
         }
-        console.error(
-          `[workflow] ChannelFactory onMessage UNAVAILABLE: instanceId=${instance.id} — relay handle has no onMessage`,
-        );
-        // 没有 onMessage 则返回空 unsub
         return () => {};
       },
     };
@@ -121,6 +105,9 @@ export function getTeamEngine(organizationId: string): WorkflowEngine {
       storage,
       transport: getTransport(organizationId),
       hmacSecret: process.env.RCS_WORKFLOW_HMAC_SECRET || crypto.randomUUID(),
+      // 注入全局 CustomNodeRegistry（启动时 discover tools/ 已就绪）
+      // 让 yaml 中 type: custom + tool: trim_galore 等节点找到对应实现
+      customRegistry: getCustomToolsRegistry(),
     });
     engines.set(organizationId, engine);
   }

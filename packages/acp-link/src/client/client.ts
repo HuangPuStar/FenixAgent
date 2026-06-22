@@ -7,6 +7,7 @@ import type {
   BrowserToolResult,
   ConnectionState,
   ContentBlock,
+  InteractiveQuestionPayload,
   ListSessionsRequest,
   ListSessionsResponse,
   LoadSessionRequest,
@@ -39,6 +40,7 @@ export type SessionUpdateHandler = (sessionId: string, update: SessionUpdate) =>
 export type SessionCreatedHandler = (sessionId: string) => void;
 export type PromptCompleteHandler = (stopReason: string, usage?: PromptUsage) => void;
 export type PermissionRequestHandler = (request: PermissionRequestPayload) => void;
+export type InteractiveQuestionHandler = (question: InteractiveQuestionPayload) => void;
 export type BrowserToolCallHandler = (params: BrowserToolParams) => Promise<BrowserToolResult>;
 export type ErrorMessageHandler = (message: string) => void;
 export type ModelChangedHandler = (modelId: string) => void;
@@ -80,6 +82,7 @@ export class ACPClient {
   private sessionCreatedHandler: SessionCreatedHandler | null = null;
   private promptCompleteHandler: PromptCompleteHandler | null = null;
   private permissionRequestHandler: PermissionRequestHandler | null = null;
+  private interactiveQuestionHandler: InteractiveQuestionHandler | null = null;
   private browserToolCallHandler: BrowserToolCallHandler | null = null;
   private errorMessageHandler: ErrorMessageHandler | null = null;
   private authFailureHandler: (() => void) | null = null;
@@ -207,6 +210,9 @@ export class ACPClient {
     });
     this.protocol.on("permission_request", (payload) => {
       this.permissionRequestHandler?.(payload);
+    });
+    this.protocol.on("interactive_question", (payload) => {
+      this.interactiveQuestionHandler?.(payload);
     });
     this.protocol.on("browser_tool_call", ({ callId, params }) => {
       this.handleBrowserToolCall(callId, params);
@@ -472,6 +478,9 @@ export class ACPClient {
   }
   setPermissionRequestHandler(handler: PermissionRequestHandler | null): void {
     this.permissionRequestHandler = handler;
+  }
+  setInteractiveQuestionHandler(handler: InteractiveQuestionHandler | null): void {
+    this.interactiveQuestionHandler = handler;
   }
   setBrowserToolCallHandler(handler: BrowserToolCallHandler | null): void {
     this.browserToolCallHandler = handler;

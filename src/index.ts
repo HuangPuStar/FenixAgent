@@ -45,6 +45,7 @@ import { checkRagFlowHealth } from "./services/knowledge-provider/ragflow";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { syncBuiltin } from "./services/sync-builtin";
 import { ensureSystemAdmin } from "./services/system-admin";
+import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
@@ -232,6 +233,12 @@ try {
   startupLog.error("Failed to sync builtin resources", err instanceof Error ? err : undefined);
 }
 
+// 初始化自定义节点工具注册表：扫描 WORKFLOW_TOOLS_DIR，注册 SlurmNode 子类。
+// 必须在 getTeamEngine() 调用前完成，否则 yaml 中 type: custom 的节点会因 tool 未注册而失败。
+// discover 内部已捕获异常并 fallback 到空 registry，不会阻塞服务启动。
+await initCustomToolsRegistry();
+startupLog.info("Custom tools registry initialized");
+
 // Initialize Hermes client if configured
 // biome-ignore lint/suspicious/noExplicitAny: config channels shape is dynamic
 const hermesUrl = process.env.HERMES_URL ?? (config as any).channels?.hermesUrl;
@@ -249,7 +256,7 @@ if (ragflowHealth.ok) {
 
 // Kill stale acp-link processes from previous runs
 try {
-  execSync("pkill -f 'acp-link.*opencode' || true", { stdio: "ignore" });
+  execSync("pkill -f 'acp-link' || true", { stdio: "ignore" });
 } catch {
   // pkill not available or no matching processes — ignore
 }

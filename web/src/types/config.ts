@@ -215,6 +215,7 @@ export interface AgentDetail {
   skillIds?: string[];
   mcpIds?: string[];
   machineId?: string | null;
+  engineType?: string | null;
   relatedResources?: {
     modelLabel?: string | null;
     machineLabel?: string | null;

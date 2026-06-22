@@ -68,12 +68,19 @@ export async function prepareRunWorkspace(
 ): Promise<{ runDir: string; workspaceName: string }> {
   const runDir = buildRunWorkspacePath(baseWorkspacePath, taskId, logId);
   const opencodeConfigDir = join(runDir, ".opencode");
+  const claudeConfigDir = join(runDir, ".claude");
   const workspaceName = basename(runDir);
   const config = agentName ? { default_agent: agentName } : {};
 
   await mkdir(runDir, { recursive: true });
   await mkdir(opencodeConfigDir, { recursive: true });
+  await mkdir(claudeConfigDir, { recursive: true });
   await writeFile(join(opencodeConfigDir, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+  // Claude Code 引擎配置
+  await writeFile(
+    join(claudeConfigDir, "settings.json"),
+    JSON.stringify({ permissions: { defaultMode: "default" } }, null, 2),
+  );
 
   return { runDir, workspaceName };
 }

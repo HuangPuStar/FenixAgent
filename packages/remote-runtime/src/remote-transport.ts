@@ -11,6 +11,7 @@ export interface TransportMessage {
   instance_id?: string;
   session_id?: string;
   launch_spec?: AgentLaunchSpec;
+  engine_type?: string;
   payload?: unknown;
   status?: string;
   message?: string;

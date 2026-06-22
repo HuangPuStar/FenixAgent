@@ -601,8 +601,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       if (userCancelledRef.current) {
         userCancelledRef.current = false;
       } else {
-        // inputTokens === 0 indicates the prompt was not processed (error)
-        if (usage && usage.inputTokens === 0) {
+        // inputTokens === 0 且 outputTokens === 0 说明 prompt 未被处理（真错误）
+        // 仅 inputTokens === 0 可能是 prompt caching 导致的正常情况（CCB/OC 引擎常见）
+        if (usage && usage.inputTokens === 0 && (usage.outputTokens ?? 0) === 0) {
           setErrorMessage(t("chatInterface.processingError"));
           if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
           errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
@@ -613,6 +614,36 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     });
 
     client.setPermissionRequestHandler(handlePermissionRequest);
+
+    // InteractiveQuestion handler — 当 CC 使用 AskUserQuestion 等交互工具时触发
+    client.setInteractiveQuestionHandler((iq) => {
+      console.log("[ChatInterface] Interactive question:", iq);
+      // 将问题转为 pending permission 格式，复用 PermissionPanel 渲染
+      const question = iq.questions[0];
+      if (!question) return;
+      setEntries((prev) => [
+        ...prev,
+        {
+          type: "tool_call" as const,
+          id: `iq-${iq.questionId}`,
+          toolCall: {
+            id: iq.questionId,
+            title: question.header || iq.toolName,
+            status: "waiting_for_confirmation" as ToolCallStatus,
+            rawInput: { questions: iq.questions },
+            permissionRequest: {
+              requestId: iq.questionId,
+              options: question.options.map((opt, i) => ({
+                kind: (i === 0 ? "allow_always" : "allow_once") as PermissionOption["kind"],
+                name: `${opt.label}${opt.description ? ` — ${opt.description}` : ""}`,
+                optionId: opt.label,
+              })),
+            },
+            isStandalonePermission: true,
+          },
+        },
+      ]);
+    });
 
     client.setErrorMessageHandler((msg) => {
       console.error("[ChatInterface] Agent error:", msg);

@@ -21,6 +21,7 @@ export function createRemoteRuntime(options: RemoteRuntimeOptions): EngineRuntim
       type: "prepare",
       instance_id: input.instanceId,
       launch_spec: input.launchSpec,
+      engine_type: input.engineType ?? "opencode",
     });
 
     if (response.status === "error") {
