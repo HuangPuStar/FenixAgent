@@ -925,8 +925,17 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       const MAX_SESSIONS = 20;
-      const sessions = result.sessions.slice(0, MAX_SESSIONS);
-      console.log("sessions listed:", `total=${result.sessions.length}`, `returned=${sessions.length}`);
+      // 过滤掉标题为空或以 "New session" 开头的会话（与 acp-dispatcher/session-manager 保持一致）
+      const filtered = result.sessions.filter(
+        (s: acp.SessionInfo) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
+      );
+      const sessions = filtered.slice(0, MAX_SESSIONS);
+      console.log(
+        "sessions listed:",
+        `total=${result.sessions.length}`,
+        `filtered=${filtered.length}`,
+        `returned=${sessions.length}`,
+      );
 
       sendMsg(
         ws,
