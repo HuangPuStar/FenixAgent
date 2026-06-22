@@ -136,6 +136,17 @@
         "@types/bun",
       ],
     },
+    "packages/acp-runtime-cli": {
+      "name": "@fenix-agent/acp-runtime-cli",
+      "version": "0.1.2",
+      "bin": {
+        "acp-runtime": "dist/bin.js",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "acp-link": "workspace:*",
+      },
+    },
     "packages/core": {
       "name": "@fenix/core",
       "version": "0.1.0",
@@ -499,6 +510,8 @@
     "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.25.12", "https://registry.npmmirror.com/@esbuild/win32-ia32/-/win32-ia32-0.25.12.tgz", { "os": "win32", "cpu": "ia32" }, "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ=="],
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "https://registry.npmmirror.com/@esbuild/win32-x64/-/win32-x64-0.25.12.tgz", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
+
+    "@fenix-agent/acp-runtime-cli": ["@fenix-agent/acp-runtime-cli@workspace:packages/acp-runtime-cli"],
 
     "@fenix/ccb": ["@fenix/ccb@workspace:packages/plugin-ccb"],
 
