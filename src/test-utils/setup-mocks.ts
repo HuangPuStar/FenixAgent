@@ -135,6 +135,8 @@ mock.module("../auth/api-key-service", () =>
 const SYSTEM_API_KEYS = [
   "listUsers",
   "getUserById",
+  "listUserApiKeys",
+  "listUserOrganizations",
   "createUser",
   "deleteUser",
   "listOrganizations",

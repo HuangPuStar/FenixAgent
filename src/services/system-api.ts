@@ -36,6 +36,12 @@ export interface SystemApiOrganizationMemberRecord {
   createdAt: Date;
 }
 
+export interface SystemApiUserOrganizationRecord extends SystemApiOrganizationRecord {
+  memberId: string;
+  role: string;
+  memberCreatedAt: Date;
+}
+
 export interface SystemApiCreateUserInput {
   email: string;
   name: string;
@@ -79,9 +85,13 @@ export interface SystemApiUserApiKeyResult {
   metadata: Record<string, unknown> | null;
 }
 
+export interface SystemApiUserApiKeyListItem extends Omit<SystemApiUserApiKeyResult, "key"> {}
+
 export interface SystemApiDeleteResult {
   deleted: true;
 }
+
+const API_KEY_START_LENGTH = 6;
 
 function buildPersonalOrganizationSlug(userId: string) {
   return `personal-${userId.slice(0, 8)}`;
@@ -101,6 +111,21 @@ function buildApiKeyMetadata(
 
 function generateApiKeyString(prefix = "rcs_") {
   return `${prefix}${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`;
+}
+
+/**
+ * better-auth 的 apikey.metadata 当前以字符串列存储。
+ * 系统接口需要给外部返回结构化 metadata，因此这里做一次容错解析。
+ */
+function parseApiKeyMetadata(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
 }
 
 async function assertUserExists(userId: string) {
@@ -203,6 +228,73 @@ export async function listUsers(pagination: SystemApiPagination) {
 export async function getUserById(userId: string): Promise<SystemApiUserRecord | null> {
   const rows = await db.select().from(user).where(eq(user.id, userId)).limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * 按用户列出系统侧签发的 API key。
+ * 这里只返回脱敏后的列表项，避免把明文 key 误暴露到查询接口里。
+ */
+export async function listUserApiKeys(userId: string, pagination: SystemApiPagination) {
+  await assertUserExists(userId);
+
+  const rows = await db.select().from(apikey).where(eq(apikey.referenceId, userId)).orderBy(desc(apikey.createdAt));
+  const items: SystemApiUserApiKeyListItem[] = rows.map((row) => {
+    const metadata = parseApiKeyMetadata(row.metadata);
+    return {
+      id: row.id,
+      name: row.name,
+      prefix: row.prefix,
+      start: row.start,
+      userId,
+      organizationId: typeof metadata?.organizationId === "string" ? metadata.organizationId : "",
+      role: typeof metadata?.role === "string" ? metadata.role : "",
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      metadata,
+    };
+  });
+  const total = items.length;
+  const start = (pagination.page - 1) * pagination.pageSize;
+
+  return {
+    items: items.slice(start, start + pagination.pageSize),
+    total,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+  };
+}
+
+/**
+ * 按用户列出其所属组织，并携带该用户在组织中的成员角色上下文。
+ */
+export async function listUserOrganizations(userId: string, pagination: SystemApiPagination) {
+  await assertUserExists(userId);
+
+  const rows = await db
+    .select({
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+      logo: organization.logo,
+      metadata: organization.metadata,
+      createdAt: organization.createdAt,
+      memberId: member.id,
+      role: member.role,
+      memberCreatedAt: member.createdAt,
+    })
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(eq(member.userId, userId))
+    .orderBy(asc(member.createdAt));
+  const total = rows.length;
+  const start = (pagination.page - 1) * pagination.pageSize;
+
+  return {
+    items: rows.slice(start, start + pagination.pageSize) as SystemApiUserOrganizationRecord[],
+    total,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+  };
 }
 
 /**
@@ -359,12 +451,15 @@ export async function createUserApiKey(input: SystemApiCreateUserApiKeyInput): P
   const metadata = buildApiKeyMetadata(input.organizationId, input.role, input.metadata);
   const keyId = randomUUID();
   const hashedKey = await defaultKeyHasher(fullKey);
+  // better-auth 自带 createApiKey() 会把 start 预览片段写成 6 位。
+  // 这里保持一致，避免 system API 创建出的 key 与其它入口展示格式不一致。
+  const keyStart = fullKey.slice(0, API_KEY_START_LENGTH);
 
   await db.insert(apikey).values({
     id: keyId,
     configId: "default",
     name: input.name,
-    start: fullKey.slice(0, 4),
+    start: keyStart,
     referenceId: input.userId,
     prefix: "rcs_",
     key: hashedKey,
@@ -390,7 +485,7 @@ export async function createUserApiKey(input: SystemApiCreateUserApiKeyInput): P
     name: input.name,
     prefix: "rcs_",
     key: fullKey,
-    start: fullKey.slice(0, 4),
+    start: keyStart,
     userId: input.userId,
     organizationId: input.organizationId,
     role: input.role,
