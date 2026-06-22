@@ -105,6 +105,7 @@ export function AgentSkillsPage() {
   const [_conflictStrategy, setConflictStrategy] = useState<SkillUploadConflictStrategy | null>(null);
   const [uploadPending, setUploadPending] = useState(false);
   const [overwriteConfirmOpen, setOverwriteConfirmOpen] = useState(false);
+  const [downloadingSkillKey, setDownloadingSkillKey] = useState<string | null>(null);
   const editingReadOnly = editingSkill ? !canWriteSkill(editingSkill) : false;
 
   const resetUploadState = useCallback(() => {
@@ -308,6 +309,37 @@ export function AgentSkillsPage() {
     dispatchConfigChange("skills");
   };
 
+  const handleDownload = useCallback(
+    async (skill: SkillInfo) => {
+      const skillKey = getSkillKey(skill);
+      setDownloadingSkillKey(skillKey);
+      try {
+        const response = await fetch(`/web/config/skills/${encodeURIComponent(getSkillLookupKey(skill))}/download`, {
+          credentials: "include",
+        });
+        if (!response.ok) {
+          throw new Error(`Download failed: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `${skill.name}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      } catch (error) {
+        console.error(t("toast.downloadFailed"), error);
+        toast.error(t("toast.downloadFailed"));
+      } finally {
+        setDownloadingSkillKey(null);
+      }
+    },
+    [t],
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-0 flex-1 bg-[#f4f7fb]">
@@ -340,11 +372,22 @@ export function AgentSkillsPage() {
   const renderSkillCard = (skill: SkillInfo, showOrgPrefix: boolean) => {
     const writable = skill.resourceAccess?.writable !== false;
     const manageable = skill.resourceAccess?.manageable === true;
+    const skillKey = getSkillKey(skill);
+    const downloading = downloadingSkillKey === skillKey;
 
     return (
       <div className="group relative flex min-h-[138px] flex-col rounded-xl border border-[#e5ebf3] bg-white p-4 shadow-[0_6px_18px_rgba(38,65,103,0.04)] transition-all hover:-translate-y-0.5 hover:border-[#cddceb] hover:shadow-[0_14px_30px_rgba(38,65,103,0.08)]">
         {writable ? (
           <div className="absolute right-3 bottom-3 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <Button
+              size="xs"
+              variant="ghost"
+              className="h-6 px-2 text-[#69788f]"
+              disabled={downloading}
+              onClick={() => void handleDownload(skill)}
+            >
+              {t("btn.download")}
+            </Button>
             <Button size="xs" variant="ghost" className="h-6 px-2 text-[#69788f]" onClick={() => handleOpenEdit(skill)}>
               {t("btn.edit")}
             </Button>
@@ -358,7 +401,16 @@ export function AgentSkillsPage() {
             </Button>
           </div>
         ) : (
-          <div className="absolute right-3 bottom-3 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="absolute right-3 bottom-3 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <Button
+              size="xs"
+              variant="ghost"
+              className="h-6 px-2 text-[#69788f]"
+              disabled={downloading}
+              onClick={() => void handleDownload(skill)}
+            >
+              {t("btn.download")}
+            </Button>
             <Button size="xs" variant="ghost" className="h-6 px-2 text-[#69788f]" onClick={() => handleOpenEdit(skill)}>
               {t("btn.view")}
             </Button>

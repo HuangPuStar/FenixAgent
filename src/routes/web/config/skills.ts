@@ -16,12 +16,14 @@ import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { configError, configNotFound, configSuccess, configValidationError } from "../../../services/config-utils";
 import {
   deleteSkill,
+  getGlobalSkillsDir,
   getSkill,
   type ImportConflictStrategy,
   importSkillDirectories,
   listSkills,
   setSkill,
 } from "../../../services/skill";
+import { assertValidSkillName, createSkillArchiveBuffer, getSkillSourceDir } from "../../../services/skill-fs";
 
 const app = new Elysia({ name: "web-config-skills" }).use(authGuardPlugin);
 
@@ -129,6 +131,42 @@ async function handleDelete(ctx: AuthContext, name: string) {
     return configNotFound(`Skill '${name}' not found`);
   }
   return configSuccess(null);
+}
+
+/**
+ * 为当前组织可读 Skill 临时生成带顶层目录的 Web 下载 zip。
+ */
+async function handleDownload(ctx: AuthContext, nameOrResourceKey: string) {
+  if (!nameOrResourceKey) {
+    return configValidationError("Missing 'name' field");
+  }
+
+  const detail = await getSkill(ctx, nameOrResourceKey);
+  if (!detail) {
+    return configNotFound(`Skill '${nameOrResourceKey}' not found`);
+  }
+
+  const skillId = detail.id ?? detail.resourceAccess?.resourceUid;
+  if (!skillId) {
+    console.error(
+      `[SkillConfig] skill_download_prepare_missing_id org=${ctx.organizationId} skill=${nameOrResourceKey}`,
+    );
+    return configError("SKILL_DOWNLOAD_UNAVAILABLE", `Skill '${nameOrResourceKey}' download is unavailable`);
+  }
+
+  const sourceOrganizationId = detail.resourceAccess?.sourceOrganizationId ?? ctx.organizationId;
+  const safeName = assertValidSkillName(detail.name);
+  const sourceDir = getSkillSourceDir(getGlobalSkillsDir(), sourceOrganizationId, safeName);
+  try {
+    const archiveBuffer = await createSkillArchiveBuffer(sourceDir, { rootDirectory: safeName });
+    return configSuccess({ archiveBuffer, fileName: `${safeName}.zip` });
+  } catch (error) {
+    console.error(
+      `[SkillConfig] skill_download_archive_build_failed org=${ctx.organizationId} sourceOrg=${sourceOrganizationId} skill=${detail.name} sourceDir=${sourceDir}`,
+      error,
+    );
+    return configNotFound(`Skill archive for '${detail.name}' not found`);
+  }
 }
 
 /**
@@ -256,6 +294,58 @@ app.get(
           in: "path",
           required: true,
           description: "Skill 名称。",
+          schema: { type: "string" },
+        },
+      ],
+    },
+  },
+);
+
+/** 直接下载单个 Skill（GET /config/skills/:name/download） */
+app.get(
+  "/config/skills/:name/download",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
+  async ({ store, params, error, set }: any) => {
+    const authCtx = store.authContext!;
+    const name = params.name as string;
+    const result = await handleDownload(authCtx, name);
+    if (
+      result &&
+      typeof result === "object" &&
+      "success" in result &&
+      (result as Record<string, unknown>).success === false
+    ) {
+      const errResult = result as { error?: { code?: string; message?: string } };
+      const code = errResult.error?.code;
+      if (code === "NOT_FOUND") {
+        return error(404, errResult.error ?? { code: "NOT_FOUND", message: `Skill '${name}' not found` });
+      }
+      if (code === "VALIDATION_ERROR") {
+        return error(400, errResult.error ?? { code: "VALIDATION_ERROR", message: "Invalid skill name" });
+      }
+      return error(
+        500,
+        errResult.error ?? { code: "SKILL_DOWNLOAD_UNAVAILABLE", message: "Skill download unavailable" },
+      );
+    }
+
+    const data = (result as { data: { archiveBuffer: Buffer; fileName: string } }).data;
+    set.headers["Content-Type"] = "application/zip";
+    set.headers["Content-Disposition"] = `attachment; filename="${data.fileName}"`;
+    return new Response(data.archiveBuffer);
+  },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["SkillConfig"],
+      summary: "下载 Skill 压缩包",
+      description: "基于当前 Web 登录态和组织权限校验后，直接返回 Skill zip 文件流。",
+      parameters: [
+        {
+          name: "name",
+          in: "path",
+          required: true,
+          description: "Skill 名称或跨组织 resourceKey。",
           schema: { type: "string" },
         },
       ],
