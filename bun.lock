@@ -120,6 +120,7 @@
       "devDependencies": {
         "@agentclientprotocol/sdk": "^0.28.1",
         "@anthropic-ai/claude-agent-sdk": "^0.2.112",
+        "@fenix/ccb": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/opencode": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
