@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { kbApi } from "@/src/api/sdk";
 import { NS } from "@/src/i18n";
+import { unwrapApiResult } from "@/src/lib/api-result";
 import type { KnowledgeBaseDetail, KnowledgeBaseInfo, KnowledgeResourceInfo } from "../../../types/knowledge";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
@@ -42,11 +43,11 @@ export function AgentKnowledgeBasesPage() {
   const loadItems = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await kbApi.list();
+      const data = unwrapApiResult(await kbApi.list());
       setItems((Array.isArray(data) ? data : []) as KnowledgeBaseInfo[]);
     } catch (e) {
       console.error("Failed to load knowledge bases", e);
-      toast.error(t("loadError"));
+      toast.error(e instanceof Error ? e.message : t("loadError"));
     } finally {
       setLoading(false);
     }
@@ -56,13 +57,16 @@ export function AgentKnowledgeBasesPage() {
     async (id: string) => {
       setDetailLoading(true);
       try {
-        const [detailResult, resListResult] = await Promise.all([kbApi.get({ id }), kbApi.listResources({ id })]);
-        setSelectedDetail((detailResult.data ?? {}) as KnowledgeBaseDetail);
-        setResources(Array.isArray(resListResult.data) ? (resListResult.data as KnowledgeResourceInfo[]) : []);
+        const [detailData, resourceData] = await Promise.all([
+          kbApi.get({ id }).then(unwrapApiResult),
+          kbApi.listResources({ id }).then(unwrapApiResult),
+        ]);
+        setSelectedDetail((detailData ?? {}) as KnowledgeBaseDetail);
+        setResources(Array.isArray(resourceData) ? (resourceData as KnowledgeResourceInfo[]) : []);
         setSelectedId(id);
       } catch (e) {
         console.error("Failed to load detail", e);
-        toast.error(t("loadDetailError"));
+        toast.error(e instanceof Error ? e.message : t("loadDetailError"));
       } finally {
         setDetailLoading(false);
       }
@@ -95,17 +99,17 @@ export function AgentKnowledgeBasesPage() {
         description: formDescription.trim() || undefined,
       };
       if (editingItem) {
-        await kbApi.update({ id: editingItem.id }, payload);
+        await kbApi.update({ id: editingItem.id }, payload).then(unwrapApiResult);
         toast.success(t("toast.updated"));
       } else {
-        await kbApi.create(payload);
+        await kbApi.create(payload).then(unwrapApiResult);
         toast.success(t("toast.created"));
       }
       setDialogOpen(false);
       loadItems();
     } catch (e) {
       console.error("Save failed", e);
-      toast.error(t("toast.saveFailed"));
+      toast.error(e instanceof Error ? e.message : t("toast.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -114,7 +118,7 @@ export function AgentKnowledgeBasesPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await kbApi.delete({ id: deleteTarget.id });
+      await kbApi.delete({ id: deleteTarget.id }).then(unwrapApiResult);
       toast.success(t("toast.deleted"));
       setConfirmOpen(false);
       if (selectedId === deleteTarget.id) {
@@ -126,7 +130,7 @@ export function AgentKnowledgeBasesPage() {
       loadItems();
     } catch (e) {
       console.error("Delete failed", e);
-      toast.error(t("toast.deleteFailed"));
+      toast.error(e instanceof Error ? e.message : t("toast.deleteFailed"));
     }
   };
 
@@ -138,12 +142,12 @@ export function AgentKnowledgeBasesPage() {
       for (const file of files) {
         formData.append("files", file);
       }
-      await kbApi.uploadResources({ id: selectedId }, formData);
+      await kbApi.uploadResources({ id: selectedId }, formData).then(unwrapApiResult);
       toast.success(t("toast.uploaded"));
       loadDetail(selectedId);
     } catch (e) {
       console.error("Upload failed", e);
-      toast.error(t("toast.uploadFailed"));
+      toast.error(e instanceof Error ? e.message : t("toast.uploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -153,12 +157,12 @@ export function AgentKnowledgeBasesPage() {
     if (!selectedId) return;
     setDeletingResourceId(resourceId);
     try {
-      await kbApi.deleteResource({ id: selectedId, resourceId });
+      await kbApi.deleteResource({ id: selectedId, resourceId }).then(unwrapApiResult);
       toast.success(t("toast.resourceDeleted"));
       loadDetail(selectedId);
     } catch (e) {
       console.error("Delete resource failed", e);
-      toast.error(t("toast.deleteResourceFailed"));
+      toast.error(e instanceof Error ? e.message : t("toast.deleteResourceFailed"));
     } finally {
       setDeletingResourceId(null);
     }
