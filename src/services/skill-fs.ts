@@ -267,19 +267,24 @@ function createEndOfCentralDirectory(entryCount: number, centralSize: number, ce
   return end;
 }
 
-/** 生成仅使用 Store method 的 skill zip artifact。 */
-export async function buildSkillArchive(sourceDir: string, archivePath: string): Promise<void> {
+interface SkillArchiveBuildOptions {
+  rootDirectory?: string;
+}
+
+async function buildSkillArchiveBuffer(sourceDir: string, options?: SkillArchiveBuildOptions): Promise<Buffer> {
   const rootInfo = await stat(sourceDir);
   if (!rootInfo.isDirectory()) {
     throw createSkillValidationError("Skill 源目录不存在");
   }
 
+  const rootDirectory = options?.rootDirectory ? assertValidSkillName(options.rootDirectory) : null;
   const parts: Buffer[] = [];
   const centralParts: Buffer[] = [];
   let offset = 0;
 
   for (const filePath of await collectFiles(sourceDir)) {
-    const entryName = normalizeUploadPath(relative(sourceDir, filePath));
+    const relativePath = normalizeUploadPath(relative(sourceDir, filePath));
+    const entryName = rootDirectory ? `${rootDirectory}/${relativePath}` : relativePath;
     const nameBuffer = Buffer.from(entryName, "utf-8");
     const data = await readFile(filePath);
     const checksum = crc32(data);
@@ -291,15 +296,26 @@ export async function buildSkillArchive(sourceDir: string, archivePath: string):
 
   const centralOffset = offset;
   const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  return Buffer.concat([
+    ...parts,
+    ...centralParts,
+    createEndOfCentralDirectory(centralParts.length / 2, centralSize, centralOffset),
+  ]);
+}
+
+/** 生成仅使用 Store method 的 skill zip artifact。 */
+export async function buildSkillArchive(
+  sourceDir: string,
+  archivePath: string,
+  options?: SkillArchiveBuildOptions,
+): Promise<void> {
   await mkdir(dirname(archivePath), { recursive: true });
-  await writeFile(
-    archivePath,
-    Buffer.concat([
-      ...parts,
-      ...centralParts,
-      createEndOfCentralDirectory(centralParts.length / 2, centralSize, centralOffset),
-    ]),
-  );
+  await writeFile(archivePath, await buildSkillArchiveBuffer(sourceDir, options));
+}
+
+/** 生成 skill zip 内容，供不落盘的临时下载场景使用。 */
+export async function createSkillArchiveBuffer(sourceDir: string, options?: SkillArchiveBuildOptions): Promise<Buffer> {
+  return buildSkillArchiveBuffer(sourceDir, options);
 }
 
 // ────────────────────────────────────────────

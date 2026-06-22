@@ -72,6 +72,20 @@ describe("skill fs archive", () => {
     expect(names).toEqual(["SKILL.md", "references/ref.md"]);
   });
 
+  // Web 下载需要显式包一层 skill 目录，避免解压后把 skill 文件直接散在目标位置。
+  test("buildSkillArchive can wrap entries in a root directory", async () => {
+    const sourceDir = getSkillSourceDir(root, "org-a", "demo");
+    await mkdir(join(sourceDir, "references"), { recursive: true });
+    await writeFile(join(sourceDir, "SKILL.md"), "# Demo", "utf-8");
+    await writeFile(join(sourceDir, "references", "ref.md"), "ref", "utf-8");
+
+    const archivePath = getSkillArchivePath(root, "org-a", "demo");
+    await buildSkillArchive(sourceDir, archivePath, { rootDirectory: "demo" });
+
+    const names = readCentralDirectoryNames(await readFile(archivePath));
+    expect(names).toEqual(["demo/SKILL.md", "demo/references/ref.md"]);
+  });
+
   // 删除 archive 不要求文件存在，存在时会被清理掉。
   test("deleteSkillArchive removes archive file", async () => {
     const archivePath = getSkillArchivePath(root, "org-a", "demo");

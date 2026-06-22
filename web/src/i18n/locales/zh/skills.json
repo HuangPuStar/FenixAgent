@@ -8,6 +8,7 @@
     "description": "描述"
   },
   "btn": {
+    "download": "下载",
     "edit": "编辑",
     "view": "查看",
     "delete": "删除",
@@ -85,6 +86,9 @@
     "importResultWithSkipped": "已导入 {{imported}} 个技能，跳过 {{skipped}} 个冲突技能",
     "importFailed": "导入失败",
     "importFailedWith": "导入失败: {{message}}",
+    "downloadFailed": "技能下载失败",
+    "downloadFailedWith": "技能下载失败: {{message}}",
+    "downloadUnavailable": "暂时无法下载该技能",
     "loadListFailed": "加载技能列表失败",
     "loadListFailedWith": "加载技能列表失败: {{message}}"
   }

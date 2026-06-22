@@ -8,6 +8,7 @@
     "description": "Description"
   },
   "btn": {
+    "download": "Download",
     "edit": "Edit",
     "view": "View",
     "delete": "Delete",
@@ -85,6 +86,9 @@
     "importResultWithSkipped": "Imported {{imported}} skills, skipped {{skipped}} conflicting skills",
     "importFailed": "Import failed",
     "importFailedWith": "Import failed: {{message}}",
+    "downloadFailed": "Failed to download skill",
+    "downloadFailedWith": "Failed to download skill: {{message}}",
+    "downloadUnavailable": "This skill is currently unavailable for download",
     "loadListFailed": "Failed to load skill list",
     "loadListFailedWith": "Failed to load skill list: {{message}}"
   }
