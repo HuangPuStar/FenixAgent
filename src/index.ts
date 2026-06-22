@@ -22,6 +22,7 @@ import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
 import apiAgentsRoutes from "./routes/api/agents";
 import apiInstanceRoutes from "./routes/api/instances";
+import apiKnowledgeBaseRoutes from "./routes/api/knowledge-bases";
 import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
 import apiSkillsRoutes from "./routes/api/skills";
@@ -70,6 +71,10 @@ const EXTERNAL_OPENAPI_TAGS = [
   {
     name: "External AgentConfig",
     description: "面向外部系统的 Agent 配置 CRUD 接口。",
+  },
+  {
+    name: "External Knowledge",
+    description: "面向外部系统的知识库只读查询接口。",
   },
   {
     name: "External Instance",
@@ -379,6 +384,7 @@ const app = new Elysia()
   .use(webApp)
   // External API routes
   .use(apiAgentsRoutes)
+  .use(apiKnowledgeBaseRoutes)
   .use(apiSkillsRoutes)
   .use(apiModelsRoutes)
   .use(apiMcpRoutes)

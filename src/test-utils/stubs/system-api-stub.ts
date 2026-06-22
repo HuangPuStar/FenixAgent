@@ -7,6 +7,8 @@ type StubFn = (...args: any[]) => any;
 interface SystemApiStubs {
   listUsers: StubFn;
   getUserById: StubFn;
+  listUserApiKeys: StubFn;
+  listUserOrganizations: StubFn;
   createUser: StubFn;
   deleteUser: StubFn;
   listOrganizations: StubFn;

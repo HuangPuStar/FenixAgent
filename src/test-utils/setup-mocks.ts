@@ -5,10 +5,11 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
+import * as actualKnowledgeBaseService from "../services/knowledge-base";
 import { getApiKeyServiceStub, getAuthApiStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
-import { getEnvironmentRepoStub } from "./stubs/module-stubs";
+import { getEnvironmentRepoStub, knowledgeBaseServiceRegistry } from "./stubs/module-stubs";
 import { resourcePermissionRepoStub } from "./stubs/resource-permission-repo-stub";
 import { getSystemApiStub } from "./stubs/system-api-stub";
 
@@ -135,6 +136,8 @@ mock.module("../auth/api-key-service", () =>
 const SYSTEM_API_KEYS = [
   "listUsers",
   "getUserById",
+  "listUserApiKeys",
+  "listUserOrganizations",
   "createUser",
   "deleteUser",
   "listOrganizations",
@@ -206,3 +209,9 @@ mock.module("../repositories/environment", () => {
   });
   return obj;
 });
+
+mock.module("../services/knowledge-base", () => ({
+  ...actualKnowledgeBaseService,
+  listKnowledgeBasesByTeamId: (...args: unknown[]) =>
+    knowledgeBaseServiceRegistry.get("listKnowledgeBasesByTeamId")(...args),
+}));
