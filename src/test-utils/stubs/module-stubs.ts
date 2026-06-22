@@ -63,6 +63,9 @@ export const environmentServiceRegistry = createStubRegistry("environmentService
 // ../services/knowledge-base — 知识库服务，外部只读接口使用
 export const knowledgeBaseServiceRegistry = createStubRegistry("knowledgeBaseService", false);
 
+// ../services/workflow/pg-storage-adapter — PG 存储适配器，1 个测试文件使用
+export const pgStorageAdapterRegistry = createStubRegistry("pgStorageAdapter", false);
+
 // ../repositories/environment — 环境仓储（对象导出），1 个测试文件使用
 // biome-ignore lint/suspicious/noExplicitAny: repo stub 需要宽松类型
 let _environmentRepoStub: Record<string, any> | null = null;
@@ -97,6 +100,7 @@ export const stubRegistry = registryRegistry.stub;
 export const stubRegistryHeartbeat = registryHeartbeatRegistry.stub;
 export const stubEnvironmentService = environmentServiceRegistry.stub;
 export const stubKnowledgeBaseService = knowledgeBaseServiceRegistry.stub;
+export const stubPgStorageAdapter = pgStorageAdapterRegistry.stub;
 
 // ── 重置函数 ──
 
@@ -119,4 +123,5 @@ export function resetModuleStubs() {
   registryHeartbeatRegistry.reset();
   environmentServiceRegistry.reset();
   knowledgeBaseServiceRegistry.reset();
+  pgStorageAdapterRegistry.reset();
 }

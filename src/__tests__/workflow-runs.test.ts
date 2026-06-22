@@ -1,19 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubAuthApi } from "../test-utils/helpers";
+import { resetAllStubs, stubAuthApi, stubPgStorageAdapter } from "../test-utils/helpers";
 
-// 必须在 route 模块导入前注册 mock，避免调用真实 DB
-const mockListRuns = mock();
-
-mock.module("../services/workflow/pg-storage-adapter", () => ({
-  createPgStorageAdapter: () => ({
-    listRuns: mockListRuns,
-  }),
-}));
-
-// 注意：workflowRunsRoutes 未设置 prefix，路由路径为 /workflow-runs
-// /web 前缀由父级 index.ts 的 webApp 统一添加
+// route 模块导入 — pg-storage-adapter 已在 setup-mocks.ts 中通过 preload mock 注册，
+// stub 行为通过 stubPgStorageAdapter() 在 beforeEach 中配置
 const route = (await import("../routes/web/workflow-runs")).workflowRunsRoutes;
 
 function request(path: string, init?: RequestInit) {
@@ -21,6 +12,8 @@ function request(path: string, init?: RequestInit) {
 }
 
 describe("GET /web/workflow-runs", () => {
+  const mockListRuns = mock();
+
   beforeEach(() => {
     setTestAuth({
       user: { id: "user-1", email: "user@test.com", name: "Tester" },
@@ -28,6 +21,7 @@ describe("GET /web/workflow-runs", () => {
     });
     setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
     mockListRuns.mockReset();
+    stubPgStorageAdapter({ listRuns: mockListRuns });
   });
 
   afterEach(() => {

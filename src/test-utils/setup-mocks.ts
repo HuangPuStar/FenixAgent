@@ -9,7 +9,7 @@ import * as actualKnowledgeBaseService from "../services/knowledge-base";
 import { getApiKeyServiceStub, getAuthApiStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
-import { getEnvironmentRepoStub, knowledgeBaseServiceRegistry } from "./stubs/module-stubs";
+import { getEnvironmentRepoStub, knowledgeBaseServiceRegistry, pgStorageAdapterRegistry } from "./stubs/module-stubs";
 import { resourcePermissionRepoStub } from "./stubs/resource-permission-repo-stub";
 import { getSystemApiStub } from "./stubs/system-api-stub";
 
@@ -214,4 +214,42 @@ mock.module("../services/knowledge-base", () => ({
   ...actualKnowledgeBaseService,
   listKnowledgeBasesByTeamId: (...args: unknown[]) =>
     knowledgeBaseServiceRegistry.get("listKnowledgeBasesByTeamId")(...args),
+}));
+
+// ── pg-storage-adapter: 从 workflow-runs.test.ts 的 mock.module() 迁移到 preload ──
+// 只有 1 个测试文件使用，安全 preload mock。
+// 注意：registry/environment/core-bootstrap 等模块无法安全 preload mock，
+// 因为 mock.module 注册后无法通过 dynamic import 获取真实模块（Bun 限制），
+// 而 fallback 到真实模块需要在 preload 阶段 import（触发依赖链副作用）。
+// 这些模块的 mock.module() 暂保留在各自测试文件中。
+
+mock.module("../services/workflow/pg-storage-adapter", () => ({
+  createPgStorageAdapter: () => {
+    const storageObj: Record<string, unknown> = {};
+    return new Proxy(storageObj, {
+      get: (_target, prop) => {
+        if (typeof prop !== "string") return undefined;
+        return (...args: unknown[]) => pgStorageAdapterRegistry.get(prop)(...args);
+      },
+    });
+  },
+}));
+
+// ── pg-storage-adapter: 从 workflow-runs.test.ts 的 mock.module() 迁移到 preload ──
+// 只有 1 个测试文件使用，安全 preload mock。
+// 注意：registry/environment/core-bootstrap 等模块无法安全 preload mock，
+// 因为 mock.module 注册后无法通过 dynamic import 获取真实模块（Bun 限制），
+// 而 fallback 到真实模块需要在 preload 阶段 import（触发依赖链副作用）。
+// 这些模块的 mock.module() 暂保留在各自测试文件中。
+
+mock.module("../services/workflow/pg-storage-adapter", () => ({
+  createPgStorageAdapter: () => {
+    const storageObj: Record<string, unknown> = {};
+    return new Proxy(storageObj, {
+      get: (_target, prop) => {
+        if (typeof prop !== "string") return undefined;
+        return (...args: unknown[]) => pgStorageAdapterRegistry.get(prop)(...args);
+      },
+    });
+  },
 }));

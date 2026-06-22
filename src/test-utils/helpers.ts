@@ -34,6 +34,7 @@ export {
   stubKnowledgeBaseService,
   stubLaunchSpecBuilder,
   stubMcpInspector,
+  stubPgStorageAdapter,
   stubRegistry,
   stubRegistryHeartbeat,
   stubRepositories,
