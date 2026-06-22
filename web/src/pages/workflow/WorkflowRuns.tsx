@@ -2,8 +2,11 @@ import { AlertTriangle, ArrowRight, Inbox, RefreshCw, Search, Square } from "luc
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
+import { Skeleton } from "@/components/ui/skeleton";
 import { type DAGStatus, type RunSummary, workflowEngineApi } from "../../api/workflow-engine";
-import { SkeletonTable } from "./components/SkeletonRows";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
   PENDING: { color: "#94a3b8", bg: "#f1f5f9" },
@@ -75,30 +78,49 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+
+  // 搜索防抖：输入即时更新，API 请求 300ms 后触发
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // 筛选条件或搜索词变化时，重置到第 1 页
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 筛选/搜索变化时需重置页码，但 effect 体只用 setPage
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
 
   const loadRuns = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await workflowEngineApi.listRuns();
-      setRuns(Array.isArray(data) ? data : []);
+      const params: { page?: number; pageSize?: number; status?: string; q?: string } = {
+        page,
+        pageSize,
+      };
+      if (statusFilter !== "all") params.status = statusFilter;
+      if (debouncedSearch) params.q = debouncedSearch;
+
+      const data = await workflowEngineApi.listRuns(params);
+      setRuns(Array.isArray(data.items) ? data.items : []);
+      setTotal(data.total ?? 0);
     } catch (err) {
       console.error(err);
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, statusFilter, debouncedSearch]);
 
+  // 分页/筛选/搜索变化时重新加载
   useEffect(() => {
     loadRuns();
   }, [loadRuns]);
-
-  const filtered = runs.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (searchQuery && !r.workflow_name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
 
   const _isTerminal = (s: DAGStatus) => ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(s);
 
@@ -112,129 +134,171 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const showEmpty = !loading && !error && runs.length === 0;
+
   return (
-    <div className="h-full overflow-y-auto p-6">
-      {/* 顶部标题栏 */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-base font-semibold text-text-primary m-0">{t("runs.title")}</h1>
-        <button
-          type="button"
-          onClick={loadRuns}
-          className="flex items-center gap-1.5 px-2.5 py-1 border border-border-subtle rounded-md bg-surface-1 text-xs text-text-secondary cursor-pointer hover:bg-surface-hover transition-colors"
-        >
-          <RefreshCw size={13} /> {t("runs.refresh")}
-        </button>
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* 顶部工具栏：刷新 + 搜索 + 状态筛选 */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex flex-1 items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("runs.search_placeholder")}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <div className="flex gap-1">
+            {["all", "RUNNING", "SUSPENDED", "SUCCESS", "FAILED"].map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  statusFilter === s
+                    ? "border-brand bg-brand-subtle text-brand"
+                    : "border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-hover"
+                }`}
+              >
+                {s === "all" ? t("runs.filter_all") : t(STATUS_LABEL_KEYS[s] ?? s)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Button variant="outline" size="sm" onClick={loadRuns}>
+          <RefreshCw size={13} className="mr-1" /> {t("runs.refresh")}
+        </Button>
       </div>
 
-      {/* 搜索和筛选 */}
-      <div className="flex gap-2.5 mb-4 items-center">
-        <div className="flex items-center gap-1.5 flex-1 max-w-[260px] border border-border-subtle rounded-md px-2.5 py-1.5 bg-surface-1">
-          <Search size={13} className="text-text-secondary shrink-0" />
-          <input
-            placeholder={t("runs.search_placeholder")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="border-none outline-none text-xs w-full bg-transparent text-text-primary"
-          />
-        </div>
-        <div className="flex gap-1">
-          {["all", "RUNNING", "SUSPENDED", "SUCCESS", "FAILED"].map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s)}
-              className={`px-2.5 py-1 border rounded-md text-[11px] font-medium cursor-pointer transition-colors ${
-                statusFilter === s
-                  ? "border-brand bg-brand-subtle text-brand"
-                  : "border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-hover"
-              }`}
-            >
-              {s === "all" ? t("runs.filter_all") : t(STATUS_LABEL_KEYS[s] ?? s)}
-            </button>
+      {/* 内容区 */}
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+            <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>
-      </div>
-
-      {/* 内容 */}
-      {loading ? (
-        <SkeletonTable cols="2fr 1fr 80px 120px 80px 80px" rows={6} />
       ) : error ? (
         <div className="text-center py-10">
           <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
           <p className="text-[13px] text-text-secondary">{t("runs.load_failed", { error })}</p>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : showEmpty ? (
         <div className="text-center py-10">
-          {statusFilter !== "all" || searchQuery ? (
+          {statusFilter !== "all" || debouncedSearch ? (
             <Search size={32} className="text-text-secondary mx-auto mb-2" />
           ) : (
             <Inbox size={32} className="text-text-secondary mx-auto mb-2" />
           )}
           <p className="text-[13px] text-text-secondary font-medium">
-            {statusFilter !== "all" || searchQuery ? t("runs.no_match") : t("runs.no_runs")}
+            {statusFilter !== "all" || debouncedSearch ? t("runs.no_match") : t("runs.no_runs")}
           </p>
           <p className="text-[11px] text-text-dim mt-1">
-            {statusFilter !== "all" || searchQuery ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
+            {statusFilter !== "all" || debouncedSearch ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
           </p>
         </div>
       ) : (
-        <div className="border border-border-subtle rounded-lg overflow-hidden bg-surface-1">
-          {/* 表头 */}
-          <div className="grid grid-cols-[2fr_1fr_80px_120px_80px_80px] gap-2 px-4 py-2 bg-surface-2 border-b border-border-subtle text-[11px] font-semibold text-text-muted uppercase tracking-wide">
-            <span>{t("runs.table_workflow")}</span>
-            <span>{t("runs.table_status")}</span>
-            <span>{t("runs.table_nodes")}</span>
-            <span>{t("runs.table_start")}</span>
-            <span>{t("runs.table_duration")}</span>
-            <span></span>
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* 数据表格 */}
+          <div className="flex-1 overflow-auto">
+            <table className="w-full">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground">
+                    {t("runs.col_workflow")}
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[100px]">
+                    {t("runs.col_status")}
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[90px]">
+                    {t("runs.col_progress")}
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[130px]">
+                    {t("runs.col_started")}
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[100px]">
+                    {t("runs.col_duration")}
+                  </th>
+                  <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground w-[80px]">
+                    {t("runs.col_actions")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((r) => (
+                  <tr
+                    key={r.run_id}
+                    onClick={() => onSelectRun?.(r.run_id)}
+                    className="border-b border-border hover:bg-muted/50 cursor-pointer transition-colors"
+                  >
+                    <td className="py-3 px-4">
+                      <span className="text-sm font-medium">{r.workflow_name}</span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <StatusBadge status={r.status} />
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {r.node_summary.completed}/{r.node_summary.total}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-xs text-muted-foreground">{relativeTime(r.started_at, t)}</span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {formatDuration(r.started_at, r.completed_at)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {r.status === "RUNNING" && (
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            title={t("runs.cancel")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCancel(r.run_id);
+                            }}
+                          >
+                            <Square size={12} className="text-destructive" />
+                          </Button>
+                        )}
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          title={t("runs.view_details")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectRun?.(r.run_id, r.workflow_id);
+                          }}
+                        >
+                          <ArrowRight size={12} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          {/* 数据行 */}
-          {filtered.map((r) => (
-            <div
-              key={r.run_id}
-              onClick={() => onSelectRun?.(r.run_id)}
-              className="grid grid-cols-[2fr_1fr_80px_120px_80px_80px] gap-2 px-4 py-2.5 border-b border-border-subtle cursor-pointer transition-colors text-xs items-center hover:bg-surface-hover"
-            >
-              <div>
-                <div className="font-medium text-text-primary">{r.workflow_name}</div>
-                <div className="text-[10px] text-text-secondary font-mono mt-0.5">{r.run_id.substring(0, 16)}...</div>
-              </div>
-              <StatusBadge status={r.status} />
-              <div className="font-mono text-text-secondary">
-                <span className="text-status-running">{r.node_summary.completed}</span>
-                <span>/{r.node_summary.total}</span>
-              </div>
-              <div className="text-text-secondary">{relativeTime(r.started_at, t)}</div>
-              <div className="font-mono text-text-secondary">{formatDuration(r.started_at, r.completed_at)}</div>
-              <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                {r.status === "RUNNING" && (
-                  <button
-                    type="button"
-                    title={t("runs.cancel")}
-                    onClick={() => handleCancel(r.run_id)}
-                    className="flex items-center justify-center w-6 h-6 border-none bg-transparent rounded text-status-error cursor-pointer hover:bg-surface-hover transition-colors"
-                  >
-                    <Square size={13} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  title={t("runs.view_details")}
-                  onClick={() => onSelectRun?.(r.run_id, r.workflow_id)}
-                  className="flex items-center justify-center w-6 h-6 border-none bg-transparent rounded text-text-secondary cursor-pointer hover:bg-surface-hover transition-colors"
-                >
-                  <ArrowRight size={13} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {runs.length > 0 && (
-        <div className="mt-3 text-[11px] text-text-secondary text-center">
-          {t("runs.total_records", { count: runs.length })}
+          {/* 底部分页 */}
+          <div className="border-t border-border px-4 shrink-0">
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              t={t}
+            />
+          </div>
         </div>
       )}
     </div>

@@ -31,6 +31,27 @@ export function buildProviderPublicReadablePayload(publicReadable: boolean): Rec
   return { publicReadable };
 }
 
+/**
+ * 为 provider 连通性/模型列表测试构造 inline 参数。
+ *
+ * 前端测试最新表单值时必须只使用当前表单输入，避免在用户未保存前提前落库。
+ */
+export function buildProviderInlineTestPayload(input: {
+  apiKey: string;
+  baseURL: string;
+  protocol: "openai" | "anthropic";
+}): {
+  apiKey?: string;
+  baseURL?: string;
+  protocol: "openai" | "anthropic";
+} {
+  return {
+    apiKey: input.apiKey.trim() ? input.apiKey : undefined,
+    baseURL: input.baseURL.trim() ? input.baseURL : undefined,
+    protocol: input.protocol,
+  };
+}
+
 /** Provider 名称到品牌色的映射。用于工牌卡片头像背景色。 */
 const PROVIDER_COLORS: Record<string, string> = {
   openai: "#10a37f",

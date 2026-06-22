@@ -10,6 +10,7 @@ import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
 import { getEnvironmentRepoStub } from "./stubs/module-stubs";
 import { resourcePermissionRepoStub } from "./stubs/resource-permission-repo-stub";
+import { getSystemApiStub } from "./stubs/system-api-stub";
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type AnyFn = (...args: any[]) => any;
@@ -127,6 +128,27 @@ const API_KEY_SERVICE_KEYS = ["createApiKey", "hashApiKey"] as const;
 mock.module("../auth/api-key-service", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(API_KEY_SERVICE_KEYS, getApiKeyServiceStub as (name: string) => any),
+);
+
+// ── system api service 导出名称 ──
+
+const SYSTEM_API_KEYS = [
+  "listUsers",
+  "getUserById",
+  "createUser",
+  "deleteUser",
+  "listOrganizations",
+  "getOrganizationById",
+  "createOrganization",
+  "deleteOrganization",
+  "addOrganizationMember",
+  "createUserApiKey",
+  "deleteUserApiKey",
+] as const;
+
+mock.module("../services/system-api", () =>
+  // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
+  createLazyMock(SYSTEM_API_KEYS, getSystemApiStub as (name: string) => any),
 );
 
 // ── raw db ──

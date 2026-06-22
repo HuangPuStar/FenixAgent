@@ -46,7 +46,7 @@ bun install
 cp .env.example .env
 ```
 
-按需补充数据库、鉴权、S3、Hermes 等配置。
+按需补充数据库、鉴权等配置。
 
 ### 3. 启动依赖服务
 

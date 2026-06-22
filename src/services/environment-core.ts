@@ -68,10 +68,18 @@ export function sanitizeResponse(row: EnvironmentRecord) {
   };
 }
 
-/** 获取 Environment 并验证团队归属，未找到或不属于该团队时抛出 NotFoundError */
-export async function getOwnedEnvironment(envId: string, organizationId: string) {
+/**
+ * 获取 Environment 并验证可见性。
+ *
+ * 普通共享 environment 仍按组织可见；绑定 agent 的 runtime environment 额外要求访问者是 owner，
+ * 避免共享 agent 时直接落到其他成员的个人 workspace。
+ */
+export async function getOwnedEnvironment(envId: string, organizationId: string, userId?: string) {
   const env = await environmentRepo.getById(envId);
   if (!env || env.organizationId !== organizationId) {
+    throw new NotFoundError("环境不存在");
+  }
+  if (userId && env.agentConfigId && env.userId !== userId) {
     throw new NotFoundError("环境不存在");
   }
   return env;

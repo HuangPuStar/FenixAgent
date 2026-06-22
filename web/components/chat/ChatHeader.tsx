@@ -220,7 +220,7 @@ export function ChatHeader({
           align="start"
           // 触发器下边缘 + 4px 间距，宽度足够展示分组与时间戳
           sideOffset={4}
-          className="w-80 p-0"
+          className="w-80 p-0 overflow-hidden"
         >
           <div className="flex flex-col max-h-[60vh]">
             {/* 顶部：搜索 + 新会话 */}

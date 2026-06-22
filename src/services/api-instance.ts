@@ -1,7 +1,7 @@
 import { AppError } from "../errors";
 import type { AuthContext } from "../plugins/auth";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
-import { getAgentConfigById } from "./config";
+import { getReadableAgentConfigById } from "./config";
 import { createWebEnvironment } from "./environment-web";
 import {
   getRunningInstancesByEnvironment,
@@ -11,7 +11,7 @@ import {
 
 type InstanceDeps = {
   createWebEnvironment: typeof createWebEnvironment;
-  getAgentConfigById: typeof getAgentConfigById;
+  getReadableAgentConfigById: typeof getReadableAgentConfigById;
   getRunningInstancesByEnvironment: typeof getRunningInstancesByEnvironment;
   groupActiveInstancesByEnvironment: typeof groupActiveInstancesByEnvironment;
   listEnvironmentsByOrganizationId: typeof environmentRepo.listByOrganizationId;
@@ -20,7 +20,7 @@ type InstanceDeps = {
 
 const defaultDeps: InstanceDeps = {
   createWebEnvironment,
-  getAgentConfigById,
+  getReadableAgentConfigById,
   getRunningInstancesByEnvironment,
   groupActiveInstancesByEnvironment,
   listEnvironmentsByOrganizationId: async (organizationId: string) =>
@@ -66,8 +66,8 @@ function toKebabSegment(input: string): string {
     .slice(0, 32);
 }
 
-function ensureInternalAgent(agent: AgentConfigRecord | null | undefined, organizationId: string): AgentConfigRecord {
-  if (!agent || agent.organizationId !== organizationId) {
+function ensureReadableAgent(agent: AgentConfigRecord | null | undefined): AgentConfigRecord {
+  if (!agent) {
     throw new AppError("Agent not found", "NOT_FOUND", 404);
   }
   return agent;
@@ -93,14 +93,13 @@ export async function connectAgentInstance(
   agentConfigId: string,
   options: AgentInstanceConnectOptions = {},
 ): Promise<AgentInstanceConnectResult> {
-  const agent = ensureInternalAgent(
-    (await deps.getAgentConfigById(agentConfigId, ctx.organizationId)) as AgentConfigRecord | null,
-    ctx.organizationId,
+  const agent = ensureReadableAgent(
+    (await deps.getReadableAgentConfigById(ctx, agentConfigId)) as AgentConfigRecord | null,
   );
 
   const activeMap = deps.groupActiveInstancesByEnvironment();
   const existingEnvironments = (await deps.listEnvironmentsByOrganizationId(ctx.organizationId)).filter(
-    (env) => env.agentConfigId === agent.id,
+    (env) => env.agentConfigId === agent.id && env.userId === ctx.userId,
   );
   let environment = pickEnvironment(existingEnvironments, activeMap);
 

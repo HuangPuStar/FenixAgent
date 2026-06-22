@@ -1,10 +1,13 @@
 import type { Node } from "@xyflow/react";
+import { Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 type Measurable = { getBoundingClientRect(): DOMRect };
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
+import { START_NODE_ID } from "../yaml-utils";
 import { NodeConfigCard } from "./NodeConfigCard";
 
 export interface NodeConfigPopoverProps {
@@ -18,7 +21,13 @@ export interface NodeConfigPopoverProps {
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>;
   updateNodeData: (patch: Record<string, unknown>) => void;
-  agentList: Array<{ name: string; description: string | null }>;
+  agentList: AgentNodeOption[];
+  /**
+   * 用户点击删除按钮时触发；只通知"请求删除"，由父组件负责
+   * 弹 ConfirmDialog 确认后再实际删除。把确认弹窗提到父级是为了
+   * 避免它被 popover 的 outside-click 关闭逻辑连带卸载。
+   */
+  onDeleteRequest: (nodeId: string) => void;
 }
 
 export function NodeConfigPopover({
@@ -33,6 +42,7 @@ export function NodeConfigPopover({
   setSelectedNode,
   updateNodeData,
   agentList,
+  onDeleteRequest,
 }: NodeConfigPopoverProps) {
   const { t } = useTranslation("workflows");
   const anchorRef = useRef<Measurable>(null!);
@@ -45,6 +55,10 @@ export function NodeConfigPopover({
 
   if (!selectedNode) return null;
 
+  // 开始节点是工作流入口，禁止删除；readOnly / preview 模式下也禁用
+  const isStartNode = selectedNode.id === START_NODE_ID;
+  const canDelete = !readOnly && !isStartNode;
+
   return (
     <Popover open={open} onOpenChange={onOpenChange} modal={false}>
       <PopoverAnchor virtualRef={anchorRef} />
@@ -52,6 +66,17 @@ export function NodeConfigPopover({
         <div className="wf-popover-header">
           <span className="wf-popover-title">{selectedNode.id}</span>
           <span className="wf-popover-type">{t(`nodes.${nodeType}`)}</span>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDeleteRequest(selectedNode.id)}
+              title={t("editor.delete_node_tooltip")}
+              aria-label={t("editor.delete_node_tooltip")}
+              className="wf-popover-delete-btn"
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
         </div>
         <NodeConfigCard
           readOnly={readOnly}

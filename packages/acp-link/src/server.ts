@@ -12,6 +12,7 @@ import { handleFileOp } from "./client/file-operations.js";
 import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
+import { extractModelState } from "./config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -93,7 +94,11 @@ interface ClientState {
   promptCapabilities: PromptCapabilities | null;
   modelState: SessionModelState | null;
   modeState: {
-    availableModes: Array<{ id: string; name: string; description?: string | null }>;
+    availableModes: Array<{
+      id: string;
+      name: string;
+      description?: string | null;
+    }>;
     currentModeId: string;
   } | null;
   isAlive: boolean;
@@ -235,17 +240,35 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   function setupSessionCallbacks(): void {
     sessionMgr.on("session_data", (sessionId: string, payload: unknown) => {
       if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: "session_data", session_id: sessionId, payload }));
+        ws.send(
+          JSON.stringify({
+            type: "session_data",
+            session_id: sessionId,
+            payload,
+          }),
+        );
       }
     });
     sessionMgr.on("session_ended", (sessionId: string, exitCode: number) => {
       if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: "session_ended", session_id: sessionId, reason: `exit code ${exitCode}` }));
+        ws.send(
+          JSON.stringify({
+            type: "session_ended",
+            session_id: sessionId,
+            reason: `exit code ${exitCode}`,
+          }),
+        );
       }
     });
     sessionMgr.on("session_error", (sessionId: string, error: string) => {
       if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error }));
+        ws.send(
+          JSON.stringify({
+            type: "session_error",
+            session_id: sessionId,
+            error,
+          }),
+        );
       }
     });
   }
@@ -262,7 +285,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
       // 重连后：为所有存活的子进程发送 session_resumed
       for (const sessionId of sessionMgr.getAliveSessionIds()) {
-        ws!.send(JSON.stringify({ type: "session_resumed", session_id: sessionId }));
+        ws!.send(
+          JSON.stringify({
+            type: "session_resumed",
+            session_id: sessionId,
+          }),
+        );
       }
     };
 
@@ -308,11 +336,20 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               fileWs.onopen = () => {
                 console.log("[acp-client] file-ws connected, registering...");
                 if (fileWs && fileWs.readyState === 1) {
-                  fileWs.send(JSON.stringify({ type: "register", machine_id: msg.machine_id }));
+                  fileWs.send(
+                    JSON.stringify({
+                      type: "register",
+                      machine_id: msg.machine_id,
+                    }),
+                  );
                 }
                 fileWsHeartbeat = setInterval(() => {
                   if (fileWs && fileWs.readyState === 1) {
-                    fileWs.send(JSON.stringify({ type: "keep_alive" }));
+                    fileWs.send(
+                      JSON.stringify({
+                        type: "keep_alive",
+                      }),
+                    );
                   }
                 }, 30000);
               };
@@ -362,13 +399,26 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                       JSON.stringify({
                         type: "session_started",
                         session_id: sessionId,
-                        payload: { capabilities: caps },
+                        payload: {
+                          capabilities: caps,
+                        },
                       }),
                     );
                   } else if (result === "queued") {
-                    ws.send(JSON.stringify({ type: "session_queued", session_id: sessionId }));
+                    ws.send(
+                      JSON.stringify({
+                        type: "session_queued",
+                        session_id: sessionId,
+                      }),
+                    );
                   } else {
-                    ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }));
+                    ws.send(
+                      JSON.stringify({
+                        type: "session_error",
+                        session_id: sessionId,
+                        error: "spawn failed",
+                      }),
+                    );
                   }
                 }
               });
@@ -385,13 +435,26 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                       JSON.stringify({
                         type: "session_started",
                         session_id: sessionId,
-                        payload: { capabilities: caps },
+                        payload: {
+                          capabilities: caps,
+                        },
                       }),
                     );
                   } else if (result === "queued") {
-                    ws.send(JSON.stringify({ type: "session_queued", session_id: sessionId }));
+                    ws.send(
+                      JSON.stringify({
+                        type: "session_queued",
+                        session_id: sessionId,
+                      }),
+                    );
                   } else {
-                    ws.send(JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }));
+                    ws.send(
+                      JSON.stringify({
+                        type: "session_error",
+                        session_id: sessionId,
+                        error: "spawn failed",
+                      }),
+                    );
                   }
                 }
               });
@@ -629,7 +692,11 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
               resolve({ outcome: "cancelled" });
             }, PERMISSION_TIMEOUT_MS);
 
-            clientState.pendingPermissions.set(permId, { jsonRpcId: permId, resolve, timeout });
+            clientState.pendingPermissions.set(permId, {
+              jsonRpcId: permId,
+              resolve,
+              timeout,
+            });
           },
         );
 
@@ -686,7 +753,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     if (outcome?.outcome === "cancelled") {
       pending.resolve({ outcome: "cancelled" });
     } else if (outcome?.outcome === "selected" && typeof outcome.optionId === "string") {
-      pending.resolve({ outcome: "selected", optionId: outcome.optionId });
+      pending.resolve({
+        outcome: "selected",
+        optionId: outcome.optionId,
+      });
     } else {
       pending.resolve({ outcome: "cancelled" });
     }
@@ -703,7 +773,11 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       console.log("agent already connected, resending status");
       sendMsg(ws, {
         type: "status",
-        payload: { connected: true, agentInfo: { name: command }, capabilities: state.agentCapabilities },
+        payload: {
+          connected: true,
+          agentInfo: { name: command },
+          capabilities: state.agentCapabilities,
+        },
       });
       return;
     }
@@ -753,15 +827,8 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       const agentCaps = initResult.agentCapabilities;
-      state.agentCapabilities = agentCaps
-        ? {
-            _meta: agentCaps._meta,
-            loadSession: agentCaps.loadSession,
-            mcpCapabilities: agentCaps.mcpCapabilities,
-            promptCapabilities: agentCaps.promptCapabilities,
-            sessionCapabilities: agentCaps.sessionCapabilities,
-          }
-        : null;
+      // 透传 SDK 返回的全部 capabilities，包括 configOptions 等未知字段
+      state.agentCapabilities = agentCaps ?? null;
       state.promptCapabilities = agentCaps?.promptCapabilities ?? null;
 
       console.log(
@@ -775,7 +842,11 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       sendMsg(ws, {
         type: "status",
-        payload: { connected: true, agentInfo: initResult.agentInfo, capabilities: state.agentCapabilities },
+        payload: {
+          connected: true,
+          agentInfo: initResult.agentInfo,
+          capabilities: state.agentCapabilities,
+        },
       });
 
       connection.closed.then(() => {
@@ -786,7 +857,12 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
     } catch (error) {
       console.error("agent connect failed:", (error as Error).message);
-      sendMsg(ws, { type: "error", payload: { message: `Failed to connect: ${(error as Error).message}` } });
+      sendMsg(ws, {
+        type: "error",
+        payload: {
+          message: `Failed to connect: ${(error as Error).message}`,
+        },
+      });
     }
   }
 
@@ -806,13 +882,14 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       state.sessionId = result.sessionId;
-      state.modelState = result.models ?? null;
+      state.modelState = extractModelState(result.configOptions);
       state.modeState = result.modes ?? null;
       console.log("session created:", result.sessionId, "cwd:", sessionCwd);
 
       sendMsg(
         ws,
         createSuccessResponse(id, {
+          ...result,
           sessionId: result.sessionId,
           promptCapabilities: state.promptCapabilities,
           models: state.modelState,
@@ -852,11 +929,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         ws,
         createSuccessResponse(id, {
           sessions: sessions.map((s: acp.SessionInfo) => ({
-            _meta: s._meta,
-            cwd: s.cwd,
-            sessionId: s.sessionId,
-            title: s.title,
-            updatedAt: s.updatedAt,
+            ...s,
           })),
           nextCursor: result.nextCursor,
           _meta: result._meta,
@@ -891,13 +964,14 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       state.sessionId = sessionId;
-      state.modelState = result.models ?? null;
+      state.modelState = extractModelState(result.configOptions);
       state.modeState = result.modes ?? null;
       console.log("session loaded:", sessionId, "cwd:", sessionCwd);
-
+      console.log("session load result:", result);
       sendMsg(
         ws,
         createSuccessResponse(id, {
+          ...result,
           sessionId,
           promptCapabilities: state.promptCapabilities,
           models: state.modelState,
@@ -933,13 +1007,14 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       state.sessionId = sessionId;
-      state.modelState = result.models ?? null;
+      state.modelState = extractModelState(result.configOptions);
       state.modeState = result.modes ?? null;
       console.log("session resumed:", sessionId, "cwd:", sessionCwd);
 
       sendMsg(
         ws,
         createSuccessResponse(id, {
+          ...result,
           sessionId,
           promptCapabilities: state.promptCapabilities,
           models: state.modelState,
@@ -1024,9 +1099,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     try {
       const modelId = params.modelId as string;
       console.log("setting model, sessionId:", state.sessionId, "modelId:", modelId);
-      await state.connection.unstable_setSessionModel({
+      await state.connection.setSessionConfigOption?.({
         sessionId: state.sessionId,
-        modelId,
+        configId: "model",
+        value: modelId,
       });
       state.modelState = { ...state.modelState, currentModelId: modelId };
       sendMsg(ws, createSuccessResponse(id, { modelId }));
@@ -1160,7 +1236,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           return;
         }
         console.error("message error:", (error as Error).message);
-        sendMsg(ws, { type: "error", payload: { message: `Error: ${(error as Error).message}` } });
+        sendMsg(ws, {
+          type: "error",
+          payload: { message: `Error: ${(error as Error).message}` },
+        });
       }
     },
     close(ws: AcpWs) {

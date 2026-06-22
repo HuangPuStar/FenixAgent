@@ -45,9 +45,14 @@ const app = new Elysia({ name: "web-files", prefix: "/environments" }).use(authG
   "write-file-request": WriteFileRequestSchema,
 });
 
-async function requireEnv(envId: string, orgId: string, errorFn: (status: number, body: unknown) => Response) {
+async function requireEnv(
+  envId: string,
+  orgId: string,
+  userId: string,
+  errorFn: (status: number, body: unknown) => Response,
+) {
   try {
-    return await getOwnedEnvironment(envId, orgId);
+    return await getOwnedEnvironment(envId, orgId, userId);
   } catch (e) {
     if (e instanceof NotFoundError) {
       return errorFn(404, { error: { type: "not_found", message: "环境不存在" } });
@@ -62,8 +67,9 @@ app.get(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, query, error }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, error);
+    await requireEnv(envId, authCtx.organizationId, user.id, error);
     const queryPath = (query as Record<string, string | undefined>)?.path || "";
 
     // 远程环境：通过 file-ws 代理
@@ -105,8 +111,9 @@ app.get(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, query, error, set }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, error);
+    await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     const rawFilePath = (params as any)["*"] as string;
     const preview = (query as Record<string, string | undefined>)?.preview === "true";
@@ -210,8 +217,9 @@ app.post(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, request, error }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, error);
+    await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     const rawDirPath = ((params as any)["*"] as string) || "";
 
@@ -306,8 +314,9 @@ app.put(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, body, error }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, error);
+    await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     const rawFilePath = (params as any)["*"] as string;
 
@@ -362,8 +371,9 @@ app.delete(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
+    const user = store.user!;
     const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, error);
+    await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     const rawFilePath = (params as any)["*"] as string;
 

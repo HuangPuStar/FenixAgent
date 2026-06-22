@@ -67,19 +67,29 @@ app.post(
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
     const payload = body as { name: string; slug: string; description?: string };
-    const result = await createKnowledgeBaseRecord(
-      authCtx.organizationId,
-      {
-        name: payload.name,
-        slug: payload.slug,
-        description: payload.description,
-      },
-      authCtx.userId,
-    );
-    if (!result.success) {
-      return error(400, { error: { type: result.error.code, message: result.error.message } });
+    try {
+      const result = await createKnowledgeBaseRecord(
+        authCtx.organizationId,
+        {
+          name: payload.name,
+          slug: payload.slug,
+          description: payload.description,
+        },
+        authCtx.userId,
+      );
+      if (!result.success) {
+        return error(400, { error: { type: result.error.code, message: result.error.message } });
+      }
+      return result.data;
+    } catch (err) {
+      console.error(err);
+      return error(502, {
+        error: {
+          type: "KNOWLEDGE_PROVIDER_ERROR",
+          message: err instanceof Error ? err.message : "知识库上游服务异常",
+        },
+      });
     }
-    return result.data;
   },
   {
     sessionAuth: true,

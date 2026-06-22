@@ -22,6 +22,7 @@ function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
 function ResizableHandle({
   withHandle,
   className,
+  children,
   ...props
 }: ResizablePrimitive.SeparatorProps & {
   withHandle?: boolean;
@@ -35,11 +36,16 @@ function ResizableHandle({
       )}
       {...props}
     >
-      {withHandle && (
-        <div className="z-10 flex h-4 w-3 items-center justify-center rounded-xs border bg-border">
-          <GripVerticalIcon className="size-2.5" />
-        </div>
-      )}
+      {/*
+        优先渲染外部传入的 children（用于自定义手柄，例如把 toggle 按钮嵌入手柄）；
+        否则回退到 withHandle 的默认 GripVerticalIcon
+      */}
+      {children ??
+        (withHandle ? (
+          <div className="z-10 flex h-4 w-3 items-center justify-center rounded-xs border bg-border">
+            <GripVerticalIcon className="size-2.5" />
+          </div>
+        ) : null)}
     </ResizablePrimitive.Separator>
   );
 }

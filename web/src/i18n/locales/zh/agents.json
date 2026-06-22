@@ -120,5 +120,16 @@
     "confirmDesc": "确定要删除Agent \"{{name}}\" 吗？",
     "success": "Agent已删除",
     "error": "删除失败: {{message}}"
-  }
+  },
+  "categories": {
+    "all": "全部",
+    "general": "通用助理",
+    "data": "数据分析",
+    "search": "搜索检索",
+    "monitor": "监控告警",
+    "code": "代码助手",
+    "custom": "自定义"
+  },
+  "loadFailed": "加载智能体失败",
+  "enterFailed": "进入智能体失败"
 }

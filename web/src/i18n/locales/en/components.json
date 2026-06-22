@@ -140,8 +140,6 @@
     "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
-    "fileTooLarge": "{{name}} is too large (max {{max}})",
-    "uploadTooLarge": "Upload failed: file size exceeds the 100MB limit",
     "dropToUpload": "Drop files to upload",
     "hintDragUpload": "Drag to upload",
     "hintDoubleClick": "Double-click to preview",
@@ -232,6 +230,8 @@
     "submit": "Submit"
   },
   "chatView": {
+    "startConversation": "Start Conversation",
+    "startConversationDesc": "Send a message to start chatting",
     "thinking": "Thinking..."
   },
   "commandMenu": {
@@ -242,14 +242,23 @@
     "uploadedImage": "Uploaded image"
   },
   "planView": {
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
     "executionPlan": "Execution Plan"
   },
   "sessionSidebar": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "earlier": "Earlier",
+    "header": "Sessions",
     "sessions": "Sessions",
     "historySessions": "History Sessions",
     "noSessions": "No sessions"
   },
   "toolCallGroup": {
+    "running": "Running",
+    "failed": "{{count}} failed",
     "input": "Input",
     "output": "Output"
   },
@@ -282,6 +291,7 @@
     "earlier": "Earlier"
   },
   "chatInterface": {
+    "processingError": "The request could not be processed properly. Please check the Agent or model status and try again.",
     "newThread": "New Thread",
     "agentPlaceholder": "Send a message to the agent...",
     "waitingSession": "Waiting for session...",
@@ -300,6 +310,10 @@
     "agent": "Agent"
   },
   "contextPanel": {
+    "unknownModel": "Unknown",
+    "input": "Input",
+    "output": "Output",
+    "defaultSession": "Default",
     "showContext": "Show context panel",
     "hideContext": "Hide context panel",
     "running": "Running",
@@ -319,6 +333,7 @@
     "empty": "No items"
   },
   "todoPanel": {
+    "collapse": "Collapse",
     "completed": "completed",
     "inProgress": "in progress"
   },
@@ -333,9 +348,6 @@
   "metaAgent": {
     "title": "Meta Agent",
     "history_title": "Session History",
-    "history_today": "Today",
-    "history_yesterday": "Yesterday",
-    "history_earlier": "Earlier",
     "history_empty": "No sessions",
     "history_untitled": "Untitled",
     "chat_collapse": "Collapse Panel",
@@ -345,10 +357,11 @@
     "send": "Send",
     "stop": "Stop",
     "newSession": "New Thread",
-    "placeholder": "Send a message to the agent…",
     "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file"
   },
   "chatEmpty": {
+    "startConversation": "Start Conversation",
+    "startConversationDesc": "Send a message to start chatting with the ACP agent",
     "skills": "Loaded Skills",
     "skillsHint": "Type / to open skill menu",
     "noSkills": "No skills bound"
@@ -359,5 +372,61 @@
     "statusRunning": "Running",
     "statusStopped": "Stopped"
   },
-  "orgSwitchFailed": "Failed to switch organization"
+  "orgSwitchFailed": "Failed to switch organization",
+  "imagePreview": {
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "reset": "Reset"
+  },
+  "hindsightToolCard": {
+    "failed": "Failed"
+  },
+  "statusBadge": {
+    "configured": "Configured",
+    "enabled": "Enabled",
+    "unconfigured": "Unconfigured",
+    "disabled": "Disabled",
+    "builtin": "Built-in",
+    "custom": "Custom",
+    "primaryModel": "Primary Model",
+    "subAgent": "Sub-Agent",
+    "all": "All"
+  },
+  "dataTable": {
+    "actions": "Actions",
+    "noData": "No data",
+    "searchPlaceholder": "Search...",
+    "pagination": "{{start}}-{{end}} of {{total}}"
+  },
+  "confirmDialog": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "processing": "Processing..."
+  },
+  "formDialog": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "saving": "Saving..."
+  },
+  "batchActionBar": {
+    "selected": "{{count}} items selected",
+    "clear": "Clear"
+  },
+  "datePicker": {
+    "placeholder": "Select date"
+  },
+  "toolCallRow": {
+    "viewParams": "View Parameters",
+    "toolName": "Tool"
+  },
+  "permissionPanel": {
+    "allow": "Allow",
+    "deny": "Deny"
+  },
+  "sessionModeSelector": {
+    "default": "Default"
+  },
+  "modelIconMap": {
+    "qwen": "Qwen / Tongyi Qianwen"
+  }
 }

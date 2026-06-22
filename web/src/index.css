@@ -822,8 +822,9 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
             来腾出更多有效输入区域，与桌面端宽松布局区分。
    ============================================================ */
 
-/* 左侧拉手按钮 — 仿照 .agent-artifacts-expand-btn 的 vertical tab 设计
-   按钮作为 flex item 渲染在最左侧，圆角朝外（左）、右侧贴面板（无边框无圆角） */
+/* 右侧拉手按钮 — 仿照 .agent-artifacts-expand-btn 的 vertical tab 设计
+   按钮作为 flex item 渲染在面板右侧（默认），圆角朝外（右）、左侧贴面板（无边框无圆角）。
+   当添加 .left 修饰符时按钮渲染在面板左侧，圆角朝外（左）、右侧贴面板。 */
 .meta-agent-toggle-btn {
   align-self: center;
   width: 28px;
@@ -835,8 +836,8 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   justify-content: center;
   gap: 2px;
   border: 1px solid var(--color-border-subtle);
-  border-right: none;
-  border-radius: 6px 0 0 6px;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
   background: var(--color-surface-1);
   color: var(--color-text-muted);
   cursor: pointer;
@@ -849,6 +850,13 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   letter-spacing: 0.05em;
 }
 
+/* 拉手在左侧：贴面板一侧（右）无边框、圆角朝外（左） */
+.meta-agent-toggle-btn.left {
+  border: 1px solid var(--color-border-subtle);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+}
+
 .meta-agent-toggle-btn:hover {
   background: var(--color-surface-2);
   color: var(--color-text-primary);
@@ -856,13 +864,13 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 
 /* 隐藏信息流中的 Agent avatar —— 头部已无 title 文字，再保留头像反而拥挤 */
 .meta-agent-panel .agent-avatar {
-  display: none !important;
+  display: none;
 }
 
 /* 隐藏 ChatComposer 元信息条中的 token 进度条 / 百分比 / 分隔线
    保留模式选择器、模型选择器与新会话按钮 */
 .meta-agent-panel .chat-composer-token-stats {
-  display: none !important;
+  display: none;
 }
 
 /* 收紧 ACPMain 顶层 padding/gap —— 释放外层边距给输入区 */

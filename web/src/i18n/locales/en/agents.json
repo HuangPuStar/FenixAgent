@@ -120,5 +120,16 @@
     "confirmDesc": "Are you sure you want to delete agent \"{{name}}\"?",
     "success": "Agent deleted",
     "error": "Delete failed: {{message}}"
-  }
+  },
+  "categories": {
+    "all": "All",
+    "general": "General Assistant",
+    "data": "Data Analysis",
+    "search": "Search & Retrieval",
+    "monitor": "Monitoring & Alerting",
+    "code": "Code Assistant",
+    "custom": "Custom"
+  },
+  "loadFailed": "Failed to load agents",
+  "enterFailed": "Failed to enter agent"
 }

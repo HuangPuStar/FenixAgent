@@ -33,7 +33,7 @@ import type {
 
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-type SkillInfo = { id: string; name: string; description: string; resourceAccess?: ResourceAccess };
+type SkillInfo = { id?: string; name: string; description?: string; resourceAccess?: ResourceAccess };
 type CreateMode = "text" | "upload";
 type SkillUploadResult = { imported: unknown[]; skipped: unknown[] };
 
@@ -123,8 +123,7 @@ export function AgentSkillsPage() {
       console.error(t("toast.loadListFailed"), error);
       toast.error(t("toast.loadListFailedWith", { message: error.message }));
     } else {
-      const d = ((data as unknown as Record<string, unknown>) ?? {}) as { skills?: SkillInfo[] };
-      setSkills(Array.isArray(d?.skills) ? d.skills : []);
+      setSkills(Array.isArray(data) ? data : []);
     }
     setLoading(false);
   }, [t]);
@@ -133,8 +132,7 @@ export function AgentSkillsPage() {
   const refreshSkills = useCallback(async () => {
     const { data, error } = await skillConfigApi.list();
     if (!error) {
-      const d = ((data as unknown as Record<string, unknown>) ?? {}) as { skills?: SkillInfo[] };
-      setSkills(Array.isArray(d?.skills) ? d.skills : []);
+      setSkills(Array.isArray(data) ? data : []);
     }
     // 静默失败不弹 toast，避免干扰用户
   }, []);
@@ -150,7 +148,7 @@ export function AgentSkillsPage() {
     (s: SkillInfo, q: string) =>
       getSkillOptionLabel(s).toLowerCase().includes(q) ||
       s.name.toLowerCase().includes(q) ||
-      s.description.toLowerCase().includes(q),
+      (s.description ?? "").toLowerCase().includes(q),
     [],
   );
 
@@ -200,7 +198,10 @@ export function AgentSkillsPage() {
       return;
     }
     setFormSaving(true);
-    const { error } = await skillConfigApi.set(formName, { description: formDescription, content: formContent });
+    const call = editingSkill
+      ? skillConfigApi.update(editingSkill.name, { description: formDescription, content: formContent })
+      : skillConfigApi.create(formName, { description: formDescription, content: formContent });
+    const { error } = await call;
     if (error) {
       toast.error(t("toast.saveFailedWith", { message: error.message }));
     } else {
@@ -221,7 +222,7 @@ export function AgentSkillsPage() {
       return;
     }
     const d = detail as unknown as SkillDetail;
-    const { error } = await skillConfigApi.set(skill.name, {
+    const { error } = await skillConfigApi.update(skill.name, {
       description: d.description ?? skill.description ?? "",
       content: d.content ?? "",
       metadata: d.metadata ?? {},
@@ -379,7 +380,7 @@ export function AgentSkillsPage() {
               {showOrgPrefix ? getSkillOptionLabel(skill) : skill.name}
             </span>
             <span className="min-w-[34px] shrink-0 whitespace-nowrap rounded-full bg-[#eef3f8] px-1.5 py-1 text-center text-[10px] font-medium leading-none text-[#8a98ab] [word-break:keep-all] [writing-mode:horizontal-tb]">
-              {showOrgPrefix ? "共享" : "私有"}
+              {showOrgPrefix ? tComponents("resource.external") : tComponents("resource.internal")}
             </span>
           </div>
           <p className="mt-3 line-clamp-3 text-[12px] leading-5 text-[#718198]">{skill.description || "—"}</p>
@@ -432,7 +433,7 @@ export function AgentSkillsPage() {
                 onClick={() => setChatOpen(true)}
               >
                 <Sparkles className="h-4 w-4" />
-                对话创建
+                {tComponents("chatEmpty.startConversation")}
               </Button>
             </>
           }
@@ -690,6 +691,7 @@ export function AgentSkillsPage() {
         metaAgentId={metaAgentId}
         scenePrompt={undefined}
         onPromptComplete={refreshSkills}
+        togglePosition="left"
       />
     </div>
   );

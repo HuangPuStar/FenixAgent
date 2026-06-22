@@ -295,11 +295,10 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
       skillConfigApi.list().then(({ data, error }) => {
         if (error) return;
-        const skills = (data as unknown as Record<string, unknown>)?.skills;
         setSkillOptions(
-          Array.isArray(skills)
+          Array.isArray(data)
             ? mapSkillOptions(
-                skills as Array<{ id: string; name: string; description?: string; resourceAccess?: ResourceAccess }>,
+                data as Array<{ id: string; name: string; description?: string; resourceAccess?: ResourceAccess }>,
               )
             : [],
         );

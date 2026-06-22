@@ -143,7 +143,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === START_NODE_ID) return n;
-          const state = snap.node_states[n.id];
+          const state = snap.node_states?.[n.id];
           if (!state)
             return {
               ...n,

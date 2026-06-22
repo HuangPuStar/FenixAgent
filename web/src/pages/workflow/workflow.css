@@ -446,6 +446,25 @@
   border-radius: 99;
 }
 
+.wf-popover-delete-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #ef4444;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.wf-popover-delete-btn:hover {
+  background: #fef2f2;
+}
+
 .wf-popover-body {
   padding: 4px 0;
 }
@@ -484,6 +503,33 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
+/* ── Dropdown Item (用于右下角弹出菜单) ── */
+.wf-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.12s;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+.wf-dropdown-item:hover {
+  background: #f3f4f6;
+}
+.wf-dropdown-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.wf-dropdown-item:disabled:hover {
+  background: transparent;
+}
+
 /* ── Workflow Sheet ── */
 .wf-sheet-body {
   flex: 1;
@@ -492,58 +538,4 @@
   flex-direction: column;
 }
 
-/* ── Data flow points (input/output) ── */
-.wf-point {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  z-index: 2;
-  transform: translateX(-50%);
-}
-
-.wf-point-in {
-  top: -6px;
-}
-
-.wf-point-out {
-  bottom: -6px;
-}
-
-.wf-point-label {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
-  white-space: nowrap;
-  line-height: 1.4;
-  opacity: 0;
-  transition: opacity 0.15s;
-  pointer-events: none;
-}
-
-.wf-point:hover .wf-point-label {
-  opacity: 1;
-}
-
-.wf-point-in .wf-point-label {
-  bottom: calc(100% + 3px);
-}
-
-.wf-point-out .wf-point-label {
-  top: calc(100% + 3px);
-}
-
-.wf-point-label-out {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.1);
-}
-
-.wf-point-label-in {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-}
+/* ── END RESIZE HANDLES ── */

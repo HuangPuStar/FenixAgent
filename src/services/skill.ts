@@ -396,18 +396,20 @@ export async function importSkillDirectories(
   const targetDir = skillOrganizationDir(ctx.organizationId);
 
   // 并行检测冲突（N+1 → 单轮并行查询）
+  // 共享（external）的同名技能不视为冲突，允许上传创建当前组织自有 skill
   const entries = Array.from(grouped.entries());
   const existingResults = await Promise.all(
     entries.map(async ([name]) => {
       const existing = await _deps.configPg.getSkill(ctx, name);
-      return existing
-        ? {
-            name,
-            existing,
-            enabled: true,
-            path: skillContentPath(resolveSkillSourceOrganizationId(existing, ctx.organizationId), name),
-          }
-        : null;
+      if (!existing) return null;
+      // 外部共享的同名 skill 不算重复
+      if (existing.resourceAccess?.ownership === "external") return null;
+      return {
+        name,
+        existing,
+        enabled: true,
+        path: skillContentPath(resolveSkillSourceOrganizationId(existing, ctx.organizationId), name),
+      };
     }),
   );
   const existingConflicts = existingResults.filter(

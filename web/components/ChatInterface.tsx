@@ -81,6 +81,8 @@ interface ChatInterfaceProps {
   onSessionCreated?: (sessionId: string) => void;
   scenePrompt?: string;
   onPromptComplete?: () => void;
+  /** 上下文标识：变化时自动触发 newSession（如工作流 ID 变化） */
+  contextKey?: string;
 }
 // Helper Functions
 // =============================================================================
@@ -108,6 +110,48 @@ function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
 
 // 终态集合 — 已处于终态的工具调用不接受服务器状态覆盖
 const TERMINAL_STATUSES = new Set<ToolCallStatus>(["canceled", "rejected"]);
+
+/**
+ * 一轮 prompt 结束时的兜底：把仍为 running 的 tool_call 标记为 complete。
+ *
+ * 远程 agent（如 claude --acp）有时不在工具执行完成时推送
+ * status="completed" 的 session/update，导致 tool_call 永久卡在 running，
+ * UI 一直转圈。这里在 prompt_complete 时统一兜底，让 UI 终止 loading。
+ *
+ * 处理范围：
+ * - 顶层与 subEntries 中的所有 tool_call 都递归处理
+ * - 只改 status==="running" 的条目；其他状态（含 waiting_for_confirmation、
+ *   canceled、rejected、error、complete）保持不动
+ * - 没有任何 running 工具时返回原数组引用，避免无意义重渲染
+ */
+export function finalizeRunningToolCalls(entries: ThreadEntry[]): ThreadEntry[] {
+  let changed = false;
+
+  const mapEntry = (entry: ThreadEntry): ThreadEntry => {
+    if (entry.type !== "tool_call") return entry;
+
+    let nextToolCall = entry.toolCall;
+    if (entry.toolCall.status === "running") {
+      changed = true;
+      nextToolCall = { ...entry.toolCall, status: "complete" as ToolCallStatus };
+    }
+
+    // 递归处理子 agent 嵌套条目
+    if (entry.toolCall.subEntries && entry.toolCall.subEntries.length > 0) {
+      const nextSubEntries = entry.toolCall.subEntries.map(mapEntry);
+      // 仅在本次递归改动了子层、或顶层状态变化时才生成新对象
+      if (nextSubEntries !== entry.toolCall.subEntries || nextToolCall !== entry.toolCall) {
+        return { type: "tool_call", toolCall: { ...nextToolCall, subEntries: nextSubEntries } };
+      }
+      return entry;
+    }
+
+    return nextToolCall === entry.toolCall ? entry : { type: "tool_call", toolCall: nextToolCall };
+  };
+
+  const next = entries.map(mapEntry);
+  return changed ? next : entries;
+}
 
 // =============================================================================
 // 纯函数：将 SessionUpdate 应用到 entries 数组，返回新数组
@@ -276,7 +320,17 @@ export interface ChatInterfaceHandle {
 }
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
-  { client, agentId, readonly, hideContextPanel, rcsSessionId, onSessionCreated, scenePrompt, onPromptComplete },
+  {
+    client,
+    agentId,
+    readonly,
+    hideContextPanel,
+    rcsSessionId,
+    onSessionCreated,
+    scenePrompt,
+    contextKey,
+    onPromptComplete,
+  },
   ref,
 ) {
   const { t } = useTranslation("components");
@@ -536,6 +590,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       // Note: Tool calls are already marked as "canceled" in handleCancel before this fires
       setIsLoading(false);
 
+      // 兜底：远程 agent（如 claude --acp）有时不在工具完成时推送 status="completed"
+      // 的 session_update，导致 tool_call 永久卡在 running。一轮 prompt 结束后，
+      // 把仍为 running 的工具调用统一标记为 complete，避免 UI 持续 loading。
+      // 已是终态（canceled/rejected/error/complete）的不动；handleCancel 已经把
+      // 取消的工具改成 canceled，这里只兜底未通知完成的 running 调用。
+      setEntries((prev) => finalizeRunningToolCalls(prev));
+
       // 用户主动取消时跳过错误提示，避免误导用户
       if (userCancelledRef.current) {
         userCancelledRef.current = false;
@@ -543,7 +604,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         // inputTokens === 0 且 outputTokens === 0 说明 prompt 未被处理（真错误）
         // 仅 inputTokens === 0 可能是 prompt caching 导致的正常情况（CCB/OC 引擎常见）
         if (usage && usage.inputTokens === 0 && (usage.outputTokens ?? 0) === 0) {
-          setErrorMessage("请求未能正常处理，请检查 Agent 或大模型状态后重试");
+          setErrorMessage(t("chatInterface.processingError"));
           if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
           errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
         }
@@ -612,6 +673,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     resetThreadState,
     onSessionCreated,
     onPromptComplete,
+    t,
   ]);
 
   // 计算 token 统计，传给 ChatComposer 元信息条
@@ -655,6 +717,15 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // The session_created handler will set sessionReady=true when ready
     requestCreateSession();
   }, [isLoading, resetThreadState, requestCreateSession, client.cancel]);
+
+  // 当 contextKey 变化时自动开始新会话（仅在 contextKey 有值且发生变化时触发）
+  const contextKeyRef = useRef(contextKey);
+  useEffect(() => {
+    if (contextKey !== undefined && contextKeyRef.current !== undefined && contextKeyRef.current !== contextKey) {
+      handleNewSession();
+    }
+    contextKeyRef.current = contextKey;
+  }, [contextKey, handleNewSession]);
 
   useImperativeHandle(
     ref,
@@ -917,8 +988,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           onPermissionRespond={(requestId, optionId, optionKind) => {
             handlePermissionResponse(requestId, optionId, optionKind as PermissionOption["kind"] | null);
           }}
-          emptyTitle={sessionReady ? "开始对话" : undefined}
-          emptyDescription={sessionReady ? "输入消息开始与 ACP agent 聊天" : undefined}
+          emptyTitle={sessionReady ? t("chatEmpty.startConversation") : undefined}
+          emptyDescription={sessionReady ? t("chatEmpty.startConversationDesc") : undefined}
           sessionId={rcsSessionId ?? activeSessionId ?? undefined}
           envId={agentId}
         />

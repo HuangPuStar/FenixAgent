@@ -38,6 +38,7 @@ function getErrorDataRecord(data: unknown): Record<string, unknown> {
 
 // Provider 工具函数从独立模块导入，避免组件文件加载 @lobehub/icons 后影响单元测试
 import {
+  buildProviderInlineTestPayload,
   buildProviderPublicReadablePayload,
   canWriteProvider,
   getProviderColor,
@@ -251,8 +252,7 @@ export function AgentModelsPage() {
   };
 
   // 表单内获取模型列表
-  // 新建：用 inline 凭证测试，无需先保存
-  // 编辑：直接测试已保存的 provider
+  // 新建和编辑都只用表单内的临时值测试，避免未保存修改提前写入后端。
   const handleFetchModels = async () => {
     if (!formName.trim()) {
       toast.error(t("validation.nameEmpty"));
@@ -261,30 +261,17 @@ export function AgentModelsPage() {
     setFormFetchingModels(true);
     setFormModelsFetched(false);
     try {
-      let result: unknown;
-      let testErr: unknown = null;
-
-      if (editingProvider) {
-        // 编辑：先更新再测试
-        const data: Record<string, unknown> = {};
-        if (formApiKey) data.apiKey = formApiKey;
-        if (formBaseURL) data.baseURL = formBaseURL;
-        data.protocol = formProtocol;
-        if (formDisplayName) data.name = formDisplayName;
-        await providerApi.set(formName, data);
-        const res = await providerApi.test(formName);
-        result = res.data;
-        testErr = res.error;
-      } else {
-        // 新建：用 inline 凭证测试，不保存
-        const res = await providerApi.test(formName, {
-          apiKey: formApiKey || undefined,
-          baseURL: formBaseURL || undefined,
+      // 统一走 inline test，名称仅用于兼容既有接口参数，不作为配置读取来源。
+      const res = await providerApi.test(
+        formName,
+        buildProviderInlineTestPayload({
+          apiKey: formApiKey,
+          baseURL: formBaseURL,
           protocol: formProtocol,
-        });
-        result = res.data;
-        testErr = res.error;
-      }
+        }),
+      );
+      const result = res.data;
+      const testErr = res.error;
 
       if (testErr) {
         setFormAvailableModels([]);

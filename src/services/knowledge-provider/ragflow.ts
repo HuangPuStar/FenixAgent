@@ -52,6 +52,16 @@ function isRagFlowResponse(value: unknown): value is RagFlowResponse {
  */
 export class RagFlowKnowledgeProvider implements KnowledgeProvider {
   /**
+   * 知识库能力依赖 RagFlow API key；缺失时提前失败，
+   * 避免把空 Bearer token 发送给上游后再收到难定位的 401。
+   */
+  private ensureConfigured() {
+    if (!config.ragflowApiKey.trim()) {
+      throw new Error("RAGFLOW_API_KEY is not configured");
+    }
+  }
+
+  /**
    * 通用 API 请求封装
    * - 拼接 baseUrl + path
    * - 注入 Bearer token
@@ -59,6 +69,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
    * - 支持 AbortController 超时
    */
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    this.ensureConfigured();
     const controller = new AbortController();
     const timeoutMs = config.ragflowRequestTimeoutMs;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -95,10 +106,9 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       }
 
       if (!response.ok) {
-        const message = isRagFlowResponse(payload)
-          ? (payload.message ?? `HTTP ${response.status}`)
-          : `HTTP ${response.status}`;
-        throw new Error(message);
+        const responseMessage = isRagFlowResponse(payload) ? payload.message?.trim() : "";
+        const message = responseMessage || `HTTP ${response.status}`;
+        throw new Error(`RagFlow request failed (status=${response.status}): ${message}`);
       }
 
       // DELETE 类接口有些 RagFlow 部署返回 204/空响应，视作 HTTP 层成功。
@@ -460,15 +470,18 @@ export async function checkRagFlowHealth(): Promise<{ ok: boolean; message: stri
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    // RagFlow v0.26.0 没有公开的 health/version 端点，只要 TCP 可达即视为健康
-    const response = await fetch(`${config.ragflowApiUrl}`, {
+    // 健康检查不应依赖业务 API key，避免把“服务可达”误判成“鉴权失败也算健康”。
+    const response = await fetch(`${config.ragflowApiUrl}/api/v1/system/healthz`, {
       signal: controller.signal,
-      headers: { Authorization: `Bearer ${config.ragflowApiKey}` },
+      headers: { "Content-Type": "application/json" },
     });
     clearTimeout(timeout);
 
-    // 任何 HTTP 响应（包括 404）都说明服务可达
-    return { ok: true, message: `RagFlow is reachable (status=${response.status})` };
+    if (!response.ok) {
+      return { ok: false, message: `RagFlow health check failed with status=${response.status}` };
+    }
+
+    return { ok: true, message: `RagFlow health check passed (status=${response.status})` };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, message: `Cannot reach RagFlow: ${message}` };

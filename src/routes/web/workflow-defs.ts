@@ -58,6 +58,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "name is required" } });
           }
           const row = await createWorkflowDef(authCtx, { name: name.trim(), description });
+          publishWorkflowEvent(row.id, "workflow.created", {});
           return { success: true, data: row };
         }
 
@@ -95,7 +96,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
           if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
-          const draftYaml = await getVersionYaml(workflowId, 0);
+          const draftYaml = await getVersionYaml(workflowId, 0, wf.storagePath);
           return { success: true, data: { ...wf, draftYaml } };
         }
 
@@ -134,6 +135,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const deleted = await deleteWorkflowDef(workflowId, authCtx.organizationId);
           if (!deleted) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          publishWorkflowEvent(workflowId, "workflow.deleted", {});
           return { success: true };
         }
 
@@ -145,6 +147,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const updated = await updateWorkflowMeta(workflowId, authCtx.organizationId, { name, description });
           if (!updated) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          publishWorkflowEvent(workflowId, "workflow.meta_updated", { name, description });
           return { success: true, data: updated };
         }
 
@@ -169,6 +172,7 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and version are required" } });
           }
           await restoreVersionToDraft(workflowId, authCtx, version);
+          publishWorkflowEvent(workflowId, "workflow.draft_restored", { version });
           return { success: true };
         }
 
@@ -274,7 +278,16 @@ app.post(
       }
     } catch (err: unknown) {
       logger.error("Error:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
+      // 从 DrizzleQueryError.cause 中提取底层 PG 错误信息
+      const cause = err instanceof Error ? err.cause : null;
+      const pgMessage = cause instanceof Error ? cause.message : null;
+      // 唯一约束冲突 → 409 Conflict
+      if (pgMessage?.includes("duplicate key") || pgMessage?.includes("unique constraint")) {
+        return error(409, {
+          error: { type: "CONFLICT", message: pgMessage || "Duplicate key violation" },
+        });
+      }
+      const message = pgMessage || (err instanceof Error ? err.message : "Unknown error");
       return error(500, { error: { type: "INTERNAL_ERROR", message } });
     }
   },

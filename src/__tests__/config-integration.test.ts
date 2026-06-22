@@ -249,14 +249,26 @@ describe("Config Route Integration", () => {
     expect(json.error.code).toBe("FORBIDDEN");
   });
 
-  test("skills 路由可达", async () => {
+  test("skills GET 路由可达", async () => {
     const res = await request("/web/config/skills", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "list" }),
+      method: "GET",
     });
     expect(res.status).not.toBe(404);
     const json = await res.json();
     expect(json.success).toBe(true);
+  });
+
+  test("skills GET by name 返回 404", async () => {
+    const res = await request("/web/config/skills/nonexistent", {
+      method: "GET",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test("skills DELETE 返回 404", async () => {
+    const res = await request("/web/config/skills/nonexistent", {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(404);
   });
 });

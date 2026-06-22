@@ -1,3 +1,4 @@
+import { extractModelState } from "../config-options-utils.js";
 import { ACP_METHOD, createRequest, createSuccessResponse, type JsonRpcRequest } from "../json-rpc.js";
 import type {
   ACPSettings,
@@ -116,6 +117,7 @@ export class ACPClient {
         promptCapabilities?: PromptCapabilities;
         models?: SessionModelState | null;
         modes?: SessionModeState | null;
+        configOptions?: Parameters<typeof extractModelState>[0];
       };
       const sessionId =
         typeof record.sessionId === "string" && record.sessionId.length > 0 ? record.sessionId : requestedSessionId;
@@ -123,7 +125,8 @@ export class ACPClient {
       return {
         sessionId,
         promptCapabilities: record.promptCapabilities,
-        models: record.models,
+        // SDK 0.28+ models 字段已移除，回退到从 configOptions 提取
+        models: record.models ?? extractModelState(record.configOptions),
         modes: record.modes,
       };
     }

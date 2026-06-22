@@ -24,6 +24,7 @@ import {
   createAgentConfig,
   deleteAgentConfig,
   getAgentConfigById,
+  getReadableAgentConfigById,
   listAgentConfigs,
   listAgentMcpIds,
   listAgentSkillIds,
@@ -84,17 +85,9 @@ async function resolveSkillIds(ctx: AuthContext, identifiers: string[]): Promise
 }
 
 /**
- * 仅返回当前组织内部 Agent，避免把共享只读资源混入配置 CRUD 视图。
- */
-async function listInternalAgents(ctx: AuthContext) {
-  const rows = await listAgentConfigs(ctx);
-  return rows.filter((row) => row.organizationId === ctx.organizationId);
-}
-
-/**
  * 组装对外 Agent 列表项。
  */
-async function toAgentListItem(ctx: AuthContext, agent: Awaited<ReturnType<typeof listInternalAgents>>[number]) {
+async function toAgentListItem(ctx: AuthContext, agent: Awaited<ReturnType<typeof listAgentConfigs>>[number]) {
   return {
     id: agent.id,
     name: agent.name,
@@ -123,8 +116,8 @@ async function toAgentListItem(ctx: AuthContext, agent: Awaited<ReturnType<typeo
 /**
  * 组装对外 Agent 详情。
  */
-async function buildAgentDetail(agentId: string, organizationId: string) {
-  const agent = await getAgentConfigById(agentId, organizationId);
+async function buildAgentDetail(ctx: AuthContext, agentId: string) {
+  const agent = await getReadableAgentConfigById(ctx, agentId);
   if (!agent) return null;
 
   const [knowledge, skillIds, mcpIds] = await Promise.all([
@@ -146,7 +139,16 @@ async function buildAgentDetail(agentId: string, organizationId: string) {
     skillIds,
     mcpIds,
     machineId: agent.machineId ?? null,
+    resourceAccess: agent.resourceAccess,
   };
+}
+
+/**
+ * 创建/更新类写接口仍只针对当前组织内部 Agent 做重名检查。
+ */
+async function listWritableAgents(ctx: AuthContext) {
+  const rows = await listAgentConfigs(ctx);
+  return rows.filter((row) => row.organizationId === ctx.organizationId);
 }
 
 /**
@@ -189,7 +191,7 @@ app.get(
     const { page, pageSize } = query as ApiAgentListQuery;
 
     try {
-      const agents = await listInternalAgents(authCtx);
+      const agents = await listAgentConfigs(authCtx);
       const total = agents.length;
       const start = (page - 1) * pageSize;
       const items = await Promise.all(
@@ -214,7 +216,7 @@ app.get(
     detail: {
       tags: ["External AgentConfig"],
       summary: "获取 Agent 配置列表",
-      description: "返回当前组织内部可管理的 Agent 配置列表，采用稳定分页结构。",
+      description: "返回当前调用方可读的 Agent 配置列表，包含当前组织内部资源与外部共享资源。",
     },
   },
 );
@@ -226,7 +228,7 @@ app.get(
     const authCtx = store.authContext as AuthContext;
 
     try {
-      const detail = await buildAgentDetail(params.id, authCtx.organizationId);
+      const detail = await buildAgentDetail(authCtx, params.id);
       if (!detail) {
         return error(404, { error: { code: "NOT_FOUND", message: `Agent '${params.id}' not found` } });
       }
@@ -248,7 +250,7 @@ app.get(
     detail: {
       tags: ["External AgentConfig"],
       summary: "获取 Agent 配置详情",
-      description: "按 Agent 配置 ID 返回详情，仅返回当前组织内部资源。",
+      description: "按 Agent 配置 ID 返回详情，支持读取当前组织内部资源与外部共享资源。",
     },
   },
 );
@@ -265,7 +267,7 @@ app.post(
     }
 
     try {
-      const existing = (await listInternalAgents(authCtx)).find((agent) => agent.name === payload.name);
+      const existing = (await listWritableAgents(authCtx)).find((agent) => agent.name === payload.name);
       if (existing) {
         return error(409, { error: { code: "ALREADY_EXISTS", message: `Agent '${payload.name}' already exists` } });
       }
@@ -288,7 +290,7 @@ app.post(
         await syncAgentMcps(agentId, payload.mcpIds);
       }
 
-      const detail = await buildAgentDetail(agentId, authCtx.organizationId);
+      const detail = await buildAgentDetail(authCtx, agentId);
       if (!detail) {
         return error(500, { error: { code: "INTERNAL_ERROR", message: "Created agent could not be reloaded" } });
       }
@@ -351,7 +353,7 @@ app.put(
         await syncAgentMcps(existing.id, payload.mcpIds);
       }
 
-      const detail = await buildAgentDetail(existing.id, authCtx.organizationId);
+      const detail = await buildAgentDetail(authCtx, existing.id);
       if (!detail) {
         return error(500, { error: { code: "INTERNAL_ERROR", message: "Updated agent could not be reloaded" } });
       }

@@ -1,6 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
 import { DatePicker } from "../../components/ui/date-picker";
+
+mock.module("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => {
+      const map: Record<string, string> = {
+        "datePicker.placeholder": "选择日期",
+      };
+      return map[key] ?? key;
+    },
+  }),
+}));
 
 describe("DatePicker", () => {
   test("renders with default placeholder when no value", () => {

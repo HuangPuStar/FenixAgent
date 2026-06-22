@@ -46,8 +46,14 @@
   min-height: 0;
   overflow: hidden;
   padding: 12px;
-  gap: 12px;
   position: relative;
+}
+
+/* ResizablePanelGroup 占满 agent-panel-content，承载 chat + ArtifactsPanel 拖动布局 */
+.agent-panel-resizable {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* ---------- 左侧边栏 ---------- */
@@ -594,6 +600,8 @@
 .agent-chat-area {
   flex: 1;
   min-width: 0;
+  /* 在 ResizablePanel 内部填满高度，让 ChatPanel/ACPMain 自适应宽度 */
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -626,12 +634,17 @@
   pointer-events: none;
 }
 
-/* ---------- Artifacts 折叠展开按钮 ---------- */
+/* ---------- Artifacts 折叠展开按钮 ----------
+   按钮嵌入 ResizableHandle（Separator）内部作为 children，absolute 居中在手柄上。
+   - 手柄拖动：鼠标按下+移动触发 Separator 的 document-level mousedown listener 启动 resize
+   - toggle 切换：鼠标按下+松开（不移动）触发 button 的 click 事件
+   Separator 自身宽度仅 1px（命中区通过 after 伪元素扩展到 8px），按钮 28×56 absolute 定位
+   覆盖在手柄中央，向两侧各延伸 14px，既不阻挡 Separator 命中区又能提供更大点击区域。 */
 .agent-artifacts-expand-btn {
   position: absolute;
-  right: 12px;
+  left: 50%;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   width: 28px;
   height: 56px;
   display: flex;
@@ -640,8 +653,7 @@
   justify-content: center;
   gap: 2px;
   border: 1px solid var(--color-border-subtle);
-  border-right: none;
-  border-radius: 6px 0 0 6px;
+  border-radius: 6px;
   background: var(--color-surface-1);
   color: var(--color-text-muted);
   cursor: pointer;
@@ -649,7 +661,7 @@
     background 150ms,
     color 150ms,
     width 150ms;
-  z-index: 5;
+  z-index: 10;
   font-size: 10px;
   font-weight: 500;
   writing-mode: vertical-lr;
@@ -660,11 +672,6 @@
   background: var(--color-surface-2);
   color: var(--color-text-primary);
   width: 32px;
-}
-
-/* 展开时：按钮跟着 ArtifactsPanel 左边缘走（两栏 1:1 中间分界线） */
-.agent-artifacts-expand-btn.open {
-  right: calc(50% - 6px);
 }
 
 /* ---------- 拖拽分隔线 ---------- */

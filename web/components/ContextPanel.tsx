@@ -20,7 +20,7 @@ interface ContextPanelProps {
 export function ContextPanel({ entries, agentName, modelName, duration, collapsed, onToggle }: ContextPanelProps) {
   const { t } = useTranslation("components");
   const stats = useMemo(() => computeStats(entries), [entries]);
-  const displayAgentName = useMemo(() => simplifyDisplayName(agentName), [agentName]);
+  const displayAgentName = useMemo(() => simplifyDisplayName(agentName, t), [agentName, t]);
 
   return (
     <div className="relative flex shrink-0">
@@ -64,7 +64,9 @@ export function ContextPanel({ entries, agentName, modelName, duration, collapse
               <div className="text-[13px] font-semibold text-text-primary overflow-hidden text-ellipsis whitespace-nowrap">
                 {displayAgentName}
               </div>
-              <div className="text-[11px] text-text-muted mt-px font-mono">{modelName || "未知"}</div>
+              <div className="text-[11px] text-text-muted mt-px font-mono">
+                {modelName || t("contextPanel.unknownModel")}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-1.5 mt-2">
@@ -125,7 +127,7 @@ export function ContextPanel({ entries, agentName, modelName, duration, collapse
                 className="w-[5px] h-[5px] rounded-full inline-block"
                 style={{ background: "var(--color-brand)" }}
               />
-              输入{" "}
+              {t("contextPanel.input")}{" "}
               <span className="font-mono font-semibold text-text-secondary">
                 {formatTokenCount(stats.estimatedInputTokens)}
               </span>
@@ -135,7 +137,7 @@ export function ContextPanel({ entries, agentName, modelName, duration, collapse
                 className="w-[5px] h-[5px] rounded-full inline-block"
                 style={{ background: "var(--color-accent-green)" }}
               />
-              输出{" "}
+              {t("contextPanel.output")}{" "}
               <span className="font-mono font-semibold text-text-secondary">
                 {formatTokenCount(stats.estimatedOutputTokens)}
               </span>
@@ -269,8 +271,8 @@ function computeStats(entries: ThreadEntry[]) {
   };
 }
 
-function simplifyDisplayName(name?: string): string {
-  if (!name) return "默认";
+function simplifyDisplayName(name?: string, t?: (key: string) => string): string {
+  if (!name) return t?.("contextPanel.defaultSession") ?? "默认";
   if (name.startsWith("env_")) return name.length > 16 ? `${name.slice(0, 16)}…` : name;
   if (name.length > 20) return `${name.slice(0, 18)}…`;
   return name;

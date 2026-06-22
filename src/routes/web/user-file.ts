@@ -40,9 +40,14 @@ const app = new Elysia({ name: "web-user-file", prefix: "/environments" }).use(a
   "batch-delete-response": BatchDeleteResponseSchema,
 });
 
-async function requireEnv(envId: string, orgId: string, errorFn: (status: number, body: unknown) => Response) {
+async function requireEnv(
+  envId: string,
+  orgId: string,
+  userId: string,
+  errorFn: (status: number, body: unknown) => Response,
+) {
   try {
-    return await getOwnedEnvironment(envId, orgId);
+    return await getOwnedEnvironment(envId, orgId, userId);
   } catch (e) {
     if (e instanceof NotFoundError) {
       return errorFn(404, { error: { type: "not_found", message: "环境不存在" } });
@@ -56,7 +61,8 @@ app.get(
   "/:id/user-file/tree",
   async ({ store, params, error }) => {
     const authCtx = store.authContext!;
-    const env = await requireEnv(params.id, authCtx.organizationId, error);
+    const user = store.user!;
+    const env = await requireEnv(params.id, authCtx.organizationId, user.id, error);
     if (env instanceof Response) return env;
 
     const machineId = await getRemoteMachineId(params.id);
@@ -95,7 +101,8 @@ app.post(
   "/:id/user-file/rename",
   async ({ store, params, body, error }) => {
     const authCtx = store.authContext!;
-    await requireEnv(params.id, authCtx.organizationId, error);
+    const user = store.user!;
+    await requireEnv(params.id, authCtx.organizationId, user.id, error);
     const { oldPath, newPath } = body as { oldPath: string; newPath: string };
 
     const machineId = await getRemoteMachineId(params.id);
@@ -145,7 +152,8 @@ app.post(
   "/:id/user-file/mkdir",
   async ({ store, params, body, error }) => {
     const authCtx = store.authContext!;
-    await requireEnv(params.id, authCtx.organizationId, error);
+    const user = store.user!;
+    await requireEnv(params.id, authCtx.organizationId, user.id, error);
     const { path } = body as { path: string };
 
     const machineId = await getRemoteMachineId(params.id);
@@ -186,7 +194,8 @@ app.delete(
   "/:id/user-file/batch",
   async ({ store, params, body, error }) => {
     const authCtx = store.authContext!;
-    await requireEnv(params.id, authCtx.organizationId, error);
+    const user = store.user!;
+    await requireEnv(params.id, authCtx.organizationId, user.id, error);
     const { paths } = body as { paths: string[] };
 
     const machineId = await getRemoteMachineId(params.id);
@@ -251,7 +260,8 @@ app.get(
   "/:id/user-file/download-zip",
   async ({ store, params, query, error, set }) => {
     const authCtx = store.authContext!;
-    const env = await requireEnv(params.id, authCtx.organizationId, error);
+    const user = store.user!;
+    const env = await requireEnv(params.id, authCtx.organizationId, user.id, error);
     if (env instanceof Response) return env;
 
     const machineId = await getRemoteMachineId(params.id);

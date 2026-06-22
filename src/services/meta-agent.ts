@@ -69,12 +69,22 @@ export interface EnsureMetaResult {
   apiKey?: string;
 }
 
-/** 从环境列表中查找名为 meta-agent 的环境 */
+/**
+ * 从环境列表中查找当前用户在当前组织下的 meta-agent 环境。
+ *
+ * 必须按 (organizationId, userId, name) 三元组定位——meta env 是
+ * 用户维度隔离的：同组织其他成员创建的 meta env 不复用，否则会被
+ * `src/routes/acp/index.ts` 的 forbiddenSharedRuntime 校验拒绝（env
+ * 绑定了 agentConfig 且 env.userId !== 当前用户），导致 WS 反复
+ * Upgrade rejected 4003 → ACP 自动重连 → 前端"不断刷新"。
+ *
+ * 运行时 workspace 已由 relay-handler 按当前请求用户解析，所以
+ * 用户维度隔离是干净的；这里只是把"查找"也按用户维度收敛。
+ */
 export async function findMetaEnvironment(ctx: AuthContext): Promise<{ id: string; name: string } | null> {
-  const { listEnvironmentsWithInstances } = await import("./environment-web");
-  const envs = await listEnvironmentsWithInstances(ctx.organizationId);
-  // biome-ignore lint/suspicious/noExplicitAny: environment list items have dynamic shape
-  const meta = envs.find((e: any) => e.name === META_ENVIRONMENT_NAME);
+  const { environmentRepo } = await import("../repositories/environment");
+  const envs = await environmentRepo.listByOrganizationId(ctx.organizationId);
+  const meta = envs.find((e) => e.name === META_ENVIRONMENT_NAME && e.userId === ctx.userId);
   return meta ? { id: meta.id, name: meta.name } : null;
 }
 
@@ -86,9 +96,7 @@ async function resolveDefaultMetaModelRef(ctx: AuthContext): Promise<string | nu
     const detail = await getProvider(ctx, providerKey);
     const firstModel = detail?.models?.[0];
     if (!firstModel) continue;
-    return provider.resourceAccess?.ownership === "external"
-      ? `${provider.resourceAccess.resourceKey}/${firstModel.modelId}`
-      : `${provider.name}/${firstModel.modelId}`;
+    return firstModel.id; // 返回 model UUID，运行时通过 modelId FK 直接定位
   }
   return null;
 }
@@ -276,7 +284,7 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     const defaultModelRef = await resolveDefaultMetaModelRef(ctx);
     await createAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
       description: "Meta Agent — 工作流编排助手",
-      model: defaultModelRef,
+      modelId: defaultModelRef,
       prompt: null,
     });
     agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
@@ -291,7 +299,7 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     if (defaultModelRef) {
       log(`[meta-agent] Auto-filling empty model for meta AgentConfig: ${defaultModelRef}`);
       await updateAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
-        model: defaultModelRef,
+        modelId: defaultModelRef,
       });
     } else {
       log(`[meta-agent] No provider/model available to auto-fill meta AgentConfig model`);
@@ -359,10 +367,10 @@ async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<str
 export async function ensureMetaEnvironment(ctx: AuthContext, request: Request): Promise<EnsureMetaResult> {
   const agentConfigId = await ensureMetaConfig(ctx);
   const apiKey = await ensureMetaApiKey(ctx, request.headers);
-  // meta-agent 是组织内共享的 environment（名为 meta-agent），
-  // environment 记录中的 userId/organizationId 是创建者的信息，与"当前请求者"不一定一致。
-  // 这里通过 extraEnv 覆盖 instance.ts 的默认值，把当前 ctx 的 user/org 注入进程环境变量，
-  // 让 meta agent 在回调平台 API 时能定位到正确的用户与组织上下文。
+  // meta env 按 (organizationId, userId, name="meta-agent") 三元组隔离：
+  // 每个用户有自己的 runtime environment，避免触发 acp/index.ts 的 forbiddenSharedRuntime
+  // 校验（env 绑定 agentConfig 且 env.userId !== 当前用户 → 4003 → 前端反复重连刷新）。
+  // extraEnv 把当前 ctx 的 user/org 注入进程环境变量，meta agent 回调平台 API 时定位到正确上下文。
   const extraEnv: Record<string, string> = {
     USER_META_API_KEY: apiKey,
     USER_META_USER_ID: ctx.userId,

@@ -1,4 +1,5 @@
 import { Check, ShieldAlert, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { PendingPermission } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
@@ -37,6 +38,7 @@ interface PermissionCardProps {
 }
 
 function PermissionCard({ request, onRespond }: PermissionCardProps) {
+  const { t } = useTranslation("components");
   return (
     <div className="flex items-center gap-3 rounded-xl border border-warning-border/30 bg-warning-bg/50 px-4 py-3">
       <ShieldAlert className="h-5 w-5 text-warning-text flex-shrink-0" />
@@ -53,7 +55,7 @@ function PermissionCard({ request, onRespond }: PermissionCardProps) {
           className="h-8 px-3 bg-brand text-white text-xs font-medium hover:bg-brand-light gap-1.5"
         >
           <Check className="h-3.5 w-3.5" />
-          允许
+          {t("permissionPanel.allow")}
         </Button>
         <Button
           variant="outline"
@@ -62,7 +64,7 @@ function PermissionCard({ request, onRespond }: PermissionCardProps) {
           className="h-8 px-3 border-warning-border/30 text-warning-text text-xs font-medium hover:bg-warning-bg gap-1.5"
         >
           <X className="h-3.5 w-3.5" />
-          拒绝
+          {t("permissionPanel.deny")}
         </Button>
       </div>
     </div>

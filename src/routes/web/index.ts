@@ -13,19 +13,14 @@ import webKnowledgeBases from "./knowledge-bases";
 import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
 import webRegistry from "./registry";
-import webS3Files from "./s3-files";
 import webSessions from "./sessions";
 import webSkills from "./skills";
 import webTasks from "./tasks";
 import webUserFile from "./user-file";
-import webWorkflowBoards from "./workflow-boards";
 import webWorkflowDefs from "./workflow-defs";
 import webWorkflowEngine from "./workflow-engine";
-import webWorkflowJobs from "./workflow-jobs";
-import webWorkflowJobsLogs from "./workflow-jobs-logs";
-import webWorkflowJobsSse from "./workflow-jobs-sse";
+import { workflowRunsRoutes } from "./workflow-runs";
 import webWorkflowSse from "./workflow-sse";
-import webWorkflowStats from "./workflow-stats";
 
 const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webBranding)
@@ -39,7 +34,6 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webKnowledgeBases)
   .use(webMetaAgent)
   .use(webOrganizations)
-  .use(webS3Files)
   .use(webSessions)
   .use(webSkills)
   .use(webTasks)
@@ -48,12 +42,8 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webRegistry)
   .use(webWorkflowDefs)
   .use(webWorkflowEngine)
-  .use(webWorkflowJobs)
-  .use(webWorkflowJobsSse)
-  .use(webWorkflowJobsLogs)
-  .use(webWorkflowStats)
-  .use(webWorkflowBoards)
   .use(webWorkflowSse)
+  .use(workflowRunsRoutes)
   .use(webAgentGeneration);
 
 export default webApp;

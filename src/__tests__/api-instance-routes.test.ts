@@ -20,7 +20,7 @@ describe("API Instance Routes", () => {
     setApiInstanceDeps({
       listEnvironmentsByOrganizationId: async () => [],
       groupActiveInstancesByEnvironment: () => new Map(),
-      getAgentConfigById: async () => null as any,
+      getReadableAgentConfigById: async () => null,
       createWebEnvironment: async () => {
         throw new Error("not stubbed");
       },
@@ -37,16 +37,16 @@ describe("API Instance Routes", () => {
     setTestOrgContext(null);
   });
 
-  // connect 接口应在缺少环境时自动创建环境并启动实例，再返回 ACP relay 入口。
+  // connect 接口应支持外部共享 Agent，并为当前用户创建独立 runtime environment。
   testConnectRoute(
-    "POST /api/agents/:agentConfigId/instances/connect creates environment and returns relay",
+    "POST /api/agents/:agentConfigId/instances/connect creates user runtime for shared agent",
     async () => {
       setApiInstanceDeps({
-        getAgentConfigById: async () =>
+        getReadableAgentConfigById: async () =>
           ({
             id: "agc-demo",
-            organizationId: "org-1",
-            userId: "user-1",
+            organizationId: "org-2",
+            userId: "user-2",
             name: "Demo Agent",
             description: "demo",
             prompt: null,

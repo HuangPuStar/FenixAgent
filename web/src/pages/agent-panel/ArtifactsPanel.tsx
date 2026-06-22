@@ -15,7 +15,6 @@ import { cn } from "../../lib/utils";
 const MAX_OPEN_FILES = 8;
 
 interface ArtifactsPanelProps {
-  collapsed: boolean;
   envId: string | null;
   /** 本次会话中被 Agent 修改的文件列表，已去重排序，含操作类型 */
   changedFiles?: ChangedFile[];
@@ -34,22 +33,16 @@ interface ArtifactsPanelProps {
  * ArtifactsPanel 把 `<FileTreeTab ref={fileTreeRef}>` 作为 ReactNode 交给 FileTabsBar
  * 渲染到 PopoverContent 内，ref 仍由 ArtifactsPanel 持有以便上传等命令式调用。
  */
-export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ envId, changedFiles = [] }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
 
   // 打开的文件列表（LRU 顺序：最前为最新打开），上限 MAX_OPEN_FILES
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   // 当前激活文件，控制 PreviewTab 展示内容
   const [activeFile, setActiveFile] = useState<string | null>(null);
-  // 文件树是否展开（默认 false，由顶部 PanelLeft 按钮切换）
-  // 当没有任何打开的文件时自动展开文件树，引导用户选择
+  // 文件树是否展开（默认 false，由顶部 FilesIcon 按钮切换）
+  // 改进：不再因为 openFiles 为空就自动展开，避免初始抢占主区域；用户需要时手动点开
   const [fileTreeOpen, setFileTreeOpen] = useState(false);
-
-  useEffect(() => {
-    if (openFiles.length === 0 && !fileTreeOpen) {
-      setFileTreeOpen(true);
-    }
-  }, [openFiles.length, fileTreeOpen]);
 
   // 拖拽上传遮罩状态
   const [isDragging, setIsDragging] = useState(false);
@@ -160,15 +153,11 @@ export function ArtifactsPanel({ collapsed, envId, changedFiles = [] }: Artifact
     [t],
   );
 
-  if (collapsed) {
-    return null;
-  }
-
   return (
-    // flex-1：与左侧 .agent-chat-area（flex:1）均分父容器宽度，形成 1:1 布局；
-    // collapsed 时本组件直接 return null，chat-area 自然占满整行
+    // h-full + min-w-0：填满外层 ResizablePanel 的宽高，避免内容溢出导致拖动布局错位。
+    // 由外层 chat 路由的 ResizablePanel collapsible 控制可见性，这里不再处理折叠态。
     <div
-      className="relative flex flex-1 flex-col bg-surface-1 rounded-xl border border-border/75"
+      className="relative flex h-full min-w-0 flex-col bg-surface-1 rounded-xl border border-border/75"
       style={{ boxShadow: "var(--shadow-card)" }}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}

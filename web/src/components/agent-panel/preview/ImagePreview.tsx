@@ -69,7 +69,7 @@ export function ImagePreview({ envId, filePath }: ImagePreviewProps) {
           onClick={zoomOut}
           disabled={zoom <= 0.125}
           className="h-7 w-7 flex items-center justify-center rounded hover:bg-surface-2 disabled:opacity-30"
-          title="缩小"
+          title={t("imagePreview.zoomOut")}
         >
           <Minus className="h-4 w-4" />
         </button>
@@ -79,7 +79,7 @@ export function ImagePreview({ envId, filePath }: ImagePreviewProps) {
           onClick={zoomIn}
           disabled={zoom >= 5}
           className="h-7 w-7 flex items-center justify-center rounded hover:bg-surface-2 disabled:opacity-30"
-          title="放大"
+          title={t("imagePreview.zoomIn")}
         >
           <Plus className="h-4 w-4" />
         </button>
@@ -87,7 +87,7 @@ export function ImagePreview({ envId, filePath }: ImagePreviewProps) {
           type="button"
           onClick={resetZoom}
           className="h-7 w-7 flex items-center justify-center rounded hover:bg-surface-2"
-          title="还原"
+          title={t("imagePreview.reset")}
         >
           <RotateCw className="h-3.5 w-3.5" />
         </button>

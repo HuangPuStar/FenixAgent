@@ -2,7 +2,12 @@ import * as z from "zod/v4";
 
 const JsonObjectSchema = z.record(z.string(), z.unknown()).describe("任意 JSON 对象。");
 const JsonArraySchema = z.array(z.unknown()).describe("任意 JSON 数组。");
-const IsoDateTimeSchema = z.string().describe("时间值，通常为 ISO 8601 字符串。");
+// Drizzle 查询返回的 Date 对象需要序列化为 ISO 字符串才能通过校验；
+// preprocess 把 Date 转 ISO 字符串后，外层只剩 union(string, number)，
+// 既兼容 Drizzle 的 Date 输入，又保证 OpenAPI 文档只暴露 string/number。
+const IsoDateTimeSchema = z
+  .preprocess((v) => (v instanceof Date ? v.toISOString() : v), z.union([z.string(), z.number()]))
+  .describe("时间值，ISO 8601 字符串或时间戳。");
 
 /** 通用成功响应工厂 */
 const WorkflowSuccessSchema = <T extends z.ZodTypeAny>(data: T) =>
@@ -16,7 +21,8 @@ export const WorkflowVoidSuccessSchema = z
   .object({
     success: z.literal(true).describe("请求是否成功。"),
   })
-  .describe("工作流接口通用成功响应。");
+  .strict()
+  .describe("工作流接口通用成功响应（无 data 字段）。");
 
 /** 工作流定义基础信息 */
 export const WorkflowDefSchema = z
@@ -180,10 +186,13 @@ export const WorkflowDefsActionRequestSchema = z
   .describe("工作流定义接口的 action 分发请求体。");
 
 /** workflow-defs 响应 */
+
+// ⚠️ 变体顺序敏感：WorkflowDefDetailSchema（含 draftYaml）必须排在 WorkflowDefSchema 前，
+// 否则 get action 返回的 { ...wf, draftYaml } 会被 Zod strip 模式默认剥离未知键。
 export const WorkflowDefsActionResponseSchema = z
   .union([
-    WorkflowSuccessSchema(WorkflowDefSchema),
     WorkflowSuccessSchema(WorkflowDefDetailSchema),
+    WorkflowSuccessSchema(WorkflowDefSchema),
     WorkflowSuccessSchema(WorkflowDefSchema.array()),
     WorkflowSuccessSchema(WorkflowVersionSchema),
     WorkflowSuccessSchema(WorkflowVersionSchema.array()),
@@ -320,14 +329,20 @@ export const WorkflowEngineActionRequestSchema = z
   .discriminatedUnion("action", [
     z.object({
       action: z.literal("run").describe("执行工作流。"),
-      yaml: z.string().describe("待执行的工作流 YAML。"),
+      yaml: z.string().optional().describe("待执行的工作流 YAML；与 workflowId 二选一。"),
       params: JsonObjectSchema.optional().describe("运行参数。"),
-      workflowId: z.string().optional().describe("可选工作流 ID，用于事件归档。"),
+      workflowId: z
+        .string()
+        .optional()
+        .describe("可选工作流 ID；传入后从最新发布版本（latestVersion ?? 0）读取 YAML，用于事件归档。"),
     }),
     z.object({
       action: z.literal("dryRun").describe("对工作流进行干运行校验。"),
-      yaml: z.string().describe("待校验的工作流 YAML。"),
-      workflowId: z.string().optional().describe("可选工作流 ID，用于发布干运行事件。"),
+      yaml: z.string().optional().describe("待校验的工作流 YAML；与 workflowId 二选一。"),
+      workflowId: z
+        .string()
+        .optional()
+        .describe("可选工作流 ID；传入后从最新发布版本（latestVersion ?? 0）读取 YAML，用于发布干运行事件。"),
     }),
     z.object({
       action: z.literal("cancel").describe("取消运行。"),
@@ -361,9 +376,6 @@ export const WorkflowEngineActionRequestSchema = z
       runId: z.string().describe("运行 ID。"),
     }),
     z.object({
-      action: z.literal("listRuns").describe("列出运行记录。"),
-    }),
-    z.object({
       action: z.literal("recover").describe("从快照恢复运行。"),
       runId: z.string().describe("运行 ID。"),
       yaml: z.string().describe("恢复时使用的工作流 YAML。"),
@@ -387,197 +399,10 @@ export const WorkflowEngineActionResponseSchema = z
     WorkflowSuccessSchema(WorkflowDagEventSchema.array().describe("运行事件列表。")),
     WorkflowSuccessSchema(WorkflowNodeOutputSchema.nullable().describe("节点输出；尚未产生时为 null。")),
     WorkflowSuccessSchema(WorkflowPendingApprovalSchema.array().describe("待审批节点列表。")),
-    WorkflowSuccessSchema(WorkflowRunSummarySchema.array().describe("运行摘要列表。")),
     WorkflowSuccessSchema(WorkflowDagRunResultSchema),
     WorkflowVoidSuccessSchema,
   ])
   .describe("工作流引擎接口的可能成功响应。");
-
-/** 看板 Job 基础信息 */
-export const WorkflowJobSchema = z
-  .object({
-    id: z.string().describe("Job ID。"),
-    boardId: z.string().describe("所属看板 ID。"),
-    organizationId: z.string().describe("所属组织 ID。"),
-    userId: z.string().describe("创建者用户 ID。"),
-    workflowId: z.string().describe("绑定的工作流 ID。"),
-    version: z.number().describe("绑定的工作流版本号。"),
-    params: JsonObjectSchema.nullable().describe("Job 运行参数；未设置时为 null。"),
-    status: z.string().describe("Job 当前状态，例如 ready、running、suspended、completed。"),
-    lastRunId: z.string().nullable().describe("最近一次运行 ID；未执行时为 null。"),
-    lastDagStatus: z.string().nullable().describe("最近一次 DAG 运行状态；未执行时为 null。"),
-    runCount: z.number().describe("已运行次数。"),
-    createdAt: IsoDateTimeSchema,
-    updatedAt: IsoDateTimeSchema,
-  })
-  .describe("工作流看板 Job 信息。");
-
-/** Job 列表项 */
-export const WorkflowJobListItemSchema = WorkflowJobSchema.extend({
-  workflowName: z.string().describe("工作流名称。"),
-  userName: z.string().nullable().describe("创建者用户名；不可用时为 null。"),
-}).describe("工作流看板 Job 列表项。");
-
-/** Job 运行返回数据 */
-export const WorkflowJobRunResultSchema = z
-  .object({
-    runId: z.string().describe("触发后的运行 ID。"),
-  })
-  .describe("触发 Job 运行后的返回数据。");
-
-/** Job 节点输出项 */
-export const WorkflowJobOutputItemSchema = z
-  .object({
-    nodeId: z.string().describe("节点 ID。"),
-    nodeType: z.string().nullable().describe("节点类型；未知时为 null。"),
-    stdout: z.string().describe("节点标准输出。"),
-    json: z.unknown().nullable().describe("节点结构化输出；没有时为 null。"),
-    exitCode: z.number().describe("节点退出码。"),
-    status: z.string().describe("节点输出对应的执行状态。"),
-    startedAt: z.string().nullable().describe("节点开始时间；未知时为 null。"),
-    completedAt: z.string().nullable().describe("节点完成时间；未知时为 null。"),
-  })
-  .describe("Job 节点输出摘要。");
-
-/** workflow-jobs 请求体 */
-export const WorkflowJobsActionRequestSchema = z
-  .discriminatedUnion("action", [
-    z.object({
-      action: z.literal("create").describe("创建 Job。"),
-      workflowId: z.string().describe("工作流 ID。"),
-      boardId: z.string().describe("看板 ID。"),
-      params: JsonObjectSchema.optional().describe("Job 初始运行参数。"),
-    }),
-    z.object({
-      action: z.literal("list").describe("获取 Job 列表。"),
-      boardId: z.string().optional().describe("可选看板 ID；传入后仅查询该看板。"),
-    }),
-    z.object({
-      action: z.literal("get").describe("获取单个 Job。"),
-      jobId: z.string().describe("Job ID。"),
-    }),
-    z.object({
-      action: z.literal("updateParams").describe("更新 Job 参数。"),
-      jobId: z.string().describe("Job ID。"),
-      params: JsonObjectSchema.describe("新的参数对象。"),
-    }),
-    z.object({
-      action: z.literal("delete").describe("删除 Job。"),
-      jobId: z.string().describe("Job ID。"),
-    }),
-    z.object({
-      action: z.literal("run").describe("运行 Job。"),
-      jobId: z.string().describe("Job ID。"),
-    }),
-    z.object({
-      action: z.literal("cancel").describe("取消 Job 当前运行。"),
-      jobId: z.string().describe("Job ID。"),
-    }),
-    z.object({
-      action: z.literal("getPendingApprovals").describe("获取 Job 当前运行的待审批节点。"),
-      jobId: z.string().describe("Job ID。"),
-    }),
-    z.object({
-      action: z.literal("approve").describe("审批通过 Job 的挂起节点。"),
-      jobId: z.string().describe("Job ID。"),
-      nodeId: z.string().describe("节点 ID。"),
-      token: z.string().describe("审批 token。"),
-      data: z.unknown().optional().describe("审批附加数据。"),
-    }),
-    z.object({
-      action: z.literal("getOutputs").describe("获取 Job 当前运行的节点输出列表。"),
-      jobId: z.string().describe("Job ID。"),
-    }),
-  ])
-  .describe("工作流 Job 接口的 action 分发请求体。");
-
-/** workflow-jobs 响应 */
-export const WorkflowJobsActionResponseSchema = z
-  .union([
-    WorkflowSuccessSchema(WorkflowJobSchema),
-    WorkflowSuccessSchema(WorkflowJobListItemSchema.array()),
-    WorkflowSuccessSchema(WorkflowJobRunResultSchema),
-    WorkflowSuccessSchema(WorkflowPendingApprovalSchema.array()),
-    WorkflowSuccessSchema(WorkflowJobOutputItemSchema.array()),
-    WorkflowVoidSuccessSchema,
-  ])
-  .describe("工作流 Job 接口的可能成功响应。");
-
-/** 工作流统计概览 */
-export const WorkflowStatsOverviewSchema = z
-  .object({
-    totalRuns: z.number().describe("统计范围内的总运行数。"),
-    successRuns: z.number().describe("成功运行数。"),
-    failedRuns: z.number().describe("失败、错误或取消的运行数。"),
-    successRate: z.number().describe("成功率，百分比。"),
-    avgDurationMs: z.number().describe("平均运行耗时，单位毫秒。"),
-    totalInputTokens: z.number().describe("输入 Token 总量。"),
-    totalOutputTokens: z.number().describe("输出 Token 总量。"),
-  })
-  .describe("工作流统计概览。");
-
-/** 按天统计的运行趋势 */
-export const WorkflowStatsDailyCountSchema = z
-  .object({
-    date: z.string().describe("日期，格式通常为 YYYY-MM-DD。"),
-    success: z.number().describe("当日成功运行数。"),
-    failed: z.number().describe("当日失败运行数。"),
-  })
-  .describe("按天统计的工作流运行趋势项。");
-
-/** 按天统计的 Token 消耗 */
-export const WorkflowStatsTokenDailySchema = z
-  .object({
-    date: z.string().describe("日期，格式通常为 YYYY-MM-DD。"),
-    inputTokens: z.number().describe("当日输入 Token 数。"),
-    outputTokens: z.number().describe("当日输出 Token 数。"),
-  })
-  .describe("按天统计的 Token 消耗项。");
-
-/** 最近失败运行 */
-export const WorkflowFailedRunSchema = z
-  .object({
-    runId: z.string().describe("运行 ID。"),
-    workflowId: z.string().describe("工作流 ID。"),
-    workflowName: z.string().describe("工作流名称。"),
-    dagStatus: z.string().describe("终态状态。"),
-    startedAt: z.string().describe("开始时间。"),
-    completedAt: z.string().nullable().describe("结束时间；仍不可用时为 null。"),
-    durationMs: z.number().nullable().describe("运行耗时，单位毫秒；不可计算时为 null。"),
-  })
-  .describe("最近失败的工作流运行记录。");
-
-/** workflow-stats 请求体 */
-export const WorkflowStatsActionRequestSchema = z
-  .discriminatedUnion("action", [
-    z.object({
-      action: z.literal("overview").describe("获取统计概览。"),
-      range: z.string().optional().describe("统计范围；常用值为 7d、30d，其他值按默认策略处理。"),
-    }),
-    z.object({
-      action: z.literal("trend").describe("获取按天运行趋势。"),
-      range: z.string().optional().describe("统计范围；常用值为 7d、30d，其他值按默认策略处理。"),
-    }),
-    z.object({
-      action: z.literal("tokens").describe("获取按天 Token 消耗。"),
-      range: z.string().optional().describe("统计范围；常用值为 7d、30d，其他值按默认策略处理。"),
-    }),
-    z.object({
-      action: z.literal("failedRuns").describe("获取最近失败运行列表。"),
-      range: z.string().optional().describe("保留字段；当前主要按默认逻辑返回。"),
-    }),
-  ])
-  .describe("工作流统计接口的 action 分发请求体。");
-
-/** workflow-stats 响应 */
-export const WorkflowStatsActionResponseSchema = z
-  .union([
-    WorkflowSuccessSchema(WorkflowStatsOverviewSchema),
-    WorkflowSuccessSchema(WorkflowStatsDailyCountSchema.array()),
-    WorkflowSuccessSchema(WorkflowStatsTokenDailySchema.array()),
-    WorkflowSuccessSchema(WorkflowFailedRunSchema.array()),
-  ])
-  .describe("工作流统计接口的可能成功响应。");
 
 /** SSE fromSeqNum 查询参数 */
 export const WorkflowEventStreamQuerySchema = z
@@ -593,13 +418,6 @@ export const WorkflowEventStreamParamsSchema = z
   })
   .describe("工作流 SSE 事件流路径参数。");
 
-/** workflow-jobs/:jobId/logs 路径参数 */
-export const WorkflowJobLogsParamsSchema = z
-  .object({
-    jobId: z.string().describe("Job ID。"),
-  })
-  .describe("工作流 Job 日志流路径参数。");
-
 /** 工作流 SSE 事件负载 */
 export const WorkflowStreamEventPayloadSchema = z
   .object({
@@ -608,12 +426,3 @@ export const WorkflowStreamEventPayloadSchema = z
   })
   .catchall(z.unknown())
   .describe("工作流 SSE 事件负载。");
-
-/** 看板 SSE 事件负载 */
-export const WorkflowJobStreamEventPayloadSchema = z
-  .object({
-    type: z.string().describe("事件类型。"),
-    jobId: z.string().describe("关联 Job ID。"),
-  })
-  .catchall(z.unknown())
-  .describe("看板 Job SSE 事件负载。");

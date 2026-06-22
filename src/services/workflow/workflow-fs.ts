@@ -3,6 +3,9 @@
  *
  * 所有工作流 YAML 文件存储在 <cwd>/.agents/workflows/<workflowId>/ 下。
  * 按项目目录隔离，不需要 organizationId 层级。
+ *
+ * 注意：readYamlFile 使用 Bun.file() 作为主读取路径，避免 node:fs/promises
+ * 在 Bun 运行时下的同步/异步不一致问题。fallback 到 node:fs/promises readFile。
  */
 
 import { existsSync } from "node:fs";
@@ -28,11 +31,36 @@ export async function writeYamlFile(dir: string, fileName: string, content: stri
   await writeFile(join(dir, fileName), content, "utf-8");
 }
 
-/** 读取 YAML 文件，不存在返回 null */
+/** 读取 YAML 文件，不存在或读取失败返回 null。
+ *
+ * 优先使用 Bun.file() 原生 API（避免 node:fs/promises 在 Bun 下的潜在不一致），
+ * 失败时 fallback 到 node:fs/promises readFile。
+ */
 export async function readYamlFile(dir: string, fileName: string): Promise<string | null> {
   const filePath = join(dir, fileName);
-  if (!existsSync(filePath)) return null;
-  return readFile(filePath, "utf-8");
+
+  // 主路径：Bun 原生文件 API
+  try {
+    const file = Bun.file(filePath);
+    // size 为 0 可能是空文件或不存在，用 exists() 区分
+    if (!(await file.exists())) return null;
+    return await file.text();
+  } catch (err) {
+    console.warn(`[workflow-fs] Bun.file() failed for ${filePath}: ${(err as Error).message}`);
+  }
+
+  // fallback：node:fs/promises
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT") {
+      return null;
+    }
+    // 非 ENOENT 的错误打印完整堆栈以便排查
+    console.error(`[workflow-fs] readFile failed for ${filePath}:`, err);
+    return null;
+  }
 }
 
 /**

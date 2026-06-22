@@ -39,5 +39,17 @@
   "noAccount": "Don't have an account?",
   "signUpFailed": "Sign up failed",
   "signInFailed": "Sign in failed",
-  "unknownError": "Unknown error"
+  "unknownError": "Unknown error",
+  "showPassword": "Show password",
+  "hidePassword": "Hide password",
+  "features": {
+    "orchestration": "Intelligent Orchestration",
+    "orchestrationDesc": "Multi-agent collaborative scheduling",
+    "security": "Secure & Reliable",
+    "securityDesc": "Enterprise-grade data security",
+    "conversation": "Conversational AI",
+    "conversationDesc": "Multimodal natural language interaction",
+    "organization": "Org Management",
+    "organizationDesc": "Team collaboration & access control"
+  }
 }
