@@ -5,22 +5,8 @@ import { AGENT_SETTABLE_FIELDS, validateAgentData } from "../services/config/age
 describe("buildSetFromData 字段映射", () => {
   // AGENT_SETTABLE_FIELDS 包含所有可写字段
   test("AGENT_SETTABLE_FIELDS 覆盖所有已知字段", () => {
-    const fields = [
-      "model",
-      "prompt",
-      "steps",
-      "mode",
-      "permission",
-      "variant",
-      "temperature",
-      "topP",
-      "top_p",
-      "disable",
-      "hidden",
-      "color",
-      "description",
-      "knowledge",
-    ];
+    // 当前白名单字段（steps/mode/permission/variant/temperature/topP/top_p/disable/hidden/color 等已迁移到 extra JSONB）
+    const fields = ["model", "modelId", "prompt", "description", "extra", "machineId", "knowledge", "engineType"];
     for (const f of fields) {
       expect((AGENT_SETTABLE_FIELDS as readonly string[]).includes(f)).toBe(true);
     }

@@ -71,6 +71,8 @@ export interface ServerConfig {
   agentType?: AgentType;
   /** 支持的引擎类型列表，注册时上报给 RCS */
   supportedEngineTypes?: { type: string; cliPath?: string }[];
+  /** 用户指定的机器显示名称，可选 */
+  name?: string;
 }
 
 export interface AcpServerHandle {
@@ -177,6 +179,7 @@ export function buildRegisterMessage(config: ServerConfig, nodeId?: string | nul
   const msg: Record<string, unknown> = {
     type: "register",
     agent_name: config.command,
+    name: config.name ?? null,
     max_sessions: 5,
     capabilities: { streaming: true },
     machine_info: {
