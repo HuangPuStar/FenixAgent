@@ -2,19 +2,6 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
 
 services:
-    rcs-migrate:
-        # image: ghcr.io/huangpustar/fenixagent:main
-        build:
-            context: .
-            dockerfile: Dockerfile
-            target: migrate
-        depends_on:
-            postgres:
-                condition: service_healthy
-        environment:
-            DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
-        command: ["bun", "migrate.js"]
-
     rcs:
         # image: ghcr.io/huangpustar/fenixagent:main
         build:
@@ -26,29 +13,36 @@ services:
                 condition: service_started
             postgres:
                 condition: service_healthy
-            rcs-migrate:
-                condition: service_completed_successfully
         ports:
             - "3001:3000"
         environment:
+            LOG_FORMAT: json
             RCS_HOST: 0.0.0.0
             RCS_PORT: 3000
+            # 使用模版创建 Agent 功能需要如下环境变量
+            # OPENAI_API_KEY: 
+            # OPENAI_BASE_URL: https://api.deepseek.com/v1/
+            # OPENAI_MODEL: deepseek-v4-flash
             RCS_BASE_URL: http://localhost:3000
             RCS_API_KEYS: ${RCS_API_KEYS:-}
+            REGISTRY_SECRET: "340b6908-031d-47de-9cfb-26f75818f969"
             DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
             ACPX_G_URL: http://localhost:8848
-            RAGFLOW_API_URL: "http://ragflow:9380"
-            RAGFLOW_API_KEY: "${RAGFLOW_API_KEY:-}"
             APP_BRAND_NAME: ${APP_BRAND_NAME:-Fenix}
             APP_LOGO_PATH: ${APP_LOGO_PATH:-}
             OPENCODE_DISABLE_AUTOUPDATE: "1"
             OPENCODE_DISABLE_TELEMETRY: "1"
+            # 使用 RAG 功能需要额外启动 RAGFLOW 并添加如下环境变量
+            # RAGFLOW_API_URL: "http://ragflow:9380"
+            # RAGFLOW_API_KEY: "${RAGFLOW_API_KEY:-}"
         volumes:
             - rcs-opencode-config:/root/.config/opencode
             - rcs-opencode-data:/root/.local/share/opencode
             - ./data:/app/data
             - ./workflow:/app/workflow
             - ./workspaces:/app/workspaces
+        # 在主进程启动前先完成数据库迁移
+        command: ["sh", "-lc", "bun migrate.js && exec bun dist/index.js"]
         healthcheck:
             test:
                 [
