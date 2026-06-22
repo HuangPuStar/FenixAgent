@@ -36,7 +36,6 @@ export function AgentKnowledgeBasesPage() {
   const [uploading, setUploading] = useState(false);
   const [deletingResourceId, setDeletingResourceId] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
-  const [formSlug, setFormSlug] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [editingItem, setEditingItem] = useState<KnowledgeBaseInfo | null>(null);
 
@@ -81,7 +80,6 @@ export function AgentKnowledgeBasesPage() {
   const handleCreate = () => {
     setEditingItem(null);
     setFormName("");
-    setFormSlug("");
     setFormDescription("");
     setDialogOpen(true);
   };
@@ -95,7 +93,6 @@ export function AgentKnowledgeBasesPage() {
     try {
       const payload = {
         name: formName.trim(),
-        slug: formSlug.trim() || undefined,
         description: formDescription.trim() || undefined,
       };
       if (editingItem) {
@@ -253,7 +250,6 @@ export function AgentKnowledgeBasesPage() {
                     onClick={() => {
                       setEditingItem(items.find((i) => i.id === selectedId) ?? null);
                       setFormName(selectedDetail.name);
-                      setFormSlug(selectedDetail.slug ?? "");
                       setFormDescription(selectedDetail.description ?? "");
                       setDialogOpen(true);
                     }}
@@ -339,10 +335,6 @@ export function AgentKnowledgeBasesPage() {
           <div>
             <Label>{t("form.name")}</Label>
             <Input value={formName} onChange={(e) => setFormName(e.target.value)} className="mt-1" />
-          </div>
-          <div>
-            <Label>{t("form.slug")}</Label>
-            <Input value={formSlug} onChange={(e) => setFormSlug(e.target.value)} className="mt-1" />
           </div>
           <div>
             <Label>{t("form.description")}</Label>

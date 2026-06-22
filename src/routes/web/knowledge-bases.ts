@@ -66,7 +66,7 @@ app.post(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
-    const payload = body as { name: string; slug: string; description?: string };
+    const payload = body as { name: string; slug?: string; description?: string };
     try {
       const result = await createKnowledgeBaseRecord(
         authCtx.organizationId,
