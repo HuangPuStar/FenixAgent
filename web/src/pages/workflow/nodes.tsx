@@ -91,9 +91,17 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   const runStatus = d._runStatus as string | undefined;
   const statusColors = runStatus ? (RUN_STATUS_COLORS[runStatus] ?? RUN_STATUS_COLORS.PENDING) : null;
 
+  // 节点主标题文本：优先展示用户填写的 description，没填则回退到节点 id（如 shell_1），
+  // 作为节点头部主标题；类型名（label）降级为副标题。
+  const description = typeof d.description === "string" ? d.description.trim() : "";
+  const nodeSubtitle = isStart ? "" : description || id;
+
+  const isRunning = runStatus === "RUNNING";
+
   const borderColor = statusColors ? statusColors.color : selected ? colors.main : "var(--color-border-subtle)";
+  // RUNNING 状态加强光环（3px 30% 透明度），其他状态维持原有 2px 20% 的描边强度
   const boxShadow = statusColors
-    ? `0 0 0 2px ${statusColors.color}20`
+    ? `0 0 0 ${isRunning ? 3 : 2}px ${statusColors.color}${isRunning ? "30" : "20"}`
     : selected
       ? `0 0 0 3px ${colors.main}30`
       : "var(--shadow-card)";
@@ -149,7 +157,22 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
         }}
       >
         {icon}
-        <span className="flex-1">{label}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1">
+            {/* 主标题：节点具体名称（description 优先，回退到节点 id） */}
+            <span className="truncate">{nodeSubtitle || label}</span>
+          </div>
+          {/* 副标题：节点类型（如 Shell / Python），让用户快速区分节点种类 */}
+          {!isStart && nodeSubtitle && (
+            <div
+              className="font-normal truncate"
+              style={{ fontSize: 10, opacity: 0.78, lineHeight: "12px", marginTop: 1 }}
+              title={label}
+            >
+              {label}
+            </div>
+          )}
+        </div>
         {statusColors && !isStart && <StatusDot status={runStatus!} />}
       </div>
 
@@ -294,6 +317,32 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
             />
           </div>
         ))
+      )}
+
+      {/* STATUS BAR — 运行状态下显示状态条，让 RUNNING/COMPLETED/FAILED 等状态一目了然 */}
+      {runStatus && !isStart && (
+        <div
+          style={{
+            background: statusColors!.bg,
+            color: statusColors!.color,
+            padding: "3px 10px",
+            fontSize: 10,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            borderRadius: "0 0 6px 6px",
+          }}
+        >
+          {isRunning && <Loader size={10} className="animate-spin" />}
+          {runStatus === "COMPLETED" && <CheckCircle size={10} />}
+          {runStatus === "FAILED" && <XCircle size={10} />}
+          <span className="truncate">
+            {t(`nodes.status_${runStatus.toLowerCase()}`)}
+            {/* FAILED 状态追加 exit code，方便快速定位错误 */}
+            {runStatus === "FAILED" && d._exitCode != null ? ` (exit ${String(d._exitCode)})` : ""}
+          </span>
+        </div>
       )}
 
       {/* 逻辑边 target Handle — 排在数据流 Handle 后面 */}
