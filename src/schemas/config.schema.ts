@@ -133,6 +133,23 @@ export const AgentKnowledgeBaseLabelSchema = z
   })
   .describe("Agent 绑定的知识库标签。");
 
+export const AgentKnowledgePolicySchema = z
+  .object({
+    searchFirst: z.boolean().optional().describe("是否优先检索知识库。"),
+    maxResults: z.number().int().min(1).max(20).optional().describe("知识检索最多返回条数。"),
+    defaultNamespaces: z.array(z.string()).optional().describe("默认检索命名空间列表。"),
+  })
+  .catchall(z.unknown())
+  .describe("Agent 知识库检索策略。");
+
+export const AgentKnowledgeConfigSchema = z
+  .object({
+    knowledgeBaseIds: z.array(z.string()).describe("绑定的知识库 ID 列表，按顺序生效。"),
+    policy: AgentKnowledgePolicySchema.nullable().optional().describe("可选的知识检索策略。"),
+  })
+  .catchall(z.unknown())
+  .describe("Agent 知识库绑定配置。");
+
 export const AgentRelatedResourceViewSchema = z
   .object({
     modelLabel: z.string().nullable().describe("模型展示名称；无法解析时回退为 modelId 或 null。"),
@@ -169,7 +186,7 @@ export const AgentDetailSchema = z
     prompt: z.string().nullable().describe("Agent 系统提示词；未设置时为 null。"),
     description: z.string().nullable().describe("Agent 描述；未设置时为 null。"),
     extra: z.record(z.string(), z.unknown()).nullable().optional().describe("额外扩展配置；未设置时为 null。"),
-    knowledge: z.unknown().nullable().describe("知识库绑定配置；未设置时为 null。"),
+    knowledge: AgentKnowledgeConfigSchema.nullable().describe("知识库绑定配置；未设置时为 null。"),
     skillIds: z.array(z.string()).optional().describe("绑定的 Skill ID 列表。"),
     mcpIds: z.array(z.string()).optional().describe("绑定的 MCP Server ID 列表。"),
     machineId: z.string().nullable().optional().describe("绑定的机器 ID；未设置时为 null。"),
