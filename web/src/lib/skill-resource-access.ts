@@ -10,6 +10,15 @@ export interface SkillOptionLike extends SkillResourceLike {
   description?: string;
 }
 
+export interface SkillOptionView {
+  id: string;
+  key: string;
+  name: string;
+  label: string;
+  description: string;
+  resourceAccess?: ResourceAccess;
+}
+
 export function getSkillKey(skill: SkillResourceLike) {
   return skill.resourceAccess?.resourceKey ?? skill.id ?? skill.name;
 }
@@ -41,7 +50,10 @@ export function getSkillOptionLabel(skill: SkillOptionLike) {
   return source ? `${source}/${skill.name}` : skill.name;
 }
 
-export function mapSkillOptions(skills: SkillOptionLike[]) {
+/**
+ * 将 skill 列表映射为 Agent 表单可直接消费的展示结构。
+ */
+export function mapSkillOptions(skills: SkillOptionLike[]): SkillOptionView[] {
   return skills.map((skill) => ({
     id: getSkillOptionValue(skill),
     key: getSkillKey(skill),
@@ -50,4 +62,17 @@ export function mapSkillOptions(skills: SkillOptionLike[]) {
     description: skill.description ?? "",
     resourceAccess: skill.resourceAccess,
   }));
+}
+
+/**
+ * 兼容 SkillConfigApi 的数组返回，以及历史对象包裹结构。
+ */
+export function normalizeSkillOptionsPayload(payload: unknown): SkillOptionView[] {
+  if (Array.isArray(payload)) {
+    return mapSkillOptions(payload as SkillOptionLike[]);
+  }
+  if (payload && typeof payload === "object" && Array.isArray((payload as { skills?: unknown }).skills)) {
+    return mapSkillOptions((payload as { skills: SkillOptionLike[] }).skills);
+  }
+  return [];
 }

@@ -31,7 +31,11 @@ import {
 } from "../../lib/agent-utils";
 import { dispatchConfigChange } from "../../lib/config-events";
 import { getMcpDisplayName, getMcpKey } from "../../lib/mcp-resource-access";
-import { getSkillOptionValue, mapSkillOptions } from "../../lib/skill-resource-access";
+import {
+  getSkillOptionValue,
+  normalizeSkillOptionsPayload,
+  type SkillOptionView,
+} from "../../lib/skill-resource-access";
 import type { ModelEntry, ResourceAccess } from "../../types/config";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
@@ -88,9 +92,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
-  const [skillOptions, setSkillOptions] = useState<
-    { id: string; key: string; name: string; label: string; description: string; resourceAccess?: ResourceAccess }[]
-  >([]);
+  const [skillOptions, setSkillOptions] = useState<SkillOptionView[]>([]);
   const [mcpOptions, setMcpOptions] = useState<AgentMcpOption[]>([]);
   const [machineOptions, setMachineOptions] = useState<
     { id: string; agentName: string; hostname: string; name: string | null }[]
@@ -231,14 +233,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           const kbData = kbResult.data;
           setKnowledgeOptions(Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : []);
 
-          const skillsData = skillsResult.data as unknown as Record<string, unknown> | null;
-          const skillsRaw = skillsData?.skills;
-          const skills = Array.isArray(skillsRaw)
-            ? mapSkillOptions(
-                skillsRaw as Array<{ id: string; name: string; description?: string; resourceAccess?: ResourceAccess }>,
-              )
-            : [];
-          setSkillOptions(skills);
+          // SkillConfigApi.list 已经返回数组，这里兼容旧的包裹结构，避免编辑态技能列表被读空。
+          setSkillOptions(normalizeSkillOptionsPayload(skillsResult.data));
 
           const mcpRaw = mcpsResult.data;
           const mcpServers = Array.isArray(mcpRaw)
@@ -295,13 +291,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
       skillConfigApi.list().then(({ data, error }) => {
         if (error) return;
-        setSkillOptions(
-          Array.isArray(data)
-            ? mapSkillOptions(
-                data as Array<{ id: string; name: string; description?: string; resourceAccess?: ResourceAccess }>,
-              )
-            : [],
-        );
+        setSkillOptions(normalizeSkillOptionsPayload(data));
       });
 
       mcpApi.list().then(({ data, error }) => {
