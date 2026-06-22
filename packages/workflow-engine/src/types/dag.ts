@@ -129,6 +129,15 @@ export interface CustomNodeDef extends BaseNodeDef {
     jobName?: string;
     extraSBATCH?: string[];
   };
+  /**
+   * Slurm 脚本声明(仅当 tool 是 SlurmNode 子类时生效)。
+   * 由 parseScriptConfig 解析,dag-scheduler 求值 ${{ }} 表达式后注入 ExecuteContext.script。
+   * SlurmNode 子类必须声明此字段(parseNode 校验),非 Slurm 工具禁止声明。
+   */
+  script?: {
+    content: string;
+    env?: Record<string, string>;
+  };
   /** 输出声明，key 对应 CustomNode.produces 的元素 */
   outputs: Record<
     string,

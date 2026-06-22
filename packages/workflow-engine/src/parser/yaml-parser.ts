@@ -305,6 +305,24 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
           }
         }
       }
+      // 根据 tool kind 判断是否允许/要求 script 字段
+      const isSlurmTool = toolDef?.kind === "slurm";
+
+      if (isSlurmTool) {
+        // SlurmNode 子类: script 必填
+        if (n.script === undefined || n.script === null) {
+          throw new WorkflowError(
+            `nodes[${index}] (${n.id}): slurm tool '${n.tool}' requires 'script.content'`,
+            WorkflowErrorCode.INVALID_YAML,
+          );
+        }
+      } else if (n.script !== undefined && n.script !== null) {
+        // 非 SlurmNode 工具: 禁止 script 字段,避免用户误用
+        throw new WorkflowError(
+          `nodes[${index}] (${n.id}): non-slurm tool '${n.tool}' does not support 'script' field`,
+          WorkflowErrorCode.INVALID_YAML,
+        );
+      }
       return {
         ...base,
         type: "custom",
@@ -313,6 +331,7 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
         // 透传 YAML slurm: 字段（partition/cores/memory/walltime/modules 等），
         // 由 custom-executor 注入到 ExecuteContext.slurm，SlurmNode 合并到默认配置
         slurm: parseSlurmConfig(n.slurm),
+        script: parseScriptConfig(n.script, n.id as string),
         outputs: parseOutputs(n.outputs),
         foreach: typeof n.foreach === "string" ? n.foreach : undefined,
         maxConcurrent: typeof n.maxConcurrent === "number" ? n.maxConcurrent : undefined,
@@ -372,6 +391,55 @@ function parseSlurmConfig(raw: unknown): CustomNodeDef["slurm"] {
   }
 
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * 解析 custom 节点的 script: 字段为 { content, env }。
+ * 仅 tool 是 SlurmNode 子类时由 parseNode 调用。
+ *
+ * 校验:
+ * - content 必须是非空字符串,否则抛 INVALID_YAML(含节点 id + 字段路径)
+ * - env 若声明必须是 Record<string, string>,value 非字符串时 warn 并跳过(宽容处理)
+ * - 字段全缺失时返回 undefined(但 SlurmNode 子类的 parseNode 会要求 content 必填)
+ */
+function parseScriptConfig(raw: unknown, nodeId: string): CustomNodeDef["script"] {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    throw new WorkflowError(
+      `nodes (${nodeId}): 'script' must be a mapping with 'content' and optional 'env'`,
+      WorkflowErrorCode.INVALID_YAML,
+    );
+  }
+
+  // content: 必须是非空字符串(先校验,通过后才初始化 result 以避免占位值)
+  if (typeof raw.content !== "string" || !raw.content.trim()) {
+    throw new WorkflowError(
+      `nodes (${nodeId}): 'script.content' is required and must be a non-empty string`,
+      WorkflowErrorCode.INVALID_YAML,
+    );
+  }
+  const result: NonNullable<CustomNodeDef["script"]> = { content: raw.content };
+
+  // env: 可选,必须是 Record<string, string>,value 非字符串时 warn 并跳过
+  if (raw.env !== undefined && raw.env !== null) {
+    if (!isRecord(raw.env)) {
+      throw new WorkflowError(
+        `nodes (${nodeId}): 'script.env' must be a mapping of string -> string`,
+        WorkflowErrorCode.INVALID_YAML,
+      );
+    }
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw.env)) {
+      if (typeof v !== "string") {
+        console.warn(`[yaml-parser] nodes (${nodeId}): script.env['${k}'] is not a string, skipping`);
+        continue;
+      }
+      env[k] = v;
+    }
+    if (Object.keys(env).length > 0) result.env = env;
+  }
+
+  return result;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

@@ -2,7 +2,7 @@
  * SlurmNode — 基于 CustomNode 的 Slurm HPC 作业执行器。
  *
  * 封装 SSH + sbatch + sacct 完整生命周期。
- * 默认 buildScript 从 ctx.inputs.script 读取脚本内容（配合通用 slurm 工具使用）；
+ * 默认 buildScript 从 ctx.script.content 读取已求值的 bash 脚本内容；
  * 子类也可覆写 buildScript(ctx) 返回具体 bash 命令（向后兼容）。
  */
 
@@ -15,7 +15,7 @@ import type { CustomNode, ExecuteContext, InputDef } from "./types";
  * SlurmNode 抽象基类 — 子类至少需声明 name, description, inputs, produces。
  *
  * 默认行为（无需覆写）：
- * - buildScript: 从 ctx.inputs.script 读取 bash 脚本内容
+ * - buildScript: 从 ctx.script.content 读取已求值的 bash 脚本内容
  * - slurmConfig: 保守默认值（partition=xahcnormal, cores=1），可被 YAML slurm 字段覆盖
  * - resolveSlurmConfig(ctx): 合并工具默认值 + ctx.slurm（YAML 节点声明优先）
  */
@@ -24,6 +24,9 @@ export abstract class SlurmNode implements CustomNode {
   abstract description: string;
   abstract inputs: Record<string, InputDef>;
   abstract produces: string[];
+
+  // 用于 yaml-parser 判断是否是 SlurmNode 子类(决定 script 字段是否必填)
+  kind = "slurm" as const;
 
   /**
    * 工具默认 Slurm 资源。可被 YAML 节点的 `slurm:` 字段覆盖（字段级合并，YAML 优先）。
@@ -46,22 +49,22 @@ export abstract class SlurmNode implements CustomNode {
   }
 
   /**
-   * 生成 sbatch 脚本正文。默认实现：直接返回 ctx.inputs.script（bash 字符串）。
-   * 子类可覆写以实现命令组装逻辑（向后兼容）。
+   * 生成 sbatch 脚本正文。默认实现:从 ctx.script.content 读取(已求值的 bash 字符串)。
+   * 子类可覆写以实现命令组装逻辑(向后兼容场景:子类内部自己拼命令,不依赖 ctx.script)。
    *
-   * 默认实现要求 inputs 声明 `script` 字段且必填，否则抛 NODE_FAILED。
+   * 默认实现要求 ctx.script.content 存在且非空,否则抛 NODE_FAILED。
    */
   buildScript(ctx: ExecuteContext): string {
-    const script = ctx.inputs.script;
-    if (typeof script !== "string" || !script.trim()) {
+    const content = ctx.script?.content;
+    if (typeof content !== "string" || !content.trim()) {
       throw new WorkflowError(
-        `Slurm tool '${this.name}' requires 'script' input (bash script content). ` +
-          `Either declare inputs.script in YAML or override buildScript() in the tool class.`,
+        `Slurm tool '${this.name}' requires 'script.content' (bash script content). ` +
+          `Either declare script.content in YAML or override buildScript() in the tool class.`,
         WorkflowErrorCode.NODE_FAILED,
         { node_id: ctx.nodeId, tool: this.name },
       );
     }
-    return script;
+    return content;
   }
 
   /**
@@ -214,6 +217,18 @@ export abstract class SlurmNode implements CustomNode {
 
     lines.push(`#SBATCH --output=${outDir}/${jobName}_%j.out`);
     lines.push(`#SBATCH --error=${outDir}/${jobName}_%j.err`);
+
+    // 注入用户声明的环境变量到 #SBATCH --export
+    // 关键：必须以 ALL 开头，否则 Slurm 不会继承默认环境（PATH/HOME/SLURM_* 等），
+    // 会导致脚本里 module load / apptainer 等命令找不到。
+    // 边界：value 含逗号或等号时会被 sbatch 解析为多个 entry，用户需自行保证 value 简单。
+    const env = ctx.script?.env;
+    if (env && Object.keys(env).length > 0) {
+      const entries = Object.entries(env)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(",");
+      lines.push(`#SBATCH --export=ALL,${entries}`);
+    }
 
     if (config.extraSBATCH && config.extraSBATCH.length > 0) {
       for (const extra of config.extraSBATCH) {

@@ -359,7 +359,9 @@ nodes:
 // ═══════════════════════════════════════════════════════════════
 
 /** 创建带假工具的 CustomNodeRegistry，用于测试 */
-function createFakeRegistry(tools: Array<{ name: string; produces: string[] }>): CustomNodeRegistry {
+function createFakeRegistry(
+  tools: Array<{ name: string; produces: string[]; kind?: "default" | "slurm" }>,
+): CustomNodeRegistry {
   const registry = new CustomNodeRegistry();
   for (const t of tools) {
     registry.register({
@@ -367,6 +369,7 @@ function createFakeRegistry(tools: Array<{ name: string; produces: string[] }>):
       description: `Fake ${t.name}`,
       inputs: {},
       produces: t.produces,
+      kind: t.kind,
       execute: async () => ({ stdout: "ok", exit_code: 0 }),
     } as CustomNode);
   }
@@ -513,5 +516,146 @@ nodes:
   expect(def.nodes[0].type).toBe("custom");
   if (def.nodes[0].type === "custom") {
     expect(def.nodes[0].tool).toBe("any_tool");
+  }
+});
+
+// ── custom 节点 script 字段解析 ──
+
+// 解析 slurm 工具的 script.content + script.env
+test("解析 slurm 工具的 script.content + script.env", () => {
+  const registry = createFakeRegistry([{ name: "slurm", produces: ["*"], kind: "slurm" }]);
+  const def = parseWorkflowYaml(
+    `\
+schema_version: '1'
+name: test
+nodes:
+  - id: job1
+    type: custom
+    tool: slurm
+    script:
+      content: |
+        echo hello
+        echo $WORK_DIR
+      env:
+        WORK_DIR: /data
+    outputs:
+      out:
+        pattern: /tmp/out
+        type: file
+`,
+    undefined,
+    { customRegistry: registry },
+  );
+  expect(def.nodes[0].type).toBe("custom");
+  if (def.nodes[0].type === "custom") {
+    expect(def.nodes[0].script).toBeDefined();
+    expect(def.nodes[0].script?.content).toContain("echo hello");
+    expect(def.nodes[0].script?.env?.WORK_DIR).toBe("/data");
+  }
+});
+
+// slurm 工具缺少 script 字段报错
+test("slurm 工具缺少 script 字段报错", () => {
+  const registry = createFakeRegistry([{ name: "slurm", produces: ["*"], kind: "slurm" }]);
+  expect(() =>
+    parseWorkflowYaml(
+      `\
+schema_version: '1'
+name: test
+nodes:
+  - id: job1
+    type: custom
+    tool: slurm
+    outputs:
+      out:
+        pattern: /tmp/out
+        type: file
+`,
+      undefined,
+      { customRegistry: registry },
+    ),
+  ).toThrow(/script\.content/);
+});
+
+// slurm 工具缺少 script.content 报错
+test("slurm 工具缺少 script.content 报错", () => {
+  const registry = createFakeRegistry([{ name: "slurm", produces: ["*"], kind: "slurm" }]);
+  expect(() =>
+    parseWorkflowYaml(
+      `\
+schema_version: '1'
+name: test
+nodes:
+  - id: job1
+    type: custom
+    tool: slurm
+    script:
+      env:
+        FOO: bar
+    outputs:
+      out:
+        pattern: /tmp/out
+        type: file
+`,
+      undefined,
+      { customRegistry: registry },
+    ),
+  ).toThrow(/script\.content/);
+});
+
+// 非 slurm 工具声明 script 字段报错
+test("非 slurm 工具声明 script 字段报错", () => {
+  const registry = createFakeRegistry([{ name: "plain_tool", produces: ["out"], kind: "default" }]);
+  expect(() =>
+    parseWorkflowYaml(
+      `\
+schema_version: '1'
+name: test
+nodes:
+  - id: job1
+    type: custom
+    tool: plain_tool
+    script:
+      content: echo hi
+    outputs:
+      out:
+        pattern: /tmp/out
+        type: file
+`,
+      undefined,
+      { customRegistry: registry },
+    ),
+  ).toThrow(/does not support 'script'/);
+});
+
+// script.env 非字符串 value 被 warn 并跳过
+test("script.env 非字符串 value 被 warn 并跳过", () => {
+  const registry = createFakeRegistry([{ name: "slurm", produces: ["*"], kind: "slurm" }]);
+  const def = parseWorkflowYaml(
+    `\
+schema_version: '1'
+name: test
+nodes:
+  - id: job1
+    type: custom
+    tool: slurm
+    script:
+      content: echo hi
+      env:
+        VALID: ok
+        BAD_NUM: 123
+        BAD_BOOL: true
+    outputs:
+      out:
+        pattern: /tmp/out
+        type: file
+`,
+    undefined,
+    { customRegistry: registry },
+  );
+  if (def.nodes[0].type === "custom") {
+    expect(def.nodes[0].script?.env?.VALID).toBe("ok");
+    expect(def.nodes[0].script?.env?.BAD_NUM).toBeUndefined();
+    expect(def.nodes[0].script?.env?.BAD_BOOL).toBeUndefined();
   }
 });

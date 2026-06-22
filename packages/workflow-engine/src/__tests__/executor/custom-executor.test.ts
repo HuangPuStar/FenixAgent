@@ -216,3 +216,68 @@ describe("CustomNodeExecutor onCleanup", () => {
     expect(cleanupGotError?.message).toContain("boom");
   });
 });
+
+// ========== script 字段透传(SlurmNode 子类场景) ==========
+
+// executor 把调度器求值后的 resolvedInputs.script 透传到 ExecuteContext.script,
+// SlurmNode.buildScript / generateHeader 通过此字段读取脚本内容与环境变量。
+
+test("executor 把 resolvedInputs.script 透传到 ExecuteContext.script", async () => {
+  const registry = new CustomNodeRegistry();
+  let capturedCtx: ExecuteContext | null = null;
+  registry.register({
+    name: "fake_slurm",
+    description: "fake slurm tool",
+    inputs: {},
+    produces: ["*"],
+    kind: "slurm",
+    execute: async (ctx) => {
+      capturedCtx = ctx;
+      return { stdout: "ok", exit_code: 0, size: 2 };
+    },
+  } as unknown as CustomNode);
+
+  const executor = new CustomNodeExecutor(registry);
+  const ctx = makeCtx({
+    resolvedInputs: {
+      script: {
+        content: "echo hello",
+        env: { WORK_DIR: "/data", CORES: "8" },
+      },
+    },
+  });
+  const node = customNode("fake_slurm", {
+    script: { content: "echo hello", env: { WORK_DIR: "/data" } },
+  });
+
+  await executor.execute(node, ctx);
+
+  expect(capturedCtx).not.toBeNull();
+  expect(capturedCtx!.script).toBeDefined();
+  expect(capturedCtx!.script?.content).toBe("echo hello");
+  expect(capturedCtx!.script?.env.WORK_DIR).toBe("/data");
+  expect(capturedCtx!.script?.env.CORES).toBe("8");
+});
+
+test("非 slurm 工具的 ExecuteContext.script 为 undefined", async () => {
+  const registry = new CustomNodeRegistry();
+  let capturedCtx: ExecuteContext | null = null;
+  registry.register(
+    makeFakeTool({
+      name: "plain_tool",
+      executeFn: async (ctx) => {
+        capturedCtx = ctx;
+        return { stdout: "ok", exit_code: 0, size: 2 };
+      },
+    }),
+  );
+
+  const executor = new CustomNodeExecutor(registry);
+  const ctx = makeCtx(); // resolvedInputs 不含 script
+  const node = customNode("plain_tool");
+
+  await executor.execute(node, ctx);
+
+  expect(capturedCtx).not.toBeNull();
+  expect(capturedCtx!.script).toBeUndefined();
+});
