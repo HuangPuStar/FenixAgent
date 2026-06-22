@@ -202,6 +202,7 @@ const TYPE_PREFIXES: Record<string, string> = {
   workflow: "wf",
   loop: "loop",
   transform: "tf",
+  custom: "custom",
 };
 
 export function nextNodeId(type: string): string {

@@ -70,6 +70,44 @@ test("resolveInputs 空输入返回空对象", () => {
   expect(Object.keys(result)).toHaveLength(0);
 });
 
+// 单一 ${{ expr }} 模板 — 保留原类型
+test("resolveInputs 单一模板保留原类型 (string)", () => {
+  const result = resolveInputs({ NAME: "${{ params.name }}" }, ctx);
+  expect(result.NAME.value).toBe("world");
+});
+
+test("resolveInputs 单一模板保留原类型 (number)", () => {
+  const result = resolveInputs({ COUNT: "${{ nodes.fetch.output.count }}" }, ctx);
+  expect(result.COUNT.value).toBe(42);
+});
+
+test("resolveInputs 单一模板保留原类型 (boolean)", () => {
+  const result = resolveInputs({ FLAG: "${{ nodes.fetch.output.active }}" }, ctx);
+  expect(result.FLAG.value).toBe(true);
+});
+
+test("resolveInputs 单一模板保留原类型 (array)", () => {
+  const result = resolveInputs({ ITEMS: "${{ nodes.fetch.output.items }}" }, ctx);
+  expect(result.ITEMS.value).toEqual([1, 2, 3]);
+});
+
+// 拼接模板 — 结果为 string
+test("resolveInputs 拼接模板返回字符串", () => {
+  const result = resolveInputs({ PATH: "${{ params.name }}/step_4/${{ params.name }}.fq.gz" }, ctx);
+  expect(result.PATH.value).toBe("world/step_4/world.fq.gz");
+});
+
+test("resolveInputs 拼接模板支持上游 nodes 引用", () => {
+  const result = resolveInputs({ PATH: "${{ nodes.fetch.output.result }}.bak" }, ctx);
+  expect(result.PATH.value).toBe("hello.bak");
+});
+
+// 单一模板前后空白容忍
+test("resolveInputs 单一模板前后空白容忍", () => {
+  const result = resolveInputs({ NAME: "  ${{   params.name   }}  " }, ctx);
+  expect(result.NAME.value).toBe("world");
+});
+
 // ---------- generateShellEnvVars ----------
 
 test("generateShellEnvVars 字符串值", () => {

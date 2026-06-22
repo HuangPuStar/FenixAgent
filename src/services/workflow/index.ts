@@ -20,6 +20,7 @@ import { environment } from "../../db/schema";
 import { getCoreRuntime } from "../../services/core-bootstrap";
 import { ensureRunning, getRunningInstancesByEnvironment, stopInstance } from "../instance";
 import { type AgentChannel, createAcpTransport, setChannelFactory } from "./acp-transport";
+import { getCustomToolsRegistry } from "./custom-tools";
 import { createPgStorageAdapter } from "./pg-storage-adapter";
 
 // 每个 team 一个引擎实例，lazy 创建
@@ -104,6 +105,9 @@ export function getTeamEngine(organizationId: string): WorkflowEngine {
       storage,
       transport: getTransport(organizationId),
       hmacSecret: process.env.RCS_WORKFLOW_HMAC_SECRET || crypto.randomUUID(),
+      // 注入全局 CustomNodeRegistry（启动时 discover tools/ 已就绪）
+      // 让 yaml 中 type: custom + tool: trim_galore 等节点找到对应实现
+      customRegistry: getCustomToolsRegistry(),
     });
     engines.set(organizationId, engine);
   }

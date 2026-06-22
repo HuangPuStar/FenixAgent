@@ -1,0 +1,389 @@
+# PE RNA-Seq (Mouse) 工作流 — 单样本参数化版本
+#
+# 对应 Galaxy 公共流程 c5010e456e9d3445（11 步 PE RNA-Seq Data (Mouse)）。
+# 由于当前 workflow-engine 的 foreach 多样本展开尚未实现，本 YAML 以"单样本"形态工作：
+# 默认跑 SRR36782078，用户可在创建 workflow run 时覆盖 params 中的 sample_* 字段跑其他样本。
+#
+# 节点拓扑（单样本视角，箭头 = depends_on）：
+#
+#                          ┌──► ⑤ Flatten (no-op)
+#                          │
+#                          ├──► ⑥ Salmon quant ────────┐
+#   ④ Trim Galore ─────────┼──► ⑧ FastQC ──────────────┤
+#                          │                            ├──► ⑩ MultiQC
+#                          └──► ⑦ RNA STAR              │
+#                                     │                 │
+#                                     ▼                 │
+#                                ⑨ featureCounts ──────┘
+#                                     │
+#                                     └──► ⑪ Column Join
+#
+# 依赖要点（与下方各节点 depends_on 字段一一对应）：
+# - ④ 是唯一起点，⑤/⑥/⑦/⑧ 均直接依赖 ④ 并行展开
+# - ⑨ 只依赖 ⑦（需要 STAR 比对产出的 BAM），与 ⑥/⑧ 互不阻塞
+# - ⑩ MultiQC 汇总扫描，必须等 ⑥/⑦/⑧/⑨ 全部完成
+# - ⑪ Column Join 只依赖 ⑨（处理 featureCounts 文本），与 ⑩ 并行无依赖
+#
+# 工具抽象说明：所有节点统一用 tool: slurm（通用 Slurm 执行器），
+# 脚本内容由 inputs.script 注入，资源由 slurm: 字段声明。
+# cores 值通过 $SLURM_CPUS_PER_TASK 环境变量自动传入脚本（Slurm 标准实践）。
+
+schema_version: '1'
+
+name: pe-rna-seq-single-sample
+description: |
+  PE RNA-Seq (Mouse) 11 步流程（单样本默认 SRR36782078）。
+  基于 Slurm HPC + Apptainer 远程执行，参考 Galaxy 公共流程 c5010e456e9d3445。
+
+# ── 全局参数 ──
+# 用户在创建 workflow run 时可以覆盖任意字段；未覆盖则走 default
+params:
+  # ── 集群连接 ──
+  cluster_host:
+    type: string
+    default: shuguang
+    description: SSH config 别名（~/.ssh/config 已配置），SlurmNode 通过此连接投递作业
+    required: true
+
+  work_dir:
+    type: string
+    default: /work/home/liwei_agent/test
+    description: 集群工作目录根（绝对路径），所有 step_N 子目录在其下生成
+    required: true
+
+  # ── Apptainer ──
+  sif:
+    type: string
+    default: /work/home/liwei_agent/test/pe_rna_seq.sif
+    description: PE RNA-Seq 工作流统一的 Apptainer SIF 镜像路径
+    required: true
+
+  apptainer_bind:
+    type: string
+    default: /work/home:/work/home
+    description: Apptainer bind 路径，需要覆盖所有 step_N 与 SIF 可访问目录
+
+  # ── 参考文件 ──
+  transcriptome_fa:
+    type: string
+    default: /work/home/liwei_agent/test/Mus_musculus.GRCm39.cdna.all.fa
+    description: 转录组 FASTA（仅 build_salmon_index 预处理使用，本流程不含该节点）
+  gtf:
+    type: string
+    default: /work/home/liwei_agent/test/Mus_musculus.GRCm39.115.gtf
+    description: 基因组注释 GTF（featureCounts 用）
+    required: true
+
+  salmon_index:
+    type: string
+    default: /work/home/liwei_agent/test/salmon_index_v2
+    description: Salmon 索引目录（必须 --gencode 构建，已就绪）
+    required: true
+  star_index:
+    type: string
+    default: /work/home/liwei_agent/test/star_index
+    description: STAR genome 索引目录（已就绪）
+    required: true
+
+  # ── 样本参数 ──
+  # 单样本默认 SRR36782078；foreach 支持后可整体替换为 samples 列表
+  sample_id:
+    type: string
+    default: SRR36782078
+    description: 当前样本 ID（命名输出文件）
+    required: true
+  sample_r1:
+    type: string
+    default: /work/home/liwei_agent/test/SRR36782078_1.fastq.gz
+    description: 原始 Read 1 FASTQ（绝对路径）
+    required: true
+  sample_r2:
+    type: string
+    default: /work/home/liwei_agent/test/SRR36782078_2.fastq.gz
+    description: 原始 Read 2 FASTQ（绝对路径）
+    required: true
+
+# ── DAG 节点 ──
+# 所有节点统一用 tool: slurm，脚本和资源分别在 inputs.script / slurm 声明
+nodes:
+  # ④ Trim Galore — 接头切除 + 质控（4 cores, ~8 min）
+  - id: trim_galore
+    type: custom
+    tool: slurm
+    description: ④ Trim Galore 接头切除与质控
+    depends_on: []
+    slurm:
+      partition: xahcnormal
+      cores: 4
+      walltime: "02:00:00"
+      modules: ["apps/apptainer/1.2.4"]
+    inputs:
+      script: |
+        echo "=== Trim Galore - ${{ params.sample_id }} ==="
+        mkdir -p ${{ params.work_dir }}/step_4
+        apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
+          trim_galore --paired --cores "$SLURM_CPUS_PER_TASK" \
+            --output_dir ${{ params.work_dir }}/step_4 --gzip \
+            ${{ params.sample_r1 }} ${{ params.sample_r2 }}
+
+        # 输出校验：trim_galore 命名规则为 {sample}_1_val_1.fq.gz / {sample}_2_val_2.fq.gz
+        R1_OUT="${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz"
+        R2_OUT="${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz"
+        test -s "$R1_OUT" || { echo "ERROR: $R1_OUT missing or empty" >&2; exit 1; }
+        test -s "$R2_OUT" || { echo "ERROR: $R2_OUT missing or empty" >&2; exit 1; }
+    outputs:
+      trimmed_r1:
+        pattern: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz"
+        type: file
+      trimmed_r2:
+        pattern: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz"
+        type: file
+
+  # ⑤ Flatten — Galaxy 占位 no-op（1 core）
+  - id: flatten
+    type: custom
+    tool: slurm
+    description: ⑤ Flatten collection（Galaxy 占位 no-op）
+    depends_on: [trim_galore]
+    slurm:
+      partition: xahcnormal
+      cores: 1
+      walltime: "00:10:00"
+    inputs:
+      script: |
+        echo "=== Flatten collection - ${{ params.sample_id }} ==="
+        echo "Started at: $(date)"
+        echo ok
+        echo "Finished at: $(date)"
+    outputs:
+      ok:
+        pattern: ""
+        type: file
+
+  # ⑥ Salmon quant — 转录本定量（8 cores, ~5 min）
+  - id: salmon_quant
+    type: custom
+    tool: slurm
+    description: ⑥ Salmon quant 转录本表达定量
+    depends_on: [trim_galore]
+    slurm:
+      partition: xahcnormal
+      cores: 8
+      walltime: "02:00:00"
+      modules: ["apps/apptainer/1.2.4"]
+    inputs:
+      script: |
+        echo "=== Salmon quant ==="
+        echo "Started at: $(date)"
+        OUT_DIR="${{ params.work_dir }}/step_6/${{ params.sample_id }}"
+        mkdir -p "$OUT_DIR"
+        apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
+          salmon quant \
+            --index ${{ params.salmon_index }} \
+            --libType IU \
+            --mates1 ${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz \
+            --mates2 ${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz \
+            --output "$OUT_DIR" \
+            --numBootstraps 30 \
+            --validateMappings \
+            --threads "$SLURM_CPUS_PER_TASK"
+
+        # 输出校验
+        QUANT_SF="$OUT_DIR/quant.sf"
+        test -s "$QUANT_SF" || { echo "ERROR: $QUANT_SF missing or empty" >&2; exit 1; }
+        echo "Finished at: $(date)"
+    outputs:
+      quant_sf:
+        pattern: "${{ params.work_dir }}/step_6/${{ params.sample_id }}/quant.sf"
+        type: file
+
+  # ⑦ RNA STAR — 比对（32 cores, 100G mem, ~5 min）
+  - id: rna_star
+    type: custom
+    tool: slurm
+    description: ⑦ RNA STAR 基因组比对，输出排序 BAM
+    depends_on: [trim_galore]
+    slurm:
+      partition: xahcnormal
+      cores: 32
+      memory: "100G"
+      walltime: "04:00:00"
+      modules: ["apps/apptainer/1.2.4"]
+    inputs:
+      script: |
+        echo "=== RNA STAR ==="
+        echo "Started at: $(date)"
+        # output_prefix 必须以 / 结尾，STAR 不会自动补
+        PREFIX="${{ params.work_dir }}/step_7/${{ params.sample_id }}/"
+        TMP_DIR="${PREFIX}tmp"
+        mkdir -p "$PREFIX" "$TMP_DIR"
+        apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
+          STAR --runThreadN "$SLURM_CPUS_PER_TASK" \
+            --genomeDir ${{ params.star_index }} \
+            --readFilesIn ${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz ${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz \
+            --readFilesCommand zcat \
+            --outFileNamePrefix "$PREFIX" \
+            --outTmpDir "$TMP_DIR" \
+            --limitBAMsortRAM 40000000000 \
+            --outSAMtype BAM SortedByCoordinate \
+            --outSAMattributes NH HI AS nM ch
+
+        # 清理 STAR 临时文件（BAM 已写完）
+        rm -rf "$TMP_DIR"
+
+        # 输出校验
+        BAM_OUT="${PREFIX}Aligned.sortedByCoord.out.bam"
+        test -s "$BAM_OUT" || { echo "ERROR: $BAM_OUT missing or empty" >&2; exit 1; }
+        echo "Finished at: $(date)"
+    outputs:
+      bam:
+        pattern: "${{ params.work_dir }}/step_7/${{ params.sample_id }}/Aligned.sortedByCoord.out.bam"
+        type: file
+
+  # ⑧ FastQC — 单样本 FASTQ 质控报告（32 cores, ~5 min）
+  - id: fastqc
+    type: custom
+    tool: slurm
+    description: ⑧ FastQC 质控报告（单样本 R1+R2）
+    depends_on: [trim_galore]
+    slurm:
+      partition: xahcnormal
+      cores: 32
+      walltime: "02:00:00"
+      modules: ["apps/apptainer/1.2.4"]
+    inputs:
+      script: |
+        echo "=== FastQC - 2 file(s) ==="
+        echo "Started at: $(date)"
+        OUT_DIR="${{ params.work_dir }}/step_8/reports"
+        mkdir -p "$OUT_DIR"
+        apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
+          fastqc --outdir "$OUT_DIR" --threads "$SLURM_CPUS_PER_TASK" \
+            ${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz \
+            ${{ params.work_dir }}/step_4/${{ params.sample_id }}_2_val_2.fq.gz
+
+        # 输出校验
+        REPORT_COUNT=$(ls "$OUT_DIR"/*.html 2>/dev/null | wc -l)
+        if [ "$REPORT_COUNT" -eq 0 ]; then
+          echo "ERROR: no FastQC html report generated in $OUT_DIR" >&2
+          exit 1
+        fi
+        echo "Finished at: $(date)"
+    outputs:
+      report_dir:
+        pattern: "${{ params.work_dir }}/step_8/reports"
+        type: dir
+
+  # ⑨ featureCounts — 基因水平 read 计数（8 cores, ~30 s）
+  - id: featurecounts
+    type: custom
+    tool: slurm
+    description: ⑨ featureCounts 基因水平表达计数
+    depends_on: [rna_star]
+    slurm:
+      partition: xahcnormal
+      cores: 8
+      walltime: "01:00:00"
+      modules: ["apps/apptainer/1.2.4"]
+    inputs:
+      script: |
+        echo "=== featureCounts ==="
+        echo "Started at: $(date)"
+        OUT_FILE="${{ params.work_dir }}/step_9/${{ params.sample_id }}.txt"
+        mkdir -p "$(dirname "$OUT_FILE")"
+        apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
+          featureCounts \
+            -T "$SLURM_CPUS_PER_TASK" \
+            -a ${{ params.gtf }} \
+            -o "$OUT_FILE" \
+            -t exon -g gene_id -p -s 0 -Q 12 --primary \
+            ${{ params.work_dir }}/step_7/${{ params.sample_id }}/Aligned.sortedByCoord.out.bam
+
+        # 输出校验（featureCounts 自动生成同名 .summary）
+        test -s "$OUT_FILE" || { echo "ERROR: $OUT_FILE missing or empty" >&2; exit 1; }
+        echo "Finished at: $(date)"
+    outputs:
+      counts:
+        pattern: "${{ params.work_dir }}/step_9/${{ params.sample_id }}.txt"
+        type: file
+
+  # ⑩ MultiQC — 全流程质控报告汇总（8 cores, ~15 s）
+  # Reduce 节点：必须等 salmon/star/fastqc/featurecounts 全部完成才能扫描
+  - id: multiqc
+    type: custom
+    tool: slurm
+    description: ⑩ MultiQC 全流程质控汇总
+    depends_on: [salmon_quant, rna_star, fastqc, featurecounts]
+    slurm:
+      partition: xahcnormal
+      cores: 8
+      walltime: "01:00:00"
+      modules: ["apps/apptainer/1.2.4"]
+    inputs:
+      script: |
+        echo "=== MultiQC ==="
+        echo "Started at: $(date)"
+        OUT_DIR="${{ params.work_dir }}/step_10"
+        # 精确指定扫描目录，避免纳入历史残留（design.md §5.5）
+        mkdir -p "$OUT_DIR"
+        # MultiQC 会把标题中的空格替换为 -，影响输出文件名
+        TITLE="PE RNA-Seq Workflow Report"
+        apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
+          multiqc \
+            ${{ params.work_dir }}/step_4 \
+            ${{ params.work_dir }}/step_6 \
+            ${{ params.work_dir }}/step_7 \
+            ${{ params.work_dir }}/step_8 \
+            ${{ params.work_dir }}/step_9 \
+            --outdir "$OUT_DIR" \
+            --title "$TITLE"
+
+        # 输出校验（标题空格→连字符，文件名为 PE-RNA-Seq-Workflow-Report_multiqc_report.html）
+        REPORT="$OUT_DIR/PE-RNA-Seq-Workflow-Report_multiqc_report.html"
+        test -s "$REPORT" || { echo "ERROR: $REPORT missing or empty" >&2; exit 1; }
+        echo "Finished at: $(date)"
+    outputs:
+      report:
+        pattern: "${{ params.work_dir }}/step_10/PE-RNA-Seq-Workflow-Report_multiqc_report.html"
+        type: file
+
+  # ⑪ Column Join — featureCounts 结果汇总（1 core, ~5 s）
+  - id: column_join
+    type: custom
+    tool: slurm
+    description: ⑪ Column join featureCounts 计数汇总
+    depends_on: [featurecounts]
+    slurm:
+      partition: xahcnormal
+      cores: 1
+      walltime: "00:30:00"
+    inputs:
+      script: |
+        echo "=== Column Join (featureCounts 结果汇总) ==="
+        echo "Started at: $(date)"
+        IN_DIR="${{ params.work_dir }}/step_9"
+        OUT_DIR="${{ params.work_dir }}/step_11"
+        mkdir -p "$OUT_DIR"
+        # 默认 SRR*.txt 只匹配样本输出，排除 featureCounts 副产物（如 *.summary）
+        PATTERN="SRR*.txt"
+        PROCESSED=0
+        # cut -f 1,7：gene_id 列 + Assigned 列（featureCounts 第 7 列是计数）
+        for f in "$IN_DIR"/$PATTERN; do
+          if [ -f "$f" ]; then
+            base=$(basename "$f")
+            cut -f 1,7 "$f" > "$OUT_DIR/${base}_counts.txt"
+            PROCESSED=$((PROCESSED + 1))
+          fi
+        done
+        if [ "$PROCESSED" -eq 0 ]; then
+          echo "ERROR: No featureCounts output files found in $IN_DIR/$PATTERN" >&2
+          exit 1
+        fi
+        echo "Finished at: $(date)"
+    outputs:
+      joined_dir:
+        pattern: "${{ params.work_dir }}/step_11"
+        type: dir
+
+# 工作流级别超时 4 小时（单样本实测总耗时约 30 分钟，留足容错）
+timeout: 14400

@@ -8,10 +8,9 @@ RUN bun install --frozen-lockfile \
 
 # ── Stage 2: 打包 start-remote-runtime ──────────
 FROM deps AS build
-COPY scripts/start-remote-runtime.ts ./scripts/start-remote-runtime.ts
 COPY tsconfig.json tsconfig.base.json ./
 # --target=bun: 输出 Bun 运行时的单文件 bundle
-RUN bun build scripts/start-remote-runtime.ts --target=bun --outdir /tmp/bundle
+RUN bun build packages/acp-runtime-cli/src/bin.ts --target=bun --outfile /tmp/bundle/start-remote-runtime.js
 
 # ── Stage 3: 最小运行时 ────────────────────────
 FROM oven/bun:1

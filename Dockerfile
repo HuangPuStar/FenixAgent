@@ -29,8 +29,7 @@ CMD ["bun", "migrate.js"]
 ############### remote-runtime image ###############
 
 FROM deps AS remote-runtime-build
-COPY scripts/start-remote-runtime.ts ./scripts/start-remote-runtime.ts
-RUN bun build scripts/start-remote-runtime.ts --target=bun --outdir /tmp/remote-runtime-bundle
+RUN bun build packages/acp-runtime-cli/src/bin.ts --target=bun --outfile /tmp/remote-runtime-bundle/start-remote-runtime.js
 
 FROM oven/bun:1 AS remote-runtime
 WORKDIR /app

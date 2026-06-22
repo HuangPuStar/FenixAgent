@@ -425,6 +425,14 @@ export class DAGScheduler {
         }
         break;
       }
+      case "custom": {
+        // Custom 节点：通过 inputs 注入上游数据，executor 内做 Zod 校验
+        const customNode = node as import("../types/dag").CustomNodeDef;
+        if (customNode.inputs) {
+          resolved.inputs = resolveInputs(customNode.inputs, evalContext);
+        }
+        break;
+      }
     }
 
     // 通用字段
@@ -486,11 +494,26 @@ export class DAGScheduler {
     }
   }
 
-  /** 从执行器抛出的错误中提取失败输出 */
+  /**
+   * 从执行器抛出的错误中提取失败输出。
+   *
+   * 关键：必须把 stderr 也带入 stdout（拼在末尾），否则前端"输出"面板只看到
+   * "exit_code: 1 / 0B 输出"，完全不知道脚本里哪条命令挂了。
+   * 这与 SlurmNode.collectOutput 的做法一致：NodeOutput 没有 stderr 字段，
+   * 非空 stderr 拼到 stdout 末尾。
+   */
   private extractFailureOutput(error: unknown): NodeOutput | null {
     if (error instanceof WorkflowError && error.details) {
-      const stdout = (error.details.stdout as string) ?? error.message;
+      const rawStdout = (error.details.stdout as string) ?? "";
+      const rawStderr = (error.details.stderr as string) ?? "";
       const exitCode = (error.details.exit_code as number) ?? 1;
+      // 拼接顺序：原始 stdout → stderr（如有）→ error.message（stdout 为空时才附）
+      // stdout 为空时附上 error.message，让用户在前端至少看到一句可读错误
+      const parts: string[] = [];
+      if (rawStdout) parts.push(rawStdout);
+      if (rawStderr) parts.push(`[stderr]\n${rawStderr}`);
+      if (parts.length === 0) parts.push(error.message);
+      const stdout = parts.join("\n\n");
       return {
         stdout,
         exit_code: exitCode,
