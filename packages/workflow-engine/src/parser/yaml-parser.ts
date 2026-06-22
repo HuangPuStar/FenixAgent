@@ -7,7 +7,7 @@
 
 import { parse as yamlParse } from "yaml";
 import type { CustomNodeRegistry } from "../plugins/registry";
-import type { NodeDef, NodeType, WorkflowDef } from "../types/dag";
+import type { CustomNodeDef, NodeDef, NodeType, WorkflowDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 
 const VALID_NODE_TYPES: NodeType[] = [
@@ -290,13 +290,18 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
         );
       }
       if (toolDef) {
-        const producesSet = new Set(toolDef.produces);
-        for (const key of Object.keys(n.outputs as Record<string, unknown>)) {
-          if (!producesSet.has(key)) {
-            throw new WorkflowError(
-              `nodes[${index}] (${n.id}): output '${key}' not declared in tool '${n.tool}' produces list [${toolDef.produces.join(", ")}]`,
-              WorkflowErrorCode.INVALID_YAML,
-            );
+        // produces 含 "*" 表示通配符工具（如通用 slurm 工具），跳过严格校验，
+        // outputs key 完全由用户在 YAML 声明，适配任意脚本产物
+        const allowsAnyOutput = toolDef.produces.includes("*");
+        if (!allowsAnyOutput) {
+          const producesSet = new Set(toolDef.produces);
+          for (const key of Object.keys(n.outputs as Record<string, unknown>)) {
+            if (!producesSet.has(key)) {
+              throw new WorkflowError(
+                `nodes[${index}] (${n.id}): output '${key}' not declared in tool '${n.tool}' produces list [${toolDef.produces.join(", ")}]`,
+                WorkflowErrorCode.INVALID_YAML,
+              );
+            }
           }
         }
       }
@@ -305,6 +310,9 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
         type: "custom",
         tool: n.tool as string,
         inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
+        // 透传 YAML slurm: 字段（partition/cores/memory/walltime/modules 等），
+        // 由 custom-executor 注入到 ExecuteContext.slurm，SlurmNode 合并到默认配置
+        slurm: parseSlurmConfig(n.slurm),
         outputs: parseOutputs(n.outputs),
         foreach: typeof n.foreach === "string" ? n.foreach : undefined,
         maxConcurrent: typeof n.maxConcurrent === "number" ? n.maxConcurrent : undefined,
@@ -333,6 +341,37 @@ function parseOutputs(raw: unknown): Record<string, { pattern: string; type: "fi
     result[key] = { pattern, type };
   }
   return result;
+}
+
+/**
+ * 解析 custom 节点的 slurm: 字段为 Partial<SlurmConfig>。
+ * 字段全可选，未声明返回 undefined（沿用工具默认资源）。
+ * 类型不匹配的字段会被忽略并 warn，避免 YAML 笔误导致整个解析失败。
+ */
+function parseSlurmConfig(raw: unknown): CustomNodeDef["slurm"] {
+  if (!isRecord(raw)) return undefined;
+  const result: NonNullable<CustomNodeDef["slurm"]> = {};
+
+  if (typeof raw.partition === "string") result.partition = raw.partition;
+  if (typeof raw.cores === "number") {
+    result.cores = raw.cores;
+  } else if (typeof raw.cores === "string" && raw.cores.trim() !== "") {
+    // 宽容处理 YAML 的 "4" 字符串写法
+    const parsed = Number.parseInt(raw.cores, 10);
+    if (!Number.isNaN(parsed)) result.cores = parsed;
+  }
+  if (typeof raw.nodes === "number") result.nodes = raw.nodes;
+  if (typeof raw.memory === "string") result.memory = raw.memory;
+  if (typeof raw.walltime === "string") result.walltime = raw.walltime;
+  if (Array.isArray(raw.modules)) {
+    result.modules = raw.modules.filter((m): m is string => typeof m === "string");
+  }
+  if (typeof raw.jobName === "string") result.jobName = raw.jobName;
+  if (Array.isArray(raw.extraSBATCH)) {
+    result.extraSBATCH = raw.extraSBATCH.filter((m): m is string => typeof m === "string");
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

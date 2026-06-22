@@ -8,6 +8,7 @@
 import type { z } from "zod/v4";
 import type { StorageAdapter } from "../storage/storage-adapter";
 import type { NodeOutput } from "../types/execution";
+import type { SlurmConfig } from "./slurm-types";
 
 /** 输入字段声明 */
 export interface InputDef {
@@ -59,6 +60,14 @@ export interface ExecuteContext {
 
   /** 工作目录根路径 */
   workDir: string;
+
+  /**
+   * 节点级 Slurm 资源声明（来自 YAML `slurm:` 字段）。
+   * 仅当 tool 是 SlurmNode 子类时生效，SlurmNode.resolveSlurmConfig(ctx)
+   * 会把它合并到工具默认 slurmConfig 上（YAML 声明优先）。
+   * 非 Slurm 工具忽略此字段。
+   */
+  slurm?: Partial<SlurmConfig>;
 
   /** 取消信号，引擎 cancel 时 AbortController.abort() */
   signal: AbortSignal;

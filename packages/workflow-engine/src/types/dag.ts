@@ -114,6 +114,21 @@ export interface CustomNodeDef extends BaseNodeDef {
   tool: string;
   /** 输入绑定，key 对应 CustomNode.inputs 的 key，value 为表达式字符串 */
   inputs?: Record<string, string>;
+  /**
+   * Slurm 资源声明（仅当 tool 是 SlurmNode 子类时生效，如通用 slurm 工具）。
+   * 字段会注入到 ExecuteContext.slurm，由 SlurmNode 合并到默认 slurmConfig。
+   * 不声明则使用工具自带的默认资源。
+   */
+  slurm?: {
+    partition?: string;
+    cores?: number;
+    nodes?: number;
+    memory?: string;
+    walltime?: string;
+    modules?: string[];
+    jobName?: string;
+    extraSBATCH?: string[];
+  };
   /** 输出声明，key 对应 CustomNode.produces 的元素 */
   outputs: Record<
     string,

@@ -2,7 +2,8 @@
  * SlurmNode — 基于 CustomNode 的 Slurm HPC 作业执行器。
  *
  * 封装 SSH + sbatch + sacct 完整生命周期。
- * 子类只需覆写 buildScript(ctx) 返回具体 bash 命令。
+ * 默认 buildScript 从 ctx.inputs.script 读取脚本内容（配合通用 slurm 工具使用）；
+ * 子类也可覆写 buildScript(ctx) 返回具体 bash 命令（向后兼容）。
  */
 
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
@@ -10,14 +11,28 @@ import type { NodeOutput } from "../types/execution";
 import type { JobResult, SlurmConfig, SshExecutor } from "./slurm-types";
 import type { CustomNode, ExecuteContext, InputDef } from "./types";
 
-/** SlurmNode abstract class — 子类必须实现 name, description, inputs, produces, slurmConfig, buildScript */
+/**
+ * SlurmNode 抽象基类 — 子类至少需声明 name, description, inputs, produces。
+ *
+ * 默认行为（无需覆写）：
+ * - buildScript: 从 ctx.inputs.script 读取 bash 脚本内容
+ * - slurmConfig: 保守默认值（partition=xahcnormal, cores=1），可被 YAML slurm 字段覆盖
+ * - resolveSlurmConfig(ctx): 合并工具默认值 + ctx.slurm（YAML 节点声明优先）
+ */
 export abstract class SlurmNode implements CustomNode {
   abstract name: string;
   abstract description: string;
   abstract inputs: Record<string, InputDef>;
   abstract produces: string[];
 
-  abstract slurmConfig: SlurmConfig;
+  /**
+   * 工具默认 Slurm 资源。可被 YAML 节点的 `slurm:` 字段覆盖（字段级合并，YAML 优先）。
+   * 子类可覆写提供工具特定的默认值。
+   */
+  slurmConfig: SlurmConfig = {
+    partition: "xahcnormal",
+    cores: 1,
+  };
 
   pollInterval: number = 15000;
   maxRetries: number = 0;
@@ -30,7 +45,32 @@ export abstract class SlurmNode implements CustomNode {
     this.sshExecutor = sshExecutor ?? new BunSshExecutor();
   }
 
-  abstract buildScript(ctx: ExecuteContext): string;
+  /**
+   * 生成 sbatch 脚本正文。默认实现：直接返回 ctx.inputs.script（bash 字符串）。
+   * 子类可覆写以实现命令组装逻辑（向后兼容）。
+   *
+   * 默认实现要求 inputs 声明 `script` 字段且必填，否则抛 NODE_FAILED。
+   */
+  buildScript(ctx: ExecuteContext): string {
+    const script = ctx.inputs.script;
+    if (typeof script !== "string" || !script.trim()) {
+      throw new WorkflowError(
+        `Slurm tool '${this.name}' requires 'script' input (bash script content). ` +
+          `Either declare inputs.script in YAML or override buildScript() in the tool class.`,
+        WorkflowErrorCode.NODE_FAILED,
+        { node_id: ctx.nodeId, tool: this.name },
+      );
+    }
+    return script;
+  }
+
+  /**
+   * 合并工具默认 slurmConfig 与 YAML 节点声明的 ctx.slurm。
+   * YAML 声明优先（字段级浅合并），未声明的字段回退到工具默认值。
+   */
+  protected resolveSlurmConfig(ctx: ExecuteContext): SlurmConfig {
+    return { ...this.slurmConfig, ...(ctx.slurm ?? {}) };
+  }
 
   preCleanup?(ctx: ExecuteContext): string;
 
@@ -47,7 +87,7 @@ export abstract class SlurmNode implements CustomNode {
       }
     }
 
-    // 2. 生成 .slurm 脚本
+    // 2. 生成 .slurm 脚本（header 使用合并后的资源配置）
     const userScript = this.buildScript(ctx);
     const header = this.generateHeader(ctx);
     const slurmScript = `${header}\nset -euo pipefail\n${userScript}`;
@@ -68,7 +108,7 @@ export abstract class SlurmNode implements CustomNode {
     const maxNoData = 20;
     let result: JobResult;
     while (true) {
-      result = await this.pollJob(host, ctx.workDir, jobId);
+      result = await this.pollJob(ctx, host, jobId);
 
       // 成功：跳出循环进入输出收集
       if (result.state === "COMPLETED") break;
@@ -150,7 +190,7 @@ export abstract class SlurmNode implements CustomNode {
   // ── Protected（测试可访问） ──
 
   protected generateHeader(ctx: ExecuteContext): string {
-    const config = this.slurmConfig;
+    const config = this.resolveSlurmConfig(ctx);
     const jobName = config.jobName ?? this.name;
     const outDir = `${ctx.workDir}/.slurm`;
 
@@ -214,8 +254,10 @@ export abstract class SlurmNode implements CustomNode {
     return match[1];
   }
 
-  private async pollJob(host: string, workDir: string, jobId: string): Promise<JobResult> {
-    const jobName = this.slurmConfig.jobName ?? this.name;
+  private async pollJob(ctx: ExecuteContext, host: string, jobId: string): Promise<JobResult> {
+    // jobName 取合并后的 slurmConfig（YAML 声明优先），与 generateHeader 保持一致，
+    // 否则 YAML 覆盖了 jobName 但 pollJob 仍用默认值，会导致找不到 .out/.err 日志文件
+    const jobName = this.resolveSlurmConfig(ctx).jobName ?? this.name;
 
     // 1. sacct 查询状态
     const sacctCmd = `sacct -j ${jobId} --format=JobID,State,ExitCode --noheader --parsable2`;
@@ -253,7 +295,7 @@ export abstract class SlurmNode implements CustomNode {
     let stdout = "";
     let stderr = "";
     if (mappedState !== null) {
-      const outPath = `${workDir}/.slurm/${jobName}_${jobId}`;
+      const outPath = `${ctx.workDir}/.slurm/${jobName}_${jobId}`;
       try {
         const outResult = await this.sshExecutor.exec(host, `cat ${outPath}.out`);
         stdout = outResult.stdout;

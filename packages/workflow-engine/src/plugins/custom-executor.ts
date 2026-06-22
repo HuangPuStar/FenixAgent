@@ -82,6 +82,8 @@ export class CustomNodeExecutor implements NodeExecutor {
       params: ctx.params,
       secrets: ctx.secrets,
       workDir: (ctx.params.work_dir as string) ?? "/tmp/workflow",
+      // 透传 YAML 节点声明的 slurm 资源（仅 SlurmNode 子类消费）
+      slurm: customDef.slurm,
       signal: ctx.signal,
       storage: ctx.storage,
       runId: ctx.runId,

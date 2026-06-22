@@ -187,7 +187,7 @@
     "type_loop": "循环 (Loop)",
     "type_custom": "自定义工具 (Custom)",
     "custom_tool": "工具名称 (tool)",
-    "custom_tool_placeholder": "trim_galore（对应 WORKFLOW_TOOLS_DIR 下注册的工具）",
+    "custom_tool_placeholder": "slurm（对应 WORKFLOW_TOOLS_DIR 下注册的工具）",
     "description": "描述",
     "description_placeholder": "说明该节点的用途...",
     "config": "配置",

@@ -187,7 +187,7 @@
     "type_loop": "Loop",
     "type_custom": "Custom Tool",
     "custom_tool": "Tool name",
-    "custom_tool_placeholder": "trim_galore (registered in WORKFLOW_TOOLS_DIR)",
+    "custom_tool_placeholder": "slurm (registered in WORKFLOW_TOOLS_DIR)",
     "description": "Description",
     "description_placeholder": "Describe the purpose of this node...",
     "config": "Config",
