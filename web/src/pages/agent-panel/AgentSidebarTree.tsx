@@ -486,26 +486,6 @@ export function AgentSidebarTree({
               {/* 两行：显示名 + 标识键 */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <div className="text-[13px] font-semibold text-text-primary truncate">{displayName}</div>
-                  <span className="agent-sidebar-badge rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
-                    {tComponents(getAgentAccessBadgeKey(agent))}
-                  </span>
-                  {(agent as unknown as Record<string, unknown>).engineType === "claude-code" && (
-                    <span className="rounded-md bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">
-                      CC
-                    </span>
-                  )}
-                  {(agent as unknown as Record<string, unknown>).engineType === "ccb" && (
-                    <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
-                      CCB
-                    </span>
-                  )}
-                  {(agent as unknown as Record<string, unknown>).engineType !== "claude-code" &&
-                    (agent as unknown as Record<string, unknown>).engineType !== "ccb" && (
-                      <span className="rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
-                        OC
-                      </span>
-                    )}
                   <div className="text-[13px] font-semibold text-text-primary truncate">{agentLabel}</div>
                   {/* 仅公有/外部显示标签 */}
                   {agent.resourceAccess && getAgentAccessBadgeKey(agent) !== "resource.internal" && (
