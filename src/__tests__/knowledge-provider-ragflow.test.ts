@@ -31,6 +31,7 @@ describe("RagFlowKnowledgeProvider", () => {
     const provider = new RagFlowKnowledgeProvider();
     await expect(
       provider.createKnowledgeBase({
+        organizationId: "org1",
         userId: "user1",
         slug: "test-kb",
         name: "Test KB",
@@ -39,14 +40,15 @@ describe("RagFlowKnowledgeProvider", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test("createKnowledgeBase 调用 RagFlow API 创建 dataset 并返回 dataset_id 作为 remoteId", async () => {
+  test("createKnowledgeBase 使用 organizationId 作为 RagFlow dataset 名前缀", async () => {
     globalThis.fetch = mock(async () => ({
       ok: true,
-      json: async () => ({ code: 0, data: { id: "ds_abc123", name: "[org_user1] Test KB" } }),
+      json: async () => ({ code: 0, data: { id: "ds_abc123", name: "[org_org1] Test KB" } }),
     })) as unknown as typeof fetch;
 
     const provider = new RagFlowKnowledgeProvider();
     const result = await provider.createKnowledgeBase({
+      organizationId: "org1",
       userId: "user1",
       slug: "test-kb",
       name: "Test KB",

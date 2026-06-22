@@ -4,6 +4,7 @@ import {
   type ApiSystemAddOrganizationMemberBody,
   ApiSystemAddOrganizationMemberBodySchema,
   ApiSystemApiKeyIdParamsSchema,
+  ApiSystemApiKeyListResponseSchema,
   ApiSystemApiKeyResultSchema,
   type ApiSystemCreateApiKeyBody,
   ApiSystemCreateApiKeyBodySchema,
@@ -21,6 +22,7 @@ import {
   ApiSystemPaginationQuerySchema,
   ApiSystemUserIdParamsSchema,
   ApiSystemUserListResponseSchema,
+  ApiSystemUserOrganizationListResponseSchema,
   ApiSystemUserSchema,
 } from "../../schemas/api-system.schema";
 import * as systemApi from "../../services/system-api";
@@ -76,6 +78,23 @@ function toApiKeyResponse(apiKey: Awaited<ReturnType<typeof systemApi.createUser
   };
 }
 
+function toApiKeyListItemResponse(apiKey: Awaited<ReturnType<typeof systemApi.listUserApiKeys>>["items"][number]) {
+  return {
+    ...apiKey,
+    createdAt: toDateTimeValue(apiKey.createdAt),
+    expiresAt: toDateTimeValue(apiKey.expiresAt),
+  };
+}
+
+function toUserOrganizationResponse(
+  organization: Awaited<ReturnType<typeof systemApi.listUserOrganizations>>["items"][number],
+) {
+  return {
+    ...toOrganizationResponse(organization),
+    memberCreatedAt: toDateTimeValue(organization.memberCreatedAt),
+  };
+}
+
 const app = new Elysia({ name: "api-system", prefix: "/api/system" }).use(systemApiAuthPlugin).model({
   "api-system-pagination-query": ApiSystemPaginationQuerySchema,
   "api-system-user-id-params": ApiSystemUserIdParamsSchema,
@@ -83,6 +102,7 @@ const app = new Elysia({ name: "api-system", prefix: "/api/system" }).use(system
   "api-system-create-user-body": ApiSystemCreateUserBodySchema,
   "api-system-user": ApiSystemUserSchema,
   "api-system-user-list-response": ApiSystemUserListResponseSchema,
+  "api-system-user-organization-list-response": ApiSystemUserOrganizationListResponseSchema,
   "api-system-organization-id-params": ApiSystemOrganizationIdParamsSchema,
   "api-system-create-organization-body": ApiSystemCreateOrganizationBodySchema,
   "api-system-add-org-member-body": ApiSystemAddOrganizationMemberBodySchema,
@@ -91,6 +111,7 @@ const app = new Elysia({ name: "api-system", prefix: "/api/system" }).use(system
   "api-system-organization-member": ApiSystemOrganizationMemberSchema,
   "api-system-create-api-key-body": ApiSystemCreateApiKeyBodySchema,
   "api-system-api-key-result": ApiSystemApiKeyResultSchema,
+  "api-system-api-key-list-response": ApiSystemApiKeyListResponseSchema,
   "api-system-delete-response": ApiSystemDeleteResponseSchema,
 });
 
@@ -210,6 +231,72 @@ app.get(
       tags: ["System User"],
       summary: "获取用户详情",
       description: "系统级接口，按用户 ID 返回单个用户详情。",
+    },
+  },
+);
+
+app.get(
+  "/users/:id/api-keys",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia response schema + custom macro 下类型推断不稳定
+  async ({ params, query, error }: any) => {
+    try {
+      const result = await systemApi.listUserApiKeys(params.id, query as ApiSystemPaginationQuery);
+      return {
+        ...result,
+        items: result.items.map((item) => toApiKeyListItemResponse(item)),
+      };
+    } catch (err) {
+      const mapped = mapSystemApiError(err);
+      return error(mapped.status, mapped.body);
+    }
+  },
+  {
+    systemApiKeyAuth: true,
+    params: "api-system-user-id-params",
+    query: "api-system-pagination-query",
+    response: {
+      200: "api-system-api-key-list-response",
+      401: ApiSystemErrorResponseSchema,
+      404: ApiSystemErrorResponseSchema,
+      500: ApiSystemErrorResponseSchema,
+    },
+    detail: {
+      tags: ["System ApiKey"],
+      summary: "获取用户 API Key 列表",
+      description: "系统级接口，按用户 ID 返回该用户名下的 API Key 分页列表，不返回明文 key。",
+    },
+  },
+);
+
+app.get(
+  "/users/:id/organizations",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia response schema + custom macro 下类型推断不稳定
+  async ({ params, query, error }: any) => {
+    try {
+      const result = await systemApi.listUserOrganizations(params.id, query as ApiSystemPaginationQuery);
+      return {
+        ...result,
+        items: result.items.map((item) => toUserOrganizationResponse(item)),
+      };
+    } catch (err) {
+      const mapped = mapSystemApiError(err);
+      return error(mapped.status, mapped.body);
+    }
+  },
+  {
+    systemApiKeyAuth: true,
+    params: "api-system-user-id-params",
+    query: "api-system-pagination-query",
+    response: {
+      200: "api-system-user-organization-list-response",
+      401: ApiSystemErrorResponseSchema,
+      404: ApiSystemErrorResponseSchema,
+      500: ApiSystemErrorResponseSchema,
+    },
+    detail: {
+      tags: ["System Organization"],
+      summary: "获取用户组织列表",
+      description: "系统级接口，按用户 ID 返回该用户加入的组织分页列表，并附带该用户在组织中的角色信息。",
     },
   },
 );

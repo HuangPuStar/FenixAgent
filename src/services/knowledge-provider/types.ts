@@ -37,6 +37,7 @@ export interface KnowledgeResourceContent {
 
 export interface KnowledgeProvider {
   createKnowledgeBase(input: {
+    organizationId: string;
     userId: string;
     slug: string;
     name: string;

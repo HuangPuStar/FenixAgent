@@ -17,6 +17,34 @@ function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
 }
 
+/**
+ * 将任意名称裁剪为可读的 slug base。
+ * 仅保留 ASCII 字母和数字，中文等非 ASCII 字符会被清空并走系统前缀兜底。
+ */
+function buildSlugBase(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * 基于知识库名称生成 kebab-case slug。
+ * - 英文/数字名称保留可读前缀
+ * - 中文等无法转为 ASCII 的名称回退到 `kb-<suffix>`
+ */
+export function generateKnowledgeBaseSlug(name: string): string {
+  const suffix = randomBytes(4).toString("hex");
+  const base = buildSlugBase(name);
+  if (!base) {
+    return `kb-${suffix}`;
+  }
+  const maxBaseLength = 80 - suffix.length - 1;
+  const trimmedBase = base.slice(0, maxBaseLength).replace(/-+$/g, "");
+  return `${trimmedBase || "kb"}-${suffix}`;
+}
+
 function validateName(name: string): string | null {
   if (!name || name.trim().length === 0) {
     return "知识库名称不能为空";
@@ -156,20 +184,21 @@ export async function getKnowledgeBaseDetail(organizationId: string, knowledgeBa
 
 export async function createKnowledgeBaseRecord(
   organizationId: string,
-  input: { name: string; slug: string; description?: string | null },
+  input: { name: string; slug?: string; description?: string | null },
   userId?: string,
 ) {
   const nameError = validateName(input.name);
   if (nameError) {
     return { success: false as const, error: { code: "VALIDATION_ERROR", message: nameError } };
   }
-  const slugError = validateSlug(input.slug);
+  const resolvedSlug = input.slug?.trim() ? input.slug : generateKnowledgeBaseSlug(input.name);
+  const slugError = validateSlug(resolvedSlug);
   if (slugError) {
     return { success: false as const, error: { code: "VALIDATION_ERROR", message: slugError } };
   }
 
   try {
-    await assertUniqueSlug(organizationId, input.slug);
+    await assertUniqueSlug(organizationId, resolvedSlug);
   } catch (error) {
     return { success: false as const, error: { code: "VALIDATION_ERROR", message: (error as Error).message } };
   }
@@ -182,8 +211,9 @@ export async function createKnowledgeBaseRecord(
     remoteUserId: effectiveUserId,
   });
   const remote = await provider.createKnowledgeBase({
+    organizationId,
     userId: effectiveUserId,
-    slug: normalizeSlug(input.slug),
+    slug: normalizeSlug(resolvedSlug),
     name: input.name.trim(),
     description: input.description?.trim() || undefined,
   });
@@ -198,7 +228,7 @@ export async function createKnowledgeBaseRecord(
     userId: effectiveUserId,
     organizationId,
     name: input.name.trim(),
-    slug: normalizeSlug(input.slug),
+    slug: normalizeSlug(resolvedSlug),
     description: input.description?.trim() || null,
     provider: "ragflow",
     remoteId,

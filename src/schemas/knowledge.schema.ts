@@ -45,7 +45,7 @@ export const KnowledgeBaseInfoSchema = z.object({
 /** 创建知识库请求体 */
 export const CreateKnowledgeBaseRequestSchema = z.object({
   name: z.string().min(1).describe("知识库名称。"),
-  slug: z.string().min(1).describe("知识库 slug。"),
+  slug: z.string().min(1).optional().describe("可选的知识库 slug；未传时由服务端自动生成。"),
   description: z.string().optional().describe("知识库描述。"),
 });
 

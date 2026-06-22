@@ -113,6 +113,30 @@ export const ApiSystemApiKeyResultSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).nullable().describe("最终 metadata。"),
 });
 
+export const ApiSystemApiKeyListItemSchema = ApiSystemApiKeyResultSchema.omit({
+  key: true,
+}).describe("用户 API Key 列表项；不返回明文 key。");
+
+export const ApiSystemApiKeyListResponseSchema = z.object({
+  items: ApiSystemApiKeyListItemSchema.array().describe("API Key 列表。"),
+  total: z.number().int().nonnegative().describe("总数。"),
+  page: z.number().int().positive().describe("当前页码。"),
+  pageSize: z.number().int().positive().describe("当前分页大小。"),
+});
+
+export const ApiSystemUserOrganizationSchema = ApiSystemOrganizationSchema.extend({
+  memberId: z.string().describe("成员记录 ID。"),
+  role: z.string().describe("该用户在组织中的角色。"),
+  memberCreatedAt: FlexibleDateTimeSchema.describe("该用户加入组织的时间。"),
+});
+
+export const ApiSystemUserOrganizationListResponseSchema = z.object({
+  items: ApiSystemUserOrganizationSchema.array().describe("用户所属组织列表。"),
+  total: z.number().int().nonnegative().describe("总数。"),
+  page: z.number().int().positive().describe("当前页码。"),
+  pageSize: z.number().int().positive().describe("当前分页大小。"),
+});
+
 export const ApiSystemDeleteResponseSchema = z.object({
   deleted: z.literal(true).describe("删除操作已执行。"),
 });

@@ -16,6 +16,43 @@ describe("API System Routes", () => {
     stubSystemApi({
       listUsers: async () => [],
       getUserById: async () => null,
+      listUserApiKeys: async () => ({
+        items: [
+          {
+            id: "key-1",
+            name: "automation",
+            prefix: "rcs_",
+            start: "rcs_se",
+            userId: "user-1",
+            organizationId: "org-1",
+            role: "admin",
+            createdAt: new Date("2026-06-17T00:00:00.000Z"),
+            expiresAt: null,
+            metadata: { organizationId: "org-1", role: "admin" },
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
+      listUserOrganizations: async () => ({
+        items: [
+          {
+            id: "org-1",
+            name: "System Org",
+            slug: "system-org",
+            logo: null,
+            metadata: null,
+            createdAt: new Date("2026-06-17T00:00:00.000Z"),
+            role: "admin",
+            memberId: "mem-1",
+            memberCreatedAt: new Date("2026-06-18T00:00:00.000Z"),
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
       createUser: async () => ({
         id: "user-1",
         name: "System User",
@@ -48,7 +85,7 @@ describe("API System Routes", () => {
         name: "automation",
         prefix: "rcs_",
         key: "rcs_secret_plaintext",
-        start: "rcs_",
+        start: "rcs_se",
         userId: "user-1",
         organizationId: "org-1",
         role: "admin",
@@ -103,6 +140,63 @@ describe("API System Routes", () => {
     });
   });
 
+  // 系统级用户 API key 列表接口应返回脱敏后的 key 列表与分页信息。
+  test("GET /api/system/users/:id/api-keys lists user API keys", async () => {
+    const res = await request("/api/system/users/user-1/api-keys?page=1&pageSize=20", {
+      headers: { Authorization: "Bearer sys-key-1" },
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({
+      items: [
+        {
+          id: "key-1",
+          name: "automation",
+          prefix: "rcs_",
+          start: "rcs_se",
+          userId: "user-1",
+          organizationId: "org-1",
+          role: "admin",
+          createdAt: "2026-06-17T00:00:00.000Z",
+          expiresAt: null,
+          metadata: { organizationId: "org-1", role: "admin" },
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+  });
+
+  // 系统级用户组织列表接口应返回组织信息及该用户的成员角色上下文。
+  test("GET /api/system/users/:id/organizations lists user organizations", async () => {
+    const res = await request("/api/system/users/user-1/organizations?page=1&pageSize=20", {
+      headers: { Authorization: "Bearer sys-key-2" },
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({
+      items: [
+        {
+          id: "org-1",
+          name: "System Org",
+          slug: "system-org",
+          logo: null,
+          metadata: null,
+          createdAt: "2026-06-17T00:00:00.000Z",
+          role: "admin",
+          memberId: "mem-1",
+          memberCreatedAt: "2026-06-18T00:00:00.000Z",
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+  });
+
   // 系统级组织成员添加接口应返回新成员信息。
   test("POST /api/system/organizations/:id/members adds member", async () => {
     const res = await request("/api/system/organizations/org-1/members", {
@@ -152,7 +246,7 @@ describe("API System Routes", () => {
       name: "automation",
       prefix: "rcs_",
       key: "rcs_secret_plaintext",
-      start: "rcs_",
+      start: "rcs_se",
       userId: "user-1",
       organizationId: "org-1",
       role: "admin",

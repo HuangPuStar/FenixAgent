@@ -1,5 +1,10 @@
 import * as z from "zod/v4";
-import { AgentDetailSchema, AgentInfoSchema, AgentResourceAccessSchema } from "./config.schema";
+import {
+  AgentDetailSchema,
+  AgentInfoSchema,
+  AgentKnowledgeConfigSchema,
+  AgentResourceAccessSchema,
+} from "./config.schema";
 
 /**
  * 对外 Agent 列表查询参数。
@@ -29,7 +34,7 @@ export const ApiAgentUpsertBodySchema = z
     prompt: z.string().nullable().optional().describe("系统提示词；传 null 表示清空。"),
     description: z.string().nullable().optional().describe("Agent 描述；传 null 表示清空。"),
     extra: z.record(z.string(), z.unknown()).nullable().optional().describe("额外扩展配置；传 null 表示清空。"),
-    knowledge: z.unknown().nullable().optional().describe("知识库绑定配置；传 null 表示清空。"),
+    knowledge: AgentKnowledgeConfigSchema.nullable().optional().describe("知识库绑定配置；传 null 表示清空。"),
     machineId: z.string().nullable().optional().describe("绑定的机器 ID；传 null 表示清空。"),
     skillIds: z.array(z.string()).optional().describe("绑定的 Skill ID 或 Skill 名称列表。"),
     mcpIds: z.array(z.string()).optional().describe("绑定的 MCP Server ID 列表。"),
