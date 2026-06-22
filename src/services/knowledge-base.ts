@@ -211,6 +211,7 @@ export async function createKnowledgeBaseRecord(
     remoteUserId: effectiveUserId,
   });
   const remote = await provider.createKnowledgeBase({
+    organizationId,
     userId: effectiveUserId,
     slug: normalizeSlug(resolvedSlug),
     name: input.name.trim(),

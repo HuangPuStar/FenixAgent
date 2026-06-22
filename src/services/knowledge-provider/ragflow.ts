@@ -132,12 +132,13 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
   }
 
   async createKnowledgeBase(input: {
+    organizationId: string;
     userId: string;
     slug: string;
     name: string;
     description?: string;
   }): Promise<KnowledgeBaseSnapshot> {
-    const displayName = `[org_${input.userId}] ${input.name}`;
+    const displayName = `[org_${input.organizationId}] ${input.name}`;
 
     const payload = await this.request<RagFlowResponse<{ id: string; name: string }>>("/api/v1/datasets", {
       method: "POST",
