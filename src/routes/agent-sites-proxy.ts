@@ -49,14 +49,31 @@ function checkVisibility(
   return null;
 }
 
+/**
+ * 从 URL pathname 中提取 appId 和剩余路径。
+ * 匹配 /app-xxxxxxxx 或 /app-xxxxxxxx/foo/bar
+ */
+function parseAppPath(pathname: string): { appId: string; subPath: string } | null {
+  if (!pathname.startsWith("/app-")) return null;
+  const appIdEnd = pathname.indexOf("/", 1);
+  const appId = appIdEnd === -1 ? pathname.slice(1) : pathname.slice(1, appIdEnd);
+  if (!APP_ID_RE.test(appId)) return null;
+  const subPath = appIdEnd === -1 ? "/" : pathname.slice(appIdEnd);
+  return { appId, subPath };
+}
+
 const app = new Elysia({ name: "agent-sites-proxy" }).use(authGuardPlugin);
 
-// 业务前端：/{appId}（仅 app 首页，无子路径）
-app.get("/:appId", async ({ params, request, store, set }) => {
-  if (!APP_ID_RE.test(params.appId)) return;
+// 业务前端：/{appId} 和 /{appId}/* 统一用一个 ALL catch-all 处理
+// 使用 * 通配符避免 memoirist 对 :param* 参数名的冲突
+app.all("/*", async ({ request, store, set }) => {
+  const url = new URL(request.url);
+  const parsed = parseAppPath(url.pathname);
+  if (!parsed) return; // 不是 agent-sites app，留给其他路由
   if (!isAgentSitesConfigured()) return;
-  const slim = await getAppByRemoteId(params.appId);
-  if (!slim) return;
+
+  const slim = await getAppByRemoteId(parsed.appId);
+  if (!slim) return; // 不在 RCS DB 中 → Elysia 继续匹配其他路由
 
   const authCtx: AuthContext | null = store.authContext ?? null;
   const reject = checkVisibility(slim, authCtx);
@@ -71,33 +88,7 @@ app.get("/:appId", async ({ params, request, store, set }) => {
     set.status = reject.status;
     return reject.body;
   }
-  return proxyToAgentSites(params.appId, "/", request);
-});
-
-// 业务前端：/{appId}/*（子路径：静态文件 + PB API）
-app.all("/:appId/:path*", async ({ params, request, store, set }) => {
-  if (!APP_ID_RE.test(params.appId)) return;
-  if (!isAgentSitesConfigured()) return;
-
-  const slim = await getAppByRemoteId(params.appId);
-  if (!slim) return;
-
-  const authCtx: AuthContext | null = store.authContext ?? null;
-  const reject = checkVisibility(slim, authCtx);
-  if (reject) {
-    if (reject.status === 302) {
-      set.status = 302;
-      set.headers = {
-        location: `/login?redirect=${encodeURIComponent(new URL(request.url).pathname)}`,
-      };
-      return "";
-    }
-    set.status = reject.status;
-    return reject.body;
-  }
-
-  const subPath = `/${params["path*"] ?? ""}`;
-  return proxyToAgentSites(params.appId, subPath, request);
+  return proxyToAgentSites(parsed.appId, parsed.subPath, request);
 });
 
 export default app;
