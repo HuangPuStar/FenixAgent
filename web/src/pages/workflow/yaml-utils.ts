@@ -250,11 +250,19 @@ export function parseDataFlowEdges(nodes: Array<{ id: string; data: Record<strin
     if (!inputs || typeof inputs !== "object") continue;
     for (const [paramName, expr] of Object.entries(inputs as Record<string, string>)) {
       if (typeof expr !== "string") continue;
-      const match = expr.match(/^nodes\.([a-zA-Z0-9_-]+)\.(.+)$/);
+      // 兼容两种写法：YAML 导入的 ${{ nodes.X.output.Y }} 和 UI 创建的 nodes.X.output.Y
+      const inner = expr.startsWith("${{") && expr.endsWith("}}") ? expr.slice(3, -2).trim() : expr;
+      const match = inner.match(/^nodes\.([a-zA-Z0-9_-]+)\.(.+)$/);
       if (!match) continue;
+      let sourceField = match[2];
+      // 去掉 output. 命名空间前缀：${{ nodes.X.output.Y }} 中 output 是固定命名空间，
+      // 源节点上实际的 Handle ID 是 out-Y 而不是 out-output.Y
+      if (sourceField.startsWith("output.")) {
+        sourceField = sourceField.slice(7);
+      }
       result.push({
         sourceNodeId: match[1],
-        sourceField: match[2],
+        sourceField,
         targetNodeId: node.id,
         targetParam: paramName,
       });

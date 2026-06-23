@@ -49,7 +49,7 @@ import {
   workflowEngineApi,
 } from "../../api/workflow-engine";
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
-import { NodeConfigPopover } from "./components/NodeConfigPopover";
+import { NodeConfigSheet } from "./components/NodeConfigSheet";
 import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
 import { TriggerPanel } from "./components/TriggerPanel";
@@ -115,7 +115,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null);
 
   // ── Popover 状态 ──
-  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [nodeConfigSheetOpen, setNodeConfigSheetOpen] = useState(false);
   const [metaPopoverOpen, setMetaPopoverOpen] = useState(false);
   const [filePopoverOpen, setFilePopoverOpen] = useState(false);
   const [customTools, setCustomTools] = useState<CustomToolItem[]>([]);
@@ -363,33 +363,33 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setSelectedNode(node);
         return;
       }
-      if (selectedNode?.id === node.id && popoverOpen) {
-        setPopoverOpen(false);
+      if (selectedNode?.id === node.id && nodeConfigSheetOpen) {
+        setNodeConfigSheetOpen(false);
         setSelectedNode(null);
       } else {
         setSelectedNode(node);
-        setPopoverOpen(true);
+        setNodeConfigSheetOpen(true);
       }
     },
-    [popoverOpen, selectedNode, isRunMode],
+    [nodeConfigSheetOpen, selectedNode, isRunMode],
   );
 
   // ── 画布移动时关闭 popover ──
   const handleMoveStart = useCallback(() => {
-    if (popoverOpen) {
-      setPopoverOpen(false);
+    if (nodeConfigSheetOpen) {
+      setNodeConfigSheetOpen(false);
       setSelectedNode(null);
     }
-  }, [popoverOpen]);
+  }, [nodeConfigSheetOpen]);
 
-  // ── 从 popover 删除当前选中节点 ──
-  // 与 ReactFlow 内置 deleteKeyCode 不同，这里是手动触发，需要同时清理 nodes、edges、popover 状态。
-  // 开始节点（START_NODE_ID）和只读模式下由 NodeConfigPopover 自身屏蔽，不进入此回调。
+  // ── 从 Sheet 删除当前选中节点 ──
+  // 与 ReactFlow 内置 deleteKeyCode 不同，这里是手动触发，需要同时清理 nodes、edges、Sheet 状态。
+  // 开始节点（START_NODE_ID）和只读模式下由 NodeConfigSheet 自身屏蔽，不进入此回调。
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-      setPopoverOpen(false);
+      setNodeConfigSheetOpen(false);
       setSelectedNode(null);
     },
     [setNodes, setEdges],
@@ -406,7 +406,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setRunApprovals([]);
     setSelectedRunNodeId(null);
     setSelectedNodeOutput(null);
-    setPopoverOpen(false);
+    setNodeConfigSheetOpen(false);
     setSelectedNode(null);
     setYamlOpen(false);
     setRunSheetOpen(false);
@@ -519,7 +519,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setYamlBaseText(result.yaml);
         setPreviewVersion(version);
         setSelectedNode(null);
-        setPopoverOpen(false);
+        setNodeConfigSheetOpen(false);
         setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
       } catch (err) {
         console.error("Failed to preview version:", err);
@@ -545,7 +545,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       }
       setPreviewVersion(null);
       setSelectedNode(null);
-      setPopoverOpen(false);
+      setNodeConfigSheetOpen(false);
       setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
     } catch (err) {
       console.error("Failed to load draft:", err);
@@ -594,7 +594,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           onNodesDelete={(deleted) => {
             handleNodesDelete(deleted);
             if (selectedNode && deleted.some((n) => n.id === selectedNode.id)) {
-              setPopoverOpen(false);
+              setNodeConfigSheetOpen(false);
               setSelectedNode(null);
             }
           }}
@@ -791,11 +791,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           hasEdits={yamlOpen && yamlText !== yamlBaseText}
         />
 
-        {/* 节点配置 Popover */}
-        <NodeConfigPopover
-          open={popoverOpen}
+        {/* 节点配置 Sheet */}
+        <NodeConfigSheet
+          open={nodeConfigSheetOpen}
           onOpenChange={(open) => {
-            setPopoverOpen(open);
+            setNodeConfigSheetOpen(open);
             if (!open) setSelectedNode(null);
           }}
           selectedNode={selectedNode}

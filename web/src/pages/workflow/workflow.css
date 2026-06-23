@@ -90,6 +90,107 @@
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 
+/* ── 紧凑横向字段 (label 左 input 右) ── */
+.wf-prop-field-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wf-prop-field-inline label {
+  width: 72px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 500;
+  margin-bottom: 0;
+  text-align: right;
+  line-height: 1.3;
+}
+
+.wf-prop-field-inline input,
+.wf-prop-field-inline select {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #111827;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.wf-prop-field-inline input:focus,
+.wf-prop-field-inline select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.wf-prop-field-inline input[readonly],
+.wf-prop-field-inline select[disabled] {
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+/* ── 块级字段 (textarea 专用，保持纵向) ── */
+.wf-prop-field-block {
+  margin-bottom: 10px;
+}
+
+.wf-prop-field-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.wf-prop-field-block label {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 500;
+  margin-bottom: 0;
+}
+
+/* ── 展开编辑按钮 ── */
+.wf-prop-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.wf-prop-expand-btn:hover {
+  background: #f3f4f6;
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+/* ── 代码编辑 Dialog ── */
+.wf-code-dialog textarea {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+/* ── 节点配置 Sheet ── */
+.wf-node-sheet .wf-popover-body {
+  padding: 4px 0;
+}
+
 .wf-prop-hint {
   padding: 16px;
   color: #9ca3af;

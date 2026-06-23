@@ -56,6 +56,7 @@ export function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePos
         stroke: "#10b981",
         strokeWidth: 1,
         strokeDasharray: "2 3",
+        opacity: 0.3,
       }}
     />
   );

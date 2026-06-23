@@ -100,10 +100,10 @@ describe("ParamsEditor", () => {
     }).not.toThrow();
   });
 
-  // type=boolean 时 default 渲染为 checkbox，源码应含 "checkbox"
-  test("source renders checkbox default for boolean type", () => {
+  // type=boolean 时 default 渲染为 shadcn Checkbox 组件
+  test("source renders Checkbox for boolean type", () => {
     const src = readSrc("pages/workflow/components/ParamsEditor.tsx");
-    expect(src).toContain('"checkbox"');
+    expect(src).toContain("<Checkbox");
     // type=number 时 default 应切换为 number input
     expect(src).toMatch(/type.*number|"number"|'number'/);
   });
