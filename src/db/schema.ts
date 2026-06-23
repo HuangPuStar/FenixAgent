@@ -932,3 +932,32 @@ export const registryEvent = pgTable(
     typeIdx: index("idx_registry_event_type").on(table.type),
   }),
 );
+
+// ────────────────────────────────────────────
+// Agent Sites 代理 — app 映射与凭证
+// ────────────────────────────────────────────
+
+export const agentSiteApp = pgTable(
+  "agent_site_app",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: text("organization_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    remoteAppId: varchar("remote_app_id", { length: 64 }).notNull(),
+    name: varchar("name", { length: 32 }).notNull(),
+    description: text("description"),
+    platformToken: text("platform_token").notNull(),
+    platformTokenId: varchar("platform_token_id", { length: 64 }).notNull(),
+    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    remoteAppIdIdx: uniqueIndex("idx_agent_site_app_remote_app_id").on(table.remoteAppId),
+    orgVisibilityIdx: index("idx_agent_site_app_org_visibility").on(table.organizationId, table.visibility),
+    orgIdx: index("idx_agent_site_app_org").on(table.organizationId),
+    userIdx: index("idx_agent_site_app_user").on(table.userId),
+  }),
+);
