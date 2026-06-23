@@ -1,15 +1,13 @@
 /** Agent Sites 远程 API 客户端。封装 master key 鉴权 + 错误处理。 */
 
-import { env } from "../env";
-
 function baseUrl(): string {
-  const url = env.AGENT_SITES_BASE_URL;
+  const url = process.env.AGENT_SITES_BASE_URL;
   if (!url) throw new Error("AGENT_SITES_BASE_URL not configured");
   return url;
 }
 
 function masterKey(): string {
-  const key = env.AGENT_SITES_MASTER_KEY;
+  const key = process.env.AGENT_SITES_MASTER_KEY;
   if (!key) throw new Error("AGENT_SITES_MASTER_KEY not configured");
   return key;
 }
@@ -118,7 +116,7 @@ export async function revokePlatformToken(tokenId: string): Promise<void> {
 export async function uploadRemoteFile(
   remoteAppId: string,
   filePath: string,
-  body: BodyInit,
+  body: ReadableStream<Uint8Array> | null,
 ): Promise<{ data: { path: string; bytes: number } }> {
   const res = await agentSitesFetch(
     `/api/apps/${encodeURIComponent(remoteAppId)}/files/${encodeURIComponent(filePath)}`,
@@ -130,7 +128,7 @@ export async function uploadRemoteFile(
 /** POST /api/apps/{id}/files/bundle — 批量上传 gzip tar */
 export async function uploadRemoteBundle(
   remoteAppId: string,
-  body: BodyInit,
+  body: ReadableStream<Uint8Array> | null,
 ): Promise<{ data: { files: { path: string; bytes: number }[] } }> {
   const res = await agentSitesFetch(`/api/apps/${encodeURIComponent(remoteAppId)}/files/bundle`, {
     method: "POST",
@@ -150,7 +148,9 @@ export async function proxyToAgentSites(appId: string, path: string, request: Re
   const targetUrl = `${baseUrl()}/${encodeURIComponent(appId)}${path}`;
   const srcUrl = new URL(request.url);
   const url = new URL(targetUrl);
-  srcUrl.searchParams.forEach((v, k) => url.searchParams.set(k, v));
+  for (const [k, v] of srcUrl.searchParams.entries()) {
+    url.searchParams.set(k, v);
+  }
 
   const headers = new Headers(request.headers);
   headers.delete("host");
@@ -189,5 +189,5 @@ export async function proxyToAgentSites(appId: string, path: string, request: Re
 
 /** 判断 agent-sites 是否已配置 */
 export function isAgentSitesConfigured(): boolean {
-  return !!env.AGENT_SITES_BASE_URL && !!env.AGENT_SITES_MASTER_KEY;
+  return !!process.env.AGENT_SITES_BASE_URL && !!process.env.AGENT_SITES_MASTER_KEY;
 }
