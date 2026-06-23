@@ -55,42 +55,43 @@ export const registryApi = new RegistryApi();
 export const authApi = new AuthApi();
 
 // ── Agent Sites ──
+
+async function agentSitesFetch<T = unknown>(url: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(url, { credentials: "include", ...init });
+  const json: { success?: boolean; error?: { message?: string } } = await r.json();
+  if (!r.ok || json.success === false) {
+    throw new Error(json?.error?.message ?? `请求失败 (${r.status})`);
+  }
+  return json as T;
+}
+
 export const agentSitesApi = {
-  list: () => fetch("/web/agent-sites/apps", { credentials: "include" }).then((r) => r.json()),
-  get: (id: string) => fetch(`/web/agent-sites/apps/${id}`, { credentials: "include" }).then((r) => r.json()),
+  list: () => agentSitesFetch<{ success: boolean; data: unknown[] }>("/web/agent-sites/apps"),
+  get: (id: string) => agentSitesFetch(`/web/agent-sites/apps/${id}`),
   create: (body: { name: string; description?: string; visibility?: string }) =>
-    fetch("/web/agent-sites/apps", {
+    agentSitesFetch("/web/agent-sites/apps", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      credentials: "include",
       body: JSON.stringify(body),
-    }).then((r) => r.json()),
+    }),
   update: (id: string, body: { name?: string; description?: string; visibility?: string }) =>
-    fetch(`/web/agent-sites/apps/${id}`, {
+    agentSitesFetch(`/web/agent-sites/apps/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      credentials: "include",
       body: JSON.stringify(body),
-    }).then((r) => r.json()),
-  delete: (id: string) =>
-    fetch(`/web/agent-sites/apps/${id}`, { method: "DELETE", credentials: "include" }).then((r) => r.json()),
-  rotateToken: (id: string) =>
-    fetch(`/web/agent-sites/apps/${id}/rotate-token`, {
-      method: "POST",
-      credentials: "include",
-    }).then((r) => r.json()),
+    }),
+  delete: (id: string) => agentSitesFetch(`/web/agent-sites/apps/${id}`, { method: "DELETE" }),
+  rotateToken: (id: string) => agentSitesFetch(`/web/agent-sites/apps/${id}/rotate-token`, { method: "POST" }),
   uploadFile: (id: string, path: string, body: BodyInit) =>
-    fetch(`/web/agent-sites/apps/${id}/files/${path}`, {
+    agentSitesFetch(`/web/agent-sites/apps/${id}/files/${path}`, {
       method: "PUT",
-      credentials: "include",
       body,
-    }).then((r) => r.json()),
+    }),
   uploadBundle: (id: string, body: BodyInit) =>
-    fetch(`/web/agent-sites/apps/${id}/files/bundle`, {
+    agentSitesFetch(`/web/agent-sites/apps/${id}/files/bundle`, {
       method: "POST",
-      credentials: "include",
       body,
-    }).then((r) => r.json()),
+    }),
 };
 
 // ── V2 模块（一般前端不直接使用，保留导出） ──

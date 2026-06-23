@@ -74,7 +74,7 @@ export function AgentSitesPage() {
     try {
       const res = await agentSitesApi.list();
       if (res.success) {
-        setApps(Array.isArray(res.data) ? res.data : []);
+        setApps(Array.isArray(res.data) ? (res.data as SiteApp[]) : []);
       }
     } catch (error) {
       console.error("加载 app 列表失败", error);

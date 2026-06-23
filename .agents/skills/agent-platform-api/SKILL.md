@@ -39,6 +39,7 @@ AUTH="-H 'Authorization: Bearer $USER_META_API_KEY' -H 'Content-Type: applicatio
 | 任务 | `references/task.md` | 定时任务 CRUD/触发/日志 |
 | 知识库 | `references/knowledge.md` | 知识库 CRUD/文件上传/URL 导入 |
 | 组织 | `references/org.md` | 组织管理/成员/API Key |
+| Agent Sites | `references/agent-sites.md` | 建站部署/App 管理/PocketBase 后端配置/前端上传 |
 
 **使用某个模块的 API 前，先 `cat references/<module>.md` 读取完整文档和 curl 示例。**
 

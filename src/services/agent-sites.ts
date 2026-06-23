@@ -166,10 +166,15 @@ export async function proxyToAgentSites(appId: string, path: string, request: Re
   }
   try {
     const res = await fetch(url.toString(), init);
+    // fetch() 自动解压 gzip/brotli，需清除 Content-Encoding 否则浏览器
+    // 会尝试二次解压 → ERR_CONTENT_DECODING_FAILED
+    const proxiedHeaders = new Headers(res.headers);
+    proxiedHeaders.delete("content-encoding");
+    proxiedHeaders.delete("transfer-encoding");
     return new Response(res.body, {
       status: res.status,
       statusText: res.statusText,
-      headers: res.headers,
+      headers: proxiedHeaders,
     });
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "AbortError") {
