@@ -7,6 +7,7 @@
 
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
+import { getWorkflowDef } from "../../repositories/workflow-def";
 import {
   WorkflowEventStreamParamsSchema,
   WorkflowEventStreamQuerySchema,
@@ -32,6 +33,12 @@ app.get(
     const workflowId = params.workflowId as string;
     if (!workflowId) {
       return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+    }
+
+    // 多租户关键：校验 workflowId 归属当前 organization，防止跨组织订阅 SSE 事件流
+    const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+    if (!wf) {
+      return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
     }
 
     const bus = getWorkflowEventBus(workflowId);

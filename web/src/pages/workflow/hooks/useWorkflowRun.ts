@@ -131,12 +131,12 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setDryRunResult(result);
     } catch (err) {
       console.error(err);
-      pushWorkflowError("validation", (err as Error).message);
+      pushWorkflowError(workflowId, "validation", (err as Error).message);
       setDryRunResult({ valid: false, issues: [{ type: "error", message: (err as Error).message }] });
     } finally {
       setRunning(false);
     }
-  }, [syncYaml]);
+  }, [syncYaml, workflowId]);
 
   const updateNodesFromSnapshot = useCallback(
     (snap: DAGSnapshot) => {
@@ -184,14 +184,14 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         if (snap) {
           setRunSnapshot(snap);
           updateNodesFromSnapshotRef.current(snap);
-          pushWorkflowRunStatus(buildRunSummary(snap));
+          pushWorkflowRunStatus(workflowId, buildRunSummary(snap));
         }
         if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
       } catch (err) {
         console.error(err);
       }
     },
-    [setRunSnapshot, setRunEvents],
+    [setRunSnapshot, setRunEvents, workflowId],
   );
 
   useEffect(() => {
@@ -260,7 +260,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       const y = syncYaml();
       setRunning(true);
       setDryRunResult(null);
-      clearWorkflowEvents();
+      clearWorkflowEvents(workflowId);
 
       if (workflowId) {
         try {
@@ -294,7 +294,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         // running 保持 true，轮询检测到终止状态时重置
       } catch (err) {
         console.error(err);
-        pushWorkflowError("run", (err as Error).message);
+        pushWorkflowError(workflowId, "run", (err as Error).message);
         toast.error(`${t("editor.run_failed")}: ${(err as Error).message}`);
         setRunning(false);
       } finally {

@@ -37,8 +37,16 @@ export async function resolveYaml(
 
   // 确定目标版本：显式指定 > latestVersion 回退 > 0（草稿）
   let targetVersion: number;
+  let storagePath: string | null | undefined;
   if (payload.version !== undefined) {
     targetVersion = payload.version as number;
+    // 显式 version 时仍需校验 workflow 归属当前 organization
+    const wf = await deps.getWorkflowDef(workflowId, organizationId);
+    if (!wf) {
+      logger.warn(`resolveYaml: workflow not found for workflowId=${workflowId}`);
+      return null;
+    }
+    storagePath = wf.storagePath;
   } else {
     const wf = await deps.getWorkflowDef(workflowId, organizationId);
     if (!wf) {
@@ -46,9 +54,10 @@ export async function resolveYaml(
       return null;
     }
     targetVersion = wf.latestVersion ?? 0;
+    storagePath = wf.storagePath;
   }
 
-  const resolved = await deps.getVersionYaml(workflowId, targetVersion, undefined);
+  const resolved = await deps.getVersionYaml(workflowId, targetVersion, { organizationId, storagePath });
   if (!resolved) {
     logger.warn(`resolveYaml: no yaml found for workflowId=${workflowId} version=${targetVersion}`);
   }

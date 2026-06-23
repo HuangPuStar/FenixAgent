@@ -298,20 +298,31 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   }, [dryRunResult, t]);
 
   // ── Workflow SSE 实时事件 ──
+  // 用 ref 缓存 hasUnsavedChanges / previewVersion，避免它们出现在依赖数组中导致频繁断连重连。
+  // SSE 应该只在 workflowId 变化时重建；handler 内通过 ref 读取最新值即可。
+  const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
+  const previewVersionRef = useRef(previewVersion);
+  previewVersionRef.current = previewVersion;
+  const handleRefreshDraftRef = useRef(handleRefreshDraft);
+  handleRefreshDraftRef.current = handleRefreshDraft;
+  const handleWorkflowEventRef = useRef(handleWorkflowEvent);
+  handleWorkflowEventRef.current = handleWorkflowEvent;
+
   useEffect(() => {
     if (!workflowId) return;
 
     connectWorkflowSSE(workflowId, (event) => {
       switch (event.type) {
         case "workflow.draft_updated":
-          if (!hasUnsavedChanges && previewVersion === null) {
-            handleRefreshDraft();
+          if (!hasUnsavedChangesRef.current && previewVersionRef.current === null) {
+            handleRefreshDraftRef.current();
           }
           break;
         case "workflow.run_started":
         case "workflow.run_status_changed":
         case "workflow.run_cancelled":
-          handleWorkflowEvent(event);
+          handleWorkflowEventRef.current(event);
           break;
         case "workflow.dry_run_completed":
         case "workflow.version_published":
@@ -320,9 +331,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     });
 
     return () => {
-      disconnectWorkflowSSE();
+      disconnectWorkflowSSE(workflowId);
     };
-  }, [workflowId, handleRefreshDraft, handleWorkflowEvent, hasUnsavedChanges, previewVersion]);
+  }, [workflowId]);
 
   // ── Derived state ──
   const onSelectionChange: OnSelectionChangeFunc = canvasOnSelectionChange;
@@ -403,9 +414,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         if (wf.description) setMeta((m) => ({ ...m, description: String(wf.description ?? "") }));
       } catch (err) {
         console.error("Failed to load workflow:", err);
+        // 加载失败给用户明确反馈：否则用户面对空白画布会以为是新建状态
+        toast.error(t("editor.load_failed", { error: (err as Error).message }));
       }
     })();
-  }, [workflowId, fitView, setEdges, setNodes, setLastSavedYaml]);
+  }, [workflowId, fitView, setEdges, setNodes, setLastSavedYaml, t]);
 
   // Load historical run data (point-in-time replay)
   useEffect(() => {

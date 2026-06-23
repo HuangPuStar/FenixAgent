@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getBaseUrl } from "../config";
 import type { WorkflowTriggerRow } from "../repositories/workflow-trigger";
 import { workflowTriggerRepo } from "../repositories/workflow-trigger";
@@ -87,9 +87,10 @@ export async function createTrigger(input: CreateTriggerInput): Promise<TriggerV
   return rowToFullView(row);
 }
 
-export async function listTriggers(workflowId: string): Promise<TriggerView[]> {
-  const rows = await workflowTriggerRepo.listByWorkflow(workflowId);
-  return rows.map(rowToMaskedView);
+export async function listTriggers(workflowId: string, organizationId: string): Promise<TriggerView[]> {
+  // 通过 listByOrg + workflowId 过滤实现双重隔离
+  const rows = await workflowTriggerRepo.listByOrg(organizationId);
+  return rows.filter((r) => r.workflowId === workflowId).map(rowToMaskedView);
 }
 
 export async function deleteTrigger(triggerId: string, organizationId: string): Promise<boolean> {
@@ -166,14 +167,21 @@ async function triggerWorkflow(organizationId: string, workflowId: string, input
 
   const engine = getTeamEngine(organizationId);
 
-  // 获取最新版本的 YAML
+  // 获取最新版本的 YAML — 多租户关键：必须带 organizationId 过滤
   const { db } = await import("../db");
   const { workflow } = await import("../db/schema");
-  const [wf] = await db.select().from(workflow).where(eq(workflow.id, workflowId)).limit(1);
+  const [wf] = await db
+    .select()
+    .from(workflow)
+    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
+    .limit(1);
   if (!wf) throw new Error(`Workflow ${workflowId} not found`);
 
   const version = wf.latestVersion ?? 0;
-  const yaml = await getVersionYaml(workflowId, version);
+  const yaml = await getVersionYaml(workflowId, version, {
+    organizationId,
+    storagePath: wf.storagePath,
+  });
   if (!yaml) throw new Error(`No YAML found for workflow ${workflowId} version ${version}`);
 
   await engine.run(yaml, inputs);

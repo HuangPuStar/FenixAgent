@@ -192,6 +192,7 @@ export function flowToYaml(nodes: Node[], edges: Edge[], meta: WfMeta): string {
 }
 
 let nodeCounter = 0;
+let edgeCounter = 0;
 
 const TYPE_PREFIXES: Record<string, string> = {
   shell: "shell",
@@ -212,6 +213,24 @@ export function nextNodeId(type: string): string {
 
 export function resetNodeCounter(): void {
   nodeCounter = 0;
+}
+
+/**
+ * 生成全局唯一 edge ID。
+ *
+ * 不能用 `logic-${source}-${target}` 作为 ID：
+ * - 同一对 source/target 多次连接会冲突，导致 React Flow 内部状态错乱（同 ID 两条 edge）
+ * - YAML 重载后 edge ID 丢失，原本依赖 ID 的逻辑会失效
+ *
+ * 使用自增计数器 + source/target 后缀便于调试，YAML 序列化时 edge ID 不写入（depends_on 从 source/target 推导）。
+ */
+export function nextEdgeId(source: string, target: string): string {
+  edgeCounter += 1;
+  return `e${edgeCounter}_${source}_${target}`;
+}
+
+export function resetEdgeCounter(): void {
+  edgeCounter = 0;
 }
 
 /** 参数指引边数据 */

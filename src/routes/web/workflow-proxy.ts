@@ -10,6 +10,8 @@ async function proxyToAcpxG(targetPath: string, request: Request): Promise<Respo
   const init: RequestInit = {
     method: request.method,
     headers,
+    // 透传客户端 abort 信号：客户端断连时上游请求也取消，避免占用下游资源
+    signal: request.signal,
   };
   if (request.method !== "GET" && request.method !== "HEAD") {
     init.body = request.body;
@@ -22,6 +24,10 @@ async function proxyToAcpxG(targetPath: string, request: Request): Promise<Respo
       headers: res.headers,
     });
   } catch (err: unknown) {
+    // 客户端主动断连属于预期行为，不当作 502 上报
+    if (err instanceof Error && err.name === "AbortError") {
+      return new Response(null, { status: 499, statusText: "Client Closed Request" });
+    }
     return new Response(
       JSON.stringify({
         error: {

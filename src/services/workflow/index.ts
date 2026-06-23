@@ -1,8 +1,9 @@
 /**
  * WorkflowEngine 服务单例。
  *
- * 每个 team 缓存一个引擎实例（Map），因为：
+ * 每个 team 缓存一个 (engine + transport + channelFactory) 三元组，因为：
  * - StorageAdapter 按 organizationId 隔离数据，不能跨 organization 共享
+ * - Transport 持有 channelFactory，必须绑定到正确的 organizationId（否则跨组织泄露）
  * - 引擎内部维护 activeRuns Map（取消/审批状态），不能每次请求重建
  *
  * 服务层职责：
@@ -11,6 +12,7 @@
  * - workflow 结束后统一销毁启动的实例
  */
 
+import { createLogger } from "@fenix/logger";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import type { Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
@@ -19,31 +21,31 @@ import { db } from "../../db";
 import { environment } from "../../db/schema";
 import { getCoreRuntime } from "../../services/core-bootstrap";
 import { ensureRunning, getRunningInstancesByEnvironment, stopInstance } from "../instance";
-import { type AgentChannel, createAcpTransport, setChannelFactory } from "./acp-transport";
+import { type AgentChannel, type ChannelFactory, createAcpTransport } from "./acp-transport";
 import { getCustomToolsRegistry } from "./custom-tools";
 import { createPgStorageAdapter } from "./pg-storage-adapter";
 
-// 每个 team 一个引擎实例，lazy 创建
-const engines = new Map<string, WorkflowEngine>();
-let _transport: Transport | null = null;
+const logger = createLogger("wf-service");
 
-/** 获取全局共享的 Transport 单例，注入 ChannelFactory */
-function getTransport(organizationId: string): Transport {
-  if (!_transport) {
-    _transport = createAcpTransport();
-    setChannelFactory(createChannelFactory(organizationId));
-  }
-  return _transport;
+interface TeamRuntime {
+  engine: WorkflowEngine;
+  transport: Transport;
 }
+
+// 每个 team 一个 (engine, transport) 对，lazy 创建、互相隔离
+const teamRuntimes = new Map<string, TeamRuntime>();
 
 /**
  * 创建 ChannelFactory — 服务层的核心桥接。
  *
  * 流程：envName → DB 查 Environment → ensureRunning 启动实例 → connectInstanceRelay 建立 relay → 返回 AgentChannel
+ *
+ * 注意：factory 闭包绑定 organizationId，所有 DB 查询都带 organizationId 过滤，
+ * 避免跨组织数据泄露。
  */
-function createChannelFactory(organizationId: string) {
+function createChannelFactory(organizationId: string): ChannelFactory {
   return async (envName: string, options?: { spawnedEnvIds?: Set<string> }): Promise<AgentChannel> => {
-    // 1. 按 name 查 Environment
+    // 1. 按 name 查 Environment（限定当前组织）
     const [envRow] = await db
       .select({ id: environment.id })
       .from(environment)
@@ -91,35 +93,39 @@ export async function cleanupSpawnedEnvironments(envIds: Set<string>, organizati
         await stopInstance(inst.id, organizationId);
       }
     } catch (err) {
-      console.error(`[Workflow] Failed to stop environment ${envId}:`, err);
+      logger.error(`Failed to stop environment: envId=${envId}`, err);
     }
   }
 }
 
-/** 获取或创建指定 team 的 WorkflowEngine 实例 */
+/** 获取或创建指定 team 的 WorkflowEngine 实例。
+ *  Transport + ChannelFactory 全部按 organizationId 隔离，绝不跨组织复用。 */
 export function getTeamEngine(organizationId: string): WorkflowEngine {
-  let engine = engines.get(organizationId);
-  if (!engine) {
+  let runtime = teamRuntimes.get(organizationId);
+  if (!runtime) {
+    const channelFactory = createChannelFactory(organizationId);
+    const transport = createAcpTransport(channelFactory);
     const storage = createPgStorageAdapter(organizationId);
-    engine = createWorkflowEngine({
+    const engine = createWorkflowEngine({
       storage,
-      transport: getTransport(organizationId),
+      transport,
       hmacSecret: process.env.RCS_WORKFLOW_HMAC_SECRET || crypto.randomUUID(),
       // 注入全局 CustomNodeRegistry（启动时 discover tools/ 已就绪）
       // 让 yaml 中 type: custom + tool: trim_galore 等节点找到对应实现
       customRegistry: getCustomToolsRegistry(),
     });
-    engines.set(organizationId, engine);
+    runtime = { engine, transport };
+    teamRuntimes.set(organizationId, runtime);
   }
-  return engine;
+  return runtime.engine;
 }
 
 /** 移除指定 team 的 WorkflowEngine 实例（释放内存） */
 export function removeTeamEngine(organizationId: string): boolean {
-  return engines.delete(organizationId);
+  return teamRuntimes.delete(organizationId);
 }
 
 /** 清理所有缓存的 engine 实例 */
 export function clearAllEngines(): void {
-  engines.clear();
+  teamRuntimes.clear();
 }

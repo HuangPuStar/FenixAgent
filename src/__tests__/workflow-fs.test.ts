@@ -7,6 +7,7 @@ import {
   ensureWorkflowDir,
   listRecoverable,
   readYamlFile,
+  resolveStorageDir,
   writeYamlFile,
 } from "../services/workflow/workflow-fs";
 
@@ -22,13 +23,13 @@ afterEach(async () => {
 });
 
 describe("workflow-fs", () => {
-  // buildStoragePath 拼接正确路径（不再包含 teamId 层级）
-  test("buildStoragePath returns correct path", () => {
+  // buildStoragePath 拼接正确路径（含 organizationId 隔离层）
+  test("buildStoragePath returns org-isolated path", () => {
     const path = buildStoragePath(testRoot, "team-1", "wf-abc");
-    expect(path).toBe(join(testRoot, "wf-abc"));
+    expect(path).toBe(join(testRoot, "team-1", "wf-abc"));
   });
 
-  // ensureWorkflowDir 创建目录
+  // ensureWorkspaceDir 创建目录
   test("ensureWorkflowDir creates directory", async () => {
     const dir = buildStoragePath(testRoot, "team-1", "wf-abc");
     await ensureWorkflowDir(dir);
@@ -53,8 +54,8 @@ describe("workflow-fs", () => {
     expect(content).toBeNull();
   });
 
-  // listRecoverable 返回文件存在但不在排除列表中的目录
-  test("listRecoverable returns orphaned directories", async () => {
+  // listRecoverable 只扫描当前 organization 子目录
+  test("listRecoverable returns orphaned directories within org scope", async () => {
     const uuid1 = "11111111-aaaa-bbbb-cccc-111111111111";
     const uuid2 = "22222222-aaaa-bbbb-cccc-222222222222";
     const dir1 = buildStoragePath(testRoot, "team-1", uuid1);
@@ -68,6 +69,21 @@ describe("workflow-fs", () => {
     expect(result).toEqual([uuid2]);
   });
 
+  // listRecoverable 跨组织隔离：team-2 的 workflow 不能被 team-1 看到
+  test("listRecoverable isolates organizations", async () => {
+    const uuidTeam1 = "11111111-aaaa-bbbb-cccc-111111111111";
+    const uuidTeam2 = "22222222-aaaa-bbbb-cccc-222222222222";
+    await ensureWorkflowDir(buildStoragePath(testRoot, "team-1", uuidTeam1));
+    await ensureWorkflowDir(buildStoragePath(testRoot, "team-2", uuidTeam2));
+
+    const team1Result = await listRecoverable(testRoot, "team-1", new Set());
+    expect(team1Result).toEqual([uuidTeam1]);
+    expect(team1Result).not.toContain(uuidTeam2);
+
+    const team2Result = await listRecoverable(testRoot, "team-2", new Set());
+    expect(team2Result).toEqual([uuidTeam2]);
+  });
+
   // listRecoverable 过滤非 UUID 格式的目录名
   test("listRecoverable filters non-UUID directory names", async () => {
     const uuid = "33333333-aaaa-bbbb-cccc-333333333333";
@@ -77,5 +93,17 @@ describe("workflow-fs", () => {
 
     const result = await listRecoverable(testRoot, "team-1", new Set());
     expect(result).toEqual([uuid]);
+  });
+
+  // resolveStorageDir 兼容旧路径（迁移前的无 organizationId 路径）
+  test("resolveStorageDir falls back to legacy path", async () => {
+    const uuid = "44444444-aaaa-bbbb-cccc-444444444444";
+    const legacyDir = join(testRoot, uuid);
+    await ensureWorkflowDir(legacyDir);
+    await writeYamlFile(legacyDir, "draft.yaml", "name: legacy\n");
+
+    // 新路径不存在时，回退到旧路径
+    const resolved = await resolveStorageDir(testRoot, "team-1", uuid);
+    expect(resolved).toBe(legacyDir);
   });
 });

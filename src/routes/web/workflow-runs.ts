@@ -3,10 +3,13 @@
  *
  * GET /web/workflow-runs — 分页查询运行历史，支持状态过滤和名称搜索。
  */
+import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { WorkflowRunsQuerySchema, WorkflowRunsResponseSchema } from "../../schemas";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
+
+const logger = createLogger("wf-runs");
 
 const app = new Elysia({ name: "web-workflow-runs" }).use(authGuardPlugin);
 
@@ -22,10 +25,18 @@ app.get(
     }
     const { page, pageSize, status, q } = parsed.data;
 
-    const storage = createPgStorageAdapter(authCtx.organizationId);
-    const result = await storage.listRuns({ page, pageSize, status, q });
-
-    return { success: true, data: { ...result, page, pageSize } };
+    try {
+      const storage = createPgStorageAdapter(authCtx.organizationId);
+      const result = await storage.listRuns({ page, pageSize, status, q });
+      return { success: true, data: { ...result, page, pageSize } };
+    } catch (err) {
+      // 数据库连接或其他运行时异常：不泄露内部堆栈给客户端
+      logger.error("listRuns failed:", err);
+      return error(500, {
+        success: false,
+        error: { code: "INTERNAL_ERROR", message: "Failed to list workflow runs" },
+      });
+    }
   },
   {
     sessionAuth: true,

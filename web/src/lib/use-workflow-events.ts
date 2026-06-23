@@ -5,38 +5,79 @@ interface DAGSnapshot {
   node_states: Record<string, { status: string; exit_code?: number }>;
 }
 
-const errors: string[] = [];
-let runStatusSummary: string | null = null;
+/**
+ * 每个 workflowId 独立的事件状态。
+ *
+ * 历史问题：早期实现把 errors/runStatusSummary 放在模块级变量，多个 WorkflowEditor
+ * 实例（多 tab / 多组件）会共享状态，导致 A workflow 的错误污染 B 的 context queue。
+ * 现在按 workflowId 分作用域，未指定 workflowId 时落到 "_default" 桶（仅用于无 workflowId
+ * 的临时场景，如新建未保存的 workflow）。
+ */
+interface WorkflowEventState {
+  errors: string[];
+  runStatusSummary: string | null;
+}
 
-function syncToContextQueue(): void {
-  if (errors.length === 0 && runStatusSummary === null) {
-    removeContext("workflow-events");
+const states = new Map<string, WorkflowEventState>();
+
+function getState(workflowId: string | null | undefined): WorkflowEventState {
+  const key = workflowId || "_default";
+  let s = states.get(key);
+  if (!s) {
+    s = { errors: [], runStatusSummary: null };
+    states.set(key, s);
+  }
+  return s;
+}
+
+function contextKey(workflowId: string | null | undefined): string {
+  return `workflow-events:${workflowId || "_default"}`;
+}
+
+function syncToContextQueue(workflowId: string | null | undefined): void {
+  const state = getState(workflowId);
+  const key = contextKey(workflowId);
+  if (state.errors.length === 0 && state.runStatusSummary === null) {
+    removeContext(key);
     return;
   }
   const lines: string[] = ["[Workflow Event]"];
-  if (runStatusSummary) {
-    lines.push(`Run Status: ${runStatusSummary}`);
+  if (state.runStatusSummary) {
+    lines.push(`Run Status: ${state.runStatusSummary}`);
   }
-  for (const err of errors) {
+  for (const err of state.errors) {
     lines.push(err);
   }
-  pushContext("workflow-events", lines.join("\n"));
+  pushContext(key, lines.join("\n"));
 }
 
-export function pushWorkflowError(source: string, message: string): void {
-  errors.push(`Error (${source}): ${message}`);
-  syncToContextQueue();
+/** 推入错误到指定 workflowId 的状态桶 */
+export function pushWorkflowError(workflowId: string | null | undefined, source: string, message: string): void {
+  const state = getState(workflowId);
+  state.errors.push(`Error (${source}): ${message}`);
+  syncToContextQueue(workflowId);
 }
 
-export function pushWorkflowRunStatus(summary: string | null): void {
-  runStatusSummary = summary;
-  syncToContextQueue();
+/** 推入运行状态摘要到指定 workflowId 的状态桶 */
+export function pushWorkflowRunStatus(workflowId: string | null | undefined, summary: string | null): void {
+  const state = getState(workflowId);
+  state.runStatusSummary = summary;
+  syncToContextQueue(workflowId);
 }
 
-export function clearWorkflowEvents(): void {
-  errors.length = 0;
-  runStatusSummary = null;
-  removeContext("workflow-events");
+/** 清除指定 workflowId 的所有事件状态 */
+export function clearWorkflowEvents(workflowId: string | null | undefined): void {
+  const state = getState(workflowId);
+  state.errors.length = 0;
+  state.runStatusSummary = null;
+  removeContext(contextKey(workflowId));
+}
+
+/** 移除指定 workflowId 的状态桶（workflow 切换/卸载时调用，防止内存泄漏） */
+export function disposeWorkflowEvents(workflowId: string | null | undefined): void {
+  const key = workflowId || "_default";
+  states.delete(key);
+  removeContext(contextKey(workflowId));
 }
 
 export function buildRunSummary(snap: DAGSnapshot): string | null {
@@ -73,6 +114,11 @@ export function buildRunSummary(snap: DAGSnapshot): string | null {
   return `Running (${completed}/${total} completed)`;
 }
 
+/** @deprecated 旧的无 workflowId 签名 — 仅向后兼容，新代码必须传 workflowId */
 export function useWorkflowEvents() {
-  return { pushWorkflowError, pushWorkflowRunStatus, clearWorkflowEvents };
+  return {
+    pushWorkflowError: (source: string, message: string) => pushWorkflowError(null, source, message),
+    pushWorkflowRunStatus: (summary: string | null) => pushWorkflowRunStatus(null, summary),
+    clearWorkflowEvents: () => clearWorkflowEvents(null),
+  };
 }
