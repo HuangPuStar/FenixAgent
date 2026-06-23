@@ -92,6 +92,15 @@ export const agentSitesApi = {
       method: "POST",
       body,
     }),
+  /**
+   * 按 agentConfigId 拉取绑定的 site app 详情列表。
+   * chat 右侧 ArtifactsPanel 用它来填充顶部 Files / Site1 / Site2 tab。
+   * 返回顺序与绑定顺序一致（按 created_at 升序），UI 展示稳定。
+   */
+  listByAgentConfig: (agentConfigId: string) =>
+    agentSitesFetch<{ success: boolean; data: unknown[] }>(
+      `/web/agent-sites/agent-configs/${encodeURIComponent(agentConfigId)}/sites`,
+    ),
 };
 
 // ── V2 模块（一般前端不直接使用，保留导出） ──

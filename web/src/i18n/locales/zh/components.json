@@ -129,6 +129,19 @@
     "contextPlaceholder": "上下文 (placeholder), entries: {{count}}",
     "previewPlaceholder": "预览 (placeholder), entries: {{count}}"
   },
+  "panelMode": {
+    "files": "文件",
+    "pendingDiff": "文件区有 {{count}} 个新文件改动"
+  },
+  "siteFrame": {
+    "reload": "刷新站点",
+    "openInNewTab": "在新标签页打开",
+    "loading": "加载站点中...",
+    "loadingSites": "加载 Agent 绑定的站点...",
+    "loadFailed": "加载站点失败：{{message}}",
+    "loadTimeout": "站点加载超时",
+    "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开"
+  },
   "fileTree": {
     "refresh": "刷新",
     "emptyState": "工作区暂无文件",

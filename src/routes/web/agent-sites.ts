@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
 import Elysia from "elysia";
+import { db } from "../../db";
+import { agentConfigSiteApp } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
@@ -265,9 +268,40 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
   )
 
+  // ── L1.5: AgentConfig ↔ SiteApp 绑定查询 ───────────
+  // chat 右侧 ArtifactsPanel 通过 agentConfigId 拉取绑定的 sites 详情，
+  // 用于顶部 Files / Site1 / Site2 tab 切换。返回顺序按绑定 createdAt 升序，
+  // 与 AgentFormDialog 中勾选顺序一致，确保 UI 展示稳定。
+
+  .get(
+    "/agent-configs/:agentConfigId/sites",
+    async ({ params, store }) => {
+      const authCtx = store.authContext!;
+      const siteAppIdsRows = await db
+        .select({ siteAppId: agentConfigSiteApp.siteAppId })
+        .from(agentConfigSiteApp)
+        .where(eq(agentConfigSiteApp.agentConfigId, params.agentConfigId));
+      const siteAppIds = siteAppIdsRows.map((r) => r.siteAppId);
+      if (siteAppIds.length === 0) {
+        return { success: true as const, data: [] };
+      }
+      const apps = await agentSiteAppRepo.listByIds(siteAppIds, authCtx.organizationId);
+      // 保持绑定顺序（与勾选顺序一致，UI 展示稳定）
+      const ordered = siteAppIds.map((id) => apps.find((a) => a.id === id)).filter((a): a is AgentSiteAppRow => !!a);
+      return { success: true as const, data: ordered.map(toResponse) };
+    },
+    {
+      sessionAuth: true,
+      detail: {
+        tags: ["Agent Sites"],
+        summary: "获取 agent 绑定的 sites",
+        description: "按 agentConfigId 返回绑定的 site app 详情列表（按绑定顺序）。",
+      },
+    },
+  )
+
   // ── L2: PB Admin API 透传 ────────────────────────────
   // 用 * 捕获完整子路径（:path 只取一段，/api/collections/cards 会丢 /cards）
-
   .all(
     "/apps/:id/api/*",
     async ({ params, request, store, error }) => {

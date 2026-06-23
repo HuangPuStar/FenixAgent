@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { agentSiteApp } from "../db/schema";
 
@@ -42,6 +42,20 @@ class AgentSiteAppRepo {
       .from(agentSiteApp)
       .where(eq(agentSiteApp.organizationId, organizationId))
       .orderBy(agentSiteApp.createdAt);
+  }
+
+  /**
+   * 按 id 批量查询，并过滤组织。
+   * 用于 agent ↔ site 绑定关系展开：从绑定表拿 siteAppId 后，由此方法补详情。
+   * 组织过滤放在这里是为了防御性兜底——绑定表本身只校验了 agentConfigId
+   * 所属组织，siteApp 的组织一致性在这里二次确认。
+   */
+  async listByIds(ids: string[], organizationId: string): Promise<AgentSiteAppRow[]> {
+    if (ids.length === 0) return [];
+    return db
+      .select()
+      .from(agentSiteApp)
+      .where(and(inArray(agentSiteApp.id, ids), eq(agentSiteApp.organizationId, organizationId)));
   }
 
   async getById(id: string): Promise<AgentSiteAppRow | undefined> {

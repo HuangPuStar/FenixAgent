@@ -135,4 +135,60 @@ describe("agent-sites L1 routes", () => {
     );
     expect(res.status).toBe(403);
   });
+
+  test("GET /agent-configs/:id/sites 无绑定时返回空列表", async () => {
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: () => Promise.resolve([]),
+        }),
+      }),
+    });
+    const res = await webAgentSites.handle(new Request("http://localhost/agent-sites/agent-configs/agent-cfg-1/sites"));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data).toEqual([]);
+  });
+
+  test("GET /agent-configs/:id/sites 返回绑定 sites 详情（保持绑定顺序）", async () => {
+    const siteAppIdA = "00000000-0000-0000-0000-00000000000a";
+    const siteAppIdB = "00000000-0000-0000-0000-00000000000b";
+    const selectCalls: Array<{ cols: unknown[]; cond?: unknown }> = [];
+    // 模拟两次 select：
+    //   1) 拿绑定 siteAppId（顺序 [B, A]）
+    //   2) repo.listByIds 返回 [A, B]（乱序），路由层应按绑定顺序重排
+    let selectCount = 0;
+    stubDb({
+      select: (cols: unknown[]) => {
+        selectCalls.push({ cols });
+        selectCount += 1;
+        if (selectCount === 1) {
+          // 绑定查询：返回 B 在前
+          return {
+            from: () => ({
+              where: () => Promise.resolve([{ siteAppId: siteAppIdB }, { siteAppId: siteAppIdA }]),
+            }),
+          };
+        }
+        // repo.listByIds
+        return {
+          from: () => ({
+            where: () =>
+              Promise.resolve([
+                makeAppRow({ id: siteAppIdA, name: "app-a", remoteAppId: "app-aaa" }),
+                makeAppRow({ id: siteAppIdB, name: "app-b", remoteAppId: "app-bbb" }),
+              ]),
+          }),
+        };
+      },
+    });
+    const res = await webAgentSites.handle(new Request("http://localhost/agent-sites/agent-configs/agent-cfg-1/sites"));
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data).toHaveLength(2);
+    // 保持绑定顺序：先 B 后 A
+    expect(json.data[0].id).toBe(siteAppIdB);
+    expect(json.data[1].id).toBe(siteAppIdA);
+    expect(json.data[0].remoteAppId).toBe("app-bbb");
+  });
 });

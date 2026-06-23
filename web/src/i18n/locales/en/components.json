@@ -129,6 +129,19 @@
     "contextPlaceholder": "Context (placeholder), entries: {{count}}",
     "previewPlaceholder": "Preview (placeholder), entries: {{count}}"
   },
+  "panelMode": {
+    "files": "Files",
+    "pendingDiff": "{{count}} new file change(s) pending in Files"
+  },
+  "siteFrame": {
+    "reload": "Reload site",
+    "openInNewTab": "Open in new tab",
+    "loading": "Loading site...",
+    "loadingSites": "Loading agent sites...",
+    "loadFailed": "Failed to load sites: {{message}}",
+    "loadTimeout": "Site load timed out",
+    "loadTimeoutHint": "The site may still be loading in the background. Try reloading or open it in a new tab."
+  },
   "fileTree": {
     "refresh": "Refresh",
     "emptyState": "No files in workspace",

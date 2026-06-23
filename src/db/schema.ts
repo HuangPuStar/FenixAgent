@@ -650,6 +650,28 @@ export const agentConfigMcp = pgTable(
   }),
 );
 
+// Agent↔SiteApp 多对多关联
+// 一个 Agent 配置可绑定多个 agent-sites 应用，绑定的 sites 会出现在 chat 右侧文件区的
+// 顶部 tab 中，与 Files 通过 tab 切换互斥展示。绑定层挂在 agentConfig 上，可被多个
+// environment 共享，与 skill/mcp 绑定层级一致。
+export const agentConfigSiteApp = pgTable(
+  "agent_config_site_app",
+  {
+    agentConfigId: uuid("agent_config_id")
+      .notNull()
+      .references(() => agentConfig.id, { onDelete: "cascade" }),
+    siteAppId: uuid("site_app_id")
+      .notNull()
+      .references(() => agentSiteApp.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: uniqueIndex("idx_agent_config_site_app_pk").on(table.agentConfigId, table.siteAppId),
+    agentConfigIdx: index("idx_agent_config_site_app_agent_config").on(table.agentConfigId),
+    siteAppIdx: index("idx_agent_config_site_app_site_app").on(table.siteAppId),
+  }),
+);
+
 // ────────────────────────────────────────────
 // Workflow 独立领域模块
 // ────────────────────────────────────────────
