@@ -73,6 +73,7 @@
   "cancel": "取消",
   "remoteNode": "远程",
   "memories": "记忆",
+  "sites": "Agent Sites",
   "changedFiles": {
     "title": "变更文件",
     "count_one": "{{count}} 个文件",
