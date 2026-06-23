@@ -46,7 +46,7 @@ export interface UseWorkflowMetaAgentReturn {
 export function useWorkflowMetaAgent({
   workflowId,
   meta,
-  selectedNodeInfo,
+  selectedNodeInfo: _selectedNodeInfo,
 }: UseWorkflowMetaAgentParams): UseWorkflowMetaAgentReturn {
   const { t } = useTranslation("workflows");
   const { metaAgentId, chatOpen, setChatOpen } = useMetaAgent({ storageKey: "wf-editor:chat-open" });

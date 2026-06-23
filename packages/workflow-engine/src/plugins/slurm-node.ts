@@ -301,7 +301,7 @@ export abstract class SlurmNode implements CustomNode {
     const parts = mainJob.split("|");
     const slurmState = parts[1] ?? "";
     const exitCodeStr = parts[2] ?? "";
-    const exitCode = exitCodeStr !== "" ? Number.parseInt(exitCodeStr) : null;
+    const exitCode = exitCodeStr !== "" ? Number.parseInt(exitCodeStr, 10) : null;
 
     // 2. 映射状态
     const mappedState = mapSlurmState(slurmState, exitCode);
@@ -335,8 +335,7 @@ export abstract class SlurmNode implements CustomNode {
   /** 将 JobResult 转换为引擎 NodeOutput */
   private collectOutput(result: JobResult): NodeOutput {
     // NodeOutput 无 stderr 字段，非空时拼接到 stdout 末尾
-    const combinedStdout =
-      result.stderr && result.stderr.trim() ? `${result.stdout}\n[stderr]\n${result.stderr}` : result.stdout;
+    const combinedStdout = result.stderr?.trim() ? `${result.stdout}\n[stderr]\n${result.stderr}` : result.stdout;
 
     let json: unknown;
     try {

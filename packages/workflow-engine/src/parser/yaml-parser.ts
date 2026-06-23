@@ -134,6 +134,7 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
     condition: typeof n.condition === "string" ? n.condition : undefined,
     timeout: typeof n.timeout === "number" ? n.timeout : undefined,
     env: isRecord(n.env) ? (n.env as Record<string, string>) : undefined,
+    outputs: parseOutputs(n.outputs),
   };
 
   switch (type) {
@@ -295,7 +296,7 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
         const allowsAnyOutput = toolDef.produces.includes("*");
         if (!allowsAnyOutput) {
           const producesSet = new Set(toolDef.produces);
-          for (const key of Object.keys(n.outputs as Record<string, unknown>)) {
+          for (const key of Object.keys(base.outputs ?? {})) {
             if (!producesSet.has(key)) {
               throw new WorkflowError(
                 `nodes[${index}] (${n.id}): output '${key}' not declared in tool '${n.tool}' produces list [${toolDef.produces.join(", ")}]`,
@@ -332,7 +333,6 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
         // 由 custom-executor 注入到 ExecuteContext.slurm，SlurmNode 合并到默认配置
         slurm: parseSlurmConfig(n.slurm),
         script: parseScriptConfig(n.script, n.id as string),
-        outputs: parseOutputs(n.outputs),
         foreach: typeof n.foreach === "string" ? n.foreach : undefined,
         maxConcurrent: typeof n.maxConcurrent === "number" ? n.maxConcurrent : undefined,
         continueOnError: typeof n.continueOnError === "boolean" ? n.continueOnError : undefined,
@@ -368,7 +368,7 @@ function parseOutputs(raw: unknown): Record<string, { pattern: string; type: "fi
  * 类型不匹配的字段会被忽略并 warn，避免 YAML 笔误导致整个解析失败。
  */
 function parseSlurmConfig(raw: unknown): CustomNodeDef["slurm"] {
-  if (!isRecord(raw)) return undefined;
+  if (!isRecord(raw)) return;
   const result: NonNullable<CustomNodeDef["slurm"]> = {};
 
   if (typeof raw.partition === "string") result.partition = raw.partition;
@@ -403,7 +403,7 @@ function parseSlurmConfig(raw: unknown): CustomNodeDef["slurm"] {
  * - 字段全缺失时返回 undefined(但 SlurmNode 子类的 parseNode 会要求 content 必填)
  */
 function parseScriptConfig(raw: unknown, nodeId: string): CustomNodeDef["script"] {
-  if (raw === undefined || raw === null) return undefined;
+  if (raw === undefined || raw === null) return;
   if (!isRecord(raw)) {
     throw new WorkflowError(
       `nodes (${nodeId}): 'script' must be a mapping with 'content' and optional 'env'`,

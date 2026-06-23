@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { hashPassword } from "better-auth/crypto";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { account, apikey, member, organization, user } from "../db/schema";
 

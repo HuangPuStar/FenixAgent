@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
 import {
   Bot,
+  Boxes,
   CheckCircle,
   Code,
   Download,
@@ -28,6 +29,7 @@ import {
   Lock,
   Play,
   RefreshCw,
+  Rocket,
   Save,
   ShieldCheck,
   Terminal,
@@ -38,7 +40,7 @@ import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useContextQueue } from "@/src/lib/use-context-queue";
-import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
+import { type CustomToolItem, customToolsApi, type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
   type DAGSnapshot,
@@ -116,6 +118,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [metaPopoverOpen, setMetaPopoverOpen] = useState(false);
   const [filePopoverOpen, setFilePopoverOpen] = useState(false);
+  const [customTools, setCustomTools] = useState<CustomToolItem[]>([]);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
 
   // ── Refs ──
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -273,6 +277,17 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   useEffect(() => {
     setDryRunResultRef.current = setDryRunResult;
   });
+
+  // 拉取已注册的 custom 工具，供 palette 和节点配置下拉使用
+  // 失败时静默退化（palette 不显示 custom 分区），不阻塞编辑器
+  useEffect(() => {
+    customToolsApi
+      .list()
+      .then(setCustomTools)
+      .catch((err) => {
+        console.error("Failed to load custom tools:", err);
+      });
+  }, []);
 
   // ── 运行模式/版本预览下画布自动只读 ──
   const effectiveReadOnly = (isRunMode && !isRunDone) || previewVersion !== null;
@@ -634,6 +649,33 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                 ))}
                 {/* 分隔线 */}
                 <div className="wf-palette-divider" />
+                {/* 自定义工具（仅当 registry 非空时显示） */}
+                {customTools.length > 0 && (
+                  <>
+                    <div className="wf-palette-group-title">{t("editor.palette_custom_tools")}</div>
+                    {customTools.map((tool) => (
+                      <button
+                        key={tool.name}
+                        type="button"
+                        className="wf-palette-btn"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("application/workflow-node", "custom");
+                          e.dataTransfer.setData("application/workflow-tool", tool.name);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onClick={() => addNode("custom", undefined, undefined, tool.name)}
+                        title={tool.description}
+                      >
+                        <span className="wf-palette-icon" style={{ background: "#8b5cf6" }}>
+                          <Boxes size={14} />
+                        </span>
+                        {tool.name}
+                      </button>
+                    ))}
+                    <div className="wf-palette-divider" />
+                  </>
+                )}
                 {/* 数据变换预设 */}
                 {TRANSFORM_PRESETS.map((preset) => (
                   <button
@@ -766,6 +808,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           updateNodeData={updateNodeData}
           agentList={agentList}
           onDeleteRequest={setDeleteConfirmNodeId}
+          meta={meta}
+          updateMeta={updateMeta}
+          customTools={customTools}
         />
 
         {/* 右下角按钮组 */}
@@ -849,6 +894,25 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             }}
           />
 
+          {/* 发布按钮：复用 handlePublish，ConfirmDialog 二次确认 */}
+          {workflowId && (
+            <button
+              type="button"
+              className="wf-meta-trigger-btn"
+              disabled={!workflowId || publishing || effectiveReadOnly}
+              title={t("editor.tooltip_publish")}
+              onClick={() => setPublishConfirmOpen(true)}
+              style={{
+                width: 32,
+                background: publishing ? "#d1d5db" : "#22c55e",
+                color: "#fff",
+                borderColor: publishing ? "#d1d5db" : "#22c55e",
+              }}
+            >
+              <Rocket size={14} />
+            </button>
+          )}
+
           {/* 刷新草稿 */}
           {workflowId && (
             <button
@@ -919,6 +983,21 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
             handleDeleteNode(deleteConfirmNodeId);
           }
           setDeleteConfirmNodeId(null);
+        }}
+      />
+
+      {/* 发布确认弹窗 */}
+      <ConfirmDialog
+        open={publishConfirmOpen}
+        onOpenChange={setPublishConfirmOpen}
+        title={t("editor.publish_confirm_title")}
+        description={t("editor.publish_confirm_desc", {
+          latest: wfData?.latestVersion ? `v${wfData.latestVersion}` : t("editor.no_published"),
+        })}
+        variant="default"
+        onConfirm={async () => {
+          setPublishConfirmOpen(false);
+          await handlePublish();
         }}
       />
 

@@ -250,7 +250,6 @@ describe("AgentExecutor resolvedInputs", () => {
       params: { topic: "world" },
       resolvedInputs: { prompt: "Tell me about world" },
     });
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: 测试模板语法
     const node = agentNode("Tell me about ${{ params.topic }}");
     await executor.execute(node, ctx);
 

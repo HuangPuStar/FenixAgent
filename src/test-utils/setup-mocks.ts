@@ -11,6 +11,7 @@ import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
 import {
   coreBootstrapRegistry,
+  customToolsRegistry,
   environmentServiceRegistry,
   getEnvironmentRepoStub,
   knowledgeBaseServiceRegistry,
@@ -304,9 +305,18 @@ mock.module("../services/workflow/pg-storage-adapter", () => ({
     const storageObj: Record<string, unknown> = {};
     return new Proxy(storageObj, {
       get: (_target, prop) => {
-        if (typeof prop !== "string") return undefined;
+        if (typeof prop !== "string") return;
         return (...args: unknown[]) => pgStorageAdapterRegistry.get(prop)(...args);
       },
     });
   },
 }));
+
+// ── custom-tools ──
+// 提供 getCustomToolsRegistry / initCustomToolsRegistry 的 stub 入口。
+// 路由测试通过 stubCustomTools({ getCustomToolsRegistry: () => fakeRegistry }) 注入数据。
+
+const CUSTOM_TOOLS_KEYS = ["getCustomToolsRegistry", "initCustomToolsRegistry"] as const;
+mock.module("../services/workflow/custom-tools", () =>
+  createLazyMock(CUSTOM_TOOLS_KEYS, (name) => customToolsRegistry.get(name) as AnyFn),
+);

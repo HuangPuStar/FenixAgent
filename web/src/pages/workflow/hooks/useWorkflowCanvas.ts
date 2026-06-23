@@ -61,6 +61,7 @@ export interface UseWorkflowCanvasReturn {
     type: string,
     presetOrPosition?: string | { x: number; y: number },
     positionFallback?: { x: number; y: number },
+    tool?: string,
   ) => void;
   onDragOver: (event: React.DragEvent) => void;
   onDrop: (event: React.DragEvent) => void;
@@ -231,6 +232,7 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       type: string,
       presetOrPosition?: string | { x: number; y: number },
       positionFallback?: { x: number; y: number },
+      tool?: string,
     ) => {
       // 参数兼容处理：第二个参数可能是 preset 字符串或 position 对象
       let preset: string | undefined;
@@ -252,9 +254,11 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
           ...(presetConfig
             ? {
                 output: { ...presetConfig.defaultOutput },
-                _preset: preset, // 前端运行时标记，不写入 YAML
+                _preset: preset,
               }
             : {}),
+          // custom 类型携带 tool 字段
+          ...(type === "custom" && tool ? { tool } : {}),
         },
       };
       setNodes((nds) => [...nds, newNode]);
@@ -273,11 +277,16 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       const type = event.dataTransfer.getData("application/workflow-node");
       if (!type) return;
       const preset = event.dataTransfer.getData("application/workflow-preset");
+      const tool = event.dataTransfer.getData("application/workflow-tool") || undefined;
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
-      addNode(type, preset || position, preset ? position : undefined);
+      if (type === "custom" && tool) {
+        addNode("custom", position, undefined, tool);
+      } else {
+        addNode(type, preset || position, preset ? position : undefined);
+      }
     },
     [screenToFlowPosition, addNode],
   );

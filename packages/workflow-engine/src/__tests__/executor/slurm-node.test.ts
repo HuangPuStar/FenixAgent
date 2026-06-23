@@ -2,10 +2,10 @@
  * SlurmNode 单元测试 — generateHeader / execute / retry / mapSlurmState。
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mapSlurmState, type SlurmConfig, SlurmNode } from "../../plugins/slurm-node";
 import type { ExecuteContext, InputDef } from "../../plugins/types";
-import { WorkflowError, WorkflowErrorCode } from "../../types/errors";
+import { WorkflowErrorCode } from "../../types/errors";
 import { FakeSshExecutor } from "./fake-ssh-executor";
 
 /** 最小 concrete SlurmNode — 用于测试 */
@@ -214,7 +214,7 @@ describe("SlurmNode retry logic", () => {
 
     // sbatch: 用回调计数器，第一/二次返回不同 jobId
     let sbatchCallCount = 0;
-    fakeSsh.mockCommand(/sbatch/, (cmd) => {
+    fakeSsh.mockCommand(/sbatch/, (_cmd) => {
       sbatchCallCount++;
       const jobId = sbatchCallCount === 1 ? "300" : "301";
       return { stdout: `Submitted batch job ${jobId}`, stderr: "", exitCode: 0 };
@@ -222,7 +222,7 @@ describe("SlurmNode retry logic", () => {
 
     // sacct: 第一次返回 FAILED (job 300), 第二次返回 COMPLETED (job 301)
     let sacctCallCount = 0;
-    fakeSsh.mockCommand(/sacct/, (cmd) => {
+    fakeSsh.mockCommand(/sacct/, (_cmd) => {
       sacctCallCount++;
       if (sacctCallCount === 1) {
         return { stdout: "300|FAILED|1:0", stderr: "", exitCode: 0 };
@@ -285,14 +285,14 @@ describe("SlurmNode retry logic", () => {
     fakeSsh.mockCommand(/cat >/, { stdout: "", stderr: "", exitCode: 0 });
 
     let sbatchCallCount = 0;
-    fakeSsh.mockCommand(/sbatch/, (cmd) => {
+    fakeSsh.mockCommand(/sbatch/, (_cmd) => {
       sbatchCallCount++;
       const jobId = sbatchCallCount === 1 ? "600" : "601";
       return { stdout: `Submitted batch job ${jobId}`, stderr: "", exitCode: 0 };
     });
 
     let sacctCallCount = 0;
-    fakeSsh.mockCommand(/sacct/, (cmd) => {
+    fakeSsh.mockCommand(/sacct/, (_cmd) => {
       sacctCallCount++;
       if (sacctCallCount === 1) {
         return { stdout: "600|NODE_FAIL|0:0", stderr: "", exitCode: 0 };

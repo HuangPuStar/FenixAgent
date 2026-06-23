@@ -348,7 +348,6 @@ nodes:
       },
     });
     const node = subWorkflowNode("param-sub.yaml", {
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
       params: { message: "${{ params.message }}" },
     });
 

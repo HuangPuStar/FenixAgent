@@ -28,6 +28,14 @@ export interface BaseNodeDef {
   timeout?: number;
   retry?: RetryConfig;
   env?: Record<string, string>;
+  /** 输出声明。所有节点类型都可声明，key 为字段名，下游通过 nodes.X.outputs.<key> 引用 */
+  outputs?: Record<
+    string,
+    {
+      pattern: string;
+      type: "file" | "file-list" | "dir";
+    }
+  >;
 }
 
 /** Shell 节点 — 执行命令 */
@@ -138,14 +146,11 @@ export interface CustomNodeDef extends BaseNodeDef {
     content: string;
     env?: Record<string, string>;
   };
-  /** 输出声明，key 对应 CustomNode.produces 的元素 */
-  outputs: Record<
-    string,
-    {
-      pattern: string;
-      type: "file" | "file-list" | "dir";
-    }
-  >;
+  /**
+   * Custom 节点的 outputs（继承自 BaseNodeDef）优先由 tool 注册时的 produces 驱动；
+   * YAML 中声明的 outputs 可作为覆盖或补充。custom-executor 会校验 outputs key
+   * 必须在 tool.produces 列表中（除非 produces 含 "*"）。
+   */
   /** 迭代数据源表达式 */
   foreach?: string;
   /** 最大并发子任务数 */

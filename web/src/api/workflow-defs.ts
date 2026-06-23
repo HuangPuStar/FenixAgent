@@ -49,6 +49,13 @@ export interface TriggerItem {
   updatedAt: string;
 }
 
+export interface CustomToolItem {
+  name: string;
+  description: string;
+  inputs: Record<string, unknown>;
+  produces: string[];
+}
+
 // ── API Client ──
 
 import { workflowDefApi as _sdkDefApi } from "./sdk";
@@ -194,5 +201,16 @@ export const workflowDefApi = {
   async disableTrigger(triggerId: string): Promise<void> {
     const { error } = await _sdkDefApi.disableTrigger(triggerId);
     if (error) throw new Error((error as { message?: string }).message);
+  },
+};
+
+export const customToolsApi = {
+  list: async (): Promise<CustomToolItem[]> => {
+    const r = await fetch("/web/workflow-custom-tools", { credentials: "include" });
+    if (!r.ok) {
+      throw new Error(`Failed to load custom tools: ${r.status}`);
+    }
+    const json = (await r.json()) as { success?: boolean; data?: CustomToolItem[] };
+    return Array.isArray(json.data) ? json.data : [];
   },
 };

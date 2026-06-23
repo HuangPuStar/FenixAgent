@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { z } from "zod/v4";
 import { createInMemoryStorage } from "../../storage/in-memory-storage";
 import type { StorageAdapter } from "../../storage/storage-adapter";
@@ -6,7 +6,7 @@ import { WorkflowError } from "../../types/errors";
 import type { NodeOutput } from "../../types/execution";
 import { CustomNodeExecutor } from "../custom-executor";
 import { CustomNodeRegistry } from "../registry";
-import type { CustomNode, ExecuteContext } from "../types";
+import type { CustomNode } from "../types";
 
 /** 创建最小 NodeExecutionContext */
 function createTestCtx(overrides?: Record<string, unknown>): {
@@ -105,7 +105,7 @@ test("execute 成功时 onCleanup 也被调用", async () => {
   };
   registry.register(tool);
   const executor = new CustomNodeExecutor(registry);
-  const result = await executor.execute(makeCustomNodeDef({ tool: "clean_tool" }), createTestCtx());
+  const _result = await executor.execute(makeCustomNodeDef({ tool: "clean_tool" }), createTestCtx());
   expect(cleanupCalled).toBe(true);
   expect(cleanupResult?.stdout).toBe("ok");
 });

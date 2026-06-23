@@ -16,7 +16,7 @@ import type { NodeExecutionContext, NodeExecutor } from "../scheduler/dag-schedu
 import type { CustomNodeDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { DAGEvent, EventType, NodeOutput } from "../types/execution";
-import { CustomNodeRegistry } from "./registry";
+import type { CustomNodeRegistry } from "./registry";
 import type { ExecuteContext } from "./types";
 
 export class CustomNodeExecutor implements NodeExecutor {

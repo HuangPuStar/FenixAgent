@@ -229,7 +229,6 @@ describe("ApiExecutor resolvedInputs", () => {
       params: { host: "example.com", path: "users" },
       resolvedInputs: { url: "https://example.com/users" },
     });
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
     const node = apiNode({ url: "https://${{ params.host }}/${{ params.path }}" });
     await executor.execute(node, ctx);
 
@@ -253,7 +252,6 @@ describe("ApiExecutor resolvedInputs", () => {
       resolvedInputs: { headers: { Authorization: "Bearer key123" } },
     });
     const node = apiNode({
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
       headers: { Authorization: "Bearer ${{ secrets.API_KEY }}" },
     });
     await executor.execute(node, ctx);
@@ -280,7 +278,6 @@ describe("ApiExecutor resolvedInputs", () => {
     });
     const node = apiNode({
       method: "POST",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
       body: '{"user":"${{ params.name }}"}',
     });
     await executor.execute(node, ctx);

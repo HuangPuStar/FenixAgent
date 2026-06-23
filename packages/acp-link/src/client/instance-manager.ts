@@ -1,9 +1,9 @@
-import { type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
+import { type AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
 import { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js";
 
 // 三种引擎类型

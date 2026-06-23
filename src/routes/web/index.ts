@@ -17,6 +17,7 @@ import webSessions from "./sessions";
 import webSkills from "./skills";
 import webTasks from "./tasks";
 import webUserFile from "./user-file";
+import webWorkflowCustomTools from "./workflow-custom-tools";
 import webWorkflowDefs from "./workflow-defs";
 import webWorkflowEngine from "./workflow-engine";
 import { workflowRunsRoutes } from "./workflow-runs";
@@ -41,6 +42,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webEnvironments)
   .use(webRegistry)
   .use(webWorkflowDefs)
+  .use(webWorkflowCustomTools)
   .use(webWorkflowEngine)
   .use(webWorkflowSse)
   .use(workflowRunsRoutes)

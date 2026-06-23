@@ -659,3 +659,25 @@ nodes:
     expect(def.nodes[0].script?.env?.BAD_BOOL).toBeUndefined();
   }
 });
+
+// shell 节点声明 outputs 被解析到 ShellNodeDef.outputs（继承自 BaseNodeDef）
+test("shell 节点声明 outputs 被解析到 ShellNodeDef.outputs", () => {
+  const yamlStr = `
+schema_version: "1"
+name: test
+nodes:
+  - id: s1
+    type: shell
+    command: echo hi
+    outputs:
+      result:
+        pattern: /tmp/out.txt
+        type: file
+`;
+  const wf = parseWorkflowYaml(yamlStr);
+  const node = wf.nodes[0];
+  expect(node.type).toBe("shell");
+  expect(node.outputs).toEqual({
+    result: { pattern: "/tmp/out.txt", type: "file" },
+  });
+});

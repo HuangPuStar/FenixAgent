@@ -6,7 +6,9 @@ import { useTranslation } from "react-i18next";
 type Measurable = { getBoundingClientRect(): DOMRect };
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import type { CustomToolItem } from "../../../api/workflow-defs";
 import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
+import type { WfMeta } from "../yaml-utils";
 import { START_NODE_ID } from "../yaml-utils";
 import { NodeConfigCard } from "./NodeConfigCard";
 
@@ -28,6 +30,9 @@ export interface NodeConfigPopoverProps {
    * 避免它被 popover 的 outside-click 关闭逻辑连带卸载。
    */
   onDeleteRequest: (nodeId: string) => void;
+  meta: WfMeta;
+  updateMeta: (updates: Partial<WfMeta>) => void;
+  customTools: CustomToolItem[];
 }
 
 export function NodeConfigPopover({
@@ -43,6 +48,9 @@ export function NodeConfigPopover({
   updateNodeData,
   agentList,
   onDeleteRequest,
+  meta,
+  updateMeta,
+  customTools,
 }: NodeConfigPopoverProps) {
   const { t } = useTranslation("workflows");
   const anchorRef = useRef<Measurable>(null!);
@@ -64,7 +72,7 @@ export function NodeConfigPopover({
       <PopoverAnchor virtualRef={anchorRef} />
       <PopoverContent side="right" align="start" sideOffset={8} collisionPadding={16} className="wf-node-popover">
         <div className="wf-popover-header">
-          <span className="wf-popover-title">{selectedNode.id}</span>
+          <span className="wf-popover-title">{isStartNode ? t("editor.workflow_settings") : selectedNode.id}</span>
           <span className="wf-popover-type">{t(`nodes.${nodeType}`)}</span>
           {canDelete && (
             <button
@@ -88,6 +96,9 @@ export function NodeConfigPopover({
           setSelectedNode={setSelectedNode}
           updateNodeData={updateNodeData}
           agentList={agentList}
+          meta={meta}
+          updateMeta={updateMeta}
+          customTools={customTools}
         />
       </PopoverContent>
     </Popover>
