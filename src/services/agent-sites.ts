@@ -144,7 +144,12 @@ export async function uploadRemoteBundle(
  * 透传请求到 agent-sites。不注入 master key——L2 用 platform token，
  * L3 无鉴权或 PB user token。调用方负责设置正确的 headers。
  */
-export async function proxyToAgentSites(appId: string, path: string, request: Request): Promise<Response> {
+export async function proxyToAgentSites(
+  appId: string,
+  path: string,
+  request: Request,
+  extraHeaders?: Record<string, string>,
+): Promise<Response> {
   const targetUrl = `${baseUrl()}/${encodeURIComponent(appId)}${path}`;
   const srcUrl = new URL(request.url);
   const url = new URL(targetUrl);
@@ -155,6 +160,12 @@ export async function proxyToAgentSites(appId: string, path: string, request: Re
   const headers = new Headers(request.headers);
   headers.delete("host");
   headers.delete("cookie"); // RCS session cookie 不透传
+  if (extraHeaders) {
+    const extra = new Headers(extraHeaders);
+    for (const [k, v] of extra.entries()) {
+      headers.set(k, v);
+    }
+  }
 
   const init: RequestInit = {
     method: request.method,
