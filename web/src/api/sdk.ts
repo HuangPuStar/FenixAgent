@@ -54,6 +54,45 @@ export const metaAgentApi = new MetaAgentApi();
 export const registryApi = new RegistryApi();
 export const authApi = new AuthApi();
 
+// ── Agent Sites ──
+export const agentSitesApi = {
+  list: () => fetch("/web/agent-sites/apps", { credentials: "include" }).then((r) => r.json()),
+  get: (id: string) => fetch(`/web/agent-sites/apps/${id}`, { credentials: "include" }).then((r) => r.json()),
+  create: (body: { name: string; description?: string; visibility?: string }) =>
+    fetch("/web/agent-sites/apps", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  update: (id: string, body: { name?: string; description?: string; visibility?: string }) =>
+    fetch(`/web/agent-sites/apps/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  delete: (id: string) =>
+    fetch(`/web/agent-sites/apps/${id}`, { method: "DELETE", credentials: "include" }).then((r) => r.json()),
+  rotateToken: (id: string) =>
+    fetch(`/web/agent-sites/apps/${id}/rotate-token`, {
+      method: "POST",
+      credentials: "include",
+    }).then((r) => r.json()),
+  uploadFile: (id: string, path: string, body: BodyInit) =>
+    fetch(`/web/agent-sites/apps/${id}/files/${path}`, {
+      method: "PUT",
+      credentials: "include",
+      body,
+    }).then((r) => r.json()),
+  uploadBundle: (id: string, body: BodyInit) =>
+    fetch(`/web/agent-sites/apps/${id}/files/bundle`, {
+      method: "POST",
+      credentials: "include",
+      body,
+    }).then((r) => r.json()),
+};
+
 // ── V2 模块（一般前端不直接使用，保留导出） ──
 export const v2CodeSessionApi = new V2CodeSessionApi();
 export const v2WorkerApi = new V2WorkerApi();
