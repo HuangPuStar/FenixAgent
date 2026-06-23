@@ -276,8 +276,8 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!row || row.organizationId !== authCtx.organizationId) {
         return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
-      // 手动提取 /agent-sites/apps/{id}/api/ 之后的部分作为 PB API 路径
-      const prefix = `/agent-sites/apps/${params.id}/api/`;
+      // 手动提取 /web/agent-sites/apps/{id}/api/ 之后的部分作为 PB API 路径
+      const prefix = `/web/agent-sites/apps/${params.id}/api/`;
       const url = new URL(request.url);
       const apiPath = url.pathname.substring(url.pathname.indexOf(prefix) + prefix.length - 1);
       return proxyToAgentSites(row.remoteAppId, apiPath, request, {
