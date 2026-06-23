@@ -28,7 +28,11 @@ export interface BaseNodeDef {
   timeout?: number;
   retry?: RetryConfig;
   env?: Record<string, string>;
-  /** 输出声明。所有节点类型都可声明，key 为字段名，下游通过 nodes.X.outputs.<key> 引用 */
+  /**
+   * 输出声明。所有节点类型都可声明，key 为字段名。
+   * dag-scheduler 在节点完成后求值 pattern（${{ params.xxx }} / ${{ nodes.Y.output.z }}），
+   * 把求值结果（路径字符串）merge 到 NodeOutput.json，下游通过 ${{ nodes.X.output.<key> }} 引用。
+   */
   outputs?: Record<
     string,
     {

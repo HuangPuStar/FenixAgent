@@ -566,3 +566,59 @@ describe("SlurmNode.generateHeader() with script.env", () => {
     expect(extraIdx).toBeGreaterThan(exportIdx);
   });
 });
+
+// ── generateHeader 注入节点级 inputs 为环境变量 ──
+// SlurmNode 把 ctx.inputs（求值后的 YAML inputs 字段）合并到 #SBATCH --export，
+// 让 bash 脚本能用 $K 直接引用，省去 script.env 重复声明。
+
+describe("SlurmNode.generateHeader() with ctx.inputs", () => {
+  // ctx.inputs 字段全部注入 #SBATCH --export
+  test("ctx.inputs 字段全部注入 #SBATCH --export", () => {
+    const node = new TestSlurmNode({ partition: "xahcnormal", cores: 4 });
+    const ctx = makeCtx({
+      inputs: { SAMPLE_ID: "SRR123", WORK_DIR: "/data", SIF: "/img.sif" },
+    });
+    const header = node.testGenerateHeader(ctx);
+    expect(header).toContain("SAMPLE_ID=SRR123");
+    expect(header).toContain("WORK_DIR=/data");
+    expect(header).toContain("SIF=/img.sif");
+  });
+
+  // ctx.inputs 与 ctx.script.env 合并，同 key 时 env 覆盖 inputs
+  test("ctx.inputs 与 script.env 合并，同 key 时 env 覆盖 inputs", () => {
+    const node = new TestSlurmNode({ partition: "xahcnormal", cores: 4 });
+    const ctx = makeCtx({
+      inputs: { WORK_DIR: "/inputs-path", SAMPLE_ID: "SRR1" },
+      script: { content: "x", env: { WORK_DIR: "/env-path" } },
+    });
+    const header = node.testGenerateHeader(ctx);
+    // env 的 WORK_DIR 胜出
+    expect(header).toContain("WORK_DIR=/env-path");
+    expect(header).not.toContain("WORK_DIR=/inputs-path");
+    // inputs 的 SAMPLE_ID 仍保留
+    expect(header).toContain("SAMPLE_ID=SRR1");
+  });
+
+  // ctx.inputs 中 null/undefined 跳过，对象/数组跳过
+  test("ctx.inputs 中 null/undefined 和对象类型跳过", () => {
+    const node = new TestSlurmNode({ partition: "xahcnormal", cores: 4 });
+    const ctx = makeCtx({
+      inputs: {
+        KEEP: "v",
+        SKIP_NULL: null,
+        SKIP_UNDEF: undefined,
+        // biome-ignore lint/suspicious/noExplicitAny: 测试需要 unknown 类型
+        SKIP_OBJ: { x: 1 } as any,
+        NUM: 42,
+        BOOL: true,
+      },
+    });
+    const header = node.testGenerateHeader(ctx);
+    expect(header).toContain("KEEP=v");
+    expect(header).toContain("NUM=42");
+    expect(header).toContain("BOOL=true");
+    expect(header).not.toContain("SKIP_NULL");
+    expect(header).not.toContain("SKIP_UNDEF");
+    expect(header).not.toContain("SKIP_OBJ");
+  });
+});
