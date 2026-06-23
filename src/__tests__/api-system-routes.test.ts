@@ -256,6 +256,39 @@ describe("API System Routes", () => {
     });
   });
 
+  // 代用户创建 API Key 时，如果用户不属于目标组织，应返回禁止访问错误。
+  test("POST /api/system/api-keys rejects non-member user", async () => {
+    stubSystemApi({
+      createUserApiKey: async () => {
+        throw new Error("User 'user-2' is not a member of organization 'org-1'");
+      },
+    });
+
+    const res = await request("/api/system/api-keys", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer sys-key-1",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: "user-2",
+        organizationId: "org-1",
+        role: "member",
+        name: "automation",
+        expiresIn: null,
+      }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json).toEqual({
+      error: {
+        code: "FORBIDDEN",
+        message: "User 'user-2' is not a member of organization 'org-1'",
+      },
+    });
+  });
+
   // 系统级删除用户接口应返回稳定删除结果。
   test("DELETE /api/system/users/:id deletes user", async () => {
     const res = await request("/api/system/users/user-1", {
