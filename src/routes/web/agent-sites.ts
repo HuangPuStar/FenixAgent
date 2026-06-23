@@ -266,24 +266,23 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
   )
 
   // ── L2: PB Admin API 透传 ────────────────────────────
+  // 用 * 捕获完整子路径（:path 只取一段，/api/collections/cards 会丢 /cards）
 
   .all(
-    "/apps/:id/api/:path",
+    "/apps/:id/api/*",
     async ({ params, request, store, error }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
         return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
-      const headers = new Headers(request.headers);
-      headers.set("Authorization", `Bearer ${row.platformToken}`);
-      const proxyReq = new Request(request.url, {
-        method: request.method,
-        headers,
-        body: request.method !== "GET" && request.method !== "HEAD" ? request.body : undefined,
-        signal: request.signal,
+      // 手动提取 /agent-sites/apps/{id}/api/ 之后的部分作为 PB API 路径
+      const prefix = `/agent-sites/apps/${params.id}/api/`;
+      const url = new URL(request.url);
+      const apiPath = url.pathname.substring(url.pathname.indexOf(prefix) + prefix.length - 1);
+      return proxyToAgentSites(row.remoteAppId, apiPath, request, {
+        Authorization: `Bearer ${row.platformToken}`,
       });
-      return proxyToAgentSites(row.remoteAppId, `/api/${params.path}`, proxyReq);
     },
     {
       sessionAuth: true,
