@@ -1,5 +1,10 @@
 import type { Node } from "@xyflow/react";
+import { Maximize2 } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import type { CustomToolItem } from "../../../api/workflow-defs";
 import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
 import { syncOutputOnRename } from "../preset-utils";
@@ -24,6 +29,14 @@ export interface NodeConfigCardProps {
   customTools: CustomToolItem[];
 }
 
+/** 展开编辑弹窗的状态 */
+interface ExpandState {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}
+
 export function NodeConfigCard({
   readOnly,
   selectedNode,
@@ -40,6 +53,52 @@ export function NodeConfigCard({
 }: NodeConfigCardProps) {
   const { t } = useTranslation("workflows");
   const isStartNode = selectedNode.id === START_NODE_ID;
+  const [expand, setExpand] = useState<ExpandState | null>(null);
+
+  /** 渲染代码块字段（带展开按钮） */
+  const renderBlockField = (
+    label: string,
+    value: string,
+    onChange: (v: string) => void,
+    opts?: { placeholder?: string; rows?: number },
+  ) => (
+    <div className="wf-prop-field-block">
+      <div className="wf-prop-field-block-header">
+        <label>{label}</label>
+        <button
+          type="button"
+          className="wf-prop-expand-btn"
+          title={t("editor.expand_edit")}
+          onClick={() =>
+            setExpand({
+              label,
+              value,
+              onChange,
+              placeholder: opts?.placeholder,
+            })
+          }
+        >
+          <Maximize2 size={12} />
+        </button>
+      </div>
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={opts?.placeholder}
+        rows={opts?.rows ?? 3}
+        readOnly={readOnly}
+        className="font-mono text-xs"
+      />
+    </div>
+  );
+
+  /** 渲染横向字段 */
+  const renderInlineField = (label: string, children: React.ReactNode) => (
+    <div className="wf-prop-field-inline">
+      <label>{label}</label>
+      {children}
+    </div>
+  );
 
   return (
     <div className="wf-popover-body">
@@ -51,12 +110,12 @@ export function NodeConfigCard({
           {/* 节点基本信息 */}
           <div className="wf-prop-section">
             <div className="wf-prop-section-title">{t("editor.basic_info")}</div>
-            <div className="wf-prop-field">
-              <label>{t("editor.node_id")}</label>
-              <input value={selectedNode.id} onChange={(e) => handleIdChange(e.target.value)} readOnly={readOnly} />
-            </div>
-            <div className="wf-prop-field">
-              <label>{t("editor.type")}</label>
+            {renderInlineField(
+              t("editor.node_id"),
+              <input value={selectedNode.id} onChange={(e) => handleIdChange(e.target.value)} readOnly={readOnly} />,
+            )}
+            {renderInlineField(
+              t("editor.type"),
               <select
                 value={nodeType}
                 onChange={(e) => {
@@ -75,17 +134,17 @@ export function NodeConfigCard({
                 <option value="loop">{t("editor.type_loop")}</option>
                 <option value="transform">{t("nodes.transform")}</option>
                 <option value="custom">{t("editor.type_custom")}</option>
-              </select>
-            </div>
-            <div className="wf-prop-field">
-              <label>{t("editor.description")}</label>
+              </select>,
+            )}
+            {renderInlineField(
+              t("editor.description"),
               <input
                 value={String(sd?.description ?? "")}
                 onChange={(e) => updateNodeData({ description: e.target.value || undefined })}
                 placeholder={t("editor.description_placeholder")}
                 readOnly={readOnly}
-              />
-            </div>
+              />,
+            )}
           </div>
 
           {/* 节点配置（按类型） */}
@@ -94,27 +153,17 @@ export function NodeConfigCard({
 
             {nodeType === "shell" && (
               <>
-                <div className="wf-prop-field">
-                  <label>{t("editor.shell_command")}</label>
-                  <textarea
-                    value={String(sd?.command ?? "")}
-                    onChange={(e) => updateNodeData({ command: e.target.value })}
-                    placeholder='echo "Hello ${{ params.name }}"'
-                    rows={3}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.shell_env")}</label>
-                  <textarea
-                    value={String(sd?.env ?? "")}
-                    onChange={(e) => updateNodeData({ env: e.target.value })}
-                    placeholder={t("editor.shell_env_placeholder")}
-                    rows={2}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
+                {renderBlockField(
+                  t("editor.shell_command"),
+                  String(sd?.command ?? ""),
+                  (v) => updateNodeData({ command: v }),
+                  { placeholder: 'echo "Hello ${{ params.name }}"' },
+                )}
+                {renderBlockField(t("editor.shell_env"), String(sd?.env ?? ""), (v) => updateNodeData({ env: v }), {
+                  placeholder: t("editor.shell_env_placeholder"),
+                  rows: 2,
+                })}
+                <div className="wf-prop-field-block">
                   <label>{t("editor.inputs_title")}</label>
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
@@ -127,7 +176,7 @@ export function NodeConfigCard({
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
-                <div className="wf-prop-field">
+                <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
                     value={sd?.outputs as Record<string, OutputEntry> | undefined}
@@ -143,50 +192,31 @@ export function NodeConfigCard({
 
             {nodeType === "python" && (
               <>
-                <div className="wf-prop-field">
-                  <label>{t("editor.python_code")}</label>
-                  <textarea
-                    value={String(sd?.code ?? "")}
-                    onChange={(e) => updateNodeData({ code: e.target.value })}
-                    placeholder={'import json\nprint(json.dumps({"result": "hello"}))'}
-                    rows={6}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.python_requirements")}</label>
-                  <textarea
-                    value={
-                      Array.isArray(sd?.requirements)
-                        ? (sd.requirements as string[]).join("\n")
-                        : String(sd?.requirements ?? "")
-                    }
-                    onChange={(e) =>
-                      updateNodeData({
-                        requirements: e.target.value
-                          ? e.target.value
-                              .split("\n")
-                              .map((s: string) => s.trim())
-                              .filter(Boolean)
-                          : undefined,
-                      })
-                    }
-                    placeholder={t("editor.python_requirements_placeholder")}
-                    rows={2}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.shell_env")}</label>
-                  <textarea
-                    value={String(sd?.env ?? "")}
-                    onChange={(e) => updateNodeData({ env: e.target.value })}
-                    placeholder={t("editor.shell_env_placeholder")}
-                    rows={2}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
+                {renderBlockField(t("editor.python_code"), String(sd?.code ?? ""), (v) => updateNodeData({ code: v }), {
+                  placeholder: 'import json\nprint(json.dumps({"result": "hello"}))',
+                  rows: 6,
+                })}
+                {renderBlockField(
+                  t("editor.python_requirements"),
+                  Array.isArray(sd?.requirements)
+                    ? (sd.requirements as string[]).join("\n")
+                    : String(sd?.requirements ?? ""),
+                  (v) =>
+                    updateNodeData({
+                      requirements: v
+                        ? v
+                            .split("\n")
+                            .map((s: string) => s.trim())
+                            .filter(Boolean)
+                        : undefined,
+                    }),
+                  { placeholder: t("editor.python_requirements_placeholder"), rows: 2 },
+                )}
+                {renderBlockField(t("editor.shell_env"), String(sd?.env ?? ""), (v) => updateNodeData({ env: v }), {
+                  placeholder: t("editor.shell_env_placeholder"),
+                  rows: 2,
+                })}
+                <div className="wf-prop-field-block">
                   <label>{t("editor.inputs_title")}</label>
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
@@ -199,7 +229,7 @@ export function NodeConfigCard({
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
-                <div className="wf-prop-field">
+                <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
                     value={sd?.outputs as Record<string, OutputEntry> | undefined}
@@ -215,8 +245,8 @@ export function NodeConfigCard({
 
             {nodeType === "agent" && (
               <>
-                <div className="wf-prop-field">
-                  <label>{t("editor.agent_env")}</label>
+                {renderInlineField(
+                  t("editor.agent_env"),
                   <select
                     value={String(sd?.agent ?? "")}
                     onChange={(e) => updateNodeData({ agent: e.target.value || undefined })}
@@ -224,29 +254,22 @@ export function NodeConfigCard({
                   >
                     <option value="">{t("editor.agent_select_env")}</option>
                     {agentList.map((a) => (
-                      // option 的 value 是 environment 名字（yaml agent 字段语义需要），
-                      // 但展示给用户的是智能体名 + 描述，跟左侧 AgentSidebar 一致。
-                      // 没绑定 environment 的智能体无法被运行时解析，置灰禁选。
                       <option key={a.name} value={a.envName ?? ""} disabled={!a.envName}>
                         {a.name}
                         {a.description ? ` - ${a.description}` : ""}
                         {!a.envName ? ` (${t("editor.agent_no_env")})` : ""}
                       </option>
                     ))}
-                  </select>
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.agent_prompt")}</label>
-                  <textarea
-                    value={String(sd?.prompt ?? "")}
-                    onChange={(e) => updateNodeData({ prompt: e.target.value })}
-                    placeholder={t("editor.agent_prompt_placeholder")}
-                    rows={4}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.agent_output_messages")}</label>
+                  </select>,
+                )}
+                {renderBlockField(
+                  t("editor.agent_prompt"),
+                  String(sd?.prompt ?? ""),
+                  (v) => updateNodeData({ prompt: v }),
+                  { placeholder: t("editor.agent_prompt_placeholder"), rows: 4 },
+                )}
+                {renderInlineField(
+                  t("editor.agent_output_messages"),
                   <input
                     type="number"
                     min="0"
@@ -257,9 +280,9 @@ export function NodeConfigCard({
                     }
                     placeholder="0"
                     readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
+                  />,
+                )}
+                <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
                     value={sd?.outputs as Record<string, OutputEntry> | undefined}
@@ -275,17 +298,17 @@ export function NodeConfigCard({
 
             {nodeType === "api" && (
               <>
-                <div className="wf-prop-field">
-                  <label>URL</label>
+                {renderInlineField(
+                  "URL",
                   <input
                     value={String(sd?.url ?? "")}
                     onChange={(e) => updateNodeData({ url: e.target.value })}
                     placeholder="https://api.example.com/data"
                     readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.api_method")}</label>
+                  />,
+                )}
+                {renderInlineField(
+                  t("editor.api_method"),
                   <select
                     value={String(sd?.method ?? "GET")}
                     onChange={(e) => updateNodeData({ method: e.target.value })}
@@ -296,29 +319,18 @@ export function NodeConfigCard({
                     <option value="PUT">PUT</option>
                     <option value="PATCH">PATCH</option>
                     <option value="DELETE">DELETE</option>
-                  </select>
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.api_headers")}</label>
-                  <textarea
-                    value={String(sd?.headers ?? "")}
-                    onChange={(e) => updateNodeData({ headers: e.target.value })}
-                    placeholder='{"Authorization": "Bearer ${{ secrets.KEY }}"}'
-                    rows={2}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.api_body")}</label>
-                  <textarea
-                    value={String(sd?.body ?? "")}
-                    onChange={(e) => updateNodeData({ body: e.target.value })}
-                    placeholder='{"key": "value"}'
-                    rows={2}
-                    readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
+                  </select>,
+                )}
+                {renderBlockField(
+                  t("editor.api_headers"),
+                  String(sd?.headers ?? ""),
+                  (v) => updateNodeData({ headers: v }),
+                  { placeholder: '{"Authorization": "Bearer ${{ secrets.KEY }}"}' },
+                )}
+                {renderBlockField(t("editor.api_body"), String(sd?.body ?? ""), (v) => updateNodeData({ body: v }), {
+                  placeholder: '{"key": "value"}',
+                })}
+                <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
                     value={sd?.outputs as Record<string, OutputEntry> | undefined}
@@ -334,8 +346,8 @@ export function NodeConfigCard({
 
             {nodeType === "audit" && (
               <>
-                <div className="wf-prop-field">
-                  <label>{t("editor.audit_message")}</label>
+                {renderInlineField(
+                  t("editor.audit_message"),
                   <input
                     value={String(
                       (typeof sd?.display_data === "object" && sd?.display_data !== null
@@ -345,10 +357,10 @@ export function NodeConfigCard({
                     onChange={(e) => updateNodeData({ display_data: { message: e.target.value } })}
                     placeholder={t("editor.audit_message_placeholder")}
                     readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.audit_expires")}</label>
+                  />,
+                )}
+                {renderInlineField(
+                  t("editor.audit_expires"),
                   <input
                     type="number"
                     value={sd?.expires_in != null ? String(sd.expires_in) : ""}
@@ -358,9 +370,9 @@ export function NodeConfigCard({
                     }}
                     placeholder="86400"
                     readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
+                  />,
+                )}
+                <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
                     value={sd?.outputs as Record<string, OutputEntry> | undefined}
@@ -376,16 +388,16 @@ export function NodeConfigCard({
 
             {nodeType === "workflow" && (
               <>
-                <div className="wf-prop-field">
-                  <label>{t("editor.workflow_ref")}</label>
+                {renderInlineField(
+                  t("editor.workflow_ref"),
                   <input
                     value={String(sd?.ref ?? "")}
                     onChange={(e) => updateNodeData({ ref: e.target.value })}
                     placeholder="./sub-workflow.yaml"
                     readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
+                  />,
+                )}
+                <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
                     value={sd?.outputs as Record<string, OutputEntry> | undefined}
@@ -401,17 +413,17 @@ export function NodeConfigCard({
 
             {nodeType === "loop" && (
               <>
-                <div className="wf-prop-field">
-                  <label>{t("editor.loop_condition")}</label>
+                {renderInlineField(
+                  t("editor.loop_condition"),
                   <input
                     value={String(sd?.condition ?? "")}
                     onChange={(e) => updateNodeData({ condition: e.target.value })}
                     placeholder="{{ counter < 10 }}"
                     readOnly={readOnly}
-                  />
-                </div>
-                <div className="wf-prop-field">
-                  <label>{t("editor.loop_max_iterations")}</label>
+                  />,
+                )}
+                {renderInlineField(
+                  t("editor.loop_max_iterations"),
                   <input
                     type="number"
                     value={sd?.max_iterations != null ? String(sd.max_iterations) : ""}
@@ -421,12 +433,12 @@ export function NodeConfigCard({
                     }}
                     placeholder="10"
                     readOnly={readOnly}
-                  />
-                </div>
+                  />,
+                )}
                 <div className="wf-prop-hint" style={{ marginTop: 4 }}>
                   <p>{t("editor.loop_body_hint")}</p>
                 </div>
-                <div className="wf-prop-field">
+                <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
                     value={sd?.outputs as Record<string, OutputEntry> | undefined}
@@ -442,7 +454,7 @@ export function NodeConfigCard({
 
             {nodeType === "transform" && (
               <>
-                <div className="wf-prop-field">
+                <div className="wf-prop-field-block">
                   <label>{t("editor.transform_inputs_title")}</label>
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
@@ -455,7 +467,7 @@ export function NodeConfigCard({
                     addLabel={t("editor.transform_inputs_add")}
                   />
                 </div>
-                <div className="wf-prop-field">
+                <div className="wf-prop-field-block">
                   <label>{t("editor.transform_output_title")}</label>
                   <InputsEditor
                     value={sd?.output as Record<string, string> | undefined}
@@ -464,7 +476,6 @@ export function NodeConfigCard({
                         updateNodeData({ output: undefined });
                         return;
                       }
-                      // 检测 key 名变更并自动同步表达式中的同名引用
                       const oldOutput = (sd?.output as Record<string, string>) ?? {};
                       const synced = syncOutputOnRename(oldOutput, val);
                       updateNodeData({ output: synced });
@@ -478,30 +489,158 @@ export function NodeConfigCard({
               </>
             )}
 
-            {/* custom 节点：tool 字段指向 WORKFLOW_TOOLS_DIR 下注册的 CustomNode 工具名；
-                inputs 由具体 tool 的 input schema 决定，outputs 由 tool 的 produces 声明决定。
-                此处只暴露 inputs 编辑（键值对），outputs 由后端 tool 定义驱动，不在前端手编辑。 */}
             {nodeType === "custom" && (
               <>
-                <div className="wf-prop-field">
-                  <label>{t("editor.custom_tool")}</label>
-                  <input
-                    list="custom-tools-list"
-                    value={String(sd?.tool ?? "")}
-                    onChange={(e) => updateNodeData({ tool: e.target.value || undefined })}
-                    placeholder={t("editor.custom_tool_placeholder")}
-                    readOnly={readOnly}
-                  />
-                  <datalist id="custom-tools-list">
-                    {customTools.map((tool) => (
-                      <option key={tool.name} value={tool.name}>
-                        {tool.description}
-                      </option>
-                    ))}
-                  </datalist>
-                </div>
-                <div className="wf-prop-field">
+                {renderInlineField(
+                  t("editor.custom_tool"),
+                  <>
+                    <input
+                      list="custom-tools-list"
+                      value={String(sd?.tool ?? "")}
+                      onChange={(e) => updateNodeData({ tool: e.target.value || undefined })}
+                      placeholder={t("editor.custom_tool_placeholder")}
+                      readOnly={readOnly}
+                    />
+                    <datalist id="custom-tools-list">
+                      {customTools.map((tool) => (
+                        <option key={tool.name} value={tool.name}>
+                          {tool.description}
+                        </option>
+                      ))}
+                    </datalist>
+                  </>,
+                )}
+
+                {/* Slurm 专属配置 */}
+                {sd?.tool === "slurm" && (
+                  <>
+                    <div className="wf-prop-field-block" style={{ marginTop: 8 }}>
+                      <label style={{ fontWeight: 600, color: "#374151" }}>{t("editor.slurm_section")}</label>
+                    </div>
+                    {renderInlineField(
+                      t("editor.slurm_partition"),
+                      <input
+                        value={String((sd?.slurm as Record<string, unknown>)?.partition ?? "")}
+                        onChange={(e) =>
+                          updateNodeData({
+                            slurm: { ...((sd?.slurm as Record<string, unknown>) ?? {}), partition: e.target.value },
+                          })
+                        }
+                        placeholder="xahcnormal"
+                        readOnly={readOnly}
+                      />,
+                    )}
+                    {renderInlineField(
+                      t("editor.slurm_cores"),
+                      <input
+                        type="number"
+                        value={
+                          (sd?.slurm as Record<string, unknown>)?.cores != null
+                            ? String((sd?.slurm as Record<string, unknown>).cores)
+                            : ""
+                        }
+                        onChange={(e) =>
+                          updateNodeData({
+                            slurm: {
+                              ...((sd?.slurm as Record<string, unknown>) ?? {}),
+                              cores: e.target.value ? Number(e.target.value) : undefined,
+                            },
+                          })
+                        }
+                        placeholder="4"
+                        readOnly={readOnly}
+                      />,
+                    )}
+                    {renderInlineField(
+                      t("editor.slurm_walltime"),
+                      <input
+                        value={String((sd?.slurm as Record<string, unknown>)?.walltime ?? "")}
+                        onChange={(e) =>
+                          updateNodeData({
+                            slurm: { ...((sd?.slurm as Record<string, unknown>) ?? {}), walltime: e.target.value },
+                          })
+                        }
+                        placeholder="02:00:00"
+                        readOnly={readOnly}
+                      />,
+                    )}
+                    {renderBlockField(
+                      t("editor.slurm_modules"),
+                      Array.isArray((sd?.slurm as Record<string, unknown>)?.modules)
+                        ? ((sd?.slurm as Record<string, unknown>).modules as string[]).join("\n")
+                        : "",
+                      (v) =>
+                        updateNodeData({
+                          slurm: {
+                            ...((sd?.slurm as Record<string, unknown>) ?? {}),
+                            modules: v
+                              ? v
+                                  .split("\n")
+                                  .map((s: string) => s.trim())
+                                  .filter(Boolean)
+                              : undefined,
+                          },
+                        }),
+                      { placeholder: t("editor.slurm_modules_placeholder"), rows: 2 },
+                    )}
+                    {/* 脚本内容 — 核心：大段 bash 脚本，带展开按钮 */}
+                    {renderBlockField(
+                      t("editor.slurm_script_content"),
+                      String((sd?.script as Record<string, unknown>)?.content ?? ""),
+                      (v) =>
+                        updateNodeData({
+                          script: { ...((sd?.script as Record<string, unknown>) ?? {}), content: v },
+                        }),
+                      { rows: 6 },
+                    )}
+                    {/* 脚本环境变量 */}
+                    <div className="wf-prop-field-block">
+                      <label>{t("editor.slurm_script_env")}</label>
+                      <p className="text-[10px] text-gray-400 mb-1.5 leading-tight">{t("editor.slurm_env_hint")}</p>
+                      <Textarea
+                        value={(() => {
+                          const env = (sd?.script as Record<string, unknown>)?.env as
+                            | Record<string, string>
+                            | undefined;
+                          return env
+                            ? Object.entries(env)
+                                .map(([k, v]) => `${k}=${v}`)
+                                .join("\n")
+                            : "";
+                        })()}
+                        onChange={(e) => {
+                          const pairs = e.target.value
+                            ? e.target.value
+                                .split("\n")
+                                .map((s: string) => s.trim())
+                                .filter(Boolean)
+                            : [];
+                          const envObj: Record<string, string> = {};
+                          for (const line of pairs) {
+                            const eqIdx = line.indexOf("=");
+                            if (eqIdx > 0) {
+                              envObj[line.slice(0, eqIdx).trim()] = line.slice(eqIdx + 1).trim();
+                            }
+                          }
+                          updateNodeData({
+                            script: {
+                              ...((sd?.script as Record<string, unknown>) ?? {}),
+                              env: Object.keys(envObj).length > 0 ? envObj : undefined,
+                            },
+                          });
+                        }}
+                        placeholder={t("editor.slurm_script_env_placeholder")}
+                        rows={2}
+                        readOnly={readOnly}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="wf-prop-field-block">
                   <label>{t("editor.inputs_title")}</label>
+                  <p className="text-[10px] text-gray-400 mb-1.5 leading-tight">{t("editor.slurm_inputs_hint")}</p>
                   <InputsEditor
                     value={sd?.inputs as Record<string, string> | undefined}
                     onChange={(val) => {
@@ -513,7 +652,7 @@ export function NodeConfigCard({
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
-                <div className="wf-prop-field">
+                <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
                     value={sd?.outputs as Record<string, OutputEntry> | undefined}
@@ -531,8 +670,8 @@ export function NodeConfigCard({
           {/* 高级配置 */}
           <div className="wf-prop-section">
             <div className="wf-prop-section-title">{t("editor.advanced")}</div>
-            <div className="wf-prop-field">
-              <label>{t("editor.timeout_seconds")}</label>
+            {renderInlineField(
+              t("editor.timeout_seconds"),
               <input
                 type="number"
                 value={sd?.timeout != null ? String(sd.timeout) : ""}
@@ -542,10 +681,10 @@ export function NodeConfigCard({
                 }}
                 placeholder="300"
                 readOnly={readOnly}
-              />
-            </div>
-            <div className="wf-prop-field">
-              <label>{t("editor.retry_count")}</label>
+              />,
+            )}
+            {renderInlineField(
+              t("editor.retry_count"),
               <input
                 type="number"
                 value={sd?.retry != null ? String(sd.retry) : ""}
@@ -555,11 +694,33 @@ export function NodeConfigCard({
                 }}
                 placeholder="0"
                 readOnly={readOnly}
-              />
-            </div>
+              />,
+            )}
           </div>
         </>
       )}
+
+      {/* 代码展开编辑 Dialog */}
+      <Dialog
+        open={expand !== null}
+        onOpenChange={(open) => {
+          if (!open) setExpand(null);
+        }}
+      >
+        <DialogContent className="wf-code-dialog" style={{ maxWidth: 640, width: "90vw" }}>
+          <DialogHeader>
+            <DialogTitle>{expand?.label}</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={expand?.value ?? ""}
+            onChange={(e) => expand?.onChange(e.target.value)}
+            placeholder={expand?.placeholder}
+            rows={20}
+            readOnly={readOnly}
+            className="font-mono text-sm"
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

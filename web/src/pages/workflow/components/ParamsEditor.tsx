@@ -2,6 +2,12 @@ import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+
 export type ParamType = "string" | "number" | "boolean" | "object";
 
 export interface ParamEntry {
@@ -30,9 +36,8 @@ export function ParamsEditor({
   const entries = Object.entries(value ?? {});
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const keyRefs = useRef<(HTMLInputElement | null)[]>([]);
-  // object 类型的 textarea 单独维护输入文本，JSON 解析失败时不写入
   const [objectDrafts, setObjectDrafts] = useState<Record<number, string>>({});
+  const [focusKeyIdx, setFocusKeyIdx] = useState<number | null>(null);
 
   const entriesLen = entries.length;
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on length change
@@ -66,7 +71,6 @@ export function ParamsEditor({
     onChange(updated);
   };
 
-  // type 切换时清空 default，避免类型不匹配（如 number 切换到 object 留下数字）
   const changeType = (index: number, newType: ParamType) => {
     setObjectDrafts((d) => ({ ...d, [index]: "" }));
     updateEntry(index, { type: newType, default: undefined });
@@ -114,40 +118,39 @@ export function ParamsEditor({
       "": { type: "string" as ParamType, default: undefined, required: false },
     };
     onChange(updated);
-    requestAnimationFrame(() => {
-      const lastIdx = Object.keys(updated).length - 1;
-      keyRefs.current[lastIdx]?.focus();
-    });
+    setFocusKeyIdx(Object.keys(updated).length - 1);
   };
+
+  const isEmptyKey = (k: string) => k.trim() === "";
 
   const renderDefaultControl = (index: number, entry: ParamEntry) => {
     const type = entry.type ?? "string";
     if (type === "boolean") {
       return (
-        <input
-          type="checkbox"
-          checked={entry.default === true}
-          onChange={(e) => updateDefault(index, e.target.checked)}
-          disabled={readOnly}
-        />
+        <div className="flex items-center h-9 px-2">
+          <Checkbox
+            checked={entry.default === true}
+            onCheckedChange={(checked) => updateDefault(index, !!checked)}
+            disabled={readOnly}
+          />
+        </div>
       );
     }
     if (type === "number") {
       return (
-        <input
+        <Input
           type="number"
           value={entry.default != null ? String(entry.default) : ""}
           onChange={(e) => updateDefault(index, e.target.value ? Number(e.target.value) : undefined)}
           placeholder={defaultPlaceholder}
           readOnly={readOnly}
-          style={{ flex: 1 }}
+          className="flex-1 h-8 text-xs"
         />
       );
     }
     if (type === "object") {
       const draft = objectDrafts[index];
       const text = draft !== undefined ? draft : entry.default != null ? JSON.stringify(entry.default) : "";
-      // 提前判断 JSON 是否合法，避免内联复杂三元
       const isInvalid = (() => {
         if (draft === undefined || draft.trim() === "") return false;
         try {
@@ -157,136 +160,100 @@ export function ParamsEditor({
           return true;
         }
       })();
-      const textareaStyle: React.CSSProperties = {
-        flex: 1,
-        ...(isInvalid ? { borderColor: "#fca5a5", background: "#fef2f2" } : {}),
-      };
       return (
-        <textarea
+        <Textarea
           value={text}
           onChange={(e) => handleObjectInput(index, e.target.value)}
           placeholder='{"key": "value"}'
           rows={2}
           readOnly={readOnly}
-          style={textareaStyle}
+          className={`flex-1 text-xs font-mono min-h-0 py-1 ${isInvalid ? "border-red-300 bg-red-50" : ""}`}
         />
       );
     }
     // string
     return (
-      <input
-        type="text"
+      <Input
         value={entry.default != null ? String(entry.default) : ""}
         onChange={(e) => updateDefault(index, e.target.value || undefined)}
         placeholder={defaultPlaceholder}
         readOnly={readOnly}
-        style={{ flex: 1 }}
+        className="flex-1 h-8 text-xs"
       />
     );
   };
 
   return (
-    <div>
+    <div className="flex flex-col gap-1.5">
       {entries.map(([k, v], i) => {
         const entry = v as ParamEntry;
         const isConfirming = confirmDeleteKey === k && k !== "";
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: index needed to keep focus stable
-          <div key={`${k}-${i}`} style={{ marginBottom: 6 }}>
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <input
-                ref={(el) => {
-                  keyRefs.current[i] = el;
-                }}
+          <div key={`${k}-${i}`}>
+            {/* 第一行：参数名 + 类型 + 必填 + 删除 */}
+            <div className="flex items-center gap-1.5">
+              <Input
                 value={k}
                 onChange={(e) => updateKey(i, e.target.value)}
                 placeholder={namePlaceholder}
                 readOnly={readOnly}
-                style={{
-                  width: "28%",
-                  ...(k.trim() === "" ? { borderColor: "#fca5a5", background: "#fef2f2" } : {}),
-                }}
+                autoFocus={i === focusKeyIdx}
+                className={`h-8 text-xs ${isEmptyKey(k) ? "border-red-300 bg-red-50" : ""}`}
+                style={{ width: "28%" }}
               />
-              <select
+              <Select
                 value={entry.type ?? "string"}
-                onChange={(e) => changeType(i, e.target.value as ParamType)}
+                onValueChange={(v) => changeType(i, v as ParamType)}
                 disabled={readOnly}
-                style={{ width: 84 }}
               >
-                <option value="string">string</option>
-                <option value="number">number</option>
-                <option value="boolean">boolean</option>
-                <option value="object">object</option>
-              </select>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 2,
-                  fontSize: 10,
-                  color: "#6b7280",
-                  width: 64,
-                }}
-              >
-                <input
-                  type="checkbox"
+                <SelectTrigger className="h-8 text-xs w-[84px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="string">string</SelectItem>
+                  <SelectItem value="number">number</SelectItem>
+                  <SelectItem value="boolean">boolean</SelectItem>
+                  <SelectItem value="object">object</SelectItem>
+                </SelectContent>
+              </Select>
+              <label className="flex items-center gap-1 text-[10px] text-gray-500 w-16 cursor-pointer">
+                <Checkbox
                   checked={entry.required === true}
-                  onChange={(e) => updateEntry(i, { required: e.target.checked })}
+                  onCheckedChange={(checked) => updateEntry(i, { required: !!checked })}
                   disabled={readOnly}
                 />
                 {t("editor.params_required_label")}
               </label>
               {!readOnly && (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={() => handleDeleteClick(i)}
                   title={isConfirming ? t("components:confirm") : undefined}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 24,
-                    height: 24,
-                    border: "none",
-                    background: isConfirming ? "#fef2c7" : "none",
-                    color: isConfirming ? "#ef4444" : "#9ca3af",
-                    cursor: "pointer",
-                    borderRadius: 4,
-                    padding: 0,
-                    flexShrink: 0,
-                  }}
+                  className={`size-6 ${isConfirming ? "bg-amber-50 text-red-500" : "text-gray-400"}`}
                 >
                   <Trash2 size={13} />
-                </button>
+                </Button>
               )}
             </div>
-            <div style={{ display: "flex", gap: 4, alignItems: "flex-start", marginTop: 2 }}>
-              <span style={{ fontSize: 10, color: "#9ca3af", width: "28%", textAlign: "right" }}>
+            {/* 第二行：默认值 */}
+            <div className="flex gap-1.5 mt-1 items-start">
+              <span className="text-[10px] text-gray-400 text-right leading-8" style={{ width: "28%" }}>
                 {t("editor.params_default_label")}
               </span>
-              <div style={{ flex: 1, display: "flex" }}>{renderDefaultControl(i, entry)}</div>
+              <div className="flex-1 flex">{renderDefaultControl(i, entry)}</div>
+              {/* spacer for delete button width */}
+              {!readOnly && <div className="size-6 flex-shrink-0" />}
             </div>
           </div>
         );
       })}
       {!readOnly && (
-        <button
-          type="button"
-          onClick={addEntry}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            border: "none",
-            background: "none",
-            color: "#6b7280",
-            cursor: "pointer",
-            fontSize: 11,
-            padding: 0,
-          }}
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={addEntry} className="gap-1 text-gray-500 text-xs h-7">
           <Plus size={12} /> {addLabel}
-        </button>
+        </Button>
       )}
     </div>
   );

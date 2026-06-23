@@ -382,7 +382,19 @@
     "palette_custom_tools": "Custom Tools",
     "tooltip_publish": "Publish new version",
     "publish_confirm_title": "Publish New Version",
-    "publish_confirm_desc": "A new version will be created from the current draft. Latest: {{latest}}. Continue?"
+    "publish_confirm_desc": "A new version will be created from the current draft. Latest: {{latest}}. Continue?",
+    "expand_edit": "Expand to edit",
+    "slurm_section": "Slurm Resources",
+    "slurm_partition": "Partition",
+    "slurm_cores": "CPU Cores",
+    "slurm_walltime": "Walltime",
+    "slurm_modules": "Modules",
+    "slurm_modules_placeholder": "apps/apptainer/1.2.4 (one per line)",
+    "slurm_script_content": "Script Content (script.content)",
+    "slurm_script_env": "Script Environment (script.env)",
+    "slurm_script_env_placeholder": "KEY=VALUE (one per line)",
+    "slurm_inputs_hint": "Receive upstream node outputs via ${{ }} templates",
+    "slurm_env_hint": "Set static environment variables for the script"
   },
   "run_params": {
     "title": "Run Parameters",
