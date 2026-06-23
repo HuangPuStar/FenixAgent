@@ -217,3 +217,21 @@ curl -s -o /dev/null -w "%{http_code}\n" -X DELETE $L2/$RECORD_ID $AUTH
 | 业务前端公开访问后端 | 不带凭证，交给 collection 的 rules |
 
 **agent 永远不需要直接接触 `AGENT_SITES_MASTER_KEY` 或 platform token**——这些由 RCS 后端管理。
+
+## 前端开发注意点
+
+### 中文输入法 Enter 提交问题
+
+监听 `keydown` 提交表单时，中文输入法（IME）的"确认选词"也会触发 Enter 键事件，导致在 composition 未完成时误提交。必须加 `e.isComposing` 判断：
+
+```javascript
+// ❌ 中文输入法按 Enter 选词时会误触
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') submit();
+});
+
+// ✅ 跳过 composition 阶段的 Enter
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.isComposing) submit();
+});
+```
