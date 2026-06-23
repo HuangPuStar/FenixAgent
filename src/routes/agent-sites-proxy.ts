@@ -96,7 +96,7 @@ app.all("/:appId/:path*", async ({ params, request, store, set }) => {
     return reject.body;
   }
 
-  const subPath = `/${params.path ?? ""}`;
+  const subPath = `/${params["path*"] ?? ""}`;
   return proxyToAgentSites(params.appId, subPath, request);
 });
 

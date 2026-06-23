@@ -2,13 +2,7 @@ import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
-import {
-  AgentSiteAppDetailResponseSchema,
-  AgentSiteAppListResponseSchema,
-  AgentSiteAppOkResponseSchema,
-  CreateAgentSiteAppRequestSchema,
-  UpdateAgentSiteAppRequestSchema,
-} from "../../schemas/agent-site.schema";
+import { CreateAgentSiteAppRequestSchema, UpdateAgentSiteAppRequestSchema } from "../../schemas/agent-site.schema";
 import {
   createRemoteApp,
   deleteRemoteApp,
@@ -42,9 +36,6 @@ function canWrite(row: { userId: string }, userId: string, role: string): boolea
 const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
   .use(authGuardPlugin)
   .model({
-    "agent-site-app-list-response": AgentSiteAppListResponseSchema,
-    "agent-site-app-detail-response": AgentSiteAppDetailResponseSchema,
-    "agent-site-app-ok-response": AgentSiteAppOkResponseSchema,
     "create-agent-site-app-request": CreateAgentSiteAppRequestSchema,
     "update-agent-site-app-request": UpdateAgentSiteAppRequestSchema,
   })
@@ -60,7 +51,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
-      response: "agent-site-app-list-response",
+
       detail: {
         tags: ["Agent Sites"],
         summary: "获取 agent sites app 列表",
@@ -71,20 +62,17 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .get(
     "/apps/:id",
-    async ({ params, store }) => {
+    async ({ params, store, error }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return new Response(JSON.stringify({ error: { type: "not_found", message: "App 不存在" } }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        });
+        return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
       return { success: true as const, data: toResponse(row) };
     },
     {
       sessionAuth: true,
-      response: "agent-site-app-detail-response",
+
       detail: {
         tags: ["Agent Sites"],
         summary: "获取 agent site app 详情",
@@ -123,7 +111,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     {
       sessionAuth: true,
       body: "create-agent-site-app-request",
-      response: "agent-site-app-detail-response",
+
       detail: {
         tags: ["Agent Sites"],
         summary: "创建 agent site app",
@@ -134,21 +122,15 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .patch(
     "/apps/:id",
-    async ({ params, store, body }) => {
+    async ({ params, store, body, error }) => {
       const authCtx = store.authContext!;
       const b = body as { name?: string; description?: string; visibility?: string };
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return new Response(JSON.stringify({ error: { type: "not_found", message: "App 不存在" } }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        });
+        return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return new Response(JSON.stringify({ error: { type: "forbidden", message: "无权限修改此 app" } }), {
-          status: 403,
-          headers: { "content-type": "application/json" },
-        });
+        return error(403, { error: { type: "forbidden", message: "无权限修改此 app" } });
       }
       const updated = await agentSiteAppRepo.update(params.id, {
         name: b.name,
@@ -160,7 +142,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     {
       sessionAuth: true,
       body: "update-agent-site-app-request",
-      response: "agent-site-app-detail-response",
+
       detail: {
         tags: ["Agent Sites"],
         summary: "更新 agent site app",
@@ -171,20 +153,14 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .delete(
     "/apps/:id",
-    async ({ params, store }) => {
+    async ({ params, store, error }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return new Response(JSON.stringify({ error: { type: "not_found", message: "App 不存在" } }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        });
+        return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return new Response(JSON.stringify({ error: { type: "forbidden", message: "无权限删除此 app" } }), {
-          status: 403,
-          headers: { "content-type": "application/json" },
-        });
+        return error(403, { error: { type: "forbidden", message: "无权限删除此 app" } });
       }
       // 先调 agent-sites 删除远程 app
       await deleteRemoteApp(row.remoteAppId);
@@ -194,7 +170,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
-      response: "agent-site-app-ok-response",
+
       detail: {
         tags: ["Agent Sites"],
         summary: "删除 agent site app",
@@ -207,20 +183,14 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .post(
     "/apps/:id/rotate-token",
-    async ({ params, store }) => {
+    async ({ params, store, error }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return new Response(JSON.stringify({ error: { type: "not_found", message: "App 不存在" } }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        });
+        return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return new Response(JSON.stringify({ error: { type: "forbidden", message: "无权限操作此 app" } }), {
-          status: 403,
-          headers: { "content-type": "application/json" },
-        });
+        return error(403, { error: { type: "forbidden", message: "无权限操作此 app" } });
       }
       try {
         await revokePlatformToken(row.platformTokenId);
@@ -236,7 +206,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
-      response: "agent-site-app-ok-response",
+
       detail: {
         tags: ["Agent Sites"],
         summary: "重签 platform token",
@@ -249,22 +219,16 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .put(
     "/apps/:id/files/:path",
-    async ({ params, request, store }) => {
+    async ({ params, request, store, error }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return new Response(JSON.stringify({ error: { type: "not_found", message: "App 不存在" } }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        });
+        return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return new Response(JSON.stringify({ error: { type: "forbidden", message: "无权限上传文件" } }), {
-          status: 403,
-          headers: { "content-type": "application/json" },
-        });
+        return error(403, { error: { type: "forbidden", message: "无权限上传文件" } });
       }
-      const result = await uploadRemoteFile(row.remoteAppId, params.path, request.body!);
+      const result = await uploadRemoteFile(row.remoteAppId, params.path, request.body);
       return { success: true as const, data: result.data };
     },
     {
@@ -279,22 +243,16 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .post(
     "/apps/:id/files/bundle",
-    async ({ params, request, store }) => {
+    async ({ params, request, store, error }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return new Response(JSON.stringify({ error: { type: "not_found", message: "App 不存在" } }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        });
+        return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return new Response(JSON.stringify({ error: { type: "forbidden", message: "无权限上传文件" } }), {
-          status: 403,
-          headers: { "content-type": "application/json" },
-        });
+        return error(403, { error: { type: "forbidden", message: "无权限上传文件" } });
       }
-      const result = await uploadRemoteBundle(row.remoteAppId, request.body!);
+      const result = await uploadRemoteBundle(row.remoteAppId, request.body);
       return { success: true as const, data: result.data };
     },
     {
@@ -311,14 +269,11 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .all(
     "/apps/:id/api/:path",
-    async ({ params, request, store }) => {
+    async ({ params, request, store, error }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return new Response(JSON.stringify({ error: { type: "not_found", message: "App 不存在" } }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        });
+        return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
       const headers = new Headers(request.headers);
       headers.set("Authorization", `Bearer ${row.platformToken}`);
