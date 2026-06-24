@@ -402,7 +402,7 @@ export class SessionManager {
           this.emit(
             sessionId,
             "session_data",
-            createSuccessResponse(id, { ...r, models: extractModelState((r as any).configOptions) }),
+            createSuccessResponse(id, { ...r, models: extractModelState(r.configOptions) }),
           );
           break;
         }
