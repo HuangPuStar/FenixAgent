@@ -26,6 +26,9 @@ const envSchema = z.object({
   RCS_WS_KEEPALIVE_INTERVAL: z.coerce.number().int().positive().default(20),
   RCS_DISCONNECT_TIMEOUT: z.coerce.number().int().positive().default(120),
   RCS_JWT_EXPIRES_IN: z.coerce.number().int().positive().default(3600),
+  RCS_ACP_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(1200),
+  RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+  RCS_ACP_ACTIVITY_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(7200),
 
   // ── 可选：知识库（RagFlow）──
   RAGFLOW_API_URL: z.string().default("http://localhost:9380"),

@@ -37,6 +37,7 @@ import v2WorkerEvents from "./routes/v2/worker-events";
 import v2WorkerEventsStream from "./routes/v2/worker-events-stream";
 import webApp from "./routes/web";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
+import { startAcpIdleMonitor, stopAcpIdleMonitor } from "./services/acp-idle-monitor";
 import { closeCache } from "./services/cache";
 import { getCoreRuntime } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
@@ -266,6 +267,7 @@ try {
 import("./services/registry-heartbeat").then(({ startMachineSweep }) => {
   startMachineSweep(60_000);
 });
+startAcpIdleMonitor();
 
 const app = new Elysia()
   .use(corsPlugin)
@@ -418,6 +420,7 @@ async function gracefulShutdown(signal: string) {
   startupLog.info(`Received ${signal}, shutting down...`);
   const hermesClient = getHermesClient();
   await hermesClient?.stop();
+  stopAcpIdleMonitor();
   closeAllRelayConnections();
   closeAllAcpConnections();
   closeAllFileWsConnections();

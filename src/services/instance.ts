@@ -46,6 +46,18 @@ export interface InstanceInfo {
   created_at: number;
 }
 
+export interface InstanceActivityInfo extends InstanceInfo {
+  last_activity_at: number;
+  relay_count: number;
+  last_relay_detached_at: number | null;
+  idle_seconds: number;
+  idle_timeout_seconds: number;
+  idle_kill_eligible: boolean;
+  inactivity_seconds: number;
+  activity_timeout_seconds: number;
+  activity_kill_eligible: boolean;
+}
+
 export interface EnsureRunningResult {
   instance: SpawnedInstance;
   status: "reused" | "spawned";
@@ -113,6 +125,32 @@ export function toInstanceInfo(instance: SpawnedInstance): InstanceInfo {
     session_id: instance.sessionId ?? null,
     instance_number: instance.instanceNumber,
     created_at: Math.floor(instance.createdAt.getTime() / 1000),
+  };
+}
+
+/** 将实例与 registry 中的空闲观测状态组装为监控视图。 */
+export function toInstanceActivityInfo(
+  instance: SpawnedInstance,
+  supplement: InstanceSupplement,
+  idleTimeoutSeconds: number,
+  activityTimeoutSeconds: number,
+  now = Date.now(),
+): InstanceActivityInfo {
+  const idleSince = supplement.lastRelayDetachedAt ?? now;
+  const idleSeconds = supplement.relayCount === 0 ? Math.max(0, Math.floor((now - idleSince) / 1000)) : 0;
+  const inactivitySeconds = Math.max(0, Math.floor((now - supplement.lastActivityAt) / 1000));
+  return {
+    ...toInstanceInfo(instance),
+    last_activity_at: Math.floor(supplement.lastActivityAt / 1000),
+    relay_count: supplement.relayCount,
+    last_relay_detached_at:
+      supplement.lastRelayDetachedAt === null ? null : Math.floor(supplement.lastRelayDetachedAt / 1000),
+    idle_seconds: idleSeconds,
+    idle_timeout_seconds: idleTimeoutSeconds,
+    idle_kill_eligible: supplement.relayCount === 0 && idleSeconds >= idleTimeoutSeconds,
+    inactivity_seconds: inactivitySeconds,
+    activity_timeout_seconds: activityTimeoutSeconds,
+    activity_kill_eligible: inactivitySeconds >= activityTimeoutSeconds,
   };
 }
 
@@ -238,6 +276,9 @@ export async function spawnInstanceFromEnvironment(
     environmentId,
     instanceNumber,
     organizationId: env.organizationId ?? userId,
+    lastActivityAt: Date.now(),
+    relayCount: 0,
+    lastRelayDetachedAt: Date.now(),
   };
   registry.register(instanceId, supplement);
 

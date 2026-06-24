@@ -8,6 +8,9 @@ function makeSupplement(overrides: Partial<InstanceSupplement> = {}): InstanceSu
     environmentId: "env-1",
     instanceNumber: 1,
     organizationId: "org-1",
+    lastActivityAt: 0,
+    relayCount: 0,
+    lastRelayDetachedAt: null,
     ...overrides,
   };
 }
