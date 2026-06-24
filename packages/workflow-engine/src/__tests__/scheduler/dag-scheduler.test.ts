@@ -1,10 +1,11 @@
 import { beforeEach, expect, test } from "bun:test";
 import { AuditExecutor, verifyApprovalToken } from "../../executor/awaitable-executor";
+import { resolveTemplate } from "../../parser/expression-parser";
 import { CancellationManager } from "../../scheduler/cancellation";
 import type { NodeExecutionContext, NodeExecutor } from "../../scheduler/dag-scheduler";
 import { DAGScheduler, SuspendedError } from "../../scheduler/dag-scheduler";
 import { createInMemoryStorage } from "../../storage/in-memory-storage";
-import type { AuditNodeDef, NodeDef, ShellNodeDef, WorkflowDef } from "../../types/dag";
+import type { AuditNodeDef, CustomNodeDef, NodeDef, ShellNodeDef, WorkflowDef } from "../../types/dag";
 import type { DAGEvent, NodeOutput, NodeStatus } from "../../types/execution";
 
 // ---------- 辅助工具 ----------
@@ -1060,4 +1061,77 @@ test("依赖 SKIPPED 节点的节点不被调度为 READY", async () => {
   // D 不应该有 started 或 completed 事件
   expect(events.some((e) => e.node_id === "D" && e.type === "node.started")).toBe(false);
   expect(events.some((e) => e.node_id === "D" && e.type === "node.completed")).toBe(false);
+});
+
+// ---------- resolveNodeInputs 对 custom 节点 script 字段的求值 ----------
+
+// 基线测试:直接调用 resolveTemplate 验证 script.content 和 script.env 表达式求值
+// 完整端到端验证在 Task 6 的 custom-executor 测试覆盖
+test("custom 节点 script.content 表达式被求值", () => {
+  // 直接构造 CustomNodeDef(不依赖 parseWorkflowYaml 的 customRegistry)
+  const customDef: CustomNodeDef = {
+    id: "job1",
+    type: "custom",
+    tool: "slurm",
+    outputs: {
+      out: { pattern: "/tmp/out", type: "file" },
+    },
+    script: {
+      content: 'echo "workdir=${{ params.work_dir }}"',
+      env: {
+        WORK_DIR: "${{ params.work_dir }}",
+        CORES: "${{ params.cores }}",
+      },
+    },
+  };
+
+  // 手动复现 resolveNodeInputs 的 custom 分支逻辑(等价验证)
+  const evalContext = {
+    params: { work_dir: "/data/test", cores: 8 },
+    secrets: {},
+    nodes: {},
+  };
+
+  const resolvedScript = {
+    content: resolveTemplate(customDef.script!.content, evalContext),
+    env: Object.fromEntries(
+      Object.entries(customDef.script!.env!).map(([k, v]) => [k, resolveTemplate(v, evalContext)]),
+    ),
+  };
+
+  expect(resolvedScript.content).toContain("workdir=/data/test");
+  expect(resolvedScript.env.WORK_DIR).toBe("/data/test");
+  expect(resolvedScript.env.CORES).toBe("8"); // resolveTemplate 强制 string
+});
+
+// env 为 undefined 时返回空对象
+test("custom 节点 script 无 env 时求值结果 env 为空对象", () => {
+  const customDef: CustomNodeDef = {
+    id: "job1",
+    type: "custom",
+    tool: "slurm",
+    outputs: {
+      out: { pattern: "/tmp/out", type: "file" },
+    },
+    script: {
+      content: 'echo "workdir=${{ params.work_dir }}"',
+    },
+  };
+
+  const evalContext = {
+    params: { work_dir: "/data/test" },
+    secrets: {},
+    nodes: {},
+  };
+
+  // 模拟 dag-scheduler 的 script 求值逻辑: env 为 undefined 时返回 {}
+  const resolvedScript = {
+    content: resolveTemplate(customDef.script!.content, evalContext),
+    env: customDef.script!.env
+      ? Object.fromEntries(Object.entries(customDef.script!.env).map(([k, v]) => [k, resolveTemplate(v, evalContext)]))
+      : {},
+  };
+
+  expect(resolvedScript.content).toContain("workdir=/data/test");
+  expect(resolvedScript.env).toEqual({});
 });

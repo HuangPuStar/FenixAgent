@@ -75,10 +75,20 @@ export interface RunSummary {
   };
 }
 
+/** engine.run 启动响应（异步启动，立即返回 runId）
+ *  注意：与 DAGRunResult（同步阻塞模式完整结果）不同 — 当前后端 run action 返回 WorkflowRunStartedSchema。
+ *  完整的 summary/status 通过后续 getRunStatus 轮询 / SSE 事件获得。 */
+export interface RunStarted {
+  runId: string;
+  status: "RUNNING";
+}
+
+/** DAG 最终运行结果（用于 recover / rerunFrom 等同步返回完整 summary 的接口） */
 export interface DAGRunResult {
   runId: string;
   status: DAGStatus;
   summary: RunSummary;
+  spawnedEnvIds?: string[];
 }
 
 export interface PendingApproval {
@@ -103,13 +113,13 @@ export interface DryRunResult {
 import { workflowEngineApi as _sdkEngineApi } from "./sdk";
 
 export const workflowEngineApi = {
-  /** 执行工作流（同步，会阻塞到完成或 SUSPENDED） */
-  async run(yaml: string, params?: Record<string, unknown>, workflowId?: string): Promise<DAGRunResult> {
+  /** 执行工作流（异步启动，立即返回 runId；完整状态通过 getRunStatus / SSE 获取） */
+  async run(yaml: string, params?: Record<string, unknown>, workflowId?: string): Promise<RunStarted> {
     return _sdkEngineApi
       .run(yaml, { params, workflowId })
       .then(({ data, error }: { data?: unknown; error?: unknown }) => {
         if (error) throw new Error((error as { message?: string }).message);
-        return data as DAGRunResult;
+        return data as RunStarted;
       });
   },
 

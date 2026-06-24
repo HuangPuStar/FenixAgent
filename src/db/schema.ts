@@ -650,6 +650,28 @@ export const agentConfigMcp = pgTable(
   }),
 );
 
+// Agent↔SiteApp 多对多关联
+// 一个 Agent 配置可绑定多个 agent-sites 应用，绑定的 sites 会出现在 chat 右侧文件区的
+// 顶部 tab 中，与 Files 通过 tab 切换互斥展示。绑定层挂在 agentConfig 上，可被多个
+// environment 共享，与 skill/mcp 绑定层级一致。
+export const agentConfigSiteApp = pgTable(
+  "agent_config_site_app",
+  {
+    agentConfigId: uuid("agent_config_id")
+      .notNull()
+      .references(() => agentConfig.id, { onDelete: "cascade" }),
+    siteAppId: uuid("site_app_id")
+      .notNull()
+      .references(() => agentSiteApp.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: uniqueIndex("idx_agent_config_site_app_pk").on(table.agentConfigId, table.siteAppId),
+    agentConfigIdx: index("idx_agent_config_site_app_agent_config").on(table.agentConfigId),
+    siteAppIdx: index("idx_agent_config_site_app_site_app").on(table.siteAppId),
+  }),
+);
+
 // ────────────────────────────────────────────
 // Workflow 独立领域模块
 // ────────────────────────────────────────────
@@ -930,5 +952,34 @@ export const registryEvent = pgTable(
   (table) => ({
     machineIdx: index("idx_registry_event_machine").on(table.machineId),
     typeIdx: index("idx_registry_event_type").on(table.type),
+  }),
+);
+
+// ────────────────────────────────────────────
+// Agent Sites 代理 — app 映射与凭证
+// ────────────────────────────────────────────
+
+export const agentSiteApp = pgTable(
+  "agent_site_app",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: text("organization_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    remoteAppId: varchar("remote_app_id", { length: 64 }).notNull(),
+    name: varchar("name", { length: 32 }).notNull(),
+    description: text("description"),
+    platformToken: text("platform_token").notNull(),
+    platformTokenId: varchar("platform_token_id", { length: 64 }).notNull(),
+    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    remoteAppIdIdx: uniqueIndex("idx_agent_site_app_remote_app_id").on(table.remoteAppId),
+    orgVisibilityIdx: index("idx_agent_site_app_org_visibility").on(table.organizationId, table.visibility),
+    orgIdx: index("idx_agent_site_app_org").on(table.organizationId),
+    userIdx: index("idx_agent_site_app_user").on(table.userId),
   }),
 );

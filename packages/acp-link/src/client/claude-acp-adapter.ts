@@ -50,7 +50,7 @@ async function saveSessionState(workspace: string, state: SessionState) {
 }
 
 /** 从 workspace 读取 session */
-async function loadSessionFromDisk(workspace: string, sessionId: string): Promise<SessionState | null> {
+async function _loadSessionFromDisk(workspace: string, sessionId: string): Promise<SessionState | null> {
   try {
     const data = await readFile(join(workspace, ".claude", "acp-sessions", `${sessionId}.json`), "utf-8");
     const parsed = JSON.parse(data) as Record<string, unknown>;
@@ -187,7 +187,7 @@ class AsyncQueue<T> implements AsyncIterable<T> {
  */
 export function createClaudeAcpConnection(
   cwd: string,
-  instanceId: string,
+  _instanceId: string,
   send: (message: unknown) => void,
   systemPrompt?: string,
   modelName?: string,
@@ -268,12 +268,12 @@ export function createClaudeAcpConnection(
     async prompt(params: Record<string, unknown>) {
       const blocks = (params.prompt ?? []) as Array<{ type: string; text?: string }>;
       const text = blocks.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-      const msgId = (params as Record<string, unknown>).id as string | number | undefined;
+      const _msgId = (params as Record<string, unknown>).id as string | number | undefined;
 
       // 自动标题
       if (activeSessionId) {
         const s = sessions.get(activeSessionId);
-        if (s && s.title.startsWith("Conversation ") && text.trim()) {
+        if (s?.title.startsWith("Conversation ") && text.trim()) {
           s.title = text.trim().slice(0, 50) + (text.trim().length > 50 ? "…" : "");
         }
       }

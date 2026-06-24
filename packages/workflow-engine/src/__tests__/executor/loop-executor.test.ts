@@ -32,7 +32,6 @@ function loopNode(overrides?: Partial<LoopNodeDef>): LoopNodeDef {
   return {
     id: "my-loop",
     type: "loop",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
     condition: '${{ nodes.step1.output.value != "done" }}',
     max_iterations: 10,
     body: {
@@ -174,7 +173,6 @@ describe("LoopExecutor", () => {
 
     // 条件：counter >= 5 时退出
     const node = loopNode({
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
       condition: "${{ nodes.step1.output.counter < 5 }}",
       max_iterations: 20,
     });
@@ -295,7 +293,6 @@ describe("LoopExecutor", () => {
     const node: LoopNodeDef = {
       id: "multi-loop",
       type: "loop",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
       condition: '${{ nodes.step2.output.result != "done" }}',
       max_iterations: 10,
       body: {
@@ -332,7 +329,6 @@ describe("LoopExecutor", () => {
     const ctx = makeCtx();
     const node = loopNode({
       max_iterations: 10,
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
       condition: '${{ nodes.step1.output.final != "result" }}',
     });
 
@@ -343,7 +339,6 @@ describe("LoopExecutor", () => {
   });
 
   // 条件不带 ${{ }} 包装也能工作
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: test description with literal expression syntax
   test("条件不带 ${{ }} 包装时正常求值", async () => {
     let callCount = 0;
     const mockExecutor = createMockExecutor(() => {

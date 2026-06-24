@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { db } from "../../../db";
-import { knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
+import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import {
@@ -48,6 +48,7 @@ interface AgentRelatedResourceView {
   skills: Array<{ id: string; label: string }>;
   mcps: Array<{ id: string; label: string }>;
   knowledgeBases: Array<{ id: string; label: string; slug?: string | null }>;
+  siteApps: Array<{ id: string; label: string; remoteAppId: string | null }>;
 }
 
 interface AgentResourceDisplayInput {
@@ -64,6 +65,7 @@ async function buildAgentRelatedResourceView(
   agent: AgentResourceDisplayInput,
   skillIds: string[],
   mcpIds: string[],
+  siteAppIds: string[],
 ): Promise<AgentRelatedResourceView> {
   const fallback: AgentRelatedResourceView = {
     modelLabel: agent.modelId ?? null,
@@ -71,6 +73,7 @@ async function buildAgentRelatedResourceView(
     skills: skillIds.map((id) => ({ id, label: id })),
     mcps: mcpIds.map((id) => ({ id, label: id })),
     knowledgeBases: [],
+    siteApps: siteAppIds.map((id) => ({ id, label: id, remoteAppId: null })),
   };
 
   try {
@@ -155,6 +158,15 @@ async function buildAgentRelatedResourceView(
         : [];
     const knowledgeBaseMap = new Map(knowledgeBaseRows.map((item) => [item.id, item]));
 
+    const siteAppRows =
+      siteAppIds.length > 0
+        ? await db
+            .select({ id: agentSiteApp.id, name: agentSiteApp.name, remoteAppId: agentSiteApp.remoteAppId })
+            .from(agentSiteApp)
+            .where(and(inArray(agentSiteApp.id, siteAppIds), eq(agentSiteApp.organizationId, sourceOrganizationId)))
+        : [];
+    const siteAppMap = new Map(siteAppRows.map((item) => [item.id, item]));
+
     return {
       modelLabel,
       machineLabel,
@@ -163,6 +175,14 @@ async function buildAgentRelatedResourceView(
       knowledgeBases: knowledgeBaseIds.map((id) => {
         const item = knowledgeBaseMap.get(id);
         return { id, label: item?.name ?? id, slug: item?.slug ?? null };
+      }),
+      siteApps: siteAppIds.map((id) => {
+        const item = siteAppMap.get(id);
+        return {
+          id,
+          label: item?.name ?? id,
+          remoteAppId: item?.remoteAppId ?? null,
+        };
       }),
     };
   } catch {
@@ -179,6 +199,7 @@ async function handleList(ctx: AuthContext) {
     agents.map(async (a) => {
       const skillIds = await configPg.listAgentSkillIds(a.id);
       const mcpIds = await configPg.listAgentMcpIds(a.id);
+      const siteAppIds = await configPg.listAgentSiteAppIds(a.id);
       const relatedResources = await buildAgentRelatedResourceView(
         {
           id: a.id,
@@ -189,6 +210,7 @@ async function handleList(ctx: AuthContext) {
         },
         skillIds,
         mcpIds,
+        siteAppIds,
       );
       return {
         id: a.id,
@@ -216,7 +238,8 @@ async function handleGet(ctx: AuthContext, name: string) {
 
   const skillIds = await configPg.listAgentSkillIds(agent.id);
   const mcpIds = await configPg.listAgentMcpIds(agent.id);
-  const relatedResources = await buildAgentRelatedResourceView(agent, skillIds, mcpIds);
+  const siteAppIds = await configPg.listAgentSiteAppIds(agent.id);
+  const relatedResources = await buildAgentRelatedResourceView(agent, skillIds, mcpIds, siteAppIds);
   const knowledge = await getAgentKnowledgeConfigById(agent.id);
 
   return configSuccess({
@@ -233,6 +256,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     engineType: (agent as unknown as Record<string, unknown>).engineType ?? "opencode",
     skillIds,
     mcpIds,
+    siteAppIds,
     relatedResources,
     resourceAccess: agent.resourceAccess,
   });
@@ -288,6 +312,12 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     }
     if (data.mcpIds !== undefined) {
       await configPg.syncAgentMcps(updatedAgent.id, Array.isArray(data.mcpIds) ? (data.mcpIds as string[]) : []);
+    }
+    if (data.siteAppIds !== undefined) {
+      await configPg.syncAgentSiteApps(
+        updatedAgent.id,
+        Array.isArray(data.siteAppIds) ? (data.siteAppIds as string[]) : [],
+      );
     }
   }
 
@@ -364,6 +394,12 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
     }
     if (data.mcpIds !== undefined) {
       await configPg.syncAgentMcps(createdAgent.id, Array.isArray(data.mcpIds) ? (data.mcpIds as string[]) : []);
+    }
+    if (data.siteAppIds !== undefined) {
+      await configPg.syncAgentSiteApps(
+        createdAgent.id,
+        Array.isArray(data.siteAppIds) ? (data.siteAppIds as string[]) : [],
+      );
     }
   }
 

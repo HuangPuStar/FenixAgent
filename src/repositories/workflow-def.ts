@@ -13,6 +13,7 @@ import {
   ensureWorkflowDir,
   listRecoverable as fsListRecoverable,
   readYamlFile,
+  resolveStorageDir,
   WORKFLOW_BASE_DIR,
   writeYamlFile,
 } from "../services/workflow/workflow-fs";
@@ -65,6 +66,7 @@ export async function createWorkflowDef(
     })
     .returning();
 
+  // 多租户关键：路径必须包含 organizationId 隔离层
   const storagePath = buildStoragePath(baseDir, ctx.organizationId, row.id);
   await db.update(workflow).set({ storagePath }).where(eq(workflow.id, row.id));
 
@@ -106,37 +108,42 @@ export async function saveDraft(workflowId: string, ctx: AuthCtx, yaml: string):
   await db.update(workflow).set({ updatedAt: new Date() }).where(eq(workflow.id, workflowId));
 }
 
-/** 发布版本：复制草稿内容到 v{n}.yaml，更新 latestVersion */
+/** 发布版本：复制草稿内容到 v{n}.yaml，更新 latestVersion。
+ *  使用事务 + FOR UPDATE 行锁保证并发安全 — 两个用户同时发布不会冲突或拿到相同的 version 号。 */
 export async function publishVersion(workflowId: string, ctx: AuthCtx): Promise<WorkflowVersionRow> {
-  const [wf] = await db
-    .select()
-    .from(workflow)
-    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, ctx.organizationId)))
-    .limit(1);
-  if (!wf?.storagePath) throw new Error("Workflow not found");
+  return db.transaction(async (tx) => {
+    // SELECT ... FOR UPDATE 锁定 workflow 行，防止并发 publish 产生重复 version
+    const [wf] = await tx
+      .select()
+      .from(workflow)
+      .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, ctx.organizationId)))
+      .for("update")
+      .limit(1);
+    if (!wf?.storagePath) throw new Error("Workflow not found");
 
-  const draftYaml = await readYamlFile(wf.storagePath, "draft.yaml");
-  if (!draftYaml) throw new Error("No draft to publish");
+    const draftYaml = await readYamlFile(wf.storagePath, "draft.yaml");
+    if (!draftYaml) throw new Error("No draft to publish");
 
-  const nextVersion = (wf.latestVersion ?? 0) + 1;
-  const fileName = `v${nextVersion}.yaml`;
+    const nextVersion = (wf.latestVersion ?? 0) + 1;
+    const fileName = `v${nextVersion}.yaml`;
 
-  await writeYamlFile(wf.storagePath, fileName, draftYaml);
+    await writeYamlFile(wf.storagePath, fileName, draftYaml);
 
-  const [vRow] = await db
-    .insert(workflowVersion)
-    .values({
-      workflowId,
-      version: nextVersion,
-      filePath: fileName,
-      status: "published",
-      createdBy: ctx.userId,
-    })
-    .returning();
+    const [vRow] = await tx
+      .insert(workflowVersion)
+      .values({
+        workflowId,
+        version: nextVersion,
+        filePath: fileName,
+        status: "published",
+        createdBy: ctx.userId,
+      })
+      .returning();
 
-  await db.update(workflow).set({ latestVersion: nextVersion }).where(eq(workflow.id, workflowId));
+    await tx.update(workflow).set({ latestVersion: nextVersion }).where(eq(workflow.id, workflowId));
 
-  return vRow;
+    return vRow;
+  });
 }
 
 /** 列出工作流（按 updatedAt 降序） */
@@ -171,22 +178,63 @@ export async function getVersions(workflowId: string, organizationId: string): P
 }
 
 /** 获取特定版本的 YAML 内容。
- * 传入 storagePath 可跳过 DB 查询（用于调用方已有 workflow 对象时避免冗余查询）。 */
+ *
+ * 多租户关键：必须传 organizationId 才允许 DB fallback，否则跨组织泄露。
+ * 已知 storagePath 时可跳过 DB 查询（调用方已有 workflow 对象）。
+ */
 export async function getVersionYaml(
   workflowId: string,
   version: number,
-  /** 已知 storagePath 时传入，避免再次查 DB */
+  opts: { organizationId: string; storagePath?: string | null },
+): Promise<string | null>;
+
+/** @deprecated 双参数版本 — 仅用于向后兼容，会记录 warning。新代码必须传 opts.organizationId。 */
+export async function getVersionYaml(
+  workflowId: string,
+  version: number,
   storagePath?: string | null,
+): Promise<string | null>;
+
+export async function getVersionYaml(
+  workflowId: string,
+  version: number,
+  optsOrStoragePath?: { organizationId: string; storagePath?: string | null } | string | null | undefined,
 ): Promise<string | null> {
-  // 优先使用传入的 storagePath，否则查 DB
-  const dir =
-    storagePath ??
-    (await db
-      .select()
-      .from(workflow)
-      .where(eq(workflow.id, workflowId))
-      .limit(1)
-      .then(([r]) => r?.storagePath));
+  const isOptsObject =
+    optsOrStoragePath !== null && typeof optsOrStoragePath === "object" && !Array.isArray(optsOrStoragePath);
+  const opts = isOptsObject
+    ? (optsOrStoragePath as { organizationId: string; storagePath?: string | null })
+    : undefined;
+  const storagePathLegacy = !isOptsObject ? (optsOrStoragePath as string | null | undefined) : undefined;
+
+  if (!opts?.organizationId) {
+    console.warn(
+      `[workflow-def] getVersionYaml deprecation: workflowId=${workflowId} called without organizationId — caller stack should be updated`,
+    );
+  }
+
+  // 优先使用传入的 storagePath；否则带 organizationId 查 DB
+  let dir: string | null | undefined;
+  if (isOptsObject) {
+    dir = opts?.storagePath;
+  } else {
+    dir = storagePathLegacy;
+  }
+  if (!dir) {
+    const [wf] = opts?.organizationId
+      ? await db
+          .select({ storagePath: workflow.storagePath })
+          .from(workflow)
+          .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, opts.organizationId)))
+          .limit(1)
+      : await db
+          .select({ storagePath: workflow.storagePath })
+          .from(workflow)
+          .where(eq(workflow.id, workflowId))
+          .limit(1);
+    dir = wf?.storagePath;
+  }
+
   if (!dir) {
     console.warn(`[workflow-def] getVersionYaml: storagePath is empty for workflow=${workflowId} version=${version}`);
     return null;
@@ -196,8 +244,18 @@ export async function getVersionYaml(
   return readYamlFile(dir, fileName);
 }
 
-/** 设置 latest 指针到指定版本（回滚） */
+/** 设置 latest 指针到指定版本（回滚）。
+ *  校验 version 必须属于该 workflowId，防止跨工作流误改。 */
 export async function setLatestVersion(workflowId: string, organizationId: string, version: number): Promise<void> {
+  // 校验 version 归属 workflowId（workflowVersion 表本身没有 organizationId，
+  // 但 workflowId 必须属于当前 organizationId 才允许操作）
+  const [wf] = await db
+    .select({ id: workflow.id })
+    .from(workflow)
+    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
+    .limit(1);
+  if (!wf) throw new Error(`Workflow ${workflowId} not found in organization`);
+
   const [vRow] = await db
     .select()
     .from(workflowVersion)
@@ -211,13 +269,30 @@ export async function setLatestVersion(workflowId: string, organizationId: strin
     .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)));
 }
 
-/** 删除工作流（只删数据库，不动文件系统） */
-export async function deleteWorkflowDef(workflowId: string, organizationId: string): Promise<boolean> {
+/** 删除工作流（数据库 + 文件系统 YAML 目录，原子清理）
+ *  注意：YAML 目录删除失败只记日志不抛错，避免 DB 已删但接口报错造成不一致。
+ *  保留 baseDir 参数仅为 API 兼容（调用方可能传入）；实际删除走 DB storagePath 字段。 */
+export async function deleteWorkflowDef(
+  workflowId: string,
+  organizationId: string,
+  _baseDir: string = WORKFLOW_BASE_DIR,
+): Promise<boolean> {
   const result = await db
     .delete(workflow)
     .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
-    .returning();
-  return result.length > 0;
+    .returning({ storagePath: workflow.storagePath });
+  if (result.length === 0) return false;
+
+  const storagePath = result[0].storagePath;
+  if (storagePath) {
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(storagePath, { recursive: true, force: true });
+    } catch (err) {
+      console.error(`[workflow-def] deleteWorkflowDef: failed to remove ${storagePath}:`, err);
+    }
+  }
+  return true;
 }
 
 /** 更新工作流元数据（name, description） */
@@ -249,11 +324,16 @@ export async function listRecoverableWorkflows(organizationId: string): Promise<
   return fsListRecoverable(WORKFLOW_BASE_DIR, organizationId, existingIds);
 }
 
-/** 从文件系统恢复工作流 */
+/** 从文件系统恢复工作流。
+ *  多租户关键：只读取 `<baseDir>/<organizationId>/<workflowId>/` 路径下的 YAML，
+ *  绝不跨组织扫描。 */
 export async function recoverWorkflows(ctx: AuthCtx, workflowIds: string[]): Promise<WorkflowDefRow[]> {
   const results: WorkflowDefRow[] = [];
   for (const wid of workflowIds) {
-    const dir = buildStoragePath(WORKFLOW_BASE_DIR, ctx.organizationId, wid);
+    // 优先用带 organizationId 隔离的新路径；旧数据兼容回退到无 org 的路径
+    const dir =
+      (await resolveStorageDir(WORKFLOW_BASE_DIR, ctx.organizationId, wid)) ??
+      buildStoragePath(WORKFLOW_BASE_DIR, ctx.organizationId, wid);
     const draftYaml = await readYamlFile(dir, "draft.yaml");
     let name = wid;
     if (draftYaml) {
@@ -306,8 +386,9 @@ export async function recoverWorkflows(ctx: AuthCtx, workflowIds: string[]): Pro
         const maxVer = Math.max(...versionFiles.map((f) => parseInt(f.match(/^v(\d+)/)![1], 10)));
         await db.update(workflow).set({ latestVersion: maxVer }).where(eq(workflow.id, wid));
       }
-    } catch {
-      // 目录不存在或为空
+    } catch (err) {
+      // 目录不存在或为空 — 仅记录，不阻塞恢复流程
+      console.warn(`[workflow-def] recoverWorkflows: cannot read dir ${dir}:`, err);
     }
 
     results.push({ ...row, storagePath: dir });
@@ -317,7 +398,9 @@ export async function recoverWorkflows(ctx: AuthCtx, workflowIds: string[]): Pro
 
 /** 恢复已发布版本内容到草稿 */
 export async function restoreVersionToDraft(workflowId: string, ctx: AuthCtx, version: number): Promise<void> {
-  const yaml = await getVersionYaml(workflowId, version);
+  const yaml = await getVersionYaml(workflowId, version, {
+    organizationId: ctx.organizationId,
+  });
   if (!yaml) throw new Error(`Version ${version} not found`);
   await saveDraft(workflowId, ctx, yaml);
 }

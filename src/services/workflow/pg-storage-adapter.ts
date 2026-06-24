@@ -77,11 +77,13 @@ export function createPgStorageAdapter(organizationId: string): StorageAdapter {
         conditions.push(inArray(workflowEvent.type, opts.types));
       }
 
+      // createdAt + eventId 组合排序，保证同一毫秒内事件顺序稳定
+      // 仅靠 createdAt 在并发/批量写入时会出现同毫秒乱序，导致前端事件流错乱
       const rows = await db
         .select()
         .from(workflowEvent)
         .where(and(...conditions))
-        .orderBy(workflowEvent.createdAt);
+        .orderBy(workflowEvent.createdAt, workflowEvent.eventId);
 
       return rows.map(mapRowToEvent);
     },

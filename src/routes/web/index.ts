@@ -1,5 +1,6 @@
 import Elysia from "elysia";
 import webAgentGeneration from "./agent-generation";
+import webAgentSites from "./agent-sites";
 import webAuth from "./auth";
 import webBranding from "./branding";
 import webChannels from "./channels";
@@ -17,6 +18,7 @@ import webSessions from "./sessions";
 import webSkills from "./skills";
 import webTasks from "./tasks";
 import webUserFile from "./user-file";
+import webWorkflowCustomTools from "./workflow-custom-tools";
 import webWorkflowDefs from "./workflow-defs";
 import webWorkflowEngine from "./workflow-engine";
 import { workflowRunsRoutes } from "./workflow-runs";
@@ -24,6 +26,7 @@ import webWorkflowSse from "./workflow-sse";
 
 const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webBranding)
+  .use(webAgentSites)
   .use(webAuth)
   .use(webChannels)
   .use(webConfig)
@@ -41,6 +44,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webEnvironments)
   .use(webRegistry)
   .use(webWorkflowDefs)
+  .use(webWorkflowCustomTools)
   .use(webWorkflowEngine)
   .use(webWorkflowSse)
   .use(workflowRunsRoutes)

@@ -95,6 +95,12 @@
     "selectedCount": "已选择 {{count}} 个 MCP",
     "noOptions": "暂无可用 MCP"
   },
+  "sites": {
+    "tabTitle": "绑定 Sites",
+    "selectedCount": "已选择 {{count}} 个 Site",
+    "noOptions": "暂无可用 Site — 请先在 Sites 页面创建",
+    "toggleList": "展开 / 收起 Site 列表"
+  },
   "memory": {
     "enableTitle": "智能体记忆",
     "enableDescription": "启用跨会话记忆能力"

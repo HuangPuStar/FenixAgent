@@ -36,6 +36,14 @@ export interface CustomNode {
   /** 输出字段名列表。具体的文件路径 pattern 在 YAML 的 CustomNodeDef.outputs 中声明 */
   produces: string[];
 
+  /**
+   * 工具族标记,用于 yaml 解析器判断支持哪些节点级字段。
+   * - "default": 普通 CustomNode,不支持 script 字段
+   * - "slurm": SlurmNode 子类,必须声明 script 字段,可选声明 slurm 字段
+   * 未来扩展其他基类(DockerNode/K8sNode)时新增枚举值。
+   */
+  kind?: "default" | "slurm";
+
   /** 核心执行方法。引擎可能在 foreach 场景下调多次，每次处理一个迭代单元 */
   execute(ctx: ExecuteContext): Promise<NodeOutput>;
 
@@ -68,6 +76,20 @@ export interface ExecuteContext {
    * 非 Slurm 工具忽略此字段。
    */
   slurm?: Partial<SlurmConfig>;
+
+  /**
+   * 已求值的脚本声明(仅 SlurmNode 子类会有值)。
+   * 由 dag-scheduler 求值 ${{ }} 表达式后填充:
+   * - content: resolveTemplate 结果,始终是 string
+   * - env: 遍历每个 value 走 resolveTemplate,结果 Record<string, string>
+   *
+   * 类型上可选(非 Slurm 工具不会注入),但 SlurmNode.buildScript 在入口校验
+   * ctx.script.content 必填,运行时报 NODE_FAILED。
+   */
+  script?: {
+    content: string;
+    env: Record<string, string>;
+  };
 
   /** 取消信号，引擎 cancel 时 AbortController.abort() */
   signal: AbortSignal;

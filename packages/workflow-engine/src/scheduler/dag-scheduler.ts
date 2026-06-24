@@ -431,6 +431,19 @@ export class DAGScheduler {
         if (customNode.inputs) {
           resolved.inputs = resolveInputs(customNode.inputs, evalContext);
         }
+        // script 求值(仅 SlurmNode 子类会声明 script 字段，解析器已校验 kind)
+        if (customNode.script) {
+          resolved.script = {
+            // content: 走 resolveTemplate(拼接模式，结果始终是 string)
+            content: resolveTemplate(customNode.script.content, evalContext),
+            // env: 遍历每个 value 走 resolveTemplate，统一转 string
+            env: customNode.script.env
+              ? Object.fromEntries(
+                  Object.entries(customNode.script.env).map(([k, v]) => [k, resolveTemplate(v, evalContext)]),
+                )
+              : {},
+          };
+        }
         break;
       }
     }

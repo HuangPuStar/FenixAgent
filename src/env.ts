@@ -45,6 +45,10 @@ const envSchema = z.object({
   // ── 可选：Hindsight 记忆 MCP ──
   HINDSIGHT_MCP_URL: z.string().optional(),
 
+  // ── 可选：Agent Sites 代理 ──
+  AGENT_SITES_BASE_URL: z.string().optional(),
+  AGENT_SITES_MASTER_KEY: z.string().optional(),
+
   // ── 可选：Agent 智能生成（使用标准 OpenAI 环境变量）──
   // OPENAI_API_KEY 和 OPENAI_BASE_URL 由 OpenAI SDK 自动读取，此处仅声明模型名
   OPENAI_MODEL: z.string().optional(),

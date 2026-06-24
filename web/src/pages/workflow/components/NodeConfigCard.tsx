@@ -1,9 +1,13 @@
 import type { Node } from "@xyflow/react";
 import { useTranslation } from "react-i18next";
+import type { CustomToolItem } from "../../../api/workflow-defs";
 import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
 import { syncOutputOnRename } from "../preset-utils";
+import type { WfMeta } from "../yaml-utils";
 import { START_NODE_ID } from "../yaml-utils";
 import { InputsEditor } from "./InputsEditor";
+import { type OutputEntry, OutputsEditor } from "./OutputsEditor";
+import { WorkflowMetaCard } from "./WorkflowMetaCard";
 
 export interface NodeConfigCardProps {
   readOnly: boolean;
@@ -15,6 +19,9 @@ export interface NodeConfigCardProps {
   setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>;
   updateNodeData: (patch: Record<string, unknown>) => void;
   agentList: AgentNodeOption[];
+  meta: WfMeta;
+  updateMeta: (updates: Partial<WfMeta>) => void;
+  customTools: CustomToolItem[];
 }
 
 export function NodeConfigCard({
@@ -27,6 +34,9 @@ export function NodeConfigCard({
   setSelectedNode,
   updateNodeData,
   agentList,
+  meta,
+  updateMeta,
+  customTools,
 }: NodeConfigCardProps) {
   const { t } = useTranslation("workflows");
   const isStartNode = selectedNode.id === START_NODE_ID;
@@ -35,13 +45,7 @@ export function NodeConfigCard({
     <div className="wf-popover-body">
       {/* 开始节点 */}
       {isStartNode ? (
-        <div className="wf-prop-section">
-          <div className="wf-prop-section-title">{t("editor.start_node_title")}</div>
-          <div className="wf-prop-hint">
-            <p>{t("editor.start_node_hint_1")}</p>
-            <p>{t("editor.start_node_hint_2")}</p>
-          </div>
-        </div>
+        <WorkflowMetaCard readOnly={readOnly} meta={meta} updateMeta={updateMeta} />
       ) : (
         <>
           {/* 节点基本信息 */}
@@ -123,6 +127,17 @@ export function NodeConfigCard({
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.outputs_title")}</label>
+                  <OutputsEditor
+                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    onChange={(val) => updateNodeData({ outputs: val })}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.outputs_key_placeholder")}
+                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                    addLabel={t("editor.outputs_add")}
+                  />
+                </div>
               </>
             )}
 
@@ -184,6 +199,17 @@ export function NodeConfigCard({
                     addLabel={t("editor.inputs_add")}
                   />
                 </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.outputs_title")}</label>
+                  <OutputsEditor
+                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    onChange={(val) => updateNodeData({ outputs: val })}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.outputs_key_placeholder")}
+                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                    addLabel={t("editor.outputs_add")}
+                  />
+                </div>
               </>
             )}
 
@@ -231,6 +257,17 @@ export function NodeConfigCard({
                     }
                     placeholder="0"
                     readOnly={readOnly}
+                  />
+                </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.outputs_title")}</label>
+                  <OutputsEditor
+                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    onChange={(val) => updateNodeData({ outputs: val })}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.outputs_key_placeholder")}
+                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                    addLabel={t("editor.outputs_add")}
                   />
                 </div>
               </>
@@ -281,6 +318,17 @@ export function NodeConfigCard({
                     readOnly={readOnly}
                   />
                 </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.outputs_title")}</label>
+                  <OutputsEditor
+                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    onChange={(val) => updateNodeData({ outputs: val })}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.outputs_key_placeholder")}
+                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                    addLabel={t("editor.outputs_add")}
+                  />
+                </div>
               </>
             )}
 
@@ -312,19 +360,43 @@ export function NodeConfigCard({
                     readOnly={readOnly}
                   />
                 </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.outputs_title")}</label>
+                  <OutputsEditor
+                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    onChange={(val) => updateNodeData({ outputs: val })}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.outputs_key_placeholder")}
+                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                    addLabel={t("editor.outputs_add")}
+                  />
+                </div>
               </>
             )}
 
             {nodeType === "workflow" && (
-              <div className="wf-prop-field">
-                <label>{t("editor.workflow_ref")}</label>
-                <input
-                  value={String(sd?.ref ?? "")}
-                  onChange={(e) => updateNodeData({ ref: e.target.value })}
-                  placeholder="./sub-workflow.yaml"
-                  readOnly={readOnly}
-                />
-              </div>
+              <>
+                <div className="wf-prop-field">
+                  <label>{t("editor.workflow_ref")}</label>
+                  <input
+                    value={String(sd?.ref ?? "")}
+                    onChange={(e) => updateNodeData({ ref: e.target.value })}
+                    placeholder="./sub-workflow.yaml"
+                    readOnly={readOnly}
+                  />
+                </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.outputs_title")}</label>
+                  <OutputsEditor
+                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    onChange={(val) => updateNodeData({ outputs: val })}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.outputs_key_placeholder")}
+                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                    addLabel={t("editor.outputs_add")}
+                  />
+                </div>
+              </>
             )}
 
             {nodeType === "loop" && (
@@ -353,6 +425,17 @@ export function NodeConfigCard({
                 </div>
                 <div className="wf-prop-hint" style={{ marginTop: 4 }}>
                   <p>{t("editor.loop_body_hint")}</p>
+                </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.outputs_title")}</label>
+                  <OutputsEditor
+                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    onChange={(val) => updateNodeData({ outputs: val })}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.outputs_key_placeholder")}
+                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                    addLabel={t("editor.outputs_add")}
+                  />
                 </div>
               </>
             )}
@@ -403,11 +486,19 @@ export function NodeConfigCard({
                 <div className="wf-prop-field">
                   <label>{t("editor.custom_tool")}</label>
                   <input
+                    list="custom-tools-list"
                     value={String(sd?.tool ?? "")}
                     onChange={(e) => updateNodeData({ tool: e.target.value || undefined })}
                     placeholder={t("editor.custom_tool_placeholder")}
                     readOnly={readOnly}
                   />
+                  <datalist id="custom-tools-list">
+                    {customTools.map((tool) => (
+                      <option key={tool.name} value={tool.name}>
+                        {tool.description}
+                      </option>
+                    ))}
+                  </datalist>
                 </div>
                 <div className="wf-prop-field">
                   <label>{t("editor.inputs_title")}</label>
@@ -420,6 +511,17 @@ export function NodeConfigCard({
                     keyPlaceholder={t("editor.inputs_key_placeholder")}
                     valuePlaceholder={t("editor.inputs_value_hint")}
                     addLabel={t("editor.inputs_add")}
+                  />
+                </div>
+                <div className="wf-prop-field">
+                  <label>{t("editor.outputs_title")}</label>
+                  <OutputsEditor
+                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    onChange={(val) => updateNodeData({ outputs: val })}
+                    readOnly={readOnly}
+                    keyPlaceholder={t("editor.outputs_key_placeholder")}
+                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                    addLabel={t("editor.outputs_add")}
                   />
                 </div>
               </>

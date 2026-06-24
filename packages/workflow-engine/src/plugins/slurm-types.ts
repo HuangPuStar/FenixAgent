@@ -53,3 +53,15 @@ export interface JobResult {
    */
   sacctEmpty?: boolean;
 }
+
+/**
+ * Slurm 作业脚本声明 — YAML 中 script 字段的结构。
+ * 仅 SlurmNode 子类消费,由 yaml-parser.parseScriptConfig 解析、
+ * dag-scheduler 求值 ${{ }} 表达式后注入 ExecuteContext.script。
+ */
+export interface ScriptDef {
+  /** bash 脚本正文,支持 ${{ }} 表达式。不要写 #SBATCH 指令,header 由 generateHeader 生成 */
+  content: string;
+  /** 额外环境变量,注入到 #SBATCH --export。value 支持 ${{ }} 表达式 */
+  env?: Record<string, string>;
+}

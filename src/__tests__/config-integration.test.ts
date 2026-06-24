@@ -189,6 +189,7 @@ describe("Config Route Integration", () => {
       ],
       listAgentSkillIds: async () => ["skill-1"],
       listAgentMcpIds: async () => [],
+      listAgentSiteAppIds: async () => [],
     });
 
     const res = await request("/web/config/agents", {
@@ -238,6 +239,7 @@ describe("Config Route Integration", () => {
       }),
       listAgentSkillIds: async () => ["skill-1"],
       listAgentMcpIds: async () => [],
+      listAgentSiteAppIds: async () => [],
     });
     stubDb({
       select: () => ({

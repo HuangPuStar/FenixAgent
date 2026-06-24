@@ -93,7 +93,7 @@ export function logResponse({ request, set }: { request: Request; set: { status?
  */
 // biome-ignore lint/suspicious/noExplicitAny: Elysia AfterHandler context 签名与 set.headers 不兼容
 export function injectRequestId({ request, set }: any) {
-  const requestId = (request as any).__requestId as string | undefined;
+  const requestId = request.__requestId as string | undefined;
   if (!requestId) return;
   set.headers["X-Request-Id"] = requestId;
 }

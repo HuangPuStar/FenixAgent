@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { WfMeta } from "../yaml-utils";
+import { ParamsEditor } from "./ParamsEditor";
 
 export interface WorkflowMetaCardProps {
   readOnly: boolean;
@@ -46,23 +47,14 @@ export function WorkflowMetaCard({ readOnly, meta, updateMeta }: WorkflowMetaCar
 
       <div className="wf-prop-section">
         <div className="wf-prop-section-title">{t("editor.params")}</div>
-        <div className="wf-prop-field">
-          <label>{t("editor.params_json")}</label>
-          <textarea
-            value={Object.keys(meta.params).length ? JSON.stringify(meta.params, null, 2) : ""}
-            onChange={(e) => {
-              try {
-                const parsed = e.target.value.trim() ? JSON.parse(e.target.value) : {};
-                updateMeta({ params: parsed });
-              } catch {
-                // 用户还在编辑，暂不更新
-              }
-            }}
-            placeholder='{"name": {"type": "string", "default": "World"}}'
-            rows={3}
-            readOnly={readOnly}
-          />
-        </div>
+        <ParamsEditor
+          value={meta.params}
+          onChange={(val) => updateMeta({ params: val ?? {} })}
+          readOnly={readOnly}
+          namePlaceholder={t("editor.params_name_placeholder")}
+          defaultPlaceholder={t("editor.params_default_placeholder")}
+          addLabel={t("editor.params_add")}
+        />
       </div>
 
       <div className="wf-prop-section">

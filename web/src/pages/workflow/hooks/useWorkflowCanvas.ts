@@ -11,7 +11,16 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { autoLayout } from "../layout";
 import { getPresetById } from "../presets";
-import { createStartNode, defaultMeta, nextNodeId, resetNodeCounter, START_NODE_ID, type WfMeta } from "../yaml-utils";
+import {
+  createStartNode,
+  defaultMeta,
+  nextEdgeId,
+  nextNodeId,
+  resetEdgeCounter,
+  resetNodeCounter,
+  START_NODE_ID,
+  type WfMeta,
+} from "../yaml-utils";
 
 export interface UseWorkflowCanvasParams {
   nodes: Node[];
@@ -40,13 +49,19 @@ export interface UseWorkflowCanvasParams {
 export interface UseWorkflowCanvasReturn {
   onSelectionChange: OnSelectionChangeFunc;
   onConnect: (connection: Connection) => void;
-  onConnectStart: (event: MouseEvent | TouchEvent) => void;
+  // React Flow 的 OnConnectStartFunction 第二个参数提供 nodeId/handleType，
+  // 用于在 connection start 时知道源节点（WF-022 拖拽自动建节点依赖此）
+  onConnectStart: (
+    event: MouseEvent | TouchEvent,
+    params: { nodeId?: string | null; handleId?: string | null; handleType?: string | null },
+  ) => void;
   onConnectEnd: (event: MouseEvent | TouchEvent) => void;
   handleNodesDelete: (nodes: Node[]) => void;
   addNode: (
     type: string,
     presetOrPosition?: string | { x: number; y: number },
     positionFallback?: { x: number; y: number },
+    tool?: string,
   ) => void;
   onDragOver: (event: React.DragEvent) => void;
   onDrop: (event: React.DragEvent) => void;
@@ -91,17 +106,23 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
   const onConnect = useCallback(
     (connection: Connection) => {
       didConnect.current = true;
-      setEdges((eds) =>
-        addEdge(
+
+      // 防止重复连接：同一对 source/target 已存在 edge 时直接返回。
+      // 同时避免 ID 冲突：旧实现用 `logic-${source}-${target}` 作 ID，二次连接会产生重复 ID。
+      setEdges((eds) => {
+        const exists = eds.some((e) => e.source === connection.source && e.target === connection.target);
+        if (exists) return eds;
+
+        return addEdge(
           {
             ...connection,
             type: "logic",
             data: { hasCondition: false },
-            id: `logic-${connection.source}-${connection.target}`,
+            id: nextEdgeId(connection.source, connection.target),
           },
           eds,
-        ),
-      );
+        );
+      });
 
       // 自动补全：检测目标为 transform 节点且有预设时，自动填入 inputs + depends_on
       if (connection.target) {
@@ -151,8 +172,13 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
   );
 
   const onConnectStart = useCallback(
-    (_event: MouseEvent | TouchEvent) => {
-      pendingConnectSource.current = null;
+    (_event: MouseEvent | TouchEvent, params: { nodeId?: string | null; handleType?: string | null }) => {
+      // WF-022 修复：旧实现把 sourceId 清空，导致 onConnectEnd 永远拿不到 source，
+      // 拖拽空白处自动建节点功能完全失效。
+      // 现在从 React Flow 的 connection start params 提取 nodeId 写入 ref。
+      // handleType === 'source' 表示从 source handle 拉出，是创建新节点的合法场景；
+      // handleType === 'target' 是从 target handle 反向拉出，不应建节点。
+      pendingConnectSource.current = params?.handleType === "source" ? (params.nodeId ?? null) : null;
       didConnect.current = false;
     },
     [pendingConnectSource, didConnect],
@@ -181,7 +207,7 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       setEdges((eds) => [
         ...eds,
         {
-          id: `logic-${sourceId}-${newId}`,
+          id: nextEdgeId(sourceId, newId),
           source: sourceId,
           target: newId,
           type: "logic",
@@ -206,6 +232,7 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       type: string,
       presetOrPosition?: string | { x: number; y: number },
       positionFallback?: { x: number; y: number },
+      tool?: string,
     ) => {
       // 参数兼容处理：第二个参数可能是 preset 字符串或 position 对象
       let preset: string | undefined;
@@ -227,9 +254,11 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
           ...(presetConfig
             ? {
                 output: { ...presetConfig.defaultOutput },
-                _preset: preset, // 前端运行时标记，不写入 YAML
+                _preset: preset,
               }
             : {}),
+          // custom 类型携带 tool 字段
+          ...(type === "custom" && tool ? { tool } : {}),
         },
       };
       setNodes((nds) => [...nds, newNode]);
@@ -248,11 +277,16 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       const type = event.dataTransfer.getData("application/workflow-node");
       if (!type) return;
       const preset = event.dataTransfer.getData("application/workflow-preset");
+      const tool = event.dataTransfer.getData("application/workflow-tool") || undefined;
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
-      addNode(type, preset || position, preset ? position : undefined);
+      if (type === "custom" && tool) {
+        addNode("custom", position, undefined, tool);
+      } else {
+        addNode(type, preset || position, preset ? position : undefined);
+      }
     },
     [screenToFlowPosition, addNode],
   );
@@ -271,6 +305,7 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
     setYamlText("");
     setDryRunResult(null);
     resetNodeCounter();
+    resetEdgeCounter();
   }, [setNodes, setEdges, setSelectedNode, setMeta, setYamlText, setDryRunResult]);
 
   const updateNodeData = useCallback(
@@ -292,15 +327,18 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       }
       const oldId = selectedNode.id;
       const newNode: Node = { ...selectedNode, id: newId };
-      const newEdges = edges.map((e) => ({
-        ...e,
-        source: e.source === oldId ? newId : e.source,
-        target: e.target === oldId ? newId : e.target,
-        id:
-          e.source === oldId || e.target === oldId
-            ? `e-${e.source === oldId ? newId : e.source}-${e.target === oldId ? newId : e.target}`
-            : e.id,
-      }));
+      const newEdges = edges.map((e) => {
+        if (e.source !== oldId && e.target !== oldId) return e;
+        const newSource = e.source === oldId ? newId : e.source;
+        const newTarget = e.target === oldId ? newId : e.target;
+        return {
+          ...e,
+          source: newSource,
+          target: newTarget,
+          // 重写 ID 时同样用 nextEdgeId 防止冲突
+          id: nextEdgeId(newSource, newTarget),
+        };
+      });
       setNodes((nds) => [...nds.filter((n) => n.id !== oldId), newNode]);
       setEdges(newEdges);
       setSelectedNode(newNode);

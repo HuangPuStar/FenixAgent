@@ -96,7 +96,10 @@ app.post(
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
           if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
-          const draftYaml = await getVersionYaml(workflowId, 0, wf.storagePath);
+          const draftYaml = await getVersionYaml(workflowId, 0, {
+            organizationId: authCtx.organizationId,
+            storagePath: wf.storagePath,
+          });
           return { success: true, data: { ...wf, draftYaml } };
         }
 
@@ -114,7 +117,13 @@ app.post(
           if (!workflowId || version === undefined) {
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and version are required" } });
           }
-          const yaml = await getVersionYaml(workflowId, version);
+          // 先验证 workflowId 归属当前 organization，再读 YAML
+          const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          const yaml = await getVersionYaml(workflowId, version, {
+            organizationId: authCtx.organizationId,
+            storagePath: wf.storagePath,
+          });
           if (!yaml) return error(404, { error: { type: "NOT_FOUND", message: "Version not found" } });
           return { success: true, data: { workflowId, version, yaml } };
         }
@@ -185,6 +194,9 @@ app.post(
           if (!workflowId) {
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           }
+          // 多租户关键：校验 workflowId 归属当前组织
+          const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
           const trigger = await createTrigger({
             organizationId: authCtx.organizationId,
             workflowId,
@@ -200,7 +212,10 @@ app.post(
           if (!workflowId) {
             return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
           }
-          const triggers = await listTriggers(workflowId);
+          // 多租户关键：先校验 workflowId 归属当前组织，再列 triggers
+          const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          const triggers = await listTriggers(workflowId, authCtx.organizationId);
           return { success: true, data: triggers };
         }
 
@@ -252,13 +267,17 @@ app.post(
           }
 
           let targetVersion = version;
+          const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          const storagePath = wf.storagePath;
           if (targetVersion === undefined) {
-            const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
-            if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
             targetVersion = wf.latestVersion ?? 0;
           }
 
-          const yaml = await getVersionYaml(workflowId, targetVersion);
+          const yaml = await getVersionYaml(workflowId, targetVersion, {
+            organizationId: authCtx.organizationId,
+            storagePath,
+          });
           if (!yaml) return error(404, { error: { type: "NOT_FOUND", message: "Version not found" } });
 
           let params: Record<string, unknown> = {};

@@ -18,7 +18,17 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { agentApi, envApi, instanceApi, kbApi, mcpApi, modelApi, registryApi, skillConfigApi } from "@/src/api/sdk";
+import {
+  agentApi,
+  agentSitesApi,
+  envApi,
+  instanceApi,
+  kbApi,
+  mcpApi,
+  modelApi,
+  registryApi,
+  skillConfigApi,
+} from "@/src/api/sdk";
 import type { AgentTemplate } from "../../../../packages/sdk/src/modules/config";
 import { NS } from "../../i18n";
 import { canManageAgentSharing, getAgentDisplayName, isAgentWritable } from "../../lib/agent-resource-access";
@@ -54,6 +64,14 @@ interface AgentRelatedResourcesView {
   skills?: Array<{ id: string; label: string }>;
   mcps?: Array<{ id: string; label: string }>;
   knowledgeBases?: Array<{ id: string; label: string; slug?: string | null }>;
+  siteApps?: Array<{ id: string; label: string; remoteAppId: string | null }>;
+}
+
+interface SiteOption {
+  id: string;
+  name: string;
+  remoteAppId: string;
+  description?: string | null;
 }
 
 interface AgentMcpOption {
@@ -108,6 +126,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formKnowledgeMaxResults, setFormKnowledgeMaxResults] = useState("5");
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
   const [formMcpIds, setFormMcpIds] = useState<string[]>([]);
+  const [formSiteAppIds, setFormSiteAppIds] = useState<string[]>([]);
   const [formMachineId, setFormMachineId] = useState<string>("local");
   const [formEngineType, setFormEngineType] = useState<string>("opencode");
   const [formResourceAccess, setFormResourceAccess] = useState<ResourceAccess | undefined>(undefined);
@@ -120,6 +139,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [skillsExpanded, setSkillsExpanded] = useState(false);
   const [mcpsExpanded, setMcpsExpanded] = useState(false);
+  const [sitesExpanded, setSitesExpanded] = useState(false);
+  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
   const [hindsightEnabled, setHindsightEnabled] = useState(false);
   const [formEnableMemory, setFormEnableMemory] = useState(false);
 
@@ -138,6 +159,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setFormKnowledgeMaxResults(knowledgeDefaults.maxResults);
     setFormSkillIds([]);
     setFormMcpIds([]);
+    setFormSiteAppIds([]);
     setFormMachineId("local");
     setFormResourceAccess(undefined);
     setFormPublicReadable(false);
@@ -148,6 +170,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setFormEnableMemory(false);
     setSkillsExpanded(false);
     setMcpsExpanded(false);
+    setSitesExpanded(false);
 
     // 加载 Hindsight 记忆 MCP 可用性
     fetch("/web/hindsight/status")
@@ -182,6 +205,27 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       );
     });
 
+    // 加载当前组织可用 sites（用于多选）。失败时静默置空，不阻塞表单
+    agentSitesApi
+      .list()
+      .then((res) => {
+        const raw = (res as { success?: boolean; data?: unknown[] }).data;
+        const list: SiteOption[] = (Array.isArray(raw) ? raw : [])
+          .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+          .map((item) => ({
+            id: String(item.id ?? ""),
+            name: String(item.name ?? ""),
+            remoteAppId: String(item.remoteAppId ?? ""),
+            description: typeof item.description === "string" ? item.description : null,
+          }))
+          .filter((item) => item.id && item.remoteAppId);
+        setSiteOptions(list);
+      })
+      .catch((err: unknown) => {
+        console.warn("[AgentFormDialog] 加载 sites 选项失败", err);
+        setSiteOptions([]);
+      });
+
     if (isEdit) {
       setLoading(true);
       Promise.all([agentApi.get(agentName!), modelApi.get(), kbApi.list(), skillConfigApi.list(), mcpApi.list()])
@@ -209,6 +253,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormKnowledgeMaxResults(knowledgeState.maxResults);
           setFormSkillIds(Array.isArray(d.skillIds) ? (d.skillIds as string[]) : []);
           setFormMcpIds(Array.isArray(d.mcpIds) ? (d.mcpIds as string[]) : []);
+          setFormSiteAppIds(Array.isArray(d.siteAppIds) ? (d.siteAppIds as string[]) : []);
 
           // 编辑模式回显：检查是否已关联 hindsight MCP
           mcpApi
@@ -428,6 +473,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           }),
           skillIds: formSkillIds,
           mcpIds: formMcpIds,
+          siteAppIds: formSiteAppIds,
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
           ...(formEnableMemory ? { enableMemory: true } : {}),
@@ -457,6 +503,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           }),
           skillIds: formSkillIds,
           mcpIds: formMcpIds,
+          siteAppIds: formSiteAppIds,
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
           ...(formEnableMemory ? { enableMemory: true } : {}),
@@ -489,6 +536,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     formKnowledgeMaxResults,
     formSkillIds,
     formMcpIds,
+    formSiteAppIds,
     formMachineId,
     agentName,
     knowledgeOptions,
@@ -881,6 +929,82 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                                   disabled={readOnlyAgent}
                                   onChange={(e) => {
                                     setFormMcpIds((current) =>
+                                      e.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
+                                    );
+                                  }}
+                                />
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-border-subtle p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-text-bright">{t("sites.tabTitle")}</p>
+                        <p className="text-xs text-text-muted">
+                          {t("sites.selectedCount", { count: formSiteAppIds.length })}
+                        </p>
+                      </div>
+                      {!readOnlyAgent && (
+                        <button
+                          type="button"
+                          onClick={() => setSitesExpanded(!sitesExpanded)}
+                          className="rounded-md p-1 hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
+                          aria-label={t("sites.toggleList")}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {formSiteAppIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {formSiteAppIds.map((siteId) => {
+                          const site = siteOptions.find((item) => item.id === siteId);
+                          return (
+                            <span
+                              key={siteId}
+                              className="inline-flex items-center gap-1 rounded bg-primary/10 text-primary text-xs px-2 py-0.5"
+                            >
+                              {site?.name ?? siteId}
+                              {!readOnlyAgent && (
+                                <button
+                                  type="button"
+                                  onClick={() => setFormSiteAppIds((current) => current.filter((id) => id !== siteId))}
+                                  className="hover:text-text-bright"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {sitesExpanded && (
+                      <div className="mt-3 space-y-2 border-t border-border-subtle pt-3">
+                        {siteOptions.length === 0 ? (
+                          <p className="text-sm text-text-muted">{t("sites.noOptions")}</p>
+                        ) : (
+                          siteOptions.map((item) => {
+                            const checked = formSiteAppIds.includes(item.id);
+                            return (
+                              <label
+                                key={item.id}
+                                className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-medium text-text-bright truncate">{item.name}</p>
+                                  <p className="text-xs text-text-muted truncate font-mono">{item.remoteAppId}</p>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={readOnlyAgent}
+                                  onChange={(e) => {
+                                    setFormSiteAppIds((current) =>
                                       e.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
                                     );
                                   }}

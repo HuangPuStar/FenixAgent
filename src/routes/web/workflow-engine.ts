@@ -69,10 +69,16 @@ app.post(
                     dagStatus: r.status,
                   });
                 }
-              } finally {
-                // 清理本次运行启动的环境实例
-                if (r.spawnedEnvIds && r.spawnedEnvIds.length > 0) {
+              } catch (err) {
+                // 回写 workflowId 失败只记日志，不应阻塞后续清理
+                logger.error(`run background workflowId update failed: runId=${runId}`, err);
+              }
+              // 清理本次运行启动的环境实例（独立 try-catch，避免清理失败再次抛出未捕获 rejection）
+              if (r.spawnedEnvIds && r.spawnedEnvIds.length > 0) {
+                try {
                   await cleanupSpawnedEnvironments(new Set(r.spawnedEnvIds), authCtx.organizationId);
+                } catch (err) {
+                  logger.error(`run background cleanup failed: runId=${runId}`, err);
                 }
               }
             },
@@ -182,9 +188,6 @@ app.post(
           const fromNodeId = payload.fromNodeId as string;
           const yaml = payload.yaml as string;
           const workflowId = payload.workflowId as string | undefined;
-          if (workflowId) {
-            publishWorkflowEvent(workflowId, "workflow.run_started", { runId: undefined });
-          }
           const result = await engine.rerunFrom(prevRunId, yaml, fromNodeId);
           // 回写 workflowId 到新 run 的快照
           if (workflowId) {
@@ -197,6 +200,8 @@ app.post(
                   eq(workflowSnapshot.organizationId, authCtx.organizationId),
                 ),
               );
+            // 用真实 runId 发布事件，前端能正确响应
+            publishWorkflowEvent(workflowId, "workflow.run_started", { runId: result.runId });
           }
           if (workflowId && result.status) {
             const terminalStatuses = ["SUCCESS", "FAILED", "CANCELLED", "ERROR"];

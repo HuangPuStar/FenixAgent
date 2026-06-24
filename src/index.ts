@@ -20,6 +20,7 @@ import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } f
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
+import agentSitesProxyApp from "./routes/agent-sites-proxy";
 import apiAgentsRoutes from "./routes/api/agents";
 import apiInstanceRoutes from "./routes/api/instances";
 import apiKnowledgeBaseRoutes from "./routes/api/knowledge-bases";
@@ -382,6 +383,8 @@ const app = new Elysia()
   .use(v2WorkerEventsStream)
   // Web control panel routes
   .use(webApp)
+  // Agent Sites L3 business frontend proxy (/{appId}/* prefix)
+  .use(agentSitesProxyApp)
   // External API routes
   .use(apiAgentsRoutes)
   .use(apiKnowledgeBaseRoutes)

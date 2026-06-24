@@ -17,7 +17,11 @@ function makeDeps(opts: {
       async (_id: string, _orgId: string) => opts.workflow ?? null,
     ) as unknown as ResolveYamlDeps["getWorkflowDef"],
     getVersionYaml: mock(
-      async (_id: string, version: number, _storagePath?: string | null) => opts.yamlByVersion?.[version] ?? null,
+      async (
+        _id: string,
+        version: number,
+        _opts?: { organizationId: string; storagePath?: string | null },
+      ): Promise<string | null> => opts.yamlByVersion?.[version] ?? null,
     ) as unknown as ResolveYamlDeps["getVersionYaml"],
   };
 }
@@ -48,7 +52,10 @@ describe("resolveYaml", () => {
     const result = await resolveYaml({ workflowId: "wf1" }, "org1", deps);
     expect(result).toBe("name: v3");
     expect(deps.getWorkflowDef).toHaveBeenCalledTimes(1);
-    expect(deps.getVersionYaml).toHaveBeenCalledWith("wf1", 3, undefined);
+    expect(deps.getVersionYaml).toHaveBeenCalledWith("wf1", 3, {
+      organizationId: "org1",
+      storagePath: "/wf",
+    });
   });
 
   // latestVersion 为 null → 退回 version=0（草稿）
@@ -59,19 +66,26 @@ describe("resolveYaml", () => {
     });
     const result = await resolveYaml({ workflowId: "wf1" }, "org1", deps);
     expect(result).toBe("name: draft");
-    expect(deps.getVersionYaml).toHaveBeenCalledWith("wf1", 0, undefined);
+    expect(deps.getVersionYaml).toHaveBeenCalledWith("wf1", 0, {
+      organizationId: "org1",
+      storagePath: "/wf",
+    });
   });
 
-  // 显式指定 version → 使用指定版本，不查 DB
-  test("显式指定 version 时直接使用，跳过 latestVersion 查询", async () => {
+  // 显式指定 version → 使用指定版本（同时验证 workflow 归属）
+  test("显式指定 version 时使用指定版本并校验 workflow 归属", async () => {
     const deps = makeDeps({
       workflow: { latestVersion: 3, storagePath: "/wf" },
       yamlByVersion: { 1: "name: v1" },
     });
     const result = await resolveYaml({ workflowId: "wf1", version: 1 }, "org1", deps);
     expect(result).toBe("name: v1");
-    expect(deps.getWorkflowDef).toHaveBeenCalledTimes(0);
-    expect(deps.getVersionYaml).toHaveBeenCalledWith("wf1", 1, undefined);
+    // 显式 version 也需要查 workflow（验证 organizationId 归属）
+    expect(deps.getWorkflowDef).toHaveBeenCalledTimes(1);
+    expect(deps.getVersionYaml).toHaveBeenCalledWith("wf1", 1, {
+      organizationId: "org1",
+      storagePath: "/wf",
+    });
   });
 
   // workflow 不存在 → null

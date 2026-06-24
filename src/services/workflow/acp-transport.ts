@@ -15,9 +15,12 @@
  * - acp-transport.ts（本文件）：仅封装 ACP 协议流程
  */
 
+import { createLogger } from "@fenix/logger";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { ACPProtocol, type ProtocolEvents } from "acp-link/client";
 import type { SessionUpdate } from "acp-link/types";
+
+const logger = createLogger("wf-acp-transport");
 
 // ---------- JSON-RPC 2.0 工具（与 acp-link/json-rpc 对齐） ----------
 
@@ -58,11 +61,16 @@ export type ChannelFactory = (envName: string, options?: { spawnedEnvIds?: Set<s
 
 // ---------- 注入点 ----------
 
-let _channelFactory: ChannelFactory | null = null;
+/**
+ * @deprecated 模块级单例 channelFactory 存在跨 organization 泄露风险，仅在
+ *             未迁移的旧调用方使用。新代码应通过 createAcpTransport(factory) 注入。
+ * 仍保留以便逐步迁移，但使用时会记录 warning。
+ */
+let _legacyChannelFactory: ChannelFactory | null = null;
 
-/** 注入通道工厂（由服务层调用） */
-export function setChannelFactory(factory: ChannelFactory | null): void {
-  _channelFactory = factory;
+/** @deprecated 使用 createAcpTransport(factory) 替代 */
+export function setChannelFactory(factory: ChannelFactory | null, _transport?: Transport): void {
+  _legacyChannelFactory = factory;
 }
 
 // ---------- 常量 ----------
@@ -78,8 +86,8 @@ const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** 将 relay handle 传来的已解析对象喂给 ACPProtocol（它期望 JSON 字符串输入） */
 function feedProtocol(protocol: ACPProtocol, msg: Record<string, unknown>): void {
-  console.error(
-    `[workflow] ACP feedProtocol: type=${msg.type ?? "n/a"} jsonrpc=${msg.jsonrpc ?? "n/a"} method=${msg.method ?? "n/a"} id=${msg.id ?? "n/a"}`,
+  logger.debug(
+    `ACP feedProtocol: type=${msg.type ?? "n/a"} jsonrpc=${msg.jsonrpc ?? "n/a"} method=${msg.method ?? "n/a"} id=${msg.id ?? "n/a"}`,
   );
   protocol.handleMessage(JSON.stringify(msg));
 }
@@ -106,7 +114,7 @@ class AcpAgentSession implements AgentSession {
     // 不在入口处检查 signal.aborted — connect() 可能耗时较长，
     // 导致 DAG 级超时在 connect 阶段触发但 signal 在 execute 入口才被发现。
     // prompt 仍会被发送，abort listener（下方 ~line 224）负责取消。
-    console.error(`[workflow] ACP execute start: sessionId=${this.sessionId} signalAborted=${request.signal?.aborted}`);
+    logger.debug(`ACP execute start: sessionId=${this.sessionId} signalAborted=${request.signal?.aborted}`);
 
     // 监听 session/update notification 收集流式输出
     const updateHandler = (payload: ProtocolEvents["session_update"]): void => {
@@ -130,9 +138,7 @@ class AcpAgentSession implements AgentSession {
           settled = true;
           cleanupFn = null;
           abortCleanup?.();
-          console.error(
-            `[workflow] Agent execute timed out after ${DEFAULT_EXECUTE_TIMEOUT_MS}ms: sessionId=${this.sessionId}`,
-          );
+          logger.error(`Agent execute timed out: sessionId=${this.sessionId} timeoutMs=${DEFAULT_EXECUTE_TIMEOUT_MS}`);
           reject(new DOMException(`Agent execute timed out after ${DEFAULT_EXECUTE_TIMEOUT_MS}ms`, "AbortError"));
         }, DEFAULT_EXECUTE_TIMEOUT_MS);
         if (typeof timeoutTimer.unref === "function") timeoutTimer.unref();
@@ -241,8 +247,8 @@ class AcpAgentSession implements AgentSession {
         }
 
         this.channel.send(promptReq);
-        console.error(
-          `[workflow] ACP sent prompt: sessionId=${this.sessionId} promptLength=${request.prompt.length} rpcId=${promptId}`,
+        logger.debug(
+          `ACP sent prompt: sessionId=${this.sessionId} promptLength=${request.prompt.length} rpcId=${promptId}`,
         );
       });
     } finally {
@@ -283,23 +289,31 @@ function collectSessionUpdate(update: SessionUpdate, chunks: string[], messages:
 // ---------- AcpTransport ----------
 
 class AcpTransport implements Transport {
+  // 每个 Transport 实例自己的 channelFactory，避免跨 organization 共享
+  private readonly channelFactory: ChannelFactory | null;
+
+  constructor(channelFactory?: ChannelFactory | null) {
+    this.channelFactory = channelFactory ?? null;
+  }
+
   async connect(agentId: string, options?: { cwd?: string; spawnedEnvIds?: Set<string> }): Promise<AgentSession> {
-    if (!_channelFactory) {
-      console.error("[workflow] ACP connect FAILED: no channel factory configured");
+    const factory = this.channelFactory ?? _legacyChannelFactory;
+    if (!factory) {
+      logger.error("ACP connect FAILED: no channel factory configured");
       throw new Error("No channel factory configured for ACP Transport");
     }
 
-    console.error(`[workflow] ACP connect start: agentId=${agentId}`);
+    logger.debug(`ACP connect start: agentId=${agentId}`);
 
     let channel: AgentChannel;
     try {
-      channel = await _channelFactory(agentId, { spawnedEnvIds: options?.spawnedEnvIds });
+      channel = await factory(agentId, { spawnedEnvIds: options?.spawnedEnvIds });
     } catch (err) {
-      console.error(`[workflow] ACP channelFactory FAILED: agentId=${agentId}`, err);
+      logger.error(`ACP channelFactory FAILED: agentId=${agentId}`, err);
       throw err;
     }
 
-    console.error(`[workflow] ACP channel ready: agentId=${agentId}`);
+    logger.debug(`ACP channel ready: agentId=${agentId}`);
 
     // 创建协议解析器
     const protocol = new ACPProtocol();
@@ -323,9 +337,9 @@ class AcpTransport implements Transport {
     //   发 connect 后 handleConnect 检测到 agent 已初始化，直接重发完整 status。
     try {
       channel.send({ type: "connect" });
-      console.error(`[workflow] ACP sent connect trigger: agentId=${agentId}`);
+      logger.debug(`ACP sent connect trigger: agentId=${agentId}`);
     } catch (err) {
-      console.error(`[workflow] ACP send connect FAILED: agentId=${agentId}`, err);
+      logger.error(`ACP send connect FAILED: agentId=${agentId}`, err);
       unsub();
       throw err;
     }
@@ -334,21 +348,17 @@ class AcpTransport implements Transport {
       // 阶段 1：等待 agent 初始化完成（status { connected: true }）
       const t0 = Date.now();
       await readyPromise;
-      console.error(`[workflow] ACP agent ready: agentId=${agentId} elapsed=${Date.now() - t0}ms`);
+      logger.debug(`ACP agent ready: agentId=${agentId} elapsed=${Date.now() - t0}ms`);
 
       // 阶段 2：发 session/new → 等待 JSON-RPC response
       const t1 = Date.now();
       const sessionId = await this.createNewSession(channel, protocol, agentId, options?.cwd);
-      console.error(
-        `[workflow] ACP session/new done: agentId=${agentId} sessionId=${sessionId} elapsed=${Date.now() - t1}ms`,
-      );
+      logger.debug(`ACP session/new done: agentId=${agentId} sessionId=${sessionId} elapsed=${Date.now() - t1}ms`);
 
-      console.error(
-        `[workflow] ACP connect SUCCESS: agentId=${agentId} sessionId=${sessionId} total=${Date.now() - t0}ms`,
-      );
+      logger.info(`ACP connect SUCCESS: agentId=${agentId} sessionId=${sessionId} total=${Date.now() - t0}ms`);
       return new AcpAgentSession(channel, sessionId, protocol);
     } catch (err) {
-      console.error(`[workflow] ACP connect FAILED: agentId=${agentId}`, err);
+      logger.error(`ACP connect FAILED: agentId=${agentId}`, err);
       // 连接失败时清理 protocol 订阅
       unsub();
       throw err;
@@ -360,13 +370,13 @@ class AcpTransport implements Transport {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         protocol.off("status", handler);
-        console.error(`[workflow] ACP waitForAgentReady TIMEOUT after ${AGENT_INIT_TIMEOUT_MS}ms: agentId=${agentId}`);
+        logger.error(`ACP waitForAgentReady TIMEOUT: agentId=${agentId} timeoutMs=${AGENT_INIT_TIMEOUT_MS}`);
         reject(new DOMException(`Agent init timed out after ${AGENT_INIT_TIMEOUT_MS}ms`, "AbortError"));
       }, AGENT_INIT_TIMEOUT_MS);
       if (typeof timeout.unref === "function") timeout.unref();
 
       const handler = (payload: ProtocolEvents["status"]): void => {
-        console.error(`[workflow] ACP received status: agentId=${agentId} connected=${payload.connected}`);
+        logger.debug(`ACP received status: agentId=${agentId} connected=${payload.connected}`);
         if (payload.connected) {
           clearTimeout(timeout);
           protocol.off("status", handler);
@@ -389,7 +399,7 @@ class AcpTransport implements Transport {
       const timeout = setTimeout(() => {
         protocol.off("rpc_response", rpcHandler);
         protocol.off("error", errorHandler);
-        console.error(`[workflow] ACP session/new TIMEOUT after ${NEW_SESSION_TIMEOUT_MS}ms: agentId=${agentId}`);
+        logger.error(`ACP session/new TIMEOUT: agentId=${agentId} timeoutMs=${NEW_SESSION_TIMEOUT_MS}`);
         reject(new DOMException(`session/new timed out after ${NEW_SESSION_TIMEOUT_MS}ms`, "AbortError"));
       }, NEW_SESSION_TIMEOUT_MS);
       if (typeof timeout.unref === "function") timeout.unref();
@@ -410,14 +420,14 @@ class AcpTransport implements Transport {
         if (result && "error" in result) {
           const errObj = result.error as Record<string, unknown>;
           const msg = (errObj.message as string) ?? "session/new failed";
-          console.error(`[workflow] ACP session/new error response: agentId=${agentId} error=${msg}`);
+          logger.error(`ACP session/new error response: agentId=${agentId} error=${msg}`);
           reject(new Error(msg));
           return;
         }
 
         const sid = result?.sessionId as string | undefined;
         if (!sid) {
-          console.error(`[workflow] ACP session/new missing sessionId: agentId=${agentId}`);
+          logger.error(`ACP session/new missing sessionId: agentId=${agentId}`);
           reject(new Error("session/new response missing sessionId"));
           return;
         }
@@ -428,7 +438,7 @@ class AcpTransport implements Transport {
         clearTimeout(timeout);
         protocol.off("rpc_response", rpcHandler);
         protocol.off("error", errorHandler);
-        console.error(`[workflow] ACP session/new transport error: agentId=${agentId} msg=${payload.message}`);
+        logger.error(`ACP session/new transport error: agentId=${agentId} msg=${payload.message}`);
         reject(new Error(payload.message ?? "session/new error"));
       };
 
@@ -436,7 +446,7 @@ class AcpTransport implements Transport {
       protocol.on("error", errorHandler);
 
       channel.send(req);
-      console.error(`[workflow] ACP sent session/new: agentId=${agentId} rpcId=${reqId}`);
+      logger.debug(`ACP sent session/new: agentId=${agentId} rpcId=${reqId}`);
     });
   }
 
@@ -447,6 +457,10 @@ class AcpTransport implements Transport {
 
 // ---------- 工厂函数 ----------
 
-export function createAcpTransport(): Transport {
-  return new AcpTransport();
+/**
+ * 创建 ACP Transport 实例。channelFactory 参数必传，每个 Transport 持有自己的 factory
+ * 以保证 organization 隔离。
+ */
+export function createAcpTransport(channelFactory: ChannelFactory): Transport {
+  return new AcpTransport(channelFactory);
 }

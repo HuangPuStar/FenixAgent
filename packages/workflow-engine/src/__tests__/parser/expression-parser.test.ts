@@ -351,21 +351,18 @@ test("超过最大访问深度报错", () => {
 
 // 简单模板解析
 test("解析简单模板", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
   const result = resolveTemplate("Hello ${{ params.input }}!", ctx);
   expect(result).toBe("Hello foo!");
 });
 
 // 多个表达式
 test("解析多个表达式", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
   const result = resolveTemplate("${{ params.input }}-${{ params.count }}", ctx);
   expect(result).toBe("foo-42");
 });
 
 // null 值替换为空字符串
 test("null 值替换为空字符串", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
   const result = resolveTemplate("value: ${{ params.nonexistent }}", ctx);
   expect(result).toBe("value: ");
 });
@@ -378,21 +375,18 @@ test("无表达式原样返回", () => {
 
 // 节点输出引用
 test("节点输出引用", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
   const result = resolveTemplate("Result: ${{ nodes.step1.output.stdout }}", ctx);
   expect(result).toBe("Result: hello");
 });
 
 // 节点状态引用
 test("节点状态引用", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
   const result = resolveTemplate("Status: ${{ nodes.step1.status }}", ctx);
   expect(result).toBe("Status: COMPLETED");
 });
 
 // 复杂表达式在模板中
 test("复杂表达式在模板中", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test input for expression parser
   const result = resolveTemplate('Count is ${{ params.count > 10 ? "big" : "small" }}', ctx);
   expect(result).toBe("Count is big");
 });

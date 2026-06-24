@@ -80,7 +80,11 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
   }, [nodes, edges, meta, setYamlText]);
 
   const currentYaml = useMemo(() => flowToYaml(nodes, edges, meta), [nodes, edges, meta]);
-  const hasUnsavedChanges = lastSavedYaml !== "" && currentYaml !== lastSavedYaml;
+  // 用 currentYaml !== "" 而不是 lastSavedYaml !== "" 作 guard：
+  // 新 workflow（draftYaml 为空）首次编辑时 lastSavedYaml 仍是 ""，
+  // 旧逻辑会让 hasUnsavedChanges 永远 false，用户改了也不显示未保存。
+  // 现在：当前 yaml 非空且与已保存版本不一致 → 未保存。
+  const hasUnsavedChanges = currentYaml !== "" && currentYaml !== lastSavedYaml;
 
   useEffect(() => {
     if (hasUnsavedChanges && saveStatus !== "unsaved" && saveStatus !== "saving") {
@@ -109,7 +113,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
         return true;
       } catch (err) {
         console.error(err);
-        pushWorkflowError("save", (err as Error).message);
+        pushWorkflowError(workflowId, "save", (err as Error).message);
         toast.error(`${t("editor.save_failed")}: ${(err as Error).message}`);
         setSaveStatus("unsaved");
         return false;
@@ -236,7 +240,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
       toast.success(t("editor.published_as", { version: result.version }));
     } catch (err) {
       console.error(err);
-      pushWorkflowError("publish", (err as Error).message);
+      pushWorkflowError(workflowId, "publish", (err as Error).message);
       toast.error(`${t("editor.publish_failed")}: ${(err as Error).message}`);
     } finally {
       setPublishing(false);

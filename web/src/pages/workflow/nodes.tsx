@@ -94,7 +94,11 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   // 节点主标题文本：优先展示用户填写的 description，没填则回退到节点 id（如 shell_1），
   // 作为节点头部主标题；类型名（label）降级为副标题。
   const description = typeof d.description === "string" ? d.description.trim() : "";
-  const nodeSubtitle = isStart ? "" : description || id;
+  // 优先级：description > tool 名（仅 custom）> id
+  // 让 custom 节点没填 description 时至少能看到 tool 名（如 "trim_galore"），
+  // 而不是冷冰冰的 "custom_2"。其他类型不受影响。
+  const toolName = typeof d.tool === "string" ? d.tool.trim() : "";
+  const nodeSubtitle = isStart ? "" : description || (nodeType === "custom" && toolName ? toolName : id);
 
   const isRunning = runStatus === "RUNNING";
 

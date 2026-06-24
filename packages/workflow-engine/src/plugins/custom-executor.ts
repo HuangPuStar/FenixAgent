@@ -16,7 +16,7 @@ import type { NodeExecutionContext, NodeExecutor } from "../scheduler/dag-schedu
 import type { CustomNodeDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { DAGEvent, EventType, NodeOutput } from "../types/execution";
-import { CustomNodeRegistry } from "./registry";
+import type { CustomNodeRegistry } from "./registry";
 import type { ExecuteContext } from "./types";
 
 export class CustomNodeExecutor implements NodeExecutor {
@@ -84,6 +84,8 @@ export class CustomNodeExecutor implements NodeExecutor {
       workDir: (ctx.params.work_dir as string) ?? "/tmp/workflow",
       // 透传 YAML 节点声明的 slurm 资源（仅 SlurmNode 子类消费）
       slurm: customDef.slurm,
+      // 透传已求值的 script(仅 SlurmNode 子类会有值,由调度器 resolveNodeInputs 求值后注入)
+      script: (ctx.resolvedInputs.script as ExecuteContext["script"]) ?? undefined,
       signal: ctx.signal,
       storage: ctx.storage,
       runId: ctx.runId,

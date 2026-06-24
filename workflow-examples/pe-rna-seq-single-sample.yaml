@@ -25,7 +25,7 @@
 # - ⑪ Column Join 只依赖 ⑨（处理 featureCounts 文本），与 ⑩ 并行无依赖
 #
 # 工具抽象说明：所有节点统一用 tool: slurm（通用 Slurm 执行器），
-# 脚本内容由 inputs.script 注入，资源由 slurm: 字段声明。
+# 脚本内容由 script.content 注入，资源由 slurm: 字段声明。
 # cores 值通过 $SLURM_CPUS_PER_TASK 环境变量自动传入脚本（Slurm 标准实践）。
 
 schema_version: '1'
@@ -104,7 +104,7 @@ params:
     required: true
 
 # ── DAG 节点 ──
-# 所有节点统一用 tool: slurm，脚本和资源分别在 inputs.script / slurm 声明
+# 所有节点统一用 tool: slurm，脚本和资源分别在 script.content / slurm 声明
 nodes:
   # ④ Trim Galore — 接头切除 + 质控（4 cores, ~8 min）
   - id: trim_galore
@@ -117,8 +117,8 @@ nodes:
       cores: 4
       walltime: "02:00:00"
       modules: ["apps/apptainer/1.2.4"]
-    inputs:
-      script: |
+    script:
+      content: |
         echo "=== Trim Galore - ${{ params.sample_id }} ==="
         mkdir -p ${{ params.work_dir }}/step_4
         apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
@@ -149,8 +149,8 @@ nodes:
       partition: xahcnormal
       cores: 1
       walltime: "00:10:00"
-    inputs:
-      script: |
+    script:
+      content: |
         echo "=== Flatten collection - ${{ params.sample_id }} ==="
         echo "Started at: $(date)"
         echo ok
@@ -171,8 +171,8 @@ nodes:
       cores: 8
       walltime: "02:00:00"
       modules: ["apps/apptainer/1.2.4"]
-    inputs:
-      script: |
+    script:
+      content: |
         echo "=== Salmon quant ==="
         echo "Started at: $(date)"
         OUT_DIR="${{ params.work_dir }}/step_6/${{ params.sample_id }}"
@@ -209,8 +209,8 @@ nodes:
       memory: "100G"
       walltime: "04:00:00"
       modules: ["apps/apptainer/1.2.4"]
-    inputs:
-      script: |
+    script:
+      content: |
         echo "=== RNA STAR ==="
         echo "Started at: $(date)"
         # output_prefix 必须以 / 结尾，STAR 不会自动补
@@ -251,8 +251,8 @@ nodes:
       cores: 32
       walltime: "02:00:00"
       modules: ["apps/apptainer/1.2.4"]
-    inputs:
-      script: |
+    script:
+      content: |
         echo "=== FastQC - 2 file(s) ==="
         echo "Started at: $(date)"
         OUT_DIR="${{ params.work_dir }}/step_8/reports"
@@ -285,8 +285,8 @@ nodes:
       cores: 8
       walltime: "01:00:00"
       modules: ["apps/apptainer/1.2.4"]
-    inputs:
-      script: |
+    script:
+      content: |
         echo "=== featureCounts ==="
         echo "Started at: $(date)"
         OUT_FILE="${{ params.work_dir }}/step_9/${{ params.sample_id }}.txt"
@@ -319,29 +319,30 @@ nodes:
       cores: 8
       walltime: "01:00:00"
       modules: ["apps/apptainer/1.2.4"]
-    inputs:
-      script: |
+    script:
+      content: |
         echo "=== MultiQC ==="
         echo "Started at: $(date)"
-        OUT_DIR="${{ params.work_dir }}/step_10"
         # 精确指定扫描目录，避免纳入历史残留（design.md §5.5）
-        mkdir -p "$OUT_DIR"
+        mkdir -p "$WORK_DIR/step_10"
         # MultiQC 会把标题中的空格替换为 -，影响输出文件名
         TITLE="PE RNA-Seq Workflow Report"
         apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
           multiqc \
-            ${{ params.work_dir }}/step_4 \
-            ${{ params.work_dir }}/step_6 \
-            ${{ params.work_dir }}/step_7 \
-            ${{ params.work_dir }}/step_8 \
-            ${{ params.work_dir }}/step_9 \
-            --outdir "$OUT_DIR" \
+            "$WORK_DIR/step_4" \
+            "$WORK_DIR/step_6" \
+            "$WORK_DIR/step_7" \
+            "$WORK_DIR/step_8" \
+            "$WORK_DIR/step_9" \
+            --outdir "$WORK_DIR/step_10" \
             --title "$TITLE"
 
         # 输出校验（标题空格→连字符，文件名为 PE-RNA-Seq-Workflow-Report_multiqc_report.html）
-        REPORT="$OUT_DIR/PE-RNA-Seq-Workflow-Report_multiqc_report.html"
+        REPORT="$WORK_DIR/step_10/PE-RNA-Seq-Workflow-Report_multiqc_report.html"
         test -s "$REPORT" || { echo "ERROR: $REPORT missing or empty" >&2; exit 1; }
         echo "Finished at: $(date)"
+      env:
+        WORK_DIR: ${{ params.work_dir }}
     outputs:
       report:
         pattern: "${{ params.work_dir }}/step_10/PE-RNA-Seq-Workflow-Report_multiqc_report.html"
@@ -357,8 +358,8 @@ nodes:
       partition: xahcnormal
       cores: 1
       walltime: "00:30:00"
-    inputs:
-      script: |
+    script:
+      content: |
         echo "=== Column Join (featureCounts 结果汇总) ==="
         echo "Started at: $(date)"
         IN_DIR="${{ params.work_dir }}/step_9"

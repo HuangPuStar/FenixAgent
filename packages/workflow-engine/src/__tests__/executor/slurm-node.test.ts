@@ -2,9 +2,10 @@
  * SlurmNode 单元测试 — generateHeader / execute / retry / mapSlurmState。
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mapSlurmState, type SlurmConfig, SlurmNode } from "../../plugins/slurm-node";
 import type { ExecuteContext, InputDef } from "../../plugins/types";
+import { WorkflowErrorCode } from "../../types/errors";
 import { FakeSshExecutor } from "./fake-ssh-executor";
 
 /** 最小 concrete SlurmNode — 用于测试 */
@@ -213,7 +214,7 @@ describe("SlurmNode retry logic", () => {
 
     // sbatch: 用回调计数器，第一/二次返回不同 jobId
     let sbatchCallCount = 0;
-    fakeSsh.mockCommand(/sbatch/, (cmd) => {
+    fakeSsh.mockCommand(/sbatch/, (_cmd) => {
       sbatchCallCount++;
       const jobId = sbatchCallCount === 1 ? "300" : "301";
       return { stdout: `Submitted batch job ${jobId}`, stderr: "", exitCode: 0 };
@@ -221,7 +222,7 @@ describe("SlurmNode retry logic", () => {
 
     // sacct: 第一次返回 FAILED (job 300), 第二次返回 COMPLETED (job 301)
     let sacctCallCount = 0;
-    fakeSsh.mockCommand(/sacct/, (cmd) => {
+    fakeSsh.mockCommand(/sacct/, (_cmd) => {
       sacctCallCount++;
       if (sacctCallCount === 1) {
         return { stdout: "300|FAILED|1:0", stderr: "", exitCode: 0 };
@@ -284,14 +285,14 @@ describe("SlurmNode retry logic", () => {
     fakeSsh.mockCommand(/cat >/, { stdout: "", stderr: "", exitCode: 0 });
 
     let sbatchCallCount = 0;
-    fakeSsh.mockCommand(/sbatch/, (cmd) => {
+    fakeSsh.mockCommand(/sbatch/, (_cmd) => {
       sbatchCallCount++;
       const jobId = sbatchCallCount === 1 ? "600" : "601";
       return { stdout: `Submitted batch job ${jobId}`, stderr: "", exitCode: 0 };
     });
 
     let sacctCallCount = 0;
-    fakeSsh.mockCommand(/sacct/, (cmd) => {
+    fakeSsh.mockCommand(/sacct/, (_cmd) => {
       sacctCallCount++;
       if (sacctCallCount === 1) {
         return { stdout: "600|NODE_FAIL|0:0", stderr: "", exitCode: 0 };
@@ -463,5 +464,105 @@ describe("mapSlurmState()", () => {
   });
   test("should map OUT_OF_ME+ to OUT_OF_MEMORY", () => {
     expect(mapSlurmState("OUT_OF_ME+", null)).toBe("OUT_OF_MEMORY");
+  });
+});
+
+// ── buildScript 默认实现:从 ctx.script.content 读取 ──
+
+describe("SlurmNode.buildScript() default impl", () => {
+  test("应从 ctx.script.content 读取并返回", () => {
+    class DefaultImplNode extends SlurmNode {
+      name = "default_impl";
+      description = "test default";
+      inputs = {};
+      produces = [];
+    }
+    const node = new DefaultImplNode();
+    const ctx = makeCtx({
+      script: { content: "echo hello world", env: {} },
+    });
+    expect(node.buildScript(ctx)).toBe("echo hello world");
+  });
+
+  test("ctx.script 缺失时抛 NODE_FAILED 含 'script.content'", () => {
+    class DefaultImplNode extends SlurmNode {
+      name = "default_impl";
+      description = "test default";
+      inputs = {};
+      produces = [];
+    }
+    const node = new DefaultImplNode();
+    expect(() => node.buildScript(makeCtx())).toThrow(
+      expect.objectContaining({
+        code: WorkflowErrorCode.NODE_FAILED,
+      }),
+    );
+    expect(() => node.buildScript(makeCtx())).toThrow(/script\.content/);
+  });
+
+  test("ctx.script.content 为空字符串时抛 NODE_FAILED", () => {
+    class DefaultImplNode extends SlurmNode {
+      name = "default_impl";
+      description = "test default";
+      inputs = {};
+      produces = [];
+    }
+    const node = new DefaultImplNode();
+    const ctx = makeCtx({ script: { content: "   ", env: {} } });
+    expect(() => node.buildScript(ctx)).toThrow(
+      expect.objectContaining({
+        code: WorkflowErrorCode.NODE_FAILED,
+      }),
+    );
+    expect(() => node.buildScript(ctx)).toThrow(/script\.content/);
+  });
+});
+
+// ── generateHeader 注入 #SBATCH --export ──
+
+describe("SlurmNode.generateHeader() with script.env", () => {
+  // ctx.script.env 有值时追加 #SBATCH --export=ALL,...
+  test("ctx.script.env 有值时追加 #SBATCH --export=ALL,...", () => {
+    const node = new TestSlurmNode({ partition: "xahcnormal", cores: 4 });
+    const ctx = makeCtx({
+      script: {
+        content: "echo ok",
+        env: { OMP_NUM_THREADS: "4", WORK_DIR: "/data" },
+      },
+    });
+    const header = node.testGenerateHeader(ctx);
+    expect(header).toContain("#SBATCH --export=ALL,OMP_NUM_THREADS=4,WORK_DIR=/data");
+  });
+
+  // ctx.script 缺失时不输出 #SBATCH --export
+  test("ctx.script 缺失时不输出 #SBATCH --export", () => {
+    const node = new TestSlurmNode({ partition: "xahcnormal", cores: 4 });
+    const header = node.testGenerateHeader(makeCtx());
+    expect(header).not.toContain("#SBATCH --export");
+  });
+
+  // ctx.script.env 为空对象时不输出 #SBATCH --export
+  test("ctx.script.env 为空对象时不输出 #SBATCH --export", () => {
+    const node = new TestSlurmNode({ partition: "xahcnormal", cores: 4 });
+    const ctx = makeCtx({ script: { content: "x", env: {} } });
+    const header = node.testGenerateHeader(ctx);
+    expect(header).not.toContain("#SBATCH --export");
+  });
+
+  // --export 位于 --error 之后、extraSBATCH 之前
+  test("--export 位于 --error 之后、extraSBATCH 之前", () => {
+    const node = new TestSlurmNode({
+      partition: "xahcnormal",
+      cores: 4,
+      extraSBATCH: ["--gres=gpu:1"],
+    });
+    const ctx = makeCtx({ script: { content: "x", env: { FOO: "bar" } } });
+    const header = node.testGenerateHeader(ctx);
+    const errorIdx = header.indexOf("#SBATCH --error");
+    const exportIdx = header.indexOf("#SBATCH --export");
+    const extraIdx = header.indexOf("#SBATCH --gres=gpu:1");
+    expect(errorIdx).toBeGreaterThan(-1);
+    expect(exportIdx).toBeGreaterThan(errorIdx);
+    expect(extraIdx).toBeGreaterThan(exportIdx);
   });
 });
