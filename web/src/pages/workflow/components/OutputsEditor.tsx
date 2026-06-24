@@ -2,6 +2,10 @@ import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 export type OutputType = "file" | "file-list" | "dir";
 
 export interface OutputEntry {
@@ -28,7 +32,7 @@ export function OutputsEditor({
   const entries = Object.entries(value ?? {});
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const keyRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [focusKeyIdx, setFocusKeyIdx] = useState<number | null>(null);
 
   const entriesLen = entries.length;
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when entry count changes
@@ -83,93 +87,67 @@ export function OutputsEditor({
   const addEntry = () => {
     const updated = { ...(value ?? {}), "": { pattern: "", type: "file" as OutputType } };
     onChange(updated);
-    requestAnimationFrame(() => {
-      const lastIdx = Object.keys(updated).length - 1;
-      keyRefs.current[lastIdx]?.focus();
-    });
+    setFocusKeyIdx(Object.keys(updated).length - 1);
   };
 
+  const isEmptyKey = (k: string) => k.trim() === "";
+
   return (
-    <div>
+    <div className="flex flex-col gap-1">
       {entries.map(([k, v], i) => {
         const isConfirming = confirmDeleteKey === k && k !== "";
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: index needed to keep focus stable while editing key
-          <div key={`${k}-${i}`} style={{ display: "flex", gap: 4, marginBottom: 4, alignItems: "center" }}>
-            <input
-              ref={(el) => {
-                keyRefs.current[i] = el;
-              }}
+          <div key={`${k}-${i}`} className="flex items-center gap-1">
+            <Input
               value={k}
               onChange={(e) => updateKey(i, e.target.value)}
               placeholder={keyPlaceholder}
               readOnly={readOnly}
-              style={{
-                width: "28%",
-                ...(k.trim() === "" ? { borderColor: "#fca5a5", background: "#fef2f2" } : {}),
-              }}
+              autoFocus={i === focusKeyIdx}
+              className={`h-8 text-xs ${isEmptyKey(k) ? "border-red-300 bg-red-50" : ""}`}
+              style={{ width: "28%" }}
             />
-            <input
+            <Input
               value={v.pattern}
               onChange={(e) => updateEntry(i, { pattern: e.target.value })}
               placeholder={patternPlaceholder}
               readOnly={readOnly}
-              style={{ flex: 1 }}
+              className="flex-1 h-8 text-xs"
             />
-            <select
+            <Select
               value={v.type}
-              onChange={(e) => updateEntry(i, { type: e.target.value as OutputType })}
+              onValueChange={(val) => updateEntry(i, { type: val as OutputType })}
               disabled={readOnly}
-              style={{ width: 84 }}
             >
-              <option value="file">file</option>
-              <option value="file-list">file-list</option>
-              <option value="dir">dir</option>
-            </select>
+              <SelectTrigger className="h-8 text-xs w-[84px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="file">file</SelectItem>
+                <SelectItem value="file-list">file-list</SelectItem>
+                <SelectItem value="dir">dir</SelectItem>
+              </SelectContent>
+            </Select>
             {!readOnly && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 onClick={() => handleDeleteClick(i)}
                 title={isConfirming ? t("components:confirm") : undefined}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 24,
-                  height: 24,
-                  border: "none",
-                  background: isConfirming ? "#fef2c7" : "none",
-                  color: isConfirming ? "#ef4444" : "#9ca3af",
-                  cursor: "pointer",
-                  borderRadius: 4,
-                  padding: 0,
-                  flexShrink: 0,
-                }}
+                className={`size-6 flex-shrink-0 ${isConfirming ? "bg-amber-50 text-red-500" : "text-gray-400"}`}
               >
                 <Trash2 size={13} />
-              </button>
+              </Button>
             )}
           </div>
         );
       })}
       {!readOnly && (
-        <button
-          type="button"
-          onClick={addEntry}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            border: "none",
-            background: "none",
-            color: "#6b7280",
-            cursor: "pointer",
-            fontSize: 11,
-            padding: 0,
-          }}
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={addEntry} className="gap-1 text-gray-500 text-xs h-7">
           <Plus size={12} /> {addLabel}
-        </button>
+        </Button>
       )}
     </div>
   );

@@ -49,11 +49,21 @@ export interface TriggerItem {
   updatedAt: string;
 }
 
+export interface CustomToolInputDef {
+  type: string;
+  required: boolean;
+  description: string;
+  group?: string;
+}
+
 export interface CustomToolItem {
   name: string;
   description: string;
-  inputs: Record<string, unknown>;
+  inputs: Record<string, CustomToolInputDef>;
   produces: string[];
+  kind?: string;
+  color?: string;
+  env?: string[];
 }
 
 // ── API Client ──

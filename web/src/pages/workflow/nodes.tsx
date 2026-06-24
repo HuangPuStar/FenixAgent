@@ -17,6 +17,19 @@ import {
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+/**
+ * 工具颜色缓存 — 模块级 Map，前端加载 custom tools 后填充。
+ * WorkflowNode 渲染 custom 节点时按 tool 名查表，未命中回退 NODE_COLORS.custom 默认色。
+ */
+const toolColorCache = new Map<string, string>();
+
+/** 供 WorkflowEditor 在加载 customTools 后调用，批量注册工具颜色 */
+export function setToolColors(tools: Array<{ name: string; color?: string }>) {
+  for (const t of tools) {
+    if (t.color) toolColorCache.set(t.name, t.color);
+  }
+}
+
 const NODE_COLORS: Record<string, { main: string; light: string; headerText: string }> = {
   start: { main: "#1677ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
   shell: { main: "#1677ff", light: "rgba(22,119,255,0.08)", headerText: "#fff" },
@@ -82,11 +95,18 @@ function StatusDot({ status }: { status: string }) {
 export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   const { t } = useTranslation("workflows");
   const nodeType = type ?? "shell";
-  const colors = NODE_COLORS[nodeType] ?? NODE_COLORS.shell;
-  const label = t(NODE_LABEL_KEYS[nodeType] ?? nodeType);
-  const icon = NODE_ICONS[nodeType] ?? <Terminal size={12} />;
   const d = data as Record<string, unknown>;
   const isStart = nodeType === "start";
+
+  // custom 节点按 tool 名查工具专属色（来自 CustomNode.color 字段）
+  // 未命中或非 custom 节点回退 NODE_COLORS 默认色
+  const toolName = typeof d.tool === "string" ? d.tool.trim() : "";
+  const toolColor = nodeType === "custom" && toolName ? toolColorCache.get(toolName) : undefined;
+  const baseColors = NODE_COLORS[nodeType] ?? NODE_COLORS.shell;
+  const colors = toolColor ? { ...baseColors, main: toolColor } : baseColors;
+
+  const label = t(NODE_LABEL_KEYS[nodeType] ?? nodeType);
+  const icon = NODE_ICONS[nodeType] ?? <Terminal size={12} />;
 
   const runStatus = d._runStatus as string | undefined;
   const statusColors = runStatus ? (RUN_STATUS_COLORS[runStatus] ?? RUN_STATUS_COLORS.PENDING) : null;
@@ -97,7 +117,6 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   // 优先级：description > tool 名（仅 custom）> id
   // 让 custom 节点没填 description 时至少能看到 tool 名（如 "trim_galore"），
   // 而不是冷冰冰的 "custom_2"。其他类型不受影响。
-  const toolName = typeof d.tool === "string" ? d.tool.trim() : "";
   const nodeSubtitle = isStart ? "" : description || (nodeType === "custom" && toolName ? toolName : id);
 
   const isRunning = runStatus === "RUNNING";

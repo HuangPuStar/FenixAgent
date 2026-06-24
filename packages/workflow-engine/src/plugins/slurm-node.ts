@@ -4,10 +4,19 @@
  * 封装 SSH + sbatch + sacct 完整生命周期。
  * 默认 buildScript 从 ctx.script.content 读取已求值的 bash 脚本内容；
  * 子类也可覆写 buildScript(ctx) 返回具体 bash 命令（向后兼容）。
+ *
+ * 环境变量注入契约（generateHeader 实现）：
+ * - 节点级 `inputs:` 字段声明的 K=${{ params.xxx }} 会被 dag-scheduler 求值后
+ *   存入 ctx.inputs，本类把它当作 bash 环境变量注入 `#SBATCH --export=ALL,...`。
+ *   脚本里可直接用 $K 引用，避免重复声明 script.env。
+ * - script.env 字段（显式声明的运行时变量）会与 inputs 合并，同 key 时 env 优先。
+ *   适合需要在脚本内重写某 key 的场景（例如 WORK_DIR 派生子目录）。
  */
 
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { NodeOutput } from "../types/execution";
+import type { JobTransport } from "./job-transport";
+import { SshJobTransport } from "./job-transport";
 import type { JobResult, SlurmConfig, SshExecutor } from "./slurm-types";
 import type { CustomNode, ExecuteContext, InputDef } from "./types";
 
@@ -42,10 +51,10 @@ export abstract class SlurmNode implements CustomNode {
   retryDelay: number = 30000;
   retryBackoff: "fixed" | "exponential" = "fixed";
 
-  protected sshExecutor: SshExecutor;
+  protected transport: JobTransport;
 
-  constructor(sshExecutor?: SshExecutor) {
-    this.sshExecutor = sshExecutor ?? new BunSshExecutor();
+  constructor(transport?: JobTransport) {
+    this.transport = transport ?? new SshJobTransport(new BunSshExecutor());
   }
 
   /**
@@ -84,7 +93,7 @@ export abstract class SlurmNode implements CustomNode {
     const cleanupCmd = this.preCleanup?.(ctx);
     if (cleanupCmd) {
       try {
-        await this.sshExecutor.exec(host, cleanupCmd);
+        await this.transport.execCommand(host, cleanupCmd);
       } catch (err) {
         console.warn(`[SlurmNode] preCleanup failed for ${this.name}:`, err);
       }
@@ -95,12 +104,12 @@ export abstract class SlurmNode implements CustomNode {
     const header = this.generateHeader(ctx);
     const slurmScript = `${header}\nset -euo pipefail\n${userScript}`;
 
-    // 3. SSH 上传 .slurm
+    // 3. 上传 .slurm 到远程
     const remotePath = `${ctx.workDir}/.slurm/${ctx.runId}_${ctx.nodeId}.slurm`;
-    await this.sshUpload(host, ctx.workDir, slurmScript, remotePath);
+    await this.transport.uploadScript(host, ctx.workDir, slurmScript, remotePath);
 
     // 4. sbatch 提交
-    let jobId = await this.sbatch(host, remotePath);
+    let jobId = await this.transport.submitJob(host, remotePath);
 
     // 5. sacct 轮询（带重试）
     let attempt = 0;
@@ -159,7 +168,7 @@ export abstract class SlurmNode implements CustomNode {
           attempt++;
           const delay = this.computeRetryDelay(attempt);
           await new Promise((resolve) => setTimeout(resolve, delay));
-          jobId = await this.sbatch(host, remotePath);
+          jobId = await this.transport.submitJob(host, remotePath);
           continue;
         }
         // 关键：把 sacct 收集到的 stderr/stdout 带进 context，否则前端只能看到
@@ -218,13 +227,29 @@ export abstract class SlurmNode implements CustomNode {
     lines.push(`#SBATCH --output=${outDir}/${jobName}_%j.out`);
     lines.push(`#SBATCH --error=${outDir}/${jobName}_%j.err`);
 
-    // 注入用户声明的环境变量到 #SBATCH --export
+    // 注入环境变量到 #SBATCH --export — 来源 1: 节点级 inputs 字段（求值后）。
+    // SlurmToolNode.inputs = {}（tools/slurm.ts），不约束 key；YAML 用户在节点
+    // `inputs:` 块声明的 K=表达式 由 dag-scheduler 求值后存入 ctx.inputs，
+    // 这里全部转为环境变量，让 bash 脚本能用 $K 直接引用，省去 script.env 重复声明。
+    // 类型约束：bash env 只接受字符串；对象/数组等复杂类型跳过（用户应改走 params/secrets）。
+    const mergedEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(ctx.inputs ?? {})) {
+      if (v === null || v === undefined) continue;
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        mergedEnv[k] = String(v);
+      }
+    }
+    // 来源 2: script.env（显式声明的"脚本内变量"）。同 key 时 env 优先，
+    // 因为它是用户特意在 script 块声明的运行时变量，应覆盖 inputs 的同名字段。
+    const scriptEnv = ctx.script?.env ?? {};
+    for (const [k, v] of Object.entries(scriptEnv)) {
+      mergedEnv[k] = v;
+    }
     // 关键：必须以 ALL 开头，否则 Slurm 不会继承默认环境（PATH/HOME/SLURM_* 等），
     // 会导致脚本里 module load / apptainer 等命令找不到。
     // 边界：value 含逗号或等号时会被 sbatch 解析为多个 entry，用户需自行保证 value 简单。
-    const env = ctx.script?.env;
-    if (env && Object.keys(env).length > 0) {
-      const entries = Object.entries(env)
+    if (Object.keys(mergedEnv).length > 0) {
+      const entries = Object.entries(mergedEnv)
         .map(([k, v]) => `${k}=${v}`)
         .join(",");
       lines.push(`#SBATCH --export=ALL,${entries}`);
@@ -254,29 +279,13 @@ export abstract class SlurmNode implements CustomNode {
 
   // ── Private ──
 
-  private async sshUpload(host: string, workDir: string, script: string, remotePath: string): Promise<void> {
-    await this.sshExecutor.exec(host, `mkdir -p ${workDir}/.slurm`);
-    // 使用 heredoc 避免特殊字符转义问题
-    await this.sshExecutor.exec(host, `cat > ${remotePath} << 'SLURM_EOF'\n${script}\nSLURM_EOF`);
-  }
-
-  private async sbatch(host: string, remotePath: string): Promise<string> {
-    const { stdout } = await this.sshExecutor.exec(host, `sbatch ${remotePath}`);
-    const match = stdout.match(/Submitted batch job (\d+)/);
-    if (!match) {
-      throw new WorkflowError(`Failed to parse job ID from sbatch output: ${stdout}`, WorkflowErrorCode.NODE_FAILED);
-    }
-    return match[1];
-  }
-
   private async pollJob(ctx: ExecuteContext, host: string, jobId: string): Promise<JobResult> {
     // jobName 取合并后的 slurmConfig（YAML 声明优先），与 generateHeader 保持一致，
     // 否则 YAML 覆盖了 jobName 但 pollJob 仍用默认值，会导致找不到 .out/.err 日志文件
     const jobName = this.resolveSlurmConfig(ctx).jobName ?? this.name;
 
     // 1. sacct 查询状态
-    const sacctCmd = `sacct -j ${jobId} --format=JobID,State,ExitCode --noheader --parsable2`;
-    const { stdout: sacctOut } = await this.sshExecutor.exec(host, sacctCmd);
+    const sacctOut = await this.transport.queryJobStatus(host, jobId);
 
     const lines = sacctOut
       .trim()
@@ -312,14 +321,12 @@ export abstract class SlurmNode implements CustomNode {
     if (mappedState !== null) {
       const outPath = `${ctx.workDir}/.slurm/${jobName}_${jobId}`;
       try {
-        const outResult = await this.sshExecutor.exec(host, `cat ${outPath}.out`);
-        stdout = outResult.stdout;
+        stdout = await this.transport.readFile(host, `${outPath}.out`);
       } catch {
         stdout = "(failed to read stdout)";
       }
       try {
-        const errResult = await this.sshExecutor.exec(host, `cat ${outPath}.err`);
-        stderr = errResult.stdout;
+        stderr = await this.transport.readFile(host, `${outPath}.err`);
       } catch {
         stderr = "(failed to read stderr)";
       }

@@ -86,7 +86,7 @@ describe("acp idle monitor", () => {
       getInstance: (instanceId: string) => {
         if (instanceId === idleInstance.id) return idleInstance;
         if (instanceId === busyInstance.id) return busyInstance;
-        return undefined;
+        return;
       },
     });
 
@@ -134,7 +134,7 @@ describe("acp idle monitor", () => {
       getInstance: (instanceId: string) => {
         if (instanceId === idleInstance.id) return idleInstance;
         if (instanceId === activeInstance.id) return activeInstance;
-        return undefined;
+        return;
       },
       stopInstance: async (instanceId: string, organizationId: string) => {
         stopCalls.push({ instanceId, organizationId });
@@ -166,7 +166,7 @@ describe("acp idle monitor", () => {
         }) as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === staleInstance.id) return staleInstance;
-        return undefined;
+        return;
       },
       stopInstance: async (instanceId: string, organizationId: string) => {
         stopCalls.push({ instanceId, organizationId });

@@ -231,12 +231,13 @@ export const WorkflowDagEventSchema = z
   .object({
     event_id: z.string().describe("事件 ID。"),
     run_id: z.string().describe("运行 ID。"),
-    project_id: z.string().optional().describe("项目或工作流关联 ID。"),
-    node_id: z.string().optional().describe("关联节点 ID。"),
+    // nullable 兼容：PG 把 undefined 写入后变 NULL，读出来是 null；纯 .optional() 不接受 null
+    project_id: z.string().nullable().optional().describe("项目或工作流关联 ID。"),
+    node_id: z.string().nullable().optional().describe("关联节点 ID。"),
     timestamp: z.string().describe("事件时间。"),
     type: z.string().describe("事件类型。"),
-    node_type: z.string().optional().describe("节点类型。"),
-    metadata: JsonObjectSchema.optional().describe("附加事件元数据。"),
+    node_type: z.string().nullable().optional().describe("节点类型。"),
+    metadata: JsonObjectSchema.nullable().optional().describe("附加事件元数据。"),
   })
   .describe("工作流 DAG 事件。");
 

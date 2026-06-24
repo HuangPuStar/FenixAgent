@@ -140,6 +140,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
 
   const updateNodesFromSnapshot = useCallback(
     (snap: DAGSnapshot) => {
+      const dagRunning = snap.dag_status === "RUNNING";
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === START_NODE_ID) return n;
@@ -155,6 +156,12 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
                 _onRerunFrom: undefined,
               },
             };
+          // DAG 正在运行且前端已乐观设为 RUNNING 时，若 snapshot 返回 PENDING，
+          // 保持 RUNNING 避免覆盖（snapshot 可能在引擎调度该节点之前创建）
+          const prevStatus = n.data._runStatus as string | undefined;
+          if (dagRunning && state.status === "PENDING" && prevStatus === "RUNNING") {
+            return n;
+          }
           return {
             ...n,
             data: {

@@ -3,6 +3,10 @@ export interface ParamDef {
   type?: "string" | "number" | "boolean" | "object";
   default?: unknown;
   required?: boolean;
+  /** 参数分组标识（可选）。前端 RunParamsDialog 据此分组渲染。
+   *  - 未设: 归入默认组（顶部，始终展开）
+   *  - "advance": 高级组（底部，默认折叠）*/
+  group?: string;
 }
 
 /** 重试配置 */
@@ -28,7 +32,11 @@ export interface BaseNodeDef {
   timeout?: number;
   retry?: RetryConfig;
   env?: Record<string, string>;
-  /** 输出声明。所有节点类型都可声明，key 为字段名，下游通过 nodes.X.outputs.<key> 引用 */
+  /**
+   * 输出声明。所有节点类型都可声明，key 为字段名。
+   * dag-scheduler 在节点完成后求值 pattern（${{ params.xxx }} / ${{ nodes.Y.output.z }}），
+   * 把求值结果（路径字符串）merge 到 NodeOutput.json，下游通过 ${{ nodes.X.output.<key> }} 引用。
+   */
   outputs?: Record<
     string,
     {

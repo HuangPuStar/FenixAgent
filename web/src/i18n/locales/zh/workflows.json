@@ -382,7 +382,22 @@
     "palette_custom_tools": "自定义工具",
     "tooltip_publish": "发布新版本",
     "publish_confirm_title": "发布新版本",
-    "publish_confirm_desc": "将以当前草稿创建新版本，当前最新版本：{{latest}}。是否继续？"
+    "publish_confirm_desc": "将以当前草稿创建新版本，当前最新版本：{{latest}}。是否继续？",
+    "expand_edit": "展开编辑",
+    "slurm_section": "Slurm 资源",
+    "slurm_partition": "分区 (partition)",
+    "slurm_cores": "CPU 核数 (cores)",
+    "slurm_walltime": "运行时限 (walltime)",
+    "slurm_modules": "模块加载 (modules)",
+    "slurm_modules_placeholder": "apps/apptainer/1.2.4（每行一个）",
+    "slurm_script_content": "脚本内容 (script.content)",
+    "slurm_script_env": "脚本环境变量 (script.env)",
+    "slurm_script_env_placeholder": "KEY=VALUE（每行一个）",
+    "slurm_inputs_hint": "接收上游节点的输出，用 ${{ }} 模板引用",
+    "slurm_env_hint": "设置脚本运行时的静态环境变量",
+    "group_default": "基础配置",
+    "group_advance": "高级选项",
+    "group_unset": "移除高级分组"
   },
   "run_params": {
     "title": "运行参数",

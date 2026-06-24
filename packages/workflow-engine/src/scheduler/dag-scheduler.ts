@@ -289,6 +289,10 @@ export class DAGScheduler {
     // 设置 RUNNING（执行器内部会发射 node.started 事件）
     this.nodeStates.set(nodeId, "RUNNING");
 
+    // 保存快照让前端轮询能立即看到 RUNNING 状态，
+    // 否则快照只在 DAG 启动和节点完成后才创建，RUNNING 状态对外不可见
+    await this.saveSnapshotCurrent();
+
     try {
       // 解析 ${{ }} 表达式
       const resolvedInputs = this.resolveNodeInputs(node);
@@ -306,6 +310,11 @@ export class DAGScheduler {
 
       // 执行节点（执行器内部发射 node.started / node.completed 事件）
       const output = await this.ctx.nodeExecutor.execute(node, execCtx);
+
+      // 求值节点 yaml 声明的 outputs.pattern，merge 到 output.json。
+      // 让下游能通过 ${{ nodes.X.output.K }} 引用 X 声明的具名输出（如 trimmed_r1 / bam）。
+      // 放在 setNodeOutputs 之前，确保下游 buildEvalContext 时能拿到注入后的 output。
+      this.injectDeclaredOutputs(node, output);
 
       // 成功 → COMPLETED + 快照（不再发射额外的 node.completed 事件）
       this.nodeStates.set(nodeId, "COMPLETED");
@@ -482,6 +491,51 @@ export class DAGScheduler {
     };
   }
 
+  /**
+   * 求值节点 yaml 声明的 outputs.pattern，merge 到 output.json。
+   *
+   * 设计目的：让下游节点能通过 ${{ nodes.X.output.K }} 引用 X 节点声明的具名输出
+   * （如 trimmed_r1 / bam / quant_sf），实现真正的 DAG 数据流，下游不再硬编码路径。
+   *
+   * 求值时机：节点 execute 成功后、存入 nodeOutputs 之前。
+   * - 此时 buildEvalContext 包含 params / secrets / 已完成的上游节点 output，
+   *   pattern 里的 ${{ params.xxx }} / ${{ nodes.Y.output.z }} 都能正确解析。
+   * - pattern 不引用自身节点输出（语义上 outputs 是"该节点对外暴露的产物声明"，
+   *   只依赖 params 和上游），所以不会循环。
+   *
+   * merge 策略：output.json 已是对象则合并（声明的 outputs 覆盖同名字段，
+   * 保留脚本主动 echo 的 JSON 字段）；否则直接用声明 outputs 作为 json。
+   * pattern 求值失败不阻塞节点完成，记录 warn 后跳过该 key（下游引用时拿到 undefined）。
+   */
+  private injectDeclaredOutputs(node: NodeDef, output: NodeOutput): void {
+    const declared = node.outputs;
+    if (!declared || Object.keys(declared).length === 0) return;
+
+    const evalContext = this.buildEvalContext();
+    const injected: Record<string, unknown> = {};
+    for (const [key, def] of Object.entries(declared)) {
+      const pattern = def?.pattern;
+      if (typeof pattern !== "string" || !pattern.trim()) continue;
+      try {
+        injected[key] = resolveTemplate(pattern, evalContext);
+      } catch (err) {
+        console.warn(
+          `[dag-scheduler] Failed to resolve outputs.${key} for node ${node.id}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    if (Object.keys(injected).length === 0) return;
+
+    const existing = output.json;
+    if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+      output.json = { ...(existing as Record<string, unknown>), ...injected };
+    } else {
+      output.json = injected;
+    }
+  }
+
   /** BFS 错误传播 — 标记所有下游节点为 SKIPPED */
   private async propagateFailure(failedNodeId: string): Promise<void> {
     const visited = new Set<string>();
@@ -650,6 +704,29 @@ export class DAGScheduler {
   private async saveSnapshotAfterNode(nodeId: string, output: NodeOutput): Promise<void> {
     await this.ctx.storage.setOutput(this.ctx.runId, nodeId, output);
 
+    const nodeStates: DAGSnapshot["node_states"] = {};
+    for (const [id, s] of this.nodeStates) {
+      const nodeOutput = this.nodeOutputs.get(id);
+      nodeStates[id] = {
+        status: s,
+        ...(nodeOutput?.exit_code != null ? { exit_code: nodeOutput.exit_code } : {}),
+      };
+    }
+
+    const snapshot: DAGSnapshot = {
+      snapshot_id: `snap_${nanoid(10)}`,
+      run_id: this.ctx.runId,
+      last_event_id: this.lastEventId,
+      timestamp: new Date().toISOString(),
+      node_states: nodeStates,
+      dag_status: "RUNNING",
+    };
+
+    await this.ctx.storage.createSnapshot(snapshot);
+  }
+
+  /** 保存当前内存状态的快照（用于节点状态转为 RUNNING 时，让前端轮询能感知） */
+  private async saveSnapshotCurrent(): Promise<void> {
     const nodeStates: DAGSnapshot["node_states"] = {};
     for (const [id, s] of this.nodeStates) {
       const nodeOutput = this.nodeOutputs.get(id);

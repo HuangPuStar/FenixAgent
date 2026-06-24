@@ -46,4 +46,13 @@ export default class SlurmToolNode extends SlurmNode {
    * 引擎跳过严格 produces 校验,由用户在 YAML 自行保证 pattern 真实存在。
    */
   produces = ["*"];
+
+  /** Slurm 作业节点颜色 — 深靛蓝 */
+  color = "#4f46e5";
+
+  /**
+   * Slurm 作业运行时依赖的环境变量。
+   * 引擎通过 SecretsResolver 解析，集群连接信息等可从环境注入。
+   */
+  env: string[] = [];
 }

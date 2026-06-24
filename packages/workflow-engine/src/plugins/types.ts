@@ -20,6 +20,12 @@ export interface InputDef {
   description: string;
   /** Zod 校验 schema。引擎在 inputs 表达式求值后、execute() 调用前执行校验 */
   validate?: z.ZodType;
+  /**
+   * 输入分组标识（可选）。前端据此字段分组渲染输入。
+   * - 未设: 归入默认组（顶部，始终展开）
+   * - "advance": 高级组（底部，默认折叠）
+   */
+  group?: string;
 }
 
 /** 自定义节点插件接口 — 所有工具的基类 */
@@ -43,6 +49,18 @@ export interface CustomNode {
    * 未来扩展其他基类(DockerNode/K8sNode)时新增枚举值。
    */
   kind?: "default" | "slurm";
+
+  /**
+   * 工具颜色（可选）。前端 DAG 画布中此工具节点的头部背景色。
+   * 格式为 hex 色值如 "#8b5cf6"。未设置时使用 custom 节点默认紫色。
+   */
+  color?: string;
+
+  /**
+   * 运行时必需的环境变量列表（可选）。
+   * 前端节点配置卡片展示为依赖提示，引擎未来可据此做执行前校验。
+   */
+  env?: string[];
 
   /** 核心执行方法。引擎可能在 foreach 场景下调多次，每次处理一个迭代单元 */
   execute(ctx: ExecuteContext): Promise<NodeOutput>;
