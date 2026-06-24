@@ -289,6 +289,10 @@ export class DAGScheduler {
     // 设置 RUNNING（执行器内部会发射 node.started 事件）
     this.nodeStates.set(nodeId, "RUNNING");
 
+    // 保存快照让前端轮询能立即看到 RUNNING 状态，
+    // 否则快照只在 DAG 启动和节点完成后才创建，RUNNING 状态对外不可见
+    await this.saveSnapshotCurrent();
+
     try {
       // 解析 ${{ }} 表达式
       const resolvedInputs = this.resolveNodeInputs(node);
@@ -700,6 +704,29 @@ export class DAGScheduler {
   private async saveSnapshotAfterNode(nodeId: string, output: NodeOutput): Promise<void> {
     await this.ctx.storage.setOutput(this.ctx.runId, nodeId, output);
 
+    const nodeStates: DAGSnapshot["node_states"] = {};
+    for (const [id, s] of this.nodeStates) {
+      const nodeOutput = this.nodeOutputs.get(id);
+      nodeStates[id] = {
+        status: s,
+        ...(nodeOutput?.exit_code != null ? { exit_code: nodeOutput.exit_code } : {}),
+      };
+    }
+
+    const snapshot: DAGSnapshot = {
+      snapshot_id: `snap_${nanoid(10)}`,
+      run_id: this.ctx.runId,
+      last_event_id: this.lastEventId,
+      timestamp: new Date().toISOString(),
+      node_states: nodeStates,
+      dag_status: "RUNNING",
+    };
+
+    await this.ctx.storage.createSnapshot(snapshot);
+  }
+
+  /** 保存当前内存状态的快照（用于节点状态转为 RUNNING 时，让前端轮询能感知） */
+  private async saveSnapshotCurrent(): Promise<void> {
     const nodeStates: DAGSnapshot["node_states"] = {};
     for (const [id, s] of this.nodeStates) {
       const nodeOutput = this.nodeOutputs.get(id);
