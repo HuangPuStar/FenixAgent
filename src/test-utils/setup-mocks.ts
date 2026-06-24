@@ -50,6 +50,7 @@ function createLazyMock(keys: readonly string[], getStub: (name: string) => any)
 
 const CONFIG_PG_KEYS = [
   "AGENT_SETTABLE_FIELDS",
+  "addAgentSiteApp",
   "addModel",
   "createAgentConfig",
   "createMcpServer",
@@ -87,6 +88,7 @@ const CONFIG_PG_KEYS = [
   "listProviders",
   "listReadableProviders",
   "listSkills",
+  "removeAgentSiteApp",
   "removeModel",
   "removeModelById",
   "setMcpServerEnabled",

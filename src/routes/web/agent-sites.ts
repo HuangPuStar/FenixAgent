@@ -15,6 +15,7 @@ import {
   uploadRemoteBundle,
   uploadRemoteFile,
 } from "../../services/agent-sites";
+import { addAgentSiteApp, getAgentConfigById, removeAgentSiteApp } from "../../services/config";
 
 /** 将 DB row 转为 API 响应（秒级时间戳，不包含 platformToken） */
 function toResponse(row: AgentSiteAppRow) {
@@ -296,6 +297,62 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         tags: ["Agent Sites"],
         summary: "获取 agent 绑定的 sites",
         description: "按 agentConfigId 返回绑定的 site app 详情列表（按绑定顺序）。",
+      },
+    },
+  )
+
+  // ── L1.5: AgentConfig ↔ SiteApp 单点绑定/解绑 ───────
+  // chat 右侧 Sites tab 的 + / × 按钮直接调这两个接口，绑定/解绑立即写 DB 生效，
+  // 无需重启 agent 实例（绑定关系仅前端 ArtifactsPanel 查 DB 使用）。
+  // 双重组织校验：agentConfig + siteApp 都必须在当前组织内，防御性兜底。
+  // 重复绑定走 PK 联合唯一 + ON CONFLICT DO NOTHING，幂等成功。
+
+  .post(
+    "/agent-configs/:agentConfigId/sites/:siteAppId",
+    async ({ params, store, error }) => {
+      const authCtx = store.authContext!;
+      const agentConfig = await getAgentConfigById(params.agentConfigId, authCtx.organizationId);
+      if (!agentConfig) {
+        return error(404, { error: { type: "not_found", message: "Agent 配置不存在" } });
+      }
+      const siteApp = await agentSiteAppRepo.getById(params.siteAppId);
+      if (!siteApp || siteApp.organizationId !== authCtx.organizationId) {
+        return error(404, { error: { type: "not_found", message: "Site 不存在" } });
+      }
+      await addAgentSiteApp(params.agentConfigId, params.siteAppId);
+      return { success: true as const };
+    },
+    {
+      sessionAuth: true,
+      detail: {
+        tags: ["Agent Sites"],
+        summary: "挂载单个 site 到 agent",
+        description: "单点绑定，PK 联合唯一保证幂等。chat 右侧 Sites tab 的 + 按钮调用。",
+      },
+    },
+  )
+
+  .delete(
+    "/agent-configs/:agentConfigId/sites/:siteAppId",
+    async ({ params, store, error }) => {
+      const authCtx = store.authContext!;
+      const agentConfig = await getAgentConfigById(params.agentConfigId, authCtx.organizationId);
+      if (!agentConfig) {
+        return error(404, { error: { type: "not_found", message: "Agent 配置不存在" } });
+      }
+      const siteApp = await agentSiteAppRepo.getById(params.siteAppId);
+      if (!siteApp || siteApp.organizationId !== authCtx.organizationId) {
+        return error(404, { error: { type: "not_found", message: "Site 不存在" } });
+      }
+      await removeAgentSiteApp(params.agentConfigId, params.siteAppId);
+      return { success: true as const };
+    },
+    {
+      sessionAuth: true,
+      detail: {
+        tags: ["Agent Sites"],
+        summary: "从 agent 卸载单个 site",
+        description: "单点解绑，DELETE 天然幂等。chat 右侧 Sites tab 的 × 按钮调用。",
       },
     },
   )

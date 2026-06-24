@@ -6,6 +6,7 @@ type StubFn = (...args: any[]) => any;
 
 interface ConfigPgStubs {
   AGENT_SETTABLE_FIELDS: string[];
+  addAgentSiteApp: StubFn;
   addModel: StubFn;
   createAgentConfig: StubFn;
   createMcpServer: StubFn;
@@ -42,6 +43,7 @@ interface ConfigPgStubs {
   listMcpServers: StubFn;
   listProviders: StubFn;
   listSkills: StubFn;
+  removeAgentSiteApp: StubFn;
   removeModel: StubFn;
   removeModelById: StubFn;
   setMcpServerEnabled: StubFn;

@@ -76,6 +76,8 @@ export interface AgentDetail extends AgentInfo {
   prompt?: string | null;
   extra?: Record<string, unknown> | null;
   skillIds?: string[];
+  mcpIds?: string[];
+  siteAppIds?: string[];
   machineId?: string | null;
   relatedResources?: {
     modelLabel?: string | null;
@@ -83,6 +85,7 @@ export interface AgentDetail extends AgentInfo {
     skills?: Array<{ id: string; label: string }>;
     mcps?: Array<{ id: string; label: string }>;
     knowledgeBases?: Array<{ id: string; label: string; slug?: string | null }>;
+    siteApps?: Array<{ id: string; label: string; remoteAppId: string | null }>;
   };
 }
 export type ConfigAction = "list" | "get" | "set" | "create" | "delete" | "set_default";

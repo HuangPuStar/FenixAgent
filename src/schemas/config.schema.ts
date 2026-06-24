@@ -133,6 +133,14 @@ export const AgentKnowledgeBaseLabelSchema = z
   })
   .describe("Agent 绑定的知识库标签。");
 
+export const AgentSiteAppLabelSchema = z
+  .object({
+    id: z.string().describe("Site App ID。"),
+    label: z.string().describe("Site App 名称。"),
+    remoteAppId: z.string().nullable().describe("远程 App ID（如 app-xxxx）；未解析到时为 null。"),
+  })
+  .describe("Agent 绑定的 Site App 标签。");
+
 export const AgentKnowledgePolicySchema = z
   .object({
     searchFirst: z.boolean().optional().describe("是否优先检索知识库。"),
@@ -157,6 +165,7 @@ export const AgentRelatedResourceViewSchema = z
     skills: z.array(AgentLabelSchema).describe("关联 Skill 的展示列表。"),
     mcps: z.array(AgentLabelSchema).describe("关联 MCP Server 的展示列表。"),
     knowledgeBases: z.array(AgentKnowledgeBaseLabelSchema).describe("关联知识库的展示列表。"),
+    siteApps: z.array(AgentSiteAppLabelSchema).describe("关联 Site App 的展示列表。"),
   })
   .describe("Agent 关联资源展示视图。");
 
@@ -199,6 +208,7 @@ export const AgentDetailSchema = z
     knowledge: AgentKnowledgeConfigSchema.nullable().describe("知识库绑定配置；未设置时为 null。"),
     skillIds: z.array(z.string()).optional().describe("绑定的 Skill ID 列表。"),
     mcpIds: z.array(z.string()).optional().describe("绑定的 MCP Server ID 列表。"),
+    siteAppIds: z.array(z.string()).optional().describe("绑定的 Site App ID 列表。"),
     machineId: z.string().nullable().optional().describe("绑定的机器 ID；未设置时为 null。"),
     relatedResources: AgentRelatedResourceViewSchema.optional().describe("关联资源的展示视图。"),
     resourceAccess: AgentResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),

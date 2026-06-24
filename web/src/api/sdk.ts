@@ -101,6 +101,23 @@ export const agentSitesApi = {
     agentSitesFetch<{ success: boolean; data: unknown[] }>(
       `/web/agent-sites/agent-configs/${encodeURIComponent(agentConfigId)}/sites`,
     ),
+  /**
+   * 单点绑定 site 到 agent。chat 右侧 Sites tab 的 + 按钮调用。
+   * 后端走 PK 联合唯一 + ON CONFLICT DO NOTHING，重复绑定幂等。
+   */
+  bindSite: (agentConfigId: string, siteAppId: string) =>
+    agentSitesFetch<{ success: boolean }>(
+      `/web/agent-sites/agent-configs/${encodeURIComponent(agentConfigId)}/sites/${encodeURIComponent(siteAppId)}`,
+      { method: "POST" },
+    ),
+  /**
+   * 单点解绑 site。chat 右侧 Sites tab 的 × 按钮调用。DELETE 天然幂等。
+   */
+  unbindSite: (agentConfigId: string, siteAppId: string) =>
+    agentSitesFetch<{ success: boolean }>(
+      `/web/agent-sites/agent-configs/${encodeURIComponent(agentConfigId)}/sites/${encodeURIComponent(siteAppId)}`,
+      { method: "DELETE" },
+    ),
 };
 
 // ── V2 模块（一般前端不直接使用，保留导出） ──

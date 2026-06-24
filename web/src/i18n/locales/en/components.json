@@ -131,7 +131,26 @@
   },
   "panelMode": {
     "files": "Files",
-    "pendingDiff": "{{count}} new file change(s) pending in Files"
+    "sites": "Sites",
+    "sitesTabAriaLabel": "Site selector",
+    "sitesEmptyTitle": "No sites bound",
+    "sitesEmptyHint": "Bind a site in Agent config to preview it here.",
+    "pendingDiff": "{{count}} new file change(s) pending in Files",
+    "mountSite": "Mount Site",
+    "mountSiteAriaLabel": "Mount site",
+    "unmountSite": "Unmount",
+    "unmountSiteAriaLabel": "Unmount site",
+    "mountDialogTitle": "Mount Sites",
+    "mountDialogHint": "Select sites to mount to this agent",
+    "mountDialogConfirm": "Mount {{count}}",
+    "mountDialogConfirmNone": "Mount",
+    "noAvailableSites": "No more sites available to mount",
+    "unmountConfirmTitle": "Unmount site?",
+    "unmountConfirm": "Unmount \"{{name}}\" from this agent?",
+    "mountSuccess": "Mounted {{count}} site(s)",
+    "unmountSuccess": "Site unmounted",
+    "mountFailed": "Mount failed",
+    "unmountFailed": "Unmount failed"
   },
   "siteFrame": {
     "reload": "Reload site",
