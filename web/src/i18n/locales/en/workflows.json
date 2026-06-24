@@ -394,7 +394,10 @@
     "slurm_script_env": "Script Environment (script.env)",
     "slurm_script_env_placeholder": "KEY=VALUE (one per line)",
     "slurm_inputs_hint": "Receive upstream node outputs via ${{ }} templates",
-    "slurm_env_hint": "Set static environment variables for the script"
+    "slurm_env_hint": "Set static environment variables for the script",
+    "group_default": "Basic",
+    "group_advance": "Advanced",
+    "group_unset": "Remove from advanced"
   },
   "run_params": {
     "title": "Run Parameters",

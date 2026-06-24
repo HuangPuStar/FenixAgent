@@ -394,7 +394,10 @@
     "slurm_script_env": "脚本环境变量 (script.env)",
     "slurm_script_env_placeholder": "KEY=VALUE（每行一个）",
     "slurm_inputs_hint": "接收上游节点的输出，用 ${{ }} 模板引用",
-    "slurm_env_hint": "设置脚本运行时的静态环境变量"
+    "slurm_env_hint": "设置脚本运行时的静态环境变量",
+    "group_default": "基础配置",
+    "group_advance": "高级选项",
+    "group_unset": "移除高级分组"
   },
   "run_params": {
     "title": "运行参数",

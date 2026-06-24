@@ -14,6 +14,8 @@ export interface ParamEntry {
   type?: ParamType;
   default?: unknown;
   required?: boolean;
+  /** 参数分组标识。未设归默认组，"advance" 归高级组 */
+  group?: string;
 }
 
 export function ParamsEditor({
@@ -38,6 +40,17 @@ export function ParamsEditor({
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [objectDrafts, setObjectDrafts] = useState<Record<number, string>>({});
   const [focusKeyIdx, setFocusKeyIdx] = useState<number | null>(null);
+  /** 折叠的分组名集合。advance 组默认折叠 */
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["advance"]));
+
+  const toggleGroupCollapse = (groupName: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupName)) next.delete(groupName);
+      else next.add(groupName);
+      return next;
+    });
+  };
 
   const entriesLen = entries.length;
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on length change
@@ -183,70 +196,148 @@ export function ParamsEditor({
     );
   };
 
+  /** 按 group 分组，默认组（""）在前，其余按字母序排列 */
+  const groups = (() => {
+    const map = new Map<string, number[]>();
+    entries.forEach(([, v], i) => {
+      const g = ((v as ParamEntry).group as string) || "";
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(i);
+    });
+    const result: { groupKey: string; label: string; entryIndices: number[] }[] = [];
+    for (const [gk, indices] of map) {
+      result.push({
+        groupKey: gk,
+        label: gk === "" ? t("editor.group_default") : gk === "advance" ? t("editor.group_advance") : gk,
+        entryIndices: indices,
+      });
+    }
+    result.sort((a, b) => {
+      if (a.groupKey === "") return -1;
+      if (b.groupKey === "") return 1;
+      return a.groupKey.localeCompare(b.groupKey);
+    });
+    return result;
+  })();
+
+  /** 单条参数行渲染 */
+  const renderParamRow = (i: number, v: ParamEntry, k: string) => {
+    const isConfirming = confirmDeleteKey === k && k !== "";
+    return (
+      // biome-ignore lint/suspicious/noArrayIndexKey: index needed to keep focus stable
+      <div key={`${k}-${i}`}>
+        {/* 第一行：参数名 + 类型 + 必填 + 删除 */}
+        <div className="flex items-center gap-1.5">
+          <Input
+            value={k}
+            onChange={(e) => updateKey(i, e.target.value)}
+            placeholder={namePlaceholder}
+            readOnly={readOnly}
+            autoFocus={i === focusKeyIdx}
+            className={`h-8 text-xs ${isEmptyKey(k) ? "border-red-300 bg-red-50" : ""}`}
+            style={{ width: "28%" }}
+          />
+          <Select
+            value={v.type ?? "string"}
+            onValueChange={(val) => changeType(i, val as ParamType)}
+            disabled={readOnly}
+          >
+            <SelectTrigger className="h-8 text-xs w-[84px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="string">string</SelectItem>
+              <SelectItem value="number">number</SelectItem>
+              <SelectItem value="boolean">boolean</SelectItem>
+              <SelectItem value="object">object</SelectItem>
+            </SelectContent>
+          </Select>
+          <label className="flex items-center gap-1 text-[10px] text-gray-500 w-16 cursor-pointer">
+            <Checkbox
+              checked={v.required === true}
+              onCheckedChange={(checked) => updateEntry(i, { required: !!checked })}
+              disabled={readOnly}
+            />
+            {t("editor.params_required_label")}
+          </label>
+          {!readOnly && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => handleDeleteClick(i)}
+              title={isConfirming ? t("components:confirm") : undefined}
+              className={`size-6 ${isConfirming ? "bg-amber-50 text-red-500" : "text-gray-400"}`}
+            >
+              <Trash2 size={13} />
+            </Button>
+          )}
+        </div>
+        {/* 第二行：默认值 */}
+        <div className="flex gap-1.5 mt-1 items-start">
+          <span className="text-[10px] text-gray-400 text-right leading-8" style={{ width: "28%" }}>
+            {t("editor.params_default_label")}
+          </span>
+          <div className="flex-1 flex">{renderDefaultControl(i, v)}</div>
+          {/* spacer for delete button width */}
+          {!readOnly && <div className="size-6 flex-shrink-0" />}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-1.5">
-      {entries.map(([k, v], i) => {
-        const entry = v as ParamEntry;
-        const isConfirming = confirmDeleteKey === k && k !== "";
-        return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: index needed to keep focus stable
-          <div key={`${k}-${i}`}>
-            {/* 第一行：参数名 + 类型 + 必填 + 删除 */}
-            <div className="flex items-center gap-1.5">
-              <Input
-                value={k}
-                onChange={(e) => updateKey(i, e.target.value)}
-                placeholder={namePlaceholder}
-                readOnly={readOnly}
-                autoFocus={i === focusKeyIdx}
-                className={`h-8 text-xs ${isEmptyKey(k) ? "border-red-300 bg-red-50" : ""}`}
-                style={{ width: "28%" }}
-              />
-              <Select
-                value={entry.type ?? "string"}
-                onValueChange={(v) => changeType(i, v as ParamType)}
-                disabled={readOnly}
+      {groups.map(({ groupKey, label, entryIndices }) => {
+        const hasGroup = groupKey !== "";
+        const isCollapsed = collapsedGroups.has(groupKey);
+
+        if (hasGroup) {
+          // 有名称的分组：渲染折叠容器
+          return (
+            <div key={groupKey} style={{ marginBottom: 4 }}>
+              <div
+                onClick={() => toggleGroupCollapse(groupKey)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  color: "#374151",
+                  fontSize: 12,
+                  padding: "6px 0",
+                  borderBottom: "1px solid #e5e7eb",
+                  marginBottom: 4,
+                }}
               >
-                <SelectTrigger className="h-8 text-xs w-[84px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="string">string</SelectItem>
-                  <SelectItem value="number">number</SelectItem>
-                  <SelectItem value="boolean">boolean</SelectItem>
-                  <SelectItem value="object">object</SelectItem>
-                </SelectContent>
-              </Select>
-              <label className="flex items-center gap-1 text-[10px] text-gray-500 w-16 cursor-pointer">
-                <Checkbox
-                  checked={entry.required === true}
-                  onCheckedChange={(checked) => updateEntry(i, { required: !!checked })}
-                  disabled={readOnly}
-                />
-                {t("editor.params_required_label")}
-              </label>
-              {!readOnly && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDeleteClick(i)}
-                  title={isConfirming ? t("components:confirm") : undefined}
-                  className={`size-6 ${isConfirming ? "bg-amber-50 text-red-500" : "text-gray-400"}`}
+                <span
+                  style={{
+                    fontSize: 10,
+                    transition: "transform 0.15s",
+                    transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)",
+                  }}
                 >
-                  <Trash2 size={13} />
-                </Button>
+                  ▶
+                </span>
+                {label}
+                {isCollapsed && (
+                  <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>({entryIndices.length})</span>
+                )}
+              </div>
+              {!isCollapsed && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {entryIndices.map((i) => renderParamRow(i, entries[i][1] as ParamEntry, entries[i][0]))}
+                </div>
               )}
             </div>
-            {/* 第二行：默认值 */}
-            <div className="flex gap-1.5 mt-1 items-start">
-              <span className="text-[10px] text-gray-400 text-right leading-8" style={{ width: "28%" }}>
-                {t("editor.params_default_label")}
-              </span>
-              <div className="flex-1 flex">{renderDefaultControl(i, entry)}</div>
-              {/* spacer for delete button width */}
-              {!readOnly && <div className="size-6 flex-shrink-0" />}
-            </div>
+          );
+        }
+
+        // 默认组（无 group）：扁平渲染，无容器包裹
+        return (
+          <div key="_default" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {entryIndices.map((i) => renderParamRow(i, entries[i][1] as ParamEntry, entries[i][0]))}
           </div>
         );
       })}

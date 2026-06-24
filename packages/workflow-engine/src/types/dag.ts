@@ -3,6 +3,10 @@ export interface ParamDef {
   type?: "string" | "number" | "boolean" | "object";
   default?: unknown;
   required?: boolean;
+  /** 参数分组标识（可选）。前端 RunParamsDialog 据此分组渲染。
+   *  - 未设: 归入默认组（顶部，始终展开）
+   *  - "advance": 高级组（底部，默认折叠）*/
+  group?: string;
 }
 
 /** 重试配置 */
