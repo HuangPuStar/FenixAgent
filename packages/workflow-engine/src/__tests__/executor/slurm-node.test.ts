@@ -608,7 +608,6 @@ describe("SlurmNode.generateHeader() with ctx.inputs", () => {
         KEEP: "v",
         SKIP_NULL: null,
         SKIP_UNDEF: undefined,
-        // biome-ignore lint/suspicious/noExplicitAny: 测试需要 unknown 类型
         SKIP_OBJ: { x: 1 } as any,
         NUM: 42,
         BOOL: true,

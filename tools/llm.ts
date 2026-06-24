@@ -36,6 +36,7 @@ export default class LlmToolNode implements CustomNode {
     user_prompt: {
       type: "string",
       required: true,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: 工作流模板语法 ${{ }}
       description: "用户提示词，支持 ${{ }} 表达式引用上游输出或 params",
     },
     system_prompt: {
@@ -102,7 +103,7 @@ export default class LlmToolNode implements CustomNode {
     const systemPrompt = ctx.inputs.system_prompt as string | undefined;
     const userPrompt = ctx.inputs.user_prompt as string | undefined;
 
-    if (!userPrompt || !userPrompt.trim()) {
+    if (!userPrompt?.trim()) {
       throw new Error("LlmNode: user_prompt is required and must be non-empty");
     }
 

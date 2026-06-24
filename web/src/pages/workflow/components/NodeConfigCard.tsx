@@ -206,6 +206,7 @@ export function NodeConfigCard({
                   t("editor.shell_command"),
                   String(sd?.command ?? ""),
                   (v) => updateNodeData({ command: v }),
+                  // biome-ignore lint/suspicious/noTemplateCurlyInString: 工作流模板语法 ${{ }}
                   { placeholder: 'echo "Hello ${{ params.name }}"' },
                 )}
                 {renderBlockField(t("editor.shell_env"), String(sd?.env ?? ""), (v) => updateNodeData({ env: v }), {
@@ -374,6 +375,7 @@ export function NodeConfigCard({
                   t("editor.api_headers"),
                   String(sd?.headers ?? ""),
                   (v) => updateNodeData({ headers: v }),
+                  // biome-ignore lint/suspicious/noTemplateCurlyInString: 工作流模板语法 ${{ }}
                   { placeholder: '{"Authorization": "Bearer ${{ secrets.KEY }}"}' },
                 )}
                 {renderBlockField(t("editor.api_body"), String(sd?.body ?? ""), (v) => updateNodeData({ body: v }), {

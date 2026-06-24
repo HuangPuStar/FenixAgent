@@ -224,7 +224,6 @@ export function ParamsEditor({
   const renderParamRow = (i: number, v: ParamEntry, k: string) => {
     const isConfirming = confirmDeleteKey === k && k !== "";
     return (
-      // biome-ignore lint/suspicious/noArrayIndexKey: index needed to keep focus stable
       <div key={`${k}-${i}`}>
         {/* 第一行：参数名 + 类型 + 必填 + 删除 */}
         <div className="flex items-center gap-1.5">
