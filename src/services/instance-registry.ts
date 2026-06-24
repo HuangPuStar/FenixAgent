@@ -46,6 +46,35 @@ export class InstanceRegistry {
     return this.supplements.get(instanceId);
   }
 
+  /** 更新实例最近一次业务活跃时间，并在重新活跃时清空空闲观察起点。 */
+  touchActivity(instanceId: string, at = Date.now()): void {
+    const supplement = this.supplements.get(instanceId);
+    if (!supplement) return;
+    supplement.lastActivityAt = at;
+    if (supplement.relayCount > 0) {
+      supplement.lastRelayDetachedAt = null;
+    }
+  }
+
+  /** 记录 relay 连接附着，实例重新进入前台使用状态。 */
+  attachRelay(instanceId: string, at = Date.now()): void {
+    const supplement = this.supplements.get(instanceId);
+    if (!supplement) return;
+    supplement.relayCount += 1;
+    supplement.lastActivityAt = at;
+    supplement.lastRelayDetachedAt = null;
+  }
+
+  /** 记录 relay 连接分离；当计数归零时开始空闲观察窗口。 */
+  detachRelay(instanceId: string, at = Date.now()): void {
+    const supplement = this.supplements.get(instanceId);
+    if (!supplement) return;
+    supplement.relayCount = Math.max(0, supplement.relayCount - 1);
+    if (supplement.relayCount === 0) {
+      supplement.lastRelayDetachedAt = at;
+    }
+  }
+
   /** 检查实例是否已注册 */
   has(instanceId: string): boolean {
     return this.supplements.has(instanceId);

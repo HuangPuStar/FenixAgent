@@ -98,6 +98,12 @@ export interface InstanceSupplement {
   environmentId: string;
   instanceNumber: number;
   organizationId: string;
+  /** 最近一次非保活 ACP 业务消息时间 */
+  lastActivityAt: number;
+  /** 当前绑定到该实例的前端 relay 连接数 */
+  relayCount: number;
+  /** 最后一次 relay 全部断开、实例进入空闲观察窗口的时间 */
+  lastRelayDetachedAt: number | null;
 }
 
 // ────────────────────────────────────────────

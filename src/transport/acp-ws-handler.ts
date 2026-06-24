@@ -1,5 +1,6 @@
 import { createLogger, error as logError } from "@fenix/logger";
 import { config } from "../config";
+import { touchInstanceActivity } from "../services/acp-idle-monitor";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
@@ -252,6 +253,10 @@ export async function handleAcpWsMessage(
     if (entry.isMachine && entry.remoteTransport) {
       const REMOTE_PROTOCOL_TYPES = ["prepare_result", "start_result", "stop_result", "relay"];
       if (REMOTE_PROTOCOL_TYPES.includes(msg.type as string)) {
+        const instanceId = (msg as Record<string, unknown>).instance_id;
+        if (typeof instanceId === "string") {
+          touchInstanceActivity(instanceId, msg);
+        }
         logger.debug("ACP ← remote", {
           type: msg.type,
           machineId: entry.machineId,
@@ -274,6 +279,10 @@ export async function handleAcpWsMessage(
     ];
     if (entry.isMachine && SESSION_MSG_TYPES.includes(msg.type as string)) {
       const sessionId = msg.session_id as string | undefined;
+      const instanceId = (msg as Record<string, unknown>).instance_id;
+      if (typeof instanceId === "string") {
+        touchInstanceActivity(instanceId, msg);
+      }
       logger.debug("ACP ← session", {
         type: msg.type,
         machineId: entry.machineId,
