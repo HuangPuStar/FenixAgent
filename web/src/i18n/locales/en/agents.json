@@ -95,6 +95,12 @@
     "selectedCount": "{{count}} MCP server(s) selected",
     "noOptions": "No MCP servers available"
   },
+  "sites": {
+    "tabTitle": "Bind Sites",
+    "selectedCount": "{{count}} site(s) selected",
+    "noOptions": "No sites available — create one on the Sites page first",
+    "toggleList": "Toggle site list"
+  },
   "memory": {
     "enableTitle": "Agent Memory",
     "enableDescription": "Enable agent memory across conversations"

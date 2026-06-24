@@ -129,6 +129,38 @@
     "contextPlaceholder": "上下文 (placeholder), entries: {{count}}",
     "previewPlaceholder": "预览 (placeholder), entries: {{count}}"
   },
+  "panelMode": {
+    "files": "文件",
+    "sites": "站点",
+    "sitesTabAriaLabel": "站点选择栏",
+    "sitesEmptyTitle": "未绑定站点",
+    "sitesEmptyHint": "请在 Agent 配置中绑定 Site 后在此预览",
+    "pendingDiff": "文件区有 {{count}} 个新文件改动",
+    "mountSite": "挂载站点",
+    "mountSiteAriaLabel": "挂载站点",
+    "unmountSite": "卸载",
+    "unmountSiteAriaLabel": "卸载站点",
+    "mountDialogTitle": "挂载站点",
+    "mountDialogHint": "选择要挂载到此 Agent 的站点",
+    "mountDialogConfirm": "挂载 {{count}}",
+    "mountDialogConfirmNone": "挂载",
+    "noAvailableSites": "没有可挂载的站点",
+    "unmountConfirmTitle": "卸载站点？",
+    "unmountConfirm": "确定卸载此 Agent 的 \"{{name}}\" 站点？",
+    "mountSuccess": "已挂载 {{count}} 个站点",
+    "unmountSuccess": "已卸载站点",
+    "mountFailed": "挂载失败",
+    "unmountFailed": "卸载失败"
+  },
+  "siteFrame": {
+    "reload": "刷新站点",
+    "openInNewTab": "在新标签页打开",
+    "loading": "加载站点中...",
+    "loadingSites": "加载 Agent 绑定的站点...",
+    "loadFailed": "加载站点失败：{{message}}",
+    "loadTimeout": "站点加载超时",
+    "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开"
+  },
   "fileTree": {
     "refresh": "刷新",
     "emptyState": "工作区暂无文件",

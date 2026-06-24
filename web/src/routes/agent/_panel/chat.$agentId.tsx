@@ -4,6 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from "react-i18next";
 import { usePanelRef } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { envApi } from "../../../../src/api/sdk";
 import { extractChangedFiles } from "../../../../src/lib/extract-changed-files";
 import type { ThreadEntry } from "../../../../src/lib/types";
 import { cn } from "../../../../src/lib/utils";
@@ -32,6 +33,28 @@ function ChatRoute() {
   const artifactsCollapsedRef = useRef(true);
   // toggle 按钮的视觉状态，由 Panel.onResize 同步
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
+
+  // 加载 environment.agent_config_id，传给 ArtifactsPanel 拉取绑定的 sites
+  // 失败时静默降级（agentConfigId=null → ArtifactsPanel 不显示 Sites tab）
+  const [agentConfigId, setAgentConfigId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setAgentConfigId(null);
+    envApi
+      .get({ id: agentId })
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        const envData = data as unknown as { agent_config_id?: string | null } | undefined;
+        const id = envData?.agent_config_id ?? null;
+        if (id) setAgentConfigId(id);
+      })
+      .catch((err: unknown) => {
+        console.warn("[chat.$agentId] 加载 environment 详情失败，Sites tab 不可用", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
 
   // 路由层只需 entries 派生 changedFiles，环境名/token 由 ChatComposer 内部获取
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
@@ -151,7 +174,7 @@ function ChatRoute() {
             collapsedSize="0%"
             onResize={handleArtifactsResize}
           >
-            <ArtifactsPanel key={agentId} envId={agentId} changedFiles={changedFiles} />
+            <ArtifactsPanel key={agentId} envId={agentId} agentConfigId={agentConfigId} changedFiles={changedFiles} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

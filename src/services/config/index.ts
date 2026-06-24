@@ -15,6 +15,12 @@ export {
   validateAgentData,
 } from "./agent-config";
 export { listAgentMcpIds, syncAgentMcps } from "./agent-config-mcp";
+export {
+  addAgentSiteApp,
+  listAgentSiteAppIds,
+  removeAgentSiteApp,
+  syncAgentSiteApps,
+} from "./agent-config-site-app";
 export { listAgentSkillIds, syncAgentSkills } from "./agent-config-skill";
 export { parseJsonb, parseJsonbOr } from "./jsonb";
 export {

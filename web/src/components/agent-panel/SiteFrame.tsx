@@ -1,0 +1,160 @@
+import { AlertCircle, ExternalLink, Globe, Loader2, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import { NS } from "../../i18n";
+import { cn } from "../../lib/utils";
+
+export interface SiteFrameProps {
+  /** 远程 app id（形如 app-xxxx），拼接到同源根路径展示业务前端 */
+  remoteAppId: string;
+  /** 显示名称（用于 aria-label / title） */
+  name: string;
+}
+
+/** 加载超时阈值：超过此时长 onLoad 仍未触发则认为 site 不可达 */
+const LOAD_TIMEOUT_MS = 15_000;
+
+type LoadState = "loading" | "loaded" | "timeout";
+
+/**
+ * SiteFrame —— 在 ArtifactsPanel 内嵌加载一个 agent-sites 应用。
+ *
+ * 通过同源 `/${remoteAppId}/` 路径访问业务前端，避免跨域；iframe 加载状态由
+ * onLoad 回调关闭，并在外部状态切换时通过 key 重置 src 强制刷新。
+ *
+ * 兜底：site 不可达时浏览器对部分连接级失败不会触发 onLoad，会让用户卡在
+ * 永久 loading。这里加 15s 超时定时器 + iframe onError，超时后展示错误态 +
+ * 重试按钮，避免无反馈的死等。
+ *
+ * 设计原因：保持 agent-sites 的鉴权/cookie 链路（L3 业务前端直连 PB），
+ * 不在 RCS 后端代理业务前端流量——后端只代理 L2 PB Admin API。
+ */
+export function SiteFrame({ remoteAppId, name }: SiteFrameProps) {
+  const { t } = useTranslation(NS.COMPONENTS);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [reloadKey, setReloadKey] = useState(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 同源路径，避免跨域；以 / 开头确保从 RCS 域根解析
+  // 调用方切换 site 时通过 key={remoteAppId} 强制重挂载，loading 自然回到 true
+  const src = `/${remoteAppId}/`;
+
+  // 加载超时兜底：每次 reloadKey 变化（用户点刷新）重挂载 iframe 时重启定时器，
+  // onLoad 触发后清除。src 在组件实例内是常量（父组件用 key={remoteAppId} 重挂载），
+  // 变化等同整个组件重挂载，effect 自然重新执行，故不列入依赖。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey 是 reload 信号，effect 内部不需要直接引用
+  useEffect(() => {
+    setLoadState("loading");
+    timerRef.current = setTimeout(() => {
+      // 若 onLoad 仍未触发，切换到 timeout 错误态
+      setLoadState((cur) => (cur === "loading" ? "timeout" : cur));
+    }, LOAD_TIMEOUT_MS);
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [reloadKey]);
+
+  const handleOpenInNewTab = useCallback(() => {
+    window.open(src, "_blank", "noopener,noreferrer");
+  }, [src]);
+
+  const handleReload = useCallback(() => {
+    setReloadKey((k) => k + 1);
+  }, []);
+
+  const isLoading = loadState === "loading";
+  const isTimeout = loadState === "timeout";
+
+  return (
+    <div className="flex h-full min-w-0 flex-col bg-surface-1">
+      <div className="flex items-center gap-2 border-b border-border/40 px-3 py-1.5 flex-shrink-0 bg-surface-1/50">
+        <Globe className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
+        <span className="text-xs text-text-muted truncate flex-1 min-w-0" title={name}>
+          {name}
+        </span>
+        <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-dim font-mono flex-shrink-0">
+          {remoteAppId}
+        </code>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0 text-text-muted hover:text-text-primary"
+          onClick={handleReload}
+          title={t("siteFrame.reload")}
+          aria-label={t("siteFrame.reload")}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0 text-text-muted hover:text-text-primary"
+          onClick={handleOpenInNewTab}
+          title={t("siteFrame.openInNewTab")}
+          aria-label={t("siteFrame.openInNewTab")}
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <div className="relative flex-1 min-h-0 min-w-0">
+        {isLoading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface-1/80">
+            <Loader2 className="h-6 w-6 text-brand animate-spin" />
+            <span className="text-xs text-text-muted">{t("siteFrame.loading")}</span>
+          </div>
+        )}
+        {isTimeout && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-surface-1/95 px-6 text-center">
+            <AlertCircle className="h-8 w-8 text-orange-500" />
+            <div>
+              <p className="text-sm font-medium text-text-primary">{t("siteFrame.loadTimeout")}</p>
+              <p className="mt-1 text-xs text-text-muted">{t("siteFrame.loadTimeoutHint")}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleReload}>
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                {t("siteFrame.reload")}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleOpenInNewTab}>
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                {t("siteFrame.openInNewTab")}
+              </Button>
+            </div>
+          </div>
+        )}
+        {/* 即使 timeout 也保留 iframe：site 可能只是慢，最终还是会响应；
+            视觉上由错误态遮罩覆盖，不影响 iframe 在后台继续尝试加载 */}
+        <iframe
+          key={reloadKey}
+          ref={iframeRef}
+          src={src}
+          title={name}
+          className={cn("h-full w-full border-0 bg-white", isTimeout && "pointer-events-none")}
+          onLoad={() => {
+            if (timerRef.current) {
+              clearTimeout(timerRef.current);
+              timerRef.current = null;
+            }
+            setLoadState("loaded");
+          }}
+          onError={() => {
+            if (timerRef.current) {
+              clearTimeout(timerRef.current);
+              timerRef.current = null;
+            }
+            setLoadState("timeout");
+          }}
+          // sandbox：业务前端可以 form-submit / run scripts，但禁止跨域访问 RCS cookie
+          // allow-popups 让 OAuth 弹窗能工作；allow-same-origin 让业务前端访问自己的 cookie
+          sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-downloads"
+          referrerPolicy="no-referrer"
+        />
+      </div>
+    </div>
+  );
+}

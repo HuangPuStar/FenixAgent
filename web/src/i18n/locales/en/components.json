@@ -129,6 +129,38 @@
     "contextPlaceholder": "Context (placeholder), entries: {{count}}",
     "previewPlaceholder": "Preview (placeholder), entries: {{count}}"
   },
+  "panelMode": {
+    "files": "Files",
+    "sites": "Sites",
+    "sitesTabAriaLabel": "Site selector",
+    "sitesEmptyTitle": "No sites bound",
+    "sitesEmptyHint": "Bind a site in Agent config to preview it here.",
+    "pendingDiff": "{{count}} new file change(s) pending in Files",
+    "mountSite": "Mount Site",
+    "mountSiteAriaLabel": "Mount site",
+    "unmountSite": "Unmount",
+    "unmountSiteAriaLabel": "Unmount site",
+    "mountDialogTitle": "Mount Sites",
+    "mountDialogHint": "Select sites to mount to this agent",
+    "mountDialogConfirm": "Mount {{count}}",
+    "mountDialogConfirmNone": "Mount",
+    "noAvailableSites": "No more sites available to mount",
+    "unmountConfirmTitle": "Unmount site?",
+    "unmountConfirm": "Unmount \"{{name}}\" from this agent?",
+    "mountSuccess": "Mounted {{count}} site(s)",
+    "unmountSuccess": "Site unmounted",
+    "mountFailed": "Mount failed",
+    "unmountFailed": "Unmount failed"
+  },
+  "siteFrame": {
+    "reload": "Reload site",
+    "openInNewTab": "Open in new tab",
+    "loading": "Loading site...",
+    "loadingSites": "Loading agent sites...",
+    "loadFailed": "Failed to load sites: {{message}}",
+    "loadTimeout": "Site load timed out",
+    "loadTimeoutHint": "The site may still be loading in the background. Try reloading or open it in a new tab."
+  },
   "fileTree": {
     "refresh": "Refresh",
     "emptyState": "No files in workspace",

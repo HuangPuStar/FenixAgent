@@ -55,7 +55,7 @@ export class ProtocolAdapter {
         "[protocol-debug] stream_event type:",
         event.type,
         "delta:",
-        JSON.stringify((event as any).delta?.type ?? "none").slice(0, 60),
+        JSON.stringify((event.delta as Record<string, unknown> | undefined)?.type ?? "none").slice(0, 60),
       );
       switch (event.type) {
         case "content_block_delta": {

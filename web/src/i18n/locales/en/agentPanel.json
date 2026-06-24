@@ -74,6 +74,7 @@
   "cancel": "Cancel",
   "remoteNode": "Remote",
   "memories": "Memories",
+  "sites": "Agent Sites",
   "changedFiles": {
     "title": "Changed Files",
     "count_one": "{{count}} file",
