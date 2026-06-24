@@ -117,6 +117,9 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 | `SKILL_DIR` | Skill 文件系统存储目录 | `./data/skills` |
 | `WORKSPACE_ROOT` | 工作区根目录 | `./workspaces` |
 | `RCS_SYSTEM_ADMIN_PASSWORD_FILE` | 首次启动管理员密码存放路径 | `data/password.txt` |
+| `RCS_ACP_IDLE_TIMEOUT_SECONDS` | 前端 relay 全断开后，实例允许继续空闲的最长秒数 | `1200` |
+| `RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS` | ACP 空闲实例扫描周期，单位秒 | `300` |
+| `RCS_ACP_ACTIVITY_TIMEOUT_SECONDS` | 无 ACP 业务活动的硬超时秒数，命中后即使 relay 仍存在也会回收实例 | `7200` |
 
 ## 架构关键点
 

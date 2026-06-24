@@ -24,6 +24,12 @@ function buildConfig(env: Env) {
     disconnectTimeout: env.RCS_DISCONNECT_TIMEOUT,
     /** JWT expiration time in seconds for worker tokens. Default 3600s (1 hour). */
     jwtExpiresIn: env.RCS_JWT_EXPIRES_IN,
+    /** Idle timeout in seconds before an unobserved ACP instance is auto-stopped. */
+    acpIdleTimeoutSeconds: env.RCS_ACP_IDLE_TIMEOUT_SECONDS,
+    /** Sweep interval in seconds for ACP idle instance cleanup. */
+    acpIdleSweepIntervalSeconds: env.RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS,
+    /** Hard timeout in seconds for no ACP business activity, even if relay is still attached. */
+    acpActivityTimeoutSeconds: env.RCS_ACP_ACTIVITY_TIMEOUT_SECONDS,
     /** acpx-g workflow engine URL for reverse proxy. */
     acpxGUrl: env.ACPX_G_URL,
     /** RagFlow API base URL (e.g. http://localhost:9380). */

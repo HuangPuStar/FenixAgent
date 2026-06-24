@@ -17,6 +17,22 @@ export const InstanceInfoSchema = z.object({
   created_at: z.number().describe("实例创建时间戳，单位为秒。"),
 });
 
+/** ACP 实例活跃度监控视图 */
+export const InstanceActivityInfoSchema = InstanceInfoSchema.extend({
+  last_activity_at: z.number().describe("最近一次非保活 ACP 业务消息时间戳，单位为秒。"),
+  relay_count: z.number().describe("当前附着到实例的前端 relay 连接数。"),
+  last_relay_detached_at: z
+    .number()
+    .nullable()
+    .describe("最后一次前端 relay 全部断开的时间戳，单位为秒；仍有 relay 时为 null。"),
+  idle_seconds: z.number().describe("断开前端连接后已空闲的秒数。"),
+  idle_timeout_seconds: z.number().describe("断开前端连接后允许空闲的最长秒数。"),
+  idle_kill_eligible: z.boolean().describe("当前是否已满足“断开前端连接后空闲超时”的回收条件。"),
+  inactivity_seconds: z.number().describe("无 ACP 业务活动后已空闲的秒数。"),
+  activity_timeout_seconds: z.number().describe("无 ACP 业务活动允许空闲的最长秒数。"),
+  activity_kill_eligible: z.boolean().describe("当前是否已满足“无 ACP 业务活动硬超时”的回收条件。"),
+});
+
 /** 从环境启动实例的请求体 */
 export const SpawnInstanceFromEnvironmentRequestSchema = z.object({
   environmentId: z.string().min(1, "environmentId is required").describe("要启动实例的环境 ID。"),
@@ -30,6 +46,7 @@ export const SpawnInstanceFromEnvironmentResponseSchema = z.object({
 
 /** GET /web/instances — 实例列表响应 */
 export const InstanceListResponseSchema = InstanceInfoSchema.array();
+export const InstanceActivityListResponseSchema = InstanceActivityInfoSchema.array();
 
 /** DELETE /web/instances/:id — 删除实例响应 */
 export const DeleteInstanceResponseSchema = z.object({
@@ -38,8 +55,10 @@ export const DeleteInstanceResponseSchema = z.object({
 });
 
 export type InstanceInfo = z.infer<typeof InstanceInfoSchema>;
+export type InstanceActivityInfo = z.infer<typeof InstanceActivityInfoSchema>;
 export type InstanceStatus = z.infer<typeof InstanceStatusSchema>;
 export type SpawnInstanceFromEnvironmentRequest = z.infer<typeof SpawnInstanceFromEnvironmentRequestSchema>;
 export type SpawnInstanceFromEnvironmentResponse = z.infer<typeof SpawnInstanceFromEnvironmentResponseSchema>;
 export type InstanceListResponse = z.infer<typeof InstanceListResponseSchema>;
+export type InstanceActivityListResponse = z.infer<typeof InstanceActivityListResponseSchema>;
 export type DeleteInstanceResponse = z.infer<typeof DeleteInstanceResponseSchema>;

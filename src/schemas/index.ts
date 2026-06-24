@@ -152,6 +152,10 @@ export {
 export {
   type DeleteInstanceResponse,
   DeleteInstanceResponseSchema,
+  type InstanceActivityInfo,
+  InstanceActivityInfoSchema,
+  type InstanceActivityListResponse,
+  InstanceActivityListResponseSchema,
   type InstanceInfo,
   InstanceInfoSchema,
   type InstanceListResponse,

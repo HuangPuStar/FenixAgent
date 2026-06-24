@@ -3,6 +3,11 @@ import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import { AppError } from "../../errors";
 import type { EnvironmentRecord } from "../../repositories/environment";
 import { environmentRepo } from "../../repositories/environment";
+import {
+  markInstanceRelayAttached,
+  markInstanceRelayDetached,
+  touchInstanceActivity,
+} from "../../services/acp-idle-monitor";
 import { getAgentConfigById } from "../../services/config/agent-config";
 import { getCoreRuntime } from "../../services/core-bootstrap";
 import { resolveWorkspacePath } from "../../services/workspace-resolver";
@@ -165,6 +170,9 @@ async function openLocalRelay(
     workspacePath: resolveWorkspacePath(_env.organizationId ?? userId, userId, _env.id),
   };
   manager.add(relayWsId, entry);
+  if (instanceId) {
+    markInstanceRelayAttached(instanceId);
+  }
 
   // 4. 先发送 relay 层的 status（携带 agent_prompt），再注册 onMessage
   //    确保前端先收到连接就绪信号，再收到 agent 的 capabilities
@@ -190,6 +198,9 @@ async function openLocalRelay(
         });
         ws.close(1011, "relay handle closed");
         return;
+      }
+      if (entry.instanceId && typeof msgType === "string" && msgType !== "status") {
+        touchInstanceActivity(entry.instanceId, message as unknown as Record<string, unknown>);
       }
       const e = manager.get(relayWsId);
       if (!e) {
@@ -313,6 +324,9 @@ export async function handleRelayMessage(
       }
     }
     try {
+      if (entry.instanceId) {
+        touchInstanceActivity(entry.instanceId, parsed);
+      }
       log("Relay → agent", {
         relayWsId,
         agentId: entry.agentId,
@@ -337,6 +351,10 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
 
   const entry = manager.get(relayWsId);
   if (!entry) return;
+
+  if (entry.instanceId) {
+    markInstanceRelayDetached(entry.instanceId);
+  }
 
   const duration = Math.round((Date.now() - entry.openTime) / 1000);
   log(
@@ -477,6 +495,9 @@ function closeRelayByMachine(machineId: string, reason: string): void {
       }
     }
     clearInterval(entry.keepalive!);
+    if (entry.instanceId) {
+      markInstanceRelayDetached(entry.instanceId);
+    }
     manager.remove(relayWsId);
   }
 }
