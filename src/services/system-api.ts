@@ -146,6 +146,17 @@ async function assertOrganizationExists(organizationId: string) {
   }
 }
 
+async function assertUserBelongsToOrganization(userId: string, organizationId: string) {
+  const rows = await db
+    .select({ id: member.id })
+    .from(member)
+    .where(and(eq(member.userId, userId), eq(member.organizationId, organizationId)))
+    .limit(1);
+  if (rows.length === 0) {
+    throw new Error(`User '${userId}' is not a member of organization '${organizationId}'`);
+  }
+}
+
 /**
  * 创建用户时同步补齐 credential account 与个人组织，保持与正常注册路径一致。
  */
@@ -444,6 +455,7 @@ export async function addOrganizationMember(
 export async function createUserApiKey(input: SystemApiCreateUserApiKeyInput): Promise<SystemApiUserApiKeyResult> {
   await assertUserExists(input.userId);
   await assertOrganizationExists(input.organizationId);
+  await assertUserBelongsToOrganization(input.userId, input.organizationId);
 
   const fullKey = generateApiKeyString("rcs_");
   const now = new Date();

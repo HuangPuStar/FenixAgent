@@ -33,6 +33,9 @@ function mapSystemApiError(error: unknown): { status: number; body: { error: { c
     if (lower.includes("not found")) {
       return { status: 404, body: { error: { code: "NOT_FOUND", message: error.message } } };
     }
+    if (lower.includes("not a member of organization")) {
+      return { status: 403, body: { error: { code: "FORBIDDEN", message: error.message } } };
+    }
     if (lower.includes("already exists")) {
       return { status: 409, body: { error: { code: "CONFLICT", message: error.message } } };
     }
@@ -503,6 +506,7 @@ app.post(
     response: {
       200: "api-system-api-key-result",
       400: ApiSystemErrorResponseSchema,
+      403: ApiSystemErrorResponseSchema,
       401: ApiSystemErrorResponseSchema,
       500: ApiSystemErrorResponseSchema,
     },
