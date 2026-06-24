@@ -97,6 +97,26 @@ $USER_META_BASE_URL/$REMOTE_APP_ID/
 - `visibility=private` → 仅创建者可访问
 - `visibility=authenticated` → 任何已登录 RCS 用户可访问
 
+## 完成后引导用户在 chat UI 查看
+
+agent 完成站点部署/更新后，用户最直接的预览路径是 chat 右侧的 **Sites** tab，而不是手工拼 URL。在最终回复里简短提示一句，能省去用户翻文档的负担。
+
+**UI 路径速查**：
+
+| 入口 | 位置 | 作用 |
+|------|------|------|
+| Sites tab | chat 右侧顶部一级 tab（Files / **Sites**） | 切换到站点预览区 |
+| **+** 按钮 | Sites 二级 tab 栏末尾 | 弹出挂载对话框，多选**当前未绑定**的站点 |
+| **×** 按钮 | 单个 site tab 右侧（hover 显示，激活 tab 常驻） | 卸载该 site，带 confirm 弹层 |
+
+**引导话术示例**（按场景选一句，用用户的语言）：
+
+- 首次部署新 App：「✅ 站点已部署。打开右侧 **Sites** tab，点末尾的 **+** 按钮挂载预览。」
+- 更新已上线前端：「✅ 前端已更新，已挂载的 site tab 会自动刷新。」
+- 配置后端 collection 后：「✅ 后端就绪，在右侧 Sites tab 打开对应站点即可联调。」
+
+> 挂载/卸载立即生效，**不需要重启 agent 实例**——绑定关系只由 RCS DB 维护，agent 运行时不消费。重复挂载走 PK 联合唯一 + `ON CONFLICT DO NOTHING`，幂等无副作用。
+
 ## 前端开发
 
 ### fetch 自动重写
