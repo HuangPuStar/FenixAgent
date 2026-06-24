@@ -15,6 +15,8 @@
 
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { NodeOutput } from "../types/execution";
+import type { JobTransport } from "./job-transport";
+import { SshJobTransport } from "./job-transport";
 import type { JobResult, SlurmConfig, SshExecutor } from "./slurm-types";
 import type { CustomNode, ExecuteContext, InputDef } from "./types";
 
@@ -49,10 +51,10 @@ export abstract class SlurmNode implements CustomNode {
   retryDelay: number = 30000;
   retryBackoff: "fixed" | "exponential" = "fixed";
 
-  protected sshExecutor: SshExecutor;
+  protected transport: JobTransport;
 
-  constructor(sshExecutor?: SshExecutor) {
-    this.sshExecutor = sshExecutor ?? new BunSshExecutor();
+  constructor(transport?: JobTransport) {
+    this.transport = transport ?? new SshJobTransport(new BunSshExecutor());
   }
 
   /**
@@ -91,7 +93,7 @@ export abstract class SlurmNode implements CustomNode {
     const cleanupCmd = this.preCleanup?.(ctx);
     if (cleanupCmd) {
       try {
-        await this.sshExecutor.exec(host, cleanupCmd);
+        await this.transport.execCommand(host, cleanupCmd);
       } catch (err) {
         console.warn(`[SlurmNode] preCleanup failed for ${this.name}:`, err);
       }
@@ -102,12 +104,12 @@ export abstract class SlurmNode implements CustomNode {
     const header = this.generateHeader(ctx);
     const slurmScript = `${header}\nset -euo pipefail\n${userScript}`;
 
-    // 3. SSH 上传 .slurm
+    // 3. 上传 .slurm 到远程
     const remotePath = `${ctx.workDir}/.slurm/${ctx.runId}_${ctx.nodeId}.slurm`;
-    await this.sshUpload(host, ctx.workDir, slurmScript, remotePath);
+    await this.transport.uploadScript(host, ctx.workDir, slurmScript, remotePath);
 
     // 4. sbatch 提交
-    let jobId = await this.sbatch(host, remotePath);
+    let jobId = await this.transport.submitJob(host, remotePath);
 
     // 5. sacct 轮询（带重试）
     let attempt = 0;
@@ -166,7 +168,7 @@ export abstract class SlurmNode implements CustomNode {
           attempt++;
           const delay = this.computeRetryDelay(attempt);
           await new Promise((resolve) => setTimeout(resolve, delay));
-          jobId = await this.sbatch(host, remotePath);
+          jobId = await this.transport.submitJob(host, remotePath);
           continue;
         }
         // 关键：把 sacct 收集到的 stderr/stdout 带进 context，否则前端只能看到
@@ -277,29 +279,13 @@ export abstract class SlurmNode implements CustomNode {
 
   // ── Private ──
 
-  private async sshUpload(host: string, workDir: string, script: string, remotePath: string): Promise<void> {
-    await this.sshExecutor.exec(host, `mkdir -p ${workDir}/.slurm`);
-    // 使用 heredoc 避免特殊字符转义问题
-    await this.sshExecutor.exec(host, `cat > ${remotePath} << 'SLURM_EOF'\n${script}\nSLURM_EOF`);
-  }
-
-  private async sbatch(host: string, remotePath: string): Promise<string> {
-    const { stdout } = await this.sshExecutor.exec(host, `sbatch ${remotePath}`);
-    const match = stdout.match(/Submitted batch job (\d+)/);
-    if (!match) {
-      throw new WorkflowError(`Failed to parse job ID from sbatch output: ${stdout}`, WorkflowErrorCode.NODE_FAILED);
-    }
-    return match[1];
-  }
-
   private async pollJob(ctx: ExecuteContext, host: string, jobId: string): Promise<JobResult> {
     // jobName 取合并后的 slurmConfig（YAML 声明优先），与 generateHeader 保持一致，
     // 否则 YAML 覆盖了 jobName 但 pollJob 仍用默认值，会导致找不到 .out/.err 日志文件
     const jobName = this.resolveSlurmConfig(ctx).jobName ?? this.name;
 
     // 1. sacct 查询状态
-    const sacctCmd = `sacct -j ${jobId} --format=JobID,State,ExitCode --noheader --parsable2`;
-    const { stdout: sacctOut } = await this.sshExecutor.exec(host, sacctCmd);
+    const sacctOut = await this.transport.queryJobStatus(host, jobId);
 
     const lines = sacctOut
       .trim()
@@ -335,14 +321,12 @@ export abstract class SlurmNode implements CustomNode {
     if (mappedState !== null) {
       const outPath = `${ctx.workDir}/.slurm/${jobName}_${jobId}`;
       try {
-        const outResult = await this.sshExecutor.exec(host, `cat ${outPath}.out`);
-        stdout = outResult.stdout;
+        stdout = await this.transport.readFile(host, `${outPath}.out`);
       } catch {
         stdout = "(failed to read stdout)";
       }
       try {
-        const errResult = await this.sshExecutor.exec(host, `cat ${outPath}.err`);
-        stderr = errResult.stdout;
+        stderr = await this.transport.readFile(host, `${outPath}.err`);
       } catch {
         stderr = "(failed to read stderr)";
       }

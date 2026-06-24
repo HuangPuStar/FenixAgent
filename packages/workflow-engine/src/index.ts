@@ -29,6 +29,8 @@ export { generatePythonPreamble, generateShellEnvVars, resolveInputs } from "./p
 export type { ParseOptions } from "./parser/yaml-parser";
 export { parseWorkflowYaml } from "./parser/yaml-parser";
 export { CustomNodeExecutor } from "./plugins/custom-executor";
+export type { JobTransport } from "./plugins/job-transport";
+export { SshJobTransport } from "./plugins/job-transport";
 export { CustomNodeRegistry } from "./plugins/registry";
 export { BunSshExecutor, mapSlurmState, SlurmNode } from "./plugins/slurm-node";
 // SlurmNode 插件

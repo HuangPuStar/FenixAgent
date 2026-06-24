@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { SshJobTransport } from "../../plugins/job-transport";
 import { mapSlurmState, type SlurmConfig, SlurmNode } from "../../plugins/slurm-node";
 import type { ExecuteContext, InputDef } from "../../plugins/types";
 import { WorkflowErrorCode } from "../../types/errors";
@@ -23,7 +24,7 @@ class TestSlurmNode extends SlurmNode {
     sshExecutor?: FakeSshExecutor,
     buildScriptFn?: (ctx: ExecuteContext) => string,
   ) {
-    super(sshExecutor);
+    super(sshExecutor ? new SshJobTransport(sshExecutor) : undefined);
     this.slurmConfig = slurmConfig;
     if (buildScriptFn) this._buildScript = buildScriptFn;
   }
