@@ -63,7 +63,7 @@ import { useWorkflowMetaAgent } from "./hooks/useWorkflowMetaAgent";
 import { useWorkflowPersistence } from "./hooks/useWorkflowPersistence";
 import { useWorkflowRun } from "./hooks/useWorkflowRun";
 import { autoLayout } from "./layout";
-import { nodeTypes } from "./nodes";
+import { nodeTypes, setToolColors } from "./nodes";
 import { TRANSFORM_PRESETS } from "./presets";
 import { dedupEvents } from "./utils";
 import { createStartNode, defaultMeta, START_NODE_ID, type WfMeta, yamlToFlow } from "./yaml-utils";
@@ -288,6 +288,11 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         console.error("Failed to load custom tools:", err);
       });
   }, []);
+
+  // 同步工具颜色到 WorkflowNode 的模块级缓存
+  useEffect(() => {
+    setToolColors(customTools);
+  }, [customTools]);
 
   // ── 运行模式/版本预览下画布自动只读 ──
   const effectiveReadOnly = (isRunMode && !isRunDone) || previewVersion !== null;

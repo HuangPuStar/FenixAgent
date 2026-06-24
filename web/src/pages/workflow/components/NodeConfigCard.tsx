@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import type { CustomToolItem } from "../../../api/workflow-defs";
+import type { CustomToolInputDef, CustomToolItem } from "../../../api/workflow-defs";
 import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
 import { syncOutputOnRename } from "../preset-utils";
 import type { WfMeta } from "../yaml-utils";
@@ -35,6 +35,55 @@ interface ExpandState {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+}
+
+/** 按 tool InputDef 的 group 分组，返回 { group, label, keys, collapsed }[]。
+ *  未声明 group 的字段归入默认组（""）。advance 组排在最后。 */
+function groupInputDefs(
+  toolInputs: Record<string, CustomToolInputDef>,
+): Array<{ group: string; keys: string[]; collapsed: boolean }> {
+  const groups: Record<string, string[]> = {};
+  const order: string[] = [];
+
+  for (const [key, def] of Object.entries(toolInputs)) {
+    const g = def.group ?? "";
+    if (!groups[g]) {
+      groups[g] = [];
+      order.push(g);
+    }
+    groups[g].push(key);
+  }
+
+  // advance 组排到最后
+  const advanceIdx = order.indexOf("advance");
+  if (advanceIdx > -1) {
+    order.splice(advanceIdx, 1);
+    order.push("advance");
+  }
+
+  return order.map((g) => ({
+    group: g,
+    keys: groups[g],
+    collapsed: g === "advance",
+  }));
+}
+
+/** 可折叠的分组容器，使用 <details> 实现 */
+function CollapsibleGroup({
+  label,
+  defaultOpen,
+  children,
+}: {
+  label: string;
+  defaultOpen: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={defaultOpen} style={{ marginTop: 8 }}>
+      <summary style={{ fontWeight: 600, color: "#374151", cursor: "pointer", fontSize: 12 }}>{label}</summary>
+      <div style={{ marginTop: 4 }}>{children}</div>
+    </details>
+  );
 }
 
 export function NodeConfigCard({
@@ -489,182 +538,252 @@ export function NodeConfigCard({
               </>
             )}
 
-            {nodeType === "custom" && (
-              <>
-                {renderInlineField(
-                  t("editor.custom_tool"),
-                  <>
-                    <input
-                      list="custom-tools-list"
-                      value={String(sd?.tool ?? "")}
-                      onChange={(e) => updateNodeData({ tool: e.target.value || undefined })}
-                      placeholder={t("editor.custom_tool_placeholder")}
-                      readOnly={readOnly}
-                    />
-                    <datalist id="custom-tools-list">
-                      {customTools.map((tool) => (
-                        <option key={tool.name} value={tool.name}>
-                          {tool.description}
-                        </option>
-                      ))}
-                    </datalist>
-                  </>,
-                )}
+            {nodeType === "custom" &&
+              (() => {
+                const customTool = customTools.find((t) => t.name === sd?.tool);
+                const grouped = customTool ? groupInputDefs(customTool.inputs) : [];
+                const declaredKeys = new Set(grouped.flatMap((g) => g.keys));
+                const inputValues = sd?.inputs as Record<string, string> | undefined;
 
-                {/* Slurm 专属配置 */}
-                {sd?.tool === "slurm" && (
+                // 分组渲染时保留其他组 key 的通用 onChange
+                const makeGroupOnChange = (groupKeys: string[]) => (val: Record<string, string> | undefined) => {
+                  const otherKeys = Object.keys(inputValues ?? {}).filter((k) => !groupKeys.includes(k));
+                  const others: Record<string, string> = {};
+                  for (const k of otherKeys) {
+                    if (inputValues?.[k]) others[k] = inputValues[k];
+                  }
+                  const cleaned = val && Object.keys(val).length > 0 ? val : {};
+                  updateNodeData({ inputs: { ...others, ...cleaned } });
+                };
+
+                return (
                   <>
-                    <div className="wf-prop-field-block" style={{ marginTop: 8 }}>
-                      <label style={{ fontWeight: 600, color: "#374151" }}>{t("editor.slurm_section")}</label>
-                    </div>
                     {renderInlineField(
-                      t("editor.slurm_partition"),
-                      <input
-                        value={String((sd?.slurm as Record<string, unknown>)?.partition ?? "")}
-                        onChange={(e) =>
-                          updateNodeData({
-                            slurm: { ...((sd?.slurm as Record<string, unknown>) ?? {}), partition: e.target.value },
-                          })
-                        }
-                        placeholder="xahcnormal"
-                        readOnly={readOnly}
-                      />,
+                      t("editor.custom_tool"),
+                      <>
+                        <input
+                          list="custom-tools-list"
+                          value={String(sd?.tool ?? "")}
+                          onChange={(e) => updateNodeData({ tool: e.target.value || undefined })}
+                          placeholder={t("editor.custom_tool_placeholder")}
+                          readOnly={readOnly}
+                        />
+                        <datalist id="custom-tools-list">
+                          {customTools.map((tool) => (
+                            <option key={tool.name} value={tool.name}>
+                              {tool.description}
+                            </option>
+                          ))}
+                        </datalist>
+                      </>,
                     )}
-                    {renderInlineField(
-                      t("editor.slurm_cores"),
-                      <input
-                        type="number"
-                        value={
-                          (sd?.slurm as Record<string, unknown>)?.cores != null
-                            ? String((sd?.slurm as Record<string, unknown>).cores)
-                            : ""
-                        }
-                        onChange={(e) =>
-                          updateNodeData({
-                            slurm: {
-                              ...((sd?.slurm as Record<string, unknown>) ?? {}),
-                              cores: e.target.value ? Number(e.target.value) : undefined,
-                            },
-                          })
-                        }
-                        placeholder="4"
-                        readOnly={readOnly}
-                      />,
-                    )}
-                    {renderInlineField(
-                      t("editor.slurm_walltime"),
-                      <input
-                        value={String((sd?.slurm as Record<string, unknown>)?.walltime ?? "")}
-                        onChange={(e) =>
-                          updateNodeData({
-                            slurm: { ...((sd?.slurm as Record<string, unknown>) ?? {}), walltime: e.target.value },
-                          })
-                        }
-                        placeholder="02:00:00"
-                        readOnly={readOnly}
-                      />,
-                    )}
-                    {renderBlockField(
-                      t("editor.slurm_modules"),
-                      Array.isArray((sd?.slurm as Record<string, unknown>)?.modules)
-                        ? ((sd?.slurm as Record<string, unknown>).modules as string[]).join("\n")
-                        : "",
-                      (v) =>
-                        updateNodeData({
-                          slurm: {
-                            ...((sd?.slurm as Record<string, unknown>) ?? {}),
-                            modules: v
-                              ? v
-                                  .split("\n")
-                                  .map((s: string) => s.trim())
-                                  .filter(Boolean)
-                              : undefined,
-                          },
-                        }),
-                      { placeholder: t("editor.slurm_modules_placeholder"), rows: 2 },
-                    )}
-                    {/* 脚本内容 — 核心：大段 bash 脚本，带展开按钮 */}
-                    {renderBlockField(
-                      t("editor.slurm_script_content"),
-                      String((sd?.script as Record<string, unknown>)?.content ?? ""),
-                      (v) =>
-                        updateNodeData({
-                          script: { ...((sd?.script as Record<string, unknown>) ?? {}), content: v },
-                        }),
-                      { rows: 6 },
-                    )}
-                    {/* 脚本环境变量 */}
-                    <div className="wf-prop-field-block">
-                      <label>{t("editor.slurm_script_env")}</label>
-                      <p className="text-[10px] text-gray-400 mb-1.5 leading-tight">{t("editor.slurm_env_hint")}</p>
-                      <Textarea
-                        value={(() => {
-                          const env = (sd?.script as Record<string, unknown>)?.env as
-                            | Record<string, string>
-                            | undefined;
-                          return env
-                            ? Object.entries(env)
-                                .map(([k, v]) => `${k}=${v}`)
-                                .join("\n")
-                            : "";
-                        })()}
-                        onChange={(e) => {
-                          const pairs = e.target.value
-                            ? e.target.value
-                                .split("\n")
-                                .map((s: string) => s.trim())
-                                .filter(Boolean)
-                            : [];
-                          const envObj: Record<string, string> = {};
-                          for (const line of pairs) {
-                            const eqIdx = line.indexOf("=");
-                            if (eqIdx > 0) {
-                              envObj[line.slice(0, eqIdx).trim()] = line.slice(eqIdx + 1).trim();
+
+                    {/* 分组输入 — 仅当工具匹配且有超过 1 组时显示 */}
+                    {grouped.length > 1 &&
+                      grouped.map(({ group, keys, collapsed }) => {
+                        const filtered = keys.reduce<Record<string, string>>((acc, k) => {
+                          if (inputValues?.[k]) acc[k] = inputValues[k];
+                          return acc;
+                        }, {});
+                        const label = group === "advance" ? t("editor.group_advance") : t("editor.group_default");
+                        return (
+                          <CollapsibleGroup key={group} label={label} defaultOpen={!collapsed}>
+                            <InputsEditor
+                              value={filtered}
+                              onChange={makeGroupOnChange(keys)}
+                              readOnly={readOnly}
+                              keyPlaceholder={t("editor.inputs_key_placeholder")}
+                              valuePlaceholder={t("editor.inputs_value_hint")}
+                              addLabel={t("editor.inputs_add")}
+                            />
+                          </CollapsibleGroup>
+                        );
+                      })}
+
+                    {/* Slurm 专属配置 */}
+                    {sd?.tool === "slurm" && (
+                      <>
+                        <div className="wf-prop-field-block" style={{ marginTop: 8 }}>
+                          <label style={{ fontWeight: 600, color: "#374151" }}>{t("editor.slurm_section")}</label>
+                        </div>
+                        {renderInlineField(
+                          t("editor.slurm_partition"),
+                          <input
+                            value={String((sd?.slurm as Record<string, unknown>)?.partition ?? "")}
+                            onChange={(e) =>
+                              updateNodeData({
+                                slurm: {
+                                  ...((sd?.slurm as Record<string, unknown>) ?? {}),
+                                  partition: e.target.value,
+                                },
+                              })
                             }
+                            placeholder="xahcnormal"
+                            readOnly={readOnly}
+                          />,
+                        )}
+                        {renderInlineField(
+                          t("editor.slurm_cores"),
+                          <input
+                            type="number"
+                            value={
+                              (sd?.slurm as Record<string, unknown>)?.cores != null
+                                ? String((sd?.slurm as Record<string, unknown>).cores)
+                                : ""
+                            }
+                            onChange={(e) =>
+                              updateNodeData({
+                                slurm: {
+                                  ...((sd?.slurm as Record<string, unknown>) ?? {}),
+                                  cores: e.target.value ? Number(e.target.value) : undefined,
+                                },
+                              })
+                            }
+                            placeholder="4"
+                            readOnly={readOnly}
+                          />,
+                        )}
+                        {renderInlineField(
+                          t("editor.slurm_walltime"),
+                          <input
+                            value={String((sd?.slurm as Record<string, unknown>)?.walltime ?? "")}
+                            onChange={(e) =>
+                              updateNodeData({
+                                slurm: {
+                                  ...((sd?.slurm as Record<string, unknown>) ?? {}),
+                                  walltime: e.target.value,
+                                },
+                              })
+                            }
+                            placeholder="02:00:00"
+                            readOnly={readOnly}
+                          />,
+                        )}
+                        {renderBlockField(
+                          t("editor.slurm_modules"),
+                          Array.isArray((sd?.slurm as Record<string, unknown>)?.modules)
+                            ? ((sd?.slurm as Record<string, unknown>).modules as string[]).join("\n")
+                            : "",
+                          (v) =>
+                            updateNodeData({
+                              slurm: {
+                                ...((sd?.slurm as Record<string, unknown>) ?? {}),
+                                modules: v
+                                  ? v
+                                      .split("\n")
+                                      .map((s: string) => s.trim())
+                                      .filter(Boolean)
+                                  : undefined,
+                              },
+                            }),
+                          { placeholder: t("editor.slurm_modules_placeholder"), rows: 2 },
+                        )}
+                        {/* 脚本内容 — 核心：大段 bash 脚本，带展开按钮 */}
+                        {renderBlockField(
+                          t("editor.slurm_script_content"),
+                          String((sd?.script as Record<string, unknown>)?.content ?? ""),
+                          (v) =>
+                            updateNodeData({
+                              script: { ...((sd?.script as Record<string, unknown>) ?? {}), content: v },
+                            }),
+                          { rows: 6 },
+                        )}
+                        {/* 脚本环境变量 */}
+                        <div className="wf-prop-field-block">
+                          <label>{t("editor.slurm_script_env")}</label>
+                          <p className="text-[10px] text-gray-400 mb-1.5 leading-tight">{t("editor.slurm_env_hint")}</p>
+                          <Textarea
+                            value={(() => {
+                              const env = (sd?.script as Record<string, unknown>)?.env as
+                                | Record<string, string>
+                                | undefined;
+                              return env
+                                ? Object.entries(env)
+                                    .map(([k, v]) => `${k}=${v}`)
+                                    .join("\n")
+                                : "";
+                            })()}
+                            onChange={(e) => {
+                              const pairs = e.target.value
+                                ? e.target.value
+                                    .split("\n")
+                                    .map((s: string) => s.trim())
+                                    .filter(Boolean)
+                                : [];
+                              const envObj: Record<string, string> = {};
+                              for (const line of pairs) {
+                                const eqIdx = line.indexOf("=");
+                                if (eqIdx > 0) {
+                                  envObj[line.slice(0, eqIdx).trim()] = line.slice(eqIdx + 1).trim();
+                                }
+                              }
+                              updateNodeData({
+                                script: {
+                                  ...((sd?.script as Record<string, unknown>) ?? {}),
+                                  env: Object.keys(envObj).length > 0 ? envObj : undefined,
+                                },
+                              });
+                            }}
+                            placeholder={t("editor.slurm_script_env_placeholder")}
+                            rows={2}
+                            readOnly={readOnly}
+                            className="font-mono text-xs"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* InputsEditor — 分组模式下只显示未声明字段，反之显示全部 */}
+                    <div className="wf-prop-field-block">
+                      <label>{t("editor.inputs_title")}</label>
+                      {sd?.tool === "slurm" && (
+                        <p className="text-[10px] text-gray-400 mb-1.5 leading-tight">
+                          {t("editor.slurm_inputs_hint")}
+                        </p>
+                      )}
+                      <InputsEditor
+                        value={
+                          grouped.length > 1
+                            ? Object.fromEntries(
+                                Object.keys(inputValues ?? {})
+                                  .filter((k) => !declaredKeys.has(k))
+                                  .map((k) => [k, inputValues?.[k] ?? ""]),
+                              )
+                            : inputValues
+                        }
+                        onChange={(val) => {
+                          if (grouped.length > 1) {
+                            // 保留分组字段
+                            const groupValues: Record<string, string> = {};
+                            for (const k of declaredKeys) {
+                              if (inputValues?.[k]) groupValues[k] = inputValues[k];
+                            }
+                            const extra = val && Object.keys(val).length > 0 ? val : {};
+                            updateNodeData({ inputs: { ...groupValues, ...extra } });
+                          } else {
+                            updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
                           }
-                          updateNodeData({
-                            script: {
-                              ...((sd?.script as Record<string, unknown>) ?? {}),
-                              env: Object.keys(envObj).length > 0 ? envObj : undefined,
-                            },
-                          });
                         }}
-                        placeholder={t("editor.slurm_script_env_placeholder")}
-                        rows={2}
                         readOnly={readOnly}
-                        className="font-mono text-xs"
+                        keyPlaceholder={t("editor.inputs_key_placeholder")}
+                        valuePlaceholder={t("editor.inputs_value_hint")}
+                        addLabel={t("editor.inputs_add")}
+                      />
+                    </div>
+                    <div className="wf-prop-field-block">
+                      <label>{t("editor.outputs_title")}</label>
+                      <OutputsEditor
+                        value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                        onChange={(val) => updateNodeData({ outputs: val })}
+                        readOnly={readOnly}
+                        keyPlaceholder={t("editor.outputs_key_placeholder")}
+                        patternPlaceholder={t("editor.outputs_pattern_placeholder")}
+                        addLabel={t("editor.outputs_add")}
                       />
                     </div>
                   </>
-                )}
-
-                <div className="wf-prop-field-block">
-                  <label>{t("editor.inputs_title")}</label>
-                  <p className="text-[10px] text-gray-400 mb-1.5 leading-tight">{t("editor.slurm_inputs_hint")}</p>
-                  <InputsEditor
-                    value={sd?.inputs as Record<string, string> | undefined}
-                    onChange={(val) => {
-                      updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
-                    }}
-                    readOnly={readOnly}
-                    keyPlaceholder={t("editor.inputs_key_placeholder")}
-                    valuePlaceholder={t("editor.inputs_value_hint")}
-                    addLabel={t("editor.inputs_add")}
-                  />
-                </div>
-                <div className="wf-prop-field-block">
-                  <label>{t("editor.outputs_title")}</label>
-                  <OutputsEditor
-                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
-                    onChange={(val) => updateNodeData({ outputs: val })}
-                    readOnly={readOnly}
-                    keyPlaceholder={t("editor.outputs_key_placeholder")}
-                    patternPlaceholder={t("editor.outputs_pattern_placeholder")}
-                    addLabel={t("editor.outputs_add")}
-                  />
-                </div>
-              </>
-            )}
+                );
+              })()}
           </div>
 
           {/* 高级配置 */}

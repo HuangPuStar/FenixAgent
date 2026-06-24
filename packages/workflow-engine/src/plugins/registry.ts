@@ -62,15 +62,33 @@ export class CustomNodeRegistry {
   }
 
   /** 列出所有已注册工具（供前端 API） */
-  list(): Array<{ name: string; description: string; inputs: Record<string, InputDef>; produces: string[] }> {
-    const result: Array<{ name: string; description: string; inputs: Record<string, InputDef>; produces: string[] }> =
-      [];
+  list(): Array<{
+    name: string;
+    description: string;
+    inputs: Record<string, InputDef>;
+    produces: string[];
+    kind?: string;
+    color?: string;
+    env?: string[];
+  }> {
+    const result: Array<{
+      name: string;
+      description: string;
+      inputs: Record<string, InputDef>;
+      produces: string[];
+      kind?: string;
+      color?: string;
+      env?: string[];
+    }> = [];
     for (const tool of this.tools.values()) {
       result.push({
         name: tool.name,
         description: tool.description,
         inputs: tool.inputs,
         produces: tool.produces,
+        kind: tool.kind,
+        color: tool.color,
+        env: tool.env,
       });
     }
     return result;
