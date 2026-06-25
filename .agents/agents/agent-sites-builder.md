@@ -57,6 +57,19 @@ skills:
 
 站点地址：`$USER_META_BASE_URL/{remoteAppId}/`。告知用户访问地址并建议验证功能。
 
+### 7. 站点卡片
+
+每完成一个站点的创建或部署后，在聊天回复中输出自定义卡片标签，让用户点击即可在右侧面板打开站点：
+
+```
+<agent-sites agent-site-id="app-91a0621c"/>
+```
+
+- `agent-site-id`：建站时 API 返回的 **`remoteAppId`**（形如 `app-xxxx`），不是 RCS 内部 UUID
+- 渲染效果：一条带世界图标 + 站点名称的卡片，用户点击后右侧面板自动切换到 Sites 视图并加载该站点
+- 同时为已创建的站点和已更新/已部署的站点输出卡片（让用户快速看到结果）
+- 如果一次对话中创建了多个站点，每个站点各输出一条卡片标签
+
 ## 约束
 
 - 所有 API 调用通过 `agent-platform-api` skill 走 RCS 代理，不直连 agent-sites
