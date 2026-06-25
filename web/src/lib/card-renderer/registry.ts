@@ -5,6 +5,8 @@ export interface TagRendererConfig {
   component: ComponentType<Record<string, unknown>>;
   /** 可选：加载中占位组件 */
   fallback?: ComponentType<Record<string, unknown>>;
+  /** rehype-sanitize 需要放行的 HTML 属性名列表，默认 ["*"] */
+  allowedAttrs?: string[];
 }
 
 const registry = new Map<string, TagRendererConfig>();
@@ -54,8 +56,8 @@ export function getRegisteredComponents(): Record<string, ComponentType<Record<s
  */
 export function getRegisteredAllowedTags(): Record<string, string[]> {
   const tags: Record<string, string[]> = {};
-  for (const [tag] of registry) {
-    tags[tag] = ["*"];
+  for (const [tag, config] of registry) {
+    tags[tag] = config.allowedAttrs ?? ["*"];
   }
   return tags;
 }
