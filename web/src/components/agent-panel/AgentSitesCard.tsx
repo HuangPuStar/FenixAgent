@@ -2,6 +2,7 @@ import { AlertCircle, Globe, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { agentSitesApi } from "@/src/api/sdk";
 import { useCardEmit } from "@/src/lib/card-renderer";
+import { cn } from "@/src/lib/utils";
 
 interface AgentSitesCardProps {
   /** 后端 site 的 ID（由 streamdown 从 HTML attribute agent-site-id 传入） */
@@ -31,6 +32,12 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
   // 仅挂载时执行一次：agentSiteId/emit 不应作为重触发依赖，cleanup 由 cancelled flag 保证
   // biome-ignore lint/correctness/useExhaustiveDependencies: 仅挂载时执行一次
   useEffect(() => {
+    // 防御：agent-site-id 未传或为空时不发起请求
+    if (!agentSiteId) {
+      setError("缺少 agent-site-id 属性");
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -79,18 +86,29 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
 
   // ── Error 状态 ──
   if (error) {
+    const isMissingAttr = error.includes("缺少 agent-site-id");
     return (
       <button
         type="button"
-        onClick={handleClick}
-        className="flex items-center gap-3 p-3 rounded-lg border border-border/40 bg-surface-1 hover:bg-surface-2/60 transition-colors max-w-sm w-full text-left cursor-pointer"
+        onClick={isMissingAttr ? undefined : handleClick}
+        disabled={isMissingAttr}
+        className={cn(
+          "flex items-center gap-3 p-3 rounded-lg border border-border/40 max-w-sm w-full text-left",
+          isMissingAttr ? "bg-surface-1" : "bg-surface-1 hover:bg-surface-2/60 transition-colors cursor-pointer",
+        )}
         title={error}
       >
-        <div className="h-9 w-9 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
-          <AlertCircle className="h-4 w-4 text-red-500" />
+        <div
+          className={cn(
+            "h-9 w-9 rounded-full flex items-center justify-center shrink-0",
+            isMissingAttr ? "bg-yellow-500/10" : "bg-red-500/10",
+          )}
+        >
+          <AlertCircle className={cn("h-4 w-4", isMissingAttr ? "text-yellow-500" : "text-red-500")} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-text-muted">加载失败</div>
+          <div className="text-sm text-text-muted">{isMissingAttr ? "缺少 site ID" : "加载失败"}</div>
+          <div className="text-[11px] text-text-muted truncate mt-0.5">{error}</div>
         </div>
       </button>
     );
