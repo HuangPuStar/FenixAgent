@@ -1,4 +1,4 @@
-# ── CCB Sandbox 运行时 (Node.js) ────────────────────────
+# ── CCB Sandbox 运行时 (Node.js / Peri) ────────────────────────
 FROM node:22-bookworm-slim
 WORKDIR /app/workspaces
 
@@ -14,13 +14,15 @@ RUN apt-get install -y --no-install-recommends \
 RUN rm -rf /var/lib/apt/lists/*
 
 # 安装 Claude Code (CCB) 和 ACP Runtime CLI
-RUN npm install -g claude-code-best@2.8.1 @fenix-agent/acp-runtime-cli@0.1.2
+RUN npm install -g  @fenix-agent/acp-runtime-cli@0.1.2
+
+RUN curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
 
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
 
 ENV AGENT_TYPE=ccb
-# IS_PERI=1 时额外生成 .peri/settings.json（Peri 客户端模式），默认 0
-ENV IS_PERI=0
+# Peri 客户端模式，额外生成 .peri/settings.json
+ENV IS_PERI=1
 # acp-runtime 启动 CCB agent 并注册到 RCS
-CMD ["acp-runtime", "ccb", "--acp"]
+CMD ["acp-runtime", "peri", "acp"]
