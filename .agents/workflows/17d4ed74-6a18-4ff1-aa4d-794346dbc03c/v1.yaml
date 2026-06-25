@@ -1,0 +1,26 @@
+schema_version: "1"
+name: test-important
+description: "本地测试流水线"
+nodes:
+  - id: hello
+    type: shell
+    description: "第一步：打印问候"
+    command: |
+      echo "Hello from step 1"
+      echo "greeting=Hello World" >> $ACPX_OUTPUT
+
+  - id: world
+    type: shell
+    description: "第二步：使用上游输出"
+    depends_on: [hello]
+    command: |
+      echo "Step 2 received greeting: ${{ needs.hello.outputs.greeting }}"
+      echo "result=success" >> $ACPX_OUTPUT
+
+  - id: done
+    type: shell
+    description: "第三步：收尾"
+    depends_on: [world]
+    command: |
+      echo "All done! Result: ${{ needs.world.outputs.result }}"
+      echo "final=completed" >> $ACPX_OUTPUT

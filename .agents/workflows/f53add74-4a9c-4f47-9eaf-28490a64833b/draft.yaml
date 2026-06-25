@@ -1,0 +1,57 @@
+schema_version: "1"
+name: simple-web-research
+description: "简单 Web 调研：搜索信息 → 汇总摘要 → 输出报告"
+params:
+  topic:
+    type: string
+    default: "AI 最新进展"
+    required: true
+    description: "调研主题"
+  depth:
+    type: string
+    default: "brief"
+    description: "调研深度：brief / normal / deep"
+nodes:
+  - id: search
+    type: shell
+    description: "搜索收集信息"
+    timeout: 120
+    command: |
+      echo "🔍 开始调研主题: ${{ inputs.topic }}"
+      echo "📏 调研深度: ${{ inputs.depth }}"
+
+      # 模拟搜索结果
+      echo "search_results=已完成搜索，找到相关信息" >> $ACPX_OUTPUT
+      echo "source_count=5" >> $ACPX_OUTPUT
+
+  - id: summarize
+    type: shell
+    description: "汇总分析搜索结果"
+    depends_on: [search]
+    timeout: 60
+    command: |
+      echo "📝 正在整理 '${{ needs.search.outputs.search_results }}'..."
+      echo "结果数: ${{ needs.search.outputs.source_count }}"
+
+      echo "summary=调研摘要：已为您收集 ${{ needs.search.outputs.source_count }} 条相关信息" >> $ACPX_OUTPUT
+      echo "key_points=关键发现 1|关键发现 2|关键发现 3" >> $ACPX_OUTPUT
+
+  - id: report
+    type: shell
+    description: "输出最终调研报告"
+    depends_on: [summarize]
+    command: |
+      echo ""
+      echo "====== 📋 调研报告 ======"
+      echo "主题: ${{ inputs.topic }}"
+      echo "深度: ${{ inputs.depth }}"
+      echo "来源数: ${{ needs.search.outputs.source_count }}"
+      echo ""
+      echo "--- 摘要 ---"
+      echo "${{ needs.summarize.outputs.summary }}"
+      echo ""
+      echo "--- 关键发现 ---"
+      echo "${{ needs.summarize.outputs.key_points }}"
+      echo ""
+      echo "✅ 调研完成"
+      echo "report_status=completed" >> $ACPX_OUTPUT

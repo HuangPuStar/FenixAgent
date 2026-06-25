@@ -1,0 +1,143 @@
+schema_version: "1"
+name: data-sample
+description: 多 Agent 协作流水线 — 演示 3 个 Agent 并行工作 + 1 个 Agent 综合汇总的工作流模式
+timeout: 300
+params:
+  pr_url:
+    type: string
+    default: https://github.com/org/repo/pull/42
+    description: 待审查的 PR 链接
+  notify_channel:
+    type: string
+    default: slack
+    description: 通知通道
+secrets:
+  - GITHUB_TOKEN
+  - SLACK_WEBHOOK
+nodes:
+  - id: fetch-pr-data
+    type: shell
+    description: 获取 PR 数据：diff、commit 信息、关联 Issue
+    command: |
+      echo "Fetching PR data from ${{ inputs.pr_url }}..."
+      echo "changed_files=src/api.ts,src/utils.ts,README.md" >> $ACPX_OUTPUT
+      echo "total_additions=342" >> $ACPX_OUTPUT
+      echo "total_deletions=89" >> $ACPX_OUTPUT
+      echo "commit_count=7" >> $ACPX_OUTPUT
+      echo "reviewers=alice,bob,charlie" >> $ACPX_OUTPUT
+  - id: code-quality-review
+    type: agent
+    depends_on:
+      - fetch-pr-data
+    description: Agent 1 — 代码质量审查：检查代码规范、设计模式、性能问题
+    agent: meta-agent
+    prompt: |
+      你是一个资深代码审查专家。请对以下 PR 变更进行代码质量审查：
+
+      PR 信息：
+      - 变更文件：${{ needs.fetch-pr-data.outputs.changed_files }}
+      - 新增行数：${{ needs.fetch-pr-data.outputs.total_additions }}
+      - 删除行数：${{ needs.fetch-pr-data.outputs.total_deletions }}
+      - 提交数：${{ needs.fetch-pr-data.outputs.commit_count }}
+      - 审查人：${{ needs.fetch-pr-data.outputs.reviewers }}
+
+      请从以下维度给出审查意见：
+      1. 代码规范（是否遵循项目编码规范）
+      2. 设计模式（是否有合理的设计决策）
+      3. 性能问题（是否存在潜在性能瓶颈）
+      4. 代码复用（是否有重复代码）
+      5. 可维护性（代码是否容易理解和修改）
+
+      对每个维度给出评分（1-5分）和改进建议。
+      最后输出 JSON 格式的审查结果摘要。
+    output_messages: 3
+  - id: security-audit
+    type: agent
+    depends_on:
+      - fetch-pr-data
+    description: Agent 2 — 安全审计：检查代码变更中的安全风险
+    agent: meta-agent
+    prompt: |
+      你是一个安全审计专家。请对以下 PR 变更进行安全审查：
+
+      PR 信息：
+      - 变更文件：${{ needs.fetch-pr-data.outputs.changed_files }}
+      - 新增行数：${{ needs.fetch-pr-data.outputs.total_additions }}
+
+      请从以下维度进行安全分析：
+      1. 输入验证（是否存在SQL注入、XSS等风险）
+      2. 认证授权（权限控制是否正确）
+      3. 敏感信息（是否有密钥泄露风险）
+      4. 依赖安全（是否引入了有漏洞的依赖）
+      5. 数据保护（敏感数据是否妥善处理）
+
+      对每个维度给出风险等级（低/中/高）和具体修复建议。
+      输出 JSON 格式的安全审计报告。
+    output_messages: 3
+  - id: docs-generation
+    type: agent
+    depends_on:
+      - fetch-pr-data
+    description: Agent 3 — 文档生成：根据代码变更生成技术文档
+    agent: meta-agent
+    prompt: |
+      你是一个技术文档工程师。请基于以下 PR 变更信息编写技术文档：
+
+      PR 信息：
+      - 变更文件：${{ needs.fetch-pr-data.outputs.changed_files }}
+      - 变更规模：+${{ needs.fetch-pr-data.outputs.total_additions }}/-${{ needs.fetch-pr-data.outputs.total_deletions }} 行
+
+      请生成以下文档：
+      1. 变更摘要（面向 TL/PM 的简明概述）
+      2. API 变更日志（如果变更涉及接口）
+      3. 升级迁移指南（面向下游开发者）
+      4. Changelog 条目（用于 Release Notes）
+
+      输出 Markdown 格式的文档内容。
+    output_messages: 3
+  - id: merge-report
+    type: agent
+    depends_on:
+      - code-quality-review
+      - security-audit
+      - docs-generation
+    description: Agent 4 — 综合汇总：汇总三个 Agent 的分析结果，生成最终报告
+    agent: meta-agent
+    prompt: |
+      你是项目总评审官。请汇总以下三个团队的评审结果，给出最终合并报告：
+
+      ## 团队 A — 代码质量审查结果
+      ${{ needs.code-quality-review.outputs.response }}
+
+      ## 团队 B — 安全审计结果
+      ${{ needs.security-audit.outputs.response }}
+
+      ## 团队 C — 文档生成结果
+      ${{ needs.docs-generation.outputs.response }}
+
+      请输出一份结构化的最终评审报告，包含：
+      1. 总评（是否可以合并）
+      2. 关键发现摘要（Top 3 重点问题）
+      3. 阻塞性问题列表（必须修复才能合并）
+      4. 建议性改进（可后续优化）
+      5. 安全风险总结
+      6. 整体评分（1-10分）和合并建议
+
+      使用 Markdown 格式。
+    output_messages: 5
+  - id: send-notification
+    type: api
+    depends_on:
+      - merge-report
+    description: 发送评审完成通知（通过 Shell 模拟）
+    url: https://hooks.example.com/review-complete
+    method: POST
+    headers:
+      Content-Type: application/json
+    body: |
+      {
+        "workflow": "data-sample",
+        "pr": "${{ inputs.pr_url }}",
+        "status": "review_complete",
+        "summary": "多Agent协作代码审查已完成"
+      }

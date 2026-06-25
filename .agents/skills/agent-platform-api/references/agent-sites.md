@@ -257,3 +257,18 @@ input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.isComposing) submit();
 });
 ```
+
+## 站点卡片
+
+建站完成后在聊天中输出 `<agent-sites>` 标签，渲染为可点击卡片让用户一键打开站点。
+
+**编写卡片标签前，务必 `cat` 读取 `references/card-tag.md`**，严格遵守格式规则（不复述在此，避免遗漏）。
+
+## 开发约束
+
+- 所有 API 调用走 `agent-platform-api` skill，不直连 agent-sites
+- 凭证（master key / platform token）由 RCS 后端管理，agent 不接触
+- 前端文件用 Write 工具创建、Edit 工具编辑，不用 shell 重定向
+- **文件路径**：临时文件放当前目录 `./user/` 下；独立项目先 `mkdir <name>` 再编写；禁止放 `/tmp`
+- name 仅允许 `[a-z0-9-]`，中文/大写/下划线被拒
+- 每次创建 App 都是独立后端实例，不为不同用途复用 App 的 collection

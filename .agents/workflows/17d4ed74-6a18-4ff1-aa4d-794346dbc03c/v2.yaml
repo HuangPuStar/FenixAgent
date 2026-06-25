@@ -1,0 +1,29 @@
+schema_version: "1"
+name: test-important
+description: 本地测试流水线
+nodes:
+  - id: hello
+    type: shell
+    description: 第一步：打印问候
+    command: |
+      echo "Hello from step 1"
+
+  - id: world
+    type: shell
+    description: 第二步：使用上游输出
+    depends_on:
+      - hello
+    inputs:
+      GREETING: nodes.hello.output.stdout
+    command: |
+      echo "Step 2 received greeting: $GREETING"
+
+  - id: done
+    type: shell
+    description: 第三步：收尾
+    depends_on:
+      - world
+    inputs:
+      RESULT: nodes.world.output.stdout
+    command: |
+      echo "All done! Result: $RESULT"

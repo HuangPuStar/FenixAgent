@@ -1,0 +1,71 @@
+schema_version: "1"
+name: test-important
+description: 本地测试流水线：hello → world → done
+timeout: 600
+nodes:
+  - id: hello
+    type: shell
+    description: "[shell] 输出问候语"
+    command: |
+      printf "Hello Workflow"
+  - id: analyze
+    type: python
+    depends_on:
+      - hello
+    description: "[python] 统计文本并产出 JSON"
+    inputs:
+      INPUT_TEXT: nodes.hello.output.stdout
+    code: |
+      import json, sys
+      text = INPUT_TEXT
+      stats = {
+        "chars": len(text),
+        "words": len(text.split()),
+        "upper": text.upper(),
+        "source": text
+      }
+      sys.stdout.write(json.dumps(stats))
+  - id: ai_insight
+    type: agent
+    depends_on:
+      - analyze
+    description: "[agent] AI 点评统计数据"
+    agent: env-4e6878fe
+    prompt: |
+      请用一句话点评以下统计数据（诙谐风格）：
+      ${{ nodes.analyze.output.stdout }}
+  - id: post_result
+    type: api
+    depends_on:
+      - ai_insight
+    description: "[api] POST 结果到 httpbin 测试"
+    url: https://httpbin.org/post
+    method: POST
+    headers:
+      Content-Type: application/json
+    body: |
+      {"source": "${{ nodes.hello.output.stdout }}", "insight": "${{ nodes.ai_insight.output.stdout }}"}
+  - id: approve
+    type: audit
+    depends_on:
+      - post_result
+    description: "[audit] 人工审批确认"
+    display_data:
+      title: 请确认流水线结果
+      source: ${{ nodes.hello.output.stdout }}
+      insight: ${{ nodes.ai_insight.output.stdout }}
+    expires_in: 3600
+  - id: final
+    type: shell
+    depends_on:
+      - approve
+      - analyze
+      - ai_insight
+    description: "[shell] 最终汇总"
+    inputs:
+      STATS: nodes.analyze.output.stdout
+      INSIGHT: nodes.ai_insight.output.stdout
+    command: |
+      echo "===== 多类型节点流水线完成 ====="
+      echo "统计数据: $STATS"
+      echo "AI 点评: $INSIGHT"
