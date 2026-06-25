@@ -269,17 +269,25 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   // - 用户在 Files 模式：直接把新 diff 加入 openFiles
   // - 用户已主动切到 Sites 模式：不强制切回，仅累计 pendingDiffCount 在 Files tab 上做角标提示，
   //   由用户主动点击切回 Files 时清零（避免长任务运行中持续打断浏览 site 的用户）
+  const prevChangedPathsRef = useRef<string[]>([]);
   useEffect(() => {
     const paths = normalizedChangedFiles.map((f) => f.path);
     if (paths.length === 0) return;
+
+    // 计算增量：只统计本次新增的文件，避免总数被累加放大（如 3 个文件反复累加 → 99+）
+    const prevPaths = prevChangedPathsRef.current;
+    const newPaths = paths.filter((p) => !prevPaths.includes(p));
+    prevChangedPathsRef.current = paths;
+
     setOpenFiles((prev) => {
-      const newPaths = paths.filter((p) => !prev.includes(p));
-      if (newPaths.length === 0) return prev;
-      return [...newPaths, ...prev].slice(0, MAX_OPEN_FILES);
+      const existing = paths.filter((p) => prev.includes(p));
+      if (existing.length === paths.length) return prev;
+      const toAdd = paths.filter((p) => !prev.includes(p));
+      return [...toAdd, ...prev].slice(0, MAX_OPEN_FILES);
     });
     setActiveFile((cur) => cur ?? paths[0]);
-    if (userPickedSiteRef.current) {
-      setPendingDiffCount((n) => n + paths.length);
+    if (userPickedSiteRef.current && newPaths.length > 0) {
+      setPendingDiffCount((n) => n + newPaths.length);
     }
   }, [normalizedChangedFiles]);
 
