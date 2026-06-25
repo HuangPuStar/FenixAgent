@@ -260,9 +260,39 @@ input.addEventListener('keydown', e => {
 
 ## 站点卡片
 
-建站完成后在聊天中输出 `<agent-sites>` 标签，渲染为可点击卡片让用户一键打开站点。
+建站或部署完成后，在聊天回复末尾**单独一行**输出 `<agent-sites>` 标签。该标签渲染为全宽度可点击卡片（左侧站点名称 + 右侧 "查看站点" 按钮），用户点击后右侧面板自动切到 Sites 视图并加载该站点。
 
-**编写卡片标签前，务必 `cat` 读取 `references/card-tag.md`**，严格遵守格式规则（不复述在此，避免遗漏）。
+### 格式
+
+```
+<agent-sites agent-site-id="app-91a0621c"/>
+```
+
+### 关键规则
+
+- **单独一行**，前后不加任何文字或引导语（卡片自己就是醒目的 CTA）
+- **不放代码块**——\` 和 ``` 都不行，否则渲染为纯文本
+- **不放列表**——前面不要加 `-`、`*`、`1.`、`>`
+- **不放缩进**——必须从行首开始
+- `agent-site-id` 填建站 API 返回的 **`remoteAppId`**（形如 `app-xxxx`），不是 RCS 内部 UUID
+
+### 正确示例
+
+```
+站点已创建，功能包括实时搜索、暗色主题、底部抽屉详情。
+
+<agent-sites agent-site-id="app-abc123"/>
+```
+
+### 错误示例
+
+```
+- <agent-sites agent-site-id="app-abc123"/>    ← 列表前缀
+`<agent-sites agent-site-id="app-abc123"/>`     ← 行内代码
+<agent-sites agent-site-id="app-abc123"/> 点击打开 ← 多余引导语
+```
+
+`references/card-tag.md` 有更多示例，编写卡片标签前建议一并参考。
 
 ## 开发约束
 
