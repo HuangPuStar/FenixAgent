@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
 import { isVisibleContentBlock } from "../../src/lib/context-queue";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../../src/lib/types";
 import { cn, esc } from "../../src/lib/utils";
@@ -92,47 +93,67 @@ interface AssistantBubbleProps {
   isStreaming?: boolean;
   sessionId?: string;
   envId?: string;
+  /** 外部监听器通过此 ref 获取 emitter 实例进行订阅 */
+  cardEmitterRef?: MutableRefObject<CardEventEmitter | null>;
 }
 
-export function AssistantBubble({ entry, isStreaming, envId }: AssistantBubbleProps) {
+export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: AssistantBubbleProps) {
+  // 每个助手消息创建独立的 emitter 实例
+  const emitter = useMemo(() => new CardEventEmitter(), []);
+
+  // 暴露 emitter 给外部监听器，组件卸载时清理
+  useEffect(() => {
+    if (cardEmitterRef) {
+      cardEmitterRef.current = emitter;
+    }
+    return () => {
+      if (cardEmitterRef) {
+        cardEmitterRef.current = null;
+      }
+      emitter.destroy();
+    };
+  }, [emitter, cardEmitterRef]);
+
   return (
-    <div className="flex gap-4 items-start message-bubble-enter">
-      {/* Agent avatar — 窄屏隐藏 */}
-      <AgentAvatar className="hidden md:flex mt-0.5" />
-      {/* 内容 — 无卡片背景，直接排版 */}
-      <div className="flex-1 min-w-0 space-y-4">
-        {/* Sender label deleted, we don't need it  */}
-        {entry.chunks
-          .filter((chunk) => {
-            if (chunk.type === "thought") return true;
-            return isVisibleContentBlock({ type: "text", text: chunk.text });
-          })
-          .map((chunk, i, filtered) => {
-            if (chunk.type === "thought") {
-              // 只有最后一个 thought chunk 且全局 streaming 时才标记为 streaming
-              const isLastThought =
-                i === filtered.length - 1 || filtered.slice(i + 1).every((c) => c.type !== "thought");
-              const thoughtStreaming = isStreaming && isLastThought;
+    <MessageEmitterContext.Provider value={emitter}>
+      <div className="flex gap-4 items-start message-bubble-enter">
+        {/* Agent avatar — 窄屏隐藏 */}
+        <AgentAvatar className="hidden md:flex mt-0.5" />
+        {/* 内容 — 无卡片背景，直接排版 */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Sender label deleted, we don't need it  */}
+          {entry.chunks
+            .filter((chunk) => {
+              if (chunk.type === "thought") return true;
+              return isVisibleContentBlock({ type: "text", text: chunk.text });
+            })
+            .map((chunk, i, filtered) => {
+              if (chunk.type === "thought") {
+                // 只有最后一个 thought chunk 且全局 streaming 时才标记为 streaming
+                const isLastThought =
+                  i === filtered.length - 1 || filtered.slice(i + 1).every((c) => c.type !== "thought");
+                const thoughtStreaming = isStreaming && isLastThought;
+                return (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
+                  <Reasoning key={i} isStreaming={thoughtStreaming}>
+                    <ReasoningTrigger />
+                    <ReasoningContent>
+                      <ThoughtContent text={chunk.text} isStreaming={thoughtStreaming} />
+                    </ReasoningContent>
+                  </Reasoning>
+                );
+              }
+              // 普通消息块 — 直接输出，无包裹卡片
               return (
                 // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
-                <Reasoning key={i} isStreaming={thoughtStreaming}>
-                  <ReasoningTrigger />
-                  <ReasoningContent>
-                    <ThoughtContent text={chunk.text} isStreaming={thoughtStreaming} />
-                  </ReasoningContent>
-                </Reasoning>
+                <div key={i} className="message-content text-text-primary leading-[1.75]">
+                  <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
+                </div>
               );
-            }
-            // 普通消息块 — 直接输出，无包裹卡片
-            return (
-              // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
-              <div key={i} className="message-content text-text-primary leading-[1.75]">
-                <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
-              </div>
-            );
-          })}
+            })}
+        </div>
       </div>
-    </div>
+    </MessageEmitterContext.Provider>
   );
 }
 

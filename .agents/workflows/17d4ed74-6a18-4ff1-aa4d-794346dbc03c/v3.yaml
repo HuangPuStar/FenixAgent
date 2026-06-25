@@ -1,0 +1,75 @@
+schema_version: "1"
+name: test-important
+description: 本地测试流水线：串行 → 单节点多输出(JSON) → 并发消费不同字段 → 聚合
+timeout: 300
+nodes:
+  - id: hello
+    type: shell
+    description: 第一步：打印问候
+    command: |
+      echo "Hello from step 1"
+  - id: world
+    type: shell
+    depends_on:
+      - hello
+    description: 第二步：使用上游输出
+    inputs:
+      GREETING: nodes.hello.output.stdout
+    command: |
+      echo "Step 2 received greeting: $GREETING"
+  - id: done
+    type: shell
+    depends_on:
+      - world
+    description: 第三步：输出 JSON（多输出模式）
+    inputs:
+      RESULT: nodes.world.output.stdout
+    command: |
+      TEXT=$(printf "%s" "$RESULT")
+      CHARS=$(printf "%s" "$TEXT" | wc -c | tr -d ' ')
+      WORDS=$(printf "%s" "$TEXT" | wc -w | tr -d ' ')
+      UPPER=$(printf "%s" "$TEXT" | tr '[:lower:]' '[:upper:]')
+      printf '{"text":"%s","chars":%s,"words":%s,"upper":"%s"}' "$TEXT" "$CHARS" "$WORDS" "$UPPER"
+  - id: show_chars
+    type: shell
+    depends_on:
+      - done
+    description: 并发消费：读取 .output.chars
+    inputs:
+      CHARS: nodes.done.output.chars
+    command: |
+      echo "字符数: $CHARS"
+  - id: show_words
+    type: shell
+    depends_on:
+      - done
+    description: 并发消费：读取 .output.words
+    inputs:
+      WORDS: nodes.done.output.words
+    command: |
+      echo "单词数: $WORDS"
+  - id: show_upper
+    type: shell
+    depends_on:
+      - done
+    description: 并发消费：读取 .output.upper
+    inputs:
+      UPPER: nodes.done.output.upper
+    command: |
+      echo "大写结果: $UPPER"
+  - id: aggregate
+    type: shell
+    depends_on:
+      - show_chars
+      - show_words
+      - show_upper
+    description: 聚合节点：汇总来自 JSON 不同字段的并发结果
+    inputs:
+      CHARS: nodes.show_chars.output.stdout
+      WORDS: nodes.show_words.output.stdout
+      UPPER: nodes.show_upper.output.stdout
+    command: |
+      echo "===== 聚合结果 ====="
+      echo "$CHARS"
+      echo "$WORDS"
+      echo "$UPPER"

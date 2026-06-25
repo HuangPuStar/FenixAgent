@@ -1,0 +1,94 @@
+schema_version: "1"
+name: data-sample
+description: 多 Agent 协作调研：仅需输入方向，3 Agent 并行 Web 搜索 + 1 Agent 综合汇总
+timeout: 600
+params:
+  direction:
+    type: string
+    default: 2026 年 AI Agent 技术趋势
+    description: 调研方向/主题
+nodes:
+  - id: research-trends
+    type: agent
+    description: Agent 1 - 趋势分析：搜索最新技术动态和行业趋势
+    agent: meta-agent
+    prompt: |
+      你需要围绕以下方向进行 web 搜索调研，不需要依赖本地文件：
+      ## 调研方向
+      ${{ inputs.direction }}
+
+      请执行：
+      1. 搜索该方向的最新技术动态和行业趋势
+      2. 识别关键技术进步和里程碑
+      3. 分析市场格局和主要参与者
+      4. 总结未来 6-12 个月的预测
+
+      输出结构化 Markdown 报告，包含来源引用。
+    output_messages: 3
+  - id: research-challenges
+    type: agent
+    description: Agent 2 - 挑战分析：搜索技术瓶颈、风险和问题
+    agent: meta-agent
+    prompt: |
+      你需要围绕以下方向进行 web 搜索调研，不需要依赖本地文件：
+      ## 调研方向
+      ${{ inputs.direction }}
+
+      请执行：
+      1. 搜索该方向当前面临的主要技术挑战
+      2. 识别安全风险、隐私问题和伦理考量
+      3. 分析落地实施的障碍
+      4. 搜索业界正在尝试的解决方案
+
+      输出结构化 Markdown 报告，包含来源引用。
+    output_messages: 3
+  - id: research-practices
+    type: agent
+    description: Agent 3 - 最佳实践：搜索成功案例和落地经验
+    agent: meta-agent
+    prompt: |
+      你需要围绕以下方向进行 web 搜索调研，不需要依赖本地文件：
+      ## 调研方向
+      ${{ inputs.direction }}
+
+      请执行：
+      1. 搜索该方向的最佳实践和成功案例
+      2. 收集开源项目和工具生态
+      3. 查找技术选型对比和评测
+      4. 总结可复用的实施路径
+
+      输出结构化 Markdown 报告，包含来源引用。
+    output_messages: 3
+  - id: synthesize
+    type: agent
+    depends_on:
+      - research-trends
+      - research-challenges
+      - research-practices
+    description: Agent 4 - 综合汇总：合并三份调研报告
+    agent: meta-agent
+    prompt: |
+      你是研究总监。综合以下三份调研报告，生成最终研究报告：
+
+      调研方向：${{ inputs.direction }}
+
+      ## 报告 A - 趋势分析
+      ${{ needs.research-trends.outputs.response }}
+
+      ## 报告 B - 挑战分析
+      ${{ needs.research-challenges.outputs.response }}
+
+      ## 报告 C - 最佳实践
+      ${{ needs.research-practices.outputs.response }}
+
+      请整合为一份完整的研究报告，包含：
+      1. 执行摘要
+      2. 核心发现（亮点）
+      3. 趋势与前景
+      4. 关键挑战
+      5. 最佳实践建议
+      6. 行动建议
+      7. 总结
+
+      使用 Markdown 格式。
+    output_messages: 5

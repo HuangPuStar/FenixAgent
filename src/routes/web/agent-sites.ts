@@ -37,6 +37,13 @@ function canWrite(row: { userId: string }, userId: string, role: string): boolea
   return row.userId === userId || role === "owner" || role === "admin";
 }
 
+/** 识别 siteAppId 格式并查找：UUID 格式走 getById，否则走 getByRemoteAppId。
+ *  必须区分格式再查，因为 getById 对非 UUID 参数会直接抛 PG 类型异常，不会返回 undefined。 */
+async function resolveSiteApp(siteAppId: string) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(siteAppId);
+  return isUuid ? agentSiteAppRepo.getById(siteAppId) : agentSiteAppRepo.getByRemoteAppId(siteAppId);
+}
+
 const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
   .use(authGuardPlugin)
   .model({
@@ -68,7 +75,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     "/apps/:id",
     async ({ params, store, error }) => {
       const authCtx = store.authContext!;
-      const row = await agentSiteAppRepo.getById(params.id);
+      const row = await agentSiteAppRepo.getByRemoteAppId(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
         return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
@@ -315,11 +322,14 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!agentConfig) {
         return error(404, { error: { type: "not_found", message: "Agent 配置不存在" } });
       }
-      const siteApp = await agentSiteAppRepo.getById(params.siteAppId);
+      // siteAppId 可能是 UUID（从 MountSiteDialog 传入）或 remoteAppId（从卡片
+      // artifacts:select-site 事件自动挂载传入）。按格式判断走不同查找方法。
+      const siteApp = await resolveSiteApp(params.siteAppId);
       if (!siteApp || siteApp.organizationId !== authCtx.organizationId) {
         return error(404, { error: { type: "not_found", message: "Site 不存在" } });
       }
-      await addAgentSiteApp(params.agentConfigId, params.siteAppId);
+      // 永远用 siteApp.id（UUID）写入绑定表，保证 listByIds 的 JOIN 正确
+      await addAgentSiteApp(params.agentConfigId, siteApp.id);
       return { success: true as const };
     },
     {
@@ -340,11 +350,11 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!agentConfig) {
         return error(404, { error: { type: "not_found", message: "Agent 配置不存在" } });
       }
-      const siteApp = await agentSiteAppRepo.getById(params.siteAppId);
+      const siteApp = await resolveSiteApp(params.siteAppId);
       if (!siteApp || siteApp.organizationId !== authCtx.organizationId) {
         return error(404, { error: { type: "not_found", message: "Site 不存在" } });
       }
-      await removeAgentSiteApp(params.agentConfigId, params.siteAppId);
+      await removeAgentSiteApp(params.agentConfigId, siteApp.id);
       return { success: true as const };
     },
     {

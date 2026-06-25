@@ -1,0 +1,37 @@
+schema_version: "1"
+name: new-workflow
+description: 示例工作流
+timeout: 300
+params:
+  deploy_env:
+    type: string
+    default: staging
+nodes:
+  - id: hello
+    type: shell
+    description: 打印问候
+    command: |
+      echo "Hello from new-workflow!"
+      printf "%s" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  - id: build
+    type: shell
+    depends_on:
+      - hello
+    description: 模拟构建
+    timeout: 60
+    inputs:
+      BUILD_TIME: nodes.hello.output.stdout
+    command: |
+      echo "Building at timestamp: $BUILD_TIME"
+      printf "%s" "build-artifact-v1.0.0.tar.gz"
+  - id: deploy
+    type: shell
+    depends_on:
+      - build
+    description: 部署到目标环境
+    inputs:
+      ARTIFACT: nodes.build.output.stdout
+      ENV: params.deploy_env
+    command: |
+      echo "Deploying $ARTIFACT to $ENV environment..."
+      echo "Deploy complete!"

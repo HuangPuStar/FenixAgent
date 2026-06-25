@@ -1,0 +1,211 @@
+schema_version: "1"
+name: CRUD测试
+description: 完整的增删改查测试
+timeout: 600
+params:
+  api_base_url:
+    type: string
+    default: https://jsonplaceholder.typicode.com
+    description: 目标 REST API 基础地址
+  resource_type:
+    type: string
+    default: posts
+    description: 资源类型（对应 REST 资源路径）
+  title:
+    type: string
+    default: RCS CRUD Test
+    description: 测试资源标题
+  notify_env:
+    type: string
+    default: test2
+    description: 通知 agent 的环境名称
+  loop_max:
+    type: number
+    default: 3
+    description: 循环验证最大迭代次数
+secrets:
+  - API_KEY
+nodes:
+  - id: setup
+    type: python
+    description: 生成测试配置，初始化工作目录
+    inputs:
+      prefix: params.title
+    timeout: 15
+    code: |
+      import json, os, time
+      time.sleep(0.5)
+      config = {
+        "status": "ready",
+        "prefix": prefix,
+        "test_id": None,
+        "temp_dir": os.path.join(os.getcwd(), ".crud_test")
+      }
+      os.makedirs(config["temp_dir"], exist_ok=True)
+      print(json.dumps(config))
+  - id: create
+    type: api
+    depends_on:
+      - setup
+    description: POST — 创建新资源
+    method: POST
+    url: ${{ params.api_base_url }}/${{ params.resource_type }}
+    headers:
+      Content-Type: application/json
+      Authorization: Bearer ${{ secrets.API_KEY }}
+    body: |
+      {"title":"${{ params.title }} - Create","body":"CRUD test resource created by RCS DAG workflow","userId":1}
+    timeout: 30
+    retry:
+      count: 2
+      delay: 1
+      backoff: exponential
+  - id: verify_created
+    type: shell
+    depends_on:
+      - create
+    description: 解析创建响应，提取资源 ID 并存入文件
+    inputs:
+      RESPONSE: nodes.create.output
+    command: |
+      echo "$RESPONSE" | python3 -c "
+      import sys, json, os
+      data = json.loads(sys.stdin.read())
+      rid = data.get('id')
+      assert rid, 'Missing resource ID'
+      meta = {'resource_id': rid, 'status': 'created', 'title': data.get('title','')}
+      os.makedirs('.crud_test', exist_ok=True)
+      with open('.crud_test/meta.json', 'w') as f:
+        json.dump(meta, f)
+      print(json.dumps(meta))
+      "
+  - id: read
+    type: api
+    depends_on:
+      - create
+    description: GET — 读取刚创建的资源（与 verify_created 并行）
+    method: GET
+    url: ${{ params.api_base_url }}/${{ params.resource_type }}/${{ nodes.create.output.id }}
+    timeout: 30
+    retry:
+      count: 3
+      delay: 2
+  - id: validate_read
+    type: python
+    depends_on:
+      - read
+      - verify_created
+    description: 验证读取结果包含预期标题
+    inputs:
+      read_data: nodes.read.output
+    code: |
+      import json
+      data = json.loads(read_data)
+      expected = 'CRUD Test - Create'
+      actual_title = data.get('title', '')
+      match = expected in actual_title
+      print(json.dumps({
+        "match": match,
+        "expected": expected,
+        "actual": actual_title,
+        "resource_id_wf": data.get("id"),
+        "status": "passed" if match else "failed"
+      }))
+  - id: update
+    type: api
+    depends_on:
+      - validate_read
+      - verify_created
+    description: PUT — 更新资源标题
+    method: PUT
+    url: ${{ params.api_base_url }}/${{ params.resource_type }}/${{ nodes.create.output.id }}
+    headers:
+      Content-Type: application/json
+    body: >
+      {"id":${{ nodes.create.output.id }},"title":"${{ params.title }} - Updated","body":"Updated by RCS
+      workflow","userId":1}
+    timeout: 30
+  - id: loop_check
+    type: loop
+    depends_on:
+      - update
+    description: 循环验证更新后的一致性（最多 loop_max 次）
+    condition: ${{ nodes.check_again.output.result != 'consistent' }}
+    max_iterations: 3
+    body:
+      nodes:
+        - id: check_again
+          type: shell
+          description: 检查资源标题是否已更新
+          command: |
+            echo '{"result": "consistent", "checked": true}'
+  - id: audit
+    type: audit
+    depends_on:
+      - loop_check
+    description: 人工审批 — 确认是否执行删除
+    display_data:
+      title: 确认删除操作
+      message: 以下资源将被永久删除，请审批
+      resource_id_expr: nodes.create.output.id
+    expires_in: 300
+  - id: delete
+    type: api
+    depends_on:
+      - audit
+    description: DELETE — 删除资源（仅在审批通过后执行）
+    method: DELETE
+    url: ${{ params.api_base_url }}/${{ params.resource_type }}/${{ nodes.create.output.id }}
+    condition: ${{ nodes.audit.output.approved }}
+    timeout: 30
+  - id: notify
+    type: agent
+    depends_on:
+      - delete
+    description: Agent 生成执行总结
+    agent: test2
+    prompt: |
+      CRUD 工作流执行完毕。
+
+      资源 ID: ${{ nodes.create.output.id }}
+      创建: ${{ nodes.create.status }}
+      读取: ${{ nodes.read.status }}
+      更新: ${{ nodes.update.status }}
+      删除: ${{ nodes.delete.status }}
+
+      请用中文输出一份简短的测试报告。
+    timeout: 60
+    output_messages: 1
+  - id: report
+    type: shell
+    depends_on:
+      - delete
+    description: 生成 CRUD 测试报告（与 notify 并行）
+    inputs:
+      CREATE_ID: nodes.create.output.id
+      CREATE_STATUS: nodes.create.status
+      READ_STATUS: nodes.read.status
+      UPDATE_STATUS: nodes.update.status
+      DELETE_STATUS: nodes.delete.status
+    command: |
+      cat << EOF
+      ============================
+       CRUD Test Report
+      ============================
+      Resource:  $CREATE_ID
+      Create:    $CREATE_STATUS
+      Read:      $READ_STATUS
+      Update:    $UPDATE_STATUS
+      Delete:    $DELETE_STATUS
+      Audit:     REVIEWED
+      ============================
+      EOF
+  - id: sub_cleanup
+    type: shell
+    depends_on:
+      - notify
+      - report
+    description: 收尾清理（最终合并节点）
+    command: |
+      rm -rf .crud_test
+      echo "CRUD workflow completed — all resources cleaned up"

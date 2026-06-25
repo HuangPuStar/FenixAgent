@@ -1,0 +1,173 @@
+schema_version: "1"
+name: data-sample
+description: "多 Agent 协作代码分析流水线：3 个 Agent 并行分析项目代码（后端/前端/依赖），1 个 Agent 综合汇总，结果保存到本地文件"
+params:
+  project_root:
+    type: string
+    default: "/Users/konghayao/code/pazhou/remote-control-server"
+    description: "项目根目录绝对路径"
+  output_file:
+    type: string
+    default: "/tmp/multi-agent-report.md"
+    description: "最终报告输出路径"
+nodes:
+  # ════════════════════════════════════════════
+  # 阶段 1：真实 Shell 命令采集项目数据
+  # ════════════════════════════════════════════
+  - id: fetch-project-stats
+    type: shell
+    description: "真实命令：统计项目代码量、模块数、git 提交历史等"
+    cwd: "${{ inputs.project_root }}"
+    command: |
+      echo "=== Project Stats ==="
+      echo "total_commits=$(git rev-list --count HEAD 2>/dev/null || echo 0)" >> $ACPX_OUTPUT
+      echo "total_branches=$(git branch -r 2>/dev/null | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "backend_ts_files=$(find src -name '*.ts' -type f | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "frontend_ts_files=$(find web/src \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "package_count=$(ls packages/ 2>/dev/null | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "test_file_count=$(find src/__tests__ -name '*.test.ts' 2>/dev/null | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "schema_table_count=$(grep -c 'export const' src/db/schema.ts 2>/dev/null || echo 0)" >> $ACPX_OUTPUT
+      echo "last_commit_msg=$(git log -1 --format='%s' 2>/dev/null || echo 'N/A')" >> $ACPX_OUTPUT
+      echo "last_commit_author=$(git log -1 --format='%an' 2>/dev/null || echo 'N/A')" >> $ACPX_OUTPUT
+      echo "repo_size_mb=$(du -sh . 2>/dev/null | cut -f1)" >> $ACPX_OUTPUT
+
+  # ════════════════════════════════════════════
+  # 阶段 2：三个 Agent 并行分析（真实数据驱动）
+  # ════════════════════════════════════════════
+  - id: analyze-backend
+    type: agent
+    description: "Agent 1 — 基于真实数据深度分析后端代码质量"
+    depends_on: [fetch-project-stats]
+    agent: "meta-agent"
+    prompt: |
+      你是一个资深后端架构师。请基于以下真实项目数据进行分析：
+
+      项目根目录：${{ inputs.project_root }}
+
+      ## 项目真实数据
+      - 后端 TS 文件数：${{ needs.fetch-project-stats.outputs.backend_ts_files }} 个
+      - 数据库 Schema 表定义数：${{ needs.fetch-project-stats.outputs.schema_table_count }} 张
+      - 测试文件数：${{ needs.fetch-project-stats.outputs.test_file_count }} 个
+      - 总提交数：${{ needs.fetch-project-stats.outputs.total_commits }}
+      - 最近提交："${{ needs.fetch-project-stats.outputs.last_commit_msg }}" (by ${{ needs.fetch-project-stats.outputs.last_commit_author }})
+
+      请执行以下分析（基于上述真实数据，合理推断）：
+      1. 项目模块结构分析
+      2. 技术栈成熟度评估
+      3. 测试覆盖度推断
+      4. 代码组织合理性评价
+      5. 潜在改进建议
+
+      请输出结构化分析报告（Markdown 格式），每个维度附评分（1-10分）。
+    output_messages: 3
+
+  - id: analyze-frontend
+    type: agent
+    description: "Agent 2 — 基于真实数据分析前端架构与 UI 层"
+    depends_on: [fetch-project-stats]
+    agent: "meta-agent"
+    prompt: |
+      你是一个资深前端架构师。请基于以下真实项目数据进行分析：
+
+      项目根目录：${{ inputs.project_root }}
+
+      ## 项目真实数据
+      - 前端 TS/TSX 文件数：${{ needs.fetch-project-stats.outputs.frontend_ts_files }} 个
+      - 后端包数：${{ needs.fetch-project-stats.outputs.package_count }} 个内部 workspace 包
+      - 总提交数：${{ needs.fetch-project-stats.outputs.total_commits }}
+
+      请执行以下分析（基于上述真实数据，合理推断）：
+      1. 前端技术栈评估（React + Vite + TanStack Router 等）
+      2. UI 组件体系分析
+      3. 前后端协作模式评价（API SDK、类型共享、认证流程）
+      4. 前端性能与构建配置评价
+      5. 改进建议
+
+      请输出结构化分析报告（Markdown 格式）。
+    output_messages: 3
+
+  - id: analyze-dependencies
+    type: agent
+    description: "Agent 3 — 基于真实数据分析项目依赖与工程化"
+    depends_on: [fetch-project-stats]
+    agent: "meta-agent"
+    prompt: |
+      你是一个 DevOps/工程效率专家。请基于以下真实项目数据进行分析：
+
+      项目根目录：${{ inputs.project_root }}
+
+      ## 项目真实数据
+      - 内部 workspace 包数量：${{ needs.fetch-project-stats.outputs.package_count }} 个
+      - 测试文件数：${{ needs.fetch-project-stats.outputs.test_file_count }} 个
+      - 数据库表定义数：${{ needs.fetch-project-stats.outputs.schema_table_count }} 张
+      - 仓库大小：${{ needs.fetch-project-stats.outputs.repo_size_mb }}
+      - 总提交数：${{ needs.fetch-project-stats.outputs.total_commits }}
+      - 远程分支数：${{ needs.fetch-project-stats.outputs.total_branches }}
+
+      请执行以下分析（基于上述真实数据，合理推断）：
+      1. 依赖架构分析（内部包的依赖拓扑）
+      2. 工程化水平评估（测试、CI、构建脚本）
+      3. 数据库 Schema 设计评价
+      4. 项目健康度综合评分
+      5. 工程改进建议
+
+      请输出结构化分析报告（Markdown 格式）。
+    output_messages: 3
+
+  # ════════════════════════════════════════════
+  # 阶段 3：综合汇总
+  # ════════════════════════════════════════════
+  - id: synthesize-report
+    type: agent
+    description: "Agent 4 — 综合三个并行分析结果，输出最终项目评估报告"
+    depends_on: [analyze-backend, analyze-frontend, analyze-dependencies]
+    agent: "meta-agent"
+    prompt: |
+      你是项目总评审官。请综合以下三个分析团队的输出，生成最终项目健康度报告。
+
+      ## 团队 A — 后端架构分析
+      ${{ needs.analyze-backend.outputs.response }}
+
+      ## 团队 B — 前端架构分析
+      ${{ needs.analyze-frontend.outputs.response }}
+
+      ## 团队 C — 依赖与工程化分析
+      ${{ needs.analyze-dependencies.outputs.response }}
+
+      请输出一份完整的最终项目评估报告，包含：
+      1. 项目总览
+      2. 各维度评分汇总（可视化表格）
+      3. Top 3 优势
+      4. Top 3 待改进项
+      5. 行动建议（按优先级排列）
+      6. 综合健康度评分
+
+      使用 Markdown 格式。
+    output_messages: 5
+
+  # ════════════════════════════════════════════
+  # 阶段 4：将结果保存到本地文件（真实验证）
+  # ════════════════════════════════════════════
+  - id: save-report
+    type: shell
+    description: "将综合报告写入本地文件，可供人工查看验证"
+    depends_on: [synthesize-report]
+    command: |
+      OUTPUT_FILE="${{ inputs.output_file }}"
+      {
+        echo "# 多 Agent 协作项目评估报告"
+        echo ""
+        echo "**项目**：Remote Control Server"
+        echo "**生成时间**：$(date)"
+        echo "**工作流**：data-sample（多 Agent 协作流水线）"
+        echo ""
+        echo "---"
+        echo ""
+        echo "## 综合评审结果"
+        echo ""
+        echo "来自 synthesize-report Agent 的输出："
+        echo ""
+      } > "$OUTPUT_FILE"
+      echo "报告已保存到 $OUTPUT_FILE"
+      ls -la "$OUTPUT_FILE"
+      echo "output_path=$OUTPUT_FILE" >> $ACPX_OUTPUT

@@ -1,0 +1,122 @@
+schema_version: "1"
+name: data-sample
+description: "多 Agent 协作：真实 Shell 采集项目数据 → 3 Agent 并行分析 → 1 Agent 汇总报告"
+timeout: 600
+params:
+  project_root:
+    type: string
+    default: "/Users/konghayao/code/pazhou/remote-control-server"
+    description: 项目根目录
+  output_file:
+    type: string
+    default: "/tmp/multi-agent-report.md"
+    description: 报告输出路径
+nodes:
+  - id: fetch-project-stats
+    type: shell
+    description: 真实 Shell 命令采集项目数据
+    command: |
+      cd "${{ inputs.project_root }}"
+      echo "total_commits=$(git rev-list --count HEAD 2>/dev/null || echo 0)" >> $ACPX_OUTPUT
+      echo "backend_ts_files=$(find src -name '*.ts' -type f 2>/dev/null | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "frontend_ts_files=$(find web/src \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "package_count=$(ls -d packages/*/ 2>/dev/null | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "test_file_count=$(find src/__tests__ -name '*.test.ts' 2>/dev/null | wc -l | tr -d ' ')" >> $ACPX_OUTPUT
+      echo "schema_table_count=$(grep -c 'export const' src/db/schema.ts 2>/dev/null || echo 0)" >> $ACPX_OUTPUT
+      echo "last_commit_msg=$(git log -1 --format='%s' 2>/dev/null || echo 'N/A')" >> $ACPX_OUTPUT
+      echo "repo_size_mb=$(du -sh . 2>/dev/null | cut -f1)" >> $ACPX_OUTPUT
+
+  - id: analyze-backend
+    type: agent
+    description: "Agent 1 — 后端代码质量分析"
+    depends_on: [fetch-project-stats]
+    agent: "meta-agent"
+    prompt: |
+      你是一个资深后端架构师。基于以下真实项目数据分析后端质量：
+
+      ## 真实数据
+      - 后端 TS 文件：${{ needs.fetch-project-stats.outputs.backend_ts_files }} 个
+      - 数据库表定义：${{ needs.fetch-project-stats.outputs.schema_table_count }} 张
+      - 测试文件：${{ needs.fetch-project-stats.outputs.test_file_count }} 个
+      - 总提交：${{ needs.fetch-project-stats.outputs.total_commits }}
+      - 最近提交：${{ needs.fetch-project-stats.outputs.last_commit_msg }}
+
+      请分析：1)模块结构 2)技术栈 3)测试覆盖 4)代码组织 5)改进建议。每个维度评分1-10分。输出Markdown。
+
+    output_messages: 3
+
+  - id: analyze-frontend
+    type: agent
+    description: "Agent 2 — 前端架构分析"
+    depends_on: [fetch-project-stats]
+    agent: "meta-agent"
+    prompt: |
+      你是一个资深前端架构师。基于以下真实项目数据分析前端质量：
+
+      ## 真实数据
+      - 前端 TS/TSX 文件：${{ needs.fetch-project-stats.outputs.frontend_ts_files }} 个
+      - 内部包数：${{ needs.fetch-project-stats.outputs.package_count }} 个
+
+      请分析：1)技术栈 2)UI体系 3)前后端协作 4)构建设置 5)改进建议。输出Markdown。
+
+    output_messages: 3
+
+  - id: analyze-dependencies
+    type: agent
+    description: "Agent 3 — 依赖与工程化分析"
+    depends_on: [fetch-project-stats]
+    agent: "meta-agent"
+    prompt: |
+      你是一个DevOps专家。基于以下真实数据分析工程化水平：
+
+      ## 真实数据
+      - 内部包数：${{ needs.fetch-project-stats.outputs.package_count }} 个
+      - 测试文件：${{ needs.fetch-project-stats.outputs.test_file_count }} 个
+      - 仓库大小：${{ needs.fetch-project-stats.outputs.repo_size_mb }}
+      - 总提交数：${{ needs.fetch-project-stats.outputs.total_commits }}
+
+      请分析：1)依赖拓扑 2)工程化水平 3)Schema设计 4)健康度评分 5)改进建议。输出Markdown。
+
+    output_messages: 3
+
+  - id: synthesize-report
+    type: agent
+    description: "Agent 4 — 综合汇总生成最终报告"
+    depends_on: [analyze-backend, analyze-frontend, analyze-dependencies]
+    agent: "meta-agent"
+    prompt: |
+      你是总评审官。综合三个团队的输出，生成最终项目健康度报告：
+
+      ## 后端分析
+      ${{ needs.analyze-backend.outputs.response }}
+
+      ## 前端分析
+      ${{ needs.analyze-frontend.outputs.response }}
+
+      ## 依赖分析
+      ${{ needs.analyze-dependencies.outputs.response }}
+
+      请输出：1)项目总览 2)评分汇总表 3)Top3优势 4)Top3待改进 5)行动建议 6)综合健康度评分。Markdown格式。
+
+    output_messages: 5
+
+  - id: save-report
+    type: shell
+    description: "保存最终报告到本地文件"
+    depends_on: [synthesize-report]
+    command: |
+      OUTPUT_FILE="${{ inputs.output_file }}"
+      {
+        echo "# 多 Agent 协作项目评估报告"
+        echo ""
+        echo "**项目**: Remote Control Server"
+        echo "**生成时间**: $(date)"
+        echo "**工作流**: data-sample"
+        echo ""
+        echo "---"
+        echo ""
+        echo "## 综合评审结果"
+        echo ""
+      } > "$OUTPUT_FILE"
+      ls -la "$OUTPUT_FILE"
+      echo "output_path=$OUTPUT_FILE" >> $ACPX_OUTPUT

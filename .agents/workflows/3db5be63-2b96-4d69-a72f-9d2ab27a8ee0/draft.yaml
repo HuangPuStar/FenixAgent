@@ -1,0 +1,26 @@
+schema_version: "1"
+name: data-sample
+description: 多 Agent 协作 Web 调研：仅需输入方向，3 Agent 并行搜索 + 1 Agent 综合汇总
+timeout: 300
+params:
+  direction:
+    type: string
+    default: AI Agent 趋势
+    description: 调研方向
+nodes:
+  - id: search
+    type: agent
+    description: Agent 搜索
+    agent: haiku
+    prompt: |
+      输出你hello
+    output_messages: 3
+  - id: done
+    type: shell
+    depends_on:
+      - search
+    description: 输出完成确认
+    command: |
+      echo "=== 调研完成 ==="
+      echo "方向: ${{ inputs.direction }}"
+      echo "结果已由上游 Agent 输出"

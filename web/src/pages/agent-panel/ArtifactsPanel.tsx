@@ -84,6 +84,13 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   const userPickedSiteRef = useRef(false);
   // 待展示的 diff 文件数：用户在 Sites 模式时累计，切回 Files 时清零
   const [pendingDiffCount, setPendingDiffCount] = useState(0);
+  // sites / agentConfigId 的 ref 镜像：事件处理器（useEffect []）内需要访问最近值，
+  // 不走 deps 触发重新注册（避免频繁 add/removeEventListener）。
+  const sitesRef = useRef(sites);
+  sitesRef.current = sites;
+  const configIdRef = useRef(agentConfigIdProp);
+  configIdRef.current = agentConfigIdProp;
+  const autoBindingRef = useRef(false); // 自动绑定的并发锁
 
   // ── 挂载/卸载 state ───────────────────────────────────
   // mountDialogOpen：挂载弹层（多选 + 确认）
@@ -117,6 +124,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
     };
   }, [envId, agentConfigIdProp]);
   const agentConfigId = agentConfigIdProp !== undefined ? agentConfigIdProp : resolvedAgentConfigId;
+  configIdRef.current = agentConfigId ?? undefined;
 
   // 拉取当前 agent 绑定的 sites 详情。挂载/卸载成功后也复用此函数刷新列表，
   // 避免用 reloadTick 当 effect 触发器（biome useExhaustiveDependencies 不允许
@@ -147,6 +155,53 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
     } finally {
       setSitesLoading(false);
     }
+  }, []);
+
+  // 监听 <agent-sites> 卡片点击事件：切到 Sites 模式并选中对应 site
+  // 卡片组件触发 artifacts:select-site 时：
+  // 1. 切到 Sites 模式
+  // 2. 在已绑定的 sites 中按 remoteAppId 查找并选中
+  // 3. 若未绑定：自动调用 bindSite 挂载，刷新列表后选中
+  // biome-ignore lint/correctness/useExhaustiveDependencies: handler 不重新注册，靠 ref 获取最新值
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as { siteId: string };
+      if (!detail?.siteId) return;
+
+      const siteId = detail.siteId; // remoteAppId（如 "app-91a0621c"）
+      const currentSites = sitesRef.current;
+      const cfgId = configIdRef.current;
+
+      setTopMode("sites");
+      userPickedSiteRef.current = true;
+
+      // 在已绑定的 sites 中按 remoteAppId 查找
+      const matched = currentSites.find((s) => s.remoteAppId === siteId);
+      if (matched) {
+        setActiveSiteId(matched.id);
+        return;
+      }
+
+      // 未绑定 → 自动挂载（并发锁防止快速点击重复绑定）
+      if (!cfgId || autoBindingRef.current) return;
+      autoBindingRef.current = true;
+      try {
+        await agentSitesApi.bindSite(cfgId, siteId);
+        await loadSites(cfgId);
+        // loadSites 的 setSites 可能在当前 tick 尚未 flush。用 setTimeout
+        // 等 React 批处理完成后读取 sitesRef 最新值定位新加载的 site。
+        setTimeout(() => {
+          const fresh = sitesRef.current.find((s) => s.remoteAppId === siteId);
+          setActiveSiteId(fresh?.id ?? null);
+        }, 100);
+      } catch (err: unknown) {
+        console.error("[ArtifactsPanel] 自动挂载站点失败", err);
+      } finally {
+        autoBindingRef.current = false;
+      }
+    };
+    window.addEventListener("artifacts:select-site", handler);
+    return () => window.removeEventListener("artifacts:select-site", handler);
   }, []);
 
   const handleTopChange = useCallback(
@@ -255,17 +310,25 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   // - 用户在 Files 模式：直接把新 diff 加入 openFiles
   // - 用户已主动切到 Sites 模式：不强制切回，仅累计 pendingDiffCount 在 Files tab 上做角标提示，
   //   由用户主动点击切回 Files 时清零（避免长任务运行中持续打断浏览 site 的用户）
+  const prevChangedPathsRef = useRef<string[]>([]);
   useEffect(() => {
     const paths = normalizedChangedFiles.map((f) => f.path);
     if (paths.length === 0) return;
+
+    // 计算增量：只统计本次新增的文件，避免总数被累加放大（如 3 个文件反复累加 → 99+）
+    const prevPaths = prevChangedPathsRef.current;
+    const newPaths = paths.filter((p) => !prevPaths.includes(p));
+    prevChangedPathsRef.current = paths;
+
     setOpenFiles((prev) => {
-      const newPaths = paths.filter((p) => !prev.includes(p));
-      if (newPaths.length === 0) return prev;
-      return [...newPaths, ...prev].slice(0, MAX_OPEN_FILES);
+      const existing = paths.filter((p) => prev.includes(p));
+      if (existing.length === paths.length) return prev;
+      const toAdd = paths.filter((p) => !prev.includes(p));
+      return [...toAdd, ...prev].slice(0, MAX_OPEN_FILES);
     });
     setActiveFile((cur) => cur ?? paths[0]);
-    if (userPickedSiteRef.current) {
-      setPendingDiffCount((n) => n + paths.length);
+    if (userPickedSiteRef.current && newPaths.length > 0) {
+      setPendingDiffCount((n) => n + newPaths.length);
     }
   }, [normalizedChangedFiles]);
 
