@@ -18,7 +18,6 @@ services:
             # 用于远程注册机器的 id
             RCS_TENANT_ID: sbFAPs2nyyL0ZNxTE8CSqXUu6AIPULfL
             RCS_MACHINE_NAME: sandbox-ccb-01
-            AGENT_TYPE: ccb
         volumes:
             - sandbox-ccb-workspaces:/app/workspaces
 
