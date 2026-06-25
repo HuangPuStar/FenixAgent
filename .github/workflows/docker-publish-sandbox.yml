@@ -1,0 +1,75 @@
+name: Build & Publish Sandbox Images
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（如 v0.1.0，生成 v0.1.0-opencode / v0.1.0-ccb）"
+        required: false
+        default: "latest"
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: opencode
+            dockerfile: docker/sandbox/Dockerfile
+          - name: ccb
+            dockerfile: docker/sandbox-ccb/Dockerfile
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags
+        id: tags
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}-sandbox-${{ matrix.name }}"
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            TAGS="${IMAGE}:${VERSION}-${{ matrix.name }}"
+          elif [[ -n "${{ github.event.inputs.version }}" && "${{ github.event.inputs.version }}" != "latest" ]]; then
+            TAGS="${IMAGE}:${{ github.event.inputs.version }}-${{ matrix.name }}"
+          else
+            TAGS="${IMAGE}:sha-${GITHUB_SHA::7}-${{ matrix.name }}"
+          fi
+
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.variant=sandbox-${{ matrix.name }}
+          cache-from: type=gha,scope=sandbox-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=sandbox-${{ matrix.name }}
