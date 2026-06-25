@@ -68,7 +68,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     "/apps/:id",
     async ({ params, store, error }) => {
       const authCtx = store.authContext!;
-      const row = await agentSiteAppRepo.getById(params.id);
+      const row = await agentSiteAppRepo.getByRemoteAppId(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
         return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
