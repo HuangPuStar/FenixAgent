@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import type { CcbMcpConfig, CcbRuntimeConfig, InstalledSkillReference } from "./runtime-config";
 
 export const CCB_DIR_NAME = ".claude";
@@ -53,6 +54,48 @@ export async function writeClaudeMd(workspace: string, content: string): Promise
   const claudeMdPath = join(workspace, CCB_CLAUDE_MD_FILENAME);
   await writeFile(claudeMdPath, content, "utf8");
   return claudeMdPath;
+}
+
+/**
+ * IS_PERI 环境下，额外创建 .peri/settings.json 供 Peri 客户端使用。
+ * 将 AgentLaunchSpec 的 model 信息转换为 Peri provider 格式。
+ */
+export async function writePeriSettings(workspace: string, launchSpec: AgentLaunchSpec): Promise<string | null> {
+  if (!process.env.IS_PERI) return null;
+
+  const { model } = launchSpec;
+  const periDir = join(workspace, ".peri");
+  await mkdir(periDir, { recursive: true });
+
+  const modelId = model.modelName ?? model.model;
+  const settings = {
+    config: {
+      active_provider_id: model.provider,
+      active_alias: "sonnet",
+      providers: [
+        {
+          id: model.provider,
+          type: model.protocol,
+          apiKey: model.apiKey,
+          baseUrl: model.baseUrl,
+          models: {
+            opus: modelId,
+            sonnet: modelId,
+            haiku: modelId,
+          },
+        },
+      ],
+      thinking: {
+        enabled: true,
+        budget_tokens: 8000,
+        effort: "high",
+      },
+    },
+  };
+
+  const configPath = join(periDir, "settings.json");
+  await writeFile(configPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  return configPath;
 }
 
 /**

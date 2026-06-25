@@ -9,6 +9,7 @@ export {
   writeCcbConfig,
   writeCcbMcpConfig,
   writeClaudeMd,
+  writePeriSettings,
 } from "./runtime/environment-preparer";
 export type {
   CcbMcpConfig,

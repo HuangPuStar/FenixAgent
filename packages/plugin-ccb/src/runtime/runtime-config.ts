@@ -13,6 +13,7 @@ export interface CcbRuntimeConfig {
   env?: Record<string, string>;
   model?: string;
   modelType?: string;
+  poorMode?: boolean;
   permissions?: {
     allow?: string[];
     deny?: string[];
@@ -122,6 +123,9 @@ export function buildCcbRuntimeConfig(
 
   // modelType：从 protocol 映射，告诉 CCB 使用哪种 API 协议
   config.modelType = model.protocol;
+
+  // 开启轻量模式，减少 token 消耗
+  config.poorMode = true;
 
   return config;
 }

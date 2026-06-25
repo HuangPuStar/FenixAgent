@@ -25,6 +25,8 @@ jobs:
             dockerfile: docker/sandbox/Dockerfile
           - name: ccb
             dockerfile: docker/sandbox-ccb/Dockerfile
+          - name: peri
+            dockerfile: docker/sandbox-peri/Dockerfile
     permissions:
       contents: read
       packages: write

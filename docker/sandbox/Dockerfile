@@ -14,7 +14,7 @@ RUN apt-get install -y --no-install-recommends \
 RUN rm -rf /var/lib/apt/lists/*
 
 # 安装 Opencode 和 ACP Runtime CLI
-RUN npm install -g opencode-ai@1.15.10 @fenix-agent/acp-runtime-cli@0.1.2
+RUN npm install -g opencode-ai@1.15.10 @fenix-agent/acp-runtime-cli@0.1
 
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
