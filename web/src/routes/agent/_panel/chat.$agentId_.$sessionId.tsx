@@ -43,6 +43,18 @@ function ChatWithSessionRoute() {
     return () => window.removeEventListener("chat:stats", handler);
   }, []);
 
+  // 卡片组件触发 artifacts:select-site 时展开右侧面板
+  // biome-ignore lint/correctness/useExhaustiveDependencies: artifactsPanelRef 是稳定引用，仅 mount 时注册
+  useEffect(() => {
+    const handler = () => {
+      if (artifactsCollapsedRef.current) {
+        artifactsPanelRef.current?.expand();
+      }
+    };
+    window.addEventListener("artifacts:select-site", handler);
+    return () => window.removeEventListener("artifacts:select-site", handler);
+  }, []);
+
   // Panel 尺寸变化时同步折叠状态到 React state（仅在 isCollapsed() 翻转时触发）
   const handleArtifactsResize = useCallback(() => {
     const panel = artifactsPanelRef.current;
