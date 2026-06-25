@@ -105,75 +105,38 @@ RCS (Server)                             远端 Machine
 
 ### 部署方式
 
-#### 方式一：Docker（推荐，Linux）
+#### Docker（推荐，Linux）
 
 ```bash
 # 构建镜像
-docker build -f docker/machine-agent/Dockerfile -t fenix-machine .
+docker build -f docker/machine/Dockerfile -t fenix-machine .
 
 # 启动，自动向 RCS 注册
 docker run -d \
-  -e ANTHROPIC_API_KEY=sk-xxx \
-  -e ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
-  fenix-machine \
-  --rcs-url ws://<rcs-host>:3000 \
-  --rcs-secret your-secret \
-  --labels production,gpu \
-  -- opencode acp
+  --name fenix-machine \
+  --add-host host.docker.internal:host-gateway \
+  -e RCS_URL=ws://host.docker.internal:3000 \
+  -e RCS_SECRET=your-secret \
+  -e RCS_TENANT_ID=org_xxx \
+  -e RCS_LABELS=production,gpu \
+  fenix-machine
 ```
+
+如果 RCS 不在宿主机上，可将 `RCS_URL` 改成实际地址（如 `ws://10.0.0.12:3000`），此时通常不需要 `--add-host`。
+
+其中几个 RCS 相关环境变量的含义如下：
+
+| 变量 | 含义 | 如何取值 |
+|------|------|---------|
+| `RCS_URL` | machine 回连的 RCS WebSocket 基地址 | 如果 RCS 跑在宿主机上，填 `ws://host.docker.internal:3000`；如果跑在其他机器上，填实际可访问地址，如 `ws://10.0.0.12:3000` 或 `wss://rcs.example.com` |
+| `RCS_SECRET` | machine 注册到 RCS 时使用的共享密钥 | 必须与 RCS 服务端的 `REGISTRY_SECRET` 完全一致 |
+| `RCS_TENANT_ID` | machine 注册到哪个组织（tenant / organization）下 | 填 RCS 中目标组织的真实 ID，例如 `org_xxx` 或数据库中的组织主键；不能随便填显示名称 |
+| `RCS_LABELS` | machine 的标签列表，供调度和筛选使用 | 逗号分隔字符串，例如 `production,gpu`、`machine-a,test`；可选，不填时默认 `remote-runtime` |
+
+`RCS_URL`、`RCS_SECRET`、`RCS_TENANT_ID` 是启动 machine runtime 的必填项；缺少其中任意一个，容器会直接退出。
 
 多机验收测试（同时启动两台）：
 ```bash
-ANTHROPIC_API_KEY=sk-xxx ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
-REGISTRY_SECRET=test-secret-2026 \
+RCS_TENANT_ID=org_xxx REGISTRY_SECRET=test-secret-2026 \
 docker compose -f docker-compose.machines.yml up -d --build
 ```
-
-#### 方式二：直接运行二进制（macOS / Windows / Linux）
-
-无需安装 Bun 或 Node.js。预编译二进制位于 `docker/acp-link/`，或自行编译：
-
-```bash
-# 编译（在开发机上）
-cd packages/acp-link
-bun run compile:mac-arm64      # macOS Apple Silicon
-bun run compile:mac-x64        # macOS Intel
-bun run compile:linux-x64      # Linux x64
-bun run compile:linux-arm64    # Linux ARM64
-bun run compile:windows-x64    # Windows x64
-
-# 全平台
-bun run compile:all
-```
-
-将编译产物拷贝到目标机器，直接运行：
-
-```bash
-# macOS
-./acp-link-darwin-arm64 \
-  --rcs-url ws://10.0.0.1:3000 \
-  --rcs-secret your-secret \
-  --labels production \
-  -- opencode acp
-
-# Windows
-acp-link-windows-x64.exe \
-  --rcs-url ws://10.0.0.1:3000 \
-  --rcs-secret your-secret \
-  --labels production \
-  -- opencode acp
-```
-
-目标机器需要预装 opencode（`bun install -g opencode-ai`）及运行时依赖（Python3、git、ripgrep）。
-
-### CLI 参数
-
-| 参数 | 环境变量 | 说明 |
-|------|---------|------|
-| `--rcs-url` | `RCS_URL` | RCS 注册中心地址，如 `ws://10.0.0.1:3000` |
-| `--rcs-secret` | `RCS_SECRET` | 注册密钥，需与 RCS 侧 `REGISTRY_SECRET` 一致 |
-| `--labels` | — | 机器标签，逗号分隔，用于 Agent 绑定 |
-| `--tenant-id` | `RCS_TENANT_ID` | 租户 ID（可选） |
-| `--user-id` | `RCS_USER_ID` | 用户 ID（可选） |
-
-RCS 服务端需配置 `REGISTRY_SECRET` 环境变量，与各 machine 的 `--rcs-secret` 保持一致。

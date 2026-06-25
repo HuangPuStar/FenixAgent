@@ -4,84 +4,43 @@
 # 前置条件:
 #   1. 宿主 RCS dev server 已在 3000 端口运行
 #   2. REGISTRY_SECRET 已设置（默认 test-secret-2026）
-#   3. ANTHROPIC_API_KEY + ANTHROPIC_BASE_URL 已设置（opencode 需要模型 API）
-#   4. Clash Verge 开启"允许局域网连接"（Docker 通过 host.docker.internal:7897 访问外网）
+#   3. RCS_TENANT_ID 已设置（组织 ID，machine 注册必填）
 #
 # Usage:
-#   ANTHROPIC_API_KEY=sk-xxx ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
-#   REGISTRY_SECRET=test-secret-2026 docker compose -f docker-compose.machines.yml up --build
+#   RCS_TENANT_ID=org_xxx REGISTRY_SECRET=test-secret-2026 \
+#   docker compose -f docker-compose.machines.yml up --build
 #   docker compose -f docker-compose.machines.yml down
 
 services:
   machine-a:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: remote-runtime
-      args:
-        - HTTP_PROXY=
-        - HTTPS_PROXY=
-        - http_proxy=
-        - https_proxy=
+      dockerfile: docker/machine/Dockerfile
     container_name: fenix-machine-a
     restart: "no"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - HTTP_PROXY=http://host.docker.internal:7897
-      - HTTPS_PROXY=http://host.docker.internal:7897
-      - http_proxy=http://host.docker.internal:7897
-      - https_proxy=http://host.docker.internal:7897
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
-      - NO_PROXY=127.0.0.1,localhost,0.0.0.0
-      - no_proxy=127.0.0.1,localhost,0.0.0.0
-    command:
-      - --rcs-url
-      - ws://host.docker.internal:3000
-      - --rcs-secret
-      - ${REGISTRY_SECRET:-test-secret-2026}
-      - --labels
-      - machine-a,test
-      - --
-      - opencode
-      - acp
+      - RCS_URL=ws://host.docker.internal:3000
+      - RCS_SECRET=${REGISTRY_SECRET:-test-secret-2026}
+      - RCS_TENANT_ID=${RCS_TENANT_ID}
+      - RCS_LABELS=machine-a,test
     networks:
       - machine-net
 
   machine-b:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: remote-runtime
-      args:
-        - HTTP_PROXY=
-        - HTTPS_PROXY=
-        - http_proxy=
-        - https_proxy=
+      dockerfile: docker/machine/Dockerfile
     container_name: fenix-machine-b
     restart: "no"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - HTTP_PROXY=http://host.docker.internal:7897
-      - HTTPS_PROXY=http://host.docker.internal:7897
-      - http_proxy=http://host.docker.internal:7897
-      - https_proxy=http://host.docker.internal:7897
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
-      - NO_PROXY=127.0.0.1,localhost,0.0.0.0
-      - no_proxy=127.0.0.1,localhost,0.0.0.0
-    command:
-      - --rcs-url
-      - ws://host.docker.internal:3000
-      - --rcs-secret
-      - ${REGISTRY_SECRET:-test-secret-2026}
-      - --labels
-      - machine-b,test
-      - --
-      - opencode
-      - acp
+      - RCS_URL=ws://host.docker.internal:3000
+      - RCS_SECRET=${REGISTRY_SECRET:-test-secret-2026}
+      - RCS_TENANT_ID=${RCS_TENANT_ID}
+      - RCS_LABELS=machine-b,test
     networks:
       - machine-net
 
