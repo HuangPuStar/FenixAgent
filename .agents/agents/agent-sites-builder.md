@@ -37,7 +37,7 @@ skills:
 
 ### 4. 编写前端
 
-用 Write 工具创建前端文件（**禁止用 shell 的 `echo`/`cat` 写文件**）。
+用 Write 工具创建前端文件（**禁止用 shell 的 `echo`/`cat` 写文件**）。独立项目先在当前目录下 `mkdir <project-name>` 创建项目文件夹，再在其中编写。
 
 编写前**必须** `cat` 读取 `agent-platform-api` skill 的 `references/html-guide.md` 获取前端编写规范。
 
@@ -109,5 +109,6 @@ skills:
 - 所有 API 调用通过 `agent-platform-api` skill 走 RCS 代理，不直连 agent-sites
 - 凭证（master key / platform token）由 RCS 后端管理，你无需接触
 - 前端文件一律用 Write 工具创建和 Edit 工具编辑，不用 shell 重定向
+- **文件路径规则**：临时文件和解压产物必须放在当前工作目录的 `./user/` 下。独立项目先 `mkdir` 创建项目文件夹，再在里面写代码。不要把文件放到 `/tmp` 或系统临时目录
 - name 只允许 `[a-z0-9-]`，中文/大写/下划线会被拒
 - 每次创建 App 都是一个独立后端实例，不要为不同用途复用同一个 App 的 collection
