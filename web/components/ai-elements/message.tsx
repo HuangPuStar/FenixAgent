@@ -3,8 +3,21 @@
 import type { FileUIPart, UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon, Maximize2, Minimize2, PaperclipIcon, XIcon } from "lucide-react";
 import type { ComponentProps, ErrorInfo, HTMLAttributes, ReactElement } from "react";
-import { Component, createContext, lazy, memo, Suspense, useCallback, useContext, useEffect, useState } from "react";
+import {
+  Component,
+  createContext,
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
+import type { Components } from "streamdown";
+import { getRegisteredAllowedTags, getRegisteredComponents } from "../../src/lib/card-renderer";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
 import { ButtonGroup, ButtonGroupText } from "../ui/button-group";
@@ -378,24 +391,38 @@ export const MessageResponse = memo(
       [envId],
     );
 
+    // 合并注册表中已注册的标签白名单到 streamdown allowedTags
+    const allowedTags = useMemo(() => {
+      const base: Record<string, string[]> = {
+        iframe: ["src", "width", "height", "title", "sandbox", "loading"],
+      };
+      const registered = getRegisteredAllowedTags();
+      return { ...base, ...registered };
+    }, []);
+
+    // 合并注册表中已注册的组件到 streamdown components
+    const components = useMemo((): Components => {
+      const base = {
+        img: ({ src, alt, ...rest }: Record<string, unknown>) => (
+          <img
+            src={src as string}
+            alt={(alt as string) || ""}
+            style={{ maxWidth: "100%", maxHeight: "50vh", objectFit: "contain" }}
+            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
+          />
+        ),
+        iframe: (props: Record<string, unknown>) => <IframePreview {...props} />,
+      };
+      const registered = getRegisteredComponents();
+      return { ...base, ...registered } as Components;
+    }, []);
+
     return (
       <StreamdownErrorBoundary fallback={children}>
         <Suspense fallback={<div className={cn("whitespace-pre-wrap break-words", className)}>{children}</div>}>
           <LazyStreamdown
-            allowedTags={{
-              iframe: ["src", "width", "height", "title", "sandbox", "loading"],
-            }}
-            components={{
-              img: (({ src, alt, ...rest }: Record<string, unknown>) => (
-                <img
-                  src={src as string}
-                  alt={(alt as string) || ""}
-                  style={{ maxWidth: "100%", maxHeight: "50vh", objectFit: "contain" }}
-                  {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
-                />
-              )) as unknown as undefined,
-              iframe: ((props: Record<string, unknown>) => <IframePreview {...props} />) as unknown as undefined,
-            }}
+            allowedTags={allowedTags}
+            components={components}
             urlTransform={urlTransform}
             className={cn(
               "size-full break-words [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
