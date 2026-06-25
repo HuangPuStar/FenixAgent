@@ -1,4 +1,4 @@
-import { FilesIcon, Globe, Plus, Upload, X } from "lucide-react";
+import { FilesIcon, Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -29,31 +29,6 @@ import { cn } from "../../lib/utils";
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
 const MAX_OPEN_FILES = 8;
-
-/** 外部站点 iframe 视图：由 <agent-sites> 卡片点击事件触发 */
-function ExternalSiteView({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
-  return (
-    <div className="flex h-full min-w-0 flex-col bg-surface-1">
-      {/* 顶栏：显示标题 + 关闭按钮 */}
-      <div className="flex items-center gap-2 border-b border-border/40 px-3 py-1.5 flex-shrink-0 bg-surface-1/50">
-        <Globe className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
-        <span className="text-xs text-text-muted truncate flex-1 min-w-0" title={title}>
-          {title}
-        </span>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-      {/* iframe */}
-      <iframe
-        src={url}
-        className="flex-1 w-full border-0"
-        sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
-        title={title}
-      />
-    </div>
-  );
-}
 
 interface SiteEntry {
   id: string;
@@ -102,8 +77,6 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   const [sites, setSites] = useState<SiteEntry[]>([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [sitesError, setSitesError] = useState<string | null>(null);
-  // 外部站点（由 <agent-sites> 卡片点击事件触发）
-  const [externalSite, setExternalSite] = useState<{ url: string; title: string } | null>(null);
   // 用户主动切到 Sites 模式的标记：一旦主动离开 Files，后续 agent 产生 diff
   // 时不再粗暴切回 Files（避免长任务运行中持续打断浏览 site 的用户）。
   // 切回 Files 由用户主动操作（点 Files tab 或拖拽上传）触发清零。
@@ -176,17 +149,18 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
     }
   }, []);
 
-  // 监听 <agent-sites> 卡片点击事件：切换到外部站点视图
+  // 监听 <agent-sites> 卡片点击事件：切到 Sites 模式并选中对应 site
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { url: string; title?: string };
-      if (detail?.url) {
-        setExternalSite({ url: detail.url, title: detail.title || new URL(detail.url).hostname });
+      const detail = (e as CustomEvent).detail as { siteId: string };
+      if (detail?.siteId) {
         setTopMode("sites");
+        setActiveSiteId(detail.siteId);
+        userPickedSiteRef.current = true;
       }
     };
-    window.addEventListener("artifacts:open-site", handler);
-    return () => window.removeEventListener("artifacts:open-site", handler);
+    window.addEventListener("artifacts:select-site", handler);
+    return () => window.removeEventListener("artifacts:select-site", handler);
   }, []);
 
   const handleTopChange = useCallback(
@@ -415,11 +389,8 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
         </div>
       )}
 
-      {/* Files 模式：完整文件区；Sites 模式：二级 site tab + iframe，文件区卸载
-          外部站点优先级最高：由 <agent-sites> 卡片点击事件触发 */}
-      {externalSite ? (
-        <ExternalSiteView url={externalSite.url} title={externalSite.title} onClose={() => setExternalSite(null)} />
-      ) : isFilesMode ? (
+      {/* Files 模式：完整文件区；Sites 模式：二级 site tab + iframe，文件区卸载 */}
+      {isFilesMode ? (
         <>
           <FileTabsBar
             openFiles={openFiles}
