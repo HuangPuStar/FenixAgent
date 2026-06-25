@@ -39,6 +39,8 @@ skills:
 
 用 Write 工具创建前端文件（**禁止用 shell 的 `echo`/`cat` 写文件**）。
 
+编写前**必须** `cat` 读取 `agent-platform-api` skill 的 `references/html-guide.md` 获取前端编写规范。
+
 要点：
 - 前端 `fetch('/api/...')` 会被平台 shim 自动重写为 `fetch('/{app_id}/api/...')`
 - `<a href>`、`<img src>` 等不受 shim 覆盖，用相对路径
