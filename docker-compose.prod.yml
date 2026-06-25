@@ -9,8 +9,6 @@ services:
             dockerfile: Dockerfile
         restart: unless-stopped
         depends_on:
-            ragflow:
-                condition: service_started
             postgres:
                 condition: service_healthy
         ports:
