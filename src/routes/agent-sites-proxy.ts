@@ -1,6 +1,6 @@
 import Elysia from "elysia";
 import type { AuthContext } from "../plugins/auth";
-import { authGuardPlugin } from "../plugins/auth";
+import { authenticateRequest, authGuardPlugin } from "../plugins/auth";
 import type { Visibility } from "../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../repositories/agent-site-app";
 import { isAgentSitesConfigured, proxyToAgentSites } from "../services/agent-sites";
@@ -75,14 +75,25 @@ app.all("/*", async ({ request, store, set }) => {
   const slim = await getAppByRemoteId(parsed.appId);
   if (!slim) return; // 不在 RCS DB 中 → Elysia 继续匹配其他路由
 
-  const authCtx: AuthContext | null = store.authContext ?? null;
+  // public 可见性无需认证，其余需要通过 authenticateRequest 获取用户身份
+  let authCtx: AuthContext | null = null;
+  if (slim.visibility !== "public") {
+    const authResult = await authenticateRequest(request);
+    authCtx = authResult?.authContext ?? null;
+  }
   const reject = checkVisibility(slim, authCtx);
   if (reject) {
     if (reject.status === 302) {
       set.status = 302;
       set.headers = {
-        location: `/login?redirect=${encodeURIComponent(new URL(request.url).pathname)}`,
+        location: `/ctrl/login?redirect=${encodeURIComponent(new URL(request.url).pathname)}`,
       };
+      return "";
+    }
+    // 有身份但无权限 → 跳转到无权限页面
+    if (reject.status === 403) {
+      set.status = 302;
+      set.headers = { location: "/ctrl/no-access" };
       return "";
     }
     set.status = reject.status;

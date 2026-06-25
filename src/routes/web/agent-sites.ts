@@ -37,6 +37,15 @@ function canWrite(row: { userId: string }, userId: string, role: string): boolea
   return row.userId === userId || role === "owner" || role === "admin";
 }
 
+/**
+ * 判断当前用户是否可以在管理界面看到该 app。
+ * 管理 API 已是 org 隔离，只需对 private 可见性的 app 做 userId 过滤。
+ */
+function canRead(row: AgentSiteAppRow, userId: string): boolean {
+  if (row.visibility !== "private") return true;
+  return row.userId === userId;
+}
+
 /** 识别 siteAppId 格式并查找：UUID 格式走 getById，否则走 getByRemoteAppId。
  *  必须区分格式再查，因为 getById 对非 UUID 参数会直接抛 PG 类型异常，不会返回 undefined。 */
 async function resolveSiteApp(siteAppId: string) {
@@ -58,7 +67,8 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     async ({ store }) => {
       const authCtx = store.authContext!;
       const rows = await agentSiteAppRepo.listByOrg(authCtx.organizationId);
-      return { success: true as const, data: rows.map(toResponse) };
+      const visible = rows.filter((r) => canRead(r, authCtx.userId));
+      return { success: true as const, data: visible.map(toResponse) };
     },
     {
       sessionAuth: true,
@@ -76,7 +86,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     async ({ params, store, error }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getByRemoteAppId(params.id);
-      if (!row || row.organizationId !== authCtx.organizationId) {
+      if (!row || row.organizationId !== authCtx.organizationId || !canRead(row, authCtx.userId)) {
         return error(404, { error: { type: "not_found", message: "App 不存在" } });
       }
       return { success: true as const, data: toResponse(row) };
@@ -295,7 +305,9 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       }
       const apps = await agentSiteAppRepo.listByIds(siteAppIds, authCtx.organizationId);
       // 保持绑定顺序（与勾选顺序一致，UI 展示稳定）
-      const ordered = siteAppIds.map((id) => apps.find((a) => a.id === id)).filter((a): a is AgentSiteAppRow => !!a);
+      const ordered = siteAppIds
+        .map((id) => apps.find((a) => a.id === id))
+        .filter((a): a is AgentSiteAppRow => !!a && canRead(a, authCtx.userId));
       return { success: true as const, data: ordered.map(toResponse) };
     },
     {

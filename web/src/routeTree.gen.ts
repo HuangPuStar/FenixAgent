@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root"
+import { Route as NoAccessRouteImport } from "./routes/no-access"
 import { Route as LoginRouteImport } from "./routes/login"
 import { Route as IndexRouteImport } from "./routes/index"
 import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
@@ -35,6 +36,11 @@ import { Route as AgentPanelWorkflowIdVersionsRouteImport } from "./routes/agent
 import { Route as AgentPanelWorkflowIdEditRouteImport } from "./routes/agent/_panel/workflow_.$id.edit"
 import { Route as AgentPanelChatAgentIdSessionIdRouteImport } from "./routes/agent/_panel/chat.$agentId_.$sessionId"
 
+const NoAccessRoute = NoAccessRouteImport.update({
+  id: "/no-access",
+  path: "/no-access",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: "/login",
   path: "/login",
@@ -168,6 +174,7 @@ const AgentPanelChatAgentIdSessionIdRoute =
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
   "/login": typeof LoginRoute
+  "/no-access": typeof NoAccessRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
@@ -195,6 +202,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
   "/login": typeof LoginRoute
+  "/no-access": typeof NoAccessRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
@@ -222,6 +230,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/": typeof IndexRoute
   "/login": typeof LoginRoute
+  "/no-access": typeof NoAccessRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
   "/agent/$agentId_/$sessionId": typeof AgentAgentIdSessionIdRoute
@@ -251,6 +260,7 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/login"
+    | "/no-access"
     | "/agent/$agentId"
     | "/agent"
     | "/agent/$agentId/$sessionId"
@@ -278,6 +288,7 @@ export interface FileRouteTypes {
   to:
     | "/"
     | "/login"
+    | "/no-access"
     | "/agent/$agentId"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
@@ -304,6 +315,7 @@ export interface FileRouteTypes {
     | "__root__"
     | "/"
     | "/login"
+    | "/no-access"
     | "/agent/$agentId"
     | "/agent/_panel"
     | "/agent/$agentId_/$sessionId"
@@ -332,6 +344,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  NoAccessRoute: typeof NoAccessRoute
   AgentAgentIdRoute: typeof AgentAgentIdRoute
   AgentPanelRoute: typeof AgentPanelRouteWithChildren
   AgentAgentIdSessionIdRoute: typeof AgentAgentIdSessionIdRoute
@@ -339,6 +352,13 @@ export interface RootRouteChildren {
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
+    "/no-access": {
+      id: "/no-access"
+      path: "/no-access"
+      fullPath: "/no-access"
+      preLoaderRoute: typeof NoAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/login": {
       id: "/login"
       path: "/login"
@@ -570,6 +590,7 @@ const AgentPanelRouteWithChildren = AgentPanelRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  NoAccessRoute: NoAccessRoute,
   AgentAgentIdRoute: AgentAgentIdRoute,
   AgentPanelRoute: AgentPanelRouteWithChildren,
   AgentAgentIdSessionIdRoute: AgentAgentIdSessionIdRoute,
