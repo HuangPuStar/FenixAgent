@@ -46,7 +46,8 @@ jobs:
       - name: Generate image tags
         id: tags
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}-sandbox-${{ matrix.name }}"
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="${{ env.REGISTRY }}/${REPO}-sandbox-${{ matrix.name }}"
 
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${{ github.ref_name }}"
