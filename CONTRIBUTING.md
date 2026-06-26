@@ -147,8 +147,6 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 
 ### 路由结构
 
-- `/v1/code/sessions/*`：Code Session / Worker API，源码在 `src/routes/v2/`
-- `/v2/session_ingress/*`：Session bridge 入口
 - `/web/*`：控制面板业务 API
 - `/acp/*`：ACP WebSocket / relay
 - `/mcp/*`：MCP 知识库查询

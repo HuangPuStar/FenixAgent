@@ -22,8 +22,6 @@ function buildConfig(env: Env) {
     /** Disconnect timeout (seconds). Environments/sessions with no activity for
      *  this long are considered disconnected. Default 120s. */
     disconnectTimeout: env.RCS_DISCONNECT_TIMEOUT,
-    /** JWT expiration time in seconds for worker tokens. Default 3600s (1 hour). */
-    jwtExpiresIn: env.RCS_JWT_EXPIRES_IN,
     /** Idle timeout in seconds before an unobserved ACP instance is auto-stopped. */
     acpIdleTimeoutSeconds: env.RCS_ACP_IDLE_TIMEOUT_SECONDS,
     /** Sweep interval in seconds for ACP idle instance cleanup. */

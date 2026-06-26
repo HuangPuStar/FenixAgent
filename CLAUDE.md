@@ -125,8 +125,6 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 **路由前缀→源码映射**：
 
-- `/v1/code/sessions/*`：Code Session / Worker API，源码位于 `src/routes/v2/`（`code-sessions`、`worker`、`worker-events`、`worker-events-stream`）
-- `/v2/session_ingress/*`：Session bridge HTTP / WebSocket 入口（源码位于 `src/routes/v2/session-ingress.ts`）
 - `/web/*`：控制面板业务 API 聚合入口（`src/routes/web/index.ts`），下挂 `auth`、`branding`、`channels`、`config/*`、`control`、`environments`、`files`、`instances`、`knowledge-bases`、`meta-agent`、`organizations`、`registry`、`sessions`、`skills`、`tasks`、`user-file`、`workflow-*`
 - `/acp/*`：ACP WebSocket / relay 路由（`src/routes/acp/index.ts`）
 - `/mcp/*`：MCP 知识库查询（`src/routes/mcp/knowledge.ts`）
@@ -444,7 +442,7 @@ Biome v2.4.15，space indent 2，lineWidth 120。`noExplicitAny: warn`，`noNonN
 
 ### 目录结构约定
 
-- **后端**：`src/routes/`（按功能分组：v1/v2/web/acp/mcp）、`src/services/`（业务逻辑）、`src/services/config/`（配置 CRUD）、`src/schemas/`（请求验证 schema）、`src/repositories/`（数据访问层）、`src/plugins/`（Elysia 插件）、`src/transport/`（WebSocket/传输）、`src/auth/`（认证）、`src/db/`（Drizzle schema）、`src/__tests__/`
+- **后端**：`src/routes/`（按功能分组：web/acp/mcp/api 等）、`src/services/`（业务逻辑）、`src/services/config/`（配置 CRUD）、`src/schemas/`（请求验证 schema）、`src/repositories/`（数据访问层）、`src/plugins/`（Elysia 插件）、`src/transport/`（WebSocket/传输）、`src/auth/`（认证）、`src/db/`（Drizzle schema）、`src/__tests__/`
 - **前端**：`web/src/routes/`（TanStack Router）、`web/components/`（通用组件，`@/components` alias）、`web/src/pages/`（页面组件）、`web/src/api/`（API 客户端）、`web/src/acp/`（ACP 协议客户端）、`web/src/__tests__/`
 
 ### Git 提交风格

@@ -12,8 +12,5 @@ export { ApiKeyApi, OrganizationApi } from "./organization";
 export { type MachineListResponse, type MachineRecord, RegistryApi } from "./registry";
 export { ControlApi, SessionApi } from "./session";
 export { TaskApi } from "./task";
-// V2 模块
-export { V2CodeSessionApi } from "./v2-code-session";
-export { V2WorkerApi } from "./v2-worker";
 export { WorkflowDefApi } from "./workflow-defs";
 export { WorkflowEngineApi } from "./workflow-engine";

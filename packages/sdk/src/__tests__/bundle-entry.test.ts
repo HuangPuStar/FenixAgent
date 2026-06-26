@@ -181,8 +181,6 @@ describe("bundle-entry exports", () => {
       "ControlApi",
       "SessionApi",
       "TaskApi",
-      "V2CodeSessionApi",
-      "V2WorkerApi",
       "WorkflowDefApi",
       "WorkflowEngineApi",
     ];

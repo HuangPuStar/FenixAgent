@@ -25,8 +25,6 @@ import {
   SkillConfigApi,
   TaskApi,
   UserFileApi,
-  V2CodeSessionApi,
-  V2WorkerApi,
   WorkflowDefApi,
   WorkflowEngineApi,
 } from "@fenix/sdk";
@@ -119,7 +117,3 @@ export const agentSitesApi = {
       { method: "DELETE" },
     ),
 };
-
-// ── V2 模块（一般前端不直接使用，保留导出） ──
-export const v2CodeSessionApi = new V2CodeSessionApi();
-export const v2WorkerApi = new V2WorkerApi();

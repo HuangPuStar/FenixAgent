@@ -24,7 +24,6 @@ describe("system admin password file config", () => {
       RCS_WS_IDLE_TIMEOUT: 255,
       RCS_WS_KEEPALIVE_INTERVAL: 20,
       RCS_DISCONNECT_TIMEOUT: 120,
-      RCS_JWT_EXPIRES_IN: 3600,
       RAGFLOW_API_URL: "http://localhost:9380",
       RAGFLOW_API_KEY: "",
       RAGFLOW_REQUEST_TIMEOUT_MS: 30000,

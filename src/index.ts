@@ -29,11 +29,6 @@ import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
 import apiWorkspaceRoutes from "./routes/api/workspaces";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
-import v2CodeSessions from "./routes/v2/code-sessions";
-import sessionIngress from "./routes/v2/session-ingress";
-import v2Worker from "./routes/v2/worker";
-import v2WorkerEvents from "./routes/v2/worker-events";
-import v2WorkerEventsStream from "./routes/v2/worker-events-stream";
 import webApp from "./routes/web";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "./services/acp-idle-monitor";
@@ -178,12 +173,6 @@ const app = new Elysia()
   .use(authPlugin)
   // Static files under /ctrl
   .use(ctrlStaticPlugin)
-  // v2 routes
-  .use(v2CodeSessions)
-  .use(sessionIngress)
-  .use(v2Worker)
-  .use(v2WorkerEvents)
-  .use(v2WorkerEventsStream)
   // Web control panel routes
   .use(webApp)
   // Agent Sites L3 business frontend proxy (/{appId}/* prefix)
