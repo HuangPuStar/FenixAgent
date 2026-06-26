@@ -59,6 +59,7 @@
       "!!**/drizzle",
       "!!**/.agents",
       "!!**/coverage",
+      "!!**/docs",
       "!!**/routeTree.gen.ts"
     ],
     "ignoreUnknown": true
