@@ -1,131 +1,192 @@
 # 实例管理
 
-> 对应文件：`src/services/instance.ts`
+> 对应文件：`src/services/instance.ts`、`src/services/instance-registry.ts`、`src/services/launch-spec-builder.ts`
 
 ## 这个模块干什么
 
-Instance 服务管理 acp-link 子进程的完整生命周期。当用户在前端点击"启动 Agent"时，这个模块负责把 acp-link 作为子进程启动起来，分配端口，跟踪状态，直到用户点击"停止"时 kill 掉。
+Instance 服务管理 Agent 实例的完整生命周期。当用户在前端点击"启动 Agent"时，这个模块负责通过 `CoreRuntimeFacade` 委托启动实例，跟踪业务状态，管理 supplemental 元数据，直到用户点击"停止"。
 
-简单说就是：**帮用户在服务器上启动和管理 AI Agent 进程**。
+核心动机：**RCS 不再直接 spawn 子进程和分配端口**。`CoreRuntimeFacade.launchInstance()` 统一处理进程管理，RCS 只管理 RCS 业务相关的元数据（userId、environmentId、instanceNumber、relay 计数等）。
 
 ## 核心概念
 
 ### Environment 与 Instance 的关系
 
-Environment 是**资源管理层**，负责调度 Instance 的生命周期。Instance 由 Environment 按需 spawn 和管理，不是 Environment 的"子容器"。
+Environment 是**资源管理层**，负责调度 Instance 的生命周期。Instance 由 Environment 按需 spawn 和管理。
 
-关系：Environment 调度 Instance → Instance 是进程级概念，由 Environment 根据 spawn 策略决定创建/复用。
+关系：Environment 调度 Instance → Instance 是进程级概念，由 `CoreRuntimeFacade` 统一管理。RCS 通过 `InstanceRegistry` 存放业务 supplemental 数据。
 
 spawn 策略由 Environment 统一管理：
 - 是否已有 running Instance（复用）
-- autoStart 配置
-- 并发实例上限（maxSessions）
-- 端口资源是否充足
+- `autoStart` 配置
+- 并发实例上限（`maxSessions`）
+- `machineId` 远程部署
 
-### SpawnedInstance
+### SpawnedInstance（公共 API 类型）
 
-每 spawn 一个 acp-link 子进程，就会创建一个 `SpawnedInstance` 记录，保存在内存的 `instances` Map 里。它包含：
+这是对外暴露的实例视图，由 core snapshot + RCS supplement 合并生成：
 
 - `id`：实例 ID，格式 `inst_xxxxxxxx`
-- `environmentId`：关联的环境 ID
-- `port`：acp-link 监听的端口（8888-8999 范围）
-- `pid`：子进程的操作系统 PID
+- `userId`：启动者
+- `port`：acp-link 监听端口（从 `snapshot.pluginMetadata.port` 获取，不再手动分配）
+- `pid`：子进程 PID（从 `snapshot.pluginMetadata.pid` 获取）
 - `status`：`starting` → `running` → `stopped` / `error`
-- `apiKey`：acp-link 本地 WS 的认证 token
-- `instanceNumber`：同一环境的第几个实例（支持多实例）
+- `apiKey`：acp-link 本地 WS 的认证 token（从 `snapshot.pluginMetadata.token` 获取）
+- `environmentId`：关联的环境 ID（从 supplement 获取）
+- `instanceNumber`：同一环境的第几个实例（从 supplement 获取）
 
-### 端口分配
+### InstanceRegistry（`instance-registry.ts`）
 
-端口范围 8888-8999，分配策略是：
-1. 跳过已被其他 instance 占用的端口
-2. 跳过正在分配中的端口（防止并发冲突）
-3. 对候选端口做 `probePort`（尝试 listen）确认真的可用
-4. 分配后加入 `allocatingPorts` 集合，直到进程启动完成
+**一句话**：封装 core 不维护的 RCS 业务补充元数据的内存注册表。
 
-### 多实例
+`InstanceRegistry` 是一个纯内存数据结构，不解决重启问题。它管理三类数据：
 
-同一个 environment 可以 spawn 多个 instance（比如同时处理多个用户请求）。每个 instance 有独立的端口和进程，通过 `instanceNumber` 区分。
+| 维度 | 数据结构 | 用途 |
+|------|----------|------|
+| supplements | `Map<instanceId, InstanceSupplement>` | 每个实例的 userId / environmentId / instanceNumber / organizationId / relay 计数 / activity 时间戳 |
+| envCounters | `Map<environmentId, number>` | 每个环境的实例编号计数器（单调递增） |
+| byEnvironment | `Map<environmentId, Set<instanceId>>` | 按环境快速查询实例 |
 
-## 两种 Spawn 方式
+**核心方法**：
 
-### 方式一：`spawnInstance(userId)`（无环境绑定）
+- `register / unregister`：注册/注销 supplement，同步维护 byEnvironment 索引
+- `touchActivity(instanceId)`：更新最近一次业务活动时间
+- `attachRelay / detachRelay(instanceId)`：管理 relay 连接计数，归零时开始空闲观察窗口
+- `nextInstanceNumber(environmentId)`：双保险编号（max(counter, 现有实例最大编号) + 1）
+- `reconcile(listCoreInstances)`：与 CoreRuntimeFacade 对账，移除孤儿条目
 
-直接 spawn 一个独立的 acp-link 进程，不绑定到任何持久环境。用于测试或临时场景。
+### engineType
 
-### 方式二：`spawnInstanceFromEnvironment(userId, environmentId)`（绑定环境）
+`spawnInstanceFromEnvironment()` 从 AgentConfig 的 `engineType` 字段读取引擎类型，决定启动哪种 Agent 引擎：
 
-这是主流方式，完整流程：
+| engineType | 说明 |
+|------------|------|
+| `opencode` | 默认引擎（OpenCode ACP） |
+| `ccb` | Claude Code Bridge（历史遗留） |
+| `claude-code` | Claude Code 引擎 |
+
+无 AgentConfig 绑定（meta-agent 场景）时默认使用 `opencode`。
+
+## Spawn 流程
+
+### `spawnInstanceFromEnvironment(userId, environmentId, prefetchedEnv?, extraEnv?)`
+
+这是核心 spawn 函数，完整流程：
 
 ```text
 spawnInstanceFromEnvironment(userId, environmentId)
         │
         ▼
-  1. 查 environment 记录，验证所有权
+  1. 查 environment 记录，验证存在
         │
         ▼
-  2. 查找或创建 session
-     （如果 DB 里有上次的 session 就复用，否则创建新的）
+  2. Phase 1: 注入平台级环境变量
+     USER_META_API_KEY     = env.secret
+     USER_META_BASE_URL    = getBaseUrl()
+     USER_META_USER_ID     = env.userId ?? userId
+     USER_META_ORG_ID      = env.organizationId ?? ""
+     （extraEnv 参数可覆盖这些默认值）
         │
         ▼
-  3. 注入 workspace 配置
-     写 .opencode/opencode.json：
-     - default_agent = env.agentName
-     - 如果有知识库绑定，注入 MCP knowledge 端点
+  3. Phase 2: 构造 LaunchSpec
+     有 agentConfigId → buildLaunchSpec()（完整资源解析）
+     无 agentConfigId → buildBasicLaunchSpec()（最小可运行配置）
         │
         ▼
-  4. 分配端口
+  4. 确定 nodeId（部署目标）
+     agentConfig.machineId 存在 → 远程 node
+     agentConfig.machineId 缺失 → "local-default"（本地）
         │
         ▼
-  5. spawn 子进程
-     命令：acp-link --host 0.0.0.0 --group {secret} --port {port} opencode -- acp
-     不设 ACP_RCS_URL（standalone 模式，不做 upstream 连接）
-     cwd = env.workspacePath
+  5. 远程节点连接检查（nodeId !== "local-default" 时）
+     通过 findMachineConnectionById() 检查 machine WS 是否在线
+     不可用抛出 AppError("MACHINE_OFFLINE")
         │
         ▼
-  6. 从 stdout 捕获 auth token
-     acp-link 启动时会打印 "Token: <64位hex>"
-     用正则匹配后更新 instance.apiKey
+  6. 委托 core 执行 launch
+     facade.launchInstance({ instanceId, engineType, nodeId, launchSpec })
+     返回 RuntimeInstanceSnapshot
         │
         ▼
-  7. 返回 SpawnedInstance
+  7. 注册 supplement + 构造 SpawnedInstance
+     registry.register(instanceId, supplement)
+     toSpawnedInstance(snapshot, supplement)
 ```
 
-## Instance 的使用方
+**关键变更**：不再手动分配端口（无 `probePort`/`allocatingPorts`）、不再构建 acp-link 命令行、不再从 stdout 捕获 Token。所有进程管理由 `CoreRuntimeFacade` 内部完成。端口/token/pid 从 `snapshot.pluginMetadata` 获取。
 
-Instance spawn 之后，谁会用到它？
+### `ensureRunning(userId, environmentId)`
 
-1. **ACP Relay Handler**：前端连接 `/acp/relay/:agentId` 时，relay 通过 `findRunningInstanceByEnvironment()` 找到 instance，建立本地 WS 连接进行消息转发
-2. **Hermes Client**：IM 消息到达时，hermes 通过 `findRunningInstanceByEnvironment()` 找到 instance，把消息发给 acp-link
-3. **Agent Task Runner**：定时任务执行时，通过 instance 发送 prompt 给 Agent
-4. **启动时 autoStart**：`index.ts` 遍历 `autoStart=true` 的环境，调用 `spawnInstanceFromEnvironment()`
+封装了 spawn + 复用逻辑，是 relay 层和 `enterEnvironment()` 的统一入口：
+
+```text
+ensureRunning(userId, environmentId)
+        │
+        ▼
+  1. 检查是否有运行中的实例 → 有则返回（status: "reused"）
+        │
+        ▼
+  2. 查 environment，验证 autoStart
+     autoStart === false → 抛出 AppError("AUTO_START_DISABLED")
+        │
+        ▼
+  3. async gap 二次检查（防止并发重复创建）
+     currentRunning.length >= env.maxSessions
+       → 有实例则复用，无则抛出 AppError("MAX_SESSIONS_REACHED")
+        │
+        ▼
+  4. spawnInstanceFromEnvironment()
+     返回 { instance, status: "spawned" }
+```
+
+### `enterEnvironment(userId, environmentId, instanceNumber?)`
+
+路由层聚合函数，组合 ensureRunning + session 创建：
+
+```text
+enterEnvironment(userId, environmentId, instanceNumber?)
+        │
+        ├── 指定 instanceNumber → 查找已有运行实例
+        └── 未指定 → ensureRunning()
+        │
+        ▼
+  查找或创建 session：
+    - 检查已有 sessions 中是否有标题为 "Instance {n}" 的
+    - 无则创建新 session
+        │
+        ▼
+  返回 { session_id, instance_id, instance_number, instance_status, environment_id }
+```
 
 ## 停止流程
 
 ```text
-stopInstance(id, userId)
+stopInstance(id, organizationId)
         │
         ▼
-  1. 关闭 relay 的本地 WS 连接
-     （调用 closeInstanceLocalWs，通知 transport 层清理）
+  1. 验证 supplement 存在 + 组织归属
         │
         ▼
-  2. SIGTERM 子进程
+  2. facade.stopInstance(id) — 委托 core 停止
         │
         ▼
-  3. 5 秒后还没退出就 SIGKILL
+  3. registry.unregister(id) — 注销 supplement
         │
         ▼
-  4. instance.status = "stopped"
+  4. 环境级计数器清理：
+     getRunningInstancesByEnvironment() 为空 → registry.deleteCounter()
 ```
 
 ## 和其他模块的关系
 
-- → `repositories/environment.ts`：读取环境配置
-- → `repositories/session.ts`：创建/查找关联的 session
-- → `auth/api-key-service.ts`：spawnInstance 时创建 API Key
-- → `services/agent-knowledge.ts`：查询 Agent 的知识库绑定
-- → `transport/acp-relay-handler.ts`：stop 时关闭本地 WS、closeInstanceLocalWs
-- ← `transport/acp-relay-handler.ts`：relay 连接时查找 running instance
-- ← `services/hermes-client.ts`：IM 消息路由时查找 running instance
-- ← `services/agent-task-runner.ts`：定时任务执行时查找 running instance
-- ← `index.ts`：autoStart 和 graceful shutdown
+- → `services/instance-registry.ts`（supplements 存储）
+- → `services/core-bootstrap.ts`（`getCoreRuntime()` / `launchInstance` / `stopInstance`）
+- → `services/launch-spec-builder.ts`（构造 AgentLaunchSpec）
+- → `services/config/index.ts`（`getReadableAgentConfigById`）
+- → `repositories/environment.ts`（环境配置验证）
+- → `services/session.ts`（session 创建）
+- → `services/workspace-resolver.ts`（workspace 路径计算）
+- → `transport/acp-ws-handler.ts`（`findMachineConnectionById` 远程检查）
+- ← `transport/relay/relay-handler.ts`（`ensureRunning` 调用）
+- ← `routes/v2/instances/*`（路由层 API 端点）
+- ← `services/acp-idle-monitor.ts`（空闲回收）

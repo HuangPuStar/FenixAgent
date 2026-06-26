@@ -9,81 +9,58 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: system-ui, -apple-system, sans-serif;
-    background: #0f1117;
-    color: #e0e0e0;
+    background: #f5f5f5;
+    color: #1a1a2e;
     padding: 24px;
   }
-  h1 { font-size: 24px; font-weight: 600; color: #fff; margin-bottom: 8px; }
-  .subtitle { color: #888; font-size: 14px; margin-bottom: 32px; }
+  h1 { font-size: 24px; font-weight: 600; color: #111; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 32px; }
   .diagram-section {
-    background: #1a1d2e; border-radius: 12px; padding: 24px; margin-bottom: 24px;
+    background: #fff; border: 1px solid #e5e5e5; border-radius: 12px; padding: 24px; margin-bottom: 24px;
   }
-  .diagram-section h2 { font-size: 18px; font-weight: 600; color: #409EFF; margin-bottom: 4px; }
-  .diagram-section .desc { color: #999; font-size: 13px; margin-bottom: 16px; }
+  .diagram-section h2 { font-size: 18px; font-weight: 600; color: #2563eb; margin-bottom: 4px; }
+  .diagram-section .desc { color: #666; font-size: 13px; margin-bottom: 16px; }
   .mermaid { display: flex; justify-content: center; }
   .legend {
     display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 32px;
-    padding: 16px; background: #1a1d2e; border-radius: 12px;
+    padding: 16px; background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
   }
-  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #ccc; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #333; }
   .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
-  .legend-ghost { opacity: 0.45; }
-  .concepts {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 16px; margin-top: 32px;
-  }
-  .concept-card {
-    background: #1a1d2e; border-radius: 12px; padding: 20px; border-left: 4px solid;
-  }
-  .concept-card.ghost { opacity: 0.5; }
-  .concept-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-  .concept-card .rel { font-size: 12px; color: #888; margin-bottom: 8px; }
-  .concept-card p { font-size: 14px; line-height: 1.6; color: #bbb; }
-  .c-team { border-left-color: #34d399; } .c-team h3 { color: #34d399; }
-  .c-env { border-left-color: #409EFF; } .c-env h3 { color: #409EFF; }
-  .c-inst { border-left-color: #67C23A; } .c-inst h3 { color: #67C23A; }
-  .c-sess { border-left-color: #E6A23C; } .c-sess h3 { color: #E6A23C; }
-  .c-agent { border-left-color: #F56C6C; } .c-agent h3 { color: #F56C6C; }
-  .c-prov { border-left-color: #909399; } .c-prov h3 { color: #909399; }
-  .c-kb { border-left-color: #c084fc; } .c-kb h3 { color: #c084fc; }
-  .c-chan { border-left-color: #f59e0b; } .c-chan h3 { color: #f59e0b; }
-  .c-task { border-left-color: #06b6d4; } .c-task h3 { color: #06b6d4; }
-  .c-wf { border-left-color: #a78bfa; } .c-wf h3 { color: #a78bfa; }
-  .c-skill { border-left-color: #ff9800; } .c-skill h3 { color: #ff9800; }
-  .c-mcp { border-left-color: #ff9800; } .c-mcp h3 { color: #ff9800; }
   .flow-section {
-    background: #1a1d2e; border-radius: 12px; padding: 24px; margin-bottom: 24px;
+    background: #fff; border: 1px solid #e5e5e5; border-radius: 12px; padding: 24px; margin-bottom: 24px;
   }
-  .flow-section h2 { font-size: 18px; font-weight: 600; color: #409EFF; margin-bottom: 4px; }
-  .flow-section .desc { color: #999; font-size: 13px; margin-bottom: 16px; }
+  .flow-section h2 { font-size: 18px; font-weight: 600; color: #2563eb; margin-bottom: 4px; }
+  .flow-section .desc { color: #666; font-size: 13px; margin-bottom: 16px; }
 </style>
 </head>
 <body>
 
 <h1>RCS 领域模型关联图</h1>
-<p class="subtitle">Remote Control Server 上层领域概念之间的关联关系（设计态，反映 grill 后确认的改进方向）</p>
+<p class="subtitle">Remote Control Server 上层领域概念之间的关联关系（基于代码实现，与 <a href="./16-domain-model.md">16-domain-model.md</a> 同步）</p>
 
 <div class="legend">
-  <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Team 团队（资源所有者）</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#409EFF"></div>Environment 资源管理层</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#67C23A"></div>Instance 运行实例</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#F56C6C"></div>AgentConfig Agent 配置</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#909399"></div>Provider（含 Model）</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#c084fc"></div>KnowledgeBase 知识库</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#ff9800"></div>Skill / McpServer 独立资源</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>IMChannel IM 通道</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#06b6d4"></div>ScheduledTask HTTP Cron</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#a78bfa"></div>Workflow 编排引擎</div>
-  <div class="legend-item legend-ghost"><div class="legend-dot" style="background:#E6A23C"></div>Session（已下沉）</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#059669"></div>Organization 组织（资源所有者）</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>Environment 资源管理层</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div>Instance 运行实例</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div>AgentConfig Agent 配置</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#6b7280"></div>Provider（含 Model）</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>KnowledgeBase 知识库</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>Skill / McpServer 独立资源</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ea580c"></div>IMChannel IM 通道</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#0891b2"></div>ScheduledTask HTTP Cron</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div>Workflow 编排引擎</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>Machine 远程节点</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#0d9488"></div>Agent Site App</div>
 </div>
 
 <!-- ========== 全局关联图 ========== -->
 <div class="diagram-section">
   <h2>全局关联图</h2>
-  <p class="desc">所有领域概念之间的关系总览。Team 是资源的所有权单位，User 通过 Team 成员身份访问资源。实线 = 强关联，虚线 = 引用关系</p>
+  <p class="desc">所有领域概念之间的关系总览。Organization 是资源的所有权单位，User 通过 Organization 成员身份访问资源。实线 = 强关联，虚线 = 引用关系</p>
   <pre class="mermaid">
 graph TD
-  Team["👥 Team&lt;br/&gt;&lt;small&gt;资源所有者&lt;br/&gt;owner / admin / member&lt;/small&gt;"]
+  Org["👥 Organization&lt;br/&gt;&lt;small&gt;资源所有者&lt;br/&gt;owner / admin / member&lt;/small&gt;"]
 
   Agent["🔴 AgentConfig&lt;br/&gt;&lt;small&gt;Agent 行为配置&lt;/small&gt;"]
   Prov["⚪ Provider&lt;br/&gt;&lt;small&gt;AI 服务商&lt;br/&gt;含 Model 列表&lt;/small&gt;"]
@@ -93,135 +70,161 @@ graph TD
 
   Env["🔵 Environment&lt;br/&gt;&lt;small&gt;资源管理层&lt;/small&gt;"]
   Inst["🟢 Instance&lt;br/&gt;&lt;small&gt;运行实例&lt;/small&gt;"]
-  AcpLink["🤖 acp-link&lt;br/&gt;&lt;small&gt;Agent 进程&lt;/small&gt;"]
+  Machine["🔵 Machine&lt;br/&gt;&lt;small&gt;远程节点&lt;/small&gt;"]
 
   IMChan["💬 IMChannel&lt;br/&gt;&lt;small&gt;IM 通道&lt;/small&gt;"]
   Task["🔷 ScheduledTask&lt;br/&gt;&lt;small&gt;HTTP Cron&lt;/small&gt;"]
-  APIKey["🔑 API Key&lt;br/&gt;&lt;small&gt;rcs_xxx&lt;/small&gt;"]
+  SiteApp["🟩 Agent Site App&lt;br/&gt;&lt;small&gt;Agent 站点&lt;/small&gt;"]
+  UC["🟣 UserConfig&lt;br/&gt;&lt;small&gt;用户个人配置&lt;/small&gt;"]
 
-  Team ---|"1:N"| Env
-  Team ---|"1:N"| Agent
-  Team ---|"1:N"| Prov
-  Team ---|"1:N"| Skill
-  Team ---|"1:N"| Mcp
-  Team ---|"1:N"| KB
-  Team ---|"1:N"| Task
-  Team ---|"1:N"| IMChan
-  Team ---|"1:N"| APIKey
+  Org ---|"1:N"| Env
+  Org ---|"1:N"| Agent
+  Org ---|"1:N"| Prov
+  Org ---|"1:N"| Skill
+  Org ---|"1:N"| Mcp
+  Org ---|"1:N"| KB
+  Org ---|"1:N"| Task
+  Org ---|"1:N"| IMChan
+  Org ---|"1:N"| SiteApp
+  Org ---|"1:N"| Machine
+  Org ---|"1:N"| UC
 
   Env ---|"agentConfigId"| Agent
   Env ---|"1:N spawn"| Inst
-  Inst ---|"双向通信"| AcpLink
+  Env -.->|"可指定部署"| Machine
 
-  Agent -.->|"引用 model"| Prov
+  Agent -.->|"引用 modelId"| Prov
   Agent -.->|"引用"| Skill
-  Agent -.->|"MCP"| KB
+  Agent -.->|"多对多"| KB
   Agent -.->|"引用"| Mcp
+  Agent -.->|"siteAppIds"| SiteApp
 
   IMChan ---|"路由到"| Env
   WF["🟣 Workflow&lt;br/&gt;&lt;small&gt;编排引擎（独立模块）&lt;/small&gt;"]
 
-  Team ---|"1:N"| WF
+  Org ---|"1:N"| WF
 
   WF ---|"通过 Env 操作"| Env
   WF -.->|"提供 URL"| Task
 
-  style WF fill:#a78bfa22,stroke:#a78bfa,color:#fff
+  classDef orgStyle fill:#059669,stroke:#059669,color:#fff,stroke-width:2px
+  classDef envStyle fill:#2563eb,stroke:#2563eb,color:#fff,stroke-width:2px
+  classDef instStyle fill:#16a34a,stroke:#16a34a,color:#fff
+  classDef agentStyle fill:#dc2626,stroke:#dc2626,color:#fff
+  classDef kbStyle fill:#7c3aed,stroke:#7c3aed,color:#fff
+  classDef chanStyle fill:#ea580c,stroke:#ea580c,color:#fff
+  classDef taskStyle fill:#0891b2,stroke:#0891b2,color:#fff
+  classDef provStyle fill:#6b7280,stroke:#6b7280,color:#fff
+  classDef resourceStyle fill:#f97316,stroke:#f97316,color:#fff
+  classDef wfStyle fill:#8b5cf6,stroke:#8b5cf6,color:#fff
+  classDef machineStyle fill:#6366f1,stroke:#6366f1,color:#fff
+  classDef siteStyle fill:#0d9488,stroke:#0d9488,color:#fff
 
-  style Team fill:#34d39922,stroke:#34d399,color:#fff,stroke-width:2px
-  style Env fill:#409EFF22,stroke:#409EFF,color:#fff,stroke-width:2px
-  style Inst fill:#67C23A22,stroke:#67C23A,color:#fff
-  style Agent fill:#F56C6C22,stroke:#F56C6C,color:#fff
-  style KB fill:#c084fc22,stroke:#c084fc,color:#fff
-  style IMChan fill:#f59e0b22,stroke:#f59e0b,color:#fff
-  style Task fill:#06b6d422,stroke:#06b6d4,color:#fff
-  style Prov fill:#90939922,stroke:#909399,color:#fff
-  style Skill fill:#ff980022,stroke:#ff9800,color:#fff
-  style Mcp fill:#ff980022,stroke:#ff9800,color:#fff
+  class Org orgStyle
+  class Env envStyle
+  class Inst instStyle
+  class Agent agentStyle
+  class KB kbStyle
+  class IMChan chanStyle
+  class Task taskStyle
+  class Prov provStyle
+  class Skill,Mcp resourceStyle
+  class WF wfStyle
+  class Machine machineStyle
+  class SiteApp siteStyle
+  class UC wfStyle
   </pre>
 </div>
 
-<!-- ========== Team 与成员 ========== -->
+<!-- ========== Organization 与成员 ========== -->
 <div class="diagram-section">
-  <h2>Team 与成员关系</h2>
-  <p class="desc">Team 是资源的所有权单位。User 通过 Team 成员身份访问资源，角色决定权限范围。</p>
+  <h2>Organization 与成员关系</h2>
+  <p class="desc">Organization 是资源的所有权单位，通过 better-auth organization 插件实现。User 注册后自动创建个人组织，也可加入/创建其他组织。API Key 通过 better-auth apiKey 插件管理。</p>
   <pre class="mermaid">
 graph LR
   subgraph 认证
     User["👤 User&lt;br/&gt;&lt;small&gt;email / password&lt;/small&gt;"]
-    Session["🍪 Session&lt;br/&gt;&lt;small&gt;activeTeamId&lt;/small&gt;"]
+    Session["🍪 Session&lt;br/&gt;&lt;small&gt;activeOrgId&lt;/small&gt;"]
   end
 
-  subgraph 团队
-    Team["👥 Team&lt;br/&gt;&lt;small&gt;资源所有者&lt;/small&gt;"]
+  subgraph 组织
+    Org["👥 Organization&lt;br/&gt;&lt;small&gt;资源所有者&lt;/small&gt;"]
     Owner["👑 owner"]
     Admin["🛡️ admin"]
     Member["👤 member"]
   end
 
   subgraph 资源
-    Resources["🔵 所有团队资源&lt;br/&gt;&lt;small&gt;Env / Agent / Provider / ...&lt;/small&gt;"]
-    APIKey["🔑 API Key&lt;br/&gt;&lt;small&gt;rcs_xxx&lt;br/&gt;Team 级别&lt;/small&gt;"]
+    Resources["🔵 所有组织资源&lt;br/&gt;&lt;small&gt;Env / Agent / Provider / ...&lt;/small&gt;"]
+    APIKey["🔑 API Key&lt;br/&gt;&lt;small&gt;rcs_xxx&lt;br/&gt;User 级别（通过 better-auth）&lt;/small&gt;"]
   end
 
   User -->|"登录"| Session
-  Session -->|"切换团队"| Team
-  Team ---|"角色"| Owner
-  Team ---|"角色"| Admin
-  Team ---|"角色"| Member
+  Session -->|"切换组织"| Org
+  Org ---|"角色"| Owner
+  Org ---|"角色"| Admin
+  Org ---|"角色"| Member
 
   Owner -->|"读写全部 + 管理成员"| Resources
   Admin -->|"读写全部"| Resources
   Member -->|"读全部 / 写自己的"| Resources
 
-  APIKey -->|"Team 持有"| Resources
+  classDef orgStyle fill:#059669,stroke:#059669,color:#fff,stroke-width:2px
+  classDef goldStyle fill:#f59e0b,stroke:#f59e0b,color:#fff
+  classDef blueStyle fill:#2563eb,stroke:#2563eb,color:#fff
+  classDef grayStyle fill:#6b7280,stroke:#6b7280,color:#fff
 
-  style Team fill:#34d39933,stroke:#34d399,color:#fff,stroke-width:2px
-  style Owner fill:#fbbf2422,stroke:#fbbf24,color:#fff
-  style Admin fill:#3b82f622,stroke:#3b82f6,color:#fff
-  style Member fill:#6b728022,stroke:#6b7280,color:#fff
+  class Org orgStyle
+  class Owner goldStyle
+  class Admin blueStyle
+  class Member grayStyle
   </pre>
 </div>
 
 <!-- ========== AgentConfig 配置中心 ========== -->
 <div class="diagram-section">
   <h2>AgentConfig 配置中心</h2>
-  <p class="desc">AgentConfig 是配置的汇聚点，通过引用关联 Provider（含 Model）、Skill、KnowledgeBase、McpServer。这些资源都是独立的，AgentConfig 只是引用它们。Environment 通过 agentConfigId 引用，运行时注入所有配置。</p>
+  <p class="desc">AgentConfig 是配置的汇聚点，通过引用关联 Provider（含 Model）、Skill、KnowledgeBase、McpServer、SiteApp。这些资源都是独立的，AgentConfig 只是引用它们。Environment 通过 agentConfigId（UUID FK）强绑定，运行时注入所有配置。内置 Agent（build/plan/general/explore/title/summary/compaction/meta）不可删除。</p>
   <pre class="mermaid">
 graph LR
   subgraph 独立资源
     Prov["⚪ Provider&lt;br/&gt;含 Model 列表"]
     Skill["🟠 Skill"]
-    KB["🟣 KnowledgeBase&lt;br/&gt;通过 MCP 协议"]
+    KB["🟣 KnowledgeBase&lt;br/&gt;多对多"]
     Mcp["🟠 McpServer"]
+    SiteApp["🟩 Site App"]
   end
 
   subgraph 运行时
     Env["🔵 Environment"]
     Inst["🟢 Instance"]
-    AcpLink["🤖 acp-link 进程"]
+    Core["⚙️ CoreRuntimeFacade&lt;br/&gt;opencode / ccb / claude-code"]
   end
 
-  Agent["🔴 AgentConfig&lt;br/&gt;&lt;small&gt;prompt / permission&lt;/small&gt;"]
+  Agent["🔴 AgentConfig&lt;br/&gt;&lt;small&gt;prompt / permission&lt;br/&gt;engineType / modelId&lt;/small&gt;"]
 
-  Prov -.->|"引用"| Agent
-  Skill -.->|"引用"| Agent
-  KB -.->|"MCP"| Agent
-  Mcp -.->|"引用"| Agent
+  Agent -.->|"modelId FK"| Prov
+  Skill -.->|"多对多"| Agent
+  KB -.->|"多对多"| Agent
+  Mcp -.->|"多对多"| Agent
+  SiteApp -.->|"siteAppIds"| Agent
 
   Agent -->|"agentConfigId"| Env
   Env -->|"1:N 调度"| Inst
-  Inst -->|"双向通信"| AcpLink
+  Inst -->|"委托"| Core
 
-  style Agent fill:#F56C6C33,stroke:#F56C6C,color:#fff,stroke-width:2px
-  style Env fill:#409EFF33,stroke:#409EFF,color:#fff
+  classDef agentStyle fill:#dc2626,stroke:#dc2626,color:#fff,stroke-width:2px
+  classDef envStyle fill:#2563eb,stroke:#2563eb,color:#fff
+
+  class Agent agentStyle
+  class Env envStyle
   </pre>
 </div>
 
 <!-- ========== Environment 资源管理层 ========== -->
 <div class="diagram-section">
   <h2>Environment 资源管理层</h2>
-  <p class="desc">Environment 统一管理 Instance 的 spawn 决策。所有触发者（用户、IMChannel、autoStart）不直接 spawn，而是通过 Environment。</p>
+  <p class="desc">Environment 统一管理 Instance 的 spawn 决策。所有触发者（用户、IMChannel、autoStart）不直接 spawn，而是通过 Environment。Environment 的 workspacePath 列已废弃，实际路径由 workspace-resolver.ts 实时计算为 {WORKSPACE_ROOT}/{orgId}/{userId}/{envId}。</p>
   <pre class="mermaid">
 graph LR
   subgraph 触发者
@@ -231,63 +234,64 @@ graph LR
   end
 
   subgraph 资源管理层
-    Env["🔵 Environment&lt;br/&gt;&lt;small&gt;spawn 决策&lt;br/&gt;并发控制&lt;br/&gt;配置注入&lt;/small&gt;"]
+    Env["🔵 Environment&lt;br/&gt;&lt;small&gt;spawn 决策&lt;br/&gt;并发控制（maxSessions）&lt;br/&gt;配置注入&lt;/small&gt;"]
   end
 
   subgraph 运行时
     Inst["🟢 Instance 1"]
     Inst2["🟢 Instance 2"]
-    AcpLink["🤖 acp-link 进程"]
+    Core["⚙️ CoreRuntimeFacade"]
   end
 
   User -->|"需要运行"| Env
   Auto -->|"启动时触发"| Env
   IMC -->|"消息到达"| Env
 
-  Env -->|"spawn"| Inst
+  Env -->|"spawn via ensureRunning"| Inst
   Env -->|"spawn"| Inst2
-  Inst -->|"通信"| AcpLink
-  Inst2 -->|"通信"| AcpLink
+  Inst -->|"launchInstance"| Core
+  Inst2 -->|"launchInstance"| Core
 
-  style Env fill:#409EFF33,stroke:#409EFF,color:#fff,stroke-width:3px
+  classDef envStyle fill:#2563eb,stroke:#2563eb,color:#fff,stroke-width:3px
+
+  class Env envStyle
   </pre>
 </div>
 
 <!-- ========== 消息流 1：前端 → Agent ========== -->
 <div class="flow-section">
   <h2>消息流 1：前端 ↔ Agent</h2>
-  <p class="desc">用户在控制面板发消息。Session 由 acp-link 管理，RCS 只做消息透传。</p>
+  <p class="desc">用户在控制面板发消息。RCS 通过 relay 中继前端与 Agent（acp-link）之间的 WebSocket 通信。Session 元数据由 agent_session 表存储，对话细节由 acp-link 管理。</p>
   <pre class="mermaid">
 sequenceDiagram
     participant FE as 前端 React
     participant Env as Environment
     participant Inst as Instance
-    participant Agent as acp-link
+    participant Core as CoreRuntimeFacade
 
     FE->>Env: 请求连接 Agent
-    Env->>Env: 确保有 running Instance
+    Env->>Env: ensureRunning（检查 + spawn）
     alt 无 Instance
         Env->>Inst: spawn 新 Instance
+        Inst->>Core: launchInstance
     end
     Env-->>FE: 返回 relay 连接信息
     FE->>Inst: WS relay 连接
 
-    Note over FE,Agent: 双向消息透传（Session 由 acp-link 管理）
+    Note over FE,Core: 双向消息透传（Session 对话由 acp-link 管理）
     FE->>Inst: 用户消息
-    Inst->>Agent: 转发
-    Agent->>Inst: Agent 回复 (streaming)
+    Inst->>Core: 转发
+    Core->>Inst: Agent 回复 (streaming)
     Inst->>FE: 转发
 
-    Note over FE,Agent: Session 列表通过 ACP 透传
-    FE->>Agent: session/list (ACP 协议)
-    Agent-->>FE: 返回 Session 列表
+    Note over FE,Core: RCS 存储 agent_session 元数据（id / title / status / source）
   </pre>
 </div>
 
 <!-- ========== 消息流 2：IMChannel ========== -->
 <div class="flow-section">
   <h2>消息流 2：IMChannel（聊天平台 ↔ Agent）</h2>
-  <p class="desc">飞书/Telegram 消息通过 IMChannel 路由到 Agent，回复发回去</p>
+  <p class="desc">飞书/Telegram 消息通过 IMChannel 路由到 Agent，回复发回去。一个 IMChannel 可以有多个 imChannelRoute 规则（1:N）。</p>
   <pre class="mermaid">
 sequenceDiagram
     participant IM as 飞书/Telegram
@@ -318,7 +322,7 @@ sequenceDiagram
 <!-- ========== 消息流 3：ScheduledTask ========== -->
 <div class="flow-section">
   <h2>消息流 3：ScheduledTask（HTTP Cron 触发器）</h2>
-  <p class="desc">Task 定时调 URL，最常见的目标是 Workflow。Workflow 收到请求后通过 Environment 操作 Agent。</p>
+  <p class="desc">Task 定时发送 HTTP 请求到指定 URL，最常见的目标是 Workflow。Task 不绑定 Environment 或 AgentConfig——它是一个纯粹的 HTTP cron 触发器，任务定义字段是 url/method/headers/body。</p>
   <pre class="mermaid">
 sequenceDiagram
     participant Cron as node-schedule
@@ -327,117 +331,320 @@ sequenceDiagram
     participant Env as Environment
     participant Inst as Instance
     Cron->>Task: cron 触发
-    Task->>Task: 检查防并发
-    Task->>WF: HTTP 请求（Workflow URL）
+    Task->>Task: 检查防并发（runningTasks Set）
+    Task->>WF: fetch(task.url, HTTP 请求)
     WF->>Env: 请求执行 Agent 步骤
-    Env->>Env: 确保 Instance 运行
+    Env->>Env: ensureRunning
     Env->>Inst: 发送 prompt
     Inst-->>WF: Agent 回复
     WF-->>Task: 执行结果
   </pre>
 </div>
 
-<!-- ========== 概念详解卡片 ========== -->
-<h2 style="color:#409EFF; margin-top:32px; margin-bottom:16px;">核心概念详解</h2>
+<!-- ========== 消息流 4：Machine 远程部署 ========== -->
+<div class="flow-section">
+  <h2>消息流 4：Machine 远程节点部署</h2>
+  <p class="desc">Instance 可指定部署到远程 Machine。Machine 通过 /acp/ws 注册并维持心跳，RCS 通过 agentMachineCache 路由消息到正确的远程节点。</p>
+  <pre class="mermaid">
+sequenceDiagram
+    participant Machine as Remote Machine
+    participant WS as /acp/ws Handler
+    participant Cache as agentMachineCache
+    participant Env as Environment
+    participant Inst as Instance
 
-<div class="concepts">
-  <div class="concept-card c-team">
-    <h3>👥 Team 团队（资源所有者）</h3>
-    <div class="rel">资源所有权单位 | API Key 归 Team 所有 | 成员通过角色控制权限</div>
-    <p>Team 是 RCS 中所有资源的所有权单位。Environment、AgentConfig、Provider、Skill、McpServer、KnowledgeBase、IMChannel、ScheduledTask、API Key 都归 Team 所有。API Key 是 Team 级别的资源，不是 User 个人持有的——团队成员通过 Cookie Session 登录后切换到 Team，即可使用该 Team 的所有资源；外部系统通过 API Key 访问时，也是绑定到 Team。每个 Team 有三种角色：owner（管理团队）、admin（读写全部资源）、member（读全部，只写自己创建的）。用户注册后自动创建个人团队，也可以加入或创建其他团队。</p>
-  </div>
+    Machine->>WS: 注册（含 machineId / capabilities）
+    WS->>Cache: registerMachine
+    Note over Machine,WS: 周期性心跳（heartbeat 检测超时）
 
-  <div class="concept-card c-env">
-    <h3>🔵 Environment 资源管理层</h3>
-    <div class="rel">核心枢纽 | 调度 Instance、统一 spawn 决策</div>
-    <p>Environment 是 RCS 最核心的概念，负责调度 Agent Instance 的生命周期（spawn / stop / autoStart）。它通过 agentConfigId（UUID）强绑定一个 AgentConfig，运行时将配置注入到 Agent workspace。所有触发者（用户手动、autoStart、IMChannel）不直接 spawn Instance，而是通过 Environment 统一决策。</p>
-  </div>
+    Env->>Env: spawnInstanceFromEnvironment
+    Env->>Inst: launchInstance（指定 machineId）
+    Inst->>Cache: 查 machineId → 路由消息
+    Inst->>Machine: 通过 WS 发送指令
 
-  <div class="concept-card c-inst">
-    <h3>🟢 Instance 运行实例</h3>
-    <div class="rel">纯内存态 | 由 Environment 调度</div>
-    <p>一个 acp-link 子进程，有独立的端口和 PID。由 Environment 负责创建和管理生命周期。一个 Environment 可以有多个 Instance（并发处理多个用户/请求）。服务器重启后 Instance 消失，由 Environment 的 autoStart 机制恢复。</p>
-  </div>
-
-  <div class="concept-card ghost c-sess">
-    <h3>🟡 Session 会话（已下沉，非 RCS 领域概念）</h3>
-    <div class="rel">由 acp-link 管理 | RCS 只做 ACP 消息透传</div>
-    <p>Session 是用户和 Agent 之间的一次对话记录，完全由 acp-link 进程管理。RCS 不存储 Session 元数据、不管理生命周期。前端通过 ACP 通道（session/list、session/load）直接与 Agent 交互，RCS 只做消息透传。</p>
-  </div>
-
-  <div class="concept-card c-agent">
-    <h3>🔴 AgentConfig Agent 配置</h3>
-    <div class="rel">配置中心 | 引用独立资源，被 Environment 强引用</div>
-    <p>Agent 行为的完整配置：用哪个 Model（引用 Provider 下的 Model）、系统提示词、权限规则。AgentConfig 不拥有任何资源，只是引用它们——Skill 是独立资源被 AgentConfig 引用，KnowledgeBase 通过 MCP 协议关联，McpServer 通过配置引用，Provider（含 Model）也是被引用的独立资源。Environment 通过 agentConfigId（UUID）强绑定 AgentConfig，改名不影响关联。内置 Agent（build/plan/general 等）不可删除。</p>
-  </div>
-
-  <div class="concept-card c-prov">
-    <h3>⚪ Provider 服务商（含 Model）</h3>
-    <div class="rel">独立资源 | Provider 包含 Model 列表 | 运行时注入</div>
-    <p>Provider 是 AI 服务商（OpenAI、Anthropic 等），包含该服务商下的多个 Model。由 RCS 集中管理在 PostgreSQL 中，运行时注入到 Agent workspace。API Key 不存明文，响应只返回 keyHint。AgentConfig 的 model 字段引用 Provider 下的某个 Model。Model 不作为独立领域概念，管理入口在 Provider 详情页内。</p>
-  </div>
-
-  <div class="concept-card c-kb">
-    <h3>🟣 KnowledgeBase 知识库</h3>
-    <div class="rel">独立资源 | 通过 MCP 协议与 AgentConfig 关联 | 多对多</div>
-    <p>用户上传的文档集合，由外部 Provider 做向量索引。通过 MCP 协议与 AgentConfig 关联——Agent 运行时通过 MCP 端点查询知识库。一个知识库可以给多个 Agent 用，一个 Agent 可以查多个知识库。AgentConfig 中配置 KB 的 MCP 端点，运行时注入。知识库是独立资源，不隶属于 AgentConfig。</p>
-  </div>
-
-  <div class="concept-card c-skill">
-    <h3>🟠 Skill 技能</h3>
-    <div class="rel">独立资源 | 被 AgentConfig 引用</div>
-    <p>Skill 是 Markdown 格式的指令文件，给 Agent 补充特定领域的知识和操作指南。Skill 是独立资源，被 AgentConfig 引用。元数据存在数据库，内容存在文件系统。支持全局和 workspace 两种 scope。</p>
-  </div>
-
-  <div class="concept-card c-mcp">
-    <h3>🟠 McpServer MCP 服务器</h3>
-    <div class="rel">独立资源 | 被 AgentConfig 引用</div>
-    <p>MCP (Model Context Protocol) 服务器是给 Agent 提供外部工具的独立资源，被 AgentConfig 引用。支持 local（命令行启动）和 remote（URL 连接）两种类型。配置在 Agent 运行时通过 workspace 的 opencode.json 注入。</p>
-  </div>
-
-  <div class="concept-card c-chan">
-    <h3>💬 IMChannel IM 通道</h3>
-    <div class="rel">用户资源 | 选择连接方式 + 配置路由规则</div>
-    <p>用户界面上的一等资源，用于对接外部聊天平台（飞书、Telegram、Discord 等）。用户创建 IMChannel 时选择连接方式、填写凭证、配置路由规则（哪个聊天群 → 哪个 Environment）。运行时显示连接状态（已连接/未连接/错误）。用户不需要感知底层 Hermes 网关的存在。消息到达时，IMChannel 通过 Environment 确保 Instance 运行，然后路由消息。</p>
-  </div>
-
-  <div class="concept-card c-task">
-    <h3>🔷 ScheduledTask HTTP Cron 触发器</h3>
-    <div class="rel">独立调度单元 | 定时调 URL | Workflow 的触发入口</div>
-    <p>ScheduledTask 是纯粹的 HTTP cron 触发器——定时调一个 URL。不绑定 Environment、不绑定 AgentConfig、不包含任务描述。最常见的场景是定时触发一个 Workflow URL，由 Workflow 编排后续的 Agent 执行流程。也可以直接调任意 HTTP 端点。每次执行产生一条 ExecutionLog。</p>
-  </div>
+    Note over Machine,Inst: Machine 超时 → 清理旧 relay → 前端重连
+  </pre>
 </div>
 
-  <div class="concept-card c-wf">
-    <h3>🟣 Workflow 编排引擎</h3>
-    <div class="rel">独立领域模块 | 通过 Environment 操作 Agent | 与 Cron 互动</div>
-    <p>Workflow 是 RCS 的独立领域模块，负责编排 Agent 的多步执行流程。它通过 Environment 操作 Agent（不直接接触 Instance 或 acp-link），封装了"选择 Environment → 选择 AgentConfig → 执行步骤 → 收集结果"的完整流程。Workflow 提供 URL 入口，ScheduledTask 通过 HTTP 调用 Workflow URL 实现定时触发。用户也可以手动触发或通过 API 触发。Workflow 归 Team 所有。</p>
-  </div>
+<!-- ========== 消息流 5：用户注册 → 自动创建个人组织 ========== -->
+<div class="flow-section">
+  <h2>消息流 5：用户注册 → 自动创建个人组织</h2>
+  <p class="desc">新用户注册后，better-auth 的 <code>databaseHooks.user.create.after</code> 钩子自动创建 Organization 并授予 owner 角色。注册流程依赖 <code>encryption.ts</code>（AES-256-GCM 前端加密密码，服务端解密存入 account 表）。</p>
+  <pre class="mermaid">
+sequenceDiagram
+    participant FE as 前端
+    participant Auth as /api/auth/*
+    participant Hook as user.create.after 钩子
+    participant DB as PostgreSQL
+
+    FE->>Auth: POST sign-up（密码经 encryption.ts 加密）
+    Auth->>DB: INSERT user
+    DB-->>Auth: user.id
+    Auth->>Hook: 触发 after hook
+    Hook->>DB: INSERT organization（name=用户名, slug=personal-{id前8位}）
+    Hook->>DB: INSERT member（userId, orgId, role=owner）
+    Auth-->>FE: 成功 + session cookie
+
+    Note over FE,DB: 后续：提取 x-active-org-id > query > cookie → AuthContext
+  </pre>
+</div>
+
+<!-- ========== Workflow 子实体展开 ========== -->
+<div class="diagram-section">
+  <h2>Workflow 领域展开</h2>
+  <p class="desc">Workflow 是独立领域模块（9 张表），通过组织隔离。核心实体 workflow 通过 1:N 关联到子实体。</p>
+  <pre class="mermaid">
+graph TD
+  WF["🟣 Workflow&lt;br/&gt;&lt;small&gt;定义 &amp; YAML&lt;/small&gt;"]
+
+  WF -->|"1:N 版本管理"| WV["workflow_version&lt;br/&gt;&lt;small&gt;草稿 / 已发布&lt;/small&gt;"]
+  WF -->|"1:N 执行记录"| WR["workflow_run&lt;br/&gt;&lt;small&gt;PENDING / RUNNING / SUCCESS / ...&lt;/small&gt;"]
+  WF -->|"1:N 事件溯源"| WE["workflow_event&lt;br/&gt;&lt;small&gt;DAGEvent 流&lt;/small&gt;"]
+  WF -->|"1:1 快照"| WS["workflow_snapshot&lt;br/&gt;&lt;small&gt;状态恢复&lt;/small&gt;"]
+  WF -->|"1:N 看板"| WBoard["workflow_board&lt;br/&gt;&lt;small&gt;看板面板&lt;/small&gt;"]
+  WF -->|"1:N 触发器"| WTrigger["workflow_trigger&lt;br/&gt;&lt;small&gt;Webhook 触发&lt;/small&gt;"]
+
+  WR -->|"1:N 节点输出"| WNO["workflow_node_output&lt;br/&gt;&lt;small&gt;stdout / json / size / ref&lt;/small&gt;"]
+  WBoard -->|"1:N"| WJob["workflow_job&lt;br/&gt;&lt;small&gt;看板 Job（拖拽流转）&lt;/small&gt;"]
+
+  WV -.->|"版本快照引用"| WS
+
+  classDef wfStyle fill:#8b5cf6,stroke:#8b5cf6,color:#fff
+  classDef wfSubStyle fill:#a78bfa,stroke:#a78bfa,color:#fff
+  class WF wfStyle
+  class WV,WR,WE,WS,WNO,WBoard,WJob,WTrigger wfSubStyle
+  </pre>
+</div>
+
+<!-- ========== 权限与资源关系 ========== -->
+<h2 style="color:#2563eb; margin-top:32px; margin-bottom:8px;">权限与资源关系</h2>
+<p class="subtitle" style="margin-bottom:16px;">不同资源在个人 (@user)、组织内 (@org)、登录用户 (@auth)、公开 Public 四个维度的可见性对照。<br>路由层通过 <code>requireOrgScope(authContext, resourceOrgId)</code> 统一拦截组织边界（<code>src/plugins/require-team-scope.ts</code>）。</p>
+
+<div style="background:#fefce8; border:1px solid #fde68a; border-radius:8px; padding:14px 18px; margin-bottom:16px; font-size:13px; color:#92400e;">
+  <strong>图例</strong><br>
+  <span class="yes">✓ 读/写</span> = 该维度下可完整操作 &nbsp;|&nbsp;
+  <span class="partial">列表可见</span> = 可查看列表/详情，但修改需验 userId &nbsp;|&nbsp;
+  <span class="partial">可被分享 / resourceAccess</span> = 通过 resource_permission 表授权跨组织 read &nbsp;|&nbsp;
+  <span class="no">—</span> = 不可见
+</div>
+
+<style>
+  .perm-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 32px; }
+  .perm-table th { background: #f0f4ff; color: #1a1a2e; font-weight: 600; padding: 10px 12px; text-align: left; border-bottom: 2px solid #d0d7e8; }
+  .perm-table td { padding: 8px 12px; border-bottom: 1px solid #eee; color: #444; }
+  .perm-table tr:hover td { background: #fafbff; }
+  .perm-table .yes { color: #059669; font-weight: 600; }
+  .perm-table .partial { color: #d97706; font-weight: 600; }
+  .perm-table .no { color: #aaa; }
+  .perm-table .group-header td { background: #f5f5f5; font-weight: 700; color: #2563eb; padding-top: 16px; font-size: 14px; border-bottom: 2px solid #d0d7e8; }
+</style>
+
+<table class="perm-table">
+  <thead>
+    <tr>
+      <th style="width:16%">资源</th>
+      <th style="width:14%">👤 个人<br><small>同userId</small></th>
+      <th style="width:14%">🏢 组织内<br><small>同orgId</small></th>
+      <th style="width:14%">🔑 登录用户<br><small>跨组织</small></th>
+      <th style="width:14%">🌐 Public<br><small>无认证</small></th>
+      <th style="width:28%">说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="group-header"><td colspan="6">核心运行资源</td></tr>
+    <tr>
+      <td>Environment</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>orgId + userId 双重隔离，secret 仅返回给所有者</td>
+    </tr>
+    <tr>
+      <td>Instance</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>纯内存 Map，organizationId 隔离，补充 userId 过滤</td>
+    </tr>
+    <tr>
+      <td>Session</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td class="partial">uuid分享</td>
+      <td>userId 校验；uuidAuth 支持分享快照</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">配置资源</td></tr>
+    <tr>
+      <td>Provider</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="partial">可被分享</td>
+      <td class="no">—</td>
+      <td>resource_permission 支持跨组织 read 分享</td>
+    </tr>
+    <tr>
+      <td>Model</td>
+      <td class="no">—</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>仅 orgId 隔离，关联到 Provider</td>
+    </tr>
+    <tr>
+      <td>AgentConfig</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="partial">可被分享</td>
+      <td class="no">—</td>
+      <td>resource_permission 支持跨组织分享</td>
+    </tr>
+    <tr>
+      <td>Skill</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="partial">resourceAccess</td>
+      <td class="no">—</td>
+      <td>唯一约束 (orgId, name)；支持跨组织共享</td>
+    </tr>
+    <tr>
+      <td>McpServer</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="partial">可被分享</td>
+      <td class="no">—</td>
+      <td>唯一约束 (orgId, name)；resource_permission</td>
+    </tr>
+    <tr>
+      <td>McpTool 缓存</td>
+      <td class="no">—</td>
+      <td class="yes">✓ 可见</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>仅 orgId，按 (orgId, serverName) 索引</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">业务资源</td></tr>
+    <tr>
+      <td>KnowledgeBase</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>orgId 隔离，schema 有 userId 列但路由层未做用户级过滤</td>
+    </tr>
+    <tr>
+      <td>ScheduledTask</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>orgId 隔离，userId 仅写入记录</td>
+    </tr>
+    <tr>
+      <td>Workflow</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="partial">列表可见</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>pg-storage-adapter 按 orgId 参数化隔离</td>
+    </tr>
+    <tr>
+      <td>IMChannel</td>
+      <td class="no">—</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>orgId + userId</td>
+    </tr>
+    <tr>
+      <td>Machine</td>
+      <td class="no">—</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>orgId + userId（可选）</td>
+    </tr>
+    <tr>
+      <td>Agent Site App</td>
+      <td class="no">—</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>orgId + userId，private app 额外限制</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">账户 &amp; 系统</td></tr>
+    <tr>
+      <td>API Key</td>
+      <td class="yes">✓ 管理</td>
+      <td class="partial">metadata存储orgId</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>User 级别（referenceId），orgId 存在 metadata</td>
+    </tr>
+    <tr>
+      <td>UserConfig</td>
+      <td class="no">—</td>
+      <td class="yes">✓ 读/写</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td>organizationId PK，按组织隔离</td>
+    </tr>
+    <tr>
+      <td>channel_binding</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td class="yes">✓ 全局共享</td>
+      <td>⚠️ 遗留表，无 orgId 无 userId，保留兼容</td>
+    </tr>
+    <tr>
+      <td>Hooks (Webhook)</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td class="yes">✓ publicHash</td>
+      <td>通过 publicHash 路由，无认证</td>
+    </tr>
+    <tr>
+      <td>Health / Docs</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td class="no">—</td>
+      <td class="yes">✓ 无认证</td>
+      <td>/health、openapi 文档端点</td>
+    </tr>
+  </tbody>
+</table>
 
 <script>
   mermaid.initialize({
     startOnLoad: true,
-    theme: 'dark',
+    theme: 'default',
     themeVariables: {
-      primaryColor: '#2d3748',
-      primaryTextColor: '#e2e8f0',
-      primaryBorderColor: '#4a5568',
-      lineColor: '#718096',
-      secondaryColor: '#1a202c',
-      tertiaryColor: '#2d3748',
+      primaryColor: '#f0f0f0',
+      primaryTextColor: '#1a1a2e',
+      primaryBorderColor: '#d0d0d0',
+      lineColor: '#888',
+      secondaryColor: '#fafafa',
+      tertiaryColor: '#f0f0f0',
       fontFamily: 'system-ui, -apple-system, sans-serif',
       fontSize: '13px',
-      noteBkgColor: '#2d3748',
-      noteTextColor: '#e2e8f0',
-      noteBorderColor: '#4a5568',
-      actorBkg: '#1e293b',
-      actorBorder: '#409EFF',
-      actorTextColor: '#e2e8f0',
-      signalColor: '#e2e8f0',
-      labelBoxBkgColor: '#2d3748',
-      labelBoxBorderColor: '#4a5568',
-      labelTextColor: '#e2e8f0',
-      loopTextColor: '#e2e8f0',
+      noteBkgColor: '#fef9c3',
+      noteTextColor: '#1a1a2e',
+      noteBorderColor: '#e5e5e5',
+      actorBkg: '#e8edf5',
+      actorBorder: '#2563eb',
+      actorTextColor: '#1a1a2e',
+      signalColor: '#1a1a2e',
+      labelBoxBkgColor: '#fafafa',
+      labelBoxBorderColor: '#d0d0d0',
+      labelTextColor: '#1a1a2e',
+      loopTextColor: '#1a1a2e',
     },
     flowchart: { htmlLabels: true, curve: 'basis', padding: 16 },
     sequence: { actorMargin: 60, messageMargin: 40, mirrorActors: false },
