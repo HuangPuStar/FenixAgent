@@ -9,7 +9,9 @@
   "overrides": {
     "kysely": "0.28.17",
     "@better-auth/core": "1.6.11",
-    "@better-auth/utils": "0.4.0"
+    "@better-auth/utils": "0.4.0",
+    "hono": ">=4.12.25",
+    "dompurify": ">=3.4.9"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
@@ -31,7 +33,6 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "check:deps": "bun run scripts/check-deps.ts",
-    "postinstall": "mkdir -p node_modules/@fenix && for pkg in sdk plugin-claude-code; do ln -sf ../../packages/$pkg node_modules/@fenix/$pkg 2>/dev/null; done || true",
     "prepare": "husky"
   },
   "dependencies": {
@@ -69,7 +70,9 @@
     "@tanstack/router-plugin": "^1.168.10",
     "@types/js-yaml": "^4.0.9",
     "@xyflow/react": "^12.10.2",
-    "acp-link": "workspace: *",
+    "acp-link": "workspace:*",
+    "@fenix/claude-code": "workspace:*",
+    "@fenix/sdk": "workspace:*",
     "ai": "^6.0.190",
     "better-auth": "1.6.11",
     "browser-image-compression": "^2.0.2",
@@ -86,7 +89,7 @@
     "i18next": "^26.2.0",
     "i18next-browser-languagedetector": "^8.2.1",
     "ioredis": "^5.10.1",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^5.1.0",
     "jsqr": "^1.4.0",
     "keyv": "^5.6.0",
     "kysely": "0.28.17",
