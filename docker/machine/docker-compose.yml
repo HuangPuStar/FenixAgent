@@ -8,13 +8,13 @@
 #
 # Usage:
 #   RCS_TENANT_ID=org_xxx REGISTRY_SECRET=test-secret-2026 \
-#   docker compose -f docker-compose.machines.yml up --build
-#   docker compose -f docker-compose.machines.yml down
+#   docker compose -f docker-compose.yml up --build
+#   docker compose -f docker-compose.yml down
 
 services:
   machine-a:
     build:
-      context: .
+      context: ../..
       dockerfile: docker/machine/Dockerfile
     container_name: fenix-machine-a
     restart: "no"
@@ -30,7 +30,7 @@ services:
 
   machine-b:
     build:
-      context: .
+      context: ../..
       dockerfile: docker/machine/Dockerfile
     container_name: fenix-machine-b
     restart: "no"
