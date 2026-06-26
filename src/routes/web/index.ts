@@ -1,7 +1,6 @@
 import Elysia from "elysia";
 import webAgentGeneration from "./agent-generation";
 import webAgentSites from "./agent-sites";
-import webAuth from "./auth";
 import webBranding from "./branding";
 import webChannels from "./channels";
 import webConfig from "./config";
@@ -27,7 +26,6 @@ import webWorkflowSse from "./workflow-sse";
 const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webBranding)
   .use(webAgentSites)
-  .use(webAuth)
   .use(webChannels)
   .use(webConfig)
   .use(webControl)

@@ -21,14 +21,6 @@ export {
   UpdateAgentSiteAppRequestSchema,
 } from "./agent-site.schema";
 export {
-  type BindSessionQuery,
-  BindSessionQuerySchema,
-  type BindSessionRequest,
-  BindSessionRequestSchema,
-  type BindSessionResponse,
-  BindSessionResponseSchema,
-} from "./auth.schema";
-export {
   type BrandingConfig,
   type BrandingConfigResponse,
   BrandingConfigResponseSchema,

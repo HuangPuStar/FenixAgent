@@ -1,6 +1,5 @@
 // Web 模块
 
-export { AuthApi } from "./auth";
 export { ChannelApi } from "./channel";
 export { AgentApi, McpApi, ModelApi, ProviderApi, SkillConfigApi } from "./config";
 export { EnvironmentApi } from "./environment";

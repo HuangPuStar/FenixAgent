@@ -29,7 +29,6 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
 };
 
 export { BaseApi } from "./base";
-export { AuthApi } from "./modules/auth";
 export { ChannelApi } from "./modules/channel";
 export { AgentApi, McpApi, ModelApi, ProviderApi, SkillConfigApi } from "./modules/config";
 export { EnvironmentApi } from "./modules/environment";

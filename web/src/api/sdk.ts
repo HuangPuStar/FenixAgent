@@ -8,7 +8,6 @@
 import {
   AgentApi,
   ApiKeyApi,
-  AuthApi,
   ChannelApi,
   ControlApi,
   EnvironmentApi,
@@ -50,7 +49,6 @@ export const workflowEngineApi = new WorkflowEngineApi();
 export const workflowDefApi = new WorkflowDefApi();
 export const metaAgentApi = new MetaAgentApi();
 export const registryApi = new RegistryApi();
-export const authApi = new AuthApi();
 
 // ── Agent Sites ──
 

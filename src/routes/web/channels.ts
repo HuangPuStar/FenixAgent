@@ -14,7 +14,7 @@ import {
   UpdateChannelBindingResponseSchema,
 } from "../../schemas/channel.schema";
 import { createBinding, deleteBinding, listBindings, updateBinding } from "../../services/channel-binding";
-import { getChannelProvider, listChannelProviders } from "../../services/channel-provider";
+import { listChannelProviders } from "../../services/channel-provider";
 import { getHermesClient } from "../../services/hermes-client";
 
 const app = new Elysia({ name: "web-channels" }).use(authGuardPlugin).model({
@@ -45,43 +45,6 @@ app.get(
     },
   },
 );
-
-app.get(
-  "/channels",
-  () => {
-    return [];
-  },
-  {
-    sessionAuth: true,
-    response: "channel-binding-list",
-    detail: {
-      tags: ["Channels"],
-      summary: "获取通道列表",
-      description: "历史兼容接口；当前返回空列表，不作为通道绑定数据源使用。",
-    },
-  },
-);
-
-app.post(
-  "/channels",
-  // biome-ignore lint/suspicious/noExplicitAny: 当前仅保留兼容入口，文档补充不改变现有错误分支
-  async ({ body, error }: any) => {
-    const b = body as { type?: string };
-    const provider = typeof b?.type === "string" ? getChannelProvider(b.type) : undefined;
-    const status = provider ? 409 : 400;
-    return error(status, { error: { type: "FORBIDDEN", message: "当前平台暂未开放" } });
-  },
-  {
-    sessionAuth: true,
-    detail: {
-      tags: ["Channels"],
-      summary: "创建通道",
-      description: "历史兼容接口；当前平台未开放该能力，请改用通道绑定接口。",
-    },
-  },
-);
-
-// --- Hermes Status ---
 
 app.get(
   "/channels/hermes/status",

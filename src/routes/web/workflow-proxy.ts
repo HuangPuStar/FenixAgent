@@ -63,17 +63,3 @@ export const workflowStaticApp = new Elysia({ name: "workflow-static", prefix: "
         "将 `/workflow-ui/:path` 请求透传到内部 `acpx-g` 服务对应路径，用于加载工作流页面依赖的脚本、样式和其他静态资源。该接口是透传代理，不在当前文档中展开下游资源结构。",
     },
   });
-
-// API 代理：挂载到 /api/v1，转发到 acpx-g 的 /api/v1/* 路径
-export const workflowApiApp = new Elysia({ name: "workflow-api", prefix: "/api/v1" })
-  .use(authGuardPlugin)
-  .all("/:path", ({ params, request }) => proxyToAcpxG(`/api/v1/${params.path}`, request), {
-    sessionAuth: true,
-    detail: {
-      hide: true,
-      tags: ["Workflow Engine"],
-      summary: "访问 Workflow API 代理接口",
-      description:
-        "将 `/api/v1/:path` 请求透传到内部 `acpx-g` 的同名 API 路径。前端工作流页面会通过该入口调用下游工作流服务，但响应协议由 `acpx-g` 决定，因此当前文档仅标注代理职责，不在此重复声明下游各接口模型。",
-    },
-  });
