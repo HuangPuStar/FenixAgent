@@ -10,7 +10,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import matter from "gray-matter";
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import type { ResourceAccess } from "./config/types";
 
 // ────────────────────────────────────────────

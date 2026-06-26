@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 
 export const START_NODE_ID = "__start__";
 
@@ -188,7 +188,7 @@ export function flowToYaml(nodes: Node[], edges: Edge[], meta: WfMeta): string {
   }
   doc.nodes = yamlNodes;
 
-  return yaml.dump(doc, { lineWidth: 120, noRefs: true, quotingType: '"' });
+  return yaml.dump(doc, { lineWidth: 120, noRefs: true, quoteStyle: "double" });
 }
 
 let nodeCounter = 0;

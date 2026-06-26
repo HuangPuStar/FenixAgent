@@ -1,8 +1,8 @@
 import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
+import { createClaudeCodePlugin } from "@fenix/claude-code";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { log } from "@fenix/logger";
 import { createEnginePlugin as createOpencodePlugin } from "@fenix/opencode";
-import { createClaudeCodePlugin } from "@fenix/plugin-claude-code";
 import {
   createRemoteRuntime,
   createWsRemoteTransport,
