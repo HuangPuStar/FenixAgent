@@ -5,6 +5,10 @@
 
 ---
 
+> **2026-06 更新**：本文档中的核心概念已通过 better-auth organization 插件实现，但使用 `organization` 命名而非 `team`。`organization`/`member`/`invitation` 三表、角色（owner/admin/member）、`organizationId` 资源隔离、`AuthContext` 认证上下文均已上线。本文档的详细权限方案（admin 全局视图、跨组资源控制）仍可作为后续增强 roadmap。
+
+---
+
 ## 1. 现状
 
 当前权限模型是纯用户隔离：每个资源绑 `userId`，查询 `WHERE user_id = ?`，改删前验 `userId === user.id`。没有角色、没有团队、没有共享。

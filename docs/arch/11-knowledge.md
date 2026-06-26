@@ -41,18 +41,23 @@ Agent 运行时
 
 ### KnowledgeBase（`knowledge-base.ts`）
 
-知识库的 CRUD 管理。每个知识库属于一个用户，核心字段：
+知识库的 CRUD 管理。每个知识库按 organizationId 隔离，核心字段：
 
 - `name` / `slug`：名称和 URL 标识
 - `provider`：后端提供者（目前默认 ragflow）
 - `remoteId`：在远程 Provider 那边的资源 ID
+- `remoteAccountId` / `remoteUserId`：RagFlow 的账户绑定信息
+- `description`：知识库描述
 - `status`：empty / indexing / ready / error
+- `lastError`：最近一次错误信息
 
 创建知识库时，同步在远程 Provider 那边也创建一个对应的索引。删除时同步删除远程资源。
 
 ### KnowledgeUpload（`knowledge-upload.ts`）
 
-处理文件上传。把用户上传的文件提交给 KnowledgeProvider 建索引。在 `knowledge_resource` 表中跟踪每个资源的状态（pending → processing → ready / error）。
+处理文件上传。把用户上传的文件提交给 KnowledgeProvider 建索引。在 `knowledge_resource` 表中跟踪每个资源的状态（pending → processing → ready / error），记录字段包括 `sourceType`（文件/URL 来源类型）、`sourceName`、`sourcePath`、`remoteId`、`lastError`。
+
+提供 `refreshKnowledgeResourceStatus()` 轮询远端资源解析状态、`importKnowledgeResourceFromUrl()` 从 URL 导入资源、`upsertKnowledgeBaseStatusFromResources()` 根据关联资源汇总更新知识库状态。
 
 ### KnowledgeRuntime（`knowledge-runtime.ts`）
 
@@ -68,7 +73,7 @@ Agent 运行时
 
 Provider 是对外部索引服务的抽象。目前只实现了 RagFlow：
 
-- `types.ts`：定义 `KnowledgeProvider` 接口（createKnowledgeBase、uploadResource、deleteResource、search）
+- `types.ts`：定义 `KnowledgeProvider` 接口（createKnowledgeBase、addResource、listResources、readResource、deleteResource、search）
 - `ragflow.ts`：RagFlow 的 HTTP API 实现
 
 Provider 的配置来自 `config.ts`：

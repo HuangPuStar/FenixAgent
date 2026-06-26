@@ -1,4 +1,4 @@
-# RCS UX 升级设计方案 — "Nexus Command Center"
+# RCS 前端设计规范 — "Fenix Agent 控制面板"
 
 > 明亮科技风 · AI Agent 控制中枢 · 数据驱动可视化 · 清爽专业
 
@@ -30,930 +30,1281 @@
 
 ---
 
-## 2. 色彩系统重构
+## 2. 色彩系统
 
-### 2.1 主色调
+全部定义在 `web/src/index.css:7-119`（Tailwind CSS v4 `@theme` 语法）。
 
-从当前的单色蓝 `#409EFF` 升级为有深度和温度的色板：
-
-```
-品牌主色：  Electric Indigo  #6366F1  (indigo-500)
-品牌辅色：  Quantum Cyan     #22D3EE  (cyan-400)
-危险色：    Ember Red        #EF4444  (red-500)
-成功色：    Neon Mint        #34D399  (emerald-400)
-警告色：    Solar Amber      #FBBF24  (amber-400)
-```
-
-**选择理由**：Indigo 比 Blue 更具科技辨识度，搭配 Cyan 形成冷色系的双色层级，在白色背景上既有活力又不失专业。
-
-### 2.2 明亮主题色板（默认）
+### 2.1 品牌色
 
 ```css
-/* Surface 层级 — 通透的白色层次 */
---surface-void:     #F8FAFC;   /* 最底层背景 — 极淡灰蓝 */
---surface-base:     #FFFFFF;   /* 主背景 — 纯白 */
---surface-elevated: #FFFFFF;   /* 卡片/面板 — 纯白+微阴影 */
---surface-overlay:  #F1F5F9;   /* 悬浮层 — 淡蓝灰 */
---surface-hover:    #EEF2FF;   /* 悬停态 — 淡靛蓝 */
-
-/* 边框 — 柔和存在 */
---border-subtle:    rgba(0, 0, 0, 0.05);
---border-default:   rgba(0, 0, 0, 0.10);
---border-active:    rgba(99, 102, 241, 0.35);
-
-/* 文字层级 */
---text-bright:      #0F172A;   /* 标题/重点 — 深墨色 */
---text-primary:     #334155;   /* 正文 — 深灰蓝 */
---text-secondary:   #64748B;   /* 次要 — 中灰蓝 */
---text-dim:         #94A3B8;   /* 提示/占位 — 浅灰蓝 */
-
-/* 语义色 */
---status-active:    #10B981;   /* 运行中 — 翠绿 */
---status-idle:      #6366F1;   /* 空闲 — 靛蓝 */
---status-error:     #EF4444;   /* 错误 — 红色 */
---status-warning:   #F59E0B;   /* 警告 — 琥珀 */
+--color-brand: #1677ff;
+--color-brand-light: #4096ff;
+--color-brand-subtle: rgba(22, 119, 255, 0.08);
+--color-brand-glow: rgba(22, 119, 255, 0.15);
 ```
 
-### 2.3 深色主题色板（可选适配）
+**选择理由**：`#1677ff` 是 Ant Design 经典科技蓝，辨识度高。
+
+### 2.2 辅色
 
 ```css
---surface-void:     #09090B;
---surface-base:     #0F1117;
---surface-elevated: #181B25;
---surface-overlay:  #1E2230;
---surface-hover:    #252A3A;
-
---border-subtle:    rgba(255, 255, 255, 0.06);
---border-default:   rgba(255, 255, 255, 0.10);
---border-active:    rgba(99, 102, 241, 0.40);
-
---text-bright:      #F4F4F5;
---text-primary:     #D4D4D8;
---text-secondary:   #A1A1AA;
---text-dim:         #71717A;
+--color-cyan: #22d3ee;
+--color-cyan-subtle: rgba(34, 211, 238, 0.1);
 ```
 
-### 2.4 状态视觉反馈
+### 2.3 完整色板（明亮主题）
 
-Agent 状态通过颜色圆点 + 微妙的阴影变化表达，在白色背景上以柔和阴影代替发光效果：
+#### Surface 层级
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `--color-surface-0` | `#f8fafc` | 最底层背景 |
+| `--color-surface-1` | `#ffffff` | 主背景 / 卡片 |
+| `--color-surface-2` | `#f1f5f9` | 次级表面 |
+| `--color-surface-3` | `#e2e8f0` | 最深表面 |
+| `--color-surface-hover` | `#e6f0ff` | 悬停态（淡蓝） |
+| `--color-surface-elevated` | `#ffffff` | 抬起表面 |
+| `--color-surface-overlay` | `#f1f5f9` | 覆盖层 |
+
+#### 边框
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `--color-border` | `rgba(0,0,0,0.1)` | 默认边框 |
+| `--color-border-light` | `rgba(0,0,0,0.06)` | 浅边框 |
+| `--color-border-subtle` | `rgba(0,0,0,0.06)` | 微弱边框 |
+| `--color-border-default` | `rgba(0,0,0,0.1)` | 标准边框 |
+| `--color-border-active` | `rgba(22,119,255,0.35)` | 激活态边框 |
+| `--color-input` | `rgba(0,0,0,0.1)` | 输入框边框 |
+
+#### 文字
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `--color-text-bright` | `#0f172a` | 标题/重点 |
+| `--color-text-primary` | `#334155` | 正文 |
+| `--color-text-secondary` | `#64748b` | 次要文字 |
+| `--color-text-muted` | `#94a3b8` | 辅助/占位 |
+| `--color-text-dim` | `#94a3b8` | 弱化文字 |
+
+#### 语义色
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `--color-status-active` | `#10b981` | 运行中 (翠绿) |
+| `--color-status-running` | `#10b981` | 同上 |
+| `--color-status-idle` | `#1677ff` | 空闲 (品牌蓝) |
+| `--color-status-error` | `#ef4444` | 错误 (红色) |
+| `--color-status-warning` | `#f59e0b` | 警告 (琥珀) |
+
+#### 消息气泡
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `--color-user-bubble` | `#1677ff` | 用户消息气泡背景 |
+| `--color-user-bubble-border` | `#4096ff` | 气泡边框 |
+| `--color-bg-inverted` | `#1677ff` | 反色背景 |
+| `--color-text-inverted` | `#ffffff` | 反色文字 |
+
+#### 强调色
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `--color-accent-tiffany` | `#22d3ee` | 蒂芙尼蓝 |
+| `--color-accent-pink` | `#f472b6` | 粉色 |
+| `--color-accent-green` | `#10b981` | 绿色 |
+| `--color-accent-yellow` | `#f59e0b` | 黄色 |
+| `--color-accent-red` | `#ef4444` | 红色 |
+
+#### 专用色
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `--color-tool-card` | `#f1f5f9` | 工具调用卡片背景 |
+| `--color-warning-bg` | `#fef3c7` | 警告横幅背景 |
+| `--color-warning-border` | `#f59e0b` | 警告横幅边框 |
+| `--color-warning-text` | `#92400e` | 警告横幅文字 |
+
+#### shadcn/ui tokens
+
+| 变量 | 值 |
+|------|-----|
+| `--color-background` | `#ffffff` |
+| `--color-foreground` | `#0f172a` |
+| `--color-card` | `#ffffff` |
+| `--color-card-foreground` | `#0f172a` |
+| `--color-popover` | `#ffffff` |
+| `--color-popover-foreground` | `#0f172a` |
+| `--color-primary` | `#1677ff` |
+| `--color-primary-foreground` | `#ffffff` |
+| `--color-secondary` | `#f1f5f9` |
+| `--color-secondary-foreground` | `#334155` |
+| `--color-muted` | `#f1f5f9` |
+| `--color-muted-foreground` | `#94a3b8` |
+| `--color-accent` | `#f1f5f9` |
+| `--color-accent-foreground` | `#334155` |
+| `--color-destructive` | `#ef4444` |
+| `--color-ring` | `#1677ff` |
+
+#### 全局默认值
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `--default-border-color` | `var(--color-border)` | Tailwind v4 默认 |
+| `--default-ring-color` | `var(--color-ring)` | Tailwind v4 默认 |
+
+#### 阴影
+
+| 变量 | 值 (全局) | 局部覆盖 |
+|------|-----------|----------|
+| `--shadow-card` | `0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)` | `agent-panel.css:16` 覆盖为 `0 4px 12px -6px rgba(15,23,42,0.1)` |
+| `--shadow-elevated` | `0 4px 16px rgba(22,119,255,0.08), 0 1px 4px rgba(0,0,0,0.04)` | — |
+
+> ⚠️ `--shadow-card` 在 `index.css` 和 `agent-panel.css` 中定义了不同值。由于都作用于 `:root`，后者覆盖前者，属于维护隐患。
+
+#### 圆角 & 布局
 
 ```css
-/* 运行中的 Agent — 柔和绿色阴影 */
-.glow-active {
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
-  animation: glow-breathe 3s ease-in-out infinite;
-}
-
-@keyframes glow-breathe {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.10); }
-  50%      { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.20); }
-}
-
-/* 错误状态 — 红色脉冲 */
-.glow-error {
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
-  animation: glow-alert 1.5s ease-in-out infinite;
-}
-
-@keyframes glow-alert {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.10); }
-  50%      { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.25); }
-}
+--radius: 0.5rem;
+--radius-lg: 0.75rem;
+--navbar-height: 48px;
+--sidebar-width: 200px;
+--sidebar-collapsed: 60px;
+--topbar-height: 56px;
 ```
+
+### 2.4 深色主题
+
+通过 `.dark` 类切换，定义在 `web/src/index.css:124-190`。所有表面/文字/边框变量反转。暗色模式下的 `loadingDotBounceDark` 关键帧（`index.css:437-454`）品牌色发光增强（box-shadow alpha 从 0.3 → 0.35）。
+
+### 2.5 侧边栏专用变量
+
+定义在 `web/src/pages/agent-panel/agent-panel.css:6-17`：
+
+```css
+--agent-sidebar-width: 240px;
+--agent-sidebar-collapsed: 64px;
+--agent-artifacts-width: 360px;
+--agent-artifacts-min: 280px;
+--agent-artifacts-max: 700px;
+--agent-sidebar-from: #1759dc;
+--agent-sidebar-to: #0d2a6e;
+--agent-sidebar-cyan: #6be6ff;
+--color-canvas: #f9fafb;
+```
+
+### 2.6 状态视觉反馈
+
+状态通过颜色圆点（`.status-dot`）表达，CSS 变量控制：
+
+| 状态 | CSS | 颜色 |
+|------|-----|------|
+| running | `var(--color-status-running)` | `#10b981` |
+| idle / starting | `var(--color-status-warning)` | `#f59e0b` |
+| stopped | `var(--color-text-muted)` | `#94a3b8` |
+| error | `var(--color-status-error)` | `#ef4444` |
+
+### 2.7 已知偏离
+
+`AgentPageHeader` 组件（`shared/AgentPageHeader.tsx:13-18`）使用硬编码色值（`#1a2944`、`#94a3b8`、`#e8edf4`），而非 CSS 变量，暗色模式下不会自动反转。
 
 ---
 
 ## 3. 字体系统
 
-### 3.1 字体选择
-
-当前使用 Inter（过于通用），替换为有科技辨识度的组合：
-
-| 用途 | 字体 | 备选 | 理由 |
-|------|------|------|------|
-| **Display** (标题/品牌) | **Geist Sans** | Plus Jakarta Sans | Vercel 出品，几何感强，辨识度极高 |
-| **Body** (正文/UI) | **DM Sans** | Outfit | 清晰易读，比 Inter 更有温度 |
-| **Mono** (代码/数据) | **JetBrains Mono** | Fira Code | 维持现状，已有连字支持 |
-| **Data** (数字/指标) | **Tabular Nums** | 使用 Mono 字体 | 等宽数字，仪表盘数据对齐 |
+**不使用外部字体**，系统原生字体栈，零网络依赖，零 FOIT。
 
 ```css
---font-display: "Geist Sans", "Plus Jakarta Sans", system-ui, sans-serif;
---font-body:     "DM Sans", "Outfit", system-ui, sans-serif;
---font-mono:     "JetBrains Mono", "Fira Code", monospace;
+--font-sans:
+  system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica,
+  "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+--font-display: /* 同 --font-sans */;
+--font-body:    /* 同 --font-sans */;
+--font-mono:
+  ui-monospace, "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
 ```
 
-### 3.2 字号层级
+### 字号层级
 
-```
-品牌名:     14px  font-weight: 700  letter-spacing: 0.02em
-页面标题:   20px  font-weight: 600  letter-spacing: -0.01em
-Section:    14px  font-weight: 600  text-transform: uppercase  letter-spacing: 0.05em  color: text-dim
-卡片标题:   14px  font-weight: 500
-正文:       13px  font-weight: 400
-辅助文字:   12px  font-weight: 400  color: text-secondary
-数据指标:   28px  font-weight: 700  font-family: mono  letter-spacing: -0.02em
-数据标签:   11px  font-weight: 500  text-transform: uppercase  letter-spacing: 0.06em  color: text-dim
-```
+| 元素 | 字号 | 字重 | 其他 |
+|------|------|------|------|
+| 品牌名 (侧边栏) | 18px | 800 | letter-spacing: 0.08em |
+| 页面标题 (AgentPageHeader) | 22px | — | — |
+| Section 标签 (侧边栏) | 10px | 700 | uppercase, letter-spacing: 0.1em, 微透明白 |
+| 导航项 | 12px | 500 | — |
+| 正文 | 13px | 400 | `font-family: var(--font-body)` |
+| 辅助文字 (侧边栏) | 11px | — | 微透明白 |
+| 代码 | 13px | — | `font-family: var(--font-mono)` |
 
 ---
 
-## 4. 布局重构
+## 4. 布局架构
 
 ### 4.1 整体布局：侧边栏 + 内容区
 
-**当前问题**：双行顶栏导航（品牌 + Tab），8 个 Tab 水平排列，信息密度低，无层级感。
+布局分两级：
 
-**新布局**：
+**第一级 (路由级)** — `AgentPanelLayout`（`AgentPanelLayout.tsx`）：
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ ┌──────┐ ┌──────────────────────────────────────────────────┐│
-│ │      │ │  [Breadcrumb / Page Title]     [Search] [User]   ││
-│ │ LOGO │ ├──────────────────────────────────────────────────┤│
-│ │      │ │                                                  ││
-│ │──────│ │                                                  ││
-│ │ Nav  │ │              Main Content Area                   ││
-│ │      │ │                                                  ││
-│ │ ○ 智  │ │                                                  ││
-│ │   能  │ │                                                  ││
-│ │   体  │ │                                                  ││
-│ │      │ │                                                  ││
-│ │ ○ 模  │ │                                                  ││
-│ │   型  │ │                                                  ││
-│ │      │ │                                                  ││
-│ │ ○ ...│ │                                                  ││
-│ │      │ │                                                  ││
-│ │──────│ │                                                  ││
-│ │实时   │ │                                                  ││
-│ │状态栏 │ │                                                  ││
-│ └──────┘ └──────────────────────────────────────────────────┘│
+│ ┌───────────┐ ┌────────────────────────────────────────────┐ │
+│ │           │ │              agent-panel-body               │ │
+│ │  Sidebar  │ │              ┌──────────────────────────┐  │ │
+│ │  (240px)  │ │              │       <Outlet />          │  │ │
+│ │           │ │              └──────────────────────────┘  │ │
+│ └───────────┘ └────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-#### 侧边栏（240px，可折叠至 60px icon-only 模式）
+**第二级 (页面级)** — 子路由渲染 `<Outlet />` 内：
+
+- **配置类页面**：直接渲染页面组件（含 `AgentPageHeader` + `DataTable` 等）
+- **聊天页面** (`chat.$agentId.tsx`)：额外嵌套 `agent-panel-content` → `ResizablePanelGroup`
+
+```
+AgentPanelLayout
+  ├── AgentSidebar
+  └── agent-panel-body (flex column, flex: 1, bg: --color-canvas)
+      └── <Outlet />
+          ├── 配置页面 → [page content]
+          └── chat.$agentId → agent-panel-content (flex row, padding: 12px)
+              └── ResizablePanelGroup
+                  ├── ResizablePanel(chat, 默认 60%, min 30%)
+                  │   └── agent-chat-area
+                  │       └── ChatPanel
+                  ├── ResizableHandle (+ toggle button)
+                  └── ResizablePanel(artifacts, 默认 40%, collapsible)
+                      └── ArtifactsPanel
+```
+
+### 4.2 关键 CSS 类
+
+| 类名 | 文件 | 说明 |
+|------|------|------|
+| `.agent-panel-layout` | `agent-panel.css:25` | 顶层 flex row，`height: 100dvh` |
+| `.agent-panel-body` | `agent-panel.css:33` | `flex column, flex: 1, min-width: 0, overflow: hidden` |
+| `.agent-panel-content` | `agent-panel.css:43` | 聊天页专用，`flex row, padding: 12px` |
+| `.agent-panel-resizable` | `agent-panel.css:53` | ResizablePanelGroup 容器，`flex: 1` |
+| `.agent-chat-area` | `agent-panel.css:600` | ChatPanel 包装器，`flex column, height: 100%` |
+
+### 4.3 z-index 层级
+
+```
+z-index: 20  →  .agent-sidebar-toggle (侧边栏折叠按钮)
+z-index: 10  →  .agent-sidebar (侧边栏主体)
+z-index: 10  →  .agent-artifacts-expand-btn (Artifacts 切换按钮)
+z-index: 1   →  .agent-sidebar > * (侧边栏子元素)
+```
+
+---
+
+## 5. 侧边栏设计
+
+### 5.1 视觉风格
+
+深蓝色渐变背景（`#1759dc → #0d2a6e`），与白色内容区形成强对比。顶部有 `::before` 伪元素产生青色光晕（`#6be6ff` 亮点，径向渐变）。
 
 ```css
-.sidebar {
-  width: 240px;
-  background: var(--surface-base);        /* 白色 */
-  border-right: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
+.agent-sidebar {
+  width: var(--agent-sidebar-width);           /* 240px */
+  min-width: var(--agent-sidebar-width);
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.1), transparent 48%),
+    linear-gradient(180deg, #1759dc, #0d2a6e);
+  color: #fff;
+  transition: width 300ms cubic-bezier(0.4,0,0.2,1),
+              min-width 300ms cubic-bezier(0.4,0,0.2,1);
+  box-shadow: 12px 0 28px rgba(12,26,58,0.12);
+  z-index: 10;
 }
+```
 
-/* 导航项 */
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  margin: 2px 8px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  transition: all 0.15s ease;
-  position: relative;
-}
+**折叠切换按钮**：`position: absolute; top: 24px; right: -12px`，24×24px 白色圆形按钮，悬停变蓝。
 
-.nav-item:hover {
-  background: var(--surface-hover);       /* 淡靛蓝 */
-  color: var(--text-primary);
-}
+### 5.2 侧边栏结构
 
-.nav-item.active {
-  background: rgba(99, 102, 241, 0.08);   /* 极淡靛蓝底 */
-  color: var(--brand);
+```
+┌─────────────────────────────────┐
+│  [Fenix Logo 图标 + "Fenix Agent"]│  ← 品牌区，链接到 /agent/home
+├─────────────────────────────────┤
+│  核心                            │  ← .agent-sidebar-section-label
+│  ○ 创建 Agent     (Plus)        │  ← .agent-sidebar-nav-item
+│  ○ 智能体管理      (Bot)        │
+│  ○ 工作流         (Workflow)    │
+│                                 │
+│  配置                            │
+│  ○ 模型           (Cpu)         │
+│  ○ Skill 管理     (Settings)    │
+│  ○ Memories       (Brain)       │
+│  ○ 知识库         (BookOpen)    │
+│  ○ MCP 管理       (Plug)        │
+│  ○ 定时任务       (Clock)       │
+│  ○ 智能体站点     (Globe)       │
+│  ○ 组织管理       (Users)       │
+│  ○ API Keys       (KeyRound)    │
+├─────────────────────────────────┤
+│  智能体                          │  ← .agent-tree-section-title
+│  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐  │
+│  │ agent-prod    ● 运行中     │  │  ← .agent-sidebar-agent-card
+│  │ └ instance-1  ● session   │  │
+│  │ └ instance-2  ○ idle      │  │
+│  │ agent-dev     ○ 空闲       │  │
+│  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘  │
+├─────────────────────────────────┤
+│  ┌─ agent-sidebar-footer-card ─┐│
+│  │ [头像] 用户名         [▾]   ││  ← 用户信息（下拉菜单）
+│  │─────────────────────────────││
+│  │ [icon] 组织名          [▾]  ││  ← 组织切换
+│  └─────────────────────────────┘│
+└─────────────────────────────────┘
+```
+
+**组件实现**：
+- 导航项由 `AgentSidebarQuickNav` 组件（`AgentSidebarConfig.tsx`）渲染
+- `AgentSidebarConfig` 组件（原底部导航）**已废弃**，返回 `null`
+- 导航分组定义在 `useNavGroups()` hook 中：`navGroupCore`（3 项）+ `navGroupConfig`（9 项）
+
+### 5.3 导航项样式
+
+```css
+/* 默认态 */
+.agent-sidebar-nav-item {
+  color: rgba(255,255,255,0.68);
+  background: transparent;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 500;
 }
 
-/* 活跃指示器 — 左侧竖线 */
-.nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: -8px;
-  top: 4px;
-  bottom: 4px;
+/* 悬停态 */
+.agent-sidebar-nav-item:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.09);
+}
+
+/* 激活态 */
+.agent-sidebar-nav-item.active {
+  color: #fff;
+  background: rgba(255,255,255,0.16);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+/* 活跃指示器 — ::before 伪元素左侧渐变竖线 */
+.agent-sidebar-nav-item.active::before {
   width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--brand);
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, #6be6ff, #0f6bff);
 }
 ```
 
-#### 侧边栏底部 — 实时状态面板（v2 增强）
+> ⚠️ 激活态导航项存在**双重指示器**：`AgentSidebarConfig.tsx:73-77` 使用 Tailwind `border-l-2 border-brand`（2px 蓝色实线），同时 CSS `::before` 产生 3px 渐变竖线覆盖其上。
 
-侧边栏底部嵌入一个迷你的实时状态区，显示：
+### 5.4 折叠态（64px icon-only 模式）
 
-```
-┌─────────────────────────┐
-│ ● 3 Agents 运行中  LIVE │  ← LIVE 脉冲徽章
-│ ● 12 活跃会话        12 │  ← 等宽数字
-│ ↑ 2.4k events/min  2.4k │  ← 等宽数字
-└─────────────────────────┘
-```
+- **触发**：点击侧边栏右上角的切换按钮
+- **持久化**：`localStorage["agent-panel:sidebar-collapsed"]`
+- **过渡**：`width + min-width` 同步过渡，300ms
 
-**v2 增强**：
-- 品牌 Logo 区带渐变背景 `linear-gradient(to bottom, #FFFFFF, #F8FAFC)` 和阴影 `box-shadow: 0 2px 8px rgba(99,102,241,0.25)`
-- LIVE 徽章：绿色背景 + 脉冲动画 `counter-glow`，表达系统活跃状态
-- 等宽数值右对齐，字体 `JetBrains Mono` 600 weight
+| 元素 | 正常态 | 折叠态 |
+|------|--------|--------|
+| nav-item width | `calc(100% - 16px)` | `48px` |
+| nav-item padding | `6px 16px` | `10px 0` |
+| nav-item justify | `flex-start` | `center` |
+| nav-item span (文字) | 显示 | `display: none` |
+| sidebar-nav padding | `px-2 py-1` | `0` |
+| sidebar-nav overflow | auto | `overflow-x: hidden` |
+| active::before left | `0` | `-8px` |
+| tree-wrap | 显示 | `visibility: hidden; pointer-events: none` |
+| footer 内边距 | 默认 | `8px 10px 12px` |
+| user-button | border-bottom 可见 | `border-bottom: none; min-height: 48px; justify-content: center` |
+| org 行 | 显示 | `display: none` |
 
-用小圆点和颜色传达系统脉搏，不需要点击展开就能感知系统状态。
+### 5.5 Agent 树
 
-### 4.2 内容区顶部栏
+`AgentSidebarTree` 组件（`AgentSidebarTree.tsx`）：
 
-```
-[← 返回]  Dashboard / 智能体                    [🔍] [👤 user@email.com]
-```
-
-- 面包屑导航
-- 全局搜索（Command+K 触发）
-- 用户头像（点击展开菜单）
+- **数据源**：`agentApi.list()` + `envApi.list()`，15 秒轮询
+- **实时刷新**：监听 `useConfigChangeListener("agents")` 事件
+- **Agent 卡片**：深色半透明背景（`rgba(255,255,255,0.08)`），悬停变亮 + 青色边框 + 阴影提升，激活态带壳状内阴影和渐变竖线
+- **悬停操作**：展开实例 / 重启 / 编辑 / 删除按钮
+- **实例行**：展开后显示每个实例的状态指示灯 + 重载/停止按钮，点击跳转聊天
+- **Meta Agent 卡片**：专用样式，localStorage 持久化开关
 
 ---
 
-## 5. Dashboard 重新设计（核心页面）
+## 6. 聊天界面
 
-### 5.1 页面结构
+### 6.1 顶层布局
 
-**布局方案**：三栏命令中心（v2 升级版，已实现在 `design-preview.html`）
+聊天页面使用 `react-resizable-panels` 实现可拖拽的左右分栏：
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  概览指标栏 (KPI Strip) — 5 张卡片                                │
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐                   │
-│  │  5   │ │  12  │ │  3   │ │ 99.2%│ │ 1.2k │                   │
-│  │Agents│ │会话数│ │ 运行 │ │可用率│ │事件  │                   │
-│  └──────┘ └──────┘ └──────┘ └──────┘ └──────┘                   │
-├───────────┬─────────────────────────┬────────────────────────────┤
-│ ACTIVE    │                         │                            │
-│ AGENTS    │   Agent 拓扑 (Enhanced)  │   活动时间线 (Compact)      │
-│ (260px)   │                         │   (320px)                  │
-│           │   [数据粒子漂移动画]       │                            │
-│ ┌───────┐ │                         │   ○ agent-prod 完成审查     │
-│ │prod   │ │        ┌──────┐          │   ○ agent-dev 请求权限      │
-│ │●运行中 │ │    ────┤RCS   ├────     │   ○ agent-build 调用grep   │
-│ │4会话  │ │   ╱    │Hub   │    ╲    │   ○ agent-test 超时重试    │
-│ │━━━━━━ │ │  ╱     └──────┘     ╲   │                            │
-│ └───────┘ │ ●prod  ◉dev  ●build     │                            │
-│ ┌───────┐ │                         │                            │
-│ │dev    │ │   [节点脉冲光环]          │                            │
-│ │●运行中 │ │   [连线渐变粒子]          │                            │
-│ │━━━━━━━ │ │                         │                            │
-│ └───────┘ │                         │                            │
-│ ┌───────┐ │                         │                            │
-│ │build  │ │                         │                            │
-│ │◉空闲   │ │                         │                            │
-│ │━━━━   │ │                         │                            │
-│ └───────┘ │                         │                            │
-├───────────┴─────────────────────────┴────────────────────────────┤
-│  Agent 列表 (Table View / Card View 切换)                        │
-│  ┌─ 表格模式 ──────────────────────────────────────────────────┐ │
-│  │  名称         状态      会话    最后活动    模型        操作  │ │
-│  │  agent-prod   ●运行中    4      3秒前    sonnet-4-6   [→]  │ │
-│  │  agent-dev    ◉空闲      2      5分钟前  opus-4-7     [→]  │ │
-│  │  agent-build  ●运行中    1      12分钟前 gpt-4o       [→]  │ │
-│  │  agent-test   ⚠错误      0      2小时前  deepseek-r1  [↻]  │ │
-│  └────────────────────────────────────────────────────────────┘ │
-│  ┌─ 卡片模式 ──────────────────────────────────────────────────┐ │
-│  │ [icon] agent-prod   运行中  │ [icon] agent-dev    空闲      │ │
-│  │ claude-sonnet-4-6           │ claude-opus-4-7              │ │
-│  │  4 会话  │  1.2k Events     │  2 会话  │  890 Events       │ │
-│  │  3秒前活跃          [→]     │  5分钟前活跃         [→]     │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  [ChatPanel]                      │  [ArtifactsPanel]       │
+│  默认 60% | 最小 30%              │  默认 40% | 可折叠       │
+│                                   │                         │
+│  ┌── ACPMain ─────────────────┐   │  ┌─ TopModeTabs ────┐  │
+│  │ ┌─ ChatHeader (玻璃卡片) ─┐│   │  │ Files │ Sites     │  │
+│  │ └─────────────────────────┘│   │  └──────────────────┘  │
+│  │ ┌─ 双栏 ──────────────────┐│   │  ┌─ 文件树 popover ─┐  │
+│  │ │ SidebarSessionList│Chat ││   │  │ 文件树 │ 预览    │  │
+│  │ │ 可折叠             │    ││   │  │ 或 Site iframe   │  │
+│  │ │                    │    ││   │  └──────────────────┘  │
+│  │ │               ChatView ││   │                         │
+│  │ │               ──────── ││   │                         │
+│  │ │               Error    ││   │                         │
+│  │ │               Banner   ││   │                         │
+│  │ │               ──────── ││   │                         │
+│  │ │               ChatCom- ││   │                         │
+│  │ │               poser    ││   │                         │
+│  │ └────────────────────────┘│   │                         │
+│  └───────────────────────────┘   │                         │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-#### 三栏布局设计要点
+### 6.2 聊天组件层级
 
-| 栏位 | 宽度 | 内容 | 交互 |
-|------|------|------|------|
-| **左栏** — Agent Quick Cards | 260px | 紧凑状态卡，左彩色竖线指示器、会话数/最后活动时间、活跃度进度条 | 悬停右移 shadow lift，点击跳转 Agent 详情 |
-| **中栏** — 增强拓扑 | 1fr | 大型 SVG 节点图，数据粒子沿连线漂移、运行中节点脉冲光环、悬停放大 | 点击节点跳转对应 Agent 对话 |
-| **右栏** — 活动时间线 | 320px | 6 条最近事件，紧凑排版 (12px)，10s 自动轮播新事件入场 | 自动滚动，8 秒间隔追加新事件 |
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| `ChatPanel` | `web/src/pages/agent-panel/ChatPanel.tsx` | ACP WebSocket relay 连接管理，连接状态 → 渲染决策 |
+| `ACPMain` | `web/components/ACPMain.tsx` | 聊天主容器：`ChatHeader` + `SidebarSessionList` + `ChatInterface` |
+| `ChatHeader` | 内嵌于 ACPMain | 顶部标题栏（`chat-header-card`）：会话标题、popover、session 切换、按日期分组 |
+| `SidebarSessionList` | 内嵌于 ACPMain | 左侧会话历史面板，按日期分组（今天/昨天/更早），可折叠。使用 `session-grouping.ts` 的分组逻辑 |
+| `ChatInterface` | `web/components/ChatInterface.tsx` | 核心聊天交互，约 40KB：消息流 + 权限 + Todo + 输入 + 上下文面板 |
 
-#### Agent Quick Cards 规范
+**ChatInterface 内部结构**：
+
+```
+ChatInterface (flex container)
+├── 主聊天区 (flex column, flex-1)
+│   ├── ChatView              消息流列表
+│   ├── PermissionPanel       待处理权限
+│   ├── TodoPanel             待办事项
+│   ├── ErrorBanner           红色错误横幅（5-8s 自动消失）
+│   └── ChatComposer          玻璃磨砂输入卡
+└── ContextPanel              右侧上下文面板
+```
+
+### 6.3 ChatComposer — 玻璃磨砂命令岛
 
 ```css
-/* 每个 Agent 紧凑卡片 */
-.agent-quick-card {
-  border-left: 3px solid (状态色);
-  padding: 12px 14px;
+.chat-composer-card {
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.9);
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
 }
 
-/* 状态色映射 */
-.running → #10B981 (emerald)
-.idle    → #6366F1 (indigo)  
-.warning → #F59E0B (amber)
-.error   → #EF4444 (red)
-
-/* 底部活跃度进度条 */
-.agent-quick-card-bar-fill {
-  height: 2px; border-radius: 1px;
+/* 暗色模式 */
+:root.dark .chat-composer-card {
+  background: rgba(45,45,47,0.72);
+  border: 1px solid rgba(255,255,255,0.08);
 }
-.running → width: 85%
-.idle    → width: 45%
+
+/* 聚焦态 — 品牌色微边框 */
+.chat-composer-card:focus-within {
+  border-color: color-mix(in srgb, var(--color-brand) 8%, transparent);
+}
 ```
 
-#### 增强拓扑动效
+**元信息条**（`.chat-composer-meta`）：
+- **模式选择器** — `SessionModeSelector` 组件
+- **模型选择器** — `ModelSelectorPopover` / `ModelSelectorPicker`（`web/components/model-selector/`）
+- **新会话按钮**
+- **Token 进度条**：双色条（输入=品牌蓝、输出=绿色），基准 `MAX_CONTEXT_TOKENS = 200000`
+- **分隔线**：`.chat-composer-divider`（1px 竖线）
 
-- **数据粒子**：沿连线匀速漂移，3 个粒子错峰 (0s / 0.3s / 0.5s 延迟)
-- **脉冲光环**：运行中节点外圈 scale(1)→scale(2) 透明度 0.3→0，2s 循环
-- **呼吸边框**：glow-breathe 动画 (3s 循环)，节点边框阴影波动
-- **悬停放大**：transform: scale(1.05)，0.3s 过渡
+### 6.4 ACP 连接与会话管理
 
-### 5.2 KPI 指标条
+#### 连接流程 (ACPMain)
 
-替换当前简单的 Agent 卡片网格，顶部用数据指标条提供全局感知：
+1. `ChatPanel` 通过 `createRelayClient(agentId)` 创建 WebSocket relay 客户端
+2. 管理状态：`disconnected → connecting → connected / error`
+3. 监听 `agent:reconnect` 自定义事件实现自动重连
+4. 连接后指数退避等待 `capabilities` 就绪
+5. 调用 `client.listSessions()` 寻找最新会话自动恢复
+6. 无现有会话时通过 `chatRef.current?.newSession()` 创建
 
-```tsx
-// 每个指标卡片
-<KPICard
-  label="AGENTS"
-  value={5}
-  icon={<Bot />}
-  trend="+2 this week"
-  sparkline={[3, 4, 3, 5, 4, 5, 5]}  // 迷你趋势线
-  color="brand"
-/>
-```
+#### 断连恢复
 
-**视觉规格**：
+- `wasLoadingBeforeDisconnectRef` 记住 loading 状态，重连后恢复
+- 解决"断连时工具调用卡在 running"的问题
+
+#### Prompt 完成时工具调用兜底
+
+`finalizeRunningToolCalls()` 函数在 prompt 完成时将仍为 running 的工具调用标记为 complete，防止远程 agent 不推送 completed 状态时 UI 永久转圈。
+
+#### 取消标记链
+
+`userCancelledRef.current = true` 阻止取消后的 `promptComplete` 和 `errorMessage` 弹出误导错误。
+
+### 6.5 打字/思考指示器
+
+**三点弹跳**（`.chat-loading-dots`）：品牌色脉冲 + 发光波纹，1.4s 循环，逐级延迟。
 
 ```css
-.kpi-card {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 16px 20px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-/* 数值 — 大号等宽字体 */
-.kpi-value {
-  font-family: var(--font-mono);
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  color: var(--text-bright);
-}
-
-/* 标签 — 微型大写 */
-.kpi-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  margin-top: 4px;
-}
-
-/* 迷你趋势线 — 底部装饰 */
-.kpi-sparkline {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 24px;
-  opacity: 0.15;
+@keyframes loadingDotBounce {
+  0%, 80%, 100% { transform: scale(0.4); opacity: 0.3; }
+  40%          { transform: scale(1); opacity: 1;
+                 box-shadow: 0 0 8px 2px rgba(22,119,255,0.3); }
 }
 ```
 
-### 5.3 Agent 拓扑/状态可视化
+暗色模式使用独立 `loadingDotBounceDark` 关键帧（发光增强，alpha 0.35）。
 
-用简洁的节点图展示 Agent 之间的拓扑关系和实时状态。这不是完整的 3D 可视化，而是一个轻量的 2D 节点图：
+**微光扫过**（`.loading-text-shimmer`）：品牌色渐变在文字上滑动。
 
-```
-         ┌──────────┐
-         │  RCS Hub  │
-         └────┬─────┘
-        ┌─────┼─────┐
-   ┌────┴──┐ ┌┴────┐ ┌────┴──┐
-   │Agent-A│ │Agent-B│ │Agent-C│
-   │ ● 运行 │ │ ○ 空闲│ │ ● 运行 │
-   └───────┘ └──────┘ └───────┘
-```
+### 6.6 消息流核心机制
 
-**实现方案**：使用纯 CSS + SVG 的节点图（不需要引入重量级库如 D3），节点用 `motion.div` 做呼吸动画。
+#### 工具调用嵌套 (`getParentToolUseId`)
 
-每个节点：
+带 `parentToolUseId` 的 session update 路由到父工具调用的 `subEntries`，通过 `applySessionUpdateToEntries` 递归处理。子 Agent 消息流在 `SubAgentPanel` 组件中渲染（`web/components/chat/SubAgentPanel.tsx`）。
 
-- 圆角矩形，内含 Agent 名称 + 状态指示灯
-- 运行中的节点有 `glow-breathe` 动画
-- 节点之间的连线用 SVG `<line>` 或 `<path>`
-- 点击节点进入 Agent 对话
+#### 权限请求 standalone 降级
 
-### 5.4 活动时间线
+当工具调用在 entries 中找不到时，创建 `isStandalonePermission: true` 的独立权限条目。批准后立即标记完成而非 running。
 
-右侧面板展示最近的事件流，用时间线形式：
+#### 图片压缩
 
-```css
-.timeline-item {
-  display: flex;
-  gap: 12px;
-  padding: 8px 0;
-  font-size: 13px;
-  
-}
+ChatInterface 和 ChatComposer 使用 `browser-image-compression` 库压缩上传图片（目标 2MB，最大 2048px，JPEG 转换）。
 
-/* 时间线圆点 */
-.timeline-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 5px;
-  flex-shrink: 0;
-}
+### 6.7 拖拽分隔 + 折叠
 
-/* 新事件入场动画 */
-.timeline-item {
-  animation: timeline-enter 0.4s ease-out;
-}
+分隔手柄中央嵌入一个按钮（`agent-artifacts-expand-btn`，28×56px），使用 `PanelRight` lucide 图标（不是文字）：
 
-@keyframes timeline-enter {
-  from { opacity: 0; transform: translateX(-12px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-```
+- **拖拽**：鼠标按下 + 移动 → resize
+- **切换**：鼠标按下 + 松开（不移动）→ collapse/expand
 
-### 5.5 Agent 列表
+### 6.8 自动展开策略
 
-底部用数据表替代纯卡片视图（可切换 Card/Table 视图）：
+- mount 时立即折叠 ArtifactsPanel
+- 首次出现 diff 文件时自动展开
+- 用户手动收起后不再自动展开
+- 窄屏（≤768px）自动折叠
 
-- 表格行有微妙的悬停高亮（`surface-hover` 背景色渐变）
-- 状态列用发光圆点 + 状态文字
-- 最后活动时间用相对时间（"3秒前"），实时更新
-- 操作列在悬停时才显示，减少视觉噪音
+### 6.9 跨组件事件通信
+
+| 事件 | 来源 | 监听者 | 用途 |
+|------|------|--------|------|
+| `chat:stats` | ChatInterface | `chat.$agentId.tsx` | 广播 entries → 提取 changedFiles → 传给 ArtifactsPanel |
+| `chat:inject-skill` | AgentBadge | ChatComposer | 点击技能标签注入聊天 |
+| `artifacts:select-site` | 卡片组件 | ArtifactsPanel + `chat.$agentId.tsx` | 触发站点绑定 + 展开面板 |
+| `agent:reconnect` | 外部 | ChatPanel | 实例重启后自动重连 |
+
+### 6.10 空状态：AgentBadge 工牌卡
+
+`web/components/chat/AgentBadge.tsx` — 无消息时的占位展示：
+- 显示 Agent 名称、描述、技能标签
+- 可点击的技能标签触发 `chat:inject-skill` 事件
+- 骨架屏加载态：脉冲动画
 
 ---
 
-## 6. 会话详情页升级
+## 7. 聊天高级功能
 
-### 6.1 布局
+### 7.1 CommandMenu (Slash 命令)
 
-```
-┌──────────────────────────────────────────────────────────┐
-│ [← 返回]  Session: agent-prod / session-abc123           │
-│           ● Running · Started 5min ago                    │
-├──────────────────────────────────────────────────────────┤
-│ ┌ Model │ Tokens  │ Tools │ Duration ──────────────────┐ │
-│ │ sonnet │ 4.6k/   │ 21    │ 5m 23s                    │ │
-│ │ -4-6   │ 200k    │ calls │                           │ │
-│ └──────────────────────────────────────────────────────┘ │
-├───────────────────────┬──────────────────────────────────┤
-│                       │                                  │
-│   Chat 消息流          │   Context Panel (可折叠)    [◀]  │
-│                       │                                  │
-│   ┌─────────────────┐ │   ┌──────────────────────────┐  │
-│   │ User message    │ │   │ Agent Info               │  │
-│   └─────────────────┘ │   │ Model: claude-sonnet-4-6 │  │
-│                       │   │ Tokens: 1.2k / 3.4k      │  │
-│   ┌─────────────────┐ │   │ Duration: 5m 23s          │  │
-│   │ Assistant       │ │   │                          │  │
-│   │ response        │ │   │ Tools Used               │  │
-│   │                 │ │   │ ████████░░ bash (8)      │  │
-│   │ [tool_use]      │ │   │ ██████░░░░ edit (6)      │  │
-│   │  └ bash (执行中) │ │   │ ███░░░░░░░ grep (3)     │  │
-│   │  └ edit (完成)  │ │   │                          │  │
-│   │                 │ │   │ Permission Requests      │  │
-│   └─────────────────┘ │   │ ● bash: 3 pending        │  │
-│                       │   └──────────────────────────┘  │
-│   ● ● ● (typing...)   │                                  │
-│                       │                                  │
-│ ═════════════════════ │                                  │
-│ [输入消息...]     [→]  │                                  │
-└───────────────────────┴──────────────────────────────────┘
+`web/components/chat/CommandMenu.tsx` — 输入框输入 `/` 时浮现在 ChatComposer 上方：
+- 键盘导航（↑↓ 选择，Enter 确认）
+- 前缀过滤匹配
+- 命令列表涵盖常见操作
+
+### 7.2 Tool Narrator 系统
+
+`web/components/chat/narrators/` 下 16 个 narrator（`bash.ts`、`read.ts`、`write.ts`、`edit.ts`、`grep.ts`、`glob.ts`、`web-search.ts`、`web-fetch.ts` 等），将原始工具调用转换为人类可读文案。使用 `NS.TOOL_NARRATOR` 命名空间做 i18n。
+
+```ts
+// 示例：bash narrator 的叙事化输出
+// 原始："bash ls -la"
+// 叙事："列出了当前目录下的所有文件"
 ```
 
-#### v2 升级要点
+### 7.3 工具调用可视化
 
-- **会话状态条**：4 个微型数据块横排 (Model / Tokens / Tools / Duration)，替换单独的 meta 文字行
-- **Context Panel 折叠**：侧边圆形按钮切换展开/折叠，`grid-template-columns: 1fr 320px` → `1fr 0px`，300ms 平滑过渡
-- **打字指示器**：三点弹跳动画 (1.4s 循环，逐级 0.2s 延迟)，Assistant 思考时显示
-- **聊天交互**：输入消息后显示 typing indicator → 1.5-2.5s 后助手回复入场 (message-enter 动画)
+`tool-status-pill` 系列 `@utility`（`index.css:309-367`）：
 
-### 6.2 消息流增强
+| 状态 | utility class | 颜色 |
+|------|---------------|------|
+| running | `tool-status-pill-running` | 绿色 |
+| complete | `tool-status-pill-complete` | 绿色 |
+| error | `tool-status-pill-error` | 红色 |
+| pending | `tool-status-pill-pending` | 蓝色 |
 
-**当前问题**：消息是静态的卡片，没有节奏感和生命力。
+展开/折叠用 chevron 旋转动画（`.tool-call-chevron` / `.tool-call-chevron-open`），内容区 `max-height` 过渡 `0.25s cubic-bezier(0.4, 0, 0.2, 1)`。
 
-**改进**：
+### 7.4 HindsightToolCard
 
-1. **打字机效果**：Assistant 回复时，文字逐字/逐段出现（使用 `motion.div` 的 stagger 动画）
-2. **工具调用可视化**：展开时显示工具执行的实时状态
+`web/components/chat/HindsightToolCard.tsx` — 记忆工具专属卡片渲染，紫色知识主题，带详细参数弹窗。
 
-```tsx
-// 工具调用卡片 — 三种状态
-<ToolCallCard status="running">   // 黄色边框 + 旋转 loading 图标
-<ToolCallCard status="success">   // 绿色边框 + 结果摘要
-<ToolCallCard status="error">     // 红色边框 + 错误信息
-```
+### 7.5 PlanView
 
-1. **代码块增强**：
-   - 顶部显示语言标签 + 文件路径
-   - 右上角复制按钮，复制成功后显示绿色对勾（而非 toast）
-   - diff 格式的代码块用红绿高亮
-
-2. **消息间距节奏**：
-   - 同一角色的连续消息间距紧凑（8px）
-   - 不同角色切换时间距宽松（20px）
-   - 用户消息右对齐，Assistant 左对齐，形成对话节奏
-
-### 6.3 Context Panel（新增）
-
-右侧信息面板（可折叠），展示当前会话的上下文数据：
-
-- **Agent 信息**：模型、温度等配置
-- **Token 消耗**：实时更新的 token 计数器 + 环形进度图
-- **工具使用统计**：横向条形图，按调用次数排序
-- **权限请求队列**：当前等待审批的请求列表
+`web/components/chat/PlanView.tsx` — DAG 执行计划可视化：进度条、优先级标签、折叠展开。
 
 ---
 
-## 7. 配置页面升级
+## 8. Artifacts 面板
 
-### 7.1 统一的配置页面框架
-
-当前各配置页面（Models、Agents、Skills、MCP）各自为政，视觉不统一。
-
-**改进方案**：统一的配置页面框架
+### 8.1 顶层结构
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  模型配置                              [+ 新增] [Import]  │
-│                                                          │
-│  ┌─ Tabs ─────────────────────────────────────────────┐  │
-│  │ Providers │ Models │ 测试                            │  │
-│  └────────────────────────────────────────────────────┘  │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  搜索 / 过滤 / 排序工具栏                           │  │
-│  └────────────────────────────────────────────────────┘  │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  数据表 / 卡片网格                                  │  │
-│  └────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────┘
+┌── ArtifactsPanel ─────────────────────┐
+│  ┌─ TopModeTabs ────────────────────┐ │
+│  │ Files (badge: pendingDiffCount)  │ │
+│  │ Sites                            │ │
+│  └──────────────────────────────────┘ │
+│  ┌─ 内容区 ─────────────────────────┐ │
+│  │ Files 模式:                       │ │
+│  │   ┌─ FileTabsBar ──────────────┐ │ │
+│  │   │ doc.md  plan.ts  (LRU 8)   │ │ │
+│  │   └────────────────────────────┘ │ │
+│  │   ┌─ split layout ─────────────┐ │ │
+│  │   │ 文件树 popover │ PreviewTab│ │ │
+│  │   └────────────────────────────┘ │ │
+│  │                                    │ │
+│  │ Sites 模式:                       │ │
+│  │   ┌─ SiteTabsBar ──────────────┐ │ │
+│  │   │ localhost:5173  │ doc site │ │ │
+│  │   └────────────────────────────┘ │ │
+│  │   ┌─ SiteFrame (iframe) ───────┐ │ │
+│  │   │ 站内页面嵌入                  │ │ │
+│  │   └────────────────────────────┘ │ │
+│  └──────────────────────────────────┘ │
+└──────────────────────────────────────┘
 ```
 
-### 7.2 表格增强
+### 8.2 Files 模式
 
-- **行展开动画**：使用 `motion.div` 的 `layout` + `AnimatePresence`，展开/折叠有平滑过渡
-- **行悬停**：左侧出现品牌色竖线指示器
-- **批量操作栏**：选中行时从底部滑入操作栏（而非固定在顶部）
-- **空状态**：有品牌感的空状态插画 + 引导文案
+- **FileTabsBar**：已打开文件的 tab 条，LRU 淘汰策略（最多 8 个）
+- **预览/文件树分离**：
+  - **文件树 popover**（`agent-artifacts-tree-pane`，200px）：工作区文件浏览器
+  - **PreviewTab**（`agent-artifacts-preview-pane`，flex-1）：代码/图片/Markdown/PDF/HTML/表格预览
 
-### 7.3 表单体验
+### 8.3 拖拽上传
 
-- **分步表单**：复杂创建流程拆分为 2-3 步（基本信息 → 高级配置 → 确认）
-- **实时校验**：输入时即时反馈，而非提交后才报错
-- **表单状态指示**：填写进度条（Step 1/3 → 2/3 → 3/3）
+ArtifactsPanel 支持完整的文件拖拽上传到 `user/` 目录：
+
+- `dragCounterRef` 跟踪嵌套 dragEnter/dragLeave，防止闪烁
+- 拖入文件时自动切换 topMode 到 Files（`userPickedSiteRef` 标记重置）
+- 显示 upload progress 进度条
+- 切换 agent 后 handler 保持绑定
+
+### 8.4 Sites 模式
+
+- **SiteTabsBar**：绑定的站点列表 tab 切换
+- **SiteFrame**：iframe 嵌入站点页面
+- **自动绑定**：监听 `artifacts:select-site` 事件，自动调 `agentSitesApi.bindSite()`
+  - 并发锁 `autoBindingRef` 防止快速点击重复绑定
+- **挂载弹层**：`MountSiteDialog` 组件
+- **卸载确认**：`AlertDialog` 组件
+
+### 8.5 pendingDiffCount 角标系统
+
+用户在 Sites 模式下切换时，后台累计 diff 文件数。返回 Files tab 时在 `TopModeTabs` 的 Files 标签上显示角标。独立于自动展开逻辑。
+
+### 8.6 折叠/展开
+
+- 通过 `react-resizable-panels` 的 `PanelImperativeHandle.collapse()/expand()` 控制，动画由库内部管理
+- CSS 同时提供 `width 300ms` + `opacity 200ms` 过渡作为补充
+- `.collapsed` 类设置 `width: 0; opacity: 0; pointer-events: none`
+
+### 8.7 agentConfigId 解析
+
+优先使用传入的 `agentConfigId` prop，若为 null 则从 `envId` 内部拉取（`GET /v1/environments/:id`）。
 
 ---
 
-## 8. 动效系统
+## 9. 登录页
 
-### 8.1 动效层级
+### 9.1 路由
 
-| 层级 | 时长 | 缓动 | 场景 |
-|------|------|------|------|
-| **Micro** | 100-150ms | ease-out | 悬停、聚焦、按下 |
-| **Small** | 200-300ms | ease-in-out | 展开/折叠、开关切换 |
-| **Medium** | 300-500ms | ease-out | 页面元素入场、弹窗出现 |
-| **Large** | 500-800ms | ease-in-out | 页面切换、布局变化 |
+`/login` — `web/src/routes/login.tsx`，lazy load `LoginPage`。
 
-### 8.2 关键动效规范
+根路由（`__root.tsx`）在 `useSession()` 返回未认证时自动重定向到 `/login`。
 
-#### 页面入场 — Stagger Fade Up
+### 9.2 LoginPage
 
-```tsx
-import { motion } from "motion/react";
+`web/src/pages/LoginPage.tsx`（约 27KB）：
 
-// 页面容器
-<motion.div
-  initial={{ opacity: 0 }}
-  animate={{ opacity: 1 }}
-  transition={{ duration: 0.3 }}
->
-  {/* 子元素依次入场 */}
-  {items.map((item, i) => (
-    <motion.div
-      key={item.id}
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: i * 0.05, duration: 0.3 }}
-    >
-      {item}
-    </motion.div>
-  ))}
-</motion.div>
-```
+- **登录**：邮箱 + 密码
+- **注册**：创建新账户
+- **忘记密码**：重置流程
+- **组织选择**：登录后选择/切换到所属组织
+- 使用 `NS.LOGIN` 命名空间 (en/zh JSON 翻译)
 
-#### Agent 卡片悬停 — Elevate
+### 9.3 无权限页
 
-```css
-.agent-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.agent-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
-}
-```
-
-#### 侧边栏折叠 — Smooth Width
-
-```tsx
-<motion.aside
-  animate={{ width: collapsed ? 60 : 240 }}
-  transition={{ type: "spring", stiffness: 300, damping: 30 }}
->
-```
-
-#### 数字变化 — Counting Animation
-
-KPI 数字变化时用计数动画（从旧值滚动到新值），使用 `motion` 的 `useSpring`：
-
-```tsx
-const animatedValue = useSpring(targetValue, {
-  stiffness: 100,
-  damping: 20,
-});
-```
-
-#### 状态变化 — Color Transition
-
-Agent 状态变化时，背景色和发光效果平滑过渡：
-
-```css
-.status-indicator {
-  transition: background-color 0.5s ease, box-shadow 0.5s ease;
-}
-```
-
-### 8.3 使用 motion 库的组件清单
-
-| 组件 | 动效类型 | 优先级 |
-|------|---------|--------|
-| AppShell 侧边栏折叠 | layout animation | P0 |
-| Dashboard KPI 卡片 | stagger fadeUp | P0 |
-| Dashboard Agent 节点 | presence + pulse | P1 |
-| Agent 列表行展开 | AnimatePresence | P1 |
-| 消息流新消息入场 | slideIn from bottom | P0 |
-| 工具调用状态切换 | layout + color transition | P1 |
-| 页面切换 | crossFade | P2 |
-| 侧边栏导航 active 指示器 | layoutId 共享元素 | P2 |
-| 表单弹窗 | spring scale + fade | P1 |
-| Context Panel 展开/折叠 | layout | P1 |
+`/no-access` — `web/src/routes/no-access.tsx`，显示 403 无权限提示。
 
 ---
 
-## 9. 组件设计规范
+## 10. Hindsight 记忆模块
 
-### 9.1 卡片组件
+### 10.1 路由 & 入口
 
-```css
-/* 标准卡片 */
-.card {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 20px;
-}
+`/agent/memories` → `web/src/pages/hindsight/MemoriesPage.tsx`
 
-/* 可交互卡片 — 悬停提升 */
-.card-interactive:hover {
-  border-color: var(--border-default);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-  transform: translateY(-1px);
-}
+i18n 命名空间：`NS.HINDSIGHT`（`web/src/i18n/locales/{en,zh}/hindsight.json`）。
 
-/* 选中卡片 — 品牌色边框 */
-.card-selected {
-  border-color: var(--border-active);
-  box-shadow: 0 0 0 1px var(--border-active);
-}
-```
-
-### 9.2 按钮层级
+### 10.2 组件体系
 
 ```
-Primary:    品牌色填充 (#6366F1) + 白色文字
-Secondary:  surface-elevated 填充 + border-subtle 边框
-Ghost:      透明背景，悬停时 surface-hover
-Danger:     red-500 填充 / ghost + red-500 文字
-```
-
-所有按钮的过渡时长 150ms，按下时缩放至 0.98：
-
-```css
-.button {
-  transition: all 0.15s ease;
-}
-.button:active {
-  transform: scale(0.98);
-}
-```
-
-### 9.3 输入框
-
-```css
-.input {
-  background: var(--surface-base);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: var(--text-primary);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.input:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
-  outline: none;
-}
-```
-
-### 9.4 状态指示器
-
-替代当前的简单圆点，用带柔和阴影的指示器（适合白色背景）：
-
-```tsx
-function StatusDot({ status }: { status: string }) {
-  return (
-    <span className="relative flex h-2.5 w-2.5">
-      {/* 外圈呼吸光晕 — 仅 running/active 状态 */}
-      {(status === "running" || status === "active") && (
-        <span className="absolute inset-0 rounded-full bg-emerald-500 animate-pulse opacity-20" />
-      )}
-      {/* 实心圆点 */}
-      <span className={cn(
-        "relative rounded-full h-2.5 w-2.5",
-        statusColors[status]
-      )} />
-    </span>
-  );
-}
+web/src/pages/hindsight/
+├── MemoriesPage.tsx         主页面
+├── types.ts                 类型定义
+└── components/
+    ├── DataView.tsx          数据集视图 (~54KB, 最大组件)
+    ├── Constellation.tsx     3D 星图可视化 (~38KB)
+    ├── Graph2d.tsx           Cytoscape 二维图谱
+    ├── EntitiesView.tsx      实体视图
+    ├── DocumentsView.tsx     文档视图
+    ├── MemoryDetailPanel.tsx 记忆详情面板
+    ├── ConversationsView.tsx 对话视图
+    ├── MentalModelsView.tsx  心智模型视图
+    ├── ObservationsView.tsx  观察视图
+    └── RelationsView.tsx     关系视图
 ```
 
 ---
 
-## 10. 需要引入的依赖
+## 11. 工作流 UI (Workflow)
 
-### 10.1 新增依赖
+### 11.1 路由
 
-| 库 | 版本 | 用途 | 大小影响 |
-|----|------|------|---------|
-| `recharts` | ^2.x | KPI 迷你趋势线、工具使用统计图表 | ~45kb gzipped |
-| `lucide-react` | 已有 | 维持现状 | — |
-| `motion` | 已有 (v12) | 全面启用动画 | — |
+| 路由 | 页面 | 说明 |
+|------|------|------|
+| `/agent/workflow` | WorkflowList / WorkflowRuns | 列表 + 运行记录（tab 切换） |
+| `/agent/workflow/$id/edit` | WorkflowEditor | DAG 可视化编辑器 |
+| `/agent/workflow/$id/versions` | WorkflowVersions | 版本管理 |
 
-### 10.2 不建议引入
+### 11.2 组件体系
 
-| 库 | 原因 |
-|----|------|
-| `three.js` / `react-three-fiber` | 过重，2D 节点图用 CSS/SVG 足够 |
-| `d3` | 过于底层，recharts 已覆盖需求 |
-| `framer-motion` | 已有 `motion` v12（同一作者的升级版） |
-
-### 10.3 字体加载
-
-```html
-<!-- Geist Sans — 从 CDN 或本地部署 -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-sans/style.css" />
-
-<!-- DM Sans — Google Fonts -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" />
+```
+web/src/pages/workflow/
+├── WorkflowList.tsx          工作流列表
+├── WorkflowEditor.tsx        可视化编辑器 (~38KB)
+├── WorkflowVersions.tsx      版本管理
+├── WorkflowRuns.tsx          运行记录
+├── WorkflowBreadcrumb.tsx    面包屑导航
+├── yaml-utils.ts             YAML 工具函数
+├── utils.ts                  通用工具
+├── presets.ts                预设模板
+├── preset-utils.ts           模板工具
+├── layout.ts                 布局工具
+├── workflow.css              专用样式
+├── components/
+│   ├── NodeConfigSheet.tsx   节点配置抽屉
+│   ├── NodeConfigCard.tsx    节点配置卡片 (~37KB)
+│   ├── NodeConfigPanel.tsx   节点配置面板
+│   └── ...                   更多节点组件
+└── hooks/
+    └── ...                   workflow hooks
 ```
 
-建议将字体文件下载到 `web/public/fonts/` 本地托管，避免 CDN 依赖。
+i18n 命名空间：`NS.WORKFLOWS`。
 
 ---
 
-## 11. 实施路线图
+## 12. 页面结构
 
-### Phase 1 — 基础设施（1-2 天）
+### 12.1 完整路由表
 
-1. **色彩系统迁移**：更新 `web/src/index.css` 的 `@theme` 变量
-2. **字体引入**：加载 Geist Sans + DM Sans，更新 CSS 变量
-3. **侧边栏布局**：重构 AppShell，从顶栏 Tab 切换到侧边栏导航
-4. **全局组件样式**：更新 Button、Input、Card 等基础组件
+| 路由路径 | 页面 | 说明 |
+|----------|------|------|
+| `/` | → `/agent` | 根路径重定向 |
+| `/login` | LoginPage | 登录/注册 |
+| `/no-access` | 403 页面 | 无权限 |
+| `/agent` | → `/agent/home` | 默认入口 |
+| `/agent/$agentId` | → `/agent/chat/$agentId` | 兼容重定向 |
+| `/agent/$agentId/$sessionId` | → `/agent/chat/$agentId/$sessionId` | 兼容重定向 |
+| `/agent/home` | AgentHomePage | AI 智能创建 / 模板创建 |
+| `/agent/dashboard` | AgentDashboardPage | **占位页（空壳）** |
+| `/agent/agents` | AgentManagementPage | Agent 配置管理 |
+| `/agent/chat/$agentId` | ChatPanel + ArtifactsPanel | 聊天页 |
+| `/agent/chat/$agentId/$sessionId` | ChatPanel + ArtifactsPanel | 聊天页（指定 session） |
+| `/agent/workflow` | WorkflowList / WorkflowRuns | 工作流列表 |
+| `/agent/workflow/$id/edit` | WorkflowEditor | 工作流编辑器 |
+| `/agent/workflow/$id/versions` | WorkflowVersions | 版本管理 |
+| `/agent/tasks` | AgentTasksPage | 定时任务 |
+| `/agent/skills` | AgentSkillsPage | Skill 管理 |
+| `/agent/sessions` | AgentSessionsPage | 会话列表 |
+| `/agent/sites` | AgentSitesPage | 站点/Registry |
+| `/agent/models` | AgentModelsPage | 模型配置 |
+| `/agent/mcp` | AgentMcpPage | MCP 服务器 |
+| `/agent/memories` | MemoriesPage | Hindsight 记忆 |
+| `/agent/knowledge-bases` | AgentKnowledgeBasesPage | 知识库 |
+| `/agent/organizations` | AgentOrganizationsPage | 组织管理 |
+| `/agent/channels` | AgentChannelsPage | IM 通道 |
+| `/agent/apikeys` | AgentApiKeysPage | API Key |
 
-### Phase 2 — Dashboard 重构（2-3 天）
+### 12.2 Dashboard 状态
 
-1. **KPI 指标条**：新增 `web/src/components/dashboard/KPICard.tsx`
-2. **Agent 节点图**：新增 `web/src/components/dashboard/AgentTopology.tsx`
-3. **活动时间线**：新增 `web/src/components/dashboard/ActivityTimeline.tsx`
-4. **Agent 数据表**：重构 Dashboard 列表视图，支持 Table/Card 切换
-5. **实时数据轮询**：接入后端 API，定时刷新指标数据
+**占位实现**：仅显示 `AgentPageHeader`（标题"数据面板"）+ 欢迎文字。无 KPI 卡片、图表或数据可视化。侧边栏导航中**无入口链接**。
 
-### Phase 3 — 会话详情页增强（2-3 天）
+### 12.3 配置页面约定
 
-1. **双栏布局**：Chat + Context Panel
-2. **消息流动效**：新消息入场动画、工具调用状态可视化
-3. **Context Panel**：Token 统计、工具使用条形图、权限队列
-4. **代码块增强**：语言标签、文件路径、diff 高亮
-
-### Phase 4 — 配置页面统一（2-3 天）
-
-1. **配置页框架**：统一 Tabs + Toolbar + Table/Card 切换
-2. **表格动效**：行展开动画、批量操作栏滑入
-3. **表单优化**：分步表单、实时校验
-4. **空状态设计**：每个配置页的空状态插画
-
-### Phase 5 — 全局动效打磨（1-2 天）
-
-1. **页面切换过渡**
-2. **侧边栏 `layoutId` 共享动画**
-3. **数字计数动画**
-4. **加载骨架屏升级**
-5. **暗/亮主题切换动画**
+- 使用 `AgentPageHeader` 作为标题栏（`shared/AgentPageHeader.tsx`）
+- 使用 `DataTable` 展示列表数据
+- 弹窗操作使用 `Dialog` / `AlertDialog`（shadcn/ui）
+- 所有用户可见文字通过 `useTranslation()` 国际化
+- **未使用统一的配置页面框架**，各页面独立实现
 
 ---
 
-## 12. 性能注意事项
+## 13. 动效系统
+
+### 13.1 实现方式
+
+**纯 CSS 动画**，不使用 `motion` 库（虽然已安装但未被源码引用）。动画定义分布在：
+
+| 文件 | 定义内容 |
+|------|----------|
+| `web/src/index.css` | 全局动画（状态脉冲、淡入、打字弹跳、微光、shimmer） |
+| `web/src/pages/agent-panel/agent-panel.css` | 面板动画（骨架屏脉冲） |
+
+### 13.2 关键帧
+
+| 动画名 | 文件 | 用途 |
+|--------|------|------|
+| `status-active-pulse` | `index.css:249` | Agent 运行中状态绿色脉冲 |
+| `glowBreathe` | `index.css:281` | 呼吸发光，3s 循环 |
+| `fadeUp` | `index.css:295` | 淡入上移 (24px) |
+| `loadingDotBounce` | `index.css:418` | 三点打字弹跳 + 发光，1.4s 循环 |
+| `loadingDotBounceDark` | `index.css:437` | 暗色三点弹跳（发光增强） |
+| `shimmerSlide` | `index.css:471` | "思考中"文字微光滑动 |
+| `streamingInputPulse` | `index.css:377` | 流式输入脉冲 |
+| `glimmer-pulse` | `index.css:259` | 微光脉冲 |
+| `pulse-subtle` | `index.css:269` | 柔和脉冲 |
+| `agent-badge-pulse` | `agent-panel.css:787` | 骨架屏加载脉冲，2s |
+| `typing-bounce` | — | (已不存在于代码中) |
+
+### 13.3 过渡动画
+
+| 元素 | 时长 | 缓动 |
+|------|------|------|
+| 侧边栏折叠 | 300ms | `cubic-bezier(0.4,0,0.2,1)` |
+| ArtifactsPanel 折叠 | `width` 300ms + `opacity` 200ms | `cubic-bezier(0.4,0,0.2,1)` / ease |
+| 导航项悬停 | 150ms | — |
+| 工具调用展开 | 250ms | `cubic-bezier(0.4,0,0.2,1)` (max-height) |
+| chevron 旋转 | 200ms | ease |
+
+### 13.4 无障碍
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+}
+```
+
+所有图标有 `aria-label`。
+
+---
+
+## 14. ACP 客户端层
+
+### 14.1 文件结构
+
+```
+web/src/acp/
+├── types.ts          # ACP 协议类型定义
+├── client.ts         # 底层 WebSocket + JSON-RPC 通信
+├── relay-client.ts   # Relay 模式客户端（前端与后端 relay 桥接）
+└── index.ts          # 导出汇总
+```
+
+### 14.2 连接模式
+
+前端不直连 acp-link 进程，而是通过后端 WebSocket relay 桥接：
+
+```
+浏览器 ←→ WebSocket relay (后端 /acp/relay) ←→ ACP agent 进程
+```
+
+- relay 层拦截 `keep_alive` 不透传前端
+- relay 必须转发 agent `status`（前端依赖 `capabilities`）
+- 前端断连只关 WS，不终止 acp-link 进程
+
+---
+
+## 15. API 客户端层
+
+### 15.1 SDK 架构
+
+`web/src/api/sdk.ts` — 类架构 SDK，`credentials: "include"`：
+
+```ts
+import { envApi, sessionApi } from "@/src/api/sdk";
+```
+
+### 15.2 模块分布
+
+| 文件 | 职责 |
+|------|------|
+| `web/src/api/sdk.ts` | 主 API 客户端 |
+| `web/src/api/hindsight.ts` | 记忆模块 API |
+| `web/src/api/workflow-defs.ts` | 工作流定义 API |
+| `web/src/api/workflow-engine.ts` | 工作流引擎 API |
+| `web/src/api/workflow-sse.ts` | 工作流 SSE 事件流 |
+| `web/src/api/meta-agent.ts` | Meta Agent API |
+| `web/src/lib/use-workflow-events.ts` | 工作流事件 hook |
+
+---
+
+## 16. 组件库
+
+### 16.1 shadcn/ui 组件
+
+`web/components/ui/index.ts` 导出 **33 个组件**，基于 Radix UI 基元 + Tailwind CSS v4。
+
+| 类别 | 组件 |
+|------|------|
+| 布局 | `card`, `resizable`, `scroll-area`, `separator` |
+| 表单 | `button`, `button-group`, `checkbox`, `date-picker`, `form`, `input`, `input-group`, `label`, `select`, `switch`, `textarea` |
+| 导航 | `pagination`, `tabs` |
+| 弹窗 | `alert-dialog`, `dialog`, `dropdown-menu`, `hover-card`, `popover`, `tooltip` |
+| 折叠 | `accordion`, `collapsible`, `sheet` (未导出) |
+| 数据展示 | `badge`, `calendar`, `command`, `connection-status`, `progress` (未导出), `skeleton`, `table`, `tree` |
+| 工具 | `theme-toggle` |
+
+**架构模式**：
+- 使用 `data-slot` 属性匹配样式
+- 变体通过 `class-variance-authority` (`cva`) 管理
+- `@radix-ui/react-slot` 的 `Slot` 组件实现 `asChild` 多态渲染
+- 禁止直接使用 Radix 原生组件
+
+### 16.2 图标系统
+
+| 用途 | 库 | 约束 |
+|------|-----|------|
+| 通用 UI 图标 | `lucide-react` | 唯一来源，禁止内联 SVG |
+| AI 模型/品牌图标 | `@lobehub/icons` | 仅通过 `<ModelIcon>` 渲染，禁止业务代码直接导入 |
+
+**ModelIcon 匹配策略** (`web/components/model-icon/`)：
+1. `modelId` 转小写后与本地映射表 `model-icon-map.ts` 做正则前缀匹配
+2. 未命中兜底到 `@lobehub/icons` 内置 helper（不做大小写归一化）
+
+> ⚠️ 两层匹配大小写处理不一致（映射表做了 `.toLowerCase()`，内置 helper 不做），是已知维护陷阱。
+
+### 16.3 完整组件目录
+
+```
+web/components/
+├── ui/                   shadcn/ui (34 files, 33 exported)
+├── chat/                 聊天组件
+│   └── narrators/        工具叙事器 (16 files)
+├── ai-elements/          AI 消息渲染元素
+├── config/               配置页通用组件
+├── model-icon/           模型图标 (ModelIcon + model-icon-map)
+├── model-selector/       模型选择器弹窗 (ModelSelectorPopover + ModelSelectorPicker)
+├── index.ts              (空文件)
+├── ACPMain.tsx           聊天主容器
+├── ACPConnect.tsx        ACP 连接组件
+├── ChatInterface.tsx     聊天核心交互 (~41KB)
+├── ChatMessage.tsx       单条消息渲染
+├── ContextPanel.tsx      上下文面板 (~13KB)
+├── MetaAgentPanel.tsx    Meta Agent 面板
+├── ThreadHistory.tsx     会话历史 (~11KB)
+└── ChangePasswordDialog.tsx  修改密码弹窗
+```
+
+### 16.4 通用页面组件
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| `AgentPageHeader` | `shared/AgentPageHeader.tsx` | 页面标题栏 |
+| `AgentCardList` | `shared/AgentCardList.tsx` | 卡片列表 |
+| `AgentFormDialog` | `AgentFormDialog.tsx` | 创建/编辑 Agent |
+| `AgentGenerationForm` | `components/AgentGenerationForm.tsx` | AI 生成表单 |
+| `ChangePasswordDialog` | `components/ChangePasswordDialog.tsx` | 修改密码 |
+
+---
+
+## 17. 国际化 (i18n)
+
+### 17.1 技术栈
+
+- `i18next` + `react-i18next`
+- 语言检测：`i18next-browser-languagedetector`（localStorage "rcs-lang" → navigator.language）
+- 默认语言：英文 (`en`)，支持中文 (`zh`)
+- 初始化：`web/src/i18n/index.ts`，启动时阻塞加载所有 JSON
+
+### 17.2 命名空间（22 个）
+
+| `NS` 常量 | 字符串 | 模块 |
+|-----------|--------|------|
+| `NS.COMMON` | `common` | 通用文本 |
+| `NS.LOGIN` | `login` | 登录页 |
+| `NS.SIDEBAR` | `sidebar` | 侧边栏 |
+| `NS.DASHBOARD` | `dashboard` | Dashboard |
+| `NS.AGENTS` | `agents` | Agent 管理 |
+| `NS.MODELS` | `models` | 模型配置 |
+| `NS.SKILLS` | `skills` | Skill 管理 |
+| `NS.MCP` | `mcp` | MCP 管理 |
+| `NS.TASKS` | `tasks` | 定时任务 |
+| `NS.WORKFLOWS` | `workflows` | 工作流 |
+| `NS.SETTINGS` | `settings` | 设置 |
+| `NS.SESSIONS` | `sessions` | 会话 |
+| `NS.ENVIRONMENTS` | `environments` | 环境 |
+| `NS.ORGS` | `orgs` | 组织 |
+| `NS.APIKEY` | `apikey` | API Key |
+| `NS.CHANNELS` | `channels` | IM 通道 |
+| `NS.KNOWLEDGE` | `knowledge` | 知识库 |
+| `NS.AGENT_PANEL` | `agentPanel` | Agent 面板通用 |
+| `NS.COMPONENTS` | `components` | 公共组件 |
+| `NS.HINDSIGHT` | `hindsight` | 记忆模块 |
+| `NS.AGENT_HOME` | `agentHome` | 创建 Agent 首页 |
+| `NS.TOOL_NARRATOR` | `toolNarrator` | 工具调用叙事化文本 |
+
+### 17.3 规则
+
+- 禁止在 JSX 中硬编码用户可见字符串
+- 禁止模块级 `i18n.t()` 调用
+- 新增命名空间：创建 en/zh JSON → 注册到 `index.ts`
+
+---
+
+## 18. 技术栈与依赖
+
+### 18.1 核心框架
+
+| 依赖 | 用途 |
+|------|------|
+| `react` ^19 | UI 框架 |
+| `@tanstack/react-router` | 路由（file-based） |
+| `tailwindcss` ^4.3 | CSS 框架 |
+| `@tailwindcss/vite` ^4.3 | Tailwind v4 Vite 插件 |
+| `@tailwindcss/typography` ^0.5 | 排版插件（`@plugin` 方式，非 `plugins` 数组） |
+| `typescript` ^5 | 类型系统 |
+
+### 18.2 UI 库
+
+| 依赖 | 用途 |
+|------|------|
+| `react-resizable-panels` | 可拖拽分栏 |
+| `lucide-react` ^1.16 | 通用 UI 图标 |
+| `@lobehub/icons` ^5.10 | AI 模型品牌图标 |
+| `@radix-ui/react-*` (17 个直接依赖) | UI 基元 |
+| `sonner` | Toast 通知 |
+| `class-variance-authority` ^0.7 | 组件变体 (cva) |
+| `clsx` ^2.1 | 类名拼接 |
+| `tailwind-merge` ^3.6 | Tailwind 类合并 |
+| `tw-animate-css` ^1.4 | Tailwind 动画 utilities |
+| `react-hook-form` | 表单管理 |
+| `zod` ^4 | Schema 验证 |
+| `browser-image-compression` | 聊天图片压缩 |
+| `streamdown` | 消息 Markdown/代码块渲染 |
+
+### 18.3 国际化
+
+| 依赖 | 用途 |
+|------|------|
+| `i18next` | 国际化核心 |
+| `react-i18next` | React 绑定 |
+| `i18next-browser-languagedetector` | 语言检测 |
+
+### 18.4 已安装但未使用的依赖
+
+| 依赖 | 说明 |
+|------|------|
+| `motion` ^12.40 | 已安装，源码中无引用。仅 vite.config 中作为 manualChunk 分组 |
+| `recharts` ^3.8 | 已安装，源码中无引用 |
+
+---
+
+## 19. Vite 构建配置
+
+### 19.1 关键配置
+
+`web/vite.config.ts`：
+
+| 配置 | 值 | 说明 |
+|------|-----|------|
+| `base` | `"/ctrl/"` | 静态资源基础路径，与后端挂载一致 |
+| Tailwind 插件 | `tailwindcss()` | Vite 插件方式加载，**必须放在 plugins 第一位** |
+| TanStack Router 插件 | `@tanstack/router-plugin/vite` | 自动生成 `routeTree.gen.ts` |
+
+### 19.2 Dev Server Proxy
+
+```ts
+{
+  "/web": "http://localhost:3000",
+  "/api": "http://localhost:3000",
+  "/acp": { target: "http://localhost:3000", ws: true }
+}
+```
+
+### 19.3 分包策略 (manualChunks)
+
+7 个独立 chunk：
+
+| chunk | 内容 |
+|-------|------|
+| `shiki` | 代码高亮 |
+| `mermaid` | 图表渲染 |
+| `motion` | 动画库 |
+| `ai-sdk` | Vercel AI SDK |
+| `radix-ui` | UI 基元 |
+| `tanstack` | 路由框架 |
+| `hookform` | 表单管理 |
+
+---
+
+## 20. 文件约定
+
+### 20.1 完整目录结构
+
+```
+web/
+├── src/
+│   ├── routes/                           # TanStack Router
+│   │   ├── __root.tsx                    # 根（登录守卫、ThemeProvider、OrgProvider）
+│   │   ├── index.tsx                     # / → /agent
+│   │   ├── login.tsx                     # /login
+│   │   ├── no-access.tsx                 # /no-access (403)
+│   │   └── agent/
+│   │       ├── $agentId.tsx              # 兼容重定向 → /agent/chat/$agentId
+│   │       ├── $agentId_.$sessionId.tsx  # 兼容重定向
+│   │       ├── _panel.tsx                # AgentPanelLayout
+│   │       └── _panel/                   # 子路由
+│   │           ├── index.tsx             # → /agent/home
+│   │           ├── home.tsx
+│   │           ├── dashboard.tsx
+│   │           ├── agents.tsx
+│   │           ├── chat.$agentId.tsx
+│   │           ├── chat.$agentId_.$sessionId.tsx
+│   │           ├── workflow.tsx / workflow_.$id.edit.tsx / workflow_.$id.versions.tsx
+│   │           ├── tasks.tsx / skills.tsx / sessions.tsx / sites.tsx / models.tsx
+│   │           ├── mcp.tsx / memories.tsx / knowledge-bases.tsx
+│   │           ├── organizations.tsx / channels.tsx / apikeys.tsx
+│   │           └── routeTree.gen.ts      # 自动生成，严禁手动编辑
+│   ├── pages/
+│   │   ├── LoginPage.tsx
+│   │   ├── WorkflowPage.tsx
+│   │   ├── agent-panel/
+│   │   │   ├── AgentPanelLayout.tsx
+│   │   │   ├── AgentAppShell.tsx         # 聊天页顶级容器
+│   │   │   ├── AgentPanelPage.tsx        # 占位组件
+│   │   │   ├── AgentSidebar.tsx
+│   │   │   ├── AgentSidebarConfig.tsx    # QuickNav + 废弃的 Config
+│   │   │   ├── AgentSidebarTree.tsx
+│   │   │   ├── ChatPanel.tsx
+│   │   │   ├── ArtifactsPanel.tsx
+│   │   │   ├── AgentFormDialog.tsx
+│   │   │   ├── agent-panel.css
+│   │   │   ├── components/              # AgentGenerationForm 等
+│   │   │   ├── pages/                   # 各页面组件
+│   │   │   └── shared/                  # AgentPageHeader, AgentCardList
+│   │   ├── workflow/                    # 工作流模块 (13 files + components/ + hooks/)
+│   │   └── hindsight/                   # 记忆模块 (MemoriesPage + components/10 files)
+│   ├── i18n/
+│   │   ├── index.ts
+│   │   └── locales/{en,zh}/             # 各 22 个 JSON 文件
+│   ├── acp/                             # ACP 客户端层
+│   │   ├── types.ts / client.ts / relay-client.ts / index.ts
+│   ├── api/                             # API 客户端
+│   │   ├── sdk.ts
+│   │   ├── hindsight.ts / workflow-defs.ts / workflow-engine.ts / workflow-sse.ts / meta-agent.ts
+│   ├── hooks/                           # 通用 hooks (13 files)
+│   │   ├── useModels.ts / useACPConnection.ts / useTokens.ts / useCommands.ts ...
+│   ├── contexts/                        # React Context
+│   │   └── OrgContext.tsx
+│   ├── lib/                             # 工具函数
+│   │   ├── utils.ts (cn)
+│   │   ├── auth-client.ts
+│   │   ├── extract-changed-files.ts
+│   │   ├── use-workflow-events.ts
+│   │   ├── types.ts
+│   │   └── card-renderer/              # 卡片渲染系统 (emitter, registry, context, builtins)
+│   └── types/                           # 类型声明 (5 files)
+├── components/
+│   ├── ui/                              # shadcn/ui (34 files, 33 exported, index.ts)
+│   ├── chat/                            # 聊天组件 + narrators/ (16 files)
+│   ├── ai-elements/                     # AI 消息渲染
+│   ├── config/                          # 配置页通用组件
+│   ├── model-icon/                      # ModelIcon + model-icon-map
+│   ├── model-selector/                  # ModelSelectorPopover + ModelSelectorPicker
+│   ├── ACPMain.tsx / ACPConnect.tsx
+│   ├── ChatInterface.tsx / ChatMessage.tsx
+│   ├── ContextPanel.tsx / MetaAgentPanel.tsx
+│   ├── ThreadHistory.tsx / ChangePasswordDialog.tsx
+│   └── index.ts
+├── index.html                           # <html>, Vite entry
+└── vite.config.ts                       # Vite 配置
+```
+
+### 20.2 命名约定
+
+| 类型 | 风格 | 示例 |
+|------|------|------|
+| 路由文件 | camelCase + `$` 动态段 | `chat.$agentId.tsx` |
+| React 组件 | PascalCase | `AgentSidebar`, `DataTable` |
+| 函数/变量 | camelCase | `handleNavigate`, `formSaving` |
+| CSS 类 | kebab-case | `agent-panel-layout` |
+| CSS 变量 | kebab-case | `--agent-sidebar-width` |
+| JSON 翻译 key | camelCase | `"createAgent"` |
+
+### 20.3 路径别名
+
+| 别名 | 实际路径 | 用途 |
+|------|----------|------|
+| `@/src` | `web/src/` | 页面内引用 (api/, i18n/, lib/, hooks/, types/ 等子目录也在此范围) |
+| `@/components` | `web/components/` | 组件引用 |
+| `@server` | `../src` | 后端引用 |
+| `@fenix/sdk` | `packages/sdk/src/index.ts` | SDK 引用 |
+
+---
+
+## 21. 性能注意事项
 
 | 关注点 | 策略 |
 |--------|------|
-| 动画性能 | 只对 `transform` 和 `opacity` 做动画，避免 layout thrash |
-| 字体加载 | 使用 `font-display: swap` + preload 关键字体 |
-| 图表渲染 | Recharts 使用 `React.memo` 避免不必要的重绘 |
-| 实时数据 | 使用 requestAnimationFrame 节流数字动画 |
-| SVG 节点图 | 虚拟化：超过 50 个节点时只渲染视口内的节点 |
-| 暗色模式 | 使用 CSS 变量切换，不重新渲染组件。白色主题为默认，深色为可选 |
+| 动画性能 | 纯 CSS 动画（transform + opacity），无 JS 布局重排 |
+| 字体加载 | 零外部字体，系统字体栈，无 FOIT |
+| 代码分割 | `React.lazy` → 聊天组件按需加载；Vite `manualChunks` 7 个独立包 |
+| 实时数据 | Agent 树 15 秒轮询 + `configChangeListener` 事件驱动 |
+| 暗色模式 | CSS 变量切换（`.dark` 类），不重新渲染 |
+| 无障碍 | `prefers-reduced-motion` 全局禁用动画 |
 
 ---
 
-## 13. 无障碍 & 用户体验兜底
-
-- 所有颜色变化有对应的文字说明（不依赖色觉）
-- 动画尊重 `prefers-reduced-motion`
-- 侧边栏键盘可导航（Tab + Enter）
-- 所有图标有 `aria-label`
-- 数据表格有正确的 `<th scope>` 和 `<caption>`
-- 深色模式下确保 WCAG AA 对比度（4.5:1）
-
----
-
-## 14. 设计参考
+## 22. 设计参考
 
 | 产品 | 借鉴点 |
 |------|--------|
-| **Linear** | 侧边栏交互、键盘快捷键、过渡动画、白色清爽感 |
-| **Stripe** | 明亮科技风、品牌色点缀、表格密度、数据卡片 |
-| **Notion** | 白色基底、留白节奏、清爽排版 |
-| **Vercel Dashboard** | 极简排版、Geist 字体、Indigo 色系 |
-| **Raycast** | Command+K 全局搜索、层级导航 |
+| **Linear** | 侧边栏交互、白色清爽感 |
+| **Stripe** | 明亮科技风、数据卡片 |
+| **Notion** | 白色基底、留白节奏 |
 
 ---
 
-*本方案由 RCS 团队与 Claude 协作制定，作为 UX 升级的指导性文档。各 Phase 可根据实际开发资源灵活调整优先级。*
+## 23. 维护注意事项
+
+### 23.1 新增页面
+
+1. `web/src/routes/agent/_panel/` 下创建路由文件
+2. `web/src/pages/agent-panel/pages/` 下创建页面组件
+3. 如需新 i18n namespace：创建 en/zh JSON → 注册 `web/src/i18n/index.ts`
+4. 如需侧边栏入口：在 `AgentSidebarConfig.tsx` 的 `useNavGroups()` 中添加
+5. `routeTree.gen.ts` **严禁手动编辑**
+
+### 23.2 CSS 修改
+
+- 全局 Token：`web/src/index.css` `@theme` 块
+- Agent 面板样式：`web/src/pages/agent-panel/agent-panel.css`
+- shadcn/ui 样式：`@theme` 中的对应 token
+- 组件级样式：优先 Tailwind utility，必要时 `@utility` 或组件级 CSS
+
+### 23.3 构建
+
+- 修改前端后必须 `bun run build:web`
+- 提交前必须 `bun run precheck`（格式 + import 排序 + tsc + lint）
 
 ---
 
-## 15. v2 布局升级记录 (2026-04-30)
-
-### 已变更
-
-| 模块 | 变更内容 | 文件 |
-|------|---------|------|
-| **Dashboard** | 2 列 → 3 列布局：左栏 Agent Quick Cards (260px) + 中栏增强拓扑 (1fr) + 右栏紧凑时间线 (320px) | `design-preview.html` |
-| **Dashboard** | Agent 列表新增表格/卡片双视图切换 (`.agent-card-grid`) | `design-preview.html` |
-| **Dashboard** | 拓扑 SVG 增强：数据粒子漂移动画、脉冲光环、悬停放大 | `design-preview.html` |
-| **Dashboard** | Agent Quick Cards：状态色左竖线、活跃度进度条、悬停右移效果 | `design-preview.html` |
-| **会话详情** | 新增会话状态条 (Model / Tokens / Tools / Duration 横排数据块) | `design-preview.html` |
-| **会话详情** | Context Panel 可折叠 (圆形按钮切换，300ms 过渡) | `design-preview.html` |
-| **会话详情** | 打字指示器 (三点弹跳动画) + 聊天输入交互 | `design-preview.html` |
-| **会话详情** | 消息间距节奏调整：同一角色 4px，角色切换 12px | `design-preview.html` |
-| **侧边栏** | 品牌区渐变背景 + Logo 阴影 | `design-preview.html` |
-| **侧边栏** | 状态面板新增 LIVE 脉冲徽章和等宽数字 | `design-preview.html` |
-
-### CSS 新增变量
-
-```css
-/* 3 列网格 */
-.dash-row-3col { grid-template-columns: 260px 1fr 320px; }
-
-/* Agent Quick Card 状态色竖线 */
-.agent-quick-card.running::after { background: #10B981; }
-.agent-quick-card.idle::after    { background: #6366F1; }
-.agent-quick-card.warning::after { background: #F59E0B; }
-.agent-quick-card.error::after   { background: #EF4444; }
-
-/* 数据粒子漂移 */
-@keyframes particle-drift {
-  0%, 100% { opacity: 0.4; transform: translateX(0); }
-  50%      { opacity: 1; transform: translateX(8px); }
-}
-
-/* 打字弹跳 */
-@keyframes typing-bounce {
-  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-3px); }
-}
-
-/* Context Panel 折叠过渡 */
-.session-layout.panel-collapsed { grid-template-columns: 1fr 0px; }
-.context-panel.collapsed { width: 0; opacity: 0; overflow: hidden; }
-```
+*本规范由 RCS 团队维护，基于 2026-06-26 代码库实际状态编写。*
