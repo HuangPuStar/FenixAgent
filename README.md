@@ -138,5 +138,5 @@ docker run -d \
 多机验收测试（同时启动两台）：
 ```bash
 RCS_TENANT_ID=org_xxx REGISTRY_SECRET=test-secret-2026 \
-docker compose -f docker-compose.machines.yml up -d --build
+docker compose -f docker/machine/docker-compose.yml up -d --build
 ```
