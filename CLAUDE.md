@@ -235,6 +235,10 @@ react-i18next + i18next，英文默认，中英双语。适用范围：**所有 
 - route 元数据必须就近声明在 route 文件中，不要在 Swagger/OpenAPI 服务层做兜底推断
 - schema 必须定义在 `src/schemas/` 目录中，禁止在 route 文件中内联声明请求体、响应体或字段结构
 - schema 字段描述必须与真实实现一致，不能为了文档展示虚构字段语义
+- Elysia route 在声明 `params`、`query`、`headers`、`body`、`response` 时，默认直接绑定对应 schema 实体；不要使用字符串引用配合 `any`
+- 如果 route 已声明 `response` 且存在非 2xx 分支，默认使用 `status(code, body)` 返回；不要优先使用 `error(code, body)`
+- 切换到 `status(code, body)` 时，不要改动已有响应结构；除非明确要求更新结构体，否则历史接口如果前端已依赖既有错误体，必须保持兼容
+- 字符串 model 引用仅用于历史兼容或少量共享注册场景；新 route 默认优先使用 schema 实体
 - 如果接口属于内部使用、框架透传、静态资源、代理入口、MCP 服务入口、WebSocket/协议入口等不面向外部开发者的能力，也要补说明；需要隐藏时使用 `detail.hide: true`
 - WebSocket / MCP / 代理入口如果无法被 OpenAPI 准确建模，优先补协议说明，不伪造 REST 风格响应结构
 

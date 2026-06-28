@@ -196,6 +196,9 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 如果你的改动包含新增 API、修改 API 或新增 route，请额外遵守下面这些规则：
 
 - 新接口默认就要带 `detail`、`params`、`query`、`headers`、`body`、`response` 和必要的 `model` 注册，不要事后补票
+- Elysia route 默认直接绑定 `src/schemas/` 里的 schema 实体；不要引入 `any`
+- 如果 route 声明了 `response`，并且需要返回 4xx/5xx，优先使用 `status(code, body)`；不要默认使用 `error(code, body)`
+- 改成 `status(code, body)` 后不要改协议；除非明确要求更新结构体，否则如果旧前端已经依赖既有错误结构，必须保持响应 body 兼容
 - 全局 tag 必须补 `description`，并尽量使用中文
 - route 元数据必须写在 route 自己的文件里
 - 对内部接口、框架通配入口、静态资源入口、代理入口、MCP 服务入口等不适合公开展示的能力，也要补说明；需要隐藏时使用 `detail.hide: true`
