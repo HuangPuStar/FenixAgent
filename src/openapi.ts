@@ -123,6 +123,10 @@ const WEB_OPENAPI_TAGS = [
     description: "Meta Agent 自举与运行环境确保接口。",
   },
   {
+    name: "Agent Sites",
+    description: "Agent Sites 应用管理、文件上传、绑定关系维护与内部代理接口。",
+  },
+  {
     name: "Hindsight",
     description: "Hindsight 记忆服务状态查询与相关能力入口。",
   },

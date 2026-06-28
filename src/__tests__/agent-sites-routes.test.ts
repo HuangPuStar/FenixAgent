@@ -1,10 +1,21 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import Elysia from "elysia";
+import { createWebOpenApiPlugin } from "../openapi";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import webAgentSites from "../routes/web/agent-sites";
+import {
+  AgentSiteAgentConfigParamsSchema,
+  AgentSiteAppDetailResponseSchema,
+  AgentSiteAppIdParamsSchema,
+  AgentSiteAppListResponseSchema,
+  AgentSiteErrorResponseSchema,
+  AgentSiteRemoteAppParamsSchema,
+  CreateAgentSiteAppRequestSchema,
+} from "../schemas/agent-site.schema";
 import { clearOrgCache, setTestOrgContext } from "../services/org-context";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
-const TEST_APP_ID = "test-app-uuid";
+const TEST_APP_ID = "00000000-0000-4000-8000-000000000001";
 const TEST_REMOTE_APP_ID = "app-abc12345";
 
 function makeAppRow(overrides: Record<string, unknown> = {}) {
@@ -114,6 +125,24 @@ describe("agent-sites L1 routes", () => {
     expect(json.data.name).toBe("my-app");
   });
 
+  test("GET /apps/by-remote/:remoteAppId 匹配返回详情", async () => {
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([makeAppRow()]),
+          }),
+        }),
+      }),
+    });
+    const res = await webAgentSites.handle(
+      new Request(`http://localhost/agent-sites/apps/by-remote/${TEST_REMOTE_APP_ID}`),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.remoteAppId).toBe(TEST_REMOTE_APP_ID);
+  });
+
   test("DELETE /apps/:id 无写权限返回 403（member 角色）", async () => {
     setTestAuth({
       user: { id: "other-user", email: "other@test.com", name: "Other" },
@@ -151,8 +180,8 @@ describe("agent-sites L1 routes", () => {
   });
 
   test("GET /agent-configs/:id/sites 返回绑定 sites 详情（保持绑定顺序）", async () => {
-    const siteAppIdA = "00000000-0000-0000-0000-00000000000a";
-    const siteAppIdB = "00000000-0000-0000-0000-00000000000b";
+    const siteAppIdA = "00000000-0000-4000-8000-00000000000a";
+    const siteAppIdB = "00000000-0000-4000-8000-00000000000b";
     const selectCalls: Array<{ cols: unknown[]; cond?: unknown }> = [];
     // 模拟两次 select：
     //   1) 拿绑定 siteAppId（顺序 [B, A]）
@@ -190,5 +219,53 @@ describe("agent-sites L1 routes", () => {
     expect(json.data[0].id).toBe(siteAppIdB);
     expect(json.data[1].id).toBe(siteAppIdA);
     expect(json.data[0].remoteAppId).toBe("app-bbb");
+  });
+});
+
+describe("agent-sites OpenAPI metadata", () => {
+  // OpenAPI 文档应注册 Agent Sites 全局 tag，并暴露路由响应 schema。
+  test("web openapi 包含 Agent Sites tag 与列表响应定义", async () => {
+    const app = new Elysia().use(createWebOpenApiPlugin("test")).group("/web", (group) => group.use(webAgentSites));
+
+    const res = await app.handle(new Request("http://localhost/docs/openapi/web/json"));
+    const json = (await res.json()) as {
+      tags?: Array<{ name: string; description?: string }>;
+      paths?: Record<string, Record<string, { responses?: unknown }>>;
+    };
+
+    expect(json.tags?.some((tag) => tag.name === "Agent Sites" && tag.description)).toBe(true);
+    expect(json.paths?.["/web/agent-sites/apps"]?.get?.responses).toBeDefined();
+  });
+
+  // 关键路由必须显式声明 params/body/response，避免文档与实现脱节。
+  test("关键路由显式挂载 schema 元数据", () => {
+    const routes = (
+      webAgentSites as unknown as { routes: Array<{ path: string; method: string; hooks: Record<string, unknown> }> }
+    ).routes;
+    const listRoute = routes.find((route) => route.path === "/agent-sites/apps" && route.method === "GET");
+    const createRoute = routes.find((route) => route.path === "/agent-sites/apps" && route.method === "POST");
+    const detailRoute = routes.find((route) => route.path === "/agent-sites/apps/:id" && route.method === "GET");
+    const detailByRemoteRoute = routes.find(
+      (route) => route.path === "/agent-sites/apps/by-remote/:remoteAppId" && route.method === "GET",
+    );
+
+    expect(listRoute?.hooks.response).toBe(AgentSiteAppListResponseSchema);
+    expect(createRoute?.hooks.body).toBe(CreateAgentSiteAppRequestSchema);
+    expect(createRoute?.hooks.response).toBe(AgentSiteAppDetailResponseSchema);
+    expect(detailRoute?.hooks.params).toBe(AgentSiteAppIdParamsSchema);
+    expect(detailRoute?.hooks.response).toEqual({
+      200: AgentSiteAppDetailResponseSchema,
+      404: AgentSiteErrorResponseSchema,
+    });
+    expect(detailByRemoteRoute?.hooks.params).toBe(AgentSiteRemoteAppParamsSchema);
+    expect(detailByRemoteRoute?.hooks.response).toEqual({
+      200: AgentSiteAppDetailResponseSchema,
+      404: AgentSiteErrorResponseSchema,
+    });
+
+    const bindingListRoute = routes.find(
+      (route) => route.path === "/agent-sites/agent-configs/:agentConfigId/sites" && route.method === "GET",
+    );
+    expect(bindingListRoute?.hooks.params).toBe(AgentSiteAgentConfigParamsSchema);
   });
 });

@@ -64,6 +64,8 @@ async function agentSitesFetch<T = unknown>(url: string, init?: RequestInit): Pr
 export const agentSitesApi = {
   list: () => agentSitesFetch<{ success: boolean; data: unknown[] }>("/web/agent-sites/apps"),
   get: (id: string) => agentSitesFetch(`/web/agent-sites/apps/${id}`),
+  getByRemote: (remoteAppId: string) =>
+    agentSitesFetch(`/web/agent-sites/apps/by-remote/${encodeURIComponent(remoteAppId)}`),
   create: (body: { name: string; description?: string; visibility?: string }) =>
     agentSitesFetch("/web/agent-sites/apps", {
       method: "POST",

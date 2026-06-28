@@ -5,7 +5,7 @@ import { useCardEmit } from "@/src/lib/card-renderer";
 import { cn } from "@/src/lib/utils";
 
 interface AgentSitesCardProps {
-  /** 后端 site 的 ID（由 streamdown 从 HTML attribute agent-site-id 传入） */
+  /** 远端 site 的 remoteAppId（由 streamdown 从 HTML attribute agent-site-id 传入） */
   "agent-site-id": string;
 }
 
@@ -36,7 +36,7 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
     setLoading(true);
     setError(null);
     agentSitesApi
-      .get(agentSiteId)
+      .getByRemote(agentSiteId)
       .then((res) => {
         if (cancelled) return;
         const data = (res as { success?: boolean; data?: { name?: string } }).data;
