@@ -5,7 +5,23 @@ import { agentConfigSiteApp } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
-import { CreateAgentSiteAppRequestSchema, UpdateAgentSiteAppRequestSchema } from "../../schemas/agent-site.schema";
+import {
+  AgentSiteAgentConfigParamsSchema,
+  type AgentSiteApp,
+  AgentSiteAppDetailResponseSchema,
+  AgentSiteAppFileParamsSchema,
+  AgentSiteAppIdParamsSchema,
+  AgentSiteAppListResponseSchema,
+  AgentSiteAppOkResponseSchema,
+  AgentSiteBindingParamsSchema,
+  AgentSiteErrorResponseSchema,
+  AgentSiteRemoteAppParamsSchema,
+  AgentSiteUploadResponseSchema,
+  type CreateAgentSiteAppRequest,
+  CreateAgentSiteAppRequestSchema,
+  type UpdateAgentSiteAppRequest,
+  UpdateAgentSiteAppRequestSchema,
+} from "../../schemas/agent-site.schema";
 import {
   createRemoteApp,
   deleteRemoteApp,
@@ -18,7 +34,7 @@ import {
 import { addAgentSiteApp, getAgentConfigById, removeAgentSiteApp } from "../../services/config";
 
 /** 将 DB row 转为 API 响应（秒级时间戳，不包含 platformToken） */
-function toResponse(row: AgentSiteAppRow) {
+function toResponse(row: AgentSiteAppRow): AgentSiteApp {
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -26,7 +42,7 @@ function toResponse(row: AgentSiteAppRow) {
     remoteAppId: row.remoteAppId,
     name: row.name,
     description: row.description ?? null,
-    visibility: row.visibility ?? "private",
+    visibility: (row.visibility as AgentSiteApp["visibility"] | undefined) ?? "private",
     createdAt: row.createdAt ? Math.floor(new Date(row.createdAt).getTime() / 1000) : 0,
     updatedAt: row.updatedAt ? Math.floor(new Date(row.updatedAt).getTime() / 1000) : 0,
   };
@@ -53,12 +69,20 @@ async function resolveSiteApp(siteAppId: string) {
   return isUuid ? agentSiteAppRepo.getById(siteAppId) : agentSiteAppRepo.getByRemoteAppId(siteAppId);
 }
 
+/**
+ * 构造统一的 /web 错误体，交给 Elysia `status()` 标注状态码。
+ */
+function buildError(type: string, message: string) {
+  return {
+    error: {
+      type,
+      message,
+    },
+  };
+}
+
 const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
   .use(authGuardPlugin)
-  .model({
-    "create-agent-site-app-request": CreateAgentSiteAppRequestSchema,
-    "update-agent-site-app-request": UpdateAgentSiteAppRequestSchema,
-  })
 
   // ── L1: App CRUD ────────────────────────────────────
 
@@ -72,7 +96,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
-
+      response: AgentSiteAppListResponseSchema,
       detail: {
         tags: ["Agent Sites"],
         summary: "获取 agent sites app 列表",
@@ -83,21 +107,50 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .get(
     "/apps/:id",
-    async ({ params, store, error }) => {
+    async ({ params, store, status }) => {
       const authCtx = store.authContext!;
-      const row = await agentSiteAppRepo.getByRemoteAppId(params.id);
+      const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId || !canRead(row, authCtx.userId)) {
-        return error(404, { error: { type: "not_found", message: "App 不存在" } });
+        return status(404, buildError("not_found", "App 不存在"));
       }
       return { success: true as const, data: toResponse(row) };
     },
     {
       sessionAuth: true,
-
+      params: AgentSiteAppIdParamsSchema,
+      response: {
+        200: AgentSiteAppDetailResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
       detail: {
         tags: ["Agent Sites"],
         summary: "获取 agent site app 详情",
-        description: "返回单个 app 的详细信息。",
+        description: "根据 RCS 内 app UUID 返回单个 app 的详细信息。",
+      },
+    },
+  )
+
+  .get(
+    "/apps/by-remote/:remoteAppId",
+    async ({ params, store, status }) => {
+      const authCtx = store.authContext!;
+      const row = await agentSiteAppRepo.getByRemoteAppId(params.remoteAppId);
+      if (!row || row.organizationId !== authCtx.organizationId || !canRead(row, authCtx.userId)) {
+        return status(404, buildError("not_found", "App 不存在"));
+      }
+      return { success: true as const, data: toResponse(row) };
+    },
+    {
+      sessionAuth: true,
+      params: AgentSiteRemoteAppParamsSchema,
+      response: {
+        200: AgentSiteAppDetailResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
+      detail: {
+        tags: ["Agent Sites"],
+        summary: "按远端 app id 获取 agent site app 详情",
+        description: "根据 agent-sites 远程 app id 返回单个 app 的详细信息，用于聊天卡片和站点识别链路。",
       },
     },
   )
@@ -107,7 +160,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     async ({ store, body }) => {
       const authCtx = store.authContext!;
       const user = store.user!;
-      const b = body as { name: string; description?: string; visibility?: string };
+      const b = body as CreateAgentSiteAppRequest;
 
       // 1. 在 agent-sites 创建远程 app
       const remote = await createRemoteApp(b.name);
@@ -131,8 +184,8 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
-      body: "create-agent-site-app-request",
-
+      body: CreateAgentSiteAppRequestSchema,
+      response: AgentSiteAppDetailResponseSchema,
       detail: {
         tags: ["Agent Sites"],
         summary: "创建 agent site app",
@@ -143,15 +196,15 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .patch(
     "/apps/:id",
-    async ({ params, store, body, error }) => {
+    async ({ params, store, body, status }) => {
       const authCtx = store.authContext!;
-      const b = body as { name?: string; description?: string; visibility?: string };
+      const b = body as UpdateAgentSiteAppRequest;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "App 不存在" } });
+        return status(404, buildError("not_found", "App 不存在"));
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return error(403, { error: { type: "forbidden", message: "无权限修改此 app" } });
+        return status(403, buildError("forbidden", "无权限修改此 app"));
       }
       const updated = await agentSiteAppRepo.update(params.id, {
         name: b.name,
@@ -162,8 +215,13 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
-      body: "update-agent-site-app-request",
-
+      params: AgentSiteAppIdParamsSchema,
+      body: UpdateAgentSiteAppRequestSchema,
+      response: {
+        200: AgentSiteAppDetailResponseSchema,
+        403: AgentSiteErrorResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
       detail: {
         tags: ["Agent Sites"],
         summary: "更新 agent site app",
@@ -174,14 +232,14 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .delete(
     "/apps/:id",
-    async ({ params, store, error }) => {
+    async ({ params, store, status }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "App 不存在" } });
+        return status(404, buildError("not_found", "App 不存在"));
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return error(403, { error: { type: "forbidden", message: "无权限删除此 app" } });
+        return status(403, buildError("forbidden", "无权限删除此 app"));
       }
       // 先调 agent-sites 删除远程 app
       await deleteRemoteApp(row.remoteAppId);
@@ -191,7 +249,12 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
-
+      params: AgentSiteAppIdParamsSchema,
+      response: {
+        200: AgentSiteAppOkResponseSchema,
+        403: AgentSiteErrorResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
       detail: {
         tags: ["Agent Sites"],
         summary: "删除 agent site app",
@@ -204,14 +267,14 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .post(
     "/apps/:id/rotate-token",
-    async ({ params, store, error }) => {
+    async ({ params, store, status }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "App 不存在" } });
+        return status(404, buildError("not_found", "App 不存在"));
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return error(403, { error: { type: "forbidden", message: "无权限操作此 app" } });
+        return status(403, buildError("forbidden", "无权限操作此 app"));
       }
       try {
         await revokePlatformToken(row.platformTokenId);
@@ -227,7 +290,12 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
-
+      params: AgentSiteAppIdParamsSchema,
+      response: {
+        200: AgentSiteAppOkResponseSchema,
+        403: AgentSiteErrorResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
       detail: {
         tags: ["Agent Sites"],
         summary: "重签 platform token",
@@ -240,20 +308,26 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .put(
     "/apps/:id/files/:path",
-    async ({ params, request, store, error }) => {
+    async ({ params, request, store, status }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "App 不存在" } });
+        return status(404, buildError("not_found", "App 不存在"));
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return error(403, { error: { type: "forbidden", message: "无权限上传文件" } });
+        return status(403, buildError("forbidden", "无权限上传文件"));
       }
       const result = await uploadRemoteFile(row.remoteAppId, params.path, request.body);
       return { success: true as const, data: result.data };
     },
     {
       sessionAuth: true,
+      params: AgentSiteAppFileParamsSchema,
+      response: {
+        200: AgentSiteUploadResponseSchema,
+        403: AgentSiteErrorResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
       detail: {
         tags: ["Agent Sites"],
         summary: "上传前端静态文件",
@@ -264,20 +338,26 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .post(
     "/apps/:id/files/bundle",
-    async ({ params, request, store, error }) => {
+    async ({ params, request, store, status }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "App 不存在" } });
+        return status(404, buildError("not_found", "App 不存在"));
       }
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
-        return error(403, { error: { type: "forbidden", message: "无权限上传文件" } });
+        return status(403, buildError("forbidden", "无权限上传文件"));
       }
       const result = await uploadRemoteBundle(row.remoteAppId, request.body);
       return { success: true as const, data: result.data };
     },
     {
       sessionAuth: true,
+      params: AgentSiteAppIdParamsSchema,
+      response: {
+        200: AgentSiteUploadResponseSchema,
+        403: AgentSiteErrorResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
       detail: {
         tags: ["Agent Sites"],
         summary: "批量上传前端文件",
@@ -312,6 +392,8 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
+      params: AgentSiteAgentConfigParamsSchema,
+      response: AgentSiteAppListResponseSchema,
       detail: {
         tags: ["Agent Sites"],
         summary: "获取 agent 绑定的 sites",
@@ -328,17 +410,17 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .post(
     "/agent-configs/:agentConfigId/sites/:siteAppId",
-    async ({ params, store, error }) => {
+    async ({ params, store, status }) => {
       const authCtx = store.authContext!;
       const agentConfig = await getAgentConfigById(params.agentConfigId, authCtx.organizationId);
       if (!agentConfig) {
-        return error(404, { error: { type: "not_found", message: "Agent 配置不存在" } });
+        return status(404, buildError("not_found", "Agent 配置不存在"));
       }
       // siteAppId 可能是 UUID（从 MountSiteDialog 传入）或 remoteAppId（从卡片
       // artifacts:select-site 事件自动挂载传入）。按格式判断走不同查找方法。
       const siteApp = await resolveSiteApp(params.siteAppId);
       if (!siteApp || siteApp.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "Site 不存在" } });
+        return status(404, buildError("not_found", "Site 不存在"));
       }
       // 永远用 siteApp.id（UUID）写入绑定表，保证 listByIds 的 JOIN 正确
       await addAgentSiteApp(params.agentConfigId, siteApp.id);
@@ -346,6 +428,11 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
+      params: AgentSiteBindingParamsSchema,
+      response: {
+        200: AgentSiteAppOkResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
       detail: {
         tags: ["Agent Sites"],
         summary: "挂载单个 site 到 agent",
@@ -356,21 +443,26 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
 
   .delete(
     "/agent-configs/:agentConfigId/sites/:siteAppId",
-    async ({ params, store, error }) => {
+    async ({ params, store, status }) => {
       const authCtx = store.authContext!;
       const agentConfig = await getAgentConfigById(params.agentConfigId, authCtx.organizationId);
       if (!agentConfig) {
-        return error(404, { error: { type: "not_found", message: "Agent 配置不存在" } });
+        return status(404, buildError("not_found", "Agent 配置不存在"));
       }
       const siteApp = await resolveSiteApp(params.siteAppId);
       if (!siteApp || siteApp.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "Site 不存在" } });
+        return status(404, buildError("not_found", "Site 不存在"));
       }
       await removeAgentSiteApp(params.agentConfigId, siteApp.id);
       return { success: true as const };
     },
     {
       sessionAuth: true,
+      params: AgentSiteBindingParamsSchema,
+      response: {
+        200: AgentSiteAppOkResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
       detail: {
         tags: ["Agent Sites"],
         summary: "从 agent 卸载单个 site",
@@ -383,11 +475,11 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
   // 用 * 捕获完整子路径（:path 只取一段，/api/collections/cards 会丢 /cards）
   .all(
     "/apps/:id/api/*",
-    async ({ params, request, store, error }) => {
+    async ({ params, request, store, status }) => {
       const authCtx = store.authContext!;
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "App 不存在" } });
+        return status(404, buildError("not_found", "App 不存在"));
       }
       // 提取 prefix 之后的相对路径，拼回 /api/ 前缀
       const prefix = `/web/agent-sites/apps/${params.id}/api/`;
@@ -400,6 +492,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
     {
       sessionAuth: true,
+      params: AgentSiteAppIdParamsSchema,
       detail: {
         hide: true,
         tags: ["Agent Sites"],

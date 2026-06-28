@@ -34,16 +34,12 @@ export type {
 export { resourcePermissionRepo } from "./resource-permission";
 export type { ISessionRepo, SessionCreateParams, SessionRecord } from "./session";
 export { sessionRepo } from "./session";
-export type { ISessionWorkerRepo, SessionWorkerRecord } from "./session-worker";
-export { sessionWorkerRepo } from "./session-worker";
 export type { IShareLinkRepo } from "./share-link";
 export { shareLinkRepo } from "./share-link";
 export type { IScheduledTaskRepo, ITaskExecutionLogRepo, ScheduledTaskRow, TaskExecutionLogRow } from "./task";
 export { scheduledTaskRepo, taskExecutionLogRepo } from "./task";
 export type { ITokenRepo, TokenRecord } from "./token";
 export { tokenRepo } from "./token";
-export type { IWorkItemRepo, WorkItemRecord } from "./work-item";
-export { workItemRepo } from "./work-item";
 export type { AuthCtx as WorkflowAuthCtx, WorkflowDefRow, WorkflowVersionRow } from "./workflow-def";
 export {
   createWorkflowDef,
@@ -64,14 +60,10 @@ export type { IWorkflowTriggerRepo, WorkflowTriggerInsert, WorkflowTriggerRow } 
 export { workflowTriggerRepo } from "./workflow-trigger";
 
 import { sessionRepo } from "./session";
-import { sessionWorkerRepo } from "./session-worker";
 import { tokenRepo } from "./token";
-import { workItemRepo } from "./work-item";
 
 /** 重置所有内存仓储（仅用于测试） */
 export function resetAllRepos(): void {
   if (typeof sessionRepo?.reset === "function") sessionRepo.reset();
   if (typeof tokenRepo?.reset === "function") tokenRepo.reset();
-  if (typeof workItemRepo?.reset === "function") workItemRepo.reset();
-  if (typeof sessionWorkerRepo?.reset === "function") sessionWorkerRepo.reset();
 }

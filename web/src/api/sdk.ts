@@ -8,7 +8,6 @@
 import {
   AgentApi,
   ApiKeyApi,
-  AuthApi,
   ChannelApi,
   ControlApi,
   EnvironmentApi,
@@ -25,8 +24,6 @@ import {
   SkillConfigApi,
   TaskApi,
   UserFileApi,
-  V2CodeSessionApi,
-  V2WorkerApi,
   WorkflowDefApi,
   WorkflowEngineApi,
 } from "@fenix/sdk";
@@ -52,7 +49,6 @@ export const workflowEngineApi = new WorkflowEngineApi();
 export const workflowDefApi = new WorkflowDefApi();
 export const metaAgentApi = new MetaAgentApi();
 export const registryApi = new RegistryApi();
-export const authApi = new AuthApi();
 
 // ── Agent Sites ──
 
@@ -68,6 +64,8 @@ async function agentSitesFetch<T = unknown>(url: string, init?: RequestInit): Pr
 export const agentSitesApi = {
   list: () => agentSitesFetch<{ success: boolean; data: unknown[] }>("/web/agent-sites/apps"),
   get: (id: string) => agentSitesFetch(`/web/agent-sites/apps/${id}`),
+  getByRemote: (remoteAppId: string) =>
+    agentSitesFetch(`/web/agent-sites/apps/by-remote/${encodeURIComponent(remoteAppId)}`),
   create: (body: { name: string; description?: string; visibility?: string }) =>
     agentSitesFetch("/web/agent-sites/apps", {
       method: "POST",
@@ -119,7 +117,3 @@ export const agentSitesApi = {
       { method: "DELETE" },
     ),
 };
-
-// ── V2 模块（一般前端不直接使用，保留导出） ──
-export const v2CodeSessionApi = new V2CodeSessionApi();
-export const v2WorkerApi = new V2WorkerApi();

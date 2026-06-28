@@ -129,21 +129,6 @@ export interface RateLimitEntry {
 }
 
 // ────────────────────────────────────────────
-// Session Worker
-// Extracted from: src/repositories/session-worker.ts
-// ────────────────────────────────────────────
-
-/** Worker status values reported by ACP agent */
-export type WorkerStatus = "idle" | "running" | "requires_action" | "completed" | "error";
-
-/** Shape of a pending permission request from ACP agent */
-export interface PermissionRequestDetails {
-  toolName?: string;
-  input?: Record<string, unknown>;
-  requestId?: string;
-}
-
-// ────────────────────────────────────────────
 // File WS Connection
 // 用于 /acp/file-ws 端点的远程文件操作连接
 // ────────────────────────────────────────────

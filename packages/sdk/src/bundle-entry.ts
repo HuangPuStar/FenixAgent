@@ -29,7 +29,6 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
 };
 
 export { BaseApi } from "./base";
-export { AuthApi } from "./modules/auth";
 export { ChannelApi } from "./modules/channel";
 export { AgentApi, McpApi, ModelApi, ProviderApi, SkillConfigApi } from "./modules/config";
 export { EnvironmentApi } from "./modules/environment";
@@ -40,7 +39,5 @@ export { MetaAgentApi } from "./modules/meta-agent";
 export { ApiKeyApi, OrganizationApi } from "./modules/organization";
 export { ControlApi, SessionApi } from "./modules/session";
 export { TaskApi } from "./modules/task";
-export { V2CodeSessionApi } from "./modules/v2-code-session";
-export { V2WorkerApi } from "./modules/v2-worker";
 export { WorkflowDefApi } from "./modules/workflow-defs";
 export { WorkflowEngineApi } from "./modules/workflow-engine";

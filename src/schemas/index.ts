@@ -21,14 +21,6 @@ export {
   UpdateAgentSiteAppRequestSchema,
 } from "./agent-site.schema";
 export {
-  type BindSessionQuery,
-  BindSessionQuerySchema,
-  type BindSessionRequest,
-  BindSessionRequestSchema,
-  type BindSessionResponse,
-  BindSessionResponseSchema,
-} from "./auth.schema";
-export {
   type BrandingConfig,
   type BrandingConfigResponse,
   BrandingConfigResponseSchema,
@@ -289,47 +281,6 @@ export {
   type UpdateTaskRequest,
   UpdateTaskRequestSchema,
 } from "./task.schema";
-// V2 Code Session
-export {
-  type CodeSessionBridgeResponse,
-  CodeSessionBridgeResponseSchema,
-  CodeSessionIdParamsSchema,
-  type CreateCodeSessionRequest,
-  CreateCodeSessionRequestSchema,
-  type CreateCodeSessionResponse,
-  CreateCodeSessionResponseSchema,
-} from "./v2-code-session.schema";
-// V2 Session Ingress
-export {
-  SessionIngressEventSchema,
-  SessionIngressEventsRequestSchema,
-  SessionIngressEventsResponseSchema,
-  SessionIngressParamsSchema,
-  SessionIngressTokenQuerySchema,
-} from "./v2-session-ingress.schema";
-// V2 Worker
-export {
-  type GetWorkerResponse,
-  GetWorkerResponseSchema,
-  type UpdateWorkerRequest,
-  UpdateWorkerRequestSchema,
-  type UpdateWorkerResponse,
-  UpdateWorkerResponseSchema,
-  type WorkerHeartbeatResponse,
-  WorkerHeartbeatResponseSchema,
-  WorkerRegisterResponseSchema,
-} from "./v2-worker.schema";
-// V2 Worker Events
-export {
-  WorkerEventSchema,
-  type WorkerEventsRequest,
-  WorkerEventsRequestSchema,
-  type WorkerEventsResponse,
-  WorkerEventsResponseSchema,
-  type WorkerStateRequest,
-  WorkerStateRequestSchema,
-  WorkerStateResponseSchema,
-} from "./v2-worker-events.schema";
 export {
   WorkflowDagEventSchema,
   WorkflowDagRunResultSchema,

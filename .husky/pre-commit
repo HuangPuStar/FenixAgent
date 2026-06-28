@@ -4,6 +4,7 @@ FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx' '*.js'
   | grep -v 'node_modules' \
   | grep -v 'routeTree.gen.ts' \
   | grep -v '^drizzle/' \
+  | grep -v '^docs/' \
   | grep -v '^[^[:space:]]*/dist/' \
   | grep -v '^\\.agents/' \
   | grep -v '^[^[:space:]]*/coverage/' \

@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { ApiErrorSchema, ConfigOkSchema } from "./common.schema";
 
 /** Agent Sites App 响应对象 */
 export const AgentSiteAppSchema = z.object({
@@ -58,3 +59,36 @@ export type UpdateAgentSiteAppRequest = z.infer<typeof UpdateAgentSiteAppRequest
 export const AgentSiteAppOkResponseSchema = z.object({
   success: z.literal(true),
 });
+
+/** /web/agent-sites/apps/:id 参数 */
+export const AgentSiteAppIdParamsSchema = z.object({
+  id: z.string().uuid().describe("RCS 内 app UUID。"),
+});
+
+/** /web/agent-sites/apps/by-remote/:remoteAppId 参数 */
+export const AgentSiteRemoteAppParamsSchema = z.object({
+  remoteAppId: z.string().min(1).describe("agent-sites 远程 app id（形如 app-xxxxxxxx）。"),
+});
+
+/** /web/agent-sites/apps/:id/files/:path 参数 */
+export const AgentSiteAppFileParamsSchema = z.object({
+  id: z.string().uuid().describe("RCS 内 app UUID。"),
+  path: z.string().min(1).describe("上传目标文件路径。"),
+});
+
+/** /web/agent-sites/agent-configs/:agentConfigId/sites 参数 */
+export const AgentSiteAgentConfigParamsSchema = z.object({
+  agentConfigId: z.string().describe("Agent 配置 ID。"),
+});
+
+/** /web/agent-sites/agent-configs/:agentConfigId/sites/:siteAppId 参数 */
+export const AgentSiteBindingParamsSchema = z.object({
+  agentConfigId: z.string().describe("Agent 配置 ID。"),
+  siteAppId: z.string().describe("Site App 标识，支持 RCS UUID 或 remoteAppId。"),
+});
+
+/** 上传类接口的成功响应 */
+export const AgentSiteUploadResponseSchema = ConfigOkSchema(z.unknown().describe("agent-sites 上游返回体。"));
+
+/** Agent Sites web API 错误响应 */
+export const AgentSiteErrorResponseSchema = ApiErrorSchema;

@@ -2,7 +2,6 @@ import { requestAls } from "@fenix/logger";
 import Elysia from "elysia";
 import { auth } from "../auth/better-auth";
 import { decryptPassword, getEncryptionKey } from "../auth/encryption";
-import { verifyWorkerJwt } from "../auth/jwt";
 import { config } from "../config";
 import { AppError } from "../errors";
 
@@ -361,25 +360,6 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
             return error(401, { error: { type: "unauthorized", message: "Missing uuid" } });
           }
           store.uuid = uuid;
-        },
-      };
-    },
-    sessionIngressAuth(enabled: boolean) {
-      if (!enabled) return {};
-      return {
-        // biome-ignore lint/suspicious/noExplicitAny: Elysia macro context type not fully expressible
-        beforeHandle: async ({ store: _store, request, error }: any) => {
-          const token = extractToken(request);
-
-          // Worker JWT
-          if (token) {
-            const payload = verifyWorkerJwt(token);
-            if (payload) {
-              return;
-            }
-          }
-
-          return error(401, { error: { type: "unauthorized", message: "Invalid auth" } });
         },
       };
     },

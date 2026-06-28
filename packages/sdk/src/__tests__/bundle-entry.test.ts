@@ -163,7 +163,6 @@ describe("bundle-entry exports", () => {
 
     const expectedClasses = [
       "BaseApi",
-      "AuthApi",
       "ChannelApi",
       "AgentApi",
       "McpApi",
@@ -181,8 +180,6 @@ describe("bundle-entry exports", () => {
       "ControlApi",
       "SessionApi",
       "TaskApi",
-      "V2CodeSessionApi",
-      "V2WorkerApi",
       "WorkflowDefApi",
       "WorkflowEngineApi",
     ];

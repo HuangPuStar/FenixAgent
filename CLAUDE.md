@@ -100,8 +100,6 @@ bun test web/src/__tests__/                   # 前端全部测试
 bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 ```
 
-测试账号：`admin@test.com` / `admin123456`
-
 ### 关键注意事项
 
 - **`bun run precheck` 是代码质量的第一标准**。流程：`biome format --write` → `biome check --write --linter-enabled=false`（import 排序）→ `tsc` → `biome check`。格式和 import 排序自动修复
@@ -127,8 +125,6 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 **路由前缀→源码映射**：
 
-- `/v1/code/sessions/*`：Code Session / Worker API，源码位于 `src/routes/v2/`（`code-sessions`、`worker`、`worker-events`、`worker-events-stream`）
-- `/v2/session_ingress/*`：Session bridge HTTP / WebSocket 入口（源码位于 `src/routes/v2/session-ingress.ts`）
 - `/web/*`：控制面板业务 API 聚合入口（`src/routes/web/index.ts`），下挂 `auth`、`branding`、`channels`、`config/*`、`control`、`environments`、`files`、`instances`、`knowledge-bases`、`meta-agent`、`organizations`、`registry`、`sessions`、`skills`、`tasks`、`user-file`、`workflow-*`
 - `/acp/*`：ACP WebSocket / relay 路由（`src/routes/acp/index.ts`）
 - `/mcp/*`：MCP 知识库查询（`src/routes/mcp/knowledge.ts`）
@@ -192,6 +188,60 @@ react-i18next + i18next，英文默认，中英双语。适用范围：**所有 
 
 配置 API：`POST /web/config/:module`（providers/models/agents/skills/mcp），action 分发（list/get/set/create/delete/enable/disable），响应 `{ success, data }` 或 `{ success, error: { code, message } }`。
 
+## API 设计约定
+
+新增接口、修改接口或重写 route 时，先满足下面这些 API 设计约束，再补文档元数据。
+
+### 设计规则
+
+- API 功能必须单一、明确。正常情况下不要在一个接口里通过 `action` 等字段分支处理不同业务行为；只有明确要求，或 WebSocket / 长连接事件流这类天然多消息类型场景，才允许这样设计。
+- API 分为两类：面向控制台前端使用的 `/web/*` API，以及通过 API Key 提供给外部系统访问的 OpenAPI。设计、命名、鉴权和兼容性判断时必须先明确接口属于哪一类。
+- 对外 OpenAPI 路径统一放在 `/api/*` 下，不要把面向外部系统的接口散落到其他前缀中。
+- 对外 OpenAPI 必须向后兼容；如果新的实现无法兼容旧协议，不要直接修改旧接口，应新增新的 API 接口或新版本接口。
+
+### 风格规则
+
+- URL 使用小写 kebab-case，资源名优先用复数，例如 `/web/knowledge-bases`、`/api/agents`，不要混用驼峰、下划线和复数单数风格。
+- URL 表达资源，动作用 HTTP 方法表达；正常情况下不要写成 `/create`、`/update`、`/delete` 这类动词路径。确实不是标准 CRUD 的行为，使用明确的动作后缀，例如 `POST /api/sessions/:id/cancel`。
+- 路径参数只放资源标识和层级关系，例如 `:id`、`:sessionId`；筛选、分页、排序、开关类参数放 `query`，不要混进路径里。
+- `GET` 只做查询，不带请求体；`POST` 用于创建或触发动作；更新统一使用 `PUT`；`DELETE` 用于删除。
+- 请求体只承载本次操作的业务数据，不要再包一层 `data`、`payload`、`params` 之类的无意义壳；只有历史兼容场景才允许保留。
+- 分页参数统一优先使用 `page`、`pageSize`；排序参数统一优先使用 `sortBy`、`sortOrder`；布尔筛选参数使用语义化命名，例如 `includeDisabled`、`withMembers`。
+- 控制台内部 `/web/*` API 默认返回 `{ success: true, data }` 或 `{ success: false, error }`；没有业务数据时也优先返回 `{ success: true, data: ... }`，避免同一类接口有时返回 `data`、有时完全不返回。
+- 错误响应统一返回 `error` 对象，至少包含 `code` 和 `message`；需要补充上下文时再增加字段，不要直接返回裸字符串或格式不固定的对象。
+- 对外 OpenAPI 返回结构要稳定、可预测，列表接口优先返回对象结构而不是裸数组；至少明确区分列表数据和分页元信息，例如 `{ items, total, page, pageSize }`。
+- 新接口必须遵循这套风格；历史接口如果暂时不一致，先保持兼容，不要为了“统一风格”直接改坏已有调用方。
+
+## API 文档约定
+
+本仓库默认使用 OpenAPI + Scalar 展示接口文档。新增接口、修改接口或重写 route 时，必须同步把文档元数据写完整，不能等到后面再补。
+
+### 开发目标
+
+- 让新写出来的 API 默认就是可展示、可理解、可调试的
+- 让 route、schema、全局 tags 的说明保持一致
+
+### 写 API 时必须同步完成的内容
+
+- 在 route 上补充 `detail`
+- 在 route 上显式声明 `params`、`query`、`headers`、`body`、`response`
+- 为 schema、字段、请求体、响应体补充描述信息
+- 为 OpenAPI 展示补充必要的 `model` 注册
+- 为所属 OpenAPI 全局 `tag` 补充中文 `description`；全局 tag 定义统一维护在 `src/openapi.ts` 中
+
+### 编写规则
+
+- `summary`、`description`、tag 描述统一优先使用中文
+- route 元数据必须就近声明在 route 文件中，不要在 Swagger/OpenAPI 服务层做兜底推断
+- schema 必须定义在 `src/schemas/` 目录中，禁止在 route 文件中内联声明请求体、响应体或字段结构
+- schema 字段描述必须与真实实现一致，不能为了文档展示虚构字段语义
+- Elysia route 在声明 `params`、`query`、`headers`、`body`、`response` 时，默认直接绑定对应 schema 实体；不要使用字符串引用配合 `any`
+- 如果 route 已声明 `response` 且存在非 2xx 分支，默认使用 `status(code, body)` 返回；不要优先使用 `error(code, body)`
+- 切换到 `status(code, body)` 时，不要改动已有响应结构；除非明确要求更新结构体，否则历史接口如果前端已依赖既有错误体，必须保持兼容
+- 字符串 model 引用仅用于历史兼容或少量共享注册场景；新 route 默认优先使用 schema 实体
+- 如果接口属于内部使用、框架透传、静态资源、代理入口、MCP 服务入口、WebSocket/协议入口等不面向外部开发者的能力，也要补说明；需要隐藏时使用 `detail.hide: true`
+- WebSocket / MCP / 代理入口如果无法被 OpenAPI 准确建模，优先补协议说明，不伪造 REST 风格响应结构
+
 ### API Key 安全策略
 
 - `@better-auth/api-key` 插件管理，SHA-256 hash 存储，创建时返回明文（仅一次）
@@ -200,7 +250,7 @@ react-i18next + i18next，英文默认，中英双语。适用范围：**所有 
 
 ### better-auth 服务端 API 调用约定
 
-所有参数通过**单参数对象**传递，POST 业务数据嵌套在 `body` 中，需要 session 的 API 必须传 `headers: request.headers`。`expiresIn` 单位是**天**，`listMembers` 返回 `{ members, total }`
+所有参数通过**单参数对象**传递，POST 业务数据嵌套在 `body` 中，需要 session 的 API 必须传 `headers: request.headers`。`expiresIn` 单位是**秒**，`listMembers` 返回 `{ members, total }`
 
 ### Skills 存储路径
 
@@ -331,25 +381,35 @@ VALUES ('<sha256哈希值>', <journal中的when时间戳>);
 
 **前端**：修改后必须 `bun run build:web`；WebSocket timeout > 30s；FilePickerDialog 上传始终到 `user/`；`routeTree.gen.ts` 严禁手动编辑；TanStack Router Vite 插件必须在 `plugins` 数组第一位；Sidebar 导航项必须有 `to` 字段
 
+## 后端开发约束
+
+1. 数据库操作尽量内聚到对应的 service 文件中，并通过函数统一暴露给其他 service 使用；避免把同一类数据访问逻辑分散到多个地方。
+2. API 需要默认保证向后兼容；新增字段优先兼容旧客户端，删除或修改旧字段语义前必须评估影响；如果新功能难以兼容旧行为，应新增新版本 API，而不是直接破坏原有接口。
+
 ## 代码风格
 
-## 代码注释
+### 代码注释
 
-1. 注释优先说明设计原因、边界条件、隐藏前提、兼容性约束和临时性取舍，不解释显而易见的语句行为。
-2. 对较长函数，可在不同处理阶段之间添加简短注释，帮助快速理解结构。
-3. 对复杂逻辑、非直观控制流、特殊框架约束或兼容性处理，应补充简洁注释说明原因。
-4. 临时性方案应注明临时原因、适用范围和后续清理条件。
+1. AI 编写或修改代码时，**默认要主动补齐必要注释**，不要因为“代码能运行”就省略说明。
+2. 注释优先说明设计原因、边界条件、隐藏前提、兼容性约束和临时性取舍，不解释显而易见的语句行为。
+3. 对较长函数，**必须**在函数内部按处理阶段添加简短注释说明，每个主要阶段都要有对应注释，帮助读者快速理解结构；不要把整段复杂流程裸露给后续维护者。
+4. 对复杂逻辑、非直观控制流、特殊框架约束、兼容性处理或“看起来可以更简单却没有那么做”的代码，必须补充简洁注释说明原因。
+5. 临时性方案必须注明临时原因、适用范围和后续清理条件，避免后续误以为这是长期设计。
+6. 如果新增分支、状态机、数据转换、权限判断、兜底逻辑或协议适配逻辑，默认检查是否需要补一条注释；拿不准时，宁可补一条简短高质量注释，也不要完全不写。
 
-## 文档注释
+### 文档注释
 
-1. 类、公共函数、方法、导出工具和类型定义应提供清晰简洁的文档注释。
-2. 对职责不直观、边界条件较多或会复用的内部辅助函数，也应补充必要的文档注释。
+1. 文档注释是**强制要求**：类、公共函数、公共方法、导出工具和类型定义**必须**提供清晰简洁的文档注释；尤其是类定义头部和公共函数声明，禁止缺失。
+2. 对职责不直观、边界条件较多、被多处复用或名称不足以自解释的内部辅助函数，也**必须**补充必要的文档注释，不能因为它“不是导出的”就省略。
+3. 文档注释至少应说明“这个东西负责什么”；必要时必须补充关键输入、输出、副作用、约束、异常情况或调用前提。
 
-## 日志输出
+### 日志输出
 
-1. 在关键输入输出、错误处理、进入兜底逻辑和兼容性分支时，应补充合适的日志输出，确保问题可追踪。
-2. 日志应优先记录关键上下文、分支原因和结果状态，避免只输出空泛文本。
-3. 错误日志应包含足够的定位信息；进入临时兼容或降级路径时，应明确说明触发原因和影响范围。
+1. AI 编写或修改涉及业务流程、状态变化、外部调用、异常处理的代码时，**默认要主动补齐必要日志**，不要只在报错时随手打印一句。
+2. 在关键输入输出、错误处理、进入兜底逻辑、兼容性分支、重试、降级、跳过、提前返回和状态迁移时，应补充合适的日志输出，确保问题可追踪。
+3. 日志应优先记录关键上下文、分支原因、对象标识、结果状态和影响范围，避免只输出空泛文本，如“start”“failed”“done”。
+4. 错误日志应包含足够的定位信息；进入临时兼容或降级路径时，应明确说明触发原因和影响范围。
+5. 如果一段新逻辑在出问题后只能靠猜测排查，说明日志不够；提交前应主动补到“能让后来者复盘发生了什么”为止。
 
 ### Biome（lint + format）
 
@@ -386,7 +446,7 @@ Biome v2.4.15，space indent 2，lineWidth 120。`noExplicitAny: warn`，`noNonN
 
 ### 目录结构约定
 
-- **后端**：`src/routes/`（按功能分组：v1/v2/web/acp/mcp）、`src/services/`（业务逻辑）、`src/services/config/`（配置 CRUD）、`src/schemas/`（请求验证 schema）、`src/repositories/`（数据访问层）、`src/plugins/`（Elysia 插件）、`src/transport/`（WebSocket/传输）、`src/auth/`（认证）、`src/db/`（Drizzle schema）、`src/__tests__/`
+- **后端**：`src/routes/`（按功能分组：web/acp/mcp/api 等）、`src/services/`（业务逻辑）、`src/services/config/`（配置 CRUD）、`src/schemas/`（请求验证 schema）、`src/repositories/`（数据访问层）、`src/plugins/`（Elysia 插件）、`src/transport/`（WebSocket/传输）、`src/auth/`（认证）、`src/db/`（Drizzle schema）、`src/__tests__/`
 - **前端**：`web/src/routes/`（TanStack Router）、`web/components/`（通用组件，`@/components` alias）、`web/src/pages/`（页面组件）、`web/src/api/`（API 客户端）、`web/src/acp/`（ACP 协议客户端）、`web/src/__tests__/`
 
 ### Git 提交风格
