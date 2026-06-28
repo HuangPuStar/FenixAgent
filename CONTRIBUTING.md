@@ -19,7 +19,13 @@
 - 实时通信：ACP WebSocket / Relay
 - Monorepo：根目录 `package.json` + `packages/*`
 
-补充背景和细节约束见 [CLAUDE.md](CLAUDE.md)。
+## 参考规范
+
+- [README.md](README.md)：项目介绍与快速开始
+- [CLAUDE.md](CLAUDE.md)：全局补充约束与项目级细节说明
+- [DESIGN.md](DESIGN.md)：更高层的产品与设计背景
+- [后端开发规范](docs/developer/guide/backend-development.md)：后端目录分层、数据库、API、注释和日志规范
+- [drizzle/README.md](drizzle/README.md)：Drizzle 迁移合并、冲突处理与数据迁移边界说明
 
 ## 开发前准备
 
@@ -59,12 +65,6 @@ docker compose up -d
 ### 4. 初始化数据库
 
 开发环境常用：
-
-```bash
-bun run db:push
-```
-
-如果你正在验证迁移链路，或需要按迁移文件执行：
 
 ```bash
 bun run db:migrate
@@ -143,7 +143,6 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 - `scripts/`：脚本和辅助工具
 - `docs/`：文档站点
 - `drizzle/`：数据库迁移文件
-- `spec/`：需求、设计、验收等过程文档
 
 ### 路由结构
 
@@ -163,54 +162,8 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 
 ### 后端
 
-- 新增 organization 级资源时，注意组织作用域校验
-- Skill 写入必须保持数据库和文件系统双同步
-- Workspace 路径通过 `resolveWorkspacePath()` 计算，不依赖历史字段
-- 新增或修改 API 时，必须同步补齐 OpenAPI 文档元数据
-- 文档注释是强制要求：类头部、公共函数、公共方法、导出工具和类型定义必须提供清晰简洁的文档注释
-- 长函数和复杂逻辑必须补充代码注释，按处理阶段说明结构，并解释非直观控制流、兼容性约束、临时取舍和关键分支原因
-- 业务流程、状态变化、外部调用、异常处理、降级、重试和兜底逻辑必须补齐必要日志，保证出现问题后可以通过日志排查，不要只打印空泛文本
-- 数据库操作尽量内聚到对应的 service 文件中，并通过函数统一暴露给其他 service 使用；避免把同一类数据访问逻辑分散到多个地方
-- API 需要默认保证向后兼容；新增字段优先兼容旧客户端，删除或修改旧字段语义前必须评估影响；如果新功能难以兼容旧行为，应新增新版本 API，而不是直接破坏原有接口
-
-### API 设计要求
-
-如果你的改动包含新增 API、修改 API 或新增 route，请先满足下面这些接口设计约束：
-
-- API 功能必须单一、明确。正常情况下不要在一个接口里通过 `action` 等字段分支处理不同业务行为；只有明确要求，或 WebSocket / 长连接事件流这类场景才允许这样设计。
-- 先区分接口类型：`/web/*` 是给控制台前端使用的内部业务 API；通过 API Key 暴露给外部系统访问的是 OpenAPI。两类接口的设计目标、暴露范围和兼容性要求不要混淆。
-- 对外 OpenAPI 路径统一放在 `/api/*` 下，不要把面向外部系统的接口散落到其他前缀中。
-- 对外 OpenAPI 必须向后兼容；如果新的实现无法兼容旧协议，不要直接修改旧接口，应新增新的 API 接口或新版本接口。
-- URL 使用小写 kebab-case，资源名优先用复数，例如 `/web/knowledge-bases`、`/api/agents`。
-- URL 负责表达资源，动作优先由 HTTP 方法表达；只有确实不是 CRUD 的行为，才使用类似 `POST /api/sessions/:id/cancel` 这种动作后缀。
-- 路径参数只放资源标识；筛选、分页、排序、开关类参数统一放 `query`；`GET` 不带请求体。
-- `POST` 用于创建或触发动作，更新统一使用 `PUT`，`DELETE` 用于删除。
-- 请求体直接承载业务数据，不要无意义再包一层 `data`、`payload`、`params`；历史兼容接口除外。
-- 分页参数优先统一为 `page`、`pageSize`；排序参数优先统一为 `sortBy`、`sortOrder`；布尔筛选参数使用语义化命名。
-- `/web/*` API 默认返回 `{ success: true, data }` 或 `{ success: false, error }`；错误响应里的 `error` 至少包含 `code` 和 `message`。
-- 对外 OpenAPI 返回结构要稳定，列表接口优先返回对象结构，例如 `{ items, total, page, pageSize }`，不要默认返回裸数组。
-- 新接口必须遵循这套风格；历史接口先保持兼容，不要为了统一风格直接改坏已有调用方。
-
-### API 文档要求
-
-如果你的改动包含新增 API、修改 API 或新增 route，请额外遵守下面这些规则：
-
-- 新接口默认就要带 `detail`、`params`、`query`、`headers`、`body`、`response` 和必要的 `model` 注册，不要事后补票
-- Elysia route 默认直接绑定 `src/schemas/` 里的 schema 实体；不要引入 `any`
-- 如果 route 声明了 `response`，并且需要返回 4xx/5xx，优先使用 `status(code, body)`；不要默认使用 `error(code, body)`
-- 改成 `status(code, body)` 后不要改协议；除非明确要求更新结构体，否则如果旧前端已经依赖既有错误结构，必须保持响应 body 兼容
-- 全局 tag 必须补 `description`，并尽量使用中文
-- route 元数据必须写在 route 自己的文件里
-- 对内部接口、框架通配入口、静态资源入口、代理入口、MCP 服务入口等不适合公开展示的能力，也要补说明；需要隐藏时使用 `detail.hide: true`
-
-### 数据库
-
-- `src/db/schema.ts` 是 schema 真相来源
-- 不要手写 SQL 迁移
-- 修改 schema 后要生成并提交 `drizzle/` 下完整迁移产物
-- 生产环境不要使用 `db:push`
-- 如果一个功能在开发过程中生成了多个迁移节点，或当前迁移链与远端冲突，需要先在本地整理迁移再提交
-- 更详细的 Drizzle 迁移合并、节点压缩和冲突处理规则，见 [drizzle/README.md](drizzle/README.md)
+- 详细规范参考 [后端开发规范](docs/developer/guide/backend-development.md)。
+- 迁移合并、节点压缩、生产冲突处理和数据迁移边界，补充参考 [drizzle/README.md](drizzle/README.md)。
 
 ## 测试与质量检查
 
@@ -266,11 +219,3 @@ chore(scope): 杂项维护
 5. 运行 `bun run precheck`
 6. 如涉及前端，执行 `bun run build:web`
 7. 自查文档、迁移和配置是否需要同步更新
-
-## 需要先读的文档
-
-- [README.md](README.md)：项目介绍与快速开始
-- [CLAUDE.md](CLAUDE.md)：当前仓库的开发规则与架构说明
-- [DESIGN.md](DESIGN.md)：更高层的产品与设计背景
-
-如果你准备长期参与开发，建议把 `CLAUDE.md` 当作团队内开发约定手册来用。
