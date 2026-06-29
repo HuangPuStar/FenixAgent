@@ -57,7 +57,7 @@ export function yamlToFlow(yamlStr: string): { nodes: Node[]; edges: Edge[]; met
     description: doc?.description || "",
     timeout: doc?.timeout ?? 300,
     params: doc?.params || {},
-    secrets: doc?.secrets || [],
+    secrets: (doc?.secrets || []).filter(Boolean),
   };
 
   const rawNodes = doc?.nodes || [];
@@ -158,7 +158,7 @@ export function flowToYaml(nodes: Node[], edges: Edge[], meta: WfMeta): string {
     ...(meta.description ? { description: meta.description } : {}),
     timeout: meta.timeout,
     ...(Object.keys(meta.params).length ? { params: meta.params } : {}),
-    ...(meta.secrets.length ? { secrets: meta.secrets } : {}),
+    ...(meta.secrets.filter(Boolean).length ? { secrets: meta.secrets.filter(Boolean) } : {}),
   };
 
   const yamlNodes: Record<string, unknown>[] = [];
@@ -231,6 +231,40 @@ export function nextEdgeId(source: string, target: string): string {
 
 export function resetEdgeCounter(): void {
   edgeCounter = 0;
+}
+
+/**
+ * 从已有节点 ID 列表中同步 nodeCounter，防止新节点 ID 与已存在节点冲突。
+ * 加载已有工作流 YAML 后必须调用，否则添加新节点时可能生成重复 ID。
+ *
+ * ID 格式为 `{type-prefix}_{number}`，取所有节点中最大的数字后缀作为 counter 起点。
+ */
+export function syncNodeCounter(nodeIds: string[]): void {
+  let maxCounter = 0;
+  for (const id of nodeIds) {
+    const match = id.match(/^[a-z]+_(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxCounter) maxCounter = num;
+    }
+  }
+  nodeCounter = Math.max(nodeCounter, maxCounter);
+}
+
+/**
+ * 从已有边 ID 列表中同步 edgeCounter，防止新边 ID 冲突。
+ * 加载已有工作流 YAML 后必须调用。
+ */
+export function syncEdgeCounter(edgeIds: string[]): void {
+  let maxCounter = 0;
+  for (const id of edgeIds) {
+    const match = id.match(/^e(\d+)_/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxCounter) maxCounter = num;
+    }
+  }
+  edgeCounter = Math.max(edgeCounter, maxCounter);
 }
 
 /** 参数指引边数据 */

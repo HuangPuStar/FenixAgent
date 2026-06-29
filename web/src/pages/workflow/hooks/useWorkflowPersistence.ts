@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import { pushWorkflowError } from "../../../lib/use-workflow-events";
-import { flowToYaml, type WfMeta, yamlToFlow } from "../yaml-utils";
+import { flowToYaml, syncEdgeCounter, syncNodeCounter, type WfMeta, yamlToFlow } from "../yaml-utils";
 
 const AUTO_SAVE_DELAY = 3000;
 
@@ -153,6 +153,8 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
       if (!text) return;
       try {
         const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(text);
+        syncNodeCounter(newNodes.map((n) => n.id));
+        syncEdgeCounter(newEdges.map((e) => e.id));
         setNodes(newNodes);
         setEdges(newEdges);
         setMeta(() => newMeta);
@@ -201,6 +203,8 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
         const text = ev.target?.result as string;
         try {
           const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(text);
+          syncNodeCounter(newNodes.map((n) => n.id));
+          syncEdgeCounter(newEdges.map((e) => e.id));
           setNodes(newNodes);
           setEdges(newEdges);
           setMeta(() => newMeta);

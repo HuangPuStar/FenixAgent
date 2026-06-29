@@ -66,7 +66,15 @@ import { autoLayout } from "./layout";
 import { nodeTypes, setToolColors } from "./nodes";
 import { TRANSFORM_PRESETS } from "./presets";
 import { dedupEvents } from "./utils";
-import { createStartNode, defaultMeta, START_NODE_ID, type WfMeta, yamlToFlow } from "./yaml-utils";
+import {
+  createStartNode,
+  defaultMeta,
+  START_NODE_ID,
+  syncEdgeCounter,
+  syncNodeCounter,
+  type WfMeta,
+  yamlToFlow,
+} from "./yaml-utils";
 import "./workflow.css";
 
 const BASIC_PALETTE_ITEMS = [
@@ -124,6 +132,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   // ── Refs ──
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingConnectSource = useRef<string | null>(null);
+  const pendingConnectHandleId = useRef<string | null>(null);
   const didConnect = useRef(false);
   const setDryRunResultRef = useRef<
     (result: { valid: boolean; issues: Array<{ type: string; message: string; field?: string }> } | null) => void
@@ -217,6 +226,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     screenToFlowPosition,
     fitView,
     pendingConnectSource,
+    pendingConnectHandleId,
     didConnect,
     setDryRunResult: (r) => setDryRunResultRef.current(r),
     setYamlText,
@@ -423,6 +433,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setWfData(wf);
         if (wf.draftYaml) {
           const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
+          // 同步 node/edge 计数器，防止后续新增节点/边时 ID 与已有节点冲突
+          syncNodeCounter(newNodes.map((n) => n.id));
+          syncEdgeCounter(newEdges.map((e) => e.id));
           const laid = autoLayout(newNodes, newEdges);
           setNodes(laid);
           setEdges(newEdges);
@@ -542,6 +555,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       setWfData(wf);
       if (wf.draftYaml) {
         const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
+        syncNodeCounter(newNodes.map((n) => n.id));
+        syncEdgeCounter(newEdges.map((e) => e.id));
         const laid = autoLayout(newNodes, newEdges);
         setNodes(laid);
         setEdges(newEdges);

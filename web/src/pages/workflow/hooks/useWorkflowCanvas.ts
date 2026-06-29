@@ -35,6 +35,8 @@ export interface UseWorkflowCanvasParams {
   screenToFlowPosition: (pos: { x: number; y: number }) => XYPosition;
   fitView: (opts?: { padding?: number; duration?: number }) => void;
   pendingConnectSource: RefObject<string | null>;
+  /** 拖拽连接开始时的 handleId，用于判断用户是从数据 handle（out-xxx）还是逻辑 handle 拖出 */
+  pendingConnectHandleId: RefObject<string | null>;
   didConnect: RefObject<boolean>;
   setDryRunResult: (
     result: {
@@ -85,6 +87,7 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
     screenToFlowPosition,
     fitView,
     pendingConnectSource,
+    pendingConnectHandleId,
     didConnect,
     setDryRunResult,
     setYamlText,
@@ -124,46 +127,97 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
         );
       });
 
-      // 自动补全：检测目标为 transform 节点且有预设时，自动填入 inputs + depends_on
+      // 自动补全 inputs：连接两个数据 handle（out-xxx → in-xxx）时，自动配目标节点 inputs
       if (connection.target) {
         setNodes((nds) =>
           nds.map((n) => {
             if (n.id !== connection.target) return n;
-            if (n.data?.type !== "transform") return n;
 
-            const presetId = n.data?._preset as string | undefined;
-            if (!presetId) return n;
+            // 判断是否为数据 handle 连接
+            const isDataConnect =
+              typeof connection.sourceHandle === "string" &&
+              connection.sourceHandle.startsWith("out-") &&
+              typeof connection.targetHandle === "string" &&
+              connection.targetHandle.startsWith("in-");
 
-            const preset = getPresetById(presetId);
-            if (!preset) return n;
+            // ── transform 节点预设自动填充（保持原有逻辑）──
+            if (n.data?.type === "transform") {
+              const presetId = n.data?._preset as string | undefined;
+              if (!presetId) {
+                // 有 preset 才继续 transform 自动填充，无 preset 时按通用数据连接处理
+                if (isDataConnect) {
+                  const fieldName = connection.sourceHandle!.slice(4); // 去掉 "out-" 前缀
+                  const paramName = connection.targetHandle!.slice(3); // 去掉 "in-" 前缀
+                  const valueExpr = `nodes.${connection.source}.output.${fieldName}`;
+                  const existingInputs = (n.data?.inputs as Record<string, string> | undefined) ?? {};
+                  return {
+                    ...n,
+                    data: { ...n.data, inputs: { ...existingInputs, [paramName]: valueExpr } },
+                  };
+                }
+                return n;
+              }
 
-            // 收集所有连接到该节点的上游节点 ID（现有 edges + 新连接）
-            const existingUpstreamIds = edges.filter((e) => e.target === n.id).map((e) => e.source);
-            const allUpstreamIds = [...new Set([...existingUpstreamIds, connection.source])];
+              const preset = getPresetById(presetId);
+              if (!preset) {
+                // 预设不存在时也按通用数据连接处理
+                if (isDataConnect) {
+                  const fieldName = connection.sourceHandle!.slice(4);
+                  const paramName = connection.targetHandle!.slice(3);
+                  const valueExpr = `nodes.${connection.source}.output.${fieldName}`;
+                  const existingInputs = (n.data?.inputs as Record<string, string> | undefined) ?? {};
+                  return {
+                    ...n,
+                    data: { ...n.data, inputs: { ...existingInputs, [paramName]: valueExpr } },
+                  };
+                }
+                return n;
+              }
 
-            if (allUpstreamIds.length < preset.minUpstream) return n;
+              // 收集所有连接到该节点的上游节点 ID（现有 edges + 新连接）
+              const existingUpstreamIds = edges.filter((e) => e.target === n.id).map((e) => e.source);
+              const allUpstreamIds = [...new Set([...existingUpstreamIds, connection.source])];
 
-            // 按预设类型分配 inputs 变量名
-            const inputs: Record<string, string> = {};
-            if (preset.id === "merge") {
-              allUpstreamIds.slice(0, 2).forEach((uid, i) => {
-                inputs[`src${i + 1}`] = `nodes.${uid}.output`;
-              });
-            } else {
-              inputs.data = `nodes.${allUpstreamIds[0]}.output`;
+              if (allUpstreamIds.length < preset.minUpstream) return n;
+
+              // 按预设类型分配 inputs 变量名
+              const inputs: Record<string, string> = {};
+              if (preset.id === "merge") {
+                allUpstreamIds.slice(0, 2).forEach((uid, i) => {
+                  inputs[`src${i + 1}`] = `nodes.${uid}.output`;
+                });
+              } else {
+                inputs.data = `nodes.${allUpstreamIds[0]}.output`;
+              }
+
+              // 合并已有的 depends_on 和新连接的上游节点
+              const existingDepends: string[] = Array.isArray(n.data?.depends_on)
+                ? (n.data.depends_on as string[])
+                : [];
+
+              return {
+                ...n,
+                data: {
+                  ...n.data,
+                  inputs,
+                  depends_on: [...new Set([...existingDepends, ...allUpstreamIds])],
+                },
+              };
             }
 
-            // 合并已有的 depends_on 和新连接的上游节点
-            const existingDepends: string[] = Array.isArray(n.data?.depends_on) ? (n.data.depends_on as string[]) : [];
+            // ── 通用节点：从 out-xxx 拖到 in-xxx 时自动填充 inputs ──
+            if (isDataConnect) {
+              const fieldName = connection.sourceHandle!.slice(4); // 去掉 "out-" 前缀
+              const paramName = connection.targetHandle!.slice(3); // 去掉 "in-" 前缀
+              const valueExpr = `nodes.${connection.source}.output.${fieldName}`;
+              const existingInputs = (n.data?.inputs as Record<string, string> | undefined) ?? {};
+              return {
+                ...n,
+                data: { ...n.data, inputs: { ...existingInputs, [paramName]: valueExpr } },
+              };
+            }
 
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                inputs,
-                depends_on: [...new Set([...existingDepends, ...allUpstreamIds])],
-              },
-            };
+            return n;
           }),
         );
       }
@@ -172,22 +226,29 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
   );
 
   const onConnectStart = useCallback(
-    (_event: MouseEvent | TouchEvent, params: { nodeId?: string | null; handleType?: string | null }) => {
+    (
+      _event: MouseEvent | TouchEvent,
+      params: { nodeId?: string | null; handleId?: string | null; handleType?: string | null },
+    ) => {
       // WF-022 修复：旧实现把 sourceId 清空，导致 onConnectEnd 永远拿不到 source，
       // 拖拽空白处自动建节点功能完全失效。
       // 现在从 React Flow 的 connection start params 提取 nodeId 写入 ref。
       // handleType === 'source' 表示从 source handle 拉出，是创建新节点的合法场景；
       // handleType === 'target' 是从 target handle 反向拉出，不应建节点。
       pendingConnectSource.current = params?.handleType === "source" ? (params.nodeId ?? null) : null;
+      // 记录 handleId，用于 onConnectEnd 判断是从数据 handle（out-xxx）还是逻辑 handle 拖出
+      pendingConnectHandleId.current = params?.handleType === "source" ? (params.handleId ?? null) : null;
       didConnect.current = false;
     },
-    [pendingConnectSource, didConnect],
+    [pendingConnectSource, pendingConnectHandleId, didConnect],
   );
 
   const onConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent) => {
       const sourceId = pendingConnectSource.current;
+      const handleId = pendingConnectHandleId.current;
       pendingConnectSource.current = null;
+      pendingConnectHandleId.current = null;
 
       if (!sourceId || readOnly || didConnect.current) return;
       didConnect.current = false;
@@ -202,7 +263,14 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
         y: (event as MouseEvent).clientY,
       });
 
-      const newNode: Node = { id: newId, type: newType, position, data: {} };
+      // 从数据 output handle（out-xxx）拖出时，自动为新节点填入 inputs，建立数据流关联
+      const data: Record<string, unknown> = {};
+      if (handleId?.startsWith("out-")) {
+        const fieldName = handleId.slice(4); // 去掉 "out-" 前缀
+        data.inputs = { data: `nodes.${sourceId}.output.${fieldName}` };
+      }
+
+      const newNode: Node = { id: newId, type: newType, position, data };
       setNodes((nds) => [...nds, newNode]);
       setEdges((eds) => [
         ...eds,
@@ -215,7 +283,16 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
         },
       ]);
     },
-    [nodes, readOnly, screenToFlowPosition, setNodes, setEdges, pendingConnectSource, didConnect],
+    [
+      nodes,
+      readOnly,
+      screenToFlowPosition,
+      setNodes,
+      setEdges,
+      pendingConnectSource,
+      pendingConnectHandleId,
+      didConnect,
+    ],
   );
 
   const handleNodesDelete = useCallback(

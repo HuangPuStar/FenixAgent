@@ -527,11 +527,13 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   const handleRefreshDraft = useCallback(async () => {
     if (!workflowId) return;
     if (isRunMode && !isRunDone) return;
-    const { yamlToFlow } = await import("../yaml-utils");
+    const { syncEdgeCounter, syncNodeCounter, yamlToFlow } = await import("../yaml-utils");
     try {
       const wf = await workflowDefApi.get(workflowId);
       if (wf.draftYaml) {
         const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
+        syncNodeCounter(newNodes.map((n) => n.id));
+        syncEdgeCounter(newEdges.map((e) => e.id));
         setNodes(autoLayout(newNodes, newEdges));
         setEdges(newEdges);
         setMeta(() => newMeta);
