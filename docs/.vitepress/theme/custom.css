@@ -1,22 +1,22 @@
 /* ============================================
-   Remote Control Server — Custom Theme
+   FenixAgent — Custom Theme
    ============================================ */
 
 /* ====== Design Tokens ====== */
 
 :root {
-  --rcs-brand: #e8853b;
-  --rcs-brand-light: #f5a623;
-  --rcs-brand-dark: #c2682a;
-  --rcs-brand-soft: rgba(232, 133, 59, 0.1);
-  --rcs-brand-glow: rgba(232, 133, 59, 0.06);
-  --rcs-bg: #fafaf9;
-  --rcs-bg-soft: #f5f5f4;
-  --rcs-bg-mute: #e7e5e4;
-  --rcs-text: #1c1917;
-  --rcs-text-2: #57534e;
-  --rcs-text-3: #a8a29e;
-  --rcs-border: #e7e5e4;
+  --rcs-brand: #1677ff;
+  --rcs-brand-light: #4096ff;
+  --rcs-brand-dark: #0958d9;
+  --rcs-brand-soft: rgba(22, 119, 255, 0.08);
+  --rcs-brand-glow: rgba(22, 119, 255, 0.06);
+  --rcs-bg: #f8fafc;
+  --rcs-bg-soft: #f1f5f9;
+  --rcs-bg-mute: #e2e8f0;
+  --rcs-text: #0f172a;
+  --rcs-text-2: #475569;
+  --rcs-text-3: #94a3b8;
+  --rcs-border: #e2e8f0;
   --rcs-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, SFMono-Regular, monospace;
   --rcs-sans:
     system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -31,37 +31,37 @@
   --vp-c-bg: var(--rcs-bg);
   --vp-c-bg-soft: var(--rcs-bg-soft);
   --vp-c-bg-mute: var(--rcs-bg-mute);
-  --vp-c-bg-alt: #f0efee;
+  --vp-c-bg-alt: #f1f5f9;
   --vp-c-text-1: var(--rcs-text);
   --vp-c-text-2: var(--rcs-text-2);
   --vp-c-text-3: var(--rcs-text-3);
   --vp-c-divider: var(--rcs-border);
-  --vp-c-gutter: #d6d3d1;
-  --vp-shadow-1: 0 1px 2px rgba(28, 25, 23, 0.04);
-  --vp-shadow-2: 0 3px 12px rgba(28, 25, 23, 0.06);
-  --vp-shadow-3: 0 6px 24px rgba(28, 25, 23, 0.08);
-  --vp-code-block-bg: #f5f5f4;
-  --vp-code-line-highlight-color: rgba(232, 133, 59, 0.12);
-  --vp-code-block-color: #1c1917;
-  --vp-code-block-divider-color: #e7e5e4;
-  --vp-code-lang-color: #a8a29e;
+  --vp-c-gutter: #cbd5e1;
+  --vp-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --vp-shadow-2: 0 3px 12px rgba(15, 23, 42, 0.06);
+  --vp-shadow-3: 0 6px 24px rgba(15, 23, 42, 0.08);
+  --vp-code-block-bg: #f1f5f9;
+  --vp-code-line-highlight-color: rgba(22, 119, 255, 0.1);
+  --vp-code-block-color: #0f172a;
+  --vp-code-block-divider-color: #e2e8f0;
+  --vp-code-lang-color: #94a3b8;
   --vp-sidebar-width: var(--rcs-sidebar-w);
   --vp-layout-max-width: 1400px;
 }
 
 .dark {
-  --rcs-brand: #f5a623;
-  --rcs-brand-light: #e8853b;
-  --rcs-brand-dark: #fbbf24;
-  --rcs-brand-soft: rgba(245, 166, 35, 0.12);
-  --rcs-brand-glow: rgba(245, 166, 35, 0.04);
-  --rcs-bg: #0c0a09;
-  --rcs-bg-soft: #1c1917;
-  --rcs-bg-mute: #292524;
-  --rcs-text: #fafaf9;
-  --rcs-text-2: #a8a29e;
-  --rcs-text-3: #78716c;
-  --rcs-border: #292524;
+  --rcs-brand: #4096ff;
+  --rcs-brand-light: #1677ff;
+  --rcs-brand-dark: #69b1ff;
+  --rcs-brand-soft: rgba(64, 150, 255, 0.12);
+  --rcs-brand-glow: rgba(64, 150, 255, 0.04);
+  --rcs-bg: #020617;
+  --rcs-bg-soft: #0f172a;
+  --rcs-bg-mute: #1e293b;
+  --rcs-text: #f8fafc;
+  --rcs-text-2: #94a3b8;
+  --rcs-text-3: #64748b;
+  --rcs-border: #1e293b;
 
   --vp-c-brand-1: var(--rcs-brand);
   --vp-c-brand-2: var(--rcs-brand-light);
@@ -70,26 +70,26 @@
   --vp-c-bg: var(--rcs-bg);
   --vp-c-bg-soft: var(--rcs-bg-soft);
   --vp-c-bg-mute: var(--rcs-bg-mute);
-  --vp-c-bg-alt: #1c1917;
+  --vp-c-bg-alt: #0f172a;
   --vp-c-text-1: var(--rcs-text);
   --vp-c-text-2: var(--rcs-text-2);
   --vp-c-text-3: var(--rcs-text-3);
   --vp-c-divider: var(--rcs-border);
-  --vp-c-gutter: #44403c;
-  --vp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --vp-shadow-2: 0 3px 12px rgba(0, 0, 0, 0.4);
-  --vp-shadow-3: 0 6px 24px rgba(0, 0, 0, 0.5);
-  --vp-code-block-bg: #f5f5f4;
-  --vp-code-line-highlight-color: rgba(245, 166, 35, 0.12);
-  --vp-code-block-color: #1c1917;
-  --vp-code-block-divider-color: #292524;
-  --vp-code-lang-color: #78716c;
+  --vp-c-gutter: #334155;
+  --vp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --vp-shadow-2: 0 3px 12px rgba(0, 0, 0, 0.5);
+  --vp-shadow-3: 0 6px 24px rgba(0, 0, 0, 0.6);
+  --vp-code-block-bg: #f1f5f9;
+  --vp-code-line-highlight-color: rgba(22, 119, 255, 0.1);
+  --vp-code-block-color: #0f172a;
+  --vp-code-block-divider-color: #1e293b;
+  --vp-code-lang-color: #64748b;
 }
 
 /* ====== Global ====== */
 
 ::selection {
-  background: rgba(232, 133, 59, 0.25);
+  background: rgba(22, 119, 255, 0.2);
 }
 
 body {
@@ -152,9 +152,9 @@ body {
 }
 
 /* active state — stronger tint */
-.VPSidebarItem.is-active > .item {
-  background: rgba(232, 133, 59, 0.14);
-}
+/* .VPSidebarItem.is-active > .item {
+  background: rgba(22, 119, 255, 0.1);
+} */
 
 /* left indicator bar */
 .VPSidebarItem.is-active > .item > .indicator {
@@ -289,7 +289,7 @@ body {
   background: var(--rcs-brand-soft);
   padding: 2px 7px;
   border-radius: 5px;
-  border: 1px solid rgba(232, 133, 59, 0.15);
+  border: 1px solid rgba(22, 119, 255, 0.12);
 }
 
 /* -- Code Blocks -- */
@@ -431,7 +431,7 @@ body {
 }
 
 .vp-doc .custom-block.tip {
-  border-color: rgba(232, 133, 59, 0.3);
+  border-color: rgba(22, 119, 255, 0.22);
   background: var(--rcs-brand-soft);
 }
 .vp-doc .custom-block.tip .custom-block-title {
@@ -644,7 +644,7 @@ body {
   text-transform: uppercase;
   color: var(--rcs-brand);
   background: var(--rcs-brand-soft);
-  border: 1px solid rgba(232, 133, 59, 0.2);
+  border: 1px solid rgba(22, 119, 255, 0.16);
   padding: 4px 14px;
   border-radius: 100px;
   margin-bottom: 28px;
@@ -660,7 +660,7 @@ body {
 }
 
 .hero-title-accent {
-  background: linear-gradient(135deg, #e8853b 0%, #d97b32 50%, #c2682a 100%);
+  background: linear-gradient(135deg, #1677ff 0%, #1663e6 50%, #0958d9 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -685,19 +685,19 @@ body {
   align-items: center;
   gap: 8px;
   padding: 12px 24px;
-  background: linear-gradient(135deg, #e8853b, #d97b32);
+  background: linear-gradient(135deg, #1677ff, #0958d9);
   color: #fff;
   font-weight: 600;
   font-size: 15px;
   border-radius: 10px;
   text-decoration: none;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(232, 133, 59, 0.25);
+  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.25);
 }
 .btn-primary:hover {
-  background: linear-gradient(135deg, #f5a623, #e8853b);
+  background: linear-gradient(135deg, #4096ff, #1677ff);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(232, 133, 59, 0.35);
+  box-shadow: 0 6px 20px rgba(22, 119, 255, 0.3);
   text-decoration: none;
 }
 
@@ -1059,4 +1059,11 @@ body {
   .vp-doc li {
     font-size: 15px;
   }
+}
+
+.VPNavBarTitle.has-sidebar .title {
+  border: 0;
+}
+.VPNavBar:not(.home.top) .content-body {
+  border: 0;
 }

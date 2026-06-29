@@ -1,16 +1,14 @@
 # 定时任务
 
-> 对应文件：`src/services/scheduler.ts`、`src/services/task.ts`、`src/services/agent-task-runner.ts`、`src/routes/web/tasks.ts`、`src/repositories/task.ts`
-
 ## 这个模块干什么
 
 定时任务系统是一个 **HTTP Cron 触发器**——用户配置 URL + cron 表达式，系统按时发送 HTTP 请求到目标地址。每次执行记录日志，支持手动触发、启用/禁用、分页查询历史。
 
-三个核心文件分工：
+三个核心模块分工：
 
-- **scheduler.ts**——调度引擎，基于 `node-schedule` 管理 cron job 的注册和取消
-- **task.ts**——任务的 CRUD、执行协调（`fetch` 发 HTTP 请求）、日志写入
-- **agent-task-runner.ts**——独立 Agent 执行器，spawn `opencode run` 执行 Agent 任务。**不接入调度系统**，是独立功能模块
+- **调度引擎**——基于 `node-schedule` 管理 cron job 的注册和取消
+- **任务管理**——任务的 CRUD、执行协调（HTTP 请求发送）、日志写入
+- **Agent 执行器**——独立 Agent 执行器，spawn Agent 进程执行任务。**不接入调度系统**，是独立功能模块
 
 ## 数据模型
 
@@ -45,9 +43,8 @@
 | `error` | text | 错误信息 |
 | `duration` | integer | 执行耗时（毫秒） |
 | `triggeredBy` | varchar | cron / manual |
-| `workspacePath` | varchar | workspace 路径（agent-task-runner 使用） |
-| `workspaceName` | varchar | workspace 名称（agent-task-runner 使用） |
-| `taskSnapshot` | jsonb | schema 中存在但**代码从不写入** |
+| `workspacePath` | varchar | workspace 路径（Agent 执行器使用） |
+| `workspaceName` | varchar | workspace 名称（Agent 执行器使用） |
 | `skipReason` | text | 跳过原因 |
 | `resultSummary` | text | 结果摘要（截断至 2000 字符） |
 | `createdAt` | timestamp | 创建时间 |
@@ -62,21 +59,18 @@
 POST /web/tasks { name, cron, url, method?, headers?, body?, timezone? }
     │
     ▼
-createTask(orgId, data, userId)
+校验 cron 格式（5 字段）、name 长度、URL 非空、method 白名单
     │
-    ├── validateTaskInput() 校验 cron 格式（5 字段）、name 长度、URL 非空、method 白名单
-    ├── scheduledTaskRepo.create() 写入 DB，enabled 默认 true
-    ├── scheduleTask() 注册 node-schedule job
+    ├── 写入 DB，enabled 默认 true
+    ├── 注册 node-schedule job（按 cron 表达式调度）
     │
     ▼
-返回 TaskResponse
+返回任务响应
 ```
 
 ### 调度注册
 
-`scheduler.ts` 使用 `node-schedule` 库，根据 cron 表达式注册定时回调。
-
-服务器启动时调用 `startScheduler()` → `scheduledTaskRepo.listEnabled()` 从 DB 读取所有 `enabled=true` 的任务，逐个注册。
+服务器启动时从 DB 读取所有 `enabled=true` 的任务，逐个注册到 `node-schedule` 调度器。
 
 每个任务触发时：
 
@@ -84,73 +78,61 @@ createTask(orgId, data, userId)
 cron 触发
     │
     ▼
-executeTask(taskId)
+检查是否已在执行中 → 是：记录 "skipped" 日志，跳过本次
     │
-    ├── runningTasks.has(taskId)？→ 记录 "skipped" 日志，跳过
-    │
-    ▼
-runningTasks.add(taskId)
-    │
-    ├── 读取任务配置，验证 enabled、存在性
+    ├── 否：标记为"执行中"
     │
     ▼
-executeTaskById(taskId, "cron", task)
-    │
-    ├── 构造 fetch 请求（task.url, task.method, task.headers, task.body）
-    ├── AbortSignal.timeout(30_000) 30 秒超时
+读取任务配置（url、method、headers、body）
     │
     ▼
-fetch(task.url) 发送 HTTP 请求
+发送 HTTP 请求（30 秒超时）
     │
     ├── 成功 (response.ok) → status="success"
-    ├── HTTP 错误 → status="failed"（记录状态码 + 响应体前 500 字符）
-    ├── 超时 (AbortError) → status="timeout"
+    ├── HTTP 错误 → status="failed"（记录状态码 + 响应体摘要）
+    ├── 超时 → status="timeout"
     └── 其他异常 → status="failed"
     │
     ▼
-writeLogAndReturn() 写入 task_execution_log + 更新 scheduled_task.lastStatus
-runningTasks.delete(taskId)
+写入执行日志，更新任务 lastStatus，清除执行标记
 ```
 
 ### 防止并发
 
-用 `runningTasks` Set 跟踪正在执行的任务。同一个任务同时只能有一个实例在跑，后续触发会被跳过并记录 "skipped" 日志。
+用执行中集合跟踪正在执行的任务。同一个任务同时只能有一个实例在跑，后续触发会被跳过并记录 "skipped" 日志。
 
 ### 手动触发
 
-`POST /tasks/:id/trigger` → `triggerTask()` → `executeTaskById(taskId, "manual")` — 绕过 `runningTasks` 检查，直接执行。
+`POST /tasks/:id/trigger` 绕过并发检查，直接执行。
 
 ## 任务管理 API
-
-通过 `src/routes/web/tasks.ts` 提供，所有端点需要 `sessionAuth`：
 
 | 方法 | URL | 说明 |
 |------|-----|------|
 | GET | `/web/tasks` | 列出当前组织所有任务 |
-| POST | `/web/tasks` | 创建任务（`name`、`cron`、`url`、`method`、`headers`、`body`、`timezone`） |
+| POST | `/web/tasks` | 创建任务 |
 | GET | `/web/tasks/:id` | 获取任务详情 |
 | PUT | `/web/tasks/:id` | 更新任务（cron/时区/enabled 变化时自动重新调度） |
 | DELETE | `/web/tasks/:id` | 删除任务并取消调度 |
 | POST | `/web/tasks/:id/toggle` | 切换启用/禁用 |
 | POST | `/web/tasks/:id/trigger` | 手动触发一次执行 |
-| GET | `/web/tasks/:id/logs` | 分页查询执行日志（`?page=1&pageSize=20`，最大 pageSize 100） |
+| GET | `/web/tasks/:id/logs` | 分页查询执行日志（最大 pageSize 100） |
 | DELETE | `/web/tasks/:id/logs` | 清空任务所有日志 |
 
 ## AgentTaskRunner（独立执行器）
 
-`src/services/agent-task-runner.ts` 是一个**独立的 Agent 执行器**，不接入调度系统。它通过 spawn `opencode run <taskText>` 执行 Agent 任务：
+AgentTaskRunner 是一个**独立的 Agent 执行器**，不接入调度系统。它通过 spawn Agent 进程执行任务：
 
-- **用途**：独立场景下 spawn opencode 进程执行 Agent 任务
-- **入参**：`RunAgentTaskInput`（`userId`、`environmentId`、`taskId`、`taskText`、`timeoutMinutes`、`logId`）
-- **执行**：`buildRunWorkspacePath()` 在 environment workspace 下创建 `.scheduled-runs/{taskId}/{timestamp}-{logId}/` 子目录，写入 `.opencode/config.json` 和 `.claude/settings.json`
-- **超时**：`timeoutMinutes * 60000` 后 SIGTERM，再 +5s 后 SIGKILL
-- **返回**：`AgentTaskRunResult`（status、workspacePath、workspaceName、resultSummary、error、duration）
+- **用途**：独立场景下 spawn Agent 进程执行任务文本
+- **执行**：在 environment workspace 下创建专用的执行子目录，写入运行时配置文件
+- **超时**：配置超时后先 SIGTERM，再延迟后 SIGKILL 确保进程终止
+- **返回**：执行状态、workspace 路径、结果摘要、错误信息、耗时
 
-这个模块与调度器的关系：**平行独立**。调度器触发 HTTP 请求，agent-task-runner 由外部调用者 spawn Agent 进程。
+**与调度器的关系：平行独立**。调度器触发 HTTP 请求，AgentTaskRunner 由外部调用者 spawn Agent 进程。两者互不依赖。
 
 ## 和其他模块的关系
 
-- → `src/db/schema.ts`：操作 `scheduledTask` 和 `taskExecutionLog` 表
-- → `src/repositories/task.ts`：数据访问层（`scheduledTaskRepo`、`taskExecutionLogRepo`）
-- ← `src/index.ts`：启动时 `startScheduler()`，关闭时 `stopScheduler()`
-- ← `src/routes/web/tasks.ts`：路由层调用 task CRUD 函数
+- → **数据库 Schema**：操作 `scheduledTask` 和 `taskExecutionLog` 表
+- → **数据访问层**：任务仓储和日志仓储
+- ← **服务器入口**：启动时注册 job，关闭时取消所有 job
+- ← **路由层**：调用任务 CRUD 函数

@@ -1,12 +1,10 @@
 # 配置系统
 
-> 对应文件：`src/services/config/` 目录（`provider.ts`、`model.ts`、`agent-config.ts`、`agent-config-skill.ts`、`agent-config-mcp.ts`、`agent-config-site-app.ts`、`mcp-server.ts`、`skill.ts`、`user-config.ts`、`types.ts`、`jsonb.ts`），路由文件：`src/routes/web/config/` 目录
-
 ## 这个模块干什么
 
 配置系统管理用户的所有 AI 相关配置：用哪个服务商（Provider）、选哪个模型（Model）、Agent 怎么配（AgentConfig）、装了哪些 MCP 服务器、启用了哪些 Skill、用户个人偏好（UserConfig）。
 
-所有配置存在 PostgreSQL 里，按组织隔离（多租户），支持**跨组织资源共享**。Agent 配置通过 `launch-spec-builder.ts` 在实例启动时自动注入。
+所有配置存在 PostgreSQL 里，按组织隔离（多租户），支持**跨组织资源共享**。Agent 配置在实例启动时自动注入。
 
 ## 六大配置模块
 
@@ -42,11 +40,9 @@ UserConfig（偏好）     用户的默认 Agent、默认模型等偏好
 | **Skills** | **RESTful** | `GET /config/skills` / `POST /config/skills` / `PUT /config/skills/:name` / `DELETE /config/skills/:name` |
 | **MCP** | `POST /config/mcp` + action | `list` / `get` / `set` / `delete` / `enable` / `disable` |
 
-所有路由文件位于 `src/routes/web/config/`，通过 `index.ts` 统一注册。
-
 ## 每个模块的细节
 
-### Provider（`provider.ts`）
+### Provider
 
 每个 Provider 代表一个 AI 服务商。核心字段：
 
@@ -54,15 +50,15 @@ UserConfig（偏好）     用户的默认 Agent、默认模型等偏好
 - `displayName`：显示名称
 - `protocol`：`"openai"` | `"anthropic"`
 - `baseUrl`：API 地址
-- `apiKey`：密钥（响应中只返回 `keyHint`，格式为 `***{realKey.slice(-4)}`——即尾 4 位明文前缀 3 个星号）
+- `apiKey`：密钥（响应中只返回掩码提示，格式为 `***` + 尾 4 位明文）
 - `extraOptions`：JSONB 格式的扩展参数
 - 一个 Provider 下面可以挂多个 Model
 
-**API Key 掩码**：`toKeyHint(apiKey)` 函数（`config-utils.ts`）解析 apiKey 后返回 `***` + 尾 4 位。短于 4 位的 key 统一返回 `"*******"`。
+**设计决策：API Key 掩码**。响应中不返回完整密钥，仅返回尾部 4 位的掩码形式。短于 4 位的 key 统一返回全星号掩码。这是防止密钥在 API 响应中泄露的安全措施。
 
-**跨组织共享**：`publicReadable: true` 时，其他组织可通过 `{sourceOrganizationId}/{resourceUid}` 格式的 resourceKey 读取 Provider。
+**跨组织共享**：通过 `publicReadable` 标记公开可读，其他组织可通过复合标识（来源组织 ID + 资源 UUID）引用 Provider。
 
-### Model（`model.ts`）
+### Model
 
 挂在 Provider 下面，记录具体模型的信息：
 
@@ -70,54 +66,34 @@ UserConfig（偏好）     用户的默认 Agent、默认模型等偏好
 - `displayName`：显示名
 - `modalities`、`limitConfig`、`cost`、`options`：JSONB 字段，存储模型能力参数
 
-**可用性缓存**（`routes/web/config/models.ts`）：按 `organizationId` 隔离的 5 分钟 TTL 内存缓存（`cachedAvailableByOrg`）。缓存构建需要遍历所有 readable provider 和它们的 model 列表。Provider 变更（创建/更新/删除）时由前端调用 `refresh` action 或 `invalidateAvailableCache()` 强制刷新。
+**设计决策：可用性缓存**。按组织隔离的 5 分钟 TTL 内存缓存，避免每次请求都遍历所有 provider 和 model 列表。Provider 变更时强制刷新缓存，保证一致性。
 
-### AgentConfig（`agent-config.ts`）
+### AgentConfig
 
 Agent 的配置。内置 Agent（`build`、`plan`、`general`、`explore`、`title`、`summary`、`compaction`、`meta`）不可删除，但可以修改配置。
 
-核心字段（`AGENT_SETTABLE_FIELDS` 白名单）：
-- `model` / `modelId`：使用的模型（modelId 是 model 表的 UUID）
+核心字段（白名单控制可设置字段）：
+- `model` / `modelId`：使用的模型（关联 model 表的 UUID）
 - `prompt`：系统 prompt
 - `description`：描述
-- `extra`：JSONB 扩展字段（`AgentExtraConfig`）
+- `extra`：JSONB 扩展字段
 - `machineId`：绑定的远程 machine（用于远程部署）
 - `engineType`：引擎类型（`"opencode"` | `"ccb"` | `"claude-code"`，默认 `"opencode"`）
-- `knowledge`：知识库绑定配置（`AgentKnowledgeConfig`）
+- `knowledge`：知识库绑定配置
 
-**关联资源**（操作时自动同步）：
-- **Skill 绑定**（`agent-config-skill.ts`）：通过 `agentConfigSkill` 关联表，`syncAgentSkills(agentConfigId, skillIds)` 全量覆盖
-- **MCP 绑定**（`agent-config-mcp.ts`）：通过 `agentConfigMcp` 关联表，`syncAgentMcps(agentConfigId, mcpIds)` 全量覆盖
-- **SiteApp 绑定**（`agent-config-site-app.ts`）：通过 `agentSiteApp` 关联表
-- **知识库绑定**（`agent-knowledge.ts`）：通过 `agentKnowledgeBinding` 关联表
+**关联资源同步**（操作 AgentConfig 时自动联动）：
+- **Skill 绑定**：通过 `agentConfigSkill` 关联表，全量覆盖式同步
+- **MCP 绑定**：通过 `agentConfigMcp` 关联表，全量覆盖式同步
+- **SiteApp 绑定**：通过 `agentSiteApp` 关联表
+- **知识库绑定**：通过 `agentKnowledgeBinding` 关联表
 
-**Agent 模板**（`services/agent-templates.ts`）：
+这些关联资源在 AgentConfig 更新时自动同步，保证 Agent 启动时拿到完整的配置集合。
 
-`.agents/agents/` 目录下的 Markdown + YAML frontmatter 文件提供预设模板：
+**Agent 模板**：磁盘目录下的 Markdown + YAML frontmatter 文件提供预设模板。YAML frontmatter 含 `name`、`description`、`skills` 字段，正文作为 prompt。文件名（去 `.md`）作为模板 id。进程级内存缓存，启动时一次性加载。
 
-```markdown
----
-name: 模板名称
-description: 模板描述
-skills:
-  - skill-name
----
-正文内容作为 prompt...
-```
+**Hindsight 记忆 MCP**：创建/更新 Agent 配置时，若启用记忆功能，自动创建名为 `"hindsight"` 的 `streamable-http` 类型 MCP server 记录，并确保 Hindsight bank 存在。这是配置系统和记忆系统的自动化集成点。
 
-- 文件名（去 `.md`）作为模板 id
-- 结果通过 `GET /config/agents/templates` 暴露
-- 进程级内存缓存，只读一次磁盘
-
-**Hindsight 记忆 MCP**（`services/hindsight.ts`）：
-
-创建/更新 Agent 配置时，若勾选 `enableMemory`，自动调用 `ensureHindsightMcpServer(ctx)`：
-- 创建名为 `"hindsight"` 的 MCP server 记录（`streamable-http` 类型）
-- 调用 `ensureBank()` 确保 Hindsight bank 存在（以 memberId 作为 bankId）
-
-Agent 列表接口返回 `knowledgeBaseCount` 字段，显示关联的知识库数量。
-
-### McpServer（`mcp-server.ts`）
+### McpServer
 
 MCP 工具服务器配置。4 种类型：
 
@@ -128,76 +104,43 @@ MCP 工具服务器配置。4 种类型：
 | `streamable-http` | Streamable HTTP 连接 | `url`、`headers`、`timeout` |
 | `disabled` | 已禁用的服务器 | 仅 `enabled: false`，config 为空 |
 
-**MCP Tool 缓存**（`mcpTool` 表）：
-- `replaceToolsForServer()`：事务内原子替换（先删后插），缓存 `inspectedAt` 时间戳
-- `listToolsByServer()` / `countToolsByServer()`：查询已缓存的 tool
-- 用于 MCP `list_tools` 和 `inspect` 功能
+**设计决策：MCP Tool 缓存**。缓存表 `mcpTool` 存储每个 MCP server 提供的工具列表。事务内原子替换（先删后插），避免并发读写不一致。缓存包含检查时间戳，支持后续按需刷新。
 
-**MCP 服务器管理路由**：`POST /config/mcp` + action（`list` / `get` / `set` / `delete` / `enable` / `disable`），还包括 `list_tools` 和 `test_url` 等操作 action，由路由层分发。
+### Skill
 
-### Skill（`skill.ts`）
+Skill 采用 **DB + 文件系统双存储** 架构：
 
-Skill 的**元数据**（name、description、metadata）存在 PostgreSQL `skill` 表中，**内容**（SKILL.md 文件）存在文件系统。
+- **元数据**（name、description、metadata）存在 PostgreSQL `skill` 表中
+- **内容**（SKILL.md 文件）存在文件系统，按组织隔离的目录结构中
 
-**存储路径**：`{SKILL_DIR}/{organizationId}/{name}/SKILL.md`（`SKILL_DIR` 默认 `./data/skills`）。
+**关键约束：双写一致性**。创建或更新 Skill 时，必须同时写入 DB 和文件系统。如果只写 DB 不写文件系统，Skill 内容不会下发给 Agent，导致运行时缺失。这是模块的核心契约。
 
-**关键约定**：必须通过 `setSkill()`（`skill.ts` 服务层）或 `importSkillDirectories()` 创建 Skill，它们同时写 DB + 文件系统。直接调用 `upsertSkill()` 只写 DB，会导致 Skill 不下发给 Agent。
+Skill 路由提供完整的 RESTful CRUD，外加下载为 zip 和批量上传目录功能。
 
-**Skill 路由**（`routes/web/config/skills.ts`）：
-- `GET /config/skills`：列出所有 Skill
-- `GET /config/skills/:name`：获取单个 Skill 详情（含内容）
-- `POST /config/skills`：创建新 Skill
-- `PUT /config/skills/:name`：更新已有 Skill
-- `DELETE /config/skills/:name`：删除 Skill
-- `GET /config/skills/:name/download`：下载 Skill 为 zip 文件
-- `POST /config/skills/upload`：批量上传 Skill 目录（multipart/form-data）
+### UserConfig
 
-### UserConfig（`user-config.ts`）
-
-用户偏好，按 `organizationId` 唯一键存储（每个组织每个用户最多一行）。通过 `onConflictDoUpdate` 实现 upsert：
-
-- `defaultAgent`：默认 Agent 名称
-- `currentModel`：当前使用的模型（provider/modelId 格式）
-- `smallModel`：小型模型（用于标题生成、摘要等）
-- `permission`：全局权限覆盖（JSONB，`PermissionConfig` 类型）
+用户偏好，按组织唯一键存储（每个组织每个用户最多一行）。通过 upsert 模式操作，字段包括默认 Agent、当前模型、小型模型偏好、全局权限覆盖。
 
 ## 跨组织资源共享（ResourceAccess）
 
-所有配置模块（Provider / Model / AgentConfig / McpServer / Skill）支持跨组织共享：
+所有配置模块（Provider / Model / AgentConfig / McpServer / Skill）支持跨组织共享。
 
-**ResourceAccess 结构**：
-```typescript
-interface ResourceAccess {
-  ownership: "internal" | "external";     // 内部 vs 共享
-  sourceOrganizationId: string;            // 来源组织
-  sourceOrganizationName?: string;         // 来源组织名称
-  resourceUid: string;                     // 资源 UUID
-  resourceKey: string;                     // "{sourceOrganizationId}/{resourceUid}"
-  manageable: boolean;                     // 是否可管理（内部资源）
-  writable: boolean;                       // 是否可写（仅内部资源）
-  publicReadable?: boolean;                // 是否公开可读
-}
-```
+**核心概念**：
+- **ownership**：区分"内部资源"和"共享的外部资源"
+- **resourceKey**：复合标识 `"{来源组织ID}/{资源UUID}"`，跨组织引用的标准格式
+- **manageable / writable**：区分是否可管理和可写——仅内部资源可写，外部资源只读
+- **publicReadable**：是否公开可读（其他组织可见）
 
-**权限检查**（`resource-permission.ts`）：
-- `decorateResourceAccess(ctx, resourceType, rows)`：为 DB 行附加 access 元数据
-- `assertInternalWritable(ctx, resourceType, id, orgId)`：内部资源可写检查
-- `setPublicRead(ctx, resourceType, orgId, id, publicReadable)`：设置公开可读
-- `listReadableResourceRefs(ctx, resourceType)`：列出可见的外部资源引用
-- `canReadResource(ctx, resourceType, id, orgId)`：检查读取权限
-
-外部资源通过 `{sourceOrganizationId}/{resourceUid}` 格式的 resourceKey 引用。路由层自动解析 resourceKey 识别跨组织引用。
+**权限操作**：为查询结果附加访问元数据、内部资源可写校验、公开可读开关、外部资源引用列表、读取权限检查。路由层自动解析 resourceKey 识别跨组织引用，业务方无需手动处理。
 
 ## 和其他模块的关系
 
-- → `db/schema.ts`：直接操作 provider / model / agentConfig / mcpServer / skill / userConfig / agentConfigSkill / agentConfigMcp / agentSiteApp / agentKnowledgeBinding 等表
-- → `services/skill.ts`：Skill 内容文件的读写（`setSkill` / `getSkill` / `importSkillDirectories`）
-- → `services/skill-fs.ts`：文件系统操作（`getGlobalSkillsDir` / `createSkillArchiveBuffer`）
-- → `services/resource-permission.ts`：跨组织权限（`decorateResourceAccess` / `listReadableResourceRefs`）
-- → `services/agent-knowledge.ts`：知识库绑定同步
-- → `services/agent-templates.ts`：Agent 模板加载
-- → `services/hindsight.ts`：Hindsight 记忆 MCP 自动创建
-- → `services/config-utils.ts`：统一响应工具（`configSuccess` / `configError` / `toKeyHint`）
-- ← `routes/web/config/`：路由层调用 config service 函数
-- ← `services/launch-spec-builder.ts`：拼接 AgentConfig + Provider + Model + Skill + MCP 为 LaunchSpec
-- ← 前端通过 RESTful / action-based API 访问
+- → **数据库层**：直接操作 6 张配置表 + 3 张关联表 + 1 张知识库绑定表
+- → **Skill 内容服务**：Skill 内容文件的读写与目录管理
+- → **跨组织权限服务**：资源访问权限的装饰和引用查询
+- → **知识库绑定服务**：Agent 与知识库的绑定关系同步
+- → **Agent 模板服务**：模板文件的加载与缓存
+- → **Hindsight 记忆服务**：自动创建记忆 MCP server
+- → **配置工具服务**：统一响应格式与密钥掩码处理
+- ← **路由层**：调用配置服务函数处理前端请求
+- ← **LaunchSpec 构建器**：在实例启动时将 Provider + Model + Skill + MCP 拼接为运行时规范

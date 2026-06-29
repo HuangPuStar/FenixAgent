@@ -1,11 +1,25 @@
 <script setup>
+import { nextTick, watch } from "vue";
 import { useData } from "vitepress";
 // biome-ignore lint/correctness/noUnusedImports: used in template as <DefaultTheme.Layout>
 import DefaultTheme from "vitepress/theme";
+import { createMermaidRenderer } from "vitepress-mermaid-renderer";
 
 // biome-ignore lint/correctness/useHookAtTopLevel: VitePress useData, not React
-const { frontmatter } = useData();
+const { frontmatter, isDark } = useData();
 const _isHome = frontmatter.value.layout === "page" && frontmatter.value.home !== false;
+
+// 初始化 Mermaid 渲染器，响应暗色/亮色主题切换
+const initMermaid = () => {
+  createMermaidRenderer({
+    theme: isDark.value ? "dark" : "default",
+  });
+};
+nextTick(() => initMermaid());
+watch(
+  () => isDark.value,
+  () => initMermaid(),
+);
 </script>
 
 <template>
@@ -65,7 +79,7 @@ const _isHome = frontmatter.value.layout === "page" && frontmatter.value.home !=
             </div>
           </div>
           <div class="footer-bottom">
-            <span>Built with Hono + Bun + VitePress</span>
+            <span>Built with Elysia + Bun + VitePress</span>
             <span class="footer-copy">&copy; 2024-present KonghaYao</span>
           </div>
         </div>

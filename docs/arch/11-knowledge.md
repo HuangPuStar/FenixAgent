@@ -1,7 +1,5 @@
 # 知识库
 
-> 对应文件：`src/services/knowledge-base.ts`、`src/services/knowledge-runtime.ts`、`src/services/knowledge-upload.ts`、`src/services/knowledge-provider/`、`src/services/agent-knowledge.ts`、`src/routes/mcp/knowledge.ts`
-
 ## 这个模块干什么
 
 知识库系统让用户可以给 AI Agent 补充专属知识——上传文档、代码、网页等，系统自动建立索引，Agent 在运行时可以通过 MCP 端点查询这些知识。
@@ -16,14 +14,14 @@
     │  CRUD 知识库、上传文件
     ▼
 ┌─────────────────────────────────────────┐
-│  knowledge-base.ts    知识库元数据 CRUD  │
-│  knowledge-upload.ts  文件上传处理       │
-│  knowledge-runtime.ts 运行时状态管理     │
-│  agent-knowledge.ts   Agent↔知识库绑定  │
+│  知识库元数据 CRUD                       │
+│  文件上传处理                             │
+│  运行时状态管理                           │
+│  Agent↔知识库绑定                        │
 ├─────────────────────────────────────────┤
-│  knowledge-provider/                     │
-│    ├── types.ts       Provider 接口定义  │
-│    └── ragflow.ts     RagFlow 实现       │
+│  KnowledgeProvider 抽象层                │
+│    ├── Provider 接口定义                 │
+│    └── RagFlow 实现                     │
 └──────────┬──────────────────────────────┘
            │
            ▼
@@ -32,14 +30,14 @@
 
 Agent 运行时
     │
-    │  MCP /mcp/knowledge 查询
+    │  MCP 查询
     ▼
-  routes/mcp/knowledge.ts → knowledge-runtime.ts → Provider
+  MCP 知识库端点 → 运行时模块 → Provider
 ```
 
 ## 组件分工
 
-### KnowledgeBase（`knowledge-base.ts`）
+### KnowledgeBase（知识库管理）
 
 知识库的 CRUD 管理。每个知识库按 organizationId 隔离，核心字段：
 
@@ -53,49 +51,29 @@ Agent 运行时
 
 创建知识库时，同步在远程 Provider 那边也创建一个对应的索引。删除时同步删除远程资源。
 
-### KnowledgeUpload（`knowledge-upload.ts`）
+### KnowledgeUpload（文件上传）
 
-处理文件上传。把用户上传的文件提交给 KnowledgeProvider 建索引。在 `knowledge_resource` 表中跟踪每个资源的状态（pending → processing → ready / error），记录字段包括 `sourceType`（文件/URL 来源类型）、`sourceName`、`sourcePath`、`remoteId`、`lastError`。
+处理文件上传。把用户上传的文件提交给 KnowledgeProvider 建索引。在 `knowledge_resource` 表中跟踪每个资源的状态（pending → processing → ready / error），记录字段包括来源类型（文件/URL）、来源名称、来源路径、远程资源 ID、最近错误。
 
-提供 `refreshKnowledgeResourceStatus()` 轮询远端资源解析状态、`importKnowledgeResourceFromUrl()` 从 URL 导入资源、`upsertKnowledgeBaseStatusFromResources()` 根据关联资源汇总更新知识库状态。
+提供远端资源状态轮询、从 URL 导入资源、根据关联资源汇总更新知识库状态等功能。
 
-### KnowledgeRuntime（`knowledge-runtime.ts`）
+### KnowledgeRuntime（运行时查询）
 
 知识库运行时——当 Agent 查询知识库时，这个模块负责把查询转发给 Provider，拿到结果返回。
 
-### AgentKnowledge（`agent-knowledge.ts`）
+### AgentKnowledge（绑定管理）
 
 管理"哪个 Agent 用哪些知识库"的绑定关系。存在 `agent_knowledge_binding` 表中，支持优先级排序。
 
-当 instance spawn 时（`instance.ts`），会检查绑定关系，把知识库的 MCP 端点注入到 workspace 的 `.opencode/opencode.json` 配置中。
+当 Instance spawn 时，会检查绑定关系，把知识库的 MCP 端点注入到 workspace 的运行时配置中。
 
-### KnowledgeProvider（`knowledge-provider/`）
+### KnowledgeProvider（外部索引抽象）
 
-Provider 是对外部索引服务的抽象。目前只实现了 RagFlow：
+Provider 是对外部索引服务的抽象。定义了统一的接口（创建知识库、添加资源、列出资源、读取资源、删除资源、搜索），目前实现了 RagFlow。新增索引服务只需实现该接口。
 
-- `types.ts`：定义 `KnowledgeProvider` 接口（createKnowledgeBase、addResource、listResources、readResource、deleteResource、search）
-- `ragflow.ts`：RagFlow 的 HTTP API 实现
+### MCP 端点（Agent 查询入口）
 
-Provider 的配置来自 `config.ts`：
-- `RAGFLOW_API_URL`：Provider 的 HTTP 地址
-- `RAGFLOW_API_KEY`：认证 key
-- `RAGFLOW_REQUEST_TIMEOUT_MS`：请求超时
-
-### MCP 端点（`routes/mcp/knowledge.ts`）
-
-Agent 运行时通过这个 MCP 端点查询知识库。它在 Agent 的 workspace 配置中作为 remote MCP server 注册：
-
-```json
-{
-  "mcp": {
-    "kb": {
-      "type": "remote",
-      "url": "http://rcs-host/mcp/knowledge",
-      "headers": { "Authorization": "Bearer {env.secret}" }
-    }
-  }
-}
-```
+Agent 运行时通过 MCP 端点查询知识库。它在 Agent 的 workspace 配置中作为 remote MCP server 注册——RCS 作为 MCP server，提供知识库查询能力供 Agent 调用。认证通过 Bearer token 完成。
 
 ## 数据库表
 
@@ -107,9 +85,9 @@ Agent 运行时通过这个 MCP 端点查询知识库。它在 Agent 的 workspa
 
 ## 和其他模块的关系
 
-- → `db/schema.ts`：操作 knowledge 系列表
-- → `knowledge-provider/ragflow.ts`：远程索引服务调用
-- → `config.ts`：读取 Provider 配置
-- ← `services/instance.ts`：spawn 时注入 MCP 知识库端点
-- ← `routes/web/knowledge-bases.ts`：前端 CRUD API
-- ← `routes/mcp/knowledge.ts`：Agent 运行时查询
+- → **数据库 Schema**：操作 knowledge 系列表
+- → **KnowledgeProvider**：远程索引服务调用（RagFlow）
+- → **配置服务**：读取 Provider 配置
+- ← **Instance 服务**：spawn 时注入 MCP 知识库端点
+- ← **前端路由**：知识库 CRUD API
+- ← **MCP 路由**：Agent 运行时查询端点

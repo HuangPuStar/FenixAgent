@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Remote Control Server (RCS) 是一个基于 Elysia + Bun 的 AI Agent 控制面板后端（package name: `fenix`），配合 React 19 + Vite 前端，使用 PostgreSQL + Drizzle ORM 持久化。支持多租户组织隔离（better-auth）、ACP 协议实时通信、DAG 工作流引擎、知识库管理、定时任务、IM 通道集成。可选依赖：Redis 缓存、Hermes 消息推送。`packages/` 下当前有 10 个内部 workspace 包。
+FenixAgent 是一个基于 Elysia + Bun 的 ACP Agent 统一后端服务（package name: `fenix`），配合 React 19 + Vite 前端，使用 PostgreSQL + Drizzle ORM 持久化。支持多租户组织隔离（better-auth）、ACP 协议实时通信、DAG 工作流引擎、知识库管理、定时任务、IM 通道集成。可选依赖：Redis 缓存、Hermes 消息推送。`packages/` 下当前有 10 个内部 workspace 包。
 
 **依赖结构**：`web/` 没有独立的 `package.json`，所有前后端依赖统一在根 `package.json` 管理。前端代码在 `web/` 但依赖安装/升级都在根目录执行。
 
