@@ -7,7 +7,7 @@
 1. **统一主运行时**：主服务进程全栈统一 [TypeScript](https://www.typescriptlang.org)，前后端共享类型定义。[Bun](https://bun.sh) 同时承载 HTTP 服务、WebSocket、静态文件分发和脚本执行，消除 Node.js/Bun 混用带来的工具链碎片化。Plugin 子进程（opencode、claude-code 等）按自身需求选择运行时，通过 ACP 协议与主服务通信。
 2. **Schema 驱动**：数据库结构、API 校验、前端表单——三者共享 [Zod](https://zod.dev) v4 Schema 定义。改一处 Schema，全链路类型安全。禁止在 route 内联声明请求体结构。
 3. **渐进式复杂度**：核心路径走最小依赖（[Elysia](https://elysiajs.com) + [Drizzle](https://orm.drizzle.team) + [React](https://react.dev)），高级能力按需引入（[Redis](https://redis.io) 缓存、Hermes 推送、RagFlow 检索）。不强依赖外部中间件，保持启动流程可控。
-4. **协议优先**：Agent 间通信走 ACP（Agent Communication Protocol），而非临时约定。ACP 定义 Agent 注册、会话管理、工具调用的标准契约，使 acp-link、opencode、claude-code 等异构 runtime 能统一接入。ACP 是项目早期确立的内部协议，先于行业标准（如 A2A）存在，其设计深度耦合 session 模型、relay 桥接和权限系统，因此保持自研而非迁移到外部协议。
+4. **协议优先**：Agent 间通信走 ACP（Agent Communication Protocol），而非临时约定。ACP 定义 Agent 注册、会话管理、工具调用的标准契约，使 opencode、claude-code 等异构 runtime 能统一接入。ACP 是项目早期确立的内部协议，先于行业标准（如 A2A）存在，其设计深度耦合 session 模型、relay 桥接和权限系统，因此保持自研而非迁移到外部协议。
 5. **静态优于动态**：前端路由走文件系统生成（TanStack Router file-based），UI 图标走本地打包（`@lobehub/icons`），禁止 CDN 外链字体。构建产物自包含，无运行时外部依赖。
 6. **插件隔离**：plugin 类 workspace 包（opencode、claude-code、ccb）通过 `@fenix/plugin-sdk` 与核心系统交互，不直接依赖核心内部模块。plugin 运行时通过子进程 spawn，崩溃不拖垮主服务。
 
@@ -40,8 +40,8 @@ flowchart TB
     end
 
     subgraph INSTANCE["Agent Instance"]
-        ACP["acp-link 子进程"]
         RUNTIME["opencode · claude-code · ccb"]
+        CORECFG["@fenix/core<br/><small>Engine 运行时调度</small>"]
     end
 
     subgraph DEPS["共享包"]
@@ -143,13 +143,13 @@ flowchart LR
     FE <-->|"WS /acp/relay"| EP["Elysia WS<br/>认证 · 路由"]
     EP <--> RH["RelayHandler"]
     RH --> IS["实例管理<br/>local / remote 决策"]
-    IS --> LOCAL["acp-runtime<br/>本地"]
+    IS --> LOCAL["@fenix/core<br/>本地 runtime"]
     IS --> REMOTE["acp-runtime-cli<br/>远端"]
     LOCAL --> SHARED
     REMOTE --> SHARED
     subgraph SHARED["公共路径"]
         direction LR
-        AL["acp-link"] --> REG["注册到中台"] --> ENG["opencode · claude-code"]
+        CORE["@fenix/core"] --> REG["注册到中台"] --> ENG["opencode · claude-code"]
     end
 ```
 
@@ -169,3 +169,5 @@ flowchart LR
 | 无分布式消息队列 | workflow 引擎、定时任务全靠进程内存调度 + DB snapshot 恢复，无持久化队列和死信处理 | 评估 Redis Stream 或轻量级队列方案 |
 | 可观测性不完整 | 结构化日志成熟（pino + requestId），但 metrics 端点、分布式 tracing、alerting 全部缺失 | 补充 Prometheus metrics 端点，引入 OpenTelemetry |
 | ACP 为自研协议 | ACP 先于行业标准（A2A）存在，与外部 Agent 生态不兼容 | 评估 ACP 与 A2A 的桥接方案，逐步向外开放 |
+| `acp-link` 包职责膨胀 | 从 stdio↔WS 桥接器膨胀为包含 InstanceManager/SessionManager/EngineHandler 的运行时框架；与 `@fenix/core` 功能重叠 | `acp-link` 收缩为纯传输/协议层，运行时调度职责归一至 `@fenix/core` |
+| `acp-link` 版本碎片化 | workspace 内用 v2.0.0，`@fenix/ccb`/`@fenix/opencode` 通过 npm 引用 v1.1.0，Dockerfile 又全局安装 npm 版——三套接口不同 | 统一为 workspace:\* 引用 |

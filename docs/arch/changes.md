@@ -114,6 +114,40 @@
 
 ---
 
+## 改动 12：acp-link 概念收缩，@fenix/core 是真正的 runtime 调度层
+
+**状态**：📝 设计已确认
+
+**现状**：`acp-link` 概念被严重放大——
+- `packages/acp-link` 从"ACP stdio↔WebSocket 桥接器"膨胀为包含 `InstanceManager`、`SessionManager`、`AcpDispatcher`、三种 `EngineHandler` 的运行时框架
+- `@fenix/core` 的 `CoreRuntime` 和 `acp-link` 的 `InstanceManager` 功能重叠，都在做 engine plugin 调度
+- `AcpLinkProcessManager` 命名误导：代码注释自己承认"直接启动 WS 服务器，不再 spawn 子进程"，不管进程却叫 ProcessManager
+- 文档/注释中 `acp-link` 被当作通用 Agent 进程代名词
+- `acp-link` 版本碎片化：workspace 内 v2.0.0，`@fenix/ccb`/`@fenix/opencode` 引用 npm 版 v1.1.0，Dockerfile 又全局安装 npm 版
+
+**目标**：
+
+```
+@fenix/core (概念上的"link")
+    ← 负责连接 ACP Agent 引擎与 RCS 平台
+    ← 注册 engine plugin、管理 instance 生命周期、管理 relay 通道
+    ← 命名已正确，职责需从 acp-link 包收回
+
+packages/acp-link (纯传输层)
+    ← createAcpServer() — stdio↔WS 桥接器
+    ← ACPClient / ACPProtocol — 协议解析、类型定义
+    ← 不应包含 InstanceManager / SessionManager / EngineHandler
+```
+
+**影响**：
+- `packages/acp-link`：`InstanceManager`、`SessionManager`、`AcpDispatcher`、三种 `EngineHandler` 迁移到 `@fenix/core`
+- `AcpLinkProcessManager` → 重命名（如 `EngineLifecycleManager` 或直接合并到 `@fenix/core`）
+- 统一 `acp-link` 版本引用为 `workspace:*`
+- 文档全局：`acp-link 注册` → `machine 注册`，`Agent (acp-link)` → `Agent 进程`
+- `@fenix/core` 的 `core-bootstrap.ts`：废除 `createOpencodePlugin` 等直接依赖 `acp-link` 的旧路径
+
+---
+
 ## 改动 7：Workflow 独立领域模块
 
 **状态**：✅ 已确认，待实施

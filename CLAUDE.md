@@ -42,7 +42,7 @@ FenixAgent 是一个基于 Elysia + Bun 的 ACP Agent 统一后端服务（packa
 | **Instance 管理** | `/v2/instances` | 环境内实例 spawn/stop/list，多实例并发运行，`ensureRunning()` 并发安全 |
 | **Session 管理** | `/web/sessions` + `/v1/sessions` | 会话创建/列表/事件推送，ACP session/list 按 cwd 过滤 |
 | **Chat 交互** | `/agent/chat/$agentId` 页面 + `/acp/relay/:agentId` | 实时聊天界面，WebSocket relay 中继，ArtifactsPanel 展示输出 |
-| **ACP 协议** | `/acp/ws` + `/acp/relay` | acp-link 注册（NDJSON）、前端中继桥接、keep_alive + 超时检测 |
+| **ACP 协议** | `/acp/ws` + `/acp/relay` | machine 注册（NDJSON）、前端中继桥接、keep_alive + 超时检测 |
 | **文件管理** | `/web/sessions/:id/user/*` | 用户工作区文件读写上传、目录浏览 |
 | **控制指令** | `/web/control` | 向 Agent 发送权限请求、中断指令等控制消息 |
 
@@ -132,7 +132,7 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 **认证优先级**：better-auth session cookie → API Key（`rcs_xxx`）→ Environment Secret → 全局 `RCS_API_KEYS`。组织 ID 从 `x-active-org-id` header > query param > cookie 提取，缓存 60s。测试通过 `setTestAuth()` + `setTestOrgContext()` 绕过
 
-**传输层**（`src/transport/`）：ACP WS Handler（acp-link 注册）→ Relay（Instance 模式优先，EventBus fallback）→ EventBus（per-session 隔离，支持 SSE 断线重连）
+**传输层**（`src/transport/`）：ACP WS Handler（machine 注册）→ Relay（Instance 模式优先，EventBus fallback）→ EventBus（per-session 隔离，支持 SSE 断线重连）
 
 ### Workspace 自动计算
 
@@ -148,14 +148,54 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 1. **acp-link spawn 认证**：本地 WS 始终 auth，自动生成 64 位 hex token，relay 须从 stdout 正则捕获
 2. **acp-link 端口残留**：服务器重启不会杀旧进程，需先清理否则 `EADDRINUSE`
-3. **relay 断连不杀进程**：前端断连只关 WS，不终止 acp-link
+3. **relay 断连不杀进程**：前端断连只关 WS，不终止 agent 子进程
 4. **ACP vs RCS session ID**：ACP 返回 `ses_xxx`，RCS 用 `session_xxx`/`cse_xxx`，文件 API 须用 RCS ID
 5. **relay 必须转发 agent `status`**：前端依赖 `status.capabilities` 判断 ACP 能力，丢弃会导致功能缺失
 6. **Skill 必须通过 `setSkill`/`importSkillDirectories` 创建**：直接调 `upsertSkill` 只写 DB 不写文件系统，会导致 skill 不下发
 
+### "acp-link" 概念收缩澄清（2026-06-29）
+
+架构经两次演进，`acp-link` 概念已严重膨胀。以下为正确的概念分层：
+
+**正确分层**：
+
+```
+┌──────────────────────────────────────────────┐
+│  @fenix/core (CoreRuntime)                   │  ← 这才是真正的"link"层
+│  • 注册 engine plugin（opencode/ccb/claude-code）│    负责连接 ACP Agent 引擎与 RCS 平台
+│  • 管理 node/instance 生命周期                   │
+│  • 管理 relay 通道                                │
+│  • 职责：Agent Runtime 调度框架                   │
+└───────────────┬──────────────────────────────┘
+                │ 使用
+┌───────────────▼──────────────────────────────┐
+│  packages/acp-link                           │  ← 底层传输工具
+│  • createAcpServer() — stdio↔WS 桥接器         │    不应包含运行时调度逻辑
+│  • ACPClient / ACPProtocol — 协议解析层          │
+│  • 类型定义（types.ts）                           │
+│  • 职责：ACP 协议的底层传输 + 协议类型               │
+└──────────────────────────────────────────────┘
+```
+
+**当前问题**：
+
+1. **`packages/acp-link` 包承载了过多职责**：从纯桥接器膨胀为包含 `InstanceManager`、`SessionManager`、`AcpDispatcher`、三种 `EngineHandler` 的运行时框架——这些本是 `@fenix/core` 的职责
+2. **`@fenix/core` 与 `acp-link` 的 `InstanceManager` 功能重叠**：两者都在做 engine plugin 调度
+3. **`AcpLinkProcessManager` 命名误导**：`packages/plugin-opencode/src/process/acp-link-process-manager.ts` 注释自己承认"直接在进程内启动 acp-link WS 服务器（不再 spawn 子进程）"——它不管进程，却叫 ProcessManager
+4. **`acp-link` workspace 包 vs npm 包混用**：bun.lock 中 `@fenix/ccb` 和 `@fenix/opencode` 引用 npm 版 `acp-link@1.1.0`，workspace 内引用 `acp-link@workspace:*`（v2.0.0），Dockerfile 又全局安装 npm 版——三套接口不同
+5. **文档/注释中 acp-link 被当作通用 Agent 进程代名词**：`acp-transport.ts` 注释中的"与 acp-link 通信"等
+
+**演进方向**：
+
+- `@fenix/core` 是概念上的"acp link"（Agent Runtime 调度层），命名已正确
+- `packages/acp-link` 应该收缩为纯传输/协议层：只保留 `createAcpServer()`、`ACPClient`、`ACPProtocol`、类型定义
+- `acp-link` 包中的 `InstanceManager`、`SessionManager`、三种 `EngineHandler` 应在后续版本中迁移到 `@fenix/core`
+- `AcpLinkProcessManager` → 重命名为更准确的名称（如 `EngineLifecycleManager`）
+- 统一 `acp-link` 版本引用（workspace: \* 替代 npm 版）
+
 ### Workspace Packages
 
-`packages/` 下 11 个内部包（`private: true`，`tsconfig.base.json` 路径映射）：acp-link / acp-link-rs / @fenix/core（运行时抽象）/ @fenix/plugin-sdk / @fenix/opencode（plugin-opencode）/ @fenix/ccb（plugin-ccb，历史遗留）/ @fenix/claude-code（plugin-claude-code）/ @fenix/remote-runtime / @fenix/sdk（前端 API SDK）/ @fenix/workflow-engine（开发中）/ @fenix/logger
+`packages/` 下 11 个内部包（`private: true`，`tsconfig.base.json` 路径映射）：acp-link（ACP 传输/协议层）/ acp-link-rs / @fenix/core（运行时抽象——概念上才是真正的"acp link"，负责 engine plugin 调度）/ @fenix/plugin-sdk / @fenix/opencode（plugin-opencode）/ @fenix/ccb（plugin-ccb，历史遗留）/ @fenix/claude-code（plugin-claude-code）/ @fenix/remote-runtime / @fenix/sdk（前端 API SDK）/ @fenix/workflow-engine（开发中）/ @fenix/logger
 
 ### 前端架构 (React 19 + Vite + TanStack Router)
 

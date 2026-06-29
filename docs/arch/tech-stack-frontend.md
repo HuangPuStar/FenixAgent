@@ -104,7 +104,7 @@ Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport`（`web/src/lib/rcs-tran
 - **`buildRelayUrl()`**：自动拼装协议、主机、组织 ID、session ID 参数
 - **`createRelayClient()`**：创建 WebSocket 连接，订阅 agent 事件
 - **事件订阅**：`web/src/acp/client.ts` 封装 `acp-link/client`，提供 ACPClient 和所有事件 handler 类型
-- **Relay 断连**：前端断连只关 WebSocket，不终止后端 acp-link 进程
+- **Relay 断连**：前端断连只关 WebSocket，不终止后端 agent 子进程
 
 ---
 
