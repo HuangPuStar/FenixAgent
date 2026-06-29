@@ -1,6 +1,6 @@
 import type { Node } from "@xyflow/react";
 import { Maximize2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -103,6 +103,26 @@ export function NodeConfigCard({
   const { t } = useTranslation("workflows");
   const isStartNode = selectedNode.id === START_NODE_ID;
   const [expand, setExpand] = useState<ExpandState | null>(null);
+
+  // 自定义节点初次选中时，若工具声明了 produces 且节点未配置 outputs，自动预填
+  useEffect(() => {
+    if (nodeType !== "custom") return;
+    const toolName = sd?.tool as string | undefined;
+    if (!toolName) return;
+    const tool = customTools.find((t) => t.name === toolName);
+    if (!tool || tool.produces.includes("*") || tool.produces.length === 0) return;
+    if (sd?.outputs && Object.keys(sd.outputs as Record<string, unknown>).length > 0) return;
+    // 为每个 produces key 创建默认 OutputEntry（pattern 为空，类型默认 file）
+    const defaults: Record<string, { pattern: string; type: string }> = {};
+    for (const key of tool.produces) {
+      defaults[key] = { pattern: "", type: "value" };
+    }
+    setNodes((nds) =>
+      nds.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, outputs: defaults } } : n)),
+    );
+    // 仅首次初始化时触发，不依赖 sd.outputs 变化避免循环更新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeType, sd?.tool]);
 
   /** 渲染代码块字段（带展开按钮） */
   const renderBlockField = (
@@ -583,15 +603,16 @@ export function NodeConfigCard({
                     {/* 分组输入 — 仅当工具匹配且有超过 1 组时显示 */}
                     {grouped.length > 1 &&
                       grouped.map(({ group, keys, collapsed }) => {
-                        const filtered = keys.reduce<Record<string, string>>((acc, k) => {
-                          if (inputValues?.[k]) acc[k] = inputValues[k];
-                          return acc;
-                        }, {});
+                        // 工具声明的字段全部展示，未填值时预填空字符串，用户可直接填写 value 无需手动加 key
+                        const merged: Record<string, string> = {};
+                        for (const k of keys) {
+                          merged[k] = inputValues?.[k] ?? "";
+                        }
                         const label = group === "advance" ? t("editor.group_advance") : t("editor.group_default");
                         return (
                           <CollapsibleGroup key={group} label={label} defaultOpen={!collapsed}>
                             <InputsEditor
-                              value={filtered}
+                              value={merged}
                               onChange={makeGroupOnChange(keys)}
                               readOnly={readOnly}
                               keyPlaceholder={t("editor.inputs_key_placeholder")}

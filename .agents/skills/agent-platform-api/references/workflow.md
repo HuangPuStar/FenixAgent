@@ -694,6 +694,91 @@ nodes:
           command: echo "Processing item..."
 ```
 
+### Custom 节点：Slurm（HPC 作业调度）
+
+`type: custom, tool: slurm`。通过 SSH + sbatch + sacct 向远程 HPC 集群提交作业。项目内置 `tools/slurm.ts`。
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `slurm.partition` | **是** | 队列名（如 `xahcnormal`） |
+| `slurm.cores` | 否 | CPU 核数，默认 1 |
+| `slurm.memory` | 否 | 内存限制，如 `"100G"` |
+| `slurm.walltime` | 否 | 时间限制，如 `"04:00:00"` |
+| `slurm.modules` | 否 | module load 列表，如 `["apps/apptainer/1.2.4"]` |
+| `slurm.extraSBATCH` | 否 | 额外 `#SBATCH` 指令，如 `["--gres=gpu:1"]` |
+| `script.content` | **是** | bash 脚本正文，支持 `${{ }}` 模板。**不要写 `#!/bin/bash` 或 `#SBATCH`（引擎自动生成）** |
+| `script.env` | 否 | 注入到 `#SBATCH --export` 的环境变量 |
+
+> `$SLURM_CPUS_PER_TASK` 自动可用，引擎保留 Slurm 标准环境变量。集群连接通过 `params.cluster_host`（SSH config 别名），需 `~/.ssh/config` 免密登录。默认不重试，`OUT_OF_MEMORY` / `CANCELLED` 固定不重试。
+
+```yaml
+nodes:
+  - id: trim_galore
+    type: custom
+    tool: slurm
+    slurm:
+      partition: xahcnormal
+      cores: 4
+      walltime: "02:00:00"
+      modules: ["apps/apptainer/1.2.4"]
+    script:
+      content: |
+        mkdir -p ${{ params.work_dir }}/step_4
+        apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
+          trim_galore --paired --cores "$SLURM_CPUS_PER_TASK" \
+            --output_dir ${{ params.work_dir }}/step_4 --gzip \
+            ${{ params.sample_r1 }} ${{ params.sample_r2 }}
+        test -s "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz" || exit 1
+    outputs:
+      trimmed_r1:
+        pattern: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz"
+        type: file
+
+### Custom 节点：LLM（大模型推理）
+
+`type: custom, tool: llm`。调用 OpenAI 兼容 API 进行大模型推理，项目内置 `tools/llm.ts`。
+
+**Inputs 参数**（在 YAML `inputs:` 块中声明）：
+
+| 字段 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `user_prompt` | **是** | — | 用户提示词，支持 `${{ }}` 表达式 |
+| `system_prompt` | 否 | — | 系统提示词 |
+| `model` | 否 | `gpt-4o` | 模型名称 |
+| `temperature` | 否 | `0.7` | 采样温度 (0-2) |
+| `max_tokens` | 否 | 模型默认 | 最大输出 token 数 |
+| `response_format` | 否 | `"text"` | `"text"` 或 `"json_object"` |
+| `api_key` | 否 | — | API Key，建议走 `secrets:` |
+| `base_url` | 否 | `https://api.openai.com/v1` | API 基础地址 |
+| `output_contains` | 否 | — | 输出必须包含此文本，否则节点 **FAILED** |
+
+**Produces 输出**：`stdout`（文本）、`json`（JSON 解析结果）、`exit_code`、`size`。
+
+**API Key 优先级**：`inputs.api_key` > `secrets.OPENAI_API_KEY` > 环境变量 `OPENAI_API_KEY`。
+
+```yaml
+nodes:
+  - id: classify_sample
+    type: custom
+    tool: llm
+    inputs:
+      user_prompt: "分类样本：${{ nodes.featurecounts.output.stdout }}"
+      system_prompt: "你是生物信息学专家，只输出 JSON"
+      model: "gpt-4o-mini"
+      temperature: "0.3"
+      response_format: json_object
+
+  - id: check_result
+    type: custom
+    tool: llm
+    depends_on: [classify_sample]
+    inputs:
+      user_prompt: "${{ nodes.classify_sample.output.stdout }}"
+      output_contains: "type"
+```
+
+**对比**：Slurm（SSH + sbatch，适合 HPC 计算）vs LLM（HTTP fetch，适合 AI 推理）。
+
 ---
 
 ## 七、完整 YAML 样例
@@ -908,6 +993,10 @@ nodes:
     command: echo "All services deployed successfully"
 ```
 
+### 样例 5：Slurm + LLM 混合
+
+Slurm 节点语法见 [六 → Custom 节点：Slurm](#custom-节点slurmhpc-作业调度)，LLM 节点语法见 [六 → Custom 节点：LLM](#custom-节点llm大模型推理)。完整示例参考 `workflow-examples/pe-rna-seq-single-sample.yaml`。
+
 ---
 
 ## 八、常见错误与排查
@@ -921,6 +1010,8 @@ nodes:
 | `CYCLE_DETECTED` | DAG 存在循环依赖 | 检查 `depends_on` 链是否存在环路 |
 | `MISSING_DEPENDENCY` | `depends_on` 引用了不存在的节点 | 确认引用的节点 ID 存在 |
 | `UNDEFINED_VARIABLE` | 使用了不允许的变量名（如 `inputs.xxx`、`needs.xxx`） | 使用正确的根命名空间：`nodes.`、`params.`、`secrets.` |
+| `MISSING_SCRIPT` | Slurm 节点缺少 `script.content` 字段 | 添加 `script.content` 声明 bash 脚本正文 |
+| `INVALID_SCRIPT_ON_NON_SLURM` | 非 Slurm 节点误写了 `script` 字段 | 删除 `script` 字段，仅 Slurm 节点支持 |
 
 ### 运行时常见错误
 
@@ -930,6 +1021,10 @@ nodes:
 | 下游节点拿不到上游数据 | 引用路径错误（如用了旧格式 `needs.xxx.outputs.xxx`） | 改用 `nodes.<id>.output.<field>` |
 | `printf` 和 `echo` 输出不一致 | `echo` 默认追加换行，`printf` 不追加 | 需要干净输出值时用 `printf` |
 | `:` 在 YAML 行内 command 中触发 compact mapping 错误 | YAML 解析器把 `:` 当成键值分隔符 | command 统一用 `\|` block scalar |
+| Slurm: sacct 空数据超时 | slurmdbd 延迟，5 分钟后仍查不到 | 检查集群 sacct 权限或增大 `timeout` |
+| Slurm: OOM 反复重试 | `OUT_OF_MEMORY` 不重试，`maxRetries` 对它不生效 | 增大 `slurm.memory` |
+| LLM: HTTP 4xx | API Key 无效 | 检查 `secrets.OPENAI_API_KEY` |
+| LLM: output_contains 校验失败 | LLM 未返回预期关键词 | 放宽条件或优化 prompt |
 
 **节点类型特定错误**：
 - `shell` 节点必须有 `command`
@@ -938,12 +1033,17 @@ nodes:
 - `api` 节点必须有 `url`
 - `workflow` 节点必须有 `ref`
 - `loop` 节点必须有 `condition`、`max_iterations` 和 `body.nodes`
+- `custom` / `slurm` 节点必须有 `script.content`，且不能遗漏 `slurm.partition`
+- `custom` / `llm` 节点必须有 `user_prompt`（在 `inputs:` 块中声明）
 
 ### YAML 编写最佳实践
 
-1. **Shell command 统一用 `|` block scalar**：字符串含 `:`、`$`、`\n` 等易冲突字符时避免行内写法
-2. **Shell 输出用 `printf` 代替 `echo`**：`printf` 不追加尾换行，输出值更干净
-3. **Shell/Python 节点不用 `${{ }}` 做数据传递**：统一通过 `inputs:` 块注入，命令中引用环境变量
-4. **Agent/API/Workflow 节点可用 `${{ }}`**：`prompt`、`url`、`body` 等字段支持模板解析
-5. **表达式根命名空间仅三个**：`nodes.`、`params.`、`secrets.`，不用 `inputs.` 或 `needs.`
+1. **Shell command 用 `|` block scalar**：避免 `:`、`$` 被 YAML 误解析
+2. **Shell 输出用 `printf` 代替 `echo`**：`printf` 不追加尾换行
+3. **Shell/Python 节点不用 `${{ }}`**：通过 `inputs:` 注入，变量引用环境变量
+4. **Agent/API/Workflow/Slurm 节点可用 `${{ }}`**：`prompt`、`url`、`script.content` 等字段支持
+5. **表达式根命名空间仅三个**：`nodes.`、`params.`、`secrets.`
 6. **dryRun 不等于完整验证**：只校验结构，不校验运行时语义
+7. **Slurm `script.content` 不写 `#!/bin/bash` 或 `#SBATCH`**：引擎自动生成
+8. **Slurm 集群 SSH 免密**：`params.cluster_host` 需在 `~/.ssh/config` 中配置
+9. **LLM API Key 走 `secrets:`**：避免 YAML inputs 中硬编码

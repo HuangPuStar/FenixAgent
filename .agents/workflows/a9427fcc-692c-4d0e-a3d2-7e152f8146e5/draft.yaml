@@ -66,7 +66,7 @@ params:
     group: advance
 secrets:
   - OPENAI_API_KEY
-  - OPENAI_API_BASE
+  - OPENAI_MODEL
 nodes:
   - id: trim_galore
     type: custom
@@ -398,63 +398,3 @@ nodes:
       joined_dir:
         pattern: ${{ params.work_dir }}/step_11
         type: dir
-  - id: llm_summary
-    type: custom
-    depends_on:
-      - multiqc
-      - column_join
-    tool: llm
-    description: ⑫ LLM 生成 RNA-Seq 工作流结果分析摘要
-    inputs:
-      system_prompt: |
-        你是生物信息学分析专家。请根据 PE RNA-Seq 工作流的输出信息，
-        生成一份简洁的中文分析报告摘要，格式如下：
-        1. 工作流执行概况（使用了哪些工具）
-        2. 各步骤产出说明
-        3. 后续分析建议
-      user_prompt: |
-        请为以下 PE RNA-Seq (Mouse) 工作流执行结果生成分析摘要：
-
-        ── 样本信息 ──
-        样本 ID: ${{ params.sample_id }}
-        输入数据: ${{ params.sample_r1 }} / ${{ params.sample_r2 }}
-
-        ── 工作流步骤与产出 ──
-        ④ Trim Galore（接头切除 + 质控）
-          产出: ${{ nodes.trim_galore.output.trimmed_r1 }}
-          产出: ${{ nodes.trim_galore.output.trimmed_r2 }}
-
-        ⑤ Flatten（Galaxy 占位 no-op）
-          产出: 通过
-
-        ⑥ Salmon quant（转录本定量，8 核）
-          产出: ${{ nodes.salmon_quant.output.quant_sf }}
-
-        ⑦ RNA STAR（基因组比对，32 核）
-          产出: ${{ nodes.rna_star.output.bam }}
-
-        ⑧ FastQC（质控报告，32 核）
-          产出目录: ${{ nodes.fastqc.output.report_dir }}
-
-        ⑨ featureCounts（基因水平计数，8 核）
-          产出: ${{ nodes.featurecounts.output.counts }}
-
-        ⑩ MultiQC（全流程质控汇总）
-          产出报告: ${{ nodes.multiqc.output.report }}
-
-        ⑪ Column Join（featureCounts 计数汇总）
-          产出目录: ${{ nodes.column_join.output.joined_dir }}
-
-        ── 参考资源 ──
-        参考基因组: ${{ params.gtf }}
-        Salmon 索引: ${{ params.salmon_index }}
-        STAR 索引: ${{ params.star_index }}
-        工作目录: ${{ params.work_dir }}
-
-        请生成 200 字左右的摘要。
-      response_format: text
-      output_contains: Salmon
-    outputs:
-      report:
-        pattern: ""
-        type: file

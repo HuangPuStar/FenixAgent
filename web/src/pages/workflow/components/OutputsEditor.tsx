@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export type OutputType = "file" | "file-list" | "dir";
+export type OutputType = "file" | "file-list" | "dir" | "value";
 
 export interface OutputEntry {
   pattern: string;
@@ -92,6 +92,8 @@ export function OutputsEditor({
 
   const isEmptyKey = (k: string) => k.trim() === "";
 
+  const isValueType = (t: string) => t === "value";
+
   return (
     <div className="flex flex-col gap-1">
       {entries.map(([k, v], i) => {
@@ -106,15 +108,17 @@ export function OutputsEditor({
               readOnly={readOnly}
               autoFocus={i === focusKeyIdx}
               className={`h-8 text-xs ${isEmptyKey(k) ? "border-red-300 bg-red-50" : ""}`}
-              style={{ width: "28%" }}
+              style={{ width: isValueType(v.type) ? undefined : "28%" }}
             />
-            <Input
-              value={v.pattern}
-              onChange={(e) => updateEntry(i, { pattern: e.target.value })}
-              placeholder={patternPlaceholder}
-              readOnly={readOnly}
-              className="flex-1 h-8 text-xs"
-            />
+            {isValueType(v.type) ? null : (
+              <Input
+                value={v.pattern}
+                onChange={(e) => updateEntry(i, { pattern: e.target.value })}
+                placeholder={patternPlaceholder}
+                readOnly={readOnly}
+                className="flex-1 h-8 text-xs"
+              />
+            )}
             <Select
               value={v.type}
               onValueChange={(val) => updateEntry(i, { type: val as OutputType })}
@@ -127,6 +131,7 @@ export function OutputsEditor({
                 <SelectItem value="file">file</SelectItem>
                 <SelectItem value="file-list">file-list</SelectItem>
                 <SelectItem value="dir">dir</SelectItem>
+                <SelectItem value="value">{t("outputs_type_value")}</SelectItem>
               </SelectContent>
             </Select>
             {!readOnly && (

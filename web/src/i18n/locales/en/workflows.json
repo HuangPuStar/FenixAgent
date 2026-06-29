@@ -373,6 +373,7 @@
     "outputs_add": "Add output",
     "outputs_key_placeholder": "field name",
     "outputs_pattern_placeholder": "path pattern (e.g. /tmp/out)",
+    "outputs_type_value": "value",
     "params_add": "Add parameter",
     "params_name_placeholder": "param name",
     "params_default_placeholder": "default value",

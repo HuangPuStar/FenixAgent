@@ -530,10 +530,7 @@ export function NodeConfigPanel({
                 value={meta.secrets.join("\n")}
                 onChange={(e) =>
                   updateMeta({
-                    secrets: e.target.value
-                      .split("\n")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
+                    secrets: e.target.value.split("\n").map((s) => s.trim()),
                   })
                 }
                 placeholder="API_KEY&#10;DATABASE_URL"
