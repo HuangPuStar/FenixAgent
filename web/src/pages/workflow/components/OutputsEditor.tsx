@@ -51,14 +51,14 @@ export function OutputsEditor({
   const [editingKeyValue, setEditingKeyValue] = useState("");
   const editSnapshotRef = useRef<string>(""); // focus 时记录的原始 key
 
-  const entriesLen = entries.length;
+  const _entriesLen = entries.length;
   useEffect(() => {
     setConfirmDeleteKey(null);
     if (confirmTimerRef.current) {
       clearTimeout(confirmTimerRef.current);
       confirmTimerRef.current = null;
     }
-  }, [entriesLen]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -136,7 +136,7 @@ export function OutputsEditor({
         const isEditing = editingKeyIdx === i;
         const displayKey = isEditing ? editingKeyValue : k;
         return (
-          <div key={`${k}-${i}`} className="flex items-center gap-1">
+          <div key={k} className="flex items-center gap-1">
             <Input
               value={displayKey}
               onChange={(e) => {

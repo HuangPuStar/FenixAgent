@@ -33,16 +33,32 @@ export class SshJobTransport implements JobTransport {
   constructor(private ssh: SshExecutor) {}
 
   async uploadScript(host: string, workDir: string, script: string, remotePath: string): Promise<void> {
-    await this.ssh.exec(host, `mkdir -p ${workDir}/.slurm`);
+    // 创建 .slurm 目录，失败时提前报错而非让后续 sbatch 报"Unable to open file"
+    const mkdirResult = await this.ssh.exec(host, `mkdir -p ${workDir}/.slurm`);
+    if (mkdirResult.exitCode !== 0) {
+      throw new WorkflowError(
+        `Failed to create directory ${workDir}/.slurm on ${host}: ${mkdirResult.stderr.trim()}`,
+        WorkflowErrorCode.NODE_FAILED,
+      );
+    }
     // 使用 heredoc 避免特殊字符转义问题
-    await this.ssh.exec(host, `cat > ${remotePath} << 'SLURM_EOF'\n${script}\nSLURM_EOF`);
+    const catResult = await this.ssh.exec(host, `cat > ${remotePath} << 'SLURM_EOF'\n${script}\nSLURM_EOF`);
+    if (catResult.exitCode !== 0) {
+      throw new WorkflowError(
+        `Failed to write script to ${remotePath} on ${host}: ${catResult.stderr.trim()}`,
+        WorkflowErrorCode.NODE_FAILED,
+      );
+    }
   }
 
   async submitJob(host: string, scriptPath: string): Promise<string> {
-    const { stdout } = await this.ssh.exec(host, `sbatch ${scriptPath}`);
+    const { stdout, stderr } = await this.ssh.exec(host, `sbatch ${scriptPath}`);
     const match = stdout.match(/Submitted batch job (\d+)/);
     if (!match) {
-      throw new WorkflowError(`Failed to parse job ID from sbatch output: ${stdout}`, WorkflowErrorCode.NODE_FAILED);
+      throw new WorkflowError(
+        `Failed to parse job ID from sbatch output: stdout="${stdout.trim()}", stderr="${stderr.trim()}"`,
+        WorkflowErrorCode.NODE_FAILED,
+      );
     }
     return match[1];
   }

@@ -26,14 +26,14 @@ export function InputsEditor({
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [focusKeyIdx, setFocusKeyIdx] = useState<number | null>(null);
 
-  const entriesLen = entries.length;
+  const _entriesLen = entries.length;
   useEffect(() => {
     setConfirmDeleteKey(null);
     if (confirmTimerRef.current) {
       clearTimeout(confirmTimerRef.current);
       confirmTimerRef.current = null;
     }
-  }, [entriesLen]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -94,7 +94,7 @@ export function InputsEditor({
       {entries.map(([k, v], i) => {
         const isConfirming = confirmDeleteKey === k && k !== "";
         return (
-          <div key={`${k}-${i}`} className="flex items-center gap-1">
+          <div key={k} className="flex items-center gap-1">
             <Input
               value={k}
               onChange={(e) => updateEntry(i, "key", e.target.value)}

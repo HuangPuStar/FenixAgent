@@ -94,7 +94,8 @@ export default defineConfig({
           text: "Agent 系统",
           items: [
             { text: "Agent Config", link: "/arch/04-agent-config" },
-            { text: "Chat 界面", link: "/arch/05-chat" },
+            { text: "Agent 实例", link: "/arch/08-instance" },
+            { text: "Agent 接口", link: "/arch/05-chat" },
             { text: "工作流引擎", link: "/arch/17-workflow" },
           ],
         },

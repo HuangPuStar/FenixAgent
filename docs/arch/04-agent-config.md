@@ -1,77 +1,53 @@
 # Agent Config
 
-> 涉及模块：AgentConfig 配置服务、启动规格构建器、Instance 服务、资源权限表
+> 涉及模块：AgentConfig 配置服务、启动规格构建器、Instance 服务
 
 ## 概述
 
-Agent Config 是 Agent 的"出厂设置"——定义了一个 Agent **是什么**以及**能做什么**。每个 Agent Config 属于一个组织，可被该组织内的多个 Environment 复用。
-
-当用户"启动 Agent"时，系统根据 Agent Config 的内容构建启动规格，传递给运行时引擎初始化 Agent 进程。
-
-## 配置组成
-
-Agent Config 是所有配置的汇聚点，通过引用来关联 Provider（含 Model）、Skill、KnowledgeBase、McpServer：
+Agent Config 是 Agent 的**配置蓝图**——定义了一个 Agent 是什么以及能做什么。它本身不是运行实例，而是 Environment 创建 Instance 时的**规格说明书**。
 
 ```mermaid
-graph TD
-  AC["AgentConfig"]
-
-  AC -.->|"modelId"| M["Model<br/>gpt-4o / claude-3"]
-  M ---|"1:N"| P["Provider<br/>AI 服务商"]
-  AC -.->|"引用"| S["Skill"]
-  AC -.->|"引用"| Mcp["McpServer"]
-  AC -.->|"多对多"| KB["KnowledgeBase"]
-
-  AC ---|"显式字段"| P2["prompt, temperature, steps"]
-
-  Env["Environment"] ---|"agentConfigId"| AC
+flowchart TD
+    AC[Agent Config] -->|"agentConfigId 绑定"| ENV[Environment]
+    ENV -->|"spawn + 注入 LaunchSpec"| INST[Instance]
 ```
 
-一个 Agent Config 由以下部分构成：
+每个 Agent Config 属于一个组织，可被该组织内的多个 Environment 复用。一套 Agent Config 绑定到不同 Environment 即可产生行为一致的 Agent 实例。
 
-| 组件 | 说明 | 示例 |
-|------|------|------|
-| 系统提示词 | Agent 的行为准则和能力边界 | "你是一个 Python 编程助手…" |
-| 模型配置 | 默认使用的 AI 模型 | gpt-4o、claude-sonnet-4-20250514 |
-| 权限规则 | 工具访问控制（allow/ask/deny） | 允许读文件、询问是否执行命令 |
-| Skill 绑定 | 挂载的技能模块 | 代码审查 skill、文档生成 skill |
-| MCP Server 绑定 | 挂载的外部工具服务 | 数据库查询 MCP、文件系统 MCP |
-| 知识库绑定 | 挂载的知识库 | 内部文档库、API 手册 |
-| 引擎类型 | 使用的 Agent 运行时 | opencode / claude-code |
+## 资源引用
 
-## 与 Environment 和 Instance 的关系
+Agent Config 是一个**引用节点**——它不拥有任何资源，只是把分散在系统各处的配置资源串联起来。spawn 时系统沿着这些引用逐级解析，组装成 `AgentLaunchSpec`，交给 `@fenix/core` 分派到对应的 engine plugin。
 
+```mermaid
+flowchart LR
+    AC[Agent Config]
+
+    AC -->|选模型| M[Model]
+    M -->|属于| P[Provider]
+
+    AC -->|选引擎| E[Engine Plugin]
+
+    AC -->|远程部署| MC[Machine]
+
+    AC -->|挂载| S[Skill]
+    AC -->|挂载| MS[McpServer]
+    AC -->|挂载| KB[KnowledgeBase]
 ```
-Agent Config ──(bind)──→ Environment ──(spawn)──→ Instance
-```
 
-- **Agent Config** 定义 Agent 的能力规格
-- **Environment** 绑定一个 Agent Config，并提供运行所需的资源上下文（workspace、secret）
-- **Instance** 是 Agent Config + Environment 结合后的运行时进程
+Agent Config 引用什么，Agent 实例就拥有什么。六类引用决定了 Agent 的六个能力维度：
 
-一个 Agent Config 可以被多个 Environment 绑定，实现"一套配置、多处运行"。Environment 不强制绑定 Agent Config——meta-agent 场景下 Environment 可以不绑定任何配置，由系统自行构建启动规格。
+- **Model** — 用哪个 AI 模型。spawn 时从 model → provider 逐级解析出完整配置（apiKey / baseUrl / protocol）
+- **Engine** — 用什么运行时。opencode 走 spawn 子进程，claude-code 走 SDK 内联
+- **Machine** — 跑在哪里。不填走本地 @fenix/core，填写则向远端 Machine 下发 spawn 指令
+- **Skill** — 有哪些技能。文件系统源目录打包为 ZIP，生成签名下载 URL
+- **McpServer** — 有哪些外部工具。校验后注入配置，禁用/缺失直接拒绝启动
+- **KnowledgeBase** — 连接哪些知识库。装配 `kb` MCP 端点（streamable-http + Bearer token）
 
-## 启动时的配置加载
+**约束**：更新 AgentConfig 时，Skill / McpServer / KnowledgeBase 的绑定**全量覆盖**——新集合替换旧集合，不留残留。
 
-spawn instance 时，系统按以下顺序组装启动规格：
+**跨组织**：引用的资源可来自其他组织。Agent Config 自身也可标为公开供其他组织使用——可引用启动，不可修改。
 
-1. 从 Environment 获取绑定的 Agent Config
-2. 加载 Agent Config 的模型、权限、Skill 绑定
-3. 加载 Agent Config 的 MCP Server 和知识库绑定
-4. 注入平台级环境变量（如知识库 MCP 的认证 token）
-5. 合并为最终启动规格，传递给运行时引擎
+## 上下级关系
 
-所有引用的配置资源（model、provider、skill、mcp_server）均支持跨组织共享——如果 Agent Config 引用了其他组织公开的资源，启动时自动解析并包含。
-
-## 跨组织共享
-
-Agent Config 本身可作为配置资源设为全系统公开可读，其他组织可以引用该配置启动自己的 Agent（不可修改原配置）。
-
-## 和其他模块的关系
-
-- → 模型配置服务（默认模型引用）
-- → Skill 配置服务（Skill 绑定解析）
-- → MCP Server 配置服务（工具服务绑定）
-- → 知识库绑定服务（知识库挂载）
-- → 启动规格构建器（spawn 时组装完整配置）
-- → 资源权限表（跨组织共享控制）
+- **← Environment**：通过 agentConfigId 绑定，一套配置可被多个 Environment 复用
+- **→ LaunchSpec Builder**：spawn 时消费全部引用关系，产出 `AgentLaunchSpec` 注入 engine plugin

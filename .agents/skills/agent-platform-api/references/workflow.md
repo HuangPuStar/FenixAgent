@@ -714,6 +714,16 @@ nodes:
 
 > `$SLURM_CPUS_PER_TASK` 自动可用，引擎保留 Slurm 标准环境变量。集群连接通过 `params.cluster_host`（SSH config 别名），需 `~/.ssh/config` 免密登录。默认不重试，`OUT_OF_MEMORY` / `CANCELLED` 固定不重试。
 
+**Slurm 节点常见坑（YAML 编写前必读）**：
+
+> ⚠️ **1. `params.work_dir` 必须是集群上可写的绝对路径**。写错用户名（如 `/work/home/agent/...` vs `/work/home/liwei_agent/...`）会导致 `mkdir` / `sbatch` 权限拒绝。先用 `ssh <host> "ls -d <path>"` 确认路径存在且有写权限。
+
+> ⚠️ **2. 不要在上游 shell 节点中依赖本地文件系统**。Slurm 作业跑在远程集群，引擎本地的 `/tmp/xxx` 或 `./output.txt` 在集群上不可访问。数据传递应通过 `inputs` 环境变量注入或 `params` 模板求值。
+
+> ⚠️ **3. `script.env` 的值必须用 `${{ }}` 包裹才能求值**。`inputs` 走 `resolveInputs` 自动求值，裸写 `nodes.X.output.Y` 即可。但 `script.env` 走 `resolveTemplate`，**不写 `${{ }}` 的表达式会被当作字面量字符串**，直接注入为 `#SBATCH --export=KEY=nodes.X.output.stdout`（原始字符串，不会被替换）。
+
+> ⚠️ **4. inputs/env 的值避免逗号、换行符**。这些值会被拼入 `#SBATCH --export=ALL,KEY1=v1,KEY2=v2`，逗号打断字段边界，换行符直接破坏行结构。上游 shell 节点也应用单行输出（`echo "value"` 而非多行 `echo`），避免 stdout 含换行污染下游。
+
 ```yaml
 nodes:
   - id: trim_galore
@@ -1030,6 +1040,10 @@ Slurm 节点语法见 [六 → Custom 节点：Slurm](#custom-节点slurmhpc-作
 | `:` 在 YAML 行内 command 中触发 compact mapping 错误 | YAML 解析器把 `:` 当成键值分隔符 | command 统一用 `\|` block scalar |
 | Slurm: sacct 空数据超时 | slurmdbd 延迟，5 分钟后仍查不到 | 检查集群 sacct 权限或增大 `timeout` |
 | Slurm: OOM 反复重试 | `OUT_OF_MEMORY` 不重试，`maxRetries` 对它不生效 | 增大 `slurm.memory` |
+| Slurm: mkdir/sbatch Permission denied | `params.work_dir` 路径不可写或用户名错误 | ssh 到集群确认路径存在且有写权限 |
+| Slurm: sbatch Unable to open file | `uploadScript` 阶段 silent 失败，脚本未写入 | 检查 `params.work_dir` 路径权限 |
+| Slurm: `script.env` 值未被求值 | 未用 `${{ }}` 包裹，被当作字面量字符串 | 写成 `KEY: "${{ nodes.X.output.Y }}"` |
+| Slurm: `#SBATCH --export` 行断裂 | input/env 值含逗号或换行符 | 确保上游输出为单行干净值，避免逗号 |
 | LLM: HTTP 4xx | API Key 无效 | 检查 `secrets.OPENAI_API_KEY` |
 | LLM: output_contains 校验失败 | LLM 未返回预期关键词 | 放宽条件或优化 prompt |
 

@@ -1,0 +1,129 @@
+# Slurm 节点参数传递测试 — 最小可运行 YAML
+#
+# 测试矩阵:
+#   1. params → script.content（${{ params.xxx }} 模板求值）
+#   2. 上游 shell 节点输出 → slurm script.env → 作业环境变量
+#   3. 上游 shell 节点输出 → slurm inputs（透传为 env，无需 script.env 声明）
+#   4. slurm inputs 与 script.env 同 key 时 env 优先（覆盖语义）
+#   5. slurm outputs 声明（file 类型）→ 下游 shell 节点 ${{ nodes.X.output.Y }} 引用
+#
+# 拓扑: START → gen_data → slurm_test → verify
+
+schema_version: "1"
+
+name: slurm-param-test
+description: |
+    验证 slurm 节点参数传递路径:
+    - params 模板求值 → script.content
+    - 上游输出 → inputs（透传为环境变量）
+    - 上游输出 → script.env（覆盖 inputs）
+    - outputs 声明 → 下游节点引用
+
+params:
+    # 集群连接（slurm 作业投递目标）
+    cluster_host:
+        type: string
+        default: shuguang
+        description: SSH config 别名
+        required: true
+
+    work_dir:
+        type: string
+        default: /work/home/liwei_agent/test/slurm_param_test
+        description: 集群工作目录（绝对路径）
+        required: true
+
+    greeting:
+        type: string
+        default: Hello
+        description: 测试用 greeting 字符串，验证 params → script.content 模板求值
+        required: true
+
+    target_file:
+        type: string
+        default: result.txt
+        description: slurm 作业将生成的文件名，验证 outputs.pattern 模板求值
+
+nodes:
+    # ── 上游节点: 产生测试数据 ──
+    - id: gen_data
+      type: shell
+      description: 生成干净的单行输出供下游 slurm 消费（避免多行破坏 #SBATCH --export）
+      command: echo "world"
+      outputs:
+          stdout:
+              pattern: ""
+              type: value
+
+    # ── Slurm 节点: 核心测试 ──
+    - id: slurm_test
+      type: custom
+      tool: slurm
+      description: >-
+          参数传递验证:
+          (a) ${{ params.greeting }} → script.content 模板求值
+          (b) ${{ nodes.gen_data.output.stdout }} → script.env 注入环境变量
+          (c) inputs 透传为环境变量 DATA_PATH（无需 script.env）
+          (d) 同 key 冲突时 script.env 覆盖 inputs
+      depends_on: [gen_data]
+      slurm:
+          partition: xahcnormal
+          cores: 1
+          walltime: "00:05:00"
+
+      # inputs 会被 SlurmNode.generateHeader 注入 #SBATCH --export=ALL,DATA_PATH=...,
+      # 让 bash 脚本直接用 $DATA_PATH / $SAMPLE_ID 引用，省去 script.env 重复声明。
+      # script.env 的同名 key 会覆盖 inputs（如 DEMO_OVERRIDE 示范）
+      inputs:
+          DATA_PATH: nodes.gen_data.output.stdout
+          SAMPLE_ID: nodes.gen_data.output.stdout
+
+      script:
+          content: |
+              echo "=== Slurm Parameter Test ==="
+              echo "params.greeting  = ${{ params.greeting }}"
+              echo "DATA_PATH (via inputs -> env) = ${DATA_PATH:-<NOT SET>}"
+              echo "SAMPLE_ID (via inputs -> env) = ${SAMPLE_ID:-<NOT SET>}"
+              echo "DEMO_OVERRIDE (via script.env, should override inputs) = ${DEMO_OVERRIDE:-<NOT SET>}"
+              echo "---"
+
+              # 将上游数据写入文件（验证 outputs）
+              mkdir -p "${{ params.work_dir }}"
+              OUT_FILE="${{ params.work_dir }}/${{ params.target_file }}"
+              echo "${{ params.greeting }}, ${DATA_PATH}" > "$OUT_FILE"
+              echo "saved to $OUT_FILE"
+              echo "result saved"
+          env:
+              # script.env 需要 ${{ }} 才会被 resolveTemplate 求值
+              # 与 inputs 中同名的 DEMO_OVERRIDE 会被 env 覆盖
+              DEMO_OVERRIDE: "${{ params.greeting }}, overridden by script.env"
+
+      outputs:
+          stdout:
+              pattern: ""
+              type: value
+          result_file:
+              pattern: "${{ params.work_dir }}/${{ params.target_file }}"
+              type: file
+
+    # ── 下游节点: 验证 slurm 输出可被引用 ──
+    - id: verify
+      type: shell
+      description: 验证上游 slurm 节点的 output 可被 ${{ }} 引用
+      depends_on: [slurm_test]
+      command: |
+          echo "=== Verify ==="
+          echo "slurm_test stdout:"
+          echo "$SLURM_STDOUT"
+          echo "---"
+          echo "slurm_test result_file path:"
+          echo "$RESULT_FILE"
+      inputs:
+          SLURM_STDOUT: ${{ nodes.slurm_test.output.stdout }}
+          RESULT_FILE: ${{ nodes.slurm_test.output.result_file }}
+      outputs:
+          stdout:
+              pattern: ""
+              type: value
+
+timeout: 600

@@ -922,10 +922,13 @@ export function NodeConfigCard({
                         value={(() => {
                           const existing = sd?.outputs as Record<string, OutputEntry> | undefined;
                           if (existing && Object.keys(existing).length > 0) return existing;
-                          // 工具声明的 produces 不为通配符时，自动预填默认输出字段
-                          // 同时规范化已有输出：空 pattern + file 类型自动转为 value 类型
+                          // 工具声明的 produces 不为通配符时，自动预填对应默认输出字段
+                          // 通配符工具（如 slurm）或空 produces 也兜底预填 stdout
                           const tool = customTool;
-                          if (!tool || tool.produces.includes("*") || tool.produces.length === 0) return existing;
+                          if (!tool) return { stdout: { pattern: "", type: "value" as OutputType } };
+                          if (tool.produces.includes("*") || tool.produces.length === 0) {
+                            return { stdout: { pattern: "", type: "value" as OutputType } };
+                          }
                           const defaults: Record<string, OutputEntry> = {};
                           for (const key of tool.produces) {
                             const entry = existing?.[key] as OutputEntry | undefined;
@@ -934,7 +937,7 @@ export function NodeConfigCard({
                               entry?.pattern === "" && entry?.type === "file"
                                 ? { ...entry, type: "value" as OutputType }
                                 : entry;
-                            defaults[key] = normalized ?? { pattern: "", type: "value" };
+                            defaults[key] = normalized ?? { pattern: "", type: "value" as OutputType };
                           }
                           return defaults;
                         })()}

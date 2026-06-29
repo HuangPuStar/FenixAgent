@@ -683,22 +683,24 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                           e.dataTransfer.setData("application/workflow-node", "custom");
                           e.dataTransfer.setData("application/workflow-tool", tool.name);
                           // 预填默认 outputs，避免 YAML 序列化时缺失 outputs 字段
-                          if (!tool.produces.includes("*") && tool.produces.length > 0) {
-                            e.dataTransfer.setData(
-                              "application/workflow-outputs",
-                              JSON.stringify(
-                                Object.fromEntries(tool.produces.map((k) => [k, { pattern: "", type: "value" }])),
-                              ),
-                            );
-                          }
+                          // 通配符工具（如 slurm）也预填 stdout 作为兜底默认输出
+                          e.dataTransfer.setData(
+                            "application/workflow-outputs",
+                            JSON.stringify(
+                              tool.produces.includes("*") || tool.produces.length === 0
+                                ? { stdout: { pattern: "", type: "value" } }
+                                : Object.fromEntries(tool.produces.map((k) => [k, { pattern: "", type: "value" }])),
+                            ),
+                          );
                           e.dataTransfer.effectAllowed = "move";
                         }}
                         onClick={() => {
                           // 为工具声明的 produces 生成默认 outputs
-                          const defaultOutputs: Record<string, { pattern: string; type: string }> | undefined =
-                            !tool.produces.includes("*") && tool.produces.length > 0
-                              ? Object.fromEntries(tool.produces.map((k) => [k, { pattern: "", type: "value" }]))
-                              : undefined;
+                          // 通配符工具（如 slurm）也预填 stdout 作为兜底默认输出
+                          const defaultOutputs: Record<string, { pattern: string; type: string }> =
+                            tool.produces.includes("*") || tool.produces.length === 0
+                              ? { stdout: { pattern: "", type: "value" } }
+                              : Object.fromEntries(tool.produces.map((k) => [k, { pattern: "", type: "value" }]));
                           addNode("custom", undefined, undefined, tool.name, defaultOutputs);
                         }}
                         title={tool.description}

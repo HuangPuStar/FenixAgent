@@ -33,6 +33,8 @@ export interface NodeConfigPopoverProps {
   meta: WfMeta;
   updateMeta: (updates: Partial<WfMeta>) => void;
   customTools: CustomToolItem[];
+  /** 所有节点，透传给 NodeConfigCard 用于输出字段改名/删除时扫描下游引用 */
+  nodes: Node[];
 }
 
 export function NodeConfigPopover({
@@ -51,6 +53,7 @@ export function NodeConfigPopover({
   meta,
   updateMeta,
   customTools,
+  nodes,
 }: NodeConfigPopoverProps) {
   const { t } = useTranslation("workflows");
   const anchorRef = useRef<Measurable>(null!);
@@ -99,6 +102,7 @@ export function NodeConfigPopover({
           meta={meta}
           updateMeta={updateMeta}
           customTools={customTools}
+          nodes={nodes || []}
         />
       </PopoverContent>
     </Popover>

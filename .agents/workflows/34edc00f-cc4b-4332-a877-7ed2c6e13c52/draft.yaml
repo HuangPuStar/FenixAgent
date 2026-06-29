@@ -35,3 +35,10 @@ nodes:
     command: |
       echo "Deploying $ARTIFACT to $ENV environment..."
       echo "Deploy complete!"
+  - id: custom_3
+    type: custom
+    tool: slurm
+    outputs:
+      stdout:
+        pattern: ""
+        type: value
