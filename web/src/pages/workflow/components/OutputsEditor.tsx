@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,12 @@ export interface OutputEntry {
   type: OutputType;
 }
 
+/**
+ * 输出字段编辑器。
+ *
+ * 改名行为：key 输入使用本地状态，仅在 blur 且改名时触发 onKeyRename。
+ * 父组件可弹出确认框并同步下游引用；用户取消时编辑器回退本地状态，不触发 onChange。
+ */
 export function OutputsEditor({
   value,
   onChange,
@@ -20,6 +26,8 @@ export function OutputsEditor({
   keyPlaceholder,
   patternPlaceholder,
   addLabel,
+  onKeyRename,
+  onBeforeDelete,
 }: {
   value: Record<string, OutputEntry> | undefined;
   onChange: (val: Record<string, OutputEntry> | undefined) => void;
@@ -27,6 +35,10 @@ export function OutputsEditor({
   keyPlaceholder: string;
   patternPlaceholder: string;
   addLabel: string;
+  /** key 改名确认回调。返回 false 表示取消，编辑器回退本地状态。 */
+  onKeyRename?: (oldKey: string, newKey: string) => Promise<boolean>;
+  /** 删除确认回调。返回 false 表示取消删除。 */
+  onBeforeDelete?: (key: string) => Promise<boolean>;
 }) {
   const { t } = useTranslation("workflows");
   const entries = Object.entries(value ?? {});
@@ -34,8 +46,12 @@ export function OutputsEditor({
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [focusKeyIdx, setFocusKeyIdx] = useState<number | null>(null);
 
+  // key 编辑使用本地状态，blur 时才决定是否提交改名
+  const [editingKeyIdx, setEditingKeyIdx] = useState<number | null>(null);
+  const [editingKeyValue, setEditingKeyValue] = useState("");
+  const editSnapshotRef = useRef<string>(""); // focus 时记录的原始 key
+
   const entriesLen = entries.length;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when entry count changes
   useEffect(() => {
     setConfirmDeleteKey(null);
     if (confirmTimerRef.current) {
@@ -50,14 +66,26 @@ export function OutputsEditor({
     };
   }, []);
 
-  const updateKey = (index: number, newKey: string) => {
-    const updated: Record<string, OutputEntry> = {};
-    entries.forEach(([k, v], i) => {
-      if (i === index) updated[newKey] = v;
-      else updated[k] = v;
-    });
-    onChange(updated);
-  };
+  const commitKeyRename = useCallback(
+    async (index: number) => {
+      setEditingKeyIdx(null);
+      const oldKey = editSnapshotRef.current;
+      const newKey = editingKeyValue.replace(/[^a-zA-Z0-9_-]/g, "").trim();
+      if (!newKey || newKey === oldKey) return; // 无变化或空值，放弃
+      if (onKeyRename) {
+        const confirmed = await onKeyRename(oldKey, newKey);
+        if (!confirmed) return; // 用户取消，放弃改名
+      }
+      // 确认通过，提交
+      const updated: Record<string, OutputEntry> = {};
+      entries.forEach(([k, v], i) => {
+        if (i === index) updated[newKey] = v;
+        else updated[k] = v;
+      });
+      onChange(updated);
+    },
+    [editingKeyValue, entries, onChange, onKeyRename],
+  );
 
   const updateEntry = (index: number, patch: Partial<OutputEntry>) => {
     const updated = { ...value };
@@ -72,9 +100,16 @@ export function OutputsEditor({
     onChange(Object.keys(updated).length === 0 ? undefined : updated);
   };
 
-  const handleDeleteClick = (index: number) => {
+  const handleDeleteClick = async (index: number) => {
     const entryKey = entries[index][0];
     if (confirmDeleteKey === entryKey) {
+      if (entryKey && onBeforeDelete) {
+        const confirmed = await onBeforeDelete(entryKey);
+        if (!confirmed) {
+          setConfirmDeleteKey(null);
+          return;
+        }
+      }
       removeEntry(index);
       setConfirmDeleteKey(null);
     } else {
@@ -98,16 +133,33 @@ export function OutputsEditor({
     <div className="flex flex-col gap-1">
       {entries.map(([k, v], i) => {
         const isConfirming = confirmDeleteKey === k && k !== "";
+        const isEditing = editingKeyIdx === i;
+        const displayKey = isEditing ? editingKeyValue : k;
         return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: index needed to keep focus stable while editing key
           <div key={`${k}-${i}`} className="flex items-center gap-1">
             <Input
-              value={k}
-              onChange={(e) => updateKey(i, e.target.value)}
+              value={displayKey}
+              onChange={(e) => {
+                if (isEditing) {
+                  setEditingKeyValue(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""));
+                }
+              }}
               placeholder={keyPlaceholder}
               readOnly={readOnly}
               autoFocus={i === focusKeyIdx}
-              className={`h-8 text-xs ${isEmptyKey(k) ? "border-red-300 bg-red-50" : ""}`}
+              onFocus={() => {
+                if (k.trim()) {
+                  setEditingKeyIdx(i);
+                  setEditingKeyValue(k);
+                  editSnapshotRef.current = k;
+                }
+              }}
+              onBlur={() => {
+                if (isEditing) {
+                  commitKeyRename(i);
+                }
+              }}
+              className={`h-8 text-xs ${isEmptyKey(displayKey) && !isEditing ? "border-red-300 bg-red-50" : ""}`}
               style={{ width: isValueType(v.type) ? undefined : "28%" }}
             />
             {isValueType(v.type) ? null : (

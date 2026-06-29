@@ -64,6 +64,7 @@ export interface UseWorkflowCanvasReturn {
     presetOrPosition?: string | { x: number; y: number },
     positionFallback?: { x: number; y: number },
     tool?: string,
+    outputs?: Record<string, { pattern: string; type: string }>,
   ) => void;
   onDragOver: (event: React.DragEvent) => void;
   onDrop: (event: React.DragEvent) => void;
@@ -127,26 +128,50 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
         );
       });
 
-      // 自动补全 inputs：连接两个数据 handle（out-xxx → in-xxx）时，自动配目标节点 inputs
+      // 自动补全 inputs：从前面的 output 连入后面时，自动填写关系
+      // - out-xxx → in-xxx：精确填充对应输入
+      // - out-xxx → 逻辑 handle：智能匹配目标节点的输入（单输入或同名输入）
+      // - 逻辑 handle → 任意：不填（无输出点 → 空传递）
       if (connection.target) {
         setNodes((nds) =>
           nds.map((n) => {
             if (n.id !== connection.target) return n;
 
-            // 判断是否为数据 handle 连接
-            const isDataConnect =
-              typeof connection.sourceHandle === "string" &&
-              connection.sourceHandle.startsWith("out-") &&
-              typeof connection.targetHandle === "string" &&
-              connection.targetHandle.startsWith("in-");
+            // 源端是否为数据 handle（out-xxx）
+            const isDataSource =
+              typeof connection.sourceHandle === "string" && connection.sourceHandle.startsWith("out-");
+            // 目标端是否为数据 handle（in-xxx）
+            const isDataTarget =
+              typeof connection.targetHandle === "string" && connection.targetHandle.startsWith("in-");
+            // 精确数据连接：out-xxx → in-xxx
+            const isDataConnect = isDataSource && isDataTarget;
+            const fieldName = isDataSource ? connection.sourceHandle!.slice(4) : undefined;
+
+            // 辅助函数：尝试智能匹配目标节点的输入
+            // 策略：1) 唯一输入直接填  2) 同名输入匹配  3) 否则不填（空传递）
+            const trySmartFill = (node: typeof n, outField: string): typeof n | null => {
+              const inputs = (node.data?.inputs as Record<string, string> | undefined) ?? {};
+              const inputKeys = Object.keys(inputs);
+              if (inputKeys.length === 0) return null; // 无输入点 → 空传递
+              const valueExpr = `nodes.${connection.source}.output.${outField}`;
+              if (inputKeys.length === 1) {
+                // 只有一个输入，自动填充
+                return { ...node, data: { ...node.data, inputs: { ...inputs, [inputKeys[0]]: valueExpr } } };
+              }
+              if (inputKeys.includes(outField)) {
+                // 有同名输入，自动匹配
+                return { ...node, data: { ...node.data, inputs: { ...inputs, [outField]: valueExpr } } };
+              }
+              // 多个输入且无匹配 → 空传递，不填
+              return null;
+            };
 
             // ── transform 节点预设自动填充（保持原有逻辑）──
             if (n.data?.type === "transform") {
               const presetId = n.data?._preset as string | undefined;
               if (!presetId) {
-                // 有 preset 才继续 transform 自动填充，无 preset 时按通用数据连接处理
-                if (isDataConnect) {
-                  const fieldName = connection.sourceHandle!.slice(4); // 去掉 "out-" 前缀
+                // 无 preset 时按通用数据连接处理
+                if (isDataConnect && fieldName) {
                   const paramName = connection.targetHandle!.slice(3); // 去掉 "in-" 前缀
                   const valueExpr = `nodes.${connection.source}.output.${fieldName}`;
                   const existingInputs = (n.data?.inputs as Record<string, string> | undefined) ?? {};
@@ -155,14 +180,18 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
                     data: { ...n.data, inputs: { ...existingInputs, [paramName]: valueExpr } },
                   };
                 }
+                // out-xxx → 逻辑 handle，尝试智能匹配
+                if (isDataSource && !isDataTarget && fieldName) {
+                  const filled = trySmartFill(n, fieldName);
+                  if (filled) return filled;
+                }
                 return n;
               }
 
               const preset = getPresetById(presetId);
               if (!preset) {
                 // 预设不存在时也按通用数据连接处理
-                if (isDataConnect) {
-                  const fieldName = connection.sourceHandle!.slice(4);
+                if (isDataConnect && fieldName) {
                   const paramName = connection.targetHandle!.slice(3);
                   const valueExpr = `nodes.${connection.source}.output.${fieldName}`;
                   const existingInputs = (n.data?.inputs as Record<string, string> | undefined) ?? {};
@@ -170,6 +199,11 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
                     ...n,
                     data: { ...n.data, inputs: { ...existingInputs, [paramName]: valueExpr } },
                   };
+                }
+                // out-xxx → 逻辑 handle，尝试智能匹配
+                if (isDataSource && !isDataTarget && fieldName) {
+                  const filled = trySmartFill(n, fieldName);
+                  if (filled) return filled;
                 }
                 return n;
               }
@@ -205,9 +239,8 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
               };
             }
 
-            // ── 通用节点：从 out-xxx 拖到 in-xxx 时自动填充 inputs ──
-            if (isDataConnect) {
-              const fieldName = connection.sourceHandle!.slice(4); // 去掉 "out-" 前缀
+            // ── 通用节点：out-xxx → in-xxx，精确填充对应输入 ──
+            if (isDataConnect && fieldName) {
               const paramName = connection.targetHandle!.slice(3); // 去掉 "in-" 前缀
               const valueExpr = `nodes.${connection.source}.output.${fieldName}`;
               const existingInputs = (n.data?.inputs as Record<string, string> | undefined) ?? {};
@@ -215,6 +248,12 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
                 ...n,
                 data: { ...n.data, inputs: { ...existingInputs, [paramName]: valueExpr } },
               };
+            }
+
+            // ── out-xxx → 逻辑 handle，智能匹配输入 ──
+            if (isDataSource && !isDataTarget && fieldName) {
+              const filled = trySmartFill(n, fieldName);
+              if (filled) return filled;
             }
 
             return n;
@@ -256,6 +295,9 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       const sourceNode = nodes.find((n) => n.id === sourceId);
       if (!sourceNode) return;
 
+      // custom 节点（如 llm）的输出是计算值，拖拽不自动创建下游节点
+      if (sourceNode.type === "custom") return;
+
       const newType = sourceId === START_NODE_ID ? "shell" : (sourceNode.type ?? "shell");
       const newId = nextNodeId(newType);
       const position = screenToFlowPosition({
@@ -264,7 +306,10 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       });
 
       // 从数据 output handle（out-xxx）拖出时，自动为新节点填入 inputs，建立数据流关联
-      const data: Record<string, unknown> = {};
+      const data: Record<string, unknown> = {
+        // 默认输出与 addNode 保持一致
+        ...(newType !== "custom" ? { outputs: { stdout: { pattern: "", type: "value" } } } : {}),
+      };
       if (handleId?.startsWith("out-")) {
         const fieldName = handleId.slice(4); // 去掉 "out-" 前缀
         data.inputs = { data: `nodes.${sourceId}.output.${fieldName}` };
@@ -310,6 +355,7 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
       presetOrPosition?: string | { x: number; y: number },
       positionFallback?: { x: number; y: number },
       tool?: string,
+      outputs?: Record<string, { pattern: string; type: string }>,
     ) => {
       // 参数兼容处理：第二个参数可能是 preset 字符串或 position 对象
       let preset: string | undefined;
@@ -328,14 +374,16 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
         type,
         position: position ?? { x: 300 + Math.random() * 200, y: 100 + Math.random() * 200 },
         data: {
+          // 所有普通节点默认输出 stdout，自定义节点由 palette 传 outputs 或走工具 produces
+          ...(type !== "custom" ? { outputs: { stdout: { pattern: "", type: "value" } } } : {}),
           ...(presetConfig
             ? {
                 output: { ...presetConfig.defaultOutput },
                 _preset: preset,
               }
             : {}),
-          // custom 类型携带 tool 字段
-          ...(type === "custom" && tool ? { tool } : {}),
+          // custom 类型携带 tool 字段 + 默认 outputs
+          ...(type === "custom" && tool ? { tool, ...(outputs ? { outputs } : {}) } : {}),
         },
       };
       setNodes((nds) => [...nds, newNode]);
@@ -360,7 +408,11 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
         y: event.clientY,
       });
       if (type === "custom" && tool) {
-        addNode("custom", position, undefined, tool);
+        const outputsJson = event.dataTransfer.getData("application/workflow-outputs") || undefined;
+        const outputs = outputsJson
+          ? (JSON.parse(outputsJson) as Record<string, { pattern: string; type: string }>)
+          : undefined;
+        addNode("custom", position, undefined, tool, outputs);
       } else {
         addNode(type, preset || position, preset ? position : undefined);
       }

@@ -27,7 +27,6 @@ export function InputsEditor({
   const [focusKeyIdx, setFocusKeyIdx] = useState<number | null>(null);
 
   const entriesLen = entries.length;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only reset when entry count changes
   useEffect(() => {
     setConfirmDeleteKey(null);
     if (confirmTimerRef.current) {
@@ -79,6 +78,7 @@ export function InputsEditor({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, index: number, field: "key" | "value") => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key !== "Enter" || e.shiftKey) return;
     if (field !== "value") return;
     const isLastEntry = index === entries.length - 1;
@@ -94,7 +94,6 @@ export function InputsEditor({
       {entries.map(([k, v], i) => {
         const isConfirming = confirmDeleteKey === k && k !== "";
         return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: index needed to keep input focus stable when key is being edited
           <div key={`${k}-${i}`} className="flex items-center gap-1">
             <Input
               value={k}

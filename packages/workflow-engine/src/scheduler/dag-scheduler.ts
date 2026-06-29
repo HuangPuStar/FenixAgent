@@ -479,8 +479,14 @@ export class DAGScheduler {
     const nodes: Record<string, { output: Record<string, unknown>; status: string }> = {};
     for (const [id, status] of this.nodeStates) {
       const output = this.nodeOutputs.get(id);
+      // json 可能是数字/字符串等非对象值（如 echo "1000" 被 JSON.parse 解析为 number 1000），
+      // 此时应回退到 { stdout } 以确保下游通过 .output.stdout 能正确取值
+      const jsonObj =
+        output?.json !== null && typeof output?.json === "object" && !Array.isArray(output?.json)
+          ? (output.json as Record<string, unknown>)
+          : null;
       nodes[id] = {
-        output: (output?.json ?? { stdout: output?.stdout ?? "" }) as Record<string, unknown>,
+        output: (jsonObj ?? { stdout: output?.stdout ?? "" }) as Record<string, unknown>,
         status,
       };
     }

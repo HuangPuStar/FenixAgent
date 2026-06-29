@@ -631,7 +631,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           nodesDraggable={!effectiveReadOnly}
           nodesConnectable={!effectiveReadOnly}
           elementsSelectable
-          deleteKeyCode={effectiveReadOnly ? null : "Delete"}
+          deleteKeyCode={effectiveReadOnly ? null : ["Delete", "Backspace"]}
           fitView
           fitViewOptions={{ padding: 0.15 }}
           defaultEdgeOptions={{ type: "logic" }}
@@ -682,9 +682,25 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                         onDragStart={(e) => {
                           e.dataTransfer.setData("application/workflow-node", "custom");
                           e.dataTransfer.setData("application/workflow-tool", tool.name);
+                          // 预填默认 outputs，避免 YAML 序列化时缺失 outputs 字段
+                          if (!tool.produces.includes("*") && tool.produces.length > 0) {
+                            e.dataTransfer.setData(
+                              "application/workflow-outputs",
+                              JSON.stringify(
+                                Object.fromEntries(tool.produces.map((k) => [k, { pattern: "", type: "value" }])),
+                              ),
+                            );
+                          }
                           e.dataTransfer.effectAllowed = "move";
                         }}
-                        onClick={() => addNode("custom", undefined, undefined, tool.name)}
+                        onClick={() => {
+                          // 为工具声明的 produces 生成默认 outputs
+                          const defaultOutputs: Record<string, { pattern: string; type: string }> | undefined =
+                            !tool.produces.includes("*") && tool.produces.length > 0
+                              ? Object.fromEntries(tool.produces.map((k) => [k, { pattern: "", type: "value" }]))
+                              : undefined;
+                          addNode("custom", undefined, undefined, tool.name, defaultOutputs);
+                        }}
                         title={tool.description}
                       >
                         <span className="wf-palette-icon" style={{ background: "#8b5cf6" }}>
@@ -831,6 +847,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           meta={meta}
           updateMeta={updateMeta}
           customTools={customTools}
+          nodes={nodes}
         />
 
         {/* 右下角按钮组 */}

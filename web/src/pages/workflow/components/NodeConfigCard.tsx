@@ -1,8 +1,8 @@
 import type { Node } from "@xyflow/react";
 import { Maximize2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import type { CustomToolInputDef, CustomToolItem } from "../../../api/workflow-defs";
@@ -11,7 +11,7 @@ import { syncOutputOnRename } from "../preset-utils";
 import type { WfMeta } from "../yaml-utils";
 import { START_NODE_ID } from "../yaml-utils";
 import { InputsEditor } from "./InputsEditor";
-import { type OutputEntry, OutputsEditor } from "./OutputsEditor";
+import { type OutputEntry, OutputsEditor, type OutputType } from "./OutputsEditor";
 import { WorkflowMetaCard } from "./WorkflowMetaCard";
 
 export interface NodeConfigCardProps {
@@ -27,6 +27,8 @@ export interface NodeConfigCardProps {
   meta: WfMeta;
   updateMeta: (updates: Partial<WfMeta>) => void;
   customTools: CustomToolItem[];
+  /** 所有节点，用于检测输出字段改名时扫描下游引用 */
+  nodes: Node[];
 }
 
 /** 展开编辑弹窗的状态 */
@@ -99,30 +101,149 @@ export function NodeConfigCard({
   meta,
   updateMeta,
   customTools,
+  nodes,
 }: NodeConfigCardProps) {
   const { t } = useTranslation("workflows");
   const isStartNode = selectedNode.id === START_NODE_ID;
   const [expand, setExpand] = useState<ExpandState | null>(null);
 
-  // 自定义节点初次选中时，若工具声明了 produces 且节点未配置 outputs，自动预填
-  useEffect(() => {
-    if (nodeType !== "custom") return;
-    const toolName = sd?.tool as string | undefined;
-    if (!toolName) return;
-    const tool = customTools.find((t) => t.name === toolName);
-    if (!tool || tool.produces.includes("*") || tool.produces.length === 0) return;
-    if (sd?.outputs && Object.keys(sd.outputs as Record<string, unknown>).length > 0) return;
-    // 为每个 produces key 创建默认 OutputEntry（pattern 为空，类型默认 file）
-    const defaults: Record<string, { pattern: string; type: string }> = {};
-    for (const key of tool.produces) {
-      defaults[key] = { pattern: "", type: "value" };
-    }
+  // 输出字段改名确认对话框
+  const renameResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{
+    oldKey: string;
+    newKey: string;
+    affectedCount: number;
+  } | null>(null);
+
+  // 输出字段删除确认对话框
+  const deleteResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{
+    key: string;
+    affectedCount: number;
+  } | null>(null);
+
+  /** 处理输出字段删除：扫描下游引用，有引用时弹确认框 */
+  const handleOutputDelete = useCallback(
+    async (key: string) => {
+      let affectedCount = 0;
+      const escapedId = selectedNode.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const refPattern = new RegExp(`nodes\\.${escapedId}\\.output\\.${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+      for (const node of nodes) {
+        const inputs = node.data?.inputs as Record<string, string> | undefined;
+        if (!inputs) continue;
+        for (const val of Object.values(inputs)) {
+          if (refPattern.test(val)) affectedCount++;
+        }
+      }
+      if (affectedCount === 0) return true;
+      return new Promise<boolean>((resolve) => {
+        deleteResolveRef.current = resolve;
+        setDeleteDialog({ key, affectedCount });
+      });
+    },
+    [nodes, selectedNode.id],
+  );
+
+  /** 确认删除：清除下游引用中的该字段 */
+  const confirmDeleteOutput = useCallback(() => {
+    const dialog = deleteDialog;
+    if (!dialog) return;
+    const escapedId = selectedNode.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedKey = dialog.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const refPattern = new RegExp(`(nodes\\.${escapedId}\\.output\\.)${escapedKey}`, "g");
     setNodes((nds) =>
-      nds.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, outputs: defaults } } : n)),
+      nds.map((n) => {
+        const inputs = n.data?.inputs as Record<string, string> | undefined;
+        if (!inputs) return n;
+        let changed = false;
+        const updated: Record<string, string> = {};
+        for (const [k, v] of Object.entries(inputs)) {
+          if (refPattern.test(v)) {
+            updated[k] = v.replace(refPattern, "$1<deleted>");
+            changed = true;
+          } else {
+            updated[k] = v;
+          }
+        }
+        return changed ? { ...n, data: { ...n.data, inputs: updated } } : n;
+      }),
     );
-    // 仅首次初始化时触发，不依赖 sd.outputs 变化避免循环更新
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeType, sd?.tool]);
+    deleteResolveRef.current?.(true);
+    deleteResolveRef.current = null;
+    setDeleteDialog(null);
+  }, [deleteDialog, selectedNode.id, setNodes]);
+
+  const cancelDeleteOutput = useCallback(() => {
+    deleteResolveRef.current?.(false);
+    deleteResolveRef.current = null;
+    setDeleteDialog(null);
+  }, []);
+
+  /** 处理输出字段改名：扫描下游引用，有引用时弹确认框 */
+  const handleOutputRename = useCallback(
+    async (oldKey: string, newKey: string) => {
+      let affectedCount = 0;
+      const escapedId = selectedNode.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const refPattern = new RegExp(`nodes\\.${escapedId}\\.output\\.${oldKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+      for (const node of nodes) {
+        const inputs = node.data?.inputs as Record<string, string> | undefined;
+        if (!inputs) continue;
+        for (const val of Object.values(inputs)) {
+          if (refPattern.test(val)) affectedCount++;
+        }
+      }
+      if (affectedCount === 0) return true; // 无下游引用，直接通过
+      return new Promise<boolean>((resolve) => {
+        renameResolveRef.current = resolve;
+        setRenameDialog({ oldKey, newKey, affectedCount });
+      });
+    },
+    [nodes, selectedNode.id],
+  );
+
+  /** 确认改名：扫描并同步下游引用 */
+  const confirmRename = useCallback(() => {
+    const dialog = renameDialog;
+    if (!dialog) return;
+    const escapedId = selectedNode.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedOld = dialog.oldKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const refPattern = new RegExp(`(nodes\\.${escapedId}\\.output\\.)${escapedOld}`, "g");
+    setNodes((nds) =>
+      nds.map((n) => {
+        const inputs = n.data?.inputs as Record<string, string> | undefined;
+        if (!inputs) return n;
+        let changed = false;
+        const updated: Record<string, string> = {};
+        for (const [k, v] of Object.entries(inputs)) {
+          if (refPattern.test(v)) {
+            updated[k] = v.replace(refPattern, `$1${dialog.newKey}`);
+            changed = true;
+          } else {
+            updated[k] = v;
+          }
+        }
+        return changed ? { ...n, data: { ...n.data, inputs: updated } } : n;
+      }),
+    );
+    renameResolveRef.current?.(true);
+    renameResolveRef.current = null;
+    setRenameDialog(null);
+  }, [renameDialog, selectedNode.id, setNodes]);
+
+  const cancelRename = useCallback(() => {
+    renameResolveRef.current?.(false);
+    renameResolveRef.current = null;
+    setRenameDialog(null);
+  }, []);
+
+  /** 获取输出的显示值，若无声明则自动预填 stdout 作为默认输出 */
+  const getDisplayOutputs = useCallback(
+    (existing: Record<string, OutputEntry> | undefined): Record<string, OutputEntry> => {
+      if (existing && Object.keys(existing).length > 0) return existing;
+      return { stdout: { pattern: "", type: "value" } };
+    },
+    [],
+  );
 
   /** 渲染代码块字段（带展开按钮） */
   const renderBlockField = (
@@ -226,9 +347,9 @@ export function NodeConfigCard({
                   t("editor.shell_command"),
                   String(sd?.command ?? ""),
                   (v) => updateNodeData({ command: v }),
-                  // biome-ignore lint/suspicious/noTemplateCurlyInString: 工作流模板语法 ${{ }}
-                  { placeholder: 'echo "Hello ${{ params.name }}"' },
+                  { placeholder: 'echo "Hello $name"' },
                 )}
+                <div className="wf-prop-hint">{t("editor.shell_inputs_hint")}</div>
                 {renderBlockField(t("editor.shell_env"), String(sd?.env ?? ""), (v) => updateNodeData({ env: v }), {
                   placeholder: t("editor.shell_env_placeholder"),
                   rows: 2,
@@ -249,7 +370,7 @@ export function NodeConfigCard({
                 <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
-                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    value={getDisplayOutputs(sd?.outputs as Record<string, OutputEntry> | undefined)}
                     onChange={(val) => updateNodeData({ outputs: val })}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.outputs_key_placeholder")}
@@ -263,9 +384,11 @@ export function NodeConfigCard({
             {nodeType === "python" && (
               <>
                 {renderBlockField(t("editor.python_code"), String(sd?.code ?? ""), (v) => updateNodeData({ code: v }), {
-                  placeholder: 'import json\nprint(json.dumps({"result": "hello"}))',
+                  placeholder:
+                    'import os, json\nname = os.environ.get("name", "")\nprint(json.dumps({"result": f"Hello {name}"}))',
                   rows: 6,
                 })}
+                <div className="wf-prop-hint">{t("editor.python_inputs_hint")}</div>
                 {renderBlockField(
                   t("editor.python_requirements"),
                   Array.isArray(sd?.requirements)
@@ -302,7 +425,7 @@ export function NodeConfigCard({
                 <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
-                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    value={getDisplayOutputs(sd?.outputs as Record<string, OutputEntry> | undefined)}
                     onChange={(val) => updateNodeData({ outputs: val })}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.outputs_key_placeholder")}
@@ -355,7 +478,7 @@ export function NodeConfigCard({
                 <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
-                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    value={getDisplayOutputs(sd?.outputs as Record<string, OutputEntry> | undefined)}
                     onChange={(val) => updateNodeData({ outputs: val })}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.outputs_key_placeholder")}
@@ -404,7 +527,7 @@ export function NodeConfigCard({
                 <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
-                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    value={getDisplayOutputs(sd?.outputs as Record<string, OutputEntry> | undefined)}
                     onChange={(val) => updateNodeData({ outputs: val })}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.outputs_key_placeholder")}
@@ -446,7 +569,7 @@ export function NodeConfigCard({
                 <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
-                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    value={getDisplayOutputs(sd?.outputs as Record<string, OutputEntry> | undefined)}
                     onChange={(val) => updateNodeData({ outputs: val })}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.outputs_key_placeholder")}
@@ -471,7 +594,7 @@ export function NodeConfigCard({
                 <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
-                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    value={getDisplayOutputs(sd?.outputs as Record<string, OutputEntry> | undefined)}
                     onChange={(val) => updateNodeData({ outputs: val })}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.outputs_key_placeholder")}
@@ -512,7 +635,7 @@ export function NodeConfigCard({
                 <div className="wf-prop-field-block">
                   <label>{t("editor.outputs_title")}</label>
                   <OutputsEditor
-                    value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                    value={getDisplayOutputs(sd?.outputs as Record<string, OutputEntry> | undefined)}
                     onChange={(val) => updateNodeData({ outputs: val })}
                     readOnly={readOnly}
                     keyPlaceholder={t("editor.outputs_key_placeholder")}
@@ -796,8 +919,28 @@ export function NodeConfigCard({
                     <div className="wf-prop-field-block">
                       <label>{t("editor.outputs_title")}</label>
                       <OutputsEditor
-                        value={sd?.outputs as Record<string, OutputEntry> | undefined}
+                        value={(() => {
+                          const existing = sd?.outputs as Record<string, OutputEntry> | undefined;
+                          if (existing && Object.keys(existing).length > 0) return existing;
+                          // 工具声明的 produces 不为通配符时，自动预填默认输出字段
+                          // 同时规范化已有输出：空 pattern + file 类型自动转为 value 类型
+                          const tool = customTool;
+                          if (!tool || tool.produces.includes("*") || tool.produces.length === 0) return existing;
+                          const defaults: Record<string, OutputEntry> = {};
+                          for (const key of tool.produces) {
+                            const entry = existing?.[key] as OutputEntry | undefined;
+                            // 已有 entry 但 pattern 为空且类型为 file → 升为 value
+                            const normalized =
+                              entry?.pattern === "" && entry?.type === "file"
+                                ? { ...entry, type: "value" as OutputType }
+                                : entry;
+                            defaults[key] = normalized ?? { pattern: "", type: "value" };
+                          }
+                          return defaults;
+                        })()}
                         onChange={(val) => updateNodeData({ outputs: val })}
+                        onKeyRename={handleOutputRename}
+                        onBeforeDelete={handleOutputDelete}
                         readOnly={readOnly}
                         keyPlaceholder={t("editor.outputs_key_placeholder")}
                         patternPlaceholder={t("editor.outputs_pattern_placeholder")}
@@ -861,6 +1004,63 @@ export function NodeConfigCard({
             readOnly={readOnly}
             className="font-mono text-sm"
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* 输出字段改名确认 Dialog */}
+      <Dialog
+        open={renameDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) cancelRename();
+        }}
+      >
+        <DialogContent style={{ maxWidth: 400 }}>
+          <DialogHeader>
+            <DialogTitle>{t("editor.rename_output_title")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            {t("editor.rename_output_desc", {
+              oldKey: renameDialog?.oldKey ?? "",
+              newKey: renameDialog?.newKey ?? "",
+              count: renameDialog?.affectedCount ?? 0,
+            })}
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={cancelRename}>
+              {t("common:cancel")}
+            </Button>
+            <Button size="sm" onClick={confirmRename}>
+              {t("common:confirm")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 输出字段删除确认 Dialog */}
+      <Dialog
+        open={deleteDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) cancelDeleteOutput();
+        }}
+      >
+        <DialogContent style={{ maxWidth: 400 }}>
+          <DialogHeader>
+            <DialogTitle>{t("editor.delete_output_title")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            {t("editor.delete_output_desc", {
+              key: deleteDialog?.key ?? "",
+              count: deleteDialog?.affectedCount ?? 0,
+            })}
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={cancelDeleteOutput}>
+              {t("common:cancel")}
+            </Button>
+            <Button size="sm" variant="destructive" onClick={confirmDeleteOutput}>
+              {t("editor.delete_output_confirm")}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
