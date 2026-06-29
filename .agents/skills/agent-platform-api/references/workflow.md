@@ -557,9 +557,11 @@ nodes: [...]                  # 必填，节点列表
 
 **自动依赖推断**：仅在 Agent/API/Workflow 节点的 `prompt`/`url`/`body`/`headers` 等字段中使用 `${{ nodes.xxx }}` 模板时有效，引擎自动将 `xxx` 加入 `depends_on`。Shell/Python 节点的 `inputs:` 块使用裸表达式（不含 `${{ }}`），**必须手动声明 `depends_on`**。
 
+> **默认输出**：所有节点类型（shell/python/agent/api/workflow/loop/transform）拖出时都会默认预填 `stdout` 输出声明，作为该节点的默认下游引用字段。除 LLM 节点外，其他节点可通过 `outputs:` 块声明额外输出字段。
+
 ### Shell 节点
 
-执行 shell 命令。**Shell 节点不支持 `${{ }}` 模板解析**——节点间数据传递通过 `inputs:` 块完成：表达式结果注入为 shell 环境变量，命令中直接用 `$VAR_NAME` 引用。
+执行 shell 命令。**Shell 节点不支持 `${{ }}` 模板解析**——节点间数据传递通过 `inputs:` 块完成：`inputs:` 中声明的表达式结果自动注入为 **环境变量**，命令中直接用 `$VAR_NAME` 引用（**禁止在 command 中使用 `${{ }}`，引擎不解析**）。
 
 命令的 stdout 被完整捕获为节点输出。如果 stdout 是合法 JSON，引擎自动解析并可通过 `nodes.<id>.output.<json_field>` 访问子字段。
 
@@ -586,7 +588,7 @@ nodes:
 
 ### Python 节点
 
-执行 Python 代码。与 Shell 节点一样，**Python 节点不支持 `${{ }}` 模板解析**——数据通过 `inputs:` 块注入为 Python 变量。
+执行 Python 代码。与 Shell 节点一样，**Python 节点不支持 `${{ }}` 模板解析**——`inputs:` 中声明的表达式结果自动注入为**环境变量**，Python 代码中通过 `os.environ["VAR"]` 获取（**禁止在 code 中使用 `${{ }}`，引擎不解析**）。
 
 ```yaml
 nodes:
@@ -594,7 +596,8 @@ nodes:
     type: python
     description: "数据处理"
     code: |
-      import json
+      import json, os
+      input_data = os.environ.get("input_data", "")
       data = json.loads(input_data)
       result = {"count": len(data)}
       print(json.dumps(result))
@@ -602,7 +605,7 @@ nodes:
       - requests
       - numpy
     cwd: "./workspace"
-    inputs:                    # 可选，注入为 Python 变量
+    inputs:                    # 可选，注入为环境变量
       input_data: nodes.fetch.output.stdout
 ```
 
@@ -753,6 +756,10 @@ nodes:
 | `output_contains` | 否 | — | 输出必须包含此文本，否则节点 **FAILED** |
 
 **Produces 输出**：`stdout`（文本）、`json`（JSON 解析结果）、`exit_code`、`size`。
+
+> **自动预填**：LLM 节点的 outputs（`stdout`、`json`、`exit_code`、`size`）在拖出节点时会自动预填，类型为 `type: value`（计算值）。YAML 中写为 `stdout: { pattern: "", type: value }`，`json: { pattern: "", type: value }` 等。
+
+> **删除/改名确认**：当 LLM 节点的输出字段（如 `stdout`、`json`、`exit_code`、`size`）已被下游节点引用时，在前端编辑器中删除或改名该字段会弹出确认对话框。**改名**会同步更新所有下游引用路径，**删除**会清除引用（下游节点对应表达式将被清空）。其他节点类型的手动输出字段同样适用此规则。
 
 **API Key 优先级**：`inputs.api_key` > `secrets.OPENAI_API_KEY` > 环境变量 `OPENAI_API_KEY`。
 
