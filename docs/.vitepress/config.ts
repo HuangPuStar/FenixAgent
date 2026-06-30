@@ -96,16 +96,24 @@ export default defineConfig({
             { text: "Agent Config", link: "/arch/04-agent-config" },
             { text: "Agent 实例", link: "/arch/08-instance" },
             { text: "Agent 接口", link: "/arch/05-chat" },
-            { text: "工作流引擎", link: "/arch/17-workflow" },
+            { text: "文件系统", link: "/arch/12-files" },
+          ],
+        },
+        {
+          text: "配置系统",
+          items: [
+            { text: "概览", link: "/arch/06-config" },
+            { text: "模型配置", link: "/arch/06-config-provider" },
+            { text: "Skills 配置", link: "/arch/06-config-skills" },
+            { text: "MCP 配置", link: "/arch/06-config-mcp" },
+            { text: "记忆配置", link: "/arch/06-config-hindsight" },
           ],
         },
         {
           text: "业务模块",
           items: [
-            { text: "配置系统", link: "/arch/06-config" },
+            { text: "工作流引擎", link: "/arch/17-workflow" },
             { text: "知识库", link: "/arch/11-knowledge" },
-            { text: "文件系统", link: "/arch/12-files" },
-            { text: "定时任务", link: "/arch/09-scheduler" },
             { text: "Agent Sites", link: "/arch/18-agent-sites" },
           ],
         },

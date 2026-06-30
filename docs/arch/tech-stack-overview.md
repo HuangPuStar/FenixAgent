@@ -106,7 +106,7 @@ flowchart LR
 | 前端框架 | [React 19](https://react.dev) + [Vite](https://vitejs.dev) | 组件渲染、路由、状态管理；纯 CSR，不做 SSR |
 | UI 组件 | [Radix UI](https://www.radix-ui.com) + [Tailwind CSS v4](https://tailwindcss.com) | 无障碍原语、样式系统；品牌图标由 `@lobehub/icons` 承担 |
 | AI 集成 | [Vercel AI SDK](https://sdk.vercel.ai) | 前端消息流管理、`useChat` hook；Agent 运行时调度由 ACP 承担 |
-| 实时通信 | WebSocket + ACP | Agent 中继、会话事件推送；消息持久化由 Session 表承担 |
+| 实时通信 | WebSocket + ACP | Agent 中继、会话事件推送；详见 [Agent 接口](./05-chat.md) |
 | 类型校验 | [Zod](https://zod.dev) v4 | API 入参 / 出参校验、DB Schema 类型推断；运行时类型由 TypeScript 承担 |
 | 文档 | [VitePress](https://vitepress.dev) + [Scalar](https://scalar.com) | 开发者文档 + API 交互式文档；不做业务知识库 |
 
@@ -138,19 +138,14 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph FE["前端"]
-        UI["Chat UI"] --> ACP["ACPClient<br/>JSON-RPC"]
+        UI["Chat UI"] --> ACP["ACPClient"]
     end
-    FE <-->|"WS /acp/relay"| EP["Elysia WS<br/>认证 · 路由"]
-    EP <--> RH["RelayHandler"]
-    RH --> IS["实例管理<br/>local / remote 决策"]
-    IS --> LOCAL["@fenix/core<br/>本地 runtime"]
-    IS --> REMOTE["acp-runtime-cli<br/>远端"]
-    LOCAL --> SHARED
-    REMOTE --> SHARED
-    subgraph SHARED["公共路径"]
-        direction LR
-        CORE["@fenix/core"] --> REG["注册到中台"] --> ENG["opencode · claude-code"]
-    end
+    FE <-->|"WS /acp/relay"| RELAY["Relay Handler"]
+    RELAY <-->|"内部通信"| INST["@fenix/core<br/>orchestrator"]
+    INST -->|"local"| PLUG[Engine Plugin]
+    INST -.->|"remote"| MC[Machine acp-link]
+    PLUG --> AGENT["Agent 子进程"]
+    MC -.-> AGENT
 ```
 
 ---
