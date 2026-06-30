@@ -43,11 +43,12 @@ export interface NodeOutput {
 export interface DAGEvent {
   event_id: string;
   run_id: string;
-  node_id?: string;
+  project_id?: string | null;
+  node_id?: string | null;
   timestamp: string;
   type: EventType;
-  node_type?: NodeType;
-  metadata?: Record<string, unknown>;
+  node_type?: NodeType | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface DAGSnapshot {
@@ -101,7 +102,7 @@ export interface PendingApproval {
 
 export interface DryRunResult {
   valid: boolean;
-  issues: Array<{ type: "error" | "warning"; message: string; field?: string }>;
+  issues: Array<{ type: "error" | "warning"; code: string; message: string; nodeId?: string }>;
   executionPlan: {
     topologicalOrder: string[];
     parallelGroups: string[][];

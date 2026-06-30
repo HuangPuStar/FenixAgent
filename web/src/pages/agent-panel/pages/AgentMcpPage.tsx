@@ -352,7 +352,7 @@ export function AgentMcpPage() {
             id: `${serverKey}:${toolItem.name}`,
             toolName: toolItem.name,
             description: toolItem.description ?? null,
-            inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
+            inputSchema: (toolItem.inputSchema ?? null) as Record<string, unknown> | null,
             inspectedAt: Date.now(),
           })),
         }));
@@ -365,7 +365,7 @@ export function AgentMcpPage() {
             id: toolItem.id || `${serverKey}:${toolItem.toolName}`,
             toolName: toolItem.toolName,
             description: toolItem.description ?? null,
-            inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
+            inputSchema: toolItem.inputSchema ?? null,
             inspectedAt: toolItem.inspectedAt ?? Date.now(),
           })),
         }));
@@ -660,13 +660,15 @@ export function AgentMcpPage() {
                               {t("form.parameters")}
                             </summary>
                             <pre className="mt-2 text-xs p-2.5 bg-surface-2 rounded-lg overflow-x-auto max-h-40 min-w-[200px] font-mono">
-                              {(() => {
-                                try {
-                                  return JSON.stringify(JSON.parse(tool.inputSchema), null, 2);
-                                } catch {
-                                  return tool.inputSchema;
-                                }
-                              })()}
+                              {typeof tool.inputSchema === "string"
+                                ? (() => {
+                                    try {
+                                      return JSON.stringify(JSON.parse(tool.inputSchema), null, 2);
+                                    } catch {
+                                      return tool.inputSchema;
+                                    }
+                                  })()
+                                : JSON.stringify(tool.inputSchema, null, 2)}
                             </pre>
                           </details>
                         ) : (

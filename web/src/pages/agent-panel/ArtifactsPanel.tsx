@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
-import { agentSitesApi } from "@/src/api/sites";
+import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { FileTabsBar } from "../../components/agent-panel/FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
 import { MountSiteDialog } from "../../components/agent-panel/MountSiteDialog";
@@ -110,14 +110,13 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
     mutate: setSites,
   } = useRequest(
     async (cfgId: string) => {
-      // SiteApp 类型不含 remoteAppId，实际 API 响应有此动态字段，通过 unknown 桥接
-      const list = (await unwrap(agentSitesApi.listByAgentConfig(cfgId))) as unknown as Record<string, unknown>[];
+      const list = (await unwrap(agentSitesApi.listByAgentConfig(cfgId))) as SiteApp[];
       return (Array.isArray(list) ? list : [])
-        .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+        .filter((item): item is SiteApp => !!item)
         .map((item) => ({
-          id: String(item.id ?? ""),
-          name: String(item.name ?? ""),
-          remoteAppId: String(item.remoteAppId ?? ""),
+          id: item.id,
+          name: item.name,
+          remoteAppId: item.remoteAppId,
         }))
         .filter((item) => item.id && item.remoteAppId);
     },

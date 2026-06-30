@@ -2,40 +2,40 @@ export interface Environment {
   id: string;
   name: string;
   description: string | null;
-  workspace_path: string;
-  agent_name: string | null;
-  agent_config_id: string | null;
+  workspacePath: string;
+  agentName: string | null;
+  agentConfigId: string | null;
   status: string;
-  machine_name: string | null;
+  machineName: string | null;
   branch: string | null;
-  auto_start: boolean;
-  last_poll_at: number | null;
-  created_at: number;
-  updated_at: number;
-  session_id?: string;
-  instance_status?: string | null;
-  instance_id?: string | null;
+  autoStart: boolean;
+  lastPollAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  sessionId?: string;
+  instanceStatus?: string | null;
+  instanceId?: string | null;
   instances?: EnvironmentInstance[];
-  instances_count?: number;
-  worker_type?: string;
-  channel_group_id?: string;
+  instancesCount?: number;
+  workerType?: string;
+  channelGroupId?: string;
   directory?: string;
 }
 
 export interface EnvironmentInstance {
   id: string;
-  instance_number: number;
+  instanceNumber: number;
   status: "starting" | "running" | "stopped" | "error";
-  session_id: string | null;
+  sessionId: string | null;
   port: number;
-  created_at: number;
+  createdAt: number;
 }
 
 export interface EnvironmentDetail extends Environment {
   secret: string;
   capabilities: Record<string, unknown> | null;
-  worker_type: string;
-  max_sessions: number;
+  workerType: string;
+  maxSessions: number;
 }
 
 export type ChannelProviderStatus = "disabled" | "enabled";

@@ -1,15 +1,11 @@
 /**
- * Workflow API 模块（RESTful 风格）。
+ * Workflow Definition API Client。
  *
- * 对照后端 RESTful 路由，通过 HTTP 方法和资源路径表达操作语义。
- * 不再使用单一 POST + action 字段的分发模式。
- *
- * 类型定义同步于 packages/sdk/src/modules/workflow-defs.ts 的 WorkflowDefApi 方法签名。
+ * 对接后端 POST /web/workflow-defs，通过 action 字段分发。
+ * 类型定义与 workflow-defs.ts 共享。
  */
 
-import { request } from "./request";
-
-// ── 类型定义（与现有 workflow-defs.ts 共享，此处按需重导出或内联） ──
+// ── 类型定义 ──
 
 /** 工作流定义列表项 */
 export interface WorkflowDefItem {
@@ -45,66 +41,56 @@ export interface VersionYamlResponse {
 
 // ── API Client ──
 
+import type { ApiResponse } from "./request";
+import { request } from "./request";
+
+const ENDPOINT = "/web/workflow-defs";
+
+/** 后端 action 分发公共入口：POST /web/workflow-defs + { action } */
+function dispatch<T>(body: Record<string, unknown>): Promise<ApiResponse<T>> {
+  return request<T>(ENDPOINT, { method: "POST", body });
+}
+
 export const workflowApi = {
   /** 创建工作流定义 */
-  create: (body: Record<string, unknown>) => request<WorkflowDefItem>("/web/workflow-defs", { method: "POST", body }),
+  create: (name: string, description?: string) => dispatch<WorkflowDefItem>({ action: "create", name, description }),
 
   /** 保存工作流 YAML 草稿 */
-  save: (workflowId: string, yaml: string) =>
-    request<void>(`/web/workflow-defs/${workflowId}`, {
-      method: "PUT",
-      body: { yaml },
-    }),
+  save: (workflowId: string, yaml: string) => dispatch<void>({ action: "save", workflowId, yaml }),
 
   /** 发布工作流版本 */
-  publish: (workflowId: string) =>
-    request<WorkflowVersionItem>(`/web/workflow-defs/${workflowId}/publish`, {
-      method: "POST",
-    }),
+  publish: (workflowId: string) => dispatch<WorkflowVersionItem>({ action: "publish", workflowId }),
 
   /** 列出当前组织下所有工作流定义 */
-  list: () => request<WorkflowDefItem[]>("/web/workflow-defs", { method: "GET" }),
+  list: () => dispatch<WorkflowDefItem[]>({ action: "list" }),
 
   /** 获取单个工作流详情（含草稿 YAML） */
-  get: (workflowId: string) => request<WorkflowDefItem>(`/web/workflow-defs/${workflowId}`, { method: "GET" }),
+  get: (workflowId: string) => dispatch<WorkflowDefItem>({ action: "get", workflowId }),
 
   /** 获取工作流的所有版本历史 */
-  getVersions: (workflowId: string) =>
-    request<WorkflowVersionItem[]>(`/web/workflow-defs/${workflowId}/versions`, { method: "GET" }),
+  getVersions: (workflowId: string) => dispatch<WorkflowVersionItem[]>({ action: "getVersions", workflowId }),
 
   /** 获取指定版本的 YAML 内容 */
   getVersion: (workflowId: string, version: number) =>
-    request<VersionYamlResponse>(`/web/workflow-defs/${workflowId}/versions/${version}`, { method: "GET" }),
+    dispatch<VersionYamlResponse>({ action: "getVersion", workflowId, version }),
 
   /** 将指定版本设为最新（回滚操作） */
-  setLatest: (workflowId: string, version: number) =>
-    request<void>(`/web/workflow-defs/${workflowId}/versions/${version}/set-latest`, {
-      method: "POST",
-    }),
+  setLatest: (workflowId: string, version: number) => dispatch<void>({ action: "setLatest", workflowId, version }),
 
   /** 删除工作流定义 */
-  del: (workflowId: string) => request<void>(`/web/workflow-defs/${workflowId}`, { method: "DELETE" }),
+  del: (workflowId: string) => dispatch<void>({ action: "delete", workflowId }),
 
   /** 更新工作流元数据（名称、描述） */
   updateMeta: (workflowId: string, data: { name?: string; description?: string }) =>
-    request<WorkflowDefItem>(`/web/workflow-defs/${workflowId}/meta`, {
-      method: "PUT",
-      body: data,
-    }),
+    dispatch<WorkflowDefItem>({ action: "updateMeta", workflowId, ...data }),
 
   /** 将指定版本恢复为当前草稿 */
   restoreToDraft: (workflowId: string, version: number) =>
-    request<void>(`/web/workflow-defs/${workflowId}/versions/${version}/restore`, {
-      method: "POST",
-    }),
+    dispatch<void>({ action: "restoreToDraft", workflowId, version }),
 
   /** 扫描可恢复的工作流 ID 列表 */
-  recover: () => request<string[]>("/web/workflow-defs/recover", { method: "POST" }),
+  recover: () => dispatch<string[]>({ action: "recover" }),
 
   /** 确认恢复选中的工作流 */
-  recoverApply: (workflowIds: string[]) =>
-    request<WorkflowDefItem[]>("/web/workflow-defs/recover/apply", {
-      method: "POST",
-      body: { workflowIds },
-    }),
+  recoverApply: (workflowIds: string[]) => dispatch<WorkflowDefItem[]>({ action: "recoverApply", workflowIds }),
 };

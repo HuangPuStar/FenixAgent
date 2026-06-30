@@ -1,8 +1,8 @@
 /**
  * organizations.ts — 组织域 API 模块
  *
- * 封装组织的 CRUD、成员管理、活跃组织切换等操作，采用 RESTful 风格，
- * 统一通过 request() 与后端 /web/organizations 通信。
+ * 封装组织的 CRUD、成员管理、活跃组织切换等操作。
+ * 后端使用 POST /web/organizations 的 action 分发模式，域模块内部抽象为具名方法。
  */
 
 import { request } from "./request";
@@ -12,7 +12,8 @@ export interface OrgInfo {
   id: string;
   name: string;
   slug: string;
-  createdAt: number;
+  /** better-auth 可能返回 ISO 时间字符串或 Unix 时间戳，对齐后端 FlexibleDateTimeSchema */
+  createdAt: number | string;
 }
 
 /** 成员信息 */
@@ -20,7 +21,10 @@ export interface OrgMember {
   id: string;
   userId: string;
   role: string;
-  organizationId: string;
+  /** 部分接口返回时可能不包含所属组织 ID，对齐后端 OrganizationMemberSchema */
+  organizationId?: string;
+  /** 成员关联的用户基础信息，对齐后端 OrganizationUserSchema */
+  user?: { id: string; name: string; email: string };
 }
 
 /** 组织详情（含成员列表） */
@@ -31,7 +35,8 @@ export interface OrgDetail extends OrgInfo {
 /** 创建组织请求体 */
 export interface CreateOrgBody {
   name: string;
-  slug?: string;
+  /** 必填，对齐后端 CreateOrganizationActionSchema 强制要求 slug */
+  slug: string;
 }
 
 /** 更新组织请求体（字段可选） */
@@ -48,81 +53,86 @@ export interface SetActiveResult {
   success: boolean;
 }
 
-/** 删除结果响应 */
+/** 删除结果响应，对齐后端 case "delete" 返回 { success: true, data: { deleted: true } } */
 export interface DeleteResult {
-  success: boolean;
+  deleted: true;
 }
 
 export const orgApi = {
   /** 获取当前用户所属的全部组织列表 */
-  list: () => request<OrgInfo[]>("/web/organizations", { method: "GET" }),
+  list: () =>
+    request<Array<{ id: string; name: string; slug: string; role: string }>>("/web/organizations", {
+      method: "POST",
+      body: { action: "list" },
+    }),
 
-  /** 根据组织 ID 获取组织详情 */
+  /** 根据组织 ID 获取组织详情（含成员列表） */
   get: (orgId: string) =>
-    request<OrgDetail>("/web/organizations/:orgId", {
-      method: "GET",
-      params: { orgId },
+    request<OrgDetail>("/web/organizations", {
+      method: "POST",
+      body: { action: "get", organizationId: orgId },
     }),
 
   /** 根据组织 ID 获取组织完整信息（含成员列表等扩展字段） */
   getFull: (orgId: string) =>
-    request<OrgDetail>("/web/organizations/:orgId/full", {
-      method: "GET",
-      params: { orgId },
+    request<OrgDetail>("/web/organizations", {
+      method: "POST",
+      body: { action: "get-full", organizationId: orgId },
     }),
 
   /** 创建新组织 */
-  create: (body: CreateOrgBody) => request<OrgInfo>("/web/organizations", { method: "POST", body }),
+  create: (body: CreateOrgBody) =>
+    request<OrgInfo>("/web/organizations", {
+      method: "POST",
+      body: { action: "create", name: body.name, slug: body.slug },
+    }),
 
   /** 更新已有组织信息 */
   update: (orgId: string, body: UpdateOrgBody) =>
-    request<OrgInfo>("/web/organizations/:orgId", {
-      method: "PUT",
-      params: { orgId },
-      body,
+    request<OrgInfo>("/web/organizations", {
+      method: "POST",
+      body: { action: "update", organizationId: orgId, data: body },
     }),
 
   /** 删除指定组织 */
   del: (orgId: string) =>
-    request<DeleteResult>("/web/organizations/:orgId", {
-      method: "DELETE",
-      params: { orgId },
+    request<DeleteResult>("/web/organizations", {
+      method: "POST",
+      body: { action: "delete", organizationId: orgId },
     }),
 
   /** 将指定组织设为当前活跃组织 */
   setActive: (orgId: string) =>
-    request<SetActiveResult>("/web/organizations/:orgId/active", {
+    request<SetActiveResult>("/web/organizations", {
       method: "POST",
-      params: { orgId },
+      body: { action: "set-active", organizationId: orgId },
     }),
 
   /** 获取指定组织的成员列表 */
   listMembers: (orgId: string) =>
-    request<OrgMember[]>("/web/organizations/:orgId/members", {
-      method: "GET",
-      params: { orgId },
-    }),
-
-  /** 向指定组织添加新成员 */
-  addMember: (orgId: string, body: AddMemberBody) =>
-    request<OrgMember>("/web/organizations/:orgId/members", {
+    request<OrgMember[]>("/web/organizations", {
       method: "POST",
-      params: { orgId },
-      body,
+      body: { action: "list-members", organizationId: orgId },
     }),
 
-  /** 从指定组织中移除成员 */
+  /** 向指定组织添加新成员（通过邮箱邀请） */
+  addMember: (orgId: string, body: AddMemberBody) =>
+    request<OrgMember>("/web/organizations", {
+      method: "POST",
+      body: { action: "add-member", organizationId: orgId, email: body.email, role: body.role },
+    }),
+
+  /** 从指定组织中移除成员，后端返回 { success: true }（无 data 字段） */
   removeMember: (orgId: string, memberId: string) =>
-    request<DeleteResult>("/web/organizations/:orgId/members/:memberId", {
-      method: "DELETE",
-      params: { orgId, memberId },
+    request<SetActiveResult>("/web/organizations", {
+      method: "POST",
+      body: { action: "remove-member", organizationId: orgId, memberId },
     }),
 
-  /** 更新指定组织中某成员的角色 */
+  /** 更新指定组织中某成员的角色，后端返回 { success: true }（无 data 字段） */
   updateRole: (orgId: string, memberId: string, role: string) =>
-    request<OrgMember>("/web/organizations/:orgId/members/:memberId", {
-      method: "PUT",
-      params: { orgId, memberId },
-      body: { role },
+    request<SetActiveResult>("/web/organizations", {
+      method: "POST",
+      body: { action: "update-role", organizationId: orgId, memberId, role },
     }),
 };

@@ -5,32 +5,33 @@
  * 以及与 AgentConfig 的绑定/解绑操作，统一通过 request() 与后端通信。
  */
 
-import type { ApiResponse } from "./request";
 import { request } from "./request";
 
 /** Agent Site 应用基本信息 */
 export interface SiteApp {
   id: string;
+  organizationId: string;
+  userId: string;
+  remoteAppId: string;
   name: string;
-  description?: string;
-  visibility?: string;
-  token?: string;
-  createdAt: string;
-  updatedAt: string;
+  description: string | null;
+  visibility: "private" | "org" | "authenticated" | "public";
+  createdAt: number;
+  updatedAt: number;
 }
 
 /** 创建站点应用请求体 */
 export interface SiteCreateBody {
   name: string;
   description?: string;
-  visibility?: string;
+  visibility?: "private" | "org" | "authenticated" | "public";
 }
 
 /** 更新站点应用请求体（部分字段可选） */
 export interface SiteUpdateBody {
   name?: string;
   description?: string;
-  visibility?: string;
+  visibility?: "private" | "org" | "authenticated" | "public";
 }
 
 export const agentSitesApi = {
@@ -62,7 +63,7 @@ export const agentSitesApi = {
 
   /** 轮换站点应用的访问 Token，旧 Token 立即失效 */
   rotateToken: (id: string) =>
-    request<{ token: string }>("/web/agent-sites/apps/:id/rotate-token", {
+    request<void>("/web/agent-sites/apps/:id/rotate-token", {
       method: "POST",
       params: { id },
     }),
@@ -100,7 +101,7 @@ export const agentSitesApi = {
    * 后端走 PK 联合唯一 + ON CONFLICT DO NOTHING，重复绑定幂等。
    */
   bindSite: (agentConfigId: string, siteAppId: string) =>
-    request<ApiResponse<unknown>>("/web/agent-sites/agent-configs/:agentConfigId/sites/:siteAppId", {
+    request<void>("/web/agent-sites/agent-configs/:agentConfigId/sites/:siteAppId", {
       method: "POST",
       params: { agentConfigId, siteAppId },
     }),
@@ -110,7 +111,7 @@ export const agentSitesApi = {
    * chat 右侧 Sites tab 的 x 按钮调用。DELETE 天然幂等。
    */
   unbindSite: (agentConfigId: string, siteAppId: string) =>
-    request<ApiResponse<unknown>>("/web/agent-sites/agent-configs/:agentConfigId/sites/:siteAppId", {
+    request<void>("/web/agent-sites/agent-configs/:agentConfigId/sites/:siteAppId", {
       method: "DELETE",
       params: { agentConfigId, siteAppId },
     }),

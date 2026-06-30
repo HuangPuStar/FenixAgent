@@ -4,6 +4,7 @@ import { environmentRepo } from "../../repositories";
 import { sessionRepo } from "../../repositories/session";
 import { SessionDetailSchema, SessionHistorySchema, SessionListResponseSchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
+import { createSSEStream } from "../../transport/sse-writer";
 
 const app = new Elysia({ name: "web-sessions" }).use(authGuardPlugin).model({
   "session-detail": SessionDetailSchema,
@@ -116,6 +117,60 @@ app.get(
       tags: ["Sessions"],
       summary: "获取会话事件历史",
       description: "返回指定会话当前已缓存的事件历史，用于会话回放和问题排查。",
+    },
+  },
+);
+
+/** GET /web/sessions/:id/events — SSE 事件流，供前端 EventSource 订阅实时会话事件 */
+app.get(
+  "/sessions/:id/events",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + sessionAuth 组合下类型推断不稳定
+  async ({ request, store, params, error }: any) => {
+    const authCtx = store.authContext;
+    if (!authCtx) {
+      return error(401, { error: { type: "UNAUTHORIZED", message: "No auth context" } });
+    }
+
+    const sessionId = params.id;
+    if (!sessionId) {
+      return error(400, { error: { type: "VALIDATION_ERROR", message: "Session ID is required" } });
+    }
+
+    // 验证 session 归属当前组织
+    const row = await sessionRepo.getById(sessionId);
+    if (!row) {
+      return error(404, { error: { type: "NOT_FOUND", message: "Session not found" } });
+    }
+    if (row.environmentId) {
+      const env = await environmentRepo.getById(row.environmentId);
+      if (!env || env.organizationId !== authCtx.organizationId) {
+        return error(404, { error: { type: "NOT_FOUND", message: "Session not found" } });
+      }
+    }
+
+    // 断线重连：从 Last-Event-ID header 或 fromSeqNum query 获取起始序号
+    const lastEventId = request.headers.get("Last-Event-ID");
+    const fromSeqQuery = (request as Request).url ? new URL(request.url).searchParams.get("fromSeqNum") : null;
+    const fromSeqNum = fromSeqQuery ? Number(fromSeqQuery) : lastEventId ? Number(lastEventId) : 0;
+
+    return createSSEStream(request, sessionId, isNaN(fromSeqNum) ? 0 : fromSeqNum);
+  },
+  {
+    sessionAuth: true,
+    detail: {
+      tags: ["Sessions"],
+      summary: "订阅会话事件流",
+      description: "通过 SSE 订阅指定会话的实时事件流，支持 `Last-Event-ID` 或 `fromSeqNum` 查询参数进行断线重连。",
+      responses: {
+        200: {
+          description: "SSE 事件流，事件负载格式为 `{ type, payload, direction, seqNum }`。",
+          content: {
+            "text/event-stream": {
+              schema: { type: "string", format: "binary" },
+            },
+          },
+        },
+      },
     },
   },
 );

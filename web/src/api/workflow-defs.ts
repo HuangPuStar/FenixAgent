@@ -49,9 +49,14 @@ export interface TriggerItem {
   updatedAt: string;
 }
 
+export interface WorkflowParamDefsResponse {
+  version: number;
+  params: Record<string, unknown>;
+}
+
 export interface CustomToolInputDef {
   type: string;
-  required: boolean;
+  required?: boolean;
   description: string;
   group?: string;
 }
@@ -131,6 +136,13 @@ export const workflowDefApi = {
   /** 恢复版本到草稿 */
   restoreToDraft: (workflowId: string, version: number) =>
     request<void>("/web/workflow-defs", { method: "POST", body: { action: "restoreToDraft", workflowId, version } }),
+
+  /** 获取工作流参数定义（从 YAML 解析） */
+  getParamDefs: (workflowId: string, version?: number) =>
+    request<WorkflowParamDefsResponse>("/web/workflow-defs", {
+      method: "POST",
+      body: { action: "getParamDefs", workflowId, version },
+    }),
 
   // ── Triggers ──
 

@@ -27,7 +27,7 @@ import { mcpApi } from "@/src/api/mcp";
 import { modelApi } from "@/src/api/models";
 import { registryApi } from "@/src/api/registry";
 import { unwrap } from "@/src/api/request";
-import { agentSitesApi } from "@/src/api/sites";
+import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { skillConfigApi } from "@/src/api/skills";
 import { NS } from "../../i18n";
 import { canManageAgentSharing, getAgentDisplayName, isAgentWritable } from "../../lib/agent-resource-access";
@@ -243,17 +243,16 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         name: m.name,
       }));
 
-      // 可用 sites 选项（SiteApp 类型不含 remoteAppId，但后端实际会返回）
+      // 可用 sites 选项
       let siteOptionsVal: SiteOption[] = [];
       try {
-        const sites = (await unwrap(agentSitesApi.list())) as unknown as Record<string, unknown>[] | null;
+        const sites = (await unwrap(agentSitesApi.list())) as SiteApp[] | null;
         siteOptionsVal = (Array.isArray(sites) ? sites : [])
-          .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
           .map((item) => ({
-            id: String(item.id ?? ""),
-            name: String(item.name ?? ""),
-            remoteAppId: String(item.remoteAppId ?? ""),
-            description: typeof item.description === "string" ? item.description : null,
+            id: item.id,
+            name: item.name,
+            remoteAppId: item.remoteAppId,
+            description: item.description,
           }))
           .filter((item) => item.id && item.remoteAppId);
       } catch (err) {
@@ -290,7 +289,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           : [];
 
         // 知识库选项
-        const knowledgeOptionsVal = Array.isArray(kbData.items) ? (kbData.items as unknown as KnowledgeBaseInfo[]) : [];
+        const knowledgeOptionsVal = Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : [];
 
         // Skill 选项
         const skillOptionsVal = normalizeSkillOptionsPayload(skillsData);
@@ -370,7 +369,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         : [];
 
       const kbData = await unwrap(kbApi.list());
-      const knowledgeOptionsVal = Array.isArray(kbData.items) ? (kbData.items as unknown as KnowledgeBaseInfo[]) : [];
+      const knowledgeOptionsVal = Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : [];
 
       const skillsData = await unwrap(skillConfigApi.list());
       const skillOptionsVal = normalizeSkillOptionsPayload(skillsData);
@@ -542,9 +541,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         let latestKnowledgeOptions = knowledgeOptions;
         const kbData = await unwrap(kbApi.list());
         if (kbData) {
-          latestKnowledgeOptions = (Array.isArray(kbData.items)
-            ? kbData.items
-            : []) as unknown as typeof knowledgeOptions;
+          latestKnowledgeOptions = (Array.isArray(kbData) ? kbData : []) as unknown as typeof knowledgeOptions;
           setKnowledgeOptions(latestKnowledgeOptions);
         }
         const validKnowledgeBaseIds = filterKnowledgeBaseIds(formKnowledgeBaseIds, latestKnowledgeOptions);
@@ -628,13 +625,14 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       if (!matchedAgent) return [];
 
       const envs = await unwrap(envApi.list());
-      const matchedEnv = (envs as unknown as { id: string; agent_config_id?: string; instances_count?: number }[]).find(
-        (e) => e.agent_config_id === matchedAgent.id,
+      const matchedEnv = (envs as unknown as { id: string; agentConfigId?: string; instancesCount?: number }[]).find(
+        (e) => e.agentConfigId === matchedAgent.id,
       );
-      if (!matchedEnv || (matchedEnv.instances_count ?? 0) <= 0) return [];
+      if (!matchedEnv || (matchedEnv.instancesCount ?? 0) <= 0) return [];
 
       const instData = await unwrap(envApi.listInstances({ id: matchedEnv.id }));
-      const instances = (instData as unknown as { items?: { id: string; status: string }[] } | null)?.items ?? [];
+      const instances =
+        (instData as unknown as { instances?: { id: string; status: string }[] } | null)?.instances ?? [];
       return instances
         .filter((inst) => inst.status === "running" || inst.status === "starting")
         .map((inst) => ({ id: inst.id, environmentId: matchedEnv.id }));

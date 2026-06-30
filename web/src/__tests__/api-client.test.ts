@@ -57,72 +57,57 @@ beforeEach(() => {
 // =============================================================================
 
 describe("session SDK functions", () => {
-  // 测试创建 session 发送 POST 请求
-  test("sessionApi.create — POST /web/sessions", async () => {
-    fetchMock.responseData = { success: true, data: { id: "sess_1", title: "test" } };
-    const { sessionApi } = await import("../api/sessions");
-    await sessionApi.create({ title: "test" });
-    expect(fetchMock.lastUrl).toContain("/web/sessions");
-    expect(fetchMock.lastOpts.method).toBe("POST");
-  });
-
-  // 测试获取 session 详情发送 POST 请求（action 分发模式）
-  test("sessionApi.get — POST /web/sessions with action=get", async () => {
-    fetchMock.responseData = { success: true, data: { id: "sess_1", title: "test" } };
+  // 测试获取 session 详情发送 GET 请求（RESTful 路径参数模式）
+  test("sessionApi.get — GET /web/sessions/:id", async () => {
+    fetchMock.responseData = { id: "sess_1", title: "test" };
     const { sessionApi } = await import("../api/sessions");
     await sessionApi.get({ sessionId: "sess_1" });
-    expect(fetchMock.lastUrl).toContain("/web/sessions");
-    expect(fetchMock.lastOpts.method).toBe("POST");
-    expect(JSON.parse(fetchMock.lastOpts.body as string)).toEqual({ action: "get", sessionId: "sess_1" });
+    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1");
+    expect(fetchMock.lastOpts.method).toBe("GET");
+    expect(fetchMock.lastOpts.body).toBeUndefined();
   });
 
-  // 测试获取 session 历史发送 POST 请求（action 分发模式）
-  test("sessionApi.history — POST /web/sessions with action=history", async () => {
-    fetchMock.responseData = { success: true, data: { events: [] } };
+  // 测试获取 session 历史发送 GET 请求（RESTful 路径参数模式）
+  test("sessionApi.history — GET /web/sessions/:id/history", async () => {
+    fetchMock.responseData = { events: [] };
     const { sessionApi } = await import("../api/sessions");
     await sessionApi.history({ sessionId: "sess_1" });
-    expect(fetchMock.lastUrl).toContain("/web/sessions");
-    expect(fetchMock.lastOpts.method).toBe("POST");
-    expect(JSON.parse(fetchMock.lastOpts.body as string)).toEqual({ action: "history", sessionId: "sess_1" });
+    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/history");
+    expect(fetchMock.lastOpts.method).toBe("GET");
   });
 
-  // 测试发送事件包含 JSON body（action 分发模式，sessionId 展平到顶层）
-  test("controlApi.sendEvent — POST with JSON body", async () => {
-    fetchMock.responseData = { success: true, data: {} };
-    const { controlApi } = await import("../api/control");
+  // 测试发送事件使用 RESTful 路径参数，sessionId 在 URL 中
+  test("controlApi.sendEvent — POST /web/sessions/:id/events", async () => {
+    fetchMock.responseData = { status: "ok" };
+    const { controlApi } = await import("../api/sessions");
     await controlApi.sendEvent({ sessionId: "sess_1" }, { type: "user", content: "hello" });
-    expect(fetchMock.lastUrl).toContain("/web/control");
+    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/events");
     expect(fetchMock.lastOpts.method).toBe("POST");
     expect(JSON.parse(fetchMock.lastOpts.body as string)).toEqual({
-      action: "send_event",
-      sessionId: "sess_1",
       type: "user",
       content: "hello",
     });
   });
 
-  // 测试发送控制命令包含 JSON body（action 分发模式）
-  test("controlApi.control — POST with JSON body", async () => {
-    fetchMock.responseData = { success: true, data: {} };
-    const { controlApi } = await import("../api/control");
+  // 测试发送控制命令使用 RESTful 路径参数
+  test("controlApi.control — POST /web/sessions/:id/control", async () => {
+    fetchMock.responseData = { status: "ok" };
+    const { controlApi } = await import("../api/sessions");
     await controlApi.control({ sessionId: "sess_1" }, { type: "resume" });
-    expect(fetchMock.lastUrl).toContain("/web/control");
+    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/control");
     expect(fetchMock.lastOpts.method).toBe("POST");
-    expect(JSON.parse(fetchMock.lastOpts.body as string)).toEqual({
-      action: "control",
-      sessionId: "sess_1",
-      type: "resume",
-    });
+    expect(JSON.parse(fetchMock.lastOpts.body as string)).toEqual({ type: "resume" });
   });
 
-  // 测试中断命令
-  test("controlApi.interrupt — POST interrupt", async () => {
-    fetchMock.responseData = { success: true, data: {} };
-    const { controlApi } = await import("../api/control");
+  // 测试中断命令使用 RESTful 路径参数，无 body
+  test("controlApi.interrupt — POST /web/sessions/:id/interrupt", async () => {
+    fetchMock.responseData = { status: "ok" };
+    const { controlApi } = await import("../api/sessions");
     await controlApi.interrupt({ sessionId: "sess_1" });
-    expect(fetchMock.lastUrl).toContain("/web/control");
+    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/interrupt");
     expect(fetchMock.lastOpts.method).toBe("POST");
-    expect(JSON.parse(fetchMock.lastOpts.body as string)).toEqual({ action: "interrupt", sessionId: "sess_1" });
+    // interrupt 无 body
+    expect(fetchMock.lastOpts.body).toBeUndefined();
   });
 });
 

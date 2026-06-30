@@ -79,11 +79,14 @@ export const fileApi = {
 
   /**
    * 读取环境工作区中指定路径的文件内容。
+   *
+   * 文本文件返回 JSON 格式的 FileContent；二进制文件（如图片、视频等）后端直接返回
+   * application/octet-stream 流，此时 data 为 undefined，调用方需自行处理。
    * @param id - 环境 ID
    * @param subpath - 文件路径（相对于 user/ 目录）
    */
   readFile: (id: string, subpath: string) =>
-    request<FileContent>(`/web/environments/:id/user/${subpath}`, { params: { id } }),
+    request<FileContent | undefined>(`/web/environments/:id/user/${subpath}`, { params: { id } }),
 
   /**
    * 上传文件到环境工作区。使用 FormData 作为请求体以支持多文件上传。

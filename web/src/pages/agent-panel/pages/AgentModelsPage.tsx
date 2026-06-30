@@ -66,7 +66,7 @@ export function AgentModelsPage() {
           const providerKey = getProviderKey(p);
           try {
             const detail = await unwrap(providerApi.get(providerKey));
-            modelsMap[providerKey] = detail.provider.models ?? [];
+            modelsMap[providerKey] = detail.models ?? [];
           } catch {
             modelsMap[providerKey] = [];
           }

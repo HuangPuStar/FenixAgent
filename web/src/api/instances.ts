@@ -1,51 +1,61 @@
 /**
  * instances.ts — Instance 管理 API 模块
  *
- * 封装 Instance 的创建、批量生成、列表查询、删除等操作。
- * 后端使用 RESTful 风格（GET/POST/DELETE），域模块内部抽象为具名方法。
+ * 封装 Instance 的创建、删除等操作。
+ * 后端路由前缀为 /web/instances，返回 snake_case 字段，本模块负责键名转换。
  */
 
+import type { ApiResponse } from "./request";
 import { request } from "./request";
 
-/** 单个 Instance 信息 */
+/** 单个 Instance 信息（camelCase 转换后） */
 export interface InstanceInfo {
   id: string;
-  environmentId: string;
+  port: number;
   status: string;
-  createdAt?: string;
-  updatedAt?: string;
+  error: string | null;
+  groupId: string;
+  environmentId: string | null;
+  sessionId: string | null;
+  instanceNumber: number;
+  createdAt: number;
   [key: string]: unknown;
-}
-
-/** 列表响应 */
-export interface InstanceListResult {
-  items: InstanceInfo[];
-  total: number;
-  page: number;
-  pageSize: number;
 }
 
 /** 删除响应 */
 export interface InstanceDeleteResult {
-  id: string;
-  deleted: boolean;
+  ok: boolean;
+}
+
+// ── snake_case → camelCase 键名映射 ──
+
+function toCamelKeys(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    result[camelKey] = value;
+  }
+  return result;
+}
+
+async function camelResponse<T>(resp: Promise<ApiResponse<T>>): Promise<ApiResponse<T>> {
+  const r = await resp;
+  if (r.success && r.data && typeof r.data === "object" && !Array.isArray(r.data)) {
+    r.data = toCamelKeys(r.data as Record<string, unknown>) as unknown as T;
+  }
+  return r;
 }
 
 export const instanceApi = {
-  /** 创建单个 Instance */
-  create: (body: Record<string, unknown>) => request<InstanceInfo>("/v2/instances", { method: "POST", body }),
+  /** 从环境启动新实例（POST /web/instances/from-environment） */
+  spawn: (body: { environmentId: string }) =>
+    camelResponse(request<InstanceInfo>("/web/instances/from-environment", { method: "POST", body })),
 
-  /** 批量生成 Instance（从 environment 模板 spawn） */
-  spawn: (body: Record<string, unknown>) => request<InstanceInfo>("/v2/instances/spawn", { method: "POST", body }),
+  /** 停止并删除指定实例（DELETE /web/instances/:id） */
+  del: (params: { id: string }) =>
+    request<InstanceDeleteResult>("/web/instances/:id", { method: "DELETE", params: { id: params.id } }),
 
-  /** 获取 Instance 列表 */
-  list: () => request<InstanceListResult>("/v2/instances", { method: "GET" }),
-
-  /** 删除指定 Instance */
-  del: (params: { instanceId: string }) =>
-    request<InstanceDeleteResult>("/v2/instances/:instanceId", { method: "DELETE", params }),
-
-  /** 删除指定 Instance（别名） */
+  /** 停止并删除指定实例（别名） */
   delete: (params: { id: string }) =>
-    request<InstanceDeleteResult>("/v2/instances/:instanceId", { method: "DELETE", params: { instanceId: params.id } }),
+    request<InstanceDeleteResult>("/web/instances/:id", { method: "DELETE", params: { id: params.id } }),
 };

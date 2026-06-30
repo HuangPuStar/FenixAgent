@@ -129,14 +129,14 @@ export function AgentSidebarTree({
       }));
 
       // 加载有活跃实例的 environment 的 instances
-      const activeEnvs = envs.filter((e) => (((e as Record<string, unknown>).instances_count as number) ?? 0) > 0);
+      const activeEnvs = envs.filter((e) => (e.instancesCount ?? 0) > 0);
       if (activeEnvs.length > 0) {
         const results = await Promise.allSettled(activeEnvs.map((env) => unwrap(envApi.listInstances({ id: env.id }))));
         const instMap: Record<string, EnvironmentInstance[]> = {};
         activeEnvs.forEach((env, i) => {
           const r = results[i];
           if (r.status === "fulfilled") {
-            instMap[env.id] = (r.value.items ?? []) as unknown as EnvironmentInstance[];
+            instMap[env.id] = (r.value.instances ?? []) as unknown as EnvironmentInstance[];
           }
         });
 
@@ -208,7 +208,7 @@ export function AgentSidebarTree({
       if (spawnNew) {
         // 新建实例：先 spawn，再 enter 指定 instance_number
         const spawned = await unwrap(instanceApi.spawn({ environmentId: envId }));
-        const newInstanceNumber = (spawned as Record<string, unknown>).instance_number as number | undefined;
+        const newInstanceNumber = spawned.instanceNumber;
         if (newInstanceNumber !== undefined) {
           enterResult = await unwrap(envApi.enter({ id: envId }, { instance_number: newInstanceNumber }));
         } else {
@@ -561,10 +561,10 @@ export function AgentSidebarTree({
                               ? "bg-brand-subtle text-brand"
                               : "text-text-primary hover:bg-surface-hover",
                           ].join(" ")}
-                          onClick={() => runEnter(node, { instanceNumber: inst.instance_number })}
+                          onClick={() => runEnter(node, { instanceNumber: inst.instanceNumber })}
                         >
                           <span className={`status-dot ${getInstanceStatus(inst)}`} />
-                          <span className="truncate">{t("instanceN", { number: inst.instance_number })}</span>
+                          <span className="truncate">{t("instanceN", { number: inst.instanceNumber })}</span>
                           <div className="ml-auto flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             <button
                               type="button"
@@ -649,7 +649,7 @@ export function AgentSidebarTree({
                       });
                     }}
                   />
-                  {t("instanceN", { number: inst.instance_number })}
+                  {t("instanceN", { number: inst.instanceNumber })}
                 </label>
               ))}
             </div>

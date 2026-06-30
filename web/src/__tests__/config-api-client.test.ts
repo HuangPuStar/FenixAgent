@@ -35,12 +35,12 @@ describe("config SDK modules", () => {
   test("providerApi.set sends correct payload", async () => {
     fetchMock.body = { success: true, data: { name: "openai", keyHint: "sk-...abc" } };
     const { providerApi } = await import("../api/providers");
-    await providerApi.set("openai", { keyHint: "sk-test" });
+    await providerApi.set("openai", { apiKey: "sk-test" });
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
     const body = JSON.parse(call[1].body);
     expect(body.action).toBe("set");
     expect(body.name).toBe("openai");
-    expect(body.data).toEqual({ keyHint: "sk-test" });
+    expect(body.data).toEqual({ apiKey: "sk-test" });
   });
 
   // 测试 test provider 返回模型列表
@@ -90,16 +90,14 @@ describe("config SDK modules", () => {
     });
   });
 
-  // 测试 delete skill 使用 POST + action 分发模式
-  test("skillConfigApi.del sends delete action via POST", async () => {
+  // 测试 delete skill 使用 RESTful DELETE + 路径参数模式
+  test("skillConfigApi.del sends DELETE to path parameter endpoint", async () => {
     fetchMock.body = { success: true, data: null };
     const { skillConfigApi } = await import("../api/skills");
     await skillConfigApi.del("my-skill");
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toBe("/web/config/skills");
-    expect(call[1].method).toBe("POST");
-    const body = JSON.parse(call[1].body);
-    expect(body).toEqual({ action: "delete", name: "my-skill" });
+    expect(call[0]).toBe("/web/config/skills/my-skill");
+    expect(call[1].method).toBe("DELETE");
   });
 
   // 测试非 200 状态码返回 error

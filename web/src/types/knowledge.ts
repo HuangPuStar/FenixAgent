@@ -16,8 +16,10 @@ export interface KnowledgeBaseInfo {
   name: string;
   slug: string;
   description: string | null;
-  provider: string;
+  provider: string | null;
   remoteId: string | null;
+  remoteAccountId: string | null;
+  remoteUserId: string | null;
   status: string;
   lastError: string | null;
   bindingsCount: number;

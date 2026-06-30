@@ -1,7 +1,6 @@
 import type { SetStateAction } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { controlApi } from "@/src/api/control";
-import { getUuid } from "@/src/api/helpers";
 import { unwrap } from "@/src/api/request";
 import type { SessionEvent } from "@/src/api/sessions";
 import { sessionApi } from "@/src/api/sessions";
@@ -31,12 +30,9 @@ class SSEBus {
 
   connect(sessionId: string): void {
     this.disconnect();
-    const uuid = getUuid();
-    const activeOrgId = localStorage.getItem("active_org_id");
-    const params = new URLSearchParams({ uuid: uuid });
-    if (activeOrgId) params.set("activeOrganizationId", activeOrgId);
-    const url = `/web/sessions/${sessionId}/events?${params}`;
-    const es = new EventSource(url);
+    // 后端使用 session cookie 认证，无需通过 query 传递 org 信息
+    const url = `/web/sessions/${sessionId}/events`;
+    const es = new EventSource(url, { withCredentials: true });
     this.eventSource = es;
 
     es.addEventListener("message", (e: MessageEvent) => {
@@ -212,7 +208,8 @@ export class RCSChatAdapter {
       const payload = event.payload || ({} as EventPayload);
 
       if (event.type === "user") {
-        if ((event.direction as string) === "outbound") continue; // skip echoed user messages
+        // direction 是 SSE 实时推送携带的运行时字段，不在 REST SessionEvent schema 中
+        if ((event as unknown as Record<string, unknown>).direction === "outbound") continue; // skip echoed user messages
         flushAssistant();
         const text = extractEventText(payload);
         if (text) {

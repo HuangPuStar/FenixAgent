@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { unwrap } from "@/src/api/request";
-import { agentSitesApi } from "@/src/api/sites";
+import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { NS } from "../../i18n";
 import { cn } from "../../lib/utils";
 
@@ -63,15 +63,14 @@ export function MountSiteDialog({
     if (open) setSelected(new Set());
   }, [open]);
 
-  // 将原始 API 数据转换为展示用的 SiteOption 列表；runtime 数据可能包含 remoteAppId 等未在类型声明中暴露的字段
   const options = useMemo<SiteOption[]>(() => {
-    return ((rawData as unknown[]) ?? [])
-      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    const data = rawData as SiteApp[];
+    return data
       .map((item) => ({
-        id: String(item.id ?? ""),
-        name: String(item.name ?? ""),
-        remoteAppId: String(item.remoteAppId ?? ""),
-        description: typeof item.description === "string" ? item.description : null,
+        id: item.id,
+        name: item.name,
+        remoteAppId: item.remoteAppId,
+        description: item.description,
       }))
       .filter((item) => item.id && item.remoteAppId);
   }, [rawData]);

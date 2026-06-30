@@ -10,6 +10,7 @@ export interface EnsureMetaResult {
   environmentId: string;
   instanceId?: string;
   status: "created" | "reused";
+  apiKey?: string;
 }
 
 /** 触发 Meta Agent 的 Environment 与 Instance 确保流程 */

@@ -10,6 +10,10 @@ import { request } from "./request";
 export interface MachineRecord {
   /** 机器唯一 ID */
   id: string;
+  /** 所属组织 ID；没有组织隔离时为 null */
+  organizationId: string | null;
+  /** 关联用户 ID；未绑定时为 null */
+  userId: string | null;
   /** 机器展示名称 */
   agentName: string;
   /** 用户自定义名称 */
@@ -20,10 +24,18 @@ export interface MachineRecord {
   machineInfo: Record<string, unknown> | null;
   /** 机器标签列表 */
   labels: string[] | null;
-  /** 注册时间戳，单位为秒 */
-  registeredAt: number;
+  /** 机器允许的最大会话数 */
+  maxSessions: number;
+  /** 心跳上报间隔，单位为毫秒 */
+  heartbeatIntervalMs: number;
   /** 最近一次心跳时间戳，单位为秒；未收到时为 null */
   lastHeartbeatAt: number | null;
+  /** 注册时间戳，单位为秒 */
+  registeredAt: number;
+  /** 记录创建时间戳，单位为秒 */
+  createdAt: number;
+  /** 记录更新时间戳，单位为秒 */
+  updatedAt: number;
 }
 
 /** 注册表事件记录 */

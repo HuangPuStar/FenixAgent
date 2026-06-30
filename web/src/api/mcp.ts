@@ -33,6 +33,7 @@ interface McpToggleResult {
 
 /** test/test_url 响应 */
 interface McpTestResult {
+  name?: string;
   reachable: boolean;
   protocol?: boolean;
   serverName?: string | null;

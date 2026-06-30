@@ -46,7 +46,7 @@ export function AgentKnowledgeBasesPage() {
       toast.error(err instanceof Error ? err.message : t("loadError"));
     },
   });
-  const items: KnowledgeBaseInfo[] = listData?.items ?? [];
+  const items: KnowledgeBaseInfo[] = Array.isArray(listData) ? listData : [];
 
   // 详情查询（手动触发）
   const { run: runLoadDetail, loading: detailLoading } = useRequest(
@@ -55,7 +55,7 @@ export function AgentKnowledgeBasesPage() {
       manual: true,
       onSuccess: ([detail, resList]) => {
         setSelectedDetail(detail);
-        setResources(Array.isArray(resList?.items) ? resList.items : []);
+        setResources(Array.isArray(resList) ? resList : []);
       },
       onError: (err) => {
         console.error("Failed to load detail", err);

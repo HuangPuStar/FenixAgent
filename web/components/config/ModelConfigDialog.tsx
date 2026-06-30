@@ -61,7 +61,7 @@ export function ModelConfigDialog({
   // 模型配置变更（仅变更成功时 toast 提示）
   const { run: runSet } = useRequest(
     async (field: string, value: string) => {
-      const data = await unwrap(modelApi.set({ [field]: value } as unknown as ModelConfig));
+      const data = await unwrap(modelApi.set({ [field]: value }));
       return { field, value, data };
     },
     {

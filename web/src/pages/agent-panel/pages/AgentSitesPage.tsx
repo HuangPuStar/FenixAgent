@@ -66,7 +66,7 @@ export function AgentSitesPage() {
     refresh,
   } = useRequest(async () => {
     const raw = await unwrap(agentSitesApi.list());
-    return raw as unknown as SiteItem[];
+    return raw as SiteItem[];
   });
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -76,7 +76,7 @@ export function AgentSitesPage() {
 
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
-  const [formVisibility, setFormVisibility] = useState("private");
+  const [formVisibility, setFormVisibility] = useState<"private" | "org" | "authenticated" | "public">("private");
 
   // 保存（创建/更新）
   const { run: runSave, loading: formSaving } = useRequest(
@@ -277,7 +277,7 @@ export function AgentSitesPage() {
           </div>
           <div className="grid gap-2">
             <Label>可见性</Label>
-            <Select value={formVisibility} onValueChange={setFormVisibility}>
+            <Select value={formVisibility} onValueChange={(v) => setFormVisibility(v as typeof formVisibility)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

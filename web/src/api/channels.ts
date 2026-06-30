@@ -11,18 +11,17 @@ import { request } from "./request";
 interface ChannelBinding {
   id: string;
   platform: string;
-  chatId: string;
+  chatId: string | null;
   agentId: string;
   enabled: boolean;
-  createdAt: number;
-  updatedAt: number;
+  agentName?: string | null;
 }
 
 /** 通道 Provider 描述符 */
 interface ChannelProviderDescriptor {
-  id: string;
-  name: string;
   type: string;
+  label: string;
+  status: "disabled" | "enabled";
 }
 
 /** 通道绑定列表响应 */
@@ -34,7 +33,7 @@ export type ChannelProviderListResponse = ChannelProviderDescriptor[];
 /** 创建通道绑定请求体 */
 export interface CreateChannelBindingRequest {
   platform: string;
-  chatId: string;
+  chatId?: string | null;
   agentId: string;
   enabled?: boolean;
 }
@@ -48,7 +47,10 @@ export type DeleteChannelBindingResponse = Record<string, unknown>;
 /** Hermes 推送服务连接状态 */
 export interface HermesStatus {
   connected: boolean;
-  url?: string;
+  url: string;
+  platforms: string[];
+  reconnecting: boolean;
+  lastConnectedAt: number | null;
 }
 
 /** 更新通道绑定响应 */
@@ -59,7 +61,7 @@ export const channelApi = {
   listProviders: () => request<ChannelProviderListResponse>("/web/channels/providers", { method: "GET" }),
 
   /** 查询 Hermes 消息推送服务连接状态 */
-  hermesStatus: () => request<HermesStatus>("/web/channels/hermes-status", { method: "GET" }),
+  hermesStatus: () => request<HermesStatus>("/web/channels/hermes/status", { method: "GET" }),
 
   /** 获取当前组织下所有的通道绑定关系 */
   listBindings: () => request<ChannelBindingListResponse>("/web/channels/bindings", { method: "GET" }),
@@ -81,7 +83,7 @@ export const channelApi = {
     body: Partial<Pick<ChannelBinding, "platform" | "chatId" | "agentId" | "enabled">>,
   ) =>
     request<UpdateChannelBindingResponse>("/web/channels/bindings/:id", {
-      method: "PUT",
+      method: "PATCH",
       params,
       body,
     }),
