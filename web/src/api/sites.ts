@@ -33,7 +33,7 @@ export interface SiteUpdateBody {
   visibility?: string;
 }
 
-export const sitesApi = {
+export const agentSitesApi = {
   /** 分页查询站点应用列表 */
   list: () => request<SiteApp[]>("/web/agent-sites/apps", { method: "GET" }),
 
@@ -56,6 +56,9 @@ export const sitesApi = {
 
   /** 删除站点应用 */
   del: (id: string) => request<void>("/web/agent-sites/apps/:id", { method: "DELETE", params: { id } }),
+
+  /** 删除站点应用（别名） */
+  delete: (id: string) => request<void>("/web/agent-sites/apps/:id", { method: "DELETE", params: { id } }),
 
   /** 轮换站点应用的访问 Token，旧 Token 立即失效 */
   rotateToken: (id: string) =>

@@ -44,4 +44,8 @@ export const instanceApi = {
   /** 删除指定 Instance */
   del: (params: { instanceId: string }) =>
     request<InstanceDeleteResult>("/v2/instances/:instanceId", { method: "DELETE", params }),
+
+  /** 删除指定 Instance（别名） */
+  delete: (params: { id: string }) =>
+    request<InstanceDeleteResult>("/v2/instances/:instanceId", { method: "DELETE", params: { instanceId: params.id } }),
 };

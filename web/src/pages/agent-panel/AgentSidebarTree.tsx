@@ -26,8 +26,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { agentApi } from "@/src/api/agents";
+import { envApi } from "@/src/api/environments";
+import { instanceApi } from "@/src/api/instances";
 import { ensureMetaAgent } from "@/src/api/meta-agent";
-import { agentApi, envApi, instanceApi } from "@/src/api/sdk";
+import { unwrap } from "@/src/api/request";
 import { useOrg } from "../../contexts/OrgContext";
 import { NS } from "../../i18n";
 import {
@@ -97,11 +100,9 @@ export function AgentSidebarTree({
 
   const loadData = useCallback(async () => {
     try {
-      const [{ data: agentsResult }, { data: envsData }] = await Promise.all([agentApi.list(), envApi.list()]);
+      const [agentsResult, envs] = await Promise.all([unwrap(agentApi.list()), unwrap(envApi.list())]);
 
-      const rawAgents = (agentsResult as unknown as { agents?: AgentConfigItem[] } | null)?.agents;
-      const agents = Array.isArray(rawAgents) ? rawAgents : [];
-      const envs = Array.isArray(envsData) ? (envsData as Environment[]) : [];
+      const agents = Array.isArray(agentsResult.agents) ? agentsResult.agents : [];
 
       // 过滤内置智能体
       const userAgents = agents.filter((a) => !a.builtIn);
@@ -109,8 +110,9 @@ export function AgentSidebarTree({
       // 建立 agentConfigId → environment 映射
       const envByConfigId = new Map<string, Environment>();
       for (const env of envs) {
-        if (env.agent_config_id) {
-          envByConfigId.set(env.agent_config_id, env);
+        const configId = env.agentConfigId;
+        if (configId) {
+          envByConfigId.set(configId, env as unknown as Environment);
         }
       }
 
@@ -122,15 +124,14 @@ export function AgentSidebarTree({
       }));
 
       // 加载有活跃实例的 environment 的 instances
-      const activeEnvs = envs.filter((e) => (e.instances_count ?? 0) > 0);
+      const activeEnvs = envs.filter((e) => (((e as Record<string, unknown>).instances_count as number) ?? 0) > 0);
       if (activeEnvs.length > 0) {
-        const results = await Promise.allSettled(activeEnvs.map((env) => envApi.listInstances({ id: env.id })));
+        const results = await Promise.allSettled(activeEnvs.map((env) => unwrap(envApi.listInstances({ id: env.id }))));
         const instMap: Record<string, EnvironmentInstance[]> = {};
         activeEnvs.forEach((env, i) => {
           const r = results[i];
           if (r.status === "fulfilled") {
-            const instData = r.value.data as { instances?: EnvironmentInstance[] } | null;
-            instMap[env.id] = instData?.instances ?? [];
+            instMap[env.id] = (r.value.items ?? []) as unknown as EnvironmentInstance[];
           }
         });
 
@@ -183,12 +184,14 @@ export function AgentSidebarTree({
 
         // 没有 environment，自动创建
         if (!envId) {
-          const { data: newEnv } = await envApi.create({
-            name: `env-${agent.id.slice(0, 8)}`,
-            agentConfigId: agent.id,
-            autoStart: true,
-          });
-          envId = (newEnv as unknown as Environment | null)?.id;
+          const newEnv = await unwrap(
+            envApi.create({
+              name: `env-${agent.id.slice(0, 8)}`,
+              agentConfigId: agent.id,
+              autoStart: true,
+            }),
+          );
+          envId = newEnv.id;
           if (!envId) {
             toast.error(t("enterInstanceFailed", { message: "Failed to create environment" }));
             return;
@@ -199,27 +202,24 @@ export function AgentSidebarTree({
 
         if (spawnNew) {
           // 新建实例：先 spawn，再 enter 指定 instance_number
-          const { data: spawnResult } = await instanceApi.spawn({ environmentId: envId });
-          const spawned = spawnResult as { instance_number?: number } | null;
-          const newInstanceNumber = spawned?.instance_number;
+          const spawned = await unwrap(instanceApi.spawn({ environmentId: envId }));
+          const newInstanceNumber = (spawned as Record<string, unknown>).instance_number as number | undefined;
           if (newInstanceNumber !== undefined) {
-            const { data: result } = await envApi.enter({ id: envId }, { instance_number: newInstanceNumber });
-            const enterResult = result as { session_id?: string; instance_id?: string; environment_id?: string } | null;
+            const enterResult = await unwrap(envApi.enter({ id: envId }, { instance_number: newInstanceNumber }));
             onSelectInstance(
-              enterResult?.instance_id ?? "",
-              enterResult?.environment_id ?? envId,
-              enterResult?.session_id ?? null,
+              enterResult.instanceId ?? "",
+              enterResult.environmentId ?? envId,
+              enterResult.sessionId ?? null,
             );
           }
         } else {
           // 进入已有实例
           const body = instanceNumber !== undefined ? { instance_number: instanceNumber } : {};
-          const { data: result } = await envApi.enter({ id: envId }, body);
-          const enterResult = result as { session_id?: string; instance_id?: string; environment_id?: string } | null;
+          const enterResult = await unwrap(envApi.enter({ id: envId }, body));
           onSelectInstance(
-            enterResult?.instance_id ?? "",
-            enterResult?.environment_id ?? envId,
-            enterResult?.session_id ?? null,
+            enterResult.instanceId ?? "",
+            enterResult.environmentId ?? envId,
+            enterResult.sessionId ?? null,
           );
         }
 

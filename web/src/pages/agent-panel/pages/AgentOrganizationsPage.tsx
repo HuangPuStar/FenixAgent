@@ -1,4 +1,4 @@
-import type { MachineRecord } from "@fenix/sdk";
+import { useRequest } from "ahooks";
 import { Copy, Monitor, Plus, RefreshCw, Shield, ShieldCheck, Trash2, User, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,7 +18,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { orgApi, registryApi } from "@/src/api/sdk";
+import { orgApi } from "@/src/api/organizations";
+import { type MachineRecord, registryApi } from "@/src/api/registry";
+import { unwrap } from "@/src/api/request";
 import { useOrg } from "../../../contexts/OrgContext";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -27,14 +29,6 @@ interface OrgMember {
   userId: string;
   role: string;
   user: { id: string; name: string; email: string; image?: string };
-}
-
-interface OrgDetail {
-  id: string;
-  name: string;
-  slug: string;
-  logo?: string;
-  members: OrgMember[];
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -62,43 +56,58 @@ export function AgentOrganizationsPage() {
   const { org: currentOrg, refreshOrgs } = useOrg();
 
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<OrgDetail | null>(null);
-  const [loading, setLoading] = useState(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [formName, setFormName] = useState("");
   const [formSlug, setFormSlug] = useState("");
   const [formDesc, setFormDesc] = useState("");
-  const [formSaving, setFormSaving] = useState(false);
 
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState("");
   const [addMemberRole, setAddMemberRole] = useState("member");
-  const [addMemberSaving, setAddMemberSaving] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteSaving, setDeleteSaving] = useState(false);
 
   const [copiedId, setCopiedId] = useState(false);
 
-  // 机器列表：跟随当前选中组织加载，展示该组织下注册的远程节点
-  const [machines, setMachines] = useState<MachineRecord[]>([]);
-  const [machinesLoading, setMachinesLoading] = useState(false);
-  const [_machinesError, setMachinesError] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
 
-  const loadMachines = useCallback(async () => {
-    setMachinesLoading(true);
-    setMachinesError(null);
-    const { data, error } = await registryApi.list({ limit: 50 });
-    if (error) {
-      console.error(error);
-      setMachinesError(t("toast.loadDetailFailed"));
-      setMachines([]);
-    } else {
-      setMachines(data?.data ?? []);
+  // 组织列表
+  const { data: myOrgsRaw = [], refresh: reloadOrgs } = useRequest(() => unwrap(orgApi.list()), {
+    onError: (err) => {
+      console.error(err);
+    },
+  });
+  const myOrgs = myOrgsRaw as unknown as { id: string; name: string; slug: string; role: string }[];
+
+  // 组织详情（跟随选中变化）
+  const {
+    data: detail,
+    loading: detailLoading,
+    refresh: refreshDetail,
+  } = useRequest(() => unwrap(orgApi.get(selectedOrgId!)), { ready: !!selectedOrgId, refreshDeps: [selectedOrgId] });
+
+  // 机器列表（跟随选中组织变化）
+  const {
+    data: machines = [],
+    loading: machinesLoading,
+    refresh: refreshMachines,
+  } = useRequest(() => unwrap(registryApi.list({ limit: 50 })), {
+    ready: !!selectedOrgId,
+    refreshDeps: [selectedOrgId],
+  });
+
+  // 首次加载时自动选中当前活跃组织
+  useEffect(() => {
+    if (!selectedOrgId && currentOrg?.id) {
+      setSelectedOrgId(currentOrg.id);
     }
-    setMachinesLoading(false);
-  }, [t]);
+  }, [selectedOrgId, currentOrg]);
+
+  const selectedOrgRole = myOrgs.find((o) => o.id === selectedOrgId)?.role;
+  const canManage = selectedOrgRole === "owner" || selectedOrgRole === "admin";
+  const isOwner = selectedOrgRole === "owner";
 
   const handleCopyId = useCallback(() => {
     if (!selectedOrgId) return;
@@ -107,172 +116,107 @@ export function AgentOrganizationsPage() {
     setTimeout(() => setCopiedId(false), 2000);
   }, [selectedOrgId]);
 
-  const [editingName, setEditingName] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
+  // 创建组织
+  const { run: runCreate, loading: createLoading } = useRequest(
+    async (name: string, slug: string) => unwrap(orgApi.create({ name: name.trim(), slug: slug || nameToSlug(name) })),
+    {
+      manual: true,
+      onSuccess: (data) => {
+        toast.success(t("toast.createSuccess"));
+        setCreateOpen(false);
+        setFormName("");
+        setFormSlug("");
+        setFormDesc("");
+        reloadOrgs();
+        refreshOrgs();
+        setSelectedOrgId(data.id);
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(t("toast.createFailed"));
+      },
+    },
+  );
 
-  const [myOrgs, setMyOrgs] = useState<{ id: string; name: string; slug: string; role: string }[]>([]);
+  // 更新组织名称（静默操作）
+  const { run: runUpdateName, loading: updateNameLoading } = useRequest(
+    (name: string) => unwrap(orgApi.update(selectedOrgId!, { name: name.trim() })),
+    {
+      manual: true,
+      onSuccess: () => {
+        setEditingName(false);
+        refreshDetail();
+        reloadOrgs();
+        refreshOrgs();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(t("toast.updateFailed"));
+      },
+    },
+  );
 
-  const loadMyOrgs = useCallback(async () => {
-    const { data, error } = await orgApi.list();
-    if (error) {
-      console.error(error);
-      return;
-    }
-    setMyOrgs((data ?? []) as unknown as typeof myOrgs);
-  }, []);
+  // 添加成员
+  const { run: runAddMember, loading: addMemberLoading } = useRequest(
+    (email: string, role: string) => unwrap(orgApi.addMember(selectedOrgId!, { email: email.trim(), role })),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.inviteSent"));
+        setAddMemberOpen(false);
+        setAddMemberEmail("");
+        refreshDetail();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(err.message || t("toast.inviteFailed"));
+      },
+    },
+  );
 
-  useEffect(() => {
-    loadMyOrgs();
-  }, [loadMyOrgs]);
-
-  useEffect(() => {
-    if (!selectedOrgId && currentOrg?.id) {
-      setSelectedOrgId(currentOrg.id);
-    }
-  }, [selectedOrgId, currentOrg]);
-
-  useEffect(() => {
-    if (!selectedOrgId) {
-      setDetail(null);
-      return;
-    }
-    setLoading(true);
-    orgApi
-      .get(selectedOrgId)
-      .then(({ data, error }: { data?: unknown; error?: unknown }) => {
-        if (error) {
-          console.error(error);
-          toast.error(t("toast.loadDetailFailed"));
-          return;
-        }
-        setDetail(data as OrgDetail);
-      })
-      .finally(() => setLoading(false));
-  }, [selectedOrgId, t]);
-
-  // 跟随组织切换加载机器列表
-  useEffect(() => {
-    if (selectedOrgId) {
-      loadMachines();
-    } else {
-      setMachines([]);
-    }
-  }, [selectedOrgId, loadMachines]);
-
-  const selectedOrgRole = myOrgs.find((o) => o.id === selectedOrgId)?.role;
-  const canManage = selectedOrgRole === "owner" || selectedOrgRole === "admin";
-  const isOwner = selectedOrgRole === "owner";
-
-  const handleCreate = async () => {
-    if (!formName.trim()) return;
-    setFormSaving(true);
-    const { data, error } = await orgApi.create({
-      name: formName.trim(),
-      slug: formSlug || nameToSlug(formName),
-    });
-    if (error) {
-      console.error(error);
-      toast.error(t("toast.createFailed"));
-      setFormSaving(false);
-      return;
-    }
-    toast.success(t("toast.createSuccess"));
-    setCreateOpen(false);
-    setFormName("");
-    setFormSlug("");
-    setFormDesc("");
-    await loadMyOrgs();
-    await refreshOrgs();
-    setSelectedOrgId(data.id);
-    setFormSaving(false);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!selectedOrgId || !editName.trim()) return;
-    setEditSaving(true);
-    const { error } = await orgApi.update(selectedOrgId, { name: editName.trim() });
-    if (error) {
-      console.error(error);
-      toast.error(t("toast.updateFailed"));
-      setEditSaving(false);
-      return;
-    }
-    toast.success(t("toast.updateSuccess"));
-    setEditingName(false);
-    setDetail((d) => (d ? { ...d, name: editName.trim() } : d));
-    await loadMyOrgs();
-    await refreshOrgs();
-    setEditSaving(false);
-  };
-
-  const handleAddMember = async () => {
-    if (!selectedOrgId || !addMemberEmail.trim()) return;
-    setAddMemberSaving(true);
-    const { error: addErr } = await orgApi.addMember(selectedOrgId, {
-      email: addMemberEmail.trim(),
-      role: addMemberRole,
-    });
-    if (addErr) {
-      console.error(addErr);
-      toast.error(addErr.message || t("toast.inviteFailed"));
-      setAddMemberSaving(false);
-      return;
-    }
-    toast.success(t("toast.inviteSent"));
-    setAddMemberOpen(false);
-    setAddMemberEmail("");
-    const { data: d2 } = await orgApi.get(selectedOrgId);
-    if (d2) setDetail(d2);
-    setAddMemberSaving(false);
-  };
-
-  const handleRemoveMember = async (userId: string) => {
-    if (!selectedOrgId) return;
-    const { error: rmErr } = await orgApi.removeMember(selectedOrgId, userId);
-    if (rmErr) {
-      console.error(rmErr);
+  // 移除成员（静默操作）
+  const { run: runRemoveMember } = useRequest((userId: string) => unwrap(orgApi.removeMember(selectedOrgId!, userId)), {
+    manual: true,
+    onSuccess: () => {
+      refreshDetail();
+    },
+    onError: (err) => {
+      console.error(err);
       toast.error(t("toast.removeFailed"));
-      return;
-    }
-    toast.success(t("toast.removeSuccess"));
-    const { data: d3 } = await orgApi.get(selectedOrgId);
-    if (d3) setDetail(d3);
-  };
+    },
+  });
 
-  const handleUpdateRole = async (userId: string, newRole: string) => {
-    if (!selectedOrgId) return;
-    const { error: roleErr } = await orgApi.updateRole(selectedOrgId, userId, newRole);
-    if (roleErr) {
-      console.error(roleErr);
-      toast.error(t("toast.roleUpdateFailed"));
-      return;
-    }
-    toast.success(t("toast.roleUpdated"));
-    const { data: d4 } = await orgApi.get(selectedOrgId);
-    if (d4) setDetail(d4);
-  };
+  // 更新角色（静默操作）
+  const { run: runUpdateRole } = useRequest(
+    (userId: string, newRole: string) => unwrap(orgApi.updateRole(selectedOrgId!, userId, newRole)),
+    {
+      manual: true,
+      onSuccess: () => {
+        refreshDetail();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(t("toast.roleUpdateFailed"));
+      },
+    },
+  );
 
-  const handleDeleteOrg = async () => {
-    if (!selectedOrgId) return;
-    setDeleteSaving(true);
-    const { error: delErr } = await orgApi.delete(selectedOrgId);
-    if (delErr) {
-      console.error(delErr);
+  // 删除组织（静默操作）
+  const { run: runDelete, loading: deleteLoading } = useRequest(() => unwrap(orgApi.del(selectedOrgId!)), {
+    manual: true,
+    onSuccess: () => {
+      setDeleteOpen(false);
+      reloadOrgs();
+      setSelectedOrgId(null);
+      refreshOrgs();
+    },
+    onError: (err) => {
+      console.error(err);
       toast.error(t("toast.deleteFailed"));
-      setDeleteSaving(false);
-      return;
-    }
-    toast.success(t("toast.deleteSuccess"));
-    setDeleteOpen(false);
-    setDetail(null);
-    await loadMyOrgs();
-    setSelectedOrgId(null);
-    await refreshOrgs();
-    setDeleteSaving(false);
-  };
+    },
+  });
 
-  const members = detail?.members ?? [];
+  const members = (detail?.members ?? []) as unknown as OrgMember[];
 
   return (
     <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
@@ -315,7 +259,7 @@ export function AgentOrganizationsPage() {
 
         {/* Right: org detail */}
         <div className="flex-1 overflow-y-auto p-6">
-          {loading && (
+          {detailLoading && (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
@@ -324,13 +268,13 @@ export function AgentOrganizationsPage() {
             </div>
           )}
 
-          {!loading && !detail && (
+          {!detailLoading && !detail && (
             <div className="flex flex-col items-center justify-center h-64 text-text-dim">
               <p className="text-sm">{t("selectOrg")}</p>
             </div>
           )}
 
-          {!loading && detail && (
+          {!detailLoading && detail && (
             <div className="max-w-[720px] mx-auto space-y-6">
               {/* Org info */}
               <div className="space-y-3">
@@ -342,8 +286,14 @@ export function AgentOrganizationsPage() {
                       placeholder={t("editName.placeholder")}
                     />
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={handleSaveEdit} disabled={editSaving}>
-                        {editSaving ? t("saving") : t("save")}
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          if (editName.trim()) runUpdateName(editName);
+                        }}
+                        disabled={updateNameLoading}
+                      >
+                        {updateNameLoading ? t("saving") : t("save")}
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setEditingName(false)}>
                         {t("cancel")}
@@ -415,7 +365,7 @@ export function AgentOrganizationsPage() {
                         {isOwner && m.role !== "owner" && (
                           <select
                             value={m.role}
-                            onChange={(e) => handleUpdateRole(m.id, e.target.value)}
+                            onChange={(e) => runUpdateRole(m.id, e.target.value)}
                             className="text-xs border border-border-subtle rounded px-1.5 py-0.5 bg-transparent text-text-secondary"
                           >
                             <option value="admin">{t("roles.admin")}</option>
@@ -427,7 +377,7 @@ export function AgentOrganizationsPage() {
                             variant="ghost"
                             size="xs"
                             className="text-text-dim hover:text-destructive"
-                            onClick={() => handleRemoveMember(m.id)}
+                            onClick={() => runRemoveMember(m.id)}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -445,15 +395,15 @@ export function AgentOrganizationsPage() {
                   <h3 className="text-sm font-semibold text-text-primary">
                     {t("machines", { count: machines.length })}
                   </h3>
-                  <Button size="sm" variant="outline" onClick={loadMachines} disabled={machinesLoading}>
+                  <Button size="sm" variant="outline" onClick={refreshMachines} disabled={machinesLoading}>
                     <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${machinesLoading ? "animate-spin" : ""}`} />
                     {machinesLoading ? t("machineRefreshing") : t("machineRefresh")}
                   </Button>
                 </div>
                 <div className="grid gap-2">
-                  {machines.map((m) => {
+                  {machines.map((m: MachineRecord) => {
                     const isOnline = m.status === "online";
-                    const hostname = m.machineInfo?.hostname ?? m.agentName;
+                    const hostname = (m.machineInfo?.hostname as string | undefined) ?? m.agentName;
                     return (
                       <div
                         key={m.id}
@@ -564,8 +514,13 @@ export function AgentOrganizationsPage() {
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               {t("cancel")}
             </Button>
-            <Button onClick={handleCreate} disabled={formSaving || !formName.trim()}>
-              {formSaving ? t("creating") : t("create")}
+            <Button
+              onClick={() => {
+                if (formName.trim()) runCreate(formName, formSlug);
+              }}
+              disabled={createLoading || !formName.trim()}
+            >
+              {createLoading ? t("creating") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -603,8 +558,13 @@ export function AgentOrganizationsPage() {
             <Button variant="outline" onClick={() => setAddMemberOpen(false)}>
               {t("cancel")}
             </Button>
-            <Button onClick={handleAddMember} disabled={addMemberSaving || !addMemberEmail.trim()}>
-              {addMemberSaving ? t("inviteDialog.inviting") : t("inviteDialog.invite")}
+            <Button
+              onClick={() => {
+                if (addMemberEmail.trim()) runAddMember(addMemberEmail, addMemberRole);
+              }}
+              disabled={addMemberLoading || !addMemberEmail.trim()}
+            >
+              {addMemberLoading ? t("inviteDialog.inviting") : t("inviteDialog.invite")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -620,11 +580,11 @@ export function AgentOrganizationsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteOrg}
-              disabled={deleteSaving}
+              onClick={() => runDelete()}
+              disabled={deleteLoading}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
-              {deleteSaving ? t("deleteDialog.deleting") : t("deleteDialog.confirmDelete")}
+              {deleteLoading ? t("deleteDialog.deleting") : t("deleteDialog.confirmDelete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -14,7 +14,7 @@ import { NS } from "@/src/i18n";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-interface SiteApp {
+interface SiteItem {
   id: string;
   organizationId: string;
   userId: string;
@@ -56,13 +56,13 @@ function formatTimestamp(ts: number): string {
 
 export function AgentSitesPage() {
   const { t } = useTranslation(NS.AGENT_PANEL);
-  const [apps, setApps] = useState<SiteApp[]>([]);
+  const [apps, setApps] = useState<SiteItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingApp, setEditingApp] = useState<SiteApp | null>(null);
+  const [editingApp, setEditingApp] = useState<SiteItem | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SiteApp | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SiteItem | null>(null);
 
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
@@ -74,7 +74,7 @@ export function AgentSitesPage() {
     try {
       const res = await agentSitesApi.list();
       if (res.success) {
-        setApps(Array.isArray(res.data) ? (res.data as SiteApp[]) : []);
+        setApps(Array.isArray(res.data) ? (res.data as unknown as SiteItem[]) : []);
       }
     } catch (error) {
       console.error("加载 app 列表失败", error);
@@ -100,7 +100,7 @@ export function AgentSitesPage() {
     setDialogOpen(true);
   };
 
-  const handleOpenEdit = (app: SiteApp) => {
+  const handleOpenEdit = (app: SiteItem) => {
     setEditingApp(app);
     setFormName(app.name);
     setFormDescription(app.description ?? "");
@@ -155,7 +155,7 @@ export function AgentSitesPage() {
     }
   };
 
-  const handleRotateToken = async (app: SiteApp) => {
+  const handleRotateToken = async (app: SiteItem) => {
     try {
       await agentSitesApi.rotateToken(app.id);
       toast.success("Token 已重签");

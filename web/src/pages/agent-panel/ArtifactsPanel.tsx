@@ -1,3 +1,4 @@
+import { useRequest } from "ahooks";
 import { FilesIcon, Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,7 +15,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { envApi } from "@/src/api/sdk";
+import { envApi } from "@/src/api/environments";
+import { unwrap } from "@/src/api/request";
 import { agentSitesApi } from "@/src/api/sites";
 import { FileTabsBar } from "../../components/agent-panel/FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
@@ -30,12 +32,6 @@ import { cn } from "../../lib/utils";
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
 const MAX_OPEN_FILES = 8;
-
-interface SiteEntry {
-  id: string;
-  name: string;
-  remoteAppId: string;
-}
 
 interface ArtifactsPanelProps {
   envId: string | null;
@@ -75,9 +71,6 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   // agentConfigId 变化（切换 agent）时重置 topMode 回 files + activeSiteId 清空
   const [topMode, setTopMode] = useState<TopMode>("files");
   const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
-  const [sites, setSites] = useState<SiteEntry[]>([]);
-  const [sitesLoading, setSitesLoading] = useState(false);
-  const [sitesError, setSitesError] = useState<string | null>(null);
   // 用户主动切到 Sites 模式的标记：一旦主动离开 Files，后续 agent 产生 diff
   // 时不再粗暴切回 Files（避免长任务运行中持续打断浏览 site 的用户）。
   // 切回 Files 由用户主动操作（点 Files tab 或拖拽上传）触发清零。
@@ -85,63 +78,41 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   const userPickedSiteRef = useRef(false);
   // 待展示的 diff 文件数：用户在 Sites 模式时累计，切回 Files 时清零
   const [pendingDiffCount, setPendingDiffCount] = useState(0);
-  // sites / agentConfigId 的 ref 镜像：事件处理器（useEffect []）内需要访问最近值，
-  // 不走 deps 触发重新注册（避免频繁 add/removeEventListener）。
-  const sitesRef = useRef(sites);
-  sitesRef.current = sites;
   const configIdRef = useRef(agentConfigIdProp);
   configIdRef.current = agentConfigIdProp;
-  const autoBindingRef = useRef(false); // 自动绑定的并发锁
 
   // ── 挂载/卸载 state ───────────────────────────────────
   // mountDialogOpen：挂载弹层（多选 + 确认）
   // unmountConfirm：卸载确认弹层（{id, name} 单槽位，null=关闭）
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
   const [unmountConfirm, setUnmountConfirm] = useState<{ id: string; name: string } | null>(null);
-  const [unmounting, setUnmounting] = useState(false);
 
-  // 内部解析 agentConfigId：外部 prop 优先；未传时根据 envId 拉 environment 详情。
-  // 拆成独立 state 而非直接派生：异步加载，state 翻转才能触发 sites 加载 effect。
-  const [resolvedAgentConfigId, setResolvedAgentConfigId] = useState<string | null>(null);
-  useEffect(() => {
-    if (agentConfigIdProp !== undefined) return; // 外部已显式传入，跳过内部加载
-    if (!envId) {
-      setResolvedAgentConfigId(null);
-      return;
-    }
-    let cancelled = false;
-    envApi
-      .get({ id: envId })
-      .then(({ data, error }) => {
-        if (cancelled || error) return;
-        const envData = data as unknown as { agent_config_id?: string | null } | undefined;
-        setResolvedAgentConfigId(envData?.agent_config_id ?? null);
-      })
-      .catch((err: unknown) => {
-        console.warn("[ArtifactsPanel] 加载 environment 详情失败，Sites tab 不可用", err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [envId, agentConfigIdProp]);
+  // ── useRequest：环境详情加载 ──────────────────────────
+  // 外部 prop 优先；未传时根据 envId 拉 environment 详情获取 agent_config_id。
+  // ready 条件控制是否发起请求：仅当外部未传 prop 且 envId 存在时才拉取。
+  const { data: envData } = useRequest(() => unwrap(envApi.get({ id: envId! })), {
+    ready: agentConfigIdProp === undefined && !!envId,
+    onError: (err: unknown) => {
+      console.warn("[ArtifactsPanel] 加载 environment 详情失败，Sites tab 不可用", err);
+    },
+  });
+  const resolvedAgentConfigId = envData?.agentConfigId ?? null;
   const agentConfigId = agentConfigIdProp !== undefined ? agentConfigIdProp : resolvedAgentConfigId;
   configIdRef.current = agentConfigId ?? undefined;
 
-  // 拉取当前 agent 绑定的 sites 详情。挂载/卸载成功后也复用此函数刷新列表，
-  // 避免用 reloadTick 当 effect 触发器（biome useExhaustiveDependencies 不允许
-  // 在 deps 里加未使用的项）。
-  // 组件卸载后的 setState 由 React 18 静默处理（"setState on unmounted" 警告已移除），
-  // 不引入 AbortController——挂载/卸载场景用户操作不频繁，过度设计没必要。
-  const loadSites = useCallback(async (cfgId: string) => {
-    setSitesLoading(true);
-    setSitesError(null);
-    try {
-      const res = (await agentSitesApi.listByAgentConfig(cfgId)) as {
-        success?: boolean;
-        data?: unknown[];
-      };
-      const raw = res.data;
-      const list: SiteEntry[] = (Array.isArray(raw) ? raw : [])
+  // ── useRequest：Sites 列表加载（manual） ──────────────
+  // 挂载/卸载成功后复用 loadSites 刷新列表。
+  const {
+    run: loadSites,
+    loading: sitesLoading,
+    data: sites = [],
+    error: sitesLoadError,
+    mutate: setSites,
+  } = useRequest(
+    async (cfgId: string) => {
+      // SiteApp 类型不含 remoteAppId，实际 API 响应有此动态字段，通过 unknown 桥接
+      const list = (await unwrap(agentSitesApi.listByAgentConfig(cfgId))) as unknown as Record<string, unknown>[];
+      return (Array.isArray(list) ? list : [])
         .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
         .map((item) => ({
           id: String(item.id ?? ""),
@@ -149,23 +120,67 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
           remoteAppId: String(item.remoteAppId ?? ""),
         }))
         .filter((item) => item.id && item.remoteAppId);
-      setSites(list);
-    } catch (err: unknown) {
-      console.error("[ArtifactsPanel] 加载 agent 绑定 sites 失败", err);
-      setSitesError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSitesLoading(false);
-    }
-  }, []);
+    },
+    {
+      manual: true,
+      onError: (err: unknown) => {
+        console.error("[ArtifactsPanel] 加载 agent 绑定 sites 失败", err);
+      },
+    },
+  );
+
+  // sites / agentConfigId 的 ref 镜像：事件处理器（useEffect []）内需要访问最近值。
+  const sitesRef = useRef(sites);
+  sitesRef.current = sites;
+
+  // ── useRequest：卸载 site mutation（manual） ──────────
+  const { run: runUnmount, loading: unmounting } = useRequest(
+    async (cfgId: string, siteId: string) => {
+      await unwrap(agentSitesApi.unbindSite(cfgId, siteId));
+    },
+    {
+      manual: true,
+      onSuccess: () => {
+        setUnmountConfirm(null);
+        if (agentConfigId) loadSites(agentConfigId);
+      },
+      onError: () => {
+        toast.error(t("panelMode.unmountFailed"));
+      },
+    },
+  );
+
+  // ── useRequest：自动绑定的 mutation（manual） ─────────
+  const { run: runBind, loading: binding } = useRequest(
+    async (cfgId: string, siteId: string) => {
+      await unwrap(agentSitesApi.bindSite(cfgId, siteId));
+    },
+    {
+      manual: true,
+      onSuccess: (_data, params) => {
+        const [bindCfgId, bindSiteId] = params as [string, string];
+        loadSites(bindCfgId);
+        setTimeout(() => {
+          const fresh = sitesRef.current.find((s) => s.remoteAppId === bindSiteId);
+          setActiveSiteId(fresh?.id ?? null);
+        }, 100);
+      },
+      onError: (err: unknown) => {
+        console.error("[ArtifactsPanel] 自动挂载站点失败", err);
+      },
+    },
+  );
+  const bindingRef = useRef(binding);
+  bindingRef.current = binding;
 
   // 监听 <agent-sites> 卡片点击事件：切到 Sites 模式并选中对应 site
   // 卡片组件触发 artifacts:select-site 时：
   // 1. 切到 Sites 模式
   // 2. 在已绑定的 sites 中按 remoteAppId 查找并选中
-  // 3. 若未绑定：自动调用 bindSite 挂载，刷新列表后选中
+  // 3. 若未绑定：自动调用 bindSite 挂载（通过 runBind mutation hook），刷新列表后选中
   // biome-ignore lint/correctness/useExhaustiveDependencies: handler 不重新注册，靠 ref 获取最新值
   useEffect(() => {
-    const handler = async (e: Event) => {
+    const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { siteId: string };
       if (!detail?.siteId) return;
 
@@ -183,23 +198,9 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
         return;
       }
 
-      // 未绑定 → 自动挂载（并发锁防止快速点击重复绑定）
-      if (!cfgId || autoBindingRef.current) return;
-      autoBindingRef.current = true;
-      try {
-        await agentSitesApi.bindSite(cfgId, siteId);
-        await loadSites(cfgId);
-        // loadSites 的 setSites 可能在当前 tick 尚未 flush。用 setTimeout
-        // 等 React 批处理完成后读取 sitesRef 最新值定位新加载的 site。
-        setTimeout(() => {
-          const fresh = sitesRef.current.find((s) => s.remoteAppId === siteId);
-          setActiveSiteId(fresh?.id ?? null);
-        }, 100);
-      } catch (err: unknown) {
-        console.error("[ArtifactsPanel] 自动挂载站点失败", err);
-      } finally {
-        autoBindingRef.current = false;
-      }
+      // 未绑定 → 自动挂载（并发锁由 useRequest loading 状态提供）
+      if (!cfgId || bindingRef.current) return;
+      runBind(cfgId, siteId);
     };
     window.addEventListener("artifacts:select-site", handler);
     return () => window.removeEventListener("artifacts:select-site", handler);
@@ -245,21 +246,6 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
     },
     [sites],
   );
-  const handleUnmountConfirm = useCallback(async () => {
-    if (!unmountConfirm || !agentConfigId) return;
-    setUnmounting(true);
-    try {
-      await agentSitesApi.unbindSite(agentConfigId, unmountConfirm.id);
-      toast.success(t("panelMode.unmountSuccess"));
-      void loadSites(agentConfigId);
-    } catch (err) {
-      console.error("[ArtifactsPanel] 卸载 site 失败", err);
-      toast.error(t("panelMode.unmountFailed"));
-    } finally {
-      setUnmounting(false);
-      setUnmountConfirm(null);
-    }
-  }, [unmountConfirm, agentConfigId, loadSites, t]);
 
   // agentConfigId 变化（切换 agent）时：重置 UI state + 重新加载绑定的 sites。
   // 挂载/卸载不走这里——直接调 loadSites（不重置 topMode/activeSiteId/pendingDiff，
@@ -267,7 +253,6 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   useEffect(() => {
     setTopMode("files");
     setActiveSiteId(null);
-    setSitesError(null);
     userPickedSiteRef.current = false;
     setPendingDiffCount(0);
 
@@ -275,10 +260,8 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
       setSites([]);
       return;
     }
-    // 直接调 loadSites；agentConfigId 快速切换的极端竞态由 React 18 的批处理 +
-    // loadSites 内部 cancelled 兜底，本场景用户切换不频繁不做 AbortController。
     void loadSites(agentConfigId);
-  }, [agentConfigId, loadSites]);
+  }, [agentConfigId, loadSites, setSites]);
 
   // ── Files 模式内部状态 ─────────────────────────────────
   const [openFiles, setOpenFiles] = useState<string[]>([]);
@@ -433,9 +416,9 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
           {t("siteFrame.loadingSites")}
         </div>
       )}
-      {sitesError && (
+      {sitesLoadError && (
         <div className="px-3 py-1 text-[11px] text-text-dim border-b border-border/30">
-          {t("siteFrame.loadFailed", { message: sitesError })}
+          {t("siteFrame.loadFailed", { message: sitesLoadError.message || String(sitesLoadError) })}
         </div>
       )}
 
@@ -565,7 +548,12 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={unmounting}>{t("confirmDialog.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleUnmountConfirm} disabled={unmounting}>
+            <AlertDialogAction
+              onClick={() => {
+                if (unmountConfirm && agentConfigId) runUnmount(agentConfigId, unmountConfirm.id);
+              }}
+              disabled={unmounting}
+            >
               {unmounting ? t("confirmDialog.processing") : t("panelMode.unmountSite")}
             </AlertDialogAction>
           </AlertDialogFooter>

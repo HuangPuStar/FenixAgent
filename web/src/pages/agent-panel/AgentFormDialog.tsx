@@ -1,3 +1,4 @@
+import { useRequest } from "ahooks";
 import { Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,18 +19,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  agentApi,
-  agentSitesApi,
-  envApi,
-  instanceApi,
-  kbApi,
-  mcpApi,
-  modelApi,
-  registryApi,
-  skillConfigApi,
-} from "@/src/api/sdk";
-import type { AgentTemplate } from "../../../../packages/sdk/src/modules/config";
+import { agentApi } from "@/src/api/agents";
+import { envApi } from "@/src/api/environments";
+import { instanceApi } from "@/src/api/instances";
+import { kbApi } from "@/src/api/knowledge-bases";
+import { mcpApi } from "@/src/api/mcp";
+import { modelApi } from "@/src/api/models";
+import { registryApi } from "@/src/api/registry";
+import { unwrap } from "@/src/api/request";
+import { agentSitesApi } from "@/src/api/sites";
+import { skillConfigApi } from "@/src/api/skills";
 import { NS } from "../../i18n";
 import { canManageAgentSharing, getAgentDisplayName, isAgentWritable } from "../../lib/agent-resource-access";
 import {
@@ -48,6 +47,15 @@ import {
 } from "../../lib/skill-resource-access";
 import type { ModelEntry, ResourceAccess } from "../../types/config";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
+
+/** Agent 模板（从 API 返回） */
+interface AgentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  skills: string[];
+}
 
 interface AgentFormDialogProps {
   open: boolean;
@@ -102,12 +110,47 @@ export function mapModelOptions(available: ModelEntry[]): { value: string; label
   });
 }
 
+/** 加载表单所有下拉/选项数据及编辑态回显 */
+interface LoadedFormData {
+  machineOptions: Array<{ id: string; agentName: string; hostname: string; name: string | null }>;
+  siteOptions: SiteOption[];
+  hindsightEnabled: boolean;
+  modelOptions: Array<{ value: string; label: string }>;
+  knowledgeOptions: KnowledgeBaseInfo[];
+  skillOptions: SkillOptionView[];
+  mcpOptions: AgentMcpOption[];
+  templates: AgentTemplate[];
+  // 创建模式：预选第一个模型
+  initialModel?: string;
+  // 编辑模式
+  editState?: {
+    agentId: string | null;
+    displayName: string;
+    modelId: string;
+    prompt: string;
+    description: string;
+    machineId: string;
+    engineType: string;
+    resourceAccess?: ResourceAccess;
+    publicReadable: boolean;
+    relatedResources?: AgentRelatedResourcesView;
+    knowledgeBaseIds: string[];
+    searchFirst: boolean;
+    maxResults: string;
+    skillIds: string[];
+    mcpIds: string[];
+    siteAppIds: string[];
+    enableMemory: boolean;
+  };
+}
+
 export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSuccess, agentName }: AgentFormDialogProps) {
   const isEdit = mode === "edit";
   const { t } = useTranslation(NS.AGENTS);
   const { t: tAgentPanel } = useTranslation(NS.AGENT_PANEL);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
 
+  // 下拉选项 state（由 loadFormData 填充）
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
   const [skillOptions, setSkillOptions] = useState<SkillOptionView[]>([]);
@@ -116,11 +159,11 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     { id: string; agentName: string; hostname: string; name: string | null }[]
   >([]);
 
+  // 表单字段 state
   const [formName, setFormName] = useState("");
   const [formModel, setFormModel] = useState("");
   const [formPrompt, setFormPrompt] = useState("");
   const [formDescription, setFormDescription] = useState("");
-  const [formSaving, setFormSaving] = useState(false);
   const [formKnowledgeBaseIds, setFormKnowledgeBaseIds] = useState<string[]>([]);
   const [formKnowledgeSearchFirst, setFormKnowledgeSearchFirst] = useState(true);
   const [formKnowledgeMaxResults, setFormKnowledgeMaxResults] = useState("5");
@@ -144,14 +187,11 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [hindsightEnabled, setHindsightEnabled] = useState(false);
   const [formEnableMemory, setFormEnableMemory] = useState(false);
 
-  const [loading, setLoading] = useState(false);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
-  const [restarting, setRestarting] = useState(false);
 
+  // 对话框打开时立即重置表单状态
   useEffect(() => {
     if (!open) return;
-    if (isEdit && !agentName) return;
-
     setActiveTab("basic");
     const knowledgeDefaults = getDefaultKnowledgeFormState();
     setFormKnowledgeBaseIds(knowledgeDefaults.knowledgeBaseIds);
@@ -172,45 +212,42 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setMcpsExpanded(false);
     setSitesExpanded(false);
 
-    // 加载 Hindsight 记忆 MCP 可用性
-    fetch("/web/hindsight/status")
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success && json.data?.enabled) {
-          setHindsightEnabled(true);
-        } else {
-          setHindsightEnabled(false);
-        }
-      })
-      .catch(() => {
-        setHindsightEnabled(false);
-      });
+    if (!isEdit) {
+      setFormName(defaultName ?? "");
+      setFormPrompt("");
+      setFormDescription("");
+      setFormPublicReadable(false);
+      setSelectedTemplateId(null);
+    }
+  }, [open, isEdit, defaultName]);
 
-    // 加载在线机器列表
-    registryApi.list({ status: "online", limit: 100 }).then(({ data, error }) => {
-      if (error) return;
-      const machines =
-        (
-          data as {
-            data?: { id: string; agentName: string; name: string | null; machineInfo: { hostname?: string } | null }[];
-          } | null
-        )?.data ?? [];
-      setMachineOptions(
-        machines.map((m) => ({
-          id: m.id,
-          agentName: m.agentName,
-          hostname: m.machineInfo?.hostname ?? "",
-          name: m.name,
-        })),
-      );
-    });
+  // 主数据加载：下拉选项 + 编辑态回显
+  const { loading } = useRequest(
+    async (): Promise<LoadedFormData> => {
+      // Hindsight 记忆 MCP 可用性
+      let hindsightEnabledVal = false;
+      try {
+        const r = await fetch("/web/hindsight/status");
+        const json = await r.json();
+        hindsightEnabledVal = !!(json.success && json.data?.enabled);
+      } catch {
+        // 静默失败
+      }
 
-    // 加载当前组织可用 sites（用于多选）。失败时静默置空，不阻塞表单
-    agentSitesApi
-      .list()
-      .then((res) => {
-        const raw = (res as { success?: boolean; data?: unknown[] }).data;
-        const list: SiteOption[] = (Array.isArray(raw) ? raw : [])
+      // 在线机器列表
+      const machines = (await unwrap(registryApi.list({ status: "online", limit: 100 }))) ?? [];
+      const machineOptionsVal = machines.map((m) => ({
+        id: m.id,
+        agentName: m.agentName,
+        hostname: (m.machineInfo as { hostname?: string } | null)?.hostname ?? "",
+        name: m.name,
+      }));
+
+      // 可用 sites 选项（SiteApp 类型不含 remoteAppId，但后端实际会返回）
+      let siteOptionsVal: SiteOption[] = [];
+      try {
+        const sites = (await unwrap(agentSitesApi.list())) as unknown as Record<string, unknown>[] | null;
+        siteOptionsVal = (Array.isArray(sites) ? sites : [])
           .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
           .map((item) => ({
             id: String(item.id ?? ""),
@@ -219,145 +256,196 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             description: typeof item.description === "string" ? item.description : null,
           }))
           .filter((item) => item.id && item.remoteAppId);
-        setSiteOptions(list);
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         console.warn("[AgentFormDialog] 加载 sites 选项失败", err);
-        setSiteOptions([]);
-      });
+      }
 
-    if (isEdit) {
-      setLoading(true);
-      Promise.all([agentApi.get(agentName!), modelApi.get(), kbApi.list(), skillConfigApi.list(), mcpApi.list()])
-        .then(([agentResult, modelsResult, kbResult, skillsResult, mcpsResult]) => {
-          if (agentResult.error) {
-            console.error("Failed to load agent config:", agentResult.error);
-            toast.error(t("knowledge.loadError", { message: agentResult.error.message }));
-            return;
-          }
-          const d = agentResult.data as unknown as Record<string, unknown>;
-          setCurrentAgentId((d.id as string) ?? null);
-          setDisplayAgentName(String(d.name ?? agentName ?? ""));
-          setFormModel((d.modelId as string) || "");
-          setFormPrompt(String(d.prompt ?? ""));
-          setFormDescription(String(d.description ?? ""));
-          setFormMachineId((d.machineId as string) || "local");
-          setFormEngineType((d.engineType as string) ?? "opencode");
-          setFormResourceAccess(d.resourceAccess as ResourceAccess | undefined);
-          setFormPublicReadable(Boolean((d.resourceAccess as ResourceAccess | undefined)?.publicReadable));
-          setRelatedResources((d.relatedResources as AgentRelatedResourcesView | undefined) ?? undefined);
+      if (isEdit && agentName) {
+        // 编辑模式：并行加载所有配置
+        const [agentDetail, modelData, kbData, skillsData, mcpsData] = await Promise.all([
+          unwrap(agentApi.get(agentName)),
+          unwrap(modelApi.get()),
+          unwrap(kbApi.list()),
+          unwrap(skillConfigApi.list()),
+          unwrap(mcpApi.list()),
+        ]);
 
-          const knowledgeState = buildKnowledgeFormState(d as Parameters<typeof buildKnowledgeFormState>[0]);
-          setFormKnowledgeBaseIds(knowledgeState.knowledgeBaseIds);
-          setFormKnowledgeSearchFirst(knowledgeState.searchFirst);
-          setFormKnowledgeMaxResults(knowledgeState.maxResults);
-          setFormSkillIds(Array.isArray(d.skillIds) ? (d.skillIds as string[]) : []);
-          setFormMcpIds(Array.isArray(d.mcpIds) ? (d.mcpIds as string[]) : []);
-          setFormSiteAppIds(Array.isArray(d.siteAppIds) ? (d.siteAppIds as string[]) : []);
+        const d = agentDetail as unknown as Record<string, unknown>;
 
-          // 编辑模式回显：检查是否已关联 hindsight MCP
-          mcpApi
-            .list()
-            .then((mcpResult) => {
-              if (mcpResult.data) {
-                const raw = mcpResult.data;
-                const servers = Array.isArray(raw)
-                  ? raw
-                  : (((raw as Record<string, unknown>)?.servers ?? []) as Array<{ name: string }>);
-                const hasHindsight = servers.some((s) => s.name.toLowerCase().includes("hindsight"));
-                setFormEnableMemory(hasHindsight);
-              }
-            })
-            .catch(() => {});
-
-          const modelsData = modelsResult.data as unknown as Record<string, unknown> | null;
-          const available = modelsData?.available;
-          const models = Array.isArray(available) ? mapModelOptions(available as ModelEntry[]) : [];
-          setModelOptions(models);
-
-          const kbData = kbResult.data;
-          setKnowledgeOptions(Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : []);
-
-          // SkillConfigApi.list 已经返回数组，这里兼容旧的包裹结构，避免编辑态技能列表被读空。
-          setSkillOptions(normalizeSkillOptionsPayload(skillsResult.data));
-
-          const mcpRaw = mcpsResult.data;
-          const mcpServers = Array.isArray(mcpRaw)
-            ? mcpRaw
-            : mcpRaw && typeof mcpRaw === "object" && Array.isArray((mcpRaw as { servers?: unknown }).servers)
-              ? ((mcpRaw as { servers: Array<{ id?: string; name: string; resourceAccess?: ResourceAccess }> })
-                  .servers ?? [])
-              : [];
-          setMcpOptions(
-            mapMcpOptions(
-              mcpServers.filter(
-                (item): item is { id: string; name: string; resourceAccess?: ResourceAccess } =>
-                  typeof item.id === "string" && item.id.length > 0,
-              ),
-            ),
-          );
-        })
-        .catch((err) => {
-          console.error("Failed to load agent config:", err);
-          toast.error(t("knowledge.loadError", { message: (err as Error).message }));
-        })
-        .finally(() => setLoading(false));
-
-      agentApi.templates().then(({ data, error }) => {
-        if (!error && data?.templates) {
-          setTemplates(data.templates);
+        // 编辑模式回显：检查是否已关联 hindsight MCP
+        let enableMemoryVal = false;
+        try {
+          const mcpCheck = await unwrap(mcpApi.list());
+          const raw = mcpCheck as unknown as { servers?: Array<{ name: string }> } | Array<{ name: string }>;
+          const servers = Array.isArray(raw) ? raw : (raw?.servers ?? []);
+          const hasHindsight = servers.some((s) => s.name.toLowerCase().includes("hindsight"));
+          enableMemoryVal = hasHindsight;
+        } catch {
+          // 静默失败
         }
-      });
-    } else {
-      setFormName(defaultName ?? "");
-      setFormPrompt("");
-      setFormDescription("");
-      setFormPublicReadable(false);
-      setSelectedTemplateId(null);
 
-      agentApi.templates().then(({ data, error }) => {
-        if (!error && data?.templates) {
-          setTemplates(data.templates);
-        }
-      });
+        // 模型选项
+        const modelOptionsVal = Array.isArray(modelData.available)
+          ? mapModelOptions(modelData.available as ModelEntry[])
+          : [];
 
-      modelApi.get().then(({ data, error }) => {
-        if (error) return;
-        const available = (data as unknown as Record<string, unknown>)?.available;
-        const models = Array.isArray(available) ? mapModelOptions(available as ModelEntry[]) : [];
-        setModelOptions(models);
-        setFormModel(models[0]?.value || "");
-      });
+        // 知识库选项
+        const knowledgeOptionsVal = Array.isArray(kbData.items) ? (kbData.items as unknown as KnowledgeBaseInfo[]) : [];
 
-      kbApi.list().then(({ data, error }) => {
-        if (error) return;
-        setKnowledgeOptions(Array.isArray(data) ? (data as unknown as KnowledgeBaseInfo[]) : []);
-      });
+        // Skill 选项
+        const skillOptionsVal = normalizeSkillOptionsPayload(skillsData);
 
-      skillConfigApi.list().then(({ data, error }) => {
-        if (error) return;
-        setSkillOptions(normalizeSkillOptionsPayload(data));
-      });
-
-      mcpApi.list().then(({ data, error }) => {
-        if (error) return;
-        const servers = Array.isArray(data)
-          ? data
-          : data && typeof data === "object" && Array.isArray((data as { servers?: unknown }).servers)
-            ? ((data as { servers: Array<{ id?: string; name: string; resourceAccess?: ResourceAccess }> }).servers ??
-              [])
+        // MCP 选项
+        const mcpServers = Array.isArray(mcpsData)
+          ? mcpsData
+          : mcpsData && typeof mcpsData === "object" && Array.isArray((mcpsData as { servers?: unknown }).servers)
+            ? ((mcpsData as { servers: Array<{ id?: string; name: string; resourceAccess?: ResourceAccess }> })
+                .servers ?? [])
             : [];
-        setMcpOptions(
-          mapMcpOptions(
-            servers.filter(
-              (item): item is { id: string; name: string; resourceAccess?: ResourceAccess } =>
-                typeof item.id === "string" && item.id.length > 0,
-            ),
+        const mcpOptionsVal = mapMcpOptions(
+          mcpServers.filter(
+            (item): item is { id: string; name: string; resourceAccess?: ResourceAccess } =>
+              typeof item.id === "string" && item.id.length > 0,
           ),
         );
-      });
-    }
-  }, [open, isEdit, agentName, defaultName, t]);
+
+        // 模板列表
+        let templatesVal: AgentTemplate[] = [];
+        try {
+          const tplData = await agentApi.templates();
+          if (!tplData.error && tplData.data?.templates) {
+            templatesVal = tplData.data.templates;
+          }
+        } catch {
+          // 静默失败
+        }
+
+        const knowledgeState = buildKnowledgeFormState(d as Parameters<typeof buildKnowledgeFormState>[0]);
+
+        return {
+          machineOptions: machineOptionsVal,
+          siteOptions: siteOptionsVal,
+          hindsightEnabled: hindsightEnabledVal,
+          modelOptions: modelOptionsVal,
+          knowledgeOptions: knowledgeOptionsVal,
+          skillOptions: skillOptionsVal,
+          mcpOptions: mcpOptionsVal,
+          templates: templatesVal,
+          editState: {
+            agentId: (d.id as string) ?? null,
+            displayName: String(d.name ?? agentName ?? ""),
+            modelId: (d.modelId as string) || "",
+            prompt: String(d.prompt ?? ""),
+            description: String(d.description ?? ""),
+            machineId: (d.machineId as string) || "local",
+            engineType: (d.engineType as string) ?? "opencode",
+            resourceAccess: d.resourceAccess as ResourceAccess | undefined,
+            publicReadable: Boolean((d.resourceAccess as ResourceAccess | undefined)?.publicReadable),
+            relatedResources: (d.relatedResources as AgentRelatedResourcesView | undefined) ?? undefined,
+            knowledgeBaseIds: knowledgeState.knowledgeBaseIds,
+            searchFirst: knowledgeState.searchFirst,
+            maxResults: knowledgeState.maxResults,
+            skillIds: Array.isArray(d.skillIds) ? (d.skillIds as string[]) : [],
+            mcpIds: Array.isArray(d.mcpIds) ? (d.mcpIds as string[]) : [],
+            siteAppIds: Array.isArray(d.siteAppIds) ? (d.siteAppIds as string[]) : [],
+            enableMemory: enableMemoryVal,
+          },
+        };
+      }
+
+      // 创建模式：分别加载各项选项
+      let templatesVal: AgentTemplate[] = [];
+      try {
+        const tplData = await agentApi.templates();
+        if (!tplData.error && tplData.data?.templates) {
+          templatesVal = tplData.data.templates;
+        }
+      } catch {
+        // 静默失败
+      }
+
+      const modelData = await unwrap(modelApi.get());
+      const modelOptionsVal = Array.isArray(modelData.available)
+        ? mapModelOptions(modelData.available as ModelEntry[])
+        : [];
+
+      const kbData = await unwrap(kbApi.list());
+      const knowledgeOptionsVal = Array.isArray(kbData.items) ? (kbData.items as unknown as KnowledgeBaseInfo[]) : [];
+
+      const skillsData = await unwrap(skillConfigApi.list());
+      const skillOptionsVal = normalizeSkillOptionsPayload(skillsData);
+
+      const mcpsData = await unwrap(mcpApi.list());
+      const mcpServers = Array.isArray(mcpsData)
+        ? mcpsData
+        : mcpsData && typeof mcpsData === "object" && Array.isArray((mcpsData as { servers?: unknown }).servers)
+          ? ((mcpsData as { servers: Array<{ id?: string; name: string; resourceAccess?: ResourceAccess }> }).servers ??
+            [])
+          : [];
+      const mcpOptionsVal = mapMcpOptions(
+        mcpServers.filter(
+          (item): item is { id: string; name: string; resourceAccess?: ResourceAccess } =>
+            typeof item.id === "string" && item.id.length > 0,
+        ),
+      );
+
+      return {
+        machineOptions: machineOptionsVal,
+        siteOptions: siteOptionsVal,
+        hindsightEnabled: hindsightEnabledVal,
+        modelOptions: modelOptionsVal,
+        knowledgeOptions: knowledgeOptionsVal,
+        skillOptions: skillOptionsVal,
+        mcpOptions: mcpOptionsVal,
+        templates: templatesVal,
+        initialModel: modelOptionsVal[0]?.value || "",
+      };
+    },
+    {
+      ready: open && (!isEdit || !!agentName),
+      refreshDeps: [open, isEdit, agentName, defaultName],
+      onSuccess: (data) => {
+        // 选项 state
+        setMachineOptions(data.machineOptions);
+        setSiteOptions(data.siteOptions);
+        setHindsightEnabled(data.hindsightEnabled);
+        setModelOptions(data.modelOptions);
+        setKnowledgeOptions(data.knowledgeOptions);
+        setSkillOptions(data.skillOptions);
+        setMcpOptions(data.mcpOptions);
+        setTemplates(data.templates);
+
+        if (data.editState) {
+          // 编辑模式：填充表单
+          const es = data.editState;
+          setCurrentAgentId(es.agentId);
+          setDisplayAgentName(es.displayName);
+          setFormModel(es.modelId);
+          setFormPrompt(es.prompt);
+          setFormDescription(es.description);
+          setFormMachineId(es.machineId);
+          setFormEngineType(es.engineType);
+          setFormResourceAccess(es.resourceAccess);
+          setFormPublicReadable(es.publicReadable);
+          setRelatedResources(es.relatedResources);
+          setFormKnowledgeBaseIds(es.knowledgeBaseIds);
+          setFormKnowledgeSearchFirst(es.searchFirst);
+          setFormKnowledgeMaxResults(es.maxResults);
+          setFormSkillIds(es.skillIds);
+          setFormMcpIds(es.mcpIds);
+          setFormSiteAppIds(es.siteAppIds);
+          setFormEnableMemory(es.enableMemory);
+        } else if (!isEdit) {
+          // 创建模式：预选第一个模型
+          setFormModel(data.initialModel ?? "");
+        }
+      },
+      onError: (err) => {
+        console.error("Failed to load agent config:", err);
+        toast.error(t("knowledge.loadError", { message: (err as Error).message }));
+      },
+    },
+  );
 
   const validateForm = useCallback((): boolean => {
     if (!isEdit) {
@@ -443,16 +531,20 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         ]
       : mcpOptions;
 
-  const handleSave = useCallback(async () => {
-    if (readOnlyAgent) return;
-    if (!validateForm()) return;
-    setFormSaving(true);
-    try {
+  // 保存（创建/更新）
+  const { run: runSave, loading: formSaving } = useRequest(
+    async () => {
+      if (readOnlyAgent) return;
+      if (!validateForm()) return;
+
       if (isEdit) {
+        // 编辑模式：先拉取最新知识库列表验证 ID
         let latestKnowledgeOptions = knowledgeOptions;
-        const { data: kbData } = await kbApi.list();
+        const kbData = await unwrap(kbApi.list());
         if (kbData) {
-          latestKnowledgeOptions = (Array.isArray(kbData) ? kbData : []) as unknown as typeof knowledgeOptions;
+          latestKnowledgeOptions = (Array.isArray(kbData.items)
+            ? kbData.items
+            : []) as unknown as typeof knowledgeOptions;
           setKnowledgeOptions(latestKnowledgeOptions);
         }
         const validKnowledgeBaseIds = filterKnowledgeBaseIds(formKnowledgeBaseIds, latestKnowledgeOptions);
@@ -479,83 +571,55 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           ...(formEnableMemory ? { enableMemory: true } : {}),
         };
 
-        const { error } = await agentApi.set(agentName!, data);
-        if (error) {
-          toast.error(t("save.errorGeneric", { message: error.message }));
-          return;
-        }
+        await unwrap(agentApi.set(agentName!, data));
         toast.success(t("save.successUpdate"));
         dispatchConfigChange("agents");
         setRestartDialogOpen(true);
       } else {
+        // 创建模式
         const name = formName.trim();
-        const { error } = await agentApi.create(name, {
-          ...buildAgentPayload({
-            modelId: formModel,
-            prompt: formPrompt,
-            description: formDescription,
-            engineType: formEngineType,
-            knowledge: {
-              knowledgeBaseIds: formKnowledgeBaseIds,
-              searchFirst: formKnowledgeSearchFirst,
-              maxResults: formKnowledgeMaxResults,
-            },
+        await unwrap(
+          agentApi.create(name, {
+            ...buildAgentPayload({
+              modelId: formModel,
+              prompt: formPrompt,
+              description: formDescription,
+              engineType: formEngineType,
+              knowledge: {
+                knowledgeBaseIds: formKnowledgeBaseIds,
+                searchFirst: formKnowledgeSearchFirst,
+                maxResults: formKnowledgeMaxResults,
+              },
+            }),
+            skillIds: formSkillIds,
+            mcpIds: formMcpIds,
+            siteAppIds: formSiteAppIds,
+            machineId: formMachineId === "local" ? null : formMachineId,
+            publicReadable: formPublicReadable,
+            ...(formEnableMemory ? { enableMemory: true } : {}),
           }),
-          skillIds: formSkillIds,
-          mcpIds: formMcpIds,
-          siteAppIds: formSiteAppIds,
-          machineId: formMachineId === "local" ? null : formMachineId,
-          publicReadable: formPublicReadable,
-          ...(formEnableMemory ? { enableMemory: true } : {}),
-        });
-        if (error) {
-          console.error(t("save.errorGeneric", { message: "" }), error);
-          toast.error(t("save.errorGeneric", { message: error.message }));
-        } else {
-          toast.success(t("save.successCreate"));
-          onOpenChange(false);
-          onSuccess?.();
-          dispatchConfigChange("agents");
-        }
+        );
+        toast.success(t("save.successCreate"));
+        onOpenChange(false);
+        onSuccess?.();
+        dispatchConfigChange("agents");
       }
-    } catch (e) {
-      console.error(t("save.errorGeneric", { message: "" }), e);
-      toast.error(t("save.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
-    } finally {
-      setFormSaving(false);
-    }
-  }, [
-    validateForm,
-    isEdit,
-    formName,
-    formModel,
-    formPrompt,
-    formDescription,
-    formKnowledgeBaseIds,
-    formKnowledgeSearchFirst,
-    formKnowledgeMaxResults,
-    formSkillIds,
-    formMcpIds,
-    formSiteAppIds,
-    formMachineId,
-    agentName,
-    knowledgeOptions,
-    onOpenChange,
-    onSuccess,
-    t,
-    readOnlyAgent,
-    formPublicReadable,
-    formEngineType,
-    formEnableMemory,
-  ]);
+    },
+    {
+      manual: true,
+      onError: (e) => {
+        console.error(t("save.errorGeneric", { message: "" }), e);
+        toast.error(t("save.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
+      },
+    },
+  );
 
+  // 获取运行中实例 ID 列表
   const getRunningInstanceIds = useCallback(async () => {
     if (!agentName) return [];
     try {
-      const { data: agentsResult } = await agentApi.list();
-      const rawAgents = (
-        agentsResult as unknown as { agents?: { id: string; name: string; resourceAccess?: ResourceAccess }[] } | null
-      )?.agents;
+      const agentsResult = await unwrap(agentApi.list());
+      const rawAgents = agentsResult.agents;
       const agents = Array.isArray(rawAgents) ? rawAgents : [];
       const matchedAgent =
         agents.find((a) => currentAgentId && a.id === currentAgentId) ??
@@ -563,15 +627,14 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         agents.find((a) => a.name === agentName);
       if (!matchedAgent) return [];
 
-      const { data: envsData } = await envApi.list();
-      const envs = Array.isArray(envsData)
-        ? (envsData as { id: string; agent_config_id?: string; instances_count?: number }[])
-        : [];
-      const matchedEnv = envs.find((e) => e.agent_config_id === matchedAgent.id);
+      const envs = await unwrap(envApi.list());
+      const matchedEnv = (envs as unknown as { id: string; agent_config_id?: string; instances_count?: number }[]).find(
+        (e) => e.agent_config_id === matchedAgent.id,
+      );
       if (!matchedEnv || (matchedEnv.instances_count ?? 0) <= 0) return [];
 
-      const { data: instData } = await envApi.listInstances({ id: matchedEnv.id });
-      const instances = (instData as { instances?: { id: string; status: string }[] } | null)?.instances ?? [];
+      const instData = await unwrap(envApi.listInstances({ id: matchedEnv.id }));
+      const instances = (instData as unknown as { items?: { id: string; status: string }[] } | null)?.items ?? [];
       return instances
         .filter((inst) => inst.status === "running" || inst.status === "starting")
         .map((inst) => ({ id: inst.id, environmentId: matchedEnv.id }));
@@ -581,24 +644,26 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     }
   }, [agentName, currentAgentId, formResourceAccess?.resourceKey]);
 
-  const handleRestartAfterSave = useCallback(async () => {
-    setRestarting(true);
-    try {
+  // 保存后重启
+  const { run: runRestart, loading: restarting } = useRequest(
+    async () => {
       const runningInstances = await getRunningInstanceIds();
       for (const inst of runningInstances) {
-        await instanceApi.delete({ id: inst.id });
-        await instanceApi.spawn({ environmentId: inst.environmentId });
+        await unwrap(instanceApi.delete({ id: inst.id }));
+        await unwrap(instanceApi.spawn({ environmentId: inst.environmentId }));
       }
       toast.success(tAgentPanel("restartSuccess"));
-    } catch (err) {
-      console.error("Failed to restart:", err);
-      toast.error(tAgentPanel("restartFailed", { message: (err as Error).message }));
-    } finally {
-      setRestarting(false);
       setRestartDialogOpen(false);
       onOpenChange(false);
-    }
-  }, [getRunningInstanceIds, tAgentPanel, onOpenChange]);
+    },
+    {
+      manual: true,
+      onError: (err) => {
+        console.error("Failed to restart:", err);
+        toast.error(tAgentPanel("restartFailed", { message: (err as Error).message }));
+      },
+    },
+  );
 
   if (!open) return null;
 
@@ -1122,7 +1187,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 {t("dialog.cancel") ?? "Cancel"}
               </Button>
-              <Button onClick={handleSave} disabled={formSaving || readOnlyAgent}>
+              <Button onClick={() => runSave()} disabled={formSaving || readOnlyAgent}>
                 {readOnlyAgent ? t("actions.view") : confirmLabel}
               </Button>
             </div>
@@ -1155,7 +1220,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
               >
                 {tAgentPanel("restartLater")}
               </AlertDialogCancel>
-              <AlertDialogAction onClick={handleRestartAfterSave} disabled={restarting}>
+              <AlertDialogAction onClick={() => runRestart()} disabled={restarting}>
                 {restarting ? tAgentPanel("restarting") : tAgentPanel("restart")}
               </AlertDialogAction>
             </AlertDialogFooter>

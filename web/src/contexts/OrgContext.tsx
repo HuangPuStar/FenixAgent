@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { orgApi } from "@/src/api/sdk";
+import { orgApi } from "@/src/api/organizations";
 import { NS } from "@/src/i18n";
 
 interface OrgInfo {
@@ -56,12 +56,12 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const refreshOrgs = useCallback(async () => {
     try {
-      const { data: _list, error } = await orgApi.list();
-      if (error) {
-        console.error("Failed to load org context:", error.message);
+      const resp = await orgApi.list();
+      if (!resp.success) {
+        console.error("Failed to load org context:", resp.error?.message);
         return;
       }
-      const list = (_list ?? []) as unknown as OrgWithRole[];
+      const list = (resp.data ?? []) as unknown as OrgWithRole[];
       setOrgs(list);
       // 取当前 active org 或第一个
       const activeOrgId = localStorage.getItem(STORAGE_KEY);
@@ -99,8 +99,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEY, orgId);
 
       try {
-        const { error } = await orgApi.setActive(orgId);
-        if (error) throw new Error(error.message);
+        const resp = await orgApi.setActive(orgId);
+        if (!resp.success) throw new Error(resp.error?.message ?? "Failed to switch org");
         // 成功后导航到首页，触发组件重建和数据重载
         void navigate({ to: "/agent/home", replace: true });
       } catch (err) {

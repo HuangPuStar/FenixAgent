@@ -1,8 +1,8 @@
 /**
- * files.ts — 会话文件操作 API 模块
+ * files.ts — 环境文件操作 API 模块
  *
- * 封装基于会话（session）的文件浏览、读写、删除和用户文件树管理操作。
- * 后端路由前缀为 /web/sessions/:sessionId，本模块内部拼接完整路径。
+ * 封装基于环境（environment）的文件浏览、读写、上传和用户文件树管理操作。
+ * 后端路由前缀为 /web/environments/:id，本模块内部拼接完整路径。
  */
 
 import { request } from "./request";
@@ -42,11 +42,6 @@ interface FileWriteResult {
   size: number;
 }
 
-/** 文件删除响应 */
-interface FileDeleteResult {
-  ok: true;
-}
-
 /** 文件树响应 */
 interface TreeResponse {
   paths: string[];
@@ -72,99 +67,94 @@ interface BatchDeleteResponse {
 
 export const fileApi = {
   /**
-   * 获取会话工作区的目录列表。
-   * @param params.sessionId - 会话 ID
-   * @param query - 可选的目录路径筛选
+   * 获取环境工作区的目录列表。
+   * @param id - 环境 ID
+   * @param subpath - 可选的子目录路径
    */
-  listDir: (params: { sessionId: string }, query?: { path?: string }) =>
-    request<FileListResponse>("/web/sessions/:sessionId/files", { params, query }),
-
-  /**
-   * 读取会话工作区中指定路径的文件内容。
-   * @param params.sessionId - 会话 ID
-   * @param query - 可选参数（如 path 指定文件路径）
-   */
-  readFile: (params: { sessionId: string }, query?: { path?: string }) =>
-    request<FileContent>("/web/sessions/:sessionId/files/read", { params, query }),
-
-  /**
-   * 上传文件到会话工作区。使用 FormData 作为请求体以支持多文件上传。
-   * @param params.sessionId - 会话 ID
-   * @param formData - 包含文件及相关路径信息的 FormData 对象
-   */
-  upload: (params: { sessionId: string }, formData: FormData) =>
-    request<FileUploadResponse>("/web/sessions/:sessionId/files/upload", {
-      method: "POST",
-      params,
-      body: formData,
+  listDir: (id: string, subpath?: string) =>
+    request<FileListResponse>("/web/environments/:id/user", {
+      params: { id },
+      query: subpath ? { path: subpath } : undefined,
     }),
 
   /**
-   * 写入文本内容到会话工作区的指定文件。
-   * @param params.sessionId - 会话 ID
-   * @param body.content - 要写入的文本内容
+   * 读取环境工作区中指定路径的文件内容。
+   * @param id - 环境 ID
+   * @param subpath - 文件路径（相对于 user/ 目录）
    */
-  writeFile: (params: { sessionId: string }, body: { content: string }) =>
-    request<FileWriteResult>("/web/sessions/:sessionId/files/write", {
+  readFile: (id: string, subpath: string) =>
+    request<FileContent>(`/web/environments/:id/user/${subpath}`, { params: { id } }),
+
+  /**
+   * 上传文件到环境工作区。使用 FormData 作为请求体以支持多文件上传。
+   * @param id - 环境 ID
+   * @param fd - 包含文件及相关路径信息的 FormData 对象
+   */
+  upload: (id: string, fd: FormData) =>
+    request<FileUploadResponse>("/web/environments/:id/user", {
       method: "POST",
-      params,
-      body,
+      params: { id },
+      body: fd,
     }),
 
   /**
-   * 删除会话工作区中指定路径的文件。
-   * @param params.sessionId - 会话 ID
-   * @param params.path - 要删除的文件路径
+   * 写入文本内容到环境工作区的指定文件。
+   * @param id - 环境 ID
+   * @param subpath - 文件路径（相对于 user/ 目录）
+   * @param content - 要写入的文本内容
    */
-  deleteFile: (params: { sessionId: string; path: string }) =>
-    request<FileDeleteResult>("/web/sessions/:sessionId/files", {
-      method: "DELETE",
-      params: { sessionId: params.sessionId },
-      body: { path: params.path },
+  writeFile: (id: string, subpath: string, content: string) =>
+    request<FileWriteResult>(`/web/environments/:id/user/${subpath}`, {
+      method: "PUT",
+      params: { id },
+      body: { content },
     }),
 };
 
 export const userFileApi = {
   /**
-   * 递归获取会话工作区 user/ 目录的完整文件树。
-   * @param params.sessionId - 会话 ID
+   * 递归获取环境工作区 user/ 目录的完整文件树。
+   * @param id - 环境 ID
    */
-  tree: (params: { sessionId: string }) => request<TreeResponse>("/web/sessions/:sessionId/user/tree", { params }),
+  tree: (id: string) => request<TreeResponse>("/web/environments/:id/user-file/tree", { params: { id } }),
 
   /**
    * 重命名或移动 user/ 目录中的文件或目录。
-   * @param params.sessionId - 会话 ID
-   * @param body.oldPath - 原路径
-   * @param body.newPath - 新路径
+   * @param id - 环境 ID
+   * @param path - 原路径
+   * @param newName - 新文件名（仅文件名，不含目录部分）
    */
-  rename: (params: { sessionId: string }, body: { oldPath: string; newPath: string }) =>
-    request<RenameResponse>("/web/sessions/:sessionId/user/rename", {
+  rename: (id: string, path: string, newName: string) => {
+    const parentDir = path.includes("/") ? path.substring(0, path.lastIndexOf("/")) : "";
+    const newPath = parentDir ? `${parentDir}/${newName}` : newName;
+    return request<RenameResponse>("/web/environments/:id/user-file/rename", {
       method: "POST",
-      params,
-      body,
-    }),
+      params: { id },
+      body: { oldPath: path, newPath },
+    });
+  },
 
   /**
    * 在 user/ 目录下创建新目录。
-   * @param params.sessionId - 会话 ID
-   * @param body.path - 要创建的目录路径
+   * @param id - 环境 ID
+   * @param path - 要创建的目录路径
    */
-  mkdir: (params: { sessionId: string }, body: { path: string }) =>
-    request<MkdirResponse>("/web/sessions/:sessionId/user/mkdir", {
+  mkdir: (id: string, path: string) =>
+    request<MkdirResponse>("/web/environments/:id/user-file/mkdir", {
       method: "POST",
-      params,
-      body,
+      params: { id },
+      body: { path },
     }),
 
   /**
    * 批量删除 user/ 目录下的文件，分别返回成功和失败结果。
-   * @param params.sessionId - 会话 ID
-   * @param body.paths - 待删除的文件路径数组
+   * @param id - 环境 ID
+   * @param paths - 待删除的文件路径数组
    */
-  batchDelete: (params: { sessionId: string }, body: { paths: string[] }) =>
-    request<BatchDeleteResponse>("/web/sessions/:sessionId/user/batch-delete", {
-      method: "POST",
-      params,
-      body,
+  batchDelete: (id: string, paths: string[]) =>
+    request<BatchDeleteResponse>("/web/environments/:id/user-file/batch", {
+      method: "DELETE",
+      params: { id },
+      body: { paths },
     }),
 };

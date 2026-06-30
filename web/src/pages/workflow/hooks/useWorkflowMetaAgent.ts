@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { agentApi, envApi } from "@/src/api/sdk";
+import { agentApi } from "@/src/api/agents";
+import { envApi } from "@/src/api/environments";
 import { useMetaAgent } from "@/src/hooks/useMetaAgent";
 import type { WfMeta } from "../yaml-utils";
 
@@ -71,21 +72,17 @@ export function useWorkflowMetaAgent({
     // 与左侧 AgentSidebarTree 的数据组装方式一致：过滤掉内置智能体，每个智能体关联到绑定的 environment。
     Promise.all([agentApi.list(), envApi.list()])
       .then(([agentResult, envResult]) => {
-        const raw = agentResult.ok
-          ? (
-              agentResult.data as {
-                agents?: Array<{ id: string; name: string; description?: string; builtIn?: boolean }>;
-              } | null
-            )?.agents
-          : null;
-        const agents = Array.isArray(raw) ? raw : [];
-        const envs = envResult.ok && Array.isArray(envResult.data) ? envResult.data : [];
+        // 新 API 返回 ApiResponse<T>，通过 success/data/error 判断
+        const agents = agentResult.success ? (agentResult.data?.agents ?? []) : [];
+        const envs = envResult.success && Array.isArray(envResult.data) ? envResult.data : [];
 
         // agentConfigId → environment.name，用于把"智能体"翻译成 yaml 需要的 envName
+        // 后端返回 snake_case 字段，通过索引签名访问
         const envNameByConfigId = new Map<string, string>();
         for (const env of envs) {
-          if (env.agent_config_id) {
-            envNameByConfigId.set(env.agent_config_id, env.name);
+          const configId = env.agent_config_id as string | undefined;
+          if (configId) {
+            envNameByConfigId.set(configId, env.name);
           }
         }
 

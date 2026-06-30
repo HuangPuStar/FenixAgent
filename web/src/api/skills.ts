@@ -26,7 +26,7 @@ interface SkillSaveResult {
   name: string;
 }
 
-export const skillApi = {
+export const skillConfigApi = {
   /** 获取 Skill 列表 */
   list: () => request<SkillListResult>("/web/config/skills", { method: "POST", body: { action: "list" } }),
 

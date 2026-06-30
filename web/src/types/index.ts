@@ -215,3 +215,19 @@ export interface FileWriteResult {
   path: string;
   size: number;
 }
+
+/** 定时任务信息 */
+export interface TaskInfo {
+  id: string;
+  name: string;
+  description?: string;
+  cron: string;
+  environmentId: string;
+  environmentName?: string;
+  task: string;
+  timeoutMinutes: number;
+  enabled: boolean;
+  lastRunAt?: number;
+  nextRunAt?: number;
+  lastStatus?: string | null;
+}

@@ -65,6 +65,9 @@ export const agentApi = {
   /** 删除 Agent 配置（内置 Agent 不可删除） */
   del: (name: string) => request<AgentDeleteResult>("/web/config/agents", { method: "DELETE", query: { name } }),
 
+  /** 删除 Agent 配置（别名，兼容 sidebark 等仍使用 .delete() 的调用方） */
+  delete: (name: string) => request<AgentDeleteResult>("/web/config/agents", { method: "DELETE", query: { name } }),
+
   /** 将指定 Agent 设为当前用户的默认 Agent */
   setDefault: (name: string) =>
     request<AgentSetDefaultResult>("/web/config/agents/default", { method: "POST", body: { name } }),
