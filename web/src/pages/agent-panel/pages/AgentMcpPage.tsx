@@ -1,5 +1,6 @@
+import { useRequest } from "ahooks";
 import { Plus, Search } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -10,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { mcpApi } from "@/src/api/sdk";
+import { mcpApi } from "@/src/api/mcp";
+import { unwrap } from "@/src/api/request";
 import {
   canManageMcpSharing,
   canWriteMcp,
@@ -20,7 +22,7 @@ import {
   getMcpResourceBadgeKey,
 } from "@/src/lib/mcp-resource-access";
 import { NS } from "../../../i18n";
-import type { McpInspectResult, McpServerConfig, McpServerInfo, McpToolInfo } from "../../../types/config";
+import type { McpServerConfig, McpServerInfo, McpToolInfo } from "../../../types/config";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -118,13 +120,25 @@ function buildMcpPayload(
 export function AgentMcpPage() {
   const { t } = useTranslation("mcp");
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
-  const [servers, setServers] = useState<McpServerInfo[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingServer, setEditingServer] = useState<McpServerInfo | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // 列表查询
+  const {
+    data: listData,
+    loading,
+    error: listError,
+    refresh,
+  } = useRequest(() => unwrap(mcpApi.list()), {
+    onError: (err) => {
+      console.error(t("toast.loadListFailed"), err);
+      toast.error(t("toast.loadListFailedWith", { message: err.message }));
+    },
+  });
+  const servers = Array.isArray(listData?.servers) ? listData.servers : [];
 
   const [formName, setFormName] = useState("");
   const [formType, setFormType] = useState<"local" | "remote">("remote");
@@ -133,7 +147,83 @@ export function AgentMcpPage() {
   const [formEnvironment, setFormEnvironment] = useState<KeyValueEntry[]>([{ key: "", value: "" }]);
   const [formHeaders, setFormHeaders] = useState<KeyValueEntry[]>([{ key: "", value: "" }]);
   const [formTimeout, setFormTimeout] = useState("");
-  const [formSaving, setFormSaving] = useState(false);
+
+  // 保存（创建/更新）：仅创建时 toast 提示
+  const { run: runSave, loading: saving } = useRequest(
+    async (payload: McpServerConfig) => {
+      if (editingServer) {
+        return unwrap(mcpApi.update(formName, payload));
+      }
+      return unwrap(mcpApi.create(formName, payload));
+    },
+    {
+      manual: true,
+      onSuccess: () => {
+        if (!editingServer) toast.success(t("toast.serverCreated"));
+        setDialogOpen(false);
+        refresh();
+      },
+      onError: (err) => {
+        console.error(t("toast.saveFailed"), err);
+        toast.error(t("toast.saveFailedWith", { message: err.message }));
+      },
+    },
+  );
+
+  // 启停切换：静默操作，UI 已视觉反馈
+  const { run: runToggle } = useRequest(
+    async (server: McpServerInfo) => {
+      if (server.enabled) {
+        return unwrap(mcpApi.disable(server.name));
+      }
+      return unwrap(mcpApi.enable(server.name));
+    },
+    {
+      manual: true,
+      onSuccess: () => refresh(),
+      onError: (err) => {
+        console.error(t("toast.operationFailed"), err);
+        toast.error(t("toast.operationFailedWith", { message: err.message }));
+      },
+    },
+  );
+
+  // 删除：静默操作，列表项消失已是最佳反馈
+  const { run: runDelete } = useRequest((name: string) => unwrap(mcpApi.del(name)), {
+    manual: true,
+    onSuccess: () => {
+      setConfirmOpen(false);
+      refresh();
+    },
+    onError: (err) => {
+      console.error(t("toast.deleteFailed"), err);
+      toast.error(t("toast.deleteFailedWith", { message: err.message }));
+    },
+  });
+
+  // 公开/私密切换
+  const { run: runToggleSharing, loading: sharingLoading } = useRequest(
+    async (server: McpServerInfo) => {
+      if (!canManageMcpSharing(server) || !server.resourceAccess) throw new Error("无法管理此服务器的共享状态");
+      const nextPublicReadable = !server.resourceAccess.publicReadable;
+      const data = await unwrap(mcpApi.get(getMcpLookupKey(server)));
+      // publicReadable 由后端 splitMcpConfigInput 从 config 对象中提取
+      const configWithSharing = { ...data.config, publicReadable: nextPublicReadable };
+      await unwrap(mcpApi.update(server.name, configWithSharing as McpServerConfig));
+      return { nextPublicReadable };
+    },
+    {
+      manual: true,
+      onSuccess: ({ nextPublicReadable }: { nextPublicReadable: boolean }) => {
+        toast.success(nextPublicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
+        refresh();
+      },
+      onError: (err) => {
+        console.error(t("toast.saveFailed"), err);
+        toast.error(t("toast.saveFailedWith", { message: err.message }));
+      },
+    },
+  );
 
   const [oauthExpanded, setOauthExpanded] = useState(false);
   const [formOauthClientId, setFormOauthClientId] = useState("");
@@ -145,27 +235,7 @@ export function AgentMcpPage() {
   const [inspectingServer, setInspectingServer] = useState<string | null>(null);
   const [toolsCache, setToolsCache] = useState<Record<string, McpToolInfo[]>>({});
   const [expandedServer, setExpandedServer] = useState<string | null>(null);
-  const [sharingServer, setSharingServer] = useState<string | null>(null);
   const editingReadOnly = editingServer ? !canWriteMcp(editingServer) : false;
-
-  const loadServers = useCallback(async () => {
-    setLoading(true);
-    const { data: result, error } = await mcpApi.list();
-    if (error) {
-      console.error(t("toast.loadListFailed"), error);
-      toast.error(t("toast.loadListFailedWith", { message: error.message }));
-    } else {
-      const data = Array.isArray(result)
-        ? result
-        : (((result as unknown as Record<string, unknown>)?.servers ?? []) as unknown as McpServerInfo[]);
-      setServers(data as unknown as typeof servers);
-    }
-    setLoading(false);
-  }, [t]);
-
-  useEffect(() => {
-    loadServers();
-  }, [loadServers]);
 
   const handleOpenCreate = () => {
     setEditingServer(null);
@@ -187,12 +257,12 @@ export function AgentMcpPage() {
   const handleOpenEdit = async (server: McpServerInfo) => {
     setEditingServer(server);
     setFormName(server.name);
-    const { data: detail, error: detailError } = await mcpApi.get(getMcpLookupKey(server));
-    if (detailError) {
+    const { success, data: detail, error: detailError } = await mcpApi.get(getMcpLookupKey(server));
+    if (!success || !detail) {
       console.error(t("toast.loadDetailFailed"), detailError);
       toast.error(t("toast.loadDetailFailed"));
     } else {
-      const config = ((detail as Record<string, unknown>)?.config ?? detail) as McpServerConfig;
+      const config = detail.config;
       if ("type" in config && config.type === "local") {
         setFormType("local");
         setFormCommand(commandToString(config.command));
@@ -241,11 +311,9 @@ export function AgentMcpPage() {
   const handleSave = async () => {
     const err = validateMcpForm(formName, formType, formCommand, formUrl, t);
     if (err) {
-      console.error(t("toast.saveFailed"), err);
       toast.error(err);
       return;
     }
-    setFormSaving(true);
     const payload = buildMcpPayload(
       formType,
       formCommand,
@@ -258,62 +326,7 @@ export function AgentMcpPage() {
       formOauthRedirectUri,
       formTimeout,
     );
-    if (editingServer) {
-      const { error } = await mcpApi.set(formName, payload as unknown as Record<string, unknown>);
-      if (error) {
-        console.error(t("toast.saveFailed"), error);
-        toast.error(t("toast.saveFailedWith", { message: error.message }));
-        setFormSaving(false);
-        return;
-      }
-      toast.success(t("toast.serverUpdated"));
-    } else {
-      const { error } = await mcpApi.create(formName, payload as unknown as Record<string, unknown>);
-      if (error) {
-        console.error(t("toast.saveFailed"), error);
-        toast.error(t("toast.saveFailedWith", { message: error.message }));
-        setFormSaving(false);
-        return;
-      }
-      toast.success(t("toast.serverCreated"));
-    }
-    setFormSaving(false);
-    setDialogOpen(false);
-    loadServers();
-  };
-
-  const handleToggle = async (server: McpServerInfo) => {
-    if (server.enabled) {
-      const { error } = await mcpApi.disable(server.name);
-      if (error) {
-        console.error(t("toast.operationFailed"), error);
-        toast.error(t("toast.operationFailedWith", { message: error.message }));
-        return;
-      }
-      toast.success(t("toast.disabled", { name: server.name }));
-    } else {
-      const { error } = await mcpApi.enable(server.name);
-      if (error) {
-        console.error(t("toast.operationFailed"), error);
-        toast.error(t("toast.operationFailedWith", { message: error.message }));
-        return;
-      }
-      toast.success(t("toast.enabled", { name: server.name }));
-    }
-    loadServers();
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    const { error } = await mcpApi.delete(deleteTarget);
-    if (error) {
-      console.error(t("toast.deleteFailed"), error);
-      toast.error(t("toast.deleteFailedWith", { message: error.message }));
-      return;
-    }
-    toast.success(t("toast.serverDeleted"));
-    setConfirmOpen(false);
-    loadServers();
+    runSave(payload);
   };
 
   const handleInspect = async (server: McpServerInfo) => {
@@ -321,32 +334,26 @@ export function AgentMcpPage() {
     const serverKey = getMcpKey(server);
     setInspectingServer(serverKey);
     // 外部只读 MCP server 用 listTools 获取缓存工具，内部用 inspect 连接实时检测
-    const apiCall = writable ? mcpApi.inspect(server.name) : mcpApi.listTools(server.name);
-    const { data: result, error } = (await apiCall) as unknown as {
-      data: McpInspectResult;
-      error: { message: string } | null;
-    };
-    if (error || !result) {
-      console.error(t("toast.inspectFailed"), error);
-      toast.error(t("toast.inspectFailedWith", { message: error?.message ?? t("toast.saveFailed") }));
-      setInspectingServer(null);
-      return;
-    }
     if (writable) {
-      // inspect 返回格式：{ serverInfo, tools: [{ name, description, inputSchema }] }
-      const inspectResult = result as unknown as McpInspectResult;
+      const { success, data: result, error } = await mcpApi.inspect(server.name);
+      if (!success || !result || error) {
+        console.error(t("toast.inspectFailed"), error);
+        toast.error(t("toast.inspectFailedWith", { message: error?.message ?? t("toast.saveFailed") }));
+        setInspectingServer(null);
+        return;
+      }
       toast.success(
         t("toast.inspectSuccess", {
           name: server.name,
-          serverInfo: inspectResult.serverInfo.name ?? "",
-          version: inspectResult.serverInfo.version ?? "",
-          toolCount: inspectResult.tools.length,
+          serverInfo: result.serverInfo.name ?? "",
+          version: result.serverInfo.version ?? "",
+          toolCount: result.tools.length,
         }),
       );
-      loadServers();
+      refresh();
       setToolsCache((prev) => ({
         ...prev,
-        [serverKey]: inspectResult.tools.map((toolItem) => ({
+        [serverKey]: result.tools.map((toolItem) => ({
           id: `${serverKey}:${toolItem.name}`,
           toolName: toolItem.name,
           description: toolItem.description ?? null,
@@ -355,12 +362,17 @@ export function AgentMcpPage() {
         })),
       }));
     } else {
-      // listTools 返回格式：{ name, tools: [{ id, toolName, description, inputSchema, inspectedAt }] }
-      const listResult = result as unknown as { name: string; tools: McpToolInfo[] };
-      toast.success(t("toast.inspectSuccess", { name: server.name, version: "", toolCount: listResult.tools.length }));
+      const { success, data: result, error } = await mcpApi.listTools(server.name);
+      if (!success || !result || error) {
+        console.error(t("toast.inspectFailed"), error);
+        toast.error(t("toast.inspectFailedWith", { message: error?.message ?? t("toast.saveFailed") }));
+        setInspectingServer(null);
+        return;
+      }
+      toast.success(t("toast.inspectSuccess", { name: server.name, version: "", toolCount: result.tools.length }));
       setToolsCache((prev) => ({
         ...prev,
-        [serverKey]: listResult.tools.map((toolItem) => ({
+        [serverKey]: result.tools.map((toolItem) => ({
           id: toolItem.id || `${serverKey}:${toolItem.toolName}`,
           toolName: toolItem.toolName,
           description: toolItem.description ?? null,
@@ -373,53 +385,26 @@ export function AgentMcpPage() {
     setInspectingServer(null);
   };
 
-  const handleTogglePublicReadable = async (server: McpServerInfo) => {
-    if (!canManageMcpSharing(server) || !server.resourceAccess) return;
-    const nextPublicReadable = !server.resourceAccess.publicReadable;
-    setSharingServer(getMcpKey(server));
-    const { data: detail, error: detailError } = await mcpApi.get(getMcpLookupKey(server));
-    if (detailError) {
-      console.error(t("toast.loadDetailFailed"), detailError);
-      toast.error(t("toast.loadDetailFailed"));
-      setSharingServer(null);
-      return;
-    }
-    const config = ((detail as Record<string, unknown>)?.config ?? detail) as Record<string, unknown>;
-    const { error } = await mcpApi.set(server.name, { ...config, publicReadable: nextPublicReadable });
-    if (error) {
-      console.error(t("toast.saveFailed"), error);
-      toast.error(t("toast.saveFailedWith", { message: error.message }));
-      setSharingServer(null);
-      return;
-    }
-    toast.success(nextPublicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
-    setSharingServer(null);
-    loadServers();
-  };
-
   const handleTestFormUrl = async () => {
     if (!formUrl.trim()) return;
     setTestingUrl(true);
-    const { data: result, error: testError } = await mcpApi.testUrl(formUrl);
-    if (testError) {
+    const { success, data: result, error: testError } = await mcpApi.testUrl(formUrl);
+    if (!success || !result || testError) {
       console.error(t("toast.testFailed"), testError);
-      toast.error(t("toast.testFailedWith", { message: testError.message }));
+      toast.error(t("toast.testFailedWith", { message: testError?.message ?? "测试失败" }));
+    } else if (result.reachable && result.protocol) {
+      const toolsInfo = result.toolsCount != null ? `，${result.toolsCount} ${t("column.tools").toLowerCase()}` : "";
+      toast.success(
+        t("toast.testSuccess", {
+          serverName: result.serverName ?? "",
+          serverVersion: result.serverVersion ?? "",
+          toolsInfo,
+        }),
+      );
+    } else if (result.reachable) {
+      toast.warning(t("toast.testReachable", { message: result.message ?? "" }));
     } else {
-      const d = result as Record<string, unknown>;
-      if (d?.reachable && d?.protocol) {
-        const toolsInfo = d.toolsCount != null ? `，${d.toolsCount} ${t("column.tools").toLowerCase()}` : "";
-        toast.success(
-          t("toast.testSuccess", {
-            serverName: (d.serverName as string) ?? "",
-            serverVersion: (d.serverVersion as string) ?? "",
-            toolsInfo,
-          }),
-        );
-      } else if (d?.reachable) {
-        toast.warning(t("toast.testReachable", { message: (d.message as string) ?? "" }));
-      } else {
-        toast.error(t("toast.testFailed", { message: (d?.message as string) ?? t("toast.saveFailed") }));
-      }
+      toast.error(t("toast.testFailed", { message: result.message ?? t("toast.saveFailed") }));
     }
     setTestingUrl(false);
   };
@@ -449,6 +434,24 @@ export function AgentMcpPage() {
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
             <Skeleton key={i} className="h-20 w-full rounded-lg" />
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (listError) {
+    return (
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
+        <div className="flex flex-col items-center gap-3 py-16 text-text-muted">
+          <p>{listError.message}</p>
+          <button
+            type="button"
+            onClick={() => refresh()}
+            className="inline-flex h-9 items-center rounded-lg border border-border bg-surface-1 px-4 text-sm hover:bg-surface-2"
+          >
+            {t("common.retry") ?? "重试"}
+          </button>
         </div>
       </div>
     );
@@ -558,8 +561,8 @@ export function AgentMcpPage() {
                   <label className="flex items-center gap-2 text-xs text-text-muted">
                     <Switch
                       checked={Boolean(server.resourceAccess?.publicReadable)}
-                      disabled={sharingServer === serverKey}
-                      onCheckedChange={() => void handleTogglePublicReadable(server)}
+                      disabled={sharingLoading}
+                      onCheckedChange={() => runToggleSharing(server)}
                     />
                     {tComponents("resource.public")}
                   </label>
@@ -586,7 +589,7 @@ export function AgentMcpPage() {
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        handleToggle(server);
+                        runToggle(server);
                       }}
                       className="text-text-secondary hover:text-text-primary transition-colors"
                     >
@@ -686,7 +689,7 @@ export function AgentMcpPage() {
           editingServer ? (editingReadOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")
         }
         onSubmit={handleSave}
-        loading={formSaving}
+        loading={saving}
         hideSubmit={editingReadOnly}
         width="sm:max-w-2xl"
       >
@@ -946,7 +949,7 @@ export function AgentMcpPage() {
         title={t("confirm.deleteTitle")}
         description={t("confirm.deleteDescription", { name: deleteTarget ?? "" })}
         variant="destructive"
-        onConfirm={confirmDelete}
+        onConfirm={() => deleteTarget && runDelete(deleteTarget)}
       />
     </div>
   );
