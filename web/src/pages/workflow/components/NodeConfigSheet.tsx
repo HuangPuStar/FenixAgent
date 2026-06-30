@@ -25,6 +25,7 @@ export interface NodeConfigSheetProps {
   meta: WfMeta;
   updateMeta: (updates: Partial<WfMeta>) => void;
   customTools: CustomToolItem[];
+  nodes: Node[];
 }
 
 export function NodeConfigSheet({
@@ -43,6 +44,7 @@ export function NodeConfigSheet({
   meta,
   updateMeta,
   customTools,
+  nodes,
 }: NodeConfigSheetProps) {
   const { t } = useTranslation("workflows");
 
@@ -90,6 +92,7 @@ export function NodeConfigSheet({
             meta={meta}
             updateMeta={updateMeta}
             customTools={customTools}
+            nodes={nodes}
           />
         </div>
       </SheetContent>

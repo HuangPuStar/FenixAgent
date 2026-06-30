@@ -65,12 +65,12 @@ export default class LlmToolNode implements CustomNode {
       type: "string",
       required: false,
       description: '响应格式: "text"（默认，返回纯文本）或 "json_object"（返回 JSON）',
+      group: "advance",
     },
     api_key: {
       type: "string",
       required: false,
       description: "OpenAI API Key。优先级高于 secrets 和环境变量，建议走 secrets 声明以避免硬编码",
-      group: "advance",
     },
     output_contains: {
       type: "string",
@@ -78,15 +78,14 @@ export default class LlmToolNode implements CustomNode {
       description: "输出必须包含的文本。设置后若 LLM 返回内容中不包含该文本，节点标记为失败 (FAILED)",
       group: "advance",
     },
-    api_base: {
+    base_url: {
       type: "string",
       required: false,
       description: "API 基础地址，默认 https://api.openai.com/v1。设置后对接任意 OpenAI 兼容服务",
-      group: "advance",
     },
   };
 
-  produces = ["*"];
+  produces = ["stdout", "json", "exit_code", "size"];
 
   /** LLM 节点颜色 — 翠绿 */
   color = "#059669";
@@ -117,7 +116,7 @@ export default class LlmToolNode implements CustomNode {
     }
 
     const apiBase =
-      (ctx.inputs.api_base as string) ||
+      (ctx.inputs.base_url as string) ||
       ctx.secrets.OPENAI_API_BASE ||
       process.env.OPENAI_API_BASE ||
       "https://api.openai.com/v1";

@@ -557,9 +557,11 @@ nodes: [...]                  # 必填，节点列表
 
 **自动依赖推断**：仅在 Agent/API/Workflow 节点的 `prompt`/`url`/`body`/`headers` 等字段中使用 `${{ nodes.xxx }}` 模板时有效，引擎自动将 `xxx` 加入 `depends_on`。Shell/Python 节点的 `inputs:` 块使用裸表达式（不含 `${{ }}`），**必须手动声明 `depends_on`**。
 
+> **默认输出**：所有节点类型（shell/python/agent/api/workflow/loop/transform）拖出时都会默认预填 `stdout` 输出声明，作为该节点的默认下游引用字段。除 LLM 节点外，其他节点可通过 `outputs:` 块声明额外输出字段。
+
 ### Shell 节点
 
-执行 shell 命令。**Shell 节点不支持 `${{ }}` 模板解析**——节点间数据传递通过 `inputs:` 块完成：表达式结果注入为 shell 环境变量，命令中直接用 `$VAR_NAME` 引用。
+执行 shell 命令。**Shell 节点不支持 `${{ }}` 模板解析**——节点间数据传递通过 `inputs:` 块完成：`inputs:` 中声明的表达式结果自动注入为 **环境变量**，命令中直接用 `$VAR_NAME` 引用（**禁止在 command 中使用 `${{ }}`，引擎不解析**）。
 
 命令的 stdout 被完整捕获为节点输出。如果 stdout 是合法 JSON，引擎自动解析并可通过 `nodes.<id>.output.<json_field>` 访问子字段。
 
@@ -586,7 +588,7 @@ nodes:
 
 ### Python 节点
 
-执行 Python 代码。与 Shell 节点一样，**Python 节点不支持 `${{ }}` 模板解析**——数据通过 `inputs:` 块注入为 Python 变量。
+执行 Python 代码。与 Shell 节点一样，**Python 节点不支持 `${{ }}` 模板解析**——`inputs:` 中声明的表达式结果自动注入为**环境变量**，Python 代码中通过 `os.environ["VAR"]` 获取（**禁止在 code 中使用 `${{ }}`，引擎不解析**）。
 
 ```yaml
 nodes:
@@ -594,7 +596,8 @@ nodes:
     type: python
     description: "数据处理"
     code: |
-      import json
+      import json, os
+      input_data = os.environ.get("input_data", "")
       data = json.loads(input_data)
       result = {"count": len(data)}
       print(json.dumps(result))
@@ -602,7 +605,7 @@ nodes:
       - requests
       - numpy
     cwd: "./workspace"
-    inputs:                    # 可选，注入为 Python 变量
+    inputs:                    # 可选，注入为环境变量
       input_data: nodes.fetch.output.stdout
 ```
 
@@ -693,6 +696,105 @@ nodes:
           type: shell
           command: echo "Processing item..."
 ```
+
+### Custom 节点：Slurm（HPC 作业调度）
+
+`type: custom, tool: slurm`。通过 SSH + sbatch + sacct 向远程 HPC 集群提交作业。项目内置 `tools/slurm.ts`。
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `slurm.partition` | **是** | 队列名（如 `xahcnormal`） |
+| `slurm.cores` | 否 | CPU 核数，默认 1 |
+| `slurm.memory` | 否 | 内存限制，如 `"100G"` |
+| `slurm.walltime` | 否 | 时间限制，如 `"04:00:00"` |
+| `slurm.modules` | 否 | module load 列表，如 `["apps/apptainer/1.2.4"]` |
+| `slurm.extraSBATCH` | 否 | 额外 `#SBATCH` 指令，如 `["--gres=gpu:1"]` |
+| `script.content` | **是** | bash 脚本正文，支持 `${{ }}` 模板。**不要写 `#!/bin/bash` 或 `#SBATCH`（引擎自动生成）** |
+| `script.env` | 否 | 注入到 `#SBATCH --export` 的环境变量 |
+
+> `$SLURM_CPUS_PER_TASK` 自动可用，引擎保留 Slurm 标准环境变量。集群连接通过 `params.cluster_host`（SSH config 别名），需 `~/.ssh/config` 免密登录。默认不重试，`OUT_OF_MEMORY` / `CANCELLED` 固定不重试。
+
+**Slurm 节点常见坑（YAML 编写前必读）**：
+
+> ⚠️ **1. `params.work_dir` 必须是集群上可写的绝对路径**。写错用户名（如 `/work/home/agent/...` vs `/work/home/liwei_agent/...`）会导致 `mkdir` / `sbatch` 权限拒绝。先用 `ssh <host> "ls -d <path>"` 确认路径存在且有写权限。
+
+> ⚠️ **2. 不要在上游 shell 节点中依赖本地文件系统**。Slurm 作业跑在远程集群，引擎本地的 `/tmp/xxx` 或 `./output.txt` 在集群上不可访问。数据传递应通过 `inputs` 环境变量注入或 `params` 模板求值。
+
+> ⚠️ **3. `script.env` 的值必须用 `${{ }}` 包裹才能求值**。`inputs` 走 `resolveInputs` 自动求值，裸写 `nodes.X.output.Y` 即可。但 `script.env` 走 `resolveTemplate`，**不写 `${{ }}` 的表达式会被当作字面量字符串**，直接注入为 `#SBATCH --export=KEY=nodes.X.output.stdout`（原始字符串，不会被替换）。
+
+> ⚠️ **4. inputs/env 的值避免逗号、换行符**。这些值会被拼入 `#SBATCH --export=ALL,KEY1=v1,KEY2=v2`，逗号打断字段边界，换行符直接破坏行结构。上游 shell 节点也应用单行输出（`echo "value"` 而非多行 `echo`），避免 stdout 含换行污染下游。
+
+```yaml
+nodes:
+  - id: trim_galore
+    type: custom
+    tool: slurm
+    slurm:
+      partition: xahcnormal
+      cores: 4
+      walltime: "02:00:00"
+      modules: ["apps/apptainer/1.2.4"]
+    script:
+      content: |
+        mkdir -p ${{ params.work_dir }}/step_4
+        apptainer exec --bind ${{ params.apptainer_bind }} ${{ params.sif }} \
+          trim_galore --paired --cores "$SLURM_CPUS_PER_TASK" \
+            --output_dir ${{ params.work_dir }}/step_4 --gzip \
+            ${{ params.sample_r1 }} ${{ params.sample_r2 }}
+        test -s "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz" || exit 1
+    outputs:
+      trimmed_r1:
+        pattern: "${{ params.work_dir }}/step_4/${{ params.sample_id }}_1_val_1.fq.gz"
+        type: file
+
+### Custom 节点：LLM（大模型推理）
+
+`type: custom, tool: llm`。调用 OpenAI 兼容 API 进行大模型推理，项目内置 `tools/llm.ts`。
+
+**Inputs 参数**（在 YAML `inputs:` 块中声明）：
+
+| 字段 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `user_prompt` | **是** | — | 用户提示词，支持 `${{ }}` 表达式 |
+| `system_prompt` | 否 | — | 系统提示词 |
+| `model` | 否 | `gpt-4o` | 模型名称 |
+| `temperature` | 否 | `0.7` | 采样温度 (0-2) |
+| `max_tokens` | 否 | 模型默认 | 最大输出 token 数 |
+| `response_format` | 否 | `"text"` | `"text"` 或 `"json_object"` |
+| `api_key` | 否 | — | API Key，建议走 `secrets:` |
+| `base_url` | 否 | `https://api.openai.com/v1` | API 基础地址 |
+| `output_contains` | 否 | — | 输出必须包含此文本，否则节点 **FAILED** |
+
+**Produces 输出**：`stdout`（文本）、`json`（JSON 解析结果）、`exit_code`、`size`。
+
+> **自动预填**：LLM 节点的 outputs（`stdout`、`json`、`exit_code`、`size`）在拖出节点时会自动预填，类型为 `type: value`（计算值）。YAML 中写为 `stdout: { pattern: "", type: value }`，`json: { pattern: "", type: value }` 等。
+
+> **删除/改名确认**：当 LLM 节点的输出字段（如 `stdout`、`json`、`exit_code`、`size`）已被下游节点引用时，在前端编辑器中删除或改名该字段会弹出确认对话框。**改名**会同步更新所有下游引用路径，**删除**会清除引用（下游节点对应表达式将被清空）。其他节点类型的手动输出字段同样适用此规则。
+
+**API Key 优先级**：`inputs.api_key` > `secrets.OPENAI_API_KEY` > 环境变量 `OPENAI_API_KEY`。
+
+```yaml
+nodes:
+  - id: classify_sample
+    type: custom
+    tool: llm
+    inputs:
+      user_prompt: "分类样本：${{ nodes.featurecounts.output.stdout }}"
+      system_prompt: "你是生物信息学专家，只输出 JSON"
+      model: "gpt-4o-mini"
+      temperature: "0.3"
+      response_format: json_object
+
+  - id: check_result
+    type: custom
+    tool: llm
+    depends_on: [classify_sample]
+    inputs:
+      user_prompt: "${{ nodes.classify_sample.output.stdout }}"
+      output_contains: "type"
+```
+
+**对比**：Slurm（SSH + sbatch，适合 HPC 计算）vs LLM（HTTP fetch，适合 AI 推理）。
 
 ---
 
@@ -908,6 +1010,10 @@ nodes:
     command: echo "All services deployed successfully"
 ```
 
+### 样例 5：Slurm + LLM 混合
+
+Slurm 节点语法见 [六 → Custom 节点：Slurm](#custom-节点slurmhpc-作业调度)，LLM 节点语法见 [六 → Custom 节点：LLM](#custom-节点llm大模型推理)。完整示例参考 `workflow-examples/pe-rna-seq-single-sample.yaml`。
+
 ---
 
 ## 八、常见错误与排查
@@ -921,6 +1027,8 @@ nodes:
 | `CYCLE_DETECTED` | DAG 存在循环依赖 | 检查 `depends_on` 链是否存在环路 |
 | `MISSING_DEPENDENCY` | `depends_on` 引用了不存在的节点 | 确认引用的节点 ID 存在 |
 | `UNDEFINED_VARIABLE` | 使用了不允许的变量名（如 `inputs.xxx`、`needs.xxx`） | 使用正确的根命名空间：`nodes.`、`params.`、`secrets.` |
+| `MISSING_SCRIPT` | Slurm 节点缺少 `script.content` 字段 | 添加 `script.content` 声明 bash 脚本正文 |
+| `INVALID_SCRIPT_ON_NON_SLURM` | 非 Slurm 节点误写了 `script` 字段 | 删除 `script` 字段，仅 Slurm 节点支持 |
 
 ### 运行时常见错误
 
@@ -930,6 +1038,14 @@ nodes:
 | 下游节点拿不到上游数据 | 引用路径错误（如用了旧格式 `needs.xxx.outputs.xxx`） | 改用 `nodes.<id>.output.<field>` |
 | `printf` 和 `echo` 输出不一致 | `echo` 默认追加换行，`printf` 不追加 | 需要干净输出值时用 `printf` |
 | `:` 在 YAML 行内 command 中触发 compact mapping 错误 | YAML 解析器把 `:` 当成键值分隔符 | command 统一用 `\|` block scalar |
+| Slurm: sacct 空数据超时 | slurmdbd 延迟，5 分钟后仍查不到 | 检查集群 sacct 权限或增大 `timeout` |
+| Slurm: OOM 反复重试 | `OUT_OF_MEMORY` 不重试，`maxRetries` 对它不生效 | 增大 `slurm.memory` |
+| Slurm: mkdir/sbatch Permission denied | `params.work_dir` 路径不可写或用户名错误 | ssh 到集群确认路径存在且有写权限 |
+| Slurm: sbatch Unable to open file | `uploadScript` 阶段 silent 失败，脚本未写入 | 检查 `params.work_dir` 路径权限 |
+| Slurm: `script.env` 值未被求值 | 未用 `${{ }}` 包裹，被当作字面量字符串 | 写成 `KEY: "${{ nodes.X.output.Y }}"` |
+| Slurm: `#SBATCH --export` 行断裂 | input/env 值含逗号或换行符 | 确保上游输出为单行干净值，避免逗号 |
+| LLM: HTTP 4xx | API Key 无效 | 检查 `secrets.OPENAI_API_KEY` |
+| LLM: output_contains 校验失败 | LLM 未返回预期关键词 | 放宽条件或优化 prompt |
 
 **节点类型特定错误**：
 - `shell` 节点必须有 `command`
@@ -938,12 +1054,17 @@ nodes:
 - `api` 节点必须有 `url`
 - `workflow` 节点必须有 `ref`
 - `loop` 节点必须有 `condition`、`max_iterations` 和 `body.nodes`
+- `custom` / `slurm` 节点必须有 `script.content`，且不能遗漏 `slurm.partition`
+- `custom` / `llm` 节点必须有 `user_prompt`（在 `inputs:` 块中声明）
 
 ### YAML 编写最佳实践
 
-1. **Shell command 统一用 `|` block scalar**：字符串含 `:`、`$`、`\n` 等易冲突字符时避免行内写法
-2. **Shell 输出用 `printf` 代替 `echo`**：`printf` 不追加尾换行，输出值更干净
-3. **Shell/Python 节点不用 `${{ }}` 做数据传递**：统一通过 `inputs:` 块注入，命令中引用环境变量
-4. **Agent/API/Workflow 节点可用 `${{ }}`**：`prompt`、`url`、`body` 等字段支持模板解析
-5. **表达式根命名空间仅三个**：`nodes.`、`params.`、`secrets.`，不用 `inputs.` 或 `needs.`
+1. **Shell command 用 `|` block scalar**：避免 `:`、`$` 被 YAML 误解析
+2. **Shell 输出用 `printf` 代替 `echo`**：`printf` 不追加尾换行
+3. **Shell/Python 节点不用 `${{ }}`**：通过 `inputs:` 注入，变量引用环境变量
+4. **Agent/API/Workflow/Slurm 节点可用 `${{ }}`**：`prompt`、`url`、`script.content` 等字段支持
+5. **表达式根命名空间仅三个**：`nodes.`、`params.`、`secrets.`
 6. **dryRun 不等于完整验证**：只校验结构，不校验运行时语义
+7. **Slurm `script.content` 不写 `#!/bin/bash` 或 `#SBATCH`**：引擎自动生成
+8. **Slurm 集群 SSH 免密**：`params.cluster_host` 需在 `~/.ssh/config` 中配置
+9. **LLM API Key 走 `secrets:`**：避免 YAML inputs 中硬编码

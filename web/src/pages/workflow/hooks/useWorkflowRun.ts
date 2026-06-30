@@ -145,7 +145,9 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         nds.map((n) => {
           if (n.id === START_NODE_ID) return n;
           const state = snap.node_states?.[n.id];
-          if (!state)
+          if (!state) {
+            // DAG 运行中但快照尚无此节点状态时（引擎尚未开始调度），保留现有的 RUNNING 乐观状态
+            if (dagRunning && n.data._runStatus === "RUNNING") return n;
             return {
               ...n,
               data: {
@@ -156,6 +158,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
                 _onRerunFrom: undefined,
               },
             };
+          }
           // DAG 正在运行且前端已乐观设为 RUNNING 时，若 snapshot 返回 PENDING，
           // 保持 RUNNING 避免覆盖（snapshot 可能在引擎调度该节点之前创建）
           const prevStatus = n.data._runStatus as string | undefined;
@@ -527,11 +530,13 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   const handleRefreshDraft = useCallback(async () => {
     if (!workflowId) return;
     if (isRunMode && !isRunDone) return;
-    const { yamlToFlow } = await import("../yaml-utils");
+    const { syncEdgeCounter, syncNodeCounter, yamlToFlow } = await import("../yaml-utils");
     try {
       const wf = await workflowDefApi.get(workflowId);
       if (wf.draftYaml) {
         const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
+        syncNodeCounter(newNodes.map((n) => n.id));
+        syncEdgeCounter(newEdges.map((e) => e.id));
         setNodes(autoLayout(newNodes, newEdges));
         setEdges(newEdges);
         setMeta(() => newMeta);

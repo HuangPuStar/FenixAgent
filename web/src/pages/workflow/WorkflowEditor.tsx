@@ -66,7 +66,15 @@ import { autoLayout } from "./layout";
 import { nodeTypes, setToolColors } from "./nodes";
 import { TRANSFORM_PRESETS } from "./presets";
 import { dedupEvents } from "./utils";
-import { createStartNode, defaultMeta, START_NODE_ID, type WfMeta, yamlToFlow } from "./yaml-utils";
+import {
+  createStartNode,
+  defaultMeta,
+  START_NODE_ID,
+  syncEdgeCounter,
+  syncNodeCounter,
+  type WfMeta,
+  yamlToFlow,
+} from "./yaml-utils";
 import "./workflow.css";
 
 const BASIC_PALETTE_ITEMS = [
@@ -124,6 +132,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   // ── Refs ──
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingConnectSource = useRef<string | null>(null);
+  const pendingConnectHandleId = useRef<string | null>(null);
   const didConnect = useRef(false);
   const setDryRunResultRef = useRef<
     (result: { valid: boolean; issues: Array<{ type: string; message: string; field?: string }> } | null) => void
@@ -217,6 +226,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     screenToFlowPosition,
     fitView,
     pendingConnectSource,
+    pendingConnectHandleId,
     didConnect,
     setDryRunResult: (r) => setDryRunResultRef.current(r),
     setYamlText,
@@ -423,6 +433,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setWfData(wf);
         if (wf.draftYaml) {
           const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
+          // 同步 node/edge 计数器，防止后续新增节点/边时 ID 与已有节点冲突
+          syncNodeCounter(newNodes.map((n) => n.id));
+          syncEdgeCounter(newEdges.map((e) => e.id));
           const laid = autoLayout(newNodes, newEdges);
           setNodes(laid);
           setEdges(newEdges);
@@ -542,6 +555,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       setWfData(wf);
       if (wf.draftYaml) {
         const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
+        syncNodeCounter(newNodes.map((n) => n.id));
+        syncEdgeCounter(newEdges.map((e) => e.id));
         const laid = autoLayout(newNodes, newEdges);
         setNodes(laid);
         setEdges(newEdges);
@@ -616,7 +631,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           nodesDraggable={!effectiveReadOnly}
           nodesConnectable={!effectiveReadOnly}
           elementsSelectable
-          deleteKeyCode={effectiveReadOnly ? null : "Delete"}
+          deleteKeyCode={effectiveReadOnly ? null : ["Delete", "Backspace"]}
           fitView
           fitViewOptions={{ padding: 0.15 }}
           defaultEdgeOptions={{ type: "logic" }}
@@ -667,9 +682,27 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
                         onDragStart={(e) => {
                           e.dataTransfer.setData("application/workflow-node", "custom");
                           e.dataTransfer.setData("application/workflow-tool", tool.name);
+                          // 预填默认 outputs，避免 YAML 序列化时缺失 outputs 字段
+                          // 通配符工具（如 slurm）也预填 stdout 作为兜底默认输出
+                          e.dataTransfer.setData(
+                            "application/workflow-outputs",
+                            JSON.stringify(
+                              tool.produces.includes("*") || tool.produces.length === 0
+                                ? { stdout: { pattern: "", type: "value" } }
+                                : Object.fromEntries(tool.produces.map((k) => [k, { pattern: "", type: "value" }])),
+                            ),
+                          );
                           e.dataTransfer.effectAllowed = "move";
                         }}
-                        onClick={() => addNode("custom", undefined, undefined, tool.name)}
+                        onClick={() => {
+                          // 为工具声明的 produces 生成默认 outputs
+                          // 通配符工具（如 slurm）也预填 stdout 作为兜底默认输出
+                          const defaultOutputs: Record<string, { pattern: string; type: string }> =
+                            tool.produces.includes("*") || tool.produces.length === 0
+                              ? { stdout: { pattern: "", type: "value" } }
+                              : Object.fromEntries(tool.produces.map((k) => [k, { pattern: "", type: "value" }]));
+                          addNode("custom", undefined, undefined, tool.name, defaultOutputs);
+                        }}
                         title={tool.description}
                       >
                         <span className="wf-palette-icon" style={{ background: "#8b5cf6" }}>
@@ -816,6 +849,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           meta={meta}
           updateMeta={updateMeta}
           customTools={customTools}
+          nodes={nodes}
         />
 
         {/* 右下角按钮组 */}

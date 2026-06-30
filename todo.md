@@ -1,0 +1,3 @@
+- [ ] **完全移除 Environment Secret**：代码和数据库中删除 `environment.secret` 字段、`tryApiKeyAuth()` 中的 `getBySecret` 分支、launch spec 中的 MCP Bearer token 注入。API 认证统一走 better-auth API Key，Agent 知识库访问改用短期 MCP 令牌。
+- [ ] **移除 channel_binding 遗留表**：Hermes 时代遗留，无组织隔离（无 `organizationId`/`userId`），已被 `im_channel` + `im_channel_route` 替代。删除表及其 repository/service。
+- [ ] xxxxx

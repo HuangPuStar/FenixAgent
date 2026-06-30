@@ -247,10 +247,16 @@ export abstract class SlurmNode implements CustomNode {
     }
     // 关键：必须以 ALL 开头，否则 Slurm 不会继承默认环境（PATH/HOME/SLURM_* 等），
     // 会导致脚本里 module load / apptainer 等命令找不到。
-    // 边界：value 含逗号或等号时会被 sbatch 解析为多个 entry，用户需自行保证 value 简单。
+    // 值中换行符替换为空格，含逗号/空格的值用双引号包裹，避免 sbatch 解析错位。
     if (Object.keys(mergedEnv).length > 0) {
       const entries = Object.entries(mergedEnv)
-        .map(([k, v]) => `${k}=${v}`)
+        .map(([k, v]) => {
+          // 换行符会直接破坏 #SBATCH 行结构，替换为空格
+          const sanitized = v.replace(/[\r\n]+/g, " ").trim();
+          // 含逗号或空格的值必须用双引号包裹（Slurm --export 规范）
+          const needsQuote = sanitized.includes(",") || sanitized.includes(" ");
+          return needsQuote ? `${k}="${sanitized}"` : `${k}=${sanitized}`;
+        })
         .join(",");
       lines.push(`#SBATCH --export=ALL,${entries}`);
     }

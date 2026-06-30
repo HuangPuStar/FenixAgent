@@ -27,6 +27,7 @@ export function LogicEdge({
     <BaseEdge
       id={id}
       path={edgePath}
+      interactionWidth={20}
       style={{
         ...style,
         stroke: style?.stroke ?? "#94a3b8",
@@ -52,6 +53,7 @@ export function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePos
     <BaseEdge
       id={id}
       path={edgePath}
+      interactionWidth={20}
       style={{
         stroke: "#10b981",
         strokeWidth: 1,

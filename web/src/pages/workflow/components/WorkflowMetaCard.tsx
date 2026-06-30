@@ -69,10 +69,8 @@ export function WorkflowMetaCard({ readOnly, meta, updateMeta }: WorkflowMetaCar
             value={meta.secrets.join("\n")}
             onChange={(e) =>
               updateMeta({
-                secrets: e.target.value
-                  .split("\n")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
+                // 保留空行以便用户编辑时换行，存 YAML 时在 yaml-utils 中过滤空行
+                secrets: e.target.value.split("\n").map((s) => s.trim()),
               })
             }
             placeholder="API_KEY&#10;DATABASE_URL"
