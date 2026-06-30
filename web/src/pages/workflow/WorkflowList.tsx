@@ -1,3 +1,4 @@
+import { useRequest } from "ahooks";
 import { AlertTriangle, Inbox, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,51 +22,32 @@ interface WorkflowListProps {
 
 export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }: WorkflowListProps) {
   const { t } = useTranslation("workflows");
-  const [workflows, setWorkflows] = useState<WorkflowDefItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createDesc, setCreateDesc] = useState("");
-  const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkflowDefItem | null>(null);
 
   // 恢复相关
   const [recoverableIds, setRecoverableIds] = useState<string[]>([]);
   const [selectedRecoverIds, setSelectedRecoverIds] = useState<Set<string>>(new Set());
   const [showRecoverPanel, setShowRecoverPanel] = useState(false);
-  const [recovering, setRecovering] = useState(false);
   const [searchQuery] = useState("");
 
-  const loadList = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await unwrap(workflowDefApi.list());
-      setWorkflows(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error(err);
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadList();
-  }, [loadList]);
+  // 加载 workflow 列表
+  const { data: workflows = [], loading, error, refresh } = useRequest(() => unwrap(workflowDefApi.list()));
+  const workflowsSafe = Array.isArray(workflows) ? workflows : [];
+  const errorMsg = error ? (error instanceof Error ? error.message : String(error)) : null;
 
   // 静默轮询：meta agent 等外部修改后自动刷新列表，不触发 loading 骨架屏
   const pollList = useCallback(async () => {
     try {
       const data = await unwrap(workflowDefApi.list());
-      setWorkflows(Array.isArray(data) ? data : []);
-      // 轮询成功时清除之前的错误
-      setError(null);
+      // 通过 mutate 静默更新数据
+      refresh();
     } catch {
       // 轮询失败静默处理，保留上次数据
     }
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     const timer = setInterval(pollList, 15_000);
@@ -81,37 +63,41 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     prevCreateRequestedRef.current = createRequested;
   }, [createRequested]);
 
-  const handleCreate = useCallback(async () => {
-    if (!createName.trim()) return;
-    setCreating(true);
-    try {
-      const wf = await unwrap(workflowDefApi.create(createName.trim(), createDesc.trim() || undefined));
-      setShowCreateDialog(false);
-      setCreateName("");
-      setCreateDesc("");
-      onEditWorkflow(wf.id);
-    } catch (err) {
-      console.error(err);
-      toast.error(t("list.create_error"), { description: (err as Error).message });
-    } finally {
-      setCreating(false);
-    }
-  }, [createName, createDesc, onEditWorkflow, t]);
+  // 创建 workflow
+  const { run: runCreate, loading: creating } = useRequest(
+    (name: string, desc: string) => unwrap(workflowDefApi.create(name, desc || undefined)),
+    {
+      manual: true,
+      onSuccess: (wf) => {
+        setShowCreateDialog(false);
+        setCreateName("");
+        setCreateDesc("");
+        refresh();
+        onEditWorkflow(wf.id);
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(t("list.create_error"), { description: (err as Error).message });
+      },
+    },
+  );
 
-  const handleDelete = useCallback(async () => {
-    if (!deleteTarget) return;
-    try {
-      await unwrap(workflowDefApi.delete(deleteTarget.id));
-      loadList();
-    } catch (err) {
+  // 删除 workflow
+  const { run: runDelete } = useRequest((id: string) => unwrap(workflowDefApi.delete(id)), {
+    manual: true,
+    onSuccess: () => {
+      refresh();
+      setDeleteTarget(null);
+    },
+    onError: (err) => {
       console.error(err);
       toast.error(t("list.delete_failed"), { description: (err as Error).message });
-    } finally {
       setDeleteTarget(null);
-    }
-  }, [deleteTarget, loadList, t]);
+    },
+  });
 
-  const _handleScanRecover = useCallback(async () => {
+  // 扫描可恢复的 workflow
+  const _handleScanRecover = async () => {
     try {
       const ids = await unwrap(workflowDefApi.recover());
       setRecoverableIds(ids);
@@ -121,29 +107,30 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
       console.error(err);
       toast.error(t("list.scan_failed"), { description: (err as Error).message });
     }
-  }, [t]);
+  };
 
-  const handleRecoverApply = useCallback(async () => {
-    if (selectedRecoverIds.size === 0) return;
-    setRecovering(true);
-    try {
-      await unwrap(workflowDefApi.recoverApply(Array.from(selectedRecoverIds)));
-      setShowRecoverPanel(false);
-      loadList();
-    } catch (err) {
-      console.error(err);
-      toast.error(t("list.recover_failed"), { description: (err as Error).message });
-    } finally {
-      setRecovering(false);
-    }
-  }, [selectedRecoverIds, loadList, t]);
+  // 执行恢复
+  const { run: runRecoverApply, loading: recovering } = useRequest(
+    (ids: string[]) => unwrap(workflowDefApi.recoverApply(ids)),
+    {
+      manual: true,
+      onSuccess: () => {
+        setShowRecoverPanel(false);
+        refresh();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(t("list.recover_failed"), { description: (err as Error).message });
+      },
+    },
+  );
 
   function relativeTime(iso?: string | null): string {
     if (!iso) return "--";
     const diff = (Date.now() - new Date(iso).getTime()) / 1000;
     if (diff < 60) return t("list.relative_now");
     if (diff < 3600) return t("list.relative_minutes", { count: Math.floor(diff / 60) });
-    if (diff < 86400) return t("list.relative_hours", { count: Math.floor(diff / 3600) });
+    if (diff < 86400) return t("list.relative_hours", { count: Math.floor(diff / 86400) });
     return new Date(iso).toLocaleDateString();
   }
 
@@ -179,7 +166,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleRecoverApply}
+                onClick={() => runRecoverApply(Array.from(selectedRecoverIds))}
                 disabled={recovering || selectedRecoverIds.size === 0}
               >
                 {recovering ? t("list.recovering") : t("list.recover_selected", { count: selectedRecoverIds.size })}
@@ -245,7 +232,11 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
             >
               {t("list.cancel")}
             </Button>
-            <Button size="sm" onClick={handleCreate} disabled={creating || !createName.trim()}>
+            <Button
+              size="sm"
+              onClick={() => runCreate(createName.trim(), createDesc.trim())}
+              disabled={creating || !createName.trim()}
+            >
               {creating ? t("list.creating") : t("list.create_and_edit")}
             </Button>
           </DialogFooter>
@@ -258,9 +249,9 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
       ) : error ? (
         <div className="text-center py-10">
           <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-          <p className="text-[13px] text-text-secondary">{t("list.load_failed", { error })}</p>
+          <p className="text-[13px] text-text-secondary">{t("list.load_failed", { error: errorMsg })}</p>
         </div>
-      ) : workflows.length === 0 ? (
+      ) : workflowsSafe.length === 0 ? (
         <div className="text-center py-10">
           <Inbox size={32} className="text-text-muted mx-auto mb-2" />
           <p className="text-[13px] text-text-muted font-medium">{t("list.no_workflows")}</p>
@@ -268,7 +259,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
         </div>
       ) : (
         <AgentCardList
-          items={workflows}
+          items={workflowsSafe}
           cardKey={(wf) => wf.id}
           searchPlaceholder={t("list.search_placeholder")}
           searchFn={(wf, query) => wf.name.toLowerCase().includes(query)}
@@ -321,7 +312,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
         title={t("list.delete")}
         description={t("list.delete_confirm", { name: deleteTarget?.name ?? "" })}
         variant="destructive"
-        onConfirm={handleDelete}
+        onConfirm={() => deleteTarget && runDelete(deleteTarget.id)}
       />
     </div>
   );

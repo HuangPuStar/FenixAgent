@@ -257,11 +257,8 @@ export function AgentMcpPage() {
   const handleOpenEdit = async (server: McpServerInfo) => {
     setEditingServer(server);
     setFormName(server.name);
-    const { success, data: detail, error: detailError } = await mcpApi.get(getMcpLookupKey(server));
-    if (!success || !detail) {
-      console.error(t("toast.loadDetailFailed"), detailError);
-      toast.error(t("toast.loadDetailFailed"));
-    } else {
+    try {
+      const detail = await unwrap(mcpApi.get(getMcpLookupKey(server)));
       const config = detail.config;
       if ("type" in config && config.type === "local") {
         setFormType("local");
@@ -304,6 +301,9 @@ export function AgentMcpPage() {
           setOauthExpanded(false);
         }
       }
+    } catch (err) {
+      console.error(t("toast.loadDetailFailed"), err);
+      toast.error(t("toast.loadDetailFailed"));
     }
     setDialogOpen(true);
   };
@@ -333,53 +333,49 @@ export function AgentMcpPage() {
     const writable = canWriteMcp(server);
     const serverKey = getMcpKey(server);
     setInspectingServer(serverKey);
-    // 外部只读 MCP server 用 listTools 获取缓存工具，内部用 inspect 连接实时检测
-    if (writable) {
-      const { success, data: result, error } = await mcpApi.inspect(server.name);
-      if (!success || !result || error) {
-        console.error(t("toast.inspectFailed"), error);
-        toast.error(t("toast.inspectFailedWith", { message: error?.message ?? t("toast.saveFailed") }));
-        setInspectingServer(null);
-        return;
+    try {
+      // 外部只读 MCP server 用 listTools 获取缓存工具，内部用 inspect 连接实时检测
+      if (writable) {
+        const result = await unwrap(mcpApi.inspect(server.name));
+        toast.success(
+          t("toast.inspectSuccess", {
+            name: server.name,
+            serverInfo: result.serverInfo.name ?? "",
+            version: result.serverInfo.version ?? "",
+            toolCount: result.tools.length,
+          }),
+        );
+        refresh();
+        setToolsCache((prev) => ({
+          ...prev,
+          [serverKey]: result.tools.map((toolItem) => ({
+            id: `${serverKey}:${toolItem.name}`,
+            toolName: toolItem.name,
+            description: toolItem.description ?? null,
+            inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
+            inspectedAt: Date.now(),
+          })),
+        }));
+      } else {
+        const result = await unwrap(mcpApi.listTools(server.name));
+        toast.success(t("toast.inspectSuccess", { name: server.name, version: "", toolCount: result.tools.length }));
+        setToolsCache((prev) => ({
+          ...prev,
+          [serverKey]: result.tools.map((toolItem) => ({
+            id: toolItem.id || `${serverKey}:${toolItem.toolName}`,
+            toolName: toolItem.toolName,
+            description: toolItem.description ?? null,
+            inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
+            inspectedAt: toolItem.inspectedAt ?? Date.now(),
+          })),
+        }));
       }
-      toast.success(
-        t("toast.inspectSuccess", {
-          name: server.name,
-          serverInfo: result.serverInfo.name ?? "",
-          version: result.serverInfo.version ?? "",
-          toolCount: result.tools.length,
-        }),
-      );
-      refresh();
-      setToolsCache((prev) => ({
-        ...prev,
-        [serverKey]: result.tools.map((toolItem) => ({
-          id: `${serverKey}:${toolItem.name}`,
-          toolName: toolItem.name,
-          description: toolItem.description ?? null,
-          inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
-          inspectedAt: Date.now(),
-        })),
-      }));
-    } else {
-      const { success, data: result, error } = await mcpApi.listTools(server.name);
-      if (!success || !result || error) {
-        console.error(t("toast.inspectFailed"), error);
-        toast.error(t("toast.inspectFailedWith", { message: error?.message ?? t("toast.saveFailed") }));
-        setInspectingServer(null);
-        return;
-      }
-      toast.success(t("toast.inspectSuccess", { name: server.name, version: "", toolCount: result.tools.length }));
-      setToolsCache((prev) => ({
-        ...prev,
-        [serverKey]: result.tools.map((toolItem) => ({
-          id: toolItem.id || `${serverKey}:${toolItem.toolName}`,
-          toolName: toolItem.toolName,
-          description: toolItem.description ?? null,
-          inputSchema: toolItem.inputSchema ? JSON.stringify(toolItem.inputSchema) : null,
-          inspectedAt: toolItem.inspectedAt ?? Date.now(),
-        })),
-      }));
+    } catch (err) {
+      const e = err as { message?: string };
+      console.error(t("toast.inspectFailed"), e);
+      toast.error(t("toast.inspectFailedWith", { message: e.message ?? t("toast.saveFailed") }));
+      setInspectingServer(null);
+      return;
     }
     setExpandedServer(serverKey);
     setInspectingServer(null);
@@ -388,25 +384,29 @@ export function AgentMcpPage() {
   const handleTestFormUrl = async () => {
     if (!formUrl.trim()) return;
     setTestingUrl(true);
-    const { success, data: result, error: testError } = await mcpApi.testUrl(formUrl);
-    if (!success || !result || testError) {
-      console.error(t("toast.testFailed"), testError);
-      toast.error(t("toast.testFailedWith", { message: testError?.message ?? "测试失败" }));
-    } else if (result.reachable && result.protocol) {
-      const toolsInfo = result.toolsCount != null ? `，${result.toolsCount} ${t("column.tools").toLowerCase()}` : "";
-      toast.success(
-        t("toast.testSuccess", {
-          serverName: result.serverName ?? "",
-          serverVersion: result.serverVersion ?? "",
-          toolsInfo,
-        }),
-      );
-    } else if (result.reachable) {
-      toast.warning(t("toast.testReachable", { message: result.message ?? "" }));
-    } else {
-      toast.error(t("toast.testFailed", { message: result.message ?? t("toast.saveFailed") }));
+    try {
+      const result = await unwrap(mcpApi.testUrl(formUrl));
+      if (result.reachable && result.protocol) {
+        const toolsInfo = result.toolsCount != null ? `，${result.toolsCount} ${t("column.tools").toLowerCase()}` : "";
+        toast.success(
+          t("toast.testSuccess", {
+            serverName: result.serverName ?? "",
+            serverVersion: result.serverVersion ?? "",
+            toolsInfo,
+          }),
+        );
+      } else if (result.reachable) {
+        toast.warning(t("toast.testReachable", { message: result.message ?? "" }));
+      } else {
+        toast.error(t("toast.testFailed", { message: result.message ?? t("toast.saveFailed") }));
+      }
+    } catch (err) {
+      const e = err as { message?: string };
+      console.error(t("toast.testFailed"), e);
+      toast.error(t("toast.testFailedWith", { message: e.message ?? "测试失败" }));
+    } finally {
+      setTestingUrl(false);
     }
-    setTestingUrl(false);
   };
 
   // 基于外部搜索过滤服务器列表
