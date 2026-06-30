@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { unwrap } from "@/src/api/request";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import { AgentCardList } from "../agent-panel/shared/AgentCardList";
 import { SkeletonTable } from "./components/SkeletonRows";
@@ -40,7 +41,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     setLoading(true);
     setError(null);
     try {
-      const data = await workflowDefApi.list();
+      const data = await unwrap(workflowDefApi.list());
       setWorkflows(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
@@ -57,7 +58,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
   // 静默轮询：meta agent 等外部修改后自动刷新列表，不触发 loading 骨架屏
   const pollList = useCallback(async () => {
     try {
-      const data = await workflowDefApi.list();
+      const data = await unwrap(workflowDefApi.list());
       setWorkflows(Array.isArray(data) ? data : []);
       // 轮询成功时清除之前的错误
       setError(null);
@@ -84,7 +85,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     if (!createName.trim()) return;
     setCreating(true);
     try {
-      const wf = await workflowDefApi.create(createName.trim(), createDesc.trim() || undefined);
+      const wf = await unwrap(workflowDefApi.create(createName.trim(), createDesc.trim() || undefined));
       setShowCreateDialog(false);
       setCreateName("");
       setCreateDesc("");
@@ -100,7 +101,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
     try {
-      await workflowDefApi.delete(deleteTarget.id);
+      await unwrap(workflowDefApi.delete(deleteTarget.id));
       loadList();
     } catch (err) {
       console.error(err);
@@ -112,7 +113,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
 
   const _handleScanRecover = useCallback(async () => {
     try {
-      const ids = await workflowDefApi.recover();
+      const ids = await unwrap(workflowDefApi.recover());
       setRecoverableIds(ids);
       setSelectedRecoverIds(new Set());
       setShowRecoverPanel(true);
@@ -126,7 +127,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     if (selectedRecoverIds.size === 0) return;
     setRecovering(true);
     try {
-      await workflowDefApi.recoverApply(Array.from(selectedRecoverIds));
+      await unwrap(workflowDefApi.recoverApply(Array.from(selectedRecoverIds)));
       setShowRecoverPanel(false);
       loadList();
     } catch (err) {

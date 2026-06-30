@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { unwrap } from "@/src/api/request";
 import { type WorkflowDefItem, type WorkflowVersionItem, workflowDefApi } from "../../api/workflow-defs";
 import { AgentPageHeader } from "../agent-panel/shared/AgentPageHeader";
 
@@ -29,8 +30,8 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
     setError(null);
     try {
       const [wfData, versionList] = await Promise.all([
-        workflowDefApi.get(workflowId),
-        workflowDefApi.getVersions(workflowId),
+        unwrap(workflowDefApi.get(workflowId)),
+        unwrap(workflowDefApi.getVersions(workflowId)),
       ]);
       setWf(wfData);
       setVersions(Array.isArray(versionList) ? versionList : []);
@@ -82,7 +83,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
         return;
       }
       try {
-        const result = await workflowDefApi.getVersion(workflowId, version);
+        const result = await unwrap(workflowDefApi.getVersion(workflowId, version));
         setViewingVersion(version);
         setViewingYaml(result.yaml);
       } catch (err) {

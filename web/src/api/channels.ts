@@ -5,16 +5,54 @@
  * 采用 RESTful 风格，统一通过 request() 与后端 /web/channels/* 通信。
  */
 
-import type {
-  ChannelBinding,
-  ChannelBindingListResponse,
-  ChannelProviderListResponse,
-  CreateChannelBindingRequest,
-  DeleteChannelBindingResponse,
-  HermesStatus,
-  UpdateChannelBindingResponse,
-} from "@fenix/sdk";
 import { request } from "./request";
+
+/** 通道绑定记录 */
+interface ChannelBinding {
+  id: string;
+  platform: string;
+  chatId: string;
+  agentId: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 通道 Provider 描述符 */
+interface ChannelProviderDescriptor {
+  id: string;
+  name: string;
+  type: string;
+}
+
+/** 通道绑定列表响应 */
+export type ChannelBindingListResponse = ChannelBinding[];
+
+/** 通道 Provider 列表响应 */
+export type ChannelProviderListResponse = ChannelProviderDescriptor[];
+
+/** 创建通道绑定请求体 */
+export interface CreateChannelBindingRequest {
+  platform: string;
+  chatId: string;
+  agentId: string;
+  enabled?: boolean;
+}
+
+/** 创建通道绑定响应 */
+export type CreateChannelBindingResponse = ChannelBinding;
+
+/** 删除通道绑定响应 */
+export type DeleteChannelBindingResponse = Record<string, unknown>;
+
+/** Hermes 推送服务连接状态 */
+export interface HermesStatus {
+  connected: boolean;
+  url?: string;
+}
+
+/** 更新通道绑定响应 */
+export type UpdateChannelBindingResponse = ChannelBinding;
 
 export const channelApi = {
   /** 获取所有可用的 IM 通道 Provider 列表 */

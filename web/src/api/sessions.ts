@@ -5,8 +5,32 @@
  * 后端使用 POST /web/sessions 和 POST /web/control 的 action 分发模式，域模块内部抽象为具名方法。
  */
 
-import type { SessionHistory, SessionListResponse, SessionResponse } from "@fenix/sdk";
 import { request } from "./request";
+
+/** 单个会话事件 */
+export interface SessionEvent {
+  [key: string]: unknown;
+  seqNum?: number;
+  type: string;
+  payload?: Record<string, unknown>;
+}
+
+/** 会话响应 */
+export interface SessionResponse {
+  id: string;
+  title?: string;
+  environment_id?: string;
+  status?: string;
+  created_at?: number;
+}
+
+/** 会话列表响应 */
+export type SessionListResponse = SessionResponse[];
+
+/** 会话历史响应（包含事件数组） */
+export interface SessionHistory {
+  events: SessionEvent[];
+}
 
 /** send_event / control / interrupt 的通用响应类型 */
 type ControlResponse = Record<string, unknown>;

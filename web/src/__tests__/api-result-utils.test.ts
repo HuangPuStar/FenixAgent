@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { err, ok } from "@fenix/sdk";
+import { err, ok } from "../lib/api-result";
 
 describe("unwrapApiResult", () => {
   // 成功结果应直接返回 data，供页面代码继续使用

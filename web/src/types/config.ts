@@ -99,6 +99,8 @@ export interface McpLocalConfig {
   environment?: Record<string, string>;
   enabled?: boolean;
   timeout?: number;
+  /** 是否对其他组织公开可读 */
+  publicReadable?: boolean;
 }
 
 /** 远程 MCP 服务器配置（URL 连接） */
@@ -109,6 +111,8 @@ export interface McpRemoteConfig {
   headers?: Record<string, string>;
   oauth?: McpOAuthConfig | false;
   timeout?: number;
+  /** 是否对其他组织公开可读 */
+  publicReadable?: boolean;
 }
 
 /** MCP 服务器配置联合类型（含禁用变体） */

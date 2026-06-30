@@ -3,8 +3,9 @@ import { v4 as uuidv4 } from "uuid";
 import { controlApi } from "@/src/api/control";
 import { getUuid } from "@/src/api/helpers";
 import { unwrap } from "@/src/api/request";
+import type { SessionEvent } from "@/src/api/sessions";
 import { sessionApi } from "@/src/api/sessions";
-import type { EventPayload, SessionEvent } from "../types";
+import type { EventPayload } from "../types";
 import type {
   AssistantMessageEntry,
   PendingPermission,
@@ -211,13 +212,13 @@ export class RCSChatAdapter {
       const payload = event.payload || ({} as EventPayload);
 
       if (event.type === "user") {
-        if (event.direction === "outbound") continue; // skip echoed user messages
+        if ((event.direction as string) === "outbound") continue; // skip echoed user messages
         flushAssistant();
         const text = extractEventText(payload);
         if (text) {
           historyEntries.push({
             type: "user_message",
-            id: event.id || `hist-user-${historyEntries.length}`,
+            id: (event.id as string) || `hist-user-${historyEntries.length}`,
             content: text,
           });
         }
@@ -251,7 +252,7 @@ export class RCSChatAdapter {
         if (text || toolParts.length > 0) {
           currentAssistant = {
             type: "assistant_message",
-            id: event.id || `hist-asst-${historyEntries.length}`,
+            id: (event.id as string) || `hist-asst-${historyEntries.length}`,
             chunks: text ? [{ type: "message", text }] : [],
           };
           historyEntries.push(currentAssistant);
@@ -326,7 +327,7 @@ export class RCSChatAdapter {
   /** 处理 SSE 事件 */
   handleEvent(event: SessionEvent): void {
     const type = event.type;
-    const payload = event.payload || ({} as EventPayload);
+    const payload = (event.payload || {}) as Record<string, unknown>;
 
     // Skip bridge init noise
     const serialized = JSON.stringify(event);
@@ -473,7 +474,7 @@ export class RCSChatAdapter {
       case "permission_request": {
         const req = payload.request as Record<string, unknown> | undefined;
         if (req && req.subtype === "can_use_tool") {
-          const requestId = payload.request_id || "";
+          const requestId = String(payload.request_id ?? "");
           const toolName = (req.tool_name as string) || "unknown";
           const toolInput = (req.input || req.tool_input || {}) as Record<string, unknown>;
           const description = (req.description as string) || "";

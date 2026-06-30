@@ -2,6 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { unwrap } from "../../../api/request";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import {
   type DAGEvent,
@@ -127,7 +128,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunning(true);
     setDryRunResult(null);
     try {
-      const result = await workflowEngineApi.dryRun(y);
+      const result = await unwrap(workflowEngineApi.dryRun(y));
       setDryRunResult(result);
     } catch (err) {
       console.error(err);
@@ -188,8 +189,8 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     async (runId: string) => {
       try {
         const [snap, evts] = await Promise.all([
-          workflowEngineApi.getRunStatus(runId),
-          workflowEngineApi.getEvents(runId),
+          unwrap(workflowEngineApi.getRunStatus(runId)),
+          unwrap(workflowEngineApi.getEvents(runId)),
         ]);
         if (snap) {
           setRunSnapshot(snap);
@@ -232,8 +233,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setRunApprovals([]);
       return;
     }
-    workflowEngineApi
-      .getPendingApprovals(activeRunId)
+    unwrap(workflowEngineApi.getPendingApprovals(activeRunId))
       .then((list) => setRunApprovals(Array.isArray(list) ? list : []))
       .catch((err) => console.error(err));
   }, [activeRunId, runSnapshot, setRunApprovals]);
@@ -243,8 +243,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setNodeOutputLoading(true);
     setSelectedNodeOutput(null);
     setRunRightTab("output");
-    workflowEngineApi
-      .getOutput(activeRunId, selectedRunNodeId)
+    unwrap(workflowEngineApi.getOutput(activeRunId, selectedRunNodeId))
       .then((out) => setSelectedNodeOutput(out ?? null))
       .catch((err) => console.error(err))
       .finally(() => setNodeOutputLoading(false));
@@ -274,7 +273,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
 
       if (workflowId) {
         try {
-          await workflowDefApi.save(workflowId, y);
+          await unwrap(workflowDefApi.save(workflowId, y));
         } catch (err) {
           console.error(`${t("editor.auto_save_failed")}:`, err);
           toast.error(`${t("editor.auto_save_failed")}: ${(err as Error).message}`);
@@ -292,7 +291,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
 
       try {
         const runParams = params ?? resolveDefaultParams();
-        const result = await workflowEngineApi.run(y, runParams, workflowId);
+        const result = await unwrap(workflowEngineApi.run(y, runParams, workflowId));
         setActiveRunId(result.runId);
         setRunSnapshot(null);
         setRunEvents([]);
@@ -331,7 +330,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   const handleCancelRun = useCallback(async () => {
     if (!activeRunId) return;
     try {
-      await workflowEngineApi.cancel(activeRunId);
+      await unwrap(workflowEngineApi.cancel(activeRunId));
       await loadRunData(activeRunId);
     } catch (err) {
       console.error(err);
@@ -343,9 +342,9 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     async (approval: PendingApproval) => {
       if (!activeRunId) return;
       try {
-        await workflowEngineApi.approve(activeRunId, approval.nodeId, approval.approvalToken);
+        await unwrap(workflowEngineApi.approve(activeRunId, approval.nodeId, approval.approvalToken));
         await loadRunData(activeRunId);
-        const list = await workflowEngineApi.getPendingApprovals(activeRunId);
+        const list = await unwrap(workflowEngineApi.getPendingApprovals(activeRunId));
         setRunApprovals(Array.isArray(list) ? list : []);
       } catch (err) {
         console.error(err);
@@ -430,7 +429,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       const y = syncYaml();
       if (workflowId) {
         try {
-          await workflowDefApi.save(workflowId, y);
+          await unwrap(workflowDefApi.save(workflowId, y));
         } catch (err) {
           console.error(`${t("editor.auto_save_failed")}:`, err);
           toast.error(`${t("editor.auto_save_failed")}: ${(err as Error).message}`);
@@ -467,7 +466,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       });
 
       try {
-        const result = await workflowEngineApi.rerunFrom(activeRunId, y, fromNodeId, workflowId);
+        const result = await unwrap(workflowEngineApi.rerunFrom(activeRunId, y, fromNodeId, workflowId));
         setActiveRunId(result.runId);
         setRunSnapshot(null);
         setRunEvents([]);
@@ -511,7 +510,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       setSelectedNodeOutput(null);
       openRunSheet();
       try {
-        const out = await workflowEngineApi.getOutput(activeRunId, nodeId);
+        const out = await unwrap(workflowEngineApi.getOutput(activeRunId, nodeId));
         setSelectedNodeOutput(out ?? null);
       } catch (err) {
         console.error(err);
@@ -532,7 +531,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     if (isRunMode && !isRunDone) return;
     const { syncEdgeCounter, syncNodeCounter, yamlToFlow } = await import("../yaml-utils");
     try {
-      const wf = await workflowDefApi.get(workflowId);
+      const wf = await unwrap(workflowDefApi.get(workflowId));
       if (wf.draftYaml) {
         const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
         syncNodeCounter(newNodes.map((n) => n.id));
@@ -543,7 +542,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         setLastSavedYaml(wf.draftYaml);
         if (activeRunId) {
           try {
-            const snap = await workflowEngineApi.getRunStatus(activeRunId);
+            const snap = await unwrap(workflowEngineApi.getRunStatus(activeRunId));
             if (snap) updateNodesFromSnapshotRef.current(snap);
           } catch (err) {
             console.error(`${t("editor.restore_run_failed")}:`, err);

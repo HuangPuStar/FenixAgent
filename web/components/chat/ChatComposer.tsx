@@ -12,7 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ACPClient } from "../../src/acp/client";
 import type { AvailableCommand, SessionMode } from "../../src/acp/types";
-import { fileApi } from "../../src/api/sdk";
+import { fileApi } from "../../src/api/files";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
 import type { TokenStats } from "../../src/lib/token-stats";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
@@ -283,7 +283,7 @@ export function ChatComposer({
         for (const file of otherFiles) {
           formData.append("files", file);
         }
-        await fileApi.upload({ id: fileWorkspaceId, path: "user" }, formData);
+        await fileApi.upload(fileWorkspaceId, formData);
         const newAttachments: FileAttachment[] = otherFiles.map((f) => ({
           name: f.name,
           path: `user/${f.name}`,

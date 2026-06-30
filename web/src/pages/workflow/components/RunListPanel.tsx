@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ExternalLink, Inbox, Loader, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { unwrap } from "@/src/api/request";
 import { type RunSummary, workflowEngineApi } from "../../../api/workflow-engine";
 import { DAG_STATUS_CFG, relativeTime } from "../utils";
 
@@ -15,8 +16,7 @@ export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSel
   useEffect(() => {
     setLoading(true);
     setError(null);
-    workflowEngineApi
-      .listRuns()
+    unwrap(workflowEngineApi.listRuns())
       .then((data) => setRuns(Array.isArray(data.items) ? data.items : []))
       .catch((err) => {
         console.error(err);

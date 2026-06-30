@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
+import { unwrap } from "../../api/request";
 import { type DAGStatus, type RunSummary, workflowEngineApi } from "../../api/workflow-engine";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
@@ -106,7 +107,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
       if (statusFilter !== "all") params.status = statusFilter;
       if (debouncedSearch) params.q = debouncedSearch;
 
-      const data = await workflowEngineApi.listRuns(params);
+      const data = await unwrap(workflowEngineApi.listRuns(params));
       setRuns(Array.isArray(data.items) ? data.items : []);
       setTotal(data.total ?? 0);
     } catch (err) {
@@ -126,7 +127,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
 
   const handleCancel = async (runId: string) => {
     try {
-      await workflowEngineApi.cancel(runId);
+      await unwrap(workflowEngineApi.cancel(runId));
       loadRuns();
     } catch (err) {
       console.error(err);

@@ -82,11 +82,11 @@ describe("mcp resource access frontend flow", () => {
     ).toBe("shared");
   });
 
-  // 内部公开开关仍通过原 set action 发送 publicReadable。
-  test("公开开关 set action 携带 publicReadable", async () => {
-    const { mcpApi } = await import("../api/sdk");
+  // 内部公开开关通过 update 方法发送 config 字段（新 API 用 config 替代了旧 data 字段名）。
+  test("公开开关 update action 携带 publicReadable", async () => {
+    const { mcpApi } = await import("../api/mcp");
 
-    await mcpApi.set("shared", {
+    await mcpApi.update("shared", {
       type: "remote",
       url: "https://example.com/mcp",
       publicReadable: true,
@@ -97,7 +97,7 @@ describe("mcp resource access frontend flow", () => {
     expect(body).toEqual({
       action: "set",
       name: "shared",
-      data: {
+      config: {
         type: "remote",
         url: "https://example.com/mcp",
         publicReadable: true,

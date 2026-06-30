@@ -2,6 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { unwrap } from "../../../api/request";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import { pushWorkflowError } from "../../../lib/use-workflow-events";
 import { flowToYaml, syncEdgeCounter, syncNodeCounter, type WfMeta, yamlToFlow } from "../yaml-utils";
@@ -102,7 +103,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
       const y = syncYaml();
       setSaveStatus("saving");
       try {
-        await workflowDefApi.save(workflowId, y);
+        await unwrap(workflowDefApi.save(workflowId, y));
         setLastSavedYaml(y);
         if (silent) {
           setSaveStatus("idle");
@@ -228,7 +229,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
     const y = syncYaml();
     setSaveStatus("saving");
     try {
-      await workflowDefApi.save(workflowId, y);
+      await unwrap(workflowDefApi.save(workflowId, y));
       setLastSavedYaml(y);
       setSaveStatus("idle");
     } catch (err) {
@@ -240,7 +241,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
 
     setPublishing(true);
     try {
-      const result = await workflowDefApi.publish(workflowId);
+      const result = await unwrap(workflowDefApi.publish(workflowId));
       toast.success(t("editor.published_as", { version: result.version }));
     } catch (err) {
       console.error(err);
