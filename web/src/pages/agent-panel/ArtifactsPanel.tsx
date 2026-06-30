@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { agentSitesApi, envApi } from "@/src/api/sdk";
+import { envApi } from "@/src/api/sdk";
+import { agentSitesApi } from "@/src/api/sites";
 import { FileTabsBar } from "../../components/agent-panel/FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
 import { MountSiteDialog } from "../../components/agent-panel/MountSiteDialog";

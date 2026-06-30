@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { agentSitesApi } from "@/src/api/sdk";
+import { agentSitesApi } from "@/src/api/sites";
 import { NS } from "../../i18n";
 import { cn } from "../../lib/utils";
 

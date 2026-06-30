@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useRequest } from "ahooks";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { skillConfigApi } from "@/src/api/sdk";
+import { unwrap } from "@/src/api/request";
+import { skillConfigApi } from "@/src/api/skills";
+import type { SkillInfo } from "@/src/types/config";
 import type { PermissionAction } from "../types/config";
 
 // ── 常量定义 ──
@@ -127,38 +130,25 @@ export function PermissionTab({ agentName: _agentName, permission, onPermissionC
   const [skillNames, setSkillNames] = useState<string[]>([]);
   const [skillValues, setSkillValues] = useState<Record<string, ToggleValue>>(initialParsed.skillValues);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
-  const [skillLoading, setSkillLoading] = useState(false);
 
   // ── 加载 skill 列表 ──
-  useEffect(() => {
-    let cancelled = false;
-    setSkillLoading(true);
-    skillConfigApi
-      .list()
-      .then(({ data }: { data?: unknown }) => {
-        if (!cancelled) {
-          const skills = Array.isArray(data) ? data : [];
-          const names = skills.map((s: Record<string, unknown>) => String(s.name ?? ""));
-          setSkillNames(names);
-          setSkillValues((prev) => {
-            const next = { ...prev };
-            for (const name of names) {
-              if (!(name in next)) next[name] = "";
-            }
-            return next;
-          });
+  const { loading: skillLoading } = useRequest(() => unwrap(skillConfigApi.list()), {
+    onSuccess: (data) => {
+      const skills = Array.isArray(data?.skills) ? data.skills : [];
+      const names = skills.map((s: SkillInfo) => s.name);
+      setSkillNames(names);
+      setSkillValues((prev) => {
+        const next = { ...prev };
+        for (const name of names) {
+          if (!(name in next)) next[name] = "";
         }
-      })
-      .catch(() => {
-        if (!cancelled) setSkillNames([]);
-      })
-      .finally(() => {
-        if (!cancelled) setSkillLoading(false);
+        return next;
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    },
+    onError: () => {
+      setSkillNames([]);
+    },
+  });
 
   // ── 通用通知辅助：状态更新后通知父组件 ──
   const notifyParent = useCallback(

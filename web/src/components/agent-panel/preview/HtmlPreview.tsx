@@ -1,7 +1,9 @@
+import { useRequest } from "ahooks";
 import { Code2, Eye, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { fileApi } from "@/src/api/sdk";
+import { fileApi } from "@/src/api/files";
+import { unwrap } from "@/src/api/request";
 import { NS } from "../../../i18n";
 import { CodePreview } from "./CodePreview";
 import { buildPreviewUrl } from "./utils";
@@ -21,17 +23,13 @@ type ViewMode = "preview" | "source";
  * 需要携带 cookie 才能通过 /web/environments/* 的认证。这里的 HTML 来自用户自己
  * 上传的 workspace 文件，非外部不可信内容，风险可控。
  *
- * 源码模式按需通过 fileApi.readFile 拉取内容，通过按钮 onClick 触发而非 useEffect 驱动，
- * 避免 effect 依赖与状态更新相互触发导致的竞态（曾经出现"一直转圈"的问题）。
+ * 源码模式按需通过 fileApi.readFile 拉取内容。
  */
 export function HtmlPreview({ envId, filePath }: HtmlPreviewProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const [mode, setMode] = useState<ViewMode>("preview");
   const [loading, setLoading] = useState(true);
-  const [source, setSource] = useState<string | null>(null);
-  const [sourceLoading, setSourceLoading] = useState(false);
-  // 防止重复发起加载：useRef 不触发 re-render，也不会进入 effect 依赖
-  const sourceLoadingRef = useRef(false);
+  const [sourceRequested, setSourceRequested] = useState(false);
 
   const src = buildPreviewUrl(envId, filePath);
 
@@ -39,38 +37,23 @@ export function HtmlPreview({ envId, filePath }: HtmlPreviewProps) {
     setLoading(false);
   }, []);
 
-  // 文件切换时重置源码缓存，避免显示上一个文件的内容。
-  // 依赖 envId/filePath 是为了在文件变化时触发重置，虽然 effect 内部不直接读取它们，
-  // 但这是有意的"监听变化"语义，不是无意义依赖。
+  // 文件切换时重置源码缓存，避免显示上一个文件的内容
   // biome-ignore lint/correctness/useExhaustiveDependencies: 监听 props 变化重置内部 state
   useEffect(() => {
-    setSource(null);
-    setSourceLoading(false);
-    sourceLoadingRef.current = false;
+    setSourceRequested(false);
     setLoading(true);
   }, [envId, filePath]);
 
-  const loadSource = useCallback(async () => {
-    if (sourceLoadingRef.current) return;
-    if (source !== null) return;
-    sourceLoadingRef.current = true;
-    setSourceLoading(true);
-    const { data, error: err } = await fileApi.readFile({ id: envId, path: filePath });
-    sourceLoadingRef.current = false;
-    setSourceLoading(false);
-    if (err) {
-      console.error("Failed to load HTML source:", err);
-      return;
-    }
-    if (data && typeof data.content === "string") {
-      setSource(data.content);
-    }
-  }, [envId, filePath, source]);
+  // 按需加载源码：只有切换到源码模式且尚未请求过时才发起请求
+  const { data: source, loading: sourceLoading } = useRequest(() => unwrap(fileApi.readFile(envId, filePath)), {
+    ready: mode === "source" && sourceRequested,
+    refreshDeps: [envId, filePath, mode],
+  });
 
   const handleSwitchToSource = useCallback(() => {
     setMode("source");
-    void loadSource();
-  }, [loadSource]);
+    setSourceRequested(true);
+  }, []);
 
   const fileName = filePath.split("/").pop() ?? filePath;
 
@@ -129,7 +112,7 @@ export function HtmlPreview({ envId, filePath }: HtmlPreviewProps) {
               <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
             </div>
           )}
-          {!sourceLoading && source !== null && <CodePreview content={source} filePath={filePath} />}
+          {!sourceLoading && source?.content && <CodePreview content={source.content} filePath={filePath} />}
         </>
       )}
     </div>

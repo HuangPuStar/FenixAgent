@@ -1,7 +1,9 @@
 import type { SetStateAction } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { controlApi } from "@/src/api/control";
 import { getUuid } from "@/src/api/helpers";
-import { controlApi, sessionApi } from "@/src/api/sdk";
+import { unwrap } from "@/src/api/request";
+import { sessionApi } from "@/src/api/sessions";
 import type { EventPayload, SessionEvent } from "../types";
 import type {
   AssistantMessageEntry,
@@ -190,8 +192,7 @@ export class RCSChatAdapter {
 
   /** 加载历史事件并转为 ThreadEntry */
   async loadHistory(): Promise<void> {
-    const { data: historyData, error: histErr } = await sessionApi.history({ id: this.sessionId });
-    if (histErr) throw new Error(histErr.message);
+    const historyData = await unwrap(sessionApi.history({ sessionId: this.sessionId }));
     const events = historyData?.events;
     if (!events || events.length === 0) return;
 
@@ -557,7 +558,7 @@ export class RCSChatAdapter {
 
     // Send to backend
     await controlApi.sendEvent(
-      { id: this.sessionId },
+      { sessionId: this.sessionId },
       {
         type: "user",
         uuid: uuidv4(),
@@ -570,7 +571,7 @@ export class RCSChatAdapter {
   /** 响应权限请求 */
   async respondPermission(requestId: string, approved: boolean, extra?: Record<string, unknown>): Promise<void> {
     await controlApi.control(
-      { id: this.sessionId },
+      { sessionId: this.sessionId },
       {
         type: "permission_response",
         approved,
@@ -611,7 +612,7 @@ export class RCSChatAdapter {
     );
 
     await controlApi.control(
-      { id: this.sessionId },
+      { sessionId: this.sessionId },
       {
         type: "interrupt",
       },

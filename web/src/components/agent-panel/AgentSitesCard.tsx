@@ -1,6 +1,6 @@
 import { AlertCircle, ArrowRight, Globe, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { agentSitesApi } from "@/src/api/sdk";
+import { agentSitesApi } from "@/src/api/sites";
 import { useCardEmit } from "@/src/lib/card-renderer";
 import { cn } from "@/src/lib/utils";
 
