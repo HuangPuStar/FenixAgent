@@ -52,6 +52,6 @@ describe("skill download token", () => {
   test("buildSkillDownloadUrl uses configured base url", () => {
     setConfig({ baseUrl: "http://rcs.test" });
     const url = buildSkillDownloadUrl(skill, { expiresInSeconds: 60 });
-    expect(url.startsWith("http://rcs.test/web/skills/demo/download?token=")).toBe(true);
+    expect(url.startsWith("http://rcs.test/skills/demo/download?token=")).toBe(true);
   });
 });

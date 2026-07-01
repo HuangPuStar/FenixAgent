@@ -29,6 +29,7 @@ import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
 import apiWorkspaceRoutes from "./routes/api/workspaces";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
+import skillDownloadRoutes from "./routes/skills";
 import webApp from "./routes/web";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "./services/acp-idle-monitor";
@@ -175,6 +176,8 @@ const app = new Elysia()
   .use(ctrlStaticPlugin)
   // Web control panel routes
   .use(webApp)
+  // Token-protected skill archive download for plugins/runtimes
+  .use(skillDownloadRoutes)
   // Agent Sites L3 business frontend proxy (/{appId}/* prefix)
   .use(agentSitesProxyApp)
   // External API routes

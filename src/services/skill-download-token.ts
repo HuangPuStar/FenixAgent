@@ -84,5 +84,5 @@ export function verifySkillDownloadToken(token: string): SkillDownloadPayload | 
 /** 构建带签名 token 的 skill zip 下载 URL。 */
 export function buildSkillDownloadUrl(skill: SkillTokenInput, options?: { expiresInSeconds?: number }): string {
   const token = generateSkillDownloadToken(skill, options);
-  return `${getBaseUrl()}/web/skills/${encodeURIComponent(skill.name)}/download?token=${token}`;
+  return `${getBaseUrl()}/skills/${encodeURIComponent(skill.name)}/download?token=${token}`;
 }
