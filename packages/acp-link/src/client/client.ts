@@ -319,16 +319,27 @@ export class ACPClient {
     const req = createRequest(ACP_METHOD.SESSION_NEW, { cwd: sessionCwd, permissionMode });
     this.sendJsonRpcAndTrack(req, 30_000)
       .then((result) => {
-        const r = result as {
+        // JSON-RPC 错误响应（如 "Not connected to agent"）也会走 then 分支，需要显式检测
+        const r = result as Record<string, unknown>;
+        if (r?.error) {
+          const errDetail = (r.error as { code?: number; message?: string })?.message ?? JSON.stringify(r.error);
+          console.error("[ACPClient] createSession error response:", errDetail);
+          this.errorMessageHandler?.(errDetail);
+          return;
+        }
+        const typed = r as {
           sessionId: string;
           promptCapabilities?: PromptCapabilities;
           models?: SessionModelState | null;
           modes?: SessionModeState | null;
         };
-        this.state.initSession(r);
-        this.sessionCreatedHandler?.(r.sessionId);
+        this.state.initSession(typed);
+        this.sessionCreatedHandler?.(typed.sessionId);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("[ACPClient] createSession failed:", (err as Error).message);
+        this.errorMessageHandler?.((err as Error).message);
+      });
   }
 
   sendPrompt(content: string | ContentBlock[]): void {
@@ -337,13 +348,21 @@ export class ACPClient {
     const req = createRequest(ACP_METHOD.SESSION_PROMPT, { content: blocks });
     this.sendJsonRpcAndTrack(req, 120_000)
       .then((result) => {
-        const r = result as { stopReason?: string; usage?: PromptUsage };
-        this.promptCompleteHandler?.(r.stopReason ?? "end_turn", r.usage);
+        // JSON-RPC 错误响应（如 "No active session"）也会走 then 分支，需要显式检测
+        const r = result as Record<string, unknown>;
+        if (r?.error) {
+          const errDetail = (r.error as { code?: number; message?: string })?.message ?? JSON.stringify(r.error);
+          console.error("[ACPClient] sendPrompt error response:", errDetail);
+          this.promptCompleteHandler?.("error", { inputTokens: 0, outputTokens: 0 });
+          return;
+        }
+        const typed = r as { stopReason?: string; usage?: PromptUsage };
+        this.promptCompleteHandler?.(typed.stopReason ?? "end_turn", typed.usage);
       })
       .catch((err) => {
         console.error("[ACPClient] sendPrompt failed:", (err as Error).message);
-        // pending 超时或被 reject 时，也要通知上层结束 loading
-        this.promptCompleteHandler?.("error");
+        // pending 超时或被 reject 时，传入 usage 零值标记，使上层能展示错误
+        this.promptCompleteHandler?.("error", { inputTokens: 0, outputTokens: 0 });
       });
   }
 
