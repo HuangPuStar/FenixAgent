@@ -34,6 +34,7 @@ import {
   uploadRemoteFile,
 } from "../../services/agent-sites";
 import { addAgentSiteApp, getAgentConfigById, removeAgentSiteApp } from "../../services/config";
+import { invalidateAppCache } from "../agent-sites-proxy";
 
 /** 将 DB row 转为 API 响应（秒级时间戳，不包含 platformToken） */
 function toResponse(row: AgentSiteAppRow): AgentSiteApp {
@@ -219,6 +220,10 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         description: b.description,
         visibility: b.visibility as "private" | "org" | "authenticated" | "public" | undefined,
       });
+      // 更新 visibility 后立即使代理缓存失效，避免旧权限继续生效最多 60s
+      if (b.visibility !== undefined) {
+        invalidateAppCache(updated!.remoteAppId);
+      }
       return { success: true as const, data: toResponse(updated!) };
     },
     {

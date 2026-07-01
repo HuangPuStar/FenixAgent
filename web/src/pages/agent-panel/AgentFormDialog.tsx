@@ -649,6 +649,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       for (const inst of runningInstances) {
         await unwrap(instanceApi.delete({ id: inst.id }));
         await unwrap(instanceApi.spawn({ environmentId: inst.environmentId }));
+        // 通知 ChatPanel 和 ArtifactsPanel 重新连接/重置状态
+        window.dispatchEvent(new CustomEvent("agent:reconnect", { detail: { envId: inst.environmentId } }));
       }
       toast.success(tAgentPanel("restartSuccess"));
       setRestartDialogOpen(false);

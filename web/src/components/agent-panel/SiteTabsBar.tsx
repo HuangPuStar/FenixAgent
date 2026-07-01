@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { NS } from "../../i18n";
 import { cn } from "../../lib/utils";
 
-interface SiteEntry {
+export interface SiteEntry {
   id: string;
   name: string;
   remoteAppId: string;

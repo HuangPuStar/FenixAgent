@@ -7,17 +7,20 @@ import { cn } from "@/src/lib/utils";
 interface AgentSitesCardProps {
   /** 远端 site 的 remoteAppId（由 streamdown 从 HTML attribute agent-site-id 传入） */
   "agent-site-id": string;
+  /** 站点完整可访问 URL（由 agent 用 echo "$USER_META_BASE_URL/$REMOTE_APP_ID/" 解析后填入） */
+  url?: string;
 }
 
 /**
  * AgentSitesCard — 聊天消息中的站点卡片。
- * 由 streamdown 根据 LLM 输出的 <agent-sites agent-site-id="app-xxxx"/> 标签渲染。
+ * 由 streamdown 根据 <agent-sites agent-site-id="app-xxxx" url="https://..."/> 标签渲染。
  *
- * 全宽度卡片布局：左侧图标 + 友好提示 + 站点名称，右侧操作按钮。
- * 点击按钮 → dispatch artifacts:select-site → ArtifactsPanel 切换 Sites 视图。
+ * 卡片布局：上方小尺寸 iframe 实时预览 + 下方信息栏（图标 + 名称 +「查看站点」按钮）。
+ * url 为空时不渲染 iframe，仅展示信息 + 按钮。
  */
 export function AgentSitesCard(props: AgentSitesCardProps) {
   const agentSiteId = props["agent-site-id"];
+  const siteUrl = props.url ?? null;
   const emit = useCardEmit();
 
   const [loading, setLoading] = useState(true);
@@ -100,9 +103,25 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
   }
 
   // ── Success ──
+  const displayName = siteName || agentSiteId || "Unknown Site";
+
   return (
-    <div className="w-full rounded-lg border border-border/40 bg-surface-1 p-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="w-full rounded-lg border border-border/40 bg-surface-1 overflow-hidden">
+      {/* 上方：小尺寸 iframe 预览（有 url 时显示） */}
+      {siteUrl && (
+        <div className="w-full" style={{ height: 180 }}>
+          <iframe
+            src={siteUrl}
+            title={displayName}
+            className="w-full h-full border-0"
+            sandbox="allow-scripts allow-forms allow-same-origin"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      )}
+
+      {/* 下方：信息栏 + 按钮 */}
+      <div className="flex items-center justify-between gap-3 p-3">
         {/* 左侧：图标 + 信息 */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-8 w-8 rounded-full bg-brand/10 flex items-center justify-center shrink-0">
@@ -111,7 +130,7 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
           <div className="min-w-0">
             <div className="text-sm text-text-primary">您的站点已生成</div>
             <div className="text-xs text-text-muted truncate mt-0.5">
-              {siteName} · {agentSiteId}
+              {displayName} · {agentSiteId}
             </div>
           </div>
         </div>

@@ -26,6 +26,14 @@ async function getAppByRemoteId(remoteAppId: string) {
   return slim;
 }
 
+/**
+ * 使指定 app 的缓存失效。
+ * 当 visibility 等字段被外部修改时调用，确保代理层下次请求走 DB 拉最新值。
+ */
+export function invalidateAppCache(remoteAppId: string): void {
+  appCache.delete(remoteAppId);
+}
+
 /** 校验 app_id 格式：必须以 app- 开头 */
 const APP_ID_RE = /^app-[a-z0-9]+$/;
 

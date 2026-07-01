@@ -54,6 +54,9 @@ function ChatRoute() {
   // 路由层只需 entries 派生 changedFiles，环境名/token 由 ChatComposer 内部获取
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
 
+  // 实例重启时递增，强制 ArtifactsPanel remount，清除旧实例的残留文件/站点状态
+  const [restartKey, setRestartKey] = useState(0);
+
   // 从 entries 派生变更文件列表，实时跟随对话更新
   const changedFiles = useMemo(() => extractChangedFiles(entries), [entries]);
 
@@ -65,6 +68,21 @@ function ChatRoute() {
     window.addEventListener("chat:stats", handler);
     return () => window.removeEventListener("chat:stats", handler);
   }, []);
+
+  // 实例重启时：清除旧 entries、重置 diff 计数、递增 restartKey 强制 ArtifactsPanel remount
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      // 仅处理本 agentId 对应的重启事件
+      if (detail?.envId && detail.envId === agentId) {
+        setEntries([]);
+        prevDiffCountRef.current = 0;
+        setRestartKey((k) => k + 1);
+      }
+    };
+    window.addEventListener("agent:reconnect", handler);
+    return () => window.removeEventListener("agent:reconnect", handler);
+  }, [agentId]);
 
   // 卡片组件触发 artifacts:select-site 时展开右侧面板
   // biome-ignore lint/correctness/useExhaustiveDependencies: artifactsPanelRef 是稳定引用，仅 mount 时注册
@@ -181,7 +199,12 @@ function ChatRoute() {
             collapsedSize="0%"
             onResize={handleArtifactsResize}
           >
-            <ArtifactsPanel key={agentId} envId={agentId} agentConfigId={agentConfigId} changedFiles={changedFiles} />
+            <ArtifactsPanel
+              key={`${agentId}-${restartKey}`}
+              envId={agentId}
+              agentConfigId={agentConfigId}
+              changedFiles={changedFiles}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

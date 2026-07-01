@@ -1,3 +1,7 @@
 - [ ] **完全移除 Environment Secret**：代码和数据库中删除 `environment.secret` 字段、`tryApiKeyAuth()` 中的 `getBySecret` 分支、launch spec 中的 MCP Bearer token 注入。API 认证统一走 better-auth API Key，Agent 知识库访问改用短期 MCP 令牌。
 - [ ] **移除 channel_binding 遗留表**：Hermes 时代遗留，无组织隔离（无 `organizationId`/`userId`），已被 `im_channel` + `im_channel_route` 替代。删除表及其 repository/service。
+- [ ] **移除 RCSTransport 死代码**：`web/src/lib/rcs-transport.ts`（327 行），实现了 `ChatTransport<UIMessage>` 接口，但整个代码库中无任何文件 import 它。前端实际走 `ChatInterface → ACPClient` 直接消费 ACP 事件，不经过此适配层。
+- [ ] **移除 RCSChatAdapter 死代码**：`web/src/lib/rcs-chat-adapter.ts`（621 行），直接将 SSE 事件映射为自定义 `ThreadEntry[]`，含 `normalizeRcsToolCall` 解包逻辑。全代码库无 import 引用（仅测试文件引用），前端实际使用 `ChatInterface.tsx` 中的 `applySessionUpdateToEntries()` 处理 ACP 事件。
+- [ ] **清理 @ai-sdk/react 依赖**：`package.json` 中声明了 `@ai-sdk/react` 依赖，但全仓零 import（`useChat` hook 未在任何 `.ts/.tsx` 文件中使用）。确认无使用后从 `package.json` 移除，运行 `bun install`。
+- [ ] **审计 ai 包类型引用并决定去留**：`from "ai"` 仅在 `web/components/ai-elements/`（message.tsx / prompt-input.tsx / tool.tsx）和 `rcs-transport.ts` 中作为类型导入（`UIMessage`、`FileUIPart`、`ToolUIPart`、`ChatStatus`）。`rcs-transport.ts` 移除后，评估 ai-elements 组件是否可以替换这些类型为自定义类型，如可行则一并移除 `ai` 包依赖。
 - [ ] xxxxx

@@ -4,5 +4,5 @@ import { registerTagRenderer } from "./registry";
 
 registerTagRenderer("agent-sites", {
   component: AgentSitesCard as unknown as ComponentType<Record<string, unknown>>,
-  allowedAttrs: ["agent-site-id"],
+  allowedAttrs: ["agent-site-id", "url"],
 });

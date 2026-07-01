@@ -24,7 +24,7 @@ import { MountSiteDialog } from "../../components/agent-panel/MountSiteDialog";
 import { PreviewTab } from "../../components/agent-panel/PreviewTab";
 import { normalizeToUserPath } from "../../components/agent-panel/preview/utils";
 import { SiteFrame } from "../../components/agent-panel/SiteFrame";
-import { SiteTabsBar } from "../../components/agent-panel/SiteTabsBar";
+import { type SiteEntry, SiteTabsBar } from "../../components/agent-panel/SiteTabsBar";
 import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeTabs";
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
@@ -139,8 +139,13 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
     },
     {
       manual: true,
-      onSuccess: () => {
+      onSuccess: (_data, params) => {
+        const [, siteId] = params as [string, string];
         setUnmountConfirm(null);
+        // 乐观更新：立即剔除已解绑 site，避免 loadSites 异步延迟期间
+        // 旧 tab 残留（responsiveSiteId 派生自动回退到剩余 site 或 null）
+        setSites((prev: SiteEntry[] | undefined) => (prev ?? []).filter((s) => s.id !== siteId));
+        // 后台确认：从 DB 拉最新列表，确保最终一致性
         if (agentConfigId) loadSites(agentConfigId);
       },
       onError: () => {

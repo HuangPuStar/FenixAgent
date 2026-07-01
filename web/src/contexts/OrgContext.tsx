@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { orgApi } from "@/src/api/organizations";
@@ -121,9 +121,12 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     [navigate, orgs, org, role, t],
   );
 
-  return (
-    <OrgContext.Provider value={{ org, role, orgs, loading, switchOrg, refreshOrgs }}>{children}</OrgContext.Provider>
+  const value = useMemo(
+    () => ({ org, role, orgs, loading, switchOrg, refreshOrgs }),
+    [org, role, orgs, loading, switchOrg, refreshOrgs],
   );
+
+  return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }
 
 export function useOrg() {

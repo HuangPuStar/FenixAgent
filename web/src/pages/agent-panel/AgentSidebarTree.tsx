@@ -12,7 +12,7 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -70,7 +70,7 @@ interface AgentSidebarTreeProps {
   onEditAgent?: (agentName: string) => void;
 }
 
-export function AgentSidebarTree({
+export const AgentSidebarTree = memo(function AgentSidebarTree({
   selectedInstanceId,
   selectedEnvironmentId = null,
   onSelectInstance,
@@ -149,7 +149,7 @@ export function AgentSidebarTree({
 
       return nodes;
     },
-    { pollingInterval: 15_000, refreshDeps: [orgId], ready: !!orgId },
+    { pollingInterval: 15_000, refreshDeps: [orgId], ready: !!orgId, loadingDelay: 300 },
   );
 
   // 监听配置变更事件，agents 变更时立即刷新
@@ -686,4 +686,4 @@ export function AgentSidebarTree({
       </AlertDialog>
     </div>
   );
-}
+});

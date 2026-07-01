@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, LogOut, UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
@@ -25,7 +25,7 @@ interface AgentSidebarProps {
   onEditAgent?: (agentName: string) => void;
 }
 
-export function AgentSidebar({
+export const AgentSidebar = memo(function AgentSidebar({
   activeNav,
   selectedInstanceId = null,
   selectedEnvironmentId = null,
@@ -173,7 +173,7 @@ export function AgentSidebar({
       <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </aside>
   );
-}
+});
 
 function FenixSidebarLogo() {
   const assetBase = import.meta.env.BASE_URL;

@@ -6,8 +6,9 @@ import "./agent-panel.css";
 
 export function AgentPanelLayout() {
   const navigate = useNavigate();
-  const routerState = useRouterState();
-  const pathname = routerState.location.pathname;
+  // 仅订阅 pathname：避免 useRouterState() 无选择器订阅全部路由状态
+  // 导致每次 search/hash/loader 变动都触发级联重渲染
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const pathParts = pathname
     .replace(/^\/agent\/?/, "")
     .split("/")

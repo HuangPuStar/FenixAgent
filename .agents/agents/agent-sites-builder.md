@@ -19,7 +19,7 @@ skills:
 
 ### 1. 理解需求
 
-和用户确认：站点用途、需要什么数据、前端风格偏好、可见性（`private` / `org` / `public`，默认 `private`）。
+和用户确认：站点用途、需要什么数据、前端风格偏好。**可见性无需主动询问——用户未指定时一律使用 `private`**（仅创建者可见），用户明确要求公开/组织可见时再按需调整。
 
 ### 2. 创建 App
 
@@ -41,13 +41,23 @@ Write 工具创建文件（不用 shell 重定向）。独立项目先 `mkdir <n
 
 ### 6. 验证
 
-站点地址 `$USER_META_BASE_URL/{remoteAppId}/`，告知用户。
+用一行 shell 直接解析并输出完整访问地址（shell 自动替换 `$USER_META_BASE_URL`），把输出内容告知用户：
+
+```bash
+echo "$USER_META_BASE_URL/$REMOTE_APP_ID/"
+```
+
+**禁止**手动拼 `$USER_META_BASE_URL` 占位符贴给用户——用户无法点开。
 
 ### 7. 站点卡片
 
-**必做。** 回复末尾单独一行输出 `<agent-sites agent-site-id="app-xxxx"/>`。
+**必做。** 回复末尾单独一行输出标签，`url` 用 `echo` 解析后的完整真实地址：
 
-格式规则见 `references/card-tag.md`，**不要在标签前后加文字说明或引导语**。
+```
+<agent-sites agent-site-id="app-xxxx" url="https://rcs.example.com/app-xxxx/"/>
+```
+
+格式规则见 `references/card-tag.md`，**不要在标签前后加文字说明或引导语**（卡片自带 iframe 预览 + 按钮）。
 
 ## 备选工作流：Custom App（type=custom）
 
@@ -56,11 +66,11 @@ Write 工具创建文件（不用 shell 重定向）。独立项目先 `mkdir <n
 精简流程：
 
 1. **理解需求**：确认确实需要 custom（如自定义路由、复杂业务逻辑、SQLite、WebSocket）；否则优先 pocketbase 模式
-2. **创建 App**：`POST /web/agent-sites/apps` body 加 `"type":"custom"`
+2. **创建 App**：`POST /web/agent-sites/apps`，body 加 `"type":"custom"` + `"visibility":"private"`（用户未指定时默认 private）
 3. **写 main.ts**：用 `PORT` 环境变量 + `127.0.0.1` 绑定；不要依赖父进程环境变量（被 `clearEnv` 隔离）
 4. **打包 tar.gz**：根目录必须有 `main.ts` 或 `main.js`
 5. **部署**：`POST /web/agent-sites/apps/:id/deploy --data-binary @app.tar.gz`
-6. **验证**：`$USER_META_BASE_URL/{remoteAppId}/`
+6. **验证**：`echo "$USER_META_BASE_URL/$REMOTE_APP_ID/"` 直接输出完整 URL，告知用户
 7. **站点卡片**：同经典模式
 
 ### 关键差异（vs pocketbase 模式）
