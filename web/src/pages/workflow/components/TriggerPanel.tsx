@@ -2,6 +2,7 @@ import { Copy, Globe, Inbox, Loader, Power, RefreshCw, Trash2, X } from "lucide-
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { unwrap } from "@/src/api/request";
 import { type TriggerItem, workflowDefApi } from "../../../api/workflow-defs";
 
 export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onClose: () => void }) {
@@ -15,7 +16,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
     if (!workflowId) return;
     setLoading(true);
     try {
-      const list = await workflowDefApi.listTriggers(workflowId);
+      const list = await unwrap(workflowDefApi.listTriggers(workflowId));
       setTriggers(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);
@@ -63,7 +64,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
     async (triggerId: string) => {
       if (!confirm(t("editor.trigger_regenerate_confirm"))) return;
       try {
-        const updated = await workflowDefApi.regenerateTriggerHash(triggerId);
+        const updated = await unwrap(workflowDefApi.regenerateTriggerHash(triggerId));
         toast.success(t("editor.trigger_hash_regenerated"));
         setTriggers((prev) => prev.map((tr) => (tr.id === triggerId ? updated : tr)));
       } catch (err) {

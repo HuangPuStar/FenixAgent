@@ -1,6 +1,5 @@
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
 import { v4 as uuidv4 } from "uuid";
-import { getUuid } from "@/src/api/helpers";
 import type { EventPayload, SessionEvent } from "../types";
 
 // ============================================================
@@ -24,15 +23,12 @@ class SSEEventBus {
     return () => this.listeners.delete(handler);
   }
 
-  /** Connect to the SSE stream for a session */
+  /** Connect to the SSE stream for a session (GET /web/sessions/:id/events) */
   connect(sessionId: string): void {
     this.disconnect();
-    const uuid = getUuid();
-    const activeOrgId = localStorage.getItem("active_org_id");
-    const params = new URLSearchParams({ uuid: uuid });
-    if (activeOrgId) params.set("activeOrganizationId", activeOrgId);
-    const url = `/web/sessions/${sessionId}/events?${params}`;
-    const es = new EventSource(url);
+    // 后端使用 session cookie 认证，无需通过 query 传递 org 信息
+    const url = `/web/sessions/${sessionId}/events`;
+    const es = new EventSource(url, { withCredentials: true });
     this.eventSource = es;
 
     es.addEventListener("message", (e: MessageEvent) => {
@@ -108,8 +104,7 @@ export class RCSTransport implements ChatTransport<UIMessage> {
     }
 
     // POST user message to the RCS backend
-    const uuid = getUuid();
-    const response = await fetch(`/web/sessions/${this.sessionId}/events?uuid=${encodeURIComponent(uuid)}`, {
+    const response = await fetch(`/web/sessions/${this.sessionId}/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

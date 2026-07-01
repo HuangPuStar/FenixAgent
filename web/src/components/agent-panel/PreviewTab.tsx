@@ -1,7 +1,8 @@
+import { useRequest } from "ahooks";
 import { FileX, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { fileApi } from "@/src/api/sdk";
+import { fileApi } from "@/src/api/files";
+import { unwrap } from "@/src/api/request";
 import { NS } from "../../i18n";
 import { BinaryInfoPreview } from "./preview/BinaryInfoPreview";
 import { CodePreview } from "./preview/CodePreview";
@@ -19,64 +20,33 @@ interface PreviewTabProps {
 
 export function PreviewTab({ envId, filePath }: PreviewTabProps) {
   const { t } = useTranslation(NS.COMPONENTS);
-  const [content, setContent] = useState<string | null>(null);
-  const [fileSize, setFileSize] = useState<number | undefined>(undefined);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-
   const category = filePath ? classifyFile(filePath) : null;
 
-  const loadFile = useCallback(async () => {
-    if (!envId || !filePath) {
-      setContent(null);
-      setFileName(null);
-      setError(null);
-      setFileSize(undefined);
-      return;
-    }
+  // 图片、PDF、表格、HTML 直接由子组件通过 URL 处理，不需要 readFile API
+  const skipApi = category === "image" || category === "pdf" || category === "table" || category === "html";
+  const needsApi = !!(envId && filePath && category && !skipApi);
 
-    const cat = classifyFile(filePath);
+  const {
+    data: fileData,
+    loading,
+    error,
+  } = useRequest(() => unwrap(fileApi.readFile(envId!, filePath!)), {
+    ready: needsApi,
+    refreshDeps: [envId, filePath],
+  });
 
-    // 图片、PDF、表格、HTML 不需要通过 readFile API，直接由子组件通过 URL 处理
-    if (cat === "image" || cat === "pdf" || cat === "table" || cat === "html") {
-      setContent(null);
-      setFileName(filePath.split("/").pop() ?? filePath);
-      setError(null);
-      setLoading(false);
-      return;
-    }
+  // 从 API 响应中提取内容；skipApi 类型的 content 为 null
+  const content: string | null = skipApi || typeof fileData?.content !== "string" ? null : fileData.content;
+  // 文件名优先使用 API 返回的 name，skipApi 类型从路径提取
+  const fileName: string | null = skipApi
+    ? filePath
+      ? (filePath.split("/").pop() ?? filePath)
+      : null
+    : (fileData?.name ?? (filePath ? (filePath.split("/").pop() ?? filePath) : null));
+  const fileSize: number | undefined = skipApi ? undefined : fileData?.size;
 
-    setLoading(true);
-    setError(null);
-    const normalized = filePath.endsWith("/") ? filePath.slice(0, -1) : filePath;
-    // 保留文件名用于错误提示卡片
-    const fallbackName = normalized.split("/").pop() || normalized;
-    setFileName(fallbackName);
-    const { data, error: err } = await fileApi.readFile({ id: envId, path: normalized });
-    if (err) {
-      console.error("Failed to load file:", err);
-      setError("unsupported");
-      setContent(null);
-    } else if (data && typeof data.content === "string") {
-      setContent(data.content);
-      setFileName(data.name || normalized.split("/").pop() || normalized);
-      setFileSize(data.size);
-    } else if (data && typeof data.name === "string") {
-      setContent(null);
-      setFileName(data.name);
-      setFileSize(data.size);
-    } else {
-      setContent(null);
-      setError("unsupported");
-      setFileName(normalized.split("/").pop() || normalized);
-    }
-    setLoading(false);
-  }, [envId, filePath]);
-
-  useEffect(() => {
-    loadFile();
-  }, [loadFile]);
+  // 非 binary 且无文本内容时视为不支持预览
+  const apiFailed = !!error || (needsApi && fileData && category !== "binary" && typeof fileData.content !== "string");
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col h-full">
@@ -87,7 +57,7 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
           </div>
         )}
         {/* 加载失败：展示"暂不支持预览"卡片 */}
-        {!loading && error && fileName && (
+        {!loading && apiFailed && fileName && (
           <div className="flex-1 flex items-center justify-center p-8">
             <div className="flex flex-col items-center gap-3 max-w-xs text-center">
               <div className="w-16 h-16 rounded-xl bg-surface-2 flex items-center justify-center">

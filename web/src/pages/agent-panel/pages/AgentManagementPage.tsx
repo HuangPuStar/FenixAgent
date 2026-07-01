@@ -1,34 +1,23 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useRequest } from "ahooks";
 import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { agentApi, envApi } from "@/src/api/sdk";
+import { agentApi } from "@/src/api/agents";
+import { type EnvironmentDetail, envApi } from "@/src/api/environments";
+import { unwrap } from "@/src/api/request";
 import { AgentBadge } from "../../../../components/chat/AgentBadge";
 import { NS } from "../../../i18n";
 import { getAgentConfigLookupKey, getAgentDisplayName, isAgentWritable } from "../../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../../lib/config-events";
-import type { ResourceAccess } from "../../../types/config";
-import type { Environment } from "../../../types/index";
+import type { AgentInfo } from "../../../types/config";
 import { AgentFormDialog } from "../AgentFormDialog";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-interface AgentConfigItem {
-  id: string;
-  name: string;
-  builtIn?: boolean;
-  model?: string | null;
-  modelId?: string | null;
-  modelLabel?: string | null;
-  description?: string | null;
-  resourceAccess?: ResourceAccess;
-  skillLabels?: Array<{ id: string; label: string }>;
-  machineId?: string | null;
-}
-
 interface AgentManageNode {
-  agent: AgentConfigItem;
-  environment: Environment | null;
+  agent: AgentInfo;
+  environment: EnvironmentDetail | null;
 }
 
 type FilterId = "all" | "general" | "data" | "search" | "monitor" | "code" | "custom";
@@ -52,7 +41,7 @@ function useFilterLabels() {
   );
 }
 
-function inferCategory(agent: AgentConfigItem): FilterId {
+function inferCategory(agent: AgentInfo): FilterId {
   const text = `${agent.name} ${agent.description ?? ""}`.toLowerCase();
   if (/(data|analyst|analysis|数据|分析|报表)/.test(text)) return "data";
   if (/(search|检索|搜索|知识)/.test(text)) return "search";
@@ -66,50 +55,47 @@ export function AgentManagementPage() {
   const navigate = useNavigate();
   const { t } = useTranslation(NS.AGENTS);
   const filterLabels = useFilterLabels();
-  const [nodes, setNodes] = useState<AgentManageNode[]>([]);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
-  const [loading, setLoading] = useState(true);
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editAgentName, setEditAgentName] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [{ data: agentsResult }, { data: envsData }] = await Promise.all([agentApi.list(), envApi.list()]);
-      const rawAgents = (agentsResult as unknown as { agents?: AgentConfigItem[] } | null)?.agents;
-      const agents = Array.isArray(rawAgents) ? rawAgents.filter((agent) => !agent.builtIn) : [];
-      const envs = Array.isArray(envsData) ? (envsData as Environment[]) : [];
-      const envByConfigId = new Map<string, Environment>();
-
+  // 列表查询：并行拉取 Agent 配置与环境列表，按 agentConfigId 关联
+  const {
+    data: nodes,
+    loading,
+    refresh,
+  } = useRequest(
+    async (): Promise<AgentManageNode[]> => {
+      const [agentsResult, envsList] = await Promise.all([unwrap(agentApi.list()), unwrap(envApi.list())]);
+      const agents = (agentsResult.agents ?? []).filter((agent) => !agent.builtIn);
+      const envs = Array.isArray(envsList) ? envsList : [];
+      const envByConfigId = new Map<string, EnvironmentDetail>();
       for (const env of envs) {
-        if (env.agent_config_id) envByConfigId.set(env.agent_config_id, env);
+        if (env.agentConfigId) envByConfigId.set(env.agentConfigId, env);
       }
+      return agents.map((agent) => ({ agent, environment: envByConfigId.get(agent.id) ?? null }));
+    },
+    {
+      onError: (err) => {
+        console.error("Failed to load agents:", err);
+        toast.error(t("loadFailed", { defaultValue: "加载智能体失败" }));
+      },
+    },
+  );
 
-      setNodes(agents.map((agent) => ({ agent, environment: envByConfigId.get(agent.id) ?? null })));
-    } catch (err) {
-      console.error("Failed to load agents:", err);
-      toast.error(t("loadFailed", { defaultValue: "加载智能体失败" }));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
-
-  useEffect(() => {
-    setLoading(true);
-    void loadData();
-  }, [loadData]);
-
+  // 配置变更时刷新列表
   useConfigChangeListener(
     (module) => {
-      if (module === "agents") void loadData();
+      if (module === "agents") refresh();
     },
-    [loadData],
+    [refresh],
   );
 
   const filteredNodes = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return nodes.filter((node) => {
+    return (nodes ?? []).filter((node) => {
       const category = inferCategory(node.agent);
       const matchesFilter = activeFilter === "all" || category === activeFilter;
       const displayName = getAgentDisplayName(node.agent).toLowerCase();
@@ -122,44 +108,45 @@ export function AgentManagementPage() {
     });
   }, [activeFilter, nodes, query]);
 
-  const handleEnterAgent = useCallback(
+  // 进入 Agent（可能需要先创建环境）
+  const { run: runEnter } = useRequest(
     async (node: AgentManageNode) => {
       setEnteringId(node.agent.id);
-      try {
-        let envId = node.environment?.id;
-        if (!envId) {
-          const { data: newEnv } = await envApi.create({
+      let envId = node.environment?.id;
+      if (!envId) {
+        // 不存在关联环境时自动创建
+        const newEnv = await unwrap(
+          envApi.create({
             name: `env-${node.agent.id.slice(0, 8)}`,
             agentConfigId: node.agent.id,
             autoStart: true,
-          });
-          envId = (newEnv as unknown as Environment | null)?.id;
-        }
-
-        if (!envId) {
-          toast.error(t("envCreateFailed", { defaultValue: "创建运行环境失败" }));
-          return;
-        }
-
-        const { data: result } = await envApi.enter({ id: envId }, {});
-        const enterResult = result as { session_id?: string; environment_id?: string } | null;
-        const targetEnvId = enterResult?.environment_id ?? envId;
-        if (enterResult?.session_id) {
-          void navigate({
-            to: "/agent/chat/$agentId/$sessionId",
-            params: { agentId: targetEnvId, sessionId: enterResult.session_id },
-          });
-        } else {
-          void navigate({ to: "/agent/chat/$agentId", params: { agentId: targetEnvId } });
-        }
-      } catch (err) {
-        console.error("Failed to enter agent:", err);
-        toast.error(t("enterFailed", { defaultValue: "进入对话失败" }));
-      } finally {
-        setEnteringId(null);
+          }),
+        );
+        envId = newEnv?.id;
+      }
+      if (!envId) {
+        toast.error(t("envCreateFailed", { defaultValue: "创建运行环境失败" }));
+        return;
+      }
+      const enterResult = await unwrap(envApi.enter({ id: envId }, {}));
+      const targetEnvId = enterResult.environmentId ?? envId;
+      if (enterResult.sessionId) {
+        void navigate({
+          to: "/agent/chat/$agentId/$sessionId",
+          params: { agentId: targetEnvId, sessionId: enterResult.sessionId },
+        });
+      } else {
+        void navigate({ to: "/agent/chat/$agentId", params: { agentId: targetEnvId } });
       }
     },
-    [navigate, t],
+    {
+      manual: true,
+      onError: (err) => {
+        console.error("Failed to enter agent:", err);
+        toast.error(t("enterFailed", { defaultValue: "进入对话失败" }));
+      },
+      onFinally: () => setEnteringId(null),
+    },
   );
 
   return (
@@ -242,7 +229,7 @@ export function AgentManagementPage() {
                 description={agent.description || undefined}
                 skills={agent.skillLabels ?? []}
                 sourceOrg={agent.resourceAccess?.sourceOrganizationName}
-                onEnter={() => void handleEnterAgent(node)}
+                onEnter={() => runEnter(node)}
                 onEdit={writable ? () => setEditAgentName(getAgentConfigLookupKey(agent)) : undefined}
                 isBusy={isBusy}
               />
@@ -251,7 +238,7 @@ export function AgentManagementPage() {
         </div>
       )}
 
-      <AgentFormDialog open={createOpen} onOpenChange={setCreateOpen} mode="create" onSuccess={loadData} />
+      <AgentFormDialog open={createOpen} onOpenChange={setCreateOpen} mode="create" onSuccess={refresh} />
       <AgentFormDialog
         open={editAgentName !== null}
         onOpenChange={(open) => {
@@ -259,7 +246,7 @@ export function AgentManagementPage() {
         }}
         mode="edit"
         agentName={editAgentName ?? undefined}
-        onSuccess={loadData}
+        onSuccess={refresh}
       />
     </div>
   );

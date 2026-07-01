@@ -1,11 +1,13 @@
 import { Link } from "@tanstack/react-router";
+import { useRequest } from "ahooks";
 import { AlertTriangle, Clock, Inbox, RefreshCw, RotateCcw, Star } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { unwrap } from "@/src/api/request";
 import { type WorkflowDefItem, type WorkflowVersionItem, workflowDefApi } from "../../api/workflow-defs";
 import { AgentPageHeader } from "../agent-panel/shared/AgentPageHeader";
 
@@ -16,82 +18,73 @@ interface WorkflowVersionsProps {
 
 export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
   const { t } = useTranslation("workflows");
-  const [wf, setWf] = useState<WorkflowDefItem | null>(null);
-  const [versions, setVersions] = useState<WorkflowVersionItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [viewingVersion, setViewingVersion] = useState<number | null>(null);
   const [viewingYaml, setViewingYaml] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: "setLatest" | "restore"; version: number } | null>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [wfData, versionList] = await Promise.all([
-        workflowDefApi.get(workflowId),
-        workflowDefApi.getVersions(workflowId),
-      ]);
-      setWf(wfData);
-      setVersions(Array.isArray(versionList) ? versionList : []);
-    } catch (err) {
-      console.error(err);
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [workflowId]);
+  // 加载 workflow 详情
+  const {
+    data: wf,
+    loading: wfLoading,
+    refresh: wfRefresh,
+  } = useRequest(() => unwrap(workflowDefApi.get(workflowId)), { refreshDeps: [workflowId] });
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  // 加载版本列表
+  const {
+    data: versionsResult = [],
+    loading: versionsLoading,
+    error: versionsError,
+    refresh: versionsRefresh,
+  } = useRequest(() => unwrap(workflowDefApi.getVersions(workflowId)), { refreshDeps: [workflowId] });
+  const versions = Array.isArray(versionsResult) ? versionsResult : [];
+  const versionsErrorMsg = versionsError
+    ? versionsError instanceof Error
+      ? versionsError.message
+      : String(versionsError)
+    : null;
 
-  const handleSetLatest = useCallback(
-    async (version: number) => {
-      setConfirmAction(null);
-      try {
-        await workflowDefApi.setLatest(workflowId, version);
-        loadData();
-      } catch (err) {
-        console.error(err);
-        toast.error(t("versions.operation_failed"), { description: (err as Error).message });
-      }
+  // 设为最新版本
+  const { run: runSetLatest } = useRequest((version: number) => workflowDefApi.setLatest(workflowId, version), {
+    manual: true,
+    onSuccess: () => {
+      wfRefresh();
+      versionsRefresh();
     },
-    [workflowId, loadData, t],
-  );
+    onError: (err) => {
+      console.error(err);
+      toast.error(t("versions.operation_failed"), { description: (err as Error).message });
+    },
+  });
 
-  const handleRestoreToDraft = useCallback(
-    async (version: number) => {
-      setConfirmAction(null);
-      try {
-        await workflowDefApi.restoreToDraft(workflowId, version);
-        toast.success(t("versions.restore_success"));
-      } catch (err) {
+  // 恢复到草稿
+  const { run: runRestoreToDraft } = useRequest(
+    (version: number) => workflowDefApi.restoreToDraft(workflowId, version),
+    {
+      manual: true,
+      onSuccess: () => toast.success(t("versions.restore_success")),
+      onError: (err) => {
         console.error(err);
         toast.error(t("versions.restore_failed"), { description: (err as Error).message });
-      }
+      },
     },
-    [workflowId, t],
   );
 
-  const handleViewYaml = useCallback(
-    async (version: number) => {
-      if (viewingVersion === version) {
-        setViewingVersion(null);
-        setViewingYaml(null);
-        return;
-      }
-      try {
-        const result = await workflowDefApi.getVersion(workflowId, version);
-        setViewingVersion(version);
-        setViewingYaml(result.yaml);
-      } catch (err) {
-        console.error(err);
-        toast.error(t("versions.yaml_load_failed"), { description: (err as Error).message });
-      }
-    },
-    [workflowId, viewingVersion, t],
-  );
+  // 查看版本 YAML（展开/收起切换）
+  const handleViewYaml = async (version: number) => {
+    if (viewingVersion === version) {
+      setViewingVersion(null);
+      setViewingYaml(null);
+      return;
+    }
+    try {
+      const result = await unwrap(workflowDefApi.getVersion(workflowId, version));
+      setViewingVersion(version);
+      setViewingYaml(result.yaml);
+    } catch (err) {
+      console.error(err);
+      toast.error(t("versions.yaml_load_failed"), { description: (err as Error).message });
+    }
+  };
 
   function relativeTime(iso?: string | null): string {
     if (!iso) return "--";
@@ -102,7 +95,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
     return new Date(iso).toLocaleDateString();
   }
 
-  if (loading && !wf) {
+  if (wfLoading && !wf) {
     return (
       <div className="flex flex-col gap-2">
         {Array.from({ length: 3 }).map((_, i) => (
@@ -120,7 +113,14 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
         subtitle={wf?.description ?? undefined}
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={loadData}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                wfRefresh();
+                versionsRefresh();
+              }}
+            >
               <RefreshCw size={13} className="mr-1" /> {t("versions.refresh")}
             </Button>
             <Link
@@ -147,17 +147,17 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
       )}
 
       {/* 内容 */}
-      {loading ? (
+      {versionsLoading ? (
         <div className="flex flex-col gap-2">
           {Array.from({ length: 3 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>
-      ) : error ? (
+      ) : versionsError ? (
         <div className="text-center py-10">
           <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-          <p className="text-[13px] text-text-secondary">{t("versions.load_failed", { error })}</p>
+          <p className="text-[13px] text-text-secondary">{t("versions.load_failed", { error: versionsErrorMsg })}</p>
         </div>
       ) : versions.length === 0 ? (
         <div className="text-center py-10">
@@ -238,8 +238,8 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
         }
         variant={confirmAction?.type === "restore" ? "destructive" : "default"}
         onConfirm={() => {
-          if (confirmAction?.type === "setLatest") handleSetLatest(confirmAction.version);
-          else if (confirmAction?.type === "restore") handleRestoreToDraft(confirmAction.version);
+          if (confirmAction?.type === "setLatest") runSetLatest(confirmAction.version);
+          else if (confirmAction?.type === "restore") runRestoreToDraft(confirmAction.version);
         }}
       />
     </div>

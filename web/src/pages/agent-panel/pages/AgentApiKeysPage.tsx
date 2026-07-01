@@ -1,5 +1,6 @@
+import { useRequest } from "ahooks";
 import { AlertTriangle, Copy, KeyRound, Plus, Search } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -7,7 +8,8 @@ import { FormDialog } from "@/components/config/FormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiKeyApi } from "@/src/api/sdk";
+import { apiKeyApi } from "@/src/api/api-keys";
+import { unwrap } from "@/src/api/request";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -21,74 +23,69 @@ interface ApiKeyInfo {
 
 export function AgentApiKeysPage() {
   const { t } = useTranslation("apikey");
-  const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
-  const [formSaving, setFormSaving] = useState(false);
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const loadKeys = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await apiKeyApi.list();
-    if (error) {
-      console.error(error);
+  // 列表查询
+  const {
+    data: listData,
+    loading,
+    refresh,
+  } = useRequest(() => unwrap(apiKeyApi.list()), {
+    onError: (err) => {
+      console.error(err);
       toast.error(t("toast.loadFailed"));
-    } else {
-      setKeys((Array.isArray(data) ? data : []) as unknown as typeof keys);
-    }
-    setLoading(false);
-  }, [t]);
+    },
+  });
+  const keys = Array.isArray(listData) ? (listData as unknown as ApiKeyInfo[]) : [];
 
-  useEffect(() => {
-    loadKeys();
-  }, [loadKeys]);
+  // 创建 API Key
+  const { run: runCreate, loading: creating } = useRequest(
+    async (data: { name: string }) => unwrap(apiKeyApi.create(data)),
+    {
+      manual: true,
+      onSuccess: (result) => {
+        if (result?.key) setNewKeyValue(result.key);
+        toast.success(t("toast.created"));
+        refresh();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(t("toast.createFailed"));
+      },
+    },
+  );
 
-  const handleCreate = () => {
+  // 删除 API Key：静默操作，列表项消失已是最佳反馈
+  const { run: runDelete } = useRequest((id: string) => unwrap(apiKeyApi.del(id)), {
+    manual: true,
+    onSuccess: () => {
+      setConfirmOpen(false);
+      setDeleteTarget(null);
+      refresh();
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error(t("toast.deleteFailed"));
+    },
+  });
+
+  const handleOpenCreate = () => {
     setFormName("");
     setNewKeyValue(null);
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!formName.trim()) {
       toast.error(t("validation.nameRequired"));
       return;
     }
-    if (formSaving) return;
-    setFormSaving(true);
-    try {
-      const { data, error } = await apiKeyApi.create({ name: formName.trim() });
-      if (error) {
-        console.error(error);
-        toast.error(t("toast.createFailed"));
-        return;
-      }
-      if (data?.key) {
-        setNewKeyValue(data.key);
-      }
-      toast.success(t("toast.created"));
-      loadKeys();
-    } finally {
-      setFormSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const { error } = await apiKeyApi.delete(deleteTarget);
-    if (error) {
-      console.error(error);
-      toast.error(t("toast.deleteFailed"));
-      return;
-    }
-    toast.success(t("toast.deleted"));
-    setConfirmOpen(false);
-    setDeleteTarget(null);
-    loadKeys();
+    runCreate({ name: formName.trim() });
   };
 
   const formatDate = (ts: number | null) => {
@@ -130,7 +127,7 @@ export function AgentApiKeysPage() {
         actions={
           <button
             type="button"
-            onClick={handleCreate}
+            onClick={handleOpenCreate}
             className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
           >
             <Plus className="h-4 w-4" />
@@ -204,7 +201,7 @@ export function AgentApiKeysPage() {
         }}
         title={newKeyValue ? t("dialog.keyCreated") : t("dialog.createTitle")}
         onSubmit={handleSave}
-        loading={formSaving}
+        loading={creating}
         hideSubmit={!!newKeyValue}
         cancelLabel={newKeyValue ? t("dialog.close") : undefined}
       >
@@ -247,7 +244,7 @@ export function AgentApiKeysPage() {
         title={t("confirm.revokeTitle")}
         description={t("confirm.revokeDescription")}
         variant="destructive"
-        onConfirm={handleDelete}
+        onConfirm={() => deleteTarget && runDelete(deleteTarget)}
       />
     </div>
   );

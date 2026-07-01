@@ -1,5 +1,6 @@
 import { ArrowLeft, Edit3, Loader, RefreshCw, ShieldCheck, Square } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { unwrap } from "@/src/api/request";
 import {
   type DAGEvent,
   type DAGSnapshot,
@@ -83,8 +84,8 @@ export function RunStatusPanel({
           setSelectedNodeOutput(null);
           try {
             const [snap, evts] = await Promise.all([
-              workflowEngineApi.getRunStatus(runId),
-              workflowEngineApi.getEvents(runId),
+              unwrap(workflowEngineApi.getRunStatus(runId)),
+              unwrap(workflowEngineApi.getEvents(runId)),
             ]);
             if (snap) {
               setRunSnapshot(snap);

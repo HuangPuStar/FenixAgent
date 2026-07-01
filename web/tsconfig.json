@@ -18,8 +18,7 @@
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@/*": ["./*"],
-      "@server/*": ["../../src/*"],
-      "@fenix/sdk": ["../../packages/sdk/src/index.ts"]
+      "@server/*": ["../../src/*"]
     }
   },
   "include": ["src", "components"],

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useRequest } from "ahooks";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -9,7 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { channelApi, envApi } from "@/src/api/sdk";
+import { channelApi } from "@/src/api/channels";
+import { envApi } from "@/src/api/environments";
+import { unwrap } from "@/src/api/request";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -26,36 +29,58 @@ type EnvironmentSummary = { id: string; name: string };
 
 export function AgentChannelsPage() {
   const { t } = useTranslation("channels");
-  const [bindings, setBindings] = useState<ChannelBinding[]>([]);
-  const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [formPlatform, setFormPlatform] = useState("");
   const [formChatId, setFormChatId] = useState("");
   const [formAgentId, setFormAgentId] = useState("");
-  const [formSaving, setFormSaving] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [bindingsResult, envsResult] = await Promise.all([channelApi.listBindings(), envApi.list()]);
-      if (bindingsResult.data) setBindings(bindingsResult.data as ChannelBinding[]);
-      if (envsResult.data) setEnvironments((envsResult.data as EnvironmentSummary[]) ?? []);
-      const firstErr = bindingsResult.error ?? envsResult.error;
-      if (firstErr) {
-        console.error("Failed to load channels", firstErr);
-        toast.error(t("loadBindingsFailed"));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  // 列表查询：并行拉取通道绑定 + 环境汇总
+  const {
+    data: listData,
+    loading,
+    refresh,
+  } = useRequest(() => Promise.all([unwrap(channelApi.listBindings()), unwrap(envApi.list())]), {
+    onError: (err) => {
+      console.error("Failed to load channels", err);
+      toast.error(t("loadBindingsFailed"));
+    },
+  });
+  const bindings: ChannelBinding[] = Array.isArray(listData?.[0]) ? listData[0] : [];
+  const environments: EnvironmentSummary[] = Array.isArray(listData?.[1]) ? listData[1] : [];
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  // 创建绑定：仅成功时 toast 提示
+  const { run: runCreate, loading: formSaving } = useRequest(
+    (platform: string, chatId: string, agentId: string) =>
+      unwrap(channelApi.createBinding({ platform: platform.trim(), chatId: chatId.trim() || "", agentId })),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.created"));
+        setDialogOpen(false);
+        refresh();
+      },
+      onError: (err) => {
+        console.error("Save failed", err);
+        toast.error(t("toast.saveFailed"));
+      },
+    },
+  );
+
+  // 删除绑定：静默操作
+  const { run: runDelete } = useRequest((id: string) => unwrap(channelApi.deleteBinding({ id })), {
+    manual: true,
+    onSuccess: () => {
+      setConfirmOpen(false);
+      setDeleteTarget(null);
+      refresh();
+    },
+    onError: (err) => {
+      console.error("Delete failed", err);
+      toast.error(t("toast.deleteFailed"));
+    },
+  });
 
   const handleCreate = () => {
     setFormPlatform("");
@@ -64,41 +89,12 @@ export function AgentChannelsPage() {
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!formPlatform.trim() || !formAgentId) {
       toast.error(t("validation.required"));
       return;
     }
-    setFormSaving(true);
-    const { error } = await channelApi.createBinding({
-      platform: formPlatform.trim(),
-      chatId: formChatId.trim() || "",
-      agentId: formAgentId,
-    });
-    if (error) {
-      console.error("Save failed", error);
-      toast.error(t("toast.saveFailed"));
-      setFormSaving(false);
-      return;
-    }
-    toast.success(t("toast.created"));
-    setDialogOpen(false);
-    loadData();
-    setFormSaving(false);
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const { error } = await channelApi.deleteBinding({ id: deleteTarget });
-    if (error) {
-      console.error("Delete failed", error);
-      toast.error(t("toast.deleteFailed"));
-      return;
-    }
-    toast.success(t("toast.deleted"));
-    setConfirmOpen(false);
-    setDeleteTarget(null);
-    loadData();
+    runCreate(formPlatform, formChatId, formAgentId);
   };
 
   if (loading) {
@@ -207,7 +203,7 @@ export function AgentChannelsPage() {
         title={t("confirm.deleteTitle")}
         description={t("confirm.deleteDescription")}
         variant="destructive"
-        onConfirm={handleDelete}
+        onConfirm={() => runDelete(deleteTarget!)}
       />
     </div>
   );

@@ -1,10 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useRequest } from "ahooks";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { sessionApi } from "@/src/api/sdk";
+import { unwrap } from "@/src/api/request";
+import { sessionApi } from "@/src/api/sessions";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -21,29 +22,20 @@ interface SessionInfo {
 export function AgentSessionsPage() {
   const { t } = useTranslation("sessions");
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const loadSessions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: list, error } = await sessionApi.list();
-      if (error) {
-        toast.error(t("loadError", { message: error.message }));
-        return;
-      }
-      setSessions(Array.isArray(list) ? list : []);
-    } catch (e) {
-      console.error("Failed to load sessions", e);
-      toast.error(t("loadError", { message: e instanceof Error ? e.message : "Unknown error" }));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
-
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+  // 加载会话列表
+  const { data: sessions = [], loading } = useRequest(
+    async () => {
+      const list = await unwrap(sessionApi.list());
+      return (Array.isArray(list) ? list : []) as SessionInfo[];
+    },
+    {
+      onError: (err) => {
+        console.error("Failed to load sessions", err);
+        toast.error(t("loadError", { message: err.message }));
+      },
+    },
+  );
 
   if (loading) {
     return (

@@ -1,5 +1,6 @@
+import { useRequest } from "ahooks";
 import { Plus, Search } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -11,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { providerApi } from "@/src/api/sdk";
+import { providerApi } from "@/src/api/providers";
+import { unwrap } from "@/src/api/request";
 import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import type { ProviderInfo, ProviderModel } from "../../../types/config";
@@ -48,9 +50,40 @@ import {
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
-  const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [providerModels, setProviderModels] = useState<Record<string, ProviderModel[]>>({});
-  const [loading, setLoading] = useState(true);
+
+  // 列表数据加载
+  const {
+    data: listData,
+    loading,
+    refresh,
+  } = useRequest(
+    async () => {
+      const listResult = await unwrap(providerApi.list());
+      const providers = listResult.providers;
+      const modelsMap: Record<string, ProviderModel[]> = {};
+      await Promise.all(
+        providers.map(async (p) => {
+          const providerKey = getProviderKey(p);
+          try {
+            const detail = await unwrap(providerApi.get(providerKey));
+            modelsMap[providerKey] = detail.models ?? [];
+          } catch {
+            modelsMap[providerKey] = [];
+          }
+        }),
+      );
+      return { providers, modelsMap };
+    },
+    {
+      onError: (err) => {
+        console.error(t("loadModelsError"), err);
+        toast.error(t("loadError", { message: err instanceof Error ? err.message : t("unknownError") }));
+      },
+    },
+  );
+  const providers = listData?.providers ?? [];
+  const providerModels = listData?.modelsMap ?? {};
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<ProviderInfo | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -62,9 +95,9 @@ export function AgentModelsPage() {
     | { kind: "model"; providerName: string; modelId: string; error: TestDialogError }
     | null
   >(null);
+  const [addedModelIds, setAddedModelIds] = useState<Set<string>>(new Set());
   const [testing, setTesting] = useState<string | null>(null);
   const [testingModelKey, setTestingModelKey] = useState<string | null>(null);
-  const [addedModelIds, setAddedModelIds] = useState<Set<string>>(new Set());
   const [sharingProviderKey, setSharingProviderKey] = useState<string | null>(null);
   const [providerSearch, setProviderSearch] = useState("");
   const [formName, setFormName] = useState("");
@@ -72,7 +105,6 @@ export function AgentModelsPage() {
   const [formBaseURL, setFormBaseURL] = useState("");
   const [formProtocol, setFormProtocol] = useState<"openai" | "anthropic">("openai");
   const [formDisplayName, setFormDisplayName] = useState("");
-  const [formSaving, setFormSaving] = useState(false);
   const editingReadOnly = editingProvider ? !canWriteProvider(editingProvider) : false;
 
   // 表单内模型获取相关状态
@@ -85,7 +117,6 @@ export function AgentModelsPage() {
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [isNewModel, setIsNewModel] = useState(false);
   const [modelReadOnly, setModelReadOnly] = useState(false);
-  const [modelSaving, setModelSaving] = useState(false);
   const [modelProviderId, setModelProviderId] = useState("");
   const [mfId, setMfId] = useState("");
   const [mfName, setMfName] = useState("");
@@ -138,39 +169,190 @@ export function AgentModelsPage() {
     }
   };
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: listResult, error: listErr } = await providerApi.list();
-      if (listErr) throw new Error(listErr.message);
-      const data = Array.isArray(listResult)
-        ? (listResult as unknown as ProviderInfo[])
-        : (((listResult as unknown as Record<string, unknown>)?.providers ?? []) as unknown as ProviderInfo[]);
-      const modelsMap: Record<string, ProviderModel[]> = {};
-      await Promise.all(
-        data.map(async (p) => {
-          const providerKey = getProviderKey(p);
-          try {
-            const { data: detail } = await providerApi.get(providerKey);
-            modelsMap[providerKey] = (detail as unknown as { models?: ProviderModel[] }).models ?? [];
-          } catch {
-            modelsMap[providerKey] = [];
-          }
-        }),
-      );
-      setProviders(data);
-      setProviderModels(modelsMap);
-    } catch (e) {
-      console.error(t("loadModelsError"), e);
-      toast.error(t("loadError", { message: e instanceof Error ? e.message : t("unknownError") }));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  // Provider 保存（创建/更新）：仅创建时 toast 提示
+  const { run: runSave, loading: saving } = useRequest(
+    async (name: string, data: Record<string, unknown>, selectedModels: Set<string>) => {
+      await unwrap(providerApi.set(name, data as Record<string, unknown>));
+      let modelsAdded = false;
+      for (const modelId of selectedModels) {
+        try {
+          await unwrap(providerApi.addModel(name, { modelId, name: modelId } as Record<string, unknown>));
+          modelsAdded = true;
+        } catch {
+          // 模型添加失败静默处理
+        }
+      }
+      return modelsAdded;
+    },
+    {
+      manual: true,
+      onSuccess: (modelsAdded: boolean) => {
+        if (!editingProvider) toast.success(t("saveProvider.successCreate"));
+        setDialogOpen(false);
+        refresh();
+        dispatchConfigChange("providers");
+        if (modelsAdded) dispatchConfigChange("models");
+      },
+      onError: (err: Error) => {
+        console.error(t("saveProvider.errorGeneric", { message: "" }), err);
+        toast.error(t("saveProvider.errorGeneric", { message: err.message }));
+      },
+    },
+  );
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  // 公开/私密切换：静默操作
+  const { run: runTogglePublic } = useRequest(
+    async (provider: ProviderInfo, next: boolean) => {
+      await unwrap(providerApi.set(provider.id, buildProviderPublicReadablePayload(next) as Record<string, unknown>));
+    },
+    {
+      manual: true,
+      onSuccess: () => {
+        setSharingProviderKey(null);
+        refresh();
+        dispatchConfigChange("providers");
+      },
+      onError: (err: Error) => {
+        setSharingProviderKey(null);
+        toast.error(t("saveProvider.errorGeneric", { message: err.message }));
+      },
+    },
+  );
+
+  // 删除 Provider：静默操作
+  const { run: runDelete } = useRequest((name: string) => unwrap(providerApi.del(name)), {
+    manual: true,
+    onSuccess: () => {
+      setConfirmOpen(false);
+      refresh();
+      dispatchConfigChange("providers");
+    },
+    onError: (err: Error) => {
+      console.error(t("deleteProvider.error", { message: "" }), err);
+      toast.error(t("deleteProvider.error", { message: err.message }));
+    },
+  });
+
+  // Provider 连通性测试
+  const { run: runTest } = useRequest(
+    async (name: string) => {
+      const result = await unwrap(providerApi.test(name));
+      const r = result as unknown as Record<string, unknown>;
+      const modelIds = Array.isArray(r?.models)
+        ? (r.models as unknown as Array<{ id?: string }>).map((m: { id?: string }) => m.id ?? String(m))
+        : [];
+      return { name, models: modelIds, warning: (r?.warning ?? undefined) as string | undefined };
+    },
+    {
+      manual: true,
+      onSuccess: ({ name, models, warning }) => {
+        toast.success(t("testDialog.successTitle", { name }));
+        setTestResult({ kind: "provider", name, models, warning });
+        setAddedModelIds(new Set((providerModels[name] ?? []).map((m) => m.id)));
+        setTesting(null);
+      },
+      onError: (err: Error, [name]: [string]) => {
+        toast.error(t("testDialog.failTitle", { name }));
+        setTestResult({
+          kind: "provider",
+          name,
+          error: { code: "UNKNOWN_ERROR", message: err.message },
+        });
+        setTesting(null);
+      },
+    },
+  );
+
+  // 模型连通性测试
+  const { run: runTestModel } = useRequest(
+    async (providerId: string, modelId: string) => {
+      const result = await unwrap(providerApi.testModel(providerId, modelId));
+      const r = result as unknown as { content?: string };
+      return { providerName: providerId, modelId, content: r.content ?? "" };
+    },
+    {
+      manual: true,
+      onSuccess: ({ providerName, modelId, content }) => {
+        toast.success(t("testDialog.modelSuccessTitle", { modelId }));
+        setTestResult({ kind: "model", providerName, modelId, content });
+        setTestingModelKey(null);
+      },
+      onError: (err: Error, [providerId, modelId]: [string, string]) => {
+        toast.error(t("testDialog.modelFailTitle", { modelId }));
+        setTestResult({
+          kind: "model",
+          providerName: providerId,
+          modelId,
+          error: { code: "UNKNOWN_ERROR", message: err.message },
+        });
+        setTestingModelKey(null);
+      },
+    },
+  );
+
+  // 从测试结果添加模型
+  const { run: runAddFromTest } = useRequest(
+    async (providerName: string, modelId: string) => {
+      await unwrap(providerApi.addModel(providerName, { modelId, name: modelId } as Record<string, unknown>));
+      return { providerName, modelId };
+    },
+    {
+      manual: true,
+      onSuccess: ({ providerName: _providerName, modelId }) => {
+        setAddedModelIds((prev) => new Set(prev).add(modelId));
+        dispatchConfigChange("models");
+        refresh();
+      },
+      onError: (err: Error) => {
+        console.error(err);
+        toast.error(t("testDialog.addModelError", { message: err.message }));
+      },
+    },
+  );
+
+  // 模型保存（创建/更新）：仅创建时 toast 提示
+  const { run: runModelSave, loading: modelSaving } = useRequest(
+    async (providerId: string, modelId: string, data: Record<string, unknown>, isNew: boolean) => {
+      if (isNew) {
+        await unwrap(providerApi.addModel(providerId, data));
+      } else {
+        await unwrap(providerApi.updateModel(providerId, modelId, data));
+      }
+      return isNew;
+    },
+    {
+      manual: true,
+      onSuccess: (isNew: boolean) => {
+        if (isNew) toast.success(t("modelSubrow.saveModel.successCreate"));
+        setModelDialogOpen(false);
+        refresh();
+        dispatchConfigChange("models");
+      },
+      onError: (err: Error) => {
+        console.error(err);
+        toast.error(t("modelSubrow.saveModel.errorGeneric", { message: err.message }));
+      },
+    },
+  );
+
+  // 模型删除：静默操作
+  const { run: runModelDelete } = useRequest(
+    async (providerId: string, modelId: string) => {
+      await unwrap(providerApi.removeModel(providerId, modelId));
+    },
+    {
+      manual: true,
+      onSuccess: () => {
+        setDeleteModelConfirm(null);
+        refresh();
+        dispatchConfigChange("models");
+      },
+      onError: (err: Error) => {
+        console.error(err);
+        toast.error(t("modelSubrow.deleteModel.error", { message: err.message }));
+      },
+    },
+  );
 
   const handleOpenCreate = () => {
     setEditingProvider(null);
@@ -194,61 +376,22 @@ export function AgentModelsPage() {
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!formName.trim()) {
       toast.error(t("validation.nameEmpty"));
       return;
     }
-    setFormSaving(true);
-    try {
-      const data: Record<string, unknown> = {};
-      if (formApiKey) data.apiKey = formApiKey;
-      if (formBaseURL) data.baseURL = formBaseURL;
-      data.protocol = formProtocol;
-      if (formDisplayName) data.name = formDisplayName;
-      await providerApi.set(formName, data);
-
-      // 导入勾选的模型（逐个添加，忽略失败）
-      let modelsAdded = false;
-      for (const modelId of formSelectedModels) {
-        try {
-          await providerApi.addModel(formName, { modelId, name: modelId });
-          modelsAdded = true;
-        } catch {
-          // 模型添加失败静默处理
-        }
-      }
-
-      toast.success(editingProvider ? t("saveProvider.successUpdate") : t("saveProvider.successCreate"));
-      setDialogOpen(false);
-      loadAll();
-      dispatchConfigChange("providers");
-      if (modelsAdded) dispatchConfigChange("models");
-    } catch (e) {
-      console.error(t("saveProvider.errorGeneric", { message: "" }), e);
-      toast.error(t("saveProvider.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
-    } finally {
-      setFormSaving(false);
-    }
+    const data: Record<string, unknown> = {};
+    if (formApiKey) data.apiKey = formApiKey;
+    if (formBaseURL) data.baseURL = formBaseURL;
+    data.protocol = formProtocol;
+    if (formDisplayName) data.name = formDisplayName;
+    runSave(formName, data, formSelectedModels);
   };
 
-  const handleTogglePublic = async (provider: ProviderInfo, next: boolean) => {
-    const providerKey = getProviderKey(provider);
-    setSharingProviderKey(providerKey);
-    try {
-      const { error } = await providerApi.set(provider.id, buildProviderPublicReadablePayload(next));
-      if (error) {
-        toast.error(t("saveProvider.errorGeneric", { message: error.message }));
-        return;
-      }
-      toast.success(next ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
-      loadAll();
-      dispatchConfigChange("providers");
-    } catch (e) {
-      toast.error(t("saveProvider.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }));
-    } finally {
-      setSharingProviderKey(null);
-    }
+  const handleTogglePublic = (provider: ProviderInfo, next: boolean) => {
+    setSharingProviderKey(getProviderKey(provider));
+    runTogglePublic(provider, next);
   };
 
   // 表单内获取模型列表
@@ -262,22 +405,16 @@ export function AgentModelsPage() {
     setFormModelsFetched(false);
     try {
       // 统一走 inline test，名称仅用于兼容既有接口参数，不作为配置读取来源。
-      const res = await providerApi.test(
-        formName,
-        buildProviderInlineTestPayload({
-          apiKey: formApiKey,
-          baseURL: formBaseURL,
-          protocol: formProtocol,
-        }),
+      const result = await unwrap(
+        providerApi.test(
+          formName,
+          buildProviderInlineTestPayload({
+            apiKey: formApiKey,
+            baseURL: formBaseURL,
+            protocol: formProtocol,
+          }),
+        ),
       );
-      const result = res.data;
-      const testErr = res.error;
-
-      if (testErr) {
-        setFormAvailableModels([]);
-        setFormModelsFetched(true);
-        return;
-      }
       const r = result as unknown as Record<string, unknown>;
       const modelIds = Array.isArray(r?.models)
         ? (r.models as unknown as Array<{ id?: string }>).map((m: { id?: string }) => m.id ?? String(m))
@@ -318,89 +455,28 @@ export function AgentModelsPage() {
     return () => clearTimeout(timer);
   }, [formApiKey, formBaseURL, dialogOpen, formName]);
 
-  const handleTest = async (name: string) => {
+  const handleTest = (name: string) => {
     setTesting(name);
-    try {
-      const { data: result, error: testErr } = await providerApi.test(name);
-      if (testErr) {
-        setTestResult({ kind: "provider", name, error: testErr });
-        return;
-      }
-      const r = result as unknown as Record<string, unknown>;
-      const modelIds = Array.isArray(r?.models)
-        ? (r.models as unknown as Array<{ id?: string }>).map((m: { id?: string }) => m.id ?? String(m))
-        : [];
-      setTestResult({
-        kind: "provider",
-        name,
-        models: modelIds,
-        warning: (r?.warning ?? undefined) as string | undefined,
-      });
-      setAddedModelIds(new Set((providerModels[name] ?? []).map((m) => m.id)));
-    } catch (e) {
-      setTestResult({
-        kind: "provider",
-        name,
-        error: { code: "UNKNOWN_ERROR", message: e instanceof Error ? e.message : t("unknownError") },
-      });
-    } finally {
-      setTesting(null);
-    }
+    runTest(name);
   };
 
-  const handleAddFromTest = async (modelId: string) => {
+  const handleAddFromTest = (modelId: string) => {
     if (testResult?.kind !== "provider" || "error" in testResult) return;
-    const { error } = await providerApi.addModel(testResult.name, { modelId, name: modelId });
-    if (error) {
-      console.error(error);
-      toast.error(t("testDialog.addModelError", { message: error.message }));
-      return;
-    }
-    setAddedModelIds((prev) => new Set(prev).add(modelId));
-    toast.success(t("testDialog.addModelSuccess", { modelId }));
-    dispatchConfigChange("models");
-    loadAll();
+    runAddFromTest(testResult.name, modelId);
   };
 
-  const handleTestModel = async (providerId: string, modelId: string) => {
-    const key = `${providerId}:${modelId}`;
-    setTestingModelKey(key);
-    try {
-      const { data, error } = await providerApi.testModel(providerId, modelId);
-      if (error) {
-        setTestResult({ kind: "model", providerName: providerId, modelId, error });
-        return;
-      }
-      const result = data as unknown as { content?: string };
-      setTestResult({ kind: "model", providerName: providerId, modelId, content: result.content ?? "" });
-    } catch (e) {
-      setTestResult({
-        kind: "model",
-        providerName: providerId,
-        modelId,
-        error: { code: "UNKNOWN_ERROR", message: e instanceof Error ? e.message : t("unknownError") },
-      });
-    } finally {
-      setTestingModelKey(null);
-    }
+  const handleTestModel = (providerId: string, modelId: string) => {
+    setTestingModelKey(`${providerId}:${modelId}`);
+    runTestModel(providerId, modelId);
   };
 
   const handleDelete = (name: string) => {
     setDeleteTarget(name);
     setConfirmOpen(true);
   };
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!deleteTarget) return;
-    const { error } = await providerApi.delete(deleteTarget);
-    if (error) {
-      console.error(error);
-      toast.error(t("deleteProvider.error", { message: error.message }));
-      return;
-    }
-    toast.success(t("deleteProvider.success"));
-    setConfirmOpen(false);
-    loadAll();
-    dispatchConfigChange("providers");
+    runDelete(deleteTarget);
   };
 
   // Model CRUD
@@ -468,7 +544,7 @@ export function AgentModelsPage() {
     setModelDialogOpen(true);
   };
 
-  const handleModelSave = async () => {
+  const handleModelSave = () => {
     if (!mfId.trim()) {
       toast.error(t("modelSubrow.modelIdEmpty"));
       return;
@@ -490,47 +566,12 @@ export function AgentModelsPage() {
     if (mfCostInput) cost.input = Number(mfCostInput);
     if (mfCostOutput) cost.output = Number(mfCostOutput);
     if (Object.keys(cost).length > 0) data.cost = cost;
-    setModelSaving(true);
-    try {
-      if (isNewModel) {
-        const { error } = await providerApi.addModel(modelProviderId, data);
-        if (error) {
-          toast.error(t("modelSubrow.saveModel.errorGeneric", { message: error.message }));
-          return;
-        }
-      } else {
-        const { error } = await providerApi.updateModel(modelProviderId, mfId, data);
-        if (error) {
-          toast.error(t("modelSubrow.saveModel.errorGeneric", { message: error.message }));
-          return;
-        }
-      }
-      toast.success(isNewModel ? t("modelSubrow.saveModel.successCreate") : t("modelSubrow.saveModel.successUpdate"));
-      setModelDialogOpen(false);
-      loadAll();
-      dispatchConfigChange("models");
-    } catch (e) {
-      console.error(e);
-      toast.error(
-        t("modelSubrow.saveModel.errorGeneric", { message: e instanceof Error ? e.message : t("unknownError") }),
-      );
-    } finally {
-      setModelSaving(false);
-    }
+    runModelSave(modelProviderId, mfId, data, isNewModel);
   };
 
-  const handleModelDelete = async () => {
+  const handleModelDelete = () => {
     if (!deleteModelConfirm) return;
-    const { error } = await providerApi.removeModel(deleteModelConfirm.providerId, deleteModelConfirm.modelId);
-    if (error) {
-      console.error(error);
-      toast.error(t("modelSubrow.deleteModel.error", { message: error.message }));
-      return;
-    }
-    toast.success(t("modelSubrow.deleteModel.success"));
-    setDeleteModelConfirm(null);
-    loadAll();
-    dispatchConfigChange("models");
+    runModelDelete(deleteModelConfirm.providerId, deleteModelConfirm.modelId);
   };
 
   const toggleModality = (list: string[], item: string, setter: (v: string[]) => void) => {
@@ -803,7 +844,7 @@ export function AgentModelsPage() {
           editingProvider ? (editingReadOnly ? t("form.detailTitle") : t("form.editTitle")) : t("form.createTitle")
         }
         onSubmit={handleSave}
-        loading={formSaving}
+        loading={saving}
         hideSubmit={editingReadOnly}
       >
         <div className="space-y-4">

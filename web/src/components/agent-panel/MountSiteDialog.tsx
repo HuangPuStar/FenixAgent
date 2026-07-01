@@ -1,5 +1,6 @@
+import { useRequest } from "ahooks";
 import { Globe, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { agentSitesApi } from "@/src/api/sdk";
+import { unwrap } from "@/src/api/request";
+import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { NS } from "../../i18n";
 import { cn } from "../../lib/utils";
 
@@ -51,37 +53,27 @@ export function MountSiteDialog({
   onMounted,
 }: MountSiteDialogProps) {
   const { t } = useTranslation(NS.COMPONENTS);
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [options, setOptions] = useState<SiteOption[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // 打开时拉取组织内全部 sites；每次 open 都重拉以保证最新（关闭期间可能新建过 site）
+  // 每次 open 都重拉以保证最新（关闭期间可能新建过 site）
+  const { data: rawData = [], loading } = useRequest(() => unwrap(agentSitesApi.list()), { ready: open });
+
+  // 打开时重置选中状态
   useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    setSelected(new Set());
-    agentSitesApi
-      .list()
-      .then((res) => {
-        const raw = (res as { success?: boolean; data?: unknown[] }).data;
-        const list: SiteOption[] = (Array.isArray(raw) ? raw : [])
-          .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-          .map((item) => ({
-            id: String(item.id ?? ""),
-            name: String(item.name ?? ""),
-            remoteAppId: String(item.remoteAppId ?? ""),
-            description: typeof item.description === "string" ? item.description : null,
-          }))
-          .filter((item) => item.id && item.remoteAppId);
-        setOptions(list);
-      })
-      .catch((err: unknown) => {
-        console.error("[MountSiteDialog] 加载 sites 失败", err);
-        toast.error(t("panelMode.mountFailed"));
-      })
-      .finally(() => setLoading(false));
-  }, [open, t]);
+    if (open) setSelected(new Set());
+  }, [open]);
+
+  const options = useMemo<SiteOption[]>(() => {
+    const data = rawData as SiteApp[];
+    return data
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        remoteAppId: item.remoteAppId,
+        description: item.description,
+      }))
+      .filter((item) => item.id && item.remoteAppId);
+  }, [rawData]);
 
   const candidates = options.filter((o) => !boundSiteAppIds.includes(o.id));
 
@@ -94,30 +86,40 @@ export function MountSiteDialog({
     });
   };
 
-  const handleConfirm = async () => {
-    if (selected.size === 0) return;
-    setSubmitting(true);
-    const ids = Array.from(selected);
-    let failed = 0;
-    // 串行：单点原子操作，避免并发写 PK 冲突；候选量小无需并行优化
-    for (const id of ids) {
-      try {
-        await agentSitesApi.bindSite(agentConfigId, id);
-      } catch (err) {
-        failed++;
-        console.error("[MountSiteDialog] 绑定 site 失败", { siteAppId: id, err });
+  // bindSite 提交：串行单点原子操作，避免并发写 PK 冲突；候选量小无需并行优化
+  const { run: runBindSites, loading: submitting } = useRequest(
+    async (ids: string[]) => {
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          await unwrap(agentSitesApi.bindSite(agentConfigId, id));
+        } catch (err) {
+          failed++;
+          console.error("[MountSiteDialog] 绑定 site 失败", { siteAppId: id, err });
+        }
       }
-    }
-    setSubmitting(false);
-    if (failed === 0) {
-      toast.success(t("panelMode.mountSuccess", { count: ids.length }));
-      onMounted();
-      onOpenChange(false);
-    } else {
-      // 部分失败也触发 reload 让用户看到实际生效项，但给出错误提示
-      onMounted();
-      toast.error(t("panelMode.mountFailed"));
-    }
+      return { failed, ids };
+    },
+    {
+      manual: true,
+      onSuccess: ({ failed, ids }: { failed: number; ids: string[] }) => {
+        if (failed === 0) {
+          toast.success(t("panelMode.mountSuccess", { count: ids.length }));
+          onMounted();
+          onOpenChange(false);
+        } else {
+          // 部分失败也触发 reload 让用户看到实际生效项，但给出错误提示
+          onMounted();
+          toast.error(t("panelMode.mountFailed"));
+        }
+      },
+    },
+  );
+
+  const handleConfirm = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    runBindSites(ids);
   };
 
   return (

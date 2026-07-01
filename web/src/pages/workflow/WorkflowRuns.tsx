@@ -1,11 +1,13 @@
+import { useRequest } from "ahooks";
 import { AlertTriangle, ArrowRight, Inbox, RefreshCw, Search, Square } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
+import { unwrap } from "../../api/request";
 import { type DAGStatus, type RunSummary, workflowEngineApi } from "../../api/workflow-engine";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
@@ -73,15 +75,11 @@ interface WorkflowRunsProps {
 
 export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
   const { t } = useTranslation("workflows");
-  const [runs, setRuns] = useState<RunSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [total, setTotal] = useState(0);
 
   // 搜索防抖：输入即时更新，API 请求 300ms 后触发
   useEffect(() => {
@@ -95,44 +93,39 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
     setPage(1);
   }, [debouncedSearch, statusFilter]);
 
-  const loadRuns = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  // 数据加载
+  const {
+    data: runData,
+    loading,
+    error,
+    refresh,
+  } = useRequest(
+    async () => {
       const params: { page?: number; pageSize?: number; status?: string; q?: string } = {
         page,
         pageSize,
       };
       if (statusFilter !== "all") params.status = statusFilter;
       if (debouncedSearch) params.q = debouncedSearch;
+      return unwrap(workflowEngineApi.listRuns(params));
+    },
+    { refreshDeps: [page, pageSize, statusFilter, debouncedSearch] },
+  );
+  const runs = Array.isArray(runData?.items) ? runData.items : [];
+  const total = runData?.total ?? 0;
+  const errorMsg = error ? (error instanceof Error ? error.message : String(error)) : null;
 
-      const data = await workflowEngineApi.listRuns(params);
-      setRuns(Array.isArray(data.items) ? data.items : []);
-      setTotal(data.total ?? 0);
-    } catch (err) {
-      console.error(err);
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, statusFilter, debouncedSearch]);
-
-  // 分页/筛选/搜索变化时重新加载
-  useEffect(() => {
-    loadRuns();
-  }, [loadRuns]);
-
-  const _isTerminal = (s: DAGStatus) => ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(s);
-
-  const handleCancel = async (runId: string) => {
-    try {
-      await workflowEngineApi.cancel(runId);
-      loadRuns();
-    } catch (err) {
+  // 取消运行
+  const { run: runCancel } = useRequest((runId: string) => unwrap(workflowEngineApi.cancel(runId)), {
+    manual: true,
+    onSuccess: () => refresh(),
+    onError: (err) => {
       console.error(err);
       toast.error(t("runs.cancel"), { description: (err as Error).message });
-    }
-  };
+    },
+  });
+
+  const _isTerminal = (s: DAGStatus) => ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(s);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const showEmpty = !loading && !error && runs.length === 0;
@@ -168,7 +161,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
             ))}
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={loadRuns}>
+        <Button variant="outline" size="sm" onClick={refresh}>
           <RefreshCw size={13} className="mr-1" /> {t("runs.refresh")}
         </Button>
       </div>
@@ -184,7 +177,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
       ) : error ? (
         <div className="text-center py-10">
           <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-          <p className="text-[13px] text-text-secondary">{t("runs.load_failed", { error })}</p>
+          <p className="text-[13px] text-text-secondary">{t("runs.load_failed", { error: errorMsg })}</p>
         </div>
       ) : showEmpty ? (
         <div className="text-center py-10">
@@ -262,7 +255,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                             title={t("runs.cancel")}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleCancel(r.run_id);
+                              runCancel(r.run_id);
                             }}
                           >
                             <Square size={12} className="text-destructive" />

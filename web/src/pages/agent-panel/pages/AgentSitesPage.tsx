@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useRequest } from "ahooks";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -9,12 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { agentSitesApi } from "@/src/api/sdk";
+import { unwrap } from "@/src/api/request";
+import { agentSitesApi } from "@/src/api/sites";
 import { NS } from "@/src/i18n";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-interface SiteApp {
+interface SiteItem {
   id: string;
   organizationId: string;
   userId: string;
@@ -56,43 +58,94 @@ function formatTimestamp(ts: number): string {
 
 export function AgentSitesPage() {
   const { t } = useTranslation(NS.AGENT_PANEL);
-  const [apps, setApps] = useState<SiteApp[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // 数据加载
+  const {
+    data: apps = [],
+    loading,
+    refresh,
+  } = useRequest(async () => {
+    const raw = await unwrap(agentSitesApi.list());
+    return raw as SiteItem[];
+  });
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingApp, setEditingApp] = useState<SiteApp | null>(null);
+  const [editingApp, setEditingApp] = useState<SiteItem | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SiteApp | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SiteItem | null>(null);
 
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
-  const [formVisibility, setFormVisibility] = useState("private");
-  const [formSaving, setFormSaving] = useState(false);
+  const [formVisibility, setFormVisibility] = useState<"private" | "org" | "authenticated" | "public">("private");
 
-  const fetchApps = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await agentSitesApi.list();
-      if (res.success) {
-        setApps(Array.isArray(res.data) ? (res.data as SiteApp[]) : []);
+  // 保存（创建/更新）
+  const { run: runSave, loading: formSaving } = useRequest(
+    async () => {
+      const error = validateForm(formName);
+      if (error) {
+        toast.error(error);
+        return;
       }
-    } catch (error) {
-      console.error("加载 app 列表失败", error);
-      toast.error("加载 app 列表失败");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      if (editingApp) {
+        await unwrap(
+          agentSitesApi.update(editingApp.id, {
+            name: formName.trim(),
+            description: formDescription.trim() || undefined,
+            visibility: formVisibility,
+          }),
+        );
+        toast.success("App 已更新");
+      } else {
+        await unwrap(
+          agentSitesApi.create({
+            name: formName.trim(),
+            description: formDescription.trim() || undefined,
+            visibility: formVisibility,
+          }),
+        );
+        toast.success("App 创建成功");
+      }
+      setDialogOpen(false);
+      refresh();
+    },
+    {
+      manual: true,
+      onError: (err) => toast.error(err instanceof Error ? err.message : "保存失败"),
+    },
+  );
 
-  useEffect(() => {
-    fetchApps();
-  }, [fetchApps]);
+  // 删除
+  const { run: runDelete } = useRequest(
+    async (id: string) => {
+      await unwrap(agentSitesApi.delete(id));
+      toast.success("App 已删除");
+      setConfirmOpen(false);
+      setDeleteTarget(null);
+      refresh();
+    },
+    {
+      manual: true,
+      onError: (err) => toast.error(err instanceof Error ? err.message : "删除失败"),
+    },
+  );
 
-  const resetForm = useCallback(() => {
+  // 重签 token
+  const { run: runRotateToken } = useRequest(
+    async (app: SiteItem) => {
+      await unwrap(agentSitesApi.rotateToken(app.id));
+      toast.success("Token 已重签");
+    },
+    {
+      manual: true,
+      onError: (err) => toast.error(err instanceof Error ? err.message : "重签失败"),
+    },
+  );
+
+  function resetForm() {
     setFormName("");
     setFormDescription("");
     setFormVisibility("private");
-  }, []);
+  }
 
   const handleOpenCreate = () => {
     setEditingApp(null);
@@ -100,69 +153,12 @@ export function AgentSitesPage() {
     setDialogOpen(true);
   };
 
-  const handleOpenEdit = (app: SiteApp) => {
+  const handleOpenEdit = (app: SiteItem) => {
     setEditingApp(app);
     setFormName(app.name);
     setFormDescription(app.description ?? "");
     setFormVisibility(app.visibility);
     setDialogOpen(true);
-  };
-
-  const handleSave = async () => {
-    const error = validateForm(formName);
-    if (error) {
-      toast.error(error);
-      return;
-    }
-    setFormSaving(true);
-    try {
-      if (editingApp) {
-        await agentSitesApi.update(editingApp.id, {
-          name: formName.trim(),
-          description: formDescription.trim() || undefined,
-          visibility: formVisibility,
-        });
-        toast.success("App 已更新");
-      } else {
-        await agentSitesApi.create({
-          name: formName.trim(),
-          description: formDescription.trim() || undefined,
-          visibility: formVisibility,
-        });
-        toast.success("App 创建成功");
-      }
-      setDialogOpen(false);
-      await fetchApps();
-    } catch (saveError) {
-      console.error("保存 app 失败", saveError);
-      toast.error(saveError instanceof Error ? saveError.message : "保存失败");
-    } finally {
-      setFormSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    try {
-      await agentSitesApi.delete(deleteTarget.id);
-      toast.success("App 已删除");
-      setConfirmOpen(false);
-      setDeleteTarget(null);
-      await fetchApps();
-    } catch (error) {
-      console.error("删除 app 失败", error);
-      toast.error(error instanceof Error ? error.message : "删除失败");
-    }
-  };
-
-  const handleRotateToken = async (app: SiteApp) => {
-    try {
-      await agentSitesApi.rotateToken(app.id);
-      toast.success("Token 已重签");
-    } catch (error) {
-      console.error("重签 token 失败", error);
-      toast.error(error instanceof Error ? error.message : "重签失败");
-    }
   };
 
   const handleOpenSite = (remoteAppId: string) => {
@@ -229,7 +225,7 @@ export function AgentSitesPage() {
                 <Button size="xs" variant="outline" onClick={() => handleOpenSite(app.remoteAppId)}>
                   打开
                 </Button>
-                <Button size="xs" variant="outline" onClick={() => handleRotateToken(app)}>
+                <Button size="xs" variant="outline" onClick={() => runRotateToken(app)}>
                   重签 Token
                 </Button>
                 <Button size="xs" variant="outline" onClick={() => handleOpenEdit(app)}>
@@ -255,7 +251,7 @@ export function AgentSitesPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         title={editingApp ? "编辑 App" : "创建 App"}
-        onSubmit={handleSave}
+        onSubmit={() => runSave()}
         loading={formSaving}
         width="sm:max-w-lg"
       >
@@ -281,7 +277,7 @@ export function AgentSitesPage() {
           </div>
           <div className="grid gap-2">
             <Label>可见性</Label>
-            <Select value={formVisibility} onValueChange={setFormVisibility}>
+            <Select value={formVisibility} onValueChange={(v) => setFormVisibility(v as typeof formVisibility)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -303,7 +299,7 @@ export function AgentSitesPage() {
         title="确认删除"
         description={`确认删除 app「${deleteTarget?.name ?? ""}」？此操作不可撤销，将同时删除远程 app。`}
         variant="destructive"
-        onConfirm={handleDelete}
+        onConfirm={() => deleteTarget && runDelete(deleteTarget.id)}
       />
     </div>
   );

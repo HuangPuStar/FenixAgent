@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useRequest } from "ahooks";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { agentApi, envApi } from "@/src/api/sdk";
+import { agentApi } from "@/src/api/agents";
+import { envApi } from "@/src/api/environments";
+import { unwrap } from "@/src/api/request";
 import { useMetaAgent } from "@/src/hooks/useMetaAgent";
 import type { WfMeta } from "../yaml-utils";
 
@@ -63,44 +66,35 @@ export function useWorkflowMetaAgent({
     return lines.join("\n");
   }, [workflowId, meta.name, meta.description, t]);
 
-  const [agentList, setAgentList] = useState<AgentNodeOption[]>([]);
   const [agentOverrideOpen, setAgentOverrideOpen] = useState(false);
 
-  useEffect(() => {
-    // 并行拉 AgentConfig 列表（智能体）+ environment 列表，建立 AgentConfig → envName 映射。
-    // 与左侧 AgentSidebarTree 的数据组装方式一致：过滤掉内置智能体，每个智能体关联到绑定的 environment。
-    Promise.all([agentApi.list(), envApi.list()])
-      .then(([agentResult, envResult]) => {
-        const raw = agentResult.ok
-          ? (
-              agentResult.data as {
-                agents?: Array<{ id: string; name: string; description?: string; builtIn?: boolean }>;
-              } | null
-            )?.agents
-          : null;
-        const agents = Array.isArray(raw) ? raw : [];
-        const envs = envResult.ok && Array.isArray(envResult.data) ? envResult.data : [];
+  // 并行拉 AgentConfig 列表（智能体）+ environment 列表，建立 AgentConfig → envName 映射。
+  // 与左侧 AgentSidebarTree 的数据组装方式一致：过滤掉内置智能体，每个智能体关联到绑定的 environment。
+  const { data: agentList = [] } = useRequest(
+    async () => {
+      const [agentsResult, envsResult] = await Promise.all([unwrap(agentApi.list()), unwrap(envApi.list())]);
 
-        // agentConfigId → environment.name，用于把"智能体"翻译成 yaml 需要的 envName
-        const envNameByConfigId = new Map<string, string>();
-        for (const env of envs) {
-          if (env.agent_config_id) {
-            envNameByConfigId.set(env.agent_config_id, env.name);
-          }
+      // agentConfigId → environment.name，用于把"智能体"翻译成 yaml 需要的 envName
+      const envNameByConfigId = new Map<string, string>();
+      for (const env of envsResult as Record<string, unknown>[]) {
+        const configId = env.agent_config_id as string | undefined;
+        if (configId) {
+          envNameByConfigId.set(configId, env.name as string);
         }
+      }
 
-        const list: AgentNodeOption[] = agents
-          .filter((a) => !a.builtIn)
-          .map((a) => ({
-            name: a.name,
-            description: a.description ?? null,
-            envName: envNameByConfigId.get(a.id) ?? null,
-          }));
-
-        setAgentList(list);
-      })
-      .catch((err: unknown) => console.error("Failed to load agent list:", err));
-  }, []);
+      return agentsResult.agents
+        .filter((a) => !a.builtIn)
+        .map((a) => ({
+          name: a.name,
+          description: a.description ?? null,
+          envName: envNameByConfigId.get(a.id) ?? null,
+        }));
+    },
+    {
+      onError: (err: unknown) => console.error("Failed to load agent list:", err),
+    },
+  );
 
   return {
     scenePrompt,

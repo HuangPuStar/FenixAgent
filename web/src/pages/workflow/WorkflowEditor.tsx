@@ -39,6 +39,7 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { unwrap } from "@/src/api/request";
 import { useContextQueue } from "@/src/lib/use-context-queue";
 import { type CustomToolItem, customToolsApi, type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import {
@@ -429,7 +430,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setTriggersSheetOpen(false);
     (async () => {
       try {
-        const wf = await workflowDefApi.get(workflowId);
+        const wf = await unwrap(workflowDefApi.get(workflowId));
         setWfData(wf);
         if (wf.draftYaml) {
           const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);
@@ -468,8 +469,8 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         setRunSheetOpen(true);
 
         const [snap, evts] = await Promise.all([
-          workflowEngineApi.getRunStatus(runId),
-          workflowEngineApi.getEvents(runId),
+          unwrap(workflowEngineApi.getRunStatus(runId)),
+          unwrap(workflowEngineApi.getEvents(runId)),
         ]);
         if (abort) return;
         if (snap) {
@@ -527,7 +528,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     async (version: number) => {
       if (!workflowId) return;
       try {
-        const result = await workflowDefApi.getVersion(workflowId, version);
+        const result = await unwrap(workflowDefApi.getVersion(workflowId, version));
         const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(result.yaml);
         const laid = autoLayout(newNodes, newEdges);
         setNodes(laid);
@@ -551,7 +552,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const handleBackToDraft = useCallback(async () => {
     if (!workflowId) return;
     try {
-      const wf = await workflowDefApi.get(workflowId);
+      const wf = await unwrap(workflowDefApi.get(workflowId));
       setWfData(wf);
       if (wf.draftYaml) {
         const { nodes: newNodes, edges: newEdges, meta: newMeta } = yamlToFlow(wf.draftYaml);

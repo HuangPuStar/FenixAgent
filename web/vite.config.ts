@@ -20,13 +20,12 @@ export default defineConfig({
       "@/src": path.resolve(__dirname, "src"),
       "@/components": path.resolve(__dirname, "components"),
       "@server": path.resolve(__dirname, "../src"),
-      "@fenix/sdk": path.resolve(__dirname, "../packages/sdk/src/index.ts"),
     },
   },
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    sourcemap: false,
+    sourcemap: true,
     chunkSizeWarningLimit: 10000,
     rollupOptions: {
       input: {

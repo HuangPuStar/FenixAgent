@@ -214,6 +214,123 @@ bun test web/src/__tests__/config-mcp-page.test.ts  # 前端单个文件
 
 **API Client**（`web/src/api/sdk.ts`）：类架构 SDK，通过 `import { envApi, sessionApi } from "@/src/api/sdk"` 使用，`credentials: "include"`
 
+### 前端 API 模块规范
+
+前端 API 模块位于 `web/src/api/`，每个模块对应后端 `src/routes/web/` 下的同名路由文件，前后端必须一一对照。以下规则新增/修改模块时必须遵守。
+
+#### 基础设施（`request.ts`）
+
+- `request<T>(url, options)` 是唯一请求入口，自动处理：路径参数 `:key` 替换、查询参数拼接、JSON 序列化、超时、响应解包、错误标准化
+- 响应解包逻辑：`"data" in json ? json.data : json`。后端返回 `{ success, data }` 时取 `data`，返回原始对象（如数组、`{ ok: true }`）时直接透传。注意 `??` 会把 `null` 误判为空值，已改用 `in` 检测
+- 错误标准化：后端错误格式不统一（有的用 `{ type, message }`，有的用 `{ code, message }`），`request()` 内部通过 `normalizeErrorResponse()` 统一映射到 `ErrorCode` 枚举
+- `unwrap(resp)` 辅助函数：成功时返回 `data`，失败时抛 `ApiError`
+
+#### URL 路径映射
+
+| 规则 | 说明 |
+|------|------|
+| 路径前缀 | 后端全部挂在 `/web` 下（`src/routes/web/index.ts`），前端 URL 必须以 `/web/` 开头 |
+| 路径参数 | URL 模板中用 `:key` 占位，通过 `options.params` 传入 `{ key: value }`，自动 `encodeURIComponent` 替换 |
+| 查询参数 | 通过 `options.query` 传入对象，自动拼接到 URL |
+| 无 `/v1`、`/v2` 前缀 | 后端不存在版本化前缀，前端不能写成 `/v1/environments` 或 `/v2/instances` |
+
+#### 后端 API 两种风格
+
+后端实际存在两种 API 风格，前端模块必须按对应风格调用：
+
+| 风格 | 特征 | 示例 |
+|------|------|------|
+| **action 分发** | 单一 `POST` 端点，body 中 `action` 字段路由到不同 handler | `POST /web/organizations` + `{ action: "list" }`、`POST /web/config/providers` + `{ action: "set" }` |
+| **RESTful** | 标准 HTTP 方法 + 路径参数 | `GET /web/environments`、`PUT /web/environments/:id`、`DELETE /web/instances/:id` |
+
+**常见陷阱**：同一个后端路由文件中可能混用两种风格（如 `/web/config/skills` 既有 `GET /skills` RESTful 又有 `POST /skills/upload` action 风格），不能假设整个文件统一。
+
+#### snake_case → camelCase 转换
+
+- 后端响应字段使用 **snake_case**（`agent_config_id`、`instance_number`），前端 TypeScript 类型使用 **camelCase**（`agentConfigId`、`instanceNumber`）
+- 涉及模块必须定义 `toCamelKeys()` + `camelResponse()` 并在每个 API 方法上包裹调用（参考 `environments.ts`）
+- `toCamelKeys()` 必须递归处理嵌套数组和对象（如 `instances` 数组中的 `instance_number`）
+- **不涉及 snake_case 的模块**（配置模块 `/web/config/*` 通常返回 camelCase）不要画蛇添足加转换
+
+#### 响应类型定义
+
+- 类型泛型 `T` 是后端 `data` 字段的形状（`request()` 已自动解包），不要在外层再包 `{ success, data }`
+- 类型必须与后端实际返回结构完全一致（字段名、可空性 `| null` vs `?`、数组 vs 对象）
+- 禁止使用 `Record<string, unknown>` 或 `as any` 回避类型定义，除非确属历史兼容
+- 后端没有的字段不要在前端类型中声明（幻影字段会导致调用方误用）
+- 后端有的字段必须在前端类型中声明（缺失字段 TypeScript 会拒绝访问）
+
+#### 模块文件结构
+
+```
+web/src/api/
+├── request.ts          # 基础设施：request()、unwrap()、ApiError
+├── helpers.ts          # 通用辅助（如 UUID 管理）
+├── sdk.ts              # 统一导出入口
+├── agents.ts           # Agent 配置 CRUD
+├── models.ts           # Model 配置
+├── providers.ts        # Provider 配置 + 模型管理
+├── mcp.ts              # MCP Server 配置
+├── skills.ts           # Skill 配置 + 上传/下载
+├── sessions.ts         # Session 管理 + controlApi
+├── control.ts          # controlApi 重导出（→ sessions.ts）
+├── environments.ts     # Environment CRUD + 进入 + 实例列表
+├── instances.ts        # Instance spawn/delete
+├── files.ts            # 文件读写上传
+├── tasks.ts            # 定时任务 CRUD + 日志
+├── registry.ts         # 机器注册表
+├── knowledge-bases.ts  # 知识库管理
+├── organizations.ts    # 组织/成员管理
+├── api-keys.ts         # API Key 管理
+├── channels.ts         # IM 通道管理
+├── sites.ts            # Agent 站点管理
+├── meta-agent.ts       # Meta Agent 自举
+├── branding.ts         # 品牌定制
+├── workflows.ts        # 工作流定义
+├── workflow-defs.ts    # 工作流定义（新版）
+├── workflow-engine.ts  # 工作流引擎
+├── workflow-sse.ts     # 工作流 SSE 事件流
+├── sse.ts              # Session SSE 事件流
+└── hindsight.ts        # Hindsight 记忆检索
+```
+
+#### 后端 → 前端模块对照表
+
+| 后端路由文件 | 前端模块 | API 风格 |
+|-------------|---------|---------|
+| `config/agents.ts` | `agents.ts` | action POST |
+| `config/models.ts` | `models.ts` | action POST |
+| `config/providers.ts` | `providers.ts` | action POST |
+| `config/mcp.ts` | `mcp.ts` | action POST |
+| `config/skills.ts` + `skills.ts` | `skills.ts` | 混用（RESTful + action） |
+| `organizations.ts` | `organizations.ts` | action POST |
+| `sessions.ts` | `sessions.ts` | RESTful |
+| `control.ts` | `sessions.ts` (controlApi) | RESTful |
+| `environments.ts` | `environments.ts` | RESTful（需 snake→camel） |
+| `instances.ts` | `instances.ts` | RESTful（需 snake→camel） |
+| `files.ts` + `user-file.ts` | `files.ts` | RESTful |
+| `tasks.ts` | `tasks.ts` | RESTful |
+| `registry.ts` | `registry.ts` | RESTful |
+| `knowledge-bases.ts` | `knowledge-bases.ts` | RESTful |
+| `channels.ts` | `channels.ts` | RESTful |
+| `agent-sites.ts` | `sites.ts` | RESTful |
+| `meta-agent.ts` + `agent-generation.ts` | `meta-agent.ts` | action POST |
+| `branding.ts` | `branding.ts` | RESTful |
+| `workflow-defs.ts` | `workflow-defs.ts` | action POST |
+| `workflow-runs.ts` | `workflows.ts` | 混用 |
+| `workflow-engine.ts` | `workflow-engine.ts` | RESTful |
+| `workflow-sse.ts` | `workflow-sse.ts`、`sse.ts` | SSE |
+| `hindsight.ts` | `hindsight.ts` | 代理透传 |
+
+#### 新增/修改模块检查清单
+
+1. 确认后端路由的实际路径、HTTP 方法、请求体/参数格式
+2. 确认后端返回是否包裹 `{ success, data }` 还是原始对象
+3. 确认后端字段使用 snake_case 还是 camelCase，决定是否需要 `camelResponse` 转换
+4. TypeScript 类型必须与后端实际结构一致（字段名、可空性、数组 vs 对象）
+5. 修改后运行 `bun run precheck` + `bun test web/src/__tests__/` 确保通过
+6. 更新消费者代码（页面组件）中受影响的字段访问
+
 ### 前端 i18n 国际化
 
 react-i18next + i18next，英文默认，中英双语。适用范围：**所有 `web/` 下 TSX 文件无例外**。

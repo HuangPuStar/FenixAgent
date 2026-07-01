@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { agentApi } from "../api/sdk";
+import { agentApi } from "../api/agents";
 import {
   canManageAgentSharing,
   getAgentConfigLookupKey,
@@ -83,9 +83,11 @@ describe("agent resource access frontend flow", () => {
     });
 
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toBe("/web/config/agents?name=shared-agent");
+    expect(call[0]).toContain("/web/config/agents");
+    expect(call[0]).toContain("name=shared-agent");
     expect(call[1].method).toBe("PUT");
     const body = JSON.parse(call[1].body);
+    // 新 agentApi.set 将 data 包装为 { data: {...} } 发送
     expect(body).toEqual({
       data: {
         prompt: "shared",

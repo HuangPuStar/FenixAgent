@@ -1,5 +1,6 @@
+import { useRequest } from "ahooks";
 import { Search, Share2, Sparkles, Upload } from "lucide-react";
-import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -11,7 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { skillConfigApi } from "@/src/api/sdk";
+import { unwrap } from "@/src/api/request";
+import { skillConfigApi } from "@/src/api/skills";
 import { useMetaAgent } from "@/src/hooks/useMetaAgent";
 import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
@@ -25,7 +27,6 @@ import {
 import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../../../lib/skill-upload";
 import type {
   ResourceAccess,
-  SkillDetail,
   SkillUploadConflictResponse,
   SkillUploadConflictStrategy,
   UploadSkillSummary,
@@ -87,8 +88,6 @@ const directoryInputProps = { webkitdirectory: "", directory: "" } as Record<str
 export function AgentSkillsPage() {
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<SkillInfo | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -97,13 +96,11 @@ export function AgentSkillsPage() {
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formContent, setFormContent] = useState("");
-  const [formSaving, setFormSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadItems, setUploadItems] = useState<UploadSkillSummary[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SkillUploadConflictResponse["conflicts"]>([]);
   const [_conflictStrategy, setConflictStrategy] = useState<SkillUploadConflictStrategy | null>(null);
-  const [uploadPending, setUploadPending] = useState(false);
   const [overwriteConfirmOpen, setOverwriteConfirmOpen] = useState(false);
   const [downloadingSkillKey, setDownloadingSkillKey] = useState<string | null>(null);
   const editingReadOnly = editingSkill ? !canWriteSkill(editingSkill) : false;
@@ -113,34 +110,97 @@ export function AgentSkillsPage() {
     setUploadError(null);
     setConflicts([]);
     setConflictStrategy(null);
-    setUploadPending(false);
     setOverwriteConfirmOpen(false);
   }, []);
 
-  const loadSkills = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await skillConfigApi.list();
-    if (error) {
-      console.error(t("toast.loadListFailed"), error);
-      toast.error(t("toast.loadListFailedWith", { message: error.message }));
-    } else {
-      setSkills(Array.isArray(data) ? data : []);
-    }
-    setLoading(false);
-  }, [t]);
+  // skill 列表查询
+  const {
+    data: listData,
+    loading,
+    refresh,
+    refreshAsync,
+  } = useRequest(() => unwrap(skillConfigApi.list()), {
+    onError: (err) => {
+      console.error(t("toast.loadListFailed"), err);
+      toast.error(t("toast.loadListFailedWith", { message: err.message }));
+    },
+  });
+  const skills = listData?.skills ?? [];
 
-  // 静默刷新：不触发 loading 骨架屏，避免用户感知"页面刷新"
-  const refreshSkills = useCallback(async () => {
-    const { data, error } = await skillConfigApi.list();
-    if (!error) {
-      setSkills(Array.isArray(data) ? data : []);
-    }
-    // 静默失败不弹 toast，避免干扰用户
-  }, []);
+  // 创建 skill（成功 toast）
+  const { run: runCreate, loading: creating } = useRequest(
+    (params: { name: string; description: string; content: string }) =>
+      unwrap(skillConfigApi.create(params.name, { description: params.description, content: params.content })),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.skillCreated"));
+        setDialogOpen(false);
+        refresh();
+        dispatchConfigChange("skills");
+      },
+      onError: (err) => toast.error(t("toast.saveFailedWith", { message: err.message })),
+    },
+  );
 
-  useEffect(() => {
-    loadSkills();
-  }, [loadSkills]);
+  // 更新 skill（静默，不弹 toast）
+  const { run: runUpdate, loading: updating } = useRequest(
+    (params: { name: string; description: string; content: string }) =>
+      unwrap(skillConfigApi.update(params.name, { description: params.description, content: params.content })),
+    {
+      manual: true,
+      onSuccess: () => {
+        setDialogOpen(false);
+        refresh();
+        dispatchConfigChange("skills");
+      },
+      onError: (err) => toast.error(t("toast.saveFailedWith", { message: err.message })),
+    },
+  );
+
+  // 上传 skill（FormData，直接处理 ApiResponse 以支持冲突检测）
+  const { run: runUpload, loading: uploading } = useRequest((formData: FormData) => skillConfigApi.upload(formData), {
+    manual: true,
+    onSuccess: (response) => {
+      if (response.success) {
+        const result = normalizeSkillUploadResult(response.data);
+        toast.success(
+          result.skipped.length > 0
+            ? t("toast.importResultWithSkipped", { imported: result.imported.length, skipped: result.skipped.length })
+            : t("toast.importResult", { imported: result.imported.length }),
+        );
+        setDialogOpen(false);
+        resetUploadState();
+        refresh();
+        dispatchConfigChange("skills");
+        setOverwriteConfirmOpen(false);
+      } else {
+        const conflictData = getUploadConflictData(response.error);
+        if (conflictData) {
+          setConflicts(conflictData.conflicts);
+          setConflictStrategy(null);
+          toast.error(t("conflict.detected"));
+        } else {
+          toast.error(t("toast.importFailedWith", { message: response.error?.message ?? "" }));
+        }
+      }
+    },
+  });
+
+  // 删除 skill（静默，不弹 toast）
+  const { run: runDelete } = useRequest((name: string) => unwrap(skillConfigApi.del(name)), {
+    manual: true,
+    onSuccess: () => {
+      setConfirmOpen(false);
+      setDeleteTarget(null);
+      refresh();
+      dispatchConfigChange("skills");
+    },
+    onError: (err) => {
+      console.error(t("toast.deleteFailed"), err);
+      toast.error(t("toast.deleteFailedWith", { message: err.message }));
+    },
+  });
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -181,61 +241,36 @@ export function AgentSkillsPage() {
     setEditingSkill(skill);
     setCreateMode("text");
     resetUploadState();
-    const { data: detail, error } = await skillConfigApi.get(getSkillLookupKey(skill));
-    if (error) {
+    try {
+      const detail = await unwrap(skillConfigApi.get(getSkillLookupKey(skill)));
+      setFormName(detail.name ?? "");
+      setFormDescription(detail.description ?? "");
+      setFormContent(detail.content ?? "");
+    } catch {
       toast.error(t("toast.loadDetailFailed"));
-    } else {
-      const d = detail as unknown as SkillDetail;
-      setFormName((d?.name as string) ?? "");
-      setFormDescription((d?.description as string) ?? "");
-      setFormContent((d?.content as string) ?? "");
     }
     setDialogOpen(true);
-  };
-
-  const handleTextSave = async () => {
-    if (!formName.trim() || !formContent.trim()) {
-      toast.error(t("form.nameRequired"));
-      return;
-    }
-    setFormSaving(true);
-    const call = editingSkill
-      ? skillConfigApi.update(editingSkill.name, { description: formDescription, content: formContent })
-      : skillConfigApi.create(formName, { description: formDescription, content: formContent });
-    const { error } = await call;
-    if (error) {
-      toast.error(t("toast.saveFailedWith", { message: error.message }));
-    } else {
-      toast.success(editingSkill ? t("toast.skillUpdated") : t("toast.skillCreated"));
-      setDialogOpen(false);
-      loadSkills();
-      dispatchConfigChange("skills");
-    }
-    setFormSaving(false);
   };
 
   const handleToggleSharing = async (skill: SkillInfo) => {
     if (!canManageSkillSharing(skill)) return;
     const nextPublicReadable = !skill.resourceAccess?.publicReadable;
-    const { data: detail, error: detailError } = await skillConfigApi.get(getSkillLookupKey(skill));
-    if (detailError) {
-      toast.error(t("toast.loadDetailFailed"));
-      return;
+    try {
+      const detail = await unwrap(skillConfigApi.get(getSkillLookupKey(skill)));
+      await unwrap(
+        skillConfigApi.update(skill.name, {
+          description: detail.description ?? skill.description ?? "",
+          content: detail.content ?? "",
+          metadata: detail.metadata ?? {},
+          publicReadable: nextPublicReadable,
+        }),
+      );
+      toast.success(nextPublicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
+      refresh();
+      dispatchConfigChange("skills");
+    } catch (err) {
+      toast.error(t("toast.saveFailedWith", { message: (err as Error).message }));
     }
-    const d = detail as unknown as SkillDetail;
-    const { error } = await skillConfigApi.update(skill.name, {
-      description: d.description ?? skill.description ?? "",
-      content: d.content ?? "",
-      metadata: d.metadata ?? {},
-      publicReadable: nextPublicReadable,
-    });
-    if (error) {
-      toast.error(t("toast.saveFailedWith", { message: error.message }));
-      return;
-    }
-    toast.success(nextPublicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
-    loadSkills();
-    dispatchConfigChange("skills");
   };
 
   const handleUploadSelection = (event: ChangeEvent<HTMLInputElement>) => {
@@ -247,66 +282,43 @@ export function AgentSkillsPage() {
     setConflictStrategy(null);
   };
 
-  const handleUploadSubmit = async (strategy?: SkillUploadConflictStrategy) => {
+  // 上传（可带冲突策略）
+  const doUpload = (strategy?: SkillUploadConflictStrategy) => {
     const validationError = validateUploadBatch(uploadItems);
     if (validationError) {
       setUploadError(validationError);
       toast.error(validationError);
       return;
     }
-    setUploadPending(true);
     const formData = buildSkillUploadFormData(uploadItems, strategy);
-    const { data: uploadResult, error: uploadError } = await skillConfigApi.upload(formData);
-    if (uploadError) {
-      const conflictData = getUploadConflictData(uploadError);
-      if (conflictData) {
-        setConflicts(conflictData.conflicts);
-        setConflictStrategy(strategy ?? null);
-        toast.error(t("conflict.detected"));
-      } else {
-        toast.error(t("toast.importFailedWith", { message: uploadError.message }));
-      }
-    } else {
-      const result = normalizeSkillUploadResult(uploadResult);
-      toast.success(
-        result.skipped.length > 0
-          ? t("toast.importResultWithSkipped", { imported: result.imported.length, skipped: result.skipped.length })
-          : t("toast.importResult", { imported: result.imported.length }),
-      );
-      setDialogOpen(false);
-      resetUploadState();
-      loadSkills();
-      dispatchConfigChange("skills");
-    }
-    setUploadPending(false);
-    setOverwriteConfirmOpen(false);
+    runUpload(formData);
   };
 
-  const handleDialogSubmit = async () => {
-    if (editingSkill || createMode === "text") {
-      await handleTextSave();
+  // dialog 提交分发：根据模式调用 create / update / upload
+  const handleDialogSubmit = () => {
+    if (editingSkill) {
+      if (!formName.trim() || !formContent.trim()) {
+        toast.error(t("form.nameRequired"));
+        return;
+      }
+      runUpdate({ name: editingSkill.name, description: formDescription, content: formContent });
       return;
     }
-    await handleUploadSubmit();
+    if (createMode === "text") {
+      if (!formName.trim() || !formContent.trim()) {
+        toast.error(t("form.nameRequired"));
+        return;
+      }
+      runCreate({ name: formName, description: formDescription, content: formContent });
+      return;
+    }
+    // upload 模式
+    doUpload();
   };
 
   const handleDeleteClick = (skill: SkillInfo) => {
     setDeleteTarget(skill.name);
     setConfirmOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    const { error } = await skillConfigApi.delete(deleteTarget);
-    if (error) {
-      console.error(t("toast.deleteFailed"), error);
-      toast.error(t("toast.deleteFailedWith", { message: error.message }));
-      return;
-    }
-    toast.success(t("toast.skillDeleted"));
-    setConfirmOpen(false);
-    loadSkills();
-    dispatchConfigChange("skills");
   };
 
   const handleDownload = useCallback(
@@ -550,7 +562,7 @@ export function AgentSkillsPage() {
           }
           onSubmit={handleDialogSubmit}
           submitLabel={editingSkill || createMode === "text" ? t("dialog.save") : t("dialog.startUpload")}
-          loading={editingSkill || createMode === "text" ? formSaving : uploadPending}
+          loading={editingSkill ? updating : createMode === "text" ? creating : uploading}
           disabled={
             editingReadOnly ||
             (!editingSkill && createMode === "upload" && uploadItems.filter((i) => i.hasSkillMd).length === 0)
@@ -628,8 +640,8 @@ export function AgentSkillsPage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => handleUploadSubmit("ignore")}
-                        disabled={uploadPending}
+                        onClick={() => doUpload("ignore")}
+                        disabled={uploading}
                       >
                         {t("conflict.skipConflicts")}
                       </Button>
@@ -638,7 +650,7 @@ export function AgentSkillsPage() {
                         variant="destructive"
                         size="sm"
                         onClick={() => setOverwriteConfirmOpen(true)}
-                        disabled={uploadPending}
+                        disabled={uploading}
                       >
                         {t("conflict.overwriteExisting")}
                       </Button>
@@ -724,7 +736,7 @@ export function AgentSkillsPage() {
           title={t("confirm.deleteTitle")}
           description={t("confirm.deleteDescription", { name: deleteTarget ?? "" })}
           variant="destructive"
-          onConfirm={confirmDelete}
+          onConfirm={() => deleteTarget && runDelete(deleteTarget)}
         />
         <ConfirmDialog
           open={overwriteConfirmOpen}
@@ -733,8 +745,8 @@ export function AgentSkillsPage() {
           description={t("confirm.overwriteDescription", { names: overwriteConflictNames })}
           variant="destructive"
           confirmLabel={t("confirm.overwriteConfirm")}
-          onConfirm={() => void handleUploadSubmit("overwrite")}
-          loading={uploadPending}
+          onConfirm={() => doUpload("overwrite")}
+          loading={uploading}
         />
       </div>
       <MetaAgentPanel
@@ -742,7 +754,7 @@ export function AgentSkillsPage() {
         setChatOpen={(open) => setChatOpen(open)}
         metaAgentId={metaAgentId}
         scenePrompt={undefined}
-        onPromptComplete={refreshSkills}
+        onPromptComplete={refreshAsync}
         togglePosition="left"
       />
     </div>

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { unwrap } from "@/src/api/request";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import { DAG_STATUS_CFG } from "../utils";
 
@@ -35,8 +36,8 @@ export function VersionPanel({
     setLoading(true);
     try {
       const [wfData, versionList] = await Promise.all([
-        workflowDefApi.get(workflowId),
-        workflowDefApi.getVersions(workflowId),
+        unwrap(workflowDefApi.get(workflowId)),
+        unwrap(workflowDefApi.getVersions(workflowId)),
       ]);
       setWf(wfData);
       setVersions(Array.isArray(versionList) ? versionList : []);
@@ -100,7 +101,7 @@ export function VersionPanel({
         return;
       }
       try {
-        const result = await workflowDefApi.getVersion(workflowId, version);
+        const result = await unwrap(workflowDefApi.getVersion(workflowId, version));
         setViewingVersion(version);
         setViewingYaml(result.yaml);
       } catch (err) {

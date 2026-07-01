@@ -1,8 +1,10 @@
 import type { SetStateAction } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { getUuid } from "@/src/api/helpers";
-import { controlApi, sessionApi } from "@/src/api/sdk";
-import type { EventPayload, SessionEvent } from "../types";
+import { controlApi } from "@/src/api/control";
+import { unwrap } from "@/src/api/request";
+import type { SessionEvent } from "@/src/api/sessions";
+import { sessionApi } from "@/src/api/sessions";
+import type { EventPayload } from "../types";
 import type {
   AssistantMessageEntry,
   PendingPermission,
@@ -28,12 +30,9 @@ class SSEBus {
 
   connect(sessionId: string): void {
     this.disconnect();
-    const uuid = getUuid();
-    const activeOrgId = localStorage.getItem("active_org_id");
-    const params = new URLSearchParams({ uuid: uuid });
-    if (activeOrgId) params.set("activeOrganizationId", activeOrgId);
-    const url = `/web/sessions/${sessionId}/events?${params}`;
-    const es = new EventSource(url);
+    // 后端使用 session cookie 认证，无需通过 query 传递 org 信息
+    const url = `/web/sessions/${sessionId}/events`;
+    const es = new EventSource(url, { withCredentials: true });
     this.eventSource = es;
 
     es.addEventListener("message", (e: MessageEvent) => {
@@ -190,8 +189,7 @@ export class RCSChatAdapter {
 
   /** 加载历史事件并转为 ThreadEntry */
   async loadHistory(): Promise<void> {
-    const { data: historyData, error: histErr } = await sessionApi.history({ id: this.sessionId });
-    if (histErr) throw new Error(histErr.message);
+    const historyData = await unwrap(sessionApi.history({ sessionId: this.sessionId }));
     const events = historyData?.events;
     if (!events || events.length === 0) return;
 
@@ -210,13 +208,14 @@ export class RCSChatAdapter {
       const payload = event.payload || ({} as EventPayload);
 
       if (event.type === "user") {
-        if (event.direction === "outbound") continue; // skip echoed user messages
+        // direction 是 SSE 实时推送携带的运行时字段，不在 REST SessionEvent schema 中
+        if ((event as unknown as Record<string, unknown>).direction === "outbound") continue; // skip echoed user messages
         flushAssistant();
         const text = extractEventText(payload);
         if (text) {
           historyEntries.push({
             type: "user_message",
-            id: event.id || `hist-user-${historyEntries.length}`,
+            id: (event.id as string) || `hist-user-${historyEntries.length}`,
             content: text,
           });
         }
@@ -250,7 +249,7 @@ export class RCSChatAdapter {
         if (text || toolParts.length > 0) {
           currentAssistant = {
             type: "assistant_message",
-            id: event.id || `hist-asst-${historyEntries.length}`,
+            id: (event.id as string) || `hist-asst-${historyEntries.length}`,
             chunks: text ? [{ type: "message", text }] : [],
           };
           historyEntries.push(currentAssistant);
@@ -325,7 +324,7 @@ export class RCSChatAdapter {
   /** 处理 SSE 事件 */
   handleEvent(event: SessionEvent): void {
     const type = event.type;
-    const payload = event.payload || ({} as EventPayload);
+    const payload = (event.payload || {}) as Record<string, unknown>;
 
     // Skip bridge init noise
     const serialized = JSON.stringify(event);
@@ -472,7 +471,7 @@ export class RCSChatAdapter {
       case "permission_request": {
         const req = payload.request as Record<string, unknown> | undefined;
         if (req && req.subtype === "can_use_tool") {
-          const requestId = payload.request_id || "";
+          const requestId = String(payload.request_id ?? "");
           const toolName = (req.tool_name as string) || "unknown";
           const toolInput = (req.input || req.tool_input || {}) as Record<string, unknown>;
           const description = (req.description as string) || "";
@@ -557,7 +556,7 @@ export class RCSChatAdapter {
 
     // Send to backend
     await controlApi.sendEvent(
-      { id: this.sessionId },
+      { sessionId: this.sessionId },
       {
         type: "user",
         uuid: uuidv4(),
@@ -570,7 +569,7 @@ export class RCSChatAdapter {
   /** 响应权限请求 */
   async respondPermission(requestId: string, approved: boolean, extra?: Record<string, unknown>): Promise<void> {
     await controlApi.control(
-      { id: this.sessionId },
+      { sessionId: this.sessionId },
       {
         type: "permission_response",
         approved,
@@ -611,7 +610,7 @@ export class RCSChatAdapter {
     );
 
     await controlApi.control(
-      { id: this.sessionId },
+      { sessionId: this.sessionId },
       {
         type: "interrupt",
       },

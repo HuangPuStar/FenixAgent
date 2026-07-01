@@ -1,11 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useRequest } from "ahooks";
 import { ArrowLeft, BookOpen, FileCode, FileText, Pencil, Search, Wand2 } from "lucide-react";
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { agentApi, envApi, modelApi } from "@/src/api/sdk";
-import type { AgentTemplate } from "../../../../../packages/sdk/src/modules/config";
+import { agentApi } from "@/src/api/agents";
+import { envApi } from "@/src/api/environments";
+import { modelApi } from "@/src/api/models";
+import { unwrap } from "@/src/api/request";
 import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import type { GenerationFormData } from "../components/AgentGenerationForm";
@@ -26,6 +29,15 @@ const TEMPLATE_COLORS = [
 // 模板卡片图标列表
 const TEMPLATE_ICONS = [Pencil, FileText, Search, FileCode, Wand2, BookOpen];
 
+/** Agent 模板 */
+interface AgentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  skills: string[];
+}
+
 type PagePhase = "idle" | "generating" | "form";
 
 /** Agent 首页：AI 智能生成 + 模板一键创建 */
@@ -41,31 +53,19 @@ export function AgentHomePage() {
 
   const [phase, setPhase] = useState<PagePhase>("idle");
   const [inputValue, setInputValue] = useState("");
-  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [generationResult, setGenerationResult] = useState<GenerationFormData | null>(null);
-  const [creating, setCreating] = useState(false);
 
   // 加载模板列表
-  useEffect(() => {
-    agentApi
-      .templates()
-      .then((res: { ok: boolean; data?: { templates?: AgentTemplate[] } }) => {
-        if (res.ok && res.data?.templates) {
-          setTemplates(res.data.templates);
-        }
-      })
-      .catch((err: unknown) => {
-        console.error("[agent-home] Failed to load templates:", err);
-      });
-  }, []);
+  const { data: templatesData } = useRequest(() => unwrap(agentApi.templates()), {
+    onError: (err) => {
+      console.error("[agent-home] Failed to load templates:", err);
+    },
+  });
+  const templates = templatesData?.templates ?? [];
 
-  // Enter 提交，调用 AI 生成
-  const handleSubmit = useCallback(async () => {
-    const prompt = inputValue.trim();
-    if (!prompt) return;
-
-    setPhase("generating");
-    try {
+  // AI 生成
+  const { run: runGenerate } = useRequest(
+    async (prompt: string) => {
       const response = await fetch("/web/agent-generation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -74,30 +74,34 @@ export function AgentHomePage() {
       });
       const json = (await response.json()) as {
         success: boolean;
-        data?: { name: string; systemPrompt: string; skills: Array<{ id: string; name: string; description: string }> };
+        data?: GenerationFormData;
         error?: { message: string };
       };
-
-      if (json.success && json.data) {
-        setGenerationResult(json.data);
+      if (!json.success || !json.data) {
+        throw new Error(json.error?.message ?? t("generationFailed"));
+      }
+      return json.data;
+    },
+    {
+      manual: true,
+      onSuccess: (data) => {
+        setGenerationResult(data);
         setPhase("form");
-      } else {
+      },
+      onError: (err) => {
+        console.error("[agent-home] Generation request failed:", err);
         toast.error(t("generationFailed"));
         setPhase("idle");
-      }
-    } catch (err) {
-      console.error("[agent-home] Generation request failed:", err);
-      toast.error(t("generationFailed"));
-      setPhase("idle");
-    }
-  }, [inputValue, t]);
+      },
+    },
+  );
 
   /** 创建 agent 配置 → 创建 environment → 跳转聊天页 */
-  const createAndNavigate = useCallback(
-    async (agentName: string, payload: Record<string, unknown>) => {
+  const { run: runCreateAndNavigate, loading: creating } = useRequest(
+    async (data: GenerationFormData) => {
       // 0. 获取第一个可用模型，没有则报错
-      const { data: modelData } = await modelApi.get();
-      const available = (modelData as { available?: Array<{ id: string }> } | undefined)?.available;
+      const modelData = await unwrap(modelApi.get());
+      const available = modelData.available;
       const firstModelId = Array.isArray(available) && available.length > 0 ? available[0].id : undefined;
       if (!firstModelId) {
         toast.error(t("noModel"));
@@ -105,21 +109,25 @@ export function AgentHomePage() {
       }
 
       // 1. 创建 agent 配置（已存在也继续）
-      const agentRes = await agentApi.create(agentName, { ...payload, modelId: firstModelId });
-      const isAlreadyExists =
-        !agentRes.ok && (agentRes as unknown as { error?: { code?: string } }).error?.code === "ALREADY_EXISTS";
-      if (!agentRes.ok && !isAlreadyExists) {
-        toast.error(t("createFailed"));
-        return;
+      let agentConfigId: string | undefined;
+      try {
+        const agentRes = await unwrap(
+          agentApi.create(data.name, {
+            prompt: data.systemPrompt,
+            skillIds: data.skills.map((s) => s.id),
+            modelId: firstModelId,
+          }),
+        );
+        agentConfigId = agentRes.id;
+      } catch (err) {
+        // ALREADY_EXISTS 不是错误，继续流程
+        if ((err as { code?: string }).code !== "ALREADY_EXISTS") throw err;
       }
 
-      // 2. 拿到 agent 的 UUID
-      const agentData = agentRes.data as { id?: string } | undefined;
-      let agentConfigId = agentData?.id;
-      // 已存在时 create 不返回 id，需要查一次
+      // 2. 已存在时 create 不返回 id，需要查一次
       if (!agentConfigId) {
-        const { data: detail } = await agentApi.get(agentName);
-        agentConfigId = (detail as { id?: string } | undefined)?.id;
+        const detail = await unwrap(agentApi.get(data.name));
+        agentConfigId = detail?.id;
       }
       if (!agentConfigId) {
         toast.error(t("createFailed"));
@@ -129,53 +137,42 @@ export function AgentHomePage() {
       // 刷新左侧智能体列表
       dispatchConfigChange("agents");
 
-      // 3. 查找是否已有绑定该 agentConfigId 的 environment，有则直接复用
-      const { data: envList } = await envApi.list();
-      const existingEnv = (Array.isArray(envList) ? envList : []).find((e) => e.agent_config_id === agentConfigId);
+      // 3. 查找是否已有绑定该 agentConfigId 的 environment
+      const envList = await unwrap(envApi.list());
+      const existingEnv = (Array.isArray(envList) ? envList : []).find((e) => e.agentConfigId === agentConfigId);
       if (existingEnv) {
         void navigate({ to: "/agent/chat/$agentId", params: { agentId: existingEnv.id } });
         return;
       }
 
       // 4. 没有则创建新 environment（autoStart: true 自动启动实例）
-      const { data: newEnv } = await envApi.create({
-        name: `env-${agentConfigId.slice(0, 8)}`,
-        agentConfigId,
-        autoStart: true,
-      });
-      const envId = (newEnv as { id?: string } | undefined)?.id;
+      const newEnv = await unwrap(
+        envApi.create({
+          name: `env-${agentConfigId.slice(0, 8)}`,
+          agentConfigId,
+          autoStart: true,
+        }),
+      );
+      const envId = newEnv?.id;
       if (!envId) {
         toast.error(t("createFailed"));
         return;
       }
 
-      // 5. 跳转聊天页（路由参数是 environment ID）
+      // 5. 跳转聊天页
       void navigate({ to: "/agent/chat/$agentId", params: { agentId: envId } });
     },
-    [navigate, t],
-  );
-
-  // 创建智能体（AI 生成流程）
-  const handleCreateFromGeneration = useCallback(
-    async (data: GenerationFormData) => {
-      setCreating(true);
-      try {
-        await createAndNavigate(data.name, {
-          prompt: data.systemPrompt,
-          skillIds: data.skills.map((s) => s.id),
-        });
-      } catch (err) {
-        console.error("[agent-home] AI generation create failed:", err);
+    {
+      manual: true,
+      onError: (err) => {
+        console.error("[agent-home] Create and navigate failed:", err);
         toast.error(t("createFailed"));
-      } finally {
-        setCreating(false);
-      }
+      },
     },
-    [createAndNavigate, t],
   );
 
   // 模板先进入表单确认，保存后再创建
-  const handleTemplateClick = useCallback((template: AgentTemplate) => {
+  const handleTemplateClick = (template: AgentTemplate) => {
     setInputValue(template.description || template.name);
     setGenerationResult({
       name: template.name,
@@ -187,13 +184,13 @@ export function AgentHomePage() {
       })),
     });
     setPhase("form");
-  }, []);
+  };
 
   // 返回 idle 状态
-  const handleReset = useCallback(() => {
+  const handleReset = () => {
     setPhase("idle");
     setGenerationResult(null);
-  }, []);
+  };
 
   const titleText = t(titleKey);
 
@@ -232,13 +229,25 @@ export function AgentHomePage() {
                   onKeyDown={(e) => {
                     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
                       e.preventDefault();
-                      void handleSubmit();
+                      const prompt = inputValue.trim();
+                      if (!prompt) return;
+                      setPhase("generating");
+                      runGenerate(prompt);
                     }
                   }}
                   rows={2}
                   placeholder={t("inputPlaceholder")}
                 />
-                <button type="button" onClick={() => void handleSubmit()} className="agent-home-polish-btn">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prompt = inputValue.trim();
+                    if (!prompt) return;
+                    setPhase("generating");
+                    runGenerate(prompt);
+                  }}
+                  className="agent-home-polish-btn"
+                >
                   <Wand2 className="h-4 w-4" />
                   {t("oneClickCreate", { defaultValue: "一键创建" })}
                 </button>
@@ -272,7 +281,9 @@ export function AgentHomePage() {
             </div>
             <AgentGenerationForm
               initialData={generationResult}
-              onCreate={handleCreateFromGeneration}
+              onCreate={async (data) => {
+                runCreateAndNavigate(data);
+              }}
               loading={creating}
             />
           </div>

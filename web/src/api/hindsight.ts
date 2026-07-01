@@ -1,4 +1,5 @@
 import type {
+  DocumentChunk,
   DocumentsResponse,
   EntityGraphResponse,
   EntityItem,
@@ -18,7 +19,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     credentials: "include",
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      // FormData 提交时不能手动设 Content-Type，浏览器会自动加 multipart/form-data boundary
+      ...(options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...options?.headers,
     },
   });
@@ -102,14 +104,12 @@ export const hindsightApi = {
     return apiFetch<DocumentsResponse>(`/documents?${qs.toString()}`);
   },
 
-  /** 上传文档（multipart/form-data，不设 Content-Type 让浏览器自动处理 boundary） */
+  /** 上传文档（multipart/form-data，Content-Type 由 apiFetch 中 FormData 检测自动跳过） */
   uploadDocument: (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
     return apiFetch<{ document_id: string }>("/documents", {
       method: "POST",
-      // FormData 提交时不能手动设 Content-Type，浏览器会自动加 boundary
-      headers: {} as Record<string, string>,
       body: formData,
     });
   },
@@ -118,8 +118,15 @@ export const hindsightApi = {
   deleteDocument: (id: string) =>
     apiFetch<{ success: boolean }>(`/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
+  /** 获取文档分块列表 */
+  getDocumentChunks: (id: string) =>
+    apiFetch<{ items: DocumentChunk[] }>(`/documents/${encodeURIComponent(id)}/chunks`),
+
   /** 列出心理模型 */
   listMentalModels: () => apiFetch<{ items: MentalModel[] }>("/mental-models"),
+
+  /** 获取单个心理模型详情 */
+  getMentalModel: (id: string) => apiFetch<MentalModel>(`/mental-models/${encodeURIComponent(id)}`),
 
   /** 删除心理模型 */
   deleteMentalModel: (id: string) =>

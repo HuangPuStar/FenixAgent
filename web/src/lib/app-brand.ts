@@ -1,13 +1,7 @@
+import { brandingApi } from "@/src/api/branding";
+
 const DEFAULT_APP_NAME = "Fenix Agent";
 const DEFAULT_LOGO_PATH = "/ctrl/brand/fenix-agent-logo-mark.png";
-
-interface BrandingResponse {
-  success: true;
-  data: {
-    brandName: string;
-    logoUrl: string | null;
-  };
-}
 
 interface AppBrand {
   name: string;
@@ -38,11 +32,13 @@ export function getAppBrand(): AppBrand {
  */
 export async function loadAppBrand(): Promise<void> {
   try {
-    const response = await fetch("/web/branding");
-    if (!response.ok) return;
-    const payload = (await response.json()) as BrandingResponse;
-    appBrand = createBrand(payload.data.brandName, payload.data.logoUrl);
+    const resp = await brandingApi.get();
+    if (resp.success && resp.data) {
+      appBrand = createBrand(resp.data.brandName, resp.data.logoUrl);
+    }
   } catch {
+    // brandingApi.get() 内部已通过 request() 兜底处理网络异常并返回 success: false，
+    // 此处 catch 仅处理极端情况（如 request 模块加载失败），保持静默降级。
     appBrand = createBrand(DEFAULT_APP_NAME, DEFAULT_LOGO_PATH);
   }
 }

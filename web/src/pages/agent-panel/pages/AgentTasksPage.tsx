@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useRequest } from "ahooks";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -11,11 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { envApi, fileApi, taskApi } from "@/src/api/sdk";
+import { envApi } from "@/src/api/environments";
+import { fileApi } from "@/src/api/files";
+import { unwrap } from "@/src/api/request";
+import { taskApi } from "@/src/api/tasks";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-interface TaskInfo {
+interface TaskItem {
   id: string;
   name: string;
   description?: string;
@@ -30,7 +34,7 @@ interface TaskInfo {
   lastStatus?: string | null;
 }
 
-interface ExecutionLogInfo {
+interface ExecutionLogItem {
   id: string;
   status: string;
   triggeredBy: string;
@@ -52,11 +56,11 @@ interface FileInfo {
   modifiedAt: number;
 }
 
-interface Environment {
+interface EnvInfo {
   id: string;
   name: string;
-  workspace_path: string;
-  session_id?: string;
+  workspacePath?: string;
+  sessionId?: string;
 }
 
 const CRON_PRESETS_KEYS = [
@@ -103,7 +107,7 @@ function formatDuration(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function formatLastResult(t: (key: string, options?: Record<string, unknown>) => string, task: TaskInfo): string {
+function formatLastResult(t: (key: string, options?: Record<string, unknown>) => string, task: TaskItem): string {
   if (!task.lastStatus) return "—";
   if (task.lastStatus === "skipped") return t("lastResult.skipped");
   if (task.lastStatus === "timeout") return t("lastResult.timeout");
@@ -120,29 +124,45 @@ function statusColor(status: string | null | undefined): string {
   return "bg-surface-2 text-text-muted";
 }
 
-function toWorkspaceRelativePath(environment: Environment, workspacePath: string): string {
-  const prefix = environment.workspace_path.replace(/\/$/, "");
+function toWorkspaceRelativePath(environment: EnvInfo, workspacePath: string): string {
+  const prefix = (environment.workspacePath ?? "").replace(/\/$/, "");
   if (!workspacePath.startsWith(prefix)) return workspacePath.replace(/^\//, "");
   return workspacePath.slice(prefix.length).replace(/^\/+/, "");
 }
 
 export function AgentTasksPage() {
   const { t } = useTranslation("tasks");
-  const [tasks, setTasks] = useState<TaskInfo[]>([]);
-  const [environments, setEnvironments] = useState<Environment[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // ── 列表查询：合并 task 列表 + environment 列表 ──
+  const {
+    data: listData,
+    loading,
+    refresh,
+  } = useRequest(
+    async () => {
+      const [taskData, envData] = await Promise.all([unwrap(taskApi.list()), unwrap(envApi.list())]);
+      return { tasks: taskData, environments: envData };
+    },
+    {
+      onError: (err: Error) => {
+        console.error(t("toast.loadPageFailed", { error: "" }), err);
+        toast.error(t("toast.loadPageFailed", { error: err.message }));
+      },
+    },
+  );
+  const tasks: TaskItem[] = Array.isArray(listData?.tasks) ? (listData.tasks as unknown as TaskItem[]) : [];
+  const environments: EnvInfo[] = Array.isArray(listData?.environments)
+    ? (listData.environments as unknown as EnvInfo[])
+    : [];
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<TaskInfo | null>(null);
+  const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<TaskInfo | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TaskItem | null>(null);
 
-  const [logsTask, setLogsTask] = useState<TaskInfo | null>(null);
-  const [logs, setLogs] = useState<ExecutionLogInfo[]>([]);
-  const [logsTotal, setLogsTotal] = useState(0);
-  const [logsPage, setLogsPage] = useState(1);
-  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsTask, setLogsTask] = useState<TaskItem | null>(null);
   const [logsDialogOpen, setLogsDialogOpen] = useState(false);
+  const [logsPage, setLogsPage] = useState(1);
   const [clearLogsConfirmOpen, setClearLogsConfirmOpen] = useState(false);
   const [workspaceEntries, setWorkspaceEntries] = useState<FileInfo[]>([]);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
@@ -155,49 +175,116 @@ export function AgentTasksPage() {
   const [formTask, setFormTask] = useState("");
   const [formTimeoutMinutes, setFormTimeoutMinutes] = useState("30");
   const [formEnabled, setFormEnabled] = useState(true);
-  const [formSaving, setFormSaving] = useState(false);
   const [triggeringTaskId, setTriggeringTaskId] = useState<string | null>(null);
+
+  // ── 分页加载执行日志 ──
+  const {
+    data: logsData,
+    loading: logsLoading,
+    run: runLoadLogs,
+  } = useRequest((taskId: string, page: number) => unwrap(taskApi.logs(taskId, { page, pageSize: 20 })), {
+    manual: true,
+  });
+  const logs: ExecutionLogItem[] = Array.isArray(logsData?.items)
+    ? (logsData.items as unknown as ExecutionLogItem[])
+    : [];
+  const logsTotal = logsData?.total ?? 0;
   const totalLogPages = Math.max(1, Math.ceil(logsTotal / 20));
 
-  const loadTasksAndEnvironments = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [taskResult, envResult] = await Promise.all([taskApi.list(), envApi.list()]);
-      setTasks(Array.isArray(taskResult.data) ? (taskResult.data as TaskInfo[]) : []);
-      setEnvironments(Array.isArray(envResult.data) ? (envResult.data as Environment[]) : []);
-    } catch (error) {
-      console.error(t("toast.loadPageFailed", { error: "" }), error);
-      toast.error(t("toast.loadPageFailed", { error: error instanceof Error ? error.message : t("misc.unknown") }));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const loadLogs = (taskId: string, page = 1) => {
+    setLogsPage(page);
+    runLoadLogs(taskId, page);
+  };
 
-  useEffect(() => {
-    loadTasksAndEnvironments();
-  }, [loadTasksAndEnvironments]);
-
-  const loadLogs = useCallback(
-    async (taskId: string, page = 1) => {
-      setLogsLoading(true);
-      try {
-        const { data: result } = await taskApi.logs({ id: taskId }, { page, pageSize: 20 });
-        const items = (result as { items?: ExecutionLogInfo[]; total?: number } | null)?.items;
-        const total = (result as { items?: ExecutionLogInfo[]; total?: number } | null)?.total;
-        setLogs(Array.isArray(items) ? items : []);
-        setLogsTotal(total ?? 0);
-        setLogsPage(page);
-      } catch (error) {
-        console.error(t("toast.loadLogsFailed", { error: "" }), error);
-        toast.error(t("toast.loadLogsFailed", { error: error instanceof Error ? error.message : t("misc.unknown") }));
-      } finally {
-        setLogsLoading(false);
+  // ── 保存（创建/更新）：仅创建时 toast ──
+  const { run: runSave, loading: saving } = useRequest(
+    async (editId: string | null, payload: Record<string, unknown>) => {
+      if (editId) {
+        return unwrap(taskApi.update(editId, payload));
       }
+      return unwrap(taskApi.create(payload as { name: string; cron: string; url: string }));
     },
-    [t],
+    {
+      manual: true,
+      onSuccess: (_data, [editId]) => {
+        if (!editId) toast.success(t("toast.taskCreated"));
+        setDialogOpen(false);
+        refresh();
+      },
+      onError: (err: Error) => {
+        console.error(t("toast.saveFailed", { error: "" }), err);
+        toast.error(t("toast.saveFailed", { error: err.message }));
+      },
+    },
   );
 
-  const resetForm = useCallback(() => {
+  // ── 启停切换：静默操作 ──
+  const { run: runToggle } = useRequest((id: string) => unwrap(taskApi.toggle(id)), {
+    manual: true,
+    onSuccess: () => refresh(),
+    onError: (err: Error) => {
+      console.error(t("toast.toggleFailed", { error: "" }), err);
+      toast.error(t("toast.toggleFailed", { error: err.message }));
+    },
+  });
+
+  // ── 手动触发：展示详细结果 ──
+  const { run: runTrigger } = useRequest(
+    async (id: string) => {
+      setTriggeringTaskId(id);
+      return unwrap(taskApi.trigger(id));
+    },
+    {
+      manual: true,
+      onSuccess: (result) => {
+        toast.success(
+          t("toast.triggerSuccess", {
+            status: (result as { status?: string } | null)?.status ?? t("misc.unknown"),
+            duration: formatDuration((result as { duration?: number | null } | null)?.duration ?? null),
+            directory: (result as { workspaceName?: string } | null)?.workspaceName ?? "—",
+          }),
+        );
+        refresh();
+      },
+      onError: (err: Error) => {
+        console.error(t("toast.triggerFailed", { error: "" }), err);
+        toast.error(t("toast.triggerFailed", { error: err.message }));
+      },
+      onFinally: () => {
+        setTriggeringTaskId(null);
+      },
+    },
+  );
+
+  // ── 删除：静默操作 ──
+  const { run: runDelete } = useRequest((id: string) => unwrap(taskApi.del(id)), {
+    manual: true,
+    onSuccess: () => {
+      setConfirmOpen(false);
+      setDeleteTarget(null);
+      refresh();
+    },
+    onError: (err: Error) => {
+      console.error(t("toast.deleteFailed", { error: "" }), err);
+      toast.error(t("toast.deleteFailed", { error: err.message }));
+    },
+  });
+
+  // ── 清空日志 ──
+  const { run: runClearLogs } = useRequest((id: string) => unwrap(taskApi.clearLogs(id)), {
+    manual: true,
+    onSuccess: (_data, [id]) => {
+      toast.success(t("toast.logsCleared"));
+      setClearLogsConfirmOpen(false);
+      loadLogs(id, 1);
+    },
+    onError: (err: Error) => {
+      console.error(t("toast.clearLogsFailed", { error: "" }), err);
+      toast.error(t("toast.clearLogsFailed", { error: err.message }));
+    },
+  });
+
+  const resetForm = () => {
     setFormName("");
     setFormDescription("");
     setFormCron("*/5 * * * *");
@@ -205,7 +292,7 @@ export function AgentTasksPage() {
     setFormTask("");
     setFormTimeoutMinutes("30");
     setFormEnabled(true);
-  }, [environments]);
+  };
 
   const handleOpenCreate = () => {
     setEditingTask(null);
@@ -213,7 +300,7 @@ export function AgentTasksPage() {
     setDialogOpen(true);
   };
 
-  const handleOpenEdit = (task: TaskInfo) => {
+  const handleOpenEdit = (task: TaskItem) => {
     setEditingTask(task);
     setFormName(task.name);
     setFormDescription(task.description ?? "");
@@ -225,72 +312,25 @@ export function AgentTasksPage() {
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     const error = validateTaskForm(t, formName, formEnvironmentId, formTask, formCron, formTimeoutMinutes);
     if (error) {
       toast.error(error);
       return;
     }
-    setFormSaving(true);
-    try {
-      const payload = {
-        name: formName.trim(),
-        description: formDescription.trim() || undefined,
-        cron: formCron.trim(),
-        environmentId: formEnvironmentId,
-        task: formTask.trim(),
-        timeoutMinutes: Number(formTimeoutMinutes),
-        enabled: formEnabled,
-      };
-      if (editingTask) {
-        await taskApi.update({ id: editingTask.id }, payload);
-        toast.success(t("toast.taskUpdated"));
-      } else {
-        await taskApi.create(payload);
-        toast.success(t("toast.taskCreated"));
-      }
-      setDialogOpen(false);
-      await loadTasksAndEnvironments();
-    } catch (saveError) {
-      console.error(t("toast.saveFailed", { error: "" }), saveError);
-      toast.error(t("toast.saveFailed", { error: saveError instanceof Error ? saveError.message : t("misc.unknown") }));
-    } finally {
-      setFormSaving(false);
-    }
+    const payload = {
+      name: formName.trim(),
+      description: formDescription.trim() || undefined,
+      cron: formCron.trim(),
+      environmentId: formEnvironmentId,
+      task: formTask.trim(),
+      timeoutMinutes: Number(formTimeoutMinutes),
+      enabled: formEnabled,
+    };
+    runSave(editingTask?.id ?? null, payload);
   };
 
-  const handleToggle = async (task: TaskInfo) => {
-    try {
-      await taskApi.toggle({ id: task.id });
-      toast.success(task.enabled ? t("toast.disabled", { name: task.name }) : t("toast.enabled", { name: task.name }));
-      await loadTasksAndEnvironments();
-    } catch (error) {
-      console.error(t("toast.toggleFailed", { error: "" }), error);
-      toast.error(t("toast.toggleFailed", { error: error instanceof Error ? error.message : t("misc.unknown") }));
-    }
-  };
-
-  const handleTrigger = async (task: TaskInfo) => {
-    setTriggeringTaskId(task.id);
-    try {
-      const { data: result } = await taskApi.trigger({ id: task.id });
-      toast.success(
-        t("toast.triggerSuccess", {
-          status: (result as { status?: string } | null)?.status ?? t("misc.unknown"),
-          duration: formatDuration((result as { duration?: number | null } | null)?.duration ?? null),
-          directory: (result as { workspaceName?: string } | null)?.workspaceName ?? "—",
-        }),
-      );
-      await loadTasksAndEnvironments();
-    } catch (error) {
-      console.error(t("toast.triggerFailed", { error: "" }), error);
-      toast.error(t("toast.triggerFailed", { error: error instanceof Error ? error.message : t("misc.unknown") }));
-    } finally {
-      setTriggeringTaskId(null);
-    }
-  };
-
-  const handleViewLogs = (task: TaskInfo) => {
+  const handleViewLogs = (task: TaskItem) => {
     setLogsTask(task);
     setLogsDialogOpen(true);
     setWorkspaceEntries([]);
@@ -298,58 +338,27 @@ export function AgentTasksPage() {
     loadLogs(task.id, 1);
   };
 
-  const handleBrowseWorkspace = async (log: ExecutionLogInfo) => {
+  const handleBrowseWorkspace = async (log: ExecutionLogItem) => {
     if (!log.workspacePath || !log.environmentId) {
       toast.error(t("toast.noWorkspacePath"));
       return;
     }
     const environment = environments.find((item) => item.id === log.environmentId);
-    if (!environment?.session_id) {
+    if (!environment?.sessionId) {
       toast.error(t("toast.noEnvSession"));
       return;
     }
     setWorkspaceLoading(true);
     try {
       const relativePath = toWorkspaceRelativePath(environment, log.workspacePath);
-      const { data: wsResult } = await fileApi.listDir({ id: environment.session_id! }, { path: relativePath });
-      setWorkspaceEntries(
-        Array.isArray((wsResult as { entries?: FileInfo[] } | null)?.entries)
-          ? ((wsResult as { entries?: FileInfo[] } | null)?.entries ?? [])
-          : [],
-      );
+      const wsResult = await unwrap(fileApi.listDir(environment.sessionId!, relativePath));
+      setWorkspaceEntries(Array.isArray(wsResult?.entries) ? (wsResult.entries as unknown as FileInfo[]) : []);
       setWorkspaceTitle(relativePath);
     } catch (error) {
       console.error(t("toast.viewDirFailed", { error: "" }), error);
       toast.error(t("toast.viewDirFailed", { error: error instanceof Error ? error.message : t("misc.unknown") }));
     } finally {
       setWorkspaceLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    try {
-      await taskApi.delete({ id: deleteTarget.id });
-      toast.success(t("toast.taskDeleted"));
-      setConfirmOpen(false);
-      setDeleteTarget(null);
-      await loadTasksAndEnvironments();
-    } catch (error) {
-      console.error(t("toast.deleteFailed", { error: "" }), error);
-      toast.error(t("toast.deleteFailed", { error: error instanceof Error ? error.message : t("misc.unknown") }));
-    }
-  };
-
-  const handleClearLogs = async () => {
-    if (!logsTask) return;
-    try {
-      await taskApi.clearLogs({ id: logsTask.id });
-      toast.success(t("toast.logsCleared"));
-      setClearLogsConfirmOpen(false);
-      await loadLogs(logsTask.id, 1);
-    } catch (error) {
-      console.error(t("toast.clearLogsFailed", { error: "" }), error);
-      toast.error(t("toast.clearLogsFailed", { error: error instanceof Error ? error.message : t("misc.unknown") }));
     }
   };
 
@@ -427,14 +436,14 @@ export function AgentTasksPage() {
                   size="xs"
                   variant="outline"
                   disabled={triggeringTaskId === task.id}
-                  onClick={() => handleTrigger(task)}
+                  onClick={() => runTrigger(task.id)}
                 >
                   {triggeringTaskId === task.id ? "..." : t("actions.executeNow")}
                 </Button>
                 <Button size="xs" variant="outline" onClick={() => handleViewLogs(task)}>
                   {t("actions.logs")}
                 </Button>
-                <Button size="xs" variant="outline" onClick={() => handleToggle(task)}>
+                <Button size="xs" variant="outline" onClick={() => runToggle(task.id)}>
                   {task.enabled ? t("actions.disable") : t("actions.enable")}
                 </Button>
                 <Button size="xs" variant="outline" onClick={() => handleOpenEdit(task)}>
@@ -461,7 +470,7 @@ export function AgentTasksPage() {
         onOpenChange={setDialogOpen}
         title={editingTask ? t("form.editTitle") : t("form.createTitle")}
         onSubmit={handleSave}
-        loading={formSaving}
+        loading={saving}
         width="sm:max-w-2xl"
       >
         <div className="grid gap-4">
@@ -692,7 +701,7 @@ export function AgentTasksPage() {
         title={t("confirm.deleteTitle")}
         description={t("confirm.deleteDescription", { name: deleteTarget?.name ?? "" })}
         variant="destructive"
-        onConfirm={handleDelete}
+        onConfirm={() => deleteTarget && runDelete(deleteTarget.id)}
       />
       <ConfirmDialog
         open={clearLogsConfirmOpen}
@@ -700,7 +709,7 @@ export function AgentTasksPage() {
         title={t("logs.clearTitle")}
         description={t("logs.clearDescription")}
         variant="destructive"
-        onConfirm={handleClearLogs}
+        onConfirm={() => logsTask && runClearLogs(logsTask.id)}
       />
     </div>
   );
