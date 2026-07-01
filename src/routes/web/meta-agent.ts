@@ -7,6 +7,7 @@
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebErrSchema } from "../../schemas/common.schema";
 import { EnsureMetaAgentResponseSchema } from "../../schemas/meta-agent.schema";
 import { ensureMetaEnvironment } from "../../services/meta-agent";
 
@@ -22,7 +23,7 @@ app.post(
   async ({ store, request, error }: any) => {
     const authCtx = store.authContext!;
     if (!authCtx) {
-      return error(401, { error: { type: "UNAUTHORIZED", message: "No organization context" } });
+      return error(401, { success: false, error: { code: "UNAUTHORIZED", message: "No organization context" } });
     }
 
     try {
@@ -31,12 +32,16 @@ app.post(
     } catch (err: unknown) {
       logger.error("ensure failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
-      return error(500, { error: { type: "INTERNAL_ERROR", message } });
+      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message } });
     }
   },
   {
     sessionAuth: true,
-    response: "ensure-meta-agent-response",
+    response: {
+      200: "ensure-meta-agent-response",
+      401: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Meta Agent"],
       summary: "确保 Meta Agent 可用",

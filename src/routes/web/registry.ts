@@ -1,6 +1,7 @@
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebErrSchema } from "../../schemas/common.schema";
 import {
   EventQuerySchema,
   MachineDetailResponseSchema,
@@ -83,13 +84,16 @@ app.get(
       return { data: result.data.map(serializeMachine), total: Number(result.total) };
     } catch (err: unknown) {
       logger.error("Failed to list machines", err);
-      return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });
+      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message: (err as Error).message } });
     }
   },
   {
     sessionAuth: true,
     query: "machine-query",
-    response: "machine-list-response",
+    response: {
+      200: "machine-list-response",
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Registry"],
       summary: "获取机器列表",
@@ -106,7 +110,7 @@ app.get(
     try {
       const result = await getMachine(authCtx, params.id);
       if (!result) {
-        return error(404, { error: { type: "NOT_FOUND", message: "Machine not found" } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: "Machine not found" } });
       }
       return {
         data: {
@@ -116,12 +120,16 @@ app.get(
       };
     } catch (err: unknown) {
       logger.error("Failed to get machine", err);
-      return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });
+      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message: (err as Error).message } });
     }
   },
   {
     sessionAuth: true,
-    response: "machine-detail-response",
+    response: {
+      200: "machine-detail-response",
+      404: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Registry"],
       summary: "获取机器详情",
@@ -143,13 +151,16 @@ app.get(
       return { data: result.data.map(serializeEvent), total: Number(result.total) };
     } catch (err: unknown) {
       logger.error("Failed to list machine events", err);
-      return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message } });
+      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message: (err as Error).message } });
     }
   },
   {
     sessionAuth: true,
     query: "event-query",
-    response: "registry-event-list-response",
+    response: {
+      200: "registry-event-list-response",
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Registry"],
       summary: "获取机器事件列表",

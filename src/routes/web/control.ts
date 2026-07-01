@@ -3,7 +3,7 @@ import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo, sessionRepo } from "../../repositories";
-import { WebOkSchema } from "../../schemas/common.schema";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
 import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
@@ -25,29 +25,44 @@ async function checkOwnership(
   errorFn: (code: number, body: unknown) => Response,
 ): Promise<OwnershipCheckResult> {
   if (!userId || !orgId) {
-    return { error: true, response: errorFn(403, { error: { type: "forbidden", message: "Not authenticated" } }) };
+    return {
+      error: true,
+      response: errorFn(403, { success: false, error: { code: "forbidden", message: "Not authenticated" } }),
+    };
   }
   const resolvedSessionId = await resolveExistingSessionId(sessionId);
   if (!resolvedSessionId) {
-    return { error: true, response: errorFn(404, { error: { type: "not_found", message: "Session not found" } }) };
+    return {
+      error: true,
+      response: errorFn(404, { success: false, error: { code: "not_found", message: "Session not found" } }),
+    };
   }
   // 验证 session 所属环境属于当前组织
   const session = await sessionRepo.getById(resolvedSessionId);
   if (!session) {
-    return { error: true, response: errorFn(404, { error: { type: "not_found", message: "Session not found" } }) };
+    return {
+      error: true,
+      response: errorFn(404, { success: false, error: { code: "not_found", message: "Session not found" } }),
+    };
   }
   if (session.environmentId) {
     const env = await environmentRepo.getById(session.environmentId);
     if (env?.organizationId && env.organizationId !== orgId) {
       return {
         error: true,
-        response: errorFn(403, { error: { type: "forbidden", message: "Not your organization's session" } }),
+        response: errorFn(403, {
+          success: false,
+          error: { code: "forbidden", message: "Not your organization's session" },
+        }),
       };
     }
   }
   const activeSession = await getSession(resolvedSessionId);
   if (!activeSession) {
-    return { error: true, response: errorFn(404, { error: { type: "not_found", message: "Session not active" } }) };
+    return {
+      error: true,
+      response: errorFn(404, { success: false, error: { code: "not_found", message: "Session not active" } }),
+    };
   }
   return { error: false, session: activeSession, sessionId: resolvedSessionId };
 }
@@ -79,7 +94,11 @@ const sendSessionEventHandler: any = async ({ store, params, body, error }: any)
 app.post("/sessions/:id/events", sendSessionEventHandler, {
   sessionAuth: true,
   body: "session-event-payload",
-  response: "send-event-response",
+  response: {
+    200: "send-event-response",
+    403: WebErrSchema,
+    404: WebErrSchema,
+  },
   detail: {
     tags: ["Control"],
     summary: "发送会话事件",
@@ -107,7 +126,11 @@ const sendControlEventHandler: any = async ({ store, params, body, error }: any)
 app.post("/sessions/:id/control", sendControlEventHandler, {
   sessionAuth: true,
   body: "session-event-payload",
-  response: "send-event-response",
+  response: {
+    200: "send-event-response",
+    403: WebErrSchema,
+    404: WebErrSchema,
+  },
   detail: {
     tags: ["Control"],
     summary: "发送控制指令",
@@ -134,7 +157,11 @@ const interruptSessionHandler: any = async ({ store, params, error }: any) => {
 
 app.post("/sessions/:id/interrupt", interruptSessionHandler, {
   sessionAuth: true,
-  response: WebOkSchema(z.null().describe("中断成功后固定返回 null。")).describe("中断会话响应。"),
+  response: {
+    200: WebOkSchema(z.null().describe("中断成功后固定返回 null。")).describe("中断会话响应。"),
+    403: WebErrSchema,
+    404: WebErrSchema,
+  },
   detail: {
     tags: ["Control"],
     summary: "中断会话",

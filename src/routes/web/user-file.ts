@@ -50,7 +50,7 @@ async function requireEnv(
     return await getOwnedEnvironment(envId, orgId, userId);
   } catch (e) {
     if (e instanceof NotFoundError) {
-      return errorFn(404, { error: { type: "not_found", message: "环境不存在" } });
+      return errorFn(404, { success: false, error: { code: "not_found", message: "环境不存在" } });
     }
     throw e;
   }
@@ -72,12 +72,12 @@ app.get(
         return { paths };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote tree operation failed";
-        return error(503, { error: { type: "remote_error", message } });
+        return error(503, { success: false, error: { code: "remote_error", message } });
       }
     }
 
     const resolved = await resolveWorkspacePath(params.id, ".");
-    if (!resolved) return error(404, { error: { type: "not_found", message: "工作区不存在" } });
+    if (!resolved) return error(404, { success: false, error: { code: "not_found", message: "工作区不存在" } });
     const entries = await listPathsRecursive(resolved.workspaceDir);
     const paths = entries.map((e) => e.path);
     const mtimes: Record<string, number> = {};
@@ -113,25 +113,29 @@ app.post(
         return { oldPath, newPath };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote rename operation failed";
-        return error(503, { error: { type: "remote_error", message } });
+        return error(503, { success: false, error: { code: "remote_error", message } });
       }
     }
 
     if (!isUserPath(oldPath) || !isUserPath(newPath)) {
-      return error(400, { error: { type: "validation_error", message: "Only user/ paths are allowed" } });
+      return error(400, {
+        success: false,
+        error: { code: "validation_error", message: "Only user/ paths are allowed" },
+      });
     }
 
     const oldResolved = await resolveWorkspacePath(params.id, oldPath);
-    if (!oldResolved) return error(404, { error: { type: "not_found", message: "Source not found" } });
+    if (!oldResolved) return error(404, { success: false, error: { code: "not_found", message: "Source not found" } });
 
     try {
       await stat(oldResolved.resolved);
     } catch {
-      return error(404, { error: { type: "not_found", message: "Source not found" } });
+      return error(404, { success: false, error: { code: "not_found", message: "Source not found" } });
     }
 
     const newResolved = await resolveWorkspacePath(params.id, newPath);
-    if (!newResolved) return error(400, { error: { type: "validation_error", message: "Invalid destination" } });
+    if (!newResolved)
+      return error(400, { success: false, error: { code: "validation_error", message: "Invalid destination" } });
 
     await renamePath(oldResolved.resolved, newResolved.resolved);
     return { oldPath, newPath };
@@ -164,16 +168,19 @@ app.post(
         return { path };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote mkdir operation failed";
-        return error(503, { error: { type: "remote_error", message } });
+        return error(503, { success: false, error: { code: "remote_error", message } });
       }
     }
 
     if (!isUserPath(path)) {
-      return error(400, { error: { type: "validation_error", message: "Only user/ paths are allowed" } });
+      return error(400, {
+        success: false,
+        error: { code: "validation_error", message: "Only user/ paths are allowed" },
+      });
     }
 
     const resolved = await resolveWorkspacePath(params.id, path);
-    if (!resolved) return error(400, { error: { type: "validation_error", message: "Invalid path" } });
+    if (!resolved) return error(400, { success: false, error: { code: "validation_error", message: "Invalid path" } });
 
     await mkdirp(resolved.resolved);
     return { path };
@@ -267,24 +274,32 @@ app.get(
     const machineId = await getRemoteMachineId(params.id);
     if (machineId) {
       return error(501, {
-        error: { type: "not_implemented", message: "远程环境暂不支持目录打包下载" },
+        success: false,
+        error: { code: "not_implemented", message: "远程环境暂不支持目录打包下载" },
       });
     }
 
     const path = (query as Record<string, string | undefined>)?.path;
-    if (!path) return error(400, { error: { type: "validation_error", message: "path query parameter required" } });
+    if (!path)
+      return error(400, {
+        success: false,
+        error: { code: "validation_error", message: "path query parameter required" },
+      });
     if (!isUserPath(path))
-      return error(400, { error: { type: "validation_error", message: "Only user/ paths are allowed" } });
+      return error(400, {
+        success: false,
+        error: { code: "validation_error", message: "Only user/ paths are allowed" },
+      });
 
     const resolved = await resolveWorkspacePath(params.id, path);
-    if (!resolved) return error(404, { error: { type: "not_found", message: "Path not found" } });
+    if (!resolved) return error(404, { success: false, error: { code: "not_found", message: "Path not found" } });
 
     try {
       const info = await stat(resolved.resolved);
       if (!info.isDirectory())
-        return error(400, { error: { type: "validation_error", message: "Path is not a directory" } });
+        return error(400, { success: false, error: { code: "validation_error", message: "Path is not a directory" } });
     } catch {
-      return error(404, { error: { type: "not_found", message: "Path not found" } });
+      return error(404, { success: false, error: { code: "not_found", message: "Path not found" } });
     }
 
     const dirName = path.split("/").filter(Boolean).pop() || "download";

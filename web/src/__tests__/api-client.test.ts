@@ -167,7 +167,7 @@ describe("error handling", () => {
   // 测试非 ok 响应 SDK 返回 error 对象
   test("SDK returns error object on non-ok response", async () => {
     fetchMock.response = { ok: false, status: 401, statusText: "Unauthorized" };
-    fetchMock.responseData = { success: false, error: { message: "Not authenticated" } };
+    fetchMock.responseData = { success: false, error: { code: "UNAUTHORIZED", message: "Not authenticated" } };
     const { sessionApi } = await import("../api/sessions");
     const { data, error } = await sessionApi.get({ sessionId: "sess-1" });
     expect(error).not.toBeNull();

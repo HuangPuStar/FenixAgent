@@ -13,6 +13,7 @@ import {
   UpdateChannelBindingRequestSchema,
   UpdateChannelBindingResponseSchema,
 } from "../../schemas/channel.schema";
+import { WebErrSchema } from "../../schemas/common.schema";
 import { createBinding, deleteBinding, listBindings, updateBinding } from "../../services/channel-binding";
 import { listChannelProviders } from "../../services/channel-provider";
 import { getHermesClient } from "../../services/hermes-client";
@@ -110,12 +111,15 @@ app.post(
     const authCtx = store.authContext!;
     const b = body as { platform: string; chatId?: string | null; agentId: string; enabled?: boolean };
     if (!b.platform || !b.agentId) {
-      return error(400, { error: { type: "VALIDATION_ERROR", message: "platform 和 agentId 为必填字段" } });
+      return error(400, {
+        success: false,
+        error: { code: "VALIDATION_ERROR", message: "platform 和 agentId 为必填字段" },
+      });
     }
     // 验证 agentId 属于当前团队
     const env = await environmentRepo.getById(b.agentId);
     if (!env || env.organizationId !== authCtx.organizationId) {
-      return error(404, { error: { type: "NOT_FOUND", message: "Agent 不存在" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "Agent 不存在" } });
     }
     const binding = await createBinding({
       platform: b.platform,
@@ -128,7 +132,11 @@ app.post(
   {
     sessionAuth: true,
     body: "create-channel-binding-request",
-    response: "create-channel-binding-response",
+    response: {
+      200: "create-channel-binding-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Channels"],
       summary: "创建通道绑定",
@@ -147,21 +155,25 @@ app.delete(
     const binding = await listBindings();
     const target = binding.find((b) => b.id === id);
     if (!target) {
-      return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "绑定不存在" } });
     }
     const env = await environmentRepo.getById(target.agentId);
     if (!env || env.organizationId !== authCtx.organizationId) {
-      return error(403, { error: { type: "FORBIDDEN", message: "无权操作此绑定" } });
+      return error(403, { success: false, error: { code: "FORBIDDEN", message: "无权操作此绑定" } });
     }
     const deleted = await deleteBinding(id);
     if (!deleted) {
-      return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "绑定不存在" } });
     }
     return { success: true as const };
   },
   {
     sessionAuth: true,
-    response: "delete-channel-binding-response",
+    response: {
+      200: "delete-channel-binding-response",
+      403: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Channels"],
       summary: "删除通道绑定",
@@ -180,16 +192,16 @@ app.patch(
     const binding = await listBindings();
     const target = binding.find((b) => b.id === id);
     if (!target) {
-      return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "绑定不存在" } });
     }
     const env = await environmentRepo.getById(target.agentId);
     if (!env || env.organizationId !== authCtx.organizationId) {
-      return error(403, { error: { type: "FORBIDDEN", message: "无权操作此绑定" } });
+      return error(403, { success: false, error: { code: "FORBIDDEN", message: "无权操作此绑定" } });
     }
     const b = body as Record<string, unknown>;
     const updated = await updateBinding(id, b);
     if (!updated) {
-      return error(404, { error: { type: "NOT_FOUND", message: "绑定不存在" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "绑定不存在" } });
     }
     const updatedEnv = await environmentRepo.getById(updated.agentId);
     return { ...updated, agentName: updatedEnv?.name ?? null };
@@ -197,7 +209,11 @@ app.patch(
   {
     sessionAuth: true,
     body: "update-channel-binding-request",
-    response: "update-channel-binding-response",
+    response: {
+      200: "update-channel-binding-response",
+      403: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Channels"],
       summary: "更新通道绑定",

@@ -13,6 +13,16 @@
 
 import Elysia from "elysia";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import {
+  CreateSkillResponseSchema,
+  DeleteSkillResponseSchema,
+  SkillDetailSchema,
+  SkillListResponseSchema,
+  SkillUploadResponseSchema,
+  UpdateSkillResponseSchema,
+  WebOkSchema,
+} from "../../../schemas";
+import { WebErrSchema } from "../../../schemas/common.schema";
 import { configError, configNotFound, configSuccess, configValidationError } from "../../../services/config-utils";
 import {
   deleteSkill,
@@ -84,7 +94,7 @@ async function handleGet(ctx: AuthContext, name: string) {
 async function handleCreate(
   ctx: AuthContext,
   body: CreateSkillBody,
-  errorFn: (status: number, body: unknown) => unknown,
+  errorFn: (status: number, body: unknown) => Response,
 ) {
   if (!body.name) {
     return errorFn(400, configValidationError("Missing 'name' field"));
@@ -110,7 +120,7 @@ async function handleUpdate(
   ctx: AuthContext,
   name: string,
   data: UpdateSkillBody["data"],
-  errorFn: (status: number, body: unknown) => unknown,
+  errorFn: (status: number, body: unknown) => Response,
 ) {
   if (!data?.content) {
     return errorFn(400, configValidationError("Missing required field: data.content"));
@@ -172,7 +182,7 @@ async function handleDownload(ctx: AuthContext, nameOrResourceKey: string) {
 /**
  * 批量上传技能目录（接收 multipart/form-data）。
  */
-async function handleUpload(ctx: AuthContext, request: Request, errorFn: (status: number, body: unknown) => unknown) {
+async function handleUpload(ctx: AuthContext, request: Request, errorFn: (status: number, body: unknown) => Response) {
   let formData: globalThis.FormData | null;
   try {
     formData = (await request.formData()) as globalThis.FormData;
@@ -254,6 +264,7 @@ app.get(
   },
   {
     sessionAuth: true,
+    response: SkillListResponseSchema,
     detail: {
       tags: ["SkillConfig"],
       summary: "列出所有 Skill",
@@ -277,13 +288,17 @@ app.get(
       "success" in result &&
       (result as Record<string, unknown>).success === false
     ) {
-      const errResult = result as { error?: { type?: string; message?: string } };
-      return error(404, errResult.error ?? { type: "NOT_FOUND", message: `Skill '${name}' not found` });
+      const errResult = result as { error?: { code?: string; message?: string } };
+      return error(404, errResult.error ?? { code: "NOT_FOUND", message: `Skill '${name}' not found` });
     }
     return result;
   },
   {
     sessionAuth: true,
+    response: {
+      200: WebOkSchema(SkillDetailSchema),
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["SkillConfig"],
       summary: "获取单个 Skill 详情",
@@ -336,6 +351,11 @@ app.get(
   },
   {
     sessionAuth: true,
+    response: {
+      400: WebErrSchema,
+      404: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["SkillConfig"],
       summary: "下载 Skill 压缩包",
@@ -359,10 +379,15 @@ app.post(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
-    return await handleCreate(authCtx, (body ?? {}) as CreateSkillBody, (status, data) => error(status, data));
+    return (await handleCreate(authCtx, (body ?? {}) as CreateSkillBody, (status, data) => error(status, data))) as any;
   },
   {
     sessionAuth: true,
+    response: {
+      200: CreateSkillResponseSchema,
+      400: WebErrSchema,
+      409: WebErrSchema,
+    },
     detail: {
       tags: ["SkillConfig"],
       summary: "创建新 Skill",
@@ -379,10 +404,14 @@ app.put(
     const authCtx = store.authContext!;
     const name = params.name as string;
     const data = (body as UpdateSkillBody)?.data;
-    return await handleUpdate(authCtx, name, data, (status, result) => error(status, result));
+    return (await handleUpdate(authCtx, name, data, (status, result) => error(status, result))) as any;
   },
   {
     sessionAuth: true,
+    response: {
+      200: UpdateSkillResponseSchema,
+      400: WebErrSchema,
+    },
     detail: {
       tags: ["SkillConfig"],
       summary: "更新已有 Skill",
@@ -414,13 +443,17 @@ app.delete(
       "success" in result &&
       (result as Record<string, unknown>).success === false
     ) {
-      const errResult = result as { error?: { type?: string; message?: string } };
-      return error(404, errResult.error ?? { type: "NOT_FOUND", message: `Skill '${name}' not found` });
+      const errResult = result as { error?: { code?: string; message?: string } };
+      return error(404, errResult.error ?? { code: "NOT_FOUND", message: `Skill '${name}' not found` });
     }
     return result;
   },
   {
     sessionAuth: true,
+    response: {
+      200: DeleteSkillResponseSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["SkillConfig"],
       summary: "删除 Skill",
@@ -444,10 +477,16 @@ app.post(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型限制
   async ({ store, request, error }: any) => {
     const authCtx = store.authContext!;
-    return await handleUpload(authCtx, request, (status, data) => error(status, data));
+    return (await handleUpload(authCtx, request, (status, data) => error(status, data))) as any;
   },
   {
     sessionAuth: true,
+    response: {
+      200: SkillUploadResponseSchema,
+      400: WebErrSchema,
+      409: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       hide: true,
       tags: ["SkillConfig"],

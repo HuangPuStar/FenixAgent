@@ -23,6 +23,7 @@ import {
   updateWorkflowMeta,
 } from "../../repositories/workflow-def";
 import { WorkflowDefsActionRequestSchema, WorkflowDefsActionResponseSchema } from "../../schemas";
+import { WebErrSchema } from "../../schemas/common.schema";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 import {
   createTrigger,
@@ -55,7 +56,7 @@ app.post(
           const name = payload.name as string;
           const description = payload.description as string | undefined;
           if (!name?.trim()) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "name is required" } });
+            return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name is required" } });
           }
           const row = await createWorkflowDef(authCtx, { name: name.trim(), description });
           publishWorkflowEvent(row.id, "workflow.created", {});
@@ -66,7 +67,10 @@ app.post(
           const workflowId = payload.workflowId as string;
           const yaml = payload.yaml as string;
           if (!workflowId || !yaml) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and yaml are required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId and yaml are required" },
+            });
           }
           await saveDraft(workflowId, authCtx, yaml);
           publishWorkflowEvent(workflowId, "workflow.draft_updated", { yaml });
@@ -76,7 +80,10 @@ app.post(
         case "publish": {
           const workflowId = payload.workflowId as string;
           if (!workflowId) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
+            });
           }
           const vRow = await publishVersion(workflowId, authCtx);
           publishWorkflowEvent(workflowId, "workflow.version_published", {
@@ -93,9 +100,12 @@ app.post(
         case "get": {
           const workflowId = payload.workflowId as string;
           if (!workflowId)
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
+            });
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
-          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
           const draftYaml = await getVersionYaml(workflowId, 0, {
             organizationId: authCtx.organizationId,
             storagePath: wf.storagePath,
@@ -106,7 +116,10 @@ app.post(
         case "getVersions": {
           const workflowId = payload.workflowId as string;
           if (!workflowId)
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
+            });
           const versions = await getVersions(workflowId, authCtx.organizationId);
           return { success: true, data: versions };
         }
@@ -115,16 +128,19 @@ app.post(
           const workflowId = payload.workflowId as string;
           const version = payload.version as number;
           if (!workflowId || version === undefined) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and version are required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId and version are required" },
+            });
           }
           // 先验证 workflowId 归属当前 organization，再读 YAML
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
-          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
           const yaml = await getVersionYaml(workflowId, version, {
             organizationId: authCtx.organizationId,
             storagePath: wf.storagePath,
           });
-          if (!yaml) return error(404, { error: { type: "NOT_FOUND", message: "Version not found" } });
+          if (!yaml) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Version not found" } });
           return { success: true, data: { workflowId, version, yaml } };
         }
 
@@ -132,7 +148,10 @@ app.post(
           const workflowId = payload.workflowId as string;
           const version = payload.version as number;
           if (!workflowId || version === undefined) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and version are required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId and version are required" },
+            });
           }
           await setLatestVersion(workflowId, authCtx.organizationId, version);
           return { success: true };
@@ -141,9 +160,13 @@ app.post(
         case "delete": {
           const workflowId = payload.workflowId as string;
           if (!workflowId)
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
+            });
           const deleted = await deleteWorkflowDef(workflowId, authCtx.organizationId);
-          if (!deleted) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          if (!deleted)
+            return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
           publishWorkflowEvent(workflowId, "workflow.deleted", {});
           return { success: true };
         }
@@ -153,9 +176,13 @@ app.post(
           const name = payload.name as string | undefined;
           const description = payload.description as string | undefined;
           if (!workflowId)
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
+            });
           const updated = await updateWorkflowMeta(workflowId, authCtx.organizationId, { name, description });
-          if (!updated) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          if (!updated)
+            return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
           publishWorkflowEvent(workflowId, "workflow.meta_updated", { name, description });
           return { success: true, data: updated };
         }
@@ -168,7 +195,10 @@ app.post(
         case "recoverApply": {
           const workflowIds = payload.workflowIds as string[];
           if (!Array.isArray(workflowIds) || workflowIds.length === 0) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowIds array is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowIds array is required" },
+            });
           }
           const recovered = await recoverWorkflows(authCtx, workflowIds);
           return { success: true, data: recovered };
@@ -178,7 +208,10 @@ app.post(
           const workflowId = payload.workflowId as string;
           const version = payload.version as number;
           if (!workflowId || version === undefined) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId and version are required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId and version are required" },
+            });
           }
           await restoreVersionToDraft(workflowId, authCtx, version);
           publishWorkflowEvent(workflowId, "workflow.draft_restored", { version });
@@ -192,11 +225,14 @@ app.post(
           const triggerType = (payload.type as string) || "webhook";
           const triggerConfig = payload.config as Record<string, unknown> | undefined;
           if (!workflowId) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
+            });
           }
           // 多租户关键：校验 workflowId 归属当前组织
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
-          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
           const trigger = await createTrigger({
             organizationId: authCtx.organizationId,
             workflowId,
@@ -210,11 +246,14 @@ app.post(
         case "listTriggers": {
           const workflowId = payload.workflowId as string;
           if (!workflowId) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
+            });
           }
           // 多租户关键：先校验 workflowId 归属当前组织，再列 triggers
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
-          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
           const triggers = await listTriggers(workflowId, authCtx.organizationId);
           return { success: true, data: triggers };
         }
@@ -222,40 +261,54 @@ app.post(
         case "deleteTrigger": {
           const triggerId = payload.triggerId as string;
           if (!triggerId) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "triggerId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "triggerId is required" },
+            });
           }
           const deleted = await deleteTrigger(triggerId, authCtx.organizationId);
-          if (!deleted) return error(404, { error: { type: "NOT_FOUND", message: "Trigger not found" } });
+          if (!deleted)
+            return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
           return { success: true };
         }
 
         case "regenerateHash": {
           const triggerId = payload.triggerId as string;
           if (!triggerId) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "triggerId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "triggerId is required" },
+            });
           }
           const result = await regenerateHash(triggerId, authCtx.organizationId);
-          if (!result) return error(404, { error: { type: "NOT_FOUND", message: "Trigger not found" } });
+          if (!result)
+            return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
           return { success: true, data: result };
         }
 
         case "enableTrigger": {
           const triggerId = payload.triggerId as string;
           if (!triggerId) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "triggerId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "triggerId is required" },
+            });
           }
           const ok = await enableTrigger(triggerId, authCtx.organizationId);
-          if (!ok) return error(404, { error: { type: "NOT_FOUND", message: "Trigger not found" } });
+          if (!ok) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
           return { success: true };
         }
 
         case "disableTrigger": {
           const triggerId = payload.triggerId as string;
           if (!triggerId) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "triggerId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "triggerId is required" },
+            });
           }
           const ok = await disableTrigger(triggerId, authCtx.organizationId);
-          if (!ok) return error(404, { error: { type: "NOT_FOUND", message: "Trigger not found" } });
+          if (!ok) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
           return { success: true };
         }
 
@@ -263,12 +316,15 @@ app.post(
           const workflowId = payload.workflowId as string;
           const version = payload.version as number | undefined;
           if (!workflowId) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
+            });
           }
 
           let targetVersion = version;
           const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
-          if (!wf) return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+          if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
           const storagePath = wf.storagePath;
           if (targetVersion === undefined) {
             targetVersion = wf.latestVersion ?? 0;
@@ -278,7 +334,7 @@ app.post(
             organizationId: authCtx.organizationId,
             storagePath,
           });
-          if (!yaml) return error(404, { error: { type: "NOT_FOUND", message: "Version not found" } });
+          if (!yaml) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Version not found" } });
 
           let params: Record<string, unknown> = {};
           try {
@@ -293,7 +349,10 @@ app.post(
         }
 
         default:
-          return error(400, { error: { type: "VALIDATION_ERROR", message: `Unknown action: ${action}` } });
+          return error(400, {
+            success: false,
+            error: { code: "VALIDATION_ERROR", message: `Unknown action: ${action}` },
+          });
       }
     } catch (err: unknown) {
       logger.error("Error:", err);
@@ -303,17 +362,24 @@ app.post(
       // 唯一约束冲突 → 409 Conflict
       if (pgMessage?.includes("duplicate key") || pgMessage?.includes("unique constraint")) {
         return error(409, {
-          error: { type: "CONFLICT", message: pgMessage || "Duplicate key violation" },
+          success: false,
+          error: { code: "CONFLICT", message: pgMessage || "Duplicate key violation" },
         });
       }
       const message = pgMessage || (err instanceof Error ? err.message : "Unknown error");
-      return error(500, { error: { type: "INTERNAL_ERROR", message } });
+      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message } });
     }
   },
   {
     sessionAuth: true,
     body: "workflow-defs-action-request",
-    response: "workflow-defs-action-response",
+    response: {
+      200: "workflow-defs-action-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+      409: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Workflow Engine"],
       summary: "工作流定义管理",

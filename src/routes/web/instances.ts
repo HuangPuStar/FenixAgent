@@ -1,7 +1,7 @@
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WebOkSchema } from "../../schemas/common.schema";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   InstanceActivityListResponseSchema,
   SpawnInstanceFromEnvironmentRequestSchema,
@@ -51,7 +51,7 @@ app.post(
       await getOwnedEnvironment(b.environmentId, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && "code" in err && (err as { code?: string }).code === "NOT_FOUND") {
-        return error(404, { error: { type: "NOT_FOUND", message: (err as Error).message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: (err as Error).message } });
       }
       throw err;
     }
@@ -62,7 +62,10 @@ app.post(
   {
     sessionAuth: true,
     body: "spawn-instance-request",
-    response: "spawn-instance-response",
+    response: {
+      200: "spawn-instance-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Instances"],
       summary: "从环境启动实例",
@@ -86,8 +89,8 @@ app.delete(
         return { success: true as const, data: null };
       }
       const status = result.error === "Instance not found" ? 404 : 403;
-      const type = status === 404 ? "NOT_FOUND" : "forbidden";
-      return error(status, { error: { type, message: result.error! } });
+      const code = status === 404 ? "NOT_FOUND" : "FORBIDDEN";
+      return error(status, { success: false, error: { code, message: result.error! } });
     }
 
     getCoreRuntime().deleteInstance(params.id);
@@ -95,7 +98,11 @@ app.delete(
   },
   {
     sessionAuth: true,
-    response: WebOkSchema(z.null().describe("实例删除成功后固定返回 null。")).describe("删除实例响应。"),
+    response: {
+      200: WebOkSchema(z.null().describe("实例删除成功后固定返回 null。")).describe("删除实例响应。"),
+      403: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Instances"],
       summary: "删除实例",

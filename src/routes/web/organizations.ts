@@ -4,6 +4,7 @@ import { auth } from "../../auth/better-auth";
 import { db } from "../../db";
 import { member, user } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebErrSchema } from "../../schemas/common.schema";
 import {
   ApiKeyActionRequestSchema,
   ApiKeyActionResponseSchema,
@@ -288,7 +289,14 @@ app.post(
   {
     sessionAuth: true,
     body: "organization-action-request",
-    response: "organization-action-response",
+    response: {
+      200: "organization-action-response",
+      400: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
+      409: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Organizations"],
       summary: "组织管理",
@@ -358,7 +366,11 @@ app.post(
   {
     sessionAuth: true,
     body: "apikey-action-request",
-    response: "apikey-action-response",
+    response: {
+      200: "apikey-action-response",
+      400: WebErrSchema,
+      403: WebErrSchema,
+    },
     detail: {
       tags: ["Organizations"],
       summary: "API Key 管理",

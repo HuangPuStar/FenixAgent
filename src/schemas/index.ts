@@ -8,6 +8,14 @@ export {
   AcpRelayParamsSchema,
   AcpRelayQuerySchema,
 } from "./acp.schema";
+export {
+  type AgentGenerationResponse,
+  AgentGenerationResponseSchema,
+  type AgentGenerationResult,
+  AgentGenerationResultSchema,
+  type AgentGenerationSkill,
+  AgentGenerationSkillSchema,
+} from "./agent-generation.schema";
 // Agent Sites
 export {
   type AgentSiteApp,
@@ -75,6 +83,8 @@ export {
   ConfigActionSchema,
   type ConfigBody,
   ConfigBodySchema,
+  CreateSkillResponseSchema,
+  DeleteSkillResponseSchema,
   type McpInspectResult,
   McpInspectResultSchema,
   type McpServerDetail,
@@ -91,10 +101,22 @@ export {
   ProviderDetailSchema,
   type ProviderInfo,
   ProviderInfoSchema,
+  type SkillDetail,
+  SkillDetailSchema,
   type SkillInfo,
   SkillInfoSchema,
+  type SkillListResponse,
+  SkillListResponseSchema,
+  type SkillSaveResult,
+  SkillSaveResultSchema,
   type SkillSourceInfo,
   SkillSourceInfoSchema,
+  type SkillUploadConflict,
+  SkillUploadConflictSchema,
+  SkillUploadResponseSchema,
+  type SkillUploadResult,
+  SkillUploadResultSchema,
+  UpdateSkillResponseSchema,
 } from "./config.schema";
 // Environments
 export {

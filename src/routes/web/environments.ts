@@ -3,7 +3,7 @@ import Elysia from "elysia";
 import * as z from "zod/v4";
 import { ValidationError as AppValidationError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WebOkSchema } from "../../schemas/common.schema";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   CreateEnvironmentRequestSchema,
   CreateEnvironmentResponseSchema,
@@ -95,7 +95,7 @@ app.post(
         err instanceof AppValidationError ||
         (err instanceof Error && "code" in err && (err as { code?: string }).code === "VALIDATION_ERROR")
       ) {
-        return error(400, { error: { type: "VALIDATION_ERROR", message: (err as Error).message } });
+        return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: (err as Error).message } });
       }
       throw err;
     }
@@ -111,7 +111,10 @@ app.post(
   {
     sessionAuth: true,
     body: "create-environment-request",
-    response: "create-environment-response",
+    response: {
+      200: "create-environment-response",
+      400: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "创建环境",
@@ -132,13 +135,16 @@ app.get(
       return { ...sanitizeResponse(env), secret: env.secret };
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
   },
   {
     sessionAuth: true,
-    response: "environment-detail-response",
+    response: {
+      200: "environment-detail-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "获取环境详情",
@@ -172,12 +178,12 @@ app.put(
       });
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       if (
         err instanceof AppValidationError ||
         (err instanceof Error && "code" in err && (err as { code?: string }).code === "VALIDATION_ERROR")
       ) {
-        return error(400, { error: { type: "VALIDATION_ERROR", message: err.message } });
+        return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: err.message } });
       }
       throw err;
     }
@@ -186,7 +192,11 @@ app.put(
   {
     sessionAuth: true,
     body: "update-environment-request",
-    response: "update-environment-response",
+    response: {
+      200: "update-environment-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "更新环境",
@@ -206,7 +216,7 @@ app.post(
       await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
 
@@ -215,15 +225,19 @@ app.post(
       return await enterEnvironment(user.id, params.id, b.instance_number);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND") {
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       }
-      return error(500, { error: { type: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
+      return error(500, { success: false, error: { code: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
     }
   },
   {
     sessionAuth: true,
     body: "enter-environment-request",
-    response: "enter-environment-response",
+    response: {
+      200: "enter-environment-response",
+      404: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "进入环境",
@@ -243,7 +257,7 @@ app.delete(
       await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
     await deleteEnvironment(params.id);
@@ -251,7 +265,10 @@ app.delete(
   },
   {
     sessionAuth: true,
-    response: "delete-environment-response",
+    response: {
+      200: "delete-environment-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "删除环境",
@@ -271,14 +288,17 @@ app.get(
       await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
     return listInstancesResponse(params.id);
   },
   {
     sessionAuth: true,
-    response: "environment-instances-response",
+    response: {
+      200: "environment-instances-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "获取环境实例列表",

@@ -22,8 +22,8 @@ const app = new Elysia({ name: "web-skills", prefix: "/skills" }).model({
   "skill-download-query": SkillDownloadQuerySchema,
 });
 
-function jsonError(status: number, type: string, message: string): Response {
-  return Response.json({ error: { type, message } }, { status });
+function jsonError(status: number, code: string, message: string): Response {
+  return Response.json({ success: false, error: { code, message } }, { status });
 }
 
 app.get(

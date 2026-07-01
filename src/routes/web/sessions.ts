@@ -2,6 +2,7 @@ import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import { sessionRepo } from "../../repositories/session";
+import { WebErrSchema } from "../../schemas/common.schema";
 import { SessionDetailSchema, SessionHistorySchema, SessionListResponseSchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
 import { createSSEStream } from "../../transport/sse-writer";
@@ -53,13 +54,16 @@ app.get(
     const authCtx = store.authContext!;
     const row = await sessionRepo.getById(params.id);
     if (!row) {
-      return error(404, { error: { type: "not_found", message: `Session '${params.id}' not found` } });
+      return error(404, { success: false, error: { code: "not_found", message: `Session '${params.id}' not found` } });
     }
     // 验证 session 的 environment 属于当前团队
     if (row.environmentId) {
       const env = await environmentRepo.getById(row.environmentId);
       if (!env || env.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: `Session '${params.id}' not found` } });
+        return error(404, {
+          success: false,
+          error: { code: "not_found", message: `Session '${params.id}' not found` },
+        });
       }
     }
     return {
@@ -75,7 +79,10 @@ app.get(
   },
   {
     sessionAuth: true,
-    response: "session-detail",
+    response: {
+      200: "session-detail",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Sessions"],
       summary: "获取会话详情",
@@ -95,24 +102,27 @@ app.get(
     // 验证 session 属于当前团队
     const row = await sessionRepo.getById(sessionId);
     if (!row) {
-      return error(404, { error: { type: "not_found", message: "Session not found" } });
+      return error(404, { success: false, error: { code: "not_found", message: "Session not found" } });
     }
     if (row.environmentId) {
       const env = await environmentRepo.getById(row.environmentId);
       if (!env || env.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "not_found", message: "Session not found" } });
+        return error(404, { success: false, error: { code: "not_found", message: "Session not found" } });
       }
     }
     const bus = eventService.getBus(sessionId);
     if (!bus) {
-      return error(404, { error: { type: "not_found", message: "Session event bus not found" } });
+      return error(404, { success: false, error: { code: "not_found", message: "Session event bus not found" } });
     }
     const events = bus.getEventsSince(0);
     return { events };
   },
   {
     sessionAuth: true,
-    response: "session-history",
+    response: {
+      200: "session-history",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Sessions"],
       summary: "获取会话事件历史",
@@ -128,23 +138,23 @@ app.get(
   async ({ request, store, params, error }: any) => {
     const authCtx = store.authContext;
     if (!authCtx) {
-      return error(401, { error: { type: "UNAUTHORIZED", message: "No auth context" } });
+      return error(401, { success: false, error: { code: "UNAUTHORIZED", message: "No auth context" } });
     }
 
     const sessionId = params.id;
     if (!sessionId) {
-      return error(400, { error: { type: "VALIDATION_ERROR", message: "Session ID is required" } });
+      return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "Session ID is required" } });
     }
 
     // 验证 session 归属当前组织
     const row = await sessionRepo.getById(sessionId);
     if (!row) {
-      return error(404, { error: { type: "NOT_FOUND", message: "Session not found" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "Session not found" } });
     }
     if (row.environmentId) {
       const env = await environmentRepo.getById(row.environmentId);
       if (!env || env.organizationId !== authCtx.organizationId) {
-        return error(404, { error: { type: "NOT_FOUND", message: "Session not found" } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: "Session not found" } });
       }
     }
 
@@ -157,6 +167,11 @@ app.get(
   },
   {
     sessionAuth: true,
+    response: {
+      400: WebErrSchema,
+      401: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Sessions"],
       summary: "订阅会话事件流",

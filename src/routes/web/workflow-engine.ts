@@ -13,6 +13,7 @@ import { workflowSnapshot } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
 import { getVersionYaml, getWorkflowDef } from "../../repositories/workflow-def";
 import { WorkflowEngineActionRequestSchema, WorkflowEngineActionResponseSchema } from "../../schemas";
+import { WebErrSchema } from "../../schemas/common.schema";
 import { cleanupSpawnedEnvironments, getTeamEngine } from "../../services/workflow";
 import { resolveYaml } from "../../services/workflow/resolve-yaml";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
@@ -41,7 +42,10 @@ app.post(
         case "run": {
           const yaml = await resolveYaml(payload, authCtx.organizationId, deps);
           if (!yaml) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "yaml or workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "yaml or workflowId is required" },
+            });
           }
           const params = payload.params as Record<string, unknown> | undefined;
           const workflowId = payload.workflowId as string | undefined;
@@ -99,7 +103,10 @@ app.post(
         case "dryRun": {
           const yaml = await resolveYaml(payload, authCtx.organizationId, deps);
           if (!yaml) {
-            return error(400, { error: { type: "VALIDATION_ERROR", message: "yaml or workflowId is required" } });
+            return error(400, {
+              success: false,
+              error: { code: "VALIDATION_ERROR", message: "yaml or workflowId is required" },
+            });
           }
           const result = engine.dryRun(yaml);
           const dryRunWorkflowId = payload.workflowId as string | undefined;
@@ -216,23 +223,34 @@ app.post(
         }
 
         default:
-          return error(400, { error: { type: "validation_error", message: `Unknown action: ${action}` } });
+          return error(400, {
+            success: false,
+            error: { code: "validation_error", message: `Unknown action: ${action}` },
+          });
       }
     } catch (err: unknown) {
       // WorkflowError 带有 code，映射为对应 HTTP 状态码
       if (err instanceof WorkflowError) {
         const code = String(err.code);
         const status = code === "RUN_NOT_FOUND" ? 404 : code === "VALIDATION_ERROR" ? 400 : 500;
-        return error(status, { error: { type: code, message: err.message } });
+        return error(status, { success: false, error: { code: code, message: err.message } });
       }
       logger.error("Unexpected error:", err);
-      return error(500, { error: { type: "INTERNAL_ERROR", message: (err as Error).message || "Unknown error" } });
+      return error(500, {
+        success: false,
+        error: { code: "INTERNAL_ERROR", message: (err as Error).message || "Unknown error" },
+      });
     }
   },
   {
     sessionAuth: true,
     body: "workflow-engine-action-request",
-    response: "workflow-engine-action-response",
+    response: {
+      200: "workflow-engine-action-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Workflow Engine"],
       summary: "工作流引擎控制",

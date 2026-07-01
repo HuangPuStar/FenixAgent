@@ -51,13 +51,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/graph",
     async ({ query, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/graph`, query as Record<string, string>));
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /graph proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -75,13 +79,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/bank-stats",
     async ({ store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/stats`);
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /bank-stats proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -100,7 +108,8 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/memories",
     async ({ query, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(
           withQs(`${bankPath(bankId)}/memories/list`, query as Record<string, string>),
@@ -108,7 +117,10 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /memories proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -126,13 +138,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/memories/:id",
     async ({ params, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/memories/${params.id}`);
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /memories/:id proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -150,13 +166,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/memories/:id",
     async ({ params, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/memories/${params.id}`, { method: "DELETE" });
         return await res.json();
       } catch (err) {
         console.error("[hindsight] DELETE /memories/:id proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -174,7 +194,8 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/memories",
     async ({ body, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/memories`, {
           method: "POST",
@@ -184,7 +205,10 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return await res.json();
       } catch (err) {
         console.error("[hindsight] POST /memories proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -203,7 +227,8 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/recall",
     async ({ body, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/memories/recall`, {
           method: "POST",
@@ -213,7 +238,10 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return await res.json();
       } catch (err) {
         console.error("[hindsight] POST /recall proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -231,7 +259,8 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/reflect",
     async ({ body, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/reflect`, {
           method: "POST",
@@ -241,7 +270,10 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return await res.json();
       } catch (err) {
         console.error("[hindsight] POST /reflect proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -260,13 +292,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/documents",
     async ({ query, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/documents`, query as Record<string, string>));
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /documents proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -284,7 +320,8 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/documents",
     async ({ body, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         // Elysia 自动解析 multipart body，重构 FormData 转发给 Hindsight
         const fd = new FormData();
@@ -303,7 +340,10 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return await res.json();
       } catch (err) {
         console.error("[hindsight] POST /documents proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -322,13 +362,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/documents/:id",
     async ({ params, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/documents/${params.id}`, { method: "DELETE" });
         return await res.json();
       } catch (err) {
         console.error("[hindsight] DELETE /documents/:id proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -346,7 +390,8 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/documents/:id/chunks",
     async ({ params, query, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(
           withQs(`${bankPath(bankId)}/documents/${params.id}/chunks`, query as Record<string, string>),
@@ -354,7 +399,10 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /documents/:id/chunks proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -373,13 +421,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/mental-models",
     async ({ store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models`);
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /mental-models proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -397,13 +449,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/mental-models/:id",
     async ({ params, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models/${params.id}`);
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /mental-models/:id proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -421,13 +477,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/mental-models/:id",
     async ({ params, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models/${params.id}`, { method: "DELETE" });
         return await res.json();
       } catch (err) {
         console.error("[hindsight] DELETE /mental-models/:id proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -446,13 +506,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/entities",
     async ({ query, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/entities`, query as Record<string, string>));
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /entities proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -470,13 +534,17 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/entities/:id",
     async ({ params, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/entities/${params.id}`);
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /entities/:id proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
@@ -494,7 +562,8 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
     "/entities/graph",
     async ({ query, store, error }) => {
       const bankId = await resolveMemberId(store.authContext!);
-      if (!bankId) return error(403, { error: { type: "forbidden", message: "Cannot resolve bank ID" } });
+      if (!bankId)
+        return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(
           withQs(`${bankPath(bankId)}/entities/graph`, query as Record<string, string>),
@@ -502,7 +571,10 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return await res.json();
       } catch (err) {
         console.error("[hindsight] GET /entities/graph proxy failed:", err);
-        return error(503, { error: { type: "service_unavailable", message: "Hindsight service unavailable" } });
+        return error(503, {
+          success: false,
+          error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+        });
       }
     },
     {
