@@ -24,10 +24,10 @@ describe("workspace-fs tree utilities", () => {
   test("listPathsRecursive returns all user/ paths", async () => {
     const entries = await listPathsRecursive(baseDir);
     const paths = entries.map((e) => e.path);
-    expect(paths).toContain("a.txt");
-    expect(paths).toContain("sub/b.txt");
-    expect(paths).toContain("sub/nested/c.txt");
-    // .opencode 应被过滤
+    expect(paths).toContain("user/a.txt");
+    expect(paths).toContain("user/sub/b.txt");
+    expect(paths).toContain("user/sub/nested/c.txt");
+    // .opencode 应被黑名单过滤
     expect(paths.some((p) => p.includes(".opencode"))).toBe(false);
   });
 
@@ -35,14 +35,14 @@ describe("workspace-fs tree utilities", () => {
   test("listPathsRecursive directories end with /", async () => {
     const entries = await listPathsRecursive(baseDir);
     const paths = entries.map((e) => e.path);
-    expect(paths).toContain("sub/");
-    expect(paths).toContain("sub/nested/");
+    expect(paths).toContain("user/");
+    expect(paths).toContain("user/sub/");
+    expect(paths).toContain("user/sub/nested/");
   });
 
-  // listPathsRecursive 空 user 目录返回空数组
-  test("listPathsRecursive returns empty for empty user dir", async () => {
+  // listPathsRecursive 空 workspace 目录返回空数组
+  test("listPathsRecursive returns empty for empty workspace dir", async () => {
     const emptyDir = await mkdtemp(join(tmpdir(), "ws-fs-empty-"));
-    await mkdir(join(emptyDir, "user"), { recursive: true });
     const paths = await listPathsRecursive(emptyDir);
     expect(paths).toEqual([]);
     await rm(emptyDir, { recursive: true, force: true });
