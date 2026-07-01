@@ -23,7 +23,7 @@ export const webWorkflowCustomTools = new Elysia({ name: "web-workflow-custom-to
   {
     sessionAuth: true,
     detail: {
-      tags: ["Workflow"],
+      tags: ["Workflow Engine"],
       summary: "列出已注册的自定义节点工具",
       description:
         "返回 WORKFLOW_TOOLS_DIR 下注册的所有 CustomNode 工具元数据（name/description/inputs/produces），供前端 palette 和节点配置下拉使用。",
