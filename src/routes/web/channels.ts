@@ -9,6 +9,7 @@ import {
   CreateChannelBindingRequestSchema,
   CreateChannelBindingResponseSchema,
   DeleteChannelBindingResponseSchema,
+  HermesStatusResponseSchema,
   HermesStatusSchema,
   UpdateChannelBindingRequestSchema,
   UpdateChannelBindingResponseSchema,
@@ -34,7 +35,7 @@ const app = new Elysia({ name: "web-channels" }).use(authGuardPlugin).model({
 app.get(
   "/channels/providers",
   () => {
-    return listChannelProviders();
+    return { success: true as const, data: listChannelProviders() };
   },
   {
     sessionAuth: true,
@@ -53,18 +54,21 @@ app.get(
     const client = getHermesClient();
     if (!client) {
       return {
-        connected: false,
-        url: "",
-        platforms: [],
-        reconnecting: false,
-        lastConnectedAt: null,
+        success: true as const,
+        data: {
+          connected: false,
+          url: "",
+          platforms: [],
+          reconnecting: false,
+          lastConnectedAt: null,
+        },
       };
     }
-    return client.getStatus();
+    return { success: true as const, data: client.getStatus() };
   },
   {
     sessionAuth: true,
-    response: "hermes-status",
+    response: HermesStatusResponseSchema,
     detail: {
       tags: ["Channels"],
       summary: "获取 Hermes 状态",
@@ -91,7 +95,7 @@ app.get(
       const env = await environmentRepo.getById(b.agentId);
       enriched.push({ ...b, agentName: env?.name ?? null });
     }
-    return enriched;
+    return { success: true as const, data: enriched };
   },
   {
     sessionAuth: true,
@@ -127,7 +131,7 @@ app.post(
       agentId: b.agentId,
       enabled: b.enabled,
     });
-    return { ...binding, agentName: env?.name ?? null };
+    return { success: true as const, data: { ...binding, agentName: env?.name ?? null } };
   },
   {
     sessionAuth: true,
@@ -165,7 +169,7 @@ app.delete(
     if (!deleted) {
       return error(404, { success: false, error: { code: "NOT_FOUND", message: "绑定不存在" } });
     }
-    return { success: true as const };
+    return { success: true as const, data: null };
   },
   {
     sessionAuth: true,
@@ -204,7 +208,7 @@ app.patch(
       return error(404, { success: false, error: { code: "NOT_FOUND", message: "绑定不存在" } });
     }
     const updatedEnv = await environmentRepo.getById(updated.agentId);
-    return { ...updated, agentName: updatedEnv?.name ?? null };
+    return { success: true as const, data: { ...updated, agentName: updatedEnv?.name ?? null } };
   },
   {
     sessionAuth: true,

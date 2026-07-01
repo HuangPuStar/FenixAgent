@@ -69,8 +69,8 @@ export const taskApi = {
   update: (id: string, body: TaskUpdateBody) =>
     request<TaskInfo>("/web/tasks/:id", { method: "PUT", params: { id }, body }),
 
-  /** 删除定时任务。后端返回 { success: true }（无 data 字段）。 */
-  del: (id: string) => request<{ success: true }>("/web/tasks/:id", { method: "DELETE", params: { id } }),
+  /** 删除定时任务。 */
+  del: (id: string) => request<void>("/web/tasks/:id", { method: "DELETE", params: { id } }),
 
   /** 切换任务启用/禁用状态，返回切换后的 { id, enabled } */
   toggle: (id: string) =>
@@ -83,6 +83,6 @@ export const taskApi = {
   logs: (id: string, query?: { page?: number; pageSize?: number }) =>
     request<PaginatedResponse<ExecutionLogInfo>>("/web/tasks/:id/logs", { method: "GET", params: { id }, query }),
 
-  /** 清空任务所有执行日志。后端返回 { success: true }（无 data 字段）。 */
-  clearLogs: (id: string) => request<{ success: true }>("/web/tasks/:id/logs", { method: "DELETE", params: { id } }),
+  /** 清空任务所有执行日志。 */
+  clearLogs: (id: string) => request<void>("/web/tasks/:id/logs", { method: "DELETE", params: { id } }),
 };

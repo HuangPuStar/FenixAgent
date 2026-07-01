@@ -131,7 +131,7 @@ app.post(
               dagStatus: "CANCELLED",
             });
           }
-          return { success: true };
+          return { success: true, data: null };
         }
 
         // 审批节点
@@ -148,7 +148,7 @@ app.post(
               dagStatus: "RUNNING",
             });
           }
-          return { success: true };
+          return { success: true, data: null };
         }
 
         // 获取运行状态快照

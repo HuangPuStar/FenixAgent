@@ -193,7 +193,7 @@ app.delete(
         return error(404, { success: false, error: { code: "not_found", message: err.message } });
       }
 
-      return result;
+      return { success: true as const, data: null };
     } catch (err: unknown) {
       const msg =
         (err instanceof Error && err.cause instanceof Error ? err.cause.message : "") ||
@@ -317,7 +317,11 @@ app.delete(
       if (!taskResult.success)
         return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
 
-      return await clearExecutionLogs(authCtx.organizationId, taskId);
+      const result = await clearExecutionLogs(authCtx.organizationId, taskId);
+      if (!result.success) {
+        return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
+      }
+      return { success: true as const, data: null };
     }, error);
   },
   {

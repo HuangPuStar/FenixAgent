@@ -131,7 +131,9 @@ export const OrganizationActionResponseSchema = z.union([
   ActionSuccessSchema.extend({
     data: z.object({ deleted: z.literal(true).describe("删除操作已执行。") }).describe("删除结果。"),
   }),
-  ActionSuccessSchema,
+  ActionSuccessSchema.extend({
+    data: z.null().describe("无业务数据时固定返回 null。"),
+  }),
 ]);
 
 /** API Key 信息 */
@@ -191,7 +193,9 @@ export const ApiKeyActionResponseSchema = z.union([
   ActionSuccessSchema.extend({
     data: z.object({ deleted: z.literal(true).describe("删除操作已执行。") }).describe("删除结果。"),
   }),
-  ActionSuccessSchema,
+  ActionSuccessSchema.extend({
+    data: z.null().describe("无业务数据时固定返回 null。"),
+  }),
 ]);
 
 export type OrganizationInfo = z.infer<typeof OrganizationInfoSchema>;

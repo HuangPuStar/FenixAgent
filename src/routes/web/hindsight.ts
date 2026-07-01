@@ -1,6 +1,7 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { HindsightStatusResponseSchema } from "../../schemas";
+import { configSuccess } from "../../services/config-utils";
 import { getHindsightConfig, proxyToHindsight, resolveMemberId } from "../../services/hindsight";
 
 /** 构造 Hindsight v1 bank 路径前缀：/v1/default/banks/{bankId} */
@@ -55,7 +56,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/graph`, query as Record<string, string>));
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /graph proxy failed:", err);
         return error(503, {
@@ -83,7 +84,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/stats`);
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /bank-stats proxy failed:", err);
         return error(503, {
@@ -114,7 +115,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         const res = await proxyToHindsight(
           withQs(`${bankPath(bankId)}/memories/list`, query as Record<string, string>),
         );
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /memories proxy failed:", err);
         return error(503, {
@@ -142,7 +143,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/memories/${params.id}`);
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /memories/:id proxy failed:", err);
         return error(503, {
@@ -170,7 +171,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/memories/${params.id}`, { method: "DELETE" });
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] DELETE /memories/:id proxy failed:", err);
         return error(503, {
@@ -202,7 +203,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] POST /memories proxy failed:", err);
         return error(503, {
@@ -235,7 +236,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] POST /recall proxy failed:", err);
         return error(503, {
@@ -267,7 +268,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] POST /reflect proxy failed:", err);
         return error(503, {
@@ -296,7 +297,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/documents`, query as Record<string, string>));
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /documents proxy failed:", err);
         return error(503, {
@@ -337,7 +338,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
           method: "POST",
           body: fd,
         });
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] POST /documents proxy failed:", err);
         return error(503, {
@@ -366,7 +367,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/documents/${params.id}`, { method: "DELETE" });
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] DELETE /documents/:id proxy failed:", err);
         return error(503, {
@@ -396,7 +397,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         const res = await proxyToHindsight(
           withQs(`${bankPath(bankId)}/documents/${params.id}/chunks`, query as Record<string, string>),
         );
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /documents/:id/chunks proxy failed:", err);
         return error(503, {
@@ -425,7 +426,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models`);
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /mental-models proxy failed:", err);
         return error(503, {
@@ -453,7 +454,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models/${params.id}`);
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /mental-models/:id proxy failed:", err);
         return error(503, {
@@ -481,7 +482,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models/${params.id}`, { method: "DELETE" });
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] DELETE /mental-models/:id proxy failed:", err);
         return error(503, {
@@ -510,7 +511,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/entities`, query as Record<string, string>));
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /entities proxy failed:", err);
         return error(503, {
@@ -538,7 +539,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
       try {
         const res = await proxyToHindsight(`${bankPath(bankId)}/entities/${params.id}`);
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /entities/:id proxy failed:", err);
         return error(503, {
@@ -568,7 +569,7 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
         const res = await proxyToHindsight(
           withQs(`${bankPath(bankId)}/entities/graph`, query as Record<string, string>),
         );
-        return await res.json();
+        return configSuccess(await res.json());
       } catch (err) {
         console.error("[hindsight] GET /entities/graph proxy failed:", err);
         return error(503, {

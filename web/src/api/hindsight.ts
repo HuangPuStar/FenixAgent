@@ -28,12 +28,13 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     throw new Error(error.error ?? `HTTP ${res.status}`);
   }
-  return res.json();
+  const json = (await res.json()) as { data?: T } | T;
+  return typeof json === "object" && json !== null && "data" in json ? (json.data as T) : (json as T);
 }
 
 export const hindsightApi = {
   /** 获取 Hindsight 状态 + bankId */
-  getStatus: () => apiFetch<{ success: boolean; data: HindsightStatus }>("/status"),
+  getStatus: () => apiFetch<HindsightStatus>("/status"),
 
   /** 列出内存 */
   listMemories: (params?: { type?: string; q?: string; limit?: number; offset?: number }) => {
@@ -49,8 +50,7 @@ export const hindsightApi = {
   getMemory: (id: string) => apiFetch<MemoryDetail>(`/memories/${encodeURIComponent(id)}`),
 
   /** 删除内存 */
-  deleteMemory: (id: string) =>
-    apiFetch<{ success: boolean }>(`/memories/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deleteMemory: (id: string) => apiFetch<unknown>(`/memories/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   /** Recall 搜索 */
   recall: (params: { query: string; types?: string[]; max_tokens?: number }) =>
@@ -115,8 +115,7 @@ export const hindsightApi = {
   },
 
   /** 删除文档 */
-  deleteDocument: (id: string) =>
-    apiFetch<{ success: boolean }>(`/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deleteDocument: (id: string) => apiFetch<unknown>(`/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   /** 获取文档分块列表 */
   getDocumentChunks: (id: string) =>
@@ -130,7 +129,7 @@ export const hindsightApi = {
 
   /** 删除心理模型 */
   deleteMentalModel: (id: string) =>
-    apiFetch<{ success: boolean }>(`/mental-models/${encodeURIComponent(id)}`, {
+    apiFetch<unknown>(`/mental-models/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
 

@@ -78,9 +78,7 @@ export const TaskLogsResponseSchema = WebOkSchema(PaginatedLogsSchema.describe("
 );
 
 /** 删除任务响应 */
-export const DeleteTaskResponseSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-});
+export const DeleteTaskResponseSchema = WebOkSchema(z.null()).describe("删除任务响应。");
 
 /** 切换任务启用状态响应 */
 export const ToggleTaskResponseSchema = WebOkSchema(
@@ -98,9 +96,7 @@ export const TriggerTaskResponseSchema = WebOkSchema(
 ).describe("手动触发任务响应。");
 
 /** 清空任务日志响应 */
-export const ClearTaskLogsResponseSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-});
+export const ClearTaskLogsResponseSchema = WebOkSchema(z.null()).describe("清空任务日志响应。");
 
 export type TaskInfo = z.infer<typeof TaskInfoSchema>;
 export type ExecutionLogInfo = z.infer<typeof ExecutionLogInfoSchema>;

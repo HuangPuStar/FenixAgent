@@ -88,7 +88,7 @@ const sendSessionEventHandler: any = async ({ store, params, body, error }: any)
   log(
     `[RC-DEBUG] web -> server: published outbound event id=${event.id} type=${event.type} direction=${event.direction} subscribers=${eventService.getBus(sessionId).subscriberCount()}`,
   );
-  return { status: "ok" as const, event };
+  return { success: true as const, data: { status: "ok" as const, event } };
 };
 
 app.post("/sessions/:id/events", sendSessionEventHandler, {
@@ -120,7 +120,7 @@ const sendControlEventHandler: any = async ({ store, params, body, error }: any)
 
   const b = body as { type?: string; [key: string]: unknown };
   const event = publishSessionEvent(sessionId, b.type || "control_request", b, "outbound");
-  return { status: "ok" as const, event };
+  return { success: true as const, data: { status: "ok" as const, event } };
 };
 
 app.post("/sessions/:id/control", sendControlEventHandler, {

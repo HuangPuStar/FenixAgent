@@ -122,7 +122,7 @@ async function handleDelete(ctx: AuthContext, name: string) {
     // ignore db errors on cleanup
   }
 
-  return { success: true };
+  return { success: true, data: null };
 }
 
 async function handleEnable(ctx: AuthContext, name: string) {
@@ -360,7 +360,7 @@ app.post(
     body: "config-body",
     response: {
       // TODO: 当前仍是 action 分发入口，成功 data 先以宽松对象占位；后续应拆分为独立接口并补精确成功响应 schema。
-      200: WebOkSchema(z.looseObject({})),
+      200: WebOkSchema(z.union([z.looseObject({}), z.null()])),
       400: WebErrSchema,
       500: WebErrSchema,
     },

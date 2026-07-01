@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebOkSchema } from "./common.schema";
 
 /** 通道平台类型 */
 export const ChannelProviderTypeSchema = z.enum(["wechat", "feishu"]).describe("通道平台类型。");
@@ -49,23 +50,30 @@ export const UpdateChannelBindingRequestSchema = z.object({
 });
 
 /** GET /web/channels/providers — 通道供应商列表 */
-export const ChannelProviderListResponseSchema = ChannelProviderDescriptorSchema.array().describe("通道平台列表。");
+export const ChannelProviderListResponseSchema = WebOkSchema(
+  ChannelProviderDescriptorSchema.array().describe("通道平台列表。"),
+).describe("通道平台列表响应。");
 
 /** GET /web/channels/bindings — 通道绑定列表 */
-export const ChannelBindingListResponseSchema = ChannelBindingSchema.array().describe("通道绑定列表。");
+export const ChannelBindingListResponseSchema = WebOkSchema(
+  ChannelBindingSchema.array().describe("通道绑定列表。"),
+).describe("通道绑定列表响应。");
 
 /** POST /web/channels/bindings — 创建绑定响应 */
-export const CreateChannelBindingResponseSchema = ChannelBindingSchema.describe("创建后的通道绑定信息。");
+export const CreateChannelBindingResponseSchema = WebOkSchema(
+  ChannelBindingSchema.describe("创建后的通道绑定信息。"),
+).describe("创建通道绑定响应。");
 
 /** DELETE /web/channels/bindings/:id — 删除绑定响应 */
-export const DeleteChannelBindingResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-  })
-  .describe("删除通道绑定后的响应。");
+export const DeleteChannelBindingResponseSchema = WebOkSchema(z.null()).describe("删除通道绑定后的响应。");
 
 /** PATCH /web/channels/bindings/:id — 更新绑定响应 */
-export const UpdateChannelBindingResponseSchema = ChannelBindingSchema.describe("更新后的通道绑定信息。");
+export const UpdateChannelBindingResponseSchema = WebOkSchema(
+  ChannelBindingSchema.describe("更新后的通道绑定信息。"),
+).describe("更新通道绑定响应。");
+
+/** GET /web/channels/hermes/status — Hermes 状态响应 */
+export const HermesStatusResponseSchema = WebOkSchema(HermesStatusSchema).describe("Hermes 状态响应。");
 
 export type ChannelProviderDescriptor = z.infer<typeof ChannelProviderDescriptorSchema>;
 export type HermesStatus = z.infer<typeof HermesStatusSchema>;

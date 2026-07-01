@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebOkSchema } from "./common.schema";
 /** 知识库状态 */
 export const KnowledgeBaseStatusSchema = z.enum(["empty", "indexing", "ready", "error"]).describe("知识库状态。");
 
@@ -61,21 +62,31 @@ export const ImportKnowledgeUrlRequestSchema = z.object({
 });
 
 /** GET /web/knowledgeBases — 知识库列表响应 */
-export const KnowledgeBaseListResponseSchema = KnowledgeBaseInfoSchema.array().describe("知识库列表。");
+export const KnowledgeBaseListResponseSchema = WebOkSchema(
+  KnowledgeBaseInfoSchema.array().describe("知识库列表。"),
+).describe("知识库列表响应。");
 
 /** GET /web/knowledgeBases/:id — 知识库详情响应 */
-export const KnowledgeBaseDetailResponseSchema = KnowledgeBaseInfoSchema.describe("知识库详情。");
+export const KnowledgeBaseDetailResponseSchema = WebOkSchema(KnowledgeBaseInfoSchema.describe("知识库详情。")).describe(
+  "知识库详情响应。",
+);
 
 /** GET /web/knowledgeBases/:id/resources — 资源列表响应 */
-export const KnowledgeResourceListResponseSchema = KnowledgeResourceItemSchema.array().describe("知识资源列表。");
+export const KnowledgeResourceListResponseSchema = WebOkSchema(
+  KnowledgeResourceItemSchema.array().describe("知识资源列表。"),
+).describe("知识资源列表响应。");
 
 /** POST /web/knowledgeBases/:id/resources/upload — 上传资源响应 */
-export const UploadKnowledgeResourcesResponseSchema = z.object({
-  items: KnowledgeResourceItemSchema.array().describe("本次上传后的资源列表。"),
-});
+export const UploadKnowledgeResourcesResponseSchema = WebOkSchema(
+  z.object({
+    items: KnowledgeResourceItemSchema.array().describe("本次上传后的资源列表。"),
+  }),
+).describe("上传资源响应。");
 
 /** POST /web/knowledgeBases/:id/resources/url — 导入 URL 响应 */
-export const ImportKnowledgeUrlResponseSchema = KnowledgeResourceItemSchema.describe("URL 导入后的知识资源。");
+export const ImportKnowledgeUrlResponseSchema = WebOkSchema(
+  KnowledgeResourceItemSchema.describe("URL 导入后的知识资源。"),
+).describe("URL 导入响应。");
 
 export type KnowledgeBaseInfo = z.infer<typeof KnowledgeBaseInfoSchema>;
 export type KnowledgeResourceItem = z.infer<typeof KnowledgeResourceItemSchema>;

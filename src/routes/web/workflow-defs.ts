@@ -74,7 +74,7 @@ app.post(
           }
           await saveDraft(workflowId, authCtx, yaml);
           publishWorkflowEvent(workflowId, "workflow.draft_updated", { yaml });
-          return { success: true };
+          return { success: true, data: null };
         }
 
         case "publish": {
@@ -154,7 +154,7 @@ app.post(
             });
           }
           await setLatestVersion(workflowId, authCtx.organizationId, version);
-          return { success: true };
+          return { success: true, data: null };
         }
 
         case "delete": {
@@ -168,7 +168,7 @@ app.post(
           if (!deleted)
             return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
           publishWorkflowEvent(workflowId, "workflow.deleted", {});
-          return { success: true };
+          return { success: true, data: null };
         }
 
         case "updateMeta": {
@@ -215,7 +215,7 @@ app.post(
           }
           await restoreVersionToDraft(workflowId, authCtx, version);
           publishWorkflowEvent(workflowId, "workflow.draft_restored", { version });
-          return { success: true };
+          return { success: true, data: null };
         }
 
         // ── Workflow Trigger ──
@@ -269,7 +269,7 @@ app.post(
           const deleted = await deleteTrigger(triggerId, authCtx.organizationId);
           if (!deleted)
             return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
-          return { success: true };
+          return { success: true, data: null };
         }
 
         case "regenerateHash": {
@@ -296,7 +296,7 @@ app.post(
           }
           const ok = await enableTrigger(triggerId, authCtx.organizationId);
           if (!ok) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
-          return { success: true };
+          return { success: true, data: null };
         }
 
         case "disableTrigger": {
@@ -309,7 +309,7 @@ app.post(
           }
           const ok = await disableTrigger(triggerId, authCtx.organizationId);
           if (!ok) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
-          return { success: true };
+          return { success: true, data: null };
         }
 
         case "getParamDefs": {

@@ -3,12 +3,15 @@ import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import { sessionRepo } from "../../repositories/session";
 import { WebErrSchema } from "../../schemas/common.schema";
-import { SessionDetailSchema, SessionHistorySchema, SessionListResponseSchema } from "../../schemas/session.schema";
+import {
+  SessionDetailResponseSchema,
+  SessionHistorySchema,
+  SessionListResponseSchema,
+} from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
 import { createSSEStream } from "../../transport/sse-writer";
 
 const app = new Elysia({ name: "web-sessions" }).use(authGuardPlugin).model({
-  "session-detail": SessionDetailSchema,
   "session-history": SessionHistorySchema,
   "session-list": SessionListResponseSchema,
 });
@@ -24,20 +27,23 @@ app.get(
     const teamEnvIds = new Set(teamEnvs.map((e) => e.id));
     const allSessions = await sessionRepo.listAll();
     const rows = allSessions.filter((s) => s.environmentId && teamEnvIds.has(s.environmentId));
-    return rows.map((r) => ({
-      id: r.id,
-      title: r.title ?? null,
-      status: r.status,
-      environment_id: r.environmentId ?? null,
-      agent_name: r.username ?? null,
-      source: r.source ?? null,
-      created_at: Math.floor(r.createdAt.getTime() / 1000),
-      updated_at: Math.floor(r.updatedAt.getTime() / 1000),
-    }));
+    return {
+      success: true as const,
+      data: rows.map((r) => ({
+        id: r.id,
+        title: r.title ?? null,
+        status: r.status,
+        environment_id: r.environmentId ?? null,
+        agent_name: r.username ?? null,
+        source: r.source ?? null,
+        created_at: Math.floor(r.createdAt.getTime() / 1000),
+        updated_at: Math.floor(r.updatedAt.getTime() / 1000),
+      })),
+    };
   },
   {
     sessionAuth: true,
-    response: "session-list",
+    response: SessionListResponseSchema,
     detail: {
       tags: ["Sessions"],
       summary: "获取会话列表",
@@ -67,20 +73,23 @@ app.get(
       }
     }
     return {
-      id: row.id,
-      title: row.title ?? null,
-      status: row.status,
-      environment_id: row.environmentId ?? null,
-      agent_name: row.username ?? null,
-      source: row.source ?? null,
-      created_at: Math.floor(row.createdAt.getTime() / 1000),
-      updated_at: Math.floor(row.updatedAt.getTime() / 1000),
+      success: true as const,
+      data: {
+        id: row.id,
+        title: row.title ?? null,
+        status: row.status,
+        environment_id: row.environmentId ?? null,
+        agent_name: row.username ?? null,
+        source: row.source ?? null,
+        created_at: Math.floor(row.createdAt.getTime() / 1000),
+        updated_at: Math.floor(row.updatedAt.getTime() / 1000),
+      },
     };
   },
   {
     sessionAuth: true,
     response: {
-      200: "session-detail",
+      200: SessionDetailResponseSchema,
       404: WebErrSchema,
     },
     detail: {
@@ -115,7 +124,7 @@ app.get(
       return error(404, { success: false, error: { code: "not_found", message: "Session event bus not found" } });
     }
     const events = bus.getEventsSince(0);
-    return { events };
+    return { success: true as const, data: { events } };
   },
   {
     sessionAuth: true,
@@ -167,11 +176,6 @@ app.get(
   },
   {
     sessionAuth: true,
-    response: {
-      400: WebErrSchema,
-      401: WebErrSchema,
-      404: WebErrSchema,
-    },
     detail: {
       tags: ["Sessions"],
       summary: "订阅会话事件流",

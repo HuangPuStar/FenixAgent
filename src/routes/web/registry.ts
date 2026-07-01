@@ -13,6 +13,10 @@ import { getMachine, listEvents, listMachines } from "../../services/registry";
 
 const logger = createLogger("registry");
 
+function internalErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Internal server error";
+}
+
 /**
  * 将 Date 转为秒级 Unix 时间戳；null/undefined 原样透传。
  * DB 层返回的是 Date 对象，但响应 schema 要求 number（秒级时间戳）。
@@ -56,7 +60,7 @@ const app = new Elysia({ name: "web-registry" }).use(authGuardPlugin).model({
 app.get(
   "/registry/machines",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 query/response 组合下类型推断不稳定
-  async ({ store, query, error }: any) => {
+  async ({ store, query, status }: any) => {
     const authCtx = store.authContext!;
     const q = query as {
       status?: string;
@@ -81,10 +85,16 @@ app.get(
         limit,
         offset,
       });
-      return { data: result.data.map(serializeMachine), total: Number(result.total) };
+      return {
+        success: true,
+        data: {
+          items: result.data.map(serializeMachine),
+          total: Number(result.total),
+        },
+      };
     } catch (err: unknown) {
       logger.error("Failed to list machines", err);
-      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message: (err as Error).message } });
+      return status(500, { success: false, error: { code: "INTERNAL_ERROR", message: internalErrorMessage(err) } });
     }
   },
   {
@@ -105,14 +115,15 @@ app.get(
 app.get(
   "/registry/machines/:id",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store, params, error }: any) => {
+  async ({ store, params, status }: any) => {
     const authCtx = store.authContext!;
     try {
       const result = await getMachine(authCtx, params.id);
       if (!result) {
-        return error(404, { success: false, error: { code: "NOT_FOUND", message: "Machine not found" } });
+        return status(404, { success: false, error: { code: "NOT_FOUND", message: "Machine not found" } });
       }
       return {
+        success: true,
         data: {
           ...serializeMachine(result),
           recentEvents: result.recentEvents.map(serializeEvent),
@@ -120,7 +131,7 @@ app.get(
       };
     } catch (err: unknown) {
       logger.error("Failed to get machine", err);
-      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message: (err as Error).message } });
+      return status(500, { success: false, error: { code: "INTERNAL_ERROR", message: internalErrorMessage(err) } });
     }
   },
   {
@@ -141,17 +152,23 @@ app.get(
 app.get(
   "/registry/machines/:id/events",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 query/response 组合下类型推断不稳定
-  async ({ store, params, query, error }: any) => {
+  async ({ store, params, query, status }: any) => {
     const authCtx = store.authContext!;
     const q = query as { limit?: string; offset?: string };
     const limit = q.limit ? Number(q.limit) : 20;
     const offset = q.offset ? Number(q.offset) : 0;
     try {
       const result = await listEvents(authCtx, params.id, { limit, offset });
-      return { data: result.data.map(serializeEvent), total: Number(result.total) };
+      return {
+        success: true,
+        data: {
+          items: result.data.map(serializeEvent),
+          total: Number(result.total),
+        },
+      };
     } catch (err: unknown) {
       logger.error("Failed to list machine events", err);
-      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message: (err as Error).message } });
+      return status(500, { success: false, error: { code: "INTERNAL_ERROR", message: internalErrorMessage(err) } });
     }
   },
   {

@@ -351,11 +351,6 @@ app.get(
   },
   {
     sessionAuth: true,
-    response: {
-      400: WebErrSchema,
-      404: WebErrSchema,
-      500: WebErrSchema,
-    },
     detail: {
       tags: ["SkillConfig"],
       summary: "下载 Skill 压缩包",

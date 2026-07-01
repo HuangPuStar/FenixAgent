@@ -4,6 +4,7 @@
  * 封装机器注册表的查询操作，统一通过 request() 与后端 /web/registry/machines 通信。
  */
 
+import type { PaginatedResponse } from "./request";
 import { request } from "./request";
 
 /** 机器注册记录 */
@@ -83,10 +84,9 @@ export const registryApi = {
    * 分页查询机器注册列表。
    *
    * 返回当前组织可见的机器列表，支持按状态和标签过滤。
-   * 注意：受 request() 内部 data 解包影响，返回值不包含分页元信息（total），
-   * 仅返回机器记录数组本身。
    */
-  list: (query?: MachineListQuery) => request<MachineRecord[]>("/web/registry/machines", { method: "GET", query }),
+  list: (query?: MachineListQuery) =>
+    request<PaginatedResponse<MachineRecord>>("/web/registry/machines", { method: "GET", query }),
 
   /**
    * 根据机器 ID 获取单台机器详情。
@@ -99,11 +99,9 @@ export const registryApi = {
    * 分页查询指定机器的注册表事件历史。
    *
    * 用于状态排查和追踪，例如查看机器的上线/下线、心跳超时等历史记录。
-   * 注意：受 request() 内部 data 解包影响，返回值不包含分页元信息（total），
-   * 仅返回事件记录数组本身。
    */
   events: (id: string, query?: EventListQuery) =>
-    request<RegistryEvent[]>("/web/registry/machines/:id/events", {
+    request<PaginatedResponse<RegistryEvent>>("/web/registry/machines/:id/events", {
       method: "GET",
       params: { id },
       query,

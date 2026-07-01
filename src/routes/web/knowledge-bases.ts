@@ -48,7 +48,7 @@ app.get(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
   async ({ store }: any) => {
     const authCtx = store.authContext!;
-    return await listKnowledgeBasesByTeamId(authCtx.organizationId);
+    return { success: true as const, data: await listKnowledgeBasesByTeamId(authCtx.organizationId) };
   },
   {
     sessionAuth: true,
@@ -80,7 +80,7 @@ app.post(
       if (!result.success) {
         return error(400, { success: false, error: { code: result.error.code, message: result.error.message } });
       }
-      return result.data;
+      return { success: true as const, data: result.data };
     } catch (err) {
       console.error(err);
       return error(502, {
@@ -96,7 +96,7 @@ app.post(
     sessionAuth: true,
     body: "create-knowledge-base-request",
     response: {
-      200: "knowledge-base-info",
+      200: WebOkSchema(KnowledgeBaseInfoSchema),
       400: WebErrSchema,
       502: WebErrSchema,
     },
@@ -118,7 +118,7 @@ app.get(
     if (!detail) {
       return error(404, { success: false, error: { code: "NOT_FOUND", message: "知识库不存在" } });
     }
-    return detail;
+    return { success: true as const, data: detail };
   },
   {
     sessionAuth: true,
@@ -150,13 +150,13 @@ app.patch(
       const status = result.error.code === "NOT_FOUND" ? 404 : 400;
       return error(status, { success: false, error: { code: result.error.code, message: result.error.message } });
     }
-    return result.data;
+    return { success: true as const, data: result.data };
   },
   {
     sessionAuth: true,
     body: "update-knowledge-base-request",
     response: {
-      200: "knowledge-base-info",
+      200: WebOkSchema(KnowledgeBaseInfoSchema),
       400: WebErrSchema,
       404: WebErrSchema,
     },
@@ -233,7 +233,7 @@ app.post(
       if (failedItem) {
         throw new Error(failedItem.lastError || `${failedItem.sourceName} 上传失败`);
       }
-      return { items };
+      return { success: true as const, data: { items } };
     } catch (err) {
       console.error(err);
       const message = (err as Error).message;
@@ -276,7 +276,7 @@ app.post(
       });
       const status = item.status === "error" ? 502 : 201;
       if (status >= 400) return error(status, item);
-      return item;
+      return { success: true as const, data: item };
     } catch (err) {
       console.error(err);
       const message = (err as Error).message;
@@ -314,7 +314,7 @@ app.get(
     if (!items) {
       return error(404, { success: false, error: { code: "NOT_FOUND", message: "知识库不存在" } });
     }
-    return items;
+    return { success: true as const, data: items };
   },
   {
     sessionAuth: true,

@@ -24,11 +24,11 @@ app.get(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store }: any) => {
     const authCtx = store.authContext!;
-    return listInstanceActivitySnapshots(Date.now(), authCtx.organizationId);
+    return { success: true as const, data: listInstanceActivitySnapshots(Date.now(), authCtx.organizationId) };
   },
   {
     sessionAuth: true,
-    response: "instance-activity-list-response",
+    response: InstanceActivityListResponseSchema,
     detail: {
       tags: ["Instances"],
       summary: "查看 ACP 实例活跃度",

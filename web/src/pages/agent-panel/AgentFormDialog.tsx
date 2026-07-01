@@ -235,7 +235,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       }
 
       // 在线机器列表
-      const machines = (await unwrap(registryApi.list({ status: "online", limit: 100 }))) ?? [];
+      const machines = (await unwrap(registryApi.list({ status: "online", limit: 100 })))?.items ?? [];
       const machineOptionsVal = machines.map((m) => ({
         id: m.id,
         agentName: m.agentName,

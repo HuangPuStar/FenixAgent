@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebOkSchema } from "./common.schema";
 /** 实例运行状态 */
 export const InstanceStatusSchema = z.enum(["starting", "running", "stopped", "error"]).describe("实例当前运行状态。");
 
@@ -44,7 +45,9 @@ export const SpawnInstanceFromEnvironmentResponseSchema = z.object({
 
 /** GET /web/instances — 实例列表响应 */
 export const InstanceListResponseSchema = InstanceInfoSchema.array();
-export const InstanceActivityListResponseSchema = InstanceActivityInfoSchema.array();
+export const InstanceActivityListResponseSchema = WebOkSchema(
+  InstanceActivityInfoSchema.array().describe("实例活跃度列表。"),
+).describe("实例活跃度列表响应。");
 
 export type InstanceInfo = z.infer<typeof InstanceInfoSchema>;
 export type InstanceActivityInfo = z.infer<typeof InstanceActivityInfoSchema>;

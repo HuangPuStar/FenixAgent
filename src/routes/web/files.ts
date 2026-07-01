@@ -78,7 +78,7 @@ app.get(
     if (machineId) {
       try {
         const entries = await remoteListDir(machineId, envId, queryPath);
-        return { entries };
+        return { success: true as const, data: { entries } };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
         return error(503, { success: false, error: { code: "remote_error", message } });
@@ -94,7 +94,7 @@ app.get(
       return error(400, { success: false, error: { code: "validation_error", message: "Not a directory" } });
 
     const items = await listDirectory(resolved, userDir, workspaceDir);
-    return { entries: items };
+    return { success: true as const, data: { entries: items } };
   },
   {
     sessionAuth: true,
@@ -142,11 +142,14 @@ app.get(
         try {
           const textResult = await remoteReadFile(machineId, envId, filePath);
           return {
-            name: textResult.name,
-            path: textResult.path,
-            content: textResult.content,
-            size: textResult.size,
-            encoding: "utf-8",
+            success: true as const,
+            data: {
+              name: textResult.name,
+              path: textResult.path,
+              content: textResult.content,
+              size: textResult.size,
+              encoding: "utf-8",
+            },
           };
         } catch {
           const binResult = await remoteReadBinaryFile(machineId, envId, filePath);
@@ -195,7 +198,7 @@ app.get(
 
     if (textFile) {
       const { content, size } = await readFileContent(resolved);
-      return { name: fileName, path: displayPath, content, size, encoding: "utf-8" };
+      return { success: true as const, data: { name: fileName, path: displayPath, content, size, encoding: "utf-8" } };
     }
 
     // 中文文件名需要用 RFC 5987 编码，否则 HTTP header 非法
@@ -271,7 +274,7 @@ app.post(
           }),
         );
         const result = await remoteUploadFiles(machineId, envId, rawDirPath, remoteFiles);
-        return result;
+        return { success: true as const, data: result };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
         return error(503, { success: false, error: { code: "remote_error", message } });
@@ -316,7 +319,7 @@ app.post(
         size: buffer.length,
       });
     }
-    return { files: uploaded };
+    return { success: true as const, data: { files: uploaded } };
   },
   {
     sessionAuth: true,
@@ -363,7 +366,7 @@ app.put(
       // 远程节点支持 workspace 全路径，不强制 user/ 前缀
       try {
         const result = await remoteWriteFile(machineId, envId, rawFilePath, b.content);
-        return result;
+        return { success: true as const, data: result };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
         return error(503, { success: false, error: { code: "remote_error", message } });
@@ -384,7 +387,10 @@ app.put(
 
     const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
     const normalizedPath = filePath.startsWith("user/") ? filePath : `user/${filePath}`;
-    return { name: fileName, path: normalizedPath, size: Buffer.byteLength(b.content) };
+    return {
+      success: true as const,
+      data: { name: fileName, path: normalizedPath, size: Buffer.byteLength(b.content) },
+    };
   },
   {
     sessionAuth: true,
