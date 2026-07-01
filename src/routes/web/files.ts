@@ -1,9 +1,10 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { NotFoundError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
-import { OkResponseSchema } from "../../schemas/common.schema";
+import { WebOkSchema } from "../../schemas/common.schema";
 import {
   FileContentSchema,
   FileListResponseSchema,
@@ -37,7 +38,7 @@ import {
 } from "../../services/workspace-fs";
 
 const app = new Elysia({ name: "web-files", prefix: "/environments" }).use(authGuardPlugin).model({
-  "delete-file-response": OkResponseSchema,
+  "delete-file-response": WebOkSchema(z.null()).describe("删除文件后的成功响应。"),
   "file-list-response": FileListResponseSchema,
   "file-content": FileContentSchema,
   "file-upload-response": FileUploadResponseSchema,
@@ -383,7 +384,7 @@ app.delete(
       // 远程节点支持 workspace 全路径
       try {
         await remoteDeleteFile(machineId, envId, rawFilePath);
-        return { ok: true as const };
+        return { success: true as const, data: null };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
         return error(503, { error: { type: "remote_error", message } });
@@ -406,7 +407,7 @@ app.delete(
     }
 
     await deleteFile(result.resolved);
-    return { ok: true as const };
+    return { success: true as const, data: null };
   },
   {
     sessionAuth: true,

@@ -1,7 +1,8 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebOkSchema } from "../../schemas/common.schema";
 import {
-  DeleteInstanceResponseSchema,
   InstanceActivityListResponseSchema,
   SpawnInstanceFromEnvironmentRequestSchema,
   SpawnInstanceFromEnvironmentResponseSchema,
@@ -13,7 +14,6 @@ import { spawnInstanceFromEnvironment, stopInstance, toInstanceInfo } from "../.
 
 const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
   "instance-activity-list-response": InstanceActivityListResponseSchema,
-  "delete-instance-response": DeleteInstanceResponseSchema,
   "spawn-instance-request": SpawnInstanceFromEnvironmentRequestSchema,
   "spawn-instance-response": SpawnInstanceFromEnvironmentResponseSchema,
 });
@@ -83,7 +83,7 @@ app.delete(
       const isAlreadyStopped = result.error === "Already stopped";
       if (isAlreadyStopped) {
         getCoreRuntime().deleteInstance(params.id);
-        return { success: true as const, data: { ok: true as const } };
+        return { success: true as const, data: null };
       }
       const status = result.error === "Instance not found" ? 404 : 403;
       const type = status === 404 ? "NOT_FOUND" : "forbidden";
@@ -91,11 +91,11 @@ app.delete(
     }
 
     getCoreRuntime().deleteInstance(params.id);
-    return { success: true as const, data: { ok: true as const } };
+    return { success: true as const, data: null };
   },
   {
     sessionAuth: true,
-    response: "delete-instance-response",
+    response: WebOkSchema(z.null().describe("实例删除成功后固定返回 null。")).describe("删除实例响应。"),
     detail: {
       tags: ["Instances"],
       summary: "删除实例",

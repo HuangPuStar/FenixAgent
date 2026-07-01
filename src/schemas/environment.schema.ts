@@ -1,6 +1,4 @@
 import * as z from "zod/v4";
-import { OkResponseSchema } from "./common.schema";
-
 /** 环境基础信息 */
 export const EnvironmentInfoSchema = z
   .object({
@@ -108,9 +106,6 @@ export const CreateEnvironmentResponseSchema = EnvironmentDetailResponseSchema;
 /** PUT /web/environments/:id — 更新环境后的响应 */
 export const UpdateEnvironmentResponseSchema = EnvironmentInfoSchema;
 
-/** DELETE /web/environments/:id — 删除环境响应 */
-export const DeleteEnvironmentResponseSchema = OkResponseSchema;
-
 export type EnvironmentInfo = z.infer<typeof EnvironmentInfoSchema>;
 export type EnvironmentListResponse = z.infer<typeof EnvironmentListResponseSchema>;
 export type EnvironmentDetailResponse = z.infer<typeof EnvironmentDetailResponseSchema>;
@@ -121,4 +116,3 @@ export type CreateEnvironmentResponse = z.infer<typeof CreateEnvironmentResponse
 export type EnterEnvironmentResponse = z.infer<typeof EnterEnvironmentResponseSchema>;
 export type ListInstancesResponse = z.infer<typeof ListInstancesResponseSchema>;
 export type UpdateEnvironmentResponse = z.infer<typeof UpdateEnvironmentResponseSchema>;
-export type DeleteEnvironmentResponse = z.infer<typeof DeleteEnvironmentResponseSchema>;

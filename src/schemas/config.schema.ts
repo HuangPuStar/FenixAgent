@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebOkSchema } from "./common.schema";
 
 // ── Config 通用结构 ──
 
@@ -250,55 +251,42 @@ export const SetDefaultAgentRequestSchema = z
   })
   .describe("设置默认 Agent 请求体。");
 
-export const AgentTemplatesResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z.object({
-      templates: z.array(AgentTemplateSchema).describe("可用 Agent 模板列表。"),
-    }),
-  })
-  .describe("Agent 模板列表响应。");
+export const AgentTemplatesResponseSchema = WebOkSchema(
+  z.object({
+    templates: z.array(AgentTemplateSchema).describe("可用 Agent 模板列表。"),
+  }),
+).describe("Agent 模板列表响应。");
 
-export const AgentListResponseSchema = z
+export const AgentListDataSchema = z
   .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z.object({
-      default_agent: z.string().nullable().describe("当前用户的默认 Agent 名称；未设置时为 null。"),
-      agents: z.array(AgentInfoSchema).describe("当前用户可见的 Agent 列表。"),
-    }),
+    default_agent: z.string().nullable().describe("当前用户的默认 Agent 名称；未设置时为 null。"),
+    agents: z.array(AgentInfoSchema).describe("当前用户可见的 Agent 列表。"),
   })
-  .describe("Agent 列表响应。");
+  .describe("Agent 列表响应数据。");
 
-export const AgentDetailResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: AgentDetailSchema.describe("指定 Agent 的详情。"),
-  })
-  .describe("Agent 详情响应。");
+export const AgentListResponseSchema = WebOkSchema(AgentListDataSchema).describe("Agent 列表响应。");
 
-export const CreateAgentResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z.object({
-      name: z.string().describe("已创建的 Agent 名称。"),
-      id: z.string().optional().describe("已创建的 Agent 配置 ID。"),
-      resourceAccess: AgentResourceAccessSchema.optional().describe("创建后的共享访问控制信息。"),
-    }),
-  })
-  .describe("创建 Agent 响应。");
+export const AgentDetailResponseSchema = WebOkSchema(AgentDetailSchema.describe("指定 Agent 的详情。")).describe(
+  "Agent 详情响应。",
+);
 
-export const UpdateAgentResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z
-      .object({
-        name: z.string().describe("已更新的 Agent 名称。"),
-        resourceAccess: AgentResourceAccessSchema.optional().describe("更新后的共享访问控制信息。"),
-      })
-      .catchall(z.unknown())
-      .describe("更新后的 Agent 返回数据。"),
-  })
-  .describe("更新 Agent 响应。");
+export const CreateAgentResponseSchema = WebOkSchema(
+  z.object({
+    name: z.string().describe("已创建的 Agent 名称。"),
+    id: z.string().optional().describe("已创建的 Agent 配置 ID。"),
+    resourceAccess: AgentResourceAccessSchema.optional().describe("创建后的共享访问控制信息。"),
+  }),
+).describe("创建 Agent 响应。");
+
+export const UpdateAgentResponseSchema = WebOkSchema(
+  z
+    .object({
+      name: z.string().describe("已更新的 Agent 名称。"),
+      resourceAccess: AgentResourceAccessSchema.optional().describe("更新后的共享访问控制信息。"),
+    })
+    .catchall(z.unknown())
+    .describe("更新后的 Agent 返回数据。"),
+).describe("更新 Agent 响应。");
 
 export const DeleteAgentResponseSchema = z
   .object({
@@ -307,19 +295,16 @@ export const DeleteAgentResponseSchema = z
   })
   .describe("删除 Agent 响应。");
 
-export const SetDefaultAgentResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z.object({
-      default_agent: z.string().describe("已设置为默认值的 Agent 名称。"),
-      resourceAccess: AgentResourceAccessSchema.optional().describe("该 Agent 的共享访问控制信息。"),
-    }),
-  })
-  .describe("设置默认 Agent 响应。");
+export const SetDefaultAgentResponseSchema = WebOkSchema(
+  z.object({
+    default_agent: z.string().describe("已设置为默认值的 Agent 名称。"),
+    resourceAccess: AgentResourceAccessSchema.optional().describe("该 Agent 的共享访问控制信息。"),
+  }),
+).describe("设置默认 Agent 响应。");
 
-export const GetAgentResponseSchema = z
-  .union([AgentListResponseSchema, AgentDetailResponseSchema])
-  .describe("获取 Agent 列表或详情的响应。");
+export const GetAgentResponseSchema = WebOkSchema(
+  z.union([AgentListDataSchema, AgentDetailSchema]).describe("Agent 列表数据或单个 Agent 详情。"),
+).describe("获取 Agent 列表或详情的响应。");
 
 // ── Skills ──
 

@@ -1,18 +1,15 @@
 import { log } from "@fenix/logger";
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo, sessionRepo } from "../../repositories";
-import {
-  InterruptResponseSchema,
-  SendEventResponseSchema,
-  SessionEventPayloadSchema,
-} from "../../schemas/session.schema";
+import { WebOkSchema } from "../../schemas/common.schema";
+import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
 import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
 import { publishSessionEvent } from "../../services/transport";
 
 const app = new Elysia({ name: "web-control" }).use(authGuardPlugin).model({
-  "interrupt-response": InterruptResponseSchema,
   "send-event-response": SendEventResponseSchema,
   "session-event-payload": SessionEventPayloadSchema,
 });
@@ -132,12 +129,12 @@ const interruptSessionHandler: any = async ({ store, params, error }: any) => {
 
   publishSessionEvent(sessionId, "interrupt", { action: "interrupt" }, "outbound");
   await updateSessionStatus(sessionId, "idle");
-  return { status: "ok" as const };
+  return { success: true as const, data: null };
 };
 
 app.post("/sessions/:id/interrupt", interruptSessionHandler, {
   sessionAuth: true,
-  response: "interrupt-response",
+  response: WebOkSchema(z.null().describe("中断成功后固定返回 null。")).describe("中断会话响应。"),
   detail: {
     tags: ["Control"],
     summary: "中断会话",

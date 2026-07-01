@@ -137,8 +137,7 @@ export const envApi = {
     camelResponse(request<EnvironmentDetail>("/web/environments/:id", { method: "PUT", params, body })),
 
   /** 删除指定环境 */
-  del: (params: { id: string }) =>
-    camelResponse(request<{ ok: boolean }>("/web/environments/:id", { method: "DELETE", params })),
+  del: (params: { id: string }) => camelResponse(request<void>("/web/environments/:id", { method: "DELETE", params })),
 
   /**
    * 进入指定环境，自动 spawn 或复用实例。

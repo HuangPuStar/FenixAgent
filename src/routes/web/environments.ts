@@ -1,11 +1,12 @@
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { ValidationError as AppValidationError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebOkSchema } from "../../schemas/common.schema";
 import {
   CreateEnvironmentRequestSchema,
   CreateEnvironmentResponseSchema,
-  DeleteEnvironmentResponseSchema,
   EnterEnvironmentRequestSchema,
   EnterEnvironmentResponseSchema,
   EnvironmentDetailResponseSchema,
@@ -31,7 +32,7 @@ const logger = createLogger("env-route");
 const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model({
   "create-environment-request": CreateEnvironmentRequestSchema,
   "create-environment-response": CreateEnvironmentResponseSchema,
-  "delete-environment-response": DeleteEnvironmentResponseSchema,
+  "delete-environment-response": WebOkSchema(z.null()).describe("删除环境后的成功响应。"),
   "enter-environment-response": EnterEnvironmentResponseSchema,
   "environment-detail-response": EnvironmentDetailResponseSchema,
   "environment-info": EnvironmentInfoSchema,
@@ -246,7 +247,7 @@ app.delete(
       throw err;
     }
     await deleteEnvironment(params.id);
-    return { ok: true as const };
+    return { success: true as const, data: null };
   },
   {
     sessionAuth: true,

@@ -365,6 +365,7 @@ react-i18next + i18next，英文默认，中英双语。适用范围：**所有 
 - 请求体只承载本次操作的业务数据，不要再包一层 `data`、`payload`、`params` 之类的无意义壳；只有历史兼容场景才允许保留。
 - 分页参数统一优先使用 `page`、`pageSize`；排序参数统一优先使用 `sortBy`、`sortOrder`；布尔筛选参数使用语义化命名，例如 `includeDisabled`、`withMembers`。
 - 控制台内部 `/web/*` API 默认返回 `{ success: true, data }` 或 `{ success: false, error }`；没有业务数据时也优先返回 `{ success: true, data: ... }`，避免同一类接口有时返回 `data`、有时完全不返回。
+- 对外 `/api/*` 接口不跟随 `/web/*` 使用 envelope；保持现有“成功返回裸对象或列表对象、失败返回 `{ error }`”的外部契约，不要为了内部控制台统一而直接改坏对外兼容性。
 - 错误响应统一返回 `error` 对象，至少包含 `code` 和 `message`；需要补充上下文时再增加字段，不要直接返回裸字符串或格式不固定的对象。
 - 对外 OpenAPI 返回结构要稳定、可预测，列表接口优先返回对象结构而不是裸数组；至少明确区分列表数据和分页元信息，例如 `{ items, total, page, pageSize }`。
 - 新接口必须遵循这套风格；历史接口如果暂时不一致，先保持兼容，不要为了“统一风格”直接改坏已有调用方。

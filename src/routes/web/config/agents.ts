@@ -5,6 +5,7 @@ import { db } from "../../../db";
 import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import { WebErrSchema } from "../../../schemas/common.schema";
 import {
   AgentMutationBodySchema,
   AgentNameQuerySchema,
@@ -59,6 +60,10 @@ interface AgentResourceDisplayInput {
   resourceAccess?: {
     sourceOrganizationId: string;
   };
+}
+
+function normalizeEngineType(value: unknown): string {
+  return typeof value === "string" && value.length > 0 ? value : "opencode";
 }
 
 async function buildAgentRelatedResourceView(
@@ -221,7 +226,7 @@ async function handleList(ctx: AuthContext) {
         modelLabel: relatedResources.modelLabel,
         description: a.description ?? null,
         machineId: a.machineId ?? null,
-        engineType: (a as unknown as Record<string, unknown>).engineType ?? "opencode",
+        engineType: normalizeEngineType((a as unknown as Record<string, unknown>).engineType),
         knowledgeBaseCount: (await listAgentKnowledgeBindingsById(a.id)).length,
         skillLabels: relatedResources.skills,
         resourceAccess: a.resourceAccess,
@@ -253,7 +258,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     extra: agent.extra ?? null,
     knowledge: normalizeKnowledgeConfig(knowledge ?? null),
     machineId: agent.machineId ?? null,
-    engineType: (agent as unknown as Record<string, unknown>).engineType ?? "opencode",
+    engineType: normalizeEngineType((agent as unknown as Record<string, unknown>).engineType),
     skillIds,
     mcpIds,
     siteAppIds,
@@ -445,7 +450,6 @@ async function handleSetDefault(ctx: AuthContext, name: string) {
   await configPg.setUserConfig(ctx, { defaultAgent: agent.name });
   return configSuccess({ default_agent: agent.name, resourceAccess: agent.resourceAccess });
 }
-const AgentErrorResponseSchema = z.unknown();
 
 const app = new Elysia({ name: "web-config-agents" }).use(authGuardPlugin).model({
   "agent-name-query": AgentNameQuerySchema,
@@ -460,15 +464,7 @@ const app = new Elysia({ name: "web-config-agents" }).use(authGuardPlugin).model
   "agent-set-default-response": SetDefaultAgentResponseSchema,
 });
 
-function requireName(
-  name: string | undefined,
-  errorFn: (status: number, body: unknown) => unknown,
-): string | ReturnType<typeof errorFn> {
-  if (!name) {
-    return errorFn(400, configValidationError("Missing 'name' field"));
-  }
-  return name;
-}
+type WebErrorBody = z.infer<typeof WebErrSchema>;
 
 function toRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
@@ -500,43 +496,57 @@ function mapConfigErrorStatus(code: string | undefined): number {
   }
 }
 
-/** 统一映射 agent 配置路由的业务异常，避免每个 handler 重复 try/catch。 */
-async function runAgentAction<T>(
-  fn: () => Promise<T> | T,
-  errorFn: (status: number, body: unknown) => unknown,
-): Promise<T | ReturnType<typeof errorFn>> {
-  try {
-    const result = await fn();
-    if (isConfigErrorResult(result)) {
-      return errorFn(mapConfigErrorStatus(result.error.code), result);
-    }
-    return result;
-  } catch (error_) {
-    if (
-      error_ instanceof InvalidKnowledgeBindingError ||
-      (typeof error_ === "object" &&
-        error_ !== null &&
-        "code" in error_ &&
-        (error_ as { code?: string }).code === "INVALID_KNOWLEDGE_BINDINGS")
-    ) {
-      const message = error_ instanceof Error ? error_.message : "知识库绑定无效";
-      return errorFn(400, configError("INVALID_KNOWLEDGE_BINDINGS", message));
-    }
-    if (error_ instanceof AppError && error_.code === "VALIDATION_ERROR") {
-      return errorFn(400, configValidationError(error_.message));
-    }
-    throw error_;
+function buildWebErrorBody(code: string, message: string): WebErrorBody {
+  return {
+    success: false,
+    error: { code, message },
+  };
+}
+
+function resolveConfigRouteError<TCode extends 400 | 403 | 404 | 409>(
+  result: unknown,
+): { code: TCode; body: WebErrorBody } | null {
+  if (!isConfigErrorResult(result)) return null;
+
+  return {
+    code: mapConfigErrorStatus(result.error.code) as TCode,
+    body: buildWebErrorBody(result.error.code ?? "UNKNOWN_ERROR", result.error.message ?? "未知错误"),
+  };
+}
+
+function resolveThrownAgentError(error_: unknown): { code: 400; body: WebErrorBody } | null {
+  if (
+    error_ instanceof InvalidKnowledgeBindingError ||
+    (typeof error_ === "object" &&
+      error_ !== null &&
+      "code" in error_ &&
+      (error_ as { code?: string }).code === "INVALID_KNOWLEDGE_BINDINGS")
+  ) {
+    const message = error_ instanceof Error ? error_.message : "知识库绑定无效";
+    return {
+      code: 400,
+      body: buildWebErrorBody("INVALID_KNOWLEDGE_BINDINGS", message),
+    };
   }
+
+  if (error_ instanceof AppError && error_.code === "VALIDATION_ERROR") {
+    return {
+      code: 400,
+      body: buildWebErrorBody("VALIDATION_ERROR", error_.message),
+    };
+  }
+
+  return null;
 }
 
 app.get("/config/agents/templates", () => handleTemplates(), {
   sessionAuth: true,
   response: {
     200: "agent-templates-response",
-    400: AgentErrorResponseSchema,
-    401: AgentErrorResponseSchema,
-    403: AgentErrorResponseSchema,
-    404: AgentErrorResponseSchema,
+    400: WebErrSchema,
+    401: WebErrSchema,
+    403: WebErrSchema,
+    404: WebErrSchema,
   },
   detail: {
     tags: ["AgentConfig"],
@@ -547,30 +557,31 @@ app.get("/config/agents/templates", () => handleTemplates(), {
 
 app.get(
   "/config/agents",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, query, error }: any) => {
+  async ({ store, query, status }) => {
     const authCtx = store.authContext!;
     const name = typeof query?.name === "string" ? query.name : undefined;
-    if (!name) {
-      return await runAgentAction(
-        () => handleList(authCtx),
-        (status, body) => error(status, body),
-      );
+    try {
+      const result = (name ? await handleGet(authCtx, name) : await handleList(authCtx)) as
+        | z.infer<typeof GetAgentResponseSchema>
+        | WebErrorBody;
+      const err = resolveConfigRouteError<400 | 403 | 404>(result);
+      if (err) return status(err.code, err.body);
+      return result as z.infer<typeof GetAgentResponseSchema>;
+    } catch (error_) {
+      const err = resolveThrownAgentError(error_);
+      if (err) return status(err.code, err.body);
+      throw error_;
     }
-    return await runAgentAction(
-      () => handleGet(authCtx, name),
-      (status, body) => error(status, body),
-    );
   },
   {
     sessionAuth: true,
     query: "agent-name-query",
     response: {
-      200: "agent-get-response",
-      400: AgentErrorResponseSchema,
-      401: AgentErrorResponseSchema,
-      403: AgentErrorResponseSchema,
-      404: AgentErrorResponseSchema,
+      200: GetAgentResponseSchema,
+      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
     },
     detail: {
       tags: ["AgentConfig"],
@@ -592,30 +603,33 @@ app.get(
 
 app.post(
   "/config/agents",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, body, error }: any) => {
+  async ({ store, body, status }) => {
     const authCtx = store.authContext!;
-    const name = requireName(typeof body?.name === "string" ? body.name : undefined, (status, payload) =>
-      error(status, payload),
-    );
-    if (typeof name !== "string") {
-      return name;
+    const name = typeof body?.name === "string" ? body.name : undefined;
+    if (!name) {
+      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
     }
-    return await runAgentAction(
-      () => handleCreate(authCtx, name, toRecord(body?.data)),
-      (status, payload) => error(status, payload),
-    );
+    try {
+      const result = await handleCreate(authCtx, name, toRecord(body?.data));
+      const err = resolveConfigRouteError<400 | 403 | 404 | 409>(result);
+      if (err) return status(err.code, err.body);
+      return result;
+    } catch (error_) {
+      const err = resolveThrownAgentError(error_);
+      if (err) return status(err.code, err.body);
+      throw error_;
+    }
   },
   {
     sessionAuth: true,
     body: "agent-mutation-body",
     response: {
       200: "agent-create-response",
-      400: AgentErrorResponseSchema,
-      401: AgentErrorResponseSchema,
-      403: AgentErrorResponseSchema,
-      404: AgentErrorResponseSchema,
-      409: AgentErrorResponseSchema,
+      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
+      409: WebErrSchema,
     },
     detail: {
       tags: ["AgentConfig"],
@@ -627,19 +641,22 @@ app.post(
 
 app.put(
   "/config/agents",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, query, body, error }: any) => {
+  async ({ store, query, body, status }) => {
     const authCtx = store.authContext!;
-    const name = requireName(typeof query?.name === "string" ? query.name : undefined, (status, payload) =>
-      error(status, payload),
-    );
-    if (typeof name !== "string") {
-      return name;
+    const name = typeof query?.name === "string" ? query.name : undefined;
+    if (!name) {
+      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
     }
-    return await runAgentAction(
-      () => handleSet(authCtx, name, toRecord(body?.data)),
-      (status, payload) => error(status, payload),
-    );
+    try {
+      const result = await handleSet(authCtx, name, toRecord(body?.data));
+      const err = resolveConfigRouteError<400 | 403 | 404 | 409>(result);
+      if (err) return status(err.code, err.body);
+      return result;
+    } catch (error_) {
+      const err = resolveThrownAgentError(error_);
+      if (err) return status(err.code, err.body);
+      throw error_;
+    }
   },
   {
     sessionAuth: true,
@@ -647,11 +664,11 @@ app.put(
     body: "agent-update-body",
     response: {
       200: "agent-update-response",
-      400: AgentErrorResponseSchema,
-      401: AgentErrorResponseSchema,
-      403: AgentErrorResponseSchema,
-      404: AgentErrorResponseSchema,
-      409: AgentErrorResponseSchema,
+      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
+      409: WebErrSchema,
     },
     detail: {
       tags: ["AgentConfig"],
@@ -673,29 +690,32 @@ app.put(
 
 app.delete(
   "/config/agents",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, query, error }: any) => {
+  async ({ store, query, status }) => {
     const authCtx = store.authContext!;
-    const name = requireName(typeof query?.name === "string" ? query.name : undefined, (status, payload) =>
-      error(status, payload),
-    );
-    if (typeof name !== "string") {
-      return name;
+    const name = typeof query?.name === "string" ? query.name : undefined;
+    if (!name) {
+      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
     }
-    return await runAgentAction(
-      () => handleDelete(authCtx, name),
-      (status, payload) => error(status, payload),
-    );
+    try {
+      const result = await handleDelete(authCtx, name);
+      const err = resolveConfigRouteError<400 | 403 | 404>(result);
+      if (err) return status(err.code, err.body);
+      return result;
+    } catch (error_) {
+      const err = resolveThrownAgentError(error_);
+      if (err) return status(err.code, err.body);
+      throw error_;
+    }
   },
   {
     sessionAuth: true,
     query: z.object({ name: AgentNameQuerySchema.shape.name }),
     response: {
       200: "agent-delete-response",
-      400: AgentErrorResponseSchema,
-      401: AgentErrorResponseSchema,
-      403: AgentErrorResponseSchema,
-      404: AgentErrorResponseSchema,
+      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
     },
     detail: {
       tags: ["AgentConfig"],
@@ -716,29 +736,32 @@ app.delete(
 
 app.post(
   "/config/agents/default",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, body, error }: any) => {
+  async ({ store, body, status }) => {
     const authCtx = store.authContext!;
-    const name = requireName(typeof body?.name === "string" ? body.name : undefined, (status, payload) =>
-      error(status, payload),
-    );
-    if (typeof name !== "string") {
-      return name;
+    const name = typeof body?.name === "string" ? body.name : undefined;
+    if (!name) {
+      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
     }
-    return await runAgentAction(
-      () => handleSetDefault(authCtx, name),
-      (status, payload) => error(status, payload),
-    );
+    try {
+      const result = await handleSetDefault(authCtx, name);
+      const err = resolveConfigRouteError<400 | 403 | 404>(result);
+      if (err) return status(err.code, err.body);
+      return result;
+    } catch (error_) {
+      const err = resolveThrownAgentError(error_);
+      if (err) return status(err.code, err.body);
+      throw error_;
+    }
   },
   {
     sessionAuth: true,
     body: "agent-set-default-body",
     response: {
       200: "agent-set-default-response",
-      400: AgentErrorResponseSchema,
-      401: AgentErrorResponseSchema,
-      403: AgentErrorResponseSchema,
-      404: AgentErrorResponseSchema,
+      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
     },
     detail: {
       tags: ["AgentConfig"],

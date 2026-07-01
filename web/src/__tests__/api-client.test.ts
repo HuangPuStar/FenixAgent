@@ -101,7 +101,7 @@ describe("session SDK functions", () => {
 
   // 测试中断命令使用 RESTful 路径参数，无 body
   test("controlApi.interrupt — POST /web/sessions/:id/interrupt", async () => {
-    fetchMock.responseData = { status: "ok" };
+    fetchMock.responseData = { success: true, data: null };
     const { controlApi } = await import("../api/sessions");
     await controlApi.interrupt({ sessionId: "sess_1" });
     expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/interrupt");
@@ -146,6 +146,16 @@ describe("file SDK functions", () => {
     expect(fetchMock.lastUrl).toContain("/web/environments/s1/user");
     expect(fetchMock.lastOpts.method).toBe("POST");
     expect(fetchMock.lastOpts.body).toBeInstanceOf(FormData);
+  });
+});
+
+describe("environment SDK functions", () => {
+  test("envApi.del — DELETE /web/environments/:id", async () => {
+    fetchMock.responseData = { success: true, data: null };
+    const { envApi } = await import("../api/environments");
+    await envApi.del({ id: "env_1" });
+    expect(fetchMock.lastUrl).toContain("/web/environments/env_1");
+    expect(fetchMock.lastOpts.method).toBe("DELETE");
   });
 });
 

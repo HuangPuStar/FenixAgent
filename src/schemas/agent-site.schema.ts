@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { ApiErrorSchema, ConfigOkSchema } from "./common.schema";
+import { ApiErrorSchema, WebOkSchema } from "./common.schema";
 
 /** Agent Sites App 响应对象 */
 export const AgentSiteAppSchema = z.object({
@@ -21,16 +21,10 @@ export const AgentSiteAppSchema = z.object({
 export type AgentSiteApp = z.infer<typeof AgentSiteAppSchema>;
 
 /** GET /web/agent-sites/apps 列表响应 */
-export const AgentSiteAppListResponseSchema = z.object({
-  success: z.literal(true),
-  data: AgentSiteAppSchema.array(),
-});
+export const AgentSiteAppListResponseSchema = WebOkSchema(AgentSiteAppSchema.array()).describe("Site App 列表响应。");
 
 /** GET/POST /web/agent-sites/apps/{id} 详情响应 */
-export const AgentSiteAppDetailResponseSchema = z.object({
-  success: z.literal(true),
-  data: AgentSiteAppSchema,
-});
+export const AgentSiteAppDetailResponseSchema = WebOkSchema(AgentSiteAppSchema).describe("Site App 详情响应。");
 
 /** POST /web/agent-sites/apps 创建请求 */
 export const CreateAgentSiteAppRequestSchema = z.object({
@@ -95,9 +89,6 @@ export const AgentSiteBindingParamsSchema = z.object({
   agentConfigId: z.string().describe("Agent 配置 ID。"),
   siteAppId: z.string().describe("Site App 标识，支持 RCS UUID 或 remoteAppId。"),
 });
-
-/** 上传类接口的成功响应 */
-export const AgentSiteUploadResponseSchema = ConfigOkSchema(z.unknown().describe("agent-sites 上游返回体。"));
 
 /** Agent Sites web API 错误响应 */
 export const AgentSiteErrorResponseSchema = ApiErrorSchema;

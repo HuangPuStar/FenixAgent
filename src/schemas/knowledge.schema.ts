@@ -1,6 +1,4 @@
 import * as z from "zod/v4";
-import { OkResponseSchema } from "./common.schema";
-
 /** 知识库状态 */
 export const KnowledgeBaseStatusSchema = z.enum(["empty", "indexing", "ready", "error"]).describe("知识库状态。");
 
@@ -68,9 +66,6 @@ export const KnowledgeBaseListResponseSchema = KnowledgeBaseInfoSchema.array().d
 /** GET /web/knowledgeBases/:id — 知识库详情响应 */
 export const KnowledgeBaseDetailResponseSchema = KnowledgeBaseInfoSchema.describe("知识库详情。");
 
-/** DELETE /web/knowledgeBases/:id — 删除知识库响应 */
-export const DeleteKnowledgeBaseResponseSchema = OkResponseSchema.describe("删除知识库后的成功响应。");
-
 /** GET /web/knowledgeBases/:id/resources — 资源列表响应 */
 export const KnowledgeResourceListResponseSchema = KnowledgeResourceItemSchema.array().describe("知识资源列表。");
 
@@ -82,17 +77,12 @@ export const UploadKnowledgeResourcesResponseSchema = z.object({
 /** POST /web/knowledgeBases/:id/resources/url — 导入 URL 响应 */
 export const ImportKnowledgeUrlResponseSchema = KnowledgeResourceItemSchema.describe("URL 导入后的知识资源。");
 
-/** DELETE /web/knowledgeBases/:id/resources/:resourceId — 删除资源响应 */
-export const DeleteKnowledgeResourceResponseSchema = OkResponseSchema.describe("删除知识资源后的成功响应。");
-
 export type KnowledgeBaseInfo = z.infer<typeof KnowledgeBaseInfoSchema>;
 export type KnowledgeResourceItem = z.infer<typeof KnowledgeResourceItemSchema>;
 export type CreateKnowledgeBaseRequest = z.infer<typeof CreateKnowledgeBaseRequestSchema>;
 export type UpdateKnowledgeBaseRequest = z.infer<typeof UpdateKnowledgeBaseRequestSchema>;
 export type KnowledgeBaseListResponse = z.infer<typeof KnowledgeBaseListResponseSchema>;
 export type KnowledgeBaseDetailResponse = z.infer<typeof KnowledgeBaseDetailResponseSchema>;
-export type DeleteKnowledgeBaseResponse = z.infer<typeof DeleteKnowledgeBaseResponseSchema>;
 export type KnowledgeResourceListResponse = z.infer<typeof KnowledgeResourceListResponseSchema>;
 export type UploadKnowledgeResourcesResponse = z.infer<typeof UploadKnowledgeResourcesResponseSchema>;
 export type ImportKnowledgeUrlResponse = z.infer<typeof ImportKnowledgeUrlResponseSchema>;
-export type DeleteKnowledgeResourceResponse = z.infer<typeof DeleteKnowledgeResourceResponseSchema>;

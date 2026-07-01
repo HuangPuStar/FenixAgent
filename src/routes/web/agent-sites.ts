@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { db } from "../../db";
 import { agentConfigSiteApp } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
@@ -17,12 +18,12 @@ import {
   AgentSiteDeployResponseSchema,
   AgentSiteErrorResponseSchema,
   AgentSiteRemoteAppParamsSchema,
-  AgentSiteUploadResponseSchema,
   type CreateAgentSiteAppRequest,
   CreateAgentSiteAppRequestSchema,
   type UpdateAgentSiteAppRequest,
   UpdateAgentSiteAppRequestSchema,
 } from "../../schemas/agent-site.schema";
+import { WebOkSchema } from "../../schemas/common.schema";
 import {
   createRemoteApp,
   deleteRemoteApp,
@@ -337,7 +338,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       sessionAuth: true,
       params: AgentSiteAppFileParamsSchema,
       response: {
-        200: AgentSiteUploadResponseSchema,
+        200: WebOkSchema(z.unknown().describe("agent-sites 上游返回体。")),
         403: AgentSiteErrorResponseSchema,
         404: AgentSiteErrorResponseSchema,
       },
@@ -367,7 +368,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       sessionAuth: true,
       params: AgentSiteAppIdParamsSchema,
       response: {
-        200: AgentSiteUploadResponseSchema,
+        200: WebOkSchema(z.unknown().describe("agent-sites 上游返回体。")),
         403: AgentSiteErrorResponseSchema,
         404: AgentSiteErrorResponseSchema,
       },

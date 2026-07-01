@@ -55,15 +55,16 @@ export {
 } from "./channel.schema";
 export {
   ApiErrorSchema,
-  ConfigErrSchema,
-  ConfigOkSchema,
-  ConfigResponseSchema,
-  type OkResponse,
-  OkResponseSchema,
   type PaginationParams,
   PaginationParamsSchema,
-  type StatusOkResponse,
-  StatusOkResponseSchema,
+  type PaginationSortParams,
+  PaginationSortParamsSchema,
+  type SortParams,
+  SortParamsSchema,
+  type WebErr,
+  WebErrSchema,
+  WebOkSchema,
+  WebResponseSchema,
 } from "./common.schema";
 // Config
 export {
@@ -100,8 +101,6 @@ export {
 export {
   type CreateEnvironmentRequest,
   CreateEnvironmentRequestSchema,
-  type DeleteEnvironmentResponse,
-  DeleteEnvironmentResponseSchema,
   EnterEnvironmentRequestSchema,
   type EnterEnvironmentResponse,
   EnterEnvironmentResponseSchema,
@@ -142,8 +141,6 @@ export {
 } from "./hindsight.schema";
 // Instances
 export {
-  type DeleteInstanceResponse,
-  DeleteInstanceResponseSchema,
   type InstanceActivityInfo,
   InstanceActivityInfoSchema,
   type InstanceActivityListResponse,
@@ -163,10 +160,6 @@ export {
 export {
   type CreateKnowledgeBaseRequest,
   CreateKnowledgeBaseRequestSchema,
-  type DeleteKnowledgeBaseResponse,
-  DeleteKnowledgeBaseResponseSchema,
-  type DeleteKnowledgeResourceResponse,
-  DeleteKnowledgeResourceResponseSchema,
   ImportKnowledgeUrlRequestSchema,
   type ImportKnowledgeUrlResponse,
   ImportKnowledgeUrlResponseSchema,
@@ -238,8 +231,6 @@ export {
 } from "./registry.schema";
 // Sessions
 export {
-  type InterruptResponse,
-  InterruptResponseSchema,
   type SendEventResponse,
   SendEventResponseSchema,
   type SessionEvent,

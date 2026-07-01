@@ -1,6 +1,4 @@
 import * as z from "zod/v4";
-import { StatusOkResponseSchema } from "./common.schema";
-
 /** 会话详情模型 */
 export const SessionDetailSchema = z
   .object({
@@ -61,9 +59,6 @@ export const SendEventResponseSchema = z
   })
   .describe("发送会话事件后的响应。");
 
-/** POST /web/sessions/:id/interrupt — 中断响应 */
-export const InterruptResponseSchema = StatusOkResponseSchema;
-
 export const SessionResponseSchema = SessionDetailSchema;
 export const SessionSummarySchema = SessionListItemSchema;
 
@@ -75,4 +70,3 @@ export type SessionEvent = z.infer<typeof SessionEventSchema>;
 export type SessionHistory = z.infer<typeof SessionHistorySchema>;
 export type SessionListResponse = z.infer<typeof SessionListResponseSchema>;
 export type SendEventResponse = z.infer<typeof SendEventResponseSchema>;
-export type InterruptResponse = z.infer<typeof InterruptResponseSchema>;

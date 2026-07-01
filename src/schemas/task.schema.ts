@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebOkSchema } from "./common.schema";
 
 /** 计划任务信息 */
 export const TaskInfoSchema = z.object({
@@ -64,22 +65,17 @@ export const UpdateTaskRequestSchema = z.object({
 });
 
 /** 任务详情成功响应 */
-export const TaskResponseSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-  data: TaskInfoSchema.describe("任务详情。"),
-});
+export const TaskResponseSchema = WebOkSchema(TaskInfoSchema.describe("任务详情。")).describe("任务详情成功响应。");
 
 /** 任务列表成功响应 */
-export const TaskListResponseSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-  data: TaskInfoSchema.array().describe("任务列表。"),
-});
+export const TaskListResponseSchema = WebOkSchema(TaskInfoSchema.array().describe("任务列表。")).describe(
+  "任务列表成功响应。",
+);
 
 /** 执行日志分页响应 */
-export const TaskLogsResponseSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-  data: PaginatedLogsSchema.describe("分页日志结果。"),
-});
+export const TaskLogsResponseSchema = WebOkSchema(PaginatedLogsSchema.describe("分页日志结果。")).describe(
+  "执行日志分页响应。",
+);
 
 /** 删除任务响应 */
 export const DeleteTaskResponseSchema = z.object({
@@ -87,21 +83,19 @@ export const DeleteTaskResponseSchema = z.object({
 });
 
 /** 切换任务启用状态响应 */
-export const ToggleTaskResponseSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-  data: z
+export const ToggleTaskResponseSchema = WebOkSchema(
+  z
     .object({
       id: z.string().describe("任务 ID。"),
       enabled: z.boolean().describe("切换后的启用状态。"),
     })
     .describe("切换结果。"),
-});
+).describe("切换任务启用状态响应。");
 
 /** 手动触发任务响应 */
-export const TriggerTaskResponseSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-  data: ExecutionLogInfoSchema.describe("本次手动触发生成的执行日志。"),
-});
+export const TriggerTaskResponseSchema = WebOkSchema(
+  ExecutionLogInfoSchema.describe("本次手动触发生成的执行日志。"),
+).describe("手动触发任务响应。");
 
 /** 清空任务日志响应 */
 export const ClearTaskLogsResponseSchema = z.object({

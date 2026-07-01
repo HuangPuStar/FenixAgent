@@ -1,9 +1,9 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebOkSchema } from "../../schemas/common.schema";
 import {
   CreateKnowledgeBaseRequestSchema,
-  DeleteKnowledgeBaseResponseSchema,
-  DeleteKnowledgeResourceResponseSchema,
   ImportKnowledgeUrlRequestSchema,
   ImportKnowledgeUrlResponseSchema,
   KnowledgeBaseDetailResponseSchema,
@@ -39,8 +39,8 @@ const app = new Elysia({ name: "web-knowledge-bases" }).use(authGuardPlugin).mod
   "import-knowledge-url-request": ImportKnowledgeUrlRequestSchema,
   "upload-knowledge-resources-response": UploadKnowledgeResourcesResponseSchema,
   "import-knowledge-url-response": ImportKnowledgeUrlResponseSchema,
-  "delete-knowledge-base-response": DeleteKnowledgeBaseResponseSchema,
-  "delete-knowledge-resource-response": DeleteKnowledgeResourceResponseSchema,
+  "delete-knowledge-base-response": WebOkSchema(z.null()).describe("删除知识库后的成功响应。"),
+  "delete-knowledge-resource-response": WebOkSchema(z.null()).describe("删除知识资源后的成功响应。"),
 });
 
 app.get(
@@ -167,7 +167,7 @@ app.delete(
       if (!result.success) {
         return error(404, { error: { type: "NOT_FOUND", message: result.error.message } });
       }
-      return { ok: true as const };
+      return { success: true as const, data: null };
     } catch (err) {
       console.error(err);
       return error(400, {
@@ -307,7 +307,7 @@ app.delete(
       if (!result.success) {
         return error(404, { error: { type: result.error.code, message: result.error.message } });
       }
-      return result.data;
+      return { success: true as const, data: null };
     } catch (err) {
       console.error(err);
       return error(400, {

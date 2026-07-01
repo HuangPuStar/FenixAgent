@@ -22,11 +22,6 @@ export interface InstanceInfo {
   [key: string]: unknown;
 }
 
-/** 删除响应 */
-export interface InstanceDeleteResult {
-  ok: boolean;
-}
-
 // ── snake_case → camelCase 键名映射 ──
 
 function toCamelKeys(obj: Record<string, unknown>): Record<string, unknown> {
@@ -52,10 +47,9 @@ export const instanceApi = {
     camelResponse(request<InstanceInfo>("/web/instances/from-environment", { method: "POST", body })),
 
   /** 停止并删除指定实例（DELETE /web/instances/:id） */
-  del: (params: { id: string }) =>
-    request<InstanceDeleteResult>("/web/instances/:id", { method: "DELETE", params: { id: params.id } }),
+  del: (params: { id: string }) => request<void>("/web/instances/:id", { method: "DELETE", params: { id: params.id } }),
 
   /** 停止并删除指定实例（别名） */
   delete: (params: { id: string }) =>
-    request<InstanceDeleteResult>("/web/instances/:id", { method: "DELETE", params: { id: params.id } }),
+    request<void>("/web/instances/:id", { method: "DELETE", params: { id: params.id } }),
 };
