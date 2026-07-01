@@ -44,7 +44,6 @@ function listAncestorDirs(startDir: string): string[] {
  */
 export function resolveExecutable(command: string): string {
   // 1. 优先使用 which/where 查找 PATH 上的全局版本（跳过 node_modules/.bin 避免锁定项目内旧版本）
-  let resolvedGlobal = "";
   try {
     const whichCommand = process.platform === "win32" ? "where" : "which";
     const result = execSync(`${whichCommand} -a ${command}`, {
@@ -58,9 +57,8 @@ export function resolveExecutable(command: string): string {
     // 跳过 node_modules/.bin 中的版本，优先使用系统/全局安装的版本
     for (const candidate of candidates) {
       if (candidate.includes("node_modules/.bin")) continue;
-      resolvedGlobal = candidate;
-      console.log(`[resolveExecutable] found "${command}" via which (global): ${resolvedGlobal}`);
-      return resolvedGlobal;
+      console.log(`[resolveExecutable] found "${command}" via which (global): ${candidate}`);
+      return candidate;
     }
   } catch {
     // 忽略 which/where 失败
