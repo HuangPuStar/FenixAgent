@@ -18,7 +18,7 @@ export function MemoriesPage() {
     hindsightApi
       .getStatus()
       .then((res) => {
-        setEnabled(res.data.enabled);
+        setEnabled(res.enabled);
       })
       .catch((err) => {
         console.error("Failed to get Hindsight status:", err);

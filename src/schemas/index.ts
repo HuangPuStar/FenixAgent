@@ -323,4 +323,5 @@ export {
   WorkflowRunsQuerySchema,
   type WorkflowRunsResponse,
   WorkflowRunsResponseSchema,
+  WorkflowRunsRouteQuerySchema,
 } from "./workflow-runs.schema";

@@ -6,7 +6,7 @@
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WorkflowRunsQuerySchema, WorkflowRunsResponseSchema } from "../../schemas";
+import { WorkflowRunsQuerySchema, WorkflowRunsResponseSchema, WorkflowRunsRouteQuerySchema } from "../../schemas";
 import { WebErrSchema } from "../../schemas/common.schema";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 
@@ -41,7 +41,7 @@ app.get(
   },
   {
     sessionAuth: true,
-    query: WorkflowRunsQuerySchema,
+    query: WorkflowRunsRouteQuerySchema,
     response: {
       200: WorkflowRunsResponseSchema,
       400: WebErrSchema,

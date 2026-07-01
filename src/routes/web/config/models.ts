@@ -11,6 +11,21 @@ const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model
   "config-body": ConfigBodySchema,
 });
 
+function configErrorStatus(code: string | undefined): 400 | 403 | 404 | 409 | 500 {
+  switch (code) {
+    case "VALIDATION_ERROR":
+      return 400;
+    case "FORBIDDEN":
+      return 403;
+    case "NOT_FOUND":
+      return 404;
+    case "ALREADY_EXISTS":
+      return 409;
+    default:
+      return 500;
+  }
+}
+
 /** 可用模型缓存（按 organizationId 隔离） */
 const cachedAvailableByOrg = new Map<
   string,
@@ -156,7 +171,7 @@ async function handleRefresh(ctx: AuthContext) {
 app.post(
   "/config/models",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, error }: any) => {
+  async ({ store, body, status }: any) => {
     const authCtx = store.authContext!;
     const b = (body as ConfigBody) ?? {};
     const payload = {
@@ -164,31 +179,42 @@ app.post(
       data: b.data as { model?: string; small_model?: string; permission?: unknown } | undefined,
     };
     try {
-      switch (payload.action) {
-        case "get":
-          return await handleGet(authCtx);
-        case "set":
-          return await handleSet(authCtx, payload.data ?? {});
-        case "refresh":
-          return await handleRefresh(authCtx);
-        default:
-          return error(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
+      const result = await (async () => {
+        switch (payload.action) {
+          case "get":
+            return await handleGet(authCtx);
+          case "set":
+            return await handleSet(authCtx, payload.data ?? {});
+          case "refresh":
+            return await handleRefresh(authCtx);
+          default:
+            return status(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
+        }
+      })();
+
+      if (result && typeof result === "object" && "success" in result && result.success === false) {
+        return status(configErrorStatus(result.error?.code), result);
       }
+
+      return result;
     } catch (e: unknown) {
       if (e instanceof AppError) {
-        return error(e.statusCode, configError(e.code, e.message));
+        return status(e.statusCode, configError(e.code, e.message));
       }
       const message = e instanceof Error ? e.message : "Unknown error";
-      return error(500, configError("CONFIG_READ_ERROR", message));
+      return status(500, configError("CONFIG_READ_ERROR", message));
     }
   },
   {
     sessionAuth: true,
     body: "config-body",
     response: {
-      // TODO: 当前仍是 action 分发入口，成功 data 先以宽松对象占位；后续应拆分为独立接口并补精确成功响应 schema。
-      200: WebOkSchema(z.looseObject({})),
+      // TODO: 当前仍是 action 分发入口，成功 data 先以宽松 object|null 占位；后续应拆分为独立接口并补精确成功响应 schema。
+      200: WebOkSchema(z.union([z.looseObject({}), z.null()])),
       400: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
+      409: WebErrSchema,
       500: WebErrSchema,
     },
     detail: { tags: ["ModelConfig"], summary: "Model 配置管理" },
