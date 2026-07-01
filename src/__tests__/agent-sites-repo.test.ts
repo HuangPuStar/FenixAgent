@@ -184,4 +184,74 @@ describe("agentSiteAppRepo", () => {
     const result = await repo.delete("test-id");
     expect(result).toBe(true);
   });
+
+  test("create 默认 appType 为 pocketbase", async () => {
+    // 通过 captured 捕获 insert.values() 收到的数据，验证默认值兜底
+    const captured: Record<string, unknown> = {};
+    stubDb({
+      insert: () => ({
+        values: (data: Record<string, unknown>) => {
+          Object.assign(captured, data);
+          return { returning: () => Promise.resolve([{ ...data, id: "new-id" }]) };
+        },
+      }),
+    });
+
+    await repo.create({
+      organizationId: "org-1",
+      userId: "user-1",
+      remoteAppId: "app-test1",
+      name: "test",
+      platformToken: "tok",
+      platformTokenId: "tok-1",
+    });
+    expect(captured.appType).toBe("pocketbase");
+  });
+
+  test("create 显式传 appType=custom", async () => {
+    const captured: Record<string, unknown> = {};
+    stubDb({
+      insert: () => ({
+        values: (data: Record<string, unknown>) => {
+          Object.assign(captured, data);
+          return { returning: () => Promise.resolve([{ ...data, id: "new-id" }]) };
+        },
+      }),
+    });
+
+    await repo.create({
+      organizationId: "org-1",
+      userId: "user-1",
+      remoteAppId: "app-test2",
+      name: "test",
+      platformToken: "tok",
+      platformTokenId: "tok-1",
+      appType: "custom",
+    });
+    expect(captured.appType).toBe("custom");
+  });
+
+  test("update 支持部署字段", async () => {
+    // 捕获 update.set() 收到的数据，验证 entryFile/activeSlot/deployedAt 透传
+    const captured: Record<string, unknown> = {};
+    stubDb({
+      update: () => ({
+        set: (data: Record<string, unknown>) => {
+          Object.assign(captured, data);
+          return {
+            where: () => ({ returning: () => Promise.resolve([{ id: "x", ...data }]) }),
+          };
+        },
+      }),
+    });
+
+    await repo.update("x", {
+      entryFile: "main.ts",
+      activeSlot: "a",
+      deployedAt: new Date("2026-07-01"),
+    });
+    expect(captured.entryFile).toBe("main.ts");
+    expect(captured.activeSlot).toBe("a");
+    expect(captured.deployedAt).toEqual(new Date("2026-07-01"));
+  });
 });

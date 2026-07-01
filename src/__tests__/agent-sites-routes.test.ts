@@ -29,6 +29,10 @@ function makeAppRow(overrides: Record<string, unknown> = {}) {
     platformToken: "tok-xxx.yyy",
     platformTokenId: "tok-001",
     visibility: "private",
+    appType: "pocketbase",
+    entryFile: null,
+    activeSlot: null,
+    deployedAt: null,
     createdAt: new Date("2026-06-23"),
     updatedAt: new Date("2026-06-23"),
     ...overrides,
@@ -219,6 +223,141 @@ describe("agent-sites L1 routes", () => {
     expect(json.data[0].id).toBe(siteAppIdB);
     expect(json.data[1].id).toBe(siteAppIdA);
     expect(json.data[0].remoteAppId).toBe("app-bbb");
+  });
+
+  // ── Custom App 部署（POST /apps/:id/deploy）─────────
+  // 仅 type=custom 的 app 支持部署；透传 gzip tar.gz 到 agent-sites 平台，
+  // 平台做解压 + TCP 探活 + 双槽位切换。RCS 写回 entry_file/slot/deployed_at。
+
+  test("POST /apps/:id/deploy 对 custom 类型部署成功", async () => {
+    const row = makeAppRow({ appType: "custom" });
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([row]),
+          }),
+        }),
+      }),
+      update: () => ({
+        set: () => ({
+          where: () => ({
+            returning: () =>
+              Promise.resolve([
+                {
+                  ...row,
+                  entryFile: "main.ts",
+                  activeSlot: "a",
+                  deployedAt: new Date("2026-07-01T00:00:00Z"),
+                },
+              ]),
+          }),
+        }),
+      }),
+    });
+    // mock fetch 返回平台 deploy 响应（覆盖 beforeEach 的默认 stub）
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: { files: 3, total_bytes: 1024, entry_file: "main.ts", slot: "a", port: 9005 },
+          error: null,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )) as unknown as typeof fetch;
+
+    const tarGzBody = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new Uint8Array([0x1f, 0x8b]));
+        c.close();
+      },
+    });
+    const res = await webAgentSites.handle(
+      new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}/deploy`, {
+        method: "POST",
+        body: tarGzBody,
+      }),
+    );
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data).toEqual({
+      files: 3,
+      totalBytes: 1024,
+      entryFile: "main.ts",
+      slot: "a",
+      deployedAt: expect.any(Number),
+    });
+  });
+
+  test("POST /apps/:id/deploy 对 pocketbase 类型返 400", async () => {
+    const row = makeAppRow({ appType: "pocketbase" });
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([row]),
+          }),
+        }),
+      }),
+    });
+    const res = await webAgentSites.handle(
+      new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}/deploy`, {
+        method: "POST",
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.type).toBe("bad_request");
+    expect(json.error.message).toContain("不是 custom 类型");
+  });
+
+  test("POST /apps/:id/deploy 非 owner 非 admin 返 403", async () => {
+    const row = makeAppRow({ appType: "custom", userId: "other-user" });
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([row]),
+          }),
+        }),
+      }),
+    });
+    setTestAuth({
+      user: { id: "test-user", email: "t@t.com", name: "T" },
+      authContext: { organizationId: "test-org", userId: "test-user", role: "member" },
+    });
+    const res = await webAgentSites.handle(
+      new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}/deploy`, {
+        method: "POST",
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  // ── L2 PB 透传对 custom 类型的拒绝 ─────────────────
+  // custom 类型没有 PocketBase，PB 透传应明确返 400 而不是上游 404。
+
+  test("L2 PB 透传 /apps/:id/api/* 对 custom 类型返 400", async () => {
+    const row = makeAppRow({ appType: "custom" });
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([row]),
+          }),
+        }),
+      }),
+    });
+    const res = await webAgentSites.handle(
+      new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}/api/collections`, {
+        method: "GET",
+      }),
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.type).toBe("bad_request");
+    expect(json.error.message).toContain("不支持 PocketBase API");
   });
 });
 

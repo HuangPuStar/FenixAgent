@@ -16,6 +16,8 @@ export interface CreateAppParams {
   platformToken: string;
   platformTokenId: string;
   visibility?: Visibility;
+  /** App 类型，默认 pocketbase。custom 类型支持 deploy 接口 */
+  appType?: "pocketbase" | "custom";
 }
 
 class AgentSiteAppRepo {
@@ -31,6 +33,7 @@ class AgentSiteAppRepo {
         platformToken: params.platformToken,
         platformTokenId: params.platformTokenId,
         visibility: params.visibility ?? "private",
+        appType: params.appType ?? "pocketbase",
       })
       .returning();
     return row;
@@ -70,7 +73,19 @@ class AgentSiteAppRepo {
 
   async update(
     id: string,
-    data: Partial<Pick<AgentSiteAppRow, "name" | "description" | "visibility" | "platformToken" | "platformTokenId">>,
+    data: Partial<
+      Pick<
+        AgentSiteAppRow,
+        | "name"
+        | "description"
+        | "visibility"
+        | "platformToken"
+        | "platformTokenId"
+        | "entryFile"
+        | "activeSlot"
+        | "deployedAt"
+      >
+    >,
   ): Promise<AgentSiteAppRow | undefined> {
     const [row] = await db
       .update(agentSiteApp)

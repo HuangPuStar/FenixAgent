@@ -10,6 +10,10 @@ export const AgentSiteAppSchema = z.object({
   name: z.string().describe("展示名称。"),
   description: z.string().nullable().describe("描述。"),
   visibility: z.enum(["private", "org", "authenticated", "public"]).describe("业务前端可见性。"),
+  appType: z.enum(["pocketbase", "custom"]).describe("App 类型。custom 类型需通过 deploy 接口部署 Deno 应用。"),
+  entryFile: z.string().nullable().describe("当前入口文件（如 main.ts）。pocketbase 类型为 null。"),
+  activeSlot: z.enum(["a", "b"]).nullable().describe("当前激活的部署槽位。pocketbase 类型为 null。"),
+  deployedAt: z.number().nullable().describe("最后部署时间（秒级时间戳）。pocketbase 类型为 null。"),
   createdAt: z.number().describe("创建时间（秒级时间戳）。"),
   updatedAt: z.number().describe("更新时间（秒级时间戳）。"),
 });
@@ -42,6 +46,11 @@ export const CreateAgentSiteAppRequestSchema = z.object({
     .optional()
     .default("private")
     .describe("业务前端可见性，默认 private。"),
+  type: z
+    .enum(["pocketbase", "custom"])
+    .optional()
+    .default("pocketbase")
+    .describe("App 类型。custom 类型不创建 PocketBase，需后续 POST /apps/:id/deploy 部署 Deno 代码。"),
 });
 
 export type CreateAgentSiteAppRequest = z.infer<typeof CreateAgentSiteAppRequestSchema>;
@@ -92,3 +101,17 @@ export const AgentSiteUploadResponseSchema = ConfigOkSchema(z.unknown().describe
 
 /** Agent Sites web API 错误响应 */
 export const AgentSiteErrorResponseSchema = ApiErrorSchema;
+
+/** POST /web/agent-sites/apps/:id/deploy 成功响应 */
+export const AgentSiteDeployResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    files: z.number().describe("解压后的文件数。"),
+    totalBytes: z.number().describe("解压后总字节数。"),
+    entryFile: z.string().describe("入口文件名（main.ts 或 main.js）。"),
+    slot: z.enum(["a", "b"]).describe("当前激活的部署槽位。"),
+    deployedAt: z.number().describe("本次部署时间（秒级时间戳）。"),
+  }),
+});
+
+export type AgentSiteDeployResponse = z.infer<typeof AgentSiteDeployResponseSchema>;

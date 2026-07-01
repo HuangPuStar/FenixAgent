@@ -14,6 +14,7 @@ import {
   AgentSiteAppListResponseSchema,
   AgentSiteAppOkResponseSchema,
   AgentSiteBindingParamsSchema,
+  AgentSiteDeployResponseSchema,
   AgentSiteErrorResponseSchema,
   AgentSiteRemoteAppParamsSchema,
   AgentSiteUploadResponseSchema,
@@ -25,6 +26,7 @@ import {
 import {
   createRemoteApp,
   deleteRemoteApp,
+  deployCustomApp,
   issuePlatformToken,
   proxyToAgentSites,
   revokePlatformToken,
@@ -43,6 +45,10 @@ function toResponse(row: AgentSiteAppRow): AgentSiteApp {
     name: row.name,
     description: row.description ?? null,
     visibility: (row.visibility as AgentSiteApp["visibility"] | undefined) ?? "private",
+    appType: (row.appType as AgentSiteApp["appType"] | undefined) ?? "pocketbase",
+    entryFile: row.entryFile ?? null,
+    activeSlot: (row.activeSlot as AgentSiteApp["activeSlot"] | undefined) ?? null,
+    deployedAt: row.deployedAt ? Math.floor(row.deployedAt.getTime() / 1000) : null,
     createdAt: row.createdAt ? Math.floor(new Date(row.createdAt).getTime() / 1000) : 0,
     updatedAt: row.updatedAt ? Math.floor(new Date(row.updatedAt).getTime() / 1000) : 0,
   };
@@ -162,10 +168,11 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       const user = store.user!;
       const b = body as CreateAgentSiteAppRequest;
 
-      // 1. 在 agent-sites 创建远程 app
-      const remote = await createRemoteApp(b.name);
+      // 1. 在 agent-sites 创建远程 app（透传 type，默认 pocketbase）
+      const remote = await createRemoteApp(b.name, b.type);
 
-      // 2. 申请 platform token
+      // 2. 申请 platform token（custom 类型其实用不到 token——没有 PB，
+      //    但保留以保持 RCS DB schema 一致；后续如需迁移回 pocketbase 也无缝）
       const token = await issuePlatformToken(remote.id);
 
       // 3. 写入 RCS DB
@@ -178,6 +185,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         platformToken: token.token,
         platformTokenId: token.token_id,
         visibility: (b.visibility as "private" | "org" | "authenticated" | "public") ?? "private",
+        appType: b.type,
       });
 
       return { success: true as const, data: toResponse(row) };
@@ -189,7 +197,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       detail: {
         tags: ["Agent Sites"],
         summary: "创建 agent site app",
-        description: "在 agent-sites 创建远程 app + 申请 token + 写 RCS DB。",
+        description: "在 agent-sites 创建远程 app + 申请 token + 写 RCS DB。type=custom 时不创建 PocketBase。",
       },
     },
   )
@@ -366,6 +374,67 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
     },
   )
 
+  // ── L1: Custom App 部署 ──────────────────────────────
+  // 仅 type=custom 的 app 支持部署。透传 gzip tar.gz body 到 agent-sites 平台。
+  // 平台做解压、TCP 探活（10s）、双槽位切换。RCS 拿到 entry_file/slot 写入 DB。
+  .post(
+    "/apps/:id/deploy",
+    async ({ params, request, store, status }) => {
+      const authCtx = store.authContext!;
+      const row = await agentSiteAppRepo.getById(params.id);
+      if (!row || row.organizationId !== authCtx.organizationId) {
+        return status(404, buildError("not_found", "App 不存在"));
+      }
+      if (!canWrite(row, authCtx.userId, authCtx.role)) {
+        return status(403, buildError("forbidden", "无权限部署此 app"));
+      }
+      // 类型校验：只有 custom 类型支持部署（pocketbase 由平台托管，无需部署代码）
+      if (row.appType !== "custom") {
+        return status(
+          400,
+          buildError("bad_request", `App ${row.remoteAppId} 不是 custom 类型，无法部署（当前: ${row.appType}）`),
+        );
+      }
+      // 透传 gzip body 到平台，平台做解压 + 探活 + 切换
+      const remote = await deployCustomApp(row.remoteAppId, request.body);
+      // 平台返回的 slot 是 "a" | "b"，DB 与响应 schema 均要求此字面量类型
+      const slot = remote.data.slot as "a" | "b";
+      // 写入 RCS DB 记录部署元数据（entry_file / slot / deployed_at）
+      const now = new Date();
+      await agentSiteAppRepo.update(params.id, {
+        entryFile: remote.data.entry_file,
+        activeSlot: slot,
+        deployedAt: now,
+      });
+      return {
+        success: true as const,
+        data: {
+          files: remote.data.files,
+          totalBytes: remote.data.total_bytes,
+          entryFile: remote.data.entry_file,
+          slot,
+          deployedAt: Math.floor(now.getTime() / 1000),
+        },
+      };
+    },
+    {
+      sessionAuth: true,
+      params: AgentSiteAppIdParamsSchema,
+      response: {
+        200: AgentSiteDeployResponseSchema,
+        400: AgentSiteErrorResponseSchema,
+        403: AgentSiteErrorResponseSchema,
+        404: AgentSiteErrorResponseSchema,
+      },
+      detail: {
+        tags: ["Agent Sites"],
+        summary: "部署 custom app（gzip tar.gz）",
+        description:
+          "上传 Deno 应用 gzip tar.gz 包到 custom 类型 app。平台解压、TCP 探活（10s）、双槽位热切换。pocketbase 类型返 400。owner/admin 可操作。",
+      },
+    },
+  )
+
   // ── L1.5: AgentConfig ↔ SiteApp 绑定查询 ───────────
   // chat 右侧 ArtifactsPanel 通过 agentConfigId 拉取绑定的 sites 详情，
   // 用于顶部 Files / Site1 / Site2 tab 切换。返回顺序按绑定 createdAt 升序，
@@ -480,6 +549,16 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       const row = await agentSiteAppRepo.getById(params.id);
       if (!row || row.organizationId !== authCtx.organizationId) {
         return status(404, buildError("not_found", "App 不存在"));
+      }
+      // custom 类型没有 PocketBase，L2 PB 透传无意义——明确拒绝避免被上游 404 误导
+      if (row.appType === "custom") {
+        return status(
+          400,
+          buildError(
+            "bad_request",
+            `Custom 类型 app ${row.remoteAppId} 不支持 PocketBase API，请走业务前端 /${row.remoteAppId}/* 或 L1 deploy 接口`,
+          ),
+        );
       }
       // 提取 prefix 之后的相对路径，拼回 /api/ 前缀
       const prefix = `/web/agent-sites/apps/${params.id}/api/`;

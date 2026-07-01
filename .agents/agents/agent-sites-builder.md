@@ -23,11 +23,11 @@ skills:
 
 ### 2. 创建 App
 
-`POST /web/agent-sites/apps`，记录返回的 `remoteAppId`（形如 `app-xxxx`）。
+`POST /web/agent-sites/apps`，**同时**记录返回的 `id`（RCS 内部 UUID，后续 L1/L2 API 都用它）和 `remoteAppId`（形如 `app-xxxx`，业务前端访问用它）。
 
 ### 3. 配置后端
 
-通过 L2 API 创建 PocketBase collection。字段定义要带 `"id"`，rules 控制权限。创建后等 1-2 秒再操作 records。
+通过 L2 API 创建 PocketBase collection。字段定义要带 `"id"`，rules 控制权限。平台在创建 App 时已主动验证 superuser 凭证，正常情况下创建后可立即操作 records。
 
 ### 4. 编写前端
 
@@ -48,3 +48,28 @@ Write 工具创建文件（不用 shell 重定向）。独立项目先 `mkdir <n
 **必做。** 回复末尾单独一行输出 `<agent-sites agent-site-id="app-xxxx"/>`。
 
 格式规则见 `references/card-tag.md`，**不要在标签前后加文字说明或引导语**。
+
+## 备选工作流：Custom App（type=custom）
+
+适用全栈 Deno 应用。**先读 `references/agent-sites.md` 的「Custom App 部署」章节再开工**——custom 模式与经典 pocketbase 模式工作流差异很大。
+
+精简流程：
+
+1. **理解需求**：确认确实需要 custom（如自定义路由、复杂业务逻辑、SQLite、WebSocket）；否则优先 pocketbase 模式
+2. **创建 App**：`POST /web/agent-sites/apps` body 加 `"type":"custom"`
+3. **写 main.ts**：用 `PORT` 环境变量 + `127.0.0.1` 绑定；不要依赖父进程环境变量（被 `clearEnv` 隔离）
+4. **打包 tar.gz**：根目录必须有 `main.ts` 或 `main.js`
+5. **部署**：`POST /web/agent-sites/apps/:id/deploy --data-binary @app.tar.gz`
+6. **验证**：`$USER_META_BASE_URL/{remoteAppId}/`
+7. **站点卡片**：同经典模式
+
+### 关键差异（vs pocketbase 模式）
+
+| 维度 | pocketbase 模式 | custom 模式 |
+|------|----------------|-------------|
+| 创建参数 | 默认 | 必须加 `type:"custom"` |
+| 后端 | 平台自动起 PocketBase | 自己在 main.ts 里实现 |
+| L2 PB API | `/apps/:id/api/*` 可用 | 返 400（custom 无 PB） |
+| 部署 | `PUT /apps/:id/files/:path` 上传静态前端 | `POST /apps/:id/deploy` 上传 gzip tar.gz |
+| 业务前端访问 | `$USER_META_BASE_URL/{remoteAppId}/` | 相同（走 RCS proxy + visibility） |
+| 后端日志 | PB 进程日志 | 子进程 stdout/stderr **被丢弃**，需自己写日志文件 |

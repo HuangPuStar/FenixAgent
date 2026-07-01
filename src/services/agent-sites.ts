@@ -66,13 +66,21 @@ export interface RemoteApp {
   status: string; // starting | running | error
   api_path: string;
   created_at: string;
+  // app 类型。pocketbase: 平台托管 PocketBase 实例；custom: 调用方自行部署代码
+  type: "pocketbase" | "custom";
 }
 
-/** POST /api/apps — 创建远程 app */
-export async function createRemoteApp(name: string): Promise<RemoteApp> {
+/** POST /api/apps — 创建远程 app
+ *  @param type app 类型，默认 pocketbase。custom 类型不创建 PocketBase，需后续 POST /api/apps/:id/deploy 部署代码
+ */
+export async function createRemoteApp(name: string, type?: "pocketbase" | "custom"): Promise<RemoteApp> {
+  const body: Record<string, string> = { name };
+  if (type === "custom") {
+    body.type = "custom";
+  }
   const res = await agentSitesFetch("/api/apps", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   });
   const json = await handleResponse<{ data: RemoteApp }>(res);
   return json.data;
@@ -132,6 +140,34 @@ export async function uploadRemoteBundle(
 ): Promise<{ data: { files: { path: string; bytes: number }[] } }> {
   const res = await agentSitesFetch(`/api/apps/${encodeURIComponent(remoteAppId)}/files/bundle`, {
     method: "POST",
+    headers: new Headers(),
+    body,
+  });
+  return handleResponse(res);
+}
+
+/** POST /api/apps/{id}/deploy — 部署 custom app（gzip tar.gz 包）
+ *
+ *  调用方传入 ReadableStream body（来自 RCS 路由 request.body），
+ *  本方法注入 X-Master-Key 后透传到 agent-sites 平台，平台做：
+ *  - 检查 app.type === "custom"，否则返 400
+ *  - 解压 tar.gz 到 deploy-{slot} 目录
+ *  - TCP 探活（10 秒超时，每 200ms 一次）
+ *  - 探活超时抛 500 INTERNAL_ERROR（消息 sanitize 为「服务器内部错误」）
+ *  - 切换 active_slot + 重启进程
+ *
+ *  成功响应：{ data: { files, total_bytes, entry_file, slot, port }, error: null }
+ *  RCS 调用方负责把 entry_file/slot 写入 RCS DB（port 是平台内部端口，不外露）
+ */
+export async function deployCustomApp(
+  remoteAppId: string,
+  body: ReadableStream<Uint8Array> | null,
+): Promise<{ data: { files: number; total_bytes: number; entry_file: string; slot: string; port: number } }> {
+  const res = await agentSitesFetch(`/api/apps/${encodeURIComponent(remoteAppId)}/deploy`, {
+    method: "POST",
+    // 显式构造空 Headers：agentSitesFetch 会自动注入 X-Master-Key 和
+    // content-type: application/json（POST 默认行为）。平台容忍 JSON content-type
+    // + gzip body——靠 gzip magic bytes (1f 8b) 识别真实包格式，不依赖 content-type。
     headers: new Headers(),
     body,
   });

@@ -973,6 +973,14 @@ export const agentSiteApp = pgTable(
     platformToken: text("platform_token").notNull(),
     platformTokenId: varchar("platform_token_id", { length: 64 }).notNull(),
     visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
+    // ── custom app 部署相关 ──
+    // appType 为判别字段：'pocketbase' 时下方三个字段保持 null；
+    // 'custom' 时 entryFile 指定入口文件（如 'main.ts'），activeSlot 为蓝绿部署槽（'a'/'b'），
+    // deployedAt 记录最后一次部署时间。
+    appType: varchar("app_type", { length: 20 }).notNull().default("pocketbase"),
+    entryFile: varchar("entry_file", { length: 64 }),
+    activeSlot: varchar("active_slot", { length: 8 }),
+    deployedAt: timestamp("deployed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
