@@ -1,6 +1,8 @@
 import Elysia from "elysia";
 import { z } from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
+import { AgentGenerationResponseSchema } from "../../schemas/agent-generation.schema";
+import { WebErrSchema } from "../../schemas/common.schema";
 import { generateAgentConfig, isGenerationConfigured } from "../../services/agent-generation";
 import { configError, configSuccess } from "../../services/config-utils";
 
@@ -38,7 +40,17 @@ app.post(
       return error(500, configError("LLM_ERROR", "Failed to generate agent configuration"));
     }
   },
-  { sessionAuth: true, body: "generation-body", detail: { tags: ["AgentConfig"], summary: "Agent 智能生成" } },
+  {
+    sessionAuth: true,
+    body: "generation-body",
+    response: {
+      200: AgentGenerationResponseSchema,
+      422: WebErrSchema,
+      500: WebErrSchema,
+      503: WebErrSchema,
+    },
+    detail: { tags: ["AgentConfig"], summary: "Agent 智能生成" },
+  },
 );
 
 export default app;

@@ -71,6 +71,7 @@ packages/plugin-claude-code/plugin-claude-code
 .workspace-registry.json
 .worktrees/
 packages/plugin-ccb/node_modules/
+superpowers/
 
 tmp
 .bunenv/

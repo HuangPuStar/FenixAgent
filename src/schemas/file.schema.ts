@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebOkSchema } from "./common.schema";
 
 /** 目录项或文件项 */
 export const FileEntrySchema = z.object({
@@ -10,18 +11,22 @@ export const FileEntrySchema = z.object({
 });
 
 /** 目录列表响应 */
-export const FileListResponseSchema = z.object({
-  entries: FileEntrySchema.array().describe("当前目录下可见的文件与目录列表。"),
-});
+export const FileListResponseSchema = WebOkSchema(
+  z.object({
+    entries: FileEntrySchema.array().describe("当前目录下可见的文件与目录列表。"),
+  }),
+).describe("目录列表响应。");
 
 /** 文本文件内容响应 */
-export const FileContentSchema = z.object({
-  name: z.string().describe("文件名称。"),
-  path: z.string().describe("文件相对路径。"),
-  content: z.string().describe("文件文本内容。"),
-  size: z.number().describe("文件大小，单位为字节。"),
-  encoding: z.string().describe("文本编码；当前通常为 utf-8。"),
-});
+export const FileContentSchema = WebOkSchema(
+  z.object({
+    name: z.string().describe("文件名称。"),
+    path: z.string().describe("文件相对路径。"),
+    content: z.string().describe("文件文本内容。"),
+    size: z.number().describe("文件大小，单位为字节。"),
+    encoding: z.string().describe("文本编码；当前通常为 utf-8。"),
+  }),
+).describe("文本文件内容响应。");
 
 /** 单个上传文件结果 */
 export const FileUploadItemSchema = z.object({
@@ -31,16 +36,20 @@ export const FileUploadItemSchema = z.object({
 });
 
 /** 文件上传响应 */
-export const FileUploadResponseSchema = z.object({
-  files: FileUploadItemSchema.array().describe("本次成功上传的文件列表。"),
-});
+export const FileUploadResponseSchema = WebOkSchema(
+  z.object({
+    files: FileUploadItemSchema.array().describe("本次成功上传的文件列表。"),
+  }),
+).describe("文件上传响应。");
 
 /** 写入文件成功结果 */
-export const FileWriteResultSchema = z.object({
-  name: z.string().describe("写入的文件名称。"),
-  path: z.string().describe("写入后的文件路径。"),
-  size: z.number().describe("写入后文件大小，单位为字节。"),
-});
+export const FileWriteResultSchema = WebOkSchema(
+  z.object({
+    name: z.string().describe("写入的文件名称。"),
+    path: z.string().describe("写入后的文件路径。"),
+    size: z.number().describe("写入后文件大小，单位为字节。"),
+  }),
+).describe("写入文件成功结果。");
 
 /** 写入文件请求体 */
 export const WriteFileRequestSchema = z.object({
@@ -48,10 +57,12 @@ export const WriteFileRequestSchema = z.object({
 });
 
 /** 递归文件树响应 */
-export const TreeResponseSchema = z.object({
-  paths: z.array(z.string()).describe("递归展开后的路径列表；目录通常以 / 结尾。"),
-  mtimes: z.record(z.string(), z.number()).optional().describe("部分文件路径对应的修改时间戳，单位为毫秒。"),
-});
+export const TreeResponseSchema = WebOkSchema(
+  z.object({
+    paths: z.array(z.string()).describe("递归展开后的路径列表；目录通常以 / 结尾。"),
+    mtimes: z.record(z.string(), z.number()).optional().describe("部分文件路径对应的修改时间戳，单位为毫秒。"),
+  }),
+).describe("递归文件树响应。");
 
 /** 重命名请求体 */
 export const RenameRequestSchema = z.object({
@@ -60,10 +71,12 @@ export const RenameRequestSchema = z.object({
 });
 
 /** 重命名响应 */
-export const RenameResponseSchema = z.object({
-  oldPath: z.string().describe("原始路径。"),
-  newPath: z.string().describe("更新后的目标路径。"),
-});
+export const RenameResponseSchema = WebOkSchema(
+  z.object({
+    oldPath: z.string().describe("原始路径。"),
+    newPath: z.string().describe("更新后的目标路径。"),
+  }),
+).describe("重命名响应。");
 
 /** 创建目录请求体 */
 export const MkdirRequestSchema = z.object({
@@ -71,9 +84,11 @@ export const MkdirRequestSchema = z.object({
 });
 
 /** 创建目录响应 */
-export const MkdirResponseSchema = z.object({
-  path: z.string().describe("已创建的目录路径。"),
-});
+export const MkdirResponseSchema = WebOkSchema(
+  z.object({
+    path: z.string().describe("已创建的目录路径。"),
+  }),
+).describe("创建目录响应。");
 
 /** 批量删除请求体 */
 export const BatchDeleteRequestSchema = z.object({
@@ -81,17 +96,19 @@ export const BatchDeleteRequestSchema = z.object({
 });
 
 /** 批量删除响应 */
-export const BatchDeleteResponseSchema = z.object({
-  deleted: z.array(z.string()).describe("成功删除的路径列表。"),
-  failed: z
-    .array(
-      z.object({
-        path: z.string().describe("删除失败的路径。"),
-        error: z.string().describe("删除失败原因。"),
-      }),
-    )
-    .describe("删除失败的路径及错误信息。"),
-});
+export const BatchDeleteResponseSchema = WebOkSchema(
+  z.object({
+    deleted: z.array(z.string()).describe("成功删除的路径列表。"),
+    failed: z
+      .array(
+        z.object({
+          path: z.string().describe("删除失败的路径。"),
+          error: z.string().describe("删除失败原因。"),
+        }),
+      )
+      .describe("删除失败的路径及错误信息。"),
+  }),
+).describe("批量删除响应。");
 
 export type FileEntry = z.infer<typeof FileEntrySchema>;
 export type FileListResponse = z.infer<typeof FileListResponseSchema>;

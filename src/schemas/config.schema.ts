@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebOkSchema } from "./common.schema";
 
 // ── Config 通用结构 ──
 
@@ -250,55 +251,42 @@ export const SetDefaultAgentRequestSchema = z
   })
   .describe("设置默认 Agent 请求体。");
 
-export const AgentTemplatesResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z.object({
-      templates: z.array(AgentTemplateSchema).describe("可用 Agent 模板列表。"),
-    }),
-  })
-  .describe("Agent 模板列表响应。");
+export const AgentTemplatesResponseSchema = WebOkSchema(
+  z.object({
+    templates: z.array(AgentTemplateSchema).describe("可用 Agent 模板列表。"),
+  }),
+).describe("Agent 模板列表响应。");
 
-export const AgentListResponseSchema = z
+export const AgentListDataSchema = z
   .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z.object({
-      default_agent: z.string().nullable().describe("当前用户的默认 Agent 名称；未设置时为 null。"),
-      agents: z.array(AgentInfoSchema).describe("当前用户可见的 Agent 列表。"),
-    }),
+    default_agent: z.string().nullable().describe("当前用户的默认 Agent 名称；未设置时为 null。"),
+    agents: z.array(AgentInfoSchema).describe("当前用户可见的 Agent 列表。"),
   })
-  .describe("Agent 列表响应。");
+  .describe("Agent 列表响应数据。");
 
-export const AgentDetailResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: AgentDetailSchema.describe("指定 Agent 的详情。"),
-  })
-  .describe("Agent 详情响应。");
+export const AgentListResponseSchema = WebOkSchema(AgentListDataSchema).describe("Agent 列表响应。");
 
-export const CreateAgentResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z.object({
-      name: z.string().describe("已创建的 Agent 名称。"),
-      id: z.string().optional().describe("已创建的 Agent 配置 ID。"),
-      resourceAccess: AgentResourceAccessSchema.optional().describe("创建后的共享访问控制信息。"),
-    }),
-  })
-  .describe("创建 Agent 响应。");
+export const AgentDetailResponseSchema = WebOkSchema(AgentDetailSchema.describe("指定 Agent 的详情。")).describe(
+  "Agent 详情响应。",
+);
 
-export const UpdateAgentResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z
-      .object({
-        name: z.string().describe("已更新的 Agent 名称。"),
-        resourceAccess: AgentResourceAccessSchema.optional().describe("更新后的共享访问控制信息。"),
-      })
-      .catchall(z.unknown())
-      .describe("更新后的 Agent 返回数据。"),
-  })
-  .describe("更新 Agent 响应。");
+export const CreateAgentResponseSchema = WebOkSchema(
+  z.object({
+    name: z.string().describe("已创建的 Agent 名称。"),
+    id: z.string().optional().describe("已创建的 Agent 配置 ID。"),
+    resourceAccess: AgentResourceAccessSchema.optional().describe("创建后的共享访问控制信息。"),
+  }),
+).describe("创建 Agent 响应。");
+
+export const UpdateAgentResponseSchema = WebOkSchema(
+  z
+    .object({
+      name: z.string().describe("已更新的 Agent 名称。"),
+      resourceAccess: AgentResourceAccessSchema.optional().describe("更新后的共享访问控制信息。"),
+    })
+    .catchall(z.unknown())
+    .describe("更新后的 Agent 返回数据。"),
+).describe("更新 Agent 响应。");
 
 export const DeleteAgentResponseSchema = z
   .object({
@@ -307,29 +295,71 @@ export const DeleteAgentResponseSchema = z
   })
   .describe("删除 Agent 响应。");
 
-export const SetDefaultAgentResponseSchema = z
-  .object({
-    success: z.literal(true).describe("接口调用成功。"),
-    data: z.object({
-      default_agent: z.string().describe("已设置为默认值的 Agent 名称。"),
-      resourceAccess: AgentResourceAccessSchema.optional().describe("该 Agent 的共享访问控制信息。"),
-    }),
-  })
-  .describe("设置默认 Agent 响应。");
+export const SetDefaultAgentResponseSchema = WebOkSchema(
+  z.object({
+    default_agent: z.string().describe("已设置为默认值的 Agent 名称。"),
+    resourceAccess: AgentResourceAccessSchema.optional().describe("该 Agent 的共享访问控制信息。"),
+  }),
+).describe("设置默认 Agent 响应。");
 
-export const GetAgentResponseSchema = z
-  .union([AgentListResponseSchema, AgentDetailResponseSchema])
-  .describe("获取 Agent 列表或详情的响应。");
+export const GetAgentResponseSchema = WebOkSchema(
+  z.union([AgentListDataSchema, AgentDetailSchema]).describe("Agent 列表数据或单个 Agent 详情。"),
+).describe("获取 Agent 列表或详情的响应。");
 
 // ── Skills ──
 
-export const SkillInfoSchema = z.object({
-  name: z.string(),
-  description: z.string().nullable(),
-  enabled: z.boolean(),
-  content: z.string().nullable(),
-  metadata: z.record(z.string(), z.string()).nullable().optional(),
-});
+export const SkillInfoSchema = z
+  .object({
+    id: z.string().optional().describe("Skill ID。"),
+    name: z.string().describe("Skill 名称。"),
+    enabled: z.boolean().describe("Skill 是否启用。"),
+    description: z.string().describe("Skill 描述。"),
+    path: z.string().describe("Skill 源文件路径。"),
+    resourceAccess: AgentResourceAccessSchema.optional().describe("该 Skill 的共享访问控制信息。"),
+  })
+  .describe("Skill 列表项。");
+
+export const SkillDetailSchema = SkillInfoSchema.extend({
+  content: z.string().describe("Skill Markdown 正文内容。"),
+  metadata: z.record(z.string(), z.string()).describe("Skill frontmatter 元数据。"),
+}).describe("Skill 详情。");
+
+export const SkillListResponseSchema = WebOkSchema(
+  z.object({
+    skills: z.array(SkillInfoSchema).describe("当前组织可见的 Skill 列表。"),
+  }),
+).describe("Skill 列表响应。");
+
+export const SkillSaveResultSchema = z
+  .object({
+    name: z.string().describe("已创建或更新的 Skill 名称。"),
+    resourceAccess: AgentResourceAccessSchema.optional().describe("保存后的共享访问控制信息。"),
+  })
+  .describe("Skill 保存结果。");
+
+export const CreateSkillResponseSchema = WebOkSchema(SkillSaveResultSchema).describe("创建 Skill 响应。");
+
+export const UpdateSkillResponseSchema = WebOkSchema(SkillSaveResultSchema).describe("更新 Skill 响应。");
+
+export const DeleteSkillResponseSchema = WebOkSchema(z.null()).describe("删除 Skill 响应。");
+
+export const SkillUploadConflictSchema = z
+  .object({
+    name: z.string().describe("冲突的 Skill 名称。"),
+    enabled: z.boolean().describe("冲突 Skill 当前是否启用。"),
+    path: z.string().describe("冲突 Skill 的现有路径。"),
+  })
+  .describe("Skill 上传冲突项。");
+
+export const SkillUploadResultSchema = z
+  .object({
+    imported: z.array(SkillInfoSchema).describe("本次成功导入的 Skill 列表。"),
+    skipped: z.array(z.string()).describe("按策略跳过的 Skill 名称列表。"),
+    conflicts: z.array(SkillUploadConflictSchema).describe("导入结果中残留的冲突列表。"),
+  })
+  .describe("Skill 批量上传结果。");
+
+export const SkillUploadResponseSchema = WebOkSchema(SkillUploadResultSchema).describe("Skill 批量上传响应。");
 
 export const SkillSourceInfoSchema = z.object({
   name: z.string(),
@@ -392,6 +422,11 @@ export type AgentMutationBody = z.infer<typeof AgentMutationBodySchema>;
 export type UpdateAgentRequest = z.infer<typeof UpdateAgentRequestSchema>;
 export type SetDefaultAgentRequest = z.infer<typeof SetDefaultAgentRequestSchema>;
 export type SkillInfo = z.infer<typeof SkillInfoSchema>;
+export type SkillDetail = z.infer<typeof SkillDetailSchema>;
+export type SkillListResponse = z.infer<typeof SkillListResponseSchema>;
+export type SkillSaveResult = z.infer<typeof SkillSaveResultSchema>;
+export type SkillUploadConflict = z.infer<typeof SkillUploadConflictSchema>;
+export type SkillUploadResult = z.infer<typeof SkillUploadResultSchema>;
 export type SkillSourceInfo = z.infer<typeof SkillSourceInfoSchema>;
 export type McpServerInfo = z.infer<typeof McpServerInfoSchema>;
 export type McpServerDetail = z.infer<typeof McpServerDetailSchema>;

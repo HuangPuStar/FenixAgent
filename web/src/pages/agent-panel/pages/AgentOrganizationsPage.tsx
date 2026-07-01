@@ -90,13 +90,14 @@ export function AgentOrganizationsPage() {
 
   // 机器列表（跟随选中组织变化）
   const {
-    data: machines = [],
+    data: machinesResponse,
     loading: machinesLoading,
     refresh: refreshMachines,
   } = useRequest(() => unwrap(registryApi.list({ limit: 50 })), {
     ready: !!selectedOrgId,
     refreshDeps: [selectedOrgId],
   });
+  const machines = machinesResponse?.items ?? [];
 
   // 首次加载时自动选中当前活跃组织
   useEffect(() => {

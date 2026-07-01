@@ -1,6 +1,5 @@
 import * as z from "zod/v4";
-import { OkResponseSchema } from "./common.schema";
-
+import { WebOkSchema } from "./common.schema";
 /** 实例运行状态 */
 export const InstanceStatusSchema = z.enum(["starting", "running", "stopped", "error"]).describe("实例当前运行状态。");
 
@@ -46,13 +45,9 @@ export const SpawnInstanceFromEnvironmentResponseSchema = z.object({
 
 /** GET /web/instances — 实例列表响应 */
 export const InstanceListResponseSchema = InstanceInfoSchema.array();
-export const InstanceActivityListResponseSchema = InstanceActivityInfoSchema.array();
-
-/** DELETE /web/instances/:id — 删除实例响应 */
-export const DeleteInstanceResponseSchema = z.object({
-  success: z.literal(true).describe("接口调用成功。"),
-  data: OkResponseSchema.describe("实例删除结果。"),
-});
+export const InstanceActivityListResponseSchema = WebOkSchema(
+  InstanceActivityInfoSchema.array().describe("实例活跃度列表。"),
+).describe("实例活跃度列表响应。");
 
 export type InstanceInfo = z.infer<typeof InstanceInfoSchema>;
 export type InstanceActivityInfo = z.infer<typeof InstanceActivityInfoSchema>;
@@ -61,4 +56,3 @@ export type SpawnInstanceFromEnvironmentRequest = z.infer<typeof SpawnInstanceFr
 export type SpawnInstanceFromEnvironmentResponse = z.infer<typeof SpawnInstanceFromEnvironmentResponseSchema>;
 export type InstanceListResponse = z.infer<typeof InstanceListResponseSchema>;
 export type InstanceActivityListResponse = z.infer<typeof InstanceActivityListResponseSchema>;
-export type DeleteInstanceResponse = z.infer<typeof DeleteInstanceResponseSchema>;

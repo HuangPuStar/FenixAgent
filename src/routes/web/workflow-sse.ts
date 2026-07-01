@@ -27,18 +27,18 @@ app.get(
   async ({ request, params, query, error, store }: any) => {
     const authCtx = store.authContext;
     if (!authCtx) {
-      return error(401, { error: { type: "UNAUTHORIZED", message: "No auth context" } });
+      return error(401, { success: false, error: { code: "UNAUTHORIZED", message: "No auth context" } });
     }
 
     const workflowId = params.workflowId as string;
     if (!workflowId) {
-      return error(400, { error: { type: "VALIDATION_ERROR", message: "workflowId is required" } });
+      return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId is required" } });
     }
 
     // 多租户关键：校验 workflowId 归属当前 organization，防止跨组织订阅 SSE 事件流
     const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
     if (!wf) {
-      return error(404, { error: { type: "NOT_FOUND", message: "Workflow not found" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
     }
 
     const bus = getWorkflowEventBus(workflowId);

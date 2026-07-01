@@ -151,11 +151,11 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
 
 /**
  * 将后端错误响应标准化为 { code, message } 格式。
- * 兼容后端使用 type 字段（如 files 模块）和 code 字段的两种错误格式。
+ * /web/* 规范使用 code；未提供 code 时回退到 HTTP status 映射。
  */
 function normalizeErrorResponse(err: unknown, status: number): { code: ErrorCode; message: string } {
-  const obj = err as { code?: string; type?: string; message?: string } | undefined;
-  const code = normalizeErrorCode(obj?.code ?? obj?.type, status);
+  const obj = err as { code?: string; message?: string } | undefined;
+  const code = normalizeErrorCode(obj?.code, status);
   return { code, message: obj?.message ?? `请求失败 (${status})` };
 }
 

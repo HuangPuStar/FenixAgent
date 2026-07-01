@@ -1,6 +1,5 @@
 import * as z from "zod/v4";
-import { OkResponseSchema } from "./common.schema";
-
+import { WebOkSchema } from "./common.schema";
 /** 环境基础信息 */
 export const EnvironmentInfoSchema = z
   .object({
@@ -42,12 +41,16 @@ export const EnvironmentListResponseSchema = EnvironmentInfoSchema.extend({
 }).describe("环境列表项。");
 
 /** 环境列表响应 */
-export const EnvironmentListSchema = EnvironmentListResponseSchema.array().describe("环境列表响应。");
+export const EnvironmentListSchema = EnvironmentListResponseSchema.array().describe("环境列表数据。");
+export const EnvironmentListEnvelopeSchema = WebOkSchema(EnvironmentListSchema).describe("环境列表响应。");
 
 /** 环境详情响应 */
 export const EnvironmentDetailResponseSchema = EnvironmentInfoSchema.extend({
   secret: z.string().describe("环境密钥，用于环境级鉴权。"),
 }).describe("环境详情响应。");
+export const EnvironmentDetailEnvelopeSchema = WebOkSchema(EnvironmentDetailResponseSchema).describe(
+  "环境详情接口响应。",
+);
 
 /** 创建环境请求 */
 export const CreateEnvironmentRequestSchema = z
@@ -84,7 +87,7 @@ export const EnterEnvironmentRequestSchema = z
   .describe("进入环境请求。");
 
 /** 进入环境响应 */
-export const EnterEnvironmentResponseSchema = z
+export const EnterEnvironmentDataSchema = z
   .object({
     session_id: z.string().nullable().describe("创建或复用的会话 ID；当前未创建时为 null。"),
     instance_id: z.string().describe("进入的实例 ID。"),
@@ -92,24 +95,25 @@ export const EnterEnvironmentResponseSchema = z
     instance_status: z.string().describe("进入后的实例状态。"),
     environment_id: z.string().describe("所属环境 ID。"),
   })
-  .describe("进入环境响应。");
+  .describe("进入环境响应数据。");
+
+export const EnterEnvironmentResponseSchema = WebOkSchema(EnterEnvironmentDataSchema).describe("进入环境响应。");
 
 /** 环境实例列表响应 */
-export const ListInstancesResponseSchema = z
+export const ListInstancesDataSchema = z
   .object({
     environment_id: z.string().describe("所属环境 ID。"),
     instances: InstanceSummarySchema.array().describe("当前环境下的活跃实例列表。"),
   })
-  .describe("环境实例列表响应。");
+  .describe("环境实例列表数据。");
+
+export const ListInstancesResponseSchema = WebOkSchema(ListInstancesDataSchema).describe("环境实例列表响应。");
 
 /** 创建环境响应 */
-export const CreateEnvironmentResponseSchema = EnvironmentDetailResponseSchema;
+export const CreateEnvironmentResponseSchema = WebOkSchema(EnvironmentDetailResponseSchema).describe("创建环境响应。");
 
 /** PUT /web/environments/:id — 更新环境后的响应 */
-export const UpdateEnvironmentResponseSchema = EnvironmentInfoSchema;
-
-/** DELETE /web/environments/:id — 删除环境响应 */
-export const DeleteEnvironmentResponseSchema = OkResponseSchema;
+export const UpdateEnvironmentResponseSchema = WebOkSchema(EnvironmentInfoSchema).describe("更新环境响应。");
 
 export type EnvironmentInfo = z.infer<typeof EnvironmentInfoSchema>;
 export type EnvironmentListResponse = z.infer<typeof EnvironmentListResponseSchema>;
@@ -121,4 +125,3 @@ export type CreateEnvironmentResponse = z.infer<typeof CreateEnvironmentResponse
 export type EnterEnvironmentResponse = z.infer<typeof EnterEnvironmentResponseSchema>;
 export type ListInstancesResponse = z.infer<typeof ListInstancesResponseSchema>;
 export type UpdateEnvironmentResponse = z.infer<typeof UpdateEnvironmentResponseSchema>;
-export type DeleteEnvironmentResponse = z.infer<typeof DeleteEnvironmentResponseSchema>;

@@ -1,6 +1,8 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import { WebErrSchema, WebOkSchema } from "../../../schemas/common.schema";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
 import * as configPg from "../../../services/config/index";
 import {
@@ -120,7 +122,7 @@ async function handleDelete(ctx: AuthContext, name: string) {
     // ignore db errors on cleanup
   }
 
-  return { success: true };
+  return { success: true, data: null };
 }
 
 async function handleEnable(ctx: AuthContext, name: string) {
@@ -353,7 +355,17 @@ app.post(
       return error(500, { success: false, error: { code: "CONFIG_READ_ERROR", message } });
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["McpConfig"], summary: "MCP 服务器配置管理" } },
+  {
+    sessionAuth: true,
+    body: "config-body",
+    response: {
+      // TODO: 当前仍是 action 分发入口，成功 data 先以宽松对象占位；后续应拆分为独立接口并补精确成功响应 schema。
+      200: WebOkSchema(z.union([z.looseObject({}), z.null()])),
+      400: WebErrSchema,
+      500: WebErrSchema,
+    },
+    detail: { tags: ["McpConfig"], summary: "MCP 服务器配置管理" },
+  },
 );
 
 export default app;

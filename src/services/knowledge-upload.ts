@@ -248,7 +248,7 @@ export async function deleteKnowledgeResource(userId: string, knowledgeBaseId: s
   await knowledgeResourceRepo.delete(resourceId);
   await upsertKnowledgeBaseStatusFromResources(knowledgeBaseId);
 
-  return { success: true as const, data: { ok: true } };
+  return { success: true as const, data: null };
 }
 
 export async function refreshKnowledgeResourceStatus(userId: string, knowledgeBaseId: string) {

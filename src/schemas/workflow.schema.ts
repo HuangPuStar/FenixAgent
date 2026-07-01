@@ -16,13 +16,14 @@ const WorkflowSuccessSchema = <T extends z.ZodTypeAny>(data: T) =>
     data,
   });
 
-/** 通用成功响应（无 data） */
+/** 通用成功响应（无业务数据时固定返回 data: null） */
 export const WorkflowVoidSuccessSchema = z
   .object({
     success: z.literal(true).describe("请求是否成功。"),
+    data: z.null().describe("无业务数据时固定返回 null。"),
   })
   .strict()
-  .describe("工作流接口通用成功响应（无 data 字段）。");
+  .describe("工作流接口通用成功响应（无业务数据）。");
 
 /** 工作流定义基础信息 */
 export const WorkflowDefSchema = z

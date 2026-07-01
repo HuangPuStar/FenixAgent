@@ -4,6 +4,7 @@ import { auth } from "../../auth/better-auth";
 import { db } from "../../db";
 import { member, user } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebErrSchema } from "../../schemas/common.schema";
 import {
   ApiKeyActionRequestSchema,
   ApiKeyActionResponseSchema,
@@ -60,6 +61,17 @@ interface OrgApi {
 }
 
 const api = auth.api as unknown as OrgApi;
+
+function normalizeDateValue(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(normalizeDateValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, normalizeDateValue(nested)]),
+    );
+  }
+  return value;
+}
 
 /**
  * 构造 API key metadata。
@@ -128,7 +140,7 @@ app.post(
           ...o,
           role: roleMap.get(o.id as string) ?? "member",
         }));
-        return { success: true, data: enriched };
+        return { success: true, data: normalizeDateValue(enriched) };
       }
       case "get": {
         if (!b.organizationId)
@@ -141,7 +153,10 @@ app.post(
           api.listMembers({ query: { organizationId: b.organizationId }, headers: request.headers }),
         ]);
         const memberList = extractMembers(members);
-        return { success: true, data: { ...(org as Record<string, unknown>), members: memberList } };
+        return {
+          success: true,
+          data: normalizeDateValue({ ...(org as Record<string, unknown>), members: memberList }),
+        };
       }
       case "get-full": {
         const authCtx = store.authContext;
@@ -152,7 +167,10 @@ app.post(
           api.listMembers({ query: { organizationId: orgId }, headers: request.headers }),
         ]);
         const memberList = extractMembers(members);
-        return { success: true, data: { ...(org as Record<string, unknown>), members: memberList } };
+        return {
+          success: true,
+          data: normalizeDateValue({ ...(org as Record<string, unknown>), members: memberList }),
+        };
       }
       case "create": {
         if (!b.name || !b.slug)
@@ -166,7 +184,7 @@ app.post(
             },
             headers: request.headers,
           });
-          return { success: true, data: org };
+          return { success: true, data: normalizeDateValue(org) };
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "";
           if (msg.includes("unique") || msg.includes("duplicate")) {
@@ -191,7 +209,7 @@ app.post(
           body: { data: updateData, organizationId: b.organizationId },
           headers: request.headers,
         });
-        return { success: true, data: org };
+        return { success: true, data: normalizeDateValue(org) };
       }
       case "delete": {
         if (!b.organizationId)
@@ -209,7 +227,7 @@ app.post(
             error: { code: "VALIDATION_ERROR", message: "organizationId required" },
           });
         await api.setActiveOrganization({ body: { organizationId: b.organizationId }, headers: request.headers });
-        return { success: true };
+        return { success: true, data: null };
       }
       case "list-members": {
         if (!b.organizationId)
@@ -252,7 +270,7 @@ app.post(
           body: { userId: memberUserId, role: b.role, organizationId: b.organizationId },
           headers: request.headers,
         });
-        return { success: true, data: result };
+        return { success: true, data: normalizeDateValue(result) };
       }
       case "remove-member": {
         if (!b.organizationId || !b.memberId)
@@ -264,7 +282,7 @@ app.post(
           body: { memberIdOrEmail: b.memberId, organizationId: b.organizationId },
           headers: request.headers,
         });
-        return { success: true };
+        return { success: true, data: null };
       }
       case "update-role": {
         if (!b.organizationId || !b.memberId || !b.role)
@@ -276,7 +294,7 @@ app.post(
           body: { memberId: b.memberId, organizationId: b.organizationId, role: b.role },
           headers: request.headers,
         });
-        return { success: true };
+        return { success: true, data: null };
       }
       default:
         return error(400, {
@@ -288,7 +306,14 @@ app.post(
   {
     sessionAuth: true,
     body: "organization-action-request",
-    response: "organization-action-response",
+    response: {
+      200: "organization-action-response",
+      400: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
+      409: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Organizations"],
       summary: "组织管理",
@@ -313,7 +338,7 @@ app.post(
           apiKeys?: unknown[];
         } | null;
         const keys = Array.isArray(result?.apiKeys) ? result.apiKeys : Array.isArray(result) ? result : [];
-        return { success: true, data: keys };
+        return { success: true, data: normalizeDateValue(keys) };
       }
       case "create": {
         if (!b.name)
@@ -336,7 +361,7 @@ app.post(
           },
           headers: request.headers,
         });
-        return { success: true, data: result };
+        return { success: true, data: normalizeDateValue(result) };
       }
       case "delete": {
         if (!b.id) return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "id required" } });
@@ -346,7 +371,7 @@ app.post(
       case "update": {
         if (!b.id) return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "id required" } });
         await api.updateApiKey({ body: { id: b.id, name: b.name }, headers: request.headers });
-        return { success: true };
+        return { success: true, data: null };
       }
       default:
         return error(400, {
@@ -358,7 +383,11 @@ app.post(
   {
     sessionAuth: true,
     body: "apikey-action-request",
-    response: "apikey-action-response",
+    response: {
+      200: "apikey-action-response",
+      400: WebErrSchema,
+      403: WebErrSchema,
+    },
     detail: {
       tags: ["Organizations"],
       summary: "API Key 管理",

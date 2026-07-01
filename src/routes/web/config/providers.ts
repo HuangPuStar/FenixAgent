@@ -1,6 +1,8 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import { WebErrSchema, WebOkSchema } from "../../../schemas/common.schema";
 import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
 import * as configPg from "../../../services/config/index";
 import { buildModelData } from "../../../services/config/provider";
@@ -24,6 +26,30 @@ type TestErrorCode =
   | "MODEL_TEST_MESSAGE_HTTP_ERROR"
   | "MODEL_TEST_MESSAGE_RESPONSE_INVALID"
   | "CONFIG_TEST_REQUEST_FAILED";
+
+const ProviderRouteErrSchema = z.object({
+  success: z.literal(false),
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+  }),
+  data: z.unknown().optional(),
+});
+
+function configErrorStatus(code: string | undefined): 400 | 403 | 404 | 409 | 500 {
+  switch (code) {
+    case "VALIDATION_ERROR":
+      return 400;
+    case "FORBIDDEN":
+      return 403;
+    case "NOT_FOUND":
+      return 404;
+    case "ALREADY_EXISTS":
+      return 409;
+    default:
+      return 500;
+  }
+}
 
 const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin).model({
   "config-body": ConfigBodySchema,
@@ -493,7 +519,7 @@ async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId
 app.post(
   "/config/providers",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, error }: any) => {
+  async ({ store, body, status }: any) => {
     const authCtx = store.authContext!;
     const b = body as ConfigBody;
     const payload: ProviderBody = {
@@ -506,48 +532,69 @@ app.post(
       protocol: b.protocol,
     };
     try {
-      switch (payload.action) {
-        case "list":
-          return await handleList(authCtx);
-        case "get":
-          return await handleGet(authCtx, payload.name!);
-        case "set":
-          return await handleSet(authCtx, payload.name!, payload.data!);
-        case "test": {
-          const protocol =
-            payload.protocol === "anthropic"
-              ? ("anthropic" as const)
-              : payload.protocol === "openai"
-                ? ("openai" as const)
-                : undefined;
-          return await handleTest(authCtx, payload.name!, {
-            apiKey: payload.apiKey,
-            baseURL: payload.baseURL,
-            protocol,
-          });
+      const result = await (async () => {
+        switch (payload.action) {
+          case "list":
+            return await handleList(authCtx);
+          case "get":
+            return await handleGet(authCtx, payload.name!);
+          case "set":
+            return await handleSet(authCtx, payload.name!, payload.data!);
+          case "test": {
+            const protocol =
+              payload.protocol === "anthropic"
+                ? ("anthropic" as const)
+                : payload.protocol === "openai"
+                  ? ("openai" as const)
+                  : undefined;
+            return await handleTest(authCtx, payload.name!, {
+              apiKey: payload.apiKey,
+              baseURL: payload.baseURL,
+              protocol,
+            });
+          }
+          case "test_model":
+            return await handleTestModel(authCtx, payload.name!, payload.modelId!);
+          case "delete":
+            return await handleDelete(authCtx, payload.name!);
+          case "add_model":
+            return await handleAddModel(authCtx, payload.name!, payload.data!);
+          case "update_model":
+            return await handleUpdateModel(authCtx, payload.name!, payload.modelId!, payload.data!);
+          case "remove_model":
+            return await handleRemoveModel(authCtx, payload.name!, payload.modelId!);
+          default:
+            return status(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
         }
-        case "test_model":
-          return await handleTestModel(authCtx, payload.name!, payload.modelId!);
-        case "delete":
-          return await handleDelete(authCtx, payload.name!);
-        case "add_model":
-          return await handleAddModel(authCtx, payload.name!, payload.data!);
-        case "update_model":
-          return await handleUpdateModel(authCtx, payload.name!, payload.modelId!, payload.data!);
-        case "remove_model":
-          return await handleRemoveModel(authCtx, payload.name!, payload.modelId!);
-        default:
-          return error(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
+      })();
+
+      if (result && typeof result === "object" && "success" in result && result.success === false) {
+        return status(configErrorStatus(result.error?.code), result);
       }
+
+      return result;
     } catch (e: unknown) {
       if (e instanceof AppError) {
-        return error(e.statusCode, configError(e.code, e.message));
+        return status(e.statusCode, configError(e.code, e.message));
       }
       const message = e instanceof Error ? e.message : "Unknown error";
-      return error(500, configError("CONFIG_READ_ERROR", message));
+      return status(500, configError("CONFIG_READ_ERROR", message));
     }
   },
-  { sessionAuth: true, body: "config-body", detail: { tags: ["ProviderConfig"], summary: "Provider 配置管理" } },
+  {
+    sessionAuth: true,
+    body: "config-body",
+    response: {
+      // TODO: 当前仍是 action 分发入口，成功 data 先以宽松 object|null 占位；后续应拆分为独立接口并补精确成功响应 schema。
+      200: WebOkSchema(z.union([z.looseObject({}), z.null()])),
+      400: ProviderRouteErrSchema,
+      403: ProviderRouteErrSchema,
+      404: ProviderRouteErrSchema,
+      409: ProviderRouteErrSchema,
+      500: ProviderRouteErrSchema,
+    },
+    detail: { tags: ["ProviderConfig"], summary: "Provider 配置管理" },
+  },
 );
 
 export default app;

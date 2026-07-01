@@ -1,5 +1,6 @@
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebErrSchema } from "../../schemas/common.schema";
 import type { CreateTaskRequest, UpdateTaskRequest } from "../../schemas/task.schema";
 import {
   ClearTaskLogsResponseSchema,
@@ -74,7 +75,7 @@ app.post(
     if (!result.success) {
       const err = result.error!;
       const status = err.code === "VALIDATION_ERROR" ? 400 : 500;
-      return error(status, { error: { type: "validation_error", message: err.message } });
+      return error(status, { success: false, error: { code: err.code, message: err.message } });
     }
 
     return result;
@@ -82,7 +83,11 @@ app.post(
   {
     sessionAuth: true,
     body: "create-task-request",
-    response: "task-response",
+    response: {
+      200: "task-response",
+      400: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Tasks"],
       summary: "创建任务",
@@ -103,7 +108,7 @@ async function safeTaskOp<T>(
       (err instanceof Error && err.cause instanceof Error ? err.cause.message : "") ||
       (err instanceof Error ? err.message : "");
     if (msg.includes("invalid input syntax"))
-      return errorFn(404, { error: { type: "not_found", message: "任务不存在" } });
+      return errorFn(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
     throw err;
   }
 }
@@ -118,14 +123,17 @@ app.get(
     return safeTaskOp(async () => {
       const result = await getTask(authCtx.organizationId, taskId);
       if (!result.success) {
-        return error(404, { error: { type: "not_found", message: result.error!.message } });
+        return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
       }
       return result;
     }, error);
   },
   {
     sessionAuth: true,
-    response: "task-response",
+    response: {
+      200: "task-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Tasks"],
       summary: "获取任务详情",
@@ -147,9 +155,9 @@ app.put(
       if (!result.success) {
         const err = result.error!;
         if (err.code === "NOT_FOUND") {
-          return error(404, { error: { type: "not_found", message: err.message } });
+          return error(404, { success: false, error: { code: "not_found", message: err.message } });
         }
-        return error(400, { error: { type: "validation_error", message: err.message } });
+        return error(400, { success: false, error: { code: "validation_error", message: err.message } });
       }
       return result;
     }, error);
@@ -157,7 +165,11 @@ app.put(
   {
     sessionAuth: true,
     body: "update-task-request",
-    response: "task-response",
+    response: {
+      200: "task-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Tasks"],
       summary: "更新任务",
@@ -178,22 +190,25 @@ app.delete(
 
       if (!result.success) {
         const err = result.error!;
-        return error(404, { error: { type: "not_found", message: err.message } });
+        return error(404, { success: false, error: { code: "not_found", message: err.message } });
       }
 
-      return result;
+      return { success: true as const, data: null };
     } catch (err: unknown) {
       const msg =
         (err instanceof Error && err.cause instanceof Error ? err.cause.message : "") ||
         (err instanceof Error ? err.message : "");
       if (msg.includes("invalid input syntax"))
-        return error(404, { error: { type: "not_found", message: "任务不存在" } });
+        return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
       throw err;
     }
   },
   {
     sessionAuth: true,
-    response: "delete-task-response",
+    response: {
+      200: "delete-task-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Tasks"],
       summary: "删除任务",
@@ -211,13 +226,17 @@ app.post(
     const taskId = params.id;
     return safeTaskOp(async () => {
       const result = await toggleTask(authCtx.organizationId, taskId);
-      if (!result.success) return error(404, { error: { type: "not_found", message: result.error!.message } });
+      if (!result.success)
+        return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
       return result;
     }, error);
   },
   {
     sessionAuth: true,
-    response: "toggle-task-response",
+    response: {
+      200: "toggle-task-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Tasks"],
       summary: "切换任务启用状态",
@@ -235,13 +254,17 @@ app.post(
     const taskId = params.id;
     return safeTaskOp(async () => {
       const result = await triggerTask(authCtx.organizationId, taskId);
-      if (!result.success) return error(404, { error: { type: "not_found", message: result.error!.message } });
+      if (!result.success)
+        return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
       return result;
     }, error);
   },
   {
     sessionAuth: true,
-    response: "trigger-task-response",
+    response: {
+      200: "trigger-task-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Tasks"],
       summary: "手动触发任务",
@@ -260,7 +283,8 @@ app.get(
     const q = query as Record<string, string | undefined>;
     return safeTaskOp(async () => {
       const taskResult = await getTask(authCtx.organizationId, taskId);
-      if (!taskResult.success) return error(404, { error: { type: "not_found", message: "任务不存在" } });
+      if (!taskResult.success)
+        return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
 
       const page = Math.max(1, Number(q.page) || 1);
       const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 20));
@@ -269,7 +293,10 @@ app.get(
   },
   {
     sessionAuth: true,
-    response: "task-logs-response",
+    response: {
+      200: "task-logs-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Tasks"],
       summary: "获取任务执行日志",
@@ -287,14 +314,22 @@ app.delete(
     const taskId = params.id;
     return safeTaskOp(async () => {
       const taskResult = await getTask(authCtx.organizationId, taskId);
-      if (!taskResult.success) return error(404, { error: { type: "not_found", message: "任务不存在" } });
+      if (!taskResult.success)
+        return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
 
-      return await clearExecutionLogs(authCtx.organizationId, taskId);
+      const result = await clearExecutionLogs(authCtx.organizationId, taskId);
+      if (!result.success) {
+        return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
+      }
+      return { success: true as const, data: null };
     }, error);
   },
   {
     sessionAuth: true,
-    response: "clear-task-logs-response",
+    response: {
+      200: "clear-task-logs-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Tasks"],
       summary: "清空任务日志",

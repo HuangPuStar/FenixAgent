@@ -1,6 +1,5 @@
 import * as z from "zod/v4";
-import { StatusOkResponseSchema } from "./common.schema";
-
+import { WebOkSchema } from "./common.schema";
 /** 会话详情模型 */
 export const SessionDetailSchema = z
   .object({
@@ -44,27 +43,34 @@ export const SessionEventSchema = z
   .describe("会话事件。");
 
 /** 会话历史响应模型 */
-export const SessionHistorySchema = z
+export const SessionHistoryDataSchema = z
   .object({
     events: SessionEventSchema.array().describe("按时间顺序返回的会话事件列表。"),
   })
-  .describe("会话事件历史。");
+  .describe("会话事件历史数据。");
 
 /** GET /web/sessions — 会话列表响应 */
-export const SessionListResponseSchema = SessionListItemSchema.array().describe("会话列表响应。");
+export const SessionListResponseSchema = WebOkSchema(SessionListItemSchema.array().describe("会话列表。")).describe(
+  "会话列表响应。",
+);
+
+/** GET /web/sessions/:id — 会话详情响应 */
+export const SessionDetailResponseSchema = WebOkSchema(SessionDetailSchema).describe("会话详情响应。");
+
+/** GET /web/sessions/:id/history — 会话历史响应 */
+export const SessionHistorySchema = WebOkSchema(SessionHistoryDataSchema).describe("会话历史响应。");
 
 /** POST /web/sessions/:id/events / control — 事件发送响应 */
-export const SendEventResponseSchema = z
+export const SendEventDataSchema = z
   .object({
     status: z.literal("ok").describe("操作状态。"),
     event: SessionEventSchema.describe("后端接收并返回的事件。"),
   })
-  .describe("发送会话事件后的响应。");
+  .describe("发送会话事件后的响应数据。");
 
-/** POST /web/sessions/:id/interrupt — 中断响应 */
-export const InterruptResponseSchema = StatusOkResponseSchema;
+export const SendEventResponseSchema = WebOkSchema(SendEventDataSchema).describe("发送会话事件后的响应。");
 
-export const SessionResponseSchema = SessionDetailSchema;
+export const SessionResponseSchema = SessionDetailResponseSchema;
 export const SessionSummarySchema = SessionListItemSchema;
 
 export type SessionDetail = z.infer<typeof SessionDetailSchema>;
@@ -72,7 +78,7 @@ export type SessionListItem = z.infer<typeof SessionListItemSchema>;
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 export type SessionEvent = z.infer<typeof SessionEventSchema>;
+export type SessionHistoryData = z.infer<typeof SessionHistoryDataSchema>;
 export type SessionHistory = z.infer<typeof SessionHistorySchema>;
 export type SessionListResponse = z.infer<typeof SessionListResponseSchema>;
 export type SendEventResponse = z.infer<typeof SendEventResponseSchema>;
-export type InterruptResponse = z.infer<typeof InterruptResponseSchema>;

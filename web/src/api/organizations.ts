@@ -48,11 +48,6 @@ export interface AddMemberBody {
   role: string;
 }
 
-/** 活跃组织切换响应 */
-export interface SetActiveResult {
-  success: boolean;
-}
-
 /** 删除结果响应，对齐后端 case "delete" 返回 { success: true, data: { deleted: true } } */
 export interface DeleteResult {
   deleted: true;
@@ -103,7 +98,7 @@ export const orgApi = {
 
   /** 将指定组织设为当前活跃组织 */
   setActive: (orgId: string) =>
-    request<SetActiveResult>("/web/organizations", {
+    request<void>("/web/organizations", {
       method: "POST",
       body: { action: "set-active", organizationId: orgId },
     }),
@@ -122,16 +117,16 @@ export const orgApi = {
       body: { action: "add-member", organizationId: orgId, email: body.email, role: body.role },
     }),
 
-  /** 从指定组织中移除成员，后端返回 { success: true }（无 data 字段） */
+  /** 从指定组织中移除成员。 */
   removeMember: (orgId: string, memberId: string) =>
-    request<SetActiveResult>("/web/organizations", {
+    request<void>("/web/organizations", {
       method: "POST",
       body: { action: "remove-member", organizationId: orgId, memberId },
     }),
 
-  /** 更新指定组织中某成员的角色，后端返回 { success: true }（无 data 字段） */
+  /** 更新指定组织中某成员的角色。 */
   updateRole: (orgId: string, memberId: string, role: string) =>
-    request<SetActiveResult>("/web/organizations", {
+    request<void>("/web/organizations", {
       method: "POST",
       body: { action: "update-role", organizationId: orgId, memberId, role },
     }),

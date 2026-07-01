@@ -1,9 +1,9 @@
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   CreateKnowledgeBaseRequestSchema,
-  DeleteKnowledgeBaseResponseSchema,
-  DeleteKnowledgeResourceResponseSchema,
   ImportKnowledgeUrlRequestSchema,
   ImportKnowledgeUrlResponseSchema,
   KnowledgeBaseDetailResponseSchema,
@@ -39,8 +39,8 @@ const app = new Elysia({ name: "web-knowledge-bases" }).use(authGuardPlugin).mod
   "import-knowledge-url-request": ImportKnowledgeUrlRequestSchema,
   "upload-knowledge-resources-response": UploadKnowledgeResourcesResponseSchema,
   "import-knowledge-url-response": ImportKnowledgeUrlResponseSchema,
-  "delete-knowledge-base-response": DeleteKnowledgeBaseResponseSchema,
-  "delete-knowledge-resource-response": DeleteKnowledgeResourceResponseSchema,
+  "delete-knowledge-base-response": WebOkSchema(z.null()).describe("删除知识库后的成功响应。"),
+  "delete-knowledge-resource-response": WebOkSchema(z.null()).describe("删除知识资源后的成功响应。"),
 });
 
 app.get(
@@ -48,7 +48,7 @@ app.get(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
   async ({ store }: any) => {
     const authCtx = store.authContext!;
-    return await listKnowledgeBasesByTeamId(authCtx.organizationId);
+    return { success: true as const, data: await listKnowledgeBasesByTeamId(authCtx.organizationId) };
   },
   {
     sessionAuth: true,
@@ -78,14 +78,15 @@ app.post(
         authCtx.userId,
       );
       if (!result.success) {
-        return error(400, { error: { type: result.error.code, message: result.error.message } });
+        return error(400, { success: false, error: { code: result.error.code, message: result.error.message } });
       }
-      return result.data;
+      return { success: true as const, data: result.data };
     } catch (err) {
       console.error(err);
       return error(502, {
+        success: false,
         error: {
-          type: "KNOWLEDGE_PROVIDER_ERROR",
+          code: "KNOWLEDGE_PROVIDER_ERROR",
           message: err instanceof Error ? err.message : "知识库上游服务异常",
         },
       });
@@ -94,7 +95,11 @@ app.post(
   {
     sessionAuth: true,
     body: "create-knowledge-base-request",
-    response: "knowledge-base-info",
+    response: {
+      200: WebOkSchema(KnowledgeBaseInfoSchema),
+      400: WebErrSchema,
+      502: WebErrSchema,
+    },
     detail: {
       tags: ["Knowledge"],
       summary: "创建知识库",
@@ -111,13 +116,16 @@ app.get(
     const id = params.id;
     const detail = await getKnowledgeBaseDetail(authCtx.organizationId, id);
     if (!detail) {
-      return error(404, { error: { type: "NOT_FOUND", message: "知识库不存在" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "知识库不存在" } });
     }
-    return detail;
+    return { success: true as const, data: detail };
   },
   {
     sessionAuth: true,
-    response: "knowledge-base-detail",
+    response: {
+      200: "knowledge-base-detail",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Knowledge"],
       summary: "获取知识库详情",
@@ -140,14 +148,18 @@ app.patch(
     });
     if (!result.success) {
       const status = result.error.code === "NOT_FOUND" ? 404 : 400;
-      return error(status, { error: { type: result.error.code, message: result.error.message } });
+      return error(status, { success: false, error: { code: result.error.code, message: result.error.message } });
     }
-    return result.data;
+    return { success: true as const, data: result.data };
   },
   {
     sessionAuth: true,
     body: "update-knowledge-base-request",
-    response: "knowledge-base-info",
+    response: {
+      200: WebOkSchema(KnowledgeBaseInfoSchema),
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Knowledge"],
       summary: "更新知识库",
@@ -165,14 +177,15 @@ app.delete(
     try {
       const result = await deleteKnowledgeBase(authCtx.organizationId, id);
       if (!result.success) {
-        return error(404, { error: { type: "NOT_FOUND", message: result.error.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: result.error.message } });
       }
-      return { ok: true as const };
+      return { success: true as const, data: null };
     } catch (err) {
       console.error(err);
       return error(400, {
+        success: false,
         error: {
-          type: "DELETE_FAILED",
+          code: "DELETE_FAILED",
           message: err instanceof Error ? err.message : "删除知识库失败",
         },
       });
@@ -180,7 +193,11 @@ app.delete(
   },
   {
     sessionAuth: true,
-    response: "delete-knowledge-base-response",
+    response: {
+      200: "delete-knowledge-base-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Knowledge"],
       summary: "删除知识库",
@@ -216,17 +233,24 @@ app.post(
       if (failedItem) {
         throw new Error(failedItem.lastError || `${failedItem.sourceName} 上传失败`);
       }
-      return { items };
+      return { success: true as const, data: { items } };
     } catch (err) {
       console.error(err);
       const message = (err as Error).message;
       const status = message.includes("不存在") ? 404 : 400;
-      return error(status, { error: { type: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR", message } });
+      return error(status, {
+        success: false,
+        error: { code: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR", message },
+      });
     }
   },
   {
     sessionAuth: true,
-    response: "upload-knowledge-resources-response",
+    response: {
+      200: "upload-knowledge-resources-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Knowledge"],
       summary: "上传知识资源",
@@ -243,7 +267,7 @@ app.post(
     const id = params.id;
     const payload = body as { url: string; sourceName?: string };
     if (!payload.url || typeof payload.url !== "string") {
-      return error(400, { error: { type: "VALIDATION_ERROR", message: "url 为必填字段" } });
+      return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "url 为必填字段" } });
     }
     try {
       const item = await importKnowledgeResourceFromUrl(authCtx.organizationId, id, {
@@ -252,18 +276,26 @@ app.post(
       });
       const status = item.status === "error" ? 502 : 201;
       if (status >= 400) return error(status, item);
-      return item;
+      return { success: true as const, data: item };
     } catch (err) {
       console.error(err);
       const message = (err as Error).message;
       const status = message.includes("不存在") ? 404 : 400;
-      return error(status, { error: { type: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR", message } });
+      return error(status, {
+        success: false,
+        error: { code: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR", message },
+      });
     }
   },
   {
     sessionAuth: true,
     body: "import-knowledge-url-request",
-    response: "import-knowledge-url-response",
+    response: {
+      200: "import-knowledge-url-response",
+      201: "import-knowledge-url-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Knowledge"],
       summary: "通过 URL 导入资源",
@@ -280,13 +312,16 @@ app.get(
     const id = params.id;
     const items = await listKnowledgeResources(authCtx.organizationId, id);
     if (!items) {
-      return error(404, { error: { type: "NOT_FOUND", message: "知识库不存在" } });
+      return error(404, { success: false, error: { code: "NOT_FOUND", message: "知识库不存在" } });
     }
-    return items;
+    return { success: true as const, data: items };
   },
   {
     sessionAuth: true,
-    response: "knowledge-resource-list",
+    response: {
+      200: "knowledge-resource-list",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Knowledge"],
       summary: "获取知识资源列表",
@@ -305,14 +340,15 @@ app.delete(
     try {
       const result = await deleteKnowledgeResource(authCtx.organizationId, id, resourceId);
       if (!result.success) {
-        return error(404, { error: { type: result.error.code, message: result.error.message } });
+        return error(404, { success: false, error: { code: result.error.code, message: result.error.message } });
       }
-      return result.data;
+      return { success: true as const, data: null };
     } catch (err) {
       console.error(err);
       return error(400, {
+        success: false,
         error: {
-          type: "DELETE_FAILED",
+          code: "DELETE_FAILED",
           message: err instanceof Error ? err.message : "删除资源失败",
         },
       });
@@ -320,7 +356,11 @@ app.delete(
   },
   {
     sessionAuth: true,
-    response: "delete-knowledge-resource-response",
+    response: {
+      200: "delete-knowledge-resource-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Knowledge"],
       summary: "删除知识资源",

@@ -1,15 +1,17 @@
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { ValidationError as AppValidationError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   CreateEnvironmentRequestSchema,
   CreateEnvironmentResponseSchema,
-  DeleteEnvironmentResponseSchema,
   EnterEnvironmentRequestSchema,
   EnterEnvironmentResponseSchema,
-  EnvironmentDetailResponseSchema,
+  EnvironmentDetailEnvelopeSchema,
   EnvironmentInfoSchema,
+  EnvironmentListEnvelopeSchema,
   EnvironmentListResponseSchema,
   EnvironmentListSchema,
   ListInstancesResponseSchema,
@@ -31,13 +33,13 @@ const logger = createLogger("env-route");
 const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model({
   "create-environment-request": CreateEnvironmentRequestSchema,
   "create-environment-response": CreateEnvironmentResponseSchema,
-  "delete-environment-response": DeleteEnvironmentResponseSchema,
+  "delete-environment-response": WebOkSchema(z.null()).describe("删除环境后的成功响应。"),
   "enter-environment-response": EnterEnvironmentResponseSchema,
-  "environment-detail-response": EnvironmentDetailResponseSchema,
+  "environment-detail-response": EnvironmentDetailEnvelopeSchema,
   "environment-info": EnvironmentInfoSchema,
   "environment-instances-response": ListInstancesResponseSchema,
   "environment-list": EnvironmentListSchema,
-  "environment-list-response": EnvironmentListResponseSchema,
+  "environment-list-response": EnvironmentListEnvelopeSchema,
   "update-environment-request": UpdateEnvironmentRequestSchema,
   "update-environment-response": UpdateEnvironmentResponseSchema,
   "enter-environment-request": EnterEnvironmentRequestSchema,
@@ -52,11 +54,11 @@ app.get(
     const user = store.user!;
     // 始终按当前用户视角过滤：绑定 agent 的 runtime env 按 userId 隔离，
     // 未绑 agent 的手动环境仍组织内可见，避免前端把他人 runtime 挂到自己的 agent 上。
-    return listEnvironmentsWithInstances(authCtx.organizationId, user.id);
+    return { success: true as const, data: await listEnvironmentsWithInstances(authCtx.organizationId, user.id) };
   },
   {
     sessionAuth: true,
-    response: "environment-list",
+    response: "environment-list-response",
     detail: {
       tags: ["Environments"],
       summary: "获取环境列表",
@@ -94,7 +96,7 @@ app.post(
         err instanceof AppValidationError ||
         (err instanceof Error && "code" in err && (err as { code?: string }).code === "VALIDATION_ERROR")
       ) {
-        return error(400, { error: { type: "VALIDATION_ERROR", message: (err as Error).message } });
+        return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: (err as Error).message } });
       }
       throw err;
     }
@@ -105,12 +107,15 @@ app.post(
         .catch((err: unknown) => logger.error(`Failed to auto-start instance for ${record.name}:`, err));
     }
 
-    return { ...sanitizeResponse(record), secret: record.secret };
+    return { success: true as const, data: { ...sanitizeResponse(record), secret: record.secret } };
   },
   {
     sessionAuth: true,
     body: "create-environment-request",
-    response: "create-environment-response",
+    response: {
+      200: "create-environment-response",
+      400: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "创建环境",
@@ -128,16 +133,19 @@ app.get(
     const user = store.user!;
     try {
       const env = await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
-      return { ...sanitizeResponse(env), secret: env.secret };
+      return { success: true as const, data: { ...sanitizeResponse(env), secret: env.secret } };
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
   },
   {
     sessionAuth: true,
-    response: "environment-detail-response",
+    response: {
+      200: "environment-detail-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "获取环境详情",
@@ -171,21 +179,25 @@ app.put(
       });
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       if (
         err instanceof AppValidationError ||
         (err instanceof Error && "code" in err && (err as { code?: string }).code === "VALIDATION_ERROR")
       ) {
-        return error(400, { error: { type: "VALIDATION_ERROR", message: err.message } });
+        return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: err.message } });
       }
       throw err;
     }
-    return sanitizeResponse(updated!);
+    return { success: true as const, data: sanitizeResponse(updated!) };
   },
   {
     sessionAuth: true,
     body: "update-environment-request",
-    response: "update-environment-response",
+    response: {
+      200: "update-environment-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "更新环境",
@@ -205,24 +217,28 @@ app.post(
       await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
 
     const b = body as { instance_number?: number };
     try {
-      return await enterEnvironment(user.id, params.id, b.instance_number);
+      return { success: true as const, data: await enterEnvironment(user.id, params.id, b.instance_number) };
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND") {
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       }
-      return error(500, { error: { type: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
+      return error(500, { success: false, error: { code: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
     }
   },
   {
     sessionAuth: true,
     body: "enter-environment-request",
-    response: "enter-environment-response",
+    response: {
+      200: "enter-environment-response",
+      404: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "进入环境",
@@ -242,15 +258,18 @@ app.delete(
       await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
     await deleteEnvironment(params.id);
-    return { ok: true as const };
+    return { success: true as const, data: null };
   },
   {
     sessionAuth: true,
-    response: "delete-environment-response",
+    response: {
+      200: "delete-environment-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "删除环境",
@@ -270,14 +289,17 @@ app.get(
       await getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
-        return error(404, { error: { type: "NOT_FOUND", message: err.message } });
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
-    return listInstancesResponse(params.id);
+    return { success: true as const, data: await listInstancesResponse(params.id) };
   },
   {
     sessionAuth: true,
-    response: "environment-instances-response",
+    response: {
+      200: "environment-instances-response",
+      404: WebErrSchema,
+    },
     detail: {
       tags: ["Environments"],
       summary: "获取环境实例列表",

@@ -1,9 +1,10 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import Elysia from "elysia";
+import * as z from "zod/v4";
 import { NotFoundError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
-import { OkResponseSchema } from "../../schemas/common.schema";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   FileContentSchema,
   FileListResponseSchema,
@@ -37,7 +38,7 @@ import {
 } from "../../services/workspace-fs";
 
 const app = new Elysia({ name: "web-files", prefix: "/environments" }).use(authGuardPlugin).model({
-  "delete-file-response": OkResponseSchema,
+  "delete-file-response": WebOkSchema(z.null()).describe("删除文件后的成功响应。"),
   "file-list-response": FileListResponseSchema,
   "file-content": FileContentSchema,
   "file-upload-response": FileUploadResponseSchema,
@@ -55,7 +56,7 @@ async function requireEnv(
     return await getOwnedEnvironment(envId, orgId, userId);
   } catch (e) {
     if (e instanceof NotFoundError) {
-      return errorFn(404, { error: { type: "not_found", message: "环境不存在" } });
+      return errorFn(404, { success: false, error: { code: "not_found", message: "环境不存在" } });
     }
     throw e;
   }
@@ -77,26 +78,32 @@ app.get(
     if (machineId) {
       try {
         const entries = await remoteListDir(machineId, envId, queryPath);
-        return { entries };
+        return { success: true as const, data: { entries } };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
+        return error(503, { success: false, error: { code: "remote_error", message } });
       }
     }
 
     const result = await resolveWorkspacePath(envId, queryPath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
+    if (!result) return error(404, { success: false, error: { code: "not_found", message: "Environment not found" } });
 
     const { userDir, workspaceDir, resolved } = result;
     const info = await stat(resolved);
-    if (!info.isDirectory()) return error(400, { error: { type: "validation_error", message: "Not a directory" } });
+    if (!info.isDirectory())
+      return error(400, { success: false, error: { code: "validation_error", message: "Not a directory" } });
 
     const items = await listDirectory(resolved, userDir, workspaceDir);
-    return { entries: items };
+    return { success: true as const, data: { entries: items } };
   },
   {
     sessionAuth: true,
-    response: "file-list-response",
+    response: {
+      200: "file-list-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+      503: WebErrSchema,
+    },
     detail: {
       tags: ["Files"],
       summary: "获取目录列表",
@@ -135,11 +142,14 @@ app.get(
         try {
           const textResult = await remoteReadFile(machineId, envId, filePath);
           return {
-            name: textResult.name,
-            path: textResult.path,
-            content: textResult.content,
-            size: textResult.size,
-            encoding: "utf-8",
+            success: true as const,
+            data: {
+              name: textResult.name,
+              path: textResult.path,
+              content: textResult.content,
+              size: textResult.size,
+              encoding: "utf-8",
+            },
           };
         } catch {
           const binResult = await remoteReadBinaryFile(machineId, envId, filePath);
@@ -150,23 +160,26 @@ app.get(
         }
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
+        return error(503, { success: false, error: { code: "remote_error", message } });
       }
     }
 
     const filePath = normalizeUserRoutePath(rawFilePath);
     const result = await resolveWorkspacePath(envId, filePath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
+    if (!result) return error(404, { success: false, error: { code: "not_found", message: "Environment not found" } });
 
     const { resolved, displayPath } = result;
     let info: Awaited<ReturnType<typeof stat>>;
     try {
       info = await stat(resolved);
     } catch {
-      return error(404, { error: { type: "not_found", message: "File not found" } });
+      return error(404, { success: false, error: { code: "not_found", message: "File not found" } });
     }
     if (info.isDirectory())
-      return error(400, { error: { type: "validation_error", message: "Path is a directory, use list endpoint" } });
+      return error(400, {
+        success: false,
+        error: { code: "validation_error", message: "Path is a directory, use list endpoint" },
+      });
 
     const lastDot = filePath.lastIndexOf(".");
     const lastSlash = filePath.lastIndexOf("/");
@@ -185,7 +198,7 @@ app.get(
 
     if (textFile) {
       const { content, size } = await readFileContent(resolved);
-      return { name: fileName, path: displayPath, content, size, encoding: "utf-8" };
+      return { success: true as const, data: { name: fileName, path: displayPath, content, size, encoding: "utf-8" } };
     }
 
     // 中文文件名需要用 RFC 5987 编码，否则 HTTP header 非法
@@ -201,7 +214,12 @@ app.get(
   },
   {
     sessionAuth: true,
-    response: "file-content",
+    response: {
+      200: "file-content",
+      400: WebErrSchema,
+      404: WebErrSchema,
+      503: WebErrSchema,
+    },
     detail: {
       tags: ["Files"],
       summary: "读取文件内容",
@@ -226,7 +244,7 @@ app.post(
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     if (!files || files.length === 0)
-      return error(400, { error: { type: "validation_error", message: "No files provided" } });
+      return error(400, { success: false, error: { code: "validation_error", message: "No files provided" } });
 
     // 解析相对路径数组（文件夹上传时由前端传入）
     const rawPaths = formData.get("relativePaths");
@@ -256,19 +274,22 @@ app.post(
           }),
         );
         const result = await remoteUploadFiles(machineId, envId, rawDirPath, remoteFiles);
-        return result;
+        return { success: true as const, data: result };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
+        return error(503, { success: false, error: { code: "remote_error", message } });
       }
     }
 
     const dirPath = normalizeUserRoutePath(rawDirPath);
     if (!isUserPath(dirPath))
-      return error(400, { error: { type: "validation_error", message: "Only user/ paths are writable" } });
+      return error(400, {
+        success: false,
+        error: { code: "validation_error", message: "Only user/ paths are writable" },
+      });
 
     const result = await resolveWorkspacePath(envId, dirPath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
+    if (!result) return error(404, { success: false, error: { code: "not_found", message: "Environment not found" } });
 
     const { resolved } = result;
     const { mkdir, writeFile: writeFileAsync } = await import("node:fs/promises");
@@ -279,7 +300,10 @@ app.post(
       const file = files[i]!;
       const buffer = Buffer.from(await file.arrayBuffer());
       if (buffer.length > 100 * 1024 * 1024) {
-        return error(413, { error: { type: "validation_error", message: `File ${file.name} exceeds 100MB limit` } });
+        return error(413, {
+          success: false,
+          error: { code: "validation_error", message: `File ${file.name} exceeds 100MB limit` },
+        });
       }
 
       // 如果有对应的相对路径，保留目录结构；否则直接用文件名
@@ -295,11 +319,17 @@ app.post(
         size: buffer.length,
       });
     }
-    return { files: uploaded };
+    return { success: true as const, data: { files: uploaded } };
   },
   {
     sessionAuth: true,
-    response: "file-upload-response",
+    response: {
+      200: "file-upload-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+      413: WebErrSchema,
+      503: WebErrSchema,
+    },
     detail: {
       tags: ["Files"],
       summary: "上传文件",
@@ -322,10 +352,13 @@ app.put(
 
     const b = body as { content?: string };
     if (typeof b.content !== "string")
-      return error(400, { error: { type: "validation_error", message: "content field required" } });
+      return error(400, { success: false, error: { code: "validation_error", message: "content field required" } });
 
     if (b.content.length > 100 * 1024 * 1024)
-      return error(413, { error: { type: "validation_error", message: "Content exceeds 100MB limit" } });
+      return error(413, {
+        success: false,
+        error: { code: "validation_error", message: "Content exceeds 100MB limit" },
+      });
 
     // 远程环境
     const machineId = await getRemoteMachineId(envId);
@@ -333,30 +366,42 @@ app.put(
       // 远程节点支持 workspace 全路径，不强制 user/ 前缀
       try {
         const result = await remoteWriteFile(machineId, envId, rawFilePath, b.content);
-        return result;
+        return { success: true as const, data: result };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
+        return error(503, { success: false, error: { code: "remote_error", message } });
       }
     }
 
     const filePath = normalizeUserRoutePath(rawFilePath);
     if (!isUserPath(filePath))
-      return error(400, { error: { type: "validation_error", message: "Only user/ paths are writable" } });
+      return error(400, {
+        success: false,
+        error: { code: "validation_error", message: "Only user/ paths are writable" },
+      });
 
     const result = await resolveWorkspacePath(envId, filePath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
+    if (!result) return error(404, { success: false, error: { code: "not_found", message: "Environment not found" } });
 
     await writeFileContent(result.resolved, b.content);
 
     const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
     const normalizedPath = filePath.startsWith("user/") ? filePath : `user/${filePath}`;
-    return { name: fileName, path: normalizedPath, size: Buffer.byteLength(b.content) };
+    return {
+      success: true as const,
+      data: { name: fileName, path: normalizedPath, size: Buffer.byteLength(b.content) },
+    };
   },
   {
     sessionAuth: true,
     body: "write-file-request",
-    response: "file-write-result",
+    response: {
+      200: "file-write-result",
+      400: WebErrSchema,
+      404: WebErrSchema,
+      413: WebErrSchema,
+      503: WebErrSchema,
+    },
     detail: {
       tags: ["Files"],
       summary: "写入文件内容",
@@ -383,34 +428,45 @@ app.delete(
       // 远程节点支持 workspace 全路径
       try {
         await remoteDeleteFile(machineId, envId, rawFilePath);
-        return { ok: true as const };
+        return { success: true as const, data: null };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
+        return error(503, { success: false, error: { code: "remote_error", message } });
       }
     }
 
     const filePath = normalizeUserRoutePath(rawFilePath);
     if (!isUserPath(filePath))
-      return error(400, { error: { type: "validation_error", message: "Only user/ paths are writable" } });
+      return error(400, {
+        success: false,
+        error: { code: "validation_error", message: "Only user/ paths are writable" },
+      });
 
     const result = await resolveWorkspacePath(envId, filePath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
+    if (!result) return error(404, { success: false, error: { code: "not_found", message: "Environment not found" } });
 
     try {
       const info = await stat(result.resolved);
       if (info.isDirectory())
-        return error(400, { error: { type: "validation_error", message: "Cannot delete directories" } });
+        return error(400, {
+          success: false,
+          error: { code: "validation_error", message: "Cannot delete directories" },
+        });
     } catch {
-      return error(404, { error: { type: "not_found", message: "File not found" } });
+      return error(404, { success: false, error: { code: "not_found", message: "File not found" } });
     }
 
     await deleteFile(result.resolved);
-    return { ok: true as const };
+    return { success: true as const, data: null };
   },
   {
     sessionAuth: true,
-    response: "delete-file-response",
+    response: {
+      200: "delete-file-response",
+      400: WebErrSchema,
+      404: WebErrSchema,
+      503: WebErrSchema,
+    },
     detail: {
       tags: ["Files"],
       summary: "删除文件",

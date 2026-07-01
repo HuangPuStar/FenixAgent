@@ -3,11 +3,11 @@ import { stat } from "node:fs/promises";
 import { and, eq } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { db } from "../../db";
-import { skill } from "../../db/schema";
-import { getGlobalSkillsDir } from "../../services/skill";
-import { verifySkillDownloadToken } from "../../services/skill-download-token";
-import { assertValidSkillName, getSkillArchivePath } from "../../services/skill-fs";
+import { db } from "../db";
+import { skill } from "../db/schema";
+import { getGlobalSkillsDir } from "../services/skill";
+import { verifySkillDownloadToken } from "../services/skill-download-token";
+import { assertValidSkillName, getSkillArchivePath } from "../services/skill-fs";
 
 const SkillDownloadQuerySchema = z.object({
   token: z.string().min(1).describe("技能下载令牌。"),
@@ -17,14 +17,14 @@ const SkillDownloadParamsSchema = z.object({
   name: z.string().min(1).describe("要下载的技能名称。"),
 });
 
-const app = new Elysia({ name: "web-skills", prefix: "/skills" }).model({
+function jsonError(status: number, code: string, message: string): Response {
+  return Response.json({ success: false, error: { code, message } }, { status });
+}
+
+const app = new Elysia({ name: "skills", prefix: "/skills" }).model({
   "skill-download-params": SkillDownloadParamsSchema,
   "skill-download-query": SkillDownloadQuerySchema,
 });
-
-function jsonError(status: number, type: string, message: string): Response {
-  return Response.json({ error: { type, message } }, { status });
-}
 
 app.get(
   "/:name/download",
@@ -70,7 +70,7 @@ app.get(
       tags: ["Skills"],
       summary: "下载技能压缩包",
       description:
-        "根据路径参数中的技能名称和 query 中的下载令牌下载技能 zip 压缩包。该接口返回二进制文件流，而不是 JSON 响应。",
+        "供 plugin/runtime 使用的受令牌保护下载入口。根据路径参数中的技能名称和 query 中的下载令牌下载技能 zip 压缩包。该接口返回二进制文件流，而不是 JSON 响应。",
       parameters: [
         {
           name: "token",

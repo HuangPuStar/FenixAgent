@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebOkSchema } from "./common.schema";
 
 /** 机器注册记录 */
 export const MachineSchema = z.object({
@@ -6,6 +7,7 @@ export const MachineSchema = z.object({
   organizationId: z.string().nullable().describe("所属组织 ID；没有组织隔离时为 null。"),
   userId: z.string().nullable().describe("关联用户 ID；未绑定时为 null。"),
   agentName: z.string().describe("机器展示名称。"),
+  name: z.string().nullable().describe("用户自定义名称；未设置时为 null。"),
   status: z.string().describe("机器当前状态，例如 online、offline。"),
   machineInfo: z.record(z.string(), z.unknown()).nullable().describe("机器基础信息，例如 hostname、ip、os、arch。"),
   labels: z.string().array().nullable().describe("机器标签列表。"),
@@ -31,22 +33,28 @@ export const MachineDetailSchema = MachineSchema.extend({
   recentEvents: RegistryEventSchema.array().describe("该机器最近的事件列表。"),
 });
 
-/** 机器列表响应 */
-export const MachineListResponseSchema = z.object({
-  data: MachineSchema.array().describe("机器列表。"),
+/** 机器列表数据 */
+export const MachineListDataSchema = z.object({
+  items: MachineSchema.array().describe("机器列表。"),
   total: z.number().describe("机器总数。"),
 });
 
+/** 机器列表响应 */
+export const MachineListResponseSchema = WebOkSchema(MachineListDataSchema).describe("机器列表响应。");
+
 /** 机器详情响应 */
-export const MachineDetailResponseSchema = z.object({
-  data: MachineDetailSchema.describe("机器详情。"),
+export const MachineDetailResponseSchema = WebOkSchema(MachineDetailSchema.describe("机器详情。")).describe(
+  "机器详情响应。",
+);
+
+/** 机器事件列表数据 */
+export const RegistryEventListDataSchema = z.object({
+  items: RegistryEventSchema.array().describe("事件列表。"),
+  total: z.number().describe("事件总数。"),
 });
 
 /** 机器事件列表响应 */
-export const RegistryEventListResponseSchema = z.object({
-  data: RegistryEventSchema.array().describe("事件列表。"),
-  total: z.number().describe("事件总数。"),
-});
+export const RegistryEventListResponseSchema = WebOkSchema(RegistryEventListDataSchema).describe("机器事件列表响应。");
 
 /** 机器列表查询参数 */
 export const MachineQuerySchema = z.object({
@@ -67,8 +75,10 @@ export const EventQuerySchema = z.object({
 export type Machine = z.infer<typeof MachineSchema>;
 export type MachineDetail = z.infer<typeof MachineDetailSchema>;
 export type RegistryEvent = z.infer<typeof RegistryEventSchema>;
+export type MachineListData = z.infer<typeof MachineListDataSchema>;
 export type MachineListResponse = z.infer<typeof MachineListResponseSchema>;
 export type MachineDetailResponse = z.infer<typeof MachineDetailResponseSchema>;
+export type RegistryEventListData = z.infer<typeof RegistryEventListDataSchema>;
 export type RegistryEventListResponse = z.infer<typeof RegistryEventListResponseSchema>;
 export type MachineQuery = z.infer<typeof MachineQuerySchema>;
 export type EventQuery = z.infer<typeof EventQuerySchema>;

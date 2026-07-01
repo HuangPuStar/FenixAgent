@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { ApiErrorSchema, ConfigOkSchema } from "./common.schema";
+import { WebOkSchema } from "./common.schema";
 
 /** Agent Sites App 响应对象 */
 export const AgentSiteAppSchema = z.object({
@@ -21,16 +21,10 @@ export const AgentSiteAppSchema = z.object({
 export type AgentSiteApp = z.infer<typeof AgentSiteAppSchema>;
 
 /** GET /web/agent-sites/apps 列表响应 */
-export const AgentSiteAppListResponseSchema = z.object({
-  success: z.literal(true),
-  data: AgentSiteAppSchema.array(),
-});
+export const AgentSiteAppListResponseSchema = WebOkSchema(AgentSiteAppSchema.array()).describe("Site App 列表响应。");
 
 /** GET/POST /web/agent-sites/apps/{id} 详情响应 */
-export const AgentSiteAppDetailResponseSchema = z.object({
-  success: z.literal(true),
-  data: AgentSiteAppSchema,
-});
+export const AgentSiteAppDetailResponseSchema = WebOkSchema(AgentSiteAppSchema).describe("Site App 详情响应。");
 
 /** POST /web/agent-sites/apps 创建请求 */
 export const CreateAgentSiteAppRequestSchema = z.object({
@@ -65,9 +59,7 @@ export const UpdateAgentSiteAppRequestSchema = z.object({
 export type UpdateAgentSiteAppRequest = z.infer<typeof UpdateAgentSiteAppRequestSchema>;
 
 /** DELETE/POST rotate-token 等简单操作的成功响应 */
-export const AgentSiteAppOkResponseSchema = z.object({
-  success: z.literal(true),
-});
+export const AgentSiteAppOkResponseSchema = WebOkSchema(z.null()).describe("无业务数据时的 Site App 成功响应。");
 
 /** /web/agent-sites/apps/:id 参数 */
 export const AgentSiteAppIdParamsSchema = z.object({
@@ -96,22 +88,15 @@ export const AgentSiteBindingParamsSchema = z.object({
   siteAppId: z.string().describe("Site App 标识，支持 RCS UUID 或 remoteAppId。"),
 });
 
-/** 上传类接口的成功响应 */
-export const AgentSiteUploadResponseSchema = ConfigOkSchema(z.unknown().describe("agent-sites 上游返回体。"));
-
-/** Agent Sites web API 错误响应 */
-export const AgentSiteErrorResponseSchema = ApiErrorSchema;
-
 /** POST /web/agent-sites/apps/:id/deploy 成功响应 */
-export const AgentSiteDeployResponseSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
+export const AgentSiteDeployResponseSchema = WebOkSchema(
+  z.object({
     files: z.number().describe("解压后的文件数。"),
     totalBytes: z.number().describe("解压后总字节数。"),
     entryFile: z.string().describe("入口文件名（main.ts 或 main.js）。"),
     slot: z.enum(["a", "b"]).describe("当前激活的部署槽位。"),
     deployedAt: z.number().describe("本次部署时间（秒级时间戳）。"),
   }),
-});
+).describe("部署 custom app 成功响应。");
 
 export type AgentSiteDeployResponse = z.infer<typeof AgentSiteDeployResponseSchema>;

@@ -41,9 +41,6 @@ export interface SessionHistory {
 /** sendEvent / control 的成功响应（与后端 SendEventResponseSchema 对齐） */
 type SendEventResponse = { status: "ok"; event: SessionEvent };
 
-/** interrupt 的成功响应（与后端 InterruptResponseSchema 对齐） */
-type InterruptResponse = { status: "ok" };
-
 /** 会话事件载荷 */
 export type SessionEventPayload = Record<string, unknown>;
 
@@ -81,7 +78,7 @@ export const controlApi = {
 
   /** 中断会话当前执行（POST /sessions/:id/interrupt） */
   interrupt: (params: SessionParams) =>
-    request<InterruptResponse>("/web/sessions/:sessionId/interrupt", {
+    request<void>("/web/sessions/:sessionId/interrupt", {
       method: "POST",
       params,
     }),

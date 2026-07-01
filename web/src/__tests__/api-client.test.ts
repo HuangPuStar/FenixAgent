@@ -101,7 +101,7 @@ describe("session SDK functions", () => {
 
   // 测试中断命令使用 RESTful 路径参数，无 body
   test("controlApi.interrupt — POST /web/sessions/:id/interrupt", async () => {
-    fetchMock.responseData = { status: "ok" };
+    fetchMock.responseData = { success: true, data: null };
     const { controlApi } = await import("../api/sessions");
     await controlApi.interrupt({ sessionId: "sess_1" });
     expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/interrupt");
@@ -149,6 +149,16 @@ describe("file SDK functions", () => {
   });
 });
 
+describe("environment SDK functions", () => {
+  test("envApi.del — DELETE /web/environments/:id", async () => {
+    fetchMock.responseData = { success: true, data: null };
+    const { envApi } = await import("../api/environments");
+    await envApi.del({ id: "env_1" });
+    expect(fetchMock.lastUrl).toContain("/web/environments/env_1");
+    expect(fetchMock.lastOpts.method).toBe("DELETE");
+  });
+});
+
 // =============================================================================
 // Error handling — SDK Result pattern
 // =============================================================================
@@ -157,7 +167,7 @@ describe("error handling", () => {
   // 测试非 ok 响应 SDK 返回 error 对象
   test("SDK returns error object on non-ok response", async () => {
     fetchMock.response = { ok: false, status: 401, statusText: "Unauthorized" };
-    fetchMock.responseData = { success: false, error: { message: "Not authenticated" } };
+    fetchMock.responseData = { success: false, error: { code: "UNAUTHORIZED", message: "Not authenticated" } };
     const { sessionApi } = await import("../api/sessions");
     const { data, error } = await sessionApi.get({ sessionId: "sess-1" });
     expect(error).not.toBeNull();

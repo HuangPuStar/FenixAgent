@@ -14,7 +14,6 @@ import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
 import webRegistry from "./registry";
 import webSessions from "./sessions";
-import webSkills from "./skills";
 import webTasks from "./tasks";
 import webUserFile from "./user-file";
 import webWorkflowCustomTools from "./workflow-custom-tools";
@@ -36,7 +35,6 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webMetaAgent)
   .use(webOrganizations)
   .use(webSessions)
-  .use(webSkills)
   .use(webTasks)
   .use(webUserFile)
   .use(webEnvironments)

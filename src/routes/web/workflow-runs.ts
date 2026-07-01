@@ -6,7 +6,8 @@
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WorkflowRunsQuerySchema, WorkflowRunsResponseSchema } from "../../schemas";
+import { WorkflowRunsQuerySchema, WorkflowRunsResponseSchema, WorkflowRunsRouteQuerySchema } from "../../schemas";
+import { WebErrSchema } from "../../schemas/common.schema";
 import { createPgStorageAdapter } from "../../services/workflow/pg-storage-adapter";
 
 const logger = createLogger("wf-runs");
@@ -40,12 +41,16 @@ app.get(
   },
   {
     sessionAuth: true,
+    query: WorkflowRunsRouteQuerySchema,
+    response: {
+      200: WorkflowRunsResponseSchema,
+      400: WebErrSchema,
+      500: WebErrSchema,
+    },
     detail: {
       summary: "获取运行记录列表",
       description: "分页查询工作流运行记录，支持按状态过滤和按工作流名称模糊搜索。",
-      tags: ["workflow"],
-      query: WorkflowRunsQuerySchema,
-      response: WorkflowRunsResponseSchema,
+      tags: ["Workflow Engine"],
     },
   },
 );
