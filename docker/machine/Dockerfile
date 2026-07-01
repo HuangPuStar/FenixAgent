@@ -29,7 +29,7 @@ RUN apt-get install -y --no-install-recommends \
        curl jq git ripgrep zip unzip
 RUN rm -rf /var/lib/apt/lists/*
 
-RUN bun install -g opencode-ai@1.15.10 --registry=https://registry.npmmirror.com
+RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
 RUN bun install -g claude-code-best --registry=https://registry.npmmirror.com
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 

@@ -52,7 +52,7 @@ RUN apt-get install -y --no-install-recommends \
 RUN rm -rf /var/lib/apt/lists/*
 
 
-RUN bun install -g opencode-ai@1.15.10 --registry=https://registry.npmmirror.com
+RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
 RUN bun install -g acp-link --registry=https://registry.npmmirror.com
 RUN bun install -g acpx --registry=https://registry.npmmirror.com
 RUN bun install -g peri-cli --registry=https://registry.npmmirror.com

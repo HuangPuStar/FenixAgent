@@ -106,18 +106,8 @@ interface ClientState {
   isAlive: boolean;
 }
 
-// Permission request timeout (5 minutes)
-const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
-
 // Heartbeat interval for WebSocket ping/pong (30 seconds)
 const HEARTBEAT_INTERVAL_MS = 30_000;
-
-// Generate unique permission request ID
-let _permId = 0;
-function generatePermRequestId(): string {
-  _permId += 1;
-  return `perm_${Date.now()}_${_permId}`;
-}
 
 function cancelPendingPermissions(clientState: ClientState): void {
   for (const [, pending] of clientState.pendingPermissions) {
@@ -684,40 +674,15 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   function createClient(ws: AcpWs, clientState: ClientState): acp.Client {
     return {
-      async requestPermission(params) {
-        const permId = generatePermRequestId();
-
-        const outcomePromise = new Promise<{ outcome: "cancelled" } | { outcome: "selected"; optionId: string }>(
-          (resolve) => {
-            const timeout = setTimeout(() => {
-              console.warn("permission request timed out:", permId);
-              clientState.pendingPermissions.delete(permId);
-              resolve({ outcome: "cancelled" });
-            }, PERMISSION_TIMEOUT_MS);
-
-            clientState.pendingPermissions.set(permId, {
-              jsonRpcId: permId,
-              resolve,
-              timeout,
-            });
-          },
-        );
-
-        // 发送 JSON-RPC 请求给客户端
-        sendMsg(ws, {
-          jsonrpc: "2.0",
-          id: permId,
-          method: ACP_METHOD.REQUEST_PERMISSION,
-          params: {
-            requestId: permId,
-            sessionId: params.sessionId,
-            options: params.options,
-            toolCall: params.toolCall,
-          },
-        });
-
-        const outcome = await outcomePromise;
-        return { outcome };
+      // Local 路径：直接 allow 工具调用，与 remote 路径（AcpDispatcher/spawnAcpAgent）行为一致。
+      // 如果等待前端返回 permission_response，Bun WS 的串行消息处理会导致死锁：
+      //   handlePrompt await connection.prompt() → opencode 发起 requestPermission
+      //   → sendMsg 到前端 → await outcomePromise
+      //   → 前端 permission_response 到达 → ⛔ Bun message handler 在处理 handlePrompt 时被阻塞
+      //   → 死锁 → opencode 超时 → 返回空 {stopReason:"end_turn"}
+      // 工具权限控制应通过 RCS 前端的 agent config 层面实现，而非 ACP 协议层阻塞。
+      async requestPermission(_params) {
+        return { outcome: { outcome: "selected" as const, optionId: "allow" as const } };
       },
 
       async sessionUpdate(params) {
@@ -1048,12 +1013,22 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
     try {
       const content = params.content as ContentBlock[];
+      const promptText = content
+        .filter((c) => c.type === "text")
+        .map((c) => (c as { text: string }).text)
+        .join(" ");
+      console.log("[acp-server] prompt:", {
+        sessionId: state.sessionId,
+        id,
+        text: promptText.slice(0, 200),
+        blocks: content.length,
+      });
       const result = await state.connection.prompt({
         sessionId: state.sessionId,
         prompt: content as acp.ContentBlock[],
       });
 
-      console.log("prompt completed, stopReason:", result.stopReason);
+      console.log("[acp-server] prompt completed:", JSON.stringify(result).slice(0, 500));
       sendMsg(ws, createSuccessResponse(id, result));
     } catch (error) {
       console.error("prompt failed:", (error as Error).message);

@@ -8,6 +8,7 @@ import type {
   ImageContent,
   PermissionOption,
   PermissionRequestPayload,
+  PromptUsage,
   SessionUpdate,
 } from "../src/acp/types";
 import { useCommands } from "../src/hooks/useCommands";
@@ -347,11 +348,15 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 追踪用户主动取消操作，避免取消后触发错误提示
   const userCancelledRef = useRef(false);
+  // 追踪一轮 prompt 中是否收到 agent 输出（agent_message/tool_call 等），用于检测空响应
+  const hasAssistantOutputRef = useRef(false);
   // Todo 面板状态 — 每次 todowrite 调用替换
   const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
   // Reference: Zed's supports_images() checks prompt_capabilities.image
   const [supportsImages, setSupportsImages] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
+  // ACP 返回的真实 token 用量（prompt/complete 响应），用于 ContextPanel 优先展示
+  const [promptUsage, setPromptUsage] = useState<PromptUsage | null>(null);
   const { commands: availableCommands } = useCommands(client);
   const { availableModes, currentModeId, setMode } = useModes(client);
 
@@ -373,6 +378,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
     userCancelledRef.current = false;
     wasLoadingBeforeDisconnect.current = false;
+    hasAssistantOutputRef.current = false;
+    setPromptUsage(null);
   }, []);
 
   const storageKey = agentId ? `acp_last_session_${agentId}` : null;
@@ -465,6 +472,15 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const handleSessionUpdate = useCallback((sessionId: string, update: SessionUpdate) => {
     if (activeSessionIdRef.current && sessionId !== activeSessionIdRef.current) {
       return;
+    }
+
+    // 记录本轮 prompt 中出现了 agent 输出，用于 promptComplete 时检测空响应
+    if (
+      update.sessionUpdate === "agent_message_chunk" ||
+      update.sessionUpdate === "tool_call" ||
+      update.sessionUpdate === "tool_call_update"
+    ) {
+      hasAssistantOutputRef.current = true;
     }
 
     // 拦截 todowrite 工具调用 → 更新 Todo 面板（仅顶层）
@@ -590,6 +606,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       // Note: Tool calls are already marked as "canceled" in handleCancel before this fires
       setIsLoading(false);
 
+      // 存储 ACP 真实 token 用量，供 ContextPanel 优先展示
+      setPromptUsage(usage ?? null);
+
       // 兜底：远程 agent（如 claude --acp）有时不在工具完成时推送 status="completed"
       // 的 session_update，导致 tool_call 永久卡在 running。一轮 prompt 结束后，
       // 把仍为 running 的工具调用统一标记为 complete，避免 UI 持续 loading。
@@ -604,6 +623,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         // inputTokens === 0 且 outputTokens === 0 说明 prompt 未被处理（真错误）
         // 仅 inputTokens === 0 可能是 prompt caching 导致的正常情况（CCB/OC 引擎常见）
         if (usage && usage.inputTokens === 0 && (usage.outputTokens ?? 0) === 0) {
+          setErrorMessage(t("chatInterface.processingError"));
+          if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+          errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
+        }
+        // 检测空响应：prompt 正常结束但 agent 没有产生任何输出
+        // 典型场景：opencode 返回 {stopReason:"end_turn","_meta":{}} 无 usage 无内容
+        else if (!hasAssistantOutputRef.current) {
+          console.warn("[ChatInterface] Prompt completed with no assistant output");
           setErrorMessage(t("chatInterface.processingError"));
           if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
           errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
@@ -966,6 +993,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       };
       setEntries((prev) => [...prev, userEntry]);
       setIsLoading(true);
+      // 重置 agent 输出追踪，用于检测空响应
+      hasAssistantOutputRef.current = false;
 
       userCancelledRef.current = false;
       try {
@@ -1061,6 +1090,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           }
           collapsed={!contextPanelOpen}
           onToggle={() => setContextPanelOpen(!contextPanelOpen)}
+          acpUsage={promptUsage}
         />
       )}
     </div>

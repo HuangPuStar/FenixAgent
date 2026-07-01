@@ -37,38 +37,52 @@ function listAncestorDirs(startDir: string): string[] {
 /**
  * 解析命令对应的可执行文件路径。
  *
- * 优先使用工作区内的 `node_modules/.bin`，尽量锁定到项目声明的依赖版本；
- * 若本地未安装，再回退到 PATH 和 `which`/`where`，兼容用户已全局安装命令的场景。
+ * 优先使用 PATH 上的全局安装版本，确保与远程 machine 侧（resolve-executable.ts）使用同一版本；
+ * 避免本地 node_modules 中过旧版本（如 1.15.10）与全局版本（如 1.17.12）行为不一致，
+ * 导致 ACP prompt 返回空响应等兼容性问题。
+ * 若 PATH 中未找到，再回退到工作区内的 `node_modules/.bin`。
  */
 export function resolveExecutable(command: string): string {
-  const searchRoots = new Set<string>([...listAncestorDirs(process.cwd()), ...listAncestorDirs(EXECUTABLE_FILE_DIR)]);
-
-  for (const rootDir of searchRoots) {
-    const localBin = join(rootDir, "node_modules", ".bin", command);
-    if (isExecutable(localBin)) {
-      return localBin;
+  // 1. 优先使用 which/where 查找 PATH 上的全局版本（跳过 node_modules/.bin 避免锁定项目内旧版本）
+  try {
+    const whichCommand = process.platform === "win32" ? "where" : "which";
+    const result = execSync(`${whichCommand} -a ${command}`, {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "ignore"],
+    }).trim();
+    const candidates = result
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    // 跳过 node_modules/.bin 中的版本，优先使用系统/全局安装的版本
+    for (const candidate of candidates) {
+      if (candidate.includes("node_modules/.bin")) continue;
+      console.log(`[resolveExecutable] found "${command}" via which (global): ${candidate}`);
+      return candidate;
     }
+  } catch {
+    // 忽略 which/where 失败
   }
 
+  // 2. 回退：扫描 PATH 但排除 node_modules/.bin（避免锁定项目内旧版本）
   const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
   for (const entry of pathEntries) {
+    if (entry.includes("node_modules/.bin")) continue;
     const candidate = join(entry, command);
     if (isExecutable(candidate)) {
+      console.log(`[resolveExecutable] found "${command}" via PATH (non-node_modules): ${candidate}`);
       return candidate;
     }
   }
 
-  try {
-    const whichCommand = process.platform === "win32" ? "where" : "which";
-    const result = execSync(`${whichCommand} ${command}`, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "ignore"],
-    }).trim();
-    if (result) {
-      return result.split(/\r?\n/, 1)[0].trim();
+  // 3. 如果全局版本都找不到，才回退到 node_modules/.bin（兜底）
+  const searchRoots = new Set<string>([...listAncestorDirs(process.cwd()), ...listAncestorDirs(EXECUTABLE_FILE_DIR)]);
+  for (const rootDir of searchRoots) {
+    const localBin = join(rootDir, "node_modules", ".bin", command);
+    if (isExecutable(localBin)) {
+      console.log(`[resolveExecutable] found "${command}" via node_modules/.bin (fallback): ${localBin}`);
+      return localBin;
     }
-  } catch {
-    // 忽略 which/where 失败，统一在下方抛出缺失错误。
   }
 
   throw new Error(`Required executable not found: ${command}`);
