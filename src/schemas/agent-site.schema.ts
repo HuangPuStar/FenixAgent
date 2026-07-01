@@ -89,15 +89,14 @@ export const AgentSiteBindingParamsSchema = z.object({
 });
 
 /** POST /web/agent-sites/apps/:id/deploy 成功响应 */
-export const AgentSiteDeployResponseSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
+export const AgentSiteDeployResponseSchema = WebOkSchema(
+  z.object({
     files: z.number().describe("解压后的文件数。"),
     totalBytes: z.number().describe("解压后总字节数。"),
     entryFile: z.string().describe("入口文件名（main.ts 或 main.js）。"),
     slot: z.enum(["a", "b"]).describe("当前激活的部署槽位。"),
     deployedAt: z.number().describe("本次部署时间（秒级时间戳）。"),
   }),
-});
+).describe("部署 custom app 成功响应。");
 
 export type AgentSiteDeployResponse = z.infer<typeof AgentSiteDeployResponseSchema>;
