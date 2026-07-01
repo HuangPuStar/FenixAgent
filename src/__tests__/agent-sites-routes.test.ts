@@ -8,10 +8,10 @@ import {
   AgentSiteAppDetailResponseSchema,
   AgentSiteAppIdParamsSchema,
   AgentSiteAppListResponseSchema,
-  AgentSiteErrorResponseSchema,
   AgentSiteRemoteAppParamsSchema,
   CreateAgentSiteAppRequestSchema,
 } from "../schemas/agent-site.schema";
+import { WebErrSchema } from "../schemas/common.schema";
 import { clearOrgCache, setTestOrgContext } from "../services/org-context";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
@@ -111,6 +111,14 @@ describe("agent-sites L1 routes", () => {
     });
     const res = await webAgentSites.handle(new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}`));
     expect(res.status).toBe(404);
+    const json = await res.json();
+    expect(json).toEqual({
+      success: false,
+      error: {
+        code: "not_found",
+        message: "App 不存在",
+      },
+    });
   });
 
   test("GET /apps/:id 匹配返回详情", async () => {
@@ -167,6 +175,14 @@ describe("agent-sites L1 routes", () => {
       new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}`, { method: "DELETE" }),
     );
     expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json).toEqual({
+      success: false,
+      error: {
+        code: "forbidden",
+        message: "无权限删除此 app",
+      },
+    });
   });
 
   test("GET /agent-configs/:id/sites 无绑定时返回空列表", async () => {
@@ -248,7 +264,7 @@ describe("agent-sites L1 routes", () => {
     );
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error.type).toBe("bad_request");
+    expect(json.error.code).toBe("bad_request");
     expect(json.error.message).toContain("不是 custom 类型");
   });
 
@@ -297,7 +313,7 @@ describe("agent-sites L1 routes", () => {
     );
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error.type).toBe("bad_request");
+    expect(json.error.code).toBe("bad_request");
     expect(json.error.message).toContain("不支持 PocketBase API");
   });
 });
@@ -335,12 +351,12 @@ describe("agent-sites OpenAPI metadata", () => {
     expect(detailRoute?.hooks.params).toBe(AgentSiteAppIdParamsSchema);
     expect(detailRoute?.hooks.response).toEqual({
       200: AgentSiteAppDetailResponseSchema,
-      404: AgentSiteErrorResponseSchema,
+      404: WebErrSchema,
     });
     expect(detailByRemoteRoute?.hooks.params).toBe(AgentSiteRemoteAppParamsSchema);
     expect(detailByRemoteRoute?.hooks.response).toEqual({
       200: AgentSiteAppDetailResponseSchema,
-      404: AgentSiteErrorResponseSchema,
+      404: WebErrSchema,
     });
 
     const bindingListRoute = routes.find(

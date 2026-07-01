@@ -16,14 +16,14 @@ import {
   AgentSiteAppOkResponseSchema,
   AgentSiteBindingParamsSchema,
   AgentSiteDeployResponseSchema,
-  AgentSiteErrorResponseSchema,
   AgentSiteRemoteAppParamsSchema,
   type CreateAgentSiteAppRequest,
   CreateAgentSiteAppRequestSchema,
   type UpdateAgentSiteAppRequest,
   UpdateAgentSiteAppRequestSchema,
 } from "../../schemas/agent-site.schema";
-import { WebOkSchema } from "../../schemas/common.schema";
+import type { WebErr } from "../../schemas/common.schema";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   createRemoteApp,
   deleteRemoteApp,
@@ -80,10 +80,11 @@ async function resolveSiteApp(siteAppId: string) {
 /**
  * 构造统一的 /web 错误体，交给 Elysia `status()` 标注状态码。
  */
-function buildError(type: string, message: string) {
+function buildError(code: string, message: string): WebErr {
   return {
+    success: false,
     error: {
-      type,
+      code,
       message,
     },
   };
@@ -128,7 +129,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       params: AgentSiteAppIdParamsSchema,
       response: {
         200: AgentSiteAppDetailResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -153,7 +154,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       params: AgentSiteRemoteAppParamsSchema,
       response: {
         200: AgentSiteAppDetailResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -233,8 +234,8 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       body: UpdateAgentSiteAppRequestSchema,
       response: {
         200: AgentSiteAppDetailResponseSchema,
-        403: AgentSiteErrorResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -259,15 +260,15 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       await deleteRemoteApp(row.remoteAppId);
       // 再 RCS DB hard delete
       await agentSiteAppRepo.delete(params.id);
-      return { success: true as const };
+      return { success: true as const, data: null };
     },
     {
       sessionAuth: true,
       params: AgentSiteAppIdParamsSchema,
       response: {
         200: AgentSiteAppOkResponseSchema,
-        403: AgentSiteErrorResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -300,15 +301,15 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         platformToken: token.token,
         platformTokenId: token.token_id,
       });
-      return { success: true as const };
+      return { success: true as const, data: null };
     },
     {
       sessionAuth: true,
       params: AgentSiteAppIdParamsSchema,
       response: {
         200: AgentSiteAppOkResponseSchema,
-        403: AgentSiteErrorResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -339,8 +340,8 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       params: AgentSiteAppFileParamsSchema,
       response: {
         200: WebOkSchema(z.unknown().describe("agent-sites 上游返回体。")),
-        403: AgentSiteErrorResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -369,8 +370,8 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       params: AgentSiteAppIdParamsSchema,
       response: {
         200: WebOkSchema(z.unknown().describe("agent-sites 上游返回体。")),
-        403: AgentSiteErrorResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -428,9 +429,9 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       params: AgentSiteAppIdParamsSchema,
       response: {
         200: AgentSiteDeployResponseSchema,
-        400: AgentSiteErrorResponseSchema,
-        403: AgentSiteErrorResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        400: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -499,14 +500,14 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       }
       // 永远用 siteApp.id（UUID）写入绑定表，保证 listByIds 的 JOIN 正确
       await addAgentSiteApp(params.agentConfigId, siteApp.id);
-      return { success: true as const };
+      return { success: true as const, data: null };
     },
     {
       sessionAuth: true,
       params: AgentSiteBindingParamsSchema,
       response: {
         200: AgentSiteAppOkResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],
@@ -529,14 +530,14 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         return status(404, buildError("not_found", "Site 不存在"));
       }
       await removeAgentSiteApp(params.agentConfigId, siteApp.id);
-      return { success: true as const };
+      return { success: true as const, data: null };
     },
     {
       sessionAuth: true,
       params: AgentSiteBindingParamsSchema,
       response: {
         200: AgentSiteAppOkResponseSchema,
-        404: AgentSiteErrorResponseSchema,
+        404: WebErrSchema,
       },
       detail: {
         tags: ["Agent Sites"],

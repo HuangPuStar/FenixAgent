@@ -20,14 +20,6 @@ export const WebErrSchema = z.object({
 export const WebResponseSchema = <T extends z.ZodTypeAny>(dataSchema: T) =>
   z.union([WebOkSchema(dataSchema), WebErrSchema]);
 
-/** Elysia error() 辅助函数返回的错误结构 */
-export const ApiErrorSchema = z.object({
-  error: z.object({
-    type: z.string(),
-    message: z.string(),
-  }),
-});
-
 /** 通用分页参数：内部 API 默认优先使用 page / pageSize。 */
 export const PaginationParamsSchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),

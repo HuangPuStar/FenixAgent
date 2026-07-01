@@ -54,7 +54,6 @@ export {
   UpdateChannelBindingResponseSchema,
 } from "./channel.schema";
 export {
-  ApiErrorSchema,
   type PaginationParams,
   PaginationParamsSchema,
   type PaginationSortParams,

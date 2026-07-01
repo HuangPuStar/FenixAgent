@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { ApiErrorSchema, WebOkSchema } from "./common.schema";
+import { WebOkSchema } from "./common.schema";
 
 /** Agent Sites App 响应对象 */
 export const AgentSiteAppSchema = z.object({
@@ -59,9 +59,7 @@ export const UpdateAgentSiteAppRequestSchema = z.object({
 export type UpdateAgentSiteAppRequest = z.infer<typeof UpdateAgentSiteAppRequestSchema>;
 
 /** DELETE/POST rotate-token 等简单操作的成功响应 */
-export const AgentSiteAppOkResponseSchema = z.object({
-  success: z.literal(true),
-});
+export const AgentSiteAppOkResponseSchema = WebOkSchema(z.null()).describe("无业务数据时的 Site App 成功响应。");
 
 /** /web/agent-sites/apps/:id 参数 */
 export const AgentSiteAppIdParamsSchema = z.object({
@@ -89,9 +87,6 @@ export const AgentSiteBindingParamsSchema = z.object({
   agentConfigId: z.string().describe("Agent 配置 ID。"),
   siteAppId: z.string().describe("Site App 标识，支持 RCS UUID 或 remoteAppId。"),
 });
-
-/** Agent Sites web API 错误响应 */
-export const AgentSiteErrorResponseSchema = ApiErrorSchema;
 
 /** POST /web/agent-sites/apps/:id/deploy 成功响应 */
 export const AgentSiteDeployResponseSchema = z.object({
