@@ -44,17 +44,9 @@ bash restart-server.sh
 
 首次启动后，系统会自动创建管理员账号 `admin@fenix.com`。初始密码会写入 `RCS_SYSTEM_ADMIN_PASSWORD_FILE`，默认路径是 `data/password.txt`。
 
-### 使用
-
-- 模型页 - 配置模型
-- 技能页 - 配置技能
-- MCP页 - 配置MCP来提供额外的工具
-- 组织页 - 配置组织和成员关系 
-- 智能体 - 配置和使用 Agent，进入 Agent 会话
-- 设置 - 其他非常用功能
-- 组织切换 - 切换不同组织，以使用不同资源
-
 ## 开发
+
+开发流程、提交前检查、测试约定和代码贡献方式，统一参考 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 开发前
 
@@ -84,9 +76,6 @@ bash restart-server.sh
 ```bash
 # 代码检查（提交前必做）
 bun precheck
-
-# 运行测试（提交前必做）
-bun test
 ```
 
 ## acp-link 独立部署（分布式执行节点）

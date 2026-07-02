@@ -24,6 +24,7 @@
 - [README.md](README.md)：项目介绍与快速开始
 - [CLAUDE.md](CLAUDE.md)：全局补充约束与项目级细节说明
 - [DESIGN.md](DESIGN.md)：更高层的产品与设计背景
+- [前端开发规范](docs/developer/guide/frontend-development.md)：前端目录结构、路由导航、状态管理、组件、API、i18n 和样式规范
 - [后端开发规范](docs/developer/guide/backend-development.md)：后端目录分层、数据库、API、注释和日志规范
 - [drizzle/README.md](drizzle/README.md)：Drizzle 迁移合并、冲突处理与数据迁移边界说明
 
@@ -147,6 +148,7 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 ### 路由结构
 
 - `/web/*`：控制面板业务 API
+- `/api/*`：对外 OpenAPI / API Key 接口
 - `/acp/*`：ACP WebSocket / relay
 - `/mcp/*`：MCP 知识库查询
 - `/hooks/*`：Webhook 触发入口
@@ -155,10 +157,8 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 
 ### 前端
 
-- 不要在 JSX 中硬编码用户可见字符串，统一走 i18n
-- 路由跳转使用 TanStack Router，避免直接改 `window.location`
-- 修改前端后务必执行 `bun run build:web`
-- 使用 `lucide-react` 作为图标来源，不要内联 SVG
+- 详细规范参考 [前端开发规范](docs/developer/guide/frontend-development.md)。
+- 涉及页面结构、交互语义和产品设计背景时，补充参考 [DESIGN.md](DESIGN.md)。
 
 ### 后端
 
@@ -173,21 +173,15 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 bun run precheck
 ```
 
-如果改动影响后端逻辑，补跑对应后端测试。
+正式提交前，建议使用项目内的 `fenix-code-review` skill 再做一次 AI 代码审查。
 
-如果改动影响前端页面、表单或交互，补跑对应前端测试，并执行：
+如果使用 Codex / Claude Code 一类支持项目 skill 的 Agent，优先执行：
 
-```bash
-bun run build:web
+```text
+/fenix-code-review
 ```
 
-`precheck` 会完成这些事情：
-
-- Biome 格式化
-- import 排序
-- 后端 TypeScript 检查
-- 前端 TypeScript 检查
-- Biome 静态检查
+如果需要只审查某个范围，也可以显式指定 `<scope>`，例如文件路径、提交区间或分支 diff 范围。
 
 ## 提交规范
 
@@ -207,6 +201,7 @@ chore(scope): 杂项维护
 - 每个提交保持单一职责
 - 有代码改动时，提交前先通过 `bun run precheck`
 - 涉及 schema 变更时，连同 `drizzle/` 一起提交
+- 提交前执行一次 `fenix-code-review` AI 审查
 
 ## 新功能开发建议
 
@@ -219,3 +214,4 @@ chore(scope): 杂项维护
 5. 运行 `bun run precheck`
 6. 如涉及前端，执行 `bun run build:web`
 7. 自查文档、迁移和配置是否需要同步更新
+8. 提交前执行一次 `fenix-code-review` AI 审查

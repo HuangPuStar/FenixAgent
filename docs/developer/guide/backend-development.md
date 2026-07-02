@@ -207,7 +207,15 @@ DDL 迁移和数据迁移必须分离：
 - 必须优先保证协议稳定和向后兼容。
 - 返回结构应清晰、稳定、适合第三方接入，不随前端页面实现细节摆动。
 
-### 4.2.1 OpenAPI 文档组织
+### 4.2.1 非 `/web` / `/api` 的内部协议路由
+
+- 如果接口既不是给控制台前端 `/web` 场景使用，也不是给外部 OpenAPI `/api` 场景使用，就不要放进 `src/routes/web/` 或 `src/routes/api/`。
+- 这类接口应按协议或内部用途单独放在 `src/routes/` 下的独立文件或目录中，例如 `src/routes/mcp/`、`src/routes/acp/`、`src/routes/hooks.ts`、`src/routes/skills.ts`。
+- 路由前缀应与用途明确对应，使用独立前缀，例如 `/mcp/*`、`/acp/*`、`/hooks/*`、`/skills/*`，避免与 `/web/*`、`/api/*` 语义混淆。
+- 这类接口通常属于内部协议入口、系统桥接层、静态资源下载入口、Webhook 或框架透传能力，不应为了“风格统一”强行并入 `/web` 或 `/api`。
+- 这类接口默认按内部使用处理，OpenAPI 文档一般应设置 `detail.hide: true` 隐藏；只有在明确要求对外展示或确有文档消费方时，才公开到文档中。
+
+### 4.2.2 OpenAPI 文档组织
 
 - OpenAPI / Scalar 的统一装配入口放在 `src/openapi.ts`，不要把全局 tags、文档路径和插件配置散落到各 route 文件或 `src/index.ts` 中。
 - 当前维护两套文档：
