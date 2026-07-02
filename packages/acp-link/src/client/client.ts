@@ -353,6 +353,8 @@ export class ACPClient {
         if (r?.error) {
           const errDetail = (r.error as { code?: number; message?: string })?.message ?? JSON.stringify(r.error);
           console.error("[ACPClient] sendPrompt error response:", errDetail);
+          // 透传后端错误详情给前端展示，避免用户只看到模糊的"请求未能正常处理"
+          this.errorMessageHandler?.(errDetail);
           this.promptCompleteHandler?.("error", { inputTokens: 0, outputTokens: 0 });
           return;
         }
@@ -361,6 +363,8 @@ export class ACPClient {
       })
       .catch((err) => {
         console.error("[ACPClient] sendPrompt failed:", (err as Error).message);
+        // 透传请求失败原因给前端展示，避免用户只看到模糊的"请求未能正常处理"
+        this.errorMessageHandler?.((err as Error).message);
         // pending 超时或被 reject 时，传入 usage 零值标记，使上层能展示错误
         this.promptCompleteHandler?.("error", { inputTokens: 0, outputTokens: 0 });
       });

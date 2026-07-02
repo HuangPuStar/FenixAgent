@@ -83,3 +83,35 @@ echo "$USER_META_BASE_URL/$REMOTE_APP_ID/"
 | 部署 | `PUT /apps/:id/files/:path` 上传静态前端 | `POST /apps/:id/deploy` 上传 gzip tar.gz |
 | 业务前端访问 | `$USER_META_BASE_URL/{remoteAppId}/` | 相同（走 RCS proxy + visibility） |
 | 后端日志 | PB 进程日志 | 子进程 stdout/stderr **被丢弃**，需自己写日志文件 |
+
+## 常见陷阱
+
+### 1. 不要用文件系统做 CRUD 存储
+
+custom app 的 Deno 进程中，`--allow-write` 权限仅限 `<runtimeDir>`（`data/app-{id}/runtime/`）。代码目录 `deploy-{a|b}/` 每次部署整体替换，写入的数据会被清空。
+
+**错误做法**：自己写 JSON 文件实现增删改查——权限问题搞不定、跨部署丢数据、并发不安全。
+**正确做法**：需要 CRUD 数据层时，**直接用 pocketbase 模式**（默认），平台自动起 PocketBase 实例，前端通过 `/api/collections/:name/records` 直接操作，L2 API 透传提供 superuser 全权操作。标准 CRUD 没有理由绕到 custom。
+
+### 2. 权限问题不要死磕
+
+custom app 的 Deno 进程只有最窄权限：`--allow-net` + `--allow-read=<codeDir>` + `--allow-read=<runtimeDir>` + `--allow-write=<runtimeDir>`。环境变量也严格隔离（`clearEnv: true`）。
+
+如果你在权限问题上反复尝试超过 2 轮还解决不了——**这条路不通，立刻换方案**。大概率你的场景根本不需要 custom 模式，pocketbase 模式就够用了。
+
+### 3. Custom app 不能访问 PocketBase
+
+custom 类型没有 PB 实例，L2 PB API（`/web/agent-sites/apps/:id/api/*`）对它直接返 400。如果你想"custom app 里调用 PocketBase API"——做不到，也没有环境变量注入 PB 地址或 token。**需要 PB 就用 pocketbase 模式。**
+
+### 4. 选型决策：什么时候用 custom
+
+只有以下场景才值得用 custom 模式（其他情况一律 pocketbase）：
+
+| ✅ 用 custom | ❌ 不用 custom |
+|-------------|---------------|
+| 需要 Deno 自定义路由逻辑 | 只是静态前端 + CRUD 后端 |
+| 需要 WebSocket / SSE 长连接 | 想存点数据（有 PB collections） |
+| 需要 SQLite 本地数据库 | 想用 fetch shim（pocketbase 模式自带） |
+| 前后端打包在一个 Deno 进程 | 想省事（pocketbase 模式更简单） |
+
+> 碰不准时默认选 pocketbase——它比你想象的能覆盖更多场景，PB 的 hooks / cron / API rules 已经能处理大部分业务逻辑。

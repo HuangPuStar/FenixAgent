@@ -348,6 +348,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 追踪用户主动取消操作，避免取消后触发错误提示
   const userCancelledRef = useRef(false);
+  // 追踪 errorMessageHandler 是否已设置后端错误，避免 promptCompleteHandler 的通用错误覆盖具体报错
+  const backendErrorRef = useRef(false);
   // 追踪一轮 prompt 中是否收到 agent 输出（agent_message/tool_call 等），用于检测空响应
   const hasAssistantOutputRef = useRef(false);
   // Todo 面板状态 — 每次 todowrite 调用替换
@@ -377,6 +379,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       errorTimerRef.current = null;
     }
     userCancelledRef.current = false;
+    backendErrorRef.current = false;
     wasLoadingBeforeDisconnect.current = false;
     hasAssistantOutputRef.current = false;
     setPromptUsage(null);
@@ -620,10 +623,20 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       if (userCancelledRef.current) {
         userCancelledRef.current = false;
       } else {
+        // 如果后端已通过 errorMessageHandler 报告了具体错误，不再用通用错误覆盖
+        if (backendErrorRef.current) {
+          backendErrorRef.current = false;
+        }
         // inputTokens === 0 且 outputTokens === 0 说明 prompt 未被处理（真错误）
         // 仅 inputTokens === 0 可能是 prompt caching 导致的正常情况（CCB/OC 引擎常见）
-        if (usage && usage.inputTokens === 0 && (usage.outputTokens ?? 0) === 0) {
-          setErrorMessage(t("chatInterface.processingError"));
+        else if (usage && usage.inputTokens === 0 && (usage.outputTokens ?? 0) === 0) {
+          setErrorMessage(
+            t("chatInterface.processingErrorDetail", {
+              stopReason,
+              inputTokens: String(usage.inputTokens),
+              outputTokens: String(usage.outputTokens ?? 0),
+            }),
+          );
           if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
           errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
         }
@@ -631,7 +644,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         // 典型场景：opencode 返回 {stopReason:"end_turn","_meta":{}} 无 usage 无内容
         else if (!hasAssistantOutputRef.current) {
           console.warn("[ChatInterface] Prompt completed with no assistant output");
-          setErrorMessage(t("chatInterface.processingError"));
+          setErrorMessage(
+            t("chatInterface.processingErrorDetail", {
+              stopReason,
+              inputTokens: String(usage?.inputTokens ?? "N/A"),
+              outputTokens: String(usage?.outputTokens ?? "N/A"),
+            }),
+          );
           if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
           errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
         }
@@ -676,6 +695,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       console.error("[ChatInterface] Agent error:", msg);
       // 用户主动取消后，忽略服务端回传的错误消息
       if (userCancelledRef.current) return;
+      // 标记后端已报错，避免 promptCompleteHandler 用通用错误覆盖具体报错
+      backendErrorRef.current = true;
       setErrorMessage(msg);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       errorTimerRef.current = setTimeout(() => setErrorMessage(null), 5000);
@@ -993,8 +1014,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       };
       setEntries((prev) => [...prev, userEntry]);
       setIsLoading(true);
-      // 重置 agent 输出追踪，用于检测空响应
+      // 重置 agent 输出追踪和错误标记，用于本轮 prompt 检测
       hasAssistantOutputRef.current = false;
+      backendErrorRef.current = false;
 
       userCancelledRef.current = false;
       try {
