@@ -84,17 +84,6 @@ let userConfig = {
   permission: null as unknown,
 };
 
-function post(body: unknown, path: "providers" | "models") {
-  const route = path === "providers" ? providersRoute : modelsRoute;
-  return route.handle(
-    new Request(`http://localhost/config/${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
-}
-
 describe("model provider access", () => {
   afterEach(() => {
     resetTestAuth();
@@ -152,9 +141,14 @@ describe("model provider access", () => {
     });
   });
 
-  // 外部 provider 下的 models 会进入 available，并携带来源 provider 的只读状态
+  // get → GET /config/models
   test("外部 provider models 出现在 available 中", async () => {
-    const res = await post({ action: "get" }, "models");
+    const res = await modelsRoute.handle(
+      new Request("http://localhost/config/models", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     const json = await res.json();
 
     const externalModel = json.data.available.find((item: { id: string }) => item.id === "model_external");
@@ -169,19 +163,29 @@ describe("model provider access", () => {
     expect(externalModel.providerResourceAccess.writable).toBe(false);
   });
 
-  // 外部 provider 下的 add/update/remove model 写操作返回 403
+  // add_model → POST /config/providers/actions/models?name=xxx
+  // update_model → PUT /config/providers/actions/models/:modelId?name=xxx
+  // remove_model → DELETE /config/providers/actions/models/:modelId?name=xxx
   test("外部 provider 拒绝 add/update/remove model", async () => {
-    const add = await post(
-      { action: "add_model", name: externalAccess.resourceKey, data: { modelId: "new" } },
-      "providers",
+    const add = await providersRoute.handle(
+      new Request(`http://localhost/config/providers/actions/models?name=${externalAccess.resourceKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: "new" }),
+      }),
     );
-    const update = await post(
-      { action: "update_model", name: externalAccess.resourceKey, modelId: "shared-model", data: { name: "Next" } },
-      "providers",
+    const update = await providersRoute.handle(
+      new Request(`http://localhost/config/providers/actions/models/shared-model?name=${externalAccess.resourceKey}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Next" }),
+      }),
     );
-    const remove = await post(
-      { action: "remove_model", name: externalAccess.resourceKey, modelId: "shared-model" },
-      "providers",
+    const remove = await providersRoute.handle(
+      new Request(`http://localhost/config/providers/actions/models/shared-model?name=${externalAccess.resourceKey}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      }),
     );
 
     expect(add.status).toBe(403);
@@ -189,18 +193,30 @@ describe("model provider access", () => {
     expect(remove.status).toBe(403);
   });
 
-  // handleSet 可保存可读外部 stable model ref
+  // set → PUT /config/models
   test("handleSet 可保存可读外部 model ref", async () => {
-    const res = await post({ action: "set", data: { model: "org_source/provider_external/shared-model" } }, "models");
+    const res = await modelsRoute.handle(
+      new Request("http://localhost/config/models", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "org_source/provider_external/shared-model" }),
+      }),
+    );
     const json = await res.json();
 
     expect(json.success).toBe(true);
     expect(userConfig.currentModel).toBe("org_source/provider_external/shared-model");
   });
 
-  // handleSet 拒绝不可读 provider 或不存在 model ref
+  // set → PUT /config/models
   test("handleSet 拒绝不可读 provider model ref", async () => {
-    const res = await post({ action: "set", data: { model: "org_missing/provider_missing/model" } }, "models");
+    const res = await modelsRoute.handle(
+      new Request("http://localhost/config/models", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "org_missing/provider_missing/model" }),
+      }),
+    );
     const json = await res.json();
 
     expect(json.success).toBe(false);

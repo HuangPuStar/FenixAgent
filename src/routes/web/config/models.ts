@@ -4,8 +4,6 @@ import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../../schemas/common.schema";
 import {
-  type ConfigBody,
-  ConfigBodySchema,
   ModelPreferencesBodySchema,
   ModelPreferencesResponseSchema,
   ModelRefreshResponseSchema,
@@ -14,7 +12,6 @@ import * as configPg from "../../../services/config/index";
 import { configError, configSuccess } from "../../../services/config-utils";
 
 const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({
-  "config-body": ConfigBodySchema,
   "model-preferences-body": ModelPreferencesBodySchema,
   "model-preferences-response": ModelPreferencesResponseSchema,
   "model-refresh-response": ModelRefreshResponseSchema,
@@ -177,7 +174,7 @@ async function handleRefresh(ctx: AuthContext) {
   return configSuccess({ count: available.length });
 }
 
-// ── 新 RESTful 路由（注册在旧 POST action 分发路由之前，保持向后兼容）──
+// ── RESTful 路由 ──
 
 /** GET /config/models：获取可用模型列表与用户偏好 */
 app.get(
@@ -279,61 +276,6 @@ app.post(
       summary: "强制刷新可用模型缓存",
       description: "强制刷新当前组织的可用模型缓存，绕过 5 分钟 TTL，从 provider 实时拉取最新模型列表。",
     },
-  },
-);
-
-// ── 旧 POST action 分发路由（保持向后兼容）──
-
-app.post(
-  "/config/models",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, status }: any) => {
-    const authCtx = store.authContext!;
-    const b = (body as ConfigBody) ?? {};
-    const payload = {
-      action: b.action ?? "",
-      data: b.data as { model?: string; small_model?: string; permission?: unknown } | undefined,
-    };
-    try {
-      const result = await (async () => {
-        switch (payload.action) {
-          case "get":
-            return await handleGet(authCtx);
-          case "set":
-            return await handleSet(authCtx, payload.data ?? {});
-          case "refresh":
-            return await handleRefresh(authCtx);
-          default:
-            return status(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
-        }
-      })();
-
-      if (result && typeof result === "object" && "success" in result && result.success === false) {
-        return status(configErrorStatus(result.error?.code), result);
-      }
-
-      return result;
-    } catch (e: unknown) {
-      if (e instanceof AppError) {
-        return status(e.statusCode, configError(e.code, e.message));
-      }
-      const message = e instanceof Error ? e.message : "Unknown error";
-      return status(500, configError("CONFIG_READ_ERROR", message));
-    }
-  },
-  {
-    sessionAuth: true,
-    body: "config-body",
-    response: {
-      // TODO: 当前仍是 action 分发入口，成功 data 先以宽松 object|null 占位；后续应拆分为独立接口并补精确成功响应 schema。
-      200: WebOkSchema(z.union([z.looseObject({}), z.null()])),
-      400: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
-      409: WebErrSchema,
-      500: WebErrSchema,
-    },
-    detail: { tags: ["ModelConfig"], summary: "Model 配置管理（旧 action 分发入口）" },
   },
 );
 

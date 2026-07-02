@@ -3,7 +3,6 @@ import * as z from "zod/v4";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../../schemas/common.schema";
-import { type ConfigBody, ConfigBodySchema } from "../../../schemas/config.schema";
 import * as configPg from "../../../services/config/index";
 import {
   countToolsByServer,
@@ -364,11 +363,9 @@ const looseOkSchema = WebOkSchema(z.union([z.looseObject({}), z.null()]));
 
 // ── 路由注册 ──
 
-const app = new Elysia({ name: "web-config-mcp" }).use(authGuardPlugin).model({
-  "config-body": ConfigBodySchema,
-});
+const app = new Elysia({ name: "web-config-mcp" }).use(authGuardPlugin);
 
-// ─── NEW REST ROUTES (added before old action-dispatch POST for priority) ───
+// ── RESTful 路由 ──
 
 // GET /web/config/mcp — list all MCP servers (or get single when ?name=xxx)
 app.get(
@@ -800,122 +797,6 @@ app.get(
           schema: { type: "string" },
         },
       ],
-    },
-  },
-);
-
-// ─── BACKWARD COMPAT: POST /web/config/mcp (action dispatch, pre-creates) ───
-// 如果 body 包含 "action" 字段，走旧的 action 分发逻辑；
-// 否则将 POST 视为 create 操作（向后兼容）。
-app.post(
-  "/config/mcp",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + body model
-  async ({ store, body, status }: any) => {
-    const authCtx = store.authContext!;
-    const b = body as ConfigBody;
-
-    // 新 REST 风格：无 action 字段时，视为 create
-    if (!b.action) {
-      const name = typeof b.name === "string" ? b.name : undefined;
-      if (!name) {
-        return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 字段"));
-      }
-      try {
-        const result = await handleCreate(authCtx, name, b.config ?? b.data);
-        const err = resolveConfigError(result);
-        if (err) return status(err.code, err.body);
-        return result;
-      } catch (error_) {
-        const err = resolveThrownError(error_);
-        if (err) return status(err.code, err.body);
-        throw error_;
-      }
-    }
-
-    // 旧 action 分发逻辑
-    const { action, name, config, url, headers, timeout, publicReadable } = {
-      action: b.action ?? "",
-      name: b.name as string | undefined,
-      config: (b.config ?? b.data) as McpServerConfig | undefined,
-      url: b.url as string | undefined,
-      headers: b.headers as Record<string, string> | undefined,
-      timeout: b.timeout as number | undefined,
-      publicReadable:
-        typeof (b.data as Record<string, unknown> | undefined)?.publicReadable === "boolean"
-          ? ((b.data as Record<string, unknown>).publicReadable as boolean)
-          : typeof (b.config as Record<string, unknown> | undefined)?.publicReadable === "boolean"
-            ? ((b.config as Record<string, unknown>).publicReadable as boolean)
-            : undefined,
-    };
-
-    try {
-      let result: unknown;
-      switch (action) {
-        case "list":
-          result = await handleList(authCtx);
-          break;
-        case "get":
-          result = await handleGet(authCtx, name!);
-          break;
-        case "create":
-          result = await handleCreate(authCtx, name!, config, publicReadable);
-          break;
-        case "set":
-        case "update":
-          result = await handleUpdate(authCtx, name!, config, publicReadable);
-          break;
-        case "delete":
-          result = await handleDelete(authCtx, name!);
-          break;
-        case "enable":
-          result = await handleEnable(authCtx, name!);
-          break;
-        case "disable":
-          result = await handleDisable(authCtx, name!);
-          break;
-        case "test":
-          result = await handleTest(authCtx, name!);
-          break;
-        case "test_url":
-          result = await handleTestUrl(url!, headers, timeout);
-          break;
-        case "inspect":
-          result = await handleInspect(authCtx, name!);
-          break;
-        case "list_tools":
-          result = await handleListTools(authCtx, name!);
-          break;
-        default:
-          return status(400, buildWebErrorBody("VALIDATION_ERROR", `Unknown action '${action}'`));
-      }
-
-      const err = resolveConfigError(result);
-      if (err) return status(err.code, err.body);
-      return result;
-    } catch (error_: unknown) {
-      const err = resolveThrownError(error_);
-      if (err) return status(err.code, err.body);
-      const message = error_ instanceof Error ? error_.message : "Unknown error";
-      return status(500, buildWebErrorBody("CONFIG_READ_ERROR", message));
-    }
-  },
-  {
-    sessionAuth: true,
-    body: "config-body",
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
-      409: WebErrSchema,
-      500: WebErrSchema,
-    },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "MCP 服务器配置管理（旧版 action 分发 / 创建）",
-      description:
-        "向后兼容入口。若请求体包含 `action` 字段，按旧版 action 分发逻辑处理；若未包含 `action`，则等同于 `POST /web/config/mcp` 的创建语义。",
     },
   },
 );

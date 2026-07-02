@@ -1,18 +1,15 @@
 /**
- * Provider 配置路由 — 支持旧 action 分发与 RESTful 双模式
+ * Provider 配置路由 — RESTful 风格（query-param 命名以支持含 / 的 resource key）
  *
- * 旧模式：POST /config/providers + body.action 分发（保持向后兼容）
- * REST 模式：
- *   GET    /config/providers                        → 列出所有 Provider
- *   POST   /config/providers                        → 创建新 Provider（已存在返回 409）
- *   GET    /config/providers/:name                  → 获取单个 Provider 详情
- *   PUT    /config/providers/:name                  → 更新已有 Provider（不存在返回 404）
- *   DELETE /config/providers/:name                  → 删除 Provider
- *   POST   /config/providers/:name/test             → 测试 Provider 连通性
- *   POST   /config/providers/:name/models           → 为 Provider 添加模型
- *   PUT    /config/providers/:name/models/:modelId  → 更新 Provider 下的模型
- *   DELETE /config/providers/:name/models/:modelId  → 删除 Provider 下的模型
- *   POST   /config/providers/:name/models/test      → 测试模型连通性
+ *   GET    /config/providers?name=xxx                  → 获取单个 / 无 name 时列出全部
+ *   POST   /config/providers                           → 创建新 Provider（已存在返回 409）
+ *   PUT    /config/providers?name=xxx                  → 更新已有 Provider
+ *   DELETE /config/providers?name=xxx                  → 删除 Provider
+ *   POST   /config/providers/actions/test?name=xxx     → 测试 Provider 连通性
+ *   POST   /config/providers/actions/test-model?name=xxx           → 测试模型连通性
+ *   POST   /config/providers/actions/models?name=xxx              → 为 Provider 添加模型
+ *   PUT    /config/providers/actions/models/:modelId?name=xxx     → 更新模型
+ *   DELETE /config/providers/actions/models/:modelId?name=xxx     → 删除模型
  */
 
 import Elysia from "elysia";
@@ -21,13 +18,8 @@ import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { WebOkSchema } from "../../../schemas/common.schema";
 import {
-  ConfigActionSchema,
-  type ConfigBody,
-  ConfigBodySchema,
   ModelActionResultResponseSchema,
   ModelTestResponseSchema,
-  ProviderDetailResponseSchema,
-  ProviderListResponseSchema,
   ProviderSaveResponseSchema,
   ProviderTestResponseSchema,
 } from "../../../schemas/config.schema";
@@ -36,16 +28,21 @@ import { buildModelData } from "../../../services/config/provider";
 import { configError, configSuccess, resolveApiKey, toKeyHint } from "../../../services/config-utils";
 import { invalidateAvailableCache } from "./models";
 
-type ProviderBody = {
-  action: string;
-  name?: string;
-  modelId?: string;
-  data?: Record<string, unknown>;
-  /** inline 测试凭证：传入则跳过 DB 查询，直接使用传入值 */
-  apiKey?: string;
-  baseURL?: string;
-  protocol?: string;
-};
+/** 包裹 Elysia handler，将内部抛出的 AppError 转换为统一错误响应 */
+// biome-ignore lint/suspicious/noExplicitAny: wrapper needs to match Elysia InlineHandler type
+function safeAppHandler(handler: (ctx: any) => Promise<any>): (ctx: any) => Promise<any> {
+  return async (ctx: any) => {
+    try {
+      return await handler(ctx);
+    } catch (e: unknown) {
+      if (e instanceof AppError) {
+        const statusFn = ctx.status as (code: number, body: unknown) => Response;
+        return statusFn(e.statusCode, { success: false, error: { code: e.code, message: e.message } });
+      }
+      throw e;
+    }
+  };
+}
 
 type TestErrorCode =
   | "PROVIDER_TEST_LIST_HTTP_ERROR"
@@ -63,19 +60,6 @@ const ProviderRouteErrSchema = z.object({
   data: z.unknown().optional(),
 });
 
-/** POST /config/providers 兼容 body schema：action 可选，存在时必须为合法值否则 422 */
-const PostProvidersBodySchema = z
-  .object({
-    action: ConfigActionSchema.optional().describe("配置动作名称（旧模式，可选）。"),
-    name: z.string().optional(),
-    modelId: z.string().optional(),
-    data: z.record(z.string(), z.unknown()).optional(),
-    apiKey: z.string().optional(),
-    baseURL: z.string().optional(),
-    protocol: z.enum(["openai", "anthropic"]).optional(),
-  })
-  .catchall(z.unknown());
-
 function configErrorStatus(code: string | undefined): 400 | 403 | 404 | 409 | 500 {
   switch (code) {
     case "VALIDATION_ERROR":
@@ -91,9 +75,7 @@ function configErrorStatus(code: string | undefined): 400 | 403 | 404 | 409 | 50
   }
 }
 
-const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin).model({
-  "config-body": ConfigBodySchema,
-});
+const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin);
 
 // ── Handler 函数 ──
 
@@ -152,7 +134,9 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   const rawProtocol = data.protocol;
   const protocol =
     rawProtocol === "anthropic" || rawProtocol === "openai" ? rawProtocol : (existing?.protocol ?? "openai");
-  const displayName = (data.name as string) ?? existing?.displayName ?? undefined;
+  // 用 !== undefined 而非 ?? 链，避免 existing.displayName 为 null 时被 ?? undefined 吞掉
+  const displayName =
+    (data.name as string | undefined) !== undefined ? (data.name as string) : (existing?.displayName ?? null);
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
   // 收集 extraOptions：data 中除已知字段外的其他 options
@@ -538,7 +522,7 @@ async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId
 
   await configPg.removeModel(ctx, p.id, modelId);
   invalidateAvailableCache();
-  return configSuccess(null);
+  return configSuccess({ modelId });
 }
 
 // ── REST 包装函数 ──
@@ -575,66 +559,8 @@ async function handleCreate(
 }
 
 async function handleUpdate(ctx: AuthContext, name: string, data: Record<string, unknown>) {
-  const existing = await configPg.getProvider(ctx, name);
-  if (!existing) return configError("NOT_FOUND", `Provider '${name}' not found`);
+  // PUT 作为幂等 upsert：不存在时创建，存在时更新，不再提前检查存在性
   return handleSet(ctx, name, data);
-}
-
-// ── 旧 action 分发逻辑 ──
-
-async function dispatchAction(
-  authCtx: AuthContext,
-  payload: ProviderBody,
-  status: (code: number, body: unknown) => Response,
-) {
-  switch (payload.action) {
-    case "list":
-      return await handleList(authCtx);
-    case "get":
-      return await handleGet(authCtx, payload.name!);
-    case "set":
-      return await handleSet(authCtx, payload.name!, payload.data!);
-    case "test": {
-      const protocol =
-        payload.protocol === "anthropic"
-          ? ("anthropic" as const)
-          : payload.protocol === "openai"
-            ? ("openai" as const)
-            : undefined;
-      return await handleTest(authCtx, payload.name!, {
-        apiKey: payload.apiKey,
-        baseURL: payload.baseURL,
-        protocol,
-      });
-    }
-    case "test_model":
-      return await handleTestModel(authCtx, payload.name!, payload.modelId!);
-    case "delete":
-      return await handleDelete(authCtx, payload.name!);
-    case "add_model":
-      return await handleAddModel(authCtx, payload.name!, payload.data!);
-    case "update_model":
-      return await handleUpdateModel(authCtx, payload.name!, payload.modelId!, payload.data!);
-    case "remove_model":
-      return await handleRemoveModel(authCtx, payload.name!, payload.modelId!);
-    default:
-      return status(400, configError("VALIDATION_ERROR", `Unknown action: ${payload.action}`));
-  }
-}
-
-function wrapResult(result: unknown, status: (code: number, body: unknown) => Response) {
-  if (result && typeof result === "object" && "success" in result && result.success === false) {
-    return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);
-  }
-  return result;
-}
-
-function wrapError(e: unknown, status: (code: number, body: unknown) => Response) {
-  if (e instanceof AppError) {
-    return status(e.statusCode, configError(e.code, e.message));
-  }
-  const message = e instanceof Error ? e.message : "Unknown error";
-  return status(500, configError("CONFIG_READ_ERROR", message));
 }
 
 // ── Query param helper（解决 resource key 含 / 无法用 :name 路径参数的问题）──
@@ -705,7 +631,7 @@ app.get(
 app.put(
   "/config/providers",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, query, body, status }: any) => {
+  safeAppHandler(async ({ store, query, body, status }: any) => {
     const authCtx = store.authContext!;
     const name = extractProviderName(query);
     if (!name) {
@@ -717,7 +643,7 @@ app.put(
       return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);
     }
     return result;
-  },
+  }),
   {
     sessionAuth: true,
     query: providerNameQuerySchema,
@@ -748,7 +674,7 @@ app.put(
 app.delete(
   "/config/providers",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, query, status }: any) => {
+  safeAppHandler(async ({ store, query, status }: any) => {
     const authCtx = store.authContext!;
     const name = extractProviderName(query);
     if (!name) {
@@ -759,7 +685,7 @@ app.delete(
       return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);
     }
     return result;
-  },
+  }),
   {
     sessionAuth: true,
     query: providerNameQuerySchema,
@@ -790,7 +716,7 @@ app.delete(
 app.post(
   "/config/providers/actions/test",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, query, body, status }: any) => {
+  safeAppHandler(async ({ store, query, body, status }: any) => {
     const authCtx = store.authContext!;
     const name = extractProviderName(query);
     if (!name) {
@@ -806,7 +732,7 @@ app.post(
       return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);
     }
     return result;
-  },
+  }),
   {
     sessionAuth: true,
     query: providerNameQuerySchema,
@@ -838,7 +764,7 @@ app.post(
 app.post(
   "/config/providers/actions/test-model",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, query, body, status }: any) => {
+  safeAppHandler(async ({ store, query, body, status }: any) => {
     const authCtx = store.authContext!;
     const name = extractProviderName(query);
     if (!name) {
@@ -850,7 +776,7 @@ app.post(
       return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);
     }
     return result;
-  },
+  }),
   {
     sessionAuth: true,
     query: providerNameQuerySchema,
@@ -881,19 +807,18 @@ app.post(
 app.post(
   "/config/providers/actions/models",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, query, body, status }: any) => {
+  safeAppHandler(async ({ store, query, body, status }: any) => {
     const authCtx = store.authContext!;
     const name = extractProviderName(query);
     if (!name) {
       return status(400, configError("VALIDATION_ERROR", "缺少 'name' 查询参数"));
     }
-    const b = body as { modelId?: string; data?: Record<string, unknown> };
-    const result: unknown = await handleAddModel(authCtx, name, { modelId: b?.modelId, ...(b?.data ?? {}) });
+    const result: unknown = await handleAddModel(authCtx, name, (body ?? {}) as Record<string, unknown>);
     if (result && typeof result === "object" && "success" in result && result.success === false) {
       return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);
     }
     return result;
-  },
+  }),
   {
     sessionAuth: true,
     query: providerNameQuerySchema,
@@ -923,20 +848,19 @@ app.post(
 app.put(
   "/config/providers/actions/models/:modelId",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, query, params, body, status }: any) => {
+  safeAppHandler(async ({ store, query, params, body, status }: any) => {
     const authCtx = store.authContext!;
     const name = extractProviderName(query);
     if (!name) {
       return status(400, configError("VALIDATION_ERROR", "缺少 'name' 查询参数"));
     }
     const modelId = params.modelId as string;
-    const b = body as { data?: Record<string, unknown> } | undefined;
-    const result: unknown = await handleUpdateModel(authCtx, name, modelId, b?.data ?? {});
+    const result: unknown = await handleUpdateModel(authCtx, name, modelId, (body ?? {}) as Record<string, unknown>);
     if (result && typeof result === "object" && "success" in result && result.success === false) {
       return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);
     }
     return result;
-  },
+  }),
   {
     sessionAuth: true,
     query: providerNameQuerySchema,
@@ -973,7 +897,7 @@ app.put(
 app.delete(
   "/config/providers/actions/models/:modelId",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, query, params, status }: any) => {
+  safeAppHandler(async ({ store, query, params, status }: any) => {
     const authCtx = store.authContext!;
     const name = extractProviderName(query);
     if (!name) {
@@ -985,7 +909,7 @@ app.delete(
       return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);
     }
     return result;
-  },
+  }),
   {
     sessionAuth: true,
     query: providerNameQuerySchema,
@@ -1017,347 +941,4 @@ app.delete(
     },
   },
 );
-
-/** POST /config/providers — 创建新 Provider（REST） / 旧 action 分发（兼容） */
-app.post(
-  "/config/providers",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth + 双模式兼容
-  async ({ store, body, status }: any) => {
-    const authCtx = store.authContext!;
-    const b = body as Record<string, unknown>;
-
-    try {
-      // 兼容旧模式：body 中包含 action 字段走 action 分发
-      if (b && typeof b.action === "string") {
-        const cfgBody = b as ConfigBody;
-        const payload: ProviderBody = {
-          action: cfgBody.action ?? "",
-          name: cfgBody.name,
-          modelId: cfgBody.modelId,
-          data: cfgBody.data,
-          apiKey: cfgBody.apiKey,
-          baseURL: cfgBody.baseURL,
-          protocol: cfgBody.protocol,
-        };
-        const result = await dispatchAction(authCtx, payload, status);
-        return wrapResult(result, status);
-      }
-
-      // REST 模式：创建新 Provider
-      return (await handleCreate(authCtx, b, (code, data) => status(code, data))) as any;
-    } catch (e: unknown) {
-      return wrapError(e, status);
-    }
-  },
-  {
-    sessionAuth: true,
-    body: PostProvidersBodySchema,
-    response: {
-      // 旧 action 分发返回多种 data 形状，使用宽松 schema 避免 Elysia 响应裁剪
-      200: WebOkSchema(z.union([z.looseObject({}), z.null()])),
-      400: ProviderRouteErrSchema,
-      403: ProviderRouteErrSchema,
-      404: ProviderRouteErrSchema,
-      409: ProviderRouteErrSchema,
-      500: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "Provider 配置管理（action 分发）/ 创建新 Provider",
-      description:
-        "兼容旧 action 分发模式：body 中包含 action 字段则按旧模式分发（list/get/set/test/delete/add_model/update_model/remove_model/test_model）。body 中不包含 action 字段时按 REST 模式创建新 Provider，同名已存在返回 409。",
-    },
-  },
-);
-
-/** GET /config/providers/:name — 获取单个 Provider 详情 */
-app.get(
-  "/config/providers/:name",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    return (await handleGet(authCtx, name)) as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: ProviderDetailResponseSchema,
-      404: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "获取单个 Provider 详情",
-      description: "根据 Provider 名称获取其完整配置详情，包括关联的模型列表和资源访问控制信息。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "Provider 名称。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
-/** PUT /config/providers/:name — 更新已有 Provider */
-app.put(
-  "/config/providers/:name",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, body }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const data = (body ?? {}) as Record<string, unknown>;
-    return (await handleUpdate(authCtx, name, data)) as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: ProviderSaveResponseSchema,
-      400: ProviderRouteErrSchema,
-      404: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "更新已有 Provider",
-      description: "更新指定 Provider 的协议类型、API Key、Base URL 等配置。若 Provider 不存在返回 404。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "要更新的 Provider 名称。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
-/** DELETE /config/providers/:name — 删除 Provider */
-app.delete(
-  "/config/providers/:name",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    return (await handleDelete(authCtx, name)) as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: WebOkSchema(z.null()),
-      404: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "删除 Provider",
-      description: "删除指定的 Provider 配置及其关联数据。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "要删除的 Provider 名称。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
-/** POST /config/providers/:name/test — 测试 Provider 连通性 */
-app.post(
-  "/config/providers/:name/test",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, body }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const inline = body as { apiKey?: string; baseURL?: string; protocol?: string } | undefined;
-
-    return (await handleTest(authCtx, name, {
-      apiKey: inline?.apiKey,
-      baseURL: inline?.baseURL,
-      protocol: inline?.protocol === "anthropic" ? "anthropic" : inline?.protocol === "openai" ? "openai" : undefined,
-    })) as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: ProviderTestResponseSchema,
-      400: ProviderRouteErrSchema,
-      404: ProviderRouteErrSchema,
-      500: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "测试 Provider 连通性",
-      description: "测试指定 Provider 的连通性，可选择性传入内联凭证（apiKey/baseURL/protocol）以在未保存时进行测试。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "Provider 名称。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
-/** POST /config/providers/:name/models — 为 Provider 添加模型 */
-app.post(
-  "/config/providers/:name/models",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, body }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const b = body as { modelId?: string; data?: Record<string, unknown> };
-    return (await handleAddModel(authCtx, name, { modelId: b?.modelId, ...(b?.data ?? {}) })) as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: ModelActionResultResponseSchema,
-      400: ProviderRouteErrSchema,
-      404: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "为 Provider 添加模型",
-      description: "向指定的 Provider 添加一个新的模型配置条目。body 中包含 modelId 和模型配置 data。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "Provider 名称。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
-/** PUT /config/providers/:name/models/:modelId — 更新 Provider 下的模型 */
-app.put(
-  "/config/providers/:name/models/:modelId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, body }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const modelId = params.modelId as string;
-    const b = body as { data?: Record<string, unknown> } | undefined;
-    return (await handleUpdateModel(authCtx, name, modelId, b?.data ?? {})) as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: ModelActionResultResponseSchema,
-      400: ProviderRouteErrSchema,
-      404: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "更新 Provider 下的模型",
-      description: "更新指定 Provider 下某个模型的配置。body 中包含模型配置 data。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "Provider 名称。",
-          schema: { type: "string" },
-        },
-        {
-          name: "modelId",
-          in: "path",
-          required: true,
-          description: "模型 ID。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
-/** DELETE /config/providers/:name/models/:modelId — 删除 Provider 下的模型 */
-app.delete(
-  "/config/providers/:name/models/:modelId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const modelId = params.modelId as string;
-    return (await handleRemoveModel(authCtx, name, modelId)) as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: ModelActionResultResponseSchema,
-      400: ProviderRouteErrSchema,
-      404: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "删除 Provider 下的模型",
-      description: "删除指定 Provider 下某个模型的配置条目。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "Provider 名称。",
-          schema: { type: "string" },
-        },
-        {
-          name: "modelId",
-          in: "path",
-          required: true,
-          description: "模型 ID。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
-/** POST /config/providers/:name/models/test — 测试模型连通性 */
-app.post(
-  "/config/providers/:name/models/test",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, body }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const b = body as { modelId?: string };
-    return (await handleTestModel(authCtx, name, b?.modelId ?? "")) as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: ModelTestResponseSchema,
-      400: ProviderRouteErrSchema,
-      404: ProviderRouteErrSchema,
-      500: ProviderRouteErrSchema,
-    },
-    detail: {
-      tags: ["ProviderConfig"],
-      summary: "测试模型连通性",
-      description: "测试指定 Provider 下某个模型的连通性，通过发送简单对话请求验证模型可用性。body 中包含 modelId。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "Provider 名称。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
 export default app;

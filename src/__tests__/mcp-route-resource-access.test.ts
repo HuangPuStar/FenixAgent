@@ -22,23 +22,13 @@ function setAuth() {
   });
 }
 
-function post(body: Record<string, unknown>) {
-  return mcpRoute.handle(
-    new Request("http://localhost/config/mcp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
-}
-
 describe("MCP route resource access", () => {
   beforeEach(() => {
     resetAllStubs();
     setAuth();
   });
 
-  // list 返回 resourceAccess，并使用源 organization 统计工具数量
+  // list → GET /config/mcp
   test("list 返回来源字段", async () => {
     stubConfigPg({
       listMcpServers: async () => [
@@ -72,7 +62,12 @@ describe("MCP route resource access", () => {
       }),
     });
 
-    const res = await post({ action: "list" });
+    const res = await mcpRoute.handle(
+      new Request("http://localhost/config/mcp", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     const json = await res.json();
 
     expect(json.success).toBe(true);
@@ -87,7 +82,7 @@ describe("MCP route resource access", () => {
     });
   });
 
-  // get 支持 resourceKey 读取外部 MCP
+  // get → GET /config/mcp?name=xxx
   test("get 支持 resourceKey", async () => {
     stubConfigPg({
       getMcpServerByResourceKey: async (_ctx, key) => ({
@@ -113,7 +108,12 @@ describe("MCP route resource access", () => {
       getMcpServer: async () => null,
     });
 
-    const res = await post({ action: "get", name: "org_source/mcp_external" });
+    const res = await mcpRoute.handle(
+      new Request("http://localhost/config/mcp?name=org_source/mcp_external", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     const json = await res.json();
 
     expect(json.success).toBe(true);
@@ -121,7 +121,7 @@ describe("MCP route resource access", () => {
     expect(json.data.config.url).toBe("https://example.com/org_source/mcp_external");
   });
 
-  // 外部 MCP write 动作返回 403（list_tools 已允许外部只读访问）
+  // 外部 MCP write 动作返回 403（使用 /actions/* 端点）
   test("外部 MCP 写动作返回 403", async () => {
     stubConfigPg({
       assertMcpServerInternalWritable: async () => {
@@ -131,14 +131,24 @@ describe("MCP route resource access", () => {
 
     const actions = ["delete", "enable", "disable", "inspect"];
     for (const action of actions) {
-      const res = await post({ action, name: "shared" });
+      const url =
+        action === "delete"
+          ? "http://localhost/config/mcp?name=shared"
+          : `http://localhost/config/mcp/actions/${action}?name=shared`;
+      const method = action === "delete" ? "DELETE" : "POST";
+      const res = await mcpRoute.handle(
+        new Request(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
       const json = await res.json();
       expect(res.status).toBe(403);
       expect(json.error.code).toBe("FORBIDDEN");
     }
   });
 
-  // update 携带 publicReadable 时透传 options，且不污染 config JSON
+  // update → PUT /config/mcp?name=xxx
   test("update 透传 publicReadable 且不写入 config", async () => {
     let captured: unknown[] = [];
     stubConfigPg({
@@ -169,15 +179,19 @@ describe("MCP route resource access", () => {
       },
     });
 
-    const res = await post({
-      action: "update",
-      name: "shared",
-      config: {
-        type: "remote",
-        url: "https://new.example.com",
-        publicReadable: true,
-      },
-    });
+    const res = await mcpRoute.handle(
+      new Request("http://localhost/config/mcp?name=shared", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: {
+            type: "remote",
+            url: "https://new.example.com",
+            publicReadable: true,
+          },
+        }),
+      }),
+    );
     const json = await res.json();
 
     expect(json.success).toBe(true);
