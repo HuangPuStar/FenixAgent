@@ -324,6 +324,7 @@
   },
   "chatInterface": {
     "processingError": "The request could not be processed properly. Please check the Agent or model status and try again.",
+    "processingErrorDetail": "The request could not be processed properly (stopReason: {{stopReason}}, inputTokens: {{inputTokens}}, outputTokens: {{outputTokens}}). Please check the Agent or model status and try again.",
     "newThread": "New Thread",
     "agentPlaceholder": "Send a message to the agent...",
     "waitingSession": "Waiting for session...",

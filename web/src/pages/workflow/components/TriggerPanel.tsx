@@ -47,9 +47,9 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
 
   const handleDelete = useCallback(
     async (triggerId: string) => {
-      if (!confirm(t("editor.trigger_delete_confirm"))) return;
+      if (!workflowId || !confirm(t("editor.trigger_delete_confirm"))) return;
       try {
-        await workflowDefApi.deleteTrigger(triggerId);
+        await workflowDefApi.deleteTrigger(workflowId, triggerId);
         toast.success(t("editor.trigger_deleted"));
         loadData();
       } catch (err) {
@@ -57,14 +57,14 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
         toast.error(`${t("editor.trigger_delete_failed")}: ${(err as Error).message}`);
       }
     },
-    [loadData, t],
+    [workflowId, loadData, t],
   );
 
   const handleRegenerate = useCallback(
     async (triggerId: string) => {
-      if (!confirm(t("editor.trigger_regenerate_confirm"))) return;
+      if (!workflowId || !confirm(t("editor.trigger_regenerate_confirm"))) return;
       try {
-        const updated = await unwrap(workflowDefApi.regenerateTriggerHash(triggerId));
+        const updated = await unwrap(workflowDefApi.regenerateTriggerHash(workflowId, triggerId));
         toast.success(t("editor.trigger_hash_regenerated"));
         setTriggers((prev) => prev.map((tr) => (tr.id === triggerId ? updated : tr)));
       } catch (err) {
@@ -72,17 +72,18 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
         toast.error(`${t("editor.trigger_regenerate_failed")}: ${(err as Error).message}`);
       }
     },
-    [t],
+    [workflowId, t],
   );
 
   const handleToggle = useCallback(
     async (trigger: TriggerItem) => {
+      if (!workflowId) return;
       try {
         if (trigger.enabled) {
-          await workflowDefApi.disableTrigger(trigger.id);
+          await workflowDefApi.disableTrigger(workflowId, trigger.id);
           toast.success(t("editor.trigger_disabled_ok"));
         } else {
-          await workflowDefApi.enableTrigger(trigger.id);
+          await workflowDefApi.enableTrigger(workflowId, trigger.id);
           toast.success(t("editor.trigger_enabled_ok"));
         }
         loadData();
@@ -90,7 +91,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
         console.error(err);
       }
     },
-    [loadData, t],
+    [workflowId, loadData, t],
   );
 
   const handleCopy = useCallback(

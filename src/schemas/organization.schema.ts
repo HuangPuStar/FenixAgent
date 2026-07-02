@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { WebErrSchema, WebOkSchema } from "./common.schema";
 
 /** better-auth 返回的时间字段，当前可能是时间戳或 ISO 字符串。 */
 const FlexibleDateTimeSchema = z
@@ -197,6 +198,110 @@ export const ApiKeyActionResponseSchema = z.union([
     data: z.null().describe("无业务数据时固定返回 null。"),
   }),
 ]);
+
+// ────────────────────────────────────────────
+// REST 风格请求体（新增，旧 action 风格保留兼容）
+// ────────────────────────────────────────────
+
+/** 创建组织 REST 请求体 */
+export const CreateOrganizationBodySchema = z.object({
+  name: z.string().describe("组织名称。"),
+  slug: z.string().describe("组织唯一标识 slug。"),
+  description: z.string().optional().describe("组织描述，会写入 metadata.description。"),
+});
+
+/** 更新组织 REST 请求体 */
+export const UpdateOrganizationBodySchema = z.object({
+  name: z.string().optional().describe("更新后的组织名称。"),
+  slug: z.string().optional().describe("更新后的组织 slug。"),
+  data: z.record(z.string(), z.unknown()).optional().describe("透传给底层更新接口的原始数据对象。"),
+});
+
+/** 添加成员 REST 请求体 */
+export const AddMemberBodySchema = z.object({
+  role: z.string().describe("成员角色。"),
+  userId: z.string().optional().describe("要添加的用户 ID。"),
+  email: z.string().optional().describe("要添加的用户邮箱；传入后会先转换为 userId。"),
+});
+
+/** 更新成员角色 REST 请求体 */
+export const UpdateMemberRoleBodySchema = z.object({
+  role: z.string().describe("新的成员角色。"),
+});
+
+/** 创建 API Key REST 请求体 */
+export const CreateApiKeyBodySchema = z.object({
+  name: z.string().describe("API Key 名称。"),
+  expiresAt: z.union([z.string(), z.number()]).optional().describe("可选过期时间；会基于该值换算 expiresIn。"),
+  metadata: z.unknown().optional().describe("API Key 扩展元数据。"),
+});
+
+/** 更新 API Key REST 请求体 */
+export const UpdateApiKeyBodySchema = z.object({
+  name: z.string().optional().describe("新的 API Key 名称。"),
+  data: z.record(z.string(), z.unknown()).optional().describe("兼容旧调用方的透传字段。"),
+});
+
+// ────────────────────────────────────────────
+// REST 响应体（各端点专用，非 union 以通过 tsc 类型检查）
+// ────────────────────────────────────────────
+
+/** 组织列表响应 */
+export const OrganizationListResponseSchema = WebOkSchema(
+  OrganizationInfoSchema.array().describe("组织列表。"),
+).describe("组织列表成功响应。");
+
+/** GET /organizations/:id 可能返回基本信息或含成员的详情，二者均接受 */
+const OrgDetailOkSchema = WebOkSchema(OrganizationDetailSchema.describe("组织详情。"));
+const OrgInfoOkSchema = WebOkSchema(OrganizationInfoSchema.describe("组织基本信息。"));
+export const OrganizationGetResponseSchema = z
+  .union([OrgDetailOkSchema, OrgInfoOkSchema])
+  .describe("组织详情响应（当前组织含成员，否则仅基本信息）。");
+
+/** 创建/更新组织响应 */
+export const OrganizationMutateResponseSchema = WebOkSchema(OrganizationInfoSchema.describe("组织信息。")).describe(
+  "组织创建/更新成功响应。",
+);
+
+/** 删除组织响应 */
+export const OrganizationDeleteResponseSchema = WebOkSchema(
+  z.object({ deleted: z.literal(true).describe("删除操作已执行。") }),
+).describe("组织删除成功响应。");
+
+/** 空数据响应（set-active / remove-member / update-role 等） */
+export const OrganizationVoidResponseSchema = WebOkSchema(z.null().describe("无业务数据时固定返回 null。")).describe(
+  "操作成功无业务数据。",
+);
+
+/** 成员列表响应 */
+export const MemberListResponseSchema = WebOkSchema(
+  OrganizationMemberSchema.array().describe("组织成员列表。"),
+).describe("成员列表成功响应。");
+
+/** 成员变更响应 */
+export const MemberMutateResponseSchema = WebOkSchema(
+  OrganizationMemberSchema.passthrough().describe("成员变更结果。"),
+).describe("成员变更成功响应。");
+
+/** API Key 列表响应 */
+export const ApiKeyListResponseSchema = WebOkSchema(ApiKeyInfoSchema.array().describe("API Key 列表。")).describe(
+  "API Key 列表成功响应。",
+);
+
+/** API Key 创建响应 */
+export const ApiKeyCreateResponseSchema = WebOkSchema(
+  ApiKeyCreateResultSchema.describe("创建 API Key 的结果。"),
+).describe("API Key 创建成功响应。");
+
+/** API Key 删除响应 */
+export const ApiKeyDeleteResponseSchema = WebOkSchema(
+  z.object({ deleted: z.literal(true).describe("删除操作已执行。") }),
+).describe("API Key 删除成功响应。");
+
+/** API Key 更新/空响应 */
+export const ApiKeyVoidResponseSchema = WebOkSchema(z.null().describe("无业务数据时固定返回 null。")).describe(
+  "操作成功无业务数据。",
+);
 
 export type OrganizationInfo = z.infer<typeof OrganizationInfoSchema>;
 export type OrganizationDetail = z.infer<typeof OrganizationDetailSchema>;

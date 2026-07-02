@@ -5,11 +5,10 @@
 ## 格式
 
 ```
-<agent-sites agent-site-id="app-91a0621c" url="https://rcs.example.com/app-91a0621c/"/>
+<agent-sites agent-site-id="app-91a0621c"/>
 ```
 
-- `agent-site-id` 填建站 API 返回的 `remoteAppId`（形如 `app-xxxx`），卡片内核按需用
-- `url` 填完整可访问 URL，**必须先用 `echo "$USER_META_BASE_URL/$REMOTE_APP_ID/"` 解析后填入真实域名**，卡片渲染为 iframe 预览 + 下方按钮
+- `agent-site-id` 填建站 API 返回的 `remoteAppId`（形如 `app-xxxx`），卡片渲染为 iframe 预览 + 下方「查看站点」按钮
 
 ## 规则
 
@@ -18,7 +17,6 @@
 - **单独一行**，前后不加任何文字
 - **放在回复最末尾**，自成一段
 - `agent-site-id` 填建站 API 返回的 `remoteAppId`（形如 `app-xxxx`），不是 RCS 内部 UUID
-- `url` 填 `echo "$USER_META_BASE_URL/$REMOTE_APP_ID/"` 输出的完整真实 URL，禁止填 `$USER_META_BASE_URL` 占位符
 
 ### 禁止
 
@@ -29,7 +27,6 @@
 | 引用前缀 | `>` 前导 |
 | 缩进 | 必须从行首开始 |
 | 标签前后加引导语 | 如 "点击下方卡片"——卡片自己渲染为 iframe + 按钮 |
-| url 填环境变量占位符 | 如 `url="$USER_META_BASE_URL/app-abc/"` 会被前端当作字面字符串，无法加载 |
 
 ### 正确
 
@@ -40,16 +37,15 @@
 - 搜索框：实时过滤
 - 预置股票：AAPL、GOOGL、MSFT
 
-<agent-sites agent-site-id="app-abc123" url="https://rcs.example.com/app-abc123/"/>
+<agent-sites agent-site-id="app-abc123"/>
 ```
 
 ### 错误
 
 ```
-- <agent-sites agent-site-id="app-abc123" url="https://rcs.example.com/app-abc/"/>   ← 列表前缀
-`<agent-sites agent-site-id="app-abc123" url="https://rcs.example.com/app-abc/"/>`    ← 行内代码
-<agent-sites agent-site-id="app-abc123" url="https://rcs.example.com/app-abc/"/> 点这里打开 ← 多余引导语
-<agent-sites agent-site-id="app-abc123" url="$USER_META_BASE_URL/app-abc/"/>  ← url 是占位符
+- <agent-sites agent-site-id="app-abc123"/>   ← 列表前缀
+`<agent-sites agent-site-id="app-abc123"/>`    ← 行内代码
+<agent-sites agent-site-id="app-abc123"/> 点这里打开 ← 多余引导语
 ```
 
 - 多站点时：每站点一行标签

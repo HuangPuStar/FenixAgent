@@ -294,6 +294,12 @@ export {
   UpdateTaskRequestSchema,
 } from "./task.schema";
 export {
+  CreateTriggerRequestSchema,
+  CreateWorkflowDefRequestSchema,
+  GetParamDefsQuerySchema,
+  RecoverWorkflowsRequestSchema,
+  SaveDraftRequestSchema,
+  UpdateWorkflowMetaRequestSchema,
   WorkflowDagEventSchema,
   WorkflowDagRunResultSchema,
   WorkflowDagSnapshotSchema,
@@ -319,6 +325,15 @@ export {
 } from "./workflow.schema";
 // Workflow Runs
 export {
+  WorkflowApproveRequestBodySchema,
+  WorkflowCancelRequestBodySchema,
+  WorkflowDryRunRequestBodySchema,
+  WorkflowEventsQuerySchema,
+  WorkflowRecoverRequestBodySchema,
+  WorkflowRerunRequestBodySchema,
+  WorkflowRunIdParamsSchema,
+  WorkflowRunNodeParamsSchema,
+  WorkflowRunRequestBodySchema,
   type WorkflowRunsQuery,
   WorkflowRunsQuerySchema,
   type WorkflowRunsResponse,

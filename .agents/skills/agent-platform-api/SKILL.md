@@ -10,7 +10,9 @@ allowed-tools: Bash
 
 以下环境变量由系统自动注入：
 
-- `$USER_META_BASE_URL` — API 服务器地址
+- `$USER_META_BASE_URL` — API 服务器地址（**仅限 agent 内部调用 RCS API 使用**）
+
+> **`$USER_META_BASE_URL` 是服务器内部地址，与用户通过浏览器访问的外部地址不同。** 该变量只用于 `curl` 调用 RCS 后端 API（如 `curl $USER_META_BASE_URL/web/...`），**禁止直接拼接后展示给用户**。建站等需要告知用户访问地址的场景，统一通过 `<agent-sites>` 卡片标签或引导用户操作 UI tab 来提供入口，不要手工拼接和暴露 URL。
 - `$USER_META_API_KEY` — Bearer token，所有请求必须携带
 - `$USER_META_USER_ID` — 当前请求用户 ID，用于标注资源归属或调用 user-scoped API
 - `$USER_META_ORG_ID` — 当前组织 ID，多租户隔离/调用 organization-scoped API 时使用

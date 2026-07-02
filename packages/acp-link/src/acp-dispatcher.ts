@@ -1,5 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import { extractModelState } from "./config-options-utils.js";
+import { extractModelState, extractModeState } from "./config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -64,12 +64,25 @@ export interface AcpDispatcherOptions {
   workspace?: string;
   /** 处理来自前端的 control_response / permission_response */
   onControlResponse?: (requestId: string, approved: boolean, extra?: Record<string, unknown>) => void;
+  /**
+   * 处理来自前端的权限响应 outcome，用于 opencode/ccb 的 requestPermission 回调。
+   * 前端 respondToPermission 发送的 JSON-RPC 响应会被解析为 outcome 对象，
+   * 然后通过此回调路由回 spawnAcpAgent 中 requestPermission 的待决 Promise。
+   */
+  onPermissionOutcome?: (
+    requestId: string,
+    outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string },
+  ) => boolean;
 }
 
 export class AcpDispatcher {
   private workspace: string;
   private send: (message: unknown) => void;
   private onControlResponse?: (requestId: string, approved: boolean, extra?: Record<string, unknown>) => void;
+  private onPermissionOutcome?: (
+    requestId: string,
+    outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string },
+  ) => boolean;
 
   constructor(
     private state: AcpSessionState,
@@ -78,6 +91,7 @@ export class AcpDispatcher {
     this.send = options.send;
     this.workspace = options.workspace ?? process.cwd();
     this.onControlResponse = options.onControlResponse;
+    this.onPermissionOutcome = options.onPermissionOutcome;
   }
 
   /** 处理从 WS 收到的原始消息（可能是 JSON-RPC 或传输层消息） */
@@ -98,11 +112,27 @@ export class AcpDispatcher {
     // 处理来自前端的 JSON-RPC 响应（如 permission_response）
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.result && msg.id !== undefined) {
       const respId = msg.id as string;
-      if (respId.startsWith("perm_") && this.onControlResponse) {
+      if (respId.startsWith("perm_")) {
         const result = msg.result as Record<string, unknown>;
-        const outcome = (result?.outcome as Record<string, unknown>) ?? {};
-        const approved = outcome.outcome === "selected";
-        this.onControlResponse(respId, approved, result);
+        const rawOutcome = (result?.outcome as Record<string, unknown>) ?? {};
+        // outcome.outcome === "selected" 只表示用户选择了某个选项，
+        // 需要根据 optionId 判断究竟是 allow 还是 reject
+        const optionId = (rawOutcome.optionId as string) ?? "";
+        const selected = rawOutcome.outcome === "selected";
+        const approved = selected && (optionId.startsWith("allow_") || optionId === "allow");
+
+        // 1. canUseTool 路径（claude-acp-adapter）
+        if (this.onControlResponse) {
+          this.onControlResponse(respId, approved, result);
+        }
+
+        // 2. requestPermission 路径（opencode/ccb 的 spawnAcpAgent）
+        if (this.onPermissionOutcome) {
+          const typedOutcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string } = selected
+            ? { outcome: "selected", optionId }
+            : { outcome: "cancelled" };
+          this.onPermissionOutcome(respId, typedOutcome);
+        }
       }
       return;
     }
@@ -202,7 +232,7 @@ export class AcpDispatcher {
       });
       this.state.sessionId = result.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
-      this.state.modeState = result.modes ?? null;
+      this.state.modeState = result.modes ?? extractModeState(result.configOptions);
       this.send(
         createSuccessResponse(id, {
           ...result,
@@ -351,7 +381,7 @@ export class AcpDispatcher {
       });
       this.state.sessionId = params.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
-      this.state.modeState = result.modes ?? null;
+      this.state.modeState = result.modes ?? extractModeState(result.configOptions);
       this.send(
         createSuccessResponse(id, {
           ...result,
@@ -383,7 +413,7 @@ export class AcpDispatcher {
       });
       this.state.sessionId = params.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
-      this.state.modeState = result.modes ?? null;
+      this.state.modeState = result.modes ?? extractModeState(result.configOptions);
       this.send(
         createSuccessResponse(id, {
           ...result,

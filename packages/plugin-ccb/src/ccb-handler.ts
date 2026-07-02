@@ -50,6 +50,7 @@ export function createCcbHandler(): EngineHandler {
         process: proc,
         connection,
         capabilities,
+        resolvePermissionOutcome,
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
 
       proc.on("exit", (code) => {
@@ -75,7 +76,11 @@ export function createCcbHandler(): EngineHandler {
           }
         : null;
       state.sessionState.promptCapabilities = (caps?.promptCapabilities as Record<string, unknown> | null) ?? null;
-      state.dispatcher = new AcpDispatcher(state.sessionState, { send, workspace: state.workspace });
+      state.dispatcher = new AcpDispatcher(state.sessionState, {
+        send,
+        workspace: state.workspace,
+        onPermissionOutcome: resolvePermissionOutcome,
+      });
 
       console.log(`[ccb-handler] started: ${instanceId}`);
       return { capabilities };

@@ -324,6 +324,7 @@
   },
   "chatInterface": {
     "processingError": "请求未能正常处理，请检查 Agent 或大模型状态后重试",
+    "processingErrorDetail": "请求未能正常处理 (stopReason: {{stopReason}}, inputTokens: {{inputTokens}}, outputTokens: {{outputTokens}})，请检查 Agent 或大模型状态后重试",
     "newThread": "新对话",
     "agentPlaceholder": "给智能体发送消息…",
     "waitingSession": "等待会话...",

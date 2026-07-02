@@ -2,7 +2,8 @@
  * api-keys.ts — API Key 管理域 API 模块
  *
  * 封装 API Key 的 CRUD 操作。
- * 后端使用 POST /web/apiKeys 的 action 分发模式，域模块内部抽象为具名方法。
+ * 后端使用 REST 风格的 /web/api-keys 路由（GET/POST/DELETE/PUT），
+ * 旧的 POST /web/apiKeys action 分发端点保留兼容。
  */
 
 import { request } from "./request";
@@ -36,30 +37,27 @@ export interface ApiKeyUpdateBody {
 
 export const apiKeyApi = {
   /** 获取当前组织下所有 API Key 列表 */
-  list: () =>
-    request<ApiKeyInfo[]>("/web/apiKeys", {
-      method: "POST",
-      body: { action: "list" },
-    }),
+  list: () => request<ApiKeyInfo[]>("/web/api-keys", { method: "GET" }),
 
   /** 创建新的 API Key，返回包含明文 key 的完整信息 */
   create: (body: ApiKeyCreateBody) =>
-    request<{ key: string } & ApiKeyInfo>("/web/apiKeys", {
+    request<{ key: string } & ApiKeyInfo>("/web/api-keys", {
       method: "POST",
-      body: { action: "create", name: body.name, expiresAt: body.expiresAt },
+      body: { name: body.name, expiresAt: body.expiresAt },
     }),
 
   /** 删除指定 API Key */
   del: (id: string) =>
-    request<void>("/web/apiKeys", {
-      method: "POST",
-      body: { action: "delete", id },
+    request<void>("/web/api-keys/:id", {
+      method: "DELETE",
+      params: { id },
     }),
 
-  /** 更新指定 API Key 的名称。后端返回 { success: true } 无 data 字段 */
+  /** 更新指定 API Key 的名称 */
   update: (id: string, data: ApiKeyUpdateBody) =>
-    request<void>("/web/apiKeys", {
-      method: "POST",
-      body: { action: "update", id, name: data.name },
+    request<void>("/web/api-keys/:id", {
+      method: "PUT",
+      params: { id },
+      body: { name: data.name },
     }),
 };

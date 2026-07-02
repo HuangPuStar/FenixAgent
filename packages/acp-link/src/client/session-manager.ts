@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import { extractModelState } from "../config-options-utils.js";
+import { extractModelState, extractModeState } from "../config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -185,7 +185,7 @@ export class SessionManager {
             this.currentAcpSessionId = r.sessionId;
             this.emit(sessionId, "session_data", {
               type: "session_created",
-              payload: { ...r, models: extractModelState(r.configOptions) },
+              payload: { ...r, models: extractModelState(r.configOptions), modes: extractModeState(r.configOptions) },
             });
           } catch (err) {
             this.emit(sessionId, "session_error", String(err));
@@ -197,7 +197,7 @@ export class SessionManager {
             this.currentAcpSessionId = r.sessionId;
             this.emit(sessionId, "session_data", {
               type: "session_created",
-              payload: { ...r, models: extractModelState(r.configOptions) },
+              payload: { ...r, models: extractModelState(r.configOptions), modes: extractModeState(r.configOptions) },
             });
           }
           const blocks = (payload.content as acp.ContentBlock[]) ?? [];
@@ -265,7 +265,7 @@ export class SessionManager {
             this.currentAcpSessionId = r.sessionId ?? (payload.sessionId as string);
             this.emit(sessionId, "session_data", {
               type: "session_resumed",
-              payload: { ...r, models: extractModelState(r.configOptions) },
+              payload: { ...r, models: extractModelState(r.configOptions), modes: extractModeState(r.configOptions) },
             });
           } catch (err) {
             console.error("[session-manager] resumeSession failed:", String(err));
@@ -298,7 +298,7 @@ export class SessionManager {
             this.currentAcpSessionId = targetSid;
             this.emit(sessionId, "session_data", {
               type: "session_loaded",
-              payload: { ...r, models: extractModelState(r.configOptions) },
+              payload: { ...r, models: extractModelState(r.configOptions), modes: extractModeState(r.configOptions) },
             });
           } catch (err) {
             console.error("[session-manager] loadSession failed:", String(err));
@@ -331,7 +331,11 @@ export class SessionManager {
           this.emit(
             sessionId,
             "session_data",
-            createSuccessResponse(id, { ...r, models: extractModelState(r.configOptions) }),
+            createSuccessResponse(id, {
+              ...r,
+              models: extractModelState(r.configOptions),
+              modes: extractModeState(r.configOptions),
+            }),
           );
           break;
         }
@@ -402,7 +406,11 @@ export class SessionManager {
           this.emit(
             sessionId,
             "session_data",
-            createSuccessResponse(id, { ...r, models: extractModelState(r.configOptions) }),
+            createSuccessResponse(id, {
+              ...r,
+              models: extractModelState(r.configOptions),
+              modes: extractModeState(r.configOptions),
+            }),
           );
           break;
         }
@@ -429,7 +437,11 @@ export class SessionManager {
           this.emit(
             sessionId,
             "session_data",
-            createSuccessResponse(id, { ...r, models: extractModelState(r.configOptions) }),
+            createSuccessResponse(id, {
+              ...r,
+              models: extractModelState(r.configOptions),
+              modes: extractModeState(r.configOptions),
+            }),
           );
           break;
         }

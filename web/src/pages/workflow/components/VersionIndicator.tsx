@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { unwrap } from "@/src/api/request";
 import { type WorkflowVersionItem, workflowDefApi } from "../../../api/workflow-defs";
 
 export interface VersionIndicatorProps {
@@ -38,7 +39,7 @@ export function VersionIndicator({
     if (!workflowId) return;
     setLoading(true);
     try {
-      const list = await workflowDefApi.getVersions(workflowId);
+      const list = await unwrap(workflowDefApi.getVersions(workflowId));
       setVersions(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);

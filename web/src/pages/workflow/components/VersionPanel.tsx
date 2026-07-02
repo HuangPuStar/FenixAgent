@@ -34,18 +34,22 @@ export function VersionPanel({
   const loadData = useCallback(async () => {
     if (!workflowId) return;
     setLoading(true);
-    try {
-      const [wfData, versionList] = await Promise.all([
-        unwrap(workflowDefApi.get(workflowId)),
-        unwrap(workflowDefApi.getVersions(workflowId)),
-      ]);
-      setWf(wfData);
-      setVersions(Array.isArray(versionList) ? versionList : []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+    // 独立加载 wf 和版本列表，某一项失败不影响另一项的展示
+    const [wfResult, versionsResult] = await Promise.allSettled([
+      unwrap(workflowDefApi.get(workflowId)),
+      unwrap(workflowDefApi.getVersions(workflowId)),
+    ]);
+    if (wfResult.status === "fulfilled") {
+      setWf(wfResult.value);
+    } else {
+      console.error("VersionPanel: 获取工作流详情失败", wfResult.reason);
     }
+    if (versionsResult.status === "fulfilled") {
+      setVersions(Array.isArray(versionsResult.value) ? versionsResult.value : []);
+    } else {
+      console.error("VersionPanel: 获取版本列表失败", versionsResult.reason);
+    }
+    setLoading(false);
   }, [workflowId]);
 
   useEffect(() => {
