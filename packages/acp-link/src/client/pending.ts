@@ -2,7 +2,7 @@
  * 基于 JSON-RPC ID 的请求/响应关联。
  *
  * 每个 pending 请求通过 JSON-RPC `id` 唯一标识。
- * 支持超时、重连后重传、永久断开时 reject all。
+ * 支持重连后重传、永久断开时 reject all。
  */
 // biome-ignore lint/suspicious/noExplicitAny: generic pending requires erased types
 interface PendingEntry<T = any> {
@@ -11,7 +11,6 @@ interface PendingEntry<T = any> {
   // biome-ignore lint/suspicious/noExplicitAny: resolve value type varies by request
   resolve: (value: any) => void;
   reject: (err: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
   promise: Promise<T>;
 }
 
@@ -22,12 +21,13 @@ export class ACPPending {
   /**
    * 注册 pending 请求。
    * 如果同 id 已有 pending，返回已有 promise（去重）。
+   * 不再设 timeout——请求等待直到 response 到达或连接断开时由 rejectAll 统一清理。
    */
   register<TResponse>(
     id: number | string,
     // biome-ignore lint/suspicious/noExplicitAny: request shape is determined by caller
     request: any,
-    timeout: number,
+    _timeout: number,
   ): Promise<TResponse> {
     const existing = this.pending.get(id);
     if (existing) {
@@ -42,19 +42,10 @@ export class ACPPending {
       rejectFn = reject;
     });
 
-    const timer = setTimeout(() => {
-      const entry = this.pending.get(id);
-      if (entry) {
-        this.pending.delete(id);
-        entry.reject(new Error(`JSON-RPC request timed out: id=${id}`));
-      }
-    }, timeout);
-
     this.pending.set(id, {
       request,
       resolve: resolveFn,
       reject: rejectFn,
-      timer,
       promise,
     });
 
@@ -69,7 +60,6 @@ export class ACPPending {
   tryResolve(id: number | string, result: any): boolean {
     const entry = this.pending.get(id);
     if (entry) {
-      clearTimeout(entry.timer);
       this.pending.delete(id);
       entry.resolve(result);
       return true;
@@ -90,7 +80,6 @@ export class ACPPending {
    */
   rejectAll(error: Error): void {
     for (const [_key, entry] of this.pending) {
-      clearTimeout(entry.timer);
       entry.reject(error);
     }
     this.pending.clear();

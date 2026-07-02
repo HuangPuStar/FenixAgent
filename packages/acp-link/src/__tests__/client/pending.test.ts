@@ -28,11 +28,7 @@ describe("ACPPending", () => {
     expect(matched).toBe(false);
   });
 
-  // 测试超时自动 reject
-  test("register — timeout rejects", async () => {
-    const promise = pending.register(42, { method: "session/list" }, 100);
-    await expect(promise).rejects.toThrow("JSON-RPC request timed out: id=42");
-  });
+  // 超时已移除——请求等待直到 response 到达或连接断开时由 rejectAll 统一清理
 
   // 测试同 ID 去重
   test("register — deduplicates same id", () => {
