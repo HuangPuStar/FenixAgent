@@ -13,7 +13,9 @@ src/utils/vendor/
 # AI tool runtime directories
 .agents/*
 !.agents/skills/
-.claude/
+.claude/*
+!/.claude/skills/
+!/.claude/skills/fenix-code-review/
 .codegraph/
 .omx/
 .docs/task/
