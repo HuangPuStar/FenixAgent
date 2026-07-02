@@ -13,7 +13,7 @@
 export function extractFileName(rawInput: unknown): string {
   const r = rawInput as Record<string, unknown> | undefined;
   const path = String(r?.file_path ?? r?.path ?? r?.filePath ?? "");
-  if (!path) return "<未知文件>";
+  if (!path) return "文件";
   return path.split("/").pop() || path;
 }
 

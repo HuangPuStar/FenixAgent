@@ -31,7 +31,7 @@ skills:
 
 ### 4. 编写前端
 
-Write 工具创建文件（不用 shell 重定向）。独立项目先 `mkdir <name>`。
+Write 工具创建文件（不用 shell 重定向）。每个独立项目先在当前目录 `mkdir <name>` 再编写。**禁止放 `/tmp`**——系统临时目录不可靠，文件可能丢失。
 
 编写代码前先读 `references/html-guide.md`——每个站点都要重新构思设计方向（调性、色彩、布局），不要复用上一个站的方案。
 
@@ -115,3 +115,10 @@ custom 类型没有 PB 实例，L2 PB API（`/web/agent-sites/apps/:id/api/*`）
 | 前后端打包在一个 Deno 进程 | 想省事（pocketbase 模式更简单） |
 
 > 碰不准时默认选 pocketbase——它比你想象的能覆盖更多场景，PB 的 hooks / cron / API rules 已经能处理大部分业务逻辑。
+
+### 5. 文件路径：禁止 `/tmp`，项目自建文件夹
+
+- **禁止放 `/tmp`**：`/tmp` 是系统临时目录，Bun/Deno 进程间不可见，其他 agent 或进程可能随时清理，文件会丢失
+- **每个独立项目先在当前目录 `mkdir <name>`**，再在里面用 Write 工具创建文件。不要直接在 pwd 下散放文件，也不要放在系统目录
+- 临时文件放当前 `./user/` 子目录下
+- Write 工具创建文件，**不用 shell 重定向**（`echo > file`、`cat > file` 等），shell 重定向可能导致内容截断或编码问题

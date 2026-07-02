@@ -31,10 +31,10 @@ describe("narrators/helpers", () => {
       expect(extractFileName({ filePath: "/z.ts" })).toBe("z.ts");
     });
 
-    // 三种字段都缺失时返回兜底占位
-    test("无路径字段返回未知文件占位", () => {
-      expect(extractFileName({})).toBe("<未知文件>");
-      expect(extractFileName(undefined)).toBe("<未知文件>");
+    // 三种字段都缺失时返回兜底占位"文件"
+    test("无路径字段返回文件占位", () => {
+      expect(extractFileName({})).toBe("文件");
+      expect(extractFileName(undefined)).toBe("文件");
     });
 
     // 纯文件名（无目录分隔符）原样返回
