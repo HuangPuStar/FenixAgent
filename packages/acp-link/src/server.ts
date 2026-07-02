@@ -12,7 +12,7 @@ import { handleFileOp } from "./client/file-operations.js";
 import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
-import { extractModelState } from "./config-options-utils.js";
+import { extractModelState, extractModeState } from "./config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -851,7 +851,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       state.sessionId = result.sessionId;
       state.modelState = extractModelState(result.configOptions);
-      state.modeState = result.modes ?? null;
+      state.modeState = result.modes ?? extractModeState(result.configOptions);
       console.log("session created:", result.sessionId, "cwd:", sessionCwd);
 
       sendMsg(
@@ -942,7 +942,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       state.sessionId = sessionId;
       state.modelState = extractModelState(result.configOptions);
-      state.modeState = result.modes ?? null;
+      state.modeState = result.modes ?? extractModeState(result.configOptions);
       console.log("session loaded:", sessionId, "cwd:", sessionCwd);
       console.log("session load result:", result);
       sendMsg(
@@ -985,7 +985,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       state.sessionId = sessionId;
       state.modelState = extractModelState(result.configOptions);
-      state.modeState = result.modes ?? null;
+      state.modeState = result.modes ?? extractModeState(result.configOptions);
       console.log("session resumed:", sessionId, "cwd:", sessionCwd);
 
       sendMsg(

@@ -1,5 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import { extractModelState } from "./config-options-utils.js";
+import { extractModelState, extractModeState } from "./config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -202,7 +202,7 @@ export class AcpDispatcher {
       });
       this.state.sessionId = result.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
-      this.state.modeState = result.modes ?? null;
+      this.state.modeState = result.modes ?? extractModeState(result.configOptions);
       this.send(
         createSuccessResponse(id, {
           ...result,
@@ -351,7 +351,7 @@ export class AcpDispatcher {
       });
       this.state.sessionId = params.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
-      this.state.modeState = result.modes ?? null;
+      this.state.modeState = result.modes ?? extractModeState(result.configOptions);
       this.send(
         createSuccessResponse(id, {
           ...result,
@@ -383,7 +383,7 @@ export class AcpDispatcher {
       });
       this.state.sessionId = params.sessionId;
       this.state.modelState = extractModelState(result.configOptions);
-      this.state.modeState = result.modes ?? null;
+      this.state.modeState = result.modes ?? extractModeState(result.configOptions);
       this.send(
         createSuccessResponse(id, {
           ...result,

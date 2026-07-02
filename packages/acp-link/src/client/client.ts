@@ -1,4 +1,4 @@
-import { extractModelState } from "../config-options-utils.js";
+import { extractModelState, extractModeState } from "../config-options-utils.js";
 import { ACP_METHOD, createRequest, createSuccessResponse, type JsonRpcRequest } from "../json-rpc.js";
 import type {
   ACPSettings,
@@ -125,9 +125,9 @@ export class ACPClient {
       return {
         sessionId,
         promptCapabilities: record.promptCapabilities,
-        // SDK 0.28+ models 字段已移除，回退到从 configOptions 提取
+        // SDK 0.28+ models/modes 字段可能已移除，回退到从 configOptions 提取
         models: record.models ?? extractModelState(record.configOptions),
-        modes: record.modes,
+        modes: record.modes ?? extractModeState(record.configOptions),
       };
     }
 
