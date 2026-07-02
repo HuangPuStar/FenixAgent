@@ -29,6 +29,7 @@ export function createOpencodeHandler(binary?: string, extraArgs?: string[]): En
         process: proc,
         connection,
         capabilities,
+        resolvePermissionOutcome,
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
 
       proc.on("exit", (code) => {
@@ -53,7 +54,13 @@ export function createOpencodeHandler(binary?: string, extraArgs?: string[]): En
           }
         : null;
       state.sessionState.promptCapabilities = (agentCaps?.promptCapabilities as Record<string, unknown> | null) ?? null;
-      state.dispatcher = new AcpDispatcher(state.sessionState, { send, workspace: state.workspace });
+      // 将 opencode requestPermission 的待决 Promise 桥接到 AcpDispatcher，
+      // 前端权限响应通过 onPermissionOutcome 路由回 resolvePermissionOutcome
+      state.dispatcher = new AcpDispatcher(state.sessionState, {
+        send,
+        workspace: state.workspace,
+        onPermissionOutcome: resolvePermissionOutcome,
+      });
 
       console.log(`[opencode-handler] started: ${instanceId}`);
       return { capabilities };

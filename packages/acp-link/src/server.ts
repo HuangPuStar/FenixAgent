@@ -660,6 +660,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   const { port, host, command, args, cwd } = config;
   const extraEnv = config.env ?? {};
 
+  /** requestPermission 等待前端响应的超时毫秒数 */
+  const PERMISSION_TIMEOUT_MS = 30_000;
+
   // Per-instance state — no module-level globals
   const clients = new Map<AcpWs, ClientState>();
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -674,15 +677,51 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   function createClient(ws: AcpWs, clientState: ClientState): acp.Client {
     return {
-      // Local 路径：直接 allow 工具调用，与 remote 路径（AcpDispatcher/spawnAcpAgent）行为一致。
-      // 如果等待前端返回 permission_response，Bun WS 的串行消息处理会导致死锁：
-      //   handlePrompt await connection.prompt() → opencode 发起 requestPermission
-      //   → sendMsg 到前端 → await outcomePromise
-      //   → 前端 permission_response 到达 → ⛔ Bun message handler 在处理 handlePrompt 时被阻塞
-      //   → 死锁 → opencode 超时 → 返回空 {stopReason:"end_turn"}
-      // 工具权限控制应通过 RCS 前端的 agent config 层面实现，而非 ACP 协议层阻塞。
-      async requestPermission(_params) {
-        return { outcome: { outcome: "selected" as const, optionId: "allow" as const } };
+      // 与 remote 路径（spawnAcpAgent）行为对齐：发送 permission_request 到前端，等待用户响应。
+      // Bun WS 的 async handler 在每次 await 时会 yield 到事件循环，不会阻塞后续 WS 消息处理，
+      // 因此不会出现死锁——前端权限响应作为新的 WS 消息到达时，由独立的事件迭代处理。
+      async requestPermission(params: Record<string, unknown>) {
+        const sessionId = (params?.sessionId as string) ?? "";
+        const toolCall = (params?.toolCall as Record<string, unknown>) ?? {};
+        const toolCallId = (toolCall?.toolCallId as string) ?? "";
+        const title = (toolCall?.title as string) ?? `OpenCode tool: ${toolCallId}`;
+        const reqOptions = Array.isArray(params?.options) ? (params.options as acp.PermissionOption[]) : [];
+
+        const requestId = `perm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        const frontendOptions =
+          reqOptions.length > 0
+            ? reqOptions
+            : [
+                { kind: "allow_once" as const, name: "Allow Once", optionId: "allow_once" },
+                { kind: "reject_once" as const, name: "Deny", optionId: "reject_once" },
+              ];
+
+        const outcome = await new Promise<acp.RequestPermissionOutcome>((resolve) => {
+          const timer = setTimeout(() => {
+            clientState.pendingPermissions.delete(requestId);
+            resolve({ outcome: "cancelled" });
+          }, PERMISSION_TIMEOUT_MS);
+          clientState.pendingPermissions.set(requestId, {
+            jsonRpcId: requestId,
+            resolve,
+            timeout: timer,
+          });
+
+          sendMsg(ws, {
+            type: "permission_request",
+            payload: {
+              sessionId,
+              requestId,
+              options: frontendOptions,
+              toolCall: { toolCallId, title },
+              toolName: title,
+              description: title,
+            },
+          });
+        });
+
+        return { outcome };
       },
 
       async sessionUpdate(params) {
