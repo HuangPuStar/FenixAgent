@@ -92,6 +92,55 @@ export const WorkflowParamDefsSchema = z
   })
   .describe("工作流参数定义。");
 
+// ── RESTful workflow-defs 请求体 ──
+
+/** POST /web/workflow-defs — 创建工作流定义请求体 */
+export const CreateWorkflowDefRequestSchema = z
+  .object({
+    name: z.string().min(1).describe("工作流名称。"),
+    description: z.string().optional().describe("工作流描述。"),
+  })
+  .describe("创建工作流定义请求体。");
+
+/** PATCH /web/workflow-defs/:id — 更新工作流元数据请求体 */
+export const UpdateWorkflowMetaRequestSchema = z
+  .object({
+    name: z.string().optional().describe("新的工作流名称。"),
+    description: z.string().optional().describe("新的工作流描述。"),
+  })
+  .describe("更新工作流元数据请求体。");
+
+/** PUT /web/workflow-defs/:id/draft — 保存工作流草稿请求体 */
+export const SaveDraftRequestSchema = z
+  .object({
+    yaml: z.string().describe("待保存的 YAML 内容。"),
+  })
+  .describe("保存工作流草稿请求体。");
+
+/** POST /web/workflow-defs/recover — 确认恢复工作流请求体 */
+export const RecoverWorkflowsRequestSchema = z
+  .object({
+    workflowIds: z.array(z.string()).min(1).describe("待恢复的工作流 ID 列表。"),
+  })
+  .describe("恢复工作流请求体。");
+
+/** POST /web/workflow-defs/:id/triggers — 创建工作流触发器请求体 */
+export const CreateTriggerRequestSchema = z
+  .object({
+    type: z.string().optional().describe("触发器类型；默认 webhook。"),
+    config: JsonObjectSchema.optional().describe("触发器配置。"),
+  })
+  .describe("创建工作流触发器请求体。");
+
+/** GET /web/workflow-defs/:id/params — 获取参数定义查询参数 */
+export const GetParamDefsQuerySchema = z
+  .object({
+    version: z.coerce.number().int().positive().optional().describe("可选版本号；未传时使用最新版本。"),
+  })
+  .describe("获取工作流参数定义查询参数。");
+
+// ── 旧 action 分发请求体（保留向后兼容） ──
+
 /** workflow-defs 请求体 */
 export const WorkflowDefsActionRequestSchema = z
   .discriminatedUnion("action", [

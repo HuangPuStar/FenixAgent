@@ -82,7 +82,7 @@ describe("mcp resource access frontend flow", () => {
     ).toBe("shared");
   });
 
-  // 内部公开开关通过 update 方法发送 config 字段（新 API 用 config 替代了旧 data 字段名）。
+  // 内部公开开关通过 update 方法发送 config 字段（PUT + query name + body: { config }）。
   test("公开开关 update action 携带 publicReadable", async () => {
     const { mcpApi } = await import("../api/mcp");
 
@@ -93,10 +93,12 @@ describe("mcp resource access frontend flow", () => {
     });
 
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    const body = JSON.parse(call[1].body);
+    const url = call[0] as string;
+    const init = call[1] as RequestInit;
+    const body = JSON.parse(init.body as string);
+    expect(init.method).toBe("PUT");
+    expect(url).toContain("name=shared");
     expect(body).toEqual({
-      action: "set",
-      name: "shared",
       config: {
         type: "remote",
         url: "https://example.com/mcp",

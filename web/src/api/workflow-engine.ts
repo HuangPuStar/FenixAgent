@@ -1,7 +1,8 @@
 /**
  * Workflow Engine API Client
  *
- * 对接后端 POST /web/workflow-engine，通过 action 字段分发。
+ * 对接后端 /web/workflow-runs REST 接口。
+ * 原有 POST /web/workflow-engine action 分发方式保留在服务端 workflow-engine.ts 中作为向后兼容。
  * 需要登录态（cookie-based session）。
  */
 
@@ -116,69 +117,67 @@ import { request } from "./request";
 export const workflowEngineApi = {
   /** 执行工作流（异步启动，立即返回 runId；完整状态通过 getRunStatus / SSE 获取） */
   run: (yaml: string, params?: Record<string, unknown>, workflowId?: string) =>
-    request<RunStarted>("/web/workflow-engine", {
+    request<RunStarted>("/web/workflow-runs", {
       method: "POST",
-      body: { action: "run", yaml, params, workflowId },
+      body: { yaml, params, workflowId },
     }),
 
   /** 校验 + 执行计划（不执行） */
   dryRun: (yaml: string) =>
-    request<DryRunResult>("/web/workflow-engine", {
+    request<DryRunResult>("/web/workflow-runs/dry", {
       method: "POST",
-      body: { action: "dryRun", yaml },
+      body: { yaml },
     }),
 
   /** 取消运行 */
   cancel: (runId: string) =>
-    request<void>("/web/workflow-engine", { method: "POST", body: { action: "cancel", runId } }),
+    request<void>(`/web/workflow-runs/${encodeURIComponent(runId)}/cancel`, { method: "POST", body: {} }),
 
   /** 审批节点通过 */
   approve: (runId: string, nodeId: string, token: string, data?: unknown) =>
-    request<void>("/web/workflow-engine", {
+    request<void>(`/web/workflow-runs/${encodeURIComponent(runId)}/approve`, {
       method: "POST",
-      body: { action: "approve", runId, nodeId, token, data },
+      body: { nodeId, token, data },
     }),
 
   /** 获取运行状态快照 */
   getRunStatus: (runId: string) =>
-    request<DAGSnapshot | null>("/web/workflow-engine", {
-      method: "POST",
-      body: { action: "getRunStatus", runId },
+    request<DAGSnapshot | null>(`/web/workflow-runs/${encodeURIComponent(runId)}`, {
+      method: "GET",
     }),
 
   /** 获取事件流（可选按 nodeId 过滤） */
-  getEvents: (runId: string, _nodeId?: string) =>
-    request<DAGEvent[]>("/web/workflow-engine", {
-      method: "POST",
-      body: { action: "getEvents", runId, nodeId: _nodeId },
+  getEvents: (runId: string, nodeId?: string) =>
+    request<DAGEvent[]>(`/web/workflow-runs/${encodeURIComponent(runId)}/events`, {
+      method: "GET",
+      query: nodeId ? { nodeId } : undefined,
     }),
 
   /** 获取节点输出 */
   getOutput: (runId: string, nodeId: string) =>
-    request<NodeOutput | null>("/web/workflow-engine", {
-      method: "POST",
-      body: { action: "getOutput", runId, nodeId },
-    }),
+    request<NodeOutput | null>(
+      `/web/workflow-runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/output`,
+      { method: "GET" },
+    ),
 
   /** 获取待审批列表 */
   getPendingApprovals: (runId: string) =>
-    request<PendingApproval[]>("/web/workflow-engine", {
-      method: "POST",
-      body: { action: "getPendingApprovals", runId },
+    request<PendingApproval[]>(`/web/workflow-runs/${encodeURIComponent(runId)}/approvals`, {
+      method: "GET",
     }),
 
   /** 崩溃恢复：从快照恢复运行 */
   recover: (runId: string, yaml: string) =>
-    request<DAGRunResult>("/web/workflow-engine", {
+    request<DAGRunResult>(`/web/workflow-runs/${encodeURIComponent(runId)}/recover`, {
       method: "POST",
-      body: { action: "recover", runId, yaml },
+      body: { yaml },
     }),
 
   /** 从指定节点重新运行（保留上游输出，目标及下游重新执行） */
   rerunFrom: (runId: string, yaml: string, fromNodeId: string, workflowId?: string) =>
-    request<DAGRunResult>("/web/workflow-engine", {
+    request<DAGRunResult>(`/web/workflow-runs/${encodeURIComponent(runId)}/rerun`, {
       method: "POST",
-      body: { action: "rerunFrom", runId, yaml, fromNodeId, workflowId },
+      body: { yaml, fromNodeId, workflowId },
     }),
 
   /** 分页查询运行记录，支持状态过滤和名称搜索 */

@@ -88,13 +88,9 @@ curl -s -X POST $BASE/apps/$APP_ID/files/bundle $AUTH \
 
 ### 4. 访问验证
 
-站点上线后，通过 RCS 代理访问（RCS 自动做 visibility 校验）。用一行 shell 直接解析输出完整地址：
+站点上线后通过 chat 右侧 **Sites** tab 或卡片「查看站点」按钮预览，不需要手工拼 URL。
 
-```bash
-echo "$USER_META_BASE_URL/$REMOTE_APP_ID/"
-```
-
-> **告知用户时必须用 `echo` 输出真实 URL，禁止贴 `$USER_META_BASE_URL` 占位符。**
+> **告知用户时引导操作卡片或 Sites tab，禁止直接贴 `$USER_META_BASE_URL` 拼接的地址。**`$USER_META_BASE_URL` 是服务器内部地址，外部用户无法访问。
 
 - `visibility=public` → 任何人可访问
 - `visibility=org` → 同组织成员可访问

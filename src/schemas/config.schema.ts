@@ -65,23 +65,144 @@ export const ProviderInfoSchema = z.object({
   modelCount: z.number(),
 });
 
-export const ProviderDetailSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  protocol: z.enum(["openai", "anthropic"]),
-  keyHint: z.string().nullable(),
-  baseURL: z.string().nullable(),
-  options: z.record(z.string(), z.unknown()),
-  models: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      modalities: z.unknown().nullable(),
-      limit: z.unknown().nullable(),
-      cost: z.unknown().nullable(),
-    }),
-  ),
-});
+export const ProviderDetailSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    protocol: z.enum(["openai", "anthropic"]),
+    keyHint: z.string().nullable(),
+    baseURL: z.string().nullable(),
+    options: z.record(z.string(), z.unknown()),
+    resourceAccess: z.lazy(() => AgentResourceAccessSchema).optional(),
+    resourceKey: z.string().optional(),
+    models: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        modalities: z.unknown().nullable(),
+        limit: z.unknown().nullable(),
+        cost: z.unknown().nullable(),
+        providerResourceAccess: z.lazy(() => AgentResourceAccessSchema).optional(),
+      }),
+    ),
+  })
+  .describe("Provider 详情。");
+
+// ── Provider REST 请求体 ──
+
+/** POST /config/providers — 创建新 Provider 请求体 */
+export const CreateProviderBodySchema = z
+  .object({
+    name: z.string().min(1).describe("Provider 名称。"),
+    protocol: z.enum(["openai", "anthropic"]).optional().describe("Provider 协议类型。"),
+    apiKey: z.string().optional().describe("Provider API Key。"),
+    baseURL: z.string().optional().describe("Provider Base URL。"),
+    displayName: z.string().optional().describe("Provider 展示名称。"),
+    options: z.record(z.string(), z.unknown()).optional().describe("额外配置选项。"),
+    publicReadable: z.boolean().optional().describe("是否对其他组织公开可读。"),
+    models: z.record(z.string(), z.unknown()).optional().describe("Provider 下的模型配置。"),
+  })
+  .catchall(z.unknown())
+  .describe("创建 Provider 请求体。");
+
+/** PUT /config/providers/:name — 更新已有 Provider 请求体 */
+export const UpdateProviderBodySchema = z
+  .object({
+    protocol: z.enum(["openai", "anthropic"]).optional().describe("Provider 协议类型。"),
+    apiKey: z.string().optional().describe("Provider API Key。"),
+    baseURL: z.string().optional().describe("Provider Base URL。"),
+    displayName: z.string().optional().describe("Provider 展示名称。"),
+    options: z.record(z.string(), z.unknown()).optional().describe("额外配置选项。"),
+    publicReadable: z.boolean().optional().describe("是否对其他组织公开可读。"),
+    models: z.record(z.string(), z.unknown()).optional().describe("Provider 下的模型配置。"),
+  })
+  .catchall(z.unknown())
+  .describe("更新 Provider 请求体。");
+
+/** POST /config/providers/:name/test — Provider 连通性测试请求体 */
+export const ProviderTestBodySchema = z
+  .object({
+    apiKey: z.string().optional().describe("内联测试用的 API Key。"),
+    baseURL: z.string().optional().describe("内联测试用的 Base URL。"),
+    protocol: z.enum(["openai", "anthropic"]).optional().describe("内联测试用的协议类型。"),
+  })
+  .describe("Provider 连通性测试请求体。");
+
+/** POST /config/providers/:name/models — 为 Provider 添加模型请求体 */
+export const AddModelBodySchema = z
+  .object({
+    modelId: z.string().min(1).describe("模型 ID。"),
+    data: z.record(z.string(), z.unknown()).describe("模型配置数据。"),
+  })
+  .describe("为 Provider 添加模型请求体。");
+
+/** PUT /config/providers/:name/models/:modelId — 更新 Provider 下的模型请求体 */
+export const UpdateModelBodySchema = z
+  .object({
+    data: z.record(z.string(), z.unknown()).describe("模型配置数据。"),
+  })
+  .describe("更新 Provider 下模型请求体。");
+
+/** POST /config/providers/:name/models/test — 模型连通性测试请求体 */
+export const TestModelBodySchema = z
+  .object({
+    modelId: z.string().min(1).describe("待测试的模型 ID。"),
+  })
+  .describe("模型连通性测试请求体。");
+
+// ── Provider REST 响应 ──
+
+/** Provider 列表响应 */
+export const ProviderListResponseSchema = WebOkSchema(
+  z.object({
+    providers: z
+      .array(
+        ProviderInfoSchema.extend({
+          resourceAccess: z
+            .lazy(() => AgentResourceAccessSchema)
+            .optional()
+            .describe("跨组织共享时的资源访问控制信息。"),
+          resourceKey: z.string().optional().describe("跨组织可读的稳定资源键。"),
+        }),
+      )
+      .describe("Provider 列表。"),
+  }),
+).describe("Provider 列表响应。");
+
+/** Provider 详情响应 */
+export const ProviderDetailResponseSchema = WebOkSchema(ProviderDetailSchema).describe("Provider 详情响应。");
+
+/** Provider 创建 / 更新响应 */
+export const ProviderSaveResponseSchema = WebOkSchema(
+  z.object({
+    id: z.string().describe("Provider 名称。"),
+    name: z.string().nullable().describe("Provider 展示名称。"),
+    protocol: z.enum(["openai", "anthropic"]).describe("Provider 协议类型。"),
+    keyHint: z.string().nullable().describe("API Key 提示信息。"),
+  }),
+).describe("Provider 创建 / 更新响应。");
+
+/** Provider 连通性测试响应 */
+export const ProviderTestResponseSchema = WebOkSchema(
+  z.object({
+    models: z.array(z.string()).describe("Provider 提供的模型 ID 列表。"),
+  }),
+).describe("Provider 连通性测试响应。");
+
+/** 模型操作（添加/更新/删除）响应 */
+export const ModelActionResultResponseSchema = WebOkSchema(
+  z.object({
+    modelId: z.string().describe("操作的模型 ID。"),
+  }),
+).describe("模型操作结果响应。");
+
+/** 模型连通性测试响应 */
+export const ModelTestResponseSchema = WebOkSchema(
+  z.object({
+    ok: z.boolean().describe("模型是否连通。"),
+    content: z.string().describe("模型返回的测试消息内容。"),
+  }),
+).describe("模型连通性测试响应。");
 
 // ── Models ──
 
@@ -102,6 +223,33 @@ export const ModelConfigSchema = z.object({
     permission: z.unknown().nullable(),
   }),
   available: ModelEntrySchema.array(),
+});
+
+/** PUT /web/config/models 的请求体：更新用户模型偏好。 */
+export const ModelPreferencesBodySchema = z
+  .object({
+    model: z.string().optional().describe("用户偏好的主模型引用（provider/model 格式）。"),
+    small_model: z.string().optional().describe("用户偏好的轻量模型引用（provider/model 格式）。"),
+    permission: z.unknown().optional().describe("用户权限配置对象。"),
+  })
+  .describe("模型偏好更新请求体。");
+
+/** PUT /web/config/models 的响应体。 */
+export const ModelPreferencesResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    model: z.string().nullable().describe("更新后的主模型引用。"),
+    small_model: z.string().nullable().describe("更新后的轻量模型引用。"),
+    permission: z.unknown().nullable().describe("更新后的权限配置。"),
+  }),
+});
+
+/** POST /web/config/models/refresh 的响应体。 */
+export const ModelRefreshResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    count: z.number().describe("刷新后可用模型数量。"),
+  }),
 });
 
 // ── Agents ──
@@ -412,6 +560,12 @@ export type ConfigAction = z.infer<typeof ConfigActionSchema>;
 export type ConfigBody = z.infer<typeof ConfigBodySchema>;
 export type ProviderInfo = z.infer<typeof ProviderInfoSchema>;
 export type ProviderDetail = z.infer<typeof ProviderDetailSchema>;
+export type CreateProviderBody = z.infer<typeof CreateProviderBodySchema>;
+export type UpdateProviderBody = z.infer<typeof UpdateProviderBodySchema>;
+export type ProviderTestBody = z.infer<typeof ProviderTestBodySchema>;
+export type AddModelBody = z.infer<typeof AddModelBodySchema>;
+export type UpdateModelBody = z.infer<typeof UpdateModelBodySchema>;
+export type TestModelBody = z.infer<typeof TestModelBodySchema>;
 export type ModelEntry = z.infer<typeof ModelEntrySchema>;
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type AgentInfo = z.infer<typeof AgentInfoSchema>;

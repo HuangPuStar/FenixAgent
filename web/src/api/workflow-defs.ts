@@ -1,7 +1,7 @@
 /**
  * Workflow Definition API Client。
  *
- * 对接后端 POST /web/workflow-defs，通过 action 字段分发。
+ * 对接后端 RESTful /web/workflow-defs 端点。
  */
 
 // ── 类型定义 ──
@@ -75,103 +75,93 @@ export interface CustomToolItem {
 
 import { request } from "./request";
 
+const ENDPOINT = "/web/workflow-defs";
+
 // ── API Methods ──
 
 export const workflowDefApi = {
+  /** 列出工作流 */
+  list: () => request<WorkflowDefItem[]>(ENDPOINT, { method: "GET" }),
+
   /** 创建工作流 */
   create: (name: string, description?: string) =>
-    request<WorkflowDefItem>("/web/workflow-defs", { method: "POST", body: { action: "create", name, description } }),
+    request<WorkflowDefItem>(ENDPOINT, { method: "POST", body: { name, description } }),
+
+  /** 获取单个工作流（含草稿内容） */
+  get: (workflowId: string) => request<WorkflowDefItem>(`${ENDPOINT}/${workflowId}`, { method: "GET" }),
 
   /** 保存草稿 */
   save: (workflowId: string, yaml: string) =>
-    request<void>("/web/workflow-defs", { method: "POST", body: { action: "save", workflowId, yaml } }),
+    request<void>(`${ENDPOINT}/${workflowId}/draft`, { method: "PUT", body: { yaml } }),
 
   /** 发布版本 */
   publish: (workflowId: string) =>
-    request<WorkflowVersionItem>("/web/workflow-defs", { method: "POST", body: { action: "publish", workflowId } }),
-
-  /** 列出工作流 */
-  list: () => request<WorkflowDefItem[]>("/web/workflow-defs", { method: "POST", body: { action: "list" } }),
-
-  /** 获取单个工作流（含草稿内容） */
-  get: (workflowId: string) =>
-    request<WorkflowDefItem>("/web/workflow-defs", { method: "POST", body: { action: "get", workflowId } }),
-
-  /** 获取版本历史 */
-  getVersions: (workflowId: string) =>
-    request<WorkflowVersionItem[]>("/web/workflow-defs", {
-      method: "POST",
-      body: { action: "getVersions", workflowId },
-    }),
-
-  /** 获取特定版本 YAML */
-  getVersion: (workflowId: string, version: number) =>
-    request<VersionYamlResponse>("/web/workflow-defs", {
-      method: "POST",
-      body: { action: "getVersion", workflowId, version },
-    }),
-
-  /** 设置 latest 指针（回滚） */
-  setLatest: (workflowId: string, version: number) =>
-    request<void>("/web/workflow-defs", { method: "POST", body: { action: "setLatest", workflowId, version } }),
+    request<WorkflowVersionItem>(`${ENDPOINT}/${workflowId}/publish`, { method: "POST" }),
 
   /** 删除工作流 */
-  delete: (workflowId: string) =>
-    request<void>("/web/workflow-defs", { method: "POST", body: { action: "delete", workflowId } }),
+  delete: (workflowId: string) => request<void>(`${ENDPOINT}/${workflowId}`, { method: "DELETE" }),
 
   /** 更新元数据 */
   updateMeta: (workflowId: string, data: { name?: string; description?: string }) =>
-    request<WorkflowDefItem>("/web/workflow-defs", {
-      method: "POST",
-      body: { action: "updateMeta", workflowId, ...data },
-    }),
+    request<WorkflowDefItem>(`${ENDPOINT}/${workflowId}`, { method: "PATCH", body: data }),
 
-  /** 扫描可恢复的工作流 ID */
-  recover: () => request<string[]>("/web/workflow-defs", { method: "POST", body: { action: "recover" } }),
+  /** 获取版本历史 */
+  getVersions: (workflowId: string) =>
+    request<WorkflowVersionItem[]>(`${ENDPOINT}/${workflowId}/versions`, { method: "GET" }),
 
-  /** 执行恢复 */
-  recoverApply: (workflowIds: string[]) =>
-    request<WorkflowDefItem[]>("/web/workflow-defs", { method: "POST", body: { action: "recoverApply", workflowIds } }),
+  /** 获取特定版本 YAML */
+  getVersion: (workflowId: string, version: number) =>
+    request<VersionYamlResponse>(`${ENDPOINT}/${workflowId}/versions/${version}`, { method: "GET" }),
+
+  /** 设置 latest 指针（回滚） */
+  setLatest: (workflowId: string, version: number) =>
+    request<void>(`${ENDPOINT}/${workflowId}/versions/${version}/set-latest`, { method: "POST" }),
 
   /** 恢复版本到草稿 */
   restoreToDraft: (workflowId: string, version: number) =>
-    request<void>("/web/workflow-defs", { method: "POST", body: { action: "restoreToDraft", workflowId, version } }),
+    request<void>(`${ENDPOINT}/${workflowId}/versions/${version}/restore`, { method: "POST" }),
 
   /** 获取工作流参数定义（从 YAML 解析） */
   getParamDefs: (workflowId: string, version?: number) =>
-    request<WorkflowParamDefsResponse>("/web/workflow-defs", {
-      method: "POST",
-      body: { action: "getParamDefs", workflowId, version },
+    request<WorkflowParamDefsResponse>(`${ENDPOINT}/${workflowId}/params`, {
+      method: "GET",
+      query: version !== undefined ? { version: String(version) } : undefined,
     }),
+
+  /** 扫描可恢复的工作流 ID */
+  recover: () => request<string[]>(`${ENDPOINT}/recoverable`, { method: "GET" }),
+
+  /** 执行恢复 */
+  recoverApply: (workflowIds: string[]) =>
+    request<WorkflowDefItem[]>(`${ENDPOINT}/recover`, { method: "POST", body: { workflowIds } }),
 
   // ── Triggers ──
 
   /** 创建 webhook trigger */
   createTrigger: (workflowId: string, type?: string, config?: Record<string, unknown>) =>
-    request<TriggerItem>("/web/workflow-defs", {
+    request<TriggerItem>(`${ENDPOINT}/${workflowId}/triggers`, {
       method: "POST",
-      body: { action: "createTrigger", workflowId, type, config },
+      body: { type, config },
     }),
 
   /** 列出 workflow 的所有 trigger */
-  listTriggers: (workflowId: string) =>
-    request<TriggerItem[]>("/web/workflow-defs", { method: "POST", body: { action: "listTriggers", workflowId } }),
+  listTriggers: (workflowId: string) => request<TriggerItem[]>(`${ENDPOINT}/${workflowId}/triggers`, { method: "GET" }),
 
   /** 删除 trigger */
-  deleteTrigger: (triggerId: string) =>
-    request<void>("/web/workflow-defs", { method: "POST", body: { action: "deleteTrigger", triggerId } }),
+  deleteTrigger: (workflowId: string, triggerId: string) =>
+    request<void>(`${ENDPOINT}/${workflowId}/triggers/${triggerId}`, { method: "DELETE" }),
 
   /** 重新生成 hash */
-  regenerateTriggerHash: (triggerId: string) =>
-    request<TriggerItem>("/web/workflow-defs", { method: "POST", body: { action: "regenerateHash", triggerId } }),
+  regenerateTriggerHash: (workflowId: string, triggerId: string) =>
+    request<TriggerItem>(`${ENDPOINT}/${workflowId}/triggers/${triggerId}/regenerate`, { method: "POST" }),
 
   /** 启用 trigger */
-  enableTrigger: (triggerId: string) =>
-    request<void>("/web/workflow-defs", { method: "POST", body: { action: "enableTrigger", triggerId } }),
+  enableTrigger: (workflowId: string, triggerId: string) =>
+    request<void>(`${ENDPOINT}/${workflowId}/triggers/${triggerId}/enable`, { method: "POST" }),
 
   /** 禁用 trigger */
-  disableTrigger: (triggerId: string) =>
-    request<void>("/web/workflow-defs", { method: "POST", body: { action: "disableTrigger", triggerId } }),
+  disableTrigger: (workflowId: string, triggerId: string) =>
+    request<void>(`${ENDPOINT}/${workflowId}/triggers/${triggerId}/disable`, { method: "POST" }),
 };
 
 export const customToolsApi = {

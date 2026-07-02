@@ -1,7 +1,7 @@
 /**
  * Workflow Definition API Client。
  *
- * 对接后端 POST /web/workflow-defs，通过 action 字段分发。
+ * 对接后端 RESTful /web/workflow-defs 端点。
  * 类型定义与 workflow-defs.ts 共享。
  */
 
@@ -46,51 +46,52 @@ import { request } from "./request";
 
 const ENDPOINT = "/web/workflow-defs";
 
-/** 后端 action 分发公共入口：POST /web/workflow-defs + { action } */
-function dispatch<T>(body: Record<string, unknown>): Promise<ApiResponse<T>> {
-  return request<T>(ENDPOINT, { method: "POST", body });
-}
-
 export const workflowApi = {
-  /** 创建工作流定义 */
-  create: (name: string, description?: string) => dispatch<WorkflowDefItem>({ action: "create", name, description }),
-
-  /** 保存工作流 YAML 草稿 */
-  save: (workflowId: string, yaml: string) => dispatch<void>({ action: "save", workflowId, yaml }),
-
-  /** 发布工作流版本 */
-  publish: (workflowId: string) => dispatch<WorkflowVersionItem>({ action: "publish", workflowId }),
-
   /** 列出当前组织下所有工作流定义 */
-  list: () => dispatch<WorkflowDefItem[]>({ action: "list" }),
+  list: () => request<WorkflowDefItem[]>(ENDPOINT, { method: "GET" }),
+
+  /** 创建工作流定义 */
+  create: (name: string, description?: string) =>
+    request<WorkflowDefItem>(ENDPOINT, { method: "POST", body: { name, description } }),
 
   /** 获取单个工作流详情（含草稿 YAML） */
-  get: (workflowId: string) => dispatch<WorkflowDefItem>({ action: "get", workflowId }),
+  get: (workflowId: string) => request<WorkflowDefItem>(`${ENDPOINT}/${workflowId}`, { method: "GET" }),
 
-  /** 获取工作流的所有版本历史 */
-  getVersions: (workflowId: string) => dispatch<WorkflowVersionItem[]>({ action: "getVersions", workflowId }),
+  /** 保存工作流 YAML 草稿 */
+  save: (workflowId: string, yaml: string) =>
+    request<void>(`${ENDPOINT}/${workflowId}/draft`, { method: "PUT", body: { yaml } }),
 
-  /** 获取指定版本的 YAML 内容 */
-  getVersion: (workflowId: string, version: number) =>
-    dispatch<VersionYamlResponse>({ action: "getVersion", workflowId, version }),
-
-  /** 将指定版本设为最新（回滚操作） */
-  setLatest: (workflowId: string, version: number) => dispatch<void>({ action: "setLatest", workflowId, version }),
+  /** 发布工作流版本 */
+  publish: (workflowId: string) =>
+    request<WorkflowVersionItem>(`${ENDPOINT}/${workflowId}/publish`, { method: "POST" }),
 
   /** 删除工作流定义 */
-  del: (workflowId: string) => dispatch<void>({ action: "delete", workflowId }),
+  del: (workflowId: string) => request<void>(`${ENDPOINT}/${workflowId}`, { method: "DELETE" }),
 
   /** 更新工作流元数据（名称、描述） */
   updateMeta: (workflowId: string, data: { name?: string; description?: string }) =>
-    dispatch<WorkflowDefItem>({ action: "updateMeta", workflowId, ...data }),
+    request<WorkflowDefItem>(`${ENDPOINT}/${workflowId}`, { method: "PATCH", body: data }),
+
+  /** 获取工作流的所有版本历史 */
+  getVersions: (workflowId: string) =>
+    request<WorkflowVersionItem[]>(`${ENDPOINT}/${workflowId}/versions`, { method: "GET" }),
+
+  /** 获取指定版本的 YAML 内容 */
+  getVersion: (workflowId: string, version: number) =>
+    request<VersionYamlResponse>(`${ENDPOINT}/${workflowId}/versions/${version}`, { method: "GET" }),
+
+  /** 将指定版本设为最新（回滚操作） */
+  setLatest: (workflowId: string, version: number) =>
+    request<void>(`${ENDPOINT}/${workflowId}/versions/${version}/set-latest`, { method: "POST" }),
 
   /** 将指定版本恢复为当前草稿 */
   restoreToDraft: (workflowId: string, version: number) =>
-    dispatch<void>({ action: "restoreToDraft", workflowId, version }),
+    request<void>(`${ENDPOINT}/${workflowId}/versions/${version}/restore`, { method: "POST" }),
 
   /** 扫描可恢复的工作流 ID 列表 */
-  recover: () => dispatch<string[]>({ action: "recover" }),
+  recover: () => request<string[]>(`${ENDPOINT}/recoverable`, { method: "GET" }),
 
   /** 确认恢复选中的工作流 */
-  recoverApply: (workflowIds: string[]) => dispatch<WorkflowDefItem[]>({ action: "recoverApply", workflowIds }),
+  recoverApply: (workflowIds: string[]) =>
+    request<WorkflowDefItem[]>(`${ENDPOINT}/recover`, { method: "POST", body: { workflowIds } }),
 };

@@ -5,22 +5,20 @@ import { useCardEmit } from "@/src/lib/card-renderer";
 import { cn } from "@/src/lib/utils";
 
 interface AgentSitesCardProps {
-  /** 远端 site 的 remoteAppId（由 streamdown 从 HTML attribute agent-site-id 传入） */
+  /** 远端 site 的 remoteAppId（由 streamdown 从 HTML attribute agent-site-id 传入），前端据此拼出同源地址 */
   "agent-site-id": string;
-  /** 站点完整可访问 URL（由 agent 用 echo "$USER_META_BASE_URL/$REMOTE_APP_ID/" 解析后填入） */
-  url?: string;
 }
 
 /**
  * AgentSitesCard — 聊天消息中的站点卡片。
- * 由 streamdown 根据 <agent-sites agent-site-id="app-xxxx" url="https://..."/> 标签渲染。
+ * 由 streamdown 根据 <agent-sites agent-site-id="app-xxxx"/> 标签渲染。
  *
  * 卡片布局：上方小尺寸 iframe 实时预览 + 下方信息栏（图标 + 名称 +「查看站点」按钮）。
- * url 为空时不渲染 iframe，仅展示信息 + 按钮。
+ * iframe 地址由前端同源路径 `/{agent-site-id}/` 拼接，不再依赖 agent 传入 url。
  */
 export function AgentSitesCard(props: AgentSitesCardProps) {
   const agentSiteId = props["agent-site-id"];
-  const siteUrl = props.url ?? null;
+  const siteUrl = agentSiteId ? `/${agentSiteId}/` : null;
   const emit = useCardEmit();
 
   const [loading, setLoading] = useState(true);
