@@ -1,4 +1,4 @@
-import { CodeXml, Loader2 } from "lucide-react";
+import { CodeXml, ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
@@ -9,6 +9,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { CARD_STYLES, formatOutput, getCardCategory, simplifyToolName, truncate } from "./tool-call-utils";
+
+/**
+ * 从工具调用的 rawInput 中提取文件路径。
+ * 兼容 Edit/Write 工具的不同参数命名（file_path / path / filePath）。
+ * 返回 null 表示该工具调用未操作文件。
+ */
+function extractPreviewPath(rawInput: Record<string, unknown> | undefined): string | null {
+  if (!rawInput) return null;
+  const path = rawInput.file_path ?? rawInput.path ?? rawInput.filePath;
+  return typeof path === "string" && path.length > 0 ? path : null;
+}
 
 // =============================================================================
 // 单张工具卡片 — 调用 narrate() 生成统一格式的人话文案
@@ -55,9 +66,18 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
     (tool.rawInput && Object.keys(tool.rawInput).length > 0) ||
     (!isRunning && !isPending && (tool.rawOutput || tool.content));
 
+  // 检测工具入参中是否包含文件路径，用于显示预览按钮
+  const previewPath = extractPreviewPath(tool.rawInput);
+
   const openDialog = useCallback(() => {
     if (hasParams && !isPending) setDialogOpen(true);
   }, [hasParams, isPending]);
+
+  // 点击预览按钮：发送事件通知 ArtifactsPanel 展开并打开文件预览
+  const handlePreviewFile = useCallback(() => {
+    if (!previewPath) return;
+    window.dispatchEvent(new CustomEvent("artifacts:preview-file", { detail: { path: previewPath } }));
+  }, [previewPath]);
 
   return (
     <div>
@@ -124,6 +144,21 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
         >
           {result.statusLabel}
         </span>
+
+        {/* 文件预览按钮：仅当工具入参包含文件路径时显示 */}
+        {previewPath && !isPending && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePreviewFile();
+            }}
+            className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+            title={tComponents("toolCallRow.previewFile", { path: previewPath })}
+          >
+            <ExternalLink className="h-3 w-3" />
+          </button>
+        )}
 
         {/* 参数弹窗按钮 */}
         {hasParams && !isPending && (
