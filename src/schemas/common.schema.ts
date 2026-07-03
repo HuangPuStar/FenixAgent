@@ -7,6 +7,9 @@ export const WebOkSchema = <T extends z.ZodTypeAny>(dataSchema: T) =>
     data: dataSchema,
   });
 
+/** 通用确认型成功响应：仅返回 ok 标记，无具体业务数据。 */
+export const OkResponseSchema = WebOkSchema(z.object({ ok: z.literal(true) }));
+
 /** Web 模块失败响应。 */
 export const WebErrSchema = z.object({
   success: z.literal(false),

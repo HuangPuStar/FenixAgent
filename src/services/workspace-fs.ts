@@ -69,6 +69,33 @@ const MIME_TYPES: Record<string, string> = {
   ".wav": "audio/wav",
 };
 
+/** workspace 黑名单目录：按目录名精确匹配，隐藏整个目录树 */
+const WORKSPACE_BLACKLIST = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "target",
+  "out",
+  ".next",
+  ".nuxt",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".cache",
+  ".pytest_cache",
+  "vendor",
+  ".terraform",
+  ".idea",
+  ".vscode",
+  "coverage",
+  ".nyc_output",
+  ".opencode",
+  ".tmp",
+  "tmp",
+  ".turbo",
+]);
+
 // ── Pure functions ───────────────────────────────────────────────────────────
 
 /** 路径是否属于 user/ 作用域 */
@@ -159,11 +186,9 @@ export async function isTextFile(filePath: string): Promise<boolean> {
   }
 }
 
-/** 判断工作区条目是否应隐藏（非 user/ 作用域下的 .opencode 目录） */
-export function shouldHideWorkspaceEntry(entryPath: string, userDir: string): boolean {
-  const inUserDir = entryPath.startsWith(`${userDir}/`) || entryPath === userDir;
-  if (inUserDir) return false;
-  return entryPath.endsWith("/.opencode") || entryPath.endsWith("/.opencode/");
+/** 判断工作区条目是否在黑名单中 */
+export function shouldHideEntry(entryPath: string, name: string): boolean {
+  return WORKSPACE_BLACKLIST.has(name);
 }
 
 export interface FileEntry {
@@ -177,7 +202,7 @@ export interface FileEntry {
 /** 列出目录内容，过滤隐藏条目并构建 FileEntry 数组 */
 export async function listDirectory(dirPath: string, userDir: string, workspaceDir: string): Promise<FileEntry[]> {
   const entries = await readdir(dirPath, { withFileTypes: true });
-  const visibleEntries = entries.filter((entry) => !shouldHideWorkspaceEntry(join(dirPath, entry.name), userDir));
+  const visibleEntries = entries.filter((entry) => !shouldHideEntry(join(dirPath, entry.name), entry.name));
   return Promise.all(
     visibleEntries.map(async (entry) => {
       const entryPath = join(dirPath, entry.name);
@@ -232,11 +257,8 @@ export interface TreeNodeEntry {
   mtime: number;
 }
 
-/** 递归列出 user/ 下所有文件和目录，返回相对路径及修改时间（目录以 / 结尾） */
+/** 递归列出 workspace 下所有路径（黑名单过滤），返回相对路径及修改时间 */
 export async function listPathsRecursive(workspaceDir: string): Promise<TreeNodeEntry[]> {
-  const userDir = join(workspaceDir, "user");
-  await mkdir(userDir, { recursive: true });
-
   const results: TreeNodeEntry[] = [];
 
   async function walk(dirPath: string, prefix: string): Promise<void> {
@@ -245,9 +267,9 @@ export async function listPathsRecursive(workspaceDir: string): Promise<TreeNode
     const files: { relPath: string; fullPath: string }[] = [];
 
     for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
+      // 黑名单目录跳过
+      if (shouldHideEntry(join(dirPath, entry.name), entry.name)) continue;
       const fullPath = join(dirPath, entry.name);
-      if (shouldHideWorkspaceEntry(fullPath, userDir)) continue;
       const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
 
       if (entry.isDirectory()) {
@@ -276,7 +298,7 @@ export async function listPathsRecursive(workspaceDir: string): Promise<TreeNode
     }
   }
 
-  await walk(userDir, "");
+  await walk(workspaceDir, "");
   return results;
 }
 

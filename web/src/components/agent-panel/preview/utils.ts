@@ -178,14 +178,12 @@ export function getShikiLanguage(filePath: string): string | undefined {
 
 /**
  * 构建文件预览 URL。
- * 远程节点的 tree 返回路径如 "user/hello.html"，已经带 user/ 前缀；
- * 本地节点 tree 也返回 "user/hello.html"。
- * 路由 /:id/user/* 的通配符不包含 "user/"，所以需要确保 filePath 带 user/ 前缀。
+ * fsApi.tree() 返回完整的工作区相对路径（如 "user/hello.html"、"scripts/run.sh"），
+ * 路由 /:id/fs/* 直接透传，无需额外加 user/ 前缀。
  */
 export function buildPreviewUrl(envId: string, filePath: string): string {
-  const withUserPrefix = filePath.startsWith("user/") ? filePath : `user/${filePath}`;
-  const encoded = withUserPrefix.split("/").map(encodePathSegment).join("/");
-  return `/web/environments/${envId}/user/${encoded}?preview=true`;
+  const encoded = filePath.split("/").map(encodePathSegment).join("/");
+  return `/web/environments/${envId}/fs/${encoded}?preview=true`;
 }
 
 /**

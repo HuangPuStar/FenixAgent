@@ -7,7 +7,7 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
-import { fileApi, userFileApi } from "@/src/api/files";
+import { fsApi } from "@/src/api/fs";
 import { ApiError, unwrap } from "@/src/api/request";
 import { NS } from "../../i18n";
 import { buildPreviewUrl, classifyFile, encodePathSegment } from "./preview/utils";
@@ -120,7 +120,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   // ── 文件树加载 ──
-  const { loading, refresh: refreshTree } = useRequest(() => unwrap(userFileApi.tree(envId!)), {
+  const { loading, refresh: refreshTree } = useRequest(() => unwrap(fsApi.tree(envId!)), {
     ready: !!envId,
     onSuccess: (data) => {
       const paths = data?.paths ?? [];
@@ -138,7 +138,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   });
 
   // ── 文件上传 ──
-  const { run: runUpload, loading: uploading } = useRequest((fd: FormData) => unwrap(fileApi.upload(envId!, fd)), {
+  const { run: runUpload, loading: uploading } = useRequest((fd: FormData) => unwrap(fsApi.upload(envId!, fd)), {
     manual: true,
     onSuccess: (data) => {
       toast.success(t("fileTree.uploadSuccess", { count: data.files?.length ?? 0 }));
@@ -155,7 +155,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
   // ── 重命名 ──
   const { run: runRename } = useRequest(
-    (oldPath: string, newName: string) => unwrap(userFileApi.rename(envId!, oldPath, newName)),
+    (oldPath: string, newName: string) => {
+      const parentDir = oldPath.includes("/") ? oldPath.substring(0, oldPath.lastIndexOf("/")) : "";
+      const newPath = parentDir ? `${parentDir}/${newName}` : newName;
+      return unwrap(fsApi.rename(envId!, oldPath, newPath));
+    },
     {
       manual: true,
       onSuccess: () => refreshTree(),
@@ -164,7 +168,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   );
 
   // ── 删除 ──
-  const { run: runDelete } = useRequest((path: string) => unwrap(userFileApi.batchDelete(envId!, [path])), {
+  const { run: runDelete } = useRequest((path: string) => unwrap(fsApi.batchDelete(envId!, [path])), {
     manual: true,
     onSuccess: () => {
       setDeleteConfirm(null);
@@ -177,14 +181,14 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   });
 
   // ── 创建目录 ──
-  const { run: runMkdir } = useRequest((path: string) => unwrap(userFileApi.mkdir(envId!, path)), {
+  const { run: runMkdir } = useRequest((path: string) => unwrap(fsApi.mkdir(envId!, path)), {
     manual: true,
     onSuccess: () => refreshTree(),
     onError: (err) => console.error("Mkdir failed:", err),
   });
 
   // ── 创建新文件 ──
-  const { run: runNewFile } = useRequest((path: string) => unwrap(fileApi.writeFile(envId!, path, "")), {
+  const { run: runNewFile } = useRequest((path: string) => unwrap(fsApi.writeFile(envId!, path, "")), {
     manual: true,
     onSuccess: () => refreshTree(),
     onError: (err) => console.error("New file failed:", err),
@@ -196,7 +200,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       uploadFiles: async (files: File[], onProgress?: (percent: number) => void) => {
         if (!envId || files.length === 0) return;
 
-        const targetDir = selectedDir || "user";
+        const targetDir = selectedDir || "";
         const formData = new FormData();
         for (const file of files) {
           formData.append("files", file);
@@ -204,7 +208,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          const url = `/web/environments/${envId}/user/${targetDir}`;
+          const url = targetDir ? `/web/environments/${envId}/fs/${targetDir}` : `/web/environments/${envId}/fs`;
 
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && onProgress) {
@@ -419,9 +423,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
         if (isDir) {
           const dirName = nodePath.split("/").filter(Boolean).pop() || "download";
-          // tree 返回的路径可能缺少 user/ 前缀，后端 isUserPath 校验要求必须有
-          const withUserPrefix = nodePath.startsWith("user/") ? nodePath : `user/${nodePath}`;
-          url = `/web/environments/${envId}/user-file/download-zip?path=${encodePathSegment(withUserPrefix)}`;
+          url = `/web/environments/${envId}/fs/download-zip?path=${encodePathSegment(nodePath)}`;
           fileName = `${dirName}.zip`;
         } else {
           url = buildPreviewUrl(envId, nodePath);

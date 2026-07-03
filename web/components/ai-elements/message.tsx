@@ -382,9 +382,10 @@ export const MessageResponse = memo(
       (url: string) => {
         if (!envId) return url;
         // Rewrite relative paths like ./user/xxx, user/xxx, /user/xxx
+        // 使用新的 /fs/ 路由代理整个 workspace 目录（不再限定 user/ 作用域）
         const match = url.match(/^(?:\.?\/)?(user\/.*)$/);
         if (match) {
-          return `/web/environments/${envId}/${match[1]}?preview=true`;
+          return `/web/environments/${envId}/fs/${match[1]}?preview=true`;
         }
         return url;
       },

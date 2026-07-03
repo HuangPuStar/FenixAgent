@@ -1,7 +1,7 @@
 import { useRequest } from "ahooks";
 import { FileX, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { fileApi } from "@/src/api/files";
+import { fsApi } from "@/src/api/fs";
 import { unwrap } from "@/src/api/request";
 import { NS } from "../../i18n";
 import { BinaryInfoPreview } from "./preview/BinaryInfoPreview";
@@ -30,7 +30,7 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
     data: fileData,
     loading,
     error,
-  } = useRequest(() => unwrap(fileApi.readFile(envId!, filePath!)), {
+  } = useRequest(() => unwrap(fsApi.readFile(envId!, filePath!)), {
     ready: needsApi,
     refreshDeps: [envId, filePath],
   });
