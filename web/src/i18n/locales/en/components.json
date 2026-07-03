@@ -153,6 +153,7 @@
     "unmountFailed": "Unmount failed"
   },
   "siteFrame": {
+    "share": "Share",
     "reload": "Reload site",
     "openInNewTab": "Open in new tab",
     "loading": "Loading site...",

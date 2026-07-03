@@ -34,9 +34,10 @@ echo "REMOTE_APP_ID=$REMOTE_APP_ID"   # 形如 app-abcd1234
 
 - `name` 只允许 `[a-z0-9-]`、长度 1..32；中文/大写/空格/下划线会被 400 拒绝
 - `visibility`：`private`（仅创建者）/ `org`（组织内）/ `authenticated`（已登录）/ `public`（公开）。默认 `private`。**agent 硬性规则：用户未明确要求公开/组织可见时，必须传 `"private"`，不得省略 visibility 字段，不得擅自改为 public。**
+- `type`：`pocketbase`（默认，经典模式）/ `custom`（自定义应用）。custom 类型可选 `"enable_pb": true` 同时启动托管的 PocketBase 实例（详见 Custom App 章节）
 - RCS 后端自持 platform token，不暴露给用户
 
-> **AgentSiteApp 响应字段**：`id`（RCS 内部 UUID，后续所有 L1/L2 API 都用它）/ `remoteAppId`（agent-sites 远程 id，形如 `app-xxxxxxxx`，业务前端访问用它）/ `organizationId` / `userId` / `name` / `description`（可为 `null`）/ `visibility` / `createdAt` / `updatedAt`（秒级时间戳）。**务必同时存下 `id` 和 `remoteAppId`**——L1/L2 API（`/web/agent-sites/apps/{id}/...`）只认 RCS UUID，前端访问（`$USER_META_BASE_URL/{remoteAppId}/`）只认 remoteAppId。
+> **AgentSiteApp 响应字段**：`id`（RCS 内部 UUID，后续所有 L1/L2 API 都用它）/ `remoteAppId`（agent-sites 远程 id，形如 `app-xxxxxxxx`，业务前端访问用它）/ `organizationId` / `userId` / `name` / `description`（可为 `null`）/ `visibility` / `appType`（`pocketbase` | `custom`，默认 pocketbase）/ `entryFile`（custom 部署后写入入口文件名，否则 `null`）/ `activeSlot`（当前激活槽位 `a` | `b`，否则 `null`）/ `deployedAt`（最后部署时间秒级时间戳，否则 `null`）/ `createdAt` / `updatedAt`（秒级时间戳）。**务必同时存下 `id` 和 `remoteAppId`**——L1/L2 API（`/web/agent-sites/apps/{id}/...`）只认 RCS UUID，前端访问（`$USER_META_BASE_URL/{remoteAppId}/`）只认 remoteAppId。
 
 ### 2. 配后端 collection
 
@@ -319,7 +320,13 @@ REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
 平台 spawn 的进程等效于：
 
 ```bash
+# 无 PocketBase（默认）
 deno run --allow-net --allow-env=PORT \
+  --allow-read=<codeDir> --allow-read=<runtimeDir> \
+  --allow-write=<runtimeDir> main.ts
+
+# 有 PocketBase（enable_pb: true 时额外透传 PB 相关变量）
+deno run --allow-net --allow-env=PORT,PB_URL,PB_SUPERUSER_EMAIL,PB_SUPERUSER_PASSWORD \
   --allow-read=<codeDir> --allow-read=<runtimeDir> \
   --allow-write=<runtimeDir> main.ts
 ```
@@ -327,9 +334,10 @@ deno run --allow-net --allow-env=PORT \
 **关键约束**：
 
 - **必须用 `PORT` 环境变量绑定端口，绑定 `127.0.0.1`**（不是 `0.0.0.0`，不是固定 `8080`）
-- **环境变量隔离**：spawn 时 `clearEnv: true` + 白名单只透传 `PATH` / `HOME` / `LANG` / `TZ` + 注入 `PORT`。父进程敏感凭证（master key 等）**不透传**
+- **环境变量隔离**：spawn 时 `clearEnv: true` + 白名单只透传 `PATH` / `HOME` / `LANG` / `TZ` + 注入 `PORT`。父进程敏感凭证（master key 等）**不透传**。custom app 拿不到 `AGENT_SITES_MASTER_KEY`、`DATABASE_URL` 等服务器环境变量。需要外部配置请打包进 gzip 包内或写进 `runtime/` 目录的配置文件。
 - **stdout / stderr 被丢弃**：`console.log` / `console.error` 输出平台日志看不到，需要日志就写进 `runtime/` 目录的文件
 - **路径用 `endsWith` 匹配**：代理透传完整 pathname（含 `/{remoteAppId}` 前缀），`url.pathname === "/api/x"` 匹配不上，改用 `url.pathname.endsWith("/api/x")`
+- **`X-Forwarded-Prefix` header**：平台注入 `X-Forwarded-Prefix: /{appId}` header，如果需要在后端拼绝对 URL，可以读取 `req.headers.get("x-forwarded-prefix") || ""`
 - **前端 fetch 用相对路径，无 shim**：custom 模式没有 fetch 注入，`fetch("./api/x")` 靠浏览器自动补全，`fetch("/api/x")` 会 404
 - **请求体上限 50 MiB**：RCS 代理 + agent-sites 平台代理都限 50 MiB body
 
@@ -432,6 +440,77 @@ try {
 ### 7. L2 PB API 对 custom 类型不可用
 
 `/web/agent-sites/apps/:id/api/*` 是 PocketBase 透传接口，**对 custom 类型返 400** `"Custom 类型 app {remoteAppId} 不支持 PocketBase API"`。custom app 的"后端 API"就是它自己 main.ts 里的路由，通过业务前端访问 `/{remoteAppId}/*` 调用。
+
+### 8. 启用 PocketBase 后端（custom + enable_pb）
+
+创建 custom app 时传 `"enable_pb": true`，平台会额外 spawn 一个 PocketBase 实例，并通过环境变量注入连接信息。**这不同于 L2 PB 透传**——custom 进程内用 PB SDK 直连 `127.0.0.1` 的 PB 实例。
+
+#### 8a. 创建
+
+```bash
+RESP=$(curl -s -X POST $BASE/apps $AUTH \
+  -d '{"name":"my-app","type":"custom","enable_pb":true,"visibility":"private"}')
+APP_ID=$(echo "$RESP" | jq -r '.data.id')
+REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
+```
+
+响应会额外包含 `enablePb: true` 和 `pbPort` 字段。
+
+#### 8b. 环境变量
+
+部署时平台向 custom 进程注入三个额外环境变量：
+
+| 变量 | 值 | 用途 |
+|------|---|------|
+| `PB_URL` | `http://127.0.0.1:{pbPort}` | PB SDK 连接地址 |
+| `PB_SUPERUSER_EMAIL` | `admin@{remoteAppId}.local` | superuser 邮箱 |
+| `PB_SUPERUSER_PASSWORD` | `{uuid}` | superuser 密码 |
+
+#### 8c. main.ts 示例
+
+```typescript
+import PocketBase from "npm:pocketbase";
+
+const port = parseInt(Deno.env.get("PORT") || "8080");
+const pbUrl = Deno.env.get("PB_URL");
+
+let pb: PocketBase | undefined;
+if (pbUrl) {
+  pb = new PocketBase(pbUrl);
+  await pb.collection("_superusers").authWithPassword(
+    Deno.env.get("PB_SUPERUSER_EMAIL")!,
+    Deno.env.get("PB_SUPERUSER_PASSWORD")!,
+  );
+
+  // 首次部署时初始化 collection（幂等）
+  try {
+    await pb.collections.create({
+      name: "posts", type: "base",
+      fields: [
+        { name: "title", type: "text", required: true },
+        { name: "body", type: "text", required: true },
+      ],
+      listRule: "", viewRule: "", createRule: "", updateRule: null, deleteRule: null,
+    });
+  } catch (_) { /* 已存在 */ }
+}
+
+Deno.serve({ hostname: "127.0.0.1", port }, async (req) => {
+  const url = new URL(req.url);
+  if (url.pathname.endsWith("/api/posts") && req.method === "GET") {
+    return Response.json(await pb!.collection("posts").getFullList());
+  }
+  // ... 前端 HTML 用相对路径 fetch("./api/posts")
+});
+```
+
+**关键约定**：
+- PB SDK 用 `npm:pocketbase`（Deno 原生支持 npm specifier）
+- PB 只监听 127.0.0.1，外部不可达。custom 进程以 superuser 身份直连
+- superuser 密码只在子进程环境变量中出现，不出 HTTP 响应
+- 前端 API 调用走 custom 进程中转（不走 platform token）。前端 `fetch("./api/posts")` → custom 进程 → PB SDK
+- 数据目录隔离：PB 数据在 `data/{remoteAppId}/pb_data/`，custom 运行时在 `data/{remoteAppId}/runtime/`
+- **re-deploy 不重建 PB**：重新部署只更新 custom Deno 代码 + 双槽位切换，PB 实例和数据保留不动
 
 ## 站点卡片
 
