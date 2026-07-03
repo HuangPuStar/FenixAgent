@@ -91,6 +91,10 @@ const WEB_OPENAPI_TAGS = [
     description: "环境工作区文件管理，包括文件内容读写、文件树、目录操作与批量删除。",
   },
   {
+    name: "FS",
+    description: "Workspace 文件系统管理，包括 workspace 全局文件树、目录浏览、文件读写与操作。",
+  },
+  {
     name: "Auth",
     description: "认证相关扩展接口，包括会话归属绑定等能力。",
   },
