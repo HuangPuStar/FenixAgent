@@ -2,7 +2,7 @@ import { useRequest } from "ahooks";
 import { Code2, Eye, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { fileApi } from "@/src/api/files";
+import { fsApi } from "@/src/api/fs";
 import { unwrap } from "@/src/api/request";
 import { NS } from "../../../i18n";
 import { CodePreview } from "./CodePreview";
@@ -45,7 +45,7 @@ export function HtmlPreview({ envId, filePath }: HtmlPreviewProps) {
   }, [envId, filePath]);
 
   // 按需加载源码：只有切换到源码模式且尚未请求过时才发起请求
-  const { data: source, loading: sourceLoading } = useRequest(() => unwrap(fileApi.readFile(envId, filePath)), {
+  const { data: source, loading: sourceLoading } = useRequest(() => unwrap(fsApi.readFile(envId, filePath)), {
     ready: mode === "source" && sourceRequested,
     refreshDeps: [envId, filePath, mode],
   });
