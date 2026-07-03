@@ -153,6 +153,7 @@
     "unmountFailed": "卸载失败"
   },
   "siteFrame": {
+    "share": "分享",
     "reload": "刷新站点",
     "openInNewTab": "在新标签页打开",
     "loading": "加载站点中...",

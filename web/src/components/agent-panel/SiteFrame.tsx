@@ -1,4 +1,5 @@
 import { AlertCircle, ExternalLink, Globe, Loader2, RefreshCw } from "lucide-react";
+import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,44 @@ export function SiteFrame({ remoteAppId, name }: SiteFrameProps) {
   // 同源路径，避免跨域；以 / 开头确保从 RCS 域根解析
   // 调用方切换 site 时通过 key={remoteAppId} 强制重挂载，loading 自然回到 true
   const src = `/${remoteAppId}/`;
+
+  // 二维码数据 URL：组件挂载时异步生成，url 变化时重新生成
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  // 分享弹窗开关
+  const [shareOpen, setShareOpen] = useState(false);
+  const shareContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fullUrl = `${window.location.origin}${src}`;
+    QRCode.toDataURL(fullUrl, {
+      width: 140,
+      margin: 1,
+      color: { dark: "#000000", light: "#ffffff" },
+    })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      })
+      .catch((err) => {
+        if (!cancelled) console.error("[SiteFrame] 生成二维码失败", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
+  // 点击弹窗外关闭（弹窗内部点击不关闭）
+  useEffect(() => {
+    if (!shareOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const container = shareContainerRef.current;
+      if (container && !container.contains(e.target as Node)) {
+        setShareOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [shareOpen]);
 
   // 加载超时兜底：每次 reloadKey 变化（用户点刷新）重挂载 iframe 时重启定时器，
   // onLoad 触发后清除。src 在组件实例内是常量（父组件用 key={remoteAppId} 重挂载），
@@ -90,16 +129,49 @@ export function SiteFrame({ remoteAppId, name }: SiteFrameProps) {
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0 text-text-muted hover:text-text-primary"
-          onClick={handleOpenInNewTab}
-          title={t("siteFrame.openInNewTab")}
-          aria-label={t("siteFrame.openInNewTab")}
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
+        <div className="relative" ref={shareContainerRef}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-text-muted hover:text-text-primary"
+            title={t("siteFrame.share")}
+            aria-label={t("siteFrame.share")}
+            onClick={() => setShareOpen((v) => !v)}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+          {shareOpen && (
+            <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface-1 rounded-md border border-border shadow-lg p-3">
+              <div className="flex flex-col items-center gap-2">
+                {/* 站点名称 */}
+                <span className="text-xs font-medium text-text-primary truncate max-w-[140px]" title={name}>
+                  {name}
+                </span>
+                {/* 二维码区域 */}
+                <div className="w-[120px] h-[120px] rounded-md border border-border/30 bg-white flex items-center justify-center overflow-hidden">
+                  {qrDataUrl ? (
+                    <img src={qrDataUrl} alt={`QR code for ${name}`} className="w-full h-full object-contain" />
+                  ) : (
+                    <Loader2 className="h-5 w-5 text-text-muted animate-spin" />
+                  )}
+                </div>
+                {/* 跳转按钮 */}
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="text-xs"
+                  onClick={() => {
+                    setShareOpen(false);
+                    handleOpenInNewTab();
+                  }}
+                >
+                  {t("siteFrame.openInNewTab")}
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="relative flex-1 min-h-0 min-w-0">
         {isLoading && (
