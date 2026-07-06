@@ -260,7 +260,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const children = findChildren(parentId);
       return children.map(parsedToTreeNodeData);
     },
-    [findChildren],
+    // treeVersion 变化时 getChildren 引用更新，Tree useEffect 会据此重载根节点并保留展开状态
+    [findChildren, treeVersion],
   );
 
   /** 单击：目录选中，可预览文件触发预览，二进制文件忽略 */
@@ -601,7 +602,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
           </div>
         ) : (
           <Tree
-            key={treeVersion}
             getChildren={getChildren}
             onSelect={handleSelect}
             renderActions={renderActions}
