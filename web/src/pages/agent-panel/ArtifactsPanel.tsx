@@ -211,7 +211,6 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   }, []);
 
   // 工具卡片点击预览按钮（artifacts:preview-file）→ 切到 Files 模式并打开文件预览
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅 mount 时注册，通过 ref 读取最新 openFile
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { path: string } | undefined;

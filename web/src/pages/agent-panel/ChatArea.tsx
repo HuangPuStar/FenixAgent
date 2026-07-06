@@ -132,7 +132,7 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
     };
     window.addEventListener("artifacts:select-site", handler);
     return () => window.removeEventListener("artifacts:select-site", handler);
-  }, []);
+  }, [artifactsPanelRef.current?.expand]);
 
   // artifacts:preview-file → 展开右侧面板
   useEffect(() => {
@@ -141,7 +141,7 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
     };
     window.addEventListener("artifacts:preview-file", handler);
     return () => window.removeEventListener("artifacts:preview-file", handler);
-  }, []);
+  }, [artifactsPanelRef.current?.expand]);
 
   // ResizablePanel onResize 同步折叠状态
   const handleArtifactsResize = useCallback(() => {
@@ -157,7 +157,7 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
   // mount 时默认折叠右侧面板
   useEffect(() => {
     artifactsPanelRef.current?.collapse();
-  }, []);
+  }, [artifactsPanelRef.current?.collapse]);
 
   // 窄屏自动折叠
   useEffect(() => {
@@ -167,7 +167,7 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
     };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, []);
+  }, [artifactsPanelRef.current?.collapse]);
 
   const toggleArtifacts = useCallback(() => {
     const panel = artifactsPanelRef.current;
