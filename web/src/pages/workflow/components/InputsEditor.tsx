@@ -140,6 +140,7 @@ export function InputsEditor({
       {drafts.map((entry, i) => {
         const isConfirming = confirmDeleteKey === entry.key && entry.key !== "";
         return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: entry.key is user-editable and may be empty/duplicate, index is the most stable identifier
           <div key={`draft-${i}`} className="flex items-center gap-1">
             <Input
               value={entry.key}
