@@ -204,6 +204,7 @@ const TYPE_PREFIXES: Record<string, string> = {
   loop: "loop",
   transform: "tf",
   custom: "custom",
+  end: "end",
 };
 
 export function nextNodeId(type: string): string {

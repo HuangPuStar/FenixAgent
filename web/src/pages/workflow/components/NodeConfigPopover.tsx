@@ -35,6 +35,8 @@ export interface NodeConfigPopoverProps {
   customTools: CustomToolItem[];
   /** 所有节点，透传给 NodeConfigCard 用于输出字段改名/删除时扫描下游引用 */
   nodes: Node[];
+  /** 当前编辑的工作流 ID，透传给 NodeConfigCard 用于 end 节点显示外部 API 调用方式 */
+  workflowId?: string;
 }
 
 export function NodeConfigPopover({
@@ -54,6 +56,7 @@ export function NodeConfigPopover({
   updateMeta,
   customTools,
   nodes,
+  workflowId,
 }: NodeConfigPopoverProps) {
   const { t } = useTranslation("workflows");
   const anchorRef = useRef<Measurable>(null!);
@@ -103,6 +106,7 @@ export function NodeConfigPopover({
           updateMeta={updateMeta}
           customTools={customTools}
           nodes={nodes || []}
+          workflowId={workflowId}
         />
       </PopoverContent>
     </Popover>

@@ -23,6 +23,7 @@ import {
   Code,
   Download,
   FilePlus,
+  Flag,
   Globe,
   LayoutGrid,
   List,
@@ -84,6 +85,7 @@ const BASIC_PALETTE_ITEMS = [
   { type: "agent", labelKey: "nodes.agent", icon: Bot, color: "#22c55e" },
   { type: "api", labelKey: "nodes.api", icon: Globe, color: "#8b5cf6" },
   { type: "audit", labelKey: "editor.palette_audit", icon: ShieldCheck, color: "#f59e0b" },
+  { type: "end", labelKey: "nodes.end", icon: Flag, color: "#22c55e" },
 ] as const;
 
 interface WorkflowEditorProps {
@@ -851,6 +853,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
           updateMeta={updateMeta}
           customTools={customTools}
           nodes={nodes}
+          workflowId={workflowId}
         />
 
         {/* 右下角按钮组 */}

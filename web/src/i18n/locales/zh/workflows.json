@@ -50,6 +50,7 @@
     "loop": "循环",
     "transform": "变换",
     "custom": "自定义工具",
+    "end": "结束",
     "preset_extract": "提取",
     "preset_filter": "过滤",
     "preset_aggregate": "聚合",
@@ -406,6 +407,15 @@
     "group_default": "基础配置",
     "group_advance": "高级选项",
     "group_unset": "移除高级分组"
+  },
+  "end_node": {
+    "api_title": "外部接口调用方式",
+    "api_desc": "工作流定义 end 节点后，外部系统可通过 API 调用。end 节点会收集上游输出并作为最终结果返回。",
+    "api_endpoint": "接口地址",
+    "request_example": "请求示例",
+    "response_example": "响应示例",
+    "auth_note": "认证方式",
+    "auth_desc": "使用 API Key（rcs_xxx）通过 Bearer token 认证。API Key 可在 设置 → API Key 中创建。"
   },
   "run_params": {
     "title": "运行参数",

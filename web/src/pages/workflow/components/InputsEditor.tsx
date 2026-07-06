@@ -5,6 +5,21 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+/**
+ * 工作流节点 inputs 编辑器。
+ *
+ * ⚠️  设计要点：使用本地 draft + blur 提交模式，而非直接 onChange 通知父组件。
+ * 原因：父组件收到 onChange 后会更新 ReactFlow node state，导致 WorkflowNode
+ * 的 inputPoints 重算、Handle 重挂载，引发 IME 输入法字符重复、连线断开等问题。
+ * blur 时一次性提交，保证输入阶段零副作用。
+ */
+
+/** 本地编辑状态：输入时不立即通知父组件，blur 时一次性提交 */
+interface DraftEntry {
+  key: string;
+  value: string;
+}
+
 export function InputsEditor({
   value,
   onChange,
@@ -21,12 +36,24 @@ export function InputsEditor({
   addLabel: string;
 }) {
   const { t } = useTranslation("workflows");
-  const entries = Object.entries(value ?? {});
+  const [drafts, setDrafts] = useState<DraftEntry[]>(() =>
+    Object.entries(value ?? {}).map(([k, v]) => ({ key: k, value: v })),
+  );
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [focusKeyIdx, setFocusKeyIdx] = useState<number | null>(null);
 
-  const _entriesLen = entries.length;
+  // 当父组件传入的 value 条目数变化时（新增/删除行），同步本地 draft
+  // 条数不变时不做同步（保留本地编辑中的文本）
+  const prevEntryCountRef = useRef(Object.keys(value ?? {}).length);
+  useEffect(() => {
+    const newCount = Object.keys(value ?? {}).length;
+    if (newCount !== prevEntryCountRef.current) {
+      prevEntryCountRef.current = newCount;
+      setDrafts(Object.entries(value ?? {}).map(([k, v]) => ({ key: k, value: v })));
+    }
+  }, [value]);
+
   useEffect(() => {
     setConfirmDeleteKey(null);
     if (confirmTimerRef.current) {
@@ -41,30 +68,43 @@ export function InputsEditor({
     };
   }, []);
 
-  const updateEntry = (index: number, field: "key" | "value", newValue: string) => {
-    const updated = { ...value };
-    const oldKey = entries[index][0];
-    if (field === "key") {
-      delete updated[oldKey];
-      updated[newValue] = entries[index][1];
-    } else {
-      updated[oldKey] = newValue;
+  /** 将本地 draft 提交到父组件 */
+  const commit = (draftEntries: DraftEntry[]) => {
+    const result: Record<string, string> = {};
+    for (const e of draftEntries) {
+      if (e.key) result[e.key] = e.value;
     }
-    onChange(updated);
+    onChange(Object.keys(result).length === 0 ? undefined : result);
+  };
+
+  const updateDraft = (index: number, field: "key" | "value", newVal: string) => {
+    setDrafts((prev) => {
+      const next = prev.map((e, i) => (i === index ? { ...e, [field]: newVal } : e));
+      return next;
+    });
+  };
+
+  const handleBlur = (index: number) => {
+    setDrafts((prev) => {
+      commit(prev);
+      return prev;
+    });
   };
 
   const removeEntry = (index: number) => {
-    const updated = { ...value };
-    delete updated[entries[index][0]];
-    onChange(Object.keys(updated).length === 0 ? undefined : updated);
+    setDrafts((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      commit(next);
+      return next;
+    });
+    setConfirmDeleteKey(null);
   };
 
   const handleDeleteClick = (index: number) => {
-    const entryKey = entries[index][0];
-    if (confirmDeleteKey === entryKey) {
+    const entryKey = drafts[index]?.key;
+    if (confirmDeleteKey === entryKey && entryKey) {
       removeEntry(index);
-      setConfirmDeleteKey(null);
-    } else {
+    } else if (entryKey) {
       setConfirmDeleteKey(entryKey);
       if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
       confirmTimerRef.current = setTimeout(() => setConfirmDeleteKey(null), 3000);
@@ -72,18 +112,24 @@ export function InputsEditor({
   };
 
   const addEntry = () => {
-    const updated = { ...value, "": "" };
-    onChange(updated);
-    setFocusKeyIdx(Object.keys(updated).length - 1);
+    setDrafts((prev) => {
+      const next = [...prev, { key: "", value: "" }];
+      setFocusKeyIdx(next.length - 1);
+      return next;
+    });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent, index: number, field: "key" | "value") => {
+  const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.nativeEvent.isComposing) return;
     if (e.key !== "Enter" || e.shiftKey) return;
-    if (field !== "value") return;
-    const isLastEntry = index === entries.length - 1;
+    const isLastEntry = index === drafts.length - 1;
     if (!isLastEntry) return;
     e.preventDefault();
+    // 先提交当前内容，再追加空行
+    setDrafts((prev) => {
+      commit(prev);
+      return prev;
+    });
     addEntry();
   };
 
@@ -91,25 +137,27 @@ export function InputsEditor({
 
   return (
     <div className="flex flex-col gap-1">
-      {entries.map(([k, v], i) => {
-        const isConfirming = confirmDeleteKey === k && k !== "";
+      {drafts.map((entry, i) => {
+        const isConfirming = confirmDeleteKey === entry.key && entry.key !== "";
         return (
-          <div key={k} className="flex items-center gap-1">
+          <div key={`draft-${i}`} className="flex items-center gap-1">
             <Input
-              value={k}
-              onChange={(e) => updateEntry(i, "key", e.target.value)}
+              value={entry.key}
+              onChange={(e) => updateDraft(i, "key", e.target.value)}
+              onBlur={() => handleBlur(i)}
               placeholder={keyPlaceholder}
               readOnly={readOnly}
               autoFocus={i === focusKeyIdx}
-              className={`h-8 text-xs ${isEmptyKey(k) ? "border-red-300 bg-red-50" : ""}`}
+              className={`h-8 text-xs ${isEmptyKey(entry.key) ? "border-red-300 bg-red-50" : ""}`}
               style={{ width: "30%" }}
             />
             <Input
-              value={v}
-              onChange={(e) => updateEntry(i, "value", e.target.value)}
+              value={entry.value}
+              onChange={(e) => updateDraft(i, "value", e.target.value)}
+              onBlur={() => handleBlur(i)}
+              onKeyDown={(e) => handleKeyDown(e, i)}
               placeholder={valuePlaceholder}
               readOnly={readOnly}
-              onKeyDown={(e) => handleKeyDown(e, i, "value")}
               title={t("editor.inputs_enter_to_add")}
               className="flex-1 h-8 text-xs"
             />

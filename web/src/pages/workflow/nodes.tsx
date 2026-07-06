@@ -4,6 +4,7 @@ import {
   Boxes,
   CheckCircle,
   Code,
+  Flag,
   GitBranch,
   Globe,
   Loader,
@@ -42,6 +43,7 @@ const NODE_COLORS: Record<string, { main: string; light: string; headerText: str
   transform: { main: "#f97316", light: "rgba(249,115,22,0.08)", headerText: "#fff" },
   // 自定义节点（SlurmNode 等用户工具）：紫色突出区别于内置类型
   custom: { main: "#8b5cf6", light: "rgba(139,92,246,0.08)", headerText: "#fff" },
+  end: { main: "#22c55e", light: "rgba(34,197,94,0.08)", headerText: "#fff" },
 };
 
 const NODE_ICONS: Record<string, React.ReactNode> = {
@@ -56,6 +58,7 @@ const NODE_ICONS: Record<string, React.ReactNode> = {
   transform: <Shuffle size={12} />,
   // Boxes 表达"工具集合"语义（对应 WORKFLOW_TOOLS_DIR 注册的 CustomNode 工具）
   custom: <Boxes size={12} />,
+  end: <Flag size={12} />,
 };
 
 const NODE_LABEL_KEYS: Record<string, string> = {
@@ -69,6 +72,7 @@ const NODE_LABEL_KEYS: Record<string, string> = {
   loop: "nodes.loop",
   transform: "nodes.transform",
   custom: "nodes.custom",
+  end: "nodes.end",
 };
 
 const RUN_STATUS_COLORS: Record<string, { color: string; bg: string }> = {
@@ -410,4 +414,5 @@ export const nodeTypes = {
   // 自定义节点：复用 WorkflowNode 渲染外壳，type === "custom" 时颜色/图标走 NODE_COLORS.custom
   // 没有 custom 注册项时，ReactFlow 对未知 type 渲染空元素，导致用户看到"白框"——这是核心 bug 根因
   custom: WorkflowNode,
+  end: WorkflowNode,
 };
