@@ -114,7 +114,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
   const treeDataRef = useRef<ParsedNode[]>([]);
   const [treeVersion, setTreeVersion] = useState(0);
-  const [selectedDir, setSelectedDir] = useState<string | null>(null);
+  const [selectedDir, setSelectedDir] = useState<string | undefined>(undefined);
   const expandedIdsRef = useRef<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<{ path: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -289,7 +289,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         setSelectedDir(nodeId);
       } else {
         const parentDir = nodeId.substring(0, nodeId.lastIndexOf("/"));
-        setSelectedDir(parentDir || null);
+        setSelectedDir(parentDir || undefined);
         // binary 类型（.pyc .zip .tar.gz 等）无法预览，跳过
         if (classifyFile(nodeId) !== "binary") {
           onPreviewFile(nodeId);
