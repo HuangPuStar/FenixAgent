@@ -268,6 +268,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const handleToggle = useCallback((nodeId: string, expanded: boolean) => {
     if (expanded) {
       expandedIdsRef.current.add(nodeId);
+      // 展开目录时同步更新上传目标，使点击 chevron 和点击行展开行为一致
+      const parsed = findNodeByPath(treeDataRef.current, nodeId);
+      if (parsed?.isDir) {
+        setSelectedDir(nodeId);
+      }
     } else {
       expandedIdsRef.current.delete(nodeId);
     }
