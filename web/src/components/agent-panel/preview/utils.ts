@@ -193,11 +193,14 @@ export function buildPreviewUrl(envId: string, filePath: string): string {
  * Agent 上报的 path 可能是：
  * 1. 相对路径（`src/foo.ts`）—— Agent 工作目录为 workspace 时常见
  * 2. 已带 user/ 前缀的相对路径（`user/src/foo.ts`）
- * 3. workspace 绝对路径（`/Users/.../workspaces/{org}/{user}/{env}/user/src/foo.ts`）
+ * 3. workspace 绝对路径含 /user/ 段（`/workspaces/{org}/{user}/{env}/user/src/foo.ts`）
+ * 4. workspace 绝对路径不含 /user/ 段（`/workspaces/{org}/{user}/{env}/src/foo.ts`）
  *
  * 规范化策略：
- * - 命中 `/user/` 段（绝对路径场景）：取最后一个 `/user/` 之后的部分（兼容路径中其它 user/ 目录），补回 `user/` 前缀
- * - 已带 `user/` 前缀：保持不变
+ * - 已带 `user/` 前缀的路径：直接保持原样
+ * - 绝对路径命中 env_* 段：取其后部分作为 workspace 相对路径，
+ *   保留原始 user/ 或非 user/ 前缀状态，不额外添加前缀
+ * - 绝对路径无 env_* 段：原样返回让 server 兜底
  * - 纯相对路径：统一加 `user/` 前缀（兼容前导 `/`，如 `/src/foo.ts`）
  *
  * 这样可与文件树 tree API 返回的路径格式（`user/foo/bar.html`）对齐，
@@ -208,17 +211,25 @@ export function normalizeToUserPath(rawPath: string): string {
   const trimmed = rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
   if (trimmed === "") return "user/";
 
-  // 绝对路径分支：命中 "/user/" 取最后一段（避免路径中存在多个 user/ 目录时取错）
-  const absIdx = trimmed.lastIndexOf("/user/");
-  if (absIdx >= 0) {
-    const afterUser = trimmed.slice(absIdx + "/user/".length);
-    return `user/${afterUser}`;
-  }
   // 完全等于 "user" / 已带 user/ 前缀：保持不变
   if (trimmed === "user" || trimmed === "user/") return "user/";
   if (trimmed.startsWith("user/")) return trimmed;
 
-  // 纯相对路径分支：去掉前导斜杠（如 /src/foo.ts）后补 user/ 前缀
+  // 绝对路径分支（以 / 开头）：用 env_*/ 分隔符切分 workspace 路径
+  // workspace 路径结构固定为 .../env_{envId}/<相对路径>，
+  // 用 env_*/ 切分即可提取 workspace 相对路径，不依赖 server 上下文。
+  if (trimmed.startsWith("/")) {
+    const envMatch = trimmed.match(/\/env_[^/]+\//);
+    if (envMatch && envMatch.index !== undefined) {
+      const afterEnv = trimmed.slice(envMatch.index + envMatch[0].length);
+      if (afterEnv) return afterEnv;
+      return "user/";
+    }
+    // 非 workspace 路径（无 env_*/ 段）：原样返回让 server 兜底
+    return trimmed;
+  }
+
+  // 纯相对路径分支：统一加 user/ 前缀（兼容前导 /，如 /src/foo.ts）
   const stripped = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
   return `user/${stripped}`;
 }

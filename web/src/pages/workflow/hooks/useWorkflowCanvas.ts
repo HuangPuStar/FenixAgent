@@ -307,8 +307,8 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
 
       // 从数据 output handle（out-xxx）拖出时，自动为新节点填入 inputs，建立数据流关联
       const data: Record<string, unknown> = {
-        // 默认输出与 addNode 保持一致
-        ...(newType !== "custom" ? { outputs: { stdout: { pattern: "", type: "value" } } } : {}),
+        // 默认输出 end/custom 节点除外
+        ...(newType !== "custom" && newType !== "end" ? { outputs: { stdout: { pattern: "", type: "value" } } } : {}),
       };
       if (handleId?.startsWith("out-")) {
         const fieldName = handleId.slice(4); // 去掉 "out-" 前缀
@@ -374,8 +374,8 @@ export function useWorkflowCanvas(params: UseWorkflowCanvasParams): UseWorkflowC
         type,
         position: position ?? { x: 300 + Math.random() * 200, y: 100 + Math.random() * 200 },
         data: {
-          // 所有普通节点默认输出 stdout，自定义节点由 palette 传 outputs 或走工具 produces
-          ...(type !== "custom" ? { outputs: { stdout: { pattern: "", type: "value" } } } : {}),
+          // 所有普通节点默认输出 stdout，end/custom 节点除外
+          ...(type !== "custom" && type !== "end" ? { outputs: { stdout: { pattern: "", type: "value" } } } : {}),
           ...(presetConfig
             ? {
                 output: { ...presetConfig.defaultOutput },

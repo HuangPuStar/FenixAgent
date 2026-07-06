@@ -27,6 +27,7 @@ import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
 import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
+import apiWorkflowRoutes from "./routes/api/workflows";
 import apiWorkspaceRoutes from "./routes/api/workspaces";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import skillDownloadRoutes from "./routes/skills";
@@ -189,6 +190,7 @@ const app = new Elysia()
   .use(apiSystemRoutes)
   .use(apiInstanceRoutes)
   .use(apiWorkspaceRoutes)
+  .use(apiWorkflowRoutes)
   // Workflow proxy (not under /web prefix)
   .use(workflowStaticApp)
   // MCP routes

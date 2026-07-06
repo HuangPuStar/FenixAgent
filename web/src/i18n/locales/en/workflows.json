@@ -50,6 +50,7 @@
     "loop": "Loop",
     "transform": "Transform",
     "custom": "Custom Tool",
+    "end": "End",
     "preset_extract": "Extract",
     "preset_filter": "Filter",
     "preset_aggregate": "Aggregate",
@@ -406,6 +407,15 @@
     "group_default": "Basic",
     "group_advance": "Advanced",
     "group_unset": "Remove from advanced"
+  },
+  "end_node": {
+    "api_title": "External API Usage",
+    "api_desc": "When a workflow has an end node, external systems can call it via API. The end node collects outputs from upstream nodes and returns them as the final result.",
+    "api_endpoint": "Endpoint",
+    "request_example": "Request Example",
+    "response_example": "Response Example",
+    "auth_note": "Authentication",
+    "auth_desc": "Use an API Key (rcs_xxx) via Bearer token. API Keys can be created in Settings → API Keys."
   },
   "run_params": {
     "title": "Run Parameters",

@@ -47,6 +47,10 @@ const EXTERNAL_OPENAPI_TAGS = [
     name: "System ApiKey",
     description: "系统级 API Key 管理接口，用于代指定用户签发兼容现有外部 API 的用户级 API key。",
   },
+  {
+    name: "External Workflow",
+    description: "面向外部系统的工作流执行接口，支持同步和异步两种模式。",
+  },
 ];
 
 const WEB_OPENAPI_TAGS = [

@@ -19,7 +19,17 @@ export interface RetryConfig {
 }
 
 /** 节点类型 */
-export type NodeType = "shell" | "python" | "agent" | "api" | "audit" | "workflow" | "loop" | "transform" | "custom";
+export type NodeType =
+  | "shell"
+  | "python"
+  | "agent"
+  | "api"
+  | "audit"
+  | "workflow"
+  | "loop"
+  | "transform"
+  | "custom"
+  | "end";
 
 /** 基础节点定义 */
 export interface BaseNodeDef {
@@ -167,6 +177,26 @@ export interface CustomNodeDef extends BaseNodeDef {
   continueOnError?: boolean;
 }
 
+/** end 节点 — 声明式最终输出收集器。
+ *
+ * 不执行外部操作，仅在所有 depends_on 节点完成后对 inputs 做模板求值。
+ * 同一 DAG 最多一个 end 节点，校验阶段强制。 */
+export interface EndNodeDef {
+  type: "end";
+  id: string;
+  description?: string;
+  /** depends_on 在根级 end 节点中为必填（校验阶段强制），此处可选以与 BaseNodeDef 兼容 */
+  depends_on?: string[];
+  condition?: string;
+  timeout?: number;
+  retry?: RetryConfig;
+  /** 声明式收集最终输出字段，key→${{ }} 模板表达式 */
+  inputs?: Record<string, string>;
+  /** 输出声明，与 BaseNodeDef 保持兼容 */
+  outputs?: Record<string, { pattern: string; type: "file" | "file-list" | "dir" }>;
+  env?: Record<string, string>;
+}
+
 /** 节点定义判别联合 */
 export type NodeDef =
   | ShellNodeDef
@@ -177,7 +207,8 @@ export type NodeDef =
   | SubWorkflowNodeDef
   | LoopNodeDef
   | TransformNodeDef
-  | CustomNodeDef;
+  | CustomNodeDef
+  | EndNodeDef;
 
 /** WorkflowDef — YAML 根结构 */
 export interface WorkflowDef {

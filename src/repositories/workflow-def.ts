@@ -7,7 +7,7 @@
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { workflow, workflowVersion } from "../db/schema";
+import { workflow, workflowSnapshot, workflowVersion } from "../db/schema";
 import {
   buildStoragePath,
   ensureWorkflowDir,
@@ -163,6 +163,27 @@ export async function getWorkflowDef(workflowId: string, organizationId: string)
     .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * 获取工作流的实际执行版本号。
+ *
+ * 未显式指定版本时，回退到 workflow.latestVersion，供外部执行接口保持版本解析兼容。
+ */
+export async function resolveWorkflowExecutionVersion(
+  workflowId: string,
+  organizationId: string,
+  requestedVersion?: number,
+): Promise<{ version: number; workflow: WorkflowDefRow } | null> {
+  const workflowDef = await getWorkflowDef(workflowId, organizationId);
+  if (!workflowDef) {
+    return null;
+  }
+
+  return {
+    version: requestedVersion ?? workflowDef.latestVersion ?? 0,
+    workflow: workflowDef,
+  };
 }
 
 /** 获取版本历史列表（不含草稿） */
@@ -403,4 +424,21 @@ export async function restoreVersionToDraft(workflowId: string, ctx: AuthCtx, ve
   });
   if (!yaml) throw new Error(`Version ${version} not found`);
   await saveDraft(workflowId, ctx, yaml);
+}
+
+/**
+ * 将运行快照回填到所属工作流。
+ *
+ * Workflow 引擎在 runAsync 后会异步生成 workflowSnapshot 记录，这里只负责补齐 workflowId 关联，
+ * 供后续查询和回放按工作流维度归档。
+ */
+export async function linkWorkflowSnapshotToWorkflow(
+  runId: string,
+  organizationId: string,
+  workflowId: string,
+): Promise<void> {
+  await db
+    .update(workflowSnapshot)
+    .set({ workflowId })
+    .where(and(eq(workflowSnapshot.runId, runId), eq(workflowSnapshot.organizationId, organizationId)));
 }

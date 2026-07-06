@@ -78,6 +78,8 @@ export interface DAGRunResult {
   runId: string;
   status: DAGStatus;
   summary: RunSummary;
+  /** 节点输出快照：用于同步调用方在 DAG 完成后立即读取最终节点结果。 */
+  outputs?: Record<string, NodeOutput>;
   /** 本次运行期间启动的 Environment ID 列表 */
   spawnedEnvIds?: string[];
 }
@@ -232,6 +234,8 @@ export class DAGScheduler {
         runId: this.ctx.runId,
         status: finalStatus,
         summary,
+        // storage 持久化可能在不同适配器上存在可见性延迟；返回内存中的最终输出给同步 API 直接使用。
+        outputs: Object.fromEntries(this.nodeOutputs.entries()),
         spawnedEnvIds: this.ctx.spawnedEnvIds ? [...this.ctx.spawnedEnvIds] : [],
       };
     } catch (error) {
@@ -244,6 +248,8 @@ export class DAGScheduler {
         runId: this.ctx.runId,
         status: "ERROR",
         summary,
+        // 即使 DAG 异常，也保留已完成节点输出，便于调用方排查失败前的执行结果。
+        outputs: Object.fromEntries(this.nodeOutputs.entries()),
         spawnedEnvIds: this.ctx.spawnedEnvIds ? [...this.ctx.spawnedEnvIds] : [],
       };
     }
@@ -452,6 +458,14 @@ export class DAGScheduler {
                 )
               : {},
           };
+        }
+        break;
+      }
+      case "end": {
+        // end 节点：解析 inputs 为模板变量值，供 EndExecutor 收集为最终输出
+        const endNode = node as import("../types/dag").EndNodeDef;
+        if (endNode.inputs) {
+          resolved.inputs = resolveInputs(endNode.inputs, evalContext);
         }
         break;
       }

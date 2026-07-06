@@ -187,6 +187,10 @@
 }
 
 /* ── 节点配置 Sheet ── */
+.wf-popover-body {
+  padding: 4px 0;
+}
+
 .wf-node-sheet .wf-popover-body {
   padding: 4px 0;
 }
@@ -564,10 +568,6 @@
 
 .wf-popover-delete-btn:hover {
   background: #fef2f2;
-}
-
-.wf-popover-body {
-  padding: 4px 0;
 }
 
 /* ── Bottom-right Actions Group ── */

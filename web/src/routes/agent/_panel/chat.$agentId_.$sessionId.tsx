@@ -46,14 +46,13 @@ function ChatWithSessionRoute() {
     return () => window.removeEventListener("chat:stats", handler);
   }, []);
 
-  // 实例重启时：清除旧 entries、重置 diff 计数、递增 restartKey 强制 ArtifactsPanel remount
+  // 实例重启时：清除旧 entries、递增 restartKey 强制 ArtifactsPanel remount
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       // 仅处理本 agentId 对应的重启事件
       if (detail?.envId && detail.envId === agentId) {
         setEntries([]);
-        prevDiffCountRef.current = 0;
         setRestartKey((k) => k + 1);
       }
     };
@@ -73,6 +72,18 @@ function ChatWithSessionRoute() {
     return () => window.removeEventListener("artifacts:select-site", handler);
   }, []);
 
+  // 工具卡片点击预览按钮（artifacts:preview-file）时展开右侧面板
+  // biome-ignore lint/correctness/useExhaustiveDependencies: artifactsPanelRef 是稳定引用，仅 mount 时注册
+  useEffect(() => {
+    const handler = () => {
+      if (artifactsCollapsedRef.current) {
+        artifactsPanelRef.current?.expand();
+      }
+    };
+    window.addEventListener("artifacts:preview-file", handler);
+    return () => window.removeEventListener("artifacts:preview-file", handler);
+  }, []);
+
   // Panel 尺寸变化时同步折叠状态到 React state（仅在 isCollapsed() 翻转时触发）
   const handleArtifactsResize = useCallback(() => {
     const panel = artifactsPanelRef.current;
@@ -86,22 +97,11 @@ function ChatWithSessionRoute() {
 
   // mount 时：默认折叠右侧面板
   // 原因：ResizablePanel 的 defaultSize="40%" 会让面板初始就展开 40%，与 React state 的初始 true（折叠）不一致；
-  // 用户希望"右侧面板只有有文件时才展开"，这里在 mount 时立即 collapse 对齐初始意图。
-  // 后续 changedFiles 出现 diff 时由下面的 useEffect 触发自动展开。
+  // 用户希望"右侧面板只有手动点击预览按钮时才展开"。
   // biome-ignore lint/correctness/useExhaustiveDependencies: 仅 mount 时执行一次，artifactsPanelRef 是 usePanelRef() 返回的稳定 RefObject
   useEffect(() => {
     artifactsPanelRef.current?.collapse();
   }, []);
-
-  // 首次出现 diff 文件时自动展开文件区域（用户手动收起后不再自动展开）
-  const prevDiffCountRef = useRef(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: artifactsPanelRef 是 usePanelRef() 返回的稳定 RefObject，依赖项只需感知 changedFiles.length 变化
-  useEffect(() => {
-    if (prevDiffCountRef.current === 0 && changedFiles.length > 0 && artifactsCollapsedRef.current) {
-      artifactsPanelRef.current?.expand();
-    }
-    prevDiffCountRef.current = changedFiles.length;
-  }, [changedFiles.length]);
 
   // toggle 按钮：折叠 ↔ 展开（直接调用 PanelImperativeHandle，不维护额外 state）
   const toggleArtifacts = useCallback(() => {

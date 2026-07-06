@@ -451,6 +451,7 @@
   },
   "toolCallRow": {
     "viewParams": "View Parameters",
+    "previewFile": "Preview {{path}}",
     "toolName": "Tool"
   },
   "permissionPanel": {

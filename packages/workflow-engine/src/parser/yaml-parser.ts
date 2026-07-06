@@ -7,7 +7,7 @@
 
 import { parse as yamlParse } from "yaml";
 import type { CustomNodeRegistry } from "../plugins/registry";
-import type { CustomNodeDef, NodeDef, NodeType, WorkflowDef } from "../types/dag";
+import type { CustomNodeDef, EndNodeDef, NodeDef, NodeType, WorkflowDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 
 const VALID_NODE_TYPES: NodeType[] = [
@@ -20,6 +20,7 @@ const VALID_NODE_TYPES: NodeType[] = [
   "loop",
   "transform",
   "custom",
+  "end",
 ];
 
 /** parseWorkflowYaml 的额外选项 */
@@ -86,6 +87,14 @@ export function parseWorkflowYaml(source: string, baseDir?: string, opts?: Parse
   }
 
   const nodes: NodeDef[] = raw.nodes.map((n: unknown, i: number) => parseNode(n, i, opts));
+
+  // end 节点全局唯一性校验
+  const endNodes = nodes.filter((n) => n.type === "end");
+  if (endNodes.length > 1) {
+    throw new Error(
+      `Workflow 最多允许一个 end 节点，当前定义了 ${endNodes.length} 个：${endNodes.map((n) => n.id).join(", ")}`,
+    );
+  }
 
   // 识别隐式起始节点：无 depends_on 或 depends_on 为空数组
   const startNodes = nodes.filter((n) => !n.depends_on || n.depends_on.length === 0);
@@ -338,6 +347,13 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
         continueOnError: typeof n.continueOnError === "boolean" ? n.continueOnError : undefined,
       };
     }
+    case "end":
+      // end 节点：声明式最终输出收集器
+      return {
+        ...base,
+        type: "end",
+        inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
+      } as EndNodeDef;
   }
 }
 

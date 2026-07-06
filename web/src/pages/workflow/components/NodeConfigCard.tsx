@@ -29,6 +29,8 @@ export interface NodeConfigCardProps {
   customTools: CustomToolItem[];
   /** 所有节点，用于检测输出字段改名时扫描下游引用 */
   nodes: Node[];
+  /** 当前编辑的工作流 ID，用于 end 节点显示外部 API 调用方式 */
+  workflowId?: string;
 }
 
 /** 展开编辑弹窗的状态 */
@@ -102,6 +104,7 @@ export function NodeConfigCard({
   updateMeta,
   customTools,
   nodes,
+  workflowId,
 }: NodeConfigCardProps) {
   const { t } = useTranslation("workflows");
   const isStartNode = selectedNode.id === START_NODE_ID;
@@ -954,6 +957,115 @@ export function NodeConfigCard({
                 );
               })()}
           </div>
+
+          {/* ── end 节点：inputs 编辑器 + 外部 API 使用方式 ── */}
+          {nodeType === "end" && (
+            <div className="wf-prop-section">
+              {/* Inputs 编辑器 */}
+              <div className="wf-prop-field-block" style={{ marginBottom: 12 }}>
+                <label>{t("editor.inputs_title")}</label>
+                <InputsEditor
+                  value={sd?.inputs as Record<string, string> | undefined}
+                  onChange={(val) => {
+                    updateNodeData({ inputs: val && Object.keys(val).length > 0 ? val : undefined });
+                  }}
+                  readOnly={readOnly}
+                  keyPlaceholder={t("editor.inputs_key_placeholder")}
+                  valuePlaceholder={t("editor.inputs_value_hint")}
+                  addLabel={t("editor.inputs_add")}
+                />
+              </div>
+
+              <div className="wf-prop-section-title">{t("end_node.api_title")}</div>
+              <p className="wf-prop-hint" style={{ marginBottom: 12 }}>
+                {t("end_node.api_desc")}
+              </p>
+
+              {/* API 端点 */}
+              <div className="wf-prop-section-title" style={{ fontSize: 13, marginTop: 4 }}>
+                {t("end_node.api_endpoint")}
+              </div>
+              <div
+                className="wf-prop-section"
+                style={{ padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}
+              >
+                <code style={{ fontSize: 12, wordBreak: "break-all" }}>
+                  POST /api/workflows/{workflowId ? `{workflowId}` : "{workflowId}"}/execute
+                </code>
+              </div>
+
+              {/* 请求示例 */}
+              <div className="wf-prop-section-title" style={{ fontSize: 13, marginTop: 12 }}>
+                {t("end_node.request_example")}
+              </div>
+              <div
+                className="wf-prop-section"
+                style={{ padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}
+              >
+                <pre
+                  style={{ fontSize: 11, margin: 0, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all" }}
+                >
+                  {(() => {
+                    const host = typeof window !== "undefined" ? window.location.origin : "";
+                    const paramsEntries = meta.params ? Object.entries(meta.params as Record<string, unknown>) : [];
+                    const inputKeys = sd?.inputs ? Object.keys(sd.inputs as Record<string, unknown>) : [];
+                    // 构建 inputs 示例 JSON
+                    const inputsExample: Record<string, string> = {};
+                    for (const [k, v] of paramsEntries) {
+                      const schema = v as { default?: unknown };
+                      inputsExample[k] = schema.default != null ? String(schema.default) : k;
+                    }
+                    const body: Record<string, unknown> = { mode: "sync" };
+                    if (Object.keys(inputsExample).length > 0) {
+                      body.inputs = inputsExample;
+                    }
+                    return `curl -X POST \\
+  "${host}/api/workflows/${workflowId || "{workflowId}"}/execute" \\
+  -H "Authorization: Bearer rcs_your_api_key" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(body, null, 2).replace(/'/g, "\\'")}'`;
+                  })()}
+                </pre>
+              </div>
+
+              {/* 响应示例 */}
+              <div className="wf-prop-section-title" style={{ fontSize: 13, marginTop: 12 }}>
+                {t("end_node.response_example")}
+              </div>
+              <div
+                className="wf-prop-section"
+                style={{ padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}
+              >
+                <pre
+                  style={{ fontSize: 11, margin: 0, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all" }}
+                >
+                  {(() => {
+                    const inputKeys = sd?.inputs ? Object.keys(sd.inputs as Record<string, unknown>) : [];
+                    const outputFields: Record<string, string> = {};
+                    if (inputKeys.length > 0) {
+                      for (const k of inputKeys) {
+                        outputFields[k] = "...";
+                      }
+                    } else {
+                      outputFields.total_price = "99.5";
+                      outputFields.is_valid = "true";
+                    }
+                    return JSON.stringify(
+                      { runId: "run_abc123", status: "SUCCESS", output: outputFields, duration: 4.2 },
+                      null,
+                      2,
+                    );
+                  })()}
+                </pre>
+              </div>
+
+              {/* 认证说明 */}
+              <div className="wf-prop-section-title" style={{ fontSize: 13, marginTop: 12 }}>
+                {t("end_node.auth_note")}
+              </div>
+              <p className="wf-prop-hint">{t("end_node.auth_desc")}</p>
+            </div>
+          )}
 
           {/* 高级配置 */}
           <div className="wf-prop-section">

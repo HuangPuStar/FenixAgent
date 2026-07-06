@@ -26,6 +26,8 @@ export interface NodeConfigSheetProps {
   updateMeta: (updates: Partial<WfMeta>) => void;
   customTools: CustomToolItem[];
   nodes: Node[];
+  /** 当前编辑的工作流 ID，透传给 NodeConfigCard 用于 end 节点显示外部 API 调用方式 */
+  workflowId?: string;
 }
 
 export function NodeConfigSheet({
@@ -45,6 +47,7 @@ export function NodeConfigSheet({
   updateMeta,
   customTools,
   nodes,
+  workflowId,
 }: NodeConfigSheetProps) {
   const { t } = useTranslation("workflows");
 
@@ -93,6 +96,7 @@ export function NodeConfigSheet({
             updateMeta={updateMeta}
             customTools={customTools}
             nodes={nodes}
+            workflowId={workflowId}
           />
         </div>
       </SheetContent>

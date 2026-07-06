@@ -11,6 +11,7 @@ export { AgentExecutor } from "./executor/agent-executor";
 export { ApiExecutor } from "./executor/api-executor";
 export type { PendingApproval } from "./executor/awaitable-executor";
 export { AuditExecutor, verifyApprovalToken } from "./executor/awaitable-executor";
+export { EndExecutor } from "./executor/end-executor";
 export { LoopExecutor } from "./executor/loop-executor";
 export { createNodeExecutorRegistry, NodeExecutorRegistry } from "./executor/node-executor";
 // 执行器
