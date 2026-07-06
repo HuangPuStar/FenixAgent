@@ -7,7 +7,7 @@ const apiWorkflowRoute = (await import("../routes/api/workflows")).default;
 
 describe("POST /api/workflows/:workflowId/execute", () => {
   /** 发起 API 请求的辅助函数 */
-  async function apiFetch(path: string, init?: RequestInit) {
+  async function _apiFetch(path: string, init?: RequestInit) {
     return apiWorkflowRoute.handle(new Request(`http://localhost${path}`, init));
   }
 

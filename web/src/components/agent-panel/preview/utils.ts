@@ -198,9 +198,9 @@ export function buildPreviewUrl(envId: string, filePath: string): string {
  *
  * 规范化策略：
  * - 已带 `user/` 前缀的路径：直接保持原样
- * - 绝对路径命中 `/user/` 段：取最后一个 `/user/` 之后的部分，补回 `user/` 前缀
- * - 绝对路径无 `/user/` 段：去掉前导 `/` 后直接返回（不添加 user/ 前缀），
- *   认为文件位于 workspace 根目录
+ * - 绝对路径命中 env_* 段：取其后部分作为 workspace 相对路径，
+ *   保留原始 user/ 或非 user/ 前缀状态，不额外添加前缀
+ * - 绝对路径无 env_* 段：原样返回让 server 兜底
  * - 纯相对路径：统一加 `user/` 前缀（兼容前导 `/`，如 `/src/foo.ts`）
  *
  * 这样可与文件树 tree API 返回的路径格式（`user/foo/bar.html`）对齐，
@@ -215,21 +215,18 @@ export function normalizeToUserPath(rawPath: string): string {
   if (trimmed === "user" || trimmed === "user/") return "user/";
   if (trimmed.startsWith("user/")) return trimmed;
 
-  // 绝对路径分支（以 / 开头）：尝试提取 workspace 内的 /user/ 段
-  // Agent 上报的绝对路径形如 /workspaces/{org}/{user}/{env}/user/src/foo.ts，
-  // 需要提取 user/ 之后的相对路径。
+  // 绝对路径分支（以 / 开头）：用 env_*/ 分隔符切分 workspace 路径
+  // workspace 路径结构固定为 .../env_{envId}/<相对路径>，
+  // 用 env_*/ 切分即可提取 workspace 相对路径，不依赖 server 上下文。
   if (trimmed.startsWith("/")) {
-    const absIdx = trimmed.lastIndexOf("/user/");
-    if (absIdx >= 0) {
-      const afterUser = trimmed.slice(absIdx + "/user/".length);
-      if (afterUser) return `user/${afterUser}`;
+    const envMatch = trimmed.match(/\/env_[^/]+\//);
+    if (envMatch && envMatch.index !== undefined) {
+      const afterEnv = trimmed.slice(envMatch.index + envMatch[0].length);
+      if (afterEnv) return afterEnv;
+      return "user/";
     }
-    // 绝对路径中无 /user/ 段：文件在 workspace 根目录（非 user/ 下），
-    // 去掉前导 / 后作为工作区相对路径返回，不添加 user/ 前缀。
-    // 注意：这里无法得知 workspace 根路径前缀，完整绝对路径在被
-    // /fs/* 路由解析时会 404。理想方案是由调用方传入 workspace 根路径
-    // 来精确裁剪，当前版本仅在最小代价下避免路径错误拼接。
-    return trimmed.slice(1);
+    // 非 workspace 路径（无 env_*/ 段）：原样返回让 server 兜底
+    return trimmed;
   }
 
   // 纯相对路径分支：统一加 user/ 前缀（兼容前导 /，如 /src/foo.ts）
