@@ -211,7 +211,6 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   }, []);
 
   // 工具卡片点击预览按钮（artifacts:preview-file）→ 切到 Files 模式并打开文件预览
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅 mount 时注册，通过 ref 读取最新 openFile
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { path: string } | undefined;
@@ -359,7 +358,9 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -377,7 +378,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
       dragCounterRef.current = 0;
       setIsDragging(false);
 
-      const files = Array.from(e.dataTransfer.files);
+      const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length === 0) return;
 
       // 无论当前在 Files 还是 Sites 模式，拖入文件都先切回 Files：

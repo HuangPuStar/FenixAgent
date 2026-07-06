@@ -92,9 +92,12 @@ export function FilePickerDialog({ open, envId, onClose, onSelect }: FilePickerD
   );
 
   const handleUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target?.files?.length) {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
       const files = e.target.files;
-      if (!files || files.length === 0) return;
 
       // 客户端提前校验单文件大小
       const maxSize = 100 * 1024 * 1024;

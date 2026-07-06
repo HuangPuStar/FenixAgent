@@ -45,6 +45,8 @@ interface InstanceState {
   sessionState: AcpSessionState;
   dispatcher: AcpDispatcher | null;
   agentType: AgentType;
+  /** 前端 relay 连接的 sessionId，用于 relaySend 回传时匹配正确的会话 */
+  sessionId: string | null;
 }
 
 // ── InstanceManager ───────────────────────────────────────────
@@ -105,6 +107,7 @@ export class InstanceManager {
       sessionState: createAcpSessionState(),
       dispatcher: null,
       agentType: effectiveType,
+      sessionId: null,
     });
 
     console.log(`[instance-manager] prepared: ${instanceId} at ${workspace} (type=${effectiveType})`);
@@ -156,6 +159,19 @@ export class InstanceManager {
 
   hasInstance(instanceId: string): boolean {
     return this.instances.has(instanceId);
+  }
+
+  /** 更新实例对应的前端 relay sessionId，使 relaySend 回传时使用正确的会话标识 */
+  setSessionId(instanceId: string, sessionId: string): void {
+    const state = this.instances.get(instanceId);
+    if (state) {
+      state.sessionId = sessionId;
+    }
+  }
+
+  /** 读取实例对应的前端 relay sessionId */
+  getSessionId(instanceId: string): string | null {
+    return this.instances.get(instanceId)?.sessionId ?? null;
   }
 
   private resolveWorkspace(launchSpec: AgentLaunchSpec): string {

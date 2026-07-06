@@ -96,8 +96,8 @@ export const fsApi = {
    * @param id - 环境 ID
    * @param fd - 包含文件及相关路径信息的 FormData 对象
    */
-  upload: (id: string, fd: FormData) =>
-    request<FileUploadResponse>("/web/environments/:id/fs", {
+  upload: (id: string, fd: FormData, targetDir?: string) =>
+    request<FileUploadResponse>(`/web/environments/:id/fs${targetDir ? `/${targetDir.replace(/^\/+/, "")}` : ""}`, {
       method: "POST",
       params: { id },
       body: fd,

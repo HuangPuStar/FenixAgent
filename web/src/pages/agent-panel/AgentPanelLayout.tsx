@@ -1,7 +1,8 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
+import { ChatArea } from "./ChatArea";
 import "./agent-panel.css";
 
 export function AgentPanelLayout() {
@@ -52,6 +53,20 @@ export function AgentPanelLayout() {
     [navigate],
   );
 
+  // ── Chat keep-alive：始终渲染 ChatArea，仅通过 CSS 切换可见性 ──
+  //   从 URL 解析 agentId/sessionId，仅在用户主动进入 chat 路由时更新；
+  //   切到非 chat 页面时保留上次的 agentId，ChatPanel 保持挂载/连接。
+  const isChatRoute = pathParts[0] === "chat";
+  const chatAgentId = isChatRoute ? (pathParts[1] ?? null) : null;
+  const chatSessionId = isChatRoute ? (pathParts[2] ?? null) : null;
+
+  const lastChatAgentRef = useRef<string | null>(null);
+  const lastChatSessionRef = useRef<string | null>(null);
+  if (chatAgentId) {
+    lastChatAgentRef.current = chatAgentId;
+    lastChatSessionRef.current = chatSessionId;
+  }
+
   return (
     <div className="agent-panel-layout">
       <AgentSidebar
@@ -64,6 +79,7 @@ export function AgentPanelLayout() {
       />
       <div className="agent-panel-body">
         <Outlet />
+        <ChatArea agentId={lastChatAgentRef.current} sessionId={lastChatSessionRef.current} visible={isChatRoute} />
       </div>
       <AgentFormDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} mode="create" />
       <AgentFormDialog
