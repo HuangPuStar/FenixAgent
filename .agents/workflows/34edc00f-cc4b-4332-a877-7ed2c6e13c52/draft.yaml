@@ -28,5 +28,6 @@ nodes:
     type: end
     depends_on:
       - build
+      - hello
     inputs:
       data: nodes.build.output.stdout
