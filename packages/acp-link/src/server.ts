@@ -507,11 +507,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               // start 统一走 InstanceManager（稳定路径）
               const relaySend = (msgObj: unknown) => {
                 if (ws && ws.readyState === 1) {
+                  const sessId = instanceMgr.getSessionId(instId) ?? instId;
                   ws.send(
                     JSON.stringify({
                       type: "relay",
                       instance_id: instId,
-                      session_id: instId,
+                      session_id: sessId,
                       payload: msgObj,
                     }),
                   );
@@ -569,6 +570,10 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const instId = msg.instance_id as string;
             const sessId = msg.session_id as string;
             const relayPayload = msg.payload;
+            // 回写前端 session_id 到实例 state，使 relaySend 回传时使用正确的会话标识
+            if (sessId) {
+              instanceMgr.setSessionId(instId, sessId);
+            }
             // ── ACP 调试日志 ──
             console.log("[acp-client] relay → dispatcher:", JSON.stringify(relayPayload).slice(0, 500));
             if (instanceMgr.hasInstance(instId)) {
