@@ -455,6 +455,14 @@ export class DAGScheduler {
         }
         break;
       }
+      case "end": {
+        // end 节点：解析 inputs 为模板变量值，供 EndExecutor 收集为最终输出
+        const endNode = node as import("../types/dag").EndNodeDef;
+        if (endNode.inputs) {
+          resolved.inputs = resolveInputs(endNode.inputs, evalContext);
+        }
+        break;
+      }
     }
 
     // 通用字段

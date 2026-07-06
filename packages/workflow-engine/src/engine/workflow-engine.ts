@@ -11,6 +11,7 @@ import { AgentExecutor } from "../executor/agent-executor";
 import { ApiExecutor } from "../executor/api-executor";
 import type { PendingApproval } from "../executor/awaitable-executor";
 import { AuditExecutor, verifyApprovalToken } from "../executor/awaitable-executor";
+import { EndExecutor } from "../executor/end-executor";
 import { LoopExecutor } from "../executor/loop-executor";
 import { NodeExecutorRegistry } from "../executor/node-executor";
 import { ProcessExecutor } from "../executor/process-executor";
@@ -139,6 +140,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     registry.register("audit", new AuditExecutor(hmacSecret));
     registry.register("workflow", new SubWorkflowExecutor(runId, registry, baseDir));
     registry.register("loop", new LoopExecutor(runId, registry));
+    registry.register("end", new EndExecutor());
     registry.register("transform", new TransformExecutor());
     // 注册 custom executor（如果有 registry 注入）
     if (options.customRegistry) {

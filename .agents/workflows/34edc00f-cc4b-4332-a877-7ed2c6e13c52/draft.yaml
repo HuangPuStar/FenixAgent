@@ -24,21 +24,9 @@ nodes:
     command: |
       echo "Building at timestamp: $BUILD_TIME"
       printf "%s" "build-artifact-v1.0.0.tar.gz"
-  - id: deploy
-    type: shell
+  - id: end_4
+    type: end
     depends_on:
       - build
-    description: 部署到目标环境
     inputs:
-      ARTIFACT: nodes.build.output.stdout
-      ENV: params.deploy_env
-    command: |
-      echo "Deploying $ARTIFACT to $ENV environment..."
-      echo "Deploy complete!"
-  - id: custom_3
-    type: custom
-    tool: slurm
-    outputs:
-      stdout:
-        pattern: ""
-        type: value
+      data: nodes.build.output.stdout
