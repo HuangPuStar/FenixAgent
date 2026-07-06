@@ -359,7 +359,9 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -377,7 +379,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
       dragCounterRef.current = 0;
       setIsDragging(false);
 
-      const files = Array.from(e.dataTransfer.files);
+      const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length === 0) return;
 
       // 无论当前在 Files 还是 Sites 模式，拖入文件都先切回 Files：

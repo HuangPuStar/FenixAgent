@@ -138,20 +138,23 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   });
 
   // ── 文件上传 ──
-  const { run: runUpload, loading: uploading } = useRequest((fd: FormData) => unwrap(fsApi.upload(envId!, fd)), {
-    manual: true,
-    onSuccess: (data) => {
-      toast.success(t("fileTree.uploadSuccess", { count: data.files?.length ?? 0 }));
-      refreshTree();
+  const { run: runUpload, loading: uploading } = useRequest(
+    (fd: FormData, targetDir?: string) => unwrap(fsApi.upload(envId!, fd, targetDir)),
+    {
+      manual: true,
+      onSuccess: (data) => {
+        toast.success(t("fileTree.uploadSuccess", { count: data.files?.length ?? 0 }));
+        refreshTree();
+      },
+      onError: (err) => {
+        if (err instanceof ApiError && (err as ApiError & { status?: number }).status === 413) {
+          toast.error(t("filePicker.uploadTooLarge"));
+        } else {
+          toast.error(err.message || t("fileTree.uploadFailed"));
+        }
+      },
     },
-    onError: (err) => {
-      if (err instanceof ApiError && (err as ApiError & { status?: number }).status === 413) {
-        toast.error(t("filePicker.uploadTooLarge"));
-      } else {
-        toast.error(err.message || t("fileTree.uploadFailed"));
-      }
-    },
-  });
+  );
 
   // ── 重命名 ──
   const { run: runRename } = useRequest(
@@ -320,7 +323,9 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
   }, []);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -338,7 +343,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      if (!envId) return;
+      if (!envId || !e.dataTransfer) return;
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
 
@@ -355,9 +360,9 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       for (const file of files) {
         formData.append("files", file);
       }
-      runUpload(formData);
+      runUpload(formData, selectedDir);
     },
-    [envId, runUpload, t],
+    [envId, runUpload, selectedDir, t],
   );
 
   // 按钮上传文件
@@ -371,9 +376,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   }, []);
 
   const handleFileInputChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target?.files?.length) {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
       const files = e.target.files;
-      if (!files || files.length === 0) return;
 
       // 客户端提前校验单文件大小
       const maxSize = 100 * 1024 * 1024;
@@ -389,16 +397,19 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       for (const file of Array.from(files)) {
         formData.append("files", file);
       }
-      runUpload(formData);
+      runUpload(formData, selectedDir);
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
-    [runUpload, t],
+    [runUpload, selectedDir, t],
   );
 
   const handleFolderInputChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target?.files?.length) {
+        if (folderInputRef.current) folderInputRef.current.value = "";
+        return;
+      }
       const files = e.target.files;
-      if (!files || files.length === 0) return;
       // webkitRelativePath 保留了文件夹的相对路径结构
       const relativePaths = Array.from(files).map((f) => f.webkitRelativePath || f.name);
       const formData = new FormData();
@@ -406,10 +417,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         formData.append("files", file);
       }
       formData.append("relativePaths", JSON.stringify(relativePaths));
-      runUpload(formData);
+      runUpload(formData, selectedDir);
       if (folderInputRef.current) folderInputRef.current.value = "";
     },
-    [runUpload],
+    [runUpload, selectedDir],
   );
 
   // 下载：文件直接下载，目录打包为 zip
