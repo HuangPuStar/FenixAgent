@@ -244,6 +244,17 @@ function useTreeState(opts: {
     [nodes, expandedSet, selectedId],
   );
 
+  // 根节点加载后，自动重载已展开节点的子节点（处理 key 变化导致的重新挂载）
+  const expandedReloadedRef = useRef(false);
+  useEffect(() => {
+    if (rootIds.length === 0 || expandedSet.size === 0) return;
+    if (expandedReloadedRef.current) return;
+    expandedReloadedRef.current = true;
+    for (const nodeId of expandedSet) {
+      loadChildren(nodeId);
+    }
+  }, [rootIds, expandedSet, loadChildren]);
+
   return {
     nodes,
     rootIds,

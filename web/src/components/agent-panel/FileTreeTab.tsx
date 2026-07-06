@@ -115,6 +115,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const treeDataRef = useRef<ParsedNode[]>([]);
   const [treeVersion, setTreeVersion] = useState(0);
   const [selectedDir, setSelectedDir] = useState<string | null>(null);
+  const expandedIdsRef = useRef<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<{ path: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -260,9 +261,17 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const children = findChildren(parentId);
       return children.map(parsedToTreeNodeData);
     },
-    // treeVersion 变化时 getChildren 引用更新，Tree useEffect 会据此重载根节点并保留展开状态
-    [findChildren, treeVersion],
+    [findChildren],
   );
+
+  // treeVersion 变化时 Tree 重新挂载，通过 defaultExpandedIds 恢复展开状态
+  const handleToggle = useCallback((nodeId: string, expanded: boolean) => {
+    if (expanded) {
+      expandedIdsRef.current.add(nodeId);
+    } else {
+      expandedIdsRef.current.delete(nodeId);
+    }
+  }, []);
 
   /** 单击：目录选中，可预览文件触发预览，二进制文件忽略 */
   const handleSelect = useCallback(
@@ -602,8 +611,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
           </div>
         ) : (
           <Tree
+            key={treeVersion}
             getChildren={getChildren}
+            defaultExpandedIds={[...expandedIdsRef.current]}
             onSelect={handleSelect}
+            onToggle={handleToggle}
             renderActions={renderActions}
             renderLabel={renderLabel}
           />
