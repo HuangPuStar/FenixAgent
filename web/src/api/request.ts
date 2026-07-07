@@ -115,12 +115,27 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     });
     clearTimeout(timeoutId);
 
-    // 非 JSON 响应（如文件下载）不解析 body
+    // 非 JSON Content-Type（如文件下载）通常不解析 body，但 FormData 上传等
+    // 场景下 Elysia 偶尔遗漏 Content-Type，此时仍尝试按 JSON 解析。
     const ct = r.headers.get("content-type") ?? "";
     if (!ct.includes("application/json")) {
       if (!r.ok) {
         console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl} ${r.status}`);
         return { success: false, error: { code: statusToCode(r.status), message: `请求失败 (${r.status})` } };
+      }
+      // 试探性 JSON 解析：后端可能在二进制上传响应中漏掉 Content-Type
+      try {
+        const text = await r.text();
+        const json = JSON.parse(text) as Record<string, unknown>;
+        if (typeof json.success === "boolean") {
+          if (json.success === false) {
+            console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl}`, json?.error);
+            return { success: false, error: normalizeErrorResponse(json?.error, r.status) };
+          }
+          return { success: true, data: ("data" in json ? json.data : json) as unknown as T };
+        }
+      } catch {
+        // 不是 JSON，回退到无 data 响应
       }
       return { success: true, data: undefined as unknown as T };
     }

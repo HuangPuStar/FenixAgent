@@ -362,11 +362,12 @@ app.post(
         size: buffer.length,
       });
     }
-    return { success: true, data: { files: uploaded } };
+    return new Response(JSON.stringify({ success: true, data: { files: uploaded } }), {
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
   },
   {
     sessionAuth: true,
-    response: "file-upload-response",
     detail: {
       tags: ["FS"],
       summary: "上传文件",

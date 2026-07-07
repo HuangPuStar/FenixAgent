@@ -320,7 +320,7 @@ app.post(
         size: buffer.length,
       });
     }
-    return { success: true as const, data: { files: uploaded } };
+    return { success: true, data: { files: uploaded } };
   },
   {
     sessionAuth: true,

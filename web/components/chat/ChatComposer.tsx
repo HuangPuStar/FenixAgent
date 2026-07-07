@@ -24,6 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { CommandMenu } from "./CommandMenu";
 import { FilePickerPanel } from "./FilePickerPanel";
 import { SessionModeSelector } from "./SessionModeSelector";
+import { useDragUpload } from "./useDragUpload";
 
 // 图片压缩配置
 const IMAGE_COMPRESSION_OPTIONS = {
@@ -130,7 +131,7 @@ export function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 文件上传和浏览使用 envId（environment ID），后端路由为 /web/environments/:envId/user/*
+  // 文件上传和浏览使用 envId（environment ID），后端路由为 /web/environments/:envId/fs
   const fileWorkspaceId = envId;
 
   // ---------------------------------------------------------------------------
@@ -155,21 +156,6 @@ export function ChatComposer({
   // ---------------------------------------------------------------------------
   // Handlers — 从 ChatInput 原样迁移
   // ---------------------------------------------------------------------------
-
-  // 拖拽文件路径到输入框（从文件树拖拽）
-  const handleDrop = useCallback((e: DragEvent) => {
-    const treePath = e.dataTransfer.getData("text/plain");
-    if (!treePath || treePath.startsWith("file://") || treePath.startsWith("blob:")) return;
-    e.preventDefault();
-    const name = treePath.split("/").pop() || treePath;
-    const cleanPath = treePath.endsWith("/") ? treePath.slice(0, -1) : treePath;
-    setText((prev) => `${prev}@./${cleanPath} `);
-    setAttachments((prev) => {
-      if (prev.some((a) => a.path === cleanPath)) return prev;
-      return [...prev, { name, path: cleanPath }];
-    });
-    textareaRef.current?.focus();
-  }, []);
 
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
@@ -354,6 +340,21 @@ export function ChatComposer({
     [closeAllPopovers],
   );
 
+  // 拖拽文件上传 hook
+  const {
+    isDragOver,
+    isUploading,
+    uploadingCount,
+    handleDragOver: hookDragOver,
+    handleDragEnter: hookDragEnter,
+    handleDragLeave: hookDragLeave,
+    handleDrop: hookDrop,
+  } = useDragUpload({
+    envId: fileWorkspaceId ?? "",
+    onUploaded: handleFilePickerSelect,
+    disabled,
+  });
+
   const _toggleCommandMenu = useCallback(() => {
     if (showCommandMenu) {
       setShowCommandMenu(false);
@@ -400,7 +401,27 @@ export function ChatComposer({
           />
         )}
 
-        <div className="chat-composer-card" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+        <div
+          className={cn("chat-composer-card", isDragOver && "bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]")}
+          onDragOver={hookDragOver}
+          onDragEnter={hookDragEnter}
+          onDragLeave={hookDragLeave}
+          onDrop={(e) => {
+            hookDrop(e);
+            // 保留文件树拖拽路径引用逻辑
+            const treePath = e.dataTransfer.getData("text/plain");
+            if (!treePath || treePath.startsWith("file://") || treePath.startsWith("blob:")) return;
+            e.preventDefault();
+            const name = treePath.split("/").pop() || treePath;
+            const cleanPath = treePath.endsWith("/") ? treePath.slice(0, -1) : treePath;
+            setText((prev) => `${prev}@./${cleanPath} `);
+            setAttachments((prev) => {
+              if (prev.some((a) => a.path === cleanPath)) return prev;
+              return [...prev, { name, path: cleanPath }];
+            });
+            textareaRef.current?.focus();
+          }}
+        >
           {/* File Picker Dialog */}
           {showFilePicker && fileWorkspaceId && (
             <FilePickerDialog
@@ -478,6 +499,7 @@ export function ChatComposer({
                       <CommandMenu
                         commands={commands}
                         filter=""
+                        showSearch
                         className="!rounded-none !border-0 !shadow-none !bg-transparent"
                         onSelect={(cmd) => {
                           handleCommandSelect(cmd);
@@ -620,6 +642,15 @@ export function ChatComposer({
             )}
           </div>
         </div>
+
+        {/* 上传进度提示 */}
+        {isUploading && (
+          <div className="text-center">
+            <span className="text-[11px] text-text-muted">
+              {t("chatComposer.uploadingFiles", { count: uploadingCount })}
+            </span>
+          </div>
+        )}
 
         {/* 提示文本 */}
         <div className="text-center mt-1.5">

@@ -1,7 +1,9 @@
+import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AvailableCommand } from "../../src/acp/types";
 import { cn } from "../../src/lib/utils";
+import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
 
 // =============================================================================
@@ -15,6 +17,8 @@ interface CommandMenuProps {
   onSelect: (command: AvailableCommand) => void;
   onClose: () => void;
   className?: string;
+  /** 是否显示搜索框（用于 Popover 场景独立搜索，不依赖 textarea 输入） */
+  showSearch?: boolean;
 }
 
 /**
@@ -25,16 +29,20 @@ function prefixMatch(query: string, text: string): boolean {
   return text.toLowerCase().startsWith(query.toLowerCase());
 }
 
-export function CommandMenu({ commands, filter, onSelect, onClose, className }: CommandMenuProps) {
+export function CommandMenu({ commands, filter, onSelect, onClose, className, showSearch }: CommandMenuProps) {
   const { t } = useTranslation("components");
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // 合并搜索：showSearch 时用内部 searchQuery，否则用外部 filter
+  const effectiveFilter = showSearch ? searchQuery : filter;
 
   // Filter commands by current input
   const filtered = useMemo(() => {
-    if (!filter) return commands;
-    return commands.filter((cmd) => prefixMatch(filter, cmd.name));
-  }, [commands, filter]);
+    if (!effectiveFilter) return commands;
+    return commands.filter((cmd) => prefixMatch(effectiveFilter, cmd.name));
+  }, [commands, effectiveFilter]);
 
   // Reset active index when filter changes
   useEffect(() => {
@@ -89,6 +97,19 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className }: 
 
   return (
     <div ref={containerRef} className={cn("rounded-xl border border-border bg-surface-2 shadow-lg", className)}>
+      {/* 搜索框：Popover 场景下独立搜索 */}
+      {showSearch && (
+        <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+          <Search className="h-4 w-4 text-text-muted flex-shrink-0" />
+          <Input
+            type="text"
+            placeholder={t("commandMenu.searchPlaceholder")}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 rounded-lg border border-border bg-surface-1 px-2 py-1.5 text-sm"
+          />
+        </div>
+      )}
       <ScrollArea className="h-[320px]">
         <div className="py-1">
           {filtered.length === 0 ? (

@@ -2,7 +2,7 @@ import { useRequest } from "ahooks";
 import { ArrowLeft, ChevronRight, Folder, Loader2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { fileApi } from "../../src/api/files";
+import { fsApi } from "../../src/api/fs";
 import { ApiError, unwrap } from "../../src/api/request";
 import { FileTypeIcon } from "../../src/components/file-icon-helper";
 import { cn } from "../../src/lib/utils";
@@ -30,6 +30,10 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
   const [searchFilter, setSearchFilter] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const currentDirRef = useRef(currentDir);
+  useEffect(() => {
+    currentDirRef.current = currentDir;
+  }, [currentDir]);
 
   // 目录列表加载
   const {
@@ -37,7 +41,7 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
     loading: dirLoading,
     error: dirError,
     run: loadDir,
-  } = useRequest((dirPath: string) => unwrap(fileApi.listDir(envId, dirPath || undefined)), { manual: true });
+  } = useRequest((dirPath: string) => unwrap(fsApi.listDir(envId, dirPath || undefined)), { manual: true });
 
   const entries = dirData?.entries ?? [];
   const loadError = dirError ? (dirError instanceof ApiError ? dirError.message : t("filePicker.loadFailed")) : null;
@@ -73,7 +77,7 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
 
   // 文件上传
   const { run: runUpload, loading: uploadLoading } = useRequest(
-    (formData: FormData) => unwrap(fileApi.upload(envId, formData)),
+    (formData: FormData) => unwrap(fsApi.upload(envId, formData, currentDirRef.current)),
     {
       manual: true,
       onSuccess: () => {
@@ -137,7 +141,7 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
   return (
     <div className={cn("flex flex-col", className)}>
       {/* 搜索 + 上传按钮 */}
-      <div className="flex items-center gap-2 px-4 pb-2">
+      <div className="flex items-center gap-2 px-4 py-2">
         <Input
           type="text"
           placeholder={t("filePicker.searchPlaceholder")}

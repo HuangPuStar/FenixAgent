@@ -65,7 +65,7 @@ describe("File API Functions (new api/files)", () => {
     expect(mockFetchCalls.length).toBe(1);
     expect(mockFetchCalls[0].method).toBe("POST");
     expect(mockFetchCalls[0].body).toBeInstanceOf(FormData);
-    // 新 API 中 upload URL 不再拼接 path 到路径末尾
-    expect(mockFetchCalls[0].url).toContain("/web/environments/s1/user");
+    // upload URL 使用 /user 端点
+    expect(mockFetchCalls[0].url).toContain("/web/environments/s1/user/");
   });
 });
