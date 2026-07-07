@@ -176,7 +176,7 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
       panel.collapse();
     });
     return () => cancelAnimationFrame(frame);
-  }, [artifactsPanelRef.current?.collapse]);
+  }, [artifactsPanelRef.current?.collapse, artifactsPanelRef.current]);
 
   // 窄屏自动折叠 — 仅在用户未手动展开时生效
   useEffect(() => {

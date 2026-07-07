@@ -252,7 +252,7 @@ app.get(
     const fromSeqQuery = (request as Request).url ? new URL(request.url).searchParams.get("fromSeqNum") : null;
     const fromSeqNum = fromSeqQuery ? Number(fromSeqQuery) : lastEventId ? Number(lastEventId) : 0;
 
-    return createSSEStream(request, sessionId, isNaN(fromSeqNum) ? 0 : fromSeqNum);
+    return createSSEStream(request, sessionId, Number.isNaN(fromSeqNum) ? 0 : fromSeqNum);
   },
   {
     sessionAuth: true,

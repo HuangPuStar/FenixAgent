@@ -76,6 +76,7 @@ function installPolyfill(): void {
   // HTTPS 环境下原生 Clipboard API 已可用，跳过 polyfill
   // 用 any 绕过 TS 对 navigator.clipboard 的类型推断（运行时可能为 undefined）
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: navigator.clipboard may be undefined at runtime, any bypass required
   const existing = (navigator as any).clipboard;
   if (existing && typeof existing.writeText === "function") return;
 

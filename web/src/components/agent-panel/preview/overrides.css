@@ -19,5 +19,5 @@
 
 /* 隐藏代码块的复制/全屏等操作按钮 */
 .ofv-code-actions {
-  display: none !important;
+  display: none;
 }

@@ -31,7 +31,7 @@ function splitMcpConfigInput(input: unknown) {
 
 // --- Helper: extract name from query params (handles resource keys with slashes) ---
 function extractName(query: unknown): string | undefined {
-  if (typeof query !== "object" || query === null) return undefined;
+  if (typeof query !== "object" || query === null) return;
   const name = (query as Record<string, unknown>).name;
   return typeof name === "string" && name.length > 0 ? name : undefined;
 }
@@ -75,7 +75,7 @@ async function handleGet(ctx: AuthContext, name: string) {
   return { success: true, data: { name: s.name, config: s.config, resourceAccess: s.resourceAccess } };
 }
 
-async function handleCreate(ctx: AuthContext, name: string, configInput: unknown, bodyPublicReadable?: boolean) {
+async function _handleCreate(ctx: AuthContext, name: string, configInput: unknown, bodyPublicReadable?: boolean) {
   const { config, publicReadable: configPublicReadable } = splitMcpConfigInput(configInput);
   const publicReadable = bodyPublicReadable ?? configPublicReadable;
   if (!isValidMcpName(name)) {
@@ -667,7 +667,7 @@ app.post(
 app.post(
   "/config/mcp/actions/test-url",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia body type is loose at runtime
-  async ({ store, body, status }: any) => {
+  async ({ _store, body, status }: any) => {
     const url = typeof body?.url === "string" ? body.url : undefined;
     const headers =
       typeof body?.headers === "object" && body?.headers !== null

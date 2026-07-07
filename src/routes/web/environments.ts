@@ -12,7 +12,6 @@ import {
   EnvironmentDetailEnvelopeSchema,
   EnvironmentInfoSchema,
   EnvironmentListEnvelopeSchema,
-  EnvironmentListResponseSchema,
   EnvironmentListSchema,
   ListInstancesResponseSchema,
   UpdateEnvironmentRequestSchema,

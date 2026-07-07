@@ -385,7 +385,6 @@ function SidebarSessionList({
                         if (e.key === "Escape") handleCancelRename();
                       }}
                       onBlur={() => handleSaveRename(session.sessionId)}
-                      autoFocus
                     />
                     <Button
                       variant="ghost"

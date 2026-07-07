@@ -242,7 +242,7 @@ function guessType(ext: string): GlyphType | undefined {
   if (docExts.has(ext)) return "document";
   if (sheetExts.has(ext)) return "spreadsheet";
   if (slideExts.has(ext)) return "presentation";
-  return undefined;
+  return;
 }
 
 /** 对字符串做简单 hash，映射到调色板 */

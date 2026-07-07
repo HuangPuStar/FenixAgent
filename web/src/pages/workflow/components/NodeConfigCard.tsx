@@ -1008,7 +1008,7 @@ export function NodeConfigCard({
                   {(() => {
                     const host = typeof window !== "undefined" ? window.location.origin : "";
                     const paramsEntries = meta.params ? Object.entries(meta.params as Record<string, unknown>) : [];
-                    const inputKeys = sd?.inputs ? Object.keys(sd.inputs as Record<string, unknown>) : [];
+                    const _inputKeys = sd?.inputs ? Object.keys(sd.inputs as Record<string, unknown>) : [];
                     // 构建 inputs 示例 JSON
                     const inputsExample: Record<string, string> = {};
                     for (const [k, v] of paramsEntries) {

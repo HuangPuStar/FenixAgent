@@ -84,7 +84,7 @@ export function InputsEditor({
     });
   };
 
-  const handleBlur = (index: number) => {
+  const handleBlur = (_index: number) => {
     setDrafts((prev) => {
       commit(prev);
       return prev;

@@ -863,8 +863,8 @@ Phase 8 ─── 清理收尾          预计影响面：删除 sdk.ts
 |-------|----------|------|
 | **1. 基础设施** | `package.json` 添加 `ahooks` + `react-error-boundary`；创建 `web/src/api/request.ts` 共享模块；FormDialog 添加 `form` prop（兼容旧 `formConfig`） | 依赖就位，request.ts 就位 |
 | **2. API 层原型** | 按 5.6 映射表创建第一个域模块 `api/tasks.ts`（最简单的 CRUD 域） | 域模块模板 |
-| **3. 模板页面** | 选 `AgentApiKeysPage`（255 行，一个表单字段）端到端迁移，验证 useRequest + request<T> + FormDialog 外部 form 完整链路 | 可复制的迁移模板 |
-| **4. 错误边界** | `_panel.tsx` + ChatPanel / ArtifactsPanel / Sidebar 包裹 ErrorBoundary，设计统一 `ErrorFallback` 组件（`variant: "full" | "compact"`） | 错误隔离体系 |
+| **3. 模板页面** | 选 `AgentApiKeysPage`（255 行，一个表单字段）端到端迁移，验证 useRequest + `request<T>` + FormDialog 外部 form 完整链路 | 可复制的迁移模板 |
+| **4. 错误边界** | `_panel.tsx` + ChatPanel / ArtifactsPanel / Sidebar 包裹 ErrorBoundary，设计统一 `ErrorFallback` 组件（`variant: "full" \| "compact"`） | 错误隔离体系 |
 | **5. 表单密集型** | AgentTasksPage、AgentSkillsPage、AgentMcpPage、AgentModelsPage、AgentManagementPage、AgentChannelsPage、AgentKnowledgeBasesPage | 7 页面完成 |
 | **6. 展示密集型** | AgentSitesPage、AgentSessionsPage、AgentHomePage、AgentDashboardPage | 4 页面完成 |
 | **7. 组织页面** | AgentOrganizationsPage（独立 auth/org 流程） | 完成 |
