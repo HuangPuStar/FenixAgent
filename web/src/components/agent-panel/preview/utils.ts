@@ -95,63 +95,6 @@ const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
 
 const HTML_EXTENSIONS = new Set(["html", "htm"]);
 
-const EXT_TO_SHIKI_LANG: Record<string, string> = {
-  ts: "typescript",
-  tsx: "tsx",
-  js: "javascript",
-  jsx: "jsx",
-  mjs: "javascript",
-  cjs: "javascript",
-  py: "python",
-  go: "go",
-  rs: "rust",
-  rb: "ruby",
-  java: "java",
-  c: "c",
-  cpp: "cpp",
-  h: "c",
-  hpp: "cpp",
-  cs: "csharp",
-  swift: "swift",
-  kt: "kotlin",
-  r: "r",
-  scala: "scala",
-  lua: "lua",
-  sh: "shell",
-  bash: "shell",
-  zsh: "shell",
-  fish: "shell",
-  ps1: "powershell",
-  json: "json",
-  jsonc: "json",
-  yaml: "yaml",
-  yml: "yaml",
-  toml: "toml",
-  css: "css",
-  scss: "scss",
-  less: "less",
-  html: "html",
-  htm: "html",
-  xml: "xml",
-  vue: "vue",
-  svelte: "svelte",
-  md: "markdown",
-  mdx: "mdx",
-  sql: "sql",
-  graphql: "graphql",
-  gql: "graphql",
-  proto: "protobuf",
-  dart: "dart",
-  zig: "zig",
-  nim: "nim",
-  ex: "elixir",
-  exs: "elixir",
-  hs: "haskell",
-  tf: "hcl",
-  hcl: "hcl",
-  properties: "properties",
-};
-
 function getExtension(filePath: string): string {
   const segments = filePath.split("/");
   const fileName = segments[segments.length - 1] ?? "";
@@ -169,11 +112,6 @@ export function classifyFile(filePath: string): FileCategory {
   if (MARKDOWN_EXTENSIONS.has(ext)) return "markdown";
   if (CODE_EXTENSIONS.has(ext)) return "code";
   return "binary";
-}
-
-export function getShikiLanguage(filePath: string): string | undefined {
-  const ext = getExtension(filePath);
-  return EXT_TO_SHIKI_LANG[ext];
 }
 
 /**
