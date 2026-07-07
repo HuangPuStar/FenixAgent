@@ -1,4 +1,4 @@
-export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html";
+export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office";
 
 /** encodeURIComponent 不编码 ()，需额外处理，用于 URL 路径 */
 export function encodePathSegment(seg: string) {
@@ -87,9 +87,24 @@ const CODE_EXTENSIONS = new Set([
   "asm",
 ]);
 
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]);
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "ico",
+  "bmp",
+  "svg",
+  "tiff",
+  "tif",
+  "heic",
+  "heif",
+]);
 
-const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm"]);
+const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm", "xlsb"]);
+
+const OFFICE_EXTENSIONS = new Set(["docx", "doc", "pptx", "ppt", "odt", "odp", "ods", "rtf", "wps", "et", "dps"]);
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
 
@@ -108,6 +123,7 @@ export function classifyFile(filePath: string): FileCategory {
   if (ext === "pdf") return "pdf";
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
   if (TABLE_EXTENSIONS.has(ext)) return "table";
+  if (OFFICE_EXTENSIONS.has(ext)) return "office"; // officePlugin 支持，不属于 binary
   if (HTML_EXTENSIONS.has(ext)) return "html";
   if (MARKDOWN_EXTENSIONS.has(ext)) return "markdown";
   if (CODE_EXTENSIONS.has(ext)) return "code";
@@ -116,12 +132,11 @@ export function classifyFile(filePath: string): FileCategory {
 
 /**
  * 构建文件预览 URL。
- * fsApi.tree() 返回完整的工作区相对路径（如 "user/hello.html"、"scripts/run.sh"），
- * 路由 /:id/fs/* 直接透传，无需额外加 user/ 前缀。
+ * 不再手动 encodeURIComponent 编码路径 —— 避免 Vite dev proxy / http-proxy
+ * 对已编码的非 ASCII 字符做二次处理导致 404。交给浏览器原生 URL 解析自动编码。
  */
 export function buildPreviewUrl(envId: string, filePath: string): string {
-  const encoded = filePath.split("/").map(encodePathSegment).join("/");
-  return `/web/environments/${envId}/fs/${encoded}?preview=true`;
+  return `/web/environments/${envId}/fs/${filePath}?preview=true`;
 }
 
 /**

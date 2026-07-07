@@ -10,7 +10,7 @@ import { Tree } from "@/components/ui/tree";
 import { fsApi } from "@/src/api/fs";
 import { ApiError, unwrap } from "@/src/api/request";
 import { NS } from "../../i18n";
-import { buildPreviewUrl, classifyFile, encodePathSegment } from "./preview/utils";
+import { buildPreviewUrl, encodePathSegment } from "./preview/utils";
 
 interface FileTreeTabProps {
   envId: string | null;
@@ -290,10 +290,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       } else {
         const parentDir = nodeId.substring(0, nodeId.lastIndexOf("/"));
         setSelectedDir(parentDir || undefined);
-        // binary 类型（.pyc .zip .tar.gz 等）无法预览，跳过
-        if (classifyFile(nodeId) !== "binary") {
-          onPreviewFile(nodeId);
-        }
+        // office/binary 忽略分类检查，统一交给 @open-file-viewer 插件链处理
+        onPreviewFile(nodeId);
       }
     },
     [onPreviewFile],

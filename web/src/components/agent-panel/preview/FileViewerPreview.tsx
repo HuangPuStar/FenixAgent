@@ -1,3 +1,4 @@
+import type { PreviewMessages } from "@open-file-viewer/core";
 import { imagePlugin, officePlugin, pdfPlugin, textPlugin } from "@open-file-viewer/core";
 import { FileViewer } from "@open-file-viewer/react";
 import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -5,6 +6,7 @@ import type { ErrorInfo, ReactNode } from "react";
 import { Component, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
+import { htmlPreviewPlugin } from "./html-plugin";
 import { buildPreviewUrl } from "./utils";
 
 // 导入官方样式
@@ -15,8 +17,23 @@ interface FileViewerPreviewProps {
   filePath: string;
 }
 
-/** 模块级常量，避免重复创建插件实例 */
-const plugins = [imagePlugin(), pdfPlugin({ workerSrc: pdfjsWorkerUrl }), officePlugin(), textPlugin()];
+/** 中文内置文案，覆盖 @open-file-viewer 默认英文 */
+const zhCNMessages: Partial<PreviewMessages> = {
+  loading: "加载中...",
+  unsupportedTitle: "暂不支持此格式",
+  downloadTitle: "下载文件",
+  downloadFile: "下载",
+  file: "文件",
+  unnamedFile: "未命名文件",
+  format: "格式",
+  unknown: "未知",
+  mime: "MIME 类型",
+  undeclared: "未声明",
+  size: "大小",
+  source: "来源",
+  remoteUrl: "远程 URL",
+  localFile: "本地文件",
+};
 
 /** 错误边界：防止 FileViewer 内部异常导致父组件状态异常 */
 class FileViewerErrorBoundary extends Component<
@@ -70,6 +87,11 @@ export function FileViewerPreview({ envId, filePath }: FileViewerPreviewProps) {
     [t],
   );
 
+  const plugins = useMemo(
+    () => [imagePlugin(), pdfPlugin({ workerSrc: pdfjsWorkerUrl }), officePlugin(), htmlPreviewPlugin(), textPlugin()],
+    [],
+  );
+
   return (
     <FileViewerErrorBoundary filePath={filePath}>
       <FileViewer
@@ -80,6 +102,7 @@ export function FileViewerPreview({ envId, filePath }: FileViewerPreviewProps) {
         toolbar={toolbar}
         theme="auto"
         locale="zh-CN"
+        messages={zhCNMessages}
       />
     </FileViewerErrorBoundary>
   );

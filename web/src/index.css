@@ -495,6 +495,12 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   display: none;
 }
 
+/* 确保 streamdown 浮动操作按钮在 HTTP 下始终可点击（外层 pointer-events-none + 内层 pointer-events-auto 可能被覆盖） */
+[data-streamdown="code-block-actions"],
+[data-streamdown="mermaid-block-actions"] {
+  pointer-events: auto !important;
+}
+
 /* ═══════════════════════════════════════════════════════════ */
 /* 工牌卡空状态 (Agent Badge Card Empty State)                 */
 /* ═══════════════════════════════════════════════════════════ */

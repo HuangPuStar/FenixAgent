@@ -452,7 +452,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
             <div className="flex-1 min-h-0 min-w-0 flex flex-col border-r border-solid border-border/75">
               <PreviewTab envId={envId} filePath={activeFile} />
             </div>
-            <div className="relative flex-shrink-0">
+            <div className="relative flex-shrink-0 min-h-0 h-full">
               <button
                 type="button"
                 onClick={() => setFileTreeOpen((v) => !v)}
@@ -468,7 +468,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
                 <FilesIcon className="h-4 w-4" />
               </button>
               {fileTreeOpen && (
-                <div className="w-60 flex flex-col overflow-hidden">
+                <div className="w-60 h-full min-h-0 flex flex-col overflow-hidden">
                   <FileTreeTab
                     ref={fileTreeRef}
                     envId={envId}
