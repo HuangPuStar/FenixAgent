@@ -172,7 +172,15 @@ app.get(
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
-    const rawFilePath = (params as any)["*"] as string;
+    let rawFilePath = (params as any)["*"] as string;
+    // 浏览器发送的 URL 中非 ASCII 字符会被 percent-encode，Elysia 的 memoirist 路由
+    // 在某些版本下可能不会自动解码通配符 * 的值，这里做一层安全的 decodeURIComponent
+    // 兜底。如果已解码则 catch 保留原值（解码后的中文会 throw URIError）。
+    try {
+      rawFilePath = decodeURIComponent(rawFilePath);
+    } catch {
+      // 已经解码，直接使用
+    }
     const preview = (query as Record<string, string | undefined>)?.preview === "true";
 
     // 远程环境
@@ -279,7 +287,12 @@ app.post(
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
-    const rawDirPath = ((params as any)["*"] as string) || "";
+    let rawDirPath = ((params as any)["*"] as string) || "";
+    try {
+      rawDirPath = decodeURIComponent(rawDirPath);
+    } catch {
+      /* 已解码 */
+    }
 
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
@@ -371,7 +384,12 @@ app.put(
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
-    const rawFilePath = (params as any)["*"] as string;
+    let rawFilePath = (params as any)["*"] as string;
+    try {
+      rawFilePath = decodeURIComponent(rawFilePath);
+    } catch {
+      /* 已解码 */
+    }
 
     const b = body as { content?: string };
     if (typeof b.content !== "string")
@@ -422,7 +440,12 @@ app.delete(
     const envId = params.id;
     await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
-    const rawFilePath = (params as any)["*"] as string;
+    let rawFilePath = (params as any)["*"] as string;
+    try {
+      rawFilePath = decodeURIComponent(rawFilePath);
+    } catch {
+      /* 已解码 */
+    }
 
     // 远程环境
     const machineId = await getRemoteMachineId(envId);

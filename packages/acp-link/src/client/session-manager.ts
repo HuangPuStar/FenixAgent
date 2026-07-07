@@ -305,6 +305,23 @@ export class SessionManager {
             this.emit(sessionId, "session_error", String(err));
           }
           break;
+        case "delete_session":
+          try {
+            const targetSid = (payload.sessionId as string) ?? "";
+            await this.sharedConnection.deleteSession({ sessionId: targetSid });
+            this.emit(sessionId, "session_data", {
+              type: "session_deleted",
+              payload: { sessionId: targetSid },
+            });
+          } catch (err) {
+            console.error("[session-manager] deleteSession failed:", String(err));
+            this.emit(sessionId, "session_error", String(err));
+          }
+          break;
+        case "rename_session":
+          // renameSession 不被 ACP SDK 支持
+          this.emit(sessionId, "session_error", "renameSession is not supported by ACP protocol; use REST API instead");
+          break;
         default:
           console.log("[session-manager] unknown:", type);
       }
@@ -445,6 +462,20 @@ export class SessionManager {
           );
           break;
         }
+        case ACP_METHOD.SESSION_DELETE: {
+          const targetSid = (p.sessionId as string) ?? "";
+          await this.sharedConnection!.deleteSession({ sessionId: targetSid });
+          this.emit(sessionId, "session_data", createSuccessResponse(id, { deleted: true, sessionId: targetSid }));
+          break;
+        }
+        case ACP_METHOD.SESSION_RENAME:
+          // renameSession 不被 ACP SDK 支持，返回 error
+          this.emit(
+            sessionId,
+            "session_data",
+            createErrorResponse(id, -32601, "renameSession is not supported by ACP protocol; use REST API instead"),
+          );
+          break;
         default:
           this.emit(sessionId, "session_data", createErrorResponse(id, -32601, `Method not found: ${method}`));
       }

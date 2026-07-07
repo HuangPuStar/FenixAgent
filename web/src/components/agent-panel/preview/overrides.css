@@ -1,0 +1,20 @@
+/* 将 @open-file-viewer 工具栏从顶部移到预览区底部 */
+.ofv-host {
+  flex-direction: column-reverse;
+}
+
+/* 将顶部 border-bottom 改为底部 border-top */
+.ofv-toolbar {
+  border-bottom: none;
+  border-top: 1px solid var(--ofv-border);
+}
+
+/* 底部工具栏镜像按钮不匹配的文案改为底部视角 */
+.ofv-toolbar-search {
+  margin-left: auto;
+}
+
+/* 隐藏代码块的复制/全屏等操作按钮 */
+.ofv-code-actions {
+  display: none !important;
+}

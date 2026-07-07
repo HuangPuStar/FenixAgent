@@ -200,6 +200,12 @@ export class AcpDispatcher {
         case ACP_METHOD.SESSION_RESUME:
           await this.handleResumeSession(id, params as { sessionId: string; cwd?: string });
           break;
+        case ACP_METHOD.SESSION_DELETE:
+          await this.handleDeleteSession(id, params as { sessionId: string });
+          break;
+        case ACP_METHOD.SESSION_RENAME:
+          await this.handleRenameSession(id, params as { sessionId: string; title: string });
+          break;
         default:
           this.send(createErrorResponse(id, -32601, `Method not found: ${method}`));
       }
@@ -426,5 +432,24 @@ export class AcpDispatcher {
     } catch (error) {
       this.send(createErrorResponse(id, -32603, `Failed to resume session: ${(error as Error).message}`));
     }
+  }
+
+  private async handleDeleteSession(id: number | string, params: { sessionId: string }): Promise<void> {
+    if (!this.state.connection) {
+      this.send(createErrorResponse(id, -32000, "Not connected to agent"));
+      return;
+    }
+    try {
+      await this.state.connection.deleteSession({ sessionId: params.sessionId });
+      this.send(createSuccessResponse(id, { deleted: true, sessionId: params.sessionId }));
+    } catch (error) {
+      this.send(createErrorResponse(id, -32603, `Failed to delete session: ${(error as Error).message}`));
+    }
+  }
+
+  private async handleRenameSession(id: number | string, _params: { sessionId: string; title: string }): Promise<void> {
+    // ACP SDK 不支持 renameSession，返回不支持错误。
+    // 重命名操作应通过 RCS REST API PATCH /web/session/:id 完成。
+    this.send(createErrorResponse(id, -32601, "renameSession is not supported by ACP protocol; use REST API instead"));
   }
 }

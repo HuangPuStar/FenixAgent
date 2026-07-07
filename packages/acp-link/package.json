@@ -35,7 +35,7 @@
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
-    "@agentclientprotocol/sdk": "^0.28.1",
+    "@agentclientprotocol/sdk": "^1.2.0",
     "@stricli/auto-complete": "^1.2.4",
     "@stricli/core": "^1.2.4",
     "ws": "^8.18.0",

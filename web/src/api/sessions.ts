@@ -57,6 +57,21 @@ export const sessionApi = {
   /** 获取会话事件历史（GET /sessions/:id/history） */
   history: (params: SessionParams) =>
     request<SessionHistory>("/web/sessions/:sessionId/history", { method: "GET", params }),
+
+  /** 重命名会话（PATCH /sessions/:id） */
+  rename: (params: SessionParams, title: string) =>
+    request<{ id: string; title: string }>("/web/sessions/:sessionId", {
+      method: "PATCH",
+      params,
+      body: { title },
+    }),
+
+  /** 删除会话（DELETE /sessions/:id） */
+  delete: (params: SessionParams) =>
+    request<{ deleted: boolean; id: string }>("/web/sessions/:sessionId", {
+      method: "DELETE",
+      params,
+    }),
 };
 
 export const controlApi = {

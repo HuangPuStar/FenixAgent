@@ -69,7 +69,6 @@
         "nanoid": "^5.1.11",
         "node-schedule": "^2.1.1",
         "openai": "^6.42.0",
-        "pdfjs-dist": "^6.1.200",
         "postgres": "^3.4.9",
         "qr-scanner": "^1.4.2",
         "qrcode": "^1.5.4",
@@ -123,7 +122,7 @@
         "acp-link": "./dist/acp-link.js",
       },
       "devDependencies": {
-        "@agentclientprotocol/sdk": "^0.28.1",
+        "@agentclientprotocol/sdk": "^1.2.0",
         "@anthropic-ai/claude-agent-sdk": "^0.2.112",
         "@fenix/ccb": "workspace:*",
         "@fenix/claude-code": "workspace:*",
@@ -185,7 +184,7 @@
         "@fenix/plugin-sdk": "workspace:*",
       },
       "devDependencies": {
-        "@agentclientprotocol/sdk": "^0.21.1",
+        "@agentclientprotocol/sdk": "^1.2.0",
       },
     },
     "packages/plugin-opencode": {
@@ -229,7 +228,7 @@
     "kysely": "0.28.17",
   },
   "packages": {
-    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@0.21.1", "https://registry.npmmirror.com/@agentclientprotocol/sdk/-/sdk-0.21.1.tgz", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-ZTLH+o9QxcZDLX/9ww+W7C2iExnXFM+vD/uGFVSlR61Kzj9FaxUqBC6Rv/kwgA7qVWYUEI9c5ZNqCuO9PM4rKg=="],
+    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@1.2.0", "https://registry.npmmirror.com/@agentclientprotocol/sdk/-/sdk-1.2.0.tgz", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-rJ3766M2eouZsNCaK21JbPD++JLBZ0PWq38dzj1sA4/i0njaQEkiC2F5v7MlizFW6akX+qu5Ks8R00Xw+YMHKA=="],
 
     "@ai-sdk/gateway": ["@ai-sdk/gateway@3.0.125", "https://registry.npmmirror.com/@ai-sdk/gateway/-/gateway-3.0.125.tgz", { "dependencies": { "@ai-sdk/provider": "3.0.10", "@ai-sdk/provider-utils": "4.0.27", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-tocl7cUDoTpmhZqeW8XVKMMznZQwwQAEunF0VyNKmf64qt8NbMIAEiet/vRMzh7Jr9WcFeb6EZjmhLTP4Qx2Og=="],
 
@@ -2798,8 +2797,6 @@
     "@tailwindcss/oxide-wasm32-wasi/@tybys/wasm-util": ["@tybys/wasm-util@0.10.2", "https://registry.npmmirror.com/@tybys/wasm-util/-/wasm-util-0.10.2.tgz", { "dependencies": { "tslib": "^2.4.0" }, "bundled": true }, "sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg=="],
 
     "@tailwindcss/oxide-wasm32-wasi/tslib": ["tslib@2.8.1", "https://registry.npmmirror.com/tslib/-/tslib-2.8.1.tgz", { "bundled": true }, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
-
-    "acp-link/@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@0.28.1", "https://registry.npmmirror.com/@agentclientprotocol/sdk/-/sdk-0.28.1.tgz", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-Z2Frs6YtPhnZZ+XwFXyQkRDXY0fn8FjCalEs0W4yUhQnY4TztmNq0/RnfzWdFN3vqT3h0jTz5klzYbZHGxCDyQ=="],
 
     "ag-psd/pako": ["pako@2.1.0", "https://registry.npmmirror.com/pako/-/pako-2.1.0.tgz", {}, "sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug=="],
 

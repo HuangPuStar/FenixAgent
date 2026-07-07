@@ -1,4 +1,4 @@
-import { MessageSquare, Plus } from "lucide-react";
+import { MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { retryWithBackoff } from "@/src/lib/retry";
@@ -226,6 +226,46 @@ function SidebarSessionList({
   const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+
+  // 重命名处理
+  const handleStartRename = (session: AgentSessionInfo) => {
+    setEditingId(session.sessionId);
+    setEditTitle(session.title ?? "");
+  };
+  const handleSaveRename = useCallback(
+    (sessionId: string) => {
+      const title = editTitle.trim();
+      if (!title) return;
+      // 由于 ACP 协议不支持 renameSession，仅更新本地状态
+      setSessions((prev) => prev.map((s) => (s.sessionId === sessionId ? { ...s, title } : s)));
+      setEditingId(null);
+      setEditTitle("");
+    },
+    [editTitle],
+  );
+  const handleCancelRename = () => {
+    setEditingId(null);
+    setEditTitle("");
+  };
+
+  // 删除处理
+  const handleDelete = useCallback(
+    async (sessionId: string) => {
+      try {
+        await client.deleteSession({ sessionId });
+      } catch (err) {
+        console.warn("[SidebarSessionList] deleteSession through ACP failed:", err);
+      }
+      // 无论 agent 是否响应，都从本地列表移除
+      setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+      if (activeId === sessionId) {
+        setActiveId(null);
+      }
+    },
+    [client, activeId],
+  );
 
   useEffect(() => {
     if (initialActiveSessionId) {
@@ -329,28 +369,86 @@ function SidebarSessionList({
               {group.label}
             </span>
           </div>
-          {group.sessions.map((session) => (
-            <Button
-              key={session.sessionId}
-              variant="ghost"
-              onClick={() => {
-                setActiveId(session.sessionId);
-                onSelectSession(session);
-              }}
-              className={cn(
-                "w-full flex items-center gap-2.5 px-4 py-2 text-left justify-start rounded-none",
-                session.sessionId === activeId
-                  ? "bg-brand/8 text-text-primary hover:bg-brand/8"
-                  : "text-text-secondary hover:bg-surface-2/60 hover:text-text-primary",
-              )}
-              title={session.title || session.sessionId}
-            >
-              <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-              <span className="text-[13px] font-display truncate leading-snug">
-                {session.title?.trim() ? session.title : t("acpMain.newSession")}
-              </span>
-            </Button>
-          ))}
+          {group.sessions.map((session) => {
+            const isEditing = editingId === session.sessionId;
+            return (
+              <div key={session.sessionId} className="group relative">
+                {isEditing ? (
+                  <div className="flex items-center gap-1 px-4 py-1.5">
+                    <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
+                    <input
+                      className="flex-1 text-[13px] font-display bg-transparent border-b border-brand text-text-primary outline-none px-1 py-0.5"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveRename(session.sessionId);
+                        if (e.key === "Escape") handleCancelRename();
+                      }}
+                      onBlur={() => handleSaveRename(session.sessionId)}
+                      autoFocus
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-text-muted hover:text-text-primary"
+                      onClick={handleCancelRename}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setActiveId(session.sessionId);
+                        onSelectSession(session);
+                      }}
+                      className={cn(
+                        "flex-1 flex items-center gap-2.5 px-4 py-2 text-left justify-start rounded-none min-w-0",
+                        session.sessionId === activeId
+                          ? "bg-brand/8 text-text-primary hover:bg-brand/8"
+                          : "text-text-secondary hover:bg-surface-2/60 hover:text-text-primary",
+                      )}
+                      title={session.title || session.sessionId}
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
+                      <span className="text-[13px] font-display truncate leading-snug">
+                        {session.title?.trim() ? session.title : t("acpMain.newSession")}
+                      </span>
+                    </Button>
+                    {/* 悬停时显示操作按钮 */}
+                    <div className="hidden group-hover:flex items-center gap-0.5 pr-1 flex-shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-text-muted hover:text-brand"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartRename(session);
+                        }}
+                        title={t("acpMain.rename")}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-text-muted hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(session.sessionId);
+                        }}
+                        title={t("acpMain.delete")}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ))}
     </nav>

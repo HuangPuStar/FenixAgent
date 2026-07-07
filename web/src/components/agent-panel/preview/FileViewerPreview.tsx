@@ -1,16 +1,18 @@
 import type { PreviewMessages } from "@open-file-viewer/core";
-import { imagePlugin, officePlugin, pdfPlugin, textPlugin } from "@open-file-viewer/core";
+import { imagePlugin, officePlugin, textPlugin } from "@open-file-viewer/core";
 import { FileViewer } from "@open-file-viewer/react";
-import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { ErrorInfo, ReactNode } from "react";
 import { Component, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { htmlPreviewPlugin } from "./html-plugin";
+import { nativePdfPlugin } from "./native-pdf-plugin";
 import { buildPreviewUrl } from "./utils";
 
 // 导入官方样式
 import "@open-file-viewer/core/style.css";
+// 项目自定义样式覆盖（工具栏置底等）
+import "./overrides.css";
 
 interface FileViewerPreviewProps {
   envId: string;
@@ -73,22 +75,21 @@ export function FileViewerPreview({ envId, filePath }: FileViewerPreviewProps) {
 
   const toolbar = useMemo(
     () => ({
-      zoom: true,
-      rotate: true,
+      zoom: false,
+      rotate: false,
       download: true,
       fullscreen: true,
-      search: true,
+      search: false,
       labels: {
         download: t("fileTree.preview.download", "下载"),
         fullscreen: t("fileTree.preview.fullscreen", "全屏"),
-        search: t("fileTree.preview.search", "搜索"),
       },
     }),
     [t],
   );
 
   const plugins = useMemo(
-    () => [imagePlugin(), pdfPlugin({ workerSrc: pdfjsWorkerUrl }), officePlugin(), htmlPreviewPlugin(), textPlugin()],
+    () => [imagePlugin(), nativePdfPlugin(), officePlugin(), htmlPreviewPlugin(), textPlugin()],
     [],
   );
 

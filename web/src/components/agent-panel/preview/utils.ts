@@ -132,11 +132,12 @@ export function classifyFile(filePath: string): FileCategory {
 
 /**
  * 构建文件预览 URL。
- * 不再手动 encodeURIComponent 编码路径 —— 避免 Vite dev proxy / http-proxy
- * 对已编码的非 ASCII 字符做二次处理导致 404。交给浏览器原生 URL 解析自动编码。
+ * 按路径段分别 encodeURIComponent，避免中文等非 ASCII 字符在浏览器→Vite 代理→后端
+ * 的链路上产生编码歧义。分隔符 / 不编码，保持路径结构。
  */
 export function buildPreviewUrl(envId: string, filePath: string): string {
-  return `/web/environments/${envId}/fs/${filePath}?preview=true`;
+  const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+  return `/web/environments/${envId}/fs/${encodedPath}?preview=true`;
 }
 
 /**

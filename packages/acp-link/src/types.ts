@@ -104,6 +104,8 @@ export type ProxyMessage =
   | { type: "list_sessions"; payload?: ListSessionsRequest }
   | { type: "load_session"; payload: LoadSessionRequest }
   | { type: "resume_session"; payload: ResumeSessionRequest }
+  | { type: "delete_session"; payload: DeleteSessionRequest }
+  | { type: "rename_session"; payload: RenameSessionRequest }
   | { type: "ping" };
 
 // ============================================================================
@@ -210,6 +212,21 @@ export interface ProxyModeChangedMessage {
   };
 }
 
+export interface ProxySessionDeletedMessage {
+  type: "session_deleted";
+  payload: {
+    sessionId: string;
+  };
+}
+
+export interface ProxySessionRenamedMessage {
+  type: "session_renamed";
+  payload: {
+    sessionId: string;
+    title: string;
+  };
+}
+
 export type ProxyResponse =
   | ProxyStatusMessage
   | ProxyErrorMessage
@@ -223,7 +240,9 @@ export type ProxyResponse =
   | ProxyPongMessage
   | ProxySessionListMessage
   | ProxySessionLoadedMessage
-  | ProxySessionResumedMessage;
+  | ProxySessionResumedMessage
+  | ProxySessionDeletedMessage
+  | ProxySessionRenamedMessage;
 
 // ============================================================================
 // Content Block Types
@@ -409,11 +428,21 @@ export interface SessionForkCapabilities {
   _meta?: Record<string, unknown> | null;
 }
 
+export interface SessionDeleteCapabilities {
+  _meta?: Record<string, unknown> | null;
+}
+
+export interface SessionRenameCapabilities {
+  _meta?: Record<string, unknown> | null;
+}
+
 export interface SessionCapabilities {
   _meta?: Record<string, unknown> | null;
   fork?: SessionForkCapabilities | null;
   list?: SessionListCapabilities | null;
   resume?: SessionResumeCapabilities | null;
+  delete?: SessionDeleteCapabilities | null;
+  rename?: SessionRenameCapabilities | null;
 }
 
 export interface AgentCapabilities {
@@ -459,6 +488,29 @@ export interface ResumeSessionRequest {
   _meta?: Record<string, unknown> | null;
   sessionId: string;
   cwd?: string;
+}
+
+export interface DeleteSessionRequest {
+  _meta?: Record<string, unknown> | null;
+  sessionId: string;
+}
+
+export interface DeleteSessionResponse {
+  _meta?: Record<string, unknown> | null;
+  deleted: boolean;
+  sessionId: string;
+}
+
+export interface RenameSessionRequest {
+  _meta?: Record<string, unknown> | null;
+  sessionId: string;
+  title: string;
+}
+
+export interface RenameSessionResponse {
+  _meta?: Record<string, unknown> | null;
+  sessionId: string;
+  title: string;
 }
 
 // ============================================================================

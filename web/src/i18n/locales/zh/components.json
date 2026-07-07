@@ -321,7 +321,9 @@
     "sessions": "会话",
     "today": "今天",
     "yesterday": "昨天",
-    "earlier": "更早"
+    "earlier": "更早",
+    "rename": "重命名",
+    "delete": "删除"
   },
   "chatInterface": {
     "processingError": "请求未能正常处理，请检查 Agent 或大模型状态后重试",
