@@ -94,7 +94,7 @@ export const fileApi = {
    * @param fd - 包含文件及相关路径信息的 FormData 对象
    */
   upload: (id: string, fd: FormData) =>
-    request<FileUploadResponse>("/web/environments/:id/user", {
+    request<FileUploadResponse>("/web/environments/:id/user/", {
       method: "POST",
       params: { id },
       body: fd,

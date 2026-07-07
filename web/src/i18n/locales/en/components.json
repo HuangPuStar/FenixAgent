@@ -268,7 +268,8 @@
     "thinking": "Thinking..."
   },
   "commandMenu": {
-    "noMatch": "No matching commands"
+    "noMatch": "No matching commands",
+    "searchPlaceholder": "Search skills..."
   },
   "messageBubble": {
     "expand": "Expand",
@@ -393,7 +394,10 @@
     "send": "Send",
     "stop": "Stop",
     "newSession": "New Thread",
-    "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file"
+    "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file",
+    "skillButton": "Skill",
+    "fileButton": "File",
+    "uploadingFiles": "Uploading {{count}} files…"
   },
   "chatEmpty": {
     "startConversation": "Start Conversation",

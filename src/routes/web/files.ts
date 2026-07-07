@@ -26,6 +26,7 @@ import {
 import {
   createFileStream,
   deleteFile,
+  deleteNode,
   getMimeType,
   isTextExtension,
   isTextFile,
@@ -319,7 +320,7 @@ app.post(
         size: buffer.length,
       });
     }
-    return { success: true as const, data: { files: uploaded } };
+    return { success: true, data: { files: uploaded } };
   },
   {
     sessionAuth: true,
@@ -447,11 +448,10 @@ app.delete(
 
     try {
       const info = await stat(result.resolved);
-      if (info.isDirectory())
-        return error(400, {
-          success: false,
-          error: { code: "validation_error", message: "Cannot delete directories" },
-        });
+      if (info.isDirectory()) {
+        await deleteNode(result.resolved);
+        return { success: true as const, data: null };
+      }
     } catch {
       return error(404, { success: false, error: { code: "not_found", message: "File not found" } });
     }
@@ -470,7 +470,7 @@ app.delete(
     detail: {
       tags: ["Files"],
       summary: "删除文件",
-      description: "删除指定文件。该接口仅处理单个文件，不支持删除目录。",
+      description: "删除 workspace 任意路径的文件或目录（目录将递归删除）。",
     },
   },
 );

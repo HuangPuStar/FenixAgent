@@ -143,7 +143,7 @@ describe("file SDK functions", () => {
     const formData = new FormData();
     formData.append("files", file);
     await fileApi.upload("s1", formData);
-    expect(fetchMock.lastUrl).toContain("/web/environments/s1/user");
+    expect(fetchMock.lastUrl).toContain("/web/environments/s1/user/");
     expect(fetchMock.lastOpts.method).toBe("POST");
     expect(fetchMock.lastOpts.body).toBeInstanceOf(FormData);
   });

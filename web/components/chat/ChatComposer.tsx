@@ -1,5 +1,5 @@
 import imageCompression from "browser-image-compression";
-import { Send, Square } from "lucide-react";
+import { Paperclip, Send, Sparkles, Square } from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -20,8 +20,11 @@ import { cn } from "../../src/lib/utils";
 import type { FileInfo } from "../../src/types";
 import { ModelSelectorPopover } from "../model-selector/ModelSelectorPopover";
 import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { CommandMenu } from "./CommandMenu";
+import { FilePickerPanel } from "./FilePickerPanel";
 import { SessionModeSelector } from "./SessionModeSelector";
+import { useDragUpload } from "./useDragUpload";
 
 // 图片压缩配置
 const IMAGE_COMPRESSION_OPTIONS = {
@@ -102,6 +105,25 @@ export function ChatComposer({
   const [commandFilter, setCommandFilter] = useState("");
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [showSkillPopover, setShowSkillPopover] = useState(false);
+  const [showFilePopover, setShowFilePopover] = useState(false);
+
+  // 互斥切换：打开一个时关闭另一个
+  const toggleSkillPopover = useCallback(() => {
+    setShowFilePopover(false);
+    setShowSkillPopover((prev) => !prev);
+  }, []);
+
+  const toggleFilePopover = useCallback(() => {
+    setShowSkillPopover(false);
+    setShowFilePopover((prev) => !prev);
+  }, []);
+
+  // 关闭所有 popover
+  const closeAllPopovers = useCallback(() => {
+    setShowSkillPopover(false);
+    setShowFilePopover(false);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Refs — 从 ChatInput 原样迁移
@@ -109,7 +131,7 @@ export function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 文件上传和浏览使用 envId（environment ID），后端路由为 /web/environments/:envId/user/*
+  // 文件上传和浏览使用 envId（environment ID），后端路由为 /web/environments/:envId/fs
   const fileWorkspaceId = envId;
 
   // ---------------------------------------------------------------------------
@@ -135,21 +157,6 @@ export function ChatComposer({
   // Handlers — 从 ChatInput 原样迁移
   // ---------------------------------------------------------------------------
 
-  // 拖拽文件路径到输入框（从文件树拖拽）
-  const handleDrop = useCallback((e: DragEvent) => {
-    const treePath = e.dataTransfer.getData("text/plain");
-    if (!treePath || treePath.startsWith("file://") || treePath.startsWith("blob:")) return;
-    e.preventDefault();
-    const name = treePath.split("/").pop() || treePath;
-    const cleanPath = treePath.endsWith("/") ? treePath.slice(0, -1) : treePath;
-    setText((prev) => `${prev}@./${cleanPath} `);
-    setAttachments((prev) => {
-      if (prev.some((a) => a.path === cleanPath)) return prev;
-      return [...prev, { name, path: cleanPath }];
-    });
-    textareaRef.current?.focus();
-  }, []);
-
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
     if ((!trimmed && images.length === 0) || disabled) return;
@@ -162,13 +169,14 @@ export function ChatComposer({
     setText("");
     setImages([]);
     setAttachments([]);
+    closeAllPopovers();
     setShowCommandMenu(false);
     setCommandFilter("");
     // 重置 textarea 高度
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [text, images, attachments, disabled, onSubmit]);
+  }, [text, images, attachments, disabled, onSubmit, closeAllPopovers]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -306,23 +314,46 @@ export function ChatComposer({
     setImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleCommandSelect = useCallback((command: AvailableCommand) => {
-    setText(`/${command.name} `);
-    setShowCommandMenu(false);
-    setCommandFilter("");
-    textareaRef.current?.focus();
-  }, []);
+  const handleCommandSelect = useCallback(
+    (command: AvailableCommand) => {
+      setText(`/${command.name} `);
+      setShowCommandMenu(false);
+      setCommandFilter("");
+      closeAllPopovers();
+      textareaRef.current?.focus();
+    },
+    [closeAllPopovers],
+  );
 
-  const handleFilePickerSelect = useCallback((file: FileInfo) => {
-    setText((prev) => prev.replace(/@$/, ""));
-    setText((prev) => `${prev}@./${file.path} `);
-    setAttachments((prev) => {
-      if (prev.some((a) => a.path === file.path)) return prev;
-      return [...prev, { name: file.name, path: file.path }];
-    });
-    setShowFilePicker(false);
-    textareaRef.current?.focus();
-  }, []);
+  const handleFilePickerSelect = useCallback(
+    (file: FileInfo) => {
+      setText((prev) => prev.replace(/@$/, ""));
+      setText((prev) => `${prev}@./${file.path} `);
+      setAttachments((prev) => {
+        if (prev.some((a) => a.path === file.path)) return prev;
+        return [...prev, { name: file.name, path: file.path }];
+      });
+      setShowFilePicker(false);
+      closeAllPopovers();
+      textareaRef.current?.focus();
+    },
+    [closeAllPopovers],
+  );
+
+  // 拖拽文件上传 hook
+  const {
+    isDragOver,
+    isUploading,
+    uploadingCount,
+    handleDragOver: hookDragOver,
+    handleDragEnter: hookDragEnter,
+    handleDragLeave: hookDragLeave,
+    handleDrop: hookDrop,
+  } = useDragUpload({
+    envId: fileWorkspaceId ?? "",
+    onUploaded: handleFilePickerSelect,
+    disabled,
+  });
 
   const _toggleCommandMenu = useCallback(() => {
     if (showCommandMenu) {
@@ -370,7 +401,27 @@ export function ChatComposer({
           />
         )}
 
-        <div className="chat-composer-card" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+        <div
+          className={cn("chat-composer-card", isDragOver && "bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]")}
+          onDragOver={hookDragOver}
+          onDragEnter={hookDragEnter}
+          onDragLeave={hookDragLeave}
+          onDrop={(e) => {
+            hookDrop(e);
+            // 保留文件树拖拽路径引用逻辑
+            const treePath = e.dataTransfer.getData("text/plain");
+            if (!treePath || treePath.startsWith("file://") || treePath.startsWith("blob:")) return;
+            e.preventDefault();
+            const name = treePath.split("/").pop() || treePath;
+            const cleanPath = treePath.endsWith("/") ? treePath.slice(0, -1) : treePath;
+            setText((prev) => `${prev}@./${cleanPath} `);
+            setAttachments((prev) => {
+              if (prev.some((a) => a.path === cleanPath)) return prev;
+              return [...prev, { name, path: cleanPath }];
+            });
+            textareaRef.current?.focus();
+          }}
+        >
           {/* File Picker Dialog */}
           {showFilePicker && fileWorkspaceId && (
             <FilePickerDialog
@@ -403,6 +454,104 @@ export function ChatComposer({
                   </Button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* 浮动按钮栏：技能 + 文件 */}
+          {((commands && commands.length > 0) || fileWorkspaceId) && (
+            <div className="flex items-center gap-1.5 px-4 pt-2">
+              {/* 技能按钮 */}
+              {commands && commands.length > 0 && (
+                <Popover open={showSkillPopover} onOpenChange={setShowSkillPopover}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={toggleSkillPopover}
+                      disabled={disabled || isLoading}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium",
+                        "border border-border bg-surface-2 text-text-secondary hover:bg-surface-1 hover:text-text-primary",
+                        "transition-colors",
+                        showSkillPopover && "bg-brand/10 text-brand border-brand/30",
+                        (disabled || isLoading) && "opacity-50 cursor-not-allowed",
+                      )}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {t("chatComposer.skillButton")}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="bottom"
+                    align="start"
+                    sideOffset={6}
+                    collisionPadding={{ bottom: 32, top: 8 }}
+                    className="w-[360px] p-0"
+                    onInteractOutside={(e) => {
+                      // 防止 CommandMenu 自身的全局 mousedown 监听器
+                      // 与 Radix Popover 的交互外部检测产生冲突
+                      const target = e.target as HTMLElement;
+                      if (target.closest("[data-slot=popover-content]")) {
+                        e.preventDefault();
+                      }
+                    }}
+                  >
+                    <div className="rounded-[inherit] overflow-hidden">
+                      <CommandMenu
+                        commands={commands}
+                        filter=""
+                        showSearch
+                        className="!rounded-none !border-0 !shadow-none !bg-transparent"
+                        onSelect={(cmd) => {
+                          handleCommandSelect(cmd);
+                          setShowSkillPopover(false);
+                        }}
+                        onClose={() => setShowSkillPopover(false)}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+
+              {/* 文件按钮 */}
+              {fileWorkspaceId && (
+                <Popover open={showFilePopover} onOpenChange={setShowFilePopover}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={toggleFilePopover}
+                      disabled={disabled || isLoading}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium",
+                        "border border-border bg-surface-2 text-text-secondary hover:bg-surface-1 hover:text-text-primary",
+                        "transition-colors",
+                        showFilePopover && "bg-brand/10 text-brand border-brand/30",
+                        (disabled || isLoading) && "opacity-50 cursor-not-allowed",
+                      )}
+                    >
+                      <Paperclip className="h-3.5 w-3.5" />
+                      {t("chatComposer.fileButton")}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="bottom"
+                    align="start"
+                    sideOffset={6}
+                    collisionPadding={{ bottom: 32, top: 8 }}
+                    className="w-[380px] p-0"
+                  >
+                    <div className="rounded-[inherit] overflow-hidden">
+                      <FilePickerPanel
+                        envId={fileWorkspaceId}
+                        onSelect={(file) => {
+                          handleFilePickerSelect(file);
+                          setShowFilePopover(false);
+                        }}
+                        onClose={() => setShowFilePopover(false)}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
           )}
 
@@ -493,6 +642,15 @@ export function ChatComposer({
             )}
           </div>
         </div>
+
+        {/* 上传进度提示 */}
+        {isUploading && (
+          <div className="text-center">
+            <span className="text-[11px] text-text-muted">
+              {t("chatComposer.uploadingFiles", { count: uploadingCount })}
+            </span>
+          </div>
+        )}
 
         {/* 提示文本 */}
         <div className="text-center mt-1.5">
