@@ -459,7 +459,20 @@ export function ChatComposer({
                       {t("chatComposer.skillButton")}
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent side="bottom" align="start" sideOffset={6} className="w-[360px] p-0">
+                  <PopoverContent
+                    side="bottom"
+                    align="start"
+                    sideOffset={6}
+                    className="w-[360px] p-0"
+                    onInteractOutside={(e) => {
+                      // 防止 CommandMenu 自身的全局 mousedown 监听器
+                      // 与 Radix Popover 的交互外部检测产生冲突
+                      const target = e.target as HTMLElement;
+                      if (target.closest("[data-slot=popover-content]")) {
+                        e.preventDefault();
+                      }
+                    }}
+                  >
                     <CommandMenu
                       commands={commands}
                       filter=""
