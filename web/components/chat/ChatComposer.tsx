@@ -463,8 +463,8 @@ export function ChatComposer({
                     side="bottom"
                     align="start"
                     sideOffset={6}
-                    collisionPadding={12}
-                    className="w-[360px] p-0 overflow-hidden"
+                    collisionPadding={{ bottom: 32, top: 8 }}
+                    className="w-[360px] p-0"
                     onInteractOutside={(e) => {
                       // 防止 CommandMenu 自身的全局 mousedown 监听器
                       // 与 Radix Popover 的交互外部检测产生冲突
@@ -474,16 +474,18 @@ export function ChatComposer({
                       }
                     }}
                   >
-                    <CommandMenu
-                      commands={commands}
-                      filter=""
-                      className="!rounded-none !border-0 !shadow-none !bg-transparent"
-                      onSelect={(cmd) => {
-                        handleCommandSelect(cmd);
-                        setShowSkillPopover(false);
-                      }}
-                      onClose={() => setShowSkillPopover(false)}
-                    />
+                    <div className="rounded-[inherit] overflow-hidden">
+                      <CommandMenu
+                        commands={commands}
+                        filter=""
+                        className="!rounded-none !border-0 !shadow-none !bg-transparent"
+                        onSelect={(cmd) => {
+                          handleCommandSelect(cmd);
+                          setShowSkillPopover(false);
+                        }}
+                        onClose={() => setShowSkillPopover(false)}
+                      />
+                    </div>
                   </PopoverContent>
                 </Popover>
               )}
@@ -512,17 +514,19 @@ export function ChatComposer({
                     side="bottom"
                     align="start"
                     sideOffset={6}
-                    collisionPadding={12}
-                    className="w-[380px] p-0 overflow-hidden"
+                    collisionPadding={{ bottom: 32, top: 8 }}
+                    className="w-[380px] p-0"
                   >
-                    <FilePickerPanel
-                      envId={fileWorkspaceId}
-                      onSelect={(file) => {
-                        handleFilePickerSelect(file);
-                        setShowFilePopover(false);
-                      }}
-                      onClose={() => setShowFilePopover(false)}
-                    />
+                    <div className="rounded-[inherit] overflow-hidden">
+                      <FilePickerPanel
+                        envId={fileWorkspaceId}
+                        onSelect={(file) => {
+                          handleFilePickerSelect(file);
+                          setShowFilePopover(false);
+                        }}
+                        onClose={() => setShowFilePopover(false)}
+                      />
+                    </div>
                   </PopoverContent>
                 </Popover>
               )}
