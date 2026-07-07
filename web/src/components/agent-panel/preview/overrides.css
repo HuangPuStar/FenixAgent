@@ -2,6 +2,9 @@
 .ofv-host {
   flex-direction: column-reverse;
 }
+.ofv-root {
+  border: 0;
+}
 
 /* 将顶部 border-bottom 改为底部 border-top */
 .ofv-toolbar {

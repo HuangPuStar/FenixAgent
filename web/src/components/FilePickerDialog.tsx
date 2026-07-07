@@ -1,9 +1,10 @@
 import { useRequest } from "ahooks";
-import { ArrowLeft, ChevronRight, File, Folder, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronRight, Folder, Loader2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fileApi } from "@/src/api/files";
 import { ApiError, unwrap } from "@/src/api/request";
+import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
@@ -208,7 +209,9 @@ export function FilePickerDialog({ open, envId, onClose, onSelect }: FilePickerD
                 {entry.type === "dir" ? (
                   <Folder className="h-4 w-4 text-brand flex-shrink-0" />
                 ) : (
-                  <File className="h-4 w-4 text-text-muted flex-shrink-0" />
+                  <span className="h-4 w-4 flex-shrink-0 inline-flex items-center justify-center">
+                    <FileTypeIcon filename={entry.name} />
+                  </span>
                 )}
                 <span className="flex-1 text-sm text-text-primary truncate font-display">{entry.name}</span>
                 {entry.type === "file" && <span className="text-xs text-text-muted">{formatFileSize(entry.size)}</span>}

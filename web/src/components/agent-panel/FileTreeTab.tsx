@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { Download, File, Folder, FolderInput, FolderOpen, FolderTree, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Download, Folder, FolderInput, FolderOpen, FolderTree, RefreshCw, Trash2, Upload } from "lucide-react";
 import { forwardRef, type ReactNode, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
 import { fsApi } from "@/src/api/fs";
 import { ApiError, unwrap } from "@/src/api/request";
+import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { NS } from "../../i18n";
 import { buildPreviewUrl, encodePathSegment } from "./preview/utils";
 
@@ -518,16 +519,30 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     [handleDownload, t],
   );
 
-  // 自定义 label：目录用 FolderOpen 图标，文件用 File 图标
+  // 自定义 label：目录用 Folder/FolderOpen 图标，文件用 react-file-icon 按扩展名渲染
   const renderLabel = useCallback((node: TreeNodeData, state: NodeState) => {
     const parsed = findNodeByPath(treeDataRef.current, node.id);
     const isDir = parsed?.isDir ?? false;
 
-    const IconComp = isDir ? (state.expanded ? FolderOpen : Folder) : File;
+    // 目录保持 lucide 图标
+    if (isDir) {
+      const IconComp = state.expanded ? FolderOpen : Folder;
+      return (
+        <span className="flex items-center gap-1.5">
+          <IconComp className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+          <span className="truncate" title={node.label}>
+            {node.label}
+          </span>
+        </span>
+      );
+    }
 
+    // 文件使用 react-file-icon 按扩展名显示不同图标
     return (
       <span className="flex items-center gap-1.5">
-        <IconComp className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+        <span className="h-4 w-4 flex-shrink-0 inline-flex items-center justify-center">
+          <FileTypeIcon filename={node.label ?? ""} />
+        </span>
         <span className="truncate" title={node.label}>
           {node.label}
         </span>

@@ -106,6 +106,7 @@
     "radix-ui": "^1.4.3",
     "react-day-picker": "^9",
     "react-error-boundary": "^6.1.2",
+    "react-file-icon": "^1.6.0",
     "react-hook-form": "^7.76.0",
     "react-i18next": "^17.0.8",
     "react-markdown": "^10.1.0",

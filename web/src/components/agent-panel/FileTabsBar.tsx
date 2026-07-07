@@ -1,8 +1,9 @@
-import { ChevronDown, FilePen, FilePlus, X } from "lucide-react";
+import { ChevronDown, FilePen, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 import { cn } from "../../lib/utils";
@@ -88,11 +89,17 @@ export function FileTabsBar({
                     title={path}
                     className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary rounded-md"
                   >
-                    {type === "write" ? (
-                      <FilePlus className="h-3.5 w-3.5 shrink-0 text-green-500" />
-                    ) : (
-                      <FilePen className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-                    )}
+                    {/* 文件类型图标 + 操作类型小圆点 */}
+                    <span className="relative inline-flex flex-shrink-0">
+                      <span className="h-3.5 w-3.5 inline-flex items-center justify-center">
+                        <FileTypeIcon filename={fileName} />
+                      </span>
+                      <span
+                        className={`absolute -right-0.5 -bottom-0.5 w-1.5 h-1.5 rounded-full ${
+                          type === "write" ? "bg-green-500" : "bg-orange-400"
+                        }`}
+                      />
+                    </span>
                     <span className="truncate">{fileName}</span>
                   </button>
                 );
@@ -132,6 +139,9 @@ export function FileTabsBar({
               )}
               title={path}
             >
+              <span className="h-3 w-3 flex-shrink-0 inline-flex items-center justify-center">
+                <FileTypeIcon filename={fileName} />
+              </span>
               <span className="truncate max-w-[140px]">{fileName}</span>
               <button
                 type="button"
@@ -183,7 +193,12 @@ export function FileTabsBar({
                           : "text-text-secondary hover:bg-surface-2 hover:text-text-primary",
                       )}
                     >
-                      <span className="truncate">{fileName}</span>
+                      <span className="flex items-center gap-1.5 truncate">
+                        <span className="h-3.5 w-3.5 flex-shrink-0 inline-flex items-center justify-center">
+                          <FileTypeIcon filename={fileName} />
+                        </span>
+                        <span className="truncate">{fileName}</span>
+                      </span>
                       {isActive && <span className="h-1.5 w-1.5 rounded-full bg-brand flex-shrink-0" aria-hidden />}
                     </button>
                   );

@@ -75,6 +75,7 @@
         "radix-ui": "^1.4.3",
         "react-day-picker": "^9",
         "react-error-boundary": "^6.1.2",
+        "react-file-icon": "^1.6.0",
         "react-hook-form": "^7.76.0",
         "react-i18next": "^17.0.8",
         "react-markdown": "^10.1.0",
@@ -2271,6 +2272,8 @@
     "react-error-boundary": ["react-error-boundary@6.1.2", "https://registry.npmmirror.com/react-error-boundary/-/react-error-boundary-6.1.2.tgz", { "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }, "sha512-3DpCr5HVdZ0caUjYE/kIHBEJN0mNP3ZCgf16c48uJ5TbWjorKVp+YG8W3XqlJ7vJAVNw6wNIImyPXmFydwmyng=="],
 
     "react-fast-compare": ["react-fast-compare@3.2.2", "https://registry.npmmirror.com/react-fast-compare/-/react-fast-compare-3.2.2.tgz", {}, "sha512-nsO+KSNgo1SbJqJEYRE9ERzo7YtYbou/OqjSQKxV7jcKox7+usiUVZOAC+XnDOABXggQTno0Y1CpVnuWEc1boQ=="],
+
+    "react-file-icon": ["react-file-icon@1.6.0", "https://registry.npmmirror.com/react-file-icon/-/react-file-icon-1.6.0.tgz", { "dependencies": { "colord": "^2.9.3", "prop-types": "^15.7.2" }, "peerDependencies": { "react": "^19.0.0 || ^18.0.0 || ^17.0.0 || ^16.2.0", "react-dom": "^19.0.0 || ^18.0.0 || ^17.0.0 || ^16.2.0" } }, "sha512-Ba4Qa2ya/kvhcCd4LJja77sV7JD7u1ZXcI1DUz+TII3nGmglG6QY+NZeHizThokgct3qI0glwb9eV8NqRGs5lw=="],
 
     "react-hook-form": ["react-hook-form@7.77.0", "https://registry.npmmirror.com/react-hook-form/-/react-hook-form-7.77.0.tgz", { "peerDependencies": { "react": "^16.8.0 || ^17 || ^18 || ^19" } }, "sha512-Sslh9YDYc0GDlWT/lxasnIduNo4v3yyvqRGvmGKUre5AFjDs/HV9/OafHGD8d+sB2yoL4UIL9L8X9i0WlZZebg=="],
 
