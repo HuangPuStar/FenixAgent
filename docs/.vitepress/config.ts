@@ -1,6 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
+  base: "./",
   title: "FenixAgent",
   description: "Fenix Agent 控制面板 — AI Agent 任务控制中心",
   lang: "zh-CN",
