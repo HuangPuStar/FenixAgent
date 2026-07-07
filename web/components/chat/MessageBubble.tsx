@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
 import { isVisibleContentBlock } from "../../src/lib/context-queue";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../../src/lib/types";
-import { cn, esc } from "../../src/lib/utils";
+import { cn } from "../../src/lib/utils";
 import { MessageResponse } from "../ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "../ai-elements/reasoning";
 import { Button } from "../ui/button";
@@ -61,7 +61,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
               )}
               style={!expanded && overflowing ? { maxHeight: `${COLLAPSED_MAX_HEIGHT}px` } : undefined}
             >
-              {esc(entry.content)}
+              {entry.content}
             </div>
             {/* 折叠渐变遮罩 + 展开按钮 */}
             {!expanded && overflowing && (

@@ -41,7 +41,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
   // 静默轮询：meta agent 等外部修改后自动刷新列表，不触发 loading 骨架屏
   const pollList = useCallback(async () => {
     try {
-      const data = await unwrap(workflowDefApi.list());
+      const _data = await unwrap(workflowDefApi.list());
       // 通过 mutate 静默更新数据
       refresh();
     } catch {

@@ -44,6 +44,8 @@ export const ACP_METHOD = {
   SESSION_UPDATE: "session/update",
   SESSION_MODEL_CHANGED: "session/modelChanged",
   SESSION_MODE_CHANGED: "session/modeChanged",
+  SESSION_DELETE: "session/delete",
+  SESSION_RENAME: "session/rename",
   REQUEST_PERMISSION: "requestPermission",
 } as const;
 

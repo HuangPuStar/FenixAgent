@@ -374,6 +374,7 @@ app.post(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return (await handleCreate(authCtx, (body ?? {}) as CreateSkillBody, (status, data) => error(status, data))) as any;
   },
   {
@@ -399,6 +400,7 @@ app.put(
     const authCtx = store.authContext!;
     const name = params.name as string;
     const data = (body as UpdateSkillBody)?.data;
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return (await handleUpdate(authCtx, name, data, (status, result) => error(status, result))) as any;
   },
   {
@@ -472,6 +474,7 @@ app.post(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型限制
   async ({ store, request, error }: any) => {
     const authCtx = store.authContext!;
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return (await handleUpload(authCtx, request, (status, data) => error(status, data))) as any;
   },
   {

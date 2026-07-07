@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { unwrap } from "@/src/api/request";
-import { type WorkflowDefItem, type WorkflowVersionItem, workflowDefApi } from "../../api/workflow-defs";
+import { workflowDefApi } from "../../api/workflow-defs";
 import { AgentPageHeader } from "../agent-panel/shared/AgentPageHeader";
 
 interface WorkflowVersionsProps {

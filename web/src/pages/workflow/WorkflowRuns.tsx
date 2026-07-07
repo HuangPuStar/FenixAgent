@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { unwrap } from "../../api/request";
-import { type DAGStatus, type RunSummary, workflowEngineApi } from "../../api/workflow-engine";
+import { type DAGStatus, workflowEngineApi } from "../../api/workflow-engine";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
   PENDING: { color: "#94a3b8", bg: "#f1f5f9" },

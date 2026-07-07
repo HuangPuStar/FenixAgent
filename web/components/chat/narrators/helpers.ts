@@ -182,3 +182,71 @@ export function isOpencodeFileOutput(rawOutput: unknown): boolean {
   if (typeof o.output !== "string") return false;
   return o.output.includes("<path>") && o.output.includes("<type>file</type>");
 }
+
+// =============================================================================
+// Display 元数据提取 — 从 rawOutput.metadata.display 读取引擎的类型标记
+// =============================================================================
+
+/**
+ * opencode 等引擎在 rawOutput.metadata.display 中提供展示类型元数据。
+ * 此类型定义 display 的结构。
+ */
+export interface ToolCallDisplayMeta {
+  type: string; // "file" | "directory" | "diff" 等
+  path?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  totalLines?: number;
+  text?: string;
+  truncated?: boolean;
+}
+
+/**
+ * 从 rawOutput 中提取 opencode 引擎的 display 元数据。
+ * 位置：rawOutput.metadata.display
+ * 返回 undefined 表示无 display 元数据（非 opencode 工具或未提供）。
+ *
+ * 同时支持从 _meta.display 提取（部分 relay 场景下 display 在 _meta 中）。
+ */
+export function extractDisplayMeta(
+  rawOutput: unknown,
+  meta?: Record<string, unknown> | null,
+): ToolCallDisplayMeta | undefined {
+  // 优先从 rawOutput.metadata.display 提取
+  if (rawOutput && typeof rawOutput === "object") {
+    const o = rawOutput as Record<string, unknown>;
+    const metadata = o.metadata as Record<string, unknown> | undefined;
+    if (metadata && typeof metadata.display === "object" && metadata.display !== null) {
+      const d = metadata.display as Record<string, unknown>;
+      if (typeof d.type === "string") {
+        return {
+          type: d.type,
+          path: typeof d.path === "string" ? d.path : undefined,
+          lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
+          lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
+          totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
+          text: typeof d.text === "string" ? d.text : undefined,
+          truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
+        };
+      }
+    }
+  }
+
+  // 兜底：从 _meta.display 提取
+  if (meta && typeof meta.display === "object" && meta.display !== null) {
+    const d = meta.display as Record<string, unknown>;
+    if (typeof d.type === "string") {
+      return {
+        type: d.type,
+        path: typeof d.path === "string" ? d.path : undefined,
+        lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
+        lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
+        totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
+        text: typeof d.text === "string" ? d.text : undefined,
+        truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
+      };
+    }
+  }
+
+  return;
+}

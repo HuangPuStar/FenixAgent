@@ -31,6 +31,7 @@ import { invalidateAvailableCache } from "./models";
 /** 包裹 Elysia handler，将内部抛出的 AppError 转换为统一错误响应 */
 // biome-ignore lint/suspicious/noExplicitAny: wrapper needs to match Elysia InlineHandler type
 function safeAppHandler(handler: (ctx: any) => Promise<any>): (ctx: any) => Promise<any> {
+  // biome-ignore lint/suspicious/noExplicitAny: wrapper needs to match Elysia InlineHandler type
   return async (ctx: any) => {
     try {
       return await handler(ctx);
@@ -527,7 +528,7 @@ async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId
 
 // ── REST 包装函数 ──
 
-async function handleCreate(
+async function _handleCreate(
   ctx: AuthContext,
   body: Record<string, unknown>,
   errorFn: (status: number, data: unknown) => Response,
@@ -569,7 +570,7 @@ const providerNameQuerySchema = z.object({
 });
 
 function extractProviderName(query: unknown): string | undefined {
-  if (typeof query !== "object" || query === null) return undefined;
+  if (typeof query !== "object" || query === null) return;
   const name = (query as Record<string, unknown>).name;
   return typeof name === "string" && name.length > 0 ? name : undefined;
 }
@@ -599,6 +600,7 @@ app.get(
       return result;
     }
 
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return (await handleList(authCtx)) as any;
   },
   {

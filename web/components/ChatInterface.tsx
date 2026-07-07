@@ -28,6 +28,7 @@ import type {
 import { ContextPanel } from "./ContextPanel";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
+import { extractDisplayMeta } from "./chat/narrators/helpers";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import type { TodoItem } from "./chat/TodoPanel";
 import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
@@ -230,13 +231,16 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
 
   // Handle tool call (UPSERT)
   if (update.sessionUpdate === "tool_call") {
+    const display = extractDisplayMeta(update.rawOutput, update._meta);
     const toolCallData: ToolCallData = {
       id: update.toolCallId,
       title: update.title,
       status: mapToolStatus(update.status),
       content: update.content,
-      rawInput: update.rawInput,
-      rawOutput: update.rawOutput,
+      // 条件展开避免 undefined 覆盖已有值（rawInput 可能是空对象 {}，用 != null 而非 &&）
+      ...(update.rawInput != null ? { rawInput: update.rawInput } : {}),
+      ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
+      ...(display && { display }),
     };
 
     const existingIndex = findToolCallIndex(entries, update.toolCallId);
@@ -258,6 +262,9 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
     const existingIndex = findToolCallIndex(entries, update.toolCallId);
 
     if (existingIndex < 0) {
+      // tool_call_update 先于 tool_call 到达时创建占位 entry，
+      // 尽可能保留 update 中已有的 rawInput/rawOutput/display，避免数据被后续 UPSERT 覆盖丢弃
+      const fallbackDisplay = extractDisplayMeta(update.rawOutput, update._meta);
       const failedEntry: ToolCallEntry = {
         type: "tool_call",
         toolCall: {
@@ -265,6 +272,9 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
           title: update.title || "Tool call not found",
           status: "error",
           content: [{ type: "content", content: { type: "text", text: "Tool call not found" } }],
+          ...(update.rawInput != null ? { rawInput: update.rawInput } : {}),
+          ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
+          ...(fallbackDisplay && { display: fallbackDisplay }),
         },
       };
       return [...entries, failedEntry];
@@ -280,6 +290,11 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
       const mergedContent = update.content
         ? [...(entry.toolCall.content || []), ...update.content]
         : entry.toolCall.content;
+      // extractDisplayMeta 可能返回 undefined（metadata 结构异常），
+      // 此时应保留旧 display 值，避免 display 丢失
+      const display = update.rawOutput
+        ? (extractDisplayMeta(update.rawOutput, update._meta) ?? entry.toolCall.display)
+        : entry.toolCall.display;
 
       return {
         type: "tool_call",
@@ -290,6 +305,7 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
           content: mergedContent,
           ...(update.rawInput && { rawInput: update.rawInput }),
           ...(update.rawOutput && { rawOutput: update.rawOutput }),
+          ...(display && { display }),
         },
       };
     });
@@ -526,6 +542,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           update.toolCallId === parentToolUseId
         ) {
           const newStatus = update.status ? mapToolStatus(update.status) : parentEntry.toolCall.status;
+          // 提取 display 元数据，避免子 agent 父 entry 的 display/rawOutput 丢失
+          const parentDisplay = update.rawOutput ? extractDisplayMeta(update.rawOutput, update._meta) : undefined;
           return prev.map((entry, i) => {
             if (i !== parentIndex || entry.type !== "tool_call") return entry;
             return {
@@ -534,6 +552,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 ...entry.toolCall,
                 status: newStatus,
                 subEntries: newSubEntries,
+                ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
+                ...(parentDisplay && { display: parentDisplay }),
               },
             };
           });

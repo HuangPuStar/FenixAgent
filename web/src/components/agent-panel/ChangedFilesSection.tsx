@@ -1,5 +1,6 @@
-import { FilePen, FilePlus } from "lucide-react";
+import { FilePen } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 
@@ -10,7 +11,8 @@ interface ChangedFilesSectionProps {
 
 /**
  * 在 ArtifactsPanel 文件树上方展示本次会话中被 Agent 修改的文件列表。
- * edit（修改）显示橙色图标，write（新建/覆盖）显示绿色图标。
+ * 文件图标按扩展名使用 react-file-icon 渲染，操作类型通过小圆点指示：
+ * · edit（修改）橙色，· write（新建/覆盖）绿色。
  * 只显示文件名，hover title 展示完整路径。
  * 无变更时不渲染（返回 null）。
  */
@@ -45,12 +47,17 @@ export function ChangedFilesSection({ files }: ChangedFilesSectionProps) {
               title={path}
               className="flex items-center gap-1.5 px-3 py-1 text-base text-text-muted hover:bg-surface-2 cursor-default"
             >
-              {/* edit 橙色（修改已有文件），write 绿色（新建/覆盖） */}
-              {type === "write" ? (
-                <FilePlus className="h-4 w-4 shrink-0 text-green-500" />
-              ) : (
-                <FilePen className="h-4 w-4 shrink-0 text-orange-400" />
-              )}
+              {/* 文件类型图标 + 操作类型小圆点 */}
+              <span className="relative inline-flex flex-shrink-0">
+                <span className="h-4 w-4 inline-flex items-center justify-center">
+                  <FileTypeIcon filename={fileName} />
+                </span>
+                <span
+                  className={`absolute -right-0.5 -bottom-0.5 w-2 h-2 rounded-full border border-surface-1 ${
+                    type === "write" ? "bg-green-500" : "bg-orange-400"
+                  }`}
+                />
+              </span>
               <span className="truncate">{fileName}</span>
             </li>
           );

@@ -140,6 +140,86 @@ app.get(
   },
 );
 
+/** PATCH /web/sessions/:id — Rename session (update title) */
+app.patch(
+  "/sessions/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, body, error, request: _request }: any) => {
+    const authCtx = store.authContext!;
+    const row = await sessionRepo.getById(params.id);
+    if (!row) {
+      return error(404, { success: false, error: { code: "not_found", message: `Session '${params.id}' not found` } });
+    }
+    // 验证 session 的 environment 属于当前团队
+    if (row.environmentId) {
+      const env = await environmentRepo.getById(row.environmentId);
+      if (!env || env.organizationId !== authCtx.organizationId) {
+        return error(404, {
+          success: false,
+          error: { code: "not_found", message: `Session '${params.id}' not found` },
+        });
+      }
+    }
+    const title = body?.title as string | undefined;
+    if (!title || typeof title !== "string" || !title.trim()) {
+      return error(400, { success: false, error: { code: "validation_error", message: "title is required" } });
+    }
+    await sessionRepo.update(params.id, { title: title.trim() });
+    return { success: true as const, data: { id: params.id, title: title.trim() } };
+  },
+  {
+    sessionAuth: true,
+    response: {
+      200: SessionDetailResponseSchema,
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
+    detail: {
+      tags: ["Sessions"],
+      summary: "重命名会话",
+      description: "更新会话的标题。ACP 协议暂不支持 session rename，此操作仅在 RCS 数据库层完成。",
+    },
+  },
+);
+
+/** DELETE /web/sessions/:id — Delete session */
+app.delete(
+  "/sessions/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error, request: _request }: any) => {
+    const authCtx = store.authContext!;
+    const row = await sessionRepo.getById(params.id);
+    if (!row) {
+      return error(404, { success: false, error: { code: "not_found", message: `Session '${params.id}' not found` } });
+    }
+    // 验证 session 的 environment 属于当前团队
+    if (row.environmentId) {
+      const env = await environmentRepo.getById(row.environmentId);
+      if (!env || env.organizationId !== authCtx.organizationId) {
+        return error(404, {
+          success: false,
+          error: { code: "not_found", message: `Session '${params.id}' not found` },
+        });
+      }
+    }
+    await sessionRepo.delete(params.id);
+    return { success: true as const, data: { deleted: true, id: params.id } };
+  },
+  {
+    sessionAuth: true,
+    response: {
+      200: WebErrSchema,
+      404: WebErrSchema,
+    },
+    detail: {
+      tags: ["Sessions"],
+      summary: "删除会话",
+      description:
+        "删除会话。ACP 协议支持 session/delete 方法，此端点也会尝试通知 agent 端做清理，但无论 agent 是否响应，RCS 数据库中的记录都会被删除。",
+    },
+  },
+);
+
 /** GET /web/sessions/:id/events — SSE 事件流，供前端 EventSource 订阅实时会话事件 */
 app.get(
   "/sessions/:id/events",
@@ -172,7 +252,7 @@ app.get(
     const fromSeqQuery = (request as Request).url ? new URL(request.url).searchParams.get("fromSeqNum") : null;
     const fromSeqNum = fromSeqQuery ? Number(fromSeqQuery) : lastEventId ? Number(lastEventId) : 0;
 
-    return createSSEStream(request, sessionId, isNaN(fromSeqNum) ? 0 : fromSeqNum);
+    return createSSEStream(request, sessionId, Number.isNaN(fromSeqNum) ? 0 : fromSeqNum);
   },
   {
     sessionAuth: true,

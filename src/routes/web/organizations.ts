@@ -111,6 +111,7 @@ async function handleListOrganizations(store: { user?: { id: string } }, request
     ...o,
     role: roleMap.get(o.id as string) ?? "member",
   }));
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   return { success: true as const, data: normalizeDateValue(enriched) } as any;
 }
 
@@ -119,7 +120,9 @@ async function handleListOrganizations(store: { user?: { id: string } }, request
 // GET /web/organizations → 获取组织列表
 app.get(
   "/organizations",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ store, request }: any) => {
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return handleListOrganizations(store, request) as any;
   },
   {
@@ -140,6 +143,7 @@ app.get(
 // GET /web/organizations/:id → 获取组织详情（当前组织时含成员列表）
 app.get(
   "/organizations/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ store, params, request }: any) => {
     const orgId = params.id;
     const authCtx = store.authContext;
@@ -153,9 +157,11 @@ app.get(
       return {
         success: true as const,
         data: normalizeDateValue({ ...(org as Record<string, unknown>), members: memberList }),
+        // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
       } as any;
     }
     const org = await api.getFullOrganization({ query: { organizationId: orgId }, headers: request.headers });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: normalizeDateValue(org) } as any;
   },
   {
@@ -178,6 +184,7 @@ app.get(
 // PUT /web/organizations/:id → 更新组织
 app.put(
   "/organizations/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ params, body, request }: any) => {
     const b = body ?? {};
     const updateData: Record<string, unknown> = b.data ?? {};
@@ -189,6 +196,7 @@ app.put(
       body: { data: updateData, organizationId: params.id },
       headers: request.headers,
     });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: normalizeDateValue(org) } as any;
   },
   {
@@ -212,8 +220,10 @@ app.put(
 // DELETE /web/organizations/:id → 删除组织
 app.delete(
   "/organizations/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ params, request }: any) => {
     await api.deleteOrganization({ body: { organizationId: params.id }, headers: request.headers });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: { deleted: true as const } } as any;
   },
   {
@@ -236,8 +246,10 @@ app.delete(
 // POST /web/organizations/:id/set-active → 设置活跃组织
 app.post(
   "/organizations/:id/set-active",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ params, request }: any) => {
     await api.setActiveOrganization({ body: { organizationId: params.id }, headers: request.headers });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: null } as any;
   },
   {
@@ -259,12 +271,14 @@ app.post(
 // GET /web/organizations/:id/members → 获取成员列表
 app.get(
   "/organizations/:id/members",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ params, request }: any) => {
     const members = await api.listMembers({
       query: { organizationId: params.id },
       headers: request.headers,
     });
     const memberData = extractMembers(members);
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: memberData } as any;
   },
   {
@@ -286,6 +300,7 @@ app.get(
 // POST /web/organizations/:id/members → 添加成员
 app.post(
   "/organizations/:id/members",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ params, body, error, request }: any) => {
     const b = body ?? {};
     if (!b.role) {
@@ -311,6 +326,7 @@ app.post(
       body: { userId: memberUserId, role: b.role, organizationId: params.id },
       headers: request.headers,
     });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: normalizeDateValue(result) } as any;
   },
   {
@@ -334,11 +350,13 @@ app.post(
 // DELETE /web/organizations/:id/members/:memberId → 移除成员
 app.delete(
   "/organizations/:id/members/:memberId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ params, request }: any) => {
     await api.removeMember({
       body: { memberIdOrEmail: params.memberId, organizationId: params.id },
       headers: request.headers,
     });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: null } as any;
   },
   {
@@ -361,6 +379,7 @@ app.delete(
 // PUT /web/organizations/:id/members/:memberId → 更新成员角色
 app.put(
   "/organizations/:id/members/:memberId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ params, body, error, request }: any) => {
     const b = body ?? {};
     if (!b.role) {
@@ -370,6 +389,7 @@ app.put(
       body: { memberId: params.memberId, organizationId: params.id, role: b.role },
       headers: request.headers,
     });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: null } as any;
   },
   {

@@ -69,7 +69,20 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/web": "http://localhost:3000",
+      "/web": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+        // Vite 内置 http-proxy 默认会 normalize 请求路径，可能对中文百分号编码做
+        // 非预期处理。这里用 configure 钩子覆写 proxyReq.path 保持原始 URL 不变，
+        // 确保后端收到的请求和浏览器发出的完全一致。
+        configure(proxy) {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            if (req.url) {
+              proxyReq.path = req.url;
+            }
+          });
+        },
+      },
       "/api": "http://localhost:3000",
       "/acp": { target: "http://localhost:3000", ws: true },
     },

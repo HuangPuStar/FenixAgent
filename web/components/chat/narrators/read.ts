@@ -19,12 +19,18 @@ import type { ToolNarrator } from "./types";
  * 行号区间 / 条目数作为 detail 显示在 subtitle 行（与耗时徽章并列），
  * title 只保留 verb + 文件名，避免上下文重复。
  *
- * match 兜底：opencode 的 read 工具 title 是完整路径（不含 "read" 关键字），
- * 此时通过 rawInput.filePath/path + rawOutput 的 `<path>` / `<type>` 标签特征识别，
- * 避免落到 fallback 显示成"使用 env_xxx"。
+ * match 优先级：
+ * 1. display.type === "file" 或 "directory"（引擎显式标记，最可靠）
+ * 2. title 含 "read"（标准匹配）
+ * 3. rawInput 有文件路径字段 + rawOutput 含 opencode XML 标签（兜底）
  */
 export const readNarrator: ToolNarrator = {
   match: (name, tool) => {
+    // 优先：display.type 引擎显式标记
+    if (tool?.display && (tool.display.type === "file" || tool.display.type === "directory")) {
+      return true;
+    }
+
     // 标准匹配：title 含 "read"
     if (name.includes("read")) return true;
 
@@ -44,16 +50,24 @@ export const readNarrator: ToolNarrator = {
   verb: "读取",
   icon: FileText,
   getDisplay(ctx) {
-    const file = extractFileName(ctx.tool.rawInput);
+    // 优先使用 display 元数据获取文件名和路径信息
+    const display = ctx.tool.display;
+    const file = display?.path ? display.path.split("/").pop() || display.path : extractFileName(ctx.tool.rawInput);
 
     // 目录场景：detail 显示条目数，覆盖文件场景的行号区间
-    if (isOpencodeDirectoryOutput(ctx.tool.rawOutput)) {
+    if (display?.type === "directory" || isOpencodeDirectoryOutput(ctx.tool.rawOutput)) {
       const count = extractDirectoryEntryCount(ctx.tool.rawOutput);
       const detail = count ? ctx.t("read.entries", { count }) : undefined;
       return { object: file, detail };
     }
 
     // 文件场景：行号区间作为 subtitle 的 detail，与耗时徽章并列显示
+    // 优先使用 display.lineStart / display.lineEnd，兜底走 rawInput 提取
+    if (display?.type === "file" && display.lineStart && display.lineEnd) {
+      const range = `${display.lineStart}-${display.lineEnd}`;
+      const detail = ctx.t("common.lineRange", { range });
+      return { object: file, detail };
+    }
     const range = extractLineRange(ctx.tool.rawInput);
     const detail = range ? ctx.t("common.lineRange", { range }) : undefined;
     return { object: file, detail };

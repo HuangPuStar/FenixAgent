@@ -80,6 +80,7 @@ app.get(
       apiKeys?: unknown[];
     } | null;
     const keys = Array.isArray(result?.apiKeys) ? result.apiKeys : Array.isArray(result) ? result : [];
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: normalizeDateValue(keys) } as any;
   },
   {
@@ -119,6 +120,7 @@ app.post(
       },
       headers: request.headers,
     });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: normalizeDateValue(result) } as any;
   },
   {
@@ -141,8 +143,9 @@ app.post(
 app.delete(
   "/api-keys/:id",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, error, request }: any) => {
+  async ({ params, error: _error, request }: any) => {
     await api.deleteApiKey({ body: { keyId: params.id }, headers: request.headers });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: { deleted: true as const } } as any;
   },
   {
@@ -164,9 +167,10 @@ app.delete(
 app.put(
   "/api-keys/:id",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, body, error, request }: any) => {
+  async ({ params, body, error: _error, request }: any) => {
     const b = body ?? {};
     await api.updateApiKey({ body: { id: params.id, name: b.name }, headers: request.headers });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: null } as any;
   },
   {

@@ -97,7 +97,7 @@ graph TB
 - **画布交互** — 拖拽添加节点、连线添加依赖（自动补全 inputs）、删除、ID 变更
 - **持久化** — YAML 双向序列化/反序列化、3s 防抖自动保存草稿、导入/导出 YAML 文件
 - **运行控制** — dryRun 校验、run 执行、2s 轮询快照、取消/审批/从节点重跑
-- **数据流感知** — 自动扫描 `${{ nodes.X.output.Y }}` 表达式，在画布上生成绿色数据流边
+- **数据流感知** — 自动扫描 <code v-pre>${{ nodes.X.output.Y }}</code> 表达式，在画布上生成绿色数据流边
 
 #### 1.1.1 Chat 与 Workflow 交互
 
@@ -220,7 +220,7 @@ graph TB
     subgraph PARSE["① 解析"]
         direction TB
         YAML["YAML 解析"] --> VALID["DAG 校验<br/>环检测 + 依赖补全"]
-        VALID --> EXPR["表达式求值<br/>${{ nodes.X.output }}"]
+        VALID --> EXPR["表达式求值<br/>$\{\{ nodes.X.output \}\}"]
         EXPR --> INPUT["输入解析 + 环境变量注入"]
     end
 
@@ -312,7 +312,7 @@ stateDiagram-v2
 
 - **并行扇出**：同层级无依赖的节点同时执行
 - **错误传播**：节点失败时 BFS（广度优先搜索）遍历下游 → 标记所有下游节点为 `SKIPPED` → 其他分支继续执行
-- **条件执行**：`condition: "${{ params.go }}"` 通过表达式求值判断是否跳过
+- **条件执行**：<code v-pre>condition: "${{ params.go }}"</code> 通过表达式求值判断是否跳过
 - **输出注入**：节点声明 `outputs.pattern` 在执行成功后求值，合并到 `output.json`
 
 ### 2.2 节点生命周期

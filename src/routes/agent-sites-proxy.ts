@@ -74,7 +74,7 @@ const app = new Elysia({ name: "agent-sites-proxy" }).use(authGuardPlugin);
 
 // 业务前端：/{appId} 和 /{appId}/* 统一用一个 ALL catch-all 处理
 // 使用 * 通配符避免 memoirist 对 :param* 参数名的冲突
-app.all("/*", async ({ request, store, set }) => {
+app.all("/*", async ({ request, store: _store, set }) => {
   const url = new URL(request.url);
   const parsed = parseAppPath(url.pathname);
   if (!parsed) return; // 不是 agent-sites app，留给其他路由

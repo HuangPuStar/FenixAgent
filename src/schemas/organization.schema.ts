@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { WebErrSchema, WebOkSchema } from "./common.schema";
+import { WebOkSchema } from "./common.schema";
 
 /** better-auth 返回的时间字段，当前可能是时间戳或 ISO 字符串。 */
 const FlexibleDateTimeSchema = z

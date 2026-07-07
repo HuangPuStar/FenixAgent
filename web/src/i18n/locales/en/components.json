@@ -321,7 +321,9 @@
     "sessions": "Sessions",
     "today": "Today",
     "yesterday": "Yesterday",
-    "earlier": "Earlier"
+    "earlier": "Earlier",
+    "rename": "Rename",
+    "delete": "Delete"
   },
   "chatInterface": {
     "processingError": "The request could not be processed properly. Please check the Agent or model status and try again.",
@@ -452,6 +454,7 @@
   "toolCallRow": {
     "viewParams": "View Parameters",
     "previewFile": "Preview {{path}}",
+    "openFile": "Open File",
     "toolName": "Tool"
   },
   "permissionPanel": {

@@ -267,7 +267,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   );
 
   // ---- 停止实例（manual useRequest）----
-  const { run: runStop, loading: stopping } = useRequest(
+  const { run: runStop, loading: _stopping } = useRequest(
     async (instanceId: string) => {
       setPendingInstanceId({ id: instanceId, type: "stop" });
 

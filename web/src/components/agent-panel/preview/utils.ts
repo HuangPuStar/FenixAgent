@@ -1,4 +1,4 @@
-export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html";
+export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office";
 
 /** encodeURIComponent 不编码 ()，需额外处理，用于 URL 路径 */
 export function encodePathSegment(seg: string) {
@@ -87,70 +87,28 @@ const CODE_EXTENSIONS = new Set([
   "asm",
 ]);
 
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]);
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "ico",
+  "bmp",
+  "svg",
+  "tiff",
+  "tif",
+  "heic",
+  "heif",
+]);
 
-const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm"]);
+const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm", "xlsb"]);
+
+const OFFICE_EXTENSIONS = new Set(["docx", "doc", "pptx", "ppt", "odt", "odp", "ods", "rtf", "wps", "et", "dps"]);
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
 
 const HTML_EXTENSIONS = new Set(["html", "htm"]);
-
-const EXT_TO_SHIKI_LANG: Record<string, string> = {
-  ts: "typescript",
-  tsx: "tsx",
-  js: "javascript",
-  jsx: "jsx",
-  mjs: "javascript",
-  cjs: "javascript",
-  py: "python",
-  go: "go",
-  rs: "rust",
-  rb: "ruby",
-  java: "java",
-  c: "c",
-  cpp: "cpp",
-  h: "c",
-  hpp: "cpp",
-  cs: "csharp",
-  swift: "swift",
-  kt: "kotlin",
-  r: "r",
-  scala: "scala",
-  lua: "lua",
-  sh: "shell",
-  bash: "shell",
-  zsh: "shell",
-  fish: "shell",
-  ps1: "powershell",
-  json: "json",
-  jsonc: "json",
-  yaml: "yaml",
-  yml: "yaml",
-  toml: "toml",
-  css: "css",
-  scss: "scss",
-  less: "less",
-  html: "html",
-  htm: "html",
-  xml: "xml",
-  vue: "vue",
-  svelte: "svelte",
-  md: "markdown",
-  mdx: "mdx",
-  sql: "sql",
-  graphql: "graphql",
-  gql: "graphql",
-  proto: "protobuf",
-  dart: "dart",
-  zig: "zig",
-  nim: "nim",
-  ex: "elixir",
-  exs: "elixir",
-  hs: "haskell",
-  tf: "hcl",
-  hcl: "hcl",
-  properties: "properties",
-};
 
 function getExtension(filePath: string): string {
   const segments = filePath.split("/");
@@ -165,25 +123,21 @@ export function classifyFile(filePath: string): FileCategory {
   if (ext === "pdf") return "pdf";
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
   if (TABLE_EXTENSIONS.has(ext)) return "table";
+  if (OFFICE_EXTENSIONS.has(ext)) return "office"; // officePlugin 支持，不属于 binary
   if (HTML_EXTENSIONS.has(ext)) return "html";
   if (MARKDOWN_EXTENSIONS.has(ext)) return "markdown";
   if (CODE_EXTENSIONS.has(ext)) return "code";
   return "binary";
 }
 
-export function getShikiLanguage(filePath: string): string | undefined {
-  const ext = getExtension(filePath);
-  return EXT_TO_SHIKI_LANG[ext];
-}
-
 /**
  * 构建文件预览 URL。
- * fsApi.tree() 返回完整的工作区相对路径（如 "user/hello.html"、"scripts/run.sh"），
- * 路由 /:id/fs/* 直接透传，无需额外加 user/ 前缀。
+ * 按路径段分别 encodeURIComponent，避免中文等非 ASCII 字符在浏览器→Vite 代理→后端
+ * 的链路上产生编码歧义。分隔符 / 不编码，保持路径结构。
  */
 export function buildPreviewUrl(envId: string, filePath: string): string {
-  const encoded = filePath.split("/").map(encodePathSegment).join("/");
-  return `/web/environments/${envId}/fs/${encoded}?preview=true`;
+  const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+  return `/web/environments/${envId}/fs/${encodedPath}?preview=true`;
 }
 
 /**

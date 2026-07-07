@@ -14,6 +14,6 @@
     "@fenix/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
-    "@agentclientprotocol/sdk": "^0.21.1"
+    "@agentclientprotocol/sdk": "^1.2.0"
   }
 }

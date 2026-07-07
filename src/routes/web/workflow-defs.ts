@@ -72,15 +72,15 @@ const logger = createLogger("wf-defs");
 
 /** 提取 params.id */
 function getId(params: unknown): string {
-  return (params as Record<string, string> | undefined)?.["id"] ?? "";
+  return (params as Record<string, string> | undefined)?.id ?? "";
 }
 /** 提取 params.version */
 function getVersion(params: unknown): number {
-  return Number((params as Record<string, string> | undefined)?.["version"] ?? "");
+  return Number((params as Record<string, string> | undefined)?.version ?? "");
 }
 /** 提取 params.triggerId */
 function getTrigger(params: unknown): string {
-  return (params as Record<string, string> | undefined)?.["triggerId"] ?? "";
+  return (params as Record<string, string> | undefined)?.triggerId ?? "";
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: error handling helper

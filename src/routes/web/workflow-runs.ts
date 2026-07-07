@@ -46,7 +46,7 @@ import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 const logger = createLogger("wf-runs");
 
 /** 构造 workflow engine 的公共依赖（YAML 解析）。 */
-function resolveDeps(organizationId: string) {
+function resolveDeps(_organizationId: string) {
   return { getWorkflowDef, getVersionYaml };
 }
 

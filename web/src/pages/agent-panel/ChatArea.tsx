@@ -125,10 +125,17 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
     return () => window.removeEventListener("chat:stats", handler);
   }, []);
 
+  // 记录用户是否已手动操作面板（展开/折叠/拖拽），
+  // 防止 layout 重新计算时 panelRef 短暂重置导致意外 collapse
+  const userInteractedRef = useRef(false);
+
   // artifacts:select-site → 展开右侧面板
   useEffect(() => {
     const handler = () => {
-      if (artifactsCollapsedRef.current) artifactsPanelRef.current?.expand();
+      if (artifactsCollapsedRef.current) {
+        userInteractedRef.current = true;
+        artifactsPanelRef.current?.expand();
+      }
     };
     window.addEventListener("artifacts:select-site", handler);
     return () => window.removeEventListener("artifacts:select-site", handler);
@@ -137,7 +144,10 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
   // artifacts:preview-file → 展开右侧面板
   useEffect(() => {
     const handler = () => {
-      if (artifactsCollapsedRef.current) artifactsPanelRef.current?.expand();
+      if (artifactsCollapsedRef.current) {
+        userInteractedRef.current = true;
+        artifactsPanelRef.current?.expand();
+      }
     };
     window.addEventListener("artifacts:preview-file", handler);
     return () => window.removeEventListener("artifacts:preview-file", handler);
@@ -151,19 +161,30 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
     if (collapsed !== artifactsCollapsedRef.current) {
       artifactsCollapsedRef.current = collapsed;
       setArtifactsCollapsed(collapsed);
+      // 用户拖拽分隔条后标记为已交互，阻止后续意外 collapse
+      if (!collapsed) userInteractedRef.current = true;
     }
   }, [artifactsPanelRef]);
 
-  // mount 时默认折叠右侧面板
+  // mount 时默认折叠右侧面板，仅首次挂载执行；
+  // ref 重置导致的二次触发会被 userInteractedRef 拦截
   useEffect(() => {
-    artifactsPanelRef.current?.collapse();
-  }, [artifactsPanelRef.current?.collapse]);
+    const panel = artifactsPanelRef.current;
+    if (!panel || userInteractedRef.current) return;
+    // 延迟到下一帧执行，避免与 ResizablePanelGroup 的 layout 计算冲突
+    const frame = requestAnimationFrame(() => {
+      panel.collapse();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [artifactsPanelRef.current?.collapse, artifactsPanelRef.current]);
 
-  // 窄屏自动折叠
+  // 窄屏自动折叠 — 仅在用户未手动展开时生效
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
     const handler = (e: MediaQueryListEvent) => {
-      if (e.matches) artifactsPanelRef.current?.collapse();
+      if (e.matches && !userInteractedRef.current) {
+        artifactsPanelRef.current?.collapse();
+      }
     };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
@@ -172,6 +193,7 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
   const toggleArtifacts = useCallback(() => {
     const panel = artifactsPanelRef.current;
     if (!panel) return;
+    userInteractedRef.current = true;
     panel.isCollapsed() ? panel.expand() : panel.collapse();
   }, [artifactsPanelRef]);
 

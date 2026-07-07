@@ -7,6 +7,7 @@ import type {
   BrowserToolResult,
   ConnectionState,
   ContentBlock,
+  DeleteSessionRequest,
   InteractiveQuestionPayload,
   ListSessionsRequest,
   ListSessionsResponse,
@@ -14,6 +15,7 @@ import type {
   PermissionRequestPayload,
   PromptCapabilities,
   PromptUsage,
+  RenameSessionRequest,
   ResumeSessionRequest,
   SessionModelState,
   SessionModeState,
@@ -431,6 +433,17 @@ export class ACPClient {
       this.sessionLoadedHandler?.(r.sessionId);
       return r.sessionId;
     });
+  }
+
+  deleteSession(request: DeleteSessionRequest): Promise<{ deleted: boolean; sessionId: string }> {
+    const req = createRequest(ACP_METHOD.SESSION_DELETE, request);
+    return this.sendJsonRpcAndWait<{ deleted: boolean; sessionId: string }>(req, 30_000);
+  }
+
+  renameSession(_request: RenameSessionRequest): void {
+    // ACP SDK 不支持 renameSession，此方法通过 REST API 完成。
+    // 前端应直接调用 PATCH /web/session/:id。
+    console.warn("[ACPClient] renameSession is not supported by ACP protocol; use REST API instead");
   }
 
   // ==========================================================================

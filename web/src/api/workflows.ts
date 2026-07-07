@@ -41,7 +41,6 @@ export interface VersionYamlResponse {
 
 // ── API Client ──
 
-import type { ApiResponse } from "./request";
 import { request } from "./request";
 
 const ENDPOINT = "/web/workflow-defs";
