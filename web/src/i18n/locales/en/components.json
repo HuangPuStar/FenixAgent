@@ -393,7 +393,9 @@
     "send": "Send",
     "stop": "Stop",
     "newSession": "New Thread",
-    "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file"
+    "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file",
+    "skillButton": "Skill",
+    "fileButton": "File"
   },
   "chatEmpty": {
     "startConversation": "Start Conversation",

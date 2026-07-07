@@ -393,7 +393,9 @@
     "send": "发送",
     "stop": "停止",
     "newSession": "新会话",
-    "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件"
+    "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件",
+    "skillButton": "技能",
+    "fileButton": "文件"
   },
   "chatEmpty": {
     "startConversation": "开始对话",
