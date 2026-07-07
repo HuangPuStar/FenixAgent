@@ -62,7 +62,26 @@ const CARD_STYLES: Record<ToolCategory, CardStyle> = {
 // 工具类型分类 — 比 category 更细粒度，区分 write 和 edit
 // =============================================================================
 
-function getCardCategory(title: string, rawInput?: Record<string, unknown>): ToolCategory {
+function getCardCategory(title: string, rawInput?: Record<string, unknown>, displayType?: string): ToolCategory {
+  // 优先使用 display.type（引擎提供的精确类型标记）
+  if (displayType) {
+    switch (displayType) {
+      case "file":
+        // 通过 rawInput 进一步区分为 read / edit / write
+        if (rawInput) {
+          if (typeof rawInput.newText === "string" || typeof rawInput.content === "string") return "file-write";
+          if (typeof rawInput.oldText === "string" || typeof rawInput.old_string === "string") return "file-edit";
+        }
+        return "file-read";
+      case "directory":
+        return "file-read";
+      case "diff":
+        return "file-edit";
+      default:
+        break;
+    }
+  }
+
   const lower = title.toLowerCase();
   if (lower.includes("bash") || lower.includes("shell") || lower === "command") return "shell";
   if (lower.includes("write")) return "file-write";

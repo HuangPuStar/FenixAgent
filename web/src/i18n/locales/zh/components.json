@@ -454,6 +454,7 @@
   "toolCallRow": {
     "viewParams": "查看参数",
     "previewFile": "预览 {{path}}",
+    "openFile": "打开文件",
     "toolName": "工具"
   },
   "permissionPanel": {

@@ -28,6 +28,7 @@ import type {
 import { ContextPanel } from "./ContextPanel";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
+import { extractDisplayMeta } from "./chat/narrators/helpers";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import type { TodoItem } from "./chat/TodoPanel";
 import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
@@ -230,6 +231,7 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
 
   // Handle tool call (UPSERT)
   if (update.sessionUpdate === "tool_call") {
+    const display = extractDisplayMeta(update.rawOutput, update._meta);
     const toolCallData: ToolCallData = {
       id: update.toolCallId,
       title: update.title,
@@ -237,6 +239,7 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
       content: update.content,
       rawInput: update.rawInput,
       rawOutput: update.rawOutput,
+      ...(display && { display }),
     };
 
     const existingIndex = findToolCallIndex(entries, update.toolCallId);
@@ -280,6 +283,7 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
       const mergedContent = update.content
         ? [...(entry.toolCall.content || []), ...update.content]
         : entry.toolCall.content;
+      const display = update.rawOutput ? extractDisplayMeta(update.rawOutput, update._meta) : entry.toolCall.display;
 
       return {
         type: "tool_call",
@@ -290,6 +294,7 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
           content: mergedContent,
           ...(update.rawInput && { rawInput: update.rawInput }),
           ...(update.rawOutput && { rawOutput: update.rawOutput }),
+          ...(display && { display }),
         },
       };
     });

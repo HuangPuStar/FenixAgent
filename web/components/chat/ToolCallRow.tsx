@@ -52,7 +52,7 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
   const result = narrate(tool, tool.status, elapsedMs, tNarrator);
 
   // 卡片颜色继续走现有逻辑（避免一次性改太多）
-  const cardCategory = getCardCategory(tool.title, tool.rawInput);
+  const cardCategory = getCardCategory(tool.title, tool.rawInput, tool.display?.type);
   const style = CARD_STYLES[cardCategory];
   const Icon = result.icon ?? Loader2;
 
@@ -67,7 +67,8 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
     (!isRunning && !isPending && (tool.rawOutput || tool.content));
 
   // 检测工具入参中是否包含文件路径，用于显示预览按钮
-  const previewPath = extractPreviewPath(tool.rawInput);
+  // 优先使用 display.path（引擎提供的真实文件路径），兜底走 rawInput
+  const previewPath = tool.display?.path ?? extractPreviewPath(tool.rawInput);
 
   const openDialog = useCallback(() => {
     if (hasParams && !isPending) setDialogOpen(true);
@@ -153,10 +154,11 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
               e.stopPropagation();
               handlePreviewFile();
             }}
-            className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+            className="h-6 px-2 gap-1 rounded-md flex items-center shrink-0 text-xs text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
             title={tComponents("toolCallRow.previewFile", { path: previewPath })}
           >
             <ExternalLink className="h-3 w-3" />
+            <span>{tComponents("toolCallRow.openFile", "打开文件")}</span>
           </button>
         )}
 
