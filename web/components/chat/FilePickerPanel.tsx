@@ -51,7 +51,7 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
     setUploadError(null);
     loadDir("");
     setCurrentDir("");
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadDir]);
 
   const handleEnterDir = useCallback(
     (dir: FileInfo) => {

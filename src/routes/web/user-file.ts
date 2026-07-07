@@ -23,6 +23,7 @@ import {
 } from "../../services/remote-file-service";
 import {
   deleteFile,
+  deleteNode,
   isUserPath,
   listPathsRecursive,
   mkdirp,
@@ -261,10 +262,10 @@ app.delete(
         }
         const info = await stat(resolved.resolved);
         if (info.isDirectory()) {
-          failed.push({ path: fullPath, error: "Cannot delete directories" });
-          continue;
+          await deleteNode(resolved.resolved);
+        } else {
+          await deleteFile(resolved.resolved);
         }
-        await deleteFile(resolved.resolved);
         deleted.push(fullPath);
       } catch (e) {
         failed.push({ path: fullPath, error: e instanceof Error ? e.message : "Unknown error" });
@@ -282,8 +283,8 @@ app.delete(
     },
     detail: {
       tags: ["Files"],
-      summary: "批量删除文件",
-      description: "批量删除指定路径的文件，并分别返回成功与失败结果。",
+      summary: "批量删除文件或目录",
+      description: "批量删除指定路径的文件或目录（目录将递归删除），并分别返回成功与失败结果。",
     },
   },
 );

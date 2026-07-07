@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { environmentRepo } from "../repositories";
 import { resolveWorkspacePath as computeWorkspacePath } from "./workspace-resolver";
@@ -243,6 +243,11 @@ export async function writeFileContent(filePath: string, content: string): Promi
 /** 删除单个文件 */
 export async function deleteFile(filePath: string): Promise<void> {
   await unlink(filePath);
+}
+
+/** 删除任意节点（文件直接删除，目录递归删除） */
+export async function deleteNode(filePath: string): Promise<void> {
+  await rm(filePath, { recursive: true, force: true });
 }
 
 /** 创建文件读取流（用于二进制文件下载或预览） */

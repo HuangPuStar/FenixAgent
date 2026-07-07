@@ -35,6 +35,7 @@ import {
 import {
   createFileStream,
   deleteFile,
+  deleteNode,
   getMimeType,
   isTextExtension,
   isTextFile,
@@ -464,8 +465,10 @@ app.delete(
 
     try {
       const info = await stat(result.resolved);
-      if (info.isDirectory())
-        return error(400, { error: { type: "validation_error", message: "Cannot delete directories" } });
+      if (info.isDirectory()) {
+        await deleteNode(result.resolved);
+        return { success: true, data: { ok: true } };
+      }
     } catch {
       return error(404, { error: { type: "not_found", message: "File not found" } });
     }
@@ -479,7 +482,7 @@ app.delete(
     detail: {
       tags: ["FS"],
       summary: "删除文件",
-      description: "删除 workspace 任意路径文件。该接口仅处理单个文件，不支持删除目录。",
+      description: "删除 workspace 任意路径的文件或目录（目录将递归删除）。",
     },
   },
 );
@@ -606,10 +609,10 @@ app.delete(
         }
         const info = await stat(resolved.resolved);
         if (info.isDirectory()) {
-          failed.push({ path: p, error: "Cannot delete directories" });
-          continue;
+          await deleteNode(resolved.resolved);
+        } else {
+          await deleteFile(resolved.resolved);
         }
-        await deleteFile(resolved.resolved);
         deleted.push(p);
       } catch (e) {
         failed.push({ path: p, error: e instanceof Error ? e.message : "Unknown error" });
@@ -623,8 +626,8 @@ app.delete(
     body: "batch-delete-request",
     detail: {
       tags: ["FS"],
-      summary: "批量删除文件",
-      description: "批量删除 workspace 内指定路径的文件，并分别返回成功与失败结果。",
+      summary: "批量删除文件或目录",
+      description: "批量删除 workspace 内指定路径的文件或目录（目录将递归删除），并分别返回成功与失败结果。",
     },
   },
 );
