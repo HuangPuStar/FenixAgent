@@ -1,6 +1,6 @@
 {
   "name": "@fenix-agent/acp-runtime-cli",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "ACP Runtime CLI — 在远程节点启动 ACP bridge 并向 RCS 主服务器注册",
   "author": "3446798488@qq.com",
   "license": "MIT",
