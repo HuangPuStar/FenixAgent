@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { getBaseUrl } from "../config";
+import { config, getBaseUrl } from "../config";
 import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
@@ -246,10 +246,13 @@ export async function spawnInstanceFromEnvironment(
   const instanceId = `inst_${randomBytes(8).toString("hex")}`;
   const instanceNumber = registry.nextInstanceNumber(environmentId);
 
-  // machineId 缺失时固定落到本地 node，避免把“未绑定远程机”误解释成启动错误。
+  // machineId 缺失时按优先级选择执行节点：
+  // agent config 绑定 > 系统环境变量 > local-default
   let nodeId = "local-default";
   if (agentMachineId) {
     nodeId = agentMachineId;
+  } else if (config.defaultMachineId) {
+    nodeId = config.defaultMachineId;
   }
 
   // 远程节点启动前连接检查
@@ -261,8 +264,9 @@ export async function spawnInstanceFromEnvironment(
   }
 
   // 委托 core 执行 launch
-  // engineType 从 AgentConfig 动态读取（无 agentConfig 时默认为 opencode）
-  const engineType = (resolvedAgentConfig as Record<string, unknown> | null)?.engineType ?? "opencode";
+  // engineType 优先级：agent config 指定 > 系统环境变量 > hardcoded "opencode"
+  const engineType =
+    (resolvedAgentConfig as Record<string, unknown> | null)?.engineType ?? config.defaultEngineType ?? "opencode";
   const facade = getCoreRuntime();
   const snapshot = await facade.launchInstance({
     instanceId,
