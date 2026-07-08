@@ -175,7 +175,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   // ── 删除 ──
   const { run: runDelete } = useRequest((path: string) => unwrap(fsApi.batchDelete(envId!, [path])), {
     manual: true,
-    onSuccess: () => {
+    onSuccess: (data) => {
+      const failed = (data as { failed?: Array<{ path: string; error: string }> } | undefined)?.failed;
+      if (failed && failed.length > 0) {
+        toast.error(failed[0].error || t("fileTree.contextMenu.delete"));
+        return;
+      }
       setDeleteConfirm(null);
       refreshTree();
     },
@@ -424,6 +429,17 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         return;
       }
       const files = e.target.files;
+
+      // 客户端提前校验单文件大小
+      const maxSize = 100 * 1024 * 1024;
+      for (const file of Array.from(files)) {
+        if (file.size > maxSize) {
+          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
+          if (folderInputRef.current) folderInputRef.current.value = "";
+          return;
+        }
+      }
+
       // webkitRelativePath 保留了文件夹的相对路径结构
       const relativePaths = Array.from(files).map((f) => f.webkitRelativePath || f.name);
       const formData = new FormData();
@@ -434,7 +450,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       runUpload(formData, selectedDir);
       if (folderInputRef.current) folderInputRef.current.value = "";
     },
-    [runUpload, selectedDir],
+    [runUpload, selectedDir, t],
   );
 
   // 下载：文件直接下载，目录打包为 zip
