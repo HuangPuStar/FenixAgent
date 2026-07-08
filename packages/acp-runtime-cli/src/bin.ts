@@ -8,7 +8,7 @@
  * 必填环境变量:
  *   RCS_URL             WS base URL，如 ws://localhost:3000 或 wss://rcs.example.com
  *   RCS_SECRET          client 端鉴权 secret
- *   RCS_TENANT_ID       用于远程注册机器的组织 ID
+ *   RCS_TENANT_ID       用于远程注册机器的组织 ID（可选，不设置则机器对所有组织可见）
  *
  * 可选环境变量:
  *   RCS_USER_ID         用户 ID (可选)
@@ -32,6 +32,7 @@ const TENANT_ID = process.env.RCS_TENANT_ID;
 const USER_ID = process.env.RCS_USER_ID || "";
 const LABELS = process.env.RCS_LABELS || "remote-runtime";
 const MACHINE_NAME = process.env.RCS_MACHINE_NAME || "";
+const MACHINE_ID = process.env.RCS_MACHINE_ID;
 const AGENT_TYPE = (process.env.AGENT_TYPE || "opencode") as "opencode" | "ccb" | "claude-code";
 const SUPPORTED_ENGINE_TYPES = process.env.SUPPORTED_ENGINE_TYPES
   ? (JSON.parse(process.env.SUPPORTED_ENGINE_TYPES) as { type: string; cliPath?: string }[])
@@ -46,16 +47,16 @@ if (args.length === 0) {
   console.log("用法: acp-runtime <agent-command> [agent-args...]");
   console.log("");
   console.log("示例:");
-  console.log("  RCS_URL=ws://localhost:3000 RCS_SECRET=xxx RCS_TENANT_ID=xxx acp-runtime opencode acp");
-  console.log("  AGENT_TYPE=ccb RCS_URL=wss://rcs.example.com RCS_SECRET=xxx RCS_TENANT_ID=xxx \\");
+  console.log("  RCS_URL=ws://localhost:3000 RCS_SECRET=xxx acp-runtime opencode acp");
+  console.log("  AGENT_TYPE=ccb RCS_URL=wss://rcs.example.com RCS_SECRET=xxx \\");
   console.log("    acp-runtime npx @anthropic-ai/claude-code --acp");
   console.log("");
   console.log("必填环境变量:");
   console.log("  RCS_URL             WS base URL，如 ws://localhost:3000 或 wss://rcs.example.com");
   console.log("  RCS_SECRET          client 端鉴权 secret");
-  console.log("  RCS_TENANT_ID       用于远程注册机器的组织 ID");
   console.log("");
   console.log("可选环境变量:");
+  console.log("  RCS_TENANT_ID       用于远程注册机器的组织 ID（不设置则机器对所有组织可见）");
   console.log("  RCS_USER_ID         用户 ID (可选)");
   console.log("  RCS_LABELS          节点标签，逗号分隔 (默认 remote-runtime)");
   console.log("  RCS_MACHINE_NAME    机器显示名称 (默认 hostname)");
@@ -69,14 +70,12 @@ if (args.length === 0) {
 const missing: string[] = [];
 if (!RCS_URL) missing.push("RCS_URL");
 if (!RCS_SECRET) missing.push("RCS_SECRET");
-if (!TENANT_ID) missing.push("RCS_TENANT_ID");
 if (missing.length > 0) {
   console.error(`缺少必填环境变量: ${missing.join(", ")}`);
   console.error("");
   console.error("必填项:");
   console.error("  RCS_URL        WS base URL，如 ws://localhost:3000 或 wss://rcs.example.com");
   console.error("  RCS_SECRET     client 端鉴权 secret");
-  console.error("  RCS_TENANT_ID  用于远程注册机器的组织 ID");
   process.exit(1);
 }
 
@@ -101,10 +100,13 @@ console.log(`启动 ACP Runtime 节点...`);
 console.log(`  Agent:        ${command} ${agentArgs.join(" ")}`);
 console.log(`  Agent Type:   ${AGENT_TYPE}`);
 console.log(`  Workspace:    ${process.cwd()} (cwd)`);
-console.log(`  Tenant:       ${TENANT_ID}`);
+console.log(`  Tenant:       ${TENANT_ID || "全局（所有组织可见）"}`);
 console.log(`  Labels:       ${LABELS}`);
 if (MACHINE_NAME) {
   console.log(`  Machine Name: ${MACHINE_NAME}`);
+}
+if (MACHINE_ID) {
+  console.log(`  Machine ID:   ${MACHINE_ID}（客户端指定）`);
 }
 console.log("");
 
@@ -116,7 +118,7 @@ await startServer({
   cwd: process.cwd(),
   rcsUrl: wsUrl,
   rcsSecret: RCS_SECRET!,
-  tenantId: TENANT_ID!,
+  tenantId: TENANT_ID ?? null,
   userId: USER_ID,
   labels: LABELS.split(",")
     .map((s) => s.trim())
@@ -124,4 +126,5 @@ await startServer({
   agentType: AGENT_TYPE,
   supportedEngineTypes: SUPPORTED_ENGINE_TYPES,
   name: MACHINE_NAME || undefined,
+  machineId: MACHINE_ID ?? undefined,
 });

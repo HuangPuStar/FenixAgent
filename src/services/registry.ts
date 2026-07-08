@@ -123,11 +123,84 @@ export async function registerMachine(params: {
   userId: string | null;
   /** 客户端持久化的 node_id，用于精确去重（避免 IP/MAC 变化导致重复注册） */
   nodeId?: string | null;
+  /** 客户端指定的 machine id（可选），有值时跳过 ID 生成和去重，直接用该 ID */
+  machineId?: string | null;
 }): Promise<{ id: string; isNew: boolean }> {
   const hostname = params.machineInfo?.hostname as string | undefined;
   let existingId: string | null = null;
 
-  // ── 去重策略 ──
+  // ── 客户端指定 machineId 分支：跳过自动去重，直接用指定 ID ──
+  if (params.machineId) {
+    const existing = await db
+      .select({ id: machine.id, status: machine.status })
+      .from(machine)
+      .where(eq(machine.id, params.machineId))
+      .limit(1);
+
+    const now = new Date();
+
+    // 已在线的机器不允许另一个 client 接管
+    if (existing.length > 0 && existing[0].status === "online") {
+      throw new Error(`machine id '${params.machineId}' is already online`);
+    }
+
+    // 已存在但 offline → UPDATE 接管，同步更新 organizationId
+    if (existing.length > 0) {
+      await db
+        .update(machine)
+        .set({
+          status: "online",
+          organizationId: params.tenantId ?? null,
+          userId: params.userId ?? null,
+          name: params.name,
+          machineInfo: params.machineInfo,
+          labels: params.labels,
+          heartbeatIntervalMs: params.heartbeatIntervalMs,
+          lastHeartbeatAt: now,
+          updatedAt: now,
+        })
+        .where(eq(machine.id, params.machineId));
+
+      await db.insert(registryEvent).values({
+        id: genId("evt"),
+        machineId: params.machineId,
+        type: "reconnect",
+        detail: { machine_info: params.machineInfo, labels: params.labels },
+      });
+
+      await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
+      return { id: params.machineId, isNew: false };
+    }
+
+    // 不存在 → INSERT 新记录
+    await db.insert(machine).values({
+      id: params.machineId,
+      organizationId: params.tenantId ?? null,
+      userId: params.userId ?? null,
+      agentName: params.agentName,
+      name: params.name,
+      status: "online",
+      machineInfo: params.machineInfo,
+      labels: params.labels,
+      heartbeatIntervalMs: params.heartbeatIntervalMs,
+      lastHeartbeatAt: now,
+      registeredAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.insert(registryEvent).values({
+      id: genId("evt"),
+      machineId: params.machineId,
+      type: "register",
+      detail: { machine_info: params.machineInfo, labels: params.labels },
+    });
+
+    await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
+    return { id: params.machineId, isNew: true };
+  }
+
+  // ── 去重策略（machineId 未指定时走此分支）──
   // 优先级 1：按客户端持久化的 node_id 精确匹配（最可靠，跨 IP/MAC 变化稳定）
   if (params.nodeId) {
     const byNodeId = await db.select({ id: machine.id }).from(machine).where(eq(machine.id, params.nodeId)).limit(1);
