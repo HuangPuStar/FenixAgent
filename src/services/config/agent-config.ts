@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { agentConfig } from "../../db/schema";
+import { agentConfig, environment } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
 import type { AgentKnowledgeConfig, AgentKnowledgePolicy } from "../agent-knowledge";
 import { resolveAgentKnowledgePolicy } from "../agent-knowledge";
@@ -206,8 +206,16 @@ export async function deleteAgentConfig(ctx: AuthContext, name: string): Promise
   if (!row) return false;
 
   assertInternalWritable(ctx, "agent_config", row.id, row.organizationId);
-  const result = await db.delete(agentConfig).where(eq(agentConfig.id, row.id)).returning({ id: agentConfig.id });
-  return result.length > 0;
+  return db.transaction(async (tx) => {
+    // 绑定 agent 的 runtime environment 在 agent 删除后没有独立业务价值，直接清理掉，
+    // 避免遗留为无绑定环境继续出现在 /web/environments 列表里。
+    await tx
+      .delete(environment)
+      .where(and(eq(environment.organizationId, row.organizationId), eq(environment.agentConfigId, row.id)));
+
+    const result = await tx.delete(agentConfig).where(eq(agentConfig.id, row.id)).returning({ id: agentConfig.id });
+    return result.length > 0;
+  });
 }
 
 export async function assertAgentConfigInternalWritable(
