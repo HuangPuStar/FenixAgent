@@ -32,6 +32,7 @@ FROM oven/bun:1 AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV TZ=Asia/Shanghai
 ENV RCS_HOST=0.0.0.0
 ENV RCS_PORT=3000
 ENV DATABASE_URL=postgres://rcs:rcs@postgres:5432/rcs
@@ -47,9 +48,13 @@ RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.li
 
 RUN apt-get install -y --no-install-recommends \
        python3 python3-pip python3-venv \
-       curl jq git ripgrep zip unzip
+       curl jq git ripgrep zip unzip \
+       tzdata
 
 RUN rm -rf /var/lib/apt/lists/*
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone
 
 
 RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
