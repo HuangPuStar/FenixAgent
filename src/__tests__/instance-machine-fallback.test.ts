@@ -1,8 +1,14 @@
 // 实例 fallback 决策：RCS_DEFAULT_MACHINE_ID 和 RCS_DEFAULT_ENGINE_TYPE 环境变量覆盖行为
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { config, setConfig } from "../config";
 
 describe("instance machine/engine fallback", () => {
+  // 保存原始 config 引用，每次测试后恢复，防止 setConfig 污染后续测试
+  const originalConfig = { ...config };
+
+  afterEach(() => {
+    setConfig(originalConfig as any);
+  });
   // ── config 值读取 ──
 
   // 不设置任何 fallback 时 defaultMachineId 为 undefined（默认状态）
