@@ -209,7 +209,7 @@ git commit -m "feat: instance 启动时支持从 RCS_DEFAULT_MACHINE_ID 和 RCS_
 
 - [ ] **Step 1: 新增 env var 校验测试用例**
 
-在 `src/__tests__/env-validation.test.ts` 文件末尾（最后一个 `test(...)` 之后，`});` 之前）新增三个测试用例：
+在 `src/__tests__/env-validation.test.ts` 文件末尾（最后一个 `test(...)` 之后，`});` 之前）新增五个测试用例：
 
 ```typescript
   // RCS_DEFAULT_MACHINE_ID 不设置时通过校验（optional）
@@ -387,9 +387,9 @@ describe("instance machine/engine fallback", () => {
 cd /Users/konghayao/code/pazhou/remote-control-server && bun test src/__tests__/instance-machine-fallback.test.ts
 ```
 
-预期：所有 7 个测试通过。
+预期：所有 9 个测试通过（3 个 config 读取 + 3 个 engineType + 3 个 nodeId）。
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 3: 提交**
 
 ```bash
 git add src/__tests__/instance-machine-fallback.test.ts
@@ -453,6 +453,6 @@ git commit -m "test: 清理测试中废弃的 RCS_ENGINE_TYPE 引用"
 
 - [ ] `bun test src/__tests__/` 全部通过
 - [ ] `bun run precheck` 通过
-- [ ] 新增 7 个测试覆盖四象限（env 校验 + engineType/defaultMachineId 优先级）
+- [ ] 新增 9 个测试覆盖四象限（env 校验 + engineType/defaultMachineId 优先级）
 - [ ] 不设置新环境变量时行为完全不向后兼容变化
 - [ ] 设置 `RCS_DEFAULT_MACHINE_ID=mach_xxx` 且机器离线时抛出 `MACHINE_OFFLINE`（复用现有机制，无需额外改动）
