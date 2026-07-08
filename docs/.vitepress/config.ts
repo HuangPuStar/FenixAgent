@@ -1,7 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  base: "./",
+  base: "/FenixAgent/",
   title: "FenixAgent",
   description: "Fenix Agent 控制面板 — AI Agent 任务控制中心",
   lang: "zh-CN",
@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   head: [
-    ["link", { rel: "icon", type: "image/svg+xml", href: "/logo.svg" }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: "/FenixAgent/logo.svg" }],
     ["meta", { name: "theme-color", content: "#1677ff" }],
     ["meta", { name: "og:type", content: "website" }],
     ["meta", { name: "og:locale", content: "zh_CN" }],
@@ -21,7 +21,7 @@ export default defineConfig({
   lastUpdated: true,
   ignoreDeadLinks: true,
   themeConfig: {
-    logo: "/logo.svg",
+    logo: "/FenixAgent/logo.svg",
     siteTitle: "FenixAgent",
     nav: [
       { text: "用户文档", link: "/user/" },
