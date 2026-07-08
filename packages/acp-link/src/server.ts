@@ -73,6 +73,8 @@ export interface ServerConfig {
   supportedEngineTypes?: { type: string; cliPath?: string }[];
   /** 用户指定的机器显示名称，可选 */
   name?: string;
+  /** 客户端指定的 machine id（可选），用于固定 machine 标识 */
+  machineId?: string;
 }
 
 export interface AcpServerHandle {
@@ -192,6 +194,11 @@ export function buildRegisterMessage(config: ServerConfig, nodeId?: string | nul
   // 携带持久化的 node_id，服务端据此精确匹配已有记录，避免重复注册
   if (nodeId) {
     msg.node_id = nodeId;
+  }
+
+  // 客户端指定的 machine id，用于固定机器标识
+  if (config.machineId) {
+    msg.machine_id = config.machineId;
   }
 
   return msg;
