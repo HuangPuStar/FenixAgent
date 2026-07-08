@@ -476,7 +476,10 @@ export function AgentOrganizationsPage() {
                         {machines.map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.name || (m.machineInfo as { hostname?: string } | null)?.hostname || m.agentName} (
-                            {m.id.slice(0, 8)})
+                            {m.id.slice(0, 8)}){" "}
+                            {m.status === "online"
+                              ? t("machineStatus.online", "在线")
+                              : t("machineStatus.offline", "离线")}
                           </option>
                         ))}
                       </select>
