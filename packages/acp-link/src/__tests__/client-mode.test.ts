@@ -149,6 +149,36 @@ describe("buildRegisterMessage name 字段", () => {
   });
 });
 
+describe("buildRegisterMessage machine_id 字段", () => {
+  // 传入 machineId 时应透传到注册消息
+  test("传入 machineId 时透传到注册消息", async () => {
+    const { buildRegisterMessage } = await import("../server");
+    const config: ServerConfig = {
+      port: 9315,
+      host: "localhost",
+      command: "opencode",
+      args: ["acp"],
+      cwd: "/app",
+      machineId: "mach_sandbox_01",
+    };
+    const msg = buildRegisterMessage(config) as Record<string, unknown>;
+    expect(msg.machine_id).toBe("mach_sandbox_01");
+  });
+
+  // 不传 machineId 时不应包含 machine_id 字段
+  test("不传 machineId 时不包含 machine_id 字段", async () => {
+    const { buildRegisterMessage } = await import("../server");
+    const config: ServerConfig = {
+      port: 9315,
+      host: "localhost",
+      command: "opencode",
+      args: ["acp"],
+      cwd: "/app",
+    };
+    const msg = buildRegisterMessage(config) as Record<string, unknown>;
+    expect(msg.machine_id).toBeUndefined();
+  });
+});
 describe("buildRegisterMessage node_id 字段", () => {
   // 传入 nodeId 时应透传到注册消息
   test("传入 nodeId 时透传到注册消息", async () => {
