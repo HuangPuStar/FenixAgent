@@ -1,15 +1,17 @@
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WebErrSchema } from "../../schemas/common.schema";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
+  CreateMachineResponseSchema,
+  CreateMachineSchema,
   EventQuerySchema,
   MachineDetailResponseSchema,
   MachineListResponseSchema,
   MachineQuerySchema,
   RegistryEventListResponseSchema,
 } from "../../schemas/registry.schema";
-import { getMachine, listEvents, listMachines } from "../../services/registry";
+import { createMachine, getMachine, listEvents, listMachines } from "../../services/registry";
 
 const logger = createLogger("registry");
 
@@ -50,12 +52,41 @@ function serializeEvent<T extends Record<string, unknown>>(row: T): T {
 }
 
 const app = new Elysia({ name: "web-registry" }).use(authGuardPlugin).model({
+  "create-machine-response": WebOkSchema(CreateMachineResponseSchema),
   "event-query": EventQuerySchema,
   "machine-list-response": MachineListResponseSchema,
   "machine-detail-response": MachineDetailResponseSchema,
   "machine-query": MachineQuerySchema,
   "registry-event-list-response": RegistryEventListResponseSchema,
 });
+
+app.post(
+  "/registry/machines",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 body/response 组合下类型推断不稳定
+  async ({ store, body, status }: any) => {
+    const authCtx = store.authContext!;
+    const { name, labels, agentName } = body as { name: string; labels?: string[]; agentName?: string };
+    try {
+      const result = await createMachine(authCtx, { name, labels, agentName });
+      return { success: true, data: result };
+    } catch (err: unknown) {
+      return status(500, { success: false, error: { code: "INTERNAL_ERROR", message: internalErrorMessage(err) } });
+    }
+  },
+  {
+    sessionAuth: true,
+    body: CreateMachineSchema,
+    response: {
+      200: "create-machine-response",
+      500: WebErrSchema,
+    },
+    detail: {
+      tags: ["Registry"],
+      summary: "创建机器",
+      description: "组织管理员预创建机器记录（status=pending），返回 machine id 和初始化命令。",
+    },
+  },
+);
 
 app.get(
   "/registry/machines",

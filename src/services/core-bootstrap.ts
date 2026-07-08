@@ -9,12 +9,52 @@ import {
   type RemoteTransport,
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
+import { eq } from "drizzle-orm";
 import { config } from "../config";
+import { db } from "../db";
+import { machine } from "../db/schema";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 import { globalInstanceRegistry } from "./instance-registry";
 
 let facade: CoreRuntimeFacade | null = null;
+
+/**
+ * 确保 RCS_DEFAULT_MACHINE_ID 对应的机器记录存在于 DB。
+ * 不存在时自动创建 (status=pending, organizationId=NULL, 所有组织可见)。
+ */
+async function ensureMachineExists() {
+  if (!config.defaultMachineId) return;
+
+  const existing = await db
+    .select({ id: machine.id })
+    .from(machine)
+    .where(eq(machine.id, config.defaultMachineId))
+    .limit(1);
+
+  if (existing.length > 0) return;
+
+  const now = new Date();
+  const agentName = config.defaultEngineType ?? "opencode";
+
+  await db.insert(machine).values({
+    id: config.defaultMachineId,
+    organizationId: null,
+    userId: null,
+    agentName,
+    name: "system-default",
+    status: "pending",
+    machineInfo: null,
+    labels: [],
+    heartbeatIntervalMs: 30000,
+    lastHeartbeatAt: null,
+    registeredAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  log(`[core-bootstrap] Auto-created machine ${config.defaultMachineId} (status=pending)`);
+}
 
 // 缓存远程 transport 实例
 const remoteTransports = new Map<string, RemoteTransport>();
@@ -73,6 +113,15 @@ export function setCoreRuntimeFactory(fn: (() => CoreRuntimeFacade) | null) {
 /** 重置单例（仅用于测试）。 */
 export function resetCoreRuntime(): void {
   facade = null;
+}
+
+/**
+ * 初始化 core runtime（含 DB 侧机器记录的自动创建）。
+ * 应在服务启动时调用，替代直接调用 getCoreRuntime()。
+ */
+export async function initCoreRuntime(): Promise<CoreRuntimeFacade> {
+  await ensureMachineExists();
+  return getCoreRuntime();
 }
 
 /**

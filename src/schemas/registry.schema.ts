@@ -72,6 +72,21 @@ export const EventQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).optional().default(0).describe("分页偏移量。"),
 });
 
+/** 创建机器请求 */
+export const CreateMachineSchema = z.object({
+  name: z.string().min(1).max(64).describe("机器显示名称"),
+  labels: z.array(z.string()).optional().default([]).describe("标签列表"),
+  agentName: z.string().min(1).max(64).default("opencode").describe("引擎名称"),
+});
+
+/** 创建机器响应 */
+export const CreateMachineResponseSchema = z.object({
+  id: z.string().describe("分配的 machine id"),
+  name: z.string().describe("机器名称"),
+  status: z.literal("pending"),
+  initCommand: z.string().describe("客户端初始化命令"),
+});
+
 export type Machine = z.infer<typeof MachineSchema>;
 export type MachineDetail = z.infer<typeof MachineDetailSchema>;
 export type RegistryEvent = z.infer<typeof RegistryEventSchema>;
@@ -82,3 +97,5 @@ export type RegistryEventListData = z.infer<typeof RegistryEventListDataSchema>;
 export type RegistryEventListResponse = z.infer<typeof RegistryEventListResponseSchema>;
 export type MachineQuery = z.infer<typeof MachineQuerySchema>;
 export type EventQuery = z.infer<typeof EventQuerySchema>;
+export type CreateMachine = z.infer<typeof CreateMachineSchema>;
+export type CreateMachineResponse = z.infer<typeof CreateMachineResponseSchema>;

@@ -30,6 +30,7 @@ function makeEnv(skillDir: string): Env {
     RAGFLOW_API_KEY: "",
     RAGFLOW_REQUEST_TIMEOUT_MS: 30000,
     RCS_DISABLE_SIGNUP: false,
+    RCS_DISABLE_LOCAL_EXECUTION: false,
     REGISTRY_SECRET: "",
     ACPX_G_URL: "http://localhost:8848",
     RCS_CCB_COMMAND: "ccb",
