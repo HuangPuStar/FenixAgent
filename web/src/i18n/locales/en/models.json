@@ -81,6 +81,8 @@
     "successTitle": "Connection Test Successful — {{name}}",
     "modelFailTitle": "Model Test Failed — {{modelId}}",
     "modelSuccessTitle": "Model Test Successful — {{modelId}}",
+    "modelQuestion": "Question: hello",
+    "modelAnswer": "Reply: {{content}}",
     "modelsFound": "Found {{count}} available models",
     "added": "Added",
     "addModelSuccess": "Model {{modelId}} added",
@@ -92,6 +94,7 @@
       "providerListMissingModelId": "{{protocol}} model list response is invalid: no valid model IDs found",
       "modelMessageHttp": "{{protocol}} model message test failed (HTTP {{status}})",
       "modelMessageEmpty": "{{protocol}} model message test succeeded, but no readable text was returned",
+      "detailPrefix": "Error: ",
       "requestTimeout": "Test request timed out",
       "requestFailed": "Test request failed",
       "configureModelThenTest": "This provider may not expose a model listing API. Please configure a model manually, then validate it with model testing."

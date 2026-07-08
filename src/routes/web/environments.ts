@@ -51,8 +51,8 @@ app.get(
   async ({ store }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    // 始终按当前用户视角过滤：绑定 agent 的 runtime env 按 userId 隔离，
-    // 未绑 agent 的手动环境仍组织内可见，避免前端把他人 runtime 挂到自己的 agent 上。
+    // 环境现在统一要求绑定 agentConfig；列表按当前用户视角过滤 runtime env，
+    // 避免前端把其他成员的 runtime 误挂到自己的 agent 上。
     return { success: true as const, data: await listEnvironmentsWithInstances(authCtx.organizationId, user.id) };
   },
   {
@@ -61,7 +61,8 @@ app.get(
     detail: {
       tags: ["Environments"],
       summary: "获取环境列表",
-      description: "返回当前组织下的环境列表，并附带每个环境的活跃实例摘要。绑定 agent 的 runtime 环境按当前用户隔离。",
+      description:
+        "返回当前组织下已绑定 Agent 配置的环境列表，并附带每个环境的活跃实例摘要。运行时环境按当前用户隔离。",
     },
   },
 );
@@ -76,7 +77,7 @@ app.post(
     const b = body as {
       name: string;
       description?: string;
-      agentConfigId?: string;
+      agentConfigId: string;
       autoStart?: boolean;
     };
 
@@ -118,7 +119,7 @@ app.post(
     detail: {
       tags: ["Environments"],
       summary: "创建环境",
-      description: "创建一个新的环境，并可选绑定 Agent 配置与自动启动选项。",
+      description: "创建一个新的环境，必须绑定 Agent 配置，并可选开启自动启动。",
     },
   },
 );
@@ -163,7 +164,7 @@ app.put(
     const b = body as {
       name?: string;
       description?: string | null;
-      agentConfigId?: string | null;
+      agentConfigId?: string;
       autoStart?: boolean;
     };
 

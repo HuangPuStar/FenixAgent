@@ -74,6 +74,18 @@ describe("createWebEnvironment", () => {
     expect(insertCalled).toBe(0);
   });
 
+  test("rejects empty agentConfigId", async () => {
+    await expect(
+      createWebEnvironment({
+        name: "env-127f5beb",
+        agentConfigId: "" as never,
+        autoStart: true,
+        userId: "user-1",
+        organizationId: "org-1",
+      }),
+    ).rejects.toThrow("agentConfigId 必填");
+  });
+
   // 同组织下不同用户访问同一 agent 时，不应复用其他用户的 runtime environment。
   test("does not reuse another user's environment for the same agentConfigId", async () => {
     const insertedNames: string[] = [];

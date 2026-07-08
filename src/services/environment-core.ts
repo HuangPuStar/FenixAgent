@@ -94,7 +94,7 @@ export async function deleteEnvironment(envId: string): Promise<boolean> {
 export interface CreateWebEnvironmentParams {
   name: string;
   description?: string;
-  agentConfigId?: string;
+  agentConfigId: string;
   workspacePath?: string;
   autoStart?: boolean;
   userId: string;
@@ -105,6 +105,6 @@ export interface CreateWebEnvironmentParams {
 export interface UpdateWebEnvironmentParams {
   name?: string;
   description?: string | null;
-  agentConfigId?: string | null;
+  agentConfigId?: string;
   autoStart?: boolean;
 }

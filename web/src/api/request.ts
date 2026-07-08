@@ -5,14 +5,17 @@
  * 错误标准化、超时、日志。组件和域模块不直接调 fetch。
  */
 
-/** 统一错误码体系 */
-export type ErrorCode =
+/** 已知的统一错误码体系 */
+type KnownErrorCode =
   | "NETWORK_ERROR" // 网络不通、CORS、超时
   | "SERVER_ERROR" // 5xx
   | "NOT_FOUND" // 404
   | "VALIDATION_ERROR" // 参数校验失败
   | "UNAUTHORIZED" // 401/403
   | "UNKNOWN"; // 兜底
+
+/** 统一错误码体系，同时兼容后端透传的自定义业务错误码。 */
+export type ErrorCode = KnownErrorCode | (string & {});
 
 /** 统一 API 响应类型 */
 export interface ApiResponse<T> {
@@ -35,6 +38,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public code: ErrorCode = "UNKNOWN",
+    public data?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -47,7 +51,7 @@ export class ApiError extends Error {
  */
 export async function unwrap<T>(resp: Promise<ApiResponse<T>>): Promise<T> {
   const { success, data, error } = await resp;
-  if (!success) throw new ApiError(error?.message ?? "请求失败", error?.code ?? "UNKNOWN");
+  if (!success) throw new ApiError(error?.message ?? "请求失败", error?.code ?? "UNKNOWN", error?.data);
   return data as T;
 }
 
@@ -191,7 +195,7 @@ function normalizeErrorCode(raw: string | undefined, status: number): ErrorCode 
   if (["NOT_FOUND", "SERVER_ERROR", "VALIDATION_ERROR", "UNAUTHORIZED", "NETWORK_ERROR", "UNKNOWN"].includes(upper)) {
     return upper as ErrorCode;
   }
-  return statusToCode(status);
+  return raw as ErrorCode;
 }
 
 function statusToCode(status: number): ErrorCode {

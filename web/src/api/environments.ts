@@ -39,7 +39,7 @@ export type EnvironmentListItem = EnvironmentDetail;
 export interface CreateEnvironmentRequest {
   name: string;
   description?: string;
-  agentConfigId?: string;
+  agentConfigId: string;
   autoStart?: boolean;
   [key: string]: unknown;
 }
