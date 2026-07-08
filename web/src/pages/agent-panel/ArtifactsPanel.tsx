@@ -88,16 +88,18 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   const [unmountConfirm, setUnmountConfirm] = useState<{ id: string; name: string } | null>(null);
 
   // ── useRequest：环境详情加载 ──────────────────────────
-  // 外部 prop 优先；未传时根据 envId 拉 environment 详情获取 agent_config_id。
-  // ready 条件控制是否发起请求：仅当外部未传 prop 且 envId 存在时才拉取。
+  // 外部 prop 优先；未传或传 null 时根据 envId 拉 environment 详情获取 agent_config_id。
+  // ready 条件控制是否发起请求：仅当外部未提供有效 prop 且 envId 存在时才拉取。
+  // 注意：ChatArea 在 sessionId 存在时传 agentConfigId={null}，
+  // 这里用 == null 同时覆盖 undefined 和 null，确保能回退到 envId 解析。
   const { data: envData } = useRequest(() => unwrap(envApi.get({ id: envId! })), {
-    ready: agentConfigIdProp === undefined && !!envId,
+    ready: agentConfigIdProp == null && !!envId,
     onError: (err: unknown) => {
       console.warn("[ArtifactsPanel] 加载 environment 详情失败，Sites tab 不可用", err);
     },
   });
   const resolvedAgentConfigId = envData?.agentConfigId ?? null;
-  const agentConfigId = agentConfigIdProp !== undefined ? agentConfigIdProp : resolvedAgentConfigId;
+  const agentConfigId = agentConfigIdProp != null ? agentConfigIdProp : resolvedAgentConfigId;
   configIdRef.current = agentConfigId ?? undefined;
 
   // ── useRequest：Sites 列表加载（manual） ──────────────

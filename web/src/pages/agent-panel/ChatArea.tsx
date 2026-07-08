@@ -42,7 +42,8 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
   const artifactsCollapsedRef = useRef(true);
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
 
-  // 仅无 sessionId 时加载 environment.agentConfigId（与 chat.$agentId 行为对齐）
+  // 加载 environment.agentConfigId，供 ArtifactsPanel 站点绑定等功能使用。
+  // 无论是否有 sessionId 都需加载——有 session 时按 agentId 拉取。
   const { data: agentConfigId = null } = useRequest(
     async () => {
       if (!agentId) return null;
@@ -51,7 +52,7 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
     },
     {
       refreshDeps: [agentId],
-      ready: !!agentId && !sessionId,
+      ready: !!agentId,
       onError: (err) => console.warn("[ChatArea] 加载 environment 详情失败", err),
     },
   );
