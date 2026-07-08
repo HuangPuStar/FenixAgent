@@ -21,7 +21,7 @@ export default defineConfig({
   lastUpdated: true,
   ignoreDeadLinks: true,
   themeConfig: {
-    logo: "/FenixAgent/logo.svg",
+    logo: "/logo.svg",
     siteTitle: "FenixAgent",
     nav: [
       { text: "用户文档", link: "/user/" },
