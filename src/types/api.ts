@@ -75,14 +75,14 @@ export interface RegisterEnvironmentWebRequest {
   name: string;
   description?: string;
   workspacePath: string;
-  agentConfigId?: string;
+  agentConfigId: string;
 }
 
 export interface UpdateEnvironmentWebRequest {
   name?: string;
   description?: string;
   workspacePath?: string;
-  agentConfigId?: string | null;
+  agentConfigId?: string;
 }
 
 export interface EnvironmentWebResponse {

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createLogger } from "@fenix/logger";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import { agentConfig, environment, machine } from "../db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
@@ -74,15 +74,10 @@ async function findReusableEnvironment(params: CreateWebEnvironmentParams): Prom
   const organizationId = params.organizationId ?? params.userId;
   const environments = await db.select().from(environment).where(eq(environment.organizationId, organizationId));
 
-  if (params.agentConfigId) {
-    // 绑定 agent 的 runtime environment 需要和访问者一一对应；
-    // 否则同组织成员会复用彼此的 workspace，导致环境准备和文件视图都落到错误用户目录。
-    const matched =
-      environments.find((env) => env.agentConfigId === params.agentConfigId && env.userId === params.userId) ?? null;
-    return matched ? toEnvironmentRecord(matched) : null;
-  }
-
-  const matched = environments.find((env) => env.name === params.name) ?? null;
+  // 绑定 agent 的 runtime environment 需要和访问者一一对应；
+  // 否则同组织成员会复用彼此的 workspace，导致环境准备和文件视图都落到错误用户目录。
+  const matched =
+    environments.find((env) => env.agentConfigId === params.agentConfigId && env.userId === params.userId) ?? null;
   return matched ? toEnvironmentRecord(matched) : null;
 }
 
@@ -154,24 +149,25 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
   if (!name || !KEBAB_CASE_RE.test(name)) {
     throw new ValidationError("name 必须为 kebab-case 格式（小写字母、数字、连字符）");
   }
+  if (!params.agentConfigId) {
+    throw new ValidationError("agentConfigId 必填");
+  }
 
-  // Agent 配置校验：可选，提供时需验证存在性，并自动填充 machineName
+  // Agent 配置校验：环境必须绑定 Agent 配置，并自动填充 machineName
   let machineName: string | undefined;
-  if (params.agentConfigId) {
-    const agent = await configPg.getReadableAgentConfigById(
-      { organizationId: organizationId ?? userId, userId, role: "owner" },
-      params.agentConfigId,
-    );
-    if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
-    // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName
-    if (agent.machineId) {
-      const m = await db
-        .select({ agentName: machine.agentName })
-        .from(machine)
-        .where(eq(machine.id, agent.machineId))
-        .limit(1);
-      machineName = m[0]?.agentName ?? undefined;
-    }
+  const agent = await configPg.getReadableAgentConfigById(
+    { organizationId: organizationId ?? userId, userId, role: "owner" },
+    params.agentConfigId,
+  );
+  if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
+  // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName
+  if (agent.machineId) {
+    const m = await db
+      .select({ agentName: machine.agentName })
+      .from(machine)
+      .where(eq(machine.id, agent.machineId))
+      .limit(1);
+    machineName = m[0]?.agentName ?? undefined;
   }
 
   // 先复用已有 environment，避免“模板创建后马上点击”时两个入口为同一 agent 重复建环境。
@@ -198,7 +194,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
       userId,
       organizationId: organizationId ?? userId,
       autoStart: autoStart !== false,
-      agentConfigId: params.agentConfigId ?? null,
+      agentConfigId: params.agentConfigId,
       machineName,
     });
   } catch (err: unknown) {
@@ -231,27 +227,22 @@ export async function updateWebEnvironment(envId: string, organizationId: string
     patch.name = params.name;
   }
   if (params.agentConfigId !== undefined) {
-    if (params.agentConfigId) {
-      const agent = await configPg.getReadableAgentConfigById(
-        { organizationId, userId: existingEnv.userId ?? organizationId, role: "owner" },
-        params.agentConfigId,
-      );
-      if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
-      patch.agentConfigId = params.agentConfigId;
-      let machineName: string | null = null;
-      if (agent.machineId) {
-        const m = await db
-          .select({ agentName: machine.agentName })
-          .from(machine)
-          .where(eq(machine.id, agent.machineId))
-          .limit(1);
-        machineName = m[0]?.agentName ?? null;
-      }
-      patch.machineName = machineName;
-    } else {
-      patch.agentConfigId = null;
-      patch.machineName = null;
+    const agent = await configPg.getReadableAgentConfigById(
+      { organizationId, userId: existingEnv.userId ?? organizationId, role: "owner" },
+      params.agentConfigId,
+    );
+    if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
+    patch.agentConfigId = params.agentConfigId;
+    let machineName: string | null = null;
+    if (agent.machineId) {
+      const m = await db
+        .select({ agentName: machine.agentName })
+        .from(machine)
+        .where(eq(machine.id, agent.machineId))
+        .limit(1);
+      machineName = m[0]?.agentName ?? null;
     }
+    patch.machineName = machineName;
   }
   if (params.description !== undefined) {
     patch.description = params.description;
@@ -276,7 +267,7 @@ export async function listEnvironmentsWithInstances(organizationId: string, view
     })
     .from(environment)
     .leftJoin(agentConfig, eq(environment.agentConfigId, agentConfig.id))
-    .where(eq(environment.organizationId, organizationId));
+    .where(and(eq(environment.organizationId, organizationId), isNotNull(environment.agentConfigId)));
 
   // 单次遍历按 environmentId 分组实例，避免 N 次 listInstances 调用
   const instanceMap = groupActiveInstancesByEnvironment();

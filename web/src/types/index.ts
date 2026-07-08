@@ -81,7 +81,7 @@ export interface CreateEnvironmentRequest {
   name: string;
   description?: string;
   workspacePath: string;
-  agentConfigId?: string;
+  agentConfigId: string;
   autoStart?: boolean;
 }
 
@@ -89,7 +89,7 @@ export interface UpdateEnvironmentRequest {
   name?: string;
   description?: string;
   workspacePath?: string;
-  agentConfigId?: string | null;
+  agentConfigId?: string;
   autoStart?: boolean;
 }
 

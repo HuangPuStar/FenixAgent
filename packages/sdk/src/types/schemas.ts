@@ -188,7 +188,7 @@ export interface SkillSourceInfo {
 // ── Environment ──
 export interface CreateEnvironmentRequest {
   name: string;
-  agentConfigId?: string;
+  agentConfigId: string;
   description?: string;
   autoStart?: boolean;
 }

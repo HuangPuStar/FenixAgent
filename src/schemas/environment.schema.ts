@@ -59,7 +59,7 @@ export const CreateEnvironmentRequestSchema = z
       .string()
       .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, "name 必须为 kebab-case 格式")
       .describe("环境名称，必须为 kebab-case。"),
-    agentConfigId: z.string().min(1).optional().describe("可选的 Agent 配置 ID。"),
+    agentConfigId: z.string().min(1).describe("绑定的 Agent 配置 ID。"),
     description: z.string().optional().describe("可选的环境描述。"),
     autoStart: z.boolean().optional().describe("是否在服务启动后自动拉起实例。"),
   })
@@ -73,7 +73,7 @@ export const UpdateEnvironmentRequestSchema = z
       .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, "name 必须为 kebab-case 格式")
       .optional()
       .describe("新的环境名称，必须为 kebab-case。"),
-    agentConfigId: z.string().nullable().optional().describe("新的 Agent 配置 ID；传 null 表示解绑。"),
+    agentConfigId: z.string().min(1).optional().describe("新的 Agent 配置 ID。"),
     description: z.string().nullable().optional().describe("新的环境描述；传 null 表示清空。"),
     autoStart: z.boolean().optional().describe("新的自动启动开关。"),
   })
