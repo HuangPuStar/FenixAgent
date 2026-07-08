@@ -131,7 +131,7 @@ export function buildOpencodeRuntimeConfig(
       [agentName]: {
         model: providerModelRef,
         mode: "primary",
-        steps: 50,
+        steps: (launchSpec.agent.extra?.steps as number) ?? 1000,
         ...(launchSpec.agent.prompt ? { prompt: launchSpec.agent.prompt } : {}),
         hidden: false,
         disable: false,
