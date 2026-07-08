@@ -32,6 +32,7 @@ const TENANT_ID = process.env.RCS_TENANT_ID;
 const USER_ID = process.env.RCS_USER_ID || "";
 const LABELS = process.env.RCS_LABELS || "remote-runtime";
 const MACHINE_NAME = process.env.RCS_MACHINE_NAME || "";
+const MACHINE_ID = process.env.RCS_MACHINE_ID;
 const AGENT_TYPE = (process.env.AGENT_TYPE || "opencode") as "opencode" | "ccb" | "claude-code";
 const SUPPORTED_ENGINE_TYPES = process.env.SUPPORTED_ENGINE_TYPES
   ? (JSON.parse(process.env.SUPPORTED_ENGINE_TYPES) as { type: string; cliPath?: string }[])
@@ -104,6 +105,9 @@ console.log(`  Labels:       ${LABELS}`);
 if (MACHINE_NAME) {
   console.log(`  Machine Name: ${MACHINE_NAME}`);
 }
+if (MACHINE_ID) {
+  console.log(`  Machine ID:   ${MACHINE_ID}（客户端指定）`);
+}
 console.log("");
 
 await startServer({
@@ -122,4 +126,5 @@ await startServer({
   agentType: AGENT_TYPE,
   supportedEngineTypes: SUPPORTED_ENGINE_TYPES,
   name: MACHINE_NAME || undefined,
+  machineId: MACHINE_ID ?? undefined,
 });
