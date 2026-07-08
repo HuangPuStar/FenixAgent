@@ -237,7 +237,7 @@ function isValidMode(mode: string): boolean {
 }
 
 function isValidSteps(steps: number): boolean {
-  return Number.isInteger(steps) && steps >= 1 && steps <= 200;
+  return Number.isInteger(steps) && steps >= 1 && steps <= 1000;
 }
 
 /** 校验 agent 数据字段，返回错误码或 null */

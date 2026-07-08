@@ -11,6 +11,8 @@
 export interface AgentConfig {
   name: string;
   prompt?: string;
+  /** Agent 配置的 extra JSONB 字段，运行时从这里读取 steps 等参数 */
+  extra?: Record<string, unknown> | null;
 }
 
 /**
