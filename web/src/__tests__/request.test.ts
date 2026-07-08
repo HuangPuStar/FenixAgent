@@ -33,7 +33,7 @@ describe("request helpers", () => {
     };
 
     const { request } = await import("../api/request");
-    const result = await request("/web/config/providers/actions/fetch-models", {
+    const result = await request<{ models: string[] }>("/web/config/providers/actions/fetch-models", {
       method: "POST",
       query: { name: "anthropic" },
       body: {},
@@ -71,7 +71,7 @@ describe("request helpers", () => {
 
     try {
       await unwrap(
-        request("/web/config/providers/actions/fetch-models", {
+        request<{ models: string[] }>("/web/config/providers/actions/fetch-models", {
           method: "POST",
           query: { name: "anthropic" },
           body: {},
@@ -80,8 +80,9 @@ describe("request helpers", () => {
       throw new Error("expected unwrap to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
-      expect((error as ApiError).code).toBe("PROVIDER_TEST_LIST_HTTP_ERROR");
-      expect((error as ApiError).data).toEqual({
+      const apiError = error as InstanceType<typeof ApiError>;
+      expect(apiError.code).toBe("PROVIDER_TEST_LIST_HTTP_ERROR");
+      expect(apiError.data).toEqual({
         protocol: "anthropic",
         status: 404,
         hint: "configure_model_then_test_model",

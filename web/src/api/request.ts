@@ -5,14 +5,17 @@
  * 错误标准化、超时、日志。组件和域模块不直接调 fetch。
  */
 
-/** 统一错误码体系 */
-export type ErrorCode =
+/** 已知的统一错误码体系 */
+type KnownErrorCode =
   | "NETWORK_ERROR" // 网络不通、CORS、超时
   | "SERVER_ERROR" // 5xx
   | "NOT_FOUND" // 404
   | "VALIDATION_ERROR" // 参数校验失败
   | "UNAUTHORIZED" // 401/403
   | "UNKNOWN"; // 兜底
+
+/** 统一错误码体系，同时兼容后端透传的自定义业务错误码。 */
+export type ErrorCode = KnownErrorCode | (string & {});
 
 /** 统一 API 响应类型 */
 export interface ApiResponse<T> {
