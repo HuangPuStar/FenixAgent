@@ -25,10 +25,12 @@ import { instanceApi } from "@/src/api/instances";
 import { kbApi } from "@/src/api/knowledge-bases";
 import { mcpApi } from "@/src/api/mcp";
 import { modelApi } from "@/src/api/models";
+import { orgApi } from "@/src/api/organizations";
 import { registryApi } from "@/src/api/registry";
 import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { skillConfigApi } from "@/src/api/skills";
+import { useOrg } from "../../contexts/OrgContext";
 import { NS } from "../../i18n";
 import { canManageAgentSharing, getAgentDisplayName, isAgentWritable } from "../../lib/agent-resource-access";
 import {
@@ -146,6 +148,7 @@ interface LoadedFormData {
 
 export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSuccess, agentName }: AgentFormDialogProps) {
   const isEdit = mode === "edit";
+  const { org } = useOrg();
   const { t } = useTranslation(NS.AGENTS);
   const { t: tAgentPanel } = useTranslation(NS.AGENT_PANEL);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
@@ -200,7 +203,34 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setFormSkillIds([]);
     setFormMcpIds([]);
     setFormSiteAppIds([]);
-    setFormMachineId("local");
+    // 从组织 metadata 读取默认引擎设置
+    if (!isEdit && org?.id) {
+      (async () => {
+        try {
+          const detail = (await unwrap(orgApi.get(org.id))) as unknown as Record<string, unknown>;
+          const metadata = detail.metadata as
+            | { defaultEngine?: { engineType?: string; machineId?: string } }
+            | null
+            | undefined;
+          const def = metadata?.defaultEngine;
+          if (def?.machineId && def.machineId !== "") {
+            setFormMachineId(def.machineId);
+          } else {
+            setFormMachineId("local");
+          }
+          if (def?.engineType) {
+            setFormEngineType(def.engineType);
+          }
+        } catch {
+          setFormMachineId("local");
+        }
+      })();
+    } else {
+      setFormMachineId("local");
+      if (!isEdit) {
+        setFormEngineType("opencode");
+      }
+    }
     setFormResourceAccess(undefined);
     setFormPublicReadable(false);
     setCurrentAgentId(null);
@@ -219,7 +249,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       setFormPublicReadable(false);
       setSelectedTemplateId(null);
     }
-  }, [open, isEdit, defaultName]);
+  }, [open, isEdit, defaultName, org?.id]);
 
   // 主数据加载：下拉选项 + 编辑态回显
   const { loading } = useRequest(
