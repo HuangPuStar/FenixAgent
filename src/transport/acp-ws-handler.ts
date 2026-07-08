@@ -138,6 +138,8 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     : [{ type: "opencode" }];
   // 客户端持久化的 node_id，用于精确去重（避免 IP/MAC 变化导致重复注册）
   const nodeId = (msg.node_id as string) || null;
+  // 客户端指定的 machine id，用于固定机器标识
+  const specifiedMachineId = (msg.machine_id as string) || null;
 
   try {
     const result = await registerMachine({
@@ -149,6 +151,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
       tenantId,
       userId,
       nodeId,
+      machineId: specifiedMachineId,
     });
 
     entry.machineId = result.id;
