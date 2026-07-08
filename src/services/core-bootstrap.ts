@@ -9,6 +9,7 @@ import {
   type RemoteTransport,
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
+import { config } from "../config";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 import { globalInstanceRegistry } from "./instance-registry";
@@ -21,14 +22,16 @@ const remoteTransports = new Map<string, RemoteTransport>();
 function defaultCreateFacade(): CoreRuntimeFacade {
   return createCoreRuntime({
     plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin()],
-    nodes: [
-      {
-        id: "local-default",
-        mode: "local",
-        engineTypes: ["opencode", "claude-code", "ccb"],
-        status: "online",
-      },
-    ],
+    nodes: config.disableLocalExecution
+      ? []
+      : [
+          {
+            id: "local-default",
+            mode: "local",
+            engineTypes: ["opencode", "claude-code", "ccb"],
+            status: "online",
+          },
+        ],
     onInstanceStarted(_instanceId, _runtime, _updateMetadata) {
       // port/token/pid 由 AcpLinkProcessManager 写入 pluginMetadata
     },
