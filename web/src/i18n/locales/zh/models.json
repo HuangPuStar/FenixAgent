@@ -81,6 +81,8 @@
     "successTitle": "连接测试成功 — {{name}}",
     "modelFailTitle": "模型测试失败 — {{modelId}}",
     "modelSuccessTitle": "模型测试成功 — {{modelId}}",
+    "modelQuestion": "提问：你好",
+    "modelAnswer": "回复：{{content}}",
     "modelsFound": "发现 {{count}} 个可用模型",
     "added": "已添加",
     "addModelSuccess": "模型 {{modelId}} 已添加",
@@ -92,6 +94,7 @@
       "providerListMissingModelId": "{{protocol}} 模型列表响应格式不正确：未找到有效模型 ID",
       "modelMessageHttp": "{{protocol}} 模型消息测试失败 (HTTP {{status}})",
       "modelMessageEmpty": "{{protocol}} 模型消息测试成功，但未返回可读文本内容",
+      "detailPrefix": "错误信息：",
       "requestTimeout": "测试请求超时",
       "requestFailed": "测试请求失败",
       "configureModelThenTest": "该提供商可能没有提供模型查询接口，请先手动配置模型，再通过模型测试验证消息调用。"

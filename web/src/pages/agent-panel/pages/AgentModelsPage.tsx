@@ -38,6 +38,21 @@ function getErrorDataRecord(data: unknown): Record<string, unknown> {
   return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
 }
 
+function getReadableErrorDetail(data: unknown): string | undefined {
+  if (typeof data !== "string" || !data) return undefined;
+
+  try {
+    const parsed = JSON.parse(data) as { message?: unknown };
+    if (typeof parsed.message === "string" && parsed.message) {
+      return parsed.message;
+    }
+  } catch {
+    // 保留原始文本，兼容后端直接返回纯字符串 detail。
+  }
+
+  return data;
+}
+
 // Provider 工具函数从独立模块导入，避免组件文件加载 @lobehub/icons 后影响单元测试
 import {
   buildProviderInlineTestPayload,
@@ -140,7 +155,8 @@ export function AgentModelsPage() {
     const protocol = errorData.protocol === "anthropic" ? "anthropic" : "openai";
     const protocolLabel = t(`protocolOptions.${protocol}`);
     const status = typeof errorData.status === "number" ? errorData.status : undefined;
-    const detail = typeof errorData.detail === "string" && errorData.detail ? `: ${errorData.detail}` : "";
+    const readableDetail = getReadableErrorDetail(errorData.detail);
+    const detail = readableDetail ? `\n${t("testDialog.errors.detailPrefix")}${readableDetail}` : "";
     const reason = typeof errorData.reason === "string" ? errorData.reason : undefined;
     const hint =
       errorData.hint === "configure_model_then_test_model"
@@ -163,9 +179,7 @@ export function AgentModelsPage() {
         if (reason === "timeout") {
           return t("testDialog.errors.requestTimeout");
         }
-        return detail
-          ? `${t("testDialog.errors.requestFailed")}: ${String(errorData.detail)}`
-          : t("testDialog.errors.requestFailed");
+        return detail ? `${t("testDialog.errors.requestFailed")}${detail}` : t("testDialog.errors.requestFailed");
       default:
         return error.message || t("unknownError");
     }
@@ -291,17 +305,18 @@ export function AgentModelsPage() {
     {
       manual: true,
       onSuccess: ({ providerName, modelId, content }) => {
-        toast.success(t("testDialog.modelSuccessTitle", { modelId }));
         setFetchModelsResult({ kind: "model", providerName, modelId, content });
         setTestingModelKey(null);
       },
       onError: (err: Error, [providerId, modelId]: [string, string]) => {
-        toast.error(t("testDialog.modelFailTitle", { modelId }));
         setFetchModelsResult({
           kind: "model",
           providerName: providerId,
           modelId,
-          error: { code: "UNKNOWN_ERROR", message: err.message },
+          error:
+            err instanceof ApiError
+              ? { code: err.code, message: err.message, data: err.data }
+              : { code: "UNKNOWN_ERROR", message: err.message },
         });
         setTestingModelKey(null);
       },
@@ -671,7 +686,7 @@ export function AgentModelsPage() {
           return (
             <div
               key={providerKey}
-              className="group rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm overflow-hidden"
+              className="group flex h-full flex-col overflow-hidden rounded-lg border border-border-light bg-surface-1 transition-colors hover:border-border-active hover:shadow-sm"
             >
               {/* ── 头像区 ── */}
               <div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
@@ -693,9 +708,9 @@ export function AgentModelsPage() {
               </div>
 
               {/* ── Model 列表区 ── */}
-              <div className="px-4 py-2">
+              <div className="flex-1 px-4 py-2">
                 {hasModels ? (
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     {models.map((m) => {
                       const limit = (m.limit as Record<string, number | undefined>) ?? {};
                       return (
@@ -761,22 +776,35 @@ export function AgentModelsPage() {
                         </div>
                       );
                     })}
+                    {writable && (
+                      <div className="pt-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => openNewModel(providerKey)}
+                          className="text-xs text-text-muted hover:text-text-primary transition-colors"
+                        >
+                          {t("modelSubrow.addButton")}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => openNewModel(providerKey)}
-                      className="text-xs text-text-muted hover:text-text-primary transition-colors"
-                    >
-                      {t("modelSubrow.addButton")}
-                    </button>
+                    {writable && (
+                      <button
+                        type="button"
+                        onClick={() => openNewModel(providerKey)}
+                        className="text-xs text-text-muted hover:text-text-primary transition-colors"
+                      >
+                        {t("modelSubrow.addButton")}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
               {/* ── 操作栏 ── */}
-              <div className="flex items-center gap-3 px-4 py-2 border-t border-border-subtle bg-surface-0 text-[11px]">
+              <div className="mt-auto flex items-center gap-3 border-t border-border-subtle bg-surface-0 px-4 py-2 text-[11px]">
                 {writable ? (
                   <>
                     {/* 左侧：获取模型列表 & 编辑 */}
@@ -1173,7 +1201,9 @@ export function AgentModelsPage() {
             <DialogDescription className="whitespace-pre-line">
               {fetchModelsResult?.kind === "provider" && getProviderDialogDescription(fetchModelsResult)}
               {fetchModelsResult?.kind === "model" &&
-                ("error" in fetchModelsResult ? formatTestError(fetchModelsResult.error) : fetchModelsResult.content)}
+                ("error" in fetchModelsResult
+                  ? formatTestError(fetchModelsResult.error)
+                  : `${t("testDialog.modelQuestion")}\n${t("testDialog.modelAnswer", { content: fetchModelsResult.content })}`)}
             </DialogDescription>
           </DialogHeader>
           {fetchModelsResult?.kind === "provider" &&
