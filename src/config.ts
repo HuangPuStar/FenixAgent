@@ -37,6 +37,8 @@ function buildConfig(env: Env) {
     /** Timeout in milliseconds for RagFlow API requests. */
     ragflowRequestTimeoutMs: parseInt(process.env.RAGFLOW_REQUEST_TIMEOUT_MS || "30000", 10),
     disableSignup: env.RCS_DISABLE_SIGNUP,
+    defaultMachineId: env.RCS_DEFAULT_MACHINE_ID,
+    defaultEngineType: env.RCS_DEFAULT_ENGINE_TYPE,
   };
 }
 

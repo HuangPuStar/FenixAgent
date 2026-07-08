@@ -42,6 +42,8 @@ export interface OrgMember {
 /** 组织详情（含成员列表） */
 export interface OrgDetail extends OrgInfo {
   members?: OrgMember[];
+  /** 与后端 OrganizationDetailSchema 匹配的扩展字段，包含 defaultEngine 等 */
+  metadata?: Record<string, unknown> | null;
 }
 
 /** 创建组织请求体 */
@@ -136,5 +138,13 @@ export const orgApi = {
       method: "PUT",
       params: { id: orgId, memberId },
       body: { role },
+    }),
+
+  /** 更新组织 metadata（透传给 better-auth 底层），用于设置默认引擎等 */
+  updateMetadata: (orgId: string, data: Record<string, unknown>) =>
+    request<OrgInfo>("/web/organizations/:id", {
+      method: "PUT",
+      params: { id: orgId },
+      body: { data },
     }),
 };

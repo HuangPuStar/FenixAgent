@@ -2,7 +2,16 @@ import { and, eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { db } from "../../../db";
-import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
+import {
+  agentSiteApp,
+  knowledgeBase,
+  machine,
+  mcpServer,
+  model,
+  organization,
+  provider,
+  skill,
+} from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import { WebErrSchema } from "../../../schemas/common.schema";
@@ -371,6 +380,28 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
+
+  // 从组织 metadata 读取默认引擎设置
+  if (!data.engineType || !data.machineId) {
+    try {
+      const [org] = await db
+        .select({ metadata: organization.metadata })
+        .from(organization)
+        .where(eq(organization.id, ctx.organizationId))
+        .limit(1);
+      const defEngine = (org?.metadata as Record<string, unknown> | null)?.defaultEngine as
+        | { engineType?: string; machineId?: string }
+        | undefined;
+      if (defEngine?.engineType && !data.engineType) {
+        data.engineType = defEngine.engineType;
+      }
+      if (defEngine?.machineId !== undefined && !data.machineId) {
+        data.machineId = defEngine.machineId || null;
+      }
+    } catch {
+      // 读取失败静默回退，不影响 Agent 创建
+    }
+  }
 
   // 白名单过滤
   const filtered: Record<string, unknown> = {};

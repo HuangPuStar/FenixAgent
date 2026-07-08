@@ -55,6 +55,12 @@ export function AgentOrganizationsPage() {
   const { t } = useTranslation("orgs");
   const { org: currentOrg, refreshOrgs } = useOrg();
 
+  // 默认引擎设置
+  const [defaultEngineType, setDefaultEngineType] = useState<string>("");
+  const [defaultMachineId, setDefaultMachineId] = useState<string>("local");
+  const [engineDirty, setEngineDirty] = useState(false);
+  const [savingEngine, setSavingEngine] = useState(false);
+
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -109,6 +115,18 @@ export function AgentOrganizationsPage() {
   const selectedOrgRole = myOrgs.find((o) => o.id === selectedOrgId)?.role;
   const canManage = selectedOrgRole === "owner" || selectedOrgRole === "admin";
   const isOwner = selectedOrgRole === "owner";
+
+  useEffect(() => {
+    if (!detail) return;
+    const metadata = (detail as unknown as Record<string, unknown>).metadata as
+      | { defaultEngine?: { engineType?: string; machineId?: string } }
+      | null
+      | undefined;
+    const def = metadata?.defaultEngine;
+    setDefaultEngineType(def?.engineType ?? "");
+    setDefaultMachineId(def?.machineId || "local");
+    setEngineDirty(false);
+  }, [detail]);
 
   const handleCopyId = useCallback(() => {
     if (!selectedOrgId) return;
@@ -216,6 +234,35 @@ export function AgentOrganizationsPage() {
       toast.error(t("toast.deleteFailed"));
     },
   });
+
+  const saveDefaultEngine = useCallback(async () => {
+    if (!selectedOrgId || !detail) return;
+    setSavingEngine(true);
+    try {
+      const metadata = {
+        ...(((detail as unknown as Record<string, unknown>).metadata as Record<string, unknown>) || {}),
+        defaultEngine: {
+          engineType: defaultEngineType || undefined,
+          machineId: defaultMachineId === "local" ? "" : defaultMachineId,
+        },
+      };
+      await unwrap(
+        orgApi.updateMetadata(selectedOrgId, {
+          name: detail.name,
+          slug: detail.slug,
+          metadata,
+        }),
+      );
+      toast.success(t("toast.updateSuccess"));
+      setEngineDirty(false);
+      refreshDetail();
+    } catch (err) {
+      console.error(err);
+      toast.error(t("toast.updateFailed"));
+    } finally {
+      setSavingEngine(false);
+    }
+  }, [selectedOrgId, detail, defaultEngineType, defaultMachineId, refreshDetail, t]);
 
   const members = (detail?.members ?? []) as unknown as OrgMember[];
 
@@ -389,6 +436,80 @@ export function AgentOrganizationsPage() {
                   {members.length === 0 && <p className="text-sm text-text-dim text-center py-4">{t("noMembers")}</p>}
                 </div>
               </div>
+
+              {/* 默认引擎设置 — 仅 owner 可见 */}
+              {isOwner && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-text-primary">{t("defaultEngine", "默认引擎")}</h3>
+                  <div className="rounded-lg border border-border-light bg-surface-1 px-4 py-3 space-y-3">
+                    <div className="flex items-center gap-4">
+                      <label className="text-xs text-text-secondary w-20 shrink-0">
+                        {t("form.engineType", "引擎类型")}
+                      </label>
+                      <select
+                        className="flex-1 rounded-md border border-border-light bg-surface-2 px-3 py-1.5 text-sm text-text-primary"
+                        value={defaultEngineType}
+                        onChange={(e) => {
+                          setDefaultEngineType(e.target.value);
+                          setEngineDirty(true);
+                        }}
+                      >
+                        <option value="">{t("form.engineTypePlaceholder", "未设置")}</option>
+                        <option value="opencode">OpenCode</option>
+                        <option value="ccb">CCB</option>
+                        <option value="claude-code">Claude Code</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <label className="text-xs text-text-secondary w-20 shrink-0">
+                        {t("form.machine", "执行节点")}
+                      </label>
+                      <select
+                        className="flex-1 rounded-md border border-border-light bg-surface-2 px-3 py-1.5 text-sm text-text-primary"
+                        value={defaultMachineId}
+                        onChange={(e) => {
+                          setDefaultMachineId(e.target.value);
+                          setEngineDirty(true);
+                        }}
+                      >
+                        <option value="local">{t("form.machineLocal", "本地")}</option>
+                        {machines.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name || (m.machineInfo as { hostname?: string } | null)?.hostname || m.agentName} (
+                            {m.id.slice(0, 8)}){" "}
+                            {m.status === "online"
+                              ? t("machineStatus.online", "在线")
+                              : t("machineStatus.offline", "离线")}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {engineDirty && (
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" onClick={saveDefaultEngine} disabled={savingEngine}>
+                          {savingEngine ? t("saving") : t("save")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const metadata = (detail as unknown as Record<string, unknown>).metadata as
+                              | { defaultEngine?: { engineType?: string; machineId?: string } }
+                              | null
+                              | undefined;
+                            const def = metadata?.defaultEngine;
+                            setDefaultEngineType(def?.engineType ?? "");
+                            setDefaultMachineId(def?.machineId || "local");
+                            setEngineDirty(false);
+                          }}
+                        >
+                          {t("cancel")}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Machines */}
               <div className="space-y-3">
