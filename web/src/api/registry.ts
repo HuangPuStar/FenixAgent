@@ -71,6 +71,28 @@ export interface MachineListQuery {
   offset?: number;
 }
 
+/** 创建机器请求 */
+export interface CreateMachineRequest {
+  /** 机器显示名称 */
+  name: string;
+  /** 标签列表 */
+  labels?: string[];
+  /** 引擎名称，默认 opencode */
+  agentName?: string;
+}
+
+/** 创建机器响应 */
+export interface CreateMachineResponse {
+  /** 分配的 machine id */
+  id: string;
+  /** 机器名称 */
+  name: string;
+  /** 状态，始终为 pending */
+  status: "pending";
+  /** 客户端初始化命令 */
+  initCommand: string;
+}
+
 /** 事件列表查询参数 */
 export interface EventListQuery {
   /** 分页大小，默认 20 */
@@ -106,4 +128,13 @@ export const registryApi = {
       params: { id },
       query,
     }),
+
+  /**
+   * 创建机器预注册记录（status=pending）。
+   *
+   * 组织管理员预创建机器记录，获取固定的 machine id 和初始化命令，
+   * 下发给机器管理员执行 acp-runtime CLI 注册。
+   */
+  create: (body: CreateMachineRequest) =>
+    request<CreateMachineResponse>("/web/registry/machines", { method: "POST", body }),
 };

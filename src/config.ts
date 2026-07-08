@@ -39,6 +39,7 @@ function buildConfig(env: Env) {
     disableSignup: env.RCS_DISABLE_SIGNUP,
     defaultMachineId: env.RCS_DEFAULT_MACHINE_ID,
     defaultEngineType: env.RCS_DEFAULT_ENGINE_TYPE,
+    disableLocalExecution: env.RCS_DISABLE_LOCAL_EXECUTION,
   };
 }
 

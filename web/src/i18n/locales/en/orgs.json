@@ -70,6 +70,21 @@
   "editName": {
     "placeholder": "Organization name"
   },
+  "done": "Done",
+  "machineId": "Machine ID",
+  "addMachine": "Add Machine",
+  "createMachineDialog": {
+    "title": "Add Machine",
+    "name": "Machine Name",
+    "namePlaceholder": "e.g. sandbox-01",
+    "labels": "Labels",
+    "labelsPlaceholder": "Comma separated, e.g. sandbox,production",
+    "agentName": "Engine Type",
+    "agentNamePlaceholder": "Select engine type",
+    "resultTitle": "Machine Created",
+    "resultDesc": "Share the following information with the machine administrator. Set the environment variables on the client before starting acp-runtime.",
+    "initCommand": "Init Command"
+  },
   "toast": {
     "loadDetailFailed": "Failed to load organization details",
     "createSuccess": "Organization created",
@@ -83,7 +98,9 @@
     "roleUpdated": "Role updated",
     "roleUpdateFailed": "Failed to update role",
     "deleteSuccess": "Organization deleted",
-    "deleteFailed": "Failed to delete organization"
+    "deleteFailed": "Failed to delete organization",
+    "machineCreateSuccess": "Machine {{name}} created (ID: {{id}})",
+    "machineCreateFailed": "Failed to create machine"
   },
   "error": {
     "operationFailed": "Operation failed"

@@ -113,6 +113,45 @@ export async function listEvents(
   return { data: rows, total: countRows[0].count };
 }
 
+/**
+ * 管理员预创建机器记录（status=pending）。
+ * 返回 machine id 和包含 RCS_MACHINE_ID + RCS_SECRET 的初始化命令。
+ */
+export async function createMachine(
+  ctx: AuthContext,
+  params: { name: string; labels?: string[]; agentName?: string },
+): Promise<{ id: string; name: string; status: "pending"; initCommand: string }> {
+  const id = genId("mach");
+  const now = new Date();
+  const agentName = params.agentName ?? "opencode";
+  const labels = params.labels ?? [];
+
+  await db.insert(machine).values({
+    id,
+    organizationId: ctx.organizationId,
+    userId: null,
+    agentName,
+    name: params.name,
+    status: "pending",
+    machineInfo: null,
+    labels,
+    heartbeatIntervalMs: 30000,
+    lastHeartbeatAt: null,
+    registeredAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const initCommand = [
+    `RCS_MACHINE_ID=${id}`,
+    `RCS_SECRET=<your-registry-secret>`,
+    `AGENT_TYPE=${agentName}`,
+    `acp-runtime ${agentName} acp`,
+  ].join(" ");
+
+  return { id, name: params.name, status: "pending", initCommand };
+}
+
 export async function registerMachine(params: {
   name: string | null;
   agentName: string;
@@ -129,7 +168,7 @@ export async function registerMachine(params: {
   const hostname = params.machineInfo?.hostname as string | undefined;
   let existingId: string | null = null;
 
-  // ── 客户端指定 machineId 分支：跳过自动去重，直接用指定 ID ──
+  // ── 客户端指定 machineId 分支：验证预创建记录并激活 ──
   if (params.machineId) {
     const existing = await db
       .select({ id: machine.id, status: machine.status })
@@ -137,67 +176,46 @@ export async function registerMachine(params: {
       .where(eq(machine.id, params.machineId))
       .limit(1);
 
+    // machine 不存在：必须在组织管理界面先创建
+    if (existing.length === 0) {
+      throw new Error(`machine '${params.machineId}' not found, please create it first in your organization`);
+    }
+
     const now = new Date();
 
-    // 已在线的机器不允许另一个 client 接管
-    if (existing.length > 0 && existing[0].status === "online") {
+    // 已在线：不允许另一个 client 接管
+    if (existing[0].status === "online") {
       throw new Error(`machine id '${params.machineId}' is already online`);
     }
 
-    // 已存在但 offline → UPDATE 接管，同步更新 organizationId
-    if (existing.length > 0) {
-      await db
-        .update(machine)
-        .set({
-          status: "online",
-          organizationId: params.tenantId ?? null,
-          userId: params.userId ?? null,
-          name: params.name,
-          machineInfo: params.machineInfo,
-          labels: params.labels,
-          heartbeatIntervalMs: params.heartbeatIntervalMs,
-          lastHeartbeatAt: now,
-          updatedAt: now,
-        })
-        .where(eq(machine.id, params.machineId));
+    const isFirstRegistration = existing[0].status === "pending";
+    const eventType = isFirstRegistration ? "register" : "reconnect";
 
-      await db.insert(registryEvent).values({
-        id: genId("evt"),
-        machineId: params.machineId,
-        type: "reconnect",
-        detail: { machine_info: params.machineInfo, labels: params.labels },
-      });
-
-      await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
-      return { id: params.machineId, isNew: false };
-    }
-
-    // 不存在 → INSERT 新记录
-    await db.insert(machine).values({
-      id: params.machineId,
-      organizationId: params.tenantId ?? null,
-      userId: params.userId ?? null,
-      agentName: params.agentName,
-      name: params.name,
-      status: "online",
-      machineInfo: params.machineInfo,
-      labels: params.labels,
-      heartbeatIntervalMs: params.heartbeatIntervalMs,
-      lastHeartbeatAt: now,
-      registeredAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
+    // pending 或 offline → 激活为 online，同步更新字段
+    await db
+      .update(machine)
+      .set({
+        status: "online",
+        organizationId: params.tenantId ?? null,
+        userId: params.userId ?? null,
+        machineInfo: params.machineInfo,
+        labels: params.labels,
+        name: params.name,
+        heartbeatIntervalMs: params.heartbeatIntervalMs,
+        lastHeartbeatAt: now,
+        updatedAt: now,
+      })
+      .where(eq(machine.id, params.machineId));
 
     await db.insert(registryEvent).values({
       id: genId("evt"),
       machineId: params.machineId,
-      type: "register",
+      type: eventType,
       detail: { machine_info: params.machineInfo, labels: params.labels },
     });
 
     await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
-    return { id: params.machineId, isNew: true };
+    return { id: params.machineId, isNew: isFirstRegistration };
   }
 
   // ── 去重策略（machineId 未指定时走此分支）──

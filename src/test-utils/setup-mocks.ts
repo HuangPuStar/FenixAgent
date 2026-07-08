@@ -239,6 +239,7 @@ const REGISTRY_KEYS = [
   "listMachines",
   "getMachine",
   "listEvents",
+  "createMachine",
   "registerMachine",
   "disconnectMachine",
   "markHeartbeatTimeout",
@@ -293,6 +294,7 @@ mock.module("../services/environment", () =>
 
 const CORE_BOOTSTRAP_KEYS = [
   "getCoreRuntime",
+  "initCoreRuntime",
   "setCoreRuntimeFactory",
   "resetCoreRuntime",
   "registerRemoteNode",

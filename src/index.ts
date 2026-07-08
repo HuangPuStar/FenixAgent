@@ -35,7 +35,7 @@ import webApp from "./routes/web";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "./services/acp-idle-monitor";
 import { closeCache } from "./services/cache";
-import { getCoreRuntime } from "./services/core-bootstrap";
+import { initCoreRuntime } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
 import { stopAllInstances } from "./services/instance";
@@ -68,7 +68,7 @@ import { sql } from "drizzle-orm";
 
 await db.update(agentSession).set({ status: "idle", updatedAt: new Date() }).where(sql`1=1`);
 
-getCoreRuntime();
+await initCoreRuntime();
 startupLog.info("Core runtime initialized");
 
 await startScheduler();

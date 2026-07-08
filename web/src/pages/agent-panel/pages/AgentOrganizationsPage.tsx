@@ -79,6 +79,17 @@ export function AgentOrganizationsPage() {
   const [editingName, setEditingName] = useState(false);
   const [editName, setEditName] = useState("");
 
+  // 新增机器弹窗
+  const [machineCreateOpen, setMachineCreateOpen] = useState(false);
+  const [machineFormName, setMachineFormName] = useState("");
+  const [machineFormLabels, setMachineFormLabels] = useState("");
+  const [machineFormAgentName, setMachineFormAgentName] = useState("opencode");
+  const [machineCreateResult, setMachineCreateResult] = useState<{
+    id: string;
+    name: string;
+    initCommand: string;
+  } | null>(null);
+
   // 组织列表
   const { data: myOrgsRaw = [], refresh: reloadOrgs } = useRequest(() => unwrap(orgApi.list()), {
     onError: (err) => {
@@ -104,6 +115,22 @@ export function AgentOrganizationsPage() {
     refreshDeps: [selectedOrgId],
   });
   const machines = machinesResponse?.items ?? [];
+
+  // 新增机器
+  const { run: runCreateMachine, loading: createMachineLoading } = useRequest(
+    (name: string, labels: string[], agentName: string) => unwrap(registryApi.create({ name, labels, agentName })),
+    {
+      manual: true,
+      onSuccess: (data) => {
+        setMachineCreateResult({ id: data.id, name: data.name, initCommand: data.initCommand });
+        refreshMachines();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(t("toast.machineCreateFailed"));
+      },
+    },
+  );
 
   // 首次加载时自动选中当前活跃组织
   useEffect(() => {
@@ -517,10 +544,28 @@ export function AgentOrganizationsPage() {
                   <h3 className="text-sm font-semibold text-text-primary">
                     {t("machines", { count: machines.length })}
                   </h3>
-                  <Button size="sm" variant="outline" onClick={refreshMachines} disabled={machinesLoading}>
-                    <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${machinesLoading ? "animate-spin" : ""}`} />
-                    {machinesLoading ? t("machineRefreshing") : t("machineRefresh")}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {canManage && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setMachineCreateResult(null);
+                          setMachineFormName("");
+                          setMachineFormLabels("");
+                          setMachineFormAgentName("opencode");
+                          setMachineCreateOpen(true);
+                        }}
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1.5" />
+                        {t("addMachine")}
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={refreshMachines} disabled={machinesLoading}>
+                      <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${machinesLoading ? "animate-spin" : ""}`} />
+                      {machinesLoading ? t("machineRefreshing") : t("machineRefresh")}
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid gap-2">
                   {machines.map((m: MachineRecord) => {
@@ -549,14 +594,30 @@ export function AgentOrganizationsPage() {
                               </span>
                             )}
                           </div>
+                          <div className="mt-0.5 text-xs text-text-dim">
+                            {t("machineId")}: <code className="font-mono">{m.id}</code>
+                          </div>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          className="text-text-dim hover:text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={() => {
+                            navigator.clipboard.writeText(m.id);
+                            toast.success(t("copied"));
+                          }}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
                         {m.labels && m.labels.length > 0 && (
                           <div className="flex items-center gap-1 shrink-0">
-                            {m.labels.map((l) => (
-                              <Badge key={l} variant="secondary" className="text-[10px]">
-                                {l}
-                              </Badge>
-                            ))}
+                            {m.labels
+                              .filter((l) => l !== "remote-runtime")
+                              .map((l) => (
+                                <Badge key={l} variant="secondary" className="text-[10px]">
+                                  {l}
+                                </Badge>
+                              ))}
                           </div>
                         )}
                       </div>
@@ -711,6 +772,140 @@ export function AgentOrganizationsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create machine dialog */}
+      <Dialog
+        open={machineCreateOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMachineCreateOpen(false);
+            setMachineCreateResult(null);
+            setMachineFormName("");
+            setMachineFormLabels("");
+            setMachineFormAgentName("opencode");
+          }
+        }}
+      >
+        <DialogContent>
+          {machineCreateResult ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t("createMachineDialog.resultTitle")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <p className="text-sm text-text-secondary">{t("createMachineDialog.resultDesc")}</p>
+                <div>
+                  <label className="text-xs font-medium text-text-dim">{t("machineId")}</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 text-sm bg-surface-hover px-3 py-2 rounded font-mono break-all">
+                      {machineCreateResult.id}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(machineCreateResult.id);
+                        toast.success(t("copied"));
+                      }}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-text-dim">{t("createMachineDialog.initCommand")}</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 text-xs bg-surface-hover px-3 py-2 rounded font-mono break-all">
+                      {machineCreateResult.initCommand}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(machineCreateResult.initCommand);
+                        toast.success(t("copied"));
+                      }}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  onClick={() => {
+                    setMachineCreateOpen(false);
+                    setMachineCreateResult(null);
+                    setMachineFormName("");
+                    setMachineFormLabels("");
+                    setMachineFormAgentName("opencode");
+                  }}
+                >
+                  {t("done")}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t("createMachineDialog.title")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <div>
+                  <label className="text-sm font-medium text-text-primary">{t("createMachineDialog.name")}</label>
+                  <Input
+                    className="mt-1"
+                    value={machineFormName}
+                    onChange={(e) => setMachineFormName(e.target.value)}
+                    placeholder={t("createMachineDialog.namePlaceholder")}
+                    maxLength={64}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-text-primary">{t("createMachineDialog.labels")}</label>
+                  <Input
+                    className="mt-1"
+                    value={machineFormLabels}
+                    onChange={(e) => setMachineFormLabels(e.target.value)}
+                    placeholder={t("createMachineDialog.labelsPlaceholder")}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-text-primary">{t("createMachineDialog.agentName")}</label>
+                  <select
+                    value={machineFormAgentName}
+                    onChange={(e) => setMachineFormAgentName(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                  >
+                    <option value="opencode">OpenCode</option>
+                    <option value="ccb">CCB</option>
+                    <option value="claude-code">Claude Code</option>
+                  </select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setMachineCreateOpen(false)}>
+                  {t("cancel")}
+                </Button>
+                <Button
+                  onClick={() => {
+                    const name = machineFormName.trim();
+                    if (!name) return;
+                    const labels = machineFormLabels
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    runCreateMachine(name, labels, machineFormAgentName);
+                  }}
+                  disabled={createMachineLoading || !machineFormName.trim()}
+                >
+                  {createMachineLoading ? t("creating") : t("create")}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
