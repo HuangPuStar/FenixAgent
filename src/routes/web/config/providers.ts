@@ -5,7 +5,7 @@
  *   POST   /config/providers                           → 创建新 Provider（已存在返回 409）
  *   PUT    /config/providers?name=xxx                  → 更新已有 Provider
  *   DELETE /config/providers?name=xxx                  → 删除 Provider
- *   POST   /config/providers/actions/test?name=xxx     → 测试 Provider 连通性
+ *   POST   /config/providers/actions/fetch-models?name=xxx     → 获取 Provider 模型列表
  *   POST   /config/providers/actions/test-model?name=xxx           → 测试模型连通性
  *   POST   /config/providers/actions/models?name=xxx              → 为 Provider 添加模型
  *   PUT    /config/providers/actions/models/:modelId?name=xxx     → 更新模型
@@ -20,8 +20,8 @@ import { WebOkSchema } from "../../../schemas/common.schema";
 import {
   ModelActionResultResponseSchema,
   ModelTestResponseSchema,
+  ProviderFetchModelsResponseSchema,
   ProviderSaveResponseSchema,
-  ProviderTestResponseSchema,
 } from "../../../schemas/config.schema";
 import * as configPg from "../../../services/config/index";
 import { buildModelData } from "../../../services/config/provider";
@@ -399,7 +399,7 @@ async function testProviderModelMessage(
   return configSuccess({ ok: true, content });
 }
 
-async function handleTest(
+async function handleFetchModels(
   ctx: AuthContext,
   name: string,
   inline?: { apiKey?: string; baseURL?: string; protocol?: "openai" | "anthropic" },
@@ -714,9 +714,9 @@ app.delete(
 
 // ── Action routes（使用 /actions/ 前缀避免与 :name 路径冲突）──
 
-/** POST /config/providers/actions/test?name=xxx — 测试 Provider 连通性 */
+/** POST /config/providers/actions/fetch-models?name=xxx — 获取 Provider 模型列表 */
 app.post(
-  "/config/providers/actions/test",
+  "/config/providers/actions/fetch-models",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   safeAppHandler(async ({ store, query, body, status }: any) => {
     const authCtx = store.authContext!;
@@ -725,7 +725,7 @@ app.post(
       return status(400, configError("VALIDATION_ERROR", "缺少 'name' 查询参数"));
     }
     const inline = body as { apiKey?: string; baseURL?: string; protocol?: string } | undefined;
-    const result: unknown = await handleTest(authCtx, name, {
+    const result: unknown = await handleFetchModels(authCtx, name, {
       apiKey: inline?.apiKey,
       baseURL: inline?.baseURL,
       protocol: inline?.protocol === "anthropic" ? "anthropic" : inline?.protocol === "openai" ? "openai" : undefined,
@@ -739,16 +739,16 @@ app.post(
     sessionAuth: true,
     query: providerNameQuerySchema,
     response: {
-      200: ProviderTestResponseSchema,
+      200: ProviderFetchModelsResponseSchema,
       400: ProviderRouteErrSchema,
       404: ProviderRouteErrSchema,
       500: ProviderRouteErrSchema,
     },
     detail: {
       tags: ["ProviderConfig"],
-      summary: "测试 Provider 连通性",
+      summary: "获取 Provider 模型列表",
       description:
-        "测试指定 Provider 的连通性，可选择性传入内联凭证。名称通过 `name` 查询参数传入（支持 resource key 格式）。",
+        "获取指定 Provider 的模型列表，可选择性传入内联凭证。名称通过 `name` 查询参数传入（支持 resource key 格式）。",
       parameters: [
         {
           name: "name",

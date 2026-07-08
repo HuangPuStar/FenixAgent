@@ -86,26 +86,26 @@ describe("config SDK modules", () => {
     expect(JSON.parse(calls[1][1].body)).toEqual({ name: "new-provider", apiKey: "sk-new" });
   });
 
-  // 测试 test provider 使用 /actions/test + query param 端点
-  test("providerApi.test uses POST to provider test endpoint", async () => {
+  // 测试 fetchModels 使用 /actions/fetch-models + query param 端点
+  test("providerApi.fetchModels uses POST to provider fetch-models endpoint", async () => {
     fetchMock.body = { success: true, data: { models: ["gpt-4", "gpt-3.5"] } };
     const { providerApi } = await import("../api/providers");
-    const { data, error } = await providerApi.test("openai");
+    const { data, error } = await providerApi.fetchModels("openai");
     expect(error).toBeUndefined();
     expect((data as any).models).toEqual(["gpt-4", "gpt-3.5"]);
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toBe("/web/config/providers/actions/test?name=openai");
+    expect(call[0]).toBe("/web/config/providers/actions/fetch-models?name=openai");
     expect(call[1].method).toBe("POST");
     expect(JSON.parse(call[1].body)).toEqual({});
   });
 
-  // 测试 test provider 携带 inline 参数（query param 风格）
-  test("providerApi.test sends inline credentials in body", async () => {
+  // 测试 fetchModels 携带 inline 参数（query param 风格）
+  test("providerApi.fetchModels sends inline credentials in body", async () => {
     fetchMock.body = { success: true, data: { models: ["claude-3"] } };
     const { providerApi } = await import("../api/providers");
-    await providerApi.test("anthropic", { apiKey: "sk-inline", protocol: "anthropic" });
+    await providerApi.fetchModels("anthropic", { apiKey: "sk-inline", protocol: "anthropic" });
     const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toBe("/web/config/providers/actions/test?name=anthropic");
+    expect(call[0]).toBe("/web/config/providers/actions/fetch-models?name=anthropic");
     expect(call[1].method).toBe("POST");
     expect(JSON.parse(call[1].body)).toEqual({ apiKey: "sk-inline", protocol: "anthropic" });
   });

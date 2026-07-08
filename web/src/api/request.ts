@@ -35,6 +35,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public code: ErrorCode = "UNKNOWN",
+    public data?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -47,7 +48,7 @@ export class ApiError extends Error {
  */
 export async function unwrap<T>(resp: Promise<ApiResponse<T>>): Promise<T> {
   const { success, data, error } = await resp;
-  if (!success) throw new ApiError(error?.message ?? "请求失败", error?.code ?? "UNKNOWN");
+  if (!success) throw new ApiError(error?.message ?? "请求失败", error?.code ?? "UNKNOWN", error?.data);
   return data as T;
 }
 
@@ -191,7 +192,7 @@ function normalizeErrorCode(raw: string | undefined, status: number): ErrorCode 
   if (["NOT_FOUND", "SERVER_ERROR", "VALIDATION_ERROR", "UNAUTHORIZED", "NETWORK_ERROR", "UNKNOWN"].includes(upper)) {
     return upper as ErrorCode;
   }
-  return statusToCode(status);
+  return raw as ErrorCode;
 }
 
 function statusToCode(status: number): ErrorCode {

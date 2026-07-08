@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { providerApi } from "@/src/api/providers";
-import { unwrap } from "@/src/api/request";
+import { ApiError, unwrap } from "@/src/api/request";
 import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import type { ProviderInfo, ProviderModel } from "../../../types/config";
@@ -88,7 +88,7 @@ export function AgentModelsPage() {
   const [editingProvider, setEditingProvider] = useState<ProviderInfo | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<
+  const [fetchModelsResult, setFetchModelsResult] = useState<
     | { kind: "provider"; name: string; models: string[]; warning?: string }
     | { kind: "provider"; name: string; error: TestDialogError }
     | { kind: "model"; providerName: string; modelId: string; content: string }
@@ -132,6 +132,8 @@ export function AgentModelsPage() {
   const [deleteModelConfirm, setDeleteModelConfirm] = useState<{ providerId: string; modelId: string } | null>(null);
 
   const getProtocolLabel = (opt: (typeof PROTOCOL_OPTIONS)[number]) => t(opt.labelKey);
+  const isProviderFetchHint = (error: TestDialogError) =>
+    getErrorDataRecord(error.data).hint === "configure_model_then_test_model";
 
   const formatTestError = (error: TestDialogError) => {
     const errorData = getErrorDataRecord(error.data);
@@ -167,6 +169,21 @@ export function AgentModelsPage() {
       default:
         return error.message || t("unknownError");
     }
+  };
+
+  const getProviderDialogDescription = (
+    result: Extract<NonNullable<typeof fetchModelsResult>, { kind: "provider" }>,
+  ) => {
+    if ("error" in result) {
+      if (isProviderFetchHint(result.error)) {
+        return `${t("form.noModelsFound")}\n\n${t("form.noModelsHint")}`;
+      }
+      return formatTestError(result.error);
+    }
+    if (result.models.length > 0) {
+      return t("testDialog.modelsFound", { count: result.models.length });
+    }
+    return `${t("form.noModelsFound")}\n\n${t("form.noModelsHint")}`;
   };
 
   // Provider 保存（创建/更新）：仅创建时 toast 提示
@@ -233,10 +250,10 @@ export function AgentModelsPage() {
     },
   });
 
-  // Provider 连通性测试
-  const { run: runTest } = useRequest(
+  // Provider 获取模型列表
+  const { run: runFetchModels } = useRequest(
     async (name: string) => {
-      const result = await unwrap(providerApi.test(name));
+      const result = await unwrap(providerApi.fetchModels(name));
       const r = result as unknown as Record<string, unknown>;
       const modelIds = Array.isArray(r?.models)
         ? (r.models as unknown as Array<{ id?: string }>).map((m: { id?: string }) => m.id ?? String(m))
@@ -246,17 +263,18 @@ export function AgentModelsPage() {
     {
       manual: true,
       onSuccess: ({ name, models, warning }) => {
-        toast.success(t("testDialog.successTitle", { name }));
-        setTestResult({ kind: "provider", name, models, warning });
+        setFetchModelsResult({ kind: "provider", name, models, warning });
         setAddedModelIds(new Set((providerModels[name] ?? []).map((m) => m.id)));
         setTesting(null);
       },
       onError: (err: Error, [name]: [string]) => {
-        toast.error(t("testDialog.failTitle", { name }));
-        setTestResult({
+        setFetchModelsResult({
           kind: "provider",
           name,
-          error: { code: "UNKNOWN_ERROR", message: err.message },
+          error:
+            err instanceof ApiError
+              ? { code: err.code, message: err.message, data: err.data }
+              : { code: "UNKNOWN_ERROR", message: err.message },
         });
         setTesting(null);
       },
@@ -274,12 +292,12 @@ export function AgentModelsPage() {
       manual: true,
       onSuccess: ({ providerName, modelId, content }) => {
         toast.success(t("testDialog.modelSuccessTitle", { modelId }));
-        setTestResult({ kind: "model", providerName, modelId, content });
+        setFetchModelsResult({ kind: "model", providerName, modelId, content });
         setTestingModelKey(null);
       },
       onError: (err: Error, [providerId, modelId]: [string, string]) => {
         toast.error(t("testDialog.modelFailTitle", { modelId }));
-        setTestResult({
+        setFetchModelsResult({
           kind: "model",
           providerName: providerId,
           modelId,
@@ -395,7 +413,7 @@ export function AgentModelsPage() {
   };
 
   // 表单内获取模型列表
-  // 新建和编辑都只用表单内的临时值测试，避免未保存修改提前写入后端。
+  // 新建和编辑都只用表单内的临时值获取，避免未保存修改提前写入后端。
   const handleFetchModels = async () => {
     if (!formName.trim()) {
       toast.error(t("validation.nameEmpty"));
@@ -404,9 +422,9 @@ export function AgentModelsPage() {
     setFormFetchingModels(true);
     setFormModelsFetched(false);
     try {
-      // 统一走 inline test，名称仅用于兼容既有接口参数，不作为配置读取来源。
+      // 统一走 inline 获取，名称仅用于兼容既有接口参数，不作为配置读取来源。
       const result = await unwrap(
-        providerApi.test(
+        providerApi.fetchModels(
           formName,
           buildProviderInlineTestPayload({
             apiKey: formApiKey,
@@ -455,14 +473,14 @@ export function AgentModelsPage() {
     return () => clearTimeout(timer);
   }, [formApiKey, formBaseURL, dialogOpen, formName]);
 
-  const handleTest = (name: string) => {
+  const handleFetchModelsResult = (name: string) => {
     setTesting(name);
-    runTest(name);
+    runFetchModels(name);
   };
 
   const handleAddFromTest = (modelId: string) => {
-    if (testResult?.kind !== "provider" || "error" in testResult) return;
-    runAddFromTest(testResult.name, modelId);
+    if (fetchModelsResult?.kind !== "provider" || "error" in fetchModelsResult) return;
+    runAddFromTest(fetchModelsResult.name, modelId);
   };
 
   const handleTestModel = (providerId: string, modelId: string) => {
@@ -761,19 +779,19 @@ export function AgentModelsPage() {
               <div className="flex items-center gap-3 px-4 py-2 border-t border-border-subtle bg-surface-0 text-[11px]">
                 {writable ? (
                   <>
-                    {/* 左侧：测试 & 编辑 */}
+                    {/* 左侧：获取模型列表 & 编辑 */}
                     <div className="flex items-center gap-2">
                       {hasModels && (
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleTest(providerKey);
+                            handleFetchModelsResult(providerKey);
                           }}
                           disabled={testing === providerKey}
                           className="text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
                         >
-                          {testing === providerKey ? t("actions.testing") : t("actions.test")}
+                          {testing === providerKey ? t("form.fetching") : t("form.fetchModels")}
                         </button>
                       )}
                       <button
@@ -1142,52 +1160,46 @@ export function AgentModelsPage() {
       </FormDialog>
 
       {/* Test result dialog */}
-      <Dialog open={!!testResult} onOpenChange={() => setTestResult(null)}>
+      <Dialog open={!!fetchModelsResult} onOpenChange={() => setFetchModelsResult(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {testResult?.kind === "provider" &&
-                ("error" in testResult
-                  ? t("testDialog.failTitle", { name: testResult.name })
-                  : t("testDialog.successTitle", { name: testResult.name }))}
-              {testResult?.kind === "model" &&
-                ("error" in testResult
-                  ? t("testDialog.modelFailTitle", { modelId: testResult.modelId })
-                  : t("testDialog.modelSuccessTitle", { modelId: testResult.modelId }))}
+              {fetchModelsResult?.kind === "provider" && t("form.modelsSection")}
+              {fetchModelsResult?.kind === "model" &&
+                ("error" in fetchModelsResult
+                  ? t("testDialog.modelFailTitle", { modelId: fetchModelsResult.modelId })
+                  : t("testDialog.modelSuccessTitle", { modelId: fetchModelsResult.modelId }))}
             </DialogTitle>
             <DialogDescription className="whitespace-pre-line">
-              {testResult?.kind === "provider" &&
-                ("error" in testResult
-                  ? formatTestError(testResult.error)
-                  : t("testDialog.modelsFound", {
-                      count: testResult.models.length,
-                    }))}
-              {testResult?.kind === "model" &&
-                ("error" in testResult ? formatTestError(testResult.error) : testResult.content)}
+              {fetchModelsResult?.kind === "provider" && getProviderDialogDescription(fetchModelsResult)}
+              {fetchModelsResult?.kind === "model" &&
+                ("error" in fetchModelsResult ? formatTestError(fetchModelsResult.error) : fetchModelsResult.content)}
             </DialogDescription>
           </DialogHeader>
-          {testResult?.kind === "provider" && !("error" in testResult) && testResult.models.length > 0 && (
-            <div className="max-h-72 overflow-y-auto grid gap-1.5">
-              {testResult.models.map((m) => {
-                const added = addedModelIds.has(m);
-                return (
-                  <div
-                    key={m}
-                    className={`flex items-center justify-between text-sm py-2 px-3 rounded-lg border ${added ? "bg-surface-2 border-border-light" : "bg-surface-1 border-border-light hover:border-brand/30"}`}
-                  >
-                    <span className="font-mono text-xs text-text-primary">{m}</span>
-                    {added ? (
-                      <span className="text-xs text-status-active font-medium">{t("testDialog.added")}</span>
-                    ) : (
-                      <Button size="xs" variant="outline" onClick={() => handleAddFromTest(m)}>
-                        {t("actions.add")}
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {fetchModelsResult?.kind === "provider" &&
+            !("error" in fetchModelsResult) &&
+            fetchModelsResult.models.length > 0 && (
+              <div className="max-h-72 overflow-y-auto grid gap-1.5">
+                {fetchModelsResult.models.map((m) => {
+                  const added = addedModelIds.has(m);
+                  return (
+                    <div
+                      key={m}
+                      className={`flex items-center justify-between text-sm py-2 px-3 rounded-lg border ${added ? "bg-surface-2 border-border-light" : "bg-surface-1 border-border-light hover:border-brand/30"}`}
+                    >
+                      <span className="font-mono text-xs text-text-primary">{m}</span>
+                      {added ? (
+                        <span className="text-xs text-status-active font-medium">{t("testDialog.added")}</span>
+                      ) : (
+                        <Button size="xs" variant="outline" onClick={() => handleAddFromTest(m)}>
+                          {t("actions.add")}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
         </DialogContent>
       </Dialog>
 

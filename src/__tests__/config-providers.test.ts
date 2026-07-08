@@ -440,8 +440,8 @@ describe("Providers Config Route", () => {
     expect(json.error.code).toBe("NOT_FOUND");
   });
 
-  // test → POST /config/providers/actions/test?name=xxx
-  test("test action — openai 协议通过 models 接口验证", async () => {
+  // fetch_models → POST /config/providers/actions/fetch-models?name=xxx
+  test("fetch_models action — openai 协议通过 models 接口验证", async () => {
     _providers.set("openai", {
       id: "prov-openai",
       name: "openai",
@@ -465,7 +465,7 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers/actions/test?name=openai", {
+      new Request("http://localhost/config/providers/actions/fetch-models?name=openai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),
@@ -479,8 +479,8 @@ describe("Providers Config Route", () => {
     globalThis.fetch = originalFetch;
   });
 
-  // test → POST /config/providers/actions/test?name=xxx
-  test("test action — anthropic 优先通过 models 接口验证", async () => {
+  // fetch_models → POST /config/providers/actions/fetch-models?name=xxx
+  test("fetch_models action — anthropic 优先通过 models 接口验证", async () => {
     _providers.set("anthropic", {
       id: "prov-anthropic",
       name: "anthropic",
@@ -506,7 +506,7 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers/actions/test?name=anthropic", {
+      new Request("http://localhost/config/providers/actions/fetch-models?name=anthropic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),
@@ -524,8 +524,8 @@ describe("Providers Config Route", () => {
     globalThis.fetch = originalFetch;
   });
 
-  // test → POST /config/providers/actions/test?name=xxx
-  test("test action — anthropic models 404 时提示改用模型测试", async () => {
+  // fetch_models → POST /config/providers/actions/fetch-models?name=xxx
+  test("fetch_models action — anthropic models 404 时提示改用模型测试", async () => {
     _providers.set("anthropic", {
       id: "prov-anthropic",
       name: "anthropic",
@@ -548,7 +548,7 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers/actions/test?name=anthropic", {
+      new Request("http://localhost/config/providers/actions/fetch-models?name=anthropic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),
@@ -567,8 +567,8 @@ describe("Providers Config Route", () => {
     globalThis.fetch = originalFetch;
   });
 
-  // test → POST /config/providers/actions/test?name=xxx
-  test("test action — anthropic models 非 404/405 时直接失败", async () => {
+  // fetch_models → POST /config/providers/actions/fetch-models?name=xxx
+  test("fetch_models action — anthropic models 非 404/405 时直接失败", async () => {
     _providers.set("anthropic", {
       id: "prov-anthropic",
       name: "anthropic",
@@ -591,7 +591,7 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers/actions/test?name=anthropic", {
+      new Request("http://localhost/config/providers/actions/fetch-models?name=anthropic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),
@@ -693,8 +693,8 @@ describe("Providers Config Route", () => {
     globalThis.fetch = originalFetch;
   });
 
-  // test → POST /config/providers/actions/test?name=xxx
-  test("test action — 连接失败", async () => {
+  // fetch_models → POST /config/providers/actions/fetch-models?name=xxx
+  test("fetch_models action — 连接失败", async () => {
     _providers.set("anthropic", {
       id: "prov-anthropic",
       name: "anthropic",
@@ -711,7 +711,7 @@ describe("Providers Config Route", () => {
     });
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers/actions/test?name=anthropic", {
+      new Request("http://localhost/config/providers/actions/fetch-models?name=anthropic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),
@@ -729,10 +729,10 @@ describe("Providers Config Route", () => {
     globalThis.fetch = originalFetch;
   });
 
-  // test → POST /config/providers/actions/test?name=xxx
-  test("test action — provider 不存在", async () => {
+  // fetch_models → POST /config/providers/actions/fetch-models?name=xxx
+  test("fetch_models action — provider 不存在", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers/actions/test?name=nonexistent", {
+      new Request("http://localhost/config/providers/actions/fetch-models?name=nonexistent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),
@@ -742,8 +742,8 @@ describe("Providers Config Route", () => {
     expect(json.error.code).toBe("NOT_FOUND");
   });
 
-  // test → POST /config/providers/actions/test?name=xxx
-  test("test action — openai 响应缺少 data 数组时失败", async () => {
+  // fetch_models → POST /config/providers/actions/fetch-models?name=xxx
+  test("fetch_models action — openai 响应缺少 data 数组时失败", async () => {
     _providers.set("openai", {
       id: "prov-openai",
       name: "openai",
@@ -764,7 +764,7 @@ describe("Providers Config Route", () => {
     );
 
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers/actions/test?name=openai", {
+      new Request("http://localhost/config/providers/actions/fetch-models?name=openai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),
@@ -1003,10 +1003,10 @@ describe("Provider Test action - edge cases", () => {
     });
   });
 
-  // test → POST /config/providers/actions/test?name=xxx
+  // fetch_models → POST /config/providers/actions/fetch-models?name=xxx
   test("test non-existent provider returns NOT_FOUND", async () => {
     const res = await providersRoute.handle(
-      new Request("http://localhost/config/providers/actions/test?name=nonexistent", {
+      new Request("http://localhost/config/providers/actions/fetch-models?name=nonexistent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),

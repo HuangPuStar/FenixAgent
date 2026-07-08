@@ -119,14 +119,14 @@ export const UpdateProviderBodySchema = z
   .catchall(z.unknown())
   .describe("更新 Provider 请求体。");
 
-/** POST /config/providers/:name/test — Provider 连通性测试请求体 */
-export const ProviderTestBodySchema = z
+/** POST /config/providers/actions/fetch-models — Provider 模型列表获取请求体 */
+export const ProviderFetchModelsBodySchema = z
   .object({
     apiKey: z.string().optional().describe("内联测试用的 API Key。"),
     baseURL: z.string().optional().describe("内联测试用的 Base URL。"),
     protocol: z.enum(["openai", "anthropic"]).optional().describe("内联测试用的协议类型。"),
   })
-  .describe("Provider 连通性测试请求体。");
+  .describe("Provider 模型列表获取请求体。");
 
 /** POST /config/providers/:name/models — 为 Provider 添加模型请求体 */
 export const AddModelBodySchema = z
@@ -182,12 +182,12 @@ export const ProviderSaveResponseSchema = WebOkSchema(
   }),
 ).describe("Provider 创建 / 更新响应。");
 
-/** Provider 连通性测试响应 */
-export const ProviderTestResponseSchema = WebOkSchema(
+/** Provider 模型列表获取响应 */
+export const ProviderFetchModelsResponseSchema = WebOkSchema(
   z.object({
     models: z.array(z.string()).describe("Provider 提供的模型 ID 列表。"),
   }),
-).describe("Provider 连通性测试响应。");
+).describe("Provider 模型列表获取响应。");
 
 /** 模型操作（添加/更新/删除）响应 */
 export const ModelActionResultResponseSchema = WebOkSchema(
@@ -562,7 +562,7 @@ export type ProviderInfo = z.infer<typeof ProviderInfoSchema>;
 export type ProviderDetail = z.infer<typeof ProviderDetailSchema>;
 export type CreateProviderBody = z.infer<typeof CreateProviderBodySchema>;
 export type UpdateProviderBody = z.infer<typeof UpdateProviderBodySchema>;
-export type ProviderTestBody = z.infer<typeof ProviderTestBodySchema>;
+export type ProviderFetchModelsBody = z.infer<typeof ProviderFetchModelsBodySchema>;
 export type AddModelBody = z.infer<typeof AddModelBodySchema>;
 export type UpdateModelBody = z.infer<typeof UpdateModelBodySchema>;
 export type TestModelBody = z.infer<typeof TestModelBodySchema>;

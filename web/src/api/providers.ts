@@ -1,7 +1,7 @@
 /**
  * providers.ts — Provider 配置域 API 模块
  *
- * 封装 LLM Provider 的 CRUD、模型管理、连通性测试等操作。
+ * 封装 LLM Provider 的 CRUD、模型管理、模型列表获取与模型测试等操作。
  * 后端使用 REST + query-param 风格端点以支持含 / 的 resource key。
  */
 
@@ -18,8 +18,8 @@ interface ProviderSaveResult {
   name: string;
 }
 
-/** 连通性测试响应 */
-interface ProviderTestResult {
+/** 获取模型列表响应 */
+interface ProviderFetchModelsResult {
   models: string[];
 }
 
@@ -103,9 +103,9 @@ export const providerApi = {
     });
   },
 
-  /** 测试 Provider 连通性，可选传入内联配置参数（支持含 / 的 resource key） */
-  test: (name: string, inline?: { apiKey?: string; baseURL?: string; protocol?: string }) =>
-    request<ProviderTestResult>("/web/config/providers/actions/test", {
+  /** 获取 Provider 模型列表，可选传入内联配置参数（支持含 / 的 resource key） */
+  fetchModels: (name: string, inline?: { apiKey?: string; baseURL?: string; protocol?: string }) =>
+    request<ProviderFetchModelsResult>("/web/config/providers/actions/fetch-models", {
       method: "POST",
       ...withName(name),
       body: inline ?? {},
