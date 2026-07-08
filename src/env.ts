@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { ENGINE_TYPES } from "./services/config/types";
 
 const envSchema = z.object({
   // ── 必填 ──
@@ -64,7 +65,14 @@ const envSchema = z.object({
   ACPX_G_URL: z.string().default("http://localhost:8848"),
 
   // ── 可选：引擎 ──
-  RCS_ENGINE_TYPE: z.enum(["opencode", "ccb"]).default("opencode"),
+  // 默认 fallback 机器 ID。agent config 未绑定 machineId 时使用此机器替代 local-default
+  RCS_DEFAULT_MACHINE_ID: z
+    .string()
+    .regex(/^mach_/, "RCS_DEFAULT_MACHINE_ID must start with 'mach_'")
+    .optional(),
+
+  // 默认引擎类型。agent config 未指定 engineType 时覆盖硬编码默认值
+  RCS_DEFAULT_ENGINE_TYPE: z.enum(ENGINE_TYPES).optional(),
   RCS_CCB_COMMAND: z.string().default("ccb"),
   RCS_CCB_ARGS: z.string().default("--acp"),
 

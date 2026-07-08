@@ -30,7 +30,6 @@ describe("system admin password file config", () => {
       RCS_DISABLE_SIGNUP: false,
       REGISTRY_SECRET: "rcs-registry-secret",
       ACPX_G_URL: "http://localhost:8848",
-      RCS_ENGINE_TYPE: "opencode",
       RCS_CCB_COMMAND: "ccb",
       RCS_CCB_ARGS: "--acp",
     } as Env);
