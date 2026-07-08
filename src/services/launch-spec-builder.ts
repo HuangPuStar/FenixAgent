@@ -491,6 +491,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     agent: {
       name: agentConfig.name,
       ...(agentConfig.prompt ? { prompt: agentConfig.prompt } : {}),
+      ...(agentConfig.extra ? { extra: agentConfig.extra as Record<string, unknown> } : {}),
     },
     model,
     skills,
