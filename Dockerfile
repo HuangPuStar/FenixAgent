@@ -33,6 +33,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV TZ=Asia/Shanghai
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 ENV RCS_HOST=0.0.0.0
 ENV RCS_PORT=3000
 ENV DATABASE_URL=postgres://rcs:rcs@postgres:5432/rcs
@@ -55,6 +57,9 @@ RUN rm -rf /var/lib/apt/lists/*
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && echo $TZ > /etc/timezone
+
+RUN printf '[global]\nindex-url = %s\ntrusted-host = %s\n' \
+    "$PIP_INDEX_URL" "$PIP_TRUSTED_HOST" > /etc/pip.conf
 
 
 RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
