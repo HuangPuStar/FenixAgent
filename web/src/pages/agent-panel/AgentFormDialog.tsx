@@ -768,6 +768,24 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                       />
                     )}
                   </div>
+                  {isEdit && currentAgentId && (
+                    <div>
+                      <Label>Agent ID</Label>
+                      <div className="mt-1 flex items-center gap-2">
+                        <Input value={currentAgentId} disabled className="flex-1 font-mono text-xs text-text-muted" />
+                        <button
+                          type="button"
+                          className="shrink-0 px-2 py-1.5 text-xs rounded-md border border-border bg-surface-2 text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+                          onClick={() => {
+                            navigator.clipboard.writeText(currentAgentId).catch(() => {});
+                          }}
+                          title="复制 Agent ID"
+                        >
+                          复制
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <Label>{t("form.description")}</Label>
                     <Input

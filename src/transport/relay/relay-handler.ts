@@ -23,6 +23,19 @@ type FullRelayHandle = EngineRelayHandle & {
   ready?: Promise<void>;
 };
 
+/**
+ * 通过 CoreRuntimeFacade 连接 Agent relay handle。
+ * 共享于 WS relay 和 HTTP OpenAI 端点。
+ */
+export async function connectAgentRelay(instanceId: string, sessionId: string): Promise<EngineRelayHandle> {
+  const { getCoreRuntime } = await import("../../services/core-bootstrap");
+  const facade = getCoreRuntime();
+  const handle = await facade.connectInstanceRelay({ instanceId, sessionId });
+  const full = handle as FullRelayHandle;
+  if (full.ready) await full.ready;
+  return handle;
+}
+
 const manager = new RelayConnectionManager();
 
 const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
@@ -118,12 +131,7 @@ async function openLocalRelay(
   // 2. 通过 CoreRuntimeFacade 连接 relay handle（先不加入 manager，避免空窗期路由错误）
   let handle: EngineRelayHandle;
   try {
-    const { getCoreRuntime } = await import("../../services/core-bootstrap");
-    const facade = getCoreRuntime();
-    handle = await facade.connectInstanceRelay({ instanceId, sessionId });
-
-    const full = handle as FullRelayHandle;
-    if (full.ready) await full.ready;
+    handle = await connectAgentRelay(instanceId, sessionId);
 
     // WS 在 await 期间关闭 → 清理 handle 并放弃
     if (ws.readyState !== 1) {
@@ -365,6 +373,16 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
   // 前端刷新时 relay 断连不应终止远程实例，前端重连后应能复用
   if (entry.relayHandle) {
     entry.relayUnsub?.();
+  }
+
+  // 当前端 relay 全部断开时，通知 agent 侧立即取消所有待决权限请求，
+  // 避免 agent 中 requestPermission 的 pending Promise 等待 30s 超时才返回 cancelled。
+  if (entry.instanceId && entry.relayHandle && !manager.hasOtherRelayForInstance(entry.instanceId, relayWsId)) {
+    try {
+      entry.relayHandle.send({ type: "cancel_pending_permissions" });
+    } catch (err) {
+      logError("handleRelayClose: failed to send cancel_pending_permissions", err);
+    }
   }
 
   manager.remove(relayWsId);

@@ -25,6 +25,7 @@ import apiInstanceRoutes from "./routes/api/instances";
 import apiKnowledgeBaseRoutes from "./routes/api/knowledge-bases";
 import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
+import openaiChatRoutes from "./routes/api/openai-chat";
 import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
 import apiWorkflowRoutes from "./routes/api/workflows";
@@ -191,6 +192,8 @@ const app = new Elysia()
   .use(apiInstanceRoutes)
   .use(apiWorkspaceRoutes)
   .use(apiWorkflowRoutes)
+  // OpenAI-compatible Chat API
+  .use(openaiChatRoutes)
   // Workflow proxy (not under /web prefix)
   .use(workflowStaticApp)
   // MCP routes
