@@ -29,8 +29,8 @@
   },
   "todo": {
     "items": "{{count}} 个待办",
-    "progress": "已完成 {{completed}}，进行中 {{inProgress}}",
-    "allDone": "全部 {{count}} 项已完成"
+    "progress": "已完成 {{completed}} / 共 {{count}}",
+    "allDone": "全部完成"
   },
   "detail": {
     "showRawInput": "查看原始输入",

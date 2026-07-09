@@ -6,14 +6,14 @@ import type { ToolCallData } from "@/src/lib/types";
 /**
  * todoWriteNarrator 单测。
  *
- * 覆盖：kinds、verb、todos/tasks 字段兼容、进度统计 detail（completed/in_progress）、
- * 全部完成特殊文案、无字段兜底显示 0 个。
+ * 覆盖：kinds、verb、todos/tasks 字段兼容、完成进度 detail、
+ * 全部完成特殊文案、仅有 pending 时不显示 detail。
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
   if (key === "toolNarrator.todo.items") return `${opts?.count} 个待办`;
-  if (key === "toolNarrator.todo.progress") return `已完成 ${opts?.completed}，进行中 ${opts?.inProgress}`;
-  if (key === "toolNarrator.todo.allDone") return `全部 ${opts?.count} 项已完成`;
+  if (key === "toolNarrator.todo.progress") return `已完成 ${opts?.completed} / 共 ${opts?.count}`;
+  if (key === "toolNarrator.todo.allDone") return "全部完成";
   return key;
 }) as unknown as NarrationContext["t"];
 
@@ -37,31 +37,31 @@ describe("todoWriteNarrator", () => {
     expect(todoWriteNarrator.kinds).toContain("todo");
   });
 
-  // 中文动词"列出"——传达"列出待办"语义
-  test("verb 是 '列出'", () => {
-    expect(todoWriteNarrator.verb).toBe("列出");
+  // 中文动词"更新"—传达"更新待办列表"语义
+  test("verb 是 '更新'", () => {
+    expect(todoWriteNarrator.verb).toBe("更新");
   });
 
-  // todos 数组长度作为待办数渲染到 object（与 verb 拼 title 为"列出 N 个待办"）
+  // todos 数组长度作为待办数渲染到 object
   test("todos 数组长度作为待办数", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({ todos: [{}, {}, {}] }));
     expect(object).toBe("3 个待办");
   });
 
-  // 兼容 tasks 字段（不同 Agent 命名差异）
+  // 兼容 tasks 字段
   test("兼容 tasks 字段", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({ tasks: [{}, {}] }));
     expect(object).toBe("2 个待办");
   });
 
-  // 无字段兜底显示 0 个待办（保持卡片有内容）
+  // 无字段兜底显示 0 个待办
   test("无待办时兜底", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({}));
     expect(object).toBe("0 个待办");
   });
 
-  // detail 显示进度统计：已完成的 completed + 进行中的 inProgress
-  test("detail 显示进度统计（混合状态）", () => {
+  // detail：有已完成 + 未完成 → 显示进度
+  test("detail 显示完成进度", () => {
     const todos = [
       { status: "completed", content: "a" },
       { status: "completed", content: "b" },
@@ -70,25 +70,36 @@ describe("todoWriteNarrator", () => {
     ];
     const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
     expect(object).toBe("4 个待办");
-    expect(detail).toBe("已完成 2，进行中 1");
+    expect(detail).toBe("已完成 2 / 共 4");
   });
 
-  // 全部完成时显示特殊文案
-  test("全部完成时显示 allDone 文案", () => {
+  // 全部完成时显示"全部完成"
+  test("全部完成时显示 allDone", () => {
     const todos = [
       { status: "completed", content: "a" },
       { status: "completed", content: "b" },
     ];
     const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
     expect(object).toBe("2 个待办");
-    expect(detail).toBe("全部 2 项已完成");
+    expect(detail).toBe("全部完成");
   });
 
-  // 仅有 pending 时无 detail
+  // 仅有 pending 时不显示 detail
   test("仅有 pending 时无 detail", () => {
     const todos = [{ status: "pending", content: "a" }];
     const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
     expect(object).toBe("1 个待办");
+    expect(detail).toBeUndefined();
+  });
+
+  // 全部 pending 但无任何完成 → 无 detail
+  test("全部 pending 无 detail", () => {
+    const todos = [
+      { status: "pending", content: "a" },
+      { status: "pending", content: "b" },
+    ];
+    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
+    expect(object).toBe("2 个待办");
     expect(detail).toBeUndefined();
   });
 
