@@ -9,6 +9,8 @@ interface UseDragUploadOptions {
   envId: string;
   /** 单文件上传成功后回调，传入 FileInfo（与 FilePickerPanel 选中文件格式一致） */
   onUploaded: (file: FileInfo) => void;
+  /** 上传失败时回调，传入错误信息和出错的文件名 */
+  onError?: (message: string, fileName: string) => void;
   /** 禁用时跳过所有拖拽处理 */
   disabled?: boolean;
 }
@@ -30,7 +32,12 @@ interface UseDragUploadReturn {
  * 处理操作系统文件拖入 → 上传 → 进度状态管理。
  * 上传行为与 FilePickerPanel 一致：走 fileApi.upload → workspace 目录。
  */
-export function useDragUpload({ envId, onUploaded, disabled = false }: UseDragUploadOptions): UseDragUploadReturn {
+export function useDragUpload({
+  envId,
+  onUploaded,
+  onError,
+  disabled = false,
+}: UseDragUploadOptions): UseDragUploadReturn {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadingCount, setUploadingCount] = useState(0);
   const dragCounterRef = useRef(0);
@@ -91,6 +98,7 @@ export function useDragUpload({ envId, onUploaded, disabled = false }: UseDragUp
         // 跳过超大文件
         if (file.size > MAX_FILE_SIZE) {
           console.warn(`[useDragUpload] 文件 ${file.name} 超过 100MB 限制，已跳过`);
+          onError?.(`文件 ${file.name} 超过 100MB 限制，已跳过`, file.name);
           continue;
         }
 
@@ -102,6 +110,7 @@ export function useDragUpload({ envId, onUploaded, disabled = false }: UseDragUp
         console.log("[useDragUpload] 上传响应:", result);
         if (!result.success) {
           console.error(`[useDragUpload] 文件 ${file.name} 上传失败:`, result.error);
+          onError?.(result.error?.message ?? `文件 ${file.name} 上传失败`, file.name);
         } else {
           // 优先取后端返回的文件信息，兜底用本地文件名构造路径
           const responseData = result.data as
@@ -126,7 +135,7 @@ export function useDragUpload({ envId, onUploaded, disabled = false }: UseDragUp
         setUploadingCount((c) => c - 1);
       }
     },
-    [disabled, envId, onUploaded],
+    [disabled, envId, onUploaded, onError],
   );
 
   return {

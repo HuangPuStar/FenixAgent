@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import type { ACPClient } from "../../src/acp/client";
 import type { AvailableCommand, SessionMode } from "../../src/acp/types";
 import { fileApi } from "../../src/api/files";
@@ -352,6 +353,7 @@ export function ChatComposer({
   } = useDragUpload({
     envId: fileWorkspaceId ?? "",
     onUploaded: handleFilePickerSelect,
+    onError: (message) => toast.error(message),
     disabled,
   });
 
