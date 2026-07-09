@@ -1,12 +1,10 @@
-import type { ToolCallData } from "../../src/lib/types";
+import type { ToolCallData, ToolCardKind } from "../../src/lib/types";
 
 // =============================================================================
-// 工具类别 & 卡片样式配置
+// 工具卡片样式 — 基于 ToolCardKind
 // =============================================================================
 
-type ToolCategory = "shell" | "file-write" | "file-edit" | "file-read" | "web" | "ai" | "skill" | "default";
-
-interface CardStyle {
+export interface CardStyle {
   /** 图标容器背景 */
   iconBg: string;
   /** 图标颜色 */
@@ -15,33 +13,59 @@ interface CardStyle {
   cardBg: string;
 }
 
-const CARD_STYLES: Record<ToolCategory, CardStyle> = {
-  shell: {
-    iconBg: "bg-emerald-100 dark:bg-emerald-900/40",
-    iconColor: "text-emerald-600 dark:text-emerald-400",
-    cardBg: "bg-emerald-50/40 dark:bg-emerald-950/20",
-  },
-  "file-write": {
-    iconBg: "bg-blue-100 dark:bg-blue-900/40",
-    iconColor: "text-blue-600 dark:text-blue-400",
-    cardBg: "bg-blue-50/40 dark:bg-blue-950/20",
-  },
-  "file-edit": {
-    iconBg: "bg-amber-100 dark:bg-amber-900/40",
-    iconColor: "text-amber-600 dark:text-amber-400",
-    cardBg: "bg-amber-50/40 dark:bg-amber-950/20",
-  },
-  "file-read": {
+/** 基于 ToolCardKind 的样式表 */
+const CARD_STYLES: Record<ToolCardKind, CardStyle> = {
+  "read-file": {
     iconBg: "bg-cyan-100 dark:bg-cyan-900/40",
     iconColor: "text-cyan-600 dark:text-cyan-400",
     cardBg: "bg-cyan-50/40 dark:bg-cyan-950/20",
   },
-  web: {
+  "read-directory": {
+    iconBg: "bg-cyan-100 dark:bg-cyan-900/40",
+    iconColor: "text-cyan-600 dark:text-cyan-400",
+    cardBg: "bg-cyan-50/40 dark:bg-cyan-950/20",
+  },
+  write: {
+    iconBg: "bg-blue-100 dark:bg-blue-900/40",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    cardBg: "bg-blue-50/40 dark:bg-blue-950/20",
+  },
+  edit: {
+    iconBg: "bg-amber-100 dark:bg-amber-900/40",
+    iconColor: "text-amber-600 dark:text-amber-400",
+    cardBg: "bg-amber-50/40 dark:bg-amber-950/20",
+  },
+  bash: {
+    iconBg: "bg-emerald-100 dark:bg-emerald-900/40",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+    cardBg: "bg-emerald-50/40 dark:bg-emerald-950/20",
+  },
+  grep: {
+    iconBg: "bg-cyan-100 dark:bg-cyan-900/40",
+    iconColor: "text-cyan-600 dark:text-cyan-400",
+    cardBg: "bg-cyan-50/40 dark:bg-cyan-950/20",
+  },
+  glob: {
+    iconBg: "bg-cyan-100 dark:bg-cyan-900/40",
+    iconColor: "text-cyan-600 dark:text-cyan-400",
+    cardBg: "bg-cyan-50/40 dark:bg-cyan-950/20",
+  },
+  "web-fetch": {
     iconBg: "bg-pink-100 dark:bg-pink-900/40",
     iconColor: "text-pink-600 dark:text-pink-400",
     cardBg: "bg-pink-50/40 dark:bg-pink-950/20",
   },
-  ai: {
+  "web-search": {
+    iconBg: "bg-pink-100 dark:bg-pink-900/40",
+    iconColor: "text-pink-600 dark:text-pink-400",
+    cardBg: "bg-pink-50/40 dark:bg-pink-950/20",
+  },
+  task: {
+    iconBg: "bg-violet-100 dark:bg-violet-900/40",
+    iconColor: "text-violet-600 dark:text-violet-400",
+    cardBg: "bg-violet-50/40 dark:bg-violet-950/20",
+  },
+  todo: {
     iconBg: "bg-violet-100 dark:bg-violet-900/40",
     iconColor: "text-violet-600 dark:text-violet-400",
     cardBg: "bg-violet-50/40 dark:bg-violet-950/20",
@@ -51,79 +75,59 @@ const CARD_STYLES: Record<ToolCategory, CardStyle> = {
     iconColor: "text-teal-600 dark:text-teal-400",
     cardBg: "bg-teal-50/40 dark:bg-teal-950/20",
   },
-  default: {
+  question: {
+    iconBg: "bg-gray-100 dark:bg-gray-800/40",
+    iconColor: "text-gray-500 dark:text-gray-400",
+    cardBg: "bg-gray-50/40 dark:bg-gray-900/20",
+  },
+  unknown: {
     iconBg: "bg-gray-100 dark:bg-gray-800/40",
     iconColor: "text-gray-500 dark:text-gray-400",
     cardBg: "bg-gray-50/40 dark:bg-gray-900/20",
   },
 };
 
-// =============================================================================
-// 工具类型分类 — 比 category 更细粒度，区分 write 和 edit
-// =============================================================================
-
-function getCardCategory(title: string, rawInput?: Record<string, unknown>, displayType?: string): ToolCategory {
-  // 优先使用 display.type（引擎提供的精确类型标记）
-  if (displayType) {
-    switch (displayType) {
-      case "file":
-        // 通过 rawInput 进一步区分为 read / edit / write
-        if (rawInput) {
-          if (typeof rawInput.newText === "string" || typeof rawInput.content === "string") return "file-write";
-          if (typeof rawInput.oldText === "string" || typeof rawInput.old_string === "string") return "file-edit";
-        }
-        return "file-read";
-      case "directory":
-        return "file-read";
-      case "diff":
-        return "file-edit";
-      default:
-        break;
-    }
-  }
-
-  const lower = title.toLowerCase();
-  if (lower.includes("bash") || lower.includes("shell") || lower === "command") return "shell";
-  if (lower.includes("write")) return "file-write";
-  if (lower.includes("edit") || lower.includes("str_replace") || lower.includes("multiedit")) return "file-edit";
-  if (lower.includes("read")) return "file-read";
-  if (lower.includes("grep") || lower.includes("glob") || lower.includes("list") || lower.includes("find"))
-    return "file-read";
-  if (lower.includes("webfetch") || lower.includes("web_fetch")) return "web";
-  if (lower.includes("websearch") || lower.includes("web_search")) return "web";
-  if (lower.includes("search")) return "file-read";
-  if (lower.includes("task") || lower.includes("agent") || lower.includes("todowrite") || lower.includes("todo_write"))
-    return "ai";
-  if (lower.startsWith("loaded skill")) return "skill";
-  // 兜底：通过 rawInput 字段结构推断工具类型
-  // filePath → read；pattern + include → grep；pattern（无 include）→ glob；command → shell；file_path/path + newText → edit/write
-  if (rawInput) {
-    if (typeof rawInput.filePath === "string" || typeof rawInput.path === "string") {
-      if (typeof rawInput.newText === "string" || typeof rawInput.content === "string") return "file-write";
-      if (typeof rawInput.oldText === "string" || typeof rawInput.old_string === "string") return "file-edit";
-      return "file-read";
-    }
-    if (typeof rawInput.pattern === "string") {
-      return typeof rawInput.include === "string" ? "file-read" : "file-read";
-    }
-    if (typeof rawInput.command === "string" || typeof rawInput.cmd === "string") return "shell";
-    if (typeof rawInput.url === "string") return "web";
-    if (typeof rawInput.query === "string") return "file-read";
-  }
-  return "default";
+/**
+ * 通过 ToolCardKind 获取卡片样式。
+ * 替代旧 getCardCategory()。
+ */
+export function cardKindToStyle(kind: ToolCardKind): CardStyle {
+  return CARD_STYLES[kind] ?? CARD_STYLES.unknown;
 }
 
 // =============================================================================
-// 工具函数
+// 工具名称 — kind → 可读名
 // =============================================================================
 
+/** ToolCardKind → 可读的工具名称（如 "Read"、"Bash"） */
+const KIND_LABELS: Record<ToolCardKind, string> = {
+  "read-file": "Read",
+  "read-directory": "Read",
+  write: "Write",
+  edit: "Edit",
+  bash: "Bash",
+  grep: "Grep",
+  glob: "Glob",
+  "web-fetch": "Fetch",
+  "web-search": "Search",
+  task: "Task",
+  todo: "Todo",
+  skill: "Skill",
+  question: "Question",
+  unknown: "",
+};
+
 /**
- * 把工具 title 简化为可读的简短名称（首字母大写）。
- * 例如 "Bash" → "Bash"，"MultiEdit" → "MultiEdit"，"web_fetch" → "Fetch"。
- * fallback narrator 和 ContextPanel 都用到此函数。
+ * 工具名简化为可读显示名。
+ * 兼容旧调用方式（传入 title 字符串）和新方式（传入 kind）。
  */
-function simplifyToolName(title: string): string {
-  const lower = title.toLowerCase();
+export function simplifyToolName(titleOrKind: string): string {
+  // 新路径：如果是已知 kind 值则直接映射
+  if (titleOrKind in KIND_LABELS) {
+    return KIND_LABELS[titleOrKind as ToolCardKind];
+  }
+  // 旧路径：从 title 字符串解析（兜底 display 场景）
+  const lower = titleOrKind.toLowerCase();
   if (lower.includes("multiedit") || lower.includes("multi_edit")) return "MultiEdit";
   if (lower.includes("edit") || lower.includes("str_replace")) return "Edit";
   if (lower.includes("write")) return "Write";
@@ -135,17 +139,27 @@ function simplifyToolName(title: string): string {
   if (lower.includes("websearch") || lower.includes("web_search")) return "Search";
   if (lower.includes("todowrite") || lower.includes("todo_write")) return "Todo";
   if (lower.startsWith("task")) return "Task";
-  const match = title.match(/^([A-Za-z]+)/);
+  const match = titleOrKind.match(/^([A-Za-z]+)/);
   if (match) return match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
-  return title;
+  return titleOrKind;
 }
 
-function truncate(str: string, max: number): string {
+/** 通过 kind 获取可读工具名 */
+export function kindLabel(kind: ToolCardKind): string {
+  return KIND_LABELS[kind] || "";
+}
+
+// =============================================================================
+// 工具函数
+// =============================================================================
+
+/** 截断字符串，超长加省略号 */
+export function truncate(str: string, max: number): string {
   return str.length > max ? `${str.slice(0, max)}…` : str;
 }
 
 /** 判断是否为 hindsight 工具（HindsightToolCard 用此函数过滤） */
-function isHindsightTool(title: string): boolean {
+export function isHindsightTool(title: string): boolean {
   return title.toLowerCase().startsWith("hindsight_");
 }
 
@@ -153,7 +167,7 @@ function isHindsightTool(title: string): boolean {
  * 把工具调用的输出（content 数组或 rawOutput）格式化为单行字符串，
  * 供 ToolCallDialog 的"输出"区域渲染。
  */
-function formatOutput(tool: ToolCallData): string {
+export function formatOutput(tool: ToolCallData): string {
   if (tool.content && tool.content.length > 0) {
     const texts = tool.content
       .filter((c): c is Extract<typeof c, { type: "content" }> => c.type === "content")
@@ -171,13 +185,4 @@ function formatOutput(tool: ToolCallData): string {
 // 导出
 // =============================================================================
 
-export {
-  CARD_STYLES,
-  type CardStyle,
-  formatOutput,
-  getCardCategory,
-  isHindsightTool,
-  simplifyToolName,
-  type ToolCategory,
-  truncate,
-};
+export { CARD_STYLES };
