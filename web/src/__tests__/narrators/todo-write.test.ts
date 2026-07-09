@@ -11,7 +11,7 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "toolNarrator.todo.items") return `${opts?.count} 个待办`;
+  if (key === "toolNarrator.todo.items") return `${opts?.count} 项`;
   if (key === "toolNarrator.todo.progress") return `已完成 ${opts?.completed} / 共 ${opts?.count}`;
   if (key === "toolNarrator.todo.allDone") return "全部完成";
   return key;
@@ -45,19 +45,19 @@ describe("todoWriteNarrator", () => {
   // todos 数组长度作为待办数渲染到 object
   test("todos 数组长度作为待办数", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({ todos: [{}, {}, {}] }));
-    expect(object).toBe("3 个待办");
+    expect(object).toBe("3 项");
   });
 
   // 兼容 tasks 字段
   test("兼容 tasks 字段", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({ tasks: [{}, {}] }));
-    expect(object).toBe("2 个待办");
+    expect(object).toBe("2 项");
   });
 
-  // 无字段兜底显示 0 个待办
+  // 无字段兜底显示 0
   test("无待办时兜底", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({}));
-    expect(object).toBe("0 个待办");
+    expect(object).toBe("0 项");
   });
 
   // detail：有已完成 + 未完成 → 显示进度
@@ -69,7 +69,7 @@ describe("todoWriteNarrator", () => {
       { status: "pending", content: "d" },
     ];
     const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
-    expect(object).toBe("4 个待办");
+    expect(object).toBe("4 项");
     expect(detail).toBe("已完成 2 / 共 4");
   });
 
@@ -80,7 +80,7 @@ describe("todoWriteNarrator", () => {
       { status: "completed", content: "b" },
     ];
     const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
-    expect(object).toBe("2 个待办");
+    expect(object).toBe("2 项");
     expect(detail).toBe("全部完成");
   });
 
@@ -88,7 +88,7 @@ describe("todoWriteNarrator", () => {
   test("仅有 pending 时无 detail", () => {
     const todos = [{ status: "pending", content: "a" }];
     const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
-    expect(object).toBe("1 个待办");
+    expect(object).toBe("1 项");
     expect(detail).toBeUndefined();
   });
 
@@ -99,14 +99,14 @@ describe("todoWriteNarrator", () => {
       { status: "pending", content: "b" },
     ];
     const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
-    expect(object).toBe("2 个待办");
+    expect(object).toBe("2 项");
     expect(detail).toBeUndefined();
   });
 
   // 空数组无 detail
   test("空数组无 detail", () => {
     const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos: [] }));
-    expect(object).toBe("0 个待办");
+    expect(object).toBe("0 项");
     expect(detail).toBeUndefined();
   });
 });

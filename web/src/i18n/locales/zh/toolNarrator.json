@@ -28,7 +28,7 @@
     "results": "找到 {{count}} 个"
   },
   "todo": {
-    "items": "{{count}} 个待办",
+    "items": "{{count}} 项",
     "progress": "已完成 {{completed}} / 共 {{count}}",
     "allDone": "全部完成"
   },
