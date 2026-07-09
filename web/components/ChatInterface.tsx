@@ -232,7 +232,9 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
   // Handle tool call (UPSERT)
   if (update.sessionUpdate === "tool_call") {
     // ① 顶层 display（opencode 风格，可能不在 ACP ToolCallUpdate 标准类型中，需转型访问）
-    const topLevelDisplay = (update as Record<string, unknown>).display as Record<string, unknown> | undefined;
+    const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
+      | Record<string, unknown>
+      | undefined;
     const display = extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay);
     // 构造临时 tool 对象用于 resolveToolCardKind
     const tempTool = { display, rawInput: update.rawInput, rawOutput: update.rawOutput };
@@ -270,7 +272,9 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
     if (existingIndex < 0) {
       // tool_call_update 先于 tool_call 到达时创建占位 entry，
       // 尽可能保留 update 中已有的 rawInput/rawOutput/display，避免数据被后续 UPSERT 覆盖丢弃
-      const topLevelDisplay = (update as Record<string, unknown>).display as Record<string, unknown> | undefined;
+      const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
+        | Record<string, unknown>
+        | undefined;
       const fallbackDisplay = extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay);
       const tempTool = { display: fallbackDisplay, rawInput: update.rawInput, rawOutput: update.rawOutput };
       const kind = resolveToolCardKind(tempTool, update._meta);
@@ -300,7 +304,9 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
       const mergedContent = update.content
         ? [...(entry.toolCall.content || []), ...update.content]
         : entry.toolCall.content;
-      const topLevelDisplay = (update as Record<string, unknown>).display as Record<string, unknown> | undefined;
+      const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
+        | Record<string, unknown>
+        | undefined;
       // extractDisplayMeta 可能返回 undefined（metadata 结构异常），
       // 此时应保留旧 display 值，避免 display 丢失
       const display = update.rawOutput
@@ -489,7 +495,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             id: request.toolCall.toolCallId,
             title: request.toolCall.title || "Permission Request",
             status: "waiting_for_confirmation",
-            kind: resolveToolCardKind({ rawInput: request.toolCall.rawInput }),
+            kind: resolveToolCardKind({
+              rawInput: (request.toolCall as Record<string, unknown>).rawInput as Record<string, unknown>,
+            }),
             permissionRequest: {
               requestId: request.requestId,
               options: request.options,

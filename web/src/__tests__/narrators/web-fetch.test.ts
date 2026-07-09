@@ -19,18 +19,16 @@ function makeCtx(rawInput: unknown): NarrationContext {
       status: "complete",
       rawInput: rawInput as Record<string, unknown>,
     } as ToolCallData,
+    kind: "web-fetch",
     status: "complete",
     t: mockT,
   };
 }
 
 describe("webFetchNarrator", () => {
-  // 匹配 fetch / webfetch / curl 三种命名变体，read 不命中
-  test("匹配 fetch/webfetch/curl", () => {
-    expect(webFetchNarrator.match("fetch")).toBe(true);
-    expect(webFetchNarrator.match("webfetch")).toBe(true);
-    expect(webFetchNarrator.match("curl")).toBe(true);
-    expect(webFetchNarrator.match("read")).toBe(false);
+  // kinds 包含 "web-fetch"
+  test("kinds 包含 web-fetch", () => {
+    expect(webFetchNarrator.kinds).toContain("web-fetch");
   });
 
   // 中文动词必须是"抓取"（区别于 WebSearch 的"搜索"）

@@ -20,18 +20,16 @@ function makeCtx(title: string, description?: string): NarrationContext {
       status: "complete",
       description,
     } as ToolCallData,
+    kind: "skill",
     status: "complete",
     t: mockT,
   };
 }
 
 describe("skillNarrator", () => {
-  // 匹配 skill / loadedskill / loaded skill 三种命名变体，read 不命中
-  test("匹配 loaded skill / skill", () => {
-    expect(skillNarrator.match("loaded skill")).toBe(true);
-    expect(skillNarrator.match("skill")).toBe(true);
-    expect(skillNarrator.match("loadedskill")).toBe(true);
-    expect(skillNarrator.match("read")).toBe(false);
+  // kinds 包含 "skill"
+  test("kinds 包含 skill", () => {
+    expect(skillNarrator.kinds).toContain("skill");
   });
 
   // 中文动词"加载"——传达"加载技能"语义

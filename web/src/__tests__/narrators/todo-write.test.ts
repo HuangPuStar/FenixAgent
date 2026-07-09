@@ -23,18 +23,16 @@ function makeCtx(rawInput: unknown): NarrationContext {
       status: "complete",
       rawInput: rawInput as Record<string, unknown>,
     } as ToolCallData,
+    kind: "todo",
     status: "complete",
     t: mockT,
   };
 }
 
 describe("todoWriteNarrator", () => {
-  // 匹配 todowrite / todo_write / todo 三种命名变体，read 不命中
-  test("匹配 todo", () => {
-    expect(todoWriteNarrator.match("todowrite")).toBe(true);
-    expect(todoWriteNarrator.match("todo_write")).toBe(true);
-    expect(todoWriteNarrator.match("todo")).toBe(true);
-    expect(todoWriteNarrator.match("read")).toBe(false);
+  // kinds 包含 "todo"
+  test("kinds 包含 todo", () => {
+    expect(todoWriteNarrator.kinds).toContain("todo");
   });
 
   // 中文动词"列出"——传达"列出待办"语义

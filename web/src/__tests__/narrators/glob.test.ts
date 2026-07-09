@@ -28,18 +28,16 @@ function makeCtx(
       rawInput: rawInput as Record<string, unknown>,
       rawOutput: rawOutput as Record<string, unknown> | undefined,
     } as ToolCallData,
+    kind: "glob",
     status,
     t: mockT,
   };
 }
 
 describe("globNarrator", () => {
-  // 匹配 glob / find / listfiles / list_files 四种命名变体
-  test("匹配 glob/find/listfiles", () => {
-    expect(globNarrator.match("glob")).toBe(true);
-    expect(globNarrator.match("find")).toBe(true);
-    expect(globNarrator.match("listfiles")).toBe(true);
-    expect(globNarrator.match("list_files")).toBe(true);
+  // kinds 包含 "glob"
+  test("kinds 包含 glob", () => {
+    expect(globNarrator.kinds).toContain("glob");
   });
 
   // 中文动词必须是"查找"（区别于 Grep 的"搜索"）

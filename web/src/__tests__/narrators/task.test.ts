@@ -21,19 +21,16 @@ function makeCtx(rawInput: unknown, description?: string): NarrationContext {
       rawInput: rawInput as Record<string, unknown>,
       description,
     } as ToolCallData,
+    kind: "task",
     status: "complete",
     t: mockT,
   };
 }
 
 describe("taskNarrator", () => {
-  // 匹配 task / agent / subagent / sub_agent 四种命名变体，read 不命中
-  test("匹配 task/agent/subagent", () => {
-    expect(taskNarrator.match("task")).toBe(true);
-    expect(taskNarrator.match("agent")).toBe(true);
-    expect(taskNarrator.match("subagent")).toBe(true);
-    expect(taskNarrator.match("sub_agent")).toBe(true);
-    expect(taskNarrator.match("read")).toBe(false);
+  // kinds 包含 "task"
+  test("kinds 包含 task", () => {
+    expect(taskNarrator.kinds).toContain("task");
   });
 
   // 中文动词"派发"——传达"派发子任务"语义
