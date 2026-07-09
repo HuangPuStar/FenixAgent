@@ -1,11 +1,14 @@
 import { log } from "@fenix/logger";
+import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { AppError } from "../../errors";
 import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
 import { OpenAIChatCompletionRequestSchema, OpenAIErrorResponseSchema } from "../../schemas/openai-chat.schema";
-import { startPromptTurn } from "../../services/agent-chat-service";
+import { createAgentSession, startPromptTurn } from "../../services/agent-chat-service";
+import { getCoreRuntime } from "../../services/core-bootstrap";
+import { ensureRunning } from "../../services/instance";
 import { buildOpenAIError, mapToNonStreamingResponse, mapToSSEChunks } from "../../services/openai-response-mapper";
+import { resolveWorkspacePath } from "../../services/workspace-resolver";
 
 const OpenAIChatParamsSchema = z
   .object({
@@ -40,28 +43,45 @@ app.post(
     log(`[openai] Request: agentId=${agentId} stream=${isStream} sessionId=${sessionId ?? "none"}`);
 
     // 连接 Agent，创建 PromptTurn
-    let result: Awaited<ReturnType<typeof startPromptTurn>> | null = null;
+    let turn: Awaited<ReturnType<typeof startPromptTurn>>["turn"] | null = null;
+    let session: Awaited<ReturnType<typeof startPromptTurn>>["session"] | null = null;
     try {
-      result = await startPromptTurn({
-        agentConfigId: agentId,
-        organizationId: authCtx.organizationId,
-        userId: authCtx.userId,
+      // 1. 启动实例（与 WS relay 相同的 ensureRunning 模式）
+      const { instance } = await ensureRunning(authCtx.userId, agentId);
+      log(`[openai] Instance ready: instanceId=${instance.id}`);
+
+      // 2. 连接 relay handle
+      const facade = getCoreRuntime();
+      const handle = await facade.connectInstanceRelay({
+        instanceId: instance.id,
         sessionId,
       });
+      const full = handle as EngineRelayHandle & { ready?: Promise<void> };
+      if (full.ready) await full.ready;
+      log(`[openai] Relay connected: instanceId=${instance.id}`);
+
+      // 3. 创建 AgentSession
+      session = createAgentSession({
+        relayHandle: handle,
+        instanceId: instance.id,
+        workspacePath: resolveWorkspacePath(authCtx.organizationId, authCtx.userId, instance.environmentId ?? agentId),
+        stopInstance: async () => {
+          await facade.stopInstance(instance.id);
+        },
+      });
+
+      // 4. 创建 session + PromptTurn
+      const result = await startPromptTurn({ session, sessionId });
+      turn = result.turn;
     } catch (err) {
-      if (
-        (err instanceof AppError && err.statusCode === 404) ||
-        (err instanceof AppError && err.code === "NOT_FOUND")
-      ) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("not found") || msg.includes("Environment not found")) {
         const errResp = buildOpenAIError(404, `Agent ${agentId} not found`, "invalid_request_error");
         return error(errResp.status, errResp.body);
       }
-      const msg = err instanceof Error ? err.message : String(err);
       const errResp = buildOpenAIError(500, `Failed to start agent: ${msg}`, "server_error");
       return error(errResp.status, errResp.body);
     }
-
-    const { turn } = result;
 
     try {
       // 发送 prompt

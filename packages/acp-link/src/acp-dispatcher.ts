@@ -168,6 +168,17 @@ export class AcpDispatcher {
         }
         break;
       }
+      case "cancel_pending_permissions": {
+        // 前端 relay 全部断开时，主服务通过 relay handle 发送此消息，
+        // 通知 dispatcher 立即取消所有待决权限请求。
+        cancelPendingPermissions(this.state);
+        if (this.onPermissionOutcome) {
+          // "__cancel_all__" 哨兵 requestId 告诉 spawnAcpAgent
+          // 的 resolvePermissionOutcome 批量取消所有 pending 权限请求。
+          this.onPermissionOutcome("__cancel_all__", { outcome: "cancelled" });
+        }
+        break;
+      }
     }
   }
 

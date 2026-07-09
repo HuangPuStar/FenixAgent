@@ -1,182 +1,114 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
-import { connectAgentChat, setAgentChatServiceDeps } from "../services/agent-chat-service";
+import { describe, expect, test } from "bun:test";
+import { createAgentSession, createPromptTurn, startPromptTurn } from "../services/agent-chat-service";
 
-function makeMockRelayHandle() {
+function makeMockRelayHandle(overrides: Record<string, unknown> = {}) {
   return {
     state: "open" as const,
     send: () => {},
     close: async () => {},
     onMessage: () => () => {},
     ready: Promise.resolve(),
+    ...overrides,
   };
 }
 
-describe("connectAgentChat", () => {
-  beforeEach(() => {
-    setAgentChatServiceDeps({
-      getReadableAgentConfigById: async () => ({ id: "agc-test", name: "test-agent" }),
-      createWebEnvironment: async () => ({
-        id: "env-test",
-        name: "test",
-        agentConfigId: "agc-test",
-        userId: "u1",
-        organizationId: "org1",
-        secret: "s",
-        status: "idle",
-        description: null,
-        autoStart: true,
-        maxSessions: 1,
-        workspacePath: "/ws",
-        machineName: null,
-        workerType: "acp",
-        branch: null,
-        gitRepoUrl: null,
-        capabilities: null,
-        lastPollAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-      groupActiveInstancesByEnvironment: () => new Map(),
-      getRunningInstancesByEnvironment: () => [],
-      listEnvironmentsByOrganizationId: async () => [],
-      spawnInstanceFromEnvironment: async () => ({
-        id: "inst-test",
-        userId: "u1",
-        port: 12345,
-        pid: null,
-        status: "running" as const,
-        command: "test",
-        error: null,
-        apiKey: "k",
-        createdAt: new Date(),
-        instanceNumber: 1,
-      }),
-      getCoreRuntime: () =>
-        ({
-          launchInstance: async () => {},
-          connectInstanceRelay: async () => makeMockRelayHandle(),
-          stopInstance: async () => {},
-          listInstances: () => [],
-          registerPlugin: () => ({}),
-          registerNode: () => ({}),
-          getInstance: () => null,
-          getNode: () => null,
-          getPlugin: () => null,
-          listNodes: () => [],
-          listPlugins: () => [],
-          updateNodeStatus: () => ({}),
-          deleteInstance: () => false,
-          updateInstanceMetadata: () => ({}) as any,
-        }) as any,
-    } as any);
-  });
-
-  afterEach(() => {
-    setAgentChatServiceDeps(null);
-  });
-
-  // 正常连接
-  test("正常连接 Agent 返回 AgentSession", async () => {
-    const session = await connectAgentChat({
-      agentConfigId: "agc-test",
-      organizationId: "org1",
-      userId: "u1",
+describe("createAgentSession", () => {
+  // 正常创建
+  test("根据已有 relayHandle 创建 AgentSession", () => {
+    const handle = makeMockRelayHandle();
+    let stopped = false;
+    const session = createAgentSession({
+      relayHandle: handle,
+      instanceId: "inst-test",
+      workspacePath: "/ws/test",
+      stopInstance: async () => {
+        stopped = true;
+      },
     });
     expect(session.instanceId).toBe("inst-test");
-    expect(session.relayHandle).toBeDefined();
-    expect(session.relayHandle.state).toBe("open");
+    expect(session.workspacePath).toBe("/ws/test");
+    expect(session.relayHandle).toBe(handle);
   });
 
-  // Agent 不存在
-  test("Agent 不存在时抛出 AppError", async () => {
-    setAgentChatServiceDeps({
-      ...({} as any),
-      getReadableAgentConfigById: async () => null,
-    } as any);
-    await expect(
-      connectAgentChat({ agentConfigId: "not-exist", organizationId: "org1", userId: "u1" }),
-    ).rejects.toThrow(AppError);
-  });
-
-  // dispose
+  // dispose 清理
   test("dispose 关闭 relay handle 并 stop 实例", async () => {
     let closed = false;
     let stopped = false;
-    setAgentChatServiceDeps({
-      getReadableAgentConfigById: async () => ({ id: "agc-test", name: "test" }),
-      createWebEnvironment: async () => ({
-        id: "env-test",
-        name: "test",
-        agentConfigId: "agc-test",
-        userId: "u1",
-        organizationId: "org1",
-        secret: "s",
-        status: "idle",
-        description: null,
-        autoStart: true,
-        maxSessions: 1,
-        workspacePath: "/ws",
-        machineName: null,
-        workerType: "acp",
-        branch: null,
-        gitRepoUrl: null,
-        capabilities: null,
-        lastPollAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-      groupActiveInstancesByEnvironment: () => new Map(),
-      getRunningInstancesByEnvironment: () => [],
-      listEnvironmentsByOrganizationId: async () => [],
-      spawnInstanceFromEnvironment: async () => ({
-        id: "inst-test",
-        userId: "u1",
-        port: 12345,
-        pid: null,
-        status: "running" as const,
-        command: "test",
-        error: null,
-        apiKey: "k",
-        createdAt: new Date(),
-        instanceNumber: 1,
-      }),
-      getCoreRuntime: () =>
-        ({
-          launchInstance: async () => {},
-          connectInstanceRelay: async () => ({
-            state: "open" as const,
-            send: () => {},
-            close: async () => {
-              closed = true;
-            },
-            onMessage: () => () => {},
-            ready: Promise.resolve(),
-          }),
-          stopInstance: async () => {
-            stopped = true;
-          },
-          listInstances: () => [],
-          registerPlugin: () => ({}),
-          registerNode: () => ({}),
-          getInstance: () => null,
-          getNode: () => null,
-          getPlugin: () => null,
-          listNodes: () => [],
-          listPlugins: () => [],
-          updateNodeStatus: () => ({}),
-          deleteInstance: () => false,
-          updateInstanceMetadata: () => ({}) as any,
-        }) as any,
-    } as any);
-
-    const session = await connectAgentChat({
-      agentConfigId: "agc-test",
-      organizationId: "org1",
-      userId: "u1",
+    const handle = makeMockRelayHandle({
+      close: async () => {
+        closed = true;
+      },
+    });
+    const session = createAgentSession({
+      relayHandle: handle,
+      instanceId: "inst-test",
+      stopInstance: async () => {
+        stopped = true;
+      },
     });
     await session.dispose();
     expect(closed).toBe(true);
     expect(stopped).toBe(true);
+  });
+});
+
+describe("startPromptTurn", () => {
+  // 正常 session/new + prompt
+  test("创建 session 并返回 PromptTurn", async () => {
+    let handler: (msg: any) => void = () => {};
+    const handle = makeMockRelayHandle({
+      send: (_msg: any) => {
+        const method = (_msg as any)?.method;
+        if (method === "session/new") {
+          setTimeout(() => {
+            handler({ jsonrpc: "2.0", id: -1, result: { sessionId: "ses_test123" } });
+          }, 5);
+        }
+      },
+      onMessage: (h: any) => {
+        handler = h;
+        return () => {};
+      },
+    });
+
+    const session = createAgentSession({
+      relayHandle: handle,
+      instanceId: "inst-test",
+      stopInstance: async () => {},
+    });
+
+    const { turn } = await startPromptTurn({ session });
+    expect(turn).toBeDefined();
+    expect(turn.events).toBeDefined();
+    expect(turn.prompt).toBeDefined();
+  });
+
+  // session/load
+  test("session/load 时传入 sessionId", async () => {
+    let handler: (msg: any) => void = () => {};
+    let receivedMethod = "";
+    const handle = makeMockRelayHandle({
+      send: (_msg: any) => {
+        receivedMethod = (_msg as any)?.method;
+        if (receivedMethod === "session/load") {
+          setTimeout(() => {
+            handler({ jsonrpc: "2.0", id: -1, result: { sessionId: "ses_existing" } });
+          }, 5);
+        }
+      },
+      onMessage: (h: any) => {
+        handler = h;
+        return () => {};
+      },
+    });
+
+    const session = createAgentSession({
+      relayHandle: handle,
+      instanceId: "inst-test",
+      stopInstance: async () => {},
+    });
+
+    await startPromptTurn({ session, sessionId: "ses_existing" });
+    expect(receivedMethod).toBe("session/load");
   });
 });

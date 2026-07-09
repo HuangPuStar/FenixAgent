@@ -1193,6 +1193,15 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         case "ping":
           sendMsg(ws, { type: "pong" });
           break;
+        case "cancel_pending_permissions": {
+          // 前端 relay 断连时，主服务通过 relay handle 发送此消息，
+          // 通知 acp-link server 立即取消所有待决权限请求，避免 agent 等待 30s 超时。
+          const state = clients.get(ws);
+          if (state) {
+            cancelPendingPermissions(state);
+          }
+          break;
+        }
       }
       return;
     }
