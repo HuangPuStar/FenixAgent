@@ -19,7 +19,7 @@ const app = new Elysia({ name: "openai-chat", prefix: "/v1" }).use(authGuardPlug
 });
 
 app.post(
-  "/agents/:agentId/chat/completions",
+  "/agents/:agentId/v1/chat/completions",
   async ({ params, body, request, store, error }: any) => {
     const authCtx = store.authContext as AuthContext;
     const agentId = params.agentId as string;
