@@ -12,7 +12,7 @@ import type { ToolCallData } from "@/src/lib/types";
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
   if (key === "common.inPath") return `在 ${opts?.path}`;
-  if (key === "toolNarrator.grep.results") return `找到 ${opts?.count} 个`;
+  if (key === "grep.results") return `找到 ${opts?.count} 个`;
   return key;
 }) as unknown as NarrationContext["t"];
 

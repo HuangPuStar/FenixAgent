@@ -33,7 +33,7 @@ export const grepNarrator: ToolNarrator = {
     if (ctx.status === "complete") {
       const count = extractGrepResultCount(ctx.tool.rawOutput);
       if (count) {
-        parts.push(ctx.t("toolNarrator.grep.results", { count }));
+        parts.push(ctx.t("grep.results", { count }));
       }
     }
     const detail = parts.length > 0 ? parts.join(" · ") : undefined;

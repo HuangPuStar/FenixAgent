@@ -237,7 +237,7 @@ function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, tit
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 gap-0">
+      <DialogContent className="sm:max-w-fit p-0 gap-0">
         <DialogHeader className="px-4 py-3 border-b border-border">
           <DialogTitle className="text-sm font-medium flex items-center gap-2.5">
             <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center shrink-0", style.iconBg)}>

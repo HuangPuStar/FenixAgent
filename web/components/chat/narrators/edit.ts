@@ -27,7 +27,7 @@ export const editNarrator: ToolNarrator = {
           (c) => c && typeof c === "object" && (c as { type: string }).type === "diff",
         ).length;
         if (count > 0) {
-          detail = ctx.t("toolNarrator.edit.changes", { count });
+          detail = ctx.t("edit.changes", { count });
         }
       }
     }

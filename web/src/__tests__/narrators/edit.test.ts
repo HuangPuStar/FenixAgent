@@ -11,7 +11,7 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "toolNarrator.edit.changes") return `${opts?.count} 处`;
+  if (key === "edit.changes") return `${opts?.count} 处`;
   return key;
 }) as unknown as NarrationContext["t"];
 

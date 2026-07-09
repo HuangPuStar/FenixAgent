@@ -26,7 +26,7 @@ export const globNarrator: ToolNarrator = {
       const raw = ctx.tool.rawOutput as Record<string, unknown> | undefined;
       const files = raw?.files;
       if (Array.isArray(files) && files.length > 0) {
-        detail = ctx.t("toolNarrator.glob.files", { count: files.length });
+        detail = ctx.t("glob.files", { count: files.length });
       }
     }
     return { object: display, detail };

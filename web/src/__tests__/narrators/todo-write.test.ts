@@ -11,9 +11,9 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "toolNarrator.todo.items") return `${opts?.count} 项`;
-  if (key === "toolNarrator.todo.progress") return `已完成 ${opts?.completed} / 共 ${opts?.count}`;
-  if (key === "toolNarrator.todo.allDone") return "全部完成";
+  if (key === "todo.items") return `${opts?.count} 项`;
+  if (key === "todo.progress") return `已完成 ${opts?.completed} / 共 ${opts?.count}`;
+  if (key === "todo.allDone") return "全部完成";
   return key;
 }) as unknown as NarrationContext["t"];
 

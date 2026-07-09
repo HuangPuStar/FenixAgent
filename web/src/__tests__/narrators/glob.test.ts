@@ -11,7 +11,7 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "toolNarrator.glob.files") return `${opts?.count} 个文件`;
+  if (key === "glob.files") return `${opts?.count} 个文件`;
   return key;
 }) as unknown as NarrationContext["t"];
 

@@ -20,16 +20,16 @@ export const todoWriteNarrator: ToolNarrator = {
       | Array<{ status?: string; content?: string; activeForm?: string }>
       | undefined;
     const count = Array.isArray(list) ? list.length : 0;
-    const text = ctx.t("toolNarrator.todo.items", { count });
+    const text = ctx.t("todo.items", { count });
 
     if (Array.isArray(list) && list.length > 0) {
       const completed = list.filter((t) => t.status === "completed").length;
 
       if (completed === list.length) {
-        return { object: text, detail: ctx.t("toolNarrator.todo.allDone") };
+        return { object: text, detail: ctx.t("todo.allDone") };
       }
       if (completed > 0) {
-        return { object: text, detail: ctx.t("toolNarrator.todo.progress", { completed, count }) };
+        return { object: text, detail: ctx.t("todo.progress", { completed, count }) };
       }
     }
 

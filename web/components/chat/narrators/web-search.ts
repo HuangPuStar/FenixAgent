@@ -26,7 +26,7 @@ export const webSearchNarrator: ToolNarrator = {
     if (ctx.status === "complete") {
       const out = ctx.tool.rawOutput as Record<string, unknown> | undefined;
       if (typeof out?.count === "number") {
-        detail = ctx.t("toolNarrator.webSearch.results", { count: out.count });
+        detail = ctx.t("webSearch.results", { count: out.count });
       }
     }
     return { object: quoted, detail };

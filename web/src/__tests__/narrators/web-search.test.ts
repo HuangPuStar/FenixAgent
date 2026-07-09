@@ -11,7 +11,7 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "toolNarrator.webSearch.results") return `找到 ${opts?.count} 个`;
+  if (key === "webSearch.results") return `找到 ${opts?.count} 个`;
   return key;
 }) as unknown as NarrationContext["t"];
 
