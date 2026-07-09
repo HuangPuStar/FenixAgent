@@ -31,8 +31,8 @@ import type {
   SkillUploadConflictStrategy,
   UploadSkillSummary,
 } from "../../../types/config";
-
 import { AgentPageHeader } from "../shared/AgentPageHeader";
+import { getSkillFormValidationError } from "./agent-skills-utils";
 
 type SkillInfo = { id?: string; name: string; description?: string; resourceAccess?: ResourceAccess };
 type CreateMode = "text" | "upload";
@@ -297,16 +297,18 @@ export function AgentSkillsPage() {
   // dialog 提交分发：根据模式调用 create / update / upload
   const handleDialogSubmit = () => {
     if (editingSkill) {
-      if (!formName.trim() || !formContent.trim()) {
-        toast.error(t("form.nameRequired"));
+      const validationError = getSkillFormValidationError(formName, formContent);
+      if (validationError) {
+        toast.error(t(validationError));
         return;
       }
       runUpdate({ name: editingSkill.name, description: formDescription, content: formContent });
       return;
     }
     if (createMode === "text") {
-      if (!formName.trim() || !formContent.trim()) {
-        toast.error(t("form.nameRequired"));
+      const validationError = getSkillFormValidationError(formName, formContent);
+      if (validationError) {
+        toast.error(t(validationError));
         return;
       }
       runCreate({ name: formName, description: formDescription, content: formContent });

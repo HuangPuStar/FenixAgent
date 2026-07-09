@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -39,6 +39,19 @@ function resolveDownloadUrl(originalUrl: string): string {
 }
 
 /**
+ * 清空 workspace 中已安装的所有 skill 目录，prepare 阶段再按当前 launchSpec 全量重建。
+ */
+async function clearInstalledSkills(skillsDir: string): Promise<void> {
+  const entries = await readdir(skillsDir, { withFileTypes: true });
+
+  await Promise.all(
+    entries.map(async (entry) => {
+      await rm(join(skillsDir, entry.name), { recursive: true, force: true });
+    }),
+  );
+}
+
+/**
  * 下载并安装 launchSpec 中声明的 skills。
  */
 export async function installSkills(
@@ -46,15 +59,16 @@ export async function installSkills(
   skills: SkillConfig[],
   dependencies: SkillInstallerDependencies = {},
 ): Promise<InstalledSkillReference[]> {
+  const { skillsDir } = await ensureWorkspaceRuntimeDirs(workspace);
+  await clearInstalledSkills(skillsDir);
+
   if (skills.length === 0) {
     console.log(`[skill-installer] 无 skills 需要安装, workspace=${workspace}`);
-    await ensureWorkspaceRuntimeDirs(workspace);
     return [];
   }
 
   const fetchImpl = dependencies.fetch ?? fetch;
   const extractArchive = dependencies.extractArchive ?? defaultExtractArchive;
-  const { skillsDir } = await ensureWorkspaceRuntimeDirs(workspace);
   console.log(
     `[skill-installer] 开始安装 ${skills.length} 个 skills: workspace=${workspace}, skillsDir=${skillsDir}, skill 列表=[${skills.map((s) => `${s.name}(${s.url.slice(0, 80)}...)`).join(", ")}]`,
   );

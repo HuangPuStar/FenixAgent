@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildModelOptions } from "@/components/config/ModelConfigDialog";
-import { mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
 import {
   buildProviderInlineTestPayload,
   buildProviderPublicReadablePayload,
@@ -9,7 +9,7 @@ import {
   getProviderKey,
   getProviderResourceBadgeKey,
 } from "../pages/agent-panel/pages/agent-models-utils";
-import type { ModelEntry, ProviderInfo } from "../types/config";
+import type { ModelEntry, ProviderInfo, ResourceAccess } from "../types/config";
 
 const internalProvider: ProviderInfo = {
   id: "openai",
@@ -58,6 +58,16 @@ const externalModel: ModelEntry = {
   outputLimit: 4096,
   providerResourceKey: "org-source/provider-external",
   providerResourceAccess: externalProvider.resourceAccess,
+};
+
+const sharedMcpAccess: ResourceAccess = {
+  ownership: "external",
+  sourceOrganizationId: "org-source",
+  sourceOrganizationName: "Source Team",
+  resourceUid: "mcp-external",
+  resourceKey: "org-source/mcp-external",
+  manageable: false,
+  writable: false,
 };
 
 describe("provider model resource access flow", () => {
@@ -122,6 +132,24 @@ describe("provider model resource access flow", () => {
   test("agent form model options use modelId and display name", () => {
     expect(mapModelOptions([externalModel])).toEqual([
       { value: "model-uuid-shared", label: "Source Team/OpenAI Shared/Shared Model" },
+    ]);
+  });
+
+  // AgentFormDialog 的 MCP 选项只展示已启用项，避免禁用 MCP 继续出现在绑定候选中
+  test("agent form filters disabled mcp options", () => {
+    expect(
+      mapMcpOptions([
+        { id: "mcp-enabled", name: "enabled-mcp", enabled: true, resourceAccess: sharedMcpAccess },
+        { id: "mcp-disabled", name: "disabled-mcp", enabled: false, resourceAccess: sharedMcpAccess },
+      ]),
+    ).toEqual([
+      {
+        id: "mcp-enabled",
+        key: "org-source/mcp-external",
+        name: "enabled-mcp",
+        label: "Source Team/enabled-mcp",
+        resourceAccess: sharedMcpAccess,
+      },
     ]);
   });
 });
