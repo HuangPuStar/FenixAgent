@@ -1,5 +1,9 @@
-import { log } from "@fenix/logger";
+import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
+import { connectAgentRelay } from "../transport/relay/relay-handler";
+import { getCoreRuntime } from "./core-bootstrap";
+import { spawnInstanceFromEnvironment } from "./instance";
+import { resolveWorkspacePath } from "./workspace-resolver";
 
 // ── 类型 ──
 
@@ -41,8 +45,8 @@ export function createAgentSession(config: {
   relayHandle: EngineRelayHandle;
   instanceId: string;
   workspacePath?: string;
-  /** stop instance 函数，dispose 时调用 */
-  stopInstance: () => Promise<void>;
+  /** stop instance 函数，dispose 时调用（可选；不传则仅关闭 relay handle） */
+  stopInstance?: () => Promise<void>;
 }): AgentSession {
   return {
     relayHandle: config.relayHandle,
@@ -51,13 +55,15 @@ export function createAgentSession(config: {
     dispose: async () => {
       try {
         config.relayHandle.close(1000, "request complete");
-      } catch {
-        /* ignore */
+      } catch (err) {
+        logError("[agent-chat] Failed to close relay handle:", err);
       }
-      try {
-        await config.stopInstance();
-      } catch {
-        /* ignore */
+      if (config.stopInstance) {
+        try {
+          await config.stopInstance();
+        } catch (err) {
+          logError("[agent-chat] Failed to stop instance:", err);
+        }
       }
     },
   };
@@ -225,4 +231,51 @@ export async function startPromptTurn(
   const turn = createPromptTurn(session, sessionId);
 
   return { turn, session };
+}
+
+// ── 编排层：一站式从 agentId 启动到 PromptTurn ──
+
+export interface OpenAgentSessionInput {
+  userId: string;
+  agentId: string;
+  organizationId: string;
+  /** 可选：恢复已有会话时传入 ACP session ID */
+  sessionId?: string;
+}
+
+export interface OpenAgentSessionResult {
+  turn: PromptTurn;
+  instanceId: string;
+}
+
+/**
+ * 一站式打开 Agent 会话：启动独立实例 → 连接 relay → 创建 AgentSession → startPromptTurn。
+ *
+ * 每次调用创建全新实例（不复用），dispose 时自动销毁。
+ * WS relay 路径走 ensureRunning 复用实例，两者策略独立。
+ */
+export async function openAgentSession(input: OpenAgentSessionInput): Promise<OpenAgentSessionResult> {
+  // 1. 每次请求新建独立实例
+  const instance = await spawnInstanceFromEnvironment(input.userId, input.agentId);
+  log(`[agent-chat] Instance spawned: instanceId=${instance.id}`);
+
+  // 2. 连接 relay
+  const handle = await connectAgentRelay(instance.id, input.sessionId ?? "");
+  log(`[agent-chat] Relay connected: instanceId=${instance.id}`);
+
+  // 3. 创建 AgentSession（dispose 时销毁实例）
+  const facade = getCoreRuntime();
+  const session = createAgentSession({
+    relayHandle: handle,
+    instanceId: instance.id,
+    workspacePath: resolveWorkspacePath(input.organizationId, input.userId, instance.environmentId ?? input.agentId),
+    stopInstance: async () => {
+      await facade.stopInstance(instance.id);
+    },
+  });
+
+  // 4. 创建 ACP session + PromptTurn
+  const { turn } = await startPromptTurn({ session, sessionId: input.sessionId });
+
+  return { turn, instanceId: instance.id };
 }

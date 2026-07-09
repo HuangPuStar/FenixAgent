@@ -137,7 +137,7 @@ function findStopReason(events: RelayEvent[]): string {
     const reason = extractCompletionFromRelayEvent(events[i]);
     if (reason) return reason;
   }
-  return "stop";
+  return "end_turn";
 }
 
 // ── 公开 API ──
@@ -243,7 +243,7 @@ export async function* mapToSSEChunks(
       object: "chat.completion.chunk",
       created,
       model: agentId,
-      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      choices: [{ index: 0, delta: {}, finish_reason: "end_turn" }],
     })}\n\n`;
     yield "data: [DONE]\n\n";
   }

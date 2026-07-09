@@ -56,9 +56,10 @@ export interface AuthContext {
 
 function extractToken(request: Request): string | undefined {
   const authHeader = request.headers.get("Authorization");
+  const xApiKey = request.headers.get("x-api-key");
   const url = new URL(request.url);
   const queryToken = url.searchParams.get("token");
-  return authHeader?.replace("Bearer ", "") || queryToken || undefined;
+  return authHeader?.replace("Bearer ", "") || xApiKey || queryToken || undefined;
 }
 
 /**
