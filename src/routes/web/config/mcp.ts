@@ -414,6 +414,44 @@ app.get(
   },
 );
 
+// POST /web/config/mcp — create MCP server
+app.post(
+  "/config/mcp",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia body type is loose at runtime
+  async ({ store, body, status }: any) => {
+    const authCtx = store.authContext!;
+    const name = typeof body?.name === "string" ? body.name : "";
+    const configInput = body?.config ?? body;
+    const publicReadable = typeof body?.publicReadable === "boolean" ? body.publicReadable : undefined;
+
+    try {
+      const result = await _handleCreate(authCtx, name, configInput, publicReadable);
+      const err = resolveConfigError(result);
+      if (err) return status(err.code, err.body);
+      return result;
+    } catch (error_) {
+      const err = resolveThrownError(error_);
+      if (err) return status(err.code, err.body);
+      throw error_;
+    }
+  },
+  {
+    sessionAuth: true,
+    response: {
+      200: looseOkSchema,
+      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      409: WebErrSchema,
+    },
+    detail: {
+      tags: ["McpConfig"],
+      summary: "创建 MCP 服务器",
+      description: "创建新的 MCP 服务器配置。请求体需要提供 `name` 和 `config`，并支持可选 `publicReadable`。",
+    },
+  },
+);
+
 // PUT /web/config/mcp?name=xxx — update MCP server
 app.put(
   "/config/mcp",
