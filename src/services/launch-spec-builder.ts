@@ -3,11 +3,12 @@ import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { getBaseUrl } from "../config";
+import { config, getBaseUrl } from "../config";
 import { db } from "../db";
 import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "../db/schema";
 import { AppError } from "../errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
+import { composeAgentSystemPrompt } from "./agent-system-prompt";
 import type { AgentConfigDetailWithAccess } from "./config";
 import { resolveApiKey } from "./config-utils";
 import { getGlobalSkillsDir } from "./skill";
@@ -481,6 +482,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
   log(
     `[launch-spec-builder] buildLaunchSpec: final skills=${JSON.stringify(skills)}, final mcpServers=${JSON.stringify(summarizeLaunchMcpServers(mcpServers))}`,
   );
+  const finalPrompt = composeAgentSystemPrompt(config.agentSystemPrompt, agentConfig.name, agentConfig.prompt);
 
   // Phase 3: 产出最终 launchSpec，此时所有关键资源都已经完成严格校验。
   // 处理 extra.plugin：对 Hindsight 条目注入服务端动态配置
@@ -526,7 +528,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     env: input.extraEnv ?? {},
     agent: {
       name: agentConfig.name,
-      ...(agentConfig.prompt ? { prompt: agentConfig.prompt } : {}),
+      prompt: finalPrompt,
       ...(processedExtra ? { extra: processedExtra } : {}),
     },
     model,
@@ -554,6 +556,7 @@ export async function buildBasicLaunchSpec(input: BuildBasicLaunchSpecInput): Pr
     env: input.extraEnv ?? {},
     agent: {
       name: "build",
+      prompt: composeAgentSystemPrompt(config.agentSystemPrompt, "build"),
     },
     model: modelConfig,
     skills: [],
