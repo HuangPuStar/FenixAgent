@@ -11,7 +11,7 @@ import type { ToolNarrator } from "./types";
  * 待办数本身就是核心信息，所以即使 0 个也展示（与 glob 空列表不显示徽章策略不同）。
  */
 export const todoWriteNarrator: ToolNarrator = {
-  match: (name) => name.includes("todo"),
+  kinds: ["todo"],
   verb: "列出",
   icon: ListTodo,
   getDisplay(ctx) {

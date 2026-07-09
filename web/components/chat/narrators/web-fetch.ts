@@ -9,7 +9,7 @@ import type { ToolNarrator } from "./types";
  * WebSearch 用 includes("search")，与 fetch 不冲突，所以注册顺序无强约束。
  */
 export const webFetchNarrator: ToolNarrator = {
-  match: (name) => name.includes("fetch") || name.includes("curl"),
+  kinds: ["web-fetch"],
   verb: "抓取",
   icon: Globe,
   getDisplay(ctx) {

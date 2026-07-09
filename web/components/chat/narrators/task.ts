@@ -9,7 +9,7 @@ import type { ToolNarrator } from "./types";
  * 其次从 rawInput.description 取，最后兜底"子任务"中性词。
  */
 export const taskNarrator: ToolNarrator = {
-  match: (name) => name.includes("task") || name.includes("agent") || name.includes("subagent"),
+  kinds: ["task"],
   verb: "派发",
   icon: Workflow,
   getDisplay(ctx) {

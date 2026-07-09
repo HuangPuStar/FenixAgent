@@ -12,7 +12,7 @@ import type { ToolNarrator } from "./types";
  * 但保持"专用先于通用"的注册顺序约定，仍放在 webFetch 之后。
  */
 export const webSearchNarrator: ToolNarrator = {
-  match: (name) => name.includes("search"),
+  kinds: ["web-search"],
   verb: "搜索",
   icon: Search,
   getDisplay(ctx) {

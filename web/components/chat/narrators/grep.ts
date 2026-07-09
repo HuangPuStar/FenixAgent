@@ -15,7 +15,7 @@ import type { ToolNarrator } from "./types";
  *          在 src/ · 找到 8 个 · 0.5s
  */
 export const grepNarrator: ToolNarrator = {
-  match: (name) => name.includes("grep") || name.includes("rg"),
+  kinds: ["grep"],
   verb: "搜索",
   icon: Search,
   getDisplay(ctx) {
