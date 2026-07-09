@@ -62,6 +62,7 @@ export const TRANSPORT_TYPES = [
   "permission_response",
   "permission_request",
   "interactive_question",
+  "cancel_pending_permissions",
 ] as const;
 
 // ── 工具函数 ──────────────────────────

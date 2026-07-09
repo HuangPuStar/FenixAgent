@@ -212,6 +212,14 @@ export {
   type EnsureMetaAgentResponse,
   EnsureMetaAgentResponseSchema,
 } from "./meta-agent.schema";
+// OpenAI Chat
+export {
+  type OpenAIChatCompletionRequest,
+  OpenAIChatCompletionRequestSchema,
+  type OpenAIChatCompletionResponse,
+  OpenAIChatCompletionResponseSchema,
+  OpenAIErrorResponseSchema,
+} from "./openai-chat.schema";
 // Organizations
 export {
   type ApiKeyActionRequest,
@@ -307,6 +315,7 @@ export {
   WorkflowDefSchema,
   WorkflowDefsActionRequestSchema,
   WorkflowDefsActionResponseSchema,
+  WorkflowDefsPostBodySchema,
   WorkflowDryRunResultSchema,
   WorkflowEngineActionRequestSchema,
   WorkflowEngineActionResponseSchema,

@@ -119,8 +119,8 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     });
     clearTimeout(timeoutId);
 
-    // 非 JSON Content-Type（如文件下载）通常不解析 body，但 FormData 上传等
-    // 场景下 Elysia 偶尔遗漏 Content-Type，此时仍尝试按 JSON 解析。
+    // 非 JSON Content-Type（如文件下载）通常不解析 body，但部分接口（如 FormData 上传）
+    // 后端可能遗漏 Content-Type，此时仍尝试按 JSON 解析。
     const ct = r.headers.get("content-type") ?? "";
     if (!ct.includes("application/json")) {
       if (!r.ok) {
@@ -139,9 +139,11 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
           return { success: true, data: ("data" in json ? json.data : json) as unknown as T };
         }
       } catch {
-        // 不是 JSON，回退到无 data 响应
+        // 不是 JSON，继续后续错误处理
       }
-      return { success: true, data: undefined as unknown as T };
+      // 响应虽然是 200 但既不是 JSON 也没带 success 字段，视为服务端异常
+      console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl} ${r.status} — 响应格式异常，Content-Type: ${ct}`);
+      return { success: false, error: { code: "SERVER_ERROR", message: `服务器返回了意外的响应格式` } };
     }
 
     const json: Record<string, unknown> = await r.json();

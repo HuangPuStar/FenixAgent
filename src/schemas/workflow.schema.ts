@@ -235,6 +235,11 @@ export const WorkflowDefsActionRequestSchema = z
   ])
   .describe("工作流定义接口的 action 分发请求体。");
 
+/** POST /web/workflow-defs 请求体：同时接受 RESTful 创建请求体和无 action 字段的简单创建 + action 分发请求体 */
+export const WorkflowDefsPostBodySchema = z
+  .union([WorkflowDefsActionRequestSchema, CreateWorkflowDefRequestSchema])
+  .describe("工作流定义 POST 请求体，同时支持 action 分发和 RESTful 创建两种风格。");
+
 /** workflow-defs 响应 */
 
 // ⚠️ 变体顺序敏感：WorkflowDefDetailSchema（含 draftYaml）必须排在 WorkflowDefSchema 前，

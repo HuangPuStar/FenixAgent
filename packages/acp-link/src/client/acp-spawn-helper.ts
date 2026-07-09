@@ -51,6 +51,17 @@ export async function spawnAcpAgent(
 
   /** 桥接函数：当 AcpDispatcher 收到前端权限响应时调用 */
   const resolvePermissionOutcome = (requestId: string, outcome: acp.RequestPermissionOutcome): boolean => {
+    // "__cancel_all__" 哨兵：批量取消所有待决权限请求。
+    // 当前端 relay 全部断开时，AcpDispatcher 通过 onPermissionOutcome 回调
+    // 传入此哨兵，一次性清除 spawnAcpAgent 侧的所有 pending 权限请求。
+    if (requestId === "__cancel_all__") {
+      for (const [key, pending] of pendingPermissions) {
+        clearTimeout(pending.timer);
+        pending.resolve({ outcome: "cancelled" });
+      }
+      pendingPermissions.clear();
+      return true;
+    }
     const pending = pendingPermissions.get(requestId);
     if (!pending) return false;
     clearTimeout(pending.timer);
