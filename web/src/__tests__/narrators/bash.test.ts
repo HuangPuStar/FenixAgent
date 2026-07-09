@@ -19,19 +19,16 @@ function makeCtx(rawInput: unknown): NarrationContext {
       status: "complete",
       rawInput: rawInput as Record<string, unknown>,
     } as ToolCallData,
+    kind: "bash",
     status: "complete",
     t: mockT,
   };
 }
 
 describe("bashNarrator", () => {
-  // 匹配 bash / shell / exec / 精确 "command"
-  test("匹配 bash/shell/exec/command", () => {
-    expect(bashNarrator.match("bash")).toBe(true);
-    expect(bashNarrator.match("shell")).toBe(true);
-    expect(bashNarrator.match("exec")).toBe(true);
-    expect(bashNarrator.match("command")).toBe(true);
-    expect(bashNarrator.match("read")).toBe(false);
+  // kinds 包含 "bash"
+  test("kinds 包含 bash", () => {
+    expect(bashNarrator.kinds).toContain("bash");
   });
 
   // 中文动词必须是"执行"

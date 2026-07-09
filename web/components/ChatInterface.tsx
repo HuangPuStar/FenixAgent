@@ -28,7 +28,7 @@ import type {
 import { ContextPanel } from "./ContextPanel";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
-import { extractDisplayMeta } from "./chat/narrators/helpers";
+import { extractDisplayMeta, resolveToolCardKind } from "./chat/narrators/helpers";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import type { TodoItem } from "./chat/TodoPanel";
 import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
@@ -231,11 +231,19 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
 
   // Handle tool call (UPSERT)
   if (update.sessionUpdate === "tool_call") {
-    const display = extractDisplayMeta(update.rawOutput, update._meta);
+    // ① 顶层 display（opencode 风格，可能不在 ACP ToolCallUpdate 标准类型中，需转型访问）
+    const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
+      | Record<string, unknown>
+      | undefined;
+    const display = extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay);
+    // 构造临时 tool 对象用于 resolveToolCardKind
+    const tempTool = { display, rawInput: update.rawInput, rawOutput: update.rawOutput };
+    const kind = resolveToolCardKind(tempTool, update._meta);
     const toolCallData: ToolCallData = {
       id: update.toolCallId,
       title: update.title,
       status: mapToolStatus(update.status),
+      kind,
       content: update.content,
       // 条件展开避免 undefined 覆盖已有值（rawInput 可能是空对象 {}，用 != null 而非 &&）
       ...(update.rawInput != null ? { rawInput: update.rawInput } : {}),
@@ -264,13 +272,19 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
     if (existingIndex < 0) {
       // tool_call_update 先于 tool_call 到达时创建占位 entry，
       // 尽可能保留 update 中已有的 rawInput/rawOutput/display，避免数据被后续 UPSERT 覆盖丢弃
-      const fallbackDisplay = extractDisplayMeta(update.rawOutput, update._meta);
+      const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
+        | Record<string, unknown>
+        | undefined;
+      const fallbackDisplay = extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay);
+      const tempTool = { display: fallbackDisplay, rawInput: update.rawInput, rawOutput: update.rawOutput };
+      const kind = resolveToolCardKind(tempTool, update._meta);
       const failedEntry: ToolCallEntry = {
         type: "tool_call",
         toolCall: {
           id: update.toolCallId,
           title: update.title || "Tool call not found",
           status: "error",
+          kind,
           content: [{ type: "content", content: { type: "text", text: "Tool call not found" } }],
           ...(update.rawInput != null ? { rawInput: update.rawInput } : {}),
           ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
@@ -290,17 +304,28 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
       const mergedContent = update.content
         ? [...(entry.toolCall.content || []), ...update.content]
         : entry.toolCall.content;
+      const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
+        | Record<string, unknown>
+        | undefined;
       // extractDisplayMeta 可能返回 undefined（metadata 结构异常），
       // 此时应保留旧 display 值，避免 display 丢失
       const display = update.rawOutput
-        ? (extractDisplayMeta(update.rawOutput, update._meta) ?? entry.toolCall.display)
+        ? (extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay) ?? entry.toolCall.display)
         : entry.toolCall.display;
+      // kind 同步更新（rawInput/output 变化可能导致 kind 变化）
+      const tempTool = {
+        display,
+        rawInput: update.rawInput ?? entry.toolCall.rawInput,
+        rawOutput: update.rawOutput ?? entry.toolCall.rawOutput,
+      };
+      const kind = resolveToolCardKind(tempTool, update._meta);
 
       return {
         type: "tool_call",
         toolCall: {
           ...entry.toolCall,
           status: newStatus,
+          kind,
           ...(update.title && { title: update.title }),
           content: mergedContent,
           ...(update.rawInput && { rawInput: update.rawInput }),
@@ -470,6 +495,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             id: request.toolCall.toolCallId,
             title: request.toolCall.title || "Permission Request",
             status: "waiting_for_confirmation",
+            kind: resolveToolCardKind({
+              rawInput: (request.toolCall as Record<string, unknown>).rawInput as Record<string, unknown>,
+            }),
             permissionRequest: {
               requestId: request.requestId,
               options: request.options,
@@ -696,6 +724,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             id: iq.questionId,
             title: question.header || iq.toolName,
             status: "waiting_for_confirmation" as ToolCallStatus,
+            kind: "question" as const,
             rawInput: { questions: iq.questions },
             permissionRequest: {
               requestId: iq.questionId,

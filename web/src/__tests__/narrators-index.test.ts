@@ -26,12 +26,13 @@ i18n.use(initReactI18next).init({
 
 const t = i18n.getFixedT("zh", "toolNarrator");
 
-// 构造工具调用数据，默认是 complete 状态的未知工具（走 fallback narrator）
+// 构造工具调用数据，默认是 complete 状态的 unknown 工具（走 fallback narrator）
 function makeTool(overrides: Partial<ToolCallData> = {}): ToolCallData {
   return {
     id: "test-id",
     title: "UnknownTool",
     status: "complete",
+    kind: "unknown",
     ...overrides,
   };
 }

@@ -13,8 +13,7 @@ import type { ToolNarrator } from "./types";
  *          15 个文件 · 0.3s
  */
 export const globNarrator: ToolNarrator = {
-  match: (name) =>
-    name.includes("glob") || name.includes("find") || name.includes("listfiles") || name.includes("list_files"),
+  kinds: ["glob"],
   verb: "查找",
   icon: FolderSearch,
   getDisplay(ctx) {
@@ -27,7 +26,7 @@ export const globNarrator: ToolNarrator = {
       const raw = ctx.tool.rawOutput as Record<string, unknown> | undefined;
       const files = raw?.files;
       if (Array.isArray(files) && files.length > 0) {
-        detail = ctx.t("toolNarrator.glob.files", { count: files.length });
+        detail = ctx.t("glob.files", { count: files.length });
       }
     }
     return { object: display, detail };

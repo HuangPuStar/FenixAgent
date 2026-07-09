@@ -3,7 +3,7 @@ import { editNarrator } from "./edit";
 import { fallbackNarrator } from "./fallback";
 import { globNarrator } from "./glob";
 import { grepNarrator } from "./grep";
-import { extractErrorMessage, formatElapsed } from "./helpers";
+import { extractErrorMessage, formatElapsed, resolveToolCardKind } from "./helpers";
 import { questionNarrator } from "./question";
 import { readNarrator } from "./read";
 import { skillNarrator } from "./skill";
@@ -15,11 +15,8 @@ import { webSearchNarrator } from "./web-search";
 import { writeNarrator } from "./write";
 
 /**
- * 注册表。顺序敏感：先匹配专用 narrator，未命中走兜底。
- *
- * 占位：后续 task 会逐步把专用 narrator（read/edit/bash/...）插入到
- * fallbackNarrator 之前。WebSearch 必须在 WebFetch 之后注册
- * （因为两者都匹配 "web"）。
+ * 注册表。按 ToolCardKind 声明式匹配，未命中走 fallback。
+ * 顺序无关紧要（kinds 不重叠），保持原有顺序便于阅读。
  */
 const narrators: ToolNarrator[] = [
   readNarrator,
@@ -34,7 +31,7 @@ const narrators: ToolNarrator[] = [
   todoWriteNarrator,
   skillNarrator,
   questionNarrator,
-  fallbackNarrator, // 必须最后
+  fallbackNarrator,
 ];
 
 /**
@@ -60,11 +57,11 @@ export function narrate(
   // 第 1 阶段：状态归一化。rejected 视觉上等同 canceled（用户拒绝授权）
   const normalizedStatus: Exclude<ToolStatus, "rejected"> = status === "rejected" ? "canceled" : status;
 
-  // 第 2 阶段：查注册表匹配 narrator
-  const ctx: NarrationContext = { tool, status: normalizedStatus, elapsedMs, t };
-  const lower = tool.title.toLowerCase();
-  // 把 tool 一并传给 match，允许 narrator 在 title 关键字不命中时基于 rawInput/rawOutput 兜底
-  const narrator = narrators.find((n) => n.match(lower, tool)) ?? fallbackNarrator;
+  // 第 2 阶段：解析 ToolCardKind 并匹配 narrator
+  // 优先使用 tool.kind（ChatInterface 已预解析），未设置时运行时解析
+  const kind = tool.kind ?? resolveToolCardKind(tool);
+  const ctx: NarrationContext = { tool, kind, status: normalizedStatus, elapsedMs, t };
+  const narrator = narrators.find((n) => n.kinds.includes(kind)) ?? fallbackNarrator;
 
   // 第 3 阶段：调用 narrator 的 getDisplay 拿到 object 和可选 detail
   const { object, detail } = narrator.getDisplay(ctx);

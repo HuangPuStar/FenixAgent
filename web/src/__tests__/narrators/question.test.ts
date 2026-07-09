@@ -21,17 +21,16 @@ function makeCtx(rawInput: unknown, description?: string): NarrationContext {
       rawInput: rawInput as Record<string, unknown>,
       description,
     } as ToolCallData,
+    kind: "question",
     status: "waiting_for_confirmation",
     t: mockT,
   };
 }
 
 describe("questionNarrator", () => {
-  // 匹配 question / ask 两种命名变体，read 不命中
-  test("匹配 question/ask", () => {
-    expect(questionNarrator.match("question")).toBe(true);
-    expect(questionNarrator.match("ask")).toBe(true);
-    expect(questionNarrator.match("read")).toBe(false);
+  // kinds 包含 "question"
+  test("kinds 包含 question", () => {
+    expect(questionNarrator.kinds).toContain("question");
   });
 
   // 中文动词"询问"——传达"向用户提问"语义

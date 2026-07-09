@@ -19,17 +19,16 @@ function makeCtx(rawInput: unknown): NarrationContext {
       status: "complete",
       rawInput: rawInput as Record<string, unknown>,
     } as ToolCallData,
+    kind: "write",
     status: "complete",
     t: mockT,
   };
 }
 
 describe("writeNarrator", () => {
-  // 匹配包含 "write" 的工具名
-  test("匹配 write", () => {
-    expect(writeNarrator.match("write")).toBe(true);
-    expect(writeNarrator.match("file_write")).toBe(true);
-    expect(writeNarrator.match("read")).toBe(false);
+  // kinds 包含 "write"
+  test("kinds 包含 write", () => {
+    expect(writeNarrator.kinds).toContain("write");
   });
 
   // 中文动词必须是"写入"

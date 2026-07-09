@@ -17,7 +17,7 @@ import type { ToolNarrator } from "./types";
  * 里第一个字符串值作为附上下文（如 MCP 工具的命令字串）。
  */
 export const fallbackNarrator: ToolNarrator = {
-  match: () => true,
+  kinds: ["unknown"],
   verb: "使用",
   icon: Wrench,
   getDisplay(ctx) {

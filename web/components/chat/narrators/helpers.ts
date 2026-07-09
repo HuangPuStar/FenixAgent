@@ -202,17 +202,36 @@ export interface ToolCallDisplayMeta {
 }
 
 /**
- * 从 rawOutput 中提取 opencode 引擎的 display 元数据。
- * 位置：rawOutput.metadata.display
- * 返回 undefined 表示无 display 元数据（非 opencode 工具或未提供）。
+ * 从多个来源逐级提取 display 元数据。
+ * 优先级：
+ * ① toolCallDisplay（ACP 顶层 toolCall.display，opencode 风格）
+ * ② rawOutput.metadata.display（opencode 嵌套风格）
+ * ③ _meta.display（relay 场景）
  *
- * 同时支持从 _meta.display 提取（部分 relay 场景下 display 在 _meta 中）。
+ * 返回第一个命中层的元数据，全未命中返回 undefined。
  */
 export function extractDisplayMeta(
   rawOutput: unknown,
   meta?: Record<string, unknown> | null,
+  toolCallDisplay?: Record<string, unknown>,
 ): ToolCallDisplayMeta | undefined {
-  // 优先从 rawOutput.metadata.display 提取
+  // ① 顶层 toolCall.display（opencode 新版本，直接挂载在 toolCall 对象上）
+  if (toolCallDisplay && typeof toolCallDisplay === "object") {
+    const d = toolCallDisplay;
+    if (typeof d.type === "string") {
+      return {
+        type: d.type,
+        path: typeof d.path === "string" ? d.path : undefined,
+        lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
+        lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
+        totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
+        text: typeof d.text === "string" ? d.text : undefined,
+        truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
+      };
+    }
+  }
+
+  // ② rawOutput.metadata.display
   if (rawOutput && typeof rawOutput === "object") {
     const o = rawOutput as Record<string, unknown>;
     const metadata = o.metadata as Record<string, unknown> | undefined;
@@ -232,7 +251,7 @@ export function extractDisplayMeta(
     }
   }
 
-  // 兜底：从 _meta.display 提取
+  // ③ _meta.display
   if (meta && typeof meta.display === "object" && meta.display !== null) {
     const d = meta.display as Record<string, unknown>;
     if (typeof d.type === "string") {
@@ -249,4 +268,76 @@ export function extractDisplayMeta(
   }
 
   return;
+}
+
+// =============================================================================
+// ToolCardKind 解析 — 将 display 元数据 + rawInput 结构映射为统一 kind
+// =============================================================================
+
+import type { ToolCallData, ToolCardKind } from "@/src/lib/types";
+
+/** display.type → ToolCardKind 的精确映射 */
+const DISPLAY_TYPE_MAP: Record<string, ToolCardKind> = {
+  directory: "read-directory",
+  diff: "edit",
+};
+
+/**
+ * 从 ToolCallData + _meta 解析统一的 ToolCardKind。
+ *
+ * 优先级：
+ * 1. display.type 精确匹配（directory/diff/file）
+ * 2. display.type "file" + rawInput 二次推断（write/edit/read-file）
+ * 3. rawInput 字段结构推断（command→bash, url→web-fetch 等）
+ * 4. 兜底 "unknown"
+ *
+ * 注意：完全不依赖 title 字段。
+ */
+export function resolveToolCardKind(
+  tool: Pick<ToolCallData, "display" | "rawInput" | "rawOutput">,
+  meta?: Record<string, unknown> | null,
+): ToolCardKind {
+  // 第 1 级：display.type 精确匹配
+  const display = tool.display ?? extractDisplayMeta(tool.rawOutput, meta);
+  if (display?.type) {
+    // 直接映射（directory / diff）
+    const direct = DISPLAY_TYPE_MAP[display.type];
+    if (direct) return direct;
+
+    // file 需二次推断：write / edit / read-file
+    if (display.type === "file") {
+      const r = tool.rawInput as Record<string, unknown> | undefined;
+      if (typeof r?.newText === "string" || typeof r?.content === "string") return "write";
+      if (typeof r?.oldText === "string" || typeof r?.old_string === "string") return "edit";
+      return "read-file";
+    }
+  }
+
+  const r = tool.rawInput as Record<string, unknown> | undefined;
+  if (!r) return "unknown";
+
+  // 第 2 级：rawInput 结构推断
+  // command/cmd/script → bash
+  if (typeof r.command === "string" || typeof r.cmd === "string" || typeof r.script === "string") return "bash";
+  // url → web-fetch
+  if (typeof r.url === "string") return "web-fetch";
+  // pattern + include/path → grep
+  if (typeof r.pattern === "string" && (typeof r.include === "string" || typeof r.path === "string")) return "grep";
+  // pattern only → glob
+  if (typeof r.pattern === "string") return "glob";
+  // query → web-search
+  if (typeof r.query === "string" || typeof r.search === "string") return "web-search";
+  // todos/tasks 数组 → todo（opencode todowrite 工具用数组结构，无 display.type）
+  if (Array.isArray(r.todos) || Array.isArray(r.tasks)) return "todo";
+  // subagent_type / prompt → task（opencode subagent 调用，无 display.type）
+  if (typeof r.subagent_type === "string" || typeof r.subagent_name === "string" || typeof r.prompt === "string")
+    return "task";
+  // filePath/path/file_path → read-file（兜底 rawInput 推断，带 write/edit 细化）
+  if (typeof r.filePath === "string" || typeof r.path === "string" || typeof r.file_path === "string") {
+    if (typeof r.newText === "string" || typeof r.content === "string") return "write";
+    if (typeof r.oldText === "string" || typeof r.old_string === "string") return "edit";
+    return "read-file";
+  }
+
+  return "unknown";
 }

@@ -28,7 +28,9 @@
     "results": "{{count}} result(s)"
   },
   "todo": {
-    "items": "{{count}} todo(s)"
+    "items": "{{count}} item(s)",
+    "progress": "{{completed}} / {{count}} done",
+    "allDone": "All done"
   },
   "detail": {
     "showRawInput": "Show raw input",

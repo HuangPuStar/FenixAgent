@@ -24,7 +24,11 @@ const mockT = ((key: string, opts?: Record<string, unknown>) => {
 }) as unknown as NarrationContext["t"];
 
 // 构造 NarrationContext，rawOutput 可选（目录场景才需要）
-function makeCtx(rawInput: unknown, rawOutput?: unknown): NarrationContext {
+function makeCtx(
+  rawInput: unknown,
+  rawOutput?: unknown,
+  kind: "read-file" | "read-directory" = "read-file",
+): NarrationContext {
   return {
     tool: {
       id: "t1",
@@ -33,6 +37,7 @@ function makeCtx(rawInput: unknown, rawOutput?: unknown): NarrationContext {
       rawInput: rawInput as Record<string, unknown>,
       ...(rawOutput !== undefined ? { rawOutput } : {}),
     } as ToolCallData,
+    kind,
     status: "complete",
     t: mockT,
   };
@@ -55,12 +60,10 @@ const OPENCODE_FILE_OUTPUT = {
 };
 
 describe("readNarrator", () => {
-  // match 规则：包含 "read" 即命中（大小写不敏感）
-  test("匹配包含 'read' 的工具名", () => {
-    const ctx = makeCtx({});
-    expect(readNarrator.match("read", ctx.tool)).toBe(true);
-    expect(readNarrator.match("fileread", ctx.tool)).toBe(true);
-    expect(readNarrator.match("write", ctx.tool)).toBe(false);
+  // kinds 包含 read-file 和 read-directory
+  test("kinds 包含 read-file 和 read-directory", () => {
+    expect(readNarrator.kinds).toContain("read-file");
+    expect(readNarrator.kinds).toContain("read-directory");
   });
 
   // 中文动词必须是"读取"
@@ -95,43 +98,15 @@ describe("readNarrator", () => {
     expect(object).toBe("z.ts");
   });
 
-  // ===== opencode 目录读取兜底场景 =====
-
-  // title 是路径（不含 read）+ filePath + opencode directory 输出 → 兜底匹配
-  test("兜底匹配 opencode 目录读取（title 是路径，rawOutput 含 <type>directory</type>）", () => {
-    const tool = {
-      ...makeCtx({ filePath: "/workspaces/env_xxx" }, OPENCODE_DIR_OUTPUT).tool,
-      title: "workspaces/sbFA.../env_xxx",
-    } as ToolCallData;
-    // title 不含 read，但 rawOutput 特征命中
-    expect(readNarrator.match(tool.title.toLowerCase(), tool)).toBe(true);
-  });
-
-  // rawInput 有 filePath 但 rawOutput 不是 opencode 格式 → 不匹配（避免误伤 edit/write 等）
-  test("rawInput 有 filePath 但 rawOutput 不是 opencode 格式时不匹配", () => {
-    const tool = {
-      ...makeCtx({ filePath: "/a/b.ts" }, { output: "普通输出，没有 <path> 标签" }).tool,
-      title: "some-other-tool",
-    } as ToolCallData;
-    expect(readNarrator.match(tool.title.toLowerCase(), tool)).toBe(false);
-  });
-
-  // opencode 文件读取场景（<type>file</type>）也兜底命中
-  test("兜底匹配 opencode 文件读取（<type>file</type>）", () => {
-    const tool = {
-      ...makeCtx({ filePath: "/workspaces/env_xxx/foo.ts" }, OPENCODE_FILE_OUTPUT).tool,
-      title: "workspaces/.../foo.ts",
-    } as ToolCallData;
-    expect(readNarrator.match(tool.title.toLowerCase(), tool)).toBe(true);
-  });
+  // ===== opencode 目录读取场景 =====
 
   // 目录场景：getDisplay 提取末尾段为 object，detail 显示条目数
   test("目录场景下 detail 显示条目数（解析 metadata.preview）", () => {
     const tool = {
-      ...makeCtx({ filePath: "/workspaces/env_xxx" }, OPENCODE_DIR_OUTPUT).tool,
+      ...makeCtx({ filePath: "/workspaces/env_xxx" }, OPENCODE_DIR_OUTPUT, "read-directory").tool,
       title: "workspaces/.../env_xxx",
     } as ToolCallData;
-    const { object, detail } = readNarrator.getDisplay({ tool, status: "complete", t: mockT });
+    const { object, detail } = readNarrator.getDisplay({ tool, kind: "read-directory", status: "complete", t: mockT });
     expect(object).toBe("env_xxx");
     expect(detail).toBe("2 个条目");
   });
@@ -142,20 +117,20 @@ describe("readNarrator", () => {
       output: "<path>/x</path>\n<type>directory</type>\n<entries>\na\nb\nc\n\n(3 entries)\n</entries>",
     };
     const tool = {
-      ...makeCtx({ filePath: "/x" }, rawOutput).tool,
+      ...makeCtx({ filePath: "/x" }, rawOutput, "read-directory").tool,
       title: "/x",
     } as ToolCallData;
-    const { detail } = readNarrator.getDisplay({ tool, status: "complete", t: mockT });
+    const { detail } = readNarrator.getDisplay({ tool, kind: "read-directory", status: "complete", t: mockT });
     expect(detail).toBe("3 个条目");
   });
 
   // opencode 文件读取场景（<type>file</type>）：object 提取文件名，无条目数 detail
   test("文件场景（<type>file</type>）显示文件名且无条目数 detail", () => {
     const tool = {
-      ...makeCtx({ filePath: "/workspaces/env_xxx/foo.ts" }, OPENCODE_FILE_OUTPUT).tool,
+      ...makeCtx({ filePath: "/workspaces/env_xxx/foo.ts" }, OPENCODE_FILE_OUTPUT, "read-file").tool,
       title: "workspaces/.../foo.ts",
     } as ToolCallData;
-    const { object, detail } = readNarrator.getDisplay({ tool, status: "complete", t: mockT });
+    const { object, detail } = readNarrator.getDisplay({ tool, kind: "read-file", status: "complete", t: mockT });
     expect(object).toBe("foo.ts");
     expect(detail).toBeUndefined();
   });

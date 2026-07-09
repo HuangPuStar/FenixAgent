@@ -11,7 +11,7 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "toolNarrator.webSearch.results") return `找到 ${opts?.count} 个`;
+  if (key === "webSearch.results") return `找到 ${opts?.count} 个`;
   return key;
 }) as unknown as NarrationContext["t"];
 
@@ -28,18 +28,16 @@ function makeCtx(
       rawInput: rawInput as Record<string, unknown>,
       rawOutput: rawOutput as Record<string, unknown> | undefined,
     } as ToolCallData,
+    kind: "web-search",
     status,
     t: mockT,
   };
 }
 
 describe("webSearchNarrator", () => {
-  // 匹配 search / websearch / web_search 三种命名变体，grep 不命中
-  test("匹配 search/websearch", () => {
-    expect(webSearchNarrator.match("search")).toBe(true);
-    expect(webSearchNarrator.match("websearch")).toBe(true);
-    expect(webSearchNarrator.match("web_search")).toBe(true);
-    expect(webSearchNarrator.match("grep")).toBe(false);
+  // kinds 包含 "web-search"
+  test("kinds 包含 web-search", () => {
+    expect(webSearchNarrator.kinds).toContain("web-search");
   });
 
   // 中文动词必须是"搜索"（与 Grep 同词，但 Grep 是本地代码搜索）

@@ -1,7 +1,7 @@
 import type { TFunction } from "i18next";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ToolCallData } from "@/src/lib/types";
+import type { ToolCallData, ToolCardKind } from "@/src/lib/types";
 
 /**
  * 工具调用的状态枚举。映射自 ACP 协议 ToolCallUpdate.status。
@@ -26,6 +26,8 @@ export type ToolStatus = "running" | "complete" | "error" | "waiting_for_confirm
  */
 export interface NarrationContext {
   tool: ToolCallData;
+  /** 工具调用统一类型标识，由 narrate() 传入 */
+  kind: ToolCardKind;
   status: Exclude<ToolStatus, "rejected">;
   elapsedMs?: number;
   t: TFunction;
@@ -72,21 +74,17 @@ export interface NarrationResult {
  * 工具 narrator 接口。每个工具实现一份。
  *
  * 设计要点：
- * - match: 工具名匹配（已转小写）+ 可选基于 rawInput/rawOutput 的兜底匹配，注册表按顺序匹配
+ * - kinds: 此 narrator 处理的 ToolCardKind 列表（声明式匹配）
  * - verb: 中文动词
  * - icon: 卡片图标
  * - getDisplay: 提供 object（与 verb 拼成 title）和可选 detail（subtitle 补充信息）
  *
  * title 拼接完全在中央 narrate() 完成（用 common.subtitle / subtitleRunning 模板），
  * narrator 不参与 title 文案拼接，保证格式一致。
- *
- * match 第二参数 tool 可选，允许 narrator 在 title 关键字不命中时基于结构兜底
- * （典型场景：opencode 的 read 工具 title 是完整路径而非工具名）。
- * 已有 narrator 实现只看第一参数即可（TS 协变兼容，无需改实现）；
- * 中央 narrate() 会把 tool 一并传入，需要兜底的 narrator 自行取用。
  */
 export interface ToolNarrator {
-  match: (toolNameLower: string, tool?: ToolCallData) => boolean;
+  /** 此 narrator 处理的 ToolCardKind 列表 */
+  kinds: ToolCardKind[];
   verb: string;
   icon: LucideIcon;
   getDisplay: (ctx: NarrationContext) => ToolDisplay;

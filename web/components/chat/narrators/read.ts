@@ -19,34 +19,10 @@ import type { ToolNarrator } from "./types";
  * 行号区间 / 条目数作为 detail 显示在 subtitle 行（与耗时徽章并列），
  * title 只保留 verb + 文件名，避免上下文重复。
  *
- * match 优先级：
- * 1. display.type === "file" 或 "directory"（引擎显式标记，最可靠）
- * 2. title 含 "read"（标准匹配）
- * 3. rawInput 有文件路径字段 + rawOutput 含 opencode XML 标签（兜底）
+ * kinds 覆盖 read-file 和 read-directory 两种 ToolCardKind。
  */
 export const readNarrator: ToolNarrator = {
-  match: (name, tool) => {
-    // 优先：display.type 引擎显式标记
-    if (tool?.display && (tool.display.type === "file" || tool.display.type === "directory")) {
-      return true;
-    }
-
-    // 标准匹配：title 含 "read"
-    if (name.includes("read")) return true;
-
-    // 兜底：opencode read 工具特征（中央 narrate() 会传 tool，单元测试可能省略）
-    if (!tool) return false;
-
-    // rawInput 必须有 filePath/path 字符串字段（与 extractFileName 兼容的命名）
-    const input = tool.rawInput as Record<string, unknown> | undefined;
-    const hasPathField =
-      typeof input?.filePath === "string" || typeof input?.path === "string" || typeof input?.file_path === "string";
-    if (!hasPathField) return false;
-
-    // rawOutput 必须是 opencode 风格（<path> + <type>file|directory</type> 标签），
-    // 这个组合在 edit/write/bash/grep/glob 等其他工具中不会出现，避免误伤
-    return isOpencodeFileOutput(tool.rawOutput) || isOpencodeDirectoryOutput(tool.rawOutput);
-  },
+  kinds: ["read-file", "read-directory"],
   verb: "读取",
   icon: FileText,
   getDisplay(ctx) {
@@ -55,7 +31,7 @@ export const readNarrator: ToolNarrator = {
     const file = display?.path ? display.path.split("/").pop() || display.path : extractFileName(ctx.tool.rawInput);
 
     // 目录场景：detail 显示条目数，覆盖文件场景的行号区间
-    if (display?.type === "directory" || isOpencodeDirectoryOutput(ctx.tool.rawOutput)) {
+    if (ctx.kind === "read-directory" || isOpencodeDirectoryOutput(ctx.tool.rawOutput)) {
       const count = extractDirectoryEntryCount(ctx.tool.rawOutput);
       const detail = count ? ctx.t("read.entries", { count }) : undefined;
       return { object: file, detail };
@@ -63,7 +39,7 @@ export const readNarrator: ToolNarrator = {
 
     // 文件场景：行号区间作为 subtitle 的 detail，与耗时徽章并列显示
     // 优先使用 display.lineStart / display.lineEnd，兜底走 rawInput 提取
-    if (display?.type === "file" && display.lineStart && display.lineEnd) {
+    if (display?.lineStart && display?.lineEnd) {
       const range = `${display.lineStart}-${display.lineEnd}`;
       const detail = ctx.t("common.lineRange", { range });
       return { object: file, detail };

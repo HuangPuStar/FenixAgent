@@ -12,7 +12,7 @@ import type { ToolCallData } from "@/src/lib/types";
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
   if (key === "common.inPath") return `在 ${opts?.path}`;
-  if (key === "toolNarrator.grep.results") return `找到 ${opts?.count} 个`;
+  if (key === "grep.results") return `找到 ${opts?.count} 个`;
   return key;
 }) as unknown as NarrationContext["t"];
 
@@ -29,17 +29,16 @@ function makeCtx(
       rawInput: rawInput as Record<string, unknown>,
       rawOutput: rawOutput as Record<string, unknown> | undefined,
     } as ToolCallData,
+    kind: "grep",
     status,
     t: mockT,
   };
 }
 
 describe("grepNarrator", () => {
-  // 匹配 grep / rg（ripgrep 别名）
-  test("匹配 grep/rg", () => {
-    expect(grepNarrator.match("grep")).toBe(true);
-    expect(grepNarrator.match("rg")).toBe(true);
-    expect(grepNarrator.match("read")).toBe(false);
+  // kinds 包含 "grep"
+  test("kinds 包含 grep", () => {
+    expect(grepNarrator.kinds).toContain("grep");
   });
 
   // 中文动词必须是"搜索"

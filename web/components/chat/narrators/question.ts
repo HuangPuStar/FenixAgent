@@ -10,7 +10,7 @@ import type { ToolNarrator } from "./types";
  * 否则从 rawInput.question 兜底。
  */
 export const questionNarrator: ToolNarrator = {
-  match: (name) => name.includes("question") || name.includes("ask"),
+  kinds: ["question"],
   verb: "询问",
   icon: HelpCircle,
   getDisplay(ctx) {

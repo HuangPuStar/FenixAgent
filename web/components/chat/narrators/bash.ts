@@ -13,7 +13,7 @@ import type { ToolNarrator } from "./types";
  * 因为太多工具名可能包含 "command" 子串（如 "commandHandler"）。
  */
 export const bashNarrator: ToolNarrator = {
-  match: (name) => name.includes("bash") || name.includes("shell") || name.includes("exec") || name === "command",
+  kinds: ["bash"],
   verb: "执行",
   icon: Terminal,
   getDisplay(ctx) {

@@ -9,7 +9,7 @@ import type { ToolNarrator } from "./types";
  * 否则从 title 提取冒号后的 skill 名。
  */
 export const skillNarrator: ToolNarrator = {
-  match: (name) => name.includes("skill"),
+  kinds: ["skill"],
   verb: "加载",
   icon: Sparkles,
   getDisplay(ctx) {

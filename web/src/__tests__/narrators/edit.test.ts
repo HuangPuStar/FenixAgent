@@ -11,7 +11,7 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "toolNarrator.edit.changes") return `${opts?.count} 处`;
+  if (key === "edit.changes") return `${opts?.count} 处`;
   return key;
 }) as unknown as NarrationContext["t"];
 
@@ -28,18 +28,16 @@ function makeCtx(
       rawInput: rawInput as Record<string, unknown>,
       content: content as ToolCallData["content"],
     } as ToolCallData,
+    kind: "edit",
     status,
     t: mockT,
   };
 }
 
 describe("editNarrator", () => {
-  // 匹配 Edit / StrReplace / MultiEdit 三种工具名
-  test("匹配 edit/str_replace/multiedit", () => {
-    expect(editNarrator.match("edit")).toBe(true);
-    expect(editNarrator.match("str_replace")).toBe(true);
-    expect(editNarrator.match("multiedit")).toBe(true);
-    expect(editNarrator.match("read")).toBe(false);
+  // kinds 包含 "edit"
+  test("kinds 包含 edit", () => {
+    expect(editNarrator.kinds).toContain("edit");
   });
 
   // 中文动词必须是"修改"
