@@ -33,9 +33,9 @@ describe("taskNarrator", () => {
     expect(taskNarrator.kinds).toContain("task");
   });
 
-  // 中文动词"派发"——传达"派发子任务"语义
-  test("verb 是 '派发'", () => {
-    expect(taskNarrator.verb).toBe("派发");
+  // 中文动词"派发任务"——传达"派发子任务"语义
+  test("verb 是 '派发任务'", () => {
+    expect(taskNarrator.verb).toBe("派发任务");
   });
 
   // 优先使用 tool.description（Agent 提供的简短描述）作为 object

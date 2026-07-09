@@ -10,7 +10,7 @@ import type { ToolNarrator } from "./types";
  */
 export const taskNarrator: ToolNarrator = {
   kinds: ["task"],
-  verb: "派发",
+  verb: "派发任务",
   icon: Workflow,
   getDisplay(ctx) {
     const rawDesc = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.description ?? "");
