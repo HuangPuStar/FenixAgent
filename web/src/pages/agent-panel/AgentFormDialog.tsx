@@ -92,16 +92,19 @@ interface AgentMcpOption {
   resourceAccess?: ResourceAccess;
 }
 
-function mapMcpOptions(
-  servers: Array<{ id: string; name: string; resourceAccess?: ResourceAccess }>,
+/** 将可见 MCP server 列表转换为 Agent 表单选项，并过滤掉已禁用的项。 */
+export function mapMcpOptions(
+  servers: Array<{ id: string; name: string; enabled?: boolean; resourceAccess?: ResourceAccess }>,
 ): AgentMcpOption[] {
-  return servers.map((server) => ({
-    id: server.id,
-    key: getMcpKey(server),
-    name: server.name,
-    label: getMcpDisplayName(server),
-    resourceAccess: server.resourceAccess,
-  }));
+  return servers
+    .filter((server) => server.enabled !== false)
+    .map((server) => ({
+      id: server.id,
+      key: getMcpKey(server),
+      name: server.name,
+      label: getMcpDisplayName(server),
+      resourceAccess: server.resourceAccess,
+    }));
 }
 
 export function mapModelOptions(available: ModelEntry[]): { value: string; label: string }[] {
@@ -334,7 +337,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             : [];
         const mcpOptionsVal = mapMcpOptions(
           mcpServers.filter(
-            (item): item is { id: string; name: string; resourceAccess?: ResourceAccess } =>
+            (item): item is { id: string; name: string; enabled?: boolean; resourceAccess?: ResourceAccess } =>
               typeof item.id === "string" && item.id.length > 0,
           ),
         );
@@ -414,7 +417,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           : [];
       const mcpOptionsVal = mapMcpOptions(
         mcpServers.filter(
-          (item): item is { id: string; name: string; resourceAccess?: ResourceAccess } =>
+          (item): item is { id: string; name: string; enabled?: boolean; resourceAccess?: ResourceAccess } =>
             typeof item.id === "string" && item.id.length > 0,
         ),
       );
@@ -548,7 +551,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             })),
         ]
       : skillOptions;
-  const effectiveMcpOptions =
+  const selectedMcpOptions =
     relatedResources?.mcps && relatedResources.mcps.length > 0
       ? [
           ...mcpOptions,
@@ -989,7 +992,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                     {formMcpIds.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {formMcpIds.map((mcpId) => {
-                          const mcp = effectiveMcpOptions.find((item) => item.id === mcpId);
+                          const mcp = selectedMcpOptions.find((item) => item.id === mcpId);
                           return (
                             <span
                               key={mcpId}
@@ -1012,10 +1015,10 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                     )}
                     {mcpsExpanded && (
                       <div className="mt-3 space-y-2 border-t border-border-subtle pt-3">
-                        {effectiveMcpOptions.length === 0 ? (
+                        {mcpOptions.length === 0 ? (
                           <p className="text-sm text-text-muted">{t("mcps.noOptions")}</p>
                         ) : (
-                          effectiveMcpOptions.map((item) => {
+                          mcpOptions.map((item) => {
                             const checked = formMcpIds.includes(item.id);
                             return (
                               <label
