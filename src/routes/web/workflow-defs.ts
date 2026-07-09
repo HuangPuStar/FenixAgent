@@ -54,6 +54,7 @@ import {
   UpdateWorkflowMetaRequestSchema,
   WorkflowDefsActionRequestSchema,
   WorkflowDefsActionResponseSchema,
+  WorkflowDefsPostBodySchema,
 } from "../../schemas";
 import { WebErrSchema } from "../../schemas/common.schema";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
@@ -101,6 +102,7 @@ function handleError(err: unknown, set: any): Record<string, unknown> {
 
 const app = new Elysia({ name: "web-workflow-defs" }).use(authGuardPlugin).model({
   "workflow-defs-action-request": WorkflowDefsActionRequestSchema,
+  "workflow-defs-post-body": WorkflowDefsPostBodySchema,
   "workflow-defs-action-response": WorkflowDefsActionResponseSchema,
   "create-workflow-def-request": CreateWorkflowDefRequestSchema,
   "update-workflow-meta-request": UpdateWorkflowMetaRequestSchema,
@@ -796,6 +798,14 @@ app.post(
         publishWorkflowEvent(row.id, "workflow.created", {});
         return { success: true, data: row };
       } catch (err: unknown) {
+        const cause = err instanceof Error ? err.cause : null;
+        const pgMessage = cause instanceof Error ? cause.message : null;
+        if (pgMessage?.includes("duplicate key") || pgMessage?.includes("unique constraint")) {
+          return error(409, {
+            success: false,
+            error: { code: "CONFLICT", message: "同一组织下工作流名称已存在" },
+          });
+        }
         return error(500, {
           success: false,
           error: { code: "INTERNAL_ERROR", message: err instanceof Error ? err.message : "Unknown error" },
@@ -1113,7 +1123,7 @@ app.post(
       if (pgMessage?.includes("duplicate key") || pgMessage?.includes("unique constraint")) {
         return error(409, {
           success: false,
-          error: { code: "CONFLICT", message: pgMessage || "Duplicate key violation" },
+          error: { code: "CONFLICT", message: "同一组织下工作流名称已存在" },
         });
       }
       const message = pgMessage || (err instanceof Error ? err.message : "Unknown error");
@@ -1122,7 +1132,7 @@ app.post(
   },
   {
     sessionAuth: true,
-    body: "workflow-defs-action-request",
+    body: "workflow-defs-post-body",
     response: {
       200: "workflow-defs-action-response",
       400: WebErrSchema,

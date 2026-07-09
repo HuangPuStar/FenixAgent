@@ -315,6 +315,7 @@ export {
   WorkflowDefSchema,
   WorkflowDefsActionRequestSchema,
   WorkflowDefsActionResponseSchema,
+  WorkflowDefsPostBodySchema,
   WorkflowDryRunResultSchema,
   WorkflowEngineActionRequestSchema,
   WorkflowEngineActionResponseSchema,
