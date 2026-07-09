@@ -94,6 +94,38 @@ describe("opencode-runtime prepareEnvironment", () => {
     }
   });
 
+  // skill 从有到无时，应清理 workspace 中残留的旧 skill 目录
+  test("removes stale installed skills when launchSpec no longer declares them", async () => {
+    const runtime = createOpencodeRuntime({
+      skillInstallerDependencies: {
+        fetch: mockFetch,
+        extractArchive: async (_archivePath, targetDir) => {
+          await writeFile(join(targetDir, "SKILL.md"), "# installed\n", "utf8");
+        },
+      },
+    });
+
+    await runtime.prepareEnvironment({
+      instanceId: "inst_remove_skill",
+      launchSpec: createLaunchSpec({ skills: [{ name: "writer-skill", url: "https://example.com/first.zip" }] }),
+    });
+    const state1 = runtime.getInstanceState("inst_remove_skill");
+    await expect(
+      access(join(state1!.workspace!, ".opencode", "skills", "writer-skill", "SKILL.md")),
+    ).resolves.toBeNull();
+
+    await runtime.prepareEnvironment({
+      instanceId: "inst_remove_skill",
+      launchSpec: createLaunchSpec({ skills: [] }),
+    });
+    const state2 = runtime.getInstanceState("inst_remove_skill");
+    await expect(access(join(state2!.workspace!, ".opencode", "skills", "writer-skill"))).rejects.toThrow();
+
+    if (state2?.workspace) {
+      await rm(state2.workspace, { recursive: true, force: true });
+    }
+  });
+
   // prepare 会自动创建缺失的 workspace 目录
   test("creates the workspace directory when it does not exist yet", async () => {
     const runtime = createOpencodeRuntime({
