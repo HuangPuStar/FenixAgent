@@ -2,13 +2,13 @@ import { CodeXml, ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
-import type { ToolCallData } from "../../src/lib/types";
+import type { ToolCallData, ToolCardKind } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import { ToolPermissionButtons } from "../ai-elements/permission-request";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
-import { CARD_STYLES, formatOutput, getCardCategory, simplifyToolName, truncate } from "./tool-call-utils";
+import { cardKindToStyle, formatOutput, kindLabel, truncate } from "./tool-call-utils";
 
 /**
  * 从工具调用的 rawInput 中提取文件路径。
@@ -51,9 +51,9 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
   // 调用 narrate 拿到统一的展示数据
   const result = narrate(tool, tool.status, elapsedMs, tNarrator);
 
-  // 卡片颜色继续走现有逻辑（避免一次性改太多）
-  const cardCategory = getCardCategory(tool.title, tool.rawInput, tool.display?.type);
-  const style = CARD_STYLES[cardCategory];
+  // 通过 kind 获取卡片样式
+  const kind: ToolCardKind = tool.kind ?? "unknown";
+  const style = cardKindToStyle(kind);
   const Icon = result.icon ?? Loader2;
 
   const isRunning = tool.status === "running";
@@ -204,6 +204,7 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           tool={tool}
+          kind={kind}
           style={style}
           icon={Icon}
           title={result.title}
@@ -222,13 +223,14 @@ interface ToolCallDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tool: ToolCallData;
+  kind: ToolCardKind;
   style: { iconBg: string; iconColor: string };
   icon: React.ComponentType<{ className?: string }>;
   title: React.ReactNode;
   t: (key: string) => string;
 }
 
-function ToolCallDialog({ open, onOpenChange, tool, style, icon: Icon, title, t }: ToolCallDialogProps) {
+function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, title, t }: ToolCallDialogProps) {
   const isError = tool.status === "error";
   const isRunning = tool.status === "running";
   const hasOutput = !isRunning && (tool.rawOutput || tool.content);
@@ -245,7 +247,7 @@ function ToolCallDialog({ open, onOpenChange, tool, style, icon: Icon, title, t 
             <div className="flex flex-col min-w-0 gap-0.5">
               <span className="truncate">{title}</span>
               <span className="text-[10px] text-text-dim font-mono truncate leading-tight">
-                {t("toolCallRow.toolName")}: {simplifyToolName(tool.title)}
+                {kindLabel(kind) ? `${t("toolCallRow.toolName")}: ${kindLabel(kind)}` : t("toolCallRow.toolName")}
               </span>
             </div>
           </DialogTitle>
