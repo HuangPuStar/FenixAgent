@@ -6,12 +6,14 @@ import type { ToolCallData } from "@/src/lib/types";
 /**
  * todoWriteNarrator 单测。
  *
- * 覆盖：match 规则（todowrite/todo_write/todo）、verb、todos/tasks 字段兼容、
- * 无字段兜底显示 0 个。
+ * 覆盖：kinds、verb、todos/tasks 字段兼容、进度统计 detail（completed/in_progress）、
+ * 全部完成特殊文案、无字段兜底显示 0 个。
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
   if (key === "toolNarrator.todo.items") return `${opts?.count} 个待办`;
+  if (key === "toolNarrator.todo.progress") return `已完成 ${opts?.completed}，进行中 ${opts?.inProgress}`;
+  if (key === "toolNarrator.todo.allDone") return `全部 ${opts?.count} 项已完成`;
   return key;
 }) as unknown as NarrationContext["t"];
 
@@ -56,5 +58,44 @@ describe("todoWriteNarrator", () => {
   test("无待办时兜底", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({}));
     expect(object).toBe("0 个待办");
+  });
+
+  // detail 显示进度统计：已完成的 completed + 进行中的 inProgress
+  test("detail 显示进度统计（混合状态）", () => {
+    const todos = [
+      { status: "completed", content: "a" },
+      { status: "completed", content: "b" },
+      { status: "in_progress", content: "c" },
+      { status: "pending", content: "d" },
+    ];
+    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
+    expect(object).toBe("4 个待办");
+    expect(detail).toBe("已完成 2，进行中 1");
+  });
+
+  // 全部完成时显示特殊文案
+  test("全部完成时显示 allDone 文案", () => {
+    const todos = [
+      { status: "completed", content: "a" },
+      { status: "completed", content: "b" },
+    ];
+    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
+    expect(object).toBe("2 个待办");
+    expect(detail).toBe("全部 2 项已完成");
+  });
+
+  // 仅有 pending 时无 detail
+  test("仅有 pending 时无 detail", () => {
+    const todos = [{ status: "pending", content: "a" }];
+    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
+    expect(object).toBe("1 个待办");
+    expect(detail).toBeUndefined();
+  });
+
+  // 空数组无 detail
+  test("空数组无 detail", () => {
+    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos: [] }));
+    expect(object).toBe("0 个待办");
+    expect(detail).toBeUndefined();
   });
 });
