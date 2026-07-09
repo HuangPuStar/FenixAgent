@@ -165,4 +165,28 @@ describe("resolveToolCardKind（4 级解析链）", () => {
     const tool = makeTool({ rawInput: { tasks: [{ id: "t1" }] } });
     expect(resolveToolCardKind(tool)).toBe("todo");
   });
+
+  // rawInput subagent_type → task（opencode subagent 调用）
+  test("rawInput subagent_type → task", () => {
+    const tool = makeTool({ rawInput: { description: "探索项目", prompt: "ls -la", subagent_type: "explore" } });
+    expect(resolveToolCardKind(tool)).toBe("task");
+  });
+
+  // rawInput prompt → task（无 subagent_type 但有 prompt）
+  test("rawInput prompt → task", () => {
+    const tool = makeTool({ rawInput: { description: "test", prompt: "do something" } });
+    expect(resolveToolCardKind(tool)).toBe("task");
+  });
+
+  // rawInput subagent_name → task（opencode 别名）
+  test("rawInput subagent_name → task", () => {
+    const tool = makeTool({ rawInput: { subagent_name: "coder" } });
+    expect(resolveToolCardKind(tool)).toBe("task");
+  });
+
+  // rawInput description 单独不会误判为 task（其他工具也可能有 description）
+  test("仅有 description 不判为 task", () => {
+    const tool = makeTool({ rawInput: { description: "加载技能" } });
+    expect(resolveToolCardKind(tool)).toBe("unknown");
+  });
 });
