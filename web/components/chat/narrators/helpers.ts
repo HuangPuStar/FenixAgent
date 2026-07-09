@@ -327,6 +327,8 @@ export function resolveToolCardKind(
   if (typeof r.pattern === "string") return "glob";
   // query → web-search
   if (typeof r.query === "string" || typeof r.search === "string") return "web-search";
+  // todos/tasks 数组 → todo（opencode todowrite 工具用数组结构，无 display.type）
+  if (Array.isArray(r.todos) || Array.isArray(r.tasks)) return "todo";
   // filePath/path/file_path → read-file（兜底 rawInput 推断，带 write/edit 细化）
   if (typeof r.filePath === "string" || typeof r.path === "string" || typeof r.file_path === "string") {
     if (typeof r.newText === "string" || typeof r.content === "string") return "write";

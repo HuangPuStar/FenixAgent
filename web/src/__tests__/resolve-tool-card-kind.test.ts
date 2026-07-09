@@ -153,4 +153,16 @@ describe("resolveToolCardKind（4 级解析链）", () => {
     const meta = { display: { type: "file" } };
     expect(resolveToolCardKind(tool, meta)).toBe("write");
   });
+
+  // rawInput todos 数组 → todo（opencode todowrite，无 display.type）
+  test("rawInput todos → todo", () => {
+    const tool = makeTool({ rawInput: { todos: [{ status: "in_progress", content: "测试" }] } });
+    expect(resolveToolCardKind(tool)).toBe("todo");
+  });
+
+  // rawInput tasks 数组 → todo（兼容 tasks 别名）
+  test("rawInput tasks → todo", () => {
+    const tool = makeTool({ rawInput: { tasks: [{ id: "t1" }] } });
+    expect(resolveToolCardKind(tool)).toBe("todo");
+  });
 });
