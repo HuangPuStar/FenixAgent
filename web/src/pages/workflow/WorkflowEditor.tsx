@@ -302,6 +302,20 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
       });
   }, []);
 
+  // Ctrl/Cmd+Shift+D 打印当前 Context Queue 到控制台（调试用）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        import("@/src/lib/context-queue").then(({ dumpContext }) => {
+          console.log("[Workflow CQ]", new Date().toLocaleTimeString(), dumpContext());
+        });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // 同步工具颜色到 WorkflowNode 的模块级缓存
   useEffect(() => {
     setToolColors(customTools);
