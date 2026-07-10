@@ -1,0 +1,41 @@
+{
+  "name": "@konghayao/opencode-hindsight",
+  "version": "0.1.0",
+  "description": "Hindsight memory plugin for OpenCode — persistent long-term memory for your AI coding agent",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun run build:esm && bun run build:cjs && bun run build:dts",
+    "build:esm": "bun build --target=node --format=esm --outfile=dist/index.js src/index.ts",
+    "build:cjs": "cp src/index.cjs dist/index.cjs",
+    "build:dts": "bun run src/generate-dts.ts",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "opencode",
+    "hindsight",
+    "memory",
+    "plugin",
+    "llm",
+    "long-term-memory"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@vectorize-io/opencode-hindsight": "^0.2.7",
+    "@opencode-ai/plugin": "^1.17.0",
+    "@types/node": "^22.0.0"
+  }
+}
