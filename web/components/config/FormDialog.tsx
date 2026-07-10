@@ -16,7 +16,7 @@ interface FormDialogProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   children: React.ReactNode;
-  onSubmit: () => void;
+  onSubmit?: () => void;
   submitLabel?: string;
   cancelLabel?: string;
   loading?: boolean;
@@ -53,7 +53,7 @@ export function FormDialog({
     ? methods.handleSubmit(formConfig.onFormSubmit)
     : (e: React.FormEvent) => {
         e.preventDefault();
-        onSubmit();
+        onSubmit?.();
       };
 
   const formContent = (

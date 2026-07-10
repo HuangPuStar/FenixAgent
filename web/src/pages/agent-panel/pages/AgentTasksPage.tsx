@@ -1,382 +1,381 @@
 import { useRequest } from "ahooks";
-import { useState } from "react";
+import { Calendar, FileText, Pencil, Play, Plus, Power, Search, Trash2 } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { z } from "zod/v4";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { EmptyState } from "@/components/config/EmptyState";
 import { FormDialog } from "@/components/config/FormDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { envApi } from "@/src/api/environments";
-import { fileApi } from "@/src/api/files";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { agentApi } from "@/src/api/agents";
 import { unwrap } from "@/src/api/request";
-import { taskApi } from "@/src/api/tasks";
-import { AgentCardList } from "../shared/AgentCardList";
+import type {
+  AgentDefinition,
+  HttpDefinition,
+  TaskV2CreateBody,
+  TaskV2Info,
+  TaskV2UpdateBody,
+} from "@/src/api/tasks-v2";
+import { taskV2Api } from "@/src/api/tasks-v2";
+import { NS } from "@/src/i18n";
+import type { AgentInfo } from "@/src/types/config";
+import { describeCron } from "../components/CronEditor";
+import { TaskForm, type TaskFormValues } from "../components/TaskForm";
+import { TaskLogDialog } from "../components/TaskLogDialog";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-interface TaskItem {
-  id: string;
-  name: string;
-  description?: string;
-  cron: string;
-  environmentId: string;
-  environmentName?: string;
-  task: string;
-  timeoutMinutes: number;
-  enabled: boolean;
-  lastRunAt?: number;
-  nextRunAt?: number;
-  lastStatus?: string | null;
+// ── Zod Schema ──
+
+const formSchema = z
+  .object({
+    type: z.enum(["http", "agent"]),
+    name: z.string().min(1, "名称不能为空"),
+    cron: z.string().min(1, "Cron 不能为空"),
+    timezone: z.string().optional().default(""),
+    timeoutSeconds: z.coerce.number().min(1).max(3600),
+    description: z.string().optional().default(""),
+    url: z.string().optional().default(""),
+    method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]).optional().default("POST"),
+    headers: z.string().optional().default(""),
+    body: z.string().optional().default(""),
+    agentId: z.string().optional().default(""),
+    prompt: z.string().optional().default(""),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "http") {
+      if (!data.url.trim()) {
+        ctx.addIssue({ code: "custom", path: ["url"], message: "请输入 URL" });
+      }
+      if (data.headers.trim()) {
+        try {
+          const parsed = JSON.parse(data.headers);
+          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            ctx.addIssue({ code: "custom", path: ["headers"], message: "Headers 必须是 JSON 对象" });
+          }
+        } catch {
+          ctx.addIssue({ code: "custom", path: ["headers"], message: "Headers 不是有效的 JSON 格式" });
+        }
+      }
+    }
+    if (data.type === "agent") {
+      if (!data.agentId.trim()) {
+        ctx.addIssue({ code: "custom", path: ["agentId"], message: "请选择 Agent" });
+      }
+      if (!data.prompt.trim()) {
+        ctx.addIssue({ code: "custom", path: ["prompt"], message: "Prompt 不能为空" });
+      }
+    }
+  });
+
+// ── 辅助函数 ──
+
+function buildDefinition(values: TaskFormValues): HttpDefinition | AgentDefinition {
+  if (values.type === "http") {
+    return {
+      url: values.url,
+      method: values.method,
+      headers: values.headers.trim() ? JSON.parse(values.headers) : undefined,
+      body: values.body.trim() || undefined,
+    };
+  }
+  return { prompt: values.prompt };
 }
 
-interface ExecutionLogItem {
-  id: string;
-  status: string;
-  triggeredBy: string;
-  duration?: number | null;
-  createdAt: number;
-  workspacePath?: string | null;
-  workspaceName?: string | null;
-  resultSummary?: string | null;
-  skipReason?: string | null;
-  error?: string | null;
-  environmentId?: string | null;
+function statusVariant(status: string | null): "default" | "destructive" | "outline" | "secondary" {
+  if (status === "success") return "default";
+  if (status === "failed" || status === "timeout") return "destructive";
+  return "secondary";
 }
 
-interface FileInfo {
-  name: string;
-  path: string;
-  type: "file" | "dir";
-  size: number;
-  modifiedAt: number;
-}
-
-interface EnvInfo {
-  id: string;
-  name: string;
-  workspacePath?: string;
-  sessionId?: string;
-}
-
-const CRON_PRESETS_KEYS = [
-  { labelKey: "cronPresets.every5min", value: "*/5 * * * *" },
-  { labelKey: "cronPresets.hourly", value: "0 * * * *" },
-  { labelKey: "cronPresets.daily9am", value: "0 9 * * *" },
-  { labelKey: "cronPresets.weekday9am", value: "0 9 * * 1-5" },
-  { labelKey: "cronPresets.monthly1st", value: "0 0 1 * *" },
-];
-
-function validateTaskForm(
-  t: (key: string, options?: Record<string, unknown>) => string,
-  name: string,
-  environmentId: string,
-  task: string,
-  cron: string,
-  timeoutMinutes: string,
-): string | null {
-  if (!name.trim()) return t("validation.nameRequired");
-  if (!environmentId) return t("validation.environmentRequired");
-  if (!task.trim()) return t("validation.taskRequired");
-  if (!cron.trim()) return t("validation.cronRequired");
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return t("validation.cronFormat");
-  const timeoutValue = Number(timeoutMinutes);
-  if (!Number.isInteger(timeoutValue) || timeoutValue < 1 || timeoutValue > 180) return t("validation.timeoutRange");
-  return null;
-}
-
-function formatTimestamp(ts: number | null): string {
-  if (!ts) return "—";
+function formatTime(ts: number | null | undefined): string {
+  if (ts == null) return "—";
   return new Date(ts * 1000).toLocaleString("zh-CN", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
   });
 }
 
-function formatDuration(ms: number | null): string {
-  if (ms == null) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
+// ── 默认表单值 ──
+
+const INITIAL_FORM_VALUES: TaskFormValues = {
+  type: "http",
+  name: "",
+  cron: "*/5 * * * *",
+  timezone: "",
+  timeoutSeconds: 300,
+  description: "",
+  url: "",
+  method: "POST",
+  headers: "",
+  body: "",
+  agentId: "",
+  prompt: "",
+};
+
+function taskToFormValues(task: TaskV2Info): TaskFormValues {
+  const def = task.definition as unknown as Record<string, unknown> | null;
+  return {
+    type: task.type,
+    name: task.name,
+    cron: task.cron,
+    timezone: task.timezone ?? "",
+    timeoutSeconds: task.timeoutSeconds,
+    description: task.description ?? "",
+    url: (def?.url as string) ?? "",
+    method: ((def?.method as string) ?? "POST") as "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
+    headers: def?.headers ? JSON.stringify(def.headers) : "",
+    body: (def?.body as string) ?? "",
+    agentId: task.agentId ?? "",
+    prompt: (def?.prompt as string) ?? "",
+  };
 }
 
-function formatLastResult(t: (key: string, options?: Record<string, unknown>) => string, task: TaskItem): string {
-  if (!task.lastStatus) return "—";
-  if (task.lastStatus === "skipped") return t("lastResult.skipped");
-  if (task.lastStatus === "timeout") return t("lastResult.timeout");
-  if (task.lastStatus === "failed") return t("lastResult.failed");
-  return t("lastResult.success");
-}
-
-function statusColor(status: string | null | undefined): string {
-  if (!status) return "bg-surface-2 text-text-muted";
-  if (status === "success") return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-  if (status === "failed" || status === "timeout")
-    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
-  if (status === "skipped") return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
-  return "bg-surface-2 text-text-muted";
-}
-
-function toWorkspaceRelativePath(environment: EnvInfo, workspacePath: string): string {
-  const prefix = (environment.workspacePath ?? "").replace(/\/$/, "");
-  if (!workspacePath.startsWith(prefix)) return workspacePath.replace(/^\//, "");
-  return workspacePath.slice(prefix.length).replace(/^\/+/, "");
-}
+// ── 组件 ──
 
 export function AgentTasksPage() {
-  const { t } = useTranslation("tasks");
+  const { t } = useTranslation(NS.TASKS_V2);
 
-  // ── 列表查询：合并 task 列表 + environment 列表 ──
+  // ── 数据加载 ──
   const {
     data: listData,
     loading,
     refresh,
   } = useRequest(
     async () => {
-      const [taskData, envData] = await Promise.all([unwrap(taskApi.list()), unwrap(envApi.list())]);
-      return { tasks: taskData, environments: envData };
+      const taskResult = await unwrap(taskV2Api.list({ pageSize: 1000 }));
+      return Array.isArray(taskResult) ? taskResult : [];
     },
     {
       onError: (err: Error) => {
-        console.error(t("toast.loadPageFailed", { error: "" }), err);
-        toast.error(t("toast.loadPageFailed", { error: err.message }));
+        console.error("task list load failed", err);
+        toast.error(err.message);
       },
     },
   );
-  const tasks: TaskItem[] = Array.isArray(listData?.tasks) ? (listData.tasks as unknown as TaskItem[]) : [];
-  const environments: EnvInfo[] = Array.isArray(listData?.environments)
-    ? (listData.environments as unknown as EnvInfo[])
-    : [];
+  const tasks: TaskV2Info[] = listData ?? [];
 
+  // Agent 列表独立加载，失败不影响任务列表
+  const { data: agentListData } = useRequest(
+    async () => {
+      const agentResult = await unwrap(agentApi.list());
+      return agentResult.agents ?? [];
+    },
+    {
+      onError: (err: Error) => {
+        console.error("agent list load failed", err);
+      },
+    },
+  );
+  const agents: AgentInfo[] = agentListData ?? [];
+
+  // ── 筛选状态 ──
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "http" | "agent">("all");
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (typeFilter !== "all" && task.type !== typeFilter) return false;
+      if (searchKeyword && !task.name.toLowerCase().includes(searchKeyword.toLowerCase())) return false;
+      return true;
+    });
+  }, [tasks, searchKeyword, typeFilter]);
+
+  // ── 对话框状态 ──
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<TaskItem | null>(null);
+  const [editingTask, setEditingTask] = useState<TaskV2Info | null>(null);
 
-  const [logsTask, setLogsTask] = useState<TaskItem | null>(null);
-  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
-  const [logsPage, setLogsPage] = useState(1);
-  const [clearLogsConfirmOpen, setClearLogsConfirmOpen] = useState(false);
-  const [workspaceEntries, setWorkspaceEntries] = useState<FileInfo[]>([]);
-  const [workspaceLoading, setWorkspaceLoading] = useState(false);
-  const [workspaceTitle, setWorkspaceTitle] = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<TaskV2Info | null>(null);
 
-  const [formName, setFormName] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formCron, setFormCron] = useState("*/5 * * * *");
-  const [formEnvironmentId, setFormEnvironmentId] = useState("");
-  const [formTask, setFormTask] = useState("");
-  const [formTimeoutMinutes, setFormTimeoutMinutes] = useState("30");
-  const [formEnabled, setFormEnabled] = useState(true);
-  const [triggeringTaskId, setTriggeringTaskId] = useState<string | null>(null);
+  const [logDialogOpen, setLogDialogOpen] = useState(false);
+  const [logTask, setLogTask] = useState<TaskV2Info | null>(null);
 
-  // ── 分页加载执行日志 ──
-  const {
-    data: logsData,
-    loading: logsLoading,
-    run: runLoadLogs,
-  } = useRequest((taskId: string, page: number) => unwrap(taskApi.logs(taskId, { page, pageSize: 20 })), {
-    manual: true,
-  });
-  const logs: ExecutionLogItem[] = Array.isArray(logsData?.items)
-    ? (logsData.items as unknown as ExecutionLogItem[])
-    : [];
-  const logsTotal = logsData?.total ?? 0;
-  const totalLogPages = Math.max(1, Math.ceil(logsTotal / 20));
+  const [confirmClearLogsOpen, setConfirmClearLogsOpen] = useState(false);
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
+  const [formResetKey, setFormResetKey] = useState(0);
 
-  const loadLogs = (taskId: string, page = 1) => {
-    setLogsPage(page);
-    runLoadLogs(taskId, page);
-  };
+  // ── 保存 (创建/更新) ──
+  const editingTaskRef = useRef(editingTask);
+  editingTaskRef.current = editingTask;
+  const isEditingRef = useRef(false);
+  isEditingRef.current = !!editingTask;
 
-  // ── 保存（创建/更新）：仅创建时 toast ──
-  const { run: runSave, loading: saving } = useRequest(
-    async (editId: string | null, payload: Record<string, unknown>) => {
-      if (editId) {
-        return unwrap(taskApi.update(editId, payload));
+  const { run: saveTask, loading: saving } = useRequest(
+    async (values: TaskFormValues) => {
+      const task = editingTaskRef.current;
+      const timeoutSeconds = values.timeoutSeconds;
+      const base: Omit<TaskV2CreateBody, "definition" | "type"> = {
+        name: values.name.trim(),
+        description: values.description.trim() || undefined,
+        cron: values.cron.trim(),
+        timezone: values.timezone || undefined,
+        timeoutSeconds,
+        agentId: values.type === "agent" ? values.agentId : undefined,
+      };
+      const definition = buildDefinition(values);
+
+      if (task) {
+        await unwrap(
+          taskV2Api.update(task.id, {
+            ...base,
+            definition,
+          } as TaskV2UpdateBody),
+        );
+      } else {
+        await unwrap(
+          taskV2Api.create({
+            ...base,
+            type: values.type,
+            definition,
+          }),
+        );
       }
-      return unwrap(taskApi.create(payload as { name: string; cron: string; url: string }));
     },
     {
       manual: true,
-      onSuccess: (_data, [editId]) => {
-        if (!editId) toast.success(t("toast.taskCreated"));
+      onSuccess: () => {
+        toast.success(isEditingRef.current ? t("toast.updated") : t("toast.created"));
         setDialogOpen(false);
-        refresh();
+        // 延迟刷新以等待 dialog 关闭和 DB 写入完成
+        setTimeout(() => refresh(), 100);
       },
       onError: (err: Error) => {
-        console.error(t("toast.saveFailed", { error: "" }), err);
-        toast.error(t("toast.saveFailed", { error: err.message }));
+        console.error("save task failed", err);
+        toast.error(err.message);
       },
     },
   );
 
-  // ── 启停切换：静默操作 ──
-  const { run: runToggle } = useRequest((id: string) => unwrap(taskApi.toggle(id)), {
+  // ── 表单配置 ──
+  const formDefaultValues = useMemo<TaskFormValues>(
+    () => (editingTask ? taskToFormValues(editingTask) : { ...INITIAL_FORM_VALUES }),
+    [editingTask],
+  );
+
+  const formConfig = useMemo(
+    () => ({
+      schema: formSchema as z.ZodType<Record<string, unknown>>,
+      defaultValues: formDefaultValues as unknown as Record<string, unknown>,
+      onFormSubmit: (data: Record<string, unknown>) => saveTask(data as unknown as TaskFormValues),
+    }),
+    [formDefaultValues, saveTask],
+  );
+
+  // ── 启停切换 ──
+  const { run: runToggle } = useRequest((id: string) => unwrap(taskV2Api.toggle(id)), {
     manual: true,
-    onSuccess: () => refresh(),
+    onSuccess: () => {
+      toast.success(t("toast.toggled"));
+      refresh();
+    },
     onError: (err: Error) => {
-      console.error(t("toast.toggleFailed", { error: "" }), err);
-      toast.error(t("toast.toggleFailed", { error: err.message }));
+      console.error("toggle task failed", err);
+      toast.error(err.message);
     },
   });
 
-  // ── 手动触发：展示详细结果 ──
+  // ── 手动触发 ──
+  const [triggeredTasks, setTriggeredTasks] = useState<Set<string>>(new Set());
+
   const { run: runTrigger } = useRequest(
     async (id: string) => {
-      setTriggeringTaskId(id);
-      return unwrap(taskApi.trigger(id));
+      return unwrap(taskV2Api.trigger(id));
     },
     {
       manual: true,
       onSuccess: (result) => {
-        toast.success(
-          t("toast.triggerSuccess", {
-            status: (result as { status?: string } | null)?.status ?? t("misc.unknown"),
-            duration: formatDuration((result as { duration?: number | null } | null)?.duration ?? null),
-            directory: (result as { workspaceName?: string } | null)?.workspaceName ?? "—",
-          }),
-        );
+        const r = result as { status?: string; duration?: number; resultSummary?: string };
+        toast.success(t("toast.triggerResult", { status: r.status ?? "—", duration: r.duration ?? 0 }));
         refresh();
       },
       onError: (err: Error) => {
-        console.error(t("toast.triggerFailed", { error: "" }), err);
-        toast.error(t("toast.triggerFailed", { error: err.message }));
+        console.error("trigger task failed", err);
+        toast.error(err.message);
       },
-      onFinally: () => {
-        setTriggeringTaskId(null);
+      onFinally: (_, params) => {
+        const id = (Array.isArray(params) ? params[0] : params) as string;
+        setTriggeredTasks((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       },
     },
   );
 
-  // ── 删除：静默操作 ──
-  const { run: runDelete } = useRequest((id: string) => unwrap(taskApi.del(id)), {
+  // ── 删除 ──
+  const { run: runDelete, loading: deleting } = useRequest((id: string) => unwrap(taskV2Api.del(id)), {
     manual: true,
     onSuccess: () => {
-      setConfirmOpen(false);
+      setConfirmDeleteOpen(false);
       setDeleteTarget(null);
+      toast.success(t("toast.deleted"));
       refresh();
     },
     onError: (err: Error) => {
-      console.error(t("toast.deleteFailed", { error: "" }), err);
-      toast.error(t("toast.deleteFailed", { error: err.message }));
+      console.error("delete task failed", err);
+      toast.error(err.message);
     },
   });
 
   // ── 清空日志 ──
-  const { run: runClearLogs } = useRequest((id: string) => unwrap(taskApi.clearLogs(id)), {
+  const { run: runClearLogs, loading: clearingLogs } = useRequest((id: string) => unwrap(taskV2Api.clearLogs(id)), {
     manual: true,
-    onSuccess: (_data, [id]) => {
+    onSuccess: () => {
       toast.success(t("toast.logsCleared"));
-      setClearLogsConfirmOpen(false);
-      loadLogs(id, 1);
+      setConfirmClearLogsOpen(false);
+      setLogRefreshKey((k) => k + 1);
     },
     onError: (err: Error) => {
-      console.error(t("toast.clearLogsFailed", { error: "" }), err);
-      toast.error(t("toast.clearLogsFailed", { error: err.message }));
+      console.error("clear logs failed", err);
+      toast.error(err.message);
     },
   });
 
-  const resetForm = () => {
-    setFormName("");
-    setFormDescription("");
-    setFormCron("*/5 * * * *");
-    setFormEnvironmentId(environments[0]?.id ?? "");
-    setFormTask("");
-    setFormTimeoutMinutes("30");
-    setFormEnabled(true);
-  };
-
-  const handleOpenCreate = () => {
+  // ── 操作回调 ──
+  const handleOpenCreate = useCallback(() => {
     setEditingTask(null);
-    resetForm();
+    setFormResetKey((k) => k + 1);
     setDialogOpen(true);
-  };
+  }, []);
 
-  const handleOpenEdit = (task: TaskItem) => {
+  const handleOpenEdit = useCallback((task: TaskV2Info) => {
     setEditingTask(task);
-    setFormName(task.name);
-    setFormDescription(task.description ?? "");
-    setFormCron(task.cron);
-    setFormEnvironmentId(task.environmentId);
-    setFormTask(task.task);
-    setFormTimeoutMinutes(String(task.timeoutMinutes));
-    setFormEnabled(task.enabled);
+    setFormResetKey((k) => k + 1);
     setDialogOpen(true);
-  };
+  }, []);
 
-  const handleSave = () => {
-    const error = validateTaskForm(t, formName, formEnvironmentId, formTask, formCron, formTimeoutMinutes);
-    if (error) {
-      toast.error(error);
-      return;
-    }
-    const payload = {
-      name: formName.trim(),
-      description: formDescription.trim() || undefined,
-      cron: formCron.trim(),
-      environmentId: formEnvironmentId,
-      task: formTask.trim(),
-      timeoutMinutes: Number(formTimeoutMinutes),
-      enabled: formEnabled,
-    };
-    runSave(editingTask?.id ?? null, payload);
-  };
+  const handleViewLogs = useCallback((task: TaskV2Info) => {
+    setLogTask(task);
+    setLogDialogOpen(true);
+  }, []);
 
-  const handleViewLogs = (task: TaskItem) => {
-    setLogsTask(task);
-    setLogsDialogOpen(true);
-    setWorkspaceEntries([]);
-    setWorkspaceTitle(null);
-    loadLogs(task.id, 1);
-  };
+  const handleDeleteClick = useCallback((task: TaskV2Info) => {
+    setDeleteTarget(task);
+    setConfirmDeleteOpen(true);
+  }, []);
 
-  const handleBrowseWorkspace = async (log: ExecutionLogItem) => {
-    if (!log.workspacePath || !log.environmentId) {
-      toast.error(t("toast.noWorkspacePath"));
-      return;
-    }
-    const environment = environments.find((item) => item.id === log.environmentId);
-    if (!environment?.sessionId) {
-      toast.error(t("toast.noEnvSession"));
-      return;
-    }
-    setWorkspaceLoading(true);
-    try {
-      const relativePath = toWorkspaceRelativePath(environment, log.workspacePath);
-      const wsResult = await unwrap(fileApi.listDir(environment.sessionId!, relativePath));
-      setWorkspaceEntries(Array.isArray(wsResult?.entries) ? (wsResult.entries as unknown as FileInfo[]) : []);
-      setWorkspaceTitle(relativePath);
-    } catch (error) {
-      console.error(t("toast.viewDirFailed", { error: "" }), error);
-      toast.error(t("toast.viewDirFailed", { error: error instanceof Error ? error.message : t("misc.unknown") }));
-    } finally {
-      setWorkspaceLoading(false);
-    }
-  };
+  const handleClearLogsClick = useCallback(() => {
+    setConfirmClearLogsOpen(true);
+  }, []);
 
+  // ── 加载态 ──
   if (loading) {
     return (
       <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-        <div className="mb-3 flex items-start justify-between gap-4">
-          <div>
-            <Skeleton className="h-[22px] w-28 rounded-md" />
-            <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
-          </div>
-          <Skeleton className="h-10 w-28 rounded-lg" />
-        </div>
-        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-            <Skeleton key={i} className="h-20 w-full rounded-lg" />
+            <Skeleton key={i} className="h-24 w-full rounded-lg" />
           ))}
         </div>
       </div>
@@ -385,332 +384,223 @@ export function AgentTasksPage() {
 
   return (
     <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      {/* ── 标题栏 ── */}
       <AgentPageHeader
         title={t("title")}
         subtitle={t("subtitle")}
-        actions={<Button onClick={handleOpenCreate}>{t("newTask")}</Button>}
-      />
-      <AgentCardList
-        items={tasks}
-        cardKey={(task) => task.id}
-        searchPlaceholder={t("searchPlaceholder")}
-        searchFn={(task, q) =>
-          task.name.toLowerCase().includes(q) || (task.environmentName ?? "").toLowerCase().includes(q)
+        actions={
+          <Button onClick={handleOpenCreate}>
+            <Plus className="mr-1 size-3.5" />
+            {t("action.create")}
+          </Button>
         }
-        emptyMessage={t("emptyMessage")}
-        renderCard={(task, _isSelected, _toggleSelect) => (
-          <div className="group rounded-lg border border-border-light bg-surface-1 px-4 py-3 transition-colors hover:border-border-active hover:shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-text-bright">{task.name}</span>
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${task.enabled ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-surface-2 text-text-muted"}`}
-                  >
-                    {task.enabled ? t("actions.enable") : t("actions.disable")}
-                  </span>
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusColor(task.lastStatus)}`}
-                  >
-                    {formatLastResult(t, task)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 mt-1.5 text-xs text-text-muted">
-                  <code className="rounded bg-surface-2 px-1.5 py-0.5">{task.cron}</code>
-                  <span>{task.environmentName ?? task.environmentId}</span>
-                  <span>
-                    {t("columns.timeout")}: {task.timeoutMinutes}m
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 mt-1 text-xs text-text-dim">
-                  <span>
-                    {t("columns.lastRun")}: {formatTimestamp(task.lastRunAt ?? null)}
-                  </span>
-                  <span>
-                    {t("columns.nextRun")}: {formatTimestamp(task.nextRunAt ?? null)}
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={triggeringTaskId === task.id}
-                  onClick={() => runTrigger(task.id)}
-                >
-                  {triggeringTaskId === task.id ? "..." : t("actions.executeNow")}
-                </Button>
-                <Button size="xs" variant="outline" onClick={() => handleViewLogs(task)}>
-                  {t("actions.logs")}
-                </Button>
-                <Button size="xs" variant="outline" onClick={() => runToggle(task.id)}>
-                  {task.enabled ? t("actions.disable") : t("actions.enable")}
-                </Button>
-                <Button size="xs" variant="outline" onClick={() => handleOpenEdit(task)}>
-                  {t("actions.edit")}
-                </Button>
-                <Button
-                  size="xs"
-                  variant="destructive"
-                  onClick={() => {
-                    setDeleteTarget(task);
-                    setConfirmOpen(true);
-                  }}
-                >
-                  {t("actions.delete")}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
       />
 
+      {/* ── 搜索 + 类型筛选 ── */}
+      <div className="mb-4 flex items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-text-muted" />
+          <Input
+            placeholder={t("filter.searchPlaceholder")}
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+        <Tabs value={typeFilter} onValueChange={(v) => setTypeFilter(v as "all" | "http" | "agent")}>
+          <TabsList>
+            <TabsTrigger
+              value="all"
+              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
+            >
+              {t("filter.all")}
+            </TabsTrigger>
+            <TabsTrigger
+              value="http"
+              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
+            >
+              {t("type.http")}
+            </TabsTrigger>
+            <TabsTrigger
+              value="agent"
+              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
+            >
+              {t("type.agent")}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {/* ── 任务卡片列表 ── */}
+      {tasks.length === 0 ? (
+        <EmptyState icon={<Calendar className="w-10 h-10" />} title={t("empty")} description={t("subtitle")} />
+      ) : filteredTasks.length === 0 ? (
+        <EmptyState
+          icon={<Calendar className="w-10 h-10" />}
+          title={t("emptySearchResult")}
+          description={t("subtitle")}
+        />
+      ) : (
+        <div className="space-y-3">
+          {filteredTasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              t={t}
+              triggeringTaskId={triggeredTasks}
+              onToggle={() => runToggle(task.id)}
+              onTrigger={() => {
+                setTriggeredTasks((prev) => new Set(prev).add(task.id));
+                runTrigger(task.id);
+              }}
+              onEdit={() => handleOpenEdit(task)}
+              onDelete={() => handleDeleteClick(task)}
+              onViewLogs={() => handleViewLogs(task)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* ── 创建/编辑表单 ── */}
       <FormDialog
+        key={`${editingTask?.id ?? "create"}-${formResetKey}`}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        title={editingTask ? t("form.editTitle") : t("form.createTitle")}
-        onSubmit={handleSave}
-        loading={saving}
+        title={editingTask ? t("dialog.editTitle", { name: editingTask.name }) : t("dialog.createTitle")}
         width="sm:max-w-2xl"
+        formConfig={formConfig}
+        loading={saving}
       >
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="task-name">{t("form.name")}</Label>
-            <Input id="task-name" value={formName} onChange={(e) => setFormName(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="task-description">{t("form.description")}</Label>
-            <Input id="task-description" value={formDescription} onChange={(e) => setFormDescription(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label>{t("form.cronExpression")}</Label>
-            <div className="flex gap-2">
-              <Input value={formCron} onChange={(e) => setFormCron(e.target.value)} />
-              <Select value={formCron} onValueChange={setFormCron}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder={t("form.quickSelect")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {CRON_PRESETS_KEYS.map((preset) => (
-                    <SelectItem key={preset.value} value={preset.value}>
-                      {t(preset.labelKey)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="text-xs text-text-muted">{t("form.cronHelp")}</p>
-          </div>
-          <div className="grid gap-2">
-            <Label>{t("form.environment")}</Label>
-            <Select value={formEnvironmentId} onValueChange={setFormEnvironmentId}>
-              <SelectTrigger>
-                <SelectValue placeholder={t("form.selectEnvironment")} />
-              </SelectTrigger>
-              <SelectContent>
-                {environments.map((env) => (
-                  <SelectItem key={env.id} value={env.id}>
-                    {env.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label>{t("form.taskContent")}</Label>
-            <Textarea
-              value={formTask}
-              onChange={(e) => setFormTask(e.target.value)}
-              rows={8}
-              placeholder={t("form.taskPlaceholder")}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label>{t("form.timeoutMinutes")}</Label>
-            <Input
-              type="number"
-              min={1}
-              max={180}
-              value={formTimeoutMinutes}
-              onChange={(e) => setFormTimeoutMinutes(e.target.value)}
-            />
-          </div>
-          {editingTask && (
-            <div className="flex items-center justify-between rounded-md border px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">{t("form.enabledStatus")}</p>
-                <p className="text-xs text-text-muted">{t("form.enabledHint")}</p>
-              </div>
-              <Switch checked={formEnabled} onCheckedChange={setFormEnabled} />
-            </div>
-          )}
-        </div>
+        <TaskForm agents={agents} isEditing={!!editingTask} initialType={editingTask?.type ?? "http"} />
       </FormDialog>
 
-      {/* Execution logs dialog */}
-      <Dialog open={logsDialogOpen} onOpenChange={setLogsDialogOpen}>
-        <DialogContent className="flex max-h-[90vh] w-[min(96vw,1100px)] flex-col overflow-hidden p-0 sm:max-w-5xl">
-          <DialogHeader className="shrink-0 border-b px-6 py-4">
-            <DialogTitle>
-              {t("logs.title")}
-              {logsTask ? ` · ${logsTask.name}` : ""}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-text-muted">{t("logs.totalRecords", { count: logsTotal })}</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-text-muted">
-                  {t("logs.pageInfo", { current: logsPage, total: totalLogPages })}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!logsTask || logsPage <= 1}
-                  onClick={() => logsTask && loadLogs(logsTask.id, logsPage - 1)}
-                >
-                  {t("logs.prevPage")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!logsTask || logs.length < 20}
-                  onClick={() => logsTask && loadLogs(logsTask.id, logsPage + 1)}
-                >
-                  {t("logs.nextPage")}
-                </Button>
-                <Button size="sm" variant="outline" disabled={!logsTask} onClick={() => setClearLogsConfirmOpen(true)}>
-                  {t("logs.clearLogs")}
-                </Button>
-              </div>
-            </div>
-            <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]">
-              <div className="flex min-h-0 flex-col rounded-md border">
-                <div className="shrink-0 border-b px-4 py-3">
-                  <h3 className="font-medium">{t("logs.executionRecords")}</h3>
-                  <p className="text-xs text-text-muted">{t("logs.scrollHint")}</p>
-                </div>
-                <div className="min-h-0 overflow-y-auto p-4">
-                  {logsLoading ? (
-                    <div className="space-y-2">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-                        <Skeleton key={i} className="h-20 w-full" />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {logs.map((log) => (
-                        <div key={log.id} className="rounded-md border p-4">
-                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusColor(log.status)}`}
-                              >
-                                {log.status}
-                              </span>
-                              <span className="text-sm text-text-muted">
-                                {formatTimestamp(log.createdAt)} · {log.triggeredBy} ·{" "}
-                                {formatDuration(log.duration ?? null)}
-                              </span>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!log.workspacePath || !log.environmentId}
-                              onClick={() => handleBrowseWorkspace(log)}
-                            >
-                              {t("logs.viewDirectory")}
-                            </Button>
-                          </div>
-                          <div className="grid gap-1.5 text-sm">
-                            <div>
-                              <span className="font-medium text-text-muted">workspacePath:</span>{" "}
-                              <span className="text-text-secondary">{log.workspacePath ?? "—"}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-text-muted">workspaceName:</span>{" "}
-                              <span className="text-text-secondary">{log.workspaceName ?? "—"}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-text-muted">resultSummary:</span>{" "}
-                              <span className="text-text-secondary">{log.resultSummary ?? "—"}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-text-muted">skipReason:</span>{" "}
-                              <span className="text-text-secondary">{log.skipReason ?? "—"}</span>
-                            </div>
-                            {log.error && (
-                              <div>
-                                <span className="font-medium text-text-muted">error:</span>{" "}
-                                <span className="text-destructive">{log.error}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {logs.length === 0 && (
-                        <div className="rounded-md border border-dashed p-6 text-center text-sm text-text-muted">
-                          {t("logs.noHistory")}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex min-h-0 flex-col rounded-md border">
-                <div className="shrink-0 border-b px-4 py-3">
-                  <h3 className="font-medium">{t("logs.runDirectory")}</h3>
-                  <p className="text-xs text-text-muted">{workspaceTitle ?? t("logs.directoryHint")}</p>
-                </div>
-                <div className="min-h-0 overflow-y-auto p-4">
-                  {workspaceLoading ? (
-                    <Skeleton className="h-24 w-full" />
-                  ) : workspaceEntries.length === 0 ? (
-                    <div className="text-sm text-text-muted">{t("logs.noDirectoryContent")}</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {workspaceEntries.map((entry) => (
-                        <div
-                          key={entry.path}
-                          className="flex items-start justify-between gap-3 rounded border px-3 py-2 text-sm"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-text-bright">{entry.name}</div>
-                            <div className="break-all text-xs text-text-muted" title={entry.path}>
-                              {entry.path}
-                            </div>
-                          </div>
-                          <div className="shrink-0 whitespace-nowrap text-right text-xs text-text-muted">
-                            {entry.type} · {entry.size} B
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ── 执行日志弹窗 ── */}
+      <TaskLogDialog
+        open={logDialogOpen}
+        onOpenChange={setLogDialogOpen}
+        taskId={logTask?.id ?? ""}
+        taskName={logTask?.name ?? ""}
+        onClearLogs={handleClearLogsClick}
+        refreshKey={logRefreshKey}
+      />
 
+      {/* ── 删除确认 ── */}
       <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title={t("confirm.deleteTitle")}
-        description={t("confirm.deleteDescription", { name: deleteTarget?.name ?? "" })}
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title={t("action.delete")}
+        description={t("dialog.deleteConfirm", { name: deleteTarget?.name ?? "" })}
         variant="destructive"
+        loading={deleting}
         onConfirm={() => deleteTarget && runDelete(deleteTarget.id)}
       />
+
+      {/* ── 清空日志确认 ── */}
       <ConfirmDialog
-        open={clearLogsConfirmOpen}
-        onOpenChange={setClearLogsConfirmOpen}
-        title={t("logs.clearTitle")}
-        description={t("logs.clearDescription")}
+        open={confirmClearLogsOpen}
+        onOpenChange={setConfirmClearLogsOpen}
+        title={t("action.clearLogs")}
+        description={t("dialog.clearLogsConfirm")}
         variant="destructive"
-        onConfirm={() => logsTask && runClearLogs(logsTask.id)}
+        loading={clearingLogs}
+        onConfirm={() => logTask && runClearLogs(logTask.id)}
       />
     </div>
+  );
+}
+
+// ── 任务卡片子组件 ──
+
+interface TaskCardProps {
+  task: TaskV2Info;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  triggeringTaskId: Set<string>;
+  onToggle: () => void;
+  onTrigger: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onViewLogs: () => void;
+}
+
+function TaskCard({ task, t, triggeringTaskId, onToggle, onTrigger, onEdit, onDelete, onViewLogs }: TaskCardProps) {
+  const cronDesc = describeCron(task.cron, t);
+
+  const typeBadge = (
+    <Badge variant={task.type === "agent" ? "default" : "outline"} className="text-[11px] h-5">
+      {t(`type.${task.type}`)}
+    </Badge>
+  );
+
+  const statusBadge = (
+    <Badge variant={statusVariant(task.lastStatus)} className="text-[11px] h-5">
+      {t(`status.${task.lastStatus || "pending"}`)}
+    </Badge>
+  );
+
+  return (
+    <Card className="px-4 py-3 gap-0">
+      <CardContent className="p-0">
+        {/* 第一行：名称 + 标签 */}
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-text-bright truncate">{task.name}</span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {typeBadge}
+            {statusBadge}
+          </div>
+        </div>
+
+        {/* 描述 */}
+        {task.description && <p className="mt-1 text-xs text-text-secondary line-clamp-1">{task.description}</p>}
+
+        {/* Cron + 超时 */}
+        <div className="mt-1.5 flex items-center gap-3 text-xs text-text-muted">
+          <code className="rounded bg-surface-1 px-1.5 py-0.5 text-[11px]">{task.cron}</code>
+          {cronDesc && <span className="text-[11px] text-dim">{cronDesc}</span>}
+          <span className="text-dim">
+            {t("card.label")}: {task.timeoutSeconds}s
+          </span>
+        </div>
+
+        {/* 上次 / 下次执行 */}
+        <div className="mt-1.5 flex items-center gap-4 text-xs text-dim">
+          <span>
+            {t("card.lastRun")} {formatTime(task.lastRunAt)}
+          </span>
+          <span>
+            {t("card.nextRun")} {formatTime(task.nextRunAt)}
+          </span>
+        </div>
+      </CardContent>
+
+      {/* 按钮行 */}
+      <CardFooter className="justify-end gap-1.5 p-0 pt-2.5 mt-2.5 border-t border-border-light">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={triggeringTaskId.has(task.id)}
+          onClick={onTrigger}
+        >
+          <Play className="mr-1 size-3" />
+          {t("action.execute")}
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onViewLogs}>
+          <FileText className="mr-1 size-3" />
+          {t("action.logs")}
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onToggle}>
+          <Power className="mr-1 size-3" />
+          {task.enabled ? t("card.disabled") : t("card.enabled")}
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onEdit}>
+          <Pencil className="mr-1 size-3" />
+          {t("action.edit")}
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onDelete}>
+          <Trash2 className="mr-1 size-3" />
+          {t("action.delete")}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

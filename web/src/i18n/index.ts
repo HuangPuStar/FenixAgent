@@ -21,6 +21,7 @@ import settingsEN from "./locales/en/settings.json";
 import sidebarEN from "./locales/en/sidebar.json";
 import skillsEN from "./locales/en/skills.json";
 import tasksEN from "./locales/en/tasks.json";
+import tasksV2EN from "./locales/en/tasks-v2.json";
 import toolNarratorEN from "./locales/en/toolNarrator.json";
 import workflowsEN from "./locales/en/workflows.json";
 import agentHomeZH from "./locales/zh/agentHome.json";
@@ -43,6 +44,7 @@ import settingsZH from "./locales/zh/settings.json";
 import sidebarZH from "./locales/zh/sidebar.json";
 import skillsZH from "./locales/zh/skills.json";
 import tasksZH from "./locales/zh/tasks.json";
+import tasksV2ZH from "./locales/zh/tasks-v2.json";
 import toolNarratorZH from "./locales/zh/toolNarrator.json";
 import workflowsZH from "./locales/zh/workflows.json";
 
@@ -56,6 +58,7 @@ export const NS = {
   SKILLS: "skills",
   MCP: "mcp",
   TASKS: "tasks",
+  TASKS_V2: "tasksV2",
   WORKFLOWS: "workflows",
   SETTINGS: "settings",
   SESSIONS: "sessions",
@@ -84,6 +87,7 @@ i18n
         [NS.SIDEBAR]: sidebarEN,
         [NS.DASHBOARD]: dashboardEN,
         [NS.TASKS]: tasksEN,
+        [NS.TASKS_V2]: tasksV2EN,
         [NS.AGENTS]: agentsEN,
         [NS.MODELS]: modelsEN,
         [NS.ENVIRONMENTS]: environmentsEN,
@@ -108,6 +112,7 @@ i18n
         [NS.SIDEBAR]: sidebarZH,
         [NS.DASHBOARD]: dashboardZH,
         [NS.TASKS]: tasksZH,
+        [NS.TASKS_V2]: tasksV2ZH,
         [NS.AGENTS]: agentsZH,
         [NS.MODELS]: modelsZH,
         [NS.ENVIRONMENTS]: environmentsZH,
@@ -135,6 +140,7 @@ i18n
       NS.SIDEBAR,
       NS.DASHBOARD,
       NS.TASKS,
+      NS.TASKS_V2,
       NS.ENVIRONMENTS,
       NS.SKILLS,
       NS.MCP,

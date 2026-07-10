@@ -369,9 +369,7 @@ export const scheduledTask = pgTable(
 // 任务执行日志表
 export const taskExecutionLog = pgTable("task_execution_log", {
   id: uuid("id").primaryKey().defaultRandom(),
-  taskId: uuid("task_id")
-    .notNull()
-    .references(() => scheduledTask.id, { onDelete: "cascade" }),
+  taskId: uuid("task_id").notNull(),
   status: varchar("status").notNull(),
   error: text("error"),
   duration: integer("duration"),
@@ -383,6 +381,40 @@ export const taskExecutionLog = pgTable("task_execution_log", {
   resultSummary: text("result_summary"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// 定时任务表 v2（HTTP + Agent 双类型）。
+// 旧表 scheduled_task 保留不动，不提供迁移脚本。
+export const scheduledTaskV2 = pgTable(
+  "scheduled_task_v2",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull(),
+    name: varchar("name").notNull(),
+    description: text("description"),
+    cron: varchar("cron").notNull(),
+    timezone: varchar("timezone"),
+    enabled: boolean("enabled").notNull().default(true),
+    timeoutSeconds: integer("timeout_seconds").notNull().default(300),
+    agentId: uuid("agent_id").references(() => agentConfig.id, { onDelete: "set null" }),
+    type: varchar("type").notNull(),
+    definition: jsonb("definition").notNull(),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    lastStatus: varchar("last_status"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgIdx: index("idx_scheduled_task_v2_org_id").on(table.organizationId),
+    agentIdx: index("idx_scheduled_task_v2_agent_id").on(table.agentId),
+  }),
+);
+
+export type ScheduledTaskV2Row = typeof scheduledTaskV2.$inferSelect;
+export type ScheduledTaskV2Insert = typeof scheduledTaskV2.$inferInsert;
 
 // IMChannel 一等资源表（升级自 channel_binding）
 export const imChannel = pgTable(

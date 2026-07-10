@@ -41,9 +41,10 @@ import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
 import { stopAllInstances } from "./services/instance";
 import { checkRagFlowHealth } from "./services/knowledge-provider/ragflow";
-import { startScheduler, stopScheduler } from "./services/scheduler";
+import { schedulerService } from "./services/scheduler/index";
 import { syncBuiltin } from "./services/sync-builtin";
 import { ensureSystemAdmin } from "./services/system-admin";
+import { startScheduler, stopScheduler } from "./services/task";
 import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
@@ -72,7 +73,7 @@ await db.update(agentSession).set({ status: "idle", updatedAt: new Date() }).whe
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
 
-await startScheduler();
+await Promise.all([startScheduler(), schedulerService.start()]);
 
 try {
   // builtin 资源现在统一托管到系统 admin 组织，不再在启动时遍历所有组织复制副本。
@@ -224,6 +225,7 @@ async function gracefulShutdown(signal: string) {
   closeAllFileWsConnections();
   await stopAllInstances();
   stopScheduler();
+  schedulerService.stop();
   await closeCache();
   await pgClient.end();
   process.exit(0);
