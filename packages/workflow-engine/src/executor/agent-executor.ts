@@ -4,7 +4,7 @@
  * 职责：
  * - 类型守卫：仅处理 'agent' 节点
  * - Transport 连接：connect(envName) → execute(prompt) → 收集会话流
- * - 输出：简化 stdout + 完整 messages
+ * - 输出：简化 stdout（simplified），messages 仅在 output_messages > 0 时回传
  * - 重试：默认 2 次指数退避
  * - 事件发射：node.started / node.completed / node.failed / node.retrying
  */
@@ -191,15 +191,14 @@ export class AgentExecutor implements NodeExecutor {
       });
     }
 
-    // 构建 json 输出：简化文本 + 完整会话流
+    // 构建 json 输出：simplified 始终存在，messages 仅在 output_messages > 0 时回传最后 N 条
     const outputMessages = node.output_messages ?? 0;
-    const json = {
+    const json: Record<string, unknown> = {
       simplified: response.stdout,
-      ...(response.messages.length > 0 ? { messages: response.messages } : {}),
-      ...(outputMessages > 0 && response.messages.length > 0
-        ? { last_messages: response.messages.slice(-outputMessages) }
-        : {}),
     };
+    if (outputMessages > 0 && response.messages.length > 0) {
+      json.messages = response.messages.slice(-outputMessages);
+    }
 
     // 尝试解析 stdout 为 JSON
     let parsedJson: unknown;

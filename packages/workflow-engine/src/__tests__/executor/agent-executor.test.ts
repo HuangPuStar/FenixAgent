@@ -433,7 +433,7 @@ describe("AgentExecutor JSON parsing", () => {
 // ========== 会话流收集测试 ==========
 
 describe("AgentExecutor message stream", () => {
-  test("AgentResponse.messages 被收集到 json 输出", async () => {
+  test("AgentResponse.messages 在未设 output_messages 时不输出", async () => {
     const transport = new FakeTransport();
     transport.setResponse("default", {
       stdout: "Here is the answer",
@@ -453,10 +453,7 @@ describe("AgentExecutor message stream", () => {
     const output = await executor.execute(node, ctx);
     const json = output.json as Record<string, unknown>;
     expect(json.simplified).toBe("Here is the answer");
-    const messages = json.messages as Array<Record<string, unknown>>;
-    expect(messages.length).toBe(4);
-    expect(messages[1].role).toBe("tool_call");
-    expect(messages[1].tool_name).toBe("read_file");
+    expect(json.messages).toBeUndefined();
   });
 
   test("output_messages 参数控制回传的消息数", async () => {
@@ -477,13 +474,13 @@ describe("AgentExecutor message stream", () => {
 
     const output = await executor.execute(node, ctx);
     const json = output.json as Record<string, unknown>;
-    const lastMessages = json.last_messages as Array<Record<string, unknown>>;
-    expect(lastMessages.length).toBe(2);
-    expect(lastMessages[0].content).toBe("msg2");
-    expect(lastMessages[1].content).toBe("msg3");
+    const messages = json.messages as Array<Record<string, unknown>>;
+    expect(messages.length).toBe(2);
+    expect(messages[0].content).toBe("msg2");
+    expect(messages[1].content).toBe("msg3");
   });
 
-  test("output_messages 为 0 时不回传 last_messages", async () => {
+  test("output_messages 为 0 时不回传 messages", async () => {
     const transport = new FakeTransport();
     transport.setResponse("default", {
       stdout: "result",
@@ -497,8 +494,7 @@ describe("AgentExecutor message stream", () => {
 
     const output = await executor.execute(node, ctx);
     const json = output.json as Record<string, unknown>;
-    expect(json.last_messages).toBeUndefined();
-    expect(json.messages).toBeDefined();
+    expect(json.messages).toBeUndefined();
   });
 });
 
