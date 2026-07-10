@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 测试 OpenAI Chat API 兼容端点
-# 用法: bash test-openai-chat.sh <base_url> <api_key> <env_id>
-# 注意: agent_id 在代码中实际映射为 environment ID (env_xxx 格式)
+# 用法: bash test-openai-chat.sh <base_url> <api_key> <agent_config_id>
+#   agent_config_id: agent_config 表的主键，URL 路径 /v1/agents/:agentId 中的占位参数
 
 set -uo pipefail
 
@@ -10,8 +10,8 @@ API_KEY="${2:-}"
 AGENT_ID="${3:-}"
 
 if [ -z "$API_KEY" ] || [ -z "$AGENT_ID" ]; then
-  echo "用法: bash test-openai-chat.sh <base_url> <api_key> <env_id>"
-  echo "示例: bash test-openai-chat.sh http://localhost:3000 rcs_xxx env_xxx"
+  echo "用法: bash test-openai-chat.sh <base_url> <api_key> <agent_config_id>"
+  echo "示例: bash test-openai-chat.sh http://localhost:3000 rcs_xxx uuid"
   exit 1
 fi
 

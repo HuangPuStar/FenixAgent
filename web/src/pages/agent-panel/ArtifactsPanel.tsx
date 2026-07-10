@@ -29,6 +29,7 @@ import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeT
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 import { cn } from "../../lib/utils";
+import { TasksPanel } from "./TasksPanel";
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
 const MAX_OPEN_FILES = 8;
@@ -439,7 +440,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
         </div>
       )}
 
-      {/* Files 模式：完整文件区；Sites 模式：二级 site tab + iframe，文件区卸载 */}
+      {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Sites 模式：二级 site tab + iframe */}
       {isFilesMode ? (
         <>
           <FileTabsBar
@@ -482,6 +483,8 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
             </div>
           </div>
         </>
+      ) : topMode === "tasks" ? (
+        <TasksPanel agentId={agentConfigId} />
       ) : sites.length === 0 ? (
         // Sites 模式 + 未绑定任何 site：空状态提示 + 直接挂载入口（agentConfigId 就绪时显示）
         <div className="flex-1 min-h-0 min-w-0 flex flex-col items-center justify-center gap-3 px-6 text-center">

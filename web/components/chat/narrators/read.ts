@@ -1,11 +1,5 @@
 import { FileText } from "lucide-react";
-import {
-  extractDirectoryEntryCount,
-  extractFileName,
-  extractLineRange,
-  isOpencodeDirectoryOutput,
-  isOpencodeFileOutput,
-} from "./helpers";
+import { extractDirectoryEntryCount, extractFileName, extractLineRange, isOpencodeDirectoryOutput } from "./helpers";
 import type { ToolNarrator } from "./types";
 
 /**

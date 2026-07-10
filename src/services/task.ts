@@ -1,9 +1,156 @@
 import { randomUUID } from "node:crypto";
 import { log, error as logError } from "@fenix/logger";
+import schedule from "node-schedule";
 import type { ScheduledTaskInsert, ScheduledTaskRow, TaskExecutionLogRow } from "../repositories/task";
 import { scheduledTaskRepo, taskExecutionLogRepo } from "../repositories/task";
 import { parseJsonb } from "./config/jsonb";
-import { rescheduleTask, scheduleTask, unscheduleTask } from "./scheduler";
+
+// ── 旧版调度器内联（仅服务于已废弃的 scheduled_task 表） ──
+
+export type ScheduleJobFn = (config: schedule.Spec, handler: () => void) => schedule.Job | null;
+export let scheduleJobImpl: ScheduleJobFn = (config, handler) =>
+  schedule.scheduleJob(config as schedule.RecurrenceSpecObjLit, handler);
+
+export function setScheduleJobImpl(fn: ScheduleJobFn) {
+  scheduleJobImpl = fn;
+}
+
+import type { ScheduledJobEntry } from "../types/store";
+import { toInvocationDate } from "./scheduler/utils";
+
+const runningTasks = new Set<string>();
+const activeJobs = new Map<string, ScheduledJobEntry>();
+
+async function executeTask(taskId: string): Promise<void> {
+  if (runningTasks.has(taskId)) {
+    try {
+      await Promise.all([
+        createExecutionLog({
+          taskId,
+          status: "skipped",
+          triggeredBy: "cron",
+          skipReason: "previous_run_still_active",
+        }),
+        scheduledTaskRepo.update(taskId, { lastStatus: "skipped", updatedAt: new Date() }),
+      ]);
+    } catch (err) {
+      logError(`[Scheduler] Failed to record skipped execution for task ${taskId}:`, err);
+    }
+    log(`[Scheduler] Task ${taskId} is already running, skipped`);
+    return;
+  }
+
+  runningTasks.add(taskId);
+
+  try {
+    const task = await getTaskById(taskId);
+    if (!task) {
+      log(`[Scheduler] Task ${taskId} not found, removing stale job`);
+      unscheduleTask(taskId);
+      return;
+    }
+    if (!task.enabled) {
+      log(`[Scheduler] Task ${taskId} is disabled, skipping and unscheduling`);
+      unscheduleTask(taskId);
+      return;
+    }
+    await executeTaskById(taskId, "cron", task);
+  } catch (err) {
+    logError(`[Scheduler] Unexpected error executing task ${taskId}:`, err);
+  } finally {
+    runningTasks.delete(taskId);
+  }
+}
+
+export function scheduleTask(task: { id: string; cron: string; timezone?: string | null; enabled?: boolean }): boolean {
+  if (activeJobs.has(task.id)) {
+    unscheduleTask(task.id);
+  }
+
+  if (!task.enabled) {
+    log(`[Scheduler] Task ${task.id} is disabled, not scheduling`);
+    return true;
+  }
+
+  const handler = () => {
+    log(`[Scheduler] Cron triggered for task ${task.id}`);
+    executeTask(task.id).catch((err) => {
+      logError(`[Scheduler] Error in cron execution for task ${task.id}:`, err);
+    });
+  };
+
+  const job = task.timezone
+    ? scheduleJobImpl({ rule: task.cron, tz: task.timezone }, handler)
+    : scheduleJobImpl({ rule: task.cron }, handler);
+
+  if (!job) {
+    logError(`[Scheduler] Invalid cron expression "${task.cron}" for task ${task.id}, job not created`);
+    return false;
+  }
+
+  activeJobs.set(task.id, { taskId: task.id, job });
+  const nextRunAt = toInvocationDate(job.nextInvocation());
+
+  scheduledTaskRepo.update(task.id, { nextRunAt, updatedAt: new Date() }).catch((err) => {
+    logError(`[Scheduler] Failed to update nextRunAt for task ${task.id}:`, err);
+  });
+
+  log(`[Scheduler] Scheduled task ${task.id} with cron "${task.cron}" (tz: ${task.timezone ?? "server-local"})`);
+  return true;
+}
+
+export function unscheduleTask(taskId: string): void {
+  const entry = activeJobs.get(taskId);
+  if (entry) {
+    entry.job.cancel();
+    activeJobs.delete(taskId);
+    log(`[Scheduler] Unscheduled task ${taskId}`);
+  }
+  runningTasks.delete(taskId);
+}
+
+export function rescheduleTask(task: {
+  id: string;
+  cron: string;
+  timezone?: string | null;
+  enabled?: boolean;
+}): boolean {
+  unscheduleTask(task.id);
+  return scheduleTask(task);
+}
+
+export async function startScheduler(): Promise<void> {
+  try {
+    const tasks = await scheduledTaskRepo.listEnabled();
+    log(`[Scheduler] Starting scheduler, found ${tasks.length} enabled tasks`);
+    let failed = 0;
+    for (const task of tasks) {
+      const ok = scheduleTask(task);
+      if (!ok) failed++;
+    }
+    if (failed > 0) {
+      log(`[Scheduler] Scheduler started with ${failed} failed job(s) (invalid cron expression)`);
+    } else {
+      log("[Scheduler] Scheduler started successfully");
+    }
+  } catch (err) {
+    logError("[Scheduler] Failed to start scheduler:", err);
+  }
+}
+
+export function stopScheduler(): void {
+  const count = activeJobs.size;
+  for (const [, entry] of activeJobs) {
+    try {
+      entry.job.cancel();
+    } catch (err) {
+      logError(`[Scheduler] Failed to cancel job ${entry.taskId}:`, err);
+    }
+  }
+  activeJobs.clear();
+  runningTasks.clear();
+  log(`[Scheduler] Scheduler stopped, cancelled ${count} jobs`);
+}
 
 function generateTaskId(): string {
   return randomUUID();

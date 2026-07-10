@@ -169,6 +169,7 @@ Agent 通信的 ACP 协议栈只有一套权威实现，所有入口必须复用
 3. relay 断连只断 WS，不会杀掉 agent 子进程。
 4. relay 必须转发 agent `status`，前端依赖 `status.capabilities` 判断能力。
 5. ACP session id 是 `ses_xxx`，RCS session id 是 `session_xxx` / `cse_xxx`；文件 API 必须使用 RCS id。
+6. **session/update 二级结构**：`update.sessionUpdate` 是事件类型字符串（如 `"agent_message_chunk"`），`update.content` 是载荷对象（`{ type, text }`）。**不要把事件类型值当 key 写**（如 `update.agent_message_chunk`）。写 ACP 消息处理代码前，先 `grep agent_message_chunk` 看已有消费者做参照。
 
 ### Workspace / Skill
 
@@ -192,6 +193,7 @@ Agent 通信的 ACP 协议栈只有一套权威实现，所有入口必须复用
 3. `FilePickerDialog` 上传目标始终是 `user/`。
 4. `@lobehub/icons` 不要被后端或纯逻辑测试间接加载；纯工具逻辑要拆到不依赖 UI 的独立模块。
 5. 代码库里仍可能有少量历史写法与规范不一致；新改动按规范收敛，不要继续扩散旧模式。
+6. **i18n 插值语法**：i18n 配置（`web/src/i18n/index.ts:160`）未自定义 prefix/suffix，必须用 `{{var}}`（双花括号），`{var}` 会被当字面文本。写翻译前先看同 namespace 已有占位符写法做参照。
 
 ## 项目特有约束
 

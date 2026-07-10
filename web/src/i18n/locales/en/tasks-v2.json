@@ -1,0 +1,132 @@
+{
+  "title": "Scheduled Tasks",
+  "subtitle": "Manage scheduled execution of HTTP requests and Agent calls",
+  "filter": {
+    "all": "All",
+    "http": "HTTP",
+    "agent": "Agent",
+    "searchPlaceholder": "Search tasks..."
+  },
+  "status": {
+    "success": "Success",
+    "failed": "Failed",
+    "timeout": "Timeout",
+    "skipped": "Skipped",
+    "pending": "Pending"
+  },
+  "type": {
+    "http": "HTTP",
+    "agent": "Agent"
+  },
+  "triggeredBy": {
+    "cron": "Cron",
+    "manual": "Manual"
+  },
+  "card": {
+    "label": "Timeout",
+    "lastRun": "Last Run",
+    "nextRun": "Next Run",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "action": {
+    "create": "Create Task",
+    "edit": "Edit",
+    "delete": "Delete",
+    "execute": "Run",
+    "logs": "Logs",
+    "clearLogs": "Clear Logs"
+  },
+  "dialog": {
+    "createTitle": "Create Task",
+    "editTitle": "Edit Task \"{{name}}\"",
+    "deleteConfirm": "Delete task \"{{name}}\"? This cannot be undone.",
+    "clearLogsConfirm": "Clear all execution logs?"
+  },
+  "form": {
+    "nameLabel": "Name",
+    "namePlaceholder": "Enter task name",
+    "timeLabel": "Schedule",
+    "timezoneLabel": "Timezone",
+    "timeoutLabel": "Timeout (s)",
+    "descLabel": "Description",
+    "descPlaceholder": "Optional",
+    "typeHttp": "HTTP Request",
+    "typeAgent": "Agent Call",
+    "urlLabel": "URL",
+    "methodLabel": "Method",
+    "headersLabel": "Headers (JSON, optional)",
+    "headersPlaceholder": "{\"Content-Type\": \"application/json\"}",
+    "bodyLabel": "Body (optional)",
+    "bodyPlaceholder": "{\"key\": \"value\"}",
+    "agentLabel": "Agent",
+    "agentPlaceholder": "Select an agent...",
+    "promptLabel": "Prompt",
+    "promptPlaceholder": "Enter prompt to send to the agent...",
+    "cancel": "Cancel",
+    "create": "Create"
+  },
+  "empty": "No scheduled tasks",
+  "emptySearchResult": "No matching tasks",
+  "table": {
+    "name": "Name",
+    "type": "Type",
+    "target": "Target",
+    "schedule": "Schedule",
+    "lastRun": "Last Run",
+    "actions": "Actions"
+  },
+  "relativeTime": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago"
+  },
+  "log": {
+    "title": "Execution Logs - {{name}}",
+    "time": "Time",
+    "triggeredBy": "Trigger",
+    "status": "Status",
+    "duration": "Duration",
+    "result": "Result",
+    "empty": "No execution records",
+    "total": "{{count}} total",
+    "prev": "Previous",
+    "next": "Next",
+    "noResult": "-",
+    "errorLabel": "Error",
+    "resultLabel": "Result",
+    "skipLabel": "Skip Reason"
+  },
+  "toast": {
+    "created": "Task created",
+    "updated": "Task updated",
+    "deleted": "Task deleted",
+    "toggled": "Task status updated",
+    "triggered": "Task triggered",
+    "logsCleared": "Logs cleared",
+    "saveFailed": "Save failed",
+    "triggerResult": "Execution {{status}}, took {{duration}}s"
+  },
+  "error": {
+    "invalidHeaders": "Headers is not valid JSON",
+    "nameRequired": "Name is required",
+    "cronRequired": "Cron expression is required",
+    "urlRequired": "URL is required",
+    "agentRequired": "Please select an agent",
+    "promptRequired": "Prompt is required"
+  },
+  "cron": {
+    "quickSelect": "Quick Select",
+    "custom": "Custom",
+    "preset": "Preset",
+    "parsedResult": "Parsed",
+    "customCron": "Custom cron",
+    "presets": {
+      "every5min": "Every 5 min",
+      "everyHour": "Every hour",
+      "daily9am": "Daily at 9:00 AM",
+      "weekday9am": "Weekdays at 9:00 AM",
+      "monthly1st": "1st of month"
+    }
+  }
+}

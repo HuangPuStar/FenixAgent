@@ -146,6 +146,7 @@ interface LoadedFormData {
     mcpIds: string[];
     siteAppIds: string[];
     enableMemory: boolean;
+    extra: unknown | null;
   };
 }
 
@@ -183,7 +184,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
   const [displayAgentName, setDisplayAgentName] = useState("");
   const [relatedResources, setRelatedResources] = useState<AgentRelatedResourcesView | undefined>(undefined);
-  const [activeTab, setActiveTab] = useState<"basic" | "knowledge">("basic");
+  const [activeTab, setActiveTab] = useState<"basic" | "knowledge" | "advanced">("basic");
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [skillsExpanded, setSkillsExpanded] = useState(false);
@@ -192,6 +193,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
   const [hindsightEnabled, setHindsightEnabled] = useState(false);
   const [formEnableMemory, setFormEnableMemory] = useState(false);
+  const [formExtra, setFormExtra] = useState("");
 
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
 
@@ -241,6 +243,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setRelatedResources(undefined);
     setSelectedTemplateId(null);
     setFormEnableMemory(false);
+    setFormExtra("");
     setSkillsExpanded(false);
     setMcpsExpanded(false);
     setSitesExpanded(false);
@@ -382,6 +385,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             mcpIds: Array.isArray(d.mcpIds) ? (d.mcpIds as string[]) : [],
             siteAppIds: Array.isArray(d.siteAppIds) ? (d.siteAppIds as string[]) : [],
             enableMemory: enableMemoryVal,
+            extra: d.extra ?? null,
           },
         };
       }
@@ -468,6 +472,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormMcpIds(es.mcpIds);
           setFormSiteAppIds(es.siteAppIds);
           setFormEnableMemory(es.enableMemory);
+          setFormExtra(es.extra ? JSON.stringify(es.extra, null, 2) : "");
         } else if (!isEdit) {
           // 创建模式：预选第一个模型
           setFormModel(data.initialModel ?? "");
@@ -493,8 +498,16 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       toast.error(t("knowledge.maxResultsValidationError"));
       return false;
     }
+    if (formExtra.trim()) {
+      try {
+        JSON.parse(formExtra);
+      } catch {
+        toast.error(t("form.extraValidationError"));
+        return false;
+      }
+    }
     return true;
-  }, [isEdit, formName, formKnowledgeMaxResults, t]);
+  }, [isEdit, formName, formKnowledgeMaxResults, formExtra, t]);
 
   const agentIdentityName = agentName ?? formName ?? "agent";
   const readOnlyAgent = isEdit && !isAgentWritable({ name: agentIdentityName, resourceAccess: formResourceAccess });
@@ -603,6 +616,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
           ...(formEnableMemory ? { enableMemory: true } : {}),
+          ...(formExtra.trim() ? { extra: JSON.parse(formExtra) } : {}),
         };
 
         await unwrap(agentApi.set(agentName!, data));
@@ -631,6 +645,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             machineId: formMachineId === "local" ? null : formMachineId,
             publicReadable: formPublicReadable,
             ...(formEnableMemory ? { enableMemory: true } : {}),
+            ...(formExtra.trim() ? { extra: JSON.parse(formExtra) } : {}),
           }),
         );
         toast.success(t("save.successCreate"));
@@ -741,7 +756,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             )}
             {/* Tabs */}
             <div className="flex gap-1 rounded-lg bg-surface-2 p-1 m-6 mb-0 flex-shrink-0">
-              {(["basic", "knowledge"] as const).map((tab) => (
+              {(["basic", "knowledge", "advanced"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -1236,6 +1251,19 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                       />
                     </div>
                   </div>
+                </div>
+              )}
+              {activeTab === "advanced" && (
+                <div className="space-y-2">
+                  <Label>{t("form.extraLabel")}</Label>
+                  <Textarea
+                    value={formExtra}
+                    onChange={(e) => setFormExtra(e.target.value)}
+                    placeholder={t("form.extraPlaceholder")}
+                    rows={8}
+                    className="font-mono text-sm"
+                    disabled={readOnlyAgent}
+                  />
                 </div>
               )}
             </div>

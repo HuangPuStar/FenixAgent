@@ -1,9 +1,9 @@
-import { FilesIcon, Globe } from "lucide-react";
+import { Calendar, FilesIcon, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../i18n";
 import { cn } from "../../lib/utils";
 
-export type TopMode = "files" | "sites";
+export type TopMode = "files" | "sites" | "tasks";
 
 interface TopModeTabsProps {
   /** 当前一级模式：Files 显示文件区，Sites 显示二级 site tab + iframe（或空状态） */
@@ -73,6 +73,23 @@ export function TopModeTabs({ topMode, pendingDiffCount = 0, onChange }: TopMode
       >
         <Globe className="h-3.5 w-3.5" />
         <span>{t("panelMode.sites")}</span>
+      </button>
+
+      <span className="chat-composer-divider mx-0.5 flex-shrink-0" aria-hidden />
+
+      <button
+        type="button"
+        onClick={() => onChange("tasks")}
+        className={cn(
+          "flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs whitespace-nowrap flex-shrink-0 transition-colors",
+          topMode === "tasks"
+            ? "bg-surface-2 text-text-primary"
+            : "text-text-muted hover:bg-surface-2/60 hover:text-text-primary",
+        )}
+        title={t("panelMode.tasks")}
+      >
+        <Calendar className="h-3.5 w-3.5" />
+        <span>{t("panelMode.tasks")}</span>
       </button>
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createAgentSession, createPromptTurn, startPromptTurn } from "../services/agent-chat-service";
+import { createAgentSession, startPromptTurn } from "../services/agent-chat-service";
 
 function makeMockRelayHandle(overrides: Record<string, unknown> = {}) {
   return {
@@ -16,13 +16,13 @@ describe("createAgentSession", () => {
   // 正常创建
   test("根据已有 relayHandle 创建 AgentSession", () => {
     const handle = makeMockRelayHandle();
-    let stopped = false;
+    let _stopped = false;
     const session = createAgentSession({
       relayHandle: handle,
       instanceId: "inst-test",
       workspacePath: "/ws/test",
       stopInstance: async () => {
-        stopped = true;
+        _stopped = true;
       },
     });
     expect(session.instanceId).toBe("inst-test");

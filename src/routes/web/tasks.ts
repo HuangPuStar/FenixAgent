@@ -1,3 +1,6 @@
+/**
+ * @deprecated 本路由已冻结，不再新增或修改功能。请使用 /web/tasks/v2。
+ */
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
@@ -56,6 +59,7 @@ app.get(
     sessionAuth: true,
     response: "task-list-response",
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "获取任务列表",
       description: "返回当前组织下的定时任务列表及其最近执行状态。",
@@ -89,6 +93,7 @@ app.post(
       500: WebErrSchema,
     },
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "创建任务",
       description: "创建一个新的定时 HTTP 任务，并在启用状态下注册到调度器。",
@@ -135,6 +140,7 @@ app.get(
       404: WebErrSchema,
     },
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "获取任务详情",
       description: "根据任务 ID 获取单个任务的完整配置与状态信息。",
@@ -171,6 +177,7 @@ app.put(
       404: WebErrSchema,
     },
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "更新任务",
       description: "更新任务配置；当 cron、时区或启用状态变化时会重新调度。",
@@ -210,6 +217,7 @@ app.delete(
       404: WebErrSchema,
     },
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "删除任务",
       description: "删除指定任务，并同步取消其调度。",
@@ -238,6 +246,7 @@ app.post(
       404: WebErrSchema,
     },
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "切换任务启用状态",
       description: "在启用与停用之间切换任务状态，并同步更新调度器。",
@@ -266,6 +275,7 @@ app.post(
       404: WebErrSchema,
     },
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "手动触发任务",
       description: "立即执行一次指定任务，并返回本次执行生成的日志摘要。",
@@ -298,6 +308,7 @@ app.get(
       404: WebErrSchema,
     },
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "获取任务执行日志",
       description: "分页返回指定任务的执行日志记录。",
@@ -331,6 +342,7 @@ app.delete(
       404: WebErrSchema,
     },
     detail: {
+      deprecated: true,
       tags: ["Tasks"],
       summary: "清空任务日志",
       description: "删除指定任务下的全部执行日志记录。",

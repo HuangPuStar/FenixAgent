@@ -1,8 +1,11 @@
 import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
+import { and, eq } from "drizzle-orm";
+import { db } from "../db";
+import { environment } from "../db/schema";
 import { connectAgentRelay } from "../transport/relay/relay-handler";
-import { getCoreRuntime } from "./core-bootstrap";
-import { spawnInstanceFromEnvironment } from "./instance";
+import { createWebEnvironment } from "./environment-web";
+import { spawnInstanceFromEnvironment, stopInstance } from "./instance";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
 // ── 类型 ──
@@ -237,7 +240,8 @@ export async function startPromptTurn(
 
 export interface OpenAgentSessionInput {
   userId: string;
-  agentId: string;
+  /** agent_config.id（非 environment.id），函数内部自动解析为对应的 environment */
+  agentConfigId: string;
   organizationId: string;
   /** 可选：恢复已有会话时传入 ACP session ID */
   sessionId?: string;
@@ -253,28 +257,69 @@ export interface OpenAgentSessionResult {
  *
  * 每次调用创建全新实例（不复用），dispose 时自动销毁。
  * WS relay 路径走 ensureRunning 复用实例，两者策略独立。
+ *
+ * @param input.agentConfigId — agent_config.id（非 environment.id），需解析为对应的 environment 后再 spawn
  */
 export async function openAgentSession(input: OpenAgentSessionInput): Promise<OpenAgentSessionResult> {
-  // 1. 每次请求新建独立实例
-  const instance = await spawnInstanceFromEnvironment(input.userId, input.agentId);
+  // 1. 解析 agentConfigId (agent_config.id) → environmentId
+  // 仅对有效 UUID 做索引查询；非 UUID 提前拒绝，避免经 createWebEnvironment 降级时
+  // 触发 Postgres "invalid input syntax for type uuid" 裸错误
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(input.agentConfigId)) {
+    throw new Error("Agent config not found: invalid agentConfigId format");
+  }
+
+  let environmentId: string;
+  const existingRows = await db
+    .select({ id: environment.id })
+    .from(environment)
+    .where(
+      and(
+        eq(environment.organizationId, input.organizationId),
+        eq(environment.agentConfigId, input.agentConfigId),
+        eq(environment.userId, input.userId),
+      ),
+    )
+    .limit(1);
+
+  if (existingRows.length > 0) {
+    environmentId = existingRows[0].id;
+    log(`[agent-chat] Reusing existing environment: environmentId=${environmentId} agentId=${input.agentConfigId}`);
+  } else {
+    // 自动创建 environment（名称组合避免与手动创建的环境冲突）
+    // agentId 预期为标准 UUID（a-f0-9 小写），为防止非标准 ID 导致 kebab-case 校验失败，做 sanitize
+    const safeSuffix = input.agentConfigId.replace(/[^a-z0-9-]/g, "").slice(0, 8) || "default";
+    const autoName = `auto-${safeSuffix}`;
+    const env = await createWebEnvironment({
+      name: autoName,
+      agentConfigId: input.agentConfigId,
+      userId: input.userId,
+      organizationId: input.organizationId,
+      autoStart: true,
+    });
+    environmentId = env.id;
+    log(`[agent-chat] Auto-created environment: environmentId=${environmentId} agentId=${input.agentConfigId}`);
+  }
+
+  // 2. 基于解析出的 environmentId 启动实例
+  const instance = await spawnInstanceFromEnvironment(input.userId, environmentId);
   log(`[agent-chat] Instance spawned: instanceId=${instance.id}`);
 
-  // 2. 连接 relay
+  // 3. 连接 relay
   const handle = await connectAgentRelay(instance.id, input.sessionId ?? "");
   log(`[agent-chat] Relay connected: instanceId=${instance.id}`);
 
-  // 3. 创建 AgentSession（dispose 时销毁实例）
-  const facade = getCoreRuntime();
+  // 4. 创建 AgentSession（dispose 时销毁实例，走完整 stopInstance 以确保 registry 清理）
   const session = createAgentSession({
     relayHandle: handle,
     instanceId: instance.id,
-    workspacePath: resolveWorkspacePath(input.organizationId, input.userId, instance.environmentId ?? input.agentId),
+    workspacePath: resolveWorkspacePath(input.organizationId, input.userId, instance.environmentId ?? environmentId),
     stopInstance: async () => {
-      await facade.stopInstance(instance.id);
+      await stopInstance(instance.id, input.organizationId);
     },
   });
 
-  // 4. 创建 ACP session + PromptTurn
+  // 5. 创建 ACP session + PromptTurn
   const { turn } = await startPromptTurn({ session, sessionId: input.sessionId });
 
   return { turn, instanceId: instance.id };
