@@ -261,7 +261,15 @@ export interface OpenAgentSessionResult {
  * @param input.agentConfigId — agent_config.id（非 environment.id），需解析为对应的 environment 后再 spawn
  */
 export async function openAgentSession(input: OpenAgentSessionInput): Promise<OpenAgentSessionResult> {
-  // 1. 解析 agentId (agent_config.id) → environmentId（走 DB 索引，避免全表拉取后 JS 过滤）
+  // 1. 解析 agentConfigId (agent_config.id) → environmentId
+  // 仅对有效 UUID 做索引查询；非 UUID 提前拒绝，避免经 createWebEnvironment 降级时
+  // 触发 Postgres "invalid input syntax for type uuid" 裸错误
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(input.agentConfigId)) {
+    throw new Error("Agent config not found: invalid agentConfigId format");
+  }
+
+  let environmentId: string;
   const existingRows = await db
     .select({ id: environment.id })
     .from(environment)
@@ -274,7 +282,6 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
     )
     .limit(1);
 
-  let environmentId: string;
   if (existingRows.length > 0) {
     environmentId = existingRows[0].id;
     log(`[agent-chat] Reusing existing environment: environmentId=${environmentId} agentId=${input.agentConfigId}`);

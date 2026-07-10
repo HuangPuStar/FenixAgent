@@ -55,7 +55,7 @@ app.post(
       log(`[openai] Agent session opened: instanceId=${instanceId}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("not found") || msg.includes("Environment not found")) {
+      if (msg.includes("not found") || msg.includes("不存在") || msg.includes("Environment not found")) {
         const errResp = buildOpenAIError(404, `Agent ${agentId} not found`, "invalid_request_error");
         return error(errResp.status, errResp.body);
       }
