@@ -109,6 +109,28 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 - 新接口默认同时补齐 OpenAPI 元数据：`detail`、`params`、`query`、`headers`、`body`、`response`
 - schema 定义放 `src/schemas/`，不要在 route 内联复杂结构
 
+### Agent 通信：统一 service 层（重要）
+
+Agent 通信的 ACP 协议栈只有一套权威实现，所有入口必须复用，禁止各自重写。
+
+| 组件 | 文件 | 角色 |
+|------|------|------|
+| `agent-chat-service` | `src/services/agent-chat-service.ts` | **权威 ACP 服务层**：提供 `createAgentSession`（封装 relay handle）、`startPromptTurn`（session/new → PromptTurn）、`openAgentSession`（一站式 spawn → relay → turn）。所有入口共用 |
+| `agent-chat-transport` | `src/services/workflow/agent-chat-transport.ts` | Workflow 的 `Transport` 适配器：内部调用 `ensureRunning` + `connectAgentRelay` + `createAgentSession` + `startPromptTurn`，通过 `PromptTurn.events()` 收集流式输出，适配为 `Transport` 接口 |
+| `openai-chat.ts` | `src/routes/api/openai-chat.ts` | OpenAI HTTP 兼容端点：直接调用 `openAgentSession` |
+| `acp/relay` WS 端点 | `src/routes/acp/` + `src/transport/relay/` | 前端 Chat UI 的 WS relay：走 `connectAgentRelay` + 独立的 session 管理 |
+
+**关键约束**：
+
+1. **不要绕过 `agent-chat-service` 自己写 ACP 协议。** 已删除的 `acp-transport.ts`（467 行独立 JSON-RPC 实现）就是反面案例。
+2. relay 消息统一用 `extractJsonRpc()` 模式解析，兼容两种格式：
+   - 原始 JSON-RPC：`{ jsonrpc: "2.0", method/result, ... }`
+   - 包裹格式：`{ type: "...", payload: { jsonrpc: "2.0", ... } }`
+3. session_update 通知的文本在 `params.update.sessionUpdate` 路径，不要到 `payload.update` 查找。
+4. 实例策略有两条路径，不可混用：
+   - `ensureRunning("system", envId)`：workflow 场景，复用已有实例，workflow 结束后统一销毁
+   - `spawnInstanceFromEnvironment(userId, agentId)`：HTTP API 场景，每次新建独立实例，dispose 时销毁
+
 ## 数据库与迁移
 
 - Schema 真相来源：`src/db/schema.ts`

@@ -450,10 +450,9 @@ export function NodeConfigCard({
                   >
                     <option value="">{t("editor.agent_select_env")}</option>
                     {agentList.map((a) => (
-                      <option key={a.name} value={a.envName ?? ""} disabled={!a.envName}>
-                        {a.name}
-                        {a.description ? ` - ${a.description}` : ""}
-                        {!a.envName ? ` (${t("editor.agent_no_env")})` : ""}
+                      <option key={a.envId} value={a.envName}>
+                        {a.envName} — {a.agentName}
+                        {a.instancesCount > 0 ? ` (${a.instancesCount})` : ""}
                       </option>
                     ))}
                   </select>,

@@ -1,7 +1,6 @@
 import { useRequest } from "ahooks";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { useMetaAgent } from "@/src/hooks/useMetaAgent";
@@ -15,19 +14,23 @@ export interface UseWorkflowMetaAgentParams {
 }
 
 /**
- * agent 节点下拉项。
+ * Agent 节点下拉项。
  *
- * 这里展示的是"智能体"（AgentConfig）维度，与左侧 AgentSidebar 一致；
- * 但 yaml 里 agent 节点的 `agent` 字段语义是 environment 名字（运行时按 envName 解析，
- * 见 src/services/workflow/index.ts 的 ChannelFactory），所以选中后写入 yaml 的实际是 envName。
- * 没有绑定 environment 的智能体 envName 为 null，前端需要禁选。
+ * 从环境（Environment）维度构建选项，每个环境是一个独立的运行时实例。
+ * 选中后写入 yaml 的 `agent` 字段值为环境名称（environment.name），
+ * 运行时由 ChannelFactory 按 envName 解析到对应环境。
  */
 export interface AgentNodeOption {
-  /** AgentConfig 名称，仅用于展示 */
-  name: string;
-  description: string | null;
-  /** 该智能体绑定的 environment 名；null 表示未绑定，运行时无法解析 */
-  envName: string | null;
+  /** Environment ID，作为列表项的 key */
+  envId: string;
+  /** Environment name，写入 YAML `agent` 字段的值 */
+  envName: string;
+  /** Agent 配置名称，UI 展示用 */
+  agentName: string;
+  /** Environment 当前状态（idle / running） */
+  status: string;
+  /** Environment 实例数量 */
+  instancesCount: number;
 }
 
 export interface UseWorkflowMetaAgentReturn {
@@ -68,31 +71,23 @@ export function useWorkflowMetaAgent({
 
   const [agentOverrideOpen, setAgentOverrideOpen] = useState(false);
 
-  // 并行拉 AgentConfig 列表（智能体）+ environment 列表，建立 AgentConfig → envName 映射。
-  // 与左侧 AgentSidebarTree 的数据组装方式一致：过滤掉内置智能体，每个智能体关联到绑定的 environment。
+  // 从环境列表构建 agent 节点选项（每个环境视为一个独立的 agent 实例可选项）。
+  // 环境 API 响应已包含 agentName 字段（LEFT JOIN agentConfig），无需额外拉取 agent 配置。
   const { data: agentList = [] } = useRequest(
     async () => {
-      const [agentsResult, envsResult] = await Promise.all([unwrap(agentApi.list()), unwrap(envApi.list())]);
-
-      // agentConfigId → environment.name，用于把"智能体"翻译成 yaml 需要的 envName
-      const envNameByConfigId = new Map<string, string>();
-      for (const env of envsResult as Record<string, unknown>[]) {
-        const configId = env.agent_config_id as string | undefined;
-        if (configId) {
-          envNameByConfigId.set(configId, env.name as string);
-        }
-      }
-
-      return agentsResult.agents
-        .filter((a) => !a.builtIn)
-        .map((a) => ({
-          name: a.name,
-          description: a.description ?? null,
-          envName: envNameByConfigId.get(a.id) ?? null,
+      const envsResult = await unwrap(envApi.list());
+      return (envsResult as Record<string, unknown>[])
+        .filter((env) => env.agentName) // 只保留已绑定 Agent 配置的环境
+        .map((env) => ({
+          envId: env.id as string,
+          envName: env.name as string,
+          agentName: env.agentName as string,
+          status: (env.status as string) ?? "idle",
+          instancesCount: (env.instancesCount as number) ?? 0,
         }));
     },
     {
-      onError: (err: unknown) => console.error("Failed to load agent list:", err),
+      onError: (err: unknown) => console.error("Failed to load environment list:", err),
     },
   );
 

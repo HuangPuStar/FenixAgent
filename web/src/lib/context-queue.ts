@@ -19,6 +19,11 @@ export function clearContextQueue(): void {
   contextQueue.clear();
 }
 
+/** 返回当前队列快照（不清空），供快捷键调试输出 */
+export function dumpContext(): Record<string, string> {
+  return Object.fromEntries(contextQueue);
+}
+
 const SYSTEM_REMINDER_OPEN = "<system-reminder>";
 const SYSTEM_REMINDER_CLOSE = "</system-reminder>";
 
