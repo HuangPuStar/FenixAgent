@@ -156,9 +156,24 @@ export async function createTaskV2(
   return { success: true, data: result };
 }
 
-export async function listTasksV2(organizationId: string): Promise<ServiceSuccess<TaskV2Response[]>> {
-  const rows = await scheduledTaskV2Repo.listByOrganization(organizationId);
-  return { success: true, data: rows.map(sanitizeTask) };
+export async function listTasksV2(
+  organizationId: string,
+  page = 1,
+  pageSize = 20,
+  opts?: { keyword?: string; type?: string },
+): Promise<ServiceSuccess<{ items: TaskV2Response[]; total: number; page: number; pageSize: number }>> {
+  const safePage = Math.max(1, Math.floor(page));
+  const safePageSize = Math.min(100, Math.max(1, Math.floor(pageSize)));
+  const { rows, total } = await scheduledTaskV2Repo.listByOrganizationPaged(
+    organizationId,
+    safePage,
+    safePageSize,
+    opts,
+  );
+  return {
+    success: true,
+    data: { items: rows.map(sanitizeTask), total: Number(total), page: safePage, pageSize: safePageSize },
+  };
 }
 
 export async function getTaskV2(organizationId: string, taskId: string): Promise<ServiceResult<TaskV2Response>> {

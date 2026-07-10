@@ -1,6 +1,6 @@
 import { useRequest } from "ahooks";
-import { Calendar, FileText, Pencil, Play, Plus, Power, Search, Trash2 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Calendar, ChevronLeft, ChevronRight, FileText, Pencil, Play, Plus, Power, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { z } from "zod/v4";
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { agentApi } from "@/src/api/agents";
+import type { PaginatedResponse } from "@/src/api/request";
 import { unwrap } from "@/src/api/request";
 import type {
   AgentDefinition,
@@ -95,15 +96,12 @@ function statusVariant(status: string | null): "default" | "destructive" | "outl
 
 function formatTime(ts: number | null | undefined): string {
   if (ts == null) return "—";
-  return new Date(ts * 1000).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const d = new Date(ts * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// ── 默认表单值 ──
+// ── 默认表单值 / 转换 ──
 
 const INITIAL_FORM_VALUES: TaskFormValues = {
   type: "http",
@@ -140,27 +138,44 @@ function taskToFormValues(task: TaskV2Info): TaskFormValues {
 
 // ── 组件 ──
 
+const DEFAULT_PAGE_SIZE = 20;
+
 export function AgentTasksPage() {
   const { t } = useTranslation(NS.TASKS_V2);
 
-  // ── 数据加载 ──
+  // ── 筛选 + 分页状态 ──
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "http" | "agent">("all");
+  const [page, setPage] = useState(1);
+
+  // 筛选条件变化时回到第一页
+  useEffect(() => {
+    setPage(1);
+  }, [searchKeyword, typeFilter]);
+
+  // ── 数据加载（服务端分页） ──
   const {
-    data: listData,
+    data: pageData,
     loading,
     refresh,
   } = useRequest(
     async () => {
-      const taskResult = await unwrap(taskV2Api.list({ pageSize: 1000 }));
-      return Array.isArray(taskResult) ? taskResult : [];
+      const keyword = searchKeyword.trim() || undefined;
+      const type = typeFilter !== "all" ? typeFilter : undefined;
+      const result = await unwrap(taskV2Api.list({ page, pageSize: DEFAULT_PAGE_SIZE, keyword, type }));
+      return result as unknown as PaginatedResponse<TaskV2Info>;
     },
     {
+      refreshDeps: [page, searchKeyword, typeFilter],
       onError: (err: Error) => {
         console.error("task list load failed", err);
         toast.error(err.message);
       },
     },
   );
-  const tasks: TaskV2Info[] = listData ?? [];
+  const tasks: TaskV2Info[] = pageData?.items ?? [];
+  const totalTasks = pageData?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalTasks / DEFAULT_PAGE_SIZE));
 
   // Agent 列表独立加载，失败不影响任务列表
   const { data: agentListData } = useRequest(
@@ -175,18 +190,6 @@ export function AgentTasksPage() {
     },
   );
   const agents: AgentInfo[] = agentListData ?? [];
-
-  // ── 筛选状态 ──
-  const [searchKeyword, setSearchKeyword] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "http" | "agent">("all");
-
-  const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      if (typeFilter !== "all" && task.type !== typeFilter) return false;
-      if (searchKeyword && !task.name.toLowerCase().includes(searchKeyword.toLowerCase())) return false;
-      return true;
-    });
-  }, [tasks, searchKeyword, typeFilter]);
 
   // ── 对话框状态 ──
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -244,7 +247,6 @@ export function AgentTasksPage() {
       onSuccess: () => {
         toast.success(isEditingRef.current ? t("toast.updated") : t("toast.created"));
         setDialogOpen(false);
-        // 延迟刷新以等待 dialog 关闭和 DB 写入完成
         setTimeout(() => refresh(), 100);
       },
       onError: (err: Error) => {
@@ -434,31 +436,56 @@ export function AgentTasksPage() {
       {/* ── 任务卡片列表 ── */}
       {tasks.length === 0 ? (
         <EmptyState icon={<Calendar className="w-10 h-10" />} title={t("empty")} description={t("subtitle")} />
-      ) : filteredTasks.length === 0 ? (
-        <EmptyState
-          icon={<Calendar className="w-10 h-10" />}
-          title={t("emptySearchResult")}
-          description={t("subtitle")}
-        />
       ) : (
-        <div className="space-y-3">
-          {filteredTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              t={t}
-              triggeringTaskId={triggeredTasks}
-              onToggle={() => runToggle(task.id)}
-              onTrigger={() => {
-                setTriggeredTasks((prev) => new Set(prev).add(task.id));
-                runTrigger(task.id);
-              }}
-              onEdit={() => handleOpenEdit(task)}
-              onDelete={() => handleDeleteClick(task)}
-              onViewLogs={() => handleViewLogs(task)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {tasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                t={t}
+                triggeringTaskId={triggeredTasks}
+                onToggle={() => runToggle(task.id)}
+                onTrigger={() => {
+                  setTriggeredTasks((prev) => new Set(prev).add(task.id));
+                  runTrigger(task.id);
+                }}
+                onEdit={() => handleOpenEdit(task)}
+                onDelete={() => handleDeleteClick(task)}
+                onViewLogs={() => handleViewLogs(task)}
+              />
+            ))}
+          </div>
+
+          {/* ── 分页控件 ── */}
+          {totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                <ChevronLeft className="mr-1 size-3" />
+                {t("log.prev")}
+              </Button>
+              <span className="text-xs text-text-muted">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                {t("log.next")}
+                <ChevronRight className="ml-1 size-3" />
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {/* ── 创建/编辑表单 ── */}

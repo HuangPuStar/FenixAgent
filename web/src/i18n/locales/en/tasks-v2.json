@@ -39,8 +39,8 @@
   },
   "dialog": {
     "createTitle": "Create Task",
-    "editTitle": "Edit Task \"{name}\"",
-    "deleteConfirm": "Delete task \"{name}\"? This cannot be undone.",
+    "editTitle": "Edit Task \"{{name}}\"",
+    "deleteConfirm": "Delete task \"{{name}}\"? This cannot be undone.",
     "clearLogsConfirm": "Clear all execution logs?"
   },
   "form": {
@@ -69,16 +69,17 @@
   "empty": "No scheduled tasks",
   "emptySearchResult": "No matching tasks",
   "log": {
-    "title": "Execution Logs - {name}",
+    "title": "Execution Logs - {{name}}",
     "time": "Time",
     "triggeredBy": "Trigger",
     "status": "Status",
     "duration": "Duration",
     "result": "Result",
     "empty": "No execution records",
-    "total": "{count} total",
+    "total": "{{count}} total",
     "prev": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "noResult": "-"
   },
   "toast": {
     "created": "Task created",
@@ -88,7 +89,7 @@
     "triggered": "Task triggered",
     "logsCleared": "Logs cleared",
     "saveFailed": "Save failed",
-    "triggerResult": "Execution {status}, took {duration}s"
+    "triggerResult": "Execution {{status}}, took {{duration}}s"
   },
   "error": {
     "invalidHeaders": "Headers is not valid JSON",

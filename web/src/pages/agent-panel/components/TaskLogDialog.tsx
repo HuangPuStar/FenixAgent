@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,15 +20,17 @@ interface TaskLogDialogProps {
   refreshKey?: number;
 }
 
+/** createdAt 为 Unix 秒级时间戳，后端 toUnixTimestamp 输出 */
+function formatTime(timestamp: number): string {
+  const d = new Date(timestamp * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** 耗时格式化，单位语言无关，直接拼接 */
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
-}
-
-function formatTime(timestamp: number): string {
-  const d = new Date(timestamp);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function TaskLogDialog({ open, onOpenChange, taskId, taskName, onClearLogs, refreshKey }: TaskLogDialogProps) {
@@ -98,7 +100,9 @@ export function TaskLogDialog({ open, onOpenChange, taskId, taskName, onClearLog
                     <TableCell>
                       <LogStatusBadge status={log.status} />
                     </TableCell>
-                    <TableCell className="text-xs">{formatDuration(log.duration)}</TableCell>
+                    <TableCell className="text-xs">
+                      {log.duration != null ? formatDuration(log.duration) : t("log.noResult")}
+                    </TableCell>
                     <TableCell className="max-w-[200px]">
                       <div className="truncate text-xs">
                         {log.error ? (
@@ -106,7 +110,7 @@ export function TaskLogDialog({ open, onOpenChange, taskId, taskName, onClearLog
                         ) : log.skipReason ? (
                           <span className="text-text-muted">{log.skipReason}</span>
                         ) : (
-                          log.resultSummary || "-"
+                          log.resultSummary || t("log.noResult")
                         )}
                       </div>
                     </TableCell>
@@ -164,13 +168,16 @@ export function TaskLogDialog({ open, onOpenChange, taskId, taskName, onClearLog
 
 function LogStatusBadge({ status }: { status: string }) {
   const { t } = useTranslation(NS.TASKS_V2);
-  const labelMap: Record<string, string> = {
-    success: t("status.success"),
-    failed: t("status.failed"),
-    timeout: t("status.timeout"),
-    skipped: t("status.skipped"),
-    pending: t("status.pending"),
-  };
+  const labelMap = useMemo<Record<string, string>>(
+    () => ({
+      success: t("status.success"),
+      failed: t("status.failed"),
+      timeout: t("status.timeout"),
+      skipped: t("status.skipped"),
+      pending: t("status.pending"),
+    }),
+    [t],
+  );
   const variant: "default" | "destructive" | "secondary" =
     status === "success" ? "default" : status === "failed" || status === "timeout" ? "destructive" : "secondary";
   return (

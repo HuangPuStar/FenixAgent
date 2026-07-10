@@ -39,8 +39,8 @@
   },
   "dialog": {
     "createTitle": "创建任务",
-    "editTitle": "编辑任务「{name}」",
-    "deleteConfirm": "确定删除任务「{name}」？此操作不可撤销。",
+    "editTitle": "编辑任务「{{name}}」",
+    "deleteConfirm": "确定删除任务「{{name}}」？此操作不可撤销。",
     "clearLogsConfirm": "确定清空所有执行日志？"
   },
   "form": {
@@ -69,16 +69,17 @@
   "empty": "暂无定时任务",
   "emptySearchResult": "没有匹配的任务",
   "log": {
-    "title": "执行日志 - {name}",
+    "title": "执行日志 - {{name}}",
     "time": "时间",
     "triggeredBy": "触发方式",
     "status": "状态",
     "duration": "耗时",
     "result": "结果",
     "empty": "暂无执行记录",
-    "total": "共 {count} 条",
+    "total": "共 {{count}} 条",
     "prev": "上一页",
-    "next": "下一页"
+    "next": "下一页",
+    "noResult": "-"
   },
   "toast": {
     "created": "任务创建成功",
@@ -88,7 +89,7 @@
     "triggered": "任务已手动触发",
     "logsCleared": "日志已清空",
     "saveFailed": "保存失败",
-    "triggerResult": "执行{status}，耗时 {duration}s"
+    "triggerResult": "执行{{status}}，耗时 {{duration}}s"
   },
   "error": {
     "invalidHeaders": "Headers 不是有效的 JSON 格式",

@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { WebOkSchema } from "./common.schema";
+import { PaginationParamsSchema, WebOkSchema } from "./common.schema";
 
 // ── Definition 子 schema ──
 
@@ -78,7 +78,20 @@ export const ExecutionLogV2InfoSchema = z.object({
 // ── 响应 ──
 
 export const TaskV2ResponseSchema = WebOkSchema(TaskV2InfoSchema.describe("任务详情"));
-export const TaskV2ListResponseSchema = WebOkSchema(TaskV2InfoSchema.array().describe("任务列表"));
+export const TaskV2ListResponseSchema = WebOkSchema(
+  z.object({
+    items: TaskV2InfoSchema.array().describe("当前页任务列表"),
+    total: z.number().describe("总任务数"),
+    page: z.number().describe("当前页码"),
+    pageSize: z.number().describe("每页条数"),
+  }),
+);
+
+/** GET /tasks/v2 — 列表查询参数 */
+export const TaskV2ListQuerySchema = PaginationParamsSchema.extend({
+  keyword: z.string().optional().describe("按任务名称模糊搜索"),
+  type: z.enum(["http", "agent"]).optional().describe("按类型筛选"),
+});
 
 export const TriggerV2ResponseSchema = WebOkSchema(
   z.object({

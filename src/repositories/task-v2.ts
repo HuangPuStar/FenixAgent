@@ -1,8 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ilike, sql } from "drizzle-orm";
 import { db } from "../db";
 import type { ScheduledTaskV2Insert, ScheduledTaskV2Row } from "../db/schema";
-import { scheduledTaskV2, taskExecutionLog } from "../db/schema";
-import type { TaskExecutionLogInsert, TaskExecutionLogRow } from "./task";
+import { scheduledTaskV2 } from "../db/schema";
 
 export type { ScheduledTaskV2Insert, ScheduledTaskV2Row };
 
@@ -10,6 +9,12 @@ export type { ScheduledTaskV2Insert, ScheduledTaskV2Row };
 
 export interface IScheduledTaskV2Repo {
   listByOrganization(organizationId: string): Promise<ScheduledTaskV2Row[]>;
+  listByOrganizationPaged(
+    organizationId: string,
+    page: number,
+    pageSize: number,
+    opts?: { keyword?: string; type?: string },
+  ): Promise<{ rows: ScheduledTaskV2Row[]; total: number }>;
   getByOrgAndId(organizationId: string, taskId: string): Promise<ScheduledTaskV2Row | null>;
   getById(taskId: string): Promise<ScheduledTaskV2Row | null>;
   create(data: ScheduledTaskV2Insert): Promise<ScheduledTaskV2Row>;
@@ -25,6 +30,30 @@ class PgScheduledTaskV2Repo implements IScheduledTaskV2Repo {
       .from(scheduledTaskV2)
       .where(eq(scheduledTaskV2.organizationId, organizationId))
       .orderBy(desc(scheduledTaskV2.createdAt));
+  }
+
+  async listByOrganizationPaged(
+    organizationId: string,
+    page: number,
+    pageSize: number,
+    opts?: { keyword?: string; type?: string },
+  ) {
+    const where = [eq(scheduledTaskV2.organizationId, organizationId)];
+    if (opts?.keyword) where.push(ilike(scheduledTaskV2.name, `%${opts.keyword}%`));
+    if (opts?.type) where.push(eq(scheduledTaskV2.type, opts.type));
+
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(scheduledTaskV2)
+      .where(and(...where));
+    const rows = await db
+      .select()
+      .from(scheduledTaskV2)
+      .where(and(...where))
+      .orderBy(desc(scheduledTaskV2.createdAt))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+    return { rows, total };
   }
 
   async getByOrgAndId(organizationId: string, taskId: string) {

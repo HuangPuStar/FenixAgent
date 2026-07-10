@@ -35,7 +35,8 @@
     "createConfirm": "Create",
     "tabs": {
       "basic": "Basic",
-      "knowledge": "Knowledge Base"
+      "knowledge": "Knowledge Base",
+      "advanced": "Advanced"
     }
   },
   "templates": {
@@ -74,7 +75,10 @@
     "hidden": "Hidden",
     "hiddenTitle": "Hidden from agent list, but still callable via API",
     "disable": "Disabled",
-    "disableTitle": "Agent is completely unavailable, cannot be used in UI or API"
+    "disableTitle": "Agent is completely unavailable, cannot be used in UI or API",
+    "extraLabel": "Extra Config (JSON)",
+    "extraPlaceholder": "Optional, extra config in JSON format, e.g. {\"plugin\": {\"name\": \"...\"}}",
+    "extraValidationError": "Invalid JSON format for extra config"
   },
   "knowledge": {
     "bindTitle": "Bind Knowledge Bases",

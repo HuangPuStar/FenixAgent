@@ -35,7 +35,8 @@
     "createConfirm": "创建",
     "tabs": {
       "basic": "基础",
-      "knowledge": "知识库"
+      "knowledge": "知识库",
+      "advanced": "高级配置"
     }
   },
   "templates": {
@@ -74,7 +75,10 @@
     "hidden": "隐藏",
     "hiddenTitle": "不在 Agent 列表中显示，但仍可通过 API 调用",
     "disable": "禁用",
-    "disableTitle": "Agent 完全不可用，无法在界面或 API 中使用"
+    "disableTitle": "Agent 完全不可用，无法在界面或 API 中使用",
+    "extraLabel": "扩展配置 (JSON)",
+    "extraPlaceholder": "可选，JSON 格式的扩展配置，例如 {\"plugin\": {\"name\": \"...\"}}",
+    "extraValidationError": "扩展配置 JSON 格式无效"
   },
   "knowledge": {
     "bindTitle": "绑定知识库",

@@ -48,7 +48,7 @@ export interface ExecutionLogInfo {
   taskId: string;
   status: "success" | "failed" | "timeout" | "skipped";
   triggeredBy: "cron" | "manual";
-  duration: number;
+  duration: number | null;
   resultSummary: string | null;
   skipReason: string | null;
   error: string | null;
@@ -57,7 +57,7 @@ export interface ExecutionLogInfo {
 
 export const taskV2Api = {
   list: (query?: { page?: number; pageSize?: number; keyword?: string; type?: string }) =>
-    request<TaskV2Info[]>("/web/tasks/v2", { query }),
+    request<PaginatedResponse<TaskV2Info>>("/web/tasks/v2", { query }),
 
   get: (id: string) => request<TaskV2Info>("/web/tasks/v2/:id", { params: { id } }),
 
@@ -68,7 +68,8 @@ export const taskV2Api = {
 
   del: (id: string) => request<void>("/web/tasks/v2/:id", { method: "DELETE", params: { id } }),
 
-  toggle: (id: string) => request<TaskV2Info>("/web/tasks/v2/:id/toggle", { method: "POST", params: { id } }),
+  toggle: (id: string) =>
+    request<{ id: string; enabled: boolean }>("/web/tasks/v2/:id/toggle", { method: "POST", params: { id } }),
 
   trigger: (id: string) =>
     request<{ status: string; duration: number; resultSummary?: string }>("/web/tasks/v2/:id/trigger", {

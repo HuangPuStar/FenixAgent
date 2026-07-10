@@ -61,14 +61,23 @@ async function safeTaskOp<T>(
 // ── GET /tasks/v2 ──
 app.get(
   "/tasks/v2",
-  async ({ store }: any) => {
+  async ({ store, query }: any) => {
     const authCtx = store.authContext!;
-    return await listTasksV2(authCtx.organizationId);
+    const q = query as Record<string, string | undefined>;
+    const page = Number(q.page) || 1;
+    const pageSize = Number(q.pageSize) || 20;
+    const keyword = q.keyword || undefined;
+    const type = q.type || undefined;
+    return await listTasksV2(authCtx.organizationId, page, pageSize, { keyword, type });
   },
   {
     sessionAuth: true,
     response: "task-v2-list-response",
-    detail: { tags: ["Tasks V2"], summary: "获取任务列表", description: "返回当前组织下的定时任务列表。" },
+    detail: {
+      tags: ["Tasks V2"],
+      summary: "获取任务列表",
+      description: "分页返回当前组织下的定时任务列表，支持按名称 keyword 和类型 type 筛选。page/pageSize 默认 1/20。",
+    },
   },
 );
 
