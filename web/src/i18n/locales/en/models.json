@@ -46,6 +46,7 @@
   "batchDeleteError": "Batch delete failed: {{message}}",
   "saveProvider": {
     "errorGeneric": "Save failed: {{message}}",
+    "duplicateName": "Provider \"{{name}}\" already exists, please use a different name",
     "successCreate": "Provider created",
     "successUpdate": "Provider updated"
   },

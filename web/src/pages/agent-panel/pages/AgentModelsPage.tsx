@@ -208,7 +208,7 @@ export function AgentModelsPage() {
     return `${t("form.noModelsFound")}\n\n${t("form.noModelsHint")}`;
   };
 
-  // Provider 保存（创建/更新）：仅创建时 toast 提示
+  // Provider 保存：走 PUT upsert，新建同名由 handleSave 前置拦截
   const { run: runSave, loading: saving } = useRequest(
     async (name: string, data: Record<string, unknown>, selectedModels: Set<string>) => {
       await unwrap(providerApi.set(name, data as Record<string, unknown>));
@@ -234,7 +234,11 @@ export function AgentModelsPage() {
       },
       onError: (err: Error) => {
         console.error(t("saveProvider.errorGeneric", { message: "" }), err);
-        toast.error(t("saveProvider.errorGeneric", { message: err.message }));
+        if (err instanceof ApiError && err.code === "ALREADY_EXISTS") {
+          toast.error(t("saveProvider.duplicateName", { name: formName }));
+        } else {
+          toast.error(t("saveProvider.errorGeneric", { message: err.message }));
+        }
       },
     },
   );
@@ -426,6 +430,11 @@ export function AgentModelsPage() {
   const handleSave = () => {
     if (!formName.trim()) {
       toast.error(t("validation.nameEmpty"));
+      return;
+    }
+    // 新建时检查同名
+    if (!editingProvider && providers.some((p) => p.id === formName)) {
+      toast.error(t("saveProvider.duplicateName", { name: formName }));
       return;
     }
     const data: Record<string, unknown> = {};
