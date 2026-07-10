@@ -46,7 +46,7 @@ app.post(
     try {
       const result = await openAgentSession({
         userId: authCtx.userId,
-        agentId,
+        agentConfigId: agentId,
         organizationId: authCtx.organizationId,
         sessionId,
       });

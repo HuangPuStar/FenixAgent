@@ -27,8 +27,10 @@ function extractPlainText(events: Array<{ type: string; payload?: unknown }>): s
       const update = params?.update as Record<string, unknown> | undefined;
       if (!update) continue;
 
-      const chunk = update.agent_message_chunk as Record<string, unknown> | undefined;
-      if (chunk && typeof chunk.text === "string") lines.push(chunk.text);
+      // sessionUpdate 是事件类型，content 是实际内容
+      if (update.sessionUpdate !== "agent_message_chunk") continue;
+      const content = update.content as Record<string, unknown> | undefined;
+      if (content && typeof content.text === "string") lines.push(content.text);
     }
   }
   const text = lines.join("").trim();
@@ -49,7 +51,7 @@ export const agentExecutor: TaskExecutor = {
 
     const result = await openAgentSession({
       userId: task.userId,
-      agentId: task.agentId,
+      agentConfigId: task.agentId,
       organizationId: task.organizationId,
     });
 
