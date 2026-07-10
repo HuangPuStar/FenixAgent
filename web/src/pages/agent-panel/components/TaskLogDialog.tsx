@@ -62,7 +62,7 @@ export function TaskLogDialog({ open, onOpenChange, taskId, taskName, onClearLog
   // 清空日志后重置分页
   useEffect(() => {
     setPage(1);
-  }, [refreshKey]);
+  }, []);
 
   // 前端本地过滤
   const filteredItems = useMemo(() => {

@@ -178,7 +178,7 @@ export function AgentTasksPage() {
   // 筛选条件变化时回到第一页
   useEffect(() => {
     setPage(1);
-  }, [searchKeyword, typeFilter]);
+  }, []);
 
   // ── 数据加载（服务端分页） ──
   const {

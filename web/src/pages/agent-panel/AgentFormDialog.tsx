@@ -146,6 +146,7 @@ interface LoadedFormData {
     mcpIds: string[];
     siteAppIds: string[];
     enableMemory: boolean;
+    extra: unknown | null;
   };
 }
 

@@ -1,14 +1,6 @@
 import imageCompression from "browser-image-compression";
 import { Paperclip, Send, Sparkles, Square } from "lucide-react";
-import {
-  type ClipboardEvent,
-  type DragEvent,
-  type KeyboardEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { ACPClient } from "../../src/acp/client";

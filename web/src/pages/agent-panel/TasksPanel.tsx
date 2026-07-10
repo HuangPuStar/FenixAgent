@@ -43,12 +43,6 @@ function formatTime(timestamp: number): string {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** 耗时格式化 */
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
 export function TasksPanel({ agentId }: TasksPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const taskT = useTranslation(NS.TASKS_V2).t;
@@ -246,7 +240,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       {/* ── 下半部分：日志区 ── */}
       <div className="flex-1 min-h-0 border-t border-border/40 flex flex-col">
         {selectedTask ? (
-          <TaskLogView taskId={selectedTask.id} taskName={selectedTask.name} t={taskT} />
+          <TaskLogView key={selectedTask.id} taskId={selectedTask.id} taskName={selectedTask.name} t={taskT} />
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-xs text-text-muted">选择上方任务查看日志</p>
@@ -282,11 +276,6 @@ function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
   );
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
-
-  // taskId 变化时重置分页
-  useEffect(() => {
-    setPage(1);
-  }, [taskId]);
 
   return (
     <>

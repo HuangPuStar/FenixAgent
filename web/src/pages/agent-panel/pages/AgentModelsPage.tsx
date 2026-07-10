@@ -39,7 +39,7 @@ function getErrorDataRecord(data: unknown): Record<string, unknown> {
 }
 
 function getReadableErrorDetail(data: unknown): string | undefined {
-  if (typeof data !== "string" || !data) return undefined;
+  if (typeof data !== "string" || !data) return;
 
   try {
     const parsed = JSON.parse(data) as { message?: unknown };

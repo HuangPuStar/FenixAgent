@@ -40,7 +40,7 @@ export function describeCron(cron: string, t: (key: string) => string): string |
   if (hour !== "*" && day === "*" && month === "*" && weekday !== "*") {
     const h = Number.parseInt(hour, 10);
     const days = ["日", "一", "二", "三", "四", "五", "六"];
-    if (!Number.isNaN(h) && /^[\d,\-]+$/.test(weekday)) {
+    if (!Number.isNaN(h) && /^[\d,-]+$/.test(weekday)) {
       const dayNums = weekday.includes("-") ? [weekday] : weekday.split(",");
       const dayNames = dayNums.flatMap((d) => {
         if (d.includes("-")) {

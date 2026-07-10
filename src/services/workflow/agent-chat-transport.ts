@@ -64,11 +64,9 @@ function extractSessionUpdate(rpc: Record<string, unknown>): Record<string, unkn
  */
 class AgentChatSessionAdapter implements AgentSession {
   private readonly turn: PromptTurn;
-  private readonly chatSession: ChatAgentSession;
 
-  constructor(turn: PromptTurn, chatSession: ChatAgentSession) {
+  constructor(turn: PromptTurn, _chatSession: ChatAgentSession) {
     this.turn = turn;
-    this.chatSession = chatSession;
   }
 
   async execute(request: AgentRequest): Promise<AgentResponse> {
