@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { CheckCircle2, Plus, Search, X, XCircle } from "lucide-react";
+import { CheckCircle2, LoaderCircle, Plus, Search, X, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -699,6 +699,15 @@ export function AgentModelsPage() {
           const brandColor = getProviderColor(provider.id);
           const sourceName = provider.resourceAccess?.sourceOrganizationName;
           const hasModels = models.length > 0;
+          // 当前卡片是否有模型在测试中
+          const testingPrefix = `${providerKey}:`;
+          const testingModelId = testingModelKey?.startsWith(testingPrefix)
+            ? testingModelKey.slice(testingPrefix.length)
+            : null;
+          // 当前卡片展示的通知条类型
+          const notifyResult = modelTestResult?.providerId === providerKey ? modelTestResult : null;
+          const notifyTesting = testingModelId ? { modelId: testingModelId } : null;
+          const notifyActive = notifyResult || notifyTesting;
 
           return (
             <div
@@ -822,41 +831,63 @@ export function AgentModelsPage() {
 
               {/* ── 操作栏 + 通知条 ── */}
               <div className="mt-auto border-t border-border-subtle bg-surface-0">
-                {/* 模型测试结果通知条 */}
-                {modelTestResult?.providerId === providerKey && (
-                  <div
-                    className={`flex items-center gap-2 px-4 py-1.5 text-[11px] border-b border-border-subtle animate-in slide-in-from-top-2 fade-in duration-200 ${
-                      modelTestResult.ok ? "bg-emerald-50/70" : "bg-red-50/70"
-                    }`}
-                    title={
-                      modelTestResult.ok ? modelTestResult.content || undefined : modelTestResult.error || undefined
-                    }
-                  >
-                    <span
-                      className={`flex items-center gap-1.5 min-w-0 flex-1 ${modelTestResult.ok ? "text-emerald-700" : "text-red-600"}`}
+                {/* 测试中 / 结果通知条 — 始终占位避免卡片窜动 */}
+                <div
+                  className={`border-b border-border-subtle text-[11px] transition-all duration-200 ${
+                    notifyActive ? "" : "invisible border-b-0"
+                  }`}
+                >
+                  {notifyActive ? (
+                    <div
+                      className={`flex items-center gap-2 px-4 py-1.5 animate-in slide-in-from-top-2 fade-in duration-200 ${
+                        notifyTesting ? "bg-blue-50/70" : notifyResult!.ok ? "bg-emerald-50/70" : "bg-red-50/70"
+                      }`}
+                      title={
+                        notifyResult
+                          ? notifyResult.ok
+                            ? notifyResult.content || undefined
+                            : notifyResult.error || undefined
+                          : undefined
+                      }
                     >
-                      {modelTestResult.ok ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+                      {notifyTesting ? (
+                        <span className="flex items-center gap-1.5 min-w-0 flex-1 text-blue-600">
+                          <LoaderCircle className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+                          <span className="font-medium flex-shrink-0">{t("testDialog.modelTesting")}</span>
+                          <span className="font-mono text-text-muted truncate">{notifyTesting.modelId}</span>
+                        </span>
                       ) : (
-                        <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        <>
+                          <span
+                            className={`flex items-center gap-1.5 min-w-0 flex-1 ${notifyResult!.ok ? "text-emerald-700" : "text-red-600"}`}
+                          >
+                            {notifyResult!.ok ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+                            ) : (
+                              <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                            )}
+                            <span className="font-medium flex-shrink-0">
+                              {notifyResult!.ok ? t("testDialog.modelTestPassed") : t("testDialog.modelTestFailed")}
+                            </span>
+                            <span className="font-mono text-text-muted truncate">{notifyResult!.modelId}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setModelTestResult(null);
+                            }}
+                            className="flex-shrink-0 text-text-muted hover:text-text-primary transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </>
                       )}
-                      <span className="font-medium flex-shrink-0">
-                        {modelTestResult.ok ? t("testDialog.modelTestPassed") : t("testDialog.modelTestFailed")}
-                      </span>
-                      <span className="font-mono text-text-muted truncate">{modelTestResult.modelId}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setModelTestResult(null);
-                      }}
-                      className="flex-shrink-0 text-text-muted hover:text-text-primary transition-colors"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-1.5">&nbsp;</div>
+                  )}
+                </div>
                 <div className="flex items-center gap-3 px-4 py-2 text-[11px]">
                   {writable ? (
                     <>

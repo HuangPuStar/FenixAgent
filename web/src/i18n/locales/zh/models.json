@@ -89,6 +89,7 @@
     "testError": "测试失败",
     "modelTestPassed": "测试通过",
     "modelTestFailed": "测试失败",
+    "modelTesting": "测试中",
     "modelTestResponse": "模型响应",
     "modelTestError": "错误详情",
     "errors": {

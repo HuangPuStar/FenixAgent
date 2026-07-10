@@ -89,6 +89,7 @@
     "testError": "Test failed",
     "modelTestPassed": "Test Passed",
     "modelTestFailed": "Test Failed",
+    "modelTesting": "Testing",
     "modelTestResponse": "Model Response",
     "modelTestError": "Error Details",
     "errors": {
