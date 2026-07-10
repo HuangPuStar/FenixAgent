@@ -305,22 +305,23 @@ async function testAnthropicProvider(baseUrl: string, apiKey: string, signal: Ab
   return configSuccess({ models });
 }
 
+/** 从模型响应中尽量提取文本内容，仅用于展示，不影响测试结果 */
 function extractMessageText(content: unknown): string {
   if (typeof content === "string") return content.trim();
   if (!Array.isArray(content)) return "";
-
   return content
     .flatMap((part) => {
       if (typeof part === "string") return [part];
-      if (typeof part === "object" && part !== null && "text" in part && typeof part.text === "string") {
-        return [part.text];
-      }
+      if (typeof part !== "object" || part === null) return [];
+      if ("text" in part && typeof part.text === "string") return [part.text];
+      if ("content" in part && typeof part.content === "string") return [part.content];
       return [];
     })
     .join("\n")
     .trim();
 }
 
+/** 模型连通性测试：发一条简单消息，HTTP 2xx 即视为通过 */
 async function testProviderModelMessage(
   provider: NonNullable<Awaited<ReturnType<typeof configPg.getProvider>>>,
   modelId: string,
@@ -355,13 +356,7 @@ async function testProviderModelMessage(
 
     const json = (await res.json()) as { content?: unknown };
     const content = extractMessageText(json.content);
-    if (!content) {
-      return configTestError("MODEL_TEST_MESSAGE_RESPONSE_INVALID", {
-        protocol: "anthropic",
-        reason: "empty_text",
-      });
-    }
-    return configSuccess({ ok: true, content });
+    return configSuccess({ ok: true, content: content || "" });
   }
 
   const res = await fetch(`${withVersionedBaseUrl(baseUrl)}/chat/completions`, {
@@ -387,16 +382,10 @@ async function testProviderModelMessage(
   }
 
   const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
+    choices?: Array<{ message?: { content?: unknown } }>;
   };
   const content = extractMessageText(json.choices?.[0]?.message?.content);
-  if (!content) {
-    return configTestError("MODEL_TEST_MESSAGE_RESPONSE_INVALID", {
-      protocol: "openai",
-      reason: "empty_text",
-    });
-  }
-  return configSuccess({ ok: true, content });
+  return configSuccess({ ok: true, content: content || "" });
 }
 
 async function handleFetchModels(

@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { Plus, Search } from "lucide-react";
+import { CheckCircle2, LoaderCircle, Plus, Search, X, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -26,6 +26,14 @@ type TestDialogError = {
   data?: unknown;
 };
 
+type ModelTestResult = {
+  providerId: string;
+  modelId: string;
+  ok: boolean;
+  content?: string;
+  error?: string;
+};
+
 const PROTOCOL_OPTIONS = [
   { id: "openai", labelKey: "protocolOptions.openai" },
   { id: "anthropic", labelKey: "protocolOptions.anthropic" },
@@ -39,7 +47,7 @@ function getErrorDataRecord(data: unknown): Record<string, unknown> {
 }
 
 function getReadableErrorDetail(data: unknown): string | undefined {
-  if (typeof data !== "string" || !data) return undefined;
+  if (typeof data !== "string" || !data) return;
 
   try {
     const parsed = JSON.parse(data) as { message?: unknown };
@@ -200,7 +208,7 @@ export function AgentModelsPage() {
     return `${t("form.noModelsFound")}\n\n${t("form.noModelsHint")}`;
   };
 
-  // Provider 保存（创建/更新）：仅创建时 toast 提示
+  // Provider 保存：走 PUT upsert，新建同名由 handleSave 前置拦截
   const { run: runSave, loading: saving } = useRequest(
     async (name: string, data: Record<string, unknown>, selectedModels: Set<string>) => {
       await unwrap(providerApi.set(name, data as Record<string, unknown>));
@@ -226,7 +234,11 @@ export function AgentModelsPage() {
       },
       onError: (err: Error) => {
         console.error(t("saveProvider.errorGeneric", { message: "" }), err);
-        toast.error(t("saveProvider.errorGeneric", { message: err.message }));
+        if (err instanceof ApiError && err.code === "ALREADY_EXISTS") {
+          toast.error(t("saveProvider.duplicateName", { name: formName }));
+        } else {
+          toast.error(t("saveProvider.errorGeneric", { message: err.message }));
+        }
       },
     },
   );
@@ -295,6 +307,9 @@ export function AgentModelsPage() {
     },
   );
 
+  // 模型测试结果（卡片内嵌展示，替代 toast）
+  const [modelTestResult, setModelTestResult] = useState<ModelTestResult | null>(null);
+
   // 模型连通性测试
   const { run: runTestModel } = useRequest(
     async (providerId: string, modelId: string) => {
@@ -305,23 +320,26 @@ export function AgentModelsPage() {
     {
       manual: true,
       onSuccess: ({ providerName, modelId, content }) => {
-        setFetchModelsResult({ kind: "model", providerName, modelId, content });
         setTestingModelKey(null);
+        setModelTestResult({ providerId: providerName, modelId, ok: true, content: content || undefined });
       },
       onError: (err: Error, [providerId, modelId]: [string, string]) => {
-        setFetchModelsResult({
-          kind: "model",
-          providerName: providerId,
-          modelId,
-          error:
-            err instanceof ApiError
-              ? { code: err.code, message: err.message, data: err.data }
-              : { code: "UNKNOWN_ERROR", message: err.message },
-        });
         setTestingModelKey(null);
+        const errorMsg =
+          err instanceof ApiError
+            ? formatTestError({ code: err.code, message: err.message, data: err.data })
+            : err.message;
+        setModelTestResult({ providerId, modelId, ok: false, error: errorMsg });
       },
     },
   );
+
+  // 模型测试结果 4 秒后自动消失
+  useEffect(() => {
+    if (!modelTestResult) return;
+    const timer = setTimeout(() => setModelTestResult(null), 2000);
+    return () => clearTimeout(timer);
+  }, [modelTestResult]);
 
   // 从测试结果添加模型
   const { run: runAddFromTest } = useRequest(
@@ -414,6 +432,11 @@ export function AgentModelsPage() {
       toast.error(t("validation.nameEmpty"));
       return;
     }
+    // 新建时检查同名
+    if (!editingProvider && providers.some((p) => p.id === formName)) {
+      toast.error(t("saveProvider.duplicateName", { name: formName }));
+      return;
+    }
     const data: Record<string, unknown> = {};
     if (formApiKey) data.apiKey = formApiKey;
     if (formBaseURL) data.baseURL = formBaseURL;
@@ -437,15 +460,18 @@ export function AgentModelsPage() {
     setFormFetchingModels(true);
     setFormModelsFetched(false);
     try {
-      // 统一走 inline 获取，名称仅用于兼容既有接口参数，不作为配置读取来源。
+      // 编辑且未输入新 API Key 时，不传 inline payload，走后端存储的凭证
+      const useInline = !editingProvider || formApiKey.trim().length > 0;
       const result = await unwrap(
         providerApi.fetchModels(
           formName,
-          buildProviderInlineTestPayload({
-            apiKey: formApiKey,
-            baseURL: formBaseURL,
-            protocol: formProtocol,
-          }),
+          useInline
+            ? buildProviderInlineTestPayload({
+                apiKey: formApiKey,
+                baseURL: formBaseURL,
+                protocol: formProtocol,
+              })
+            : undefined,
         ),
       );
       const r = result as unknown as Record<string, unknown>;
@@ -682,6 +708,15 @@ export function AgentModelsPage() {
           const brandColor = getProviderColor(provider.id);
           const sourceName = provider.resourceAccess?.sourceOrganizationName;
           const hasModels = models.length > 0;
+          // 当前卡片是否有模型在测试中
+          const testingPrefix = `${providerKey}:`;
+          const testingModelId = testingModelKey?.startsWith(testingPrefix)
+            ? testingModelKey.slice(testingPrefix.length)
+            : null;
+          // 当前卡片展示的通知条类型
+          const notifyResult = modelTestResult?.providerId === providerKey ? modelTestResult : null;
+          const notifyTesting = testingModelId ? { modelId: testingModelId } : null;
+          const notifyActive = notifyResult || notifyTesting;
 
           return (
             <div
@@ -718,7 +753,7 @@ export function AgentModelsPage() {
                           <ModelIcon modelId={m.id} size={14} />
                           <span className="font-mono text-[11px] font-medium text-text-bright truncate">{m.id}</span>
                           {limit.context ? (
-                            <span className="text-[10px] text-text-muted ml-auto flex-shrink-0">
+                            <span className="text-[10px] text-text-muted flex-shrink-0">
                               {Number(limit.context).toLocaleString()}
                             </span>
                           ) : null}
@@ -733,7 +768,7 @@ export function AgentModelsPage() {
                                     handleTestModel(providerKey, m.id);
                                   }}
                                   disabled={testingModelKey === `${providerKey}:${m.id}`}
-                                  className="text-[10px] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                                  className="text-[10px] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40 flex items-center gap-1"
                                 >
                                   {testingModelKey === `${providerKey}:${m.id}`
                                     ? t("actions.testing")
@@ -803,79 +838,140 @@ export function AgentModelsPage() {
                 )}
               </div>
 
-              {/* ── 操作栏 ── */}
-              <div className="mt-auto flex items-center gap-3 border-t border-border-subtle bg-surface-0 px-4 py-2 text-[11px]">
-                {writable ? (
-                  <>
-                    {/* 左侧：获取模型列表 & 编辑 */}
-                    <div className="flex items-center gap-2">
-                      {hasModels && (
+              {/* ── 操作栏 + 通知条 ── */}
+              <div className="mt-auto border-t border-border-subtle bg-surface-0">
+                {/* 测试中 / 结果通知条 — 始终占位避免卡片窜动 */}
+                <div
+                  className={`border-b border-border-subtle text-[11px] transition-all duration-200 ${
+                    notifyActive ? "" : "invisible border-b-0"
+                  }`}
+                >
+                  {notifyActive ? (
+                    <div
+                      className={`flex items-center gap-2 px-4 py-1.5 animate-in slide-in-from-top-2 fade-in duration-200 ${
+                        notifyTesting ? "bg-blue-50/70" : notifyResult!.ok ? "bg-emerald-50/70" : "bg-red-50/70"
+                      }`}
+                      title={
+                        notifyResult
+                          ? notifyResult.ok
+                            ? notifyResult.content || undefined
+                            : notifyResult.error || undefined
+                          : undefined
+                      }
+                    >
+                      {notifyTesting ? (
+                        <span className="flex items-center gap-1.5 min-w-0 flex-1 text-blue-600">
+                          <LoaderCircle className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+                          <span className="font-medium flex-shrink-0">{t("testDialog.modelTesting")}</span>
+                          <span className="font-mono text-text-muted truncate">{notifyTesting.modelId}</span>
+                        </span>
+                      ) : (
+                        <>
+                          <span
+                            className={`flex items-center gap-1.5 min-w-0 flex-1 ${notifyResult!.ok ? "text-emerald-700" : "text-red-600"}`}
+                          >
+                            {notifyResult!.ok ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+                            ) : (
+                              <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                            )}
+                            <span className="font-medium flex-shrink-0">
+                              {notifyResult!.ok ? t("testDialog.modelTestPassed") : t("testDialog.modelTestFailed")}
+                            </span>
+                            <span className="font-mono text-text-muted truncate">{notifyResult!.modelId}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setModelTestResult(null);
+                            }}
+                            className="flex-shrink-0 text-text-muted hover:text-text-primary transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-1.5">&nbsp;</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 px-4 py-2 text-[11px]">
+                  {writable ? (
+                    <>
+                      {/* 左侧：获取模型列表 & 编辑 */}
+                      <div className="flex items-center gap-2">
+                        {hasModels && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleFetchModelsResult(providerKey);
+                            }}
+                            disabled={testing === providerKey}
+                            className="text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                          >
+                            {testing === providerKey ? t("form.fetching") : t("form.fetchModels")}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleFetchModelsResult(providerKey);
+                            handleOpenEdit(provider);
                           }}
-                          disabled={testing === providerKey}
-                          className="text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                          className="text-text-secondary hover:text-text-primary transition-colors"
                         >
-                          {testing === providerKey ? t("form.fetching") : t("form.fetchModels")}
+                          {t("actions.edit")}
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleOpenEdit(provider);
-                        }}
-                        className="text-text-secondary hover:text-text-primary transition-colors"
-                      >
-                        {t("actions.edit")}
-                      </button>
-                    </div>
-                    {/* 右侧：公开开关 & 删除 */}
-                    <div className="flex items-center gap-2 ml-auto">
-                      <label
-                        className="flex items-center gap-1.5 cursor-pointer"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <span className="text-text-muted">
-                          {provider.resourceAccess?.publicReadable
-                            ? tComponents("resource.public")
-                            : tComponents("resource.internal")}
-                        </span>
-                        <Switch
-                          checked={Boolean(provider.resourceAccess?.publicReadable)}
-                          disabled={sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true}
-                          onCheckedChange={() =>
-                            void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
-                          }
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleDelete(provider.id);
-                        }}
-                        className="text-red-500 hover:text-red-600 transition-colors"
-                      >
-                        {t("actions.delete")}
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleOpenEdit(provider);
-                    }}
-                    className="text-text-secondary hover:text-text-primary transition-colors"
-                  >
-                    {t("actions.view")}
-                  </button>
-                )}
+                      </div>
+                      {/* 右侧：公开开关 & 删除 */}
+                      <div className="flex items-center gap-2 ml-auto">
+                        <label
+                          className="flex items-center gap-1.5 cursor-pointer"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <span className="text-text-muted">
+                            {provider.resourceAccess?.publicReadable
+                              ? tComponents("resource.public")
+                              : tComponents("resource.internal")}
+                          </span>
+                          <Switch
+                            checked={Boolean(provider.resourceAccess?.publicReadable)}
+                            disabled={
+                              sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true
+                            }
+                            onCheckedChange={() =>
+                              void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
+                            }
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDelete(provider.id);
+                          }}
+                          className="text-red-500 hover:text-red-600 transition-colors"
+                        >
+                          {t("actions.delete")}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleOpenEdit(provider);
+                      }}
+                      className="text-text-secondary hover:text-text-primary transition-colors"
+                    >
+                      {t("actions.view")}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -1187,28 +1283,17 @@ export function AgentModelsPage() {
         </div>
       </FormDialog>
 
-      {/* Test result dialog */}
-      <Dialog open={!!fetchModelsResult} onOpenChange={() => setFetchModelsResult(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {fetchModelsResult?.kind === "provider" && t("form.modelsSection")}
-              {fetchModelsResult?.kind === "model" &&
-                ("error" in fetchModelsResult
-                  ? t("testDialog.modelFailTitle", { modelId: fetchModelsResult.modelId })
-                  : t("testDialog.modelSuccessTitle", { modelId: fetchModelsResult.modelId }))}
-            </DialogTitle>
-            <DialogDescription className="whitespace-pre-line">
-              {fetchModelsResult?.kind === "provider" && getProviderDialogDescription(fetchModelsResult)}
-              {fetchModelsResult?.kind === "model" &&
-                ("error" in fetchModelsResult
-                  ? formatTestError(fetchModelsResult.error)
-                  : `${t("testDialog.modelQuestion")}\n${t("testDialog.modelAnswer", { content: fetchModelsResult.content })}`)}
-            </DialogDescription>
-          </DialogHeader>
-          {fetchModelsResult?.kind === "provider" &&
-            !("error" in fetchModelsResult) &&
-            fetchModelsResult.models.length > 0 && (
+      {/* Provider 模型列表弹窗 */}
+      {fetchModelsResult?.kind === "provider" && (
+        <Dialog open onOpenChange={() => setFetchModelsResult(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t("form.modelsSection")}</DialogTitle>
+              <DialogDescription className="whitespace-pre-line">
+                {getProviderDialogDescription(fetchModelsResult)}
+              </DialogDescription>
+            </DialogHeader>
+            {!("error" in fetchModelsResult) && fetchModelsResult.models.length > 0 && (
               <div className="max-h-72 overflow-y-auto grid gap-1.5">
                 {fetchModelsResult.models.map((m) => {
                   const added = addedModelIds.has(m);
@@ -1230,8 +1315,9 @@ export function AgentModelsPage() {
                 })}
               </div>
             )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ConfirmDialog
         open={confirmOpen}
