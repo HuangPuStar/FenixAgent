@@ -68,6 +68,19 @@
   },
   "empty": "No scheduled tasks",
   "emptySearchResult": "No matching tasks",
+  "table": {
+    "name": "Name",
+    "type": "Type",
+    "target": "Target",
+    "schedule": "Schedule",
+    "lastRun": "Last Run",
+    "actions": "Actions"
+  },
+  "relativeTime": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago"
+  },
   "log": {
     "title": "Execution Logs - {{name}}",
     "time": "Time",
@@ -79,7 +92,10 @@
     "total": "{{count}} total",
     "prev": "Previous",
     "next": "Next",
-    "noResult": "-"
+    "noResult": "-",
+    "errorLabel": "Error",
+    "resultLabel": "Result",
+    "skipLabel": "Skip Reason"
   },
   "toast": {
     "created": "Task created",

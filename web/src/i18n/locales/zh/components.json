@@ -150,7 +150,16 @@
     "mountSuccess": "已挂载 {{count}} 个站点",
     "unmountSuccess": "已卸载站点",
     "mountFailed": "挂载失败",
-    "unmountFailed": "卸载失败"
+    "unmountFailed": "卸载失败",
+    "tasks": "定时任务",
+    "tasksEmpty": "暂无绑定的定时任务",
+    "tasksManage": "前往管理",
+    "tasksCount": "共 {{count}} 个任务",
+    "tasksLoadFailed": "加载任务列表失败",
+    "tasksToggleFailed": "切换任务状态失败",
+    "tasksTriggerFailed": "触发任务失败",
+    "tasksListTitle": "任务列表",
+    "tasksViewLogs": "查看日志"
   },
   "siteFrame": {
     "share": "分享",

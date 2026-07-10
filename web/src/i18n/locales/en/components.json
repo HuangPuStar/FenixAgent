@@ -150,7 +150,16 @@
     "mountSuccess": "Mounted {{count}} site(s)",
     "unmountSuccess": "Site unmounted",
     "mountFailed": "Mount failed",
-    "unmountFailed": "Unmount failed"
+    "unmountFailed": "Unmount failed",
+    "tasks": "Tasks",
+    "tasksEmpty": "No scheduled tasks bound to this agent",
+    "tasksManage": "Manage Tasks",
+    "tasksCount": "{{count}} task(s)",
+    "tasksLoadFailed": "Failed to load task list",
+    "tasksToggleFailed": "Failed to toggle task status",
+    "tasksTriggerFailed": "Failed to trigger task",
+    "tasksListTitle": "Tasks",
+    "tasksViewLogs": "View Logs"
   },
   "siteFrame": {
     "share": "Share",

@@ -68,6 +68,19 @@
   },
   "empty": "暂无定时任务",
   "emptySearchResult": "没有匹配的任务",
+  "table": {
+    "name": "名称",
+    "type": "类型",
+    "target": "目标",
+    "schedule": "执行计划",
+    "lastRun": "上次执行",
+    "actions": "操作"
+  },
+  "relativeTime": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前"
+  },
   "log": {
     "title": "执行日志 - {{name}}",
     "time": "时间",
@@ -79,7 +92,10 @@
     "total": "共 {{count}} 条",
     "prev": "上一页",
     "next": "下一页",
-    "noResult": "-"
+    "noResult": "-",
+    "errorLabel": "错误",
+    "resultLabel": "结果",
+    "skipLabel": "跳过原因"
   },
   "toast": {
     "created": "任务创建成功",

@@ -1,5 +1,21 @@
 import { useRequest } from "ahooks";
-import { Calendar, ChevronLeft, ChevronRight, FileText, Pencil, Play, Plus, Power, Search, Trash2 } from "lucide-react";
+import {
+  Calendar,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  FileText,
+  Loader2,
+  MinusCircle,
+  MoreHorizontal,
+  Pencil,
+  Play,
+  Plus,
+  Search,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -9,9 +25,17 @@ import { EmptyState } from "@/components/config/EmptyState";
 import { FormDialog } from "@/components/config/FormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { agentApi } from "@/src/api/agents";
 import type { PaginatedResponse } from "@/src/api/request";
@@ -88,17 +112,20 @@ function buildDefinition(values: TaskFormValues): HttpDefinition | AgentDefiniti
   return { prompt: values.prompt };
 }
 
-function statusVariant(status: string | null): "default" | "destructive" | "outline" | "secondary" {
-  if (status === "success") return "default";
-  if (status === "failed" || status === "timeout") return "destructive";
-  return "secondary";
-}
-
-function formatTime(ts: number | null | undefined): string {
+/** 相对时间格式化：Unix 秒级时间戳 -> 人类可读 */
+function formatRelativeTime(
+  ts: number | null | undefined,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   if (ts == null) return "—";
+  const now = Date.now();
+  const diff = now - ts * 1000;
+  if (diff < 60_000) return t("relativeTime.justNow");
+  if (diff < 3_600_000) return t("relativeTime.minutesAgo", { count: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t("relativeTime.hoursAgo", { count: Math.floor(diff / 3_600_000) });
   const d = new Date(ts * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // ── 默认表单值 / 转换 ──
@@ -377,7 +404,7 @@ export function AgentTasksPage() {
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-            <Skeleton key={i} className="h-24 w-full rounded-lg" />
+            <Skeleton key={i} className="h-12 w-full rounded-lg" />
           ))}
         </div>
       </div>
@@ -433,28 +460,53 @@ export function AgentTasksPage() {
         </Tabs>
       </div>
 
-      {/* ── 任务卡片列表 ── */}
+      {/* ── 任务表格 ── */}
       {tasks.length === 0 ? (
-        <EmptyState icon={<Calendar className="w-10 h-10" />} title={t("empty")} description={t("subtitle")} />
+        searchKeyword.trim() ? (
+          <div className="py-12 text-center text-sm text-text-muted">{t("emptySearchResult")}</div>
+        ) : (
+          <EmptyState
+            icon={<Calendar className="w-10 h-10" />}
+            title={t("empty")}
+            description={t("subtitle")}
+            action={{ label: t("action.create"), onClick: handleOpenCreate }}
+          />
+        )
       ) : (
         <>
-          <div className="space-y-3">
-            {tasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                t={t}
-                triggeringTaskId={triggeredTasks}
-                onToggle={() => runToggle(task.id)}
-                onTrigger={() => {
-                  setTriggeredTasks((prev) => new Set(prev).add(task.id));
-                  runTrigger(task.id);
-                }}
-                onEdit={() => handleOpenEdit(task)}
-                onDelete={() => handleDeleteClick(task)}
-                onViewLogs={() => handleViewLogs(task)}
-              />
-            ))}
+          <div className="rounded-lg border border-border/40 bg-white overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-8" />
+                  <TableHead className="text-xs">{t("table.name")}</TableHead>
+                  <TableHead className="text-xs w-[80px]">{t("table.type")}</TableHead>
+                  <TableHead className="text-xs">{t("table.target")}</TableHead>
+                  <TableHead className="text-xs">{t("table.schedule")}</TableHead>
+                  <TableHead className="text-xs w-[160px]">{t("table.lastRun")}</TableHead>
+                  <TableHead className="text-xs w-[140px] text-right">{t("table.actions")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tasks.map((task) => (
+                  <TaskTableRow
+                    key={task.id}
+                    task={task}
+                    agents={agents}
+                    t={t}
+                    isTriggering={triggeredTasks.has(task.id)}
+                    onToggle={() => runToggle(task.id)}
+                    onTrigger={() => {
+                      setTriggeredTasks((prev) => new Set(prev).add(task.id));
+                      runTrigger(task.id);
+                    }}
+                    onEdit={() => handleOpenEdit(task)}
+                    onDelete={() => handleDeleteClick(task)}
+                    onViewLogs={() => handleViewLogs(task)}
+                  />
+                ))}
+              </TableBody>
+            </Table>
           </div>
 
           {/* ── 分页控件 ── */}
@@ -536,12 +588,13 @@ export function AgentTasksPage() {
   );
 }
 
-// ── 任务卡片子组件 ──
+// ── 表格行子组件 ──
 
-interface TaskCardProps {
+interface TaskTableRowProps {
   task: TaskV2Info;
+  agents: AgentInfo[];
   t: (key: string, options?: Record<string, unknown>) => string;
-  triggeringTaskId: Set<string>;
+  isTriggering: boolean;
   onToggle: () => void;
   onTrigger: () => void;
   onEdit: () => void;
@@ -549,85 +602,171 @@ interface TaskCardProps {
   onViewLogs: () => void;
 }
 
-function TaskCard({ task, t, triggeringTaskId, onToggle, onTrigger, onEdit, onDelete, onViewLogs }: TaskCardProps) {
+/** 上次执行状态图标 */
+function LastRunStatus({
+  status,
+  t,
+}: {
+  status: string | null;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}) {
+  if (!status) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-text-muted">
+        <MinusCircle className="size-3.5" />
+        <span>{t("status.pending")}</span>
+      </div>
+    );
+  }
+  if (status === "success") {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+        <CheckCircle2 className="size-3.5" />
+      </div>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-red-500">
+        <XCircle className="size-3.5" />
+      </div>
+    );
+  }
+  if (status === "timeout") {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-amber-500">
+        <Clock className="size-3.5" />
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-text-muted">
+      <MinusCircle className="size-3.5" />
+    </div>
+  );
+}
+
+function TaskTableRow({
+  task,
+  agents,
+  t,
+  isTriggering,
+  onToggle,
+  onTrigger,
+  onEdit,
+  onDelete,
+  onViewLogs,
+}: TaskTableRowProps) {
   const cronDesc = describeCron(task.cron, t);
 
-  const typeBadge = (
-    <Badge variant={task.type === "agent" ? "default" : "outline"} className="text-[11px] h-5">
-      {t(`type.${task.type}`)}
-    </Badge>
-  );
-
-  const statusBadge = (
-    <Badge variant={statusVariant(task.lastStatus)} className="text-[11px] h-5">
-      {t(`status.${task.lastStatus || "pending"}`)}
-    </Badge>
-  );
+  // 目标列：Agent 显示名称，HTTP 显示 URL
+  const targetLabel = (() => {
+    if (task.type === "agent") {
+      const agent = agents.find((a) => a.id === task.agentId);
+      return agent?.name ?? task.agentId ?? "—";
+    }
+    const def = task.definition as HttpDefinition | null;
+    return def?.url ?? "—";
+  })();
 
   return (
-    <Card className="px-4 py-3 gap-0">
-      <CardContent className="p-0">
-        {/* 第一行：名称 + 标签 */}
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-medium text-text-bright truncate">{task.name}</span>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {typeBadge}
-            {statusBadge}
-          </div>
+    <TableRow className={!task.enabled ? "opacity-50" : ""}>
+      {/* 状态圆点 */}
+      <TableCell className="w-8 pr-0">
+        <span
+          className={`inline-block size-2 rounded-full ${task.enabled ? "bg-emerald-500" : "bg-slate-400"}`}
+          title={task.enabled ? t("card.enabled") : t("card.disabled")}
+        />
+      </TableCell>
+
+      {/* 名称 + 描述 */}
+      <TableCell>
+        <button type="button" className="text-left cursor-pointer hover:underline" onClick={onEdit}>
+          <span className="text-sm font-medium text-text-bright">{task.name}</span>
+        </button>
+        {task.description && <p className="text-xs text-text-muted truncate max-w-[240px]">{task.description}</p>}
+      </TableCell>
+
+      {/* 类型 */}
+      <TableCell>
+        <Badge variant={task.type === "agent" ? "default" : "outline"} className="text-[11px] h-5">
+          {t(`type.${task.type}`)}
+        </Badge>
+      </TableCell>
+
+      {/* 目标（Agent 名称 / HTTP URL） */}
+      <TableCell>
+        <span className="text-xs text-text-secondary truncate max-w-[200px] block" title={targetLabel}>
+          {targetLabel}
+        </span>
+      </TableCell>
+
+      {/* 执行计划 */}
+      <TableCell>
+        <div className="text-xs">
+          {cronDesc && <span className="text-text-primary">{cronDesc}</span>}
+          <code className="ml-1.5 rounded bg-surface-1 px-1 py-0.5 text-[10px] text-text-muted font-mono">
+            {task.cron}
+          </code>
         </div>
+      </TableCell>
 
-        {/* 描述 */}
-        {task.description && <p className="mt-1 text-xs text-text-secondary line-clamp-1">{task.description}</p>}
-
-        {/* Cron + 超时 */}
-        <div className="mt-1.5 flex items-center gap-3 text-xs text-text-muted">
-          <code className="rounded bg-surface-1 px-1.5 py-0.5 text-[11px]">{task.cron}</code>
-          {cronDesc && <span className="text-[11px] text-dim">{cronDesc}</span>}
-          <span className="text-dim">
-            {t("card.label")}: {task.timeoutSeconds}s
-          </span>
+      {/* 上次执行 */}
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          <LastRunStatus status={task.lastStatus} t={t} />
+          <span className="text-xs text-text-muted">{formatRelativeTime(task.lastRunAt, t)}</span>
         </div>
+      </TableCell>
 
-        {/* 上次 / 下次执行 */}
-        <div className="mt-1.5 flex items-center gap-4 text-xs text-dim">
-          <span>
-            {t("card.lastRun")} {formatTime(task.lastRunAt)}
-          </span>
-          <span>
-            {t("card.nextRun")} {formatTime(task.nextRunAt)}
-          </span>
+      {/* 操作 */}
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-1">
+          {/* 手动执行 */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="size-7 p-0"
+            disabled={isTriggering}
+            onClick={onTrigger}
+            title={t("action.execute")}
+          >
+            {isTriggering ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+          </Button>
+
+          {/* 更多菜单 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="size-7 p-0">
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil className="size-3.5" />
+                {t("action.edit")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onViewLogs}>
+                <FileText className="size-3.5" />
+                {t("action.logs")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                <Trash2 className="size-3.5" />
+                {t("action.delete")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* 启停 Switch */}
+          <Switch
+            checked={task.enabled}
+            onCheckedChange={onToggle}
+            size="sm"
+            aria-label={task.enabled ? t("card.disabled") : t("card.enabled")}
+          />
         </div>
-      </CardContent>
-
-      {/* 按钮行 */}
-      <CardFooter className="justify-end gap-1.5 p-0 pt-2.5 mt-2.5 border-t border-border-light">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          disabled={triggeringTaskId.has(task.id)}
-          onClick={onTrigger}
-        >
-          <Play className="mr-1 size-3" />
-          {t("action.execute")}
-        </Button>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onViewLogs}>
-          <FileText className="mr-1 size-3" />
-          {t("action.logs")}
-        </Button>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onToggle}>
-          <Power className="mr-1 size-3" />
-          {task.enabled ? t("card.disabled") : t("card.enabled")}
-        </Button>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onEdit}>
-          <Pencil className="mr-1 size-3" />
-          {t("action.edit")}
-        </Button>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onDelete}>
-          <Trash2 className="mr-1 size-3" />
-          {t("action.delete")}
-        </Button>
-      </CardFooter>
-    </Card>
+      </TableCell>
+    </TableRow>
   );
 }

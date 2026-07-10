@@ -56,7 +56,7 @@ export interface ExecutionLogInfo {
 }
 
 export const taskV2Api = {
-  list: (query?: { page?: number; pageSize?: number; keyword?: string; type?: string }) =>
+  list: (query?: { page?: number; pageSize?: number; keyword?: string; type?: string; agentId?: string }) =>
     request<PaginatedResponse<TaskV2Info>>("/web/tasks/v2", { query }),
 
   get: (id: string) => request<TaskV2Info>("/web/tasks/v2/:id", { params: { id } }),

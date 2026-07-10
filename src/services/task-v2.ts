@@ -160,7 +160,7 @@ export async function listTasksV2(
   organizationId: string,
   page = 1,
   pageSize = 20,
-  opts?: { keyword?: string; type?: string },
+  opts?: { keyword?: string; type?: string; agentId?: string },
 ): Promise<ServiceSuccess<{ items: TaskV2Response[]; total: number; page: number; pageSize: number }>> {
   const safePage = Math.max(1, Math.floor(page));
   const safePageSize = Math.min(100, Math.max(1, Math.floor(pageSize)));

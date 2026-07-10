@@ -30,7 +30,7 @@ interface TaskFormProps {
   initialType?: "http" | "agent";
 }
 
-const LABEL_CLASS = "w-[96px] shrink-0 text-right text-sm text-text-muted pr-3";
+const LABEL_CLASS = "block text-sm font-medium text-text-muted mb-1";
 
 export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormProps) {
   const { t } = useTranslation(NS.TASKS_V2);
@@ -61,41 +61,42 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* 公共字段 */}
-      <div className="flex items-center">
+      <div>
         <label className={LABEL_CLASS}>{t("form.nameLabel")}</label>
         <Input
           {...register("name")}
           placeholder={t("form.namePlaceholder")}
-          className={`flex-1 ${errors.name ? "border-destructive" : ""}`}
+          className={`w-full ${errors.name ? "border-destructive" : ""}`}
         />
+        {errors.name && <p className="mt-0.5 text-xs text-destructive">{errors.name.message}</p>}
       </div>
 
-      <div className="flex items-start">
-        <label className={`${LABEL_CLASS} pt-1.5`}>{t("form.timeLabel")}</label>
-        <div className="flex-1">
+      <div className="rounded-lg border border-border/40 bg-surface-0 p-3 space-y-3">
+        <div>
+          <label className={LABEL_CLASS}>{t("form.timeLabel")}</label>
           <CronEditor value={cronValue || ""} onChange={(v) => setValue("cron", v)} error={errors.cron?.message} />
+        </div>
+
+        <div>
+          <label className={LABEL_CLASS}>{t("form.timezoneLabel")}</label>
+          <Input {...register("timezone")} placeholder="Asia/Shanghai" className="w-full" />
+        </div>
+
+        <div>
+          <label className={LABEL_CLASS}>{t("form.timeoutLabel")}</label>
+          <Input
+            type="number"
+            {...register("timeoutSeconds", { valueAsNumber: true })}
+            className={`w-full ${errors.timeoutSeconds ? "border-destructive" : ""}`}
+          />
         </div>
       </div>
 
-      <div className="flex items-center">
-        <label className={LABEL_CLASS}>{t("form.timezoneLabel")}</label>
-        <Input {...register("timezone")} placeholder="Asia/Shanghai" className="flex-1" />
-      </div>
-
-      <div className="flex items-center">
-        <label className={LABEL_CLASS}>{t("form.timeoutLabel")}</label>
-        <Input
-          type="number"
-          {...register("timeoutSeconds", { valueAsNumber: true })}
-          className={`flex-1 ${errors.timeoutSeconds ? "border-destructive" : ""}`}
-        />
-      </div>
-
-      <div className="flex items-center">
+      <div>
         <label className={LABEL_CLASS}>{t("form.descLabel")}</label>
-        <Input {...register("description")} placeholder={t("form.descPlaceholder")} className="flex-1" />
+        <Input {...register("description")} placeholder={t("form.descPlaceholder")} className="w-full" />
       </div>
 
       {/* Type Tabs */}
@@ -120,10 +121,10 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
 
       {/* HTTP 条件字段 */}
       {effectiveType === "http" && (
-        <div className="space-y-3">
-          <div className="flex items-center">
+        <div className="space-y-4">
+          <div>
             <label className={LABEL_CLASS}>{t("form.urlLabel")}</label>
-            <div className="flex gap-2 flex-1">
+            <div className="flex gap-2">
               <Input
                 {...register("url")}
                 placeholder="https://example.com/webhook"
@@ -145,24 +146,23 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                 </SelectContent>
               </Select>
             </div>
+            {errors.url && <p className="mt-0.5 text-xs text-destructive">{errors.url.message}</p>}
           </div>
-          <div className="flex items-start">
-            <label className={`${LABEL_CLASS} pt-2`}>{t("form.headersLabel")}</label>
-            <div className="flex-1 space-y-1">
-              <Textarea
-                {...register("headers")}
-                placeholder={t("form.headersPlaceholder")}
-                className={`font-mono text-xs h-14 ${errors.headers ? "border-destructive" : ""}`}
-              />
-              {errors.headers && <p className="text-xs text-destructive">{errors.headers.message}</p>}
-            </div>
+          <div>
+            <label className={LABEL_CLASS}>{t("form.headersLabel")}</label>
+            <Textarea
+              {...register("headers")}
+              placeholder={t("form.headersPlaceholder")}
+              className={`font-mono text-xs h-16 w-full ${errors.headers ? "border-destructive" : ""}`}
+            />
+            {errors.headers && <p className="mt-0.5 text-xs text-destructive">{errors.headers.message}</p>}
           </div>
-          <div className="flex items-start">
-            <label className={`${LABEL_CLASS} pt-2`}>{t("form.bodyLabel")}</label>
+          <div>
+            <label className={LABEL_CLASS}>{t("form.bodyLabel")}</label>
             <Textarea
               {...register("body")}
               placeholder={t("form.bodyPlaceholder")}
-              className="flex-1 font-mono text-xs h-16"
+              className="font-mono text-xs h-20 w-full"
             />
           </div>
         </div>
@@ -170,11 +170,11 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
 
       {/* Agent 条件字段 */}
       {effectiveType === "agent" && (
-        <div className="space-y-3">
-          <div className="flex items-center">
+        <div className="space-y-4">
+          <div>
             <label className={LABEL_CLASS}>{t("form.agentLabel")}</label>
             <Select value={agentIdValue as string} onValueChange={(v) => setValue("agentId", v)}>
-              <SelectTrigger className={`flex-1 ${errors.agentId ? "border-destructive" : ""}`}>
+              <SelectTrigger className={`w-full ${errors.agentId ? "border-destructive" : ""}`}>
                 <SelectValue placeholder={t("form.agentPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
@@ -186,17 +186,16 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                 ))}
               </SelectContent>
             </Select>
+            {errors.agentId && <p className="mt-0.5 text-xs text-destructive">{errors.agentId.message}</p>}
           </div>
-          <div className="flex items-start">
-            <label className={`${LABEL_CLASS} pt-2`}>{t("form.promptLabel")}</label>
-            <div className="flex-1 space-y-1">
-              <Textarea
-                {...register("prompt")}
-                placeholder={t("form.promptPlaceholder")}
-                className={`h-28 ${errors.prompt ? "border-destructive" : ""}`}
-              />
-              {errors.prompt && <p className="text-xs text-destructive">{errors.prompt.message}</p>}
-            </div>
+          <div>
+            <label className={LABEL_CLASS}>{t("form.promptLabel")}</label>
+            <Textarea
+              {...register("prompt")}
+              placeholder={t("form.promptPlaceholder")}
+              className={`h-32 w-full ${errors.prompt ? "border-destructive" : ""}`}
+            />
+            {errors.prompt && <p className="mt-0.5 text-xs text-destructive">{errors.prompt.message}</p>}
           </div>
         </div>
       )}

@@ -13,7 +13,7 @@ export interface IScheduledTaskV2Repo {
     organizationId: string,
     page: number,
     pageSize: number,
-    opts?: { keyword?: string; type?: string },
+    opts?: { keyword?: string; type?: string; agentId?: string },
   ): Promise<{ rows: ScheduledTaskV2Row[]; total: number }>;
   getByOrgAndId(organizationId: string, taskId: string): Promise<ScheduledTaskV2Row | null>;
   getById(taskId: string): Promise<ScheduledTaskV2Row | null>;
@@ -36,11 +36,12 @@ class PgScheduledTaskV2Repo implements IScheduledTaskV2Repo {
     organizationId: string,
     page: number,
     pageSize: number,
-    opts?: { keyword?: string; type?: string },
+    opts?: { keyword?: string; type?: string; agentId?: string },
   ) {
     const where = [eq(scheduledTaskV2.organizationId, organizationId)];
     if (opts?.keyword) where.push(ilike(scheduledTaskV2.name, `%${opts.keyword}%`));
     if (opts?.type) where.push(eq(scheduledTaskV2.type, opts.type));
+    if (opts?.agentId) where.push(eq(scheduledTaskV2.agentId, opts.agentId));
 
     const [{ total }] = await db
       .select({ total: sql<number>`count(*)` })

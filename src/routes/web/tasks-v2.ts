@@ -68,7 +68,8 @@ app.get(
     const pageSize = Number(q.pageSize) || 20;
     const keyword = q.keyword || undefined;
     const type = q.type || undefined;
-    return await listTasksV2(authCtx.organizationId, page, pageSize, { keyword, type });
+    const agentId = q.agentId || undefined;
+    return await listTasksV2(authCtx.organizationId, page, pageSize, { keyword, type, agentId });
   },
   {
     sessionAuth: true,
@@ -76,7 +77,8 @@ app.get(
     detail: {
       tags: ["Tasks V2"],
       summary: "获取任务列表",
-      description: "分页返回当前组织下的定时任务列表，支持按名称 keyword 和类型 type 筛选。page/pageSize 默认 1/20。",
+      description:
+        "分页返回当前组织下的定时任务列表，支持按名称 keyword、类型 type 和 agentId 筛选。page/pageSize 默认 1/20。",
     },
   },
 );
