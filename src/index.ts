@@ -49,6 +49,8 @@ import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
+import { initSocketIOServer } from "./transport/socketio-server";
+import { closeTransportStore } from "./transport/store/factory";
 
 await initDb();
 startupLog.info("Database initialized");
@@ -212,6 +214,13 @@ export type App = typeof app;
 // app.listen() 设置 app.server（WebSocket 升级需要），同时 export default
 // 供 Eden Treaty treaty<App>() 做类型推断
 app.listen({ port, hostname: host });
+
+// 初始化 socket.io server（三个 namespace：/relay /machine /file）
+const io = initSocketIOServer(app.server!);
+// 将 io 实例挂载到全局供后续 namespace 注册使用
+(globalThis as Record<string, unknown>).__socketio = io;
+startupLog.info("socket.io server attached");
+
 export default app;
 
 // Graceful shutdown
@@ -223,6 +232,13 @@ async function gracefulShutdown(signal: string) {
   closeAllRelayConnections();
   closeAllAcpConnections();
   closeAllFileWsConnections();
+  try {
+    io.close();
+    await closeTransportStore();
+    startupLog.info("socket.io server and TransportStore closed");
+  } catch (err) {
+    startupLog.error("Error closing socket.io server:", err);
+  }
   await stopAllInstances();
   stopScheduler();
   schedulerService.stop();
