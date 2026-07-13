@@ -62,11 +62,13 @@ RUN printf '[global]\nindex-url = %s\ntrusted-host = %s\n' \
     "$PIP_INDEX_URL" "$PIP_TRUSTED_HOST" > /etc/pip.conf
 
 
-RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
-RUN bun install -g acp-link --registry=https://registry.npmmirror.com
-RUN bun install -g acpx --registry=https://registry.npmmirror.com
-RUN bun install -g peri-cli --registry=https://registry.npmmirror.com
-RUN bun install -g @konghayao/opencode-hindsight --registry=https://registry.npmmirror.com
+RUN bun install -g \
+      opencode-ai@1.17.12 \
+      acp-link \
+      acpx \
+      peri-cli \
+      --registry=https://registry.npmmirror.com && \
+    bun install -g @konghayao/opencode-hindsight
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 
 RUN printf '#!/bin/sh\nargs="";\nfor a in "$@"; do\n  case "$a" in\n    -y|--yes|-p|--package) ;;\n    *) args="$args $a" ;;\n  esac\ndone\nexec bunx $args\n' > /usr/local/bin/npx \
