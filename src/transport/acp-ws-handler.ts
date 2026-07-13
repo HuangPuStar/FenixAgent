@@ -155,6 +155,14 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     });
 
     entry.machineId = result.id;
+
+    // 同步到 TransportStore（跨节点可见）
+    import("../transport/store/factory").then(({ getTransportStore }) => {
+      getTransportStore()
+        .setMachineSocket(result.id, entry.wsId)
+        .catch(() => {});
+    });
+
     logger.debug(`Machine registered: id=${result.id} agent=${agentName} isNew=${result.isNew}`);
 
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
@@ -357,6 +365,14 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
   handleMachineDisconnect(entry, reason).catch(() => {});
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
+
+  // 清理 TransportStore
+  import("../transport/store/factory").then(({ getTransportStore }) => {
+    getTransportStore()
+      .delMachineSocket(machineId)
+      .catch(() => {});
+  });
+
   // 清理 RCS registry 中对应 machineId 的孤儿 supplement
   import("../services/instance-registry").then(({ globalInstanceRegistry }) => {
     const facade = getCoreRuntime();

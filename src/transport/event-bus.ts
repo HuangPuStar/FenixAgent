@@ -48,6 +48,18 @@ export class EventBus {
         logError(`[EventBus] subscriber error:`, err);
       }
     }
+
+    // 跨节点广播：通过 TransportStore Pub/Sub 发送到其他 RCS 节点
+    try {
+      import("./store/factory").then(({ getTransportStore }) => {
+        getTransportStore()
+          .publish(`session:${event.sessionId}`, JSON.stringify(full))
+          .catch((err) => logError("[EventBus] cross-node publish error:", err));
+      });
+    } catch {
+      // TransportStore 未初始化时忽略（测试环境）
+    }
+
     return full;
   }
 
