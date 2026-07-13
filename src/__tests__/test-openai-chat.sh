@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 测试 OpenAI Chat API 兼容端点
 # 用法: bash test-openai-chat.sh <base_url> <api_key> <agent_config_id>
-#   agent_config_id: agent_config 表的主键，URL 路径 /v1/agents/:agentId 中的占位参数
+#   agent_config_id: agent_config 表的主键，URL 路径 /api/agents/:agentId/v1/chat/completions 中的占位参数
 
 set -uo pipefail
 
@@ -52,14 +52,14 @@ assert_status() {
 
 echo "============================================"
 echo "  OpenAI Chat API 测试"
-echo "  URL:  $BASE_URL/v1/agents/:agentId/v1/chat/completions"
+echo "  URL:  $BASE_URL/api/agents/:agentId/v1/chat/completions"
 echo "============================================"
 echo ""
 
 # ── 1. 非流式: Authorization: Bearer ──
 echo "── 1. 非流式请求 (Authorization: Bearer) ──"
 RESP=$(curl -s -w "\n%{http_code}" \
-  -X POST "$BASE_URL/v1/agents/$AGENT_ID/v1/chat/completions" \
+  -X POST "$BASE_URL/api/agents/$AGENT_ID/v1/chat/completions" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"说一句话，二十字以内"}]}' --max-time 120 2>&1)
@@ -86,7 +86,7 @@ echo ""
 # ── 2. 流式请求 (SSE) ──
 echo "── 2. 流式请求 (stream=true) ──"
 STREAM_RESP=$(curl -s -w "\n%{http_code}" --max-time 60 \
-  -X POST "$BASE_URL/v1/agents/$AGENT_ID/v1/chat/completions" \
+  -X POST "$BASE_URL/api/agents/$AGENT_ID/v1/chat/completions" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"说一句话"}],"stream":true}' 2>&1)
@@ -99,7 +99,7 @@ check "包含 chat.completion.chunk" "chat.completion.chunk" "$STREAM_BODY"
 
 # 检查 Content-Type header
 CT=$(curl -s -o /dev/null -w '%{content_type}' \
-  -X POST "$BASE_URL/v1/agents/$AGENT_ID/v1/chat/completions" \
+  -X POST "$BASE_URL/api/agents/$AGENT_ID/v1/chat/completions" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"说一句话"}],"stream":true}' --max-time 60)
@@ -122,7 +122,7 @@ echo ""
 # ── 3. x-api-key header 认证 ──
 echo "── 3. x-api-key header 认证 ──"
 RESP_XKEY=$(curl -s -w "\n%{http_code}" \
-  -X POST "$BASE_URL/v1/agents/$AGENT_ID/v1/chat/completions" \
+  -X POST "$BASE_URL/api/agents/$AGENT_ID/v1/chat/completions" \
   -H "x-api-key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"说一句话"}]}' --max-time 120 2>&1)
@@ -146,7 +146,7 @@ echo ""
 # ── 4. 错误场景: 缺少 user 消息 ──
 echo "── 4. 错误场景: 缺少 user 消息 ──"
 ERR=$(curl -s -w "\n%{http_code}" \
-  -X POST "$BASE_URL/v1/agents/$AGENT_ID/v1/chat/completions" \
+  -X POST "$BASE_URL/api/agents/$AGENT_ID/v1/chat/completions" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"system","content":"You are a bot"}]}' 2>&1)
@@ -162,7 +162,7 @@ echo ""
 # ── 5. 认证失败 ──
 echo "── 5. 错误场景: 无效 API Key ──"
 ERR_AUTH=$(curl -s -w "\n%{http_code}" \
-  -X POST "$BASE_URL/v1/agents/$AGENT_ID/v1/chat/completions" \
+  -X POST "$BASE_URL/api/agents/$AGENT_ID/v1/chat/completions" \
   -H "Authorization: Bearer invalid-key-12345" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"hi"}]}' 2>&1)
@@ -176,7 +176,7 @@ echo ""
 # ── 6. Agent 不存在 ──
 echo "── 6. 错误场景: Agent 不存在 ──"
 ERR_404=$(curl -s -w "\n%{http_code}" \
-  -X POST "$BASE_URL/v1/agents/nonexistent-agent-999/v1/chat/completions" \
+  -X POST "$BASE_URL/api/agents/nonexistent-agent-999/v1/chat/completions" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"hi"}]}' 2>&1)
@@ -195,7 +195,7 @@ CONCURRENT=3
 for i in $(seq 1 $CONCURRENT); do
   (
     curl -s -o "$TMPDIR/result_$i.json" -w "%{http_code}" \
-      -X POST "$BASE_URL/v1/agents/$AGENT_ID/v1/chat/completions" \
+      -X POST "$BASE_URL/api/agents/$AGENT_ID/v1/chat/completions" \
       -H "Authorization: Bearer $API_KEY" \
       -H "Content-Type: application/json" \
       -d "{\"messages\":[{\"role\":\"user\",\"content\":\"回复数字 $i\"}]}" \

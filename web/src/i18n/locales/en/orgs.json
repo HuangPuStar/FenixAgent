@@ -52,8 +52,8 @@
   },
   "inviteDialog": {
     "title": "Add Member",
-    "email": "Email",
-    "emailPlaceholder": "Enter email address",
+    "email": "Email or Phone",
+    "emailPlaceholder": "Enter an email address or phone number",
     "role": "Role",
     "invite": "Add",
     "inviting": "Adding..."

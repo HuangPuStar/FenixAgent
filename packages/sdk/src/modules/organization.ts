@@ -13,7 +13,7 @@ interface OrgDetail extends OrgInfo {
     id: string;
     userId: string;
     role: string;
-    user: { id: string; name: string; email: string };
+    user: { id: string; name: string; email: string; phoneNumber?: string | null };
   }>;
 }
 
@@ -34,37 +34,37 @@ interface ApiKeyInfo {
 
 export class OrganizationApi extends BaseApi {
   async list(): Promise<ApiResult<OrgInfo[]>> {
-    return this.post<OrgInfo[]>("/web/organizations", { action: "list" });
+    return this._get<OrgInfo[]>("/web/organizations");
   }
   async get(organizationId: string): Promise<ApiResult<OrgDetail>> {
-    return this.post<OrgDetail>("/web/organizations", { action: "get", organizationId });
+    return this._get<OrgDetail>(`/web/organizations/${organizationId}`);
   }
   async getFull(organizationId: string): Promise<ApiResult<OrgDetail>> {
-    return this.post<OrgDetail>("/web/organizations", { action: "get-full", organizationId });
+    return this._get<OrgDetail>(`/web/organizations/${organizationId}`);
   }
   async create(body: { name: string; slug?: string }): Promise<ApiResult<OrgInfo>> {
-    return this.post<OrgInfo>("/web/organizations", { action: "create", ...body });
+    return this.post<OrgInfo>("/web/organizations", body);
   }
   async update(organizationId: string, body: { name?: string; slug?: string }): Promise<ApiResult<OrgInfo>> {
-    return this.post<OrgInfo>("/web/organizations", { action: "update", organizationId, ...body });
+    return this.put<OrgInfo>(`/web/organizations/${organizationId}`, body);
   }
   async delete(organizationId: string): Promise<ApiResult<{ success: boolean }>> {
-    return this.post("/web/organizations", { action: "delete", organizationId });
+    return this.del(`/web/organizations/${organizationId}`);
   }
   async setActive(organizationId: string): Promise<ApiResult<{ success: boolean }>> {
-    return this.post("/web/organizations", { action: "set-active", organizationId });
+    return this.post(`/web/organizations/${organizationId}/set-active`, {});
   }
   async listMembers(organizationId: string): Promise<ApiResult<OrgMember[]>> {
-    return this.post<OrgMember[]>("/web/organizations", { action: "list-members", organizationId });
+    return this._get<OrgMember[]>(`/web/organizations/${organizationId}/members`);
   }
-  async addMember(organizationId: string, body: { email: string; role: string }): Promise<ApiResult<OrgMember>> {
-    return this.post<OrgMember>("/web/organizations", { action: "add-member", organizationId, ...body });
+  async addMember(organizationId: string, body: { identifier: string; role: string }): Promise<ApiResult<OrgMember>> {
+    return this.post<OrgMember>(`/web/organizations/${organizationId}/members`, body);
   }
   async removeMember(organizationId: string, memberId: string): Promise<ApiResult<{ success: boolean }>> {
-    return this.post("/web/organizations", { action: "remove-member", organizationId, memberId });
+    return this.del(`/web/organizations/${organizationId}/members/${memberId}`);
   }
   async updateRole(organizationId: string, memberId: string, role: string): Promise<ApiResult<{ success: boolean }>> {
-    return this.post("/web/organizations", { action: "update-role", organizationId, memberId, role });
+    return this.put(`/web/organizations/${organizationId}/members/${memberId}`, { role });
   }
 }
 

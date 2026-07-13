@@ -1,9 +1,11 @@
 import { apiKey } from "@better-auth/api-key";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { phoneNumber } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { db } from "../db";
 import * as schema from "../db/schema";
+import { normalizeChineseMainlandPhoneNumber } from "../services/phone-number";
 import { buildTrustedOrigins } from "./trusted-origins";
 
 function generateId(size = 32): string {
@@ -34,6 +36,17 @@ export const auth = betterAuth({
     organization({
       allowUserToCreateOrganization: true,
       membershipLimit: 100,
+    }),
+    phoneNumber({
+      sendOTP: async () => {},
+      phoneNumberValidator: async (value) => {
+        try {
+          normalizeChineseMainlandPhoneNumber(value);
+          return true;
+        } catch {
+          return false;
+        }
+      },
     }),
     apiKey({
       defaultPrefix: "rcs_",

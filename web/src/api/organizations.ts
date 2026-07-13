@@ -4,7 +4,7 @@
  * 封装组织的 CRUD、成员管理、活跃组织切换等操作。
  * 后端提供 REST 风格路由：
  *   GET    /web/organizations              → 列表
- *   POST   /web/organizations              → 创建（无 action 字段时）
+ *   POST   /web/organizations              → 创建
  *   GET    /web/organizations/:id          → 详情（当前组织时含成员）
  *   PUT    /web/organizations/:id          → 更新
  *   DELETE /web/organizations/:id          → 删除
@@ -13,8 +13,6 @@
  *   POST   /web/organizations/:id/members  → 添加成员
  *   DELETE /web/organizations/:id/members/:memberId → 移除成员
  *   PUT    /web/organizations/:id/members/:memberId → 更新角色
- *
- * 旧的 POST /web/organizations action 分发端点保留兼容（带 action 字段时走旧逻辑）。
  */
 
 import { request } from "./request";
@@ -36,7 +34,7 @@ export interface OrgMember {
   /** 部分接口返回时可能不包含所属组织 ID，对齐后端 OrganizationMemberSchema */
   organizationId?: string;
   /** 成员关联的用户基础信息，对齐后端 OrganizationUserSchema */
-  user?: { id: string; name: string; email: string };
+  user?: { id: string; name: string; email: string; phoneNumber?: string | null };
 }
 
 /** 组织详情（含成员列表） */
@@ -58,7 +56,7 @@ export type UpdateOrgBody = Partial<CreateOrgBody>;
 
 /** 添加成员请求体 */
 export interface AddMemberBody {
-  email: string;
+  identifier: string;
   role: string;
 }
 
@@ -117,12 +115,12 @@ export const orgApi = {
       params: { id: orgId },
     }),
 
-  /** 向指定组织添加新成员（通过邮箱邀请） */
+  /** 向指定组织添加新成员（支持邮箱或手机号） */
   addMember: (orgId: string, body: AddMemberBody) =>
     request<OrgMember>("/web/organizations/:id/members", {
       method: "POST",
       params: { id: orgId },
-      body: { email: body.email, role: body.role },
+      body: { identifier: body.identifier, role: body.role },
     }),
 
   /** 从指定组织中移除成员 */

@@ -52,8 +52,8 @@
   },
   "inviteDialog": {
     "title": "添加成员",
-    "email": "邮箱",
-    "emailPlaceholder": "输入邮箱地址",
+    "email": "邮箱或手机号",
+    "emailPlaceholder": "输入邮箱地址或手机号",
     "role": "角色",
     "invite": "添加",
     "inviting": "添加中..."

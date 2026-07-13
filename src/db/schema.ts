@@ -30,6 +30,8 @@ export const user = pgTable("user", {
   name: varchar("name").notNull(),
   email: varchar("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
+  phoneNumber: varchar("phone_number", { length: 32 }).unique(),
+  phoneNumberVerified: boolean("phone_number_verified").notNull().default(false),
   image: text("image"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

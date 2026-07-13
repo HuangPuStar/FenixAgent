@@ -24,7 +24,7 @@ describe("OpenAI Chat Routes", () => {
 
   // 缺少 user 消息时返回 400
   test("缺少 user 消息时返回 400 错误", async () => {
-    const res = await request("/v1/agents/agc-test/v1/chat/completions", {
+    const res = await request("/api/agents/agc-test/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

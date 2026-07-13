@@ -28,7 +28,7 @@ interface OrgMember {
   id: string;
   userId: string;
   role: string;
-  user: { id: string; name: string; email: string; image?: string };
+  user: { id: string; name: string; email: string; phoneNumber?: string | null; image?: string };
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -206,7 +206,8 @@ export function AgentOrganizationsPage() {
 
   // 添加成员
   const { run: runAddMember, loading: addMemberLoading } = useRequest(
-    (email: string, role: string) => unwrap(orgApi.addMember(selectedOrgId!, { email: email.trim(), role })),
+    (identifier: string, role: string) =>
+      unwrap(orgApi.addMember(selectedOrgId!, { identifier: identifier.trim(), role })),
     {
       manual: true,
       onSuccess: () => {
@@ -440,6 +441,9 @@ export function AgentOrganizationsPage() {
                           <span className="text-sm font-medium text-text-bright">{m.user?.name || m.userId}</span>
                           <RoleBadge role={m.role} />
                         </div>
+                        {m.user?.phoneNumber ? (
+                          <p className="text-xs text-text-dim mt-0.5">{m.user.phoneNumber}</p>
+                        ) : null}
                         <p className="text-xs text-text-dim mt-0.5">{m.user?.email}</p>
                       </div>
                       <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">

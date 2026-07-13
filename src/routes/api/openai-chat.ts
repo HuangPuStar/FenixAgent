@@ -14,7 +14,7 @@ const OpenAIChatParamsSchema = z
   })
   .describe("OpenAI Chat 路径参数。");
 
-const app = new Elysia({ name: "openai-chat", prefix: "/v1" }).use(authGuardPlugin).model({
+const app = new Elysia({ name: "openai-chat", prefix: "/api" }).use(authGuardPlugin).model({
   "openai-chat-params": OpenAIChatParamsSchema,
 });
 

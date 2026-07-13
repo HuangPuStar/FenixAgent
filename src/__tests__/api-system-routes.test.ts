@@ -58,6 +58,8 @@ describe("API System Routes", () => {
         name: "System User",
         email: "system@example.com",
         emailVerified: true,
+        phoneNumber: "18826480215",
+        phoneNumberVerified: false,
         createdAt: new Date("2026-06-17T00:00:00.000Z"),
         updatedAt: new Date("2026-06-17T00:00:00.000Z"),
       }),
@@ -122,9 +124,10 @@ describe("API System Routes", () => {
       },
       body: JSON.stringify({
         email: "system@example.com",
+        emailVerified: true,
+        phoneNumber: "+86 188 2648 0215",
         name: "System User",
         password: "super-secret",
-        emailVerified: true,
       }),
     });
     const json = await res.json();
@@ -135,6 +138,87 @@ describe("API System Routes", () => {
       name: "System User",
       email: "system@example.com",
       emailVerified: true,
+      phoneNumber: "18826480215",
+      phoneNumberVerified: false,
+      createdAt: "2026-06-17T00:00:00.000Z",
+      updatedAt: "2026-06-17T00:00:00.000Z",
+    });
+  });
+
+  // 系统级用户创建接口应支持仅通过手机号创建可登录用户。
+  test("POST /api/system/users supports phone-only user creation", async () => {
+    const res = await request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer sys-key-1",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "System User",
+        phoneNumber: "18826480215",
+        password: "super-secret",
+      }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({
+      id: "user-1",
+      name: "System User",
+      email: "system@example.com",
+      emailVerified: true,
+      phoneNumber: "18826480215",
+      phoneNumberVerified: false,
+      createdAt: "2026-06-17T00:00:00.000Z",
+      updatedAt: "2026-06-17T00:00:00.000Z",
+    });
+  });
+
+  // 系统级用户创建接口应支持显式设置手机号验证状态。
+  test("POST /api/system/users accepts phoneNumberVerified", async () => {
+    stubSystemApi({
+      createUser: async (input: {
+        email?: string;
+        phoneNumber?: string;
+        phoneNumberVerified?: boolean;
+        name: string;
+        password: string;
+        emailVerified?: boolean;
+      }) => ({
+        id: "user-1",
+        name: input.name,
+        email: input.email ?? "18826480215@fenix.com",
+        emailVerified: input.emailVerified ?? false,
+        phoneNumber: input.phoneNumber ?? null,
+        phoneNumberVerified: input.phoneNumberVerified ?? false,
+        createdAt: new Date("2026-06-17T00:00:00.000Z"),
+        updatedAt: new Date("2026-06-17T00:00:00.000Z"),
+      }),
+    });
+
+    const res = await request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer sys-key-1",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Verified Phone User",
+        phoneNumber: "18826480215",
+        phoneNumberVerified: true,
+        password: "super-secret",
+      }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({
+      id: "user-1",
+      name: "Verified Phone User",
+      email: "18826480215@fenix.com",
+      emailVerified: false,
+      phoneNumber: "18826480215",
+      phoneNumberVerified: true,
       createdAt: "2026-06-17T00:00:00.000Z",
       updatedAt: "2026-06-17T00:00:00.000Z",
     });

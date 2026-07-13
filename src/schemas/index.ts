@@ -222,16 +222,8 @@ export {
 } from "./openai-chat.schema";
 // Organizations
 export {
-  type ApiKeyActionRequest,
-  ApiKeyActionRequestSchema,
-  type ApiKeyActionResponse,
-  ApiKeyActionResponseSchema,
   type ApiKeyInfo,
   ApiKeyInfoSchema,
-  type OrganizationActionRequest,
-  OrganizationActionRequestSchema,
-  type OrganizationActionResponse,
-  OrganizationActionResponseSchema,
   type OrganizationDetail,
   OrganizationDetailSchema,
   type OrganizationInfo,
