@@ -106,6 +106,13 @@
       "when": 1783655566205,
       "tag": "0014_add_scheduled_task_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783908192735,
+      "tag": "0015_add_prod_view",
+      "breakpoints": true
     }
   ]
 }
