@@ -11,49 +11,13 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import type { ProdViewInfo, ProdViewModulesConfig } from "@/src/api/prod-views";
+import { agentApi } from "@/src/api/agents";
+import type { ProdViewInfo } from "@/src/api/prod-views";
 import { prodViewApi } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
+import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "@/src/lib/prod-view-modules";
 import { cn } from "@/src/lib/utils";
-
-/** Chat 主体模块 */
-const CHAT_MODULE_KEYS = [
-  "chatHeader",
-  "sessionSidebar",
-  "chatView",
-  "chatComposer",
-  "permissionPanel",
-  "todoPanel",
-  "contextPanel",
-  "toolCallRow",
-] as const;
-
-/** 右侧附加面板模块 */
-const PANEL_MODULE_KEYS = ["filesPanel", "sitesPanel", "tasksPanel", "viewsPanel"] as const;
-
-const ALL_MODULE_KEYS = [...CHAT_MODULE_KEYS, ...PANEL_MODULE_KEYS] as const;
-
-/** 默认全启用 */
-function defaultEnabledMap(): Record<string, boolean> {
-  const map: Record<string, boolean> = {};
-  for (const key of ALL_MODULE_KEYS) {
-    map[key] = true;
-  }
-  return map;
-}
-
-function buildEnabledMap(cfg: ProdViewModulesConfig): Record<string, boolean> {
-  const map = defaultEnabledMap();
-  for (const key of ALL_MODULE_KEYS) {
-    const m = cfg[key];
-    if (m?.enabled === false) map[key] = false;
-  }
-  return map;
-}
-
-/** 推荐命名 */
-const SUGGESTED_NAMES = ["通用助手", "代码助手", "文档助手", "数据分析师", "客服助手", "翻译助手"];
 
 interface ProdViewsPanelProps {
   agentId: string | null;
@@ -80,15 +44,6 @@ function ModuleConfigSection({
 
   return (
     <div className="space-y-4">
-      {/* Chat 模块 */}
-      <div className="space-y-1.5">
-        <Label className="text-xs font-semibold text-text-secondary">{t("panelMode.viewsChatModules")}</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {CHAT_MODULE_KEYS.map((mk) => (
-            <ModuleRow key={mk} moduleKey={mk} />
-          ))}
-        </div>
-      </div>
       {/* 附加面板 */}
       <div className="space-y-1.5">
         <Label className="text-xs font-semibold text-text-secondary">{t("panelMode.viewsPanelModules")}</Label>
@@ -117,6 +72,17 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
 
   const views: ProdViewInfo[] = data?.success !== false ? (data?.data ?? []) : [];
 
+  // 加载当前 agent 名称，用于创建时自动填充
+  const { data: agentDisplayName } = useRequest(
+    async () => {
+      if (!agentId) return "";
+      const result = await unwrap(agentApi.list());
+      const agent = result.agents.find((a) => a.id === agentId);
+      return agent?.name ?? "";
+    },
+    { ready: !!agentId },
+  );
+
   // ── 共用表单状态（创建 / 编辑共用同一个 Dialog） ──
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingView, setEditingView] = useState<ProdViewInfo | null>(null);
@@ -129,7 +95,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
 
   const openCreate = () => {
     setEditingView(null);
-    setFormName("");
+    setFormName(agentDisplayName ?? "");
     setFormDesc("");
     setFormModules(defaultEnabledMap());
     setDialogOpen(true);
@@ -148,24 +114,17 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
     setEditingView(null);
   };
 
-  const buildModulesConfig = (): ProdViewModulesConfig => {
-    const cfg: ProdViewModulesConfig = {};
-    for (const key of ALL_MODULE_KEYS) {
-      cfg[key] = { ...editingView?.modulesConfig[key], enabled: formModules[key] };
-    }
-    return cfg;
-  };
-
   const handleSubmit = async () => {
     if (!formName.trim() || !agentId) return;
     setSubmitting(true);
     try {
+      const existingModulesConfig = editingView?.modulesConfig;
       if (isEditing) {
         await unwrap(
           prodViewApi.update(editingView!.id, {
             name: formName.trim(),
             description: formDesc.trim() || undefined,
-            modulesConfig: buildModulesConfig(),
+            modulesConfig: buildModulesConfig(existingModulesConfig, formModules),
           }),
         );
         toast.success(t("panelMode.viewsUpdateSuccess"));
@@ -175,6 +134,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
             name: formName.trim(),
             agentId,
             description: formDesc.trim() || undefined,
+            modulesConfig: buildModulesConfig(existingModulesConfig, formModules),
           }),
         );
         toast.success(t("panelMode.viewsCreateSuccess"));
@@ -376,29 +336,6 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                 onChange={(e) => setFormName(e.target.value)}
               />
             </div>
-            {/* 推荐命名（仅创建时） */}
-            {!isEditing && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-normal text-text-muted">{t("panelMode.viewsSuggestedNames")}</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {SUGGESTED_NAMES.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => setFormName(name)}
-                      className={cn(
-                        "px-2.5 py-1 text-xs rounded-full border border-border-subtle transition-colors",
-                        formName === name
-                          ? "bg-brand text-white border-brand"
-                          : "bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-primary",
-                      )}
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
             {/* 描述 */}
             <div className="space-y-2">
               <Label>{t("panelMode.viewsDescLabel")}</Label>

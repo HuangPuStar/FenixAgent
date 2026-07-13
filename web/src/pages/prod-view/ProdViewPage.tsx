@@ -1,8 +1,7 @@
 import { useParams } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
-import type { ChatModulesConfig } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import { prodViewApi } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
@@ -16,11 +15,6 @@ export function ProdViewPage() {
   const { t } = useTranslation(NS.PROD_VIEWS);
 
   const { data: viewConfig, loading, error: loadError } = useRequest(async () => unwrap(prodViewApi.load(prodViewId)));
-
-  const modulesConfig = useMemo<ChatModulesConfig | undefined>(() => {
-    if (!viewConfig?.modulesConfig) return undefined;
-    return viewConfig.modulesConfig as ChatModulesConfig;
-  }, [viewConfig?.modulesConfig]);
 
   return (
     <div className="agent-panel-layout !flex-col">
@@ -57,7 +51,11 @@ export function ProdViewPage() {
               </div>
             }
           >
-            <ChatArea agentId={viewConfig.environmentId} visible={true} modulesConfig={modulesConfig} />
+            <ChatArea
+              agentId={viewConfig.environmentId}
+              visible={true}
+              modulesConfig={viewConfig.modulesConfig ?? {}}
+            />
           </Suspense>
         )}
       </div>
