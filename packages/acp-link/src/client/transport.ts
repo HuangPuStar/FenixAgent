@@ -26,6 +26,8 @@ export class SocketIOTransport extends EventEmitter<TransportEvents> {
   private namespace = "";
   private query: Record<string, string> = {};
 
+  private lastError: string | undefined;
+
   get state(): TransportState {
     return this._state;
   }
@@ -53,9 +55,10 @@ export class SocketIOTransport extends EventEmitter<TransportEvents> {
     });
 
     socket.on("connect_error", (err) => {
+      this.lastError = err.message;
       // 认证失败（等效于旧 WebSocket close code 4500）时进入 error 状态，不自动重连
       if (err.message === "unauthorized" || err.message === "rate_limited" || err.message === "agent not found") {
-        this.setState("error", undefined);
+        this.setState("error", err.message);
         socket.disconnect();
       }
     });
@@ -67,12 +70,12 @@ export class SocketIOTransport extends EventEmitter<TransportEvents> {
       }
       // 服务端主动断开或错误（等效于 4500），禁止自动重连
       if (reason === "io server disconnect") {
-        // 检查是否有 auth 错误上下文
         const detailAny = detail as Record<string, unknown> | undefined;
         if (detailAny?.description === "unauthorized" || detailAny?.description === "rate_limited") {
-          this.setState("error", undefined);
+          this.setState("error", detailAny.description as string);
           return;
         }
+        this.lastError = reason;
       }
       // ping timeout / transport error → 依赖内置 reconnection 重连
     });
@@ -82,7 +85,7 @@ export class SocketIOTransport extends EventEmitter<TransportEvents> {
     });
 
     socket.on("reconnect_failed", () => {
-      this.setState("error");
+      this.setState("error", this.lastError ?? "Reconnection failed");
       this.emit("reconnectFailed");
     });
 
@@ -107,9 +110,12 @@ export class SocketIOTransport extends EventEmitter<TransportEvents> {
     this.socket.send(data);
   }
 
-  private setState(state: TransportState, _detail?: CloseEvent): void {
+  private setState(state: TransportState, message?: string): void {
     this._state = state;
-    this.emit("state", { state });
+    const detail: CloseEvent | undefined = message
+      ? ({ code: state === "error" ? 4001 : 1011, reason: message, wasClean: false } as CloseEvent)
+      : undefined;
+    this.emit("state", { state, detail });
   }
 }
 
