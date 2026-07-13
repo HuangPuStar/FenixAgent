@@ -16,6 +16,7 @@ import loginEN from "./locales/en/login.json";
 import mcpEN from "./locales/en/mcp.json";
 import modelsEN from "./locales/en/models.json";
 import orgsEN from "./locales/en/orgs.json";
+import prodViewsEN from "./locales/en/prodViews.json";
 import sessionsEN from "./locales/en/sessions.json";
 import settingsEN from "./locales/en/settings.json";
 import sidebarEN from "./locales/en/sidebar.json";
@@ -39,6 +40,7 @@ import loginZH from "./locales/zh/login.json";
 import mcpZH from "./locales/zh/mcp.json";
 import modelsZH from "./locales/zh/models.json";
 import orgsZH from "./locales/zh/orgs.json";
+import prodViewsZH from "./locales/zh/prodViews.json";
 import sessionsZH from "./locales/zh/sessions.json";
 import settingsZH from "./locales/zh/settings.json";
 import sidebarZH from "./locales/zh/sidebar.json";
@@ -71,6 +73,7 @@ export const NS = {
   COMPONENTS: "components",
   HINDSIGHT: "hindsight",
   AGENT_HOME: "agentHome",
+  PROD_VIEWS: "prodViews",
   TOOL_NARRATOR: "toolNarrator",
 } as const;
 
@@ -104,6 +107,7 @@ i18n
         [NS.SETTINGS]: settingsEN,
         [NS.HINDSIGHT]: hindsightEN,
         [NS.AGENT_HOME]: agentHomeEN,
+        [NS.PROD_VIEWS]: prodViewsEN,
         [NS.TOOL_NARRATOR]: toolNarratorEN,
       },
       zh: {
@@ -129,6 +133,7 @@ i18n
         [NS.SETTINGS]: settingsZH,
         [NS.HINDSIGHT]: hindsightZH,
         [NS.AGENT_HOME]: agentHomeZH,
+        [NS.PROD_VIEWS]: prodViewsZH,
         [NS.TOOL_NARRATOR]: toolNarratorZH,
       },
     },
@@ -155,6 +160,7 @@ i18n
       NS.SETTINGS,
       NS.HINDSIGHT,
       NS.AGENT_HOME,
+      NS.PROD_VIEWS,
       NS.TOOL_NARRATOR,
     ],
     interpolation: { escapeValue: false },
