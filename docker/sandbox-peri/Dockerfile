@@ -14,7 +14,7 @@ RUN apt-get install -y --no-install-recommends \
 RUN rm -rf /var/lib/apt/lists/*
 
 # 安装 Claude Code (CCB) 和 ACP Runtime CLI
-RUN npm install -g  @fenix-agent/acp-runtime-cli@0.2.1
+RUN npm install -g  @fenix-agent/acp-runtime-cli@0.3.0
 
 RUN curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
 

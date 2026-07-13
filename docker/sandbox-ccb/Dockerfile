@@ -14,7 +14,7 @@ RUN apt-get install -y --no-install-recommends \
 RUN rm -rf /var/lib/apt/lists/*
 
 # 安装 Claude Code (CCB) 和 ACP Runtime CLI
-RUN npm install -g claude-code-best@2.8.1 @fenix-agent/acp-runtime-cli@0.2.1
+RUN npm install -g claude-code-best@2.8.1 @fenix-agent/acp-runtime-cli@0.3.0
 
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
