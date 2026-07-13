@@ -1,4 +1,5 @@
 import type { AuthContext } from "../plugins/auth";
+import { environmentRepo } from "../repositories/environment";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
 
@@ -54,8 +55,21 @@ export async function loadProdView(ctx: AuthContext, id: string) {
   const row = await prodViewRepo.getById(ctx.organizationId, id);
   if (!row) return { success: false as const, error: { code: "NOT_FOUND", message: "ProdView not found" } };
   if (!row.enabled) return { success: false as const, error: { code: "DISABLED", message: "ProdView is disabled" } };
+
+  // 解析 agentConfigId → environmentId（relay 连接需要 env_xxx 格式）
+  let environmentId: string | null = null;
+  if (row.agentId) {
+    const env = await environmentRepo.findByAgentConfigId(ctx.organizationId, row.agentId);
+    environmentId = env?.id ?? null;
+  }
+
   return {
     success: true as const,
-    data: { agentId: row.agentId, name: row.name, modulesConfig: row.modulesConfig as Record<string, unknown> },
+    data: {
+      agentConfigId: row.agentId,
+      environmentId,
+      name: row.name,
+      modulesConfig: row.modulesConfig as Record<string, unknown>,
+    },
   };
 }

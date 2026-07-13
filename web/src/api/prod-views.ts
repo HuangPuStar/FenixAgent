@@ -22,6 +22,10 @@ export interface ProdViewModulesConfig {
   todoPanel?: ProdViewModuleConfig;
   contextPanel?: ProdViewModuleConfig;
   toolCallRow?: ProdViewModuleConfig;
+  filesPanel?: ProdViewModuleConfig;
+  sitesPanel?: ProdViewModuleConfig;
+  tasksPanel?: ProdViewModuleConfig;
+  viewsPanel?: ProdViewModuleConfig;
 }
 
 export interface ProdViewInfo {
@@ -38,7 +42,8 @@ export interface ProdViewInfo {
 }
 
 export interface ProdViewLoadData {
-  agentId: string;
+  agentConfigId: string;
+  environmentId: string | null;
   name: string;
   modulesConfig: ProdViewModulesConfig;
 }

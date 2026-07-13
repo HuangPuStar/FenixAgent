@@ -32,7 +32,11 @@
     "permissionPanel": "权限面板",
     "todoPanel": "Todo 面板",
     "contextPanel": "上下文面板",
-    "toolCallRow": "工具调用行"
+    "toolCallRow": "工具调用行",
+    "filesPanel": "文件面板",
+    "sitesPanel": "站点面板",
+    "tasksPanel": "定时任务面板",
+    "viewsPanel": "发布视图面板"
   },
   "welcomeTitle": "欢迎语",
   "welcomePlaceholder": "首次加载时的欢迎消息",

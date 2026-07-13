@@ -32,7 +32,11 @@
     "permissionPanel": "Permissions",
     "todoPanel": "Todo",
     "contextPanel": "Context Panel",
-    "toolCallRow": "Tool Calls"
+    "toolCallRow": "Tool Calls",
+    "filesPanel": "Files Panel",
+    "sitesPanel": "Sites Panel",
+    "tasksPanel": "Tasks Panel",
+    "viewsPanel": "Views Panel"
   },
   "welcomeTitle": "Welcome Message",
   "welcomePlaceholder": "Welcome message on first load",

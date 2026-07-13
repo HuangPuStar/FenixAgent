@@ -83,6 +83,7 @@ export interface IEnvironmentRepo {
   listAcpAgentsByUserId(userId: string): Promise<EnvironmentRecord[]>;
   listByOrganizationId(organizationId: string): Promise<EnvironmentRecord[]>;
   listOnlineAcpAgents(): Promise<EnvironmentRecord[]>;
+  findByAgentConfigId(organizationId: string, agentConfigId: string): Promise<EnvironmentRecord | undefined>;
 }
 
 function rowToRecord(row: typeof environment.$inferSelect): EnvironmentRecord {
@@ -247,6 +248,15 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
       .from(environment)
       .where(and(eq(environment.workerType, "acp"), eq(environment.status, "active")));
     return rows.map(rowToRecord);
+  }
+
+  async findByAgentConfigId(organizationId: string, agentConfigId: string): Promise<EnvironmentRecord | undefined> {
+    const rows = await db
+      .select()
+      .from(environment)
+      .where(and(eq(environment.organizationId, organizationId), eq(environment.agentConfigId, agentConfigId)))
+      .limit(1);
+    return rows.length > 0 ? rowToRecord(rows[0]) : undefined;
   }
 }
 

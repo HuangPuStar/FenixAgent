@@ -21,7 +21,8 @@ app.get(
     detail: {
       tags: ["ProdView"],
       summary: "加载 ProdView 视图数据",
-      description: "前端视图页面调用，返回 agentId + modulesConfig。需要同组织认证且视图 enabled=true",
+      description:
+        "前端视图页面调用，返回 agentConfigId + environmentId + modulesConfig。需要同组织认证且视图 enabled=true",
     },
   },
 );

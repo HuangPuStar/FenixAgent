@@ -3,6 +3,8 @@ import { PanelRight } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePanelRef } from "react-resizable-panels";
+import type { ChatModulesConfig } from "@/components/ChatInterface";
+import { isModuleEnabled } from "@/components/ChatInterface";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
@@ -17,6 +19,7 @@ interface ChatAreaProps {
   agentId: string | null;
   sessionId?: string | null;
   visible: boolean;
+  modulesConfig?: ChatModulesConfig;
 }
 
 interface SessionSlot {
@@ -35,7 +38,7 @@ interface SessionSlot {
  * agentId/sessionId 从 AgentPanelLayout 的 URL 解析传入（而非 Route.useParams），
  * 仅当用户主动切换到新的 chat agent 时才变更，切到非 chat 页面时保持上次的 agentId。
  */
-export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
+export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAreaProps) {
   const { t } = useTranslation("agentPanel");
 
   const artifactsPanelRef = usePanelRef();
@@ -60,6 +63,17 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
   const [restartKey, setRestartKey] = useState(0);
   const changedFiles = useMemo(() => extractChangedFiles(entries), [entries]);
+
+  // 右侧面板是否显示：若 modulesConfig 中 filesPanel/sitesPanel/tasksPanel/viewsPanel 全部禁用则隐藏
+  const hasArtifactsPanel = useMemo(() => {
+    const c = modulesConfig;
+    return (
+      isModuleEnabled(c?.filesPanel) ||
+      isModuleEnabled(c?.sitesPanel) ||
+      isModuleEnabled(c?.tasksPanel) ||
+      isModuleEnabled(c?.viewsPanel)
+    );
+  }, [modulesConfig]);
 
   // ── Session keep-alive 缓存 ──
   // 缓存所有访问过的 session slot，key 为 sessionId 或 agent-level 兜底 key
@@ -111,7 +125,7 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
     const isActive = key === currentSessionKey && visible;
     return (
       <div key={key} style={{ display: isActive ? "contents" : "none" }}>
-        <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} />
+        <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} modulesConfig={modulesConfig} />
       </div>
     );
   });
@@ -208,41 +222,46 @@ export function ChatArea({ agentId, sessionId, visible }: ChatAreaProps) {
     >
       <div className="agent-panel-content" style={{ display: visible ? undefined : "none" }}>
         <ResizablePanelGroup orientation="horizontal" className="agent-panel-resizable">
-          <ResizablePanel defaultSize="60%" minSize="30%">
+          <ResizablePanel defaultSize={hasArtifactsPanel ? 60 : 100} minSize={30}>
             <div className="agent-chat-area">{chatPanels}</div>
           </ResizablePanel>
 
-          <ResizableHandle>
-            <button
-              type="button"
-              className={cn("agent-artifacts-expand-btn", !artifactsCollapsed && "open")}
-              onClick={toggleArtifacts}
-              title={artifactsCollapsed ? t("showArtifacts") : t("hideArtifacts")}
-            >
-              {artifactsCollapsed ? (
-                <PanelRight className="h-3.5 w-3.5" />
-              ) : (
-                <PanelRight className="h-3.5 w-3.5 -scale-x-100" />
-              )}
-            </button>
-          </ResizableHandle>
+          {hasArtifactsPanel && (
+            <>
+              <ResizableHandle>
+                <button
+                  type="button"
+                  className={cn("agent-artifacts-expand-btn", !artifactsCollapsed && "open")}
+                  onClick={toggleArtifacts}
+                  title={artifactsCollapsed ? t("showArtifacts") : t("hideArtifacts")}
+                >
+                  {artifactsCollapsed ? (
+                    <PanelRight className="h-3.5 w-3.5" />
+                  ) : (
+                    <PanelRight className="h-3.5 w-3.5 -scale-x-100" />
+                  )}
+                </button>
+              </ResizableHandle>
 
-          <ResizablePanel
-            panelRef={artifactsPanelRef}
-            defaultSize="40%"
-            minSize="20%"
-            maxSize="70%"
-            collapsible
-            collapsedSize="0%"
-            onResize={handleArtifactsResize}
-          >
-            <ArtifactsPanel
-              key={`${agentId}-${restartKey}`}
-              envId={agentId}
-              agentConfigId={agentConfigId}
-              changedFiles={changedFiles}
-            />
-          </ResizablePanel>
+              <ResizablePanel
+                panelRef={artifactsPanelRef}
+                defaultSize="40%"
+                minSize="20%"
+                maxSize="70%"
+                collapsible
+                collapsedSize="0%"
+                onResize={handleArtifactsResize}
+              >
+                <ArtifactsPanel
+                  key={`${agentId}-${restartKey}`}
+                  envId={agentId}
+                  agentConfigId={agentConfigId}
+                  changedFiles={changedFiles}
+                  modulesConfig={modulesConfig}
+                />
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
       </div>
     </Suspense>

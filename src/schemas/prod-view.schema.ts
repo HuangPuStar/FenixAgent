@@ -16,6 +16,10 @@ export const ProdViewModulesConfigSchema = z
     todoPanel: ProdViewModuleConfigSchema.optional(),
     contextPanel: ProdViewModuleConfigSchema.optional(),
     toolCallRow: ProdViewModuleConfigSchema.optional(),
+    filesPanel: ProdViewModuleConfigSchema.optional(),
+    sitesPanel: ProdViewModuleConfigSchema.optional(),
+    tasksPanel: ProdViewModuleConfigSchema.optional(),
+    viewsPanel: ProdViewModuleConfigSchema.optional(),
   })
   .passthrough();
 

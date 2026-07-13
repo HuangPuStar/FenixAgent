@@ -3,6 +3,8 @@ import { FilesIcon, Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { ChatModulesConfig } from "@/components/ChatInterface";
+import { isModuleEnabled } from "@/components/ChatInterface";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +31,7 @@ import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeT
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 import { cn } from "../../lib/utils";
+import { ProdViewsPanel } from "./ProdViewsPanel";
 import { TasksPanel } from "./TasksPanel";
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
@@ -36,14 +39,9 @@ const MAX_OPEN_FILES = 8;
 
 interface ArtifactsPanelProps {
   envId: string | null;
-  /**
-   * Agent 配置 ID，用于加载绑定的 sites。
-   * 外部已加载时可显式传入，避免重复请求；不传则 ArtifactsPanel 自己用 envId 拉
-   * environment 详情取 `agent_config_id`（chat 路由文件不再各自重复实现这段逻辑）。
-   */
   agentConfigId?: string | null;
-  /** 本次会话中被 Agent 修改的文件列表，已去重排序，含操作类型 */
   changedFiles?: ChangedFile[];
+  modulesConfig?: ChatModulesConfig;
 }
 
 /**
@@ -61,16 +59,27 @@ interface ArtifactsPanelProps {
  * 两个路由文件都不用重复实现 environment 拉取——历史上 chat.$agentId_.$sessionId.tsx
  * 漏传 agentConfigId prop 导致 sites 永远显示"未绑定"就是这种重复埋的坑。
  */
-export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, changedFiles = [] }: ArtifactsPanelProps) {
+export function ArtifactsPanel({
+  envId,
+  agentConfigId: agentConfigIdProp,
+  changedFiles = [],
+  modulesConfig,
+}: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
 
   // ── 一级 + 二级 tab 状态 ─────────────────────────────
-  // 一级 topMode：Files 显示文件区，Sites 显示二级 site tab + iframe
-  // 二级 activeSiteId：在 sites 列表里选哪个 site（仅 Sites 模式下使用）
-  // 拆成两个独立 state 而非 discriminated union：onChange 信号天然分离，
-  // render 派生 validActiveSiteId 比 effect 里 setActiveSiteId 更直接。
-  // agentConfigId 变化（切换 agent）时重置 topMode 回 files + activeSiteId 清空
-  const [topMode, setTopMode] = useState<TopMode>("files");
+  const availableModes = useMemo<TopMode[]>(() => {
+    const modes: TopMode[] = [];
+    const c = modulesConfig;
+    if (isModuleEnabled(c?.filesPanel)) modes.push("files");
+    if (isModuleEnabled(c?.sitesPanel)) modes.push("sites");
+    if (isModuleEnabled(c?.tasksPanel)) modes.push("tasks");
+    if (isModuleEnabled(c?.viewsPanel)) modes.push("views");
+    // 未传 modulesConfig 时全部可用（向后兼容）
+    return modes.length > 0 ? modes : (["files", "sites", "tasks", "views"] as TopMode[]);
+  }, [modulesConfig]);
+
+  const [topMode, setTopMode] = useState<TopMode>(availableModes[0]);
   const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
   // 用户主动切到 Sites 模式的标记：一旦主动离开 Files，后续 agent 产生 diff
   // 时不再粗暴切回 Files（避免长任务运行中持续打断浏览 site 的用户）。
@@ -272,7 +281,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
   // 挂载/卸载不走这里——直接调 loadSites（不重置 topMode/activeSiteId/pendingDiff，
   // 用户挂载完希望留在 Sites 模式看到新 tab，卸载完希望保留剩余 site 的浏览状态）。
   useEffect(() => {
-    setTopMode("files");
+    setTopMode(availableModes[0]);
     setActiveSiteId(null);
     userPickedSiteRef.current = false;
     setPendingDiffCount(0);
@@ -282,7 +291,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
       return;
     }
     void loadSites(agentConfigId);
-  }, [agentConfigId, loadSites, setSites]);
+  }, [agentConfigId, loadSites, setSites, availableModes]);
 
   // ── Files 模式内部状态 ─────────────────────────────────
   const [openFiles, setOpenFiles] = useState<string[]>([]);
@@ -426,7 +435,12 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
     >
       {/* 一级 tab：Files / Sites 永远显示且永远可点；
           未绑定 site 时点 Sites 会进入空状态，提示用户去 Agent 配置里绑定 */}
-      <TopModeTabs topMode={topMode} pendingDiffCount={pendingDiffCount} onChange={handleTopChange} />
+      <TopModeTabs
+        topMode={topMode}
+        pendingDiffCount={pendingDiffCount}
+        onChange={handleTopChange}
+        availableModes={modulesConfig ? availableModes : undefined}
+      />
 
       {/* 加载中提示（紧凑模式，避免阻塞 Files 默认体验） */}
       {sitesLoading && sites.length === 0 && (
@@ -440,7 +454,7 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
         </div>
       )}
 
-      {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Sites 模式：二级 site tab + iframe */}
+      {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Views 模式：发布视图列表；Sites 模式：二级 site tab + iframe */}
       {isFilesMode ? (
         <>
           <FileTabsBar
@@ -485,6 +499,8 @@ export function ArtifactsPanel({ envId, agentConfigId: agentConfigIdProp, change
         </>
       ) : topMode === "tasks" ? (
         <TasksPanel agentId={agentConfigId} />
+      ) : topMode === "views" ? (
+        <ProdViewsPanel agentId={agentConfigId} />
       ) : sites.length === 0 ? (
         // Sites 模式 + 未绑定任何 site：空状态提示 + 直接挂载入口（agentConfigId 就绪时显示）
         <div className="flex-1 min-h-0 min-w-0 flex flex-col items-center justify-center gap-3 px-6 text-center">

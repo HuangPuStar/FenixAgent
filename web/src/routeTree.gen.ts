@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root"
-import { Route as View_rootRouteImport } from "./routes/view/__root"
 import { Route as NoAccessRouteImport } from "./routes/no-access"
 import { Route as LoginRouteImport } from "./routes/login"
 import { Route as IndexRouteImport } from "./routes/index"
@@ -39,10 +38,6 @@ import { Route as AgentPanelWorkflowIdVersionsRouteImport } from "./routes/agent
 import { Route as AgentPanelWorkflowIdEditRouteImport } from "./routes/agent/_panel/workflow_.$id.edit"
 import { Route as AgentPanelChatAgentIdSessionIdRouteImport } from "./routes/agent/_panel/chat.$agentId_.$sessionId"
 
-const View_rootRoute = View_rootRouteImport.update({
-  id: "/view/__root",
-  getParentRoute: () => rootRouteImport,
-} as any)
 const NoAccessRoute = NoAccessRouteImport.update({
   id: "/no-access",
   path: "/no-access",
@@ -195,7 +190,6 @@ export interface FileRoutesByFullPath {
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
   "/view/$prodViewId": typeof ViewProdViewIdRoute
-  "/view": typeof View_rootRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
   "/agent/apikeys": typeof AgentPanelApikeysRoute
@@ -225,7 +219,6 @@ export interface FileRoutesByTo {
   "/no-access": typeof NoAccessRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/view/$prodViewId": typeof ViewProdViewIdRoute
-  "/view": typeof View_rootRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
   "/agent/apikeys": typeof AgentPanelApikeysRoute
@@ -257,7 +250,6 @@ export interface FileRoutesById {
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
   "/view/$prodViewId": typeof ViewProdViewIdRoute
-  "/view/__root": typeof View_rootRoute
   "/agent/$agentId_/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/_panel/agents": typeof AgentPanelAgentsRoute
   "/agent/_panel/apikeys": typeof AgentPanelApikeysRoute
@@ -290,7 +282,6 @@ export interface FileRouteTypes {
     | "/agent/$agentId"
     | "/agent"
     | "/view/$prodViewId"
-    | "/view"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
     | "/agent/apikeys"
@@ -320,7 +311,6 @@ export interface FileRouteTypes {
     | "/no-access"
     | "/agent/$agentId"
     | "/view/$prodViewId"
-    | "/view"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
     | "/agent/apikeys"
@@ -351,7 +341,6 @@ export interface FileRouteTypes {
     | "/agent/$agentId"
     | "/agent/_panel"
     | "/view/$prodViewId"
-    | "/view/__root"
     | "/agent/$agentId_/$sessionId"
     | "/agent/_panel/agents"
     | "/agent/_panel/apikeys"
@@ -383,19 +372,11 @@ export interface RootRouteChildren {
   AgentAgentIdRoute: typeof AgentAgentIdRoute
   AgentPanelRoute: typeof AgentPanelRouteWithChildren
   ViewProdViewIdRoute: typeof ViewProdViewIdRoute
-  View_rootRoute: typeof View_rootRoute
   AgentAgentIdSessionIdRoute: typeof AgentAgentIdSessionIdRoute
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    "/view/__root": {
-      id: "/view/__root"
-      path: "/view"
-      fullPath: "/view"
-      preLoaderRoute: typeof View_rootRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     "/no-access": {
       id: "/no-access"
       path: "/no-access"
@@ -654,7 +635,6 @@ const rootRouteChildren: RootRouteChildren = {
   AgentAgentIdRoute: AgentAgentIdRoute,
   AgentPanelRoute: AgentPanelRouteWithChildren,
   ViewProdViewIdRoute: ViewProdViewIdRoute,
-  View_rootRoute: View_rootRoute,
   AgentAgentIdSessionIdRoute: AgentAgentIdSessionIdRoute,
 }
 export const routeTree = rootRouteImport

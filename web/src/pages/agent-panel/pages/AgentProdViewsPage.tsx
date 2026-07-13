@@ -28,6 +28,10 @@ const MODULE_KEYS = [
   "todoPanel",
   "contextPanel",
   "toolCallRow",
+  "filesPanel",
+  "sitesPanel",
+  "tasksPanel",
+  "viewsPanel",
 ] as const;
 
 function buildEnabledMap(cfg: ProdViewModulesConfig): Record<string, boolean> {

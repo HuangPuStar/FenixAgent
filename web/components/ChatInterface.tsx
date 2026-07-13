@@ -90,6 +90,14 @@ export interface ChatModulesConfig {
   todoPanel?: ChatModuleConfig;
   contextPanel?: ChatModuleConfig;
   toolCallRow?: ChatModuleConfig;
+  /** 右侧面板 — 文件 */
+  filesPanel?: ChatModuleConfig;
+  /** 右侧面板 — 站点 */
+  sitesPanel?: ChatModuleConfig;
+  /** 右侧面板 — 定时任务 */
+  tasksPanel?: ChatModuleConfig;
+  /** 右侧面板 — 发布视图 */
+  viewsPanel?: ChatModuleConfig;
 }
 
 /** 判断模块是否应该渲染。未传 config 默认 true，传了则按 enabled 判断（enabled 缺省为 true） */
