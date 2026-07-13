@@ -49,6 +49,7 @@ import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
+import { registerNamespaces } from "./transport/socketio-namespaces";
 import { initSocketIOServer } from "./transport/socketio-server";
 import { closeTransportStore } from "./transport/store/factory";
 
@@ -215,11 +216,12 @@ export type App = typeof app;
 // 供 Eden Treaty treaty<App>() 做类型推断
 app.listen({ port, hostname: host });
 
-// 初始化 socket.io server（三个 namespace：/relay /machine /file）
+// 初始化 socket.io server 并注册三个 namespace（/relay /machine /file）
 const io = initSocketIOServer(app.server!);
 // 将 io 实例挂载到全局供后续 namespace 注册使用
 (globalThis as Record<string, unknown>).__socketio = io;
-startupLog.info("socket.io server attached");
+registerNamespaces(io);
+startupLog.info("socket.io server attached with namespaces");
 
 export default app;
 
