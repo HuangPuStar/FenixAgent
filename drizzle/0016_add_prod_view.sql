@@ -1,1 +1,0 @@
-ALTER TABLE "prod_view" ALTER COLUMN "agent_id" SET DATA TYPE uuid;
