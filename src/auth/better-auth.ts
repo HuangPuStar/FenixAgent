@@ -12,6 +12,8 @@ function generateId(size = 32): string {
 }
 
 export const auth = betterAuth({
+  // baseURL 用于生成回调/重定向 URL。线上必须通过 BETTER_AUTH_URL 环境变量设置。
+  baseURL: process.env.BETTER_AUTH_URL,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema,

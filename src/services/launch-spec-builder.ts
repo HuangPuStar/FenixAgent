@@ -5,7 +5,7 @@ import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugi
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getBaseUrl } from "../config";
 import { db } from "../db";
-import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider, skill } from "../db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "../db/schema";
 import { AppError } from "../errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import type { AgentConfigDetailWithAccess } from "./config";
@@ -483,6 +483,42 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
   );
 
   // Phase 3: 产出最终 launchSpec，此时所有关键资源都已经完成严格校验。
+  // 处理 extra.plugin：对 Hindsight 条目注入服务端动态配置
+  let processedExtra = (agentConfig.extra as Record<string, unknown> | null | undefined) ?? null;
+  if (processedExtra && Array.isArray(processedExtra.plugin)) {
+    const hindsightUrl = process.env.HINDSIGHT_MCP_URL;
+    if (hindsightUrl) {
+      let bankId: string | null = null;
+      try {
+        const rows = await db
+          .select({ id: member.id })
+          .from(member)
+          .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId)))
+          .limit(1);
+        bankId = rows[0]?.id ?? null;
+      } catch (err) {
+        logError(`[launch-spec-builder] failed to resolve memberId for Hindsight bankId: ${String(err)}`);
+      }
+
+      const injectedPlugin = (processedExtra.plugin as Array<[string, Record<string, unknown>]>).map(
+        ([name, config]) => {
+          if (name === "@konghayao/opencode-hindsight") {
+            return [
+              name,
+              {
+                ...config,
+                hindsightApiUrl: hindsightUrl,
+                ...(bankId ? { bankId } : {}),
+              },
+            ] as [string, Record<string, unknown>];
+          }
+          return [name, config] as [string, Record<string, unknown>];
+        },
+      );
+      processedExtra = { ...processedExtra, plugin: injectedPlugin };
+    }
+  }
+
   return {
     organizationId,
     userId,
@@ -491,7 +527,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     agent: {
       name: agentConfig.name,
       ...(agentConfig.prompt ? { prompt: agentConfig.prompt } : {}),
-      ...(agentConfig.extra ? { extra: agentConfig.extra as Record<string, unknown> } : {}),
+      ...(processedExtra ? { extra: processedExtra } : {}),
     },
     model,
     skills,
