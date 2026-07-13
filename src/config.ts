@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import type { Env } from "./env";
+import { DEFAULT_AGENT_SYSTEM_PROMPT } from "./services/agent-system-prompt";
 
 function buildConfig(env: Env) {
   return {
@@ -39,6 +40,7 @@ function buildConfig(env: Env) {
     disableSignup: env.RCS_DISABLE_SIGNUP,
     defaultMachineId: env.RCS_DEFAULT_MACHINE_ID,
     defaultEngineType: env.RCS_DEFAULT_ENGINE_TYPE,
+    agentSystemPrompt: env.RCS_AGENT_SYSTEM_PROMPT ?? DEFAULT_AGENT_SYSTEM_PROMPT,
     disableLocalExecution: env.RCS_DISABLE_LOCAL_EXECUTION,
   };
 }

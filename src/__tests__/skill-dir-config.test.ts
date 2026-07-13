@@ -33,6 +33,7 @@ function makeEnv(skillDir: string): Env {
     RCS_DISABLE_LOCAL_EXECUTION: false,
     REGISTRY_SECRET: "",
     ACPX_G_URL: "http://localhost:8848",
+    RCS_AGENT_SYSTEM_PROMPT: "你是 FENIXAGENT。\n你当前的 Agent 名称是「{{agentName}}」。\n{{userPrompt}}",
     RCS_CCB_COMMAND: "ccb",
     RCS_CCB_ARGS: "--acp",
     WORKFLOW_TOOLS_DIR: "./tools",

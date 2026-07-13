@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { DEFAULT_AGENT_SYSTEM_PROMPT } from "./services/agent-system-prompt";
 import { ENGINE_TYPES } from "./services/config/types";
 
 const envSchema = z.object({
@@ -73,6 +74,7 @@ const envSchema = z.object({
 
   // 默认引擎类型。agent config 未指定 engineType 时覆盖硬编码默认值
   RCS_DEFAULT_ENGINE_TYPE: z.enum(ENGINE_TYPES).optional(),
+  RCS_AGENT_SYSTEM_PROMPT: z.string().min(1).default(DEFAULT_AGENT_SYSTEM_PROMPT),
   // 禁用 local-default 本地节点。设为 "true" 后所有实例必须路由到远程 machine
   RCS_DISABLE_LOCAL_EXECUTION: z
     .string()
