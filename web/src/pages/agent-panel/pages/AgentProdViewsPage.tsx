@@ -3,6 +3,7 @@ import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
 import { type ProdViewInfo, type ProdViewModulesConfig, prodViewApi } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
+import { NS } from "@/src/i18n";
 import type { AgentInfo } from "@/src/types/config";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
@@ -44,7 +46,7 @@ interface CreateForm {
 }
 
 export function AgentProdViewsPage() {
-  const { t } = useTranslation("prodViews");
+  const { t } = useTranslation(NS.PROD_VIEWS);
 
   const {
     data: views = [],
@@ -118,8 +120,7 @@ export function AgentProdViewsPage() {
       for (const key of MODULE_KEYS) {
         modulesConfig[key] = { ...editView.modulesConfig[key], enabled: editEnabledMap[key] };
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await unwrap(prodViewApi.update(editView.id, { modulesConfig } as any));
+      await unwrap(prodViewApi.update(editView.id, { modulesConfig }));
       toast.success(t("updateSuccess"));
       setEditView(null);
       refresh();
@@ -127,6 +128,9 @@ export function AgentProdViewsPage() {
       toast.error((err as Error).message);
     }
   };
+
+  // 删除确认
+  const [deleteTarget, setDeleteTarget] = useState<ProdViewInfo | null>(null);
 
   const handleDelete = async (id: string) => {
     try {
@@ -183,6 +187,9 @@ export function AgentProdViewsPage() {
                 </span>
               </div>
               <div className="text-xs text-text-muted mt-0.5">{view.agentId}</div>
+              <div className="text-xs text-text-muted mt-0.5">
+                {t("createdAt")}: {new Date(view.createdAt).toLocaleString()}
+              </div>
             </div>
             <div className="flex items-center gap-1 shrink-0 ml-4">
               <Button size="xs" variant="ghost" onClick={() => openEdit(view)}>
@@ -195,7 +202,7 @@ export function AgentProdViewsPage() {
                 size="xs"
                 variant="ghost"
                 className="text-red-500 hover:text-red-600"
-                onClick={() => handleDelete(view.id)}
+                onClick={() => setDeleteTarget(view)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -235,7 +242,7 @@ export function AgentProdViewsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {agentOptions.map((a: AgentInfo) => (
-                    <SelectItem key={String(a.name)} value={String(a.name)}>
+                    <SelectItem key={a.id} value={a.id}>
                       {String(a.name)}
                     </SelectItem>
                   ))}
@@ -295,6 +302,20 @@ export function AgentProdViewsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={t("deleteTitle")}
+        description={t("deleteDescription", { name: deleteTarget?.name ?? "" })}
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteTarget) handleDelete(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

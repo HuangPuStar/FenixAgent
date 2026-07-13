@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { NS } from "@/src/i18n";
 
 interface ProdViewShellProps {
   title?: string;
@@ -8,7 +9,7 @@ interface ProdViewShellProps {
 
 /** ProdView 轻量布局壳：极简 header + 全屏 chat 区域 */
 export function ProdViewShell({ title, children }: ProdViewShellProps) {
-  const { t } = useTranslation("prodViews");
+  const { t } = useTranslation(NS.PROD_VIEWS);
 
   return (
     <div className="flex h-screen flex-col bg-[#f8fafc]">

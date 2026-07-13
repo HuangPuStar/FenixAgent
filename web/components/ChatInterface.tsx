@@ -82,11 +82,14 @@ export interface ChatModuleConfig {
 
 /** ProdView 模块显隐配置 */
 export interface ChatModulesConfig {
+  chatHeader?: ChatModuleConfig;
+  sessionSidebar?: ChatModuleConfig;
   chatView?: ChatModuleConfig;
   chatComposer?: ChatModuleConfig;
   permissionPanel?: ChatModuleConfig;
   todoPanel?: ChatModuleConfig;
   contextPanel?: ChatModuleConfig;
+  toolCallRow?: ChatModuleConfig;
 }
 
 /** 判断模块是否应该渲染。未传 config 默认 true，传了则按 enabled 判断（enabled 缺省为 true） */
@@ -1113,9 +1116,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               handlePermissionResponse(requestId, optionId, optionKind as PermissionOption["kind"] | null);
             }}
             emptyTitle={sessionReady ? t("chatEmpty.startConversation") : undefined}
-            emptyDescription={sessionReady ? t("chatEmpty.startConversationDesc") : undefined}
+            emptyDescription={
+              sessionReady
+                ? (modulesConfig?.chatView?.welcomeMessage as string) || t("chatEmpty.startConversationDesc")
+                : undefined
+            }
             sessionId={rcsSessionId ?? activeSessionId ?? undefined}
             envId={agentId}
+            hideToolCallRows={!isModuleEnabled(modulesConfig?.toolCallRow)}
           />
         )}
 
@@ -1153,7 +1161,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 isLoading={isLoading}
                 onInterrupt={handleCancel}
                 disabled={!sessionReady}
-                placeholder={sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
+                placeholder={
+                  (modulesConfig?.chatComposer?.placeholder as string) ||
+                  (sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession"))
+                }
                 supportsImages={supportsImages}
                 commands={availableCommands.length > 0 ? availableCommands : undefined}
                 envId={agentId}

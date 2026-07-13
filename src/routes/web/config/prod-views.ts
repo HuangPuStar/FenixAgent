@@ -1,20 +1,16 @@
 import Elysia from "elysia";
-import * as z from "zod/v4";
 import { authGuardPlugin } from "../../../plugins/auth";
 import { WebErrSchema } from "../../../schemas/common.schema";
-import { CreateProdViewSchema, UpdateProdViewSchema } from "../../../schemas/prod-view.schema";
+import {
+  CreateProdViewSchema,
+  IdParamsSchema,
+  ListProdViewQuerySchema,
+  OkResponseSchema,
+  UpdateProdViewSchema,
+} from "../../../schemas/prod-view.schema";
 import * as prodViewService from "../../../services/prod-view";
 
 const app = new Elysia({ name: "web-config-prod-views" }).use(authGuardPlugin);
-
-const listQuerySchema = z.object({
-  agentId: z.string().optional(),
-  enabled: z.coerce.boolean().optional(),
-});
-
-const idParamsSchema = z.object({ id: z.string().min(1) });
-
-const looseOkSchema = z.object({ success: z.literal(true) }).passthrough();
 
 // GET /config/prod-views — 列表
 app.get(
@@ -25,8 +21,8 @@ app.get(
   },
   {
     sessionAuth: true,
-    query: listQuerySchema,
-    response: { 200: looseOkSchema, 400: WebErrSchema },
+    query: ListProdViewQuerySchema,
+    response: { 200: OkResponseSchema, 400: WebErrSchema },
     detail: {
       tags: ["ProdView"],
       summary: "获取 ProdView 列表",
@@ -44,8 +40,8 @@ app.get(
   },
   {
     sessionAuth: true,
-    params: idParamsSchema,
-    response: { 200: looseOkSchema, 404: WebErrSchema },
+    params: IdParamsSchema,
+    response: { 200: OkResponseSchema, 404: WebErrSchema },
     detail: { tags: ["ProdView"], summary: "获取单个 ProdView 详情" },
   },
 );
@@ -53,18 +49,14 @@ app.get(
 // POST /config/prod-views — 创建
 app.post(
   "/config/prod-views",
-  async ({ store, body, status }) => {
+  async ({ store, body }) => {
     const ctx = store.authContext!;
-    const parseResult = CreateProdViewSchema.safeParse(body);
-    if (!parseResult.success) {
-      return status(400, { success: false, error: { code: "VALIDATION_ERROR", message: parseResult.error.message } });
-    }
-    return prodViewService.createProdView(ctx, parseResult.data);
+    return prodViewService.createProdView(ctx, body);
   },
   {
     sessionAuth: true,
     body: CreateProdViewSchema,
-    response: { 200: looseOkSchema, 400: WebErrSchema },
+    response: { 200: OkResponseSchema, 400: WebErrSchema },
     detail: { tags: ["ProdView"], summary: "创建 ProdView" },
   },
 );
@@ -74,19 +66,15 @@ app.put(
   "/config/prod-views/:id",
   async ({ store, params, body, status }) => {
     const ctx = store.authContext!;
-    const parseResult = UpdateProdViewSchema.safeParse(body);
-    if (!parseResult.success) {
-      return status(400, { success: false, error: { code: "VALIDATION_ERROR", message: parseResult.error.message } });
-    }
-    const result = await prodViewService.updateProdView(ctx, params.id, parseResult.data);
+    const result = await prodViewService.updateProdView(ctx, params.id, body);
     if (!result.success) return status(404, { success: false as const, error: result.error });
     return result;
   },
   {
     sessionAuth: true,
-    params: idParamsSchema,
+    params: IdParamsSchema,
     body: UpdateProdViewSchema,
-    response: { 200: looseOkSchema, 400: WebErrSchema, 404: WebErrSchema },
+    response: { 200: OkResponseSchema, 400: WebErrSchema, 404: WebErrSchema },
     detail: { tags: ["ProdView"], summary: "更新 ProdView 配置" },
   },
 );
@@ -102,8 +90,8 @@ app.delete(
   },
   {
     sessionAuth: true,
-    params: idParamsSchema,
-    response: { 200: looseOkSchema, 404: WebErrSchema },
+    params: IdParamsSchema,
+    response: { 200: OkResponseSchema, 404: WebErrSchema },
     detail: { tags: ["ProdView"], summary: "删除 ProdView" },
   },
 );

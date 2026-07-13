@@ -2,6 +2,7 @@ import type { AuthContext } from "../plugins/auth";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
 
+/** 创建 ProdView 记录 */
 export async function createProdView(ctx: AuthContext, input: CreateProdViewInput) {
   const row = await prodViewRepo.create({
     organizationId: ctx.organizationId,
@@ -13,17 +14,20 @@ export async function createProdView(ctx: AuthContext, input: CreateProdViewInpu
   return { success: true as const, data: row };
 }
 
+/** 获取单个 ProdView 详情，不存在时返回 NOT_FOUND 错误 */
 export async function getProdView(ctx: AuthContext, id: string) {
   const row = await prodViewRepo.getById(ctx.organizationId, id);
   if (!row) return { success: false as const, error: { code: "NOT_FOUND", message: "ProdView not found" } };
   return { success: true as const, data: row };
 }
 
+/** 列出组织下的 ProdView 列表，可按 agentId 和 enabled 过滤 */
 export async function listProdViews(ctx: AuthContext, filters?: { agentId?: string; enabled?: boolean }) {
   const rows = await prodViewRepo.listByOrg(ctx.organizationId, filters);
   return { success: true as const, data: rows };
 }
 
+/** 更新 ProdView 配置（名称、描述、模块配置、启用状态），不存在时返回 NOT_FOUND 错误 */
 export async function updateProdView(ctx: AuthContext, id: string, input: UpdateProdViewInput) {
   const existing = await prodViewRepo.getById(ctx.organizationId, id);
   if (!existing) return { success: false as const, error: { code: "NOT_FOUND", message: "ProdView not found" } };
@@ -36,6 +40,7 @@ export async function updateProdView(ctx: AuthContext, id: string, input: Update
   return { success: true as const, data: row };
 }
 
+/** 删除 ProdView 记录，不存在或被删除失败时返回对应错误 */
 export async function deleteProdView(ctx: AuthContext, id: string) {
   const existing = await prodViewRepo.getById(ctx.organizationId, id);
   if (!existing) return { success: false as const, error: { code: "NOT_FOUND", message: "ProdView not found" } };
@@ -44,6 +49,7 @@ export async function deleteProdView(ctx: AuthContext, id: string) {
   return { success: true as const, data: { ok: true } };
 }
 
+/** 加载 ProdView 视图数据（公开端点），仅返回 enabled=true 的视图配置 */
 export async function loadProdView(ctx: AuthContext, id: string) {
   const row = await prodViewRepo.getById(ctx.organizationId, id);
   if (!row) return { success: false as const, error: { code: "NOT_FOUND", message: "ProdView not found" } };

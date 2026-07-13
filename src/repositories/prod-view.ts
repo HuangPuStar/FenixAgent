@@ -2,7 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { type ProdViewRow, prodView } from "../db/schema";
 
+/** ProdView 数据访问层接口 — 封装 ProdView 表的 CRUD 操作 */
 export interface IProdViewRepository {
+  /** 创建 ProdView 记录 */
   create(params: {
     organizationId: string;
     name: string;
@@ -10,8 +12,11 @@ export interface IProdViewRepository {
     agentId: string;
     createdBy: string;
   }): Promise<ProdViewRow>;
+  /** 根据组织和 ID 获取单条记录 */
   getById(orgId: string, id: string): Promise<ProdViewRow | undefined>;
+  /** 列出组织下的 ProdView，支持 agentId 和 enabled 过滤 */
   listByOrg(orgId: string, filters?: { agentId?: string; enabled?: boolean }): Promise<ProdViewRow[]>;
+  /** 更新 ProdView 记录的部分字段 */
   update(
     orgId: string,
     id: string,
@@ -22,9 +27,11 @@ export interface IProdViewRepository {
       enabled?: boolean;
     },
   ): Promise<ProdViewRow | undefined>;
+  /** 删除 ProdView 记录，返回是否删除成功 */
   delete(orgId: string, id: string): Promise<boolean>;
 }
 
+/** PostgreSQL 实现：通过 Drizzle ORM 操作 prodView 表 */
 class PgProdViewRepository implements IProdViewRepository {
   async create(params: {
     organizationId: string;

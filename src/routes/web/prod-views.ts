@@ -1,13 +1,10 @@
 import Elysia from "elysia";
-import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
+import { IdParamsSchema, OkResponseSchema } from "../../schemas/prod-view.schema";
 import { loadProdView } from "../../services/prod-view";
 
 const app = new Elysia({ name: "web-prod-views" }).use(authGuardPlugin);
-
-const loadParamsSchema = z.object({ id: z.string().min(1) });
-const loadResponseSchema = z.object({ success: z.literal(true) }).passthrough();
 
 app.get(
   "/prod-views/:id/load",
@@ -19,8 +16,8 @@ app.get(
   },
   {
     sessionAuth: true,
-    params: loadParamsSchema,
-    response: { 200: loadResponseSchema, 404: WebErrSchema },
+    params: IdParamsSchema,
+    response: { 200: OkResponseSchema, 404: WebErrSchema },
     detail: {
       tags: ["ProdView"],
       summary: "加载 ProdView 视图数据",
