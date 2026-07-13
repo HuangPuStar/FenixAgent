@@ -10,6 +10,7 @@ export const OrganizationUserSchema = z.object({
   id: z.string().describe("用户 ID。"),
   name: z.string().describe("用户名称。"),
   email: z.string().describe("用户邮箱。"),
+  phoneNumber: z.string().nullable().optional().describe("用户手机号；未设置时为空。"),
 });
 
 /** 组织成员信息 */
@@ -87,8 +88,7 @@ export const OrganizationActionRequestSchema = z.discriminatedUnion("action", [
     action: z.literal("add-member").describe("添加组织成员。"),
     organizationId: z.string().describe("组织 ID。"),
     role: z.string().describe("成员角色。"),
-    userId: z.string().optional().describe("要添加的用户 ID。"),
-    email: z.string().optional().describe("要添加的用户邮箱；传入后会先转换为 userId。"),
+    identifier: z.string().describe("要添加的成员标识；支持邮箱或手机号。"),
   }),
   z.object({
     action: z.literal("remove-member").describe("移除组织成员。"),

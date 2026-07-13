@@ -5,7 +5,7 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
-import { getApiKeyServiceStub, getAuthApiStub } from "./stubs/auth-stub";
+import { getApiKeyServiceStub, getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
 import { getEnvironmentRepoStub } from "./stubs/module-stubs";
@@ -99,9 +99,17 @@ mock.module("../services/config/index", () =>
 // ── auth.api 方法名称 ──
 
 const AUTH_API_KEYS = [
+  "signUpEmail",
   "listApiKeys",
   "deleteApiKey",
   "createApiKey",
+  "addMember",
+  "getFullOrganization",
+  "updateOrganization",
+  "deleteOrganization",
+  "setActiveOrganization",
+  "removeMember",
+  "updateMemberRole",
   "listMembers",
   "listOrganizations",
   "createOrganization",
@@ -115,7 +123,7 @@ mock.module("../auth/better-auth", () => {
   return {
     auth: {
       api: apiObj,
-      handler: (_req: Request) => new Response("mocked", { status: 200 }),
+      handler: (req: Request) => getAuthHandlerStub()?.(req) ?? new Response("mocked", { status: 200 }),
     },
   };
 });

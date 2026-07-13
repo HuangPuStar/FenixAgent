@@ -26,7 +26,7 @@ interface OrgMember {
   id: string;
   userId: string;
   role: string;
-  user: { id: string; name: string; email: string; image?: string };
+  user: { id: string; name: string; email: string; phoneNumber?: string | null; image?: string };
 }
 
 interface OrgDetail {
@@ -210,7 +210,7 @@ export function AgentOrganizationsPage() {
     if (!selectedOrgId || !addMemberEmail.trim()) return;
     setAddMemberSaving(true);
     const { error: addErr } = await orgApi.addMember(selectedOrgId, {
-      email: addMemberEmail.trim(),
+      identifier: addMemberEmail.trim(),
       role: addMemberRole,
     });
     if (addErr) {
@@ -409,6 +409,9 @@ export function AgentOrganizationsPage() {
                           <span className="text-sm font-medium text-text-bright">{m.user?.name || m.userId}</span>
                           <RoleBadge role={m.role} />
                         </div>
+                        {m.user?.phoneNumber ? (
+                          <p className="text-xs text-text-dim mt-0.5">{m.user.phoneNumber}</p>
+                        ) : null}
                         <p className="text-xs text-text-dim mt-0.5">{m.user?.email}</p>
                       </div>
                       <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">

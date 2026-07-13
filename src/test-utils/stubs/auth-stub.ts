@@ -5,9 +5,17 @@
 type StubFn = (...args: any[]) => any;
 
 interface AuthApiStubs {
+  signUpEmail: StubFn;
   listApiKeys: StubFn;
   deleteApiKey: StubFn;
   createApiKey: StubFn;
+  addMember: StubFn;
+  getFullOrganization: StubFn;
+  updateOrganization: StubFn;
+  deleteOrganization: StubFn;
+  setActiveOrganization: StubFn;
+  removeMember: StubFn;
+  updateMemberRole: StubFn;
   listMembers: StubFn;
   listOrganizations: StubFn;
   createOrganization: StubFn;
@@ -22,6 +30,7 @@ interface ApiKeyServiceStubs {
 
 let _authApiStubs: Partial<AuthApiStubs> = {};
 let _apiKeyStubs: Partial<ApiKeyServiceStubs> = {};
+let _authHandlerStub: ((request: Request) => Response | Promise<Response>) | null = null;
 
 // ── better-auth stubs ──
 
@@ -33,6 +42,14 @@ export function getAuthApiStub<K extends keyof AuthApiStubs>(name: K): AuthApiSt
   const fn = _authApiStubs[name];
   if (!fn) throw new Error(`auth.api stub '${String(name)}' not configured, call stubAuthApi() in beforeEach`);
   return fn;
+}
+
+export function stubAuthHandler(handler: (request: Request) => Response | Promise<Response>) {
+  _authHandlerStub = handler;
+}
+
+export function getAuthHandlerStub() {
+  return _authHandlerStub;
 }
 
 // ── api-key-service stubs ──
@@ -53,4 +70,5 @@ export function getApiKeyServiceStub<K extends keyof ApiKeyServiceStubs>(name: K
 export function resetAuthStubs() {
   _authApiStubs = {};
   _apiKeyStubs = {};
+  _authHandlerStub = null;
 }

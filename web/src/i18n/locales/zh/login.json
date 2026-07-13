@@ -1,11 +1,15 @@
 {
   "signUp": "创建账户",
   "signIn": "登录",
+  "emailTab": "邮箱",
+  "phoneTab": "手机号",
   "signUpSubtitle": "创建账户以管理你的 Agent",
   "signInSubtitle": "登录以管理你的 Agent",
   "name": "名称",
   "namePlaceholder": "你的名称",
   "email": "邮箱",
+  "phoneNumber": "手机号",
+  "phoneNumberPlaceholder": "请输入中国大陆手机号",
   "password": "密码",
   "passwordPlaceholder": "至少 8 个字符",
   "brandSubtitle": "企业级AI智能体中枢",
@@ -15,6 +19,7 @@
   "createAccountSubtitle": "注册 Fenix Agent 智能中枢平台",
   "account": "账号",
   "accountPlaceholder": "请输入账号或邮箱",
+  "accountPhonePlaceholder": "请输入手机号",
   "username": "用户名",
   "usernamePlaceholder": "请输入用户名",
   "enterpriseEmailPlaceholder": "请输入企业邮箱",
@@ -39,5 +44,6 @@
   "noAccount": "没有账户？",
   "signUpFailed": "注册失败",
   "signInFailed": "登录失败",
-  "unknownError": "未知错误"
+  "unknownError": "未知错误",
+  "invalidPhoneNumber": "请输入正确的中国大陆手机号"
 }

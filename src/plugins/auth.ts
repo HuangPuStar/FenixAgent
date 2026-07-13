@@ -1,10 +1,14 @@
 import { requestAls } from "@fenix/logger";
+import { eq } from "drizzle-orm";
 import Elysia from "elysia";
 import { auth } from "../auth/better-auth";
 import { decryptPassword, getEncryptionKey } from "../auth/encryption";
 import { verifyWorkerJwt } from "../auth/jwt";
 import { config } from "../config";
+import { db } from "../db";
+import { user } from "../db/schema";
 import { AppError } from "../errors";
+import { buildPhoneTempEmail, normalizeChineseMainlandPhoneNumber } from "../services/phone-number";
 
 // ────────────────────────────────────────────
 // 测试注入：路由级测试通过 setTestAuth 绕过认证
@@ -189,6 +193,30 @@ export async function lookupUserById(userId: string): Promise<UserInfo | null> {
   return row ? { id: row.id, email: row.email, name: row.name } : null;
 }
 
+function decryptSensitiveFields(body: Record<string, unknown>): { body: Record<string, unknown>; decrypted: boolean } {
+  let decrypted = false;
+  if (typeof body.password === "string" && body.password.startsWith("AESGCM:")) {
+    body.password = decryptPassword(body.password);
+    decrypted = true;
+  }
+  if (typeof body.currentPassword === "string" && body.currentPassword.startsWith("AESGCM:")) {
+    body.currentPassword = decryptPassword(body.currentPassword);
+    decrypted = true;
+  }
+  if (typeof body.newPassword === "string" && body.newPassword.startsWith("AESGCM:")) {
+    body.newPassword = decryptPassword(body.newPassword);
+    decrypted = true;
+  }
+  return { body, decrypted };
+}
+
+function normalizePhoneFields(body: Record<string, unknown>): Record<string, unknown> {
+  if (typeof body.phoneNumber === "string") {
+    body.phoneNumber = normalizeChineseMainlandPhoneNumber(body.phoneNumber);
+  }
+  return body;
+}
+
 /** Mounts better-auth handler at /api/auth/* */
 export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" })
   /** 前端获取 AES 加密公钥 */
@@ -207,33 +235,79 @@ export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" })
       description: "前端登录页调用，判断当前系统是否允许新用户注册。",
     },
   })
+  .post(
+    "/sign-up/phone",
+    async ({ request, set }) => {
+      const rawBody = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!rawBody) {
+        set.status = 400;
+        return { code: "INVALID_REQUEST", message: "请求体格式不正确" };
+      }
+
+      const { body } = decryptSensitiveFields(rawBody);
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      const rawPhoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber : "";
+
+      if (!name || !password || !rawPhoneNumber) {
+        set.status = 400;
+        return { code: "VALIDATION_ERROR", message: "name、phoneNumber、password 为必填项" };
+      }
+
+      let phoneNumber = "";
+      try {
+        phoneNumber = normalizeChineseMainlandPhoneNumber(rawPhoneNumber);
+      } catch (error) {
+        set.status = 400;
+        return {
+          code: "INVALID_PHONE_NUMBER",
+          message: error instanceof Error ? error.message : "手机号格式不正确",
+        };
+      }
+
+      const [existingUser] = await db
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.phoneNumber, phoneNumber))
+        .limit(1);
+      if (existingUser) {
+        set.status = 422;
+        return { code: "PHONE_NUMBER_EXISTS", message: "该手机号已注册" };
+      }
+
+      return auth.handler(
+        new Request(new URL("/api/auth/sign-up/email", request.url).toString(), {
+          method: "POST",
+          headers: request.headers,
+          body: JSON.stringify({
+            name,
+            password,
+            phoneNumber,
+            email: buildPhoneTempEmail(phoneNumber),
+          }),
+        }),
+      );
+    },
+    {
+      detail: {
+        hide: true,
+        tags: ["Auth"],
+        summary: "手机号注册",
+        description: "兼容 better-auth 邮箱注册链路的手机号注册入口，会自动为手机号用户生成临时邮箱。",
+      },
+    },
+  )
   .all(
     "/*",
     async ({ request }) => {
       const url = new URL(request.url);
-      const decryptRoutes = ["/sign-in/email", "/sign-up/email", "/change-password"];
+      const decryptRoutes = ["/sign-in/email", "/sign-up/email", "/sign-in/phone-number", "/change-password"];
       if (request.method === "POST" && decryptRoutes.some((r) => url.pathname.endsWith(r))) {
         try {
-          // biome-ignore lint/suspicious/noExplicitAny: request body parsed dynamically
-          const body: any = await request.clone().json();
-          let decrypted = false;
-          if (body?.password && typeof body.password === "string" && body.password.startsWith("AESGCM:")) {
-            body.password = decryptPassword(body.password);
-            decrypted = true;
-          }
-          if (
-            body?.currentPassword &&
-            typeof body.currentPassword === "string" &&
-            body.currentPassword.startsWith("AESGCM:")
-          ) {
-            body.currentPassword = decryptPassword(body.currentPassword);
-            decrypted = true;
-          }
-          if (body?.newPassword && typeof body.newPassword === "string" && body.newPassword.startsWith("AESGCM:")) {
-            body.newPassword = decryptPassword(body.newPassword);
-            decrypted = true;
-          }
-          if (decrypted) {
+          const parsed = (await request.clone().json()) as Record<string, unknown>;
+          const { body, decrypted } = decryptSensitiveFields(parsed);
+          normalizePhoneFields(body);
+          if (decrypted || typeof body.phoneNumber === "string") {
             return auth.handler(
               new Request(request.url, {
                 method: request.method,

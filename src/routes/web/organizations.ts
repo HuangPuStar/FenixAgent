@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import { auth } from "../../auth/better-auth";
 import { db } from "../../db";
@@ -10,6 +10,7 @@ import {
   OrganizationActionRequestSchema,
   OrganizationActionResponseSchema,
 } from "../../schemas/organization.schema";
+import { isEmailIdentifier, normalizeChineseMainlandPhoneNumber } from "../../services/phone-number";
 
 const app = new Elysia({ name: "web-organizations" }).use(authGuardPlugin).model({
   "organization-action-request": OrganizationActionRequestSchema,
@@ -82,9 +83,12 @@ function buildApiKeyMetadata(
   };
 }
 
-function extractMembers(
-  res: unknown,
-): { id: string; userId: string; role: string; user?: { id: string; name: string; email: string } }[] {
+function extractMembers(res: unknown): {
+  id: string;
+  userId: string;
+  role: string;
+  user?: { id: string; name: string; email: string; phoneNumber?: string | null };
+}[] {
   if (Array.isArray(res)) return res;
   if (res && typeof res === "object" && "members" in res)
     return (
@@ -93,11 +97,43 @@ function extractMembers(
           id: string;
           userId: string;
           role: string;
-          user?: { id: string; name: string; email: string };
+          user?: { id: string; name: string; email: string; phoneNumber?: string | null };
         }>;
       }
     ).members;
   return [];
+}
+
+async function enrichMembersWithPhoneNumber(
+  members: {
+    id: string;
+    userId: string;
+    role: string;
+    user?: { id: string; name: string; email: string; phoneNumber?: string | null };
+  }[],
+) {
+  const userIds = Array.from(
+    new Set(members.map((memberItem) => memberItem.user?.id ?? memberItem.userId).filter(Boolean)),
+  );
+  if (userIds.length === 0) return members;
+
+  const users = await db
+    .select({ id: user.id, phoneNumber: user.phoneNumber })
+    .from(user)
+    .where(inArray(user.id, userIds))
+    .execute();
+  const phoneMap = new Map(users.map((row) => [row.id, row.phoneNumber]));
+
+  return members.map((memberItem) => {
+    if (!memberItem.user) return memberItem;
+    return {
+      ...memberItem,
+      user: {
+        ...memberItem.user,
+        phoneNumber: phoneMap.get(memberItem.user.id) ?? null,
+      },
+    };
+  });
 }
 
 // ────────────────────────────────────────────
@@ -140,7 +176,7 @@ app.post(
           api.getFullOrganization({ query: { organizationId: b.organizationId }, headers: request.headers }),
           api.listMembers({ query: { organizationId: b.organizationId }, headers: request.headers }),
         ]);
-        const memberList = extractMembers(members);
+        const memberList = await enrichMembersWithPhoneNumber(extractMembers(members));
         return { success: true, data: { ...(org as Record<string, unknown>), members: memberList } };
       }
       case "get-full": {
@@ -151,7 +187,7 @@ app.post(
           api.getFullOrganization({ query: { organizationId: orgId }, headers: request.headers }),
           api.listMembers({ query: { organizationId: orgId }, headers: request.headers }),
         ]);
-        const memberList = extractMembers(members);
+        const memberList = await enrichMembersWithPhoneNumber(extractMembers(members));
         return { success: true, data: { ...(org as Record<string, unknown>), members: memberList } };
       }
       case "create": {
@@ -221,7 +257,7 @@ app.post(
           query: { organizationId: b.organizationId },
           headers: request.headers,
         });
-        const memberData = extractMembers(members);
+        const memberData = await enrichMembersWithPhoneNumber(extractMembers(members));
         return { success: true, data: memberData };
       }
       case "add-member": {
@@ -230,23 +266,34 @@ app.post(
             success: false,
             error: { code: "VALIDATION_ERROR", message: "organizationId, role required" },
           });
-        // 支持 userId（直接传或传邮箱自动转换）
-        let memberUserId: string | undefined;
-        const rawId = (b.userId ?? b.email) as string | undefined;
-        if (!rawId) {
+        const identifier = typeof b.identifier === "string" ? b.identifier.trim() : "";
+        if (!identifier) {
           return error(400, {
             success: false,
-            error: { code: "VALIDATION_ERROR", message: "userId or email required" },
+            error: { code: "VALIDATION_ERROR", message: "identifier required" },
           });
         }
-        if (rawId.includes("@")) {
-          // 传入的是邮箱，查找对应 userId
-          const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, rawId)).limit(1);
+        let memberUserId: string;
+        if (isEmailIdentifier(identifier)) {
+          const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, identifier)).limit(1);
           if (!foundUser)
-            return error(404, { success: false, error: { code: "USER_NOT_FOUND", message: "该邮箱用户不存在" } });
+            return error(404, { success: false, error: { code: "USER_NOT_FOUND", message: "用户不存在" } });
           memberUserId = foundUser.id;
         } else {
-          memberUserId = rawId;
+          let phoneNumber: string;
+          try {
+            phoneNumber = normalizeChineseMainlandPhoneNumber(identifier);
+          } catch (err) {
+            return error(404, { success: false, error: { code: "USER_NOT_FOUND", message: "用户不存在" } });
+          }
+          const [foundUser] = await db
+            .select({ id: user.id })
+            .from(user)
+            .where(eq(user.phoneNumber, phoneNumber))
+            .limit(1);
+          if (!foundUser)
+            return error(404, { success: false, error: { code: "USER_NOT_FOUND", message: "用户不存在" } });
+          memberUserId = foundUser.id;
         }
         const result = await api.addMember({
           body: { userId: memberUserId, role: b.role, organizationId: b.organizationId },

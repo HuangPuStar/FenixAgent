@@ -13,7 +13,7 @@ interface OrgDetail extends OrgInfo {
     id: string;
     userId: string;
     role: string;
-    user: { id: string; name: string; email: string };
+    user: { id: string; name: string; email: string; phoneNumber?: string | null };
   }>;
 }
 
@@ -57,7 +57,7 @@ export class OrganizationApi extends BaseApi {
   async listMembers(organizationId: string): Promise<ApiResult<OrgMember[]>> {
     return this.post<OrgMember[]>("/web/organizations", { action: "list-members", organizationId });
   }
-  async addMember(organizationId: string, body: { email: string; role: string }): Promise<ApiResult<OrgMember>> {
+  async addMember(organizationId: string, body: { identifier: string; role: string }): Promise<ApiResult<OrgMember>> {
     return this.post<OrgMember>("/web/organizations", { action: "add-member", organizationId, ...body });
   }
   async removeMember(organizationId: string, memberId: string): Promise<ApiResult<{ success: boolean }>> {
