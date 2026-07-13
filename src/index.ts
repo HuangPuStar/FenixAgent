@@ -273,8 +273,20 @@ const httpServer = createServer(async (req, res) => {
     resHeaders[key] = value;
   });
   res.writeHead(webRes.status, resHeaders);
-  const resBody = await webRes.text();
-  res.end(resBody);
+  // 对二进制响应（zip、图片等）使用 arrayBuffer，避免 text() 的 UTF-8 编解码损坏数据
+  const ct = webRes.headers.get("content-type") ?? "";
+  if (
+    ct.startsWith("application/zip") ||
+    ct.startsWith("application/octet-stream") ||
+    ct.startsWith("image/") ||
+    ct.startsWith("audio/") ||
+    ct.startsWith("video/")
+  ) {
+    res.end(Buffer.from(await webRes.arrayBuffer()));
+  } else {
+    const resBody = await webRes.text();
+    res.end(resBody);
+  }
 });
 
 // 将 socket.io attach 到 node:http Server
