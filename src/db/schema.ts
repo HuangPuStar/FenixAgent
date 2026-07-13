@@ -1023,3 +1023,26 @@ export const agentSiteApp = pgTable(
     userIdx: index("idx_agent_site_app_user").on(table.userId),
   }),
 );
+
+// ProdView 智能体发布视图
+export const prodView = pgTable(
+  "prod_view",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: text("organization_id").notNull(),
+    name: varchar("name").notNull(),
+    description: text("description"),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agentConfig.id, { onDelete: "cascade" }),
+    modulesConfig: jsonb("modules_config").notNull().default(sql`'{}'`),
+    enabled: boolean("enabled").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_prod_view_org_id").on(t.organizationId), index("idx_prod_view_agent_id").on(t.agentId)],
+);
+
+export type ProdViewRow = typeof prodView.$inferSelect;
+export type ProdViewInsert = typeof prodView.$inferInsert;

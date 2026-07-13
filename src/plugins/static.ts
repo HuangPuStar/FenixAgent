@@ -29,6 +29,20 @@ export const ctrlStaticPlugin = new Elysia({ name: "ctrl-static" })
       },
     }),
   )
+  // ProdView 分享短链接重定向 → 实际 SPA 路由
+  .get(
+    "/view/:id",
+    ({ params, redirect }) => {
+      return redirect(`/ctrl/view/${params.id}`);
+    },
+    {
+      detail: {
+        hide: true,
+        summary: "ProdView 分享短链接重定向",
+        description: "将 `/view/:id` 短分享链接重定向到 `/ctrl/view/:id` 的实际 SPA 路由，对应前端 basename 前缀。",
+      },
+    },
+  )
   // /ctrl/:sessionId/user/* → redirect to file preview API (for iframe embedding)
   .get(
     "/ctrl/:sessionId/user/:filePath",
@@ -49,9 +63,10 @@ export const ctrlStaticPlugin = new Elysia({ name: "ctrl-static" })
   .onError(({ error, request, set }) => {
     if (!("status" in error) || error.status !== 404) return;
     const url = new URL(request.url);
-    if (!url.pathname.startsWith("/ctrl/")) return;
+    const pathname = url.pathname;
+    if (!pathname.startsWith("/ctrl/")) return;
     // Skip paths with file extensions (JS, CSS, images, fonts, etc.)
-    if (extname(url.pathname)) return;
+    if (extname(pathname)) return;
     if (!existsSync(indexHtmlPath)) return;
     set.headers["Content-Type"] = "text/html; charset=utf-8";
     return new Response(Bun.file(indexHtmlPath));

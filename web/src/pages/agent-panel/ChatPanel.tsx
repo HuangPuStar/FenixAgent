@@ -2,6 +2,7 @@ import { Bot, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ACPMain } from "@/components/ACPMain";
+import type { ChatModulesConfig } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { type ACPClient, DisconnectRequestedError } from "../../acp/client";
@@ -18,6 +19,7 @@ interface ChatPanelProps {
   scenePrompt?: string;
   contextKey?: string;
   onPromptComplete?: () => void;
+  modulesConfig?: ChatModulesConfig;
 }
 
 export function ChatPanel({
@@ -29,6 +31,7 @@ export function ChatPanel({
   scenePrompt,
   contextKey,
   onPromptComplete,
+  modulesConfig,
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [client, setClient] = useState<ACPClient | null>(null);
@@ -161,6 +164,7 @@ export function ChatPanel({
           scenePrompt={scenePrompt}
           contextKey={contextKey}
           onPromptComplete={onPromptComplete}
+          modulesConfig={modulesConfig}
         />
       </TooltipProvider>
     );

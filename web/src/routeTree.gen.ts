@@ -12,10 +12,12 @@ import { Route as rootRouteImport } from "./routes/__root"
 import { Route as NoAccessRouteImport } from "./routes/no-access"
 import { Route as LoginRouteImport } from "./routes/login"
 import { Route as IndexRouteImport } from "./routes/index"
+import { Route as ViewProdViewIdRouteImport } from "./routes/view/$prodViewId"
 import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
 import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
 import { Route as AgentPanelIndexRouteImport } from "./routes/agent/_panel/index"
 import { Route as AgentPanelWorkflowRouteImport } from "./routes/agent/_panel/workflow"
+import { Route as AgentPanelViewsRouteImport } from "./routes/agent/_panel/views"
 import { Route as AgentPanelTasksRouteImport } from "./routes/agent/_panel/tasks"
 import { Route as AgentPanelSkillsRouteImport } from "./routes/agent/_panel/skills"
 import { Route as AgentPanelSitesRouteImport } from "./routes/agent/_panel/sites"
@@ -51,6 +53,11 @@ const IndexRoute = IndexRouteImport.update({
   path: "/",
   getParentRoute: () => rootRouteImport,
 } as any)
+const ViewProdViewIdRoute = ViewProdViewIdRouteImport.update({
+  id: "/view/$prodViewId",
+  path: "/view/$prodViewId",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AgentPanelRoute = AgentPanelRouteImport.update({
   id: "/agent/_panel",
   path: "/agent",
@@ -69,6 +76,11 @@ const AgentPanelIndexRoute = AgentPanelIndexRouteImport.update({
 const AgentPanelWorkflowRoute = AgentPanelWorkflowRouteImport.update({
   id: "/workflow",
   path: "/workflow",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
+const AgentPanelViewsRoute = AgentPanelViewsRouteImport.update({
+  id: "/views",
+  path: "/views",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelTasksRoute = AgentPanelTasksRouteImport.update({
@@ -177,6 +189,7 @@ export interface FileRoutesByFullPath {
   "/no-access": typeof NoAccessRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
+  "/view/$prodViewId": typeof ViewProdViewIdRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
   "/agent/apikeys": typeof AgentPanelApikeysRoute
@@ -192,6 +205,7 @@ export interface FileRoutesByFullPath {
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/views": typeof AgentPanelViewsRoute
   "/agent/workflow": typeof AgentPanelWorkflowRoute
   "/agent/": typeof AgentPanelIndexRoute
   "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
@@ -204,6 +218,7 @@ export interface FileRoutesByTo {
   "/login": typeof LoginRoute
   "/no-access": typeof NoAccessRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
+  "/view/$prodViewId": typeof ViewProdViewIdRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
   "/agent/apikeys": typeof AgentPanelApikeysRoute
@@ -219,6 +234,7 @@ export interface FileRoutesByTo {
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/views": typeof AgentPanelViewsRoute
   "/agent/workflow": typeof AgentPanelWorkflowRoute
   "/agent": typeof AgentPanelIndexRoute
   "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
@@ -233,6 +249,7 @@ export interface FileRoutesById {
   "/no-access": typeof NoAccessRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
+  "/view/$prodViewId": typeof ViewProdViewIdRoute
   "/agent/$agentId_/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/_panel/agents": typeof AgentPanelAgentsRoute
   "/agent/_panel/apikeys": typeof AgentPanelApikeysRoute
@@ -248,6 +265,7 @@ export interface FileRoutesById {
   "/agent/_panel/sites": typeof AgentPanelSitesRoute
   "/agent/_panel/skills": typeof AgentPanelSkillsRoute
   "/agent/_panel/tasks": typeof AgentPanelTasksRoute
+  "/agent/_panel/views": typeof AgentPanelViewsRoute
   "/agent/_panel/workflow": typeof AgentPanelWorkflowRoute
   "/agent/_panel/": typeof AgentPanelIndexRoute
   "/agent/_panel/chat/$agentId": typeof AgentPanelChatAgentIdRoute
@@ -263,6 +281,7 @@ export interface FileRouteTypes {
     | "/no-access"
     | "/agent/$agentId"
     | "/agent"
+    | "/view/$prodViewId"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
     | "/agent/apikeys"
@@ -278,6 +297,7 @@ export interface FileRouteTypes {
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
+    | "/agent/views"
     | "/agent/workflow"
     | "/agent/"
     | "/agent/chat/$agentId"
@@ -290,6 +310,7 @@ export interface FileRouteTypes {
     | "/login"
     | "/no-access"
     | "/agent/$agentId"
+    | "/view/$prodViewId"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
     | "/agent/apikeys"
@@ -305,6 +326,7 @@ export interface FileRouteTypes {
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
+    | "/agent/views"
     | "/agent/workflow"
     | "/agent"
     | "/agent/chat/$agentId"
@@ -318,6 +340,7 @@ export interface FileRouteTypes {
     | "/no-access"
     | "/agent/$agentId"
     | "/agent/_panel"
+    | "/view/$prodViewId"
     | "/agent/$agentId_/$sessionId"
     | "/agent/_panel/agents"
     | "/agent/_panel/apikeys"
@@ -333,6 +356,7 @@ export interface FileRouteTypes {
     | "/agent/_panel/sites"
     | "/agent/_panel/skills"
     | "/agent/_panel/tasks"
+    | "/agent/_panel/views"
     | "/agent/_panel/workflow"
     | "/agent/_panel/"
     | "/agent/_panel/chat/$agentId"
@@ -347,6 +371,7 @@ export interface RootRouteChildren {
   NoAccessRoute: typeof NoAccessRoute
   AgentAgentIdRoute: typeof AgentAgentIdRoute
   AgentPanelRoute: typeof AgentPanelRouteWithChildren
+  ViewProdViewIdRoute: typeof ViewProdViewIdRoute
   AgentAgentIdSessionIdRoute: typeof AgentAgentIdSessionIdRoute
 }
 
@@ -371,6 +396,13 @@ declare module "@tanstack/react-router" {
       path: "/"
       fullPath: "/"
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/view/$prodViewId": {
+      id: "/view/$prodViewId"
+      path: "/view/$prodViewId"
+      fullPath: "/view/$prodViewId"
+      preLoaderRoute: typeof ViewProdViewIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/agent/_panel": {
@@ -399,6 +431,13 @@ declare module "@tanstack/react-router" {
       path: "/workflow"
       fullPath: "/agent/workflow"
       preLoaderRoute: typeof AgentPanelWorkflowRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
+    "/agent/_panel/views": {
+      id: "/agent/_panel/views"
+      path: "/views"
+      fullPath: "/agent/views"
+      preLoaderRoute: typeof AgentPanelViewsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
     "/agent/_panel/tasks": {
@@ -552,6 +591,7 @@ interface AgentPanelRouteChildren {
   AgentPanelSitesRoute: typeof AgentPanelSitesRoute
   AgentPanelSkillsRoute: typeof AgentPanelSkillsRoute
   AgentPanelTasksRoute: typeof AgentPanelTasksRoute
+  AgentPanelViewsRoute: typeof AgentPanelViewsRoute
   AgentPanelWorkflowRoute: typeof AgentPanelWorkflowRoute
   AgentPanelIndexRoute: typeof AgentPanelIndexRoute
   AgentPanelChatAgentIdRoute: typeof AgentPanelChatAgentIdRoute
@@ -575,6 +615,7 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelSitesRoute: AgentPanelSitesRoute,
   AgentPanelSkillsRoute: AgentPanelSkillsRoute,
   AgentPanelTasksRoute: AgentPanelTasksRoute,
+  AgentPanelViewsRoute: AgentPanelViewsRoute,
   AgentPanelWorkflowRoute: AgentPanelWorkflowRoute,
   AgentPanelIndexRoute: AgentPanelIndexRoute,
   AgentPanelChatAgentIdRoute: AgentPanelChatAgentIdRoute,
@@ -593,6 +634,7 @@ const rootRouteChildren: RootRouteChildren = {
   NoAccessRoute: NoAccessRoute,
   AgentAgentIdRoute: AgentAgentIdRoute,
   AgentPanelRoute: AgentPanelRouteWithChildren,
+  ViewProdViewIdRoute: ViewProdViewIdRoute,
   AgentAgentIdSessionIdRoute: AgentAgentIdSessionIdRoute,
 }
 export const routeTree = rootRouteImport

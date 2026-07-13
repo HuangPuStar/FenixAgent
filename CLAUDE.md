@@ -215,6 +215,14 @@ Agent 通信的 ACP 协议栈只有一套权威实现，所有入口必须复用
 - 规则型工具支持通配符
 - 开关型工具只支持三态
 
+### 代码质量红线
+
+**precheck 必须全绿才能提交。** `bun run precheck` 分为 6 个子步骤：format → import-sort → tsc (server) → tsc (web) → lint → test，任一步骤失败即为不通过。
+
+- **禁止以"预存问题"为由跳过修复**：precheck 报出的 lint/typecheck 错误须在提交前清理。若错误确实不在本次改动范围内（如其他文件的历史遗留），仍需尽量修复——`biome --write --unsafe` 可秒修绝大多数 FIXABLE 问题。
+- **禁止新增任何 typecheck 错误**：写新代码或修改接口后，确保 `tsc` 两个目标均 0 error。
+- **禁止新增任何 lint 错误**：linter 的 error 和 warning 都必须清零（info 级别除外）。若引入的 warning 是误报（如 Elysia 路由 handler 的 `noExplicitAny`），需在行级添加 `// biome-ignore` 注释说明原因。
+
 ## 代码风格
 
 ### 注释与文档注释

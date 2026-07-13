@@ -54,7 +54,7 @@ export interface OpencodeRuntimeConfig {
   model: string;
   agent: Record<string, OpencodeAgentConfig>;
   mcp: Record<string, OpencodeMcpConfig>;
-  plugin?: Record<string, unknown>;
+  plugin?: Array<[string, Record<string, unknown>]>;
 }
 
 function toProviderPackage(protocol: AgentLaunchSpec["model"]["protocol"]): string {
@@ -138,9 +138,9 @@ export function buildOpencodeRuntimeConfig(
         disable: false,
       },
     },
-    mcp: toMcpRecord(launchSpec.mcpServers),
-    ...(launchSpec.agent.extra?.plugin && typeof launchSpec.agent.extra.plugin === "object"
-      ? { plugin: launchSpec.agent.extra.plugin as Record<string, unknown> }
+    mcp: toMcpRecord(launchSpec.mcpServers.filter((s) => s.name !== "hindsight")),
+    ...(launchSpec.agent.extra?.plugin && Array.isArray(launchSpec.agent.extra.plugin)
+      ? { plugin: launchSpec.agent.extra.plugin as Array<[string, Record<string, unknown>]> }
       : {}),
   };
 }

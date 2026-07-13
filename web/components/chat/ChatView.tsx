@@ -29,6 +29,7 @@ interface ChatViewProps {
   agentSkills?: AgentSkillInfo[];
   sessionId?: string;
   envId?: string;
+  hideToolCallRows?: boolean;
 }
 
 export function ChatView({
@@ -42,6 +43,7 @@ export function ChatView({
   agentSkills,
   sessionId,
   envId,
+  hideToolCallRows = false,
 }: ChatViewProps) {
   const { t } = useTranslation("components");
   const finalEmptyTitle = emptyTitle ?? t("chatView.startConversation");
@@ -93,11 +95,13 @@ export function ChatView({
                       onPermissionRespond={onPermissionRespond}
                       sessionId={sessionId}
                       envId={envId}
+                      hideToolCallRows={hideToolCallRows}
                     />
                   </div>
                 );
               }
               // 工具调用组 — 紧贴在助手消息下方
+              if (hideToolCallRows) return null;
               return (
                 // biome-ignore lint/suspicious/noArrayIndexKey: tool group entries lack a unique identifier
                 <div key={`group-${i}`} className="-mt-2">
@@ -151,12 +155,14 @@ function EntryRenderer({
   onPermissionRespond,
   sessionId,
   envId,
+  hideToolCallRows,
 }: {
   entry: ThreadEntry;
   isLoading: boolean;
   onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
   sessionId?: string;
   envId?: string;
+  hideToolCallRows?: boolean;
 }) {
   switch (entry.type) {
     case "user_message":
@@ -164,6 +170,7 @@ function EntryRenderer({
     case "assistant_message":
       return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} envId={envId} />;
     case "tool_call":
+      if (hideToolCallRows) return null;
       return <ToolCallGroup entries={[entry as ToolCallEntry]} onPermissionRespond={onPermissionRespond} />;
     case "plan":
       return <PlanDisplay entry={entry as PlanDisplayEntry} />;
