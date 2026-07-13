@@ -216,37 +216,76 @@ export type App = typeof app;
 // 初始化 TransportStore（Redis 连接等）
 await connectTransportStore();
 
-// 初始化 socket.io server（先创建，不加 HTTP server，稍后手动 attach）
+// 初始化 socket.io server（先创建，不加 HTTP server，稍后 attach 到 node:http Server）
 const io = initSocketIOServer(undefined);
 
-// 自定义 Bun.serve 替代 app.listen()：
-// Elysia 的 app.listen() 会拦截所有请求包括 /socket.io/，
-// socket.io 的 WebSocket upgrade 和 HTTP handshake 无法被 Elysia 正确处理。
-// 这里手动创建 Bun server，/socket.io/* 路径绕过 Elysia 直接走 socket.io engine。
-const bunServer = Bun.serve({
-  port,
-  hostname: host,
-  async fetch(req) {
-    const url = new URL(req.url);
-    // socket.io 路径：交给 engine.io 处理（包括 WS upgrade + HTTP handshake）
-    if (url.pathname.startsWith("/socket.io/")) {
-      // engine.io 需要原始的 IncomingMessage / ServerResponse 接口，
-      // Bun 不直接支持。改用 socket.io 的 attach 方式集成。
-      // 这里暂时返回空响应让 WebSocket-only transport 能工作。
-      return new Response("", {
-        status: 200,
-        headers: { "Content-Type": "text/plain; charset=UTF-8" },
-      });
+// 用 node:http.createServer() 替代 Bun.serve()：
+// engine.io/socket.io 需要 Node.js http.Server 的事件模型（.on("request"/"upgrade"/"close")），
+// Bun.serve() 返回的 Server 不完全兼容。
+// node:http.createServer() 在 Bun 中会创建一个 Bun 兼容的 HTTP Server。
+import { createServer } from "node:http";
+
+const httpServer = createServer(async (req, res) => {
+  // 对 /socket.io/ 请求，engine.io 已通过 server.on("request") 接管，
+  // 非 /socket.io/ 请求，转换为 Fetch API 交给 Elysia
+  const url = req.url ?? "/";
+  if (url.startsWith("/socket.io/")) {
+    // engine.io handles this through server.on("request")
+    // 这里不需要处理
+    if (!res.headersSent) {
+      res.writeHead(200);
+      res.end("");
     }
-    return app.fetch(req) as any;
-  },
+    return;
+  }
+
+  // 将 Node.js IncomingMessage 转换为 Web Request 交给 Elysia
+  let body: string | null = null;
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(chunk as Buffer);
+    }
+    body = Buffer.concat(chunks).toString();
+  }
+
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value !== undefined) {
+      if (Array.isArray(value)) {
+        for (const v of value) headers.append(key, v);
+      } else {
+        headers.set(key, value as string);
+      }
+    }
+  }
+
+  const webReq = new Request(`http://${req.headers.host ?? "localhost"}${url}`, {
+    method: req.method ?? "GET",
+    headers,
+    body: body,
+  });
+
+  const webRes = await app.fetch(webReq);
+  // biome-ignore lint/suspicious/noExplicitAny: Node.js res.writeHead type
+  const resHeaders: Record<string, string> = {};
+  webRes.headers.forEach((value, key) => {
+    resHeaders[key] = value;
+  });
+  res.writeHead(webRes.status, resHeaders);
+  const resBody = await webRes.text();
+  res.end(resBody);
 });
 
-// 手动设置 app.server 供 Eden Treaty 等使用
-(app as unknown as Record<string, unknown>).server = bunServer;
+// 将 socket.io attach 到 node:http Server
+io.attach(httpServer as any);
 
-// 将 socket.io attach 到 Bun server
-io.attach(bunServer as any);
+// 手动设置 app.server 供 Eden Treaty 等使用
+(app as unknown as Record<string, unknown>).server = httpServer;
+
+httpServer.listen(port, host, () => {
+  startupLog.info(`Listening on ${host}:${port} (baseUrl: ${config.baseUrl || `http://localhost:${port}`})`);
+});
 // 将 io 实例挂载到全局供后续 namespace 注册使用
 (globalThis as Record<string, unknown>).__socketio = io;
 registerNamespaces(io);
