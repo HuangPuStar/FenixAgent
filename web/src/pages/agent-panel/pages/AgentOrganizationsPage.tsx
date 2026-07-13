@@ -73,6 +73,8 @@ export function AgentOrganizationsPage() {
   const [addMemberRole, setAddMemberRole] = useState("member");
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // 待移除的成员：非空即打开二次确认弹窗，避免误删
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<OrgMember | null>(null);
 
   const [copiedId, setCopiedId] = useState(false);
 
@@ -220,17 +222,21 @@ export function AgentOrganizationsPage() {
     },
   );
 
-  // 移除成员（静默操作）
-  const { run: runRemoveMember } = useRequest((userId: string) => unwrap(orgApi.removeMember(selectedOrgId!, userId)), {
-    manual: true,
-    onSuccess: () => {
-      refreshDetail();
+  // 移除成员（经二次确认后执行）
+  const { run: runRemoveMember, loading: removeMemberLoading } = useRequest(
+    (userId: string) => unwrap(orgApi.removeMember(selectedOrgId!, userId)),
+    {
+      manual: true,
+      onSuccess: () => {
+        setRemoveMemberTarget(null);
+        refreshDetail();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(t("toast.removeFailed"));
+      },
     },
-    onError: (err) => {
-      console.error(err);
-      toast.error(t("toast.removeFailed"));
-    },
-  });
+  );
 
   // 更新角色（静默操作）
   const { run: runUpdateRole } = useRequest(
@@ -452,7 +458,7 @@ export function AgentOrganizationsPage() {
                             variant="ghost"
                             size="xs"
                             className="text-text-dim hover:text-destructive"
-                            onClick={() => runRemoveMember(m.id)}
+                            onClick={() => setRemoveMemberTarget(m)}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -768,6 +774,35 @@ export function AgentOrganizationsPage() {
               className="bg-destructive text-white hover:bg-destructive/90"
             >
               {deleteLoading ? t("deleteDialog.deleting") : t("deleteDialog.confirmDelete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove member confirmation */}
+      <AlertDialog
+        open={!!removeMemberTarget}
+        onOpenChange={(open) => {
+          if (!open) setRemoveMemberTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("removeMemberDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("removeMemberDialog.description", {
+                name: removeMemberTarget?.user?.name || removeMemberTarget?.userId,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => removeMemberTarget && runRemoveMember(removeMemberTarget.id)}
+              disabled={removeMemberLoading}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {removeMemberLoading ? t("removeMemberDialog.removing") : t("removeMemberDialog.confirmRemove")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

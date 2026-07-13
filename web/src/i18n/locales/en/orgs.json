@@ -64,6 +64,12 @@
     "confirmDelete": "Confirm Delete",
     "deleting": "Deleting..."
   },
+  "removeMemberDialog": {
+    "title": "Confirm Remove Member",
+    "description": "You are about to remove member \"{{name}}\" from this organization. They will lose access to all resources in it.",
+    "confirmRemove": "Confirm Remove",
+    "removing": "Removing..."
+  },
   "orgId": "Organization ID",
   "copyId": "Copy ID",
   "copied": "Copied",

@@ -64,6 +64,12 @@
     "confirmDelete": "确认删除",
     "deleting": "删除中..."
   },
+  "removeMemberDialog": {
+    "title": "确认移除成员",
+    "description": "即将将成员「{{name}}」移出该组织，其将失去对组织内资源的访问权限。",
+    "confirmRemove": "确认移除",
+    "removing": "移除中..."
+  },
   "orgId": "组织 ID",
   "copyId": "复制 ID",
   "copied": "已复制",

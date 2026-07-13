@@ -928,16 +928,14 @@ export function AgentModelsPage() {
                       </div>
                       {/* 右侧：公开开关 & 删除 */}
                       <div className="flex items-center gap-2 ml-auto">
-                        <label
-                          className="flex items-center gap-1.5 cursor-pointer"
-                          onClick={(event) => event.stopPropagation()}
-                        >
+                        <span className="inline-flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
                           <span className="text-text-muted">
                             {provider.resourceAccess?.publicReadable
                               ? tComponents("resource.public")
                               : tComponents("resource.internal")}
                           </span>
                           <Switch
+                            aria-label={tComponents("resource.public")}
                             checked={Boolean(provider.resourceAccess?.publicReadable)}
                             disabled={
                               sharingProviderKey === providerKey || provider.resourceAccess?.manageable !== true
@@ -946,7 +944,7 @@ export function AgentModelsPage() {
                               void handleTogglePublic(provider, !provider.resourceAccess?.publicReadable)
                             }
                           />
-                        </label>
+                        </span>
                         <button
                           type="button"
                           onClick={(event) => {

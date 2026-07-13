@@ -446,6 +446,8 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
         const slashIdx = displayName.indexOf("/");
         const agentLabel = slashIdx >= 0 ? displayName.slice(slashIdx + 1) : displayName;
         const agentKey = slashIdx >= 0 ? displayName.slice(0, slashIdx) : "";
+        // 访问标签：仅 public/external 展示（internal 不显示徽标）
+        const accessBadgeKey = agent.resourceAccess ? getAgentAccessBadgeKey(agent) : "resource.internal";
 
         return (
           <div key={agent.id} className="agent-sidebar-agent group relative">
@@ -468,10 +470,16 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <div className="text-[13px] font-semibold text-text-primary truncate">{agentLabel}</div>
-                  {/* 仅公有/外部显示标签 */}
-                  {agent.resourceAccess && getAgentAccessBadgeKey(agent) !== "resource.internal" && (
-                    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
-                      {tComponents(getAgentAccessBadgeKey(agent))}
+                  {/* 仅公有/外部显示标签，用高对比配色区分（public=蓝，external=琥珀），避免与灰底混淆看不清 */}
+                  {accessBadgeKey !== "resource.internal" && (
+                    <span
+                      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                        accessBadgeKey === "resource.public"
+                          ? "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
+                          : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                      }`}
+                    >
+                      {tComponents(accessBadgeKey)}
                     </span>
                   )}
                 </div>

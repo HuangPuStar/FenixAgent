@@ -58,16 +58,20 @@ export const ctrlStaticPlugin = new Elysia({ name: "ctrl-static" })
       },
     },
   )
-  // SPA fallback: when static plugin returns 404 for /ctrl/* paths without file extensions,
-  // serve index.html so the client-side router can handle SPA navigation on refresh
+  // SPA fallback：前端是客户端路由。刷新 `/ctrl/*` 深层路径（如 `/ctrl/agent/home`）时，
+  // @elysiajs/static 找不到对应文件会抛 404，这里回退到 index.html 让前端路由接管。
+  //
+  // 关键：必须显式把状态码重置为 200。onError 触发时 set.status 已被置为 404，
+  // 只返回 index.html 而不重置状态，浏览器仍会记录一条 404（虽然页面能渲染），
+  // 也会污染控制台并可能影响缓存/预取等行为。
   .onError(({ error, request, set }) => {
     if (!("status" in error) || error.status !== 404) return;
     const url = new URL(request.url);
-    const pathname = url.pathname;
-    if (!pathname.startsWith("/ctrl/")) return;
-    // Skip paths with file extensions (JS, CSS, images, fonts, etc.)
-    if (extname(pathname)) return;
+    if (!url.pathname.startsWith("/ctrl/")) return;
+    // 带扩展名的资源（JS、CSS、图片、字体等）缺失应保持 404，不回退
+    if (extname(url.pathname)) return;
     if (!existsSync(indexHtmlPath)) return;
+    set.status = 200;
     set.headers["Content-Type"] = "text/html; charset=utf-8";
-    return new Response(Bun.file(indexHtmlPath));
+    return new Response(Bun.file(indexHtmlPath), { status: 200 });
   });
