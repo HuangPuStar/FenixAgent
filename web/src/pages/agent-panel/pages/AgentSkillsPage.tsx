@@ -454,13 +454,14 @@ export function AgentSkillsPage() {
         {/* 底部固定区域：公开开关 / 只读标签，始终贴底 */}
         <div className="mt-auto pr-24 pt-3">
           {manageable && (
-            <label className="flex items-center gap-2 text-[12px] text-[#8a98ab]">
+            <span className="inline-flex items-center gap-2 text-[12px] text-[#8a98ab]">
               <Switch
+                aria-label={tComponents("resource.public")}
                 checked={Boolean(skill.resourceAccess?.publicReadable)}
                 onCheckedChange={() => void handleToggleSharing(skill)}
               />
               {tComponents("resource.public")}
-            </label>
+            </span>
           )}
           {!writable && <p className="text-[12px] font-medium text-[#8a98ab]">{tComponents("resource.readOnly")}</p>}
         </div>

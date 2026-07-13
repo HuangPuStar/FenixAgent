@@ -558,14 +558,15 @@ export function AgentMcpPage() {
                   )}
                 </div>
                 {manageable && (
-                  <label className="flex items-center gap-2 text-xs text-text-muted">
+                  <span className="inline-flex items-center gap-2 text-xs text-text-muted">
                     <Switch
+                      aria-label={tComponents("resource.public")}
                       checked={Boolean(server.resourceAccess?.publicReadable)}
                       disabled={sharingLoading}
                       onCheckedChange={() => runToggleSharing(server)}
                     />
                     {tComponents("resource.public")}
-                  </label>
+                  </span>
                 )}
                 {!writable && <p className="text-xs font-medium text-text-muted">{tComponents("resource.readOnly")}</p>}
               </div>
@@ -754,7 +755,9 @@ export function AgentMcpPage() {
                 </div>
                 <div className="space-y-2">
                   {formEnvironment.map((entry, idx) => (
-                    <div key={entry.key || `env-${idx}`} className="flex gap-2 items-center">
+                    // 同 headers：key 不能取 entry.key（正在编辑的值），否则每敲一字符整行 remount、输入失焦。
+                    // biome-ignore lint/suspicious/noArrayIndexKey: 受控增删行，索引即稳定 key
+                    <div key={idx} className="flex gap-2 items-center">
                       <Input
                         placeholder="KEY"
                         value={entry.key}
@@ -831,7 +834,11 @@ export function AgentMcpPage() {
                 </div>
                 <div className="space-y-2">
                   {formHeaders.map((entry, idx) => (
-                    <div key={entry.key || `header-${idx}`} className="flex gap-2 items-center">
+                    // key 不能取 entry.key：它正是 name 输入框正在编辑的值，每敲一个字符 key 就变，
+                    // 整行会被 remount、输入框随之失焦。此列表仅追加/按索引删除、不重排，且输入完全受控，
+                    // 用数组索引作为稳定 key 是安全的。
+                    // biome-ignore lint/suspicious/noArrayIndexKey: 受控增删行，索引即稳定 key
+                    <div key={idx} className="flex gap-2 items-center">
                       <Input
                         placeholder={t("headerNamePlaceholder")}
                         value={entry.key}

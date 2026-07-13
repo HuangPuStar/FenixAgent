@@ -33,6 +33,7 @@
     "createFailed": "Failed to create API Key",
     "created": "API Key created",
     "copied": "Copied",
+    "copyFailed": "Copy failed, please select and copy manually",
     "deleteFailed": "Failed to revoke API Key",
     "deleted": "API Key revoked"
   }

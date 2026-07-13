@@ -1,6 +1,6 @@
 import { useRequest } from "ahooks";
 import { AlertTriangle, Copy, KeyRound, Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -21,6 +21,32 @@ interface ApiKeyInfo {
   expiresAt: number | null;
 }
 
+/**
+ * 兜底复制：直接选中给定元素内的文本并执行 `execCommand('copy')`。
+ *
+ * 与 clipboard polyfill 不同，这里不新建 textarea、也不调用 `focus()`，因此不会触发
+ * Radix 模态框的焦点陷阱（FocusScope 会在 `.focus()` 时把焦点抢回对话框，导致 polyfill
+ * 的隐藏 textarea 复制到空选区）。选区落在对话框内部、复制过程同步完成，HTTP 环境下也稳定。
+ *
+ * @returns 是否复制成功
+ */
+function copyElementText(el: HTMLElement | null): boolean {
+  if (!el || typeof document === "undefined") return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    selection.removeAllRanges();
+  }
+}
+
 export function AgentApiKeysPage() {
   const { t } = useTranslation("apikey");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -29,6 +55,8 @@ export function AgentApiKeysPage() {
   const [formName, setFormName] = useState("");
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // 指向展示新密钥的 <code>，用于 HTTP 环境下的兜底复制（见 handleCopyKey）
+  const keyCodeRef = useRef<HTMLElement>(null);
 
   // 列表查询
   const {
@@ -86,6 +114,35 @@ export function AgentApiKeysPage() {
       return;
     }
     runCreate({ name: formName.trim() });
+  };
+
+  /**
+   * 复制新建的 API Key。
+   *
+   * 安全上下文（HTTPS / localhost）走原生 Clipboard API，最稳；非安全上下文（HTTP）下
+   * navigator.clipboard 是 execCommand + 隐藏 textarea 的 polyfill，在本页的模态对话框里
+   * 会因焦点陷阱复制失败，故直接退回“选中对话框内 <code>”的方式。全程按真实结果给出提示，
+   * 不再无条件弹“已复制”。
+   */
+  const handleCopyKey = async () => {
+    const text = newKeyValue;
+    if (!text) return;
+
+    if (window.isSecureContext && typeof navigator.clipboard?.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast.success(t("toast.copied"));
+        return;
+      } catch {
+        // 原生写入偶发失败（如窗口失焦），继续走下面的选区兜底
+      }
+    }
+
+    if (copyElementText(keyCodeRef.current)) {
+      toast.success(t("toast.copied"));
+    } else {
+      toast.error(t("toast.copyFailed"));
+    }
   };
 
   const formatDate = (ts: number | null) => {
@@ -209,16 +266,13 @@ export function AgentApiKeysPage() {
           {newKeyValue ? (
             <div className="space-y-4">
               <div className="relative rounded-lg border-2 border-amber-500/30 bg-amber-500/5 p-3">
-                <code className="block text-sm font-mono text-text-bright break-all pr-10 select-all">
+                <code ref={keyCodeRef} className="block text-sm font-mono text-text-bright break-all pr-10 select-all">
                   {newKeyValue}
                 </code>
                 <button
                   type="button"
                   className="absolute right-2 top-2 rounded-md border border-border-light bg-surface-2 p-1.5 text-text-muted hover:text-text-bright hover:bg-surface-3 transition-colors"
-                  onClick={() => {
-                    navigator.clipboard.writeText(newKeyValue!);
-                    toast.success(t("toast.copied"));
-                  }}
+                  onClick={handleCopyKey}
                   title={t("btn.copy")}
                 >
                   <Copy className="h-4 w-4" />

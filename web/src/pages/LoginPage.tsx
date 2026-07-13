@@ -802,7 +802,6 @@ export function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
   const [rememberLogin, setRememberLogin] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -817,7 +816,6 @@ export function LoginPage() {
     setIsSignUp(nextIsSignUp);
     setError("");
     setConfirmPassword("");
-    setAcceptedTerms(false);
   }, []);
 
   const handleSubmit = useCallback(
@@ -827,11 +825,6 @@ export function LoginPage() {
 
       if (isSignUp && password !== confirmPassword) {
         setError(t("passwordMismatch"));
-        return;
-      }
-
-      if (isSignUp && !acceptedTerms) {
-        setError(t("termsRequired"));
         return;
       }
 
@@ -866,7 +859,7 @@ export function LoginPage() {
         setLoading(false);
       }
     },
-    [acceptedTerms, confirmPassword, email, isSignUp, name, navigate, password, t],
+    [confirmPassword, email, isSignUp, name, navigate, password, t],
   );
 
   return (
@@ -964,30 +957,14 @@ export function LoginPage() {
               />
             )}
 
-            {!isSignUp ? (
+            {/* 忘记密码 / 用户协议 / 隐私政策 对应页面暂未实现，先隐藏这些入口；注册也不再强制勾选协议 */}
+            {!isSignUp && (
               <div className="auth-light-options">
                 <label className="auth-light-checkbox">
                   <input checked={rememberLogin} onChange={(e) => setRememberLogin(e.target.checked)} type="checkbox" />
                   <span>{t("rememberLogin")}</span>
                 </label>
-                <button className="auth-light-link" type="button">
-                  {t("forgotPassword")}
-                </button>
               </div>
-            ) : (
-              <label className="auth-light-terms">
-                <input checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} type="checkbox" />
-                <span>
-                  {t("termsPrefix")}
-                  <button className="auth-light-link" type="button">
-                    {t("userAgreement")}
-                  </button>
-                  {t("termsConnector")}
-                  <button className="auth-light-link" type="button">
-                    {t("privacyPolicy")}
-                  </button>
-                </span>
-              </label>
             )}
 
             {error && <p className="auth-light-error">{error}</p>}
