@@ -1032,7 +1032,7 @@ export const prodView = pgTable(
     organizationId: text("organization_id").notNull(),
     name: varchar("name").notNull(),
     description: text("description"),
-    agentId: text("agent_id")
+    agentId: uuid("agent_id")
       .notNull()
       .references(() => agentConfig.id, { onDelete: "cascade" }),
     modulesConfig: jsonb("modules_config").notNull().default(sql`'{}'`),
