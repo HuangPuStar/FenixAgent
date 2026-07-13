@@ -3,10 +3,9 @@ import { PanelRight } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePanelRef } from "react-resizable-panels";
-import type { ChatModulesConfig } from "@/components/ChatInterface";
-import { isModuleEnabled } from "@/components/ChatInterface";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { envApi } from "@/src/api/environments";
+import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { extractChangedFiles } from "@/src/lib/extract-changed-files";
 import type { ThreadEntry } from "@/src/lib/types";
@@ -19,7 +18,8 @@ interface ChatAreaProps {
   agentId: string | null;
   sessionId?: string | null;
   visible: boolean;
-  modulesConfig?: ChatModulesConfig;
+  /** ProdView 模块配置，控制右侧附加面板的显示/隐藏 */
+  modulesConfig?: ProdViewModulesConfig;
 }
 
 interface SessionSlot {
@@ -64,15 +64,11 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   const [restartKey, setRestartKey] = useState(0);
   const changedFiles = useMemo(() => extractChangedFiles(entries), [entries]);
 
-  // 右侧面板是否显示：若 modulesConfig 中 filesPanel/sitesPanel/tasksPanel/viewsPanel 全部禁用则隐藏
-  const hasArtifactsPanel = useMemo(() => {
-    const c = modulesConfig;
-    return (
-      isModuleEnabled(c?.filesPanel) ||
-      isModuleEnabled(c?.sitesPanel) ||
-      isModuleEnabled(c?.tasksPanel) ||
-      isModuleEnabled(c?.viewsPanel)
-    );
+  // ProdView 模块配置：若所有附加面板都被禁用，则不渲染右侧面板区域
+  const hasPanelModules = useMemo(() => {
+    if (!modulesConfig) return true;
+    const panelKeys = ["filesPanel", "sitesPanel", "tasksPanel", "viewsPanel"] as const;
+    return panelKeys.some((key) => modulesConfig[key]?.enabled !== false);
   }, [modulesConfig]);
 
   // ── Session keep-alive 缓存 ──
@@ -125,7 +121,7 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
     const isActive = key === currentSessionKey && visible;
     return (
       <div key={key} style={{ display: isActive ? "contents" : "none" }}>
-        <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} modulesConfig={modulesConfig} />
+        <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} />
       </div>
     );
   });
@@ -222,11 +218,11 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
     >
       <div className="agent-panel-content" style={{ display: visible ? undefined : "none" }}>
         <ResizablePanelGroup orientation="horizontal" className="agent-panel-resizable">
-          <ResizablePanel defaultSize={hasArtifactsPanel ? 60 : 100} minSize={30}>
+          <ResizablePanel defaultSize={hasPanelModules ? 60 : 100} minSize={30}>
             <div className="agent-chat-area">{chatPanels}</div>
           </ResizablePanel>
 
-          {hasArtifactsPanel && (
+          {hasPanelModules && (
             <>
               <ResizableHandle>
                 <button

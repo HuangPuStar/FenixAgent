@@ -27,6 +27,7 @@ export const CreateProdViewSchema = z.object({
   name: z.string().min(1).max(200),
   agentId: z.string().uuid(),
   description: z.string().max(500).optional(),
+  modulesConfig: ProdViewModulesConfigSchema.optional(),
 });
 
 export const UpdateProdViewSchema = z.object({

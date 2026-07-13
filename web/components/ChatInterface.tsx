@@ -74,44 +74,11 @@ import { Button } from "./ui/button";
 // Type Definitions - imported from shared types module
 // =============================================================================
 
-/** modulesConfig 中单个模块配置 */
-export interface ChatModuleConfig {
-  enabled?: boolean;
-  [key: string]: unknown;
-}
-
-/** ProdView 模块显隐配置 */
-export interface ChatModulesConfig {
-  chatHeader?: ChatModuleConfig;
-  sessionSidebar?: ChatModuleConfig;
-  chatView?: ChatModuleConfig;
-  chatComposer?: ChatModuleConfig;
-  permissionPanel?: ChatModuleConfig;
-  todoPanel?: ChatModuleConfig;
-  contextPanel?: ChatModuleConfig;
-  toolCallRow?: ChatModuleConfig;
-  /** 右侧面板 — 文件 */
-  filesPanel?: ChatModuleConfig;
-  /** 右侧面板 — 站点 */
-  sitesPanel?: ChatModuleConfig;
-  /** 右侧面板 — 定时任务 */
-  tasksPanel?: ChatModuleConfig;
-  /** 右侧面板 — 发布视图 */
-  viewsPanel?: ChatModuleConfig;
-}
-
-/** 判断模块是否应该渲染。未传 config 默认 true，传了则按 enabled 判断（enabled 缺省为 true） */
-export function isModuleEnabled(config: ChatModuleConfig | undefined): boolean {
-  if (!config) return true;
-  return config.enabled !== false;
-}
-
 interface ChatInterfaceProps {
   client: ACPClient;
   agentId?: string;
   readonly?: boolean;
   hideContextPanel?: boolean;
-  modulesConfig?: ChatModulesConfig;
   rcsSessionId?: string;
   onSessionCreated?: (sessionId: string) => void;
   scenePrompt?: string;
@@ -400,7 +367,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     agentId,
     readonly,
     hideContextPanel,
-    modulesConfig,
     rcsSessionId,
     onSessionCreated,
     scenePrompt,
@@ -1116,32 +1082,23 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     <div className="flex h-full">
       <div className="flex flex-col flex-1 min-w-0">
         {/* Chat messages — unified ChatView */}
-        {isModuleEnabled(modulesConfig?.chatView) && (
-          <ChatView
-            entries={entries}
-            isLoading={isLoading && !sessionReady ? false : isLoading}
-            onPermissionRespond={(requestId, optionId, optionKind) => {
-              handlePermissionResponse(requestId, optionId, optionKind as PermissionOption["kind"] | null);
-            }}
-            emptyTitle={sessionReady ? t("chatEmpty.startConversation") : undefined}
-            emptyDescription={
-              sessionReady
-                ? (modulesConfig?.chatView?.welcomeMessage as string) || t("chatEmpty.startConversationDesc")
-                : undefined
-            }
-            sessionId={rcsSessionId ?? activeSessionId ?? undefined}
-            envId={agentId}
-            hideToolCallRows={!isModuleEnabled(modulesConfig?.toolCallRow)}
-          />
-        )}
+        <ChatView
+          entries={entries}
+          isLoading={isLoading && !sessionReady ? false : isLoading}
+          onPermissionRespond={(requestId, optionId, optionKind) => {
+            handlePermissionResponse(requestId, optionId, optionKind as PermissionOption["kind"] | null);
+          }}
+          emptyTitle={sessionReady ? t("chatEmpty.startConversation") : undefined}
+          emptyDescription={sessionReady ? t("chatEmpty.startConversationDesc") : undefined}
+          sessionId={rcsSessionId ?? activeSessionId ?? undefined}
+          envId={agentId}
+        />
 
         {/* Permission panel — fixed above input */}
-        {isModuleEnabled(modulesConfig?.permissionPanel) && (
-          <PermissionPanel requests={pendingPermissions} onRespond={handlePermissionPanelRespond} />
-        )}
+        <PermissionPanel requests={pendingPermissions} onRespond={handlePermissionPanelRespond} />
 
         {/* Todo panel — 显示在输入框上方 */}
-        {isModuleEnabled(modulesConfig?.todoPanel) && <TodoPanel todos={todoItems} />}
+        <TodoPanel todos={todoItems} />
 
         {/* Error banner */}
         {errorMessage && (
@@ -1163,28 +1120,23 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         {/* ChatComposer — 玻璃磨砂命令岛，整合输入框 + 元信息条 */}
         {!readonly && (
           <div className="flex-shrink-0">
-            {isModuleEnabled(modulesConfig?.chatComposer) && (
-              <ChatComposer
-                onSubmit={handleChatInputSubmit}
-                isLoading={isLoading}
-                onInterrupt={handleCancel}
-                disabled={!sessionReady}
-                placeholder={
-                  (modulesConfig?.chatComposer?.placeholder as string) ||
-                  (sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession"))
-                }
-                supportsImages={supportsImages}
-                commands={availableCommands.length > 0 ? availableCommands : undefined}
-                envId={agentId}
-                client={client}
-                availableModes={availableModes}
-                currentModeId={currentModeId}
-                onModeChange={setMode}
-                tokenStats={tokenStats}
-                onNewSession={handleNewSession}
-                showNewSession={entries.length > 0}
-              />
-            )}
+            <ChatComposer
+              onSubmit={handleChatInputSubmit}
+              isLoading={isLoading}
+              onInterrupt={handleCancel}
+              disabled={!sessionReady}
+              placeholder={sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
+              supportsImages={supportsImages}
+              commands={availableCommands.length > 0 ? availableCommands : undefined}
+              envId={agentId}
+              client={client}
+              availableModes={availableModes}
+              currentModeId={currentModeId}
+              onModeChange={setMode}
+              tokenStats={tokenStats}
+              onNewSession={handleNewSession}
+              showNewSession={entries.length > 0}
+            />
           </div>
         )}
         {readonly && (
@@ -1197,7 +1149,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       </div>
 
       {/* Context Panel */}
-      {!readonly && !hideContextPanel && isModuleEnabled(modulesConfig?.contextPanel) && (
+      {!readonly && !hideContextPanel && (
         <ContextPanel
           entries={entries}
           agentName={agentId}

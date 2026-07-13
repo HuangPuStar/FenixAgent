@@ -10,6 +10,7 @@ export async function createProdView(ctx: AuthContext, input: CreateProdViewInpu
     name: input.name,
     description: input.description,
     agentId: input.agentId,
+    modulesConfig: input.modulesConfig,
     createdBy: ctx.userId,
   });
   return { success: true as const, data: row };

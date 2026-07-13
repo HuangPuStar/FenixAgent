@@ -10,6 +10,7 @@ export interface IProdViewRepository {
     name: string;
     description?: string;
     agentId: string;
+    modulesConfig?: Record<string, unknown>;
     createdBy: string;
   }): Promise<ProdViewRow>;
   /** 根据组织和 ID 获取单条记录 */
@@ -38,6 +39,7 @@ class PgProdViewRepository implements IProdViewRepository {
     name: string;
     description?: string;
     agentId: string;
+    modulesConfig?: Record<string, unknown>;
     createdBy: string;
   }) {
     const [row] = await db
@@ -47,6 +49,7 @@ class PgProdViewRepository implements IProdViewRepository {
         name: params.name,
         description: params.description ?? null,
         agentId: params.agentId,
+        modulesConfig: params.modulesConfig ?? {},
         createdBy: params.createdBy,
       })
       .returning();

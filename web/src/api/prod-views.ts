@@ -60,7 +60,7 @@ export const prodViewApi = {
   get: (id: string) => request<ProdViewInfo>(`/web/config/prod-views/${id}`, { method: "GET" }),
 
   /** 创建 ProdView */
-  create: (data: { name: string; agentId: string; description?: string }) =>
+  create: (data: { name: string; agentId: string; description?: string; modulesConfig?: ProdViewModulesConfig }) =>
     request<ProdViewInfo>("/web/config/prod-views", {
       method: "POST",
       body: data,

@@ -3,8 +3,6 @@ import { FilesIcon, Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { ChatModulesConfig } from "@/components/ChatInterface";
-import { isModuleEnabled } from "@/components/ChatInterface";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { envApi } from "@/src/api/environments";
+import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { FileTabsBar } from "../../components/agent-panel/FileTabsBar";
@@ -41,7 +40,8 @@ interface ArtifactsPanelProps {
   envId: string | null;
   agentConfigId?: string | null;
   changedFiles?: ChangedFile[];
-  modulesConfig?: ChatModulesConfig;
+  /** ProdView 模块配置，控制面板 tab 的显示/隐藏 */
+  modulesConfig?: ProdViewModulesConfig;
 }
 
 /**
@@ -68,18 +68,20 @@ export function ArtifactsPanel({
   const { t } = useTranslation(NS.COMPONENTS);
 
   // ── 一级 + 二级 tab 状态 ─────────────────────────────
+  const [topMode, setTopMode] = useState<TopMode>("files");
+
+  // 根据 ProdView modulesConfig 计算可用的一级 tab 模式
+  // 若模块配置中某面板 enabled 为明确 false，则从 tabs 中移除
   const availableModes = useMemo<TopMode[]>(() => {
+    if (!modulesConfig) return ["files", "sites", "tasks", "views"];
     const modes: TopMode[] = [];
-    const c = modulesConfig;
-    if (isModuleEnabled(c?.filesPanel)) modes.push("files");
-    if (isModuleEnabled(c?.sitesPanel)) modes.push("sites");
-    if (isModuleEnabled(c?.tasksPanel)) modes.push("tasks");
-    if (isModuleEnabled(c?.viewsPanel)) modes.push("views");
-    // 未传 modulesConfig 时全部可用（向后兼容）
-    return modes.length > 0 ? modes : (["files", "sites", "tasks", "views"] as TopMode[]);
+    if (modulesConfig.filesPanel?.enabled !== false) modes.push("files");
+    if (modulesConfig.sitesPanel?.enabled !== false) modes.push("sites");
+    if (modulesConfig.tasksPanel?.enabled !== false) modes.push("tasks");
+    if (modulesConfig.viewsPanel?.enabled !== false) modes.push("views");
+    return modes;
   }, [modulesConfig]);
 
-  const [topMode, setTopMode] = useState<TopMode>(availableModes[0]);
   const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
   // 用户主动切到 Sites 模式的标记：一旦主动离开 Files，后续 agent 产生 diff
   // 时不再粗暴切回 Files（避免长任务运行中持续打断浏览 site 的用户）。
@@ -281,7 +283,7 @@ export function ArtifactsPanel({
   // 挂载/卸载不走这里——直接调 loadSites（不重置 topMode/activeSiteId/pendingDiff，
   // 用户挂载完希望留在 Sites 模式看到新 tab，卸载完希望保留剩余 site 的浏览状态）。
   useEffect(() => {
-    setTopMode(availableModes[0]);
+    setTopMode("files");
     setActiveSiteId(null);
     userPickedSiteRef.current = false;
     setPendingDiffCount(0);
@@ -291,7 +293,7 @@ export function ArtifactsPanel({
       return;
     }
     void loadSites(agentConfigId);
-  }, [agentConfigId, loadSites, setSites, availableModes]);
+  }, [agentConfigId, loadSites, setSites]);
 
   // ── Files 模式内部状态 ─────────────────────────────────
   const [openFiles, setOpenFiles] = useState<string[]>([]);
@@ -439,7 +441,7 @@ export function ArtifactsPanel({
         topMode={topMode}
         pendingDiffCount={pendingDiffCount}
         onChange={handleTopChange}
-        availableModes={modulesConfig ? availableModes : undefined}
+        availableModes={availableModes}
       />
 
       {/* 加载中提示（紧凑模式，避免阻塞 Files 默认体验） */}

@@ -5,7 +5,7 @@ import { retryWithBackoff } from "@/src/lib/retry";
 import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
 import { cn } from "../src/lib/utils";
-import { ChatInterface, type ChatInterfaceHandle, type ChatModulesConfig, isModuleEnabled } from "./ChatInterface";
+import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { ChatHeader } from "./chat/ChatHeader";
 import { groupByRecency } from "./chat/session-grouping";
 import { Button } from "./ui/button";
@@ -21,7 +21,6 @@ interface ACPMainProps {
   scenePrompt?: string;
   contextKey?: string;
   onPromptComplete?: () => void;
-  modulesConfig?: ChatModulesConfig;
 }
 
 /**
@@ -37,7 +36,6 @@ export function ACPMain({
   scenePrompt,
   contextKey,
   onPromptComplete,
-  modulesConfig,
 }: ACPMainProps) {
   const { t } = useTranslation("components");
   // 默认 false：进入 chat 子页面时左侧会话面板默认收起，需通过 ChatHeader 上的
@@ -143,8 +141,8 @@ export function ACPMain({
     // acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子
     <div className="acp-main-root flex h-full w-full flex-col gap-3 p-3">
       {/* 顶部 ChatHeader — 跨整个宽度，承担会话面板开关 + 当前会话标题 + popover 历史会话列表 */}
-      {/* readonly 或 modulesConfig.chatHeader 禁用时整体隐藏 */}
-      {!readonly && isModuleEnabled(modulesConfig?.chatHeader) && (
+      {/* readonly 时整体隐藏 */}
+      {!readonly && (
         <ChatHeader
           client={client}
           activeSessionId={initialActiveSessionId}
@@ -159,7 +157,7 @@ export function ACPMain({
       {/* 主体：横向 sidebar + chat */}
       <div className="flex flex-1 min-h-0 gap-3">
         {/* 左侧 sidebar — 仅在 sidebarOpen 且非 readonly/hideSidebar 时渲染，关闭时完全不占位 */}
-        {!readonly && !hideSidebar && isModuleEnabled(modulesConfig?.sessionSidebar) && sidebarOpen && (
+        {!readonly && !hideSidebar && sidebarOpen && (
           <div
             className="hidden md:flex flex-col bg-surface-1 transition-all duration-200 flex-shrink-0 w-64 rounded-xl"
             style={{ boxShadow: "var(--shadow-card)" }}
@@ -202,7 +200,6 @@ export function ACPMain({
             rcsSessionId={rcsSessionId}
             scenePrompt={scenePrompt}
             contextKey={contextKey}
-            modulesConfig={modulesConfig}
             onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
             onPromptComplete={onPromptComplete}
           />
