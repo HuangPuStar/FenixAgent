@@ -23,7 +23,9 @@ export class RelayConnectionManager {
       import("../store/factory").then(({ getTransportStore }) => {
         getTransportStore()
           .setRelaySocket(instanceId, wsId)
-          .catch(() => {});
+          .catch((err) => {
+            logError("[RelayConnManager] setRelaySocket error:", err);
+          });
       });
     }
   }
@@ -46,7 +48,9 @@ export class RelayConnectionManager {
       import("../store/factory").then(({ getTransportStore }) => {
         getTransportStore()
           .delRelaySocket(instanceId)
-          .catch(() => {});
+          .catch((err) => {
+            logError("[RelayConnManager] delRelaySocket error:", err);
+          });
       });
     }
   }

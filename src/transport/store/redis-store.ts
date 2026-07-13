@@ -1,32 +1,79 @@
-import Redis from "ioredis";
+import { log, error as logError } from "@fenix/logger";
+import Redis, { type Cluster } from "ioredis";
 import type { TransportStore } from "./types";
 
 export interface RedisStoreOptions {
   url: string;
   keyPrefix?: string;
+  /** 是否使用 Redis Cluster 模式。默认为 false（标准 Redis / Sentinel 自动识别） */
+  cluster?: boolean;
 }
 
-/** 多节点 Redis 实现。使用两个独立连接：主连接用于 set/get/del/publish，sub 连接用于 subscribe。 */
+/**
+ * 多节点 Redis 实现。使用两个独立连接：主连接用于 set/get/del/publish，sub 连接用于 subscribe。
+ *
+ * 支持三种 Redis 模式：
+ * - 标准 Redis：`redis://` / `rediss://` URL
+ * - Sentinel：`redis+sentinel://` URL（ioredis 自动识别）
+ * - Cluster：`cluster: true` 时使用 ioredis `new Redis.Cluster()`
+ */
 export class RedisStore implements TransportStore {
-  private redis: Redis;
-  private sub: Redis;
+  private redis: Redis | Cluster;
+  private sub: Redis | Cluster;
   private prefix: string;
   private pubSubCleanups = new Set<() => void>();
+  private _connected = false;
 
   constructor(options: RedisStoreOptions) {
     this.prefix = options.keyPrefix ?? "rcs:";
 
     const retryStrategy = (times: number) => Math.min(times * 200, 5000);
 
-    this.redis = new Redis(options.url, {
-      lazyConnect: true,
-      retryStrategy,
-    });
+    if (options.cluster) {
+      // ioredis Cluster：自动发现所有节点，使用集群级别重试策略
+      this.redis = new Redis.Cluster([options.url], {
+        clusterRetryStrategy: retryStrategy,
+      });
+      // Redis Cluster 内置 pub/sub，sub 复用同一连接
+      this.sub = this.redis;
+    } else {
+      this.redis = new Redis(options.url, {
+        lazyConnect: true,
+        retryStrategy,
+      });
 
-    this.sub = new Redis(options.url, {
-      lazyConnect: true,
-      retryStrategy,
-    });
+      this.sub = new Redis(options.url, {
+        lazyConnect: true,
+        retryStrategy,
+      });
+    }
+  }
+
+  /**
+   * 显式建立 Redis 连接。
+   * 构造时默认 lazyConnect: true，不自动连接；必须在工厂创建后调用此方法建立连接。
+   * Cluster 模式下自动连接，无需显式调用（但调用也安全）。
+   */
+  async connect(): Promise<void> {
+    if (this._connected) return;
+    if (this.redis instanceof Redis) {
+      await this.redis.connect();
+    }
+    // sub 与 redis 可能是同一实例（cluster 模式），避免重复连接
+    if (this.sub !== this.redis && this.sub instanceof Redis) {
+      await this.sub.connect();
+    }
+    this._connected = true;
+    log("RedisStore connected");
+  }
+
+  /**
+   * 返回主 Redis 客户端实例，供 socket.io Redis Adapter 等组件复用。
+   * 外部不应 close/disconnect 此实例。
+   * 仅在非 Cluster 模式下可用；Cluster 模式返回 undefined。
+   */
+  getPubClient(): Redis | undefined {
+    if (this.redis instanceof Redis) return this.redis;
   }
 
   // ── relay socket ──
@@ -75,8 +122,8 @@ export class RedisStore implements TransportStore {
 
     const cleanup = async () => {
       this.sub.off("message", onMessage);
-      await this.sub.unsubscribe(redisChannel).catch(() => {
-        // unsubscribe 可能抛错（连接已断开），忽略
+      await this.sub.unsubscribe(redisChannel).catch((err: unknown) => {
+        logError("[RedisStore] unsubscribe failed for channel", redisChannel, err);
       });
       this.pubSubCleanups.delete(cleanup);
     };
@@ -103,11 +150,11 @@ export class RedisStore implements TransportStore {
       c();
     }
 
-    await this.redis.quit().catch(() => {
-      // quit 可能抛错（连接已断开），忽略
+    await this.redis.quit().catch((err: unknown) => {
+      logError("RedisStore close: redis.quit failed", err);
     });
-    await this.sub.quit().catch(() => {
-      // quit 可能抛错（连接已断开），忽略
+    await this.sub.quit().catch((err: unknown) => {
+      logError("RedisStore close: sub.quit failed", err);
     });
   }
 }

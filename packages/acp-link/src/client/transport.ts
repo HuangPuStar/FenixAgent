@@ -52,10 +52,29 @@ export class SocketIOTransport extends EventEmitter<TransportEvents> {
       this.setState("connected");
     });
 
-    socket.on("disconnect", (reason) => {
+    socket.on("connect_error", (err) => {
+      // 认证失败（等效于旧 WebSocket close code 4500）时进入 error 状态，不自动重连
+      if (err.message === "unauthorized" || err.message === "rate_limited" || err.message === "agent not found") {
+        this.setState("error", undefined);
+        socket.disconnect();
+      }
+    });
+
+    socket.on("disconnect", (reason, detail) => {
       if (reason === "io client disconnect") {
         this.setState("disconnected");
+        return;
       }
+      // 服务端主动断开或错误（等效于 4500），禁止自动重连
+      if (reason === "io server disconnect") {
+        // 检查是否有 auth 错误上下文
+        const detailAny = detail as Record<string, unknown> | undefined;
+        if (detailAny?.description === "unauthorized" || detailAny?.description === "rate_limited") {
+          this.setState("error", undefined);
+          return;
+        }
+      }
+      // ping timeout / transport error → 依赖内置 reconnection 重连
     });
 
     socket.on("reconnect_attempt", (attempt) => {

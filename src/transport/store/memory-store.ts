@@ -1,6 +1,11 @@
 import type { TransportStore } from "./types";
 
-/** 单节点内存实现，使用 JavaScript Map 存储所有状态。pub/sub 通过内存 Set 实现。 */
+/**
+ * 单节点内存 TransportStore 实现。
+ *
+ * 使用 JavaScript Map 存储所有 relay/machine socket 映射和 pub/sub handler。
+ * 仅适用于单节点部署场景；多节点部署请使用 RedisStore。
+ */
 export class MemoryStore implements TransportStore {
   private relaySockets = new Map<string, string>();
   private machineSockets = new Map<string, string>();

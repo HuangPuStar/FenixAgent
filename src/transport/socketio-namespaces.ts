@@ -1,35 +1,11 @@
-import type { IncomingMessage } from "node:http";
 import type { Server, Socket } from "socket.io";
 import { v4 as uuid } from "uuid";
 import { validateEnv } from "../env";
-import { AppError } from "../errors";
-import type { RequestAuthResult } from "../plugins/auth";
-import { authenticateRequest } from "../plugins/auth";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "./acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "./file-ws-handler";
 import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "./relay";
+import { type RelaySocketData, relayAuthMiddleware } from "./socketio-auth";
 import type { WsConnection } from "./ws-types";
-
-/** Convert Node IncomingMessage to a Fetch API Request for authenticateRequest */
-function incomingToRequest(req: IncomingMessage): Request {
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value !== undefined) {
-      if (Array.isArray(value)) {
-        for (const v of value) headers.append(key, v);
-      } else {
-        headers.set(key, value);
-      }
-    }
-  }
-
-  const protocol = (req.headers["x-forwarded-proto"] as string) === "https" ? "https" : "http";
-  const host = (req.headers.host as string) || "localhost";
-  const url = req.url || "/";
-  const fullUrl = `${protocol}://${host}${url}`;
-
-  return new Request(fullUrl, { headers });
-}
 
 /** Adapt socket.io Socket to WsConnection interface */
 function socketToWsConn(socket: Socket): WsConnection {
@@ -44,64 +20,24 @@ function socketToWsConn(socket: Socket): WsConnection {
   };
 }
 
-/** Register all socket.io namespace connection handlers */
+/**
+ * 注册 socket.io 的几个 namespace 连接处理器。
+ *
+ * 注册三个 namespace 及其认证与消息路由：
+ * - `/relay`：前端 chat relay，cookie auth，agent 权限校验
+ * - `/machine`：远端机器 WS，secret auth，message 路由到 acp-ws-handler
+ * - `/file`：文件传输 WS，secret auth，message 路由到 file-ws-handler
+ *
+ * @param io - socket.io Server 实例
+ */
 export function registerNamespaces(io: Server): void {
-  // ── /relay — frontend chat relay, cookie auth ──
+  // ── /relay — frontend chat relay, cookie auth via relayAuthMiddleware ──
   io.of("/relay")
-    .use(async (socket, next) => {
-      let authResult: RequestAuthResult | null = null;
-      const request = incomingToRequest(socket.request);
-      try {
-        authResult = await authenticateRequest(request);
-      } catch (err) {
-        if (err instanceof AppError && err.code === "RATE_LIMITED") {
-          return next(new Error("rate_limited"));
-        }
-        return next(new Error("unauthorized"));
-      }
-      if (!authResult?.user) {
-        return next(new Error("unauthorized"));
-      }
-
-      const agentId = socket.handshake.query.agentId as string;
-      if (!agentId) {
-        return next(new Error("missing agentId"));
-      }
-
-      // biome-ignore lint/suspicious/noExplicitAny: socket.data is any by Socket.IO design
-      (socket.data as any).authResult = authResult;
-      // biome-ignore lint/suspicious/noExplicitAny: socket.data is any by Socket.IO design
-      (socket.data as any).userId = authResult.user.id;
-      // biome-ignore lint/suspicious/noExplicitAny: socket.data is any by Socket.IO design
-      (socket.data as any).agentId = agentId;
-      // biome-ignore lint/suspicious/noExplicitAny: socket.data is any by Socket.IO design
-      (socket.data as any).sessionId = (socket.handshake.query.sessionId as string) || undefined;
-
-      // Verify agent exists and check org permissions
-      const { environmentRepo } = await import("../repositories/environment");
-      const env = await environmentRepo.getById(agentId);
-      if (!env) {
-        return next(new Error("agent not found"));
-      }
-
-      const userId = authResult.user.id;
-      const authCtx = authResult.authContext;
-      const forbiddenSharedRuntime = Boolean(env.agentConfigId && env.userId !== userId);
-      if (
-        !authCtx ||
-        forbiddenSharedRuntime ||
-        (env.organizationId !== authCtx.organizationId && env.userId !== userId)
-      ) {
-        return next(new Error("unauthorized"));
-      }
-
-      next();
-    })
+    .use(relayAuthMiddleware)
     .on("connection", (socket) => {
       const wsId = `relay_${uuid().replace(/-/g, "")}`;
       const ws = socketToWsConn(socket);
-      // biome-ignore lint/suspicious/noExplicitAny: socket.data is any by Socket.IO design
-      const { agentId, userId, sessionId } = socket.data as any;
+      const { agentId, userId, sessionId } = socket.data as RelaySocketData;
       handleRelayOpen(ws, wsId, agentId, userId, sessionId);
 
       socket.on("message", (data) => {

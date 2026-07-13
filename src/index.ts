@@ -51,7 +51,8 @@ import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
 import { registerNamespaces } from "./transport/socketio-namespaces";
 import { initSocketIOServer } from "./transport/socketio-server";
-import { closeTransportStore } from "./transport/store/factory";
+import { closeTransportStore, connectTransportStore, getTransportStore } from "./transport/store/factory";
+import { NODE_ID } from "./transport/store/node-id";
 
 await initDb();
 startupLog.info("Database initialized");
@@ -216,12 +217,41 @@ export type App = typeof app;
 // 供 Eden Treaty treaty<App>() 做类型推断
 app.listen({ port, hostname: host });
 
+// 初始化 TransportStore（Redis 连接等）
+await connectTransportStore();
+
 // 初始化 socket.io server 并注册三个 namespace（/relay /machine /file）
 const io = initSocketIOServer(app.server!);
 // 将 io 实例挂载到全局供后续 namespace 注册使用
 (globalThis as Record<string, unknown>).__socketio = io;
 registerNamespaces(io);
 startupLog.info("socket.io server attached with namespaces");
+
+// 跨节点 EventBus 订阅：将其他节点的 SessionEvent 回灌到本地 EventBus
+// 订阅 "eventbus" 频道，解析消息后跳过本节点发出的事件（避免双重投递）
+getTransportStore()
+  .subscribe("eventbus", (message) => {
+    try {
+      const raw: Record<string, unknown> = JSON.parse(message);
+      if (raw._nodeId === NODE_ID) return; // 跳过自己发出的消息
+      // 回灌到本地 EventBus（使用 inject 避免再次跨节点广播）
+      import("./transport/event-bus").then(({ getEventBus }) => {
+        const bus = getEventBus(raw.sessionId as string);
+        bus.inject({
+          id: raw.id as string,
+          sessionId: raw.sessionId as string,
+          type: raw.type as string,
+          payload: raw.payload,
+          direction: raw.direction as "inbound" | "outbound",
+          seqNum: (raw.seqNum as number) ?? 0,
+          createdAt: (raw.createdAt as number) ?? Date.now(),
+        });
+      });
+    } catch {
+      // 解析失败，静默忽略
+    }
+  })
+  .catch((err) => startupLog.warn("Cross-node EventBus subscribe failed:", err));
 
 export default app;
 
