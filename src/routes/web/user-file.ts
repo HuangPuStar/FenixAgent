@@ -71,8 +71,8 @@ app.get(
     const machineId = await getRemoteMachineId(params.id);
     if (machineId) {
       try {
-        const paths = await remoteTree(machineId, params.id);
-        return { success: true as const, data: { paths } };
+        const { paths, mtimes, errors } = await remoteTree(machineId, params.id);
+        return { success: true as const, data: { paths, mtimes, errors } };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote tree operation failed";
         return error(503, { success: false, error: { code: "remote_error", message } });
@@ -81,13 +81,13 @@ app.get(
 
     const resolved = await resolveWorkspacePath(params.id, ".");
     if (!resolved) return error(404, { success: false, error: { code: "not_found", message: "工作区不存在" } });
-    const entries = await listPathsRecursive(resolved.workspaceDir);
+    const { entries, errors } = await listPathsRecursive(resolved.workspaceDir);
     const paths = entries.map((e) => e.path);
     const mtimes: Record<string, number> = {};
     for (const e of entries) {
       if (e.mtime > 0) mtimes[e.path] = e.mtime;
     }
-    return { success: true as const, data: { paths, mtimes } };
+    return { success: true as const, data: { paths, mtimes, errors: errors.length > 0 ? errors : undefined } };
   },
   {
     sessionAuth: true,

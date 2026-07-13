@@ -263,8 +263,12 @@ export interface TreeNodeEntry {
 }
 
 /** 递归列出 workspace 下所有路径（黑名单过滤），返回相对路径及修改时间 */
-export async function listPathsRecursive(workspaceDir: string): Promise<TreeNodeEntry[]> {
+export async function listPathsRecursive(workspaceDir: string): Promise<{
+  entries: TreeNodeEntry[];
+  errors: { path: string; message: string }[];
+}> {
   const results: TreeNodeEntry[] = [];
+  const errors: { path: string; message: string }[] = [];
 
   async function walk(dirPath: string, prefix: string): Promise<void> {
     const entries = await readdir(dirPath, { withFileTypes: true });
@@ -289,7 +293,12 @@ export async function listPathsRecursive(workspaceDir: string): Promise<TreeNode
 
     for (const d of dirs) {
       results.push({ path: `${d.relPath}/`, mtime: 0 });
-      await walk(d.fullPath, d.relPath);
+      try {
+        await walk(d.fullPath, d.relPath);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push({ path: d.relPath, message });
+      }
     }
 
     // 文件：获取修改时间
@@ -304,7 +313,7 @@ export async function listPathsRecursive(workspaceDir: string): Promise<TreeNode
   }
 
   await walk(workspaceDir, "");
-  return results;
+  return { entries: results, errors };
 }
 
 /** 重命名文件或目录，自动创建目标父目录 */

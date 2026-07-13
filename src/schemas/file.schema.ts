@@ -61,6 +61,15 @@ export const TreeResponseSchema = WebOkSchema(
   z.object({
     paths: z.array(z.string()).describe("递归展开后的路径列表；目录通常以 / 结尾。"),
     mtimes: z.record(z.string(), z.number()).optional().describe("部分文件路径对应的修改时间戳，单位为毫秒。"),
+    errors: z
+      .array(
+        z.object({
+          path: z.string().describe("遍历失败的目录路径。"),
+          message: z.string().describe("错误描述信息。"),
+        }),
+      )
+      .optional()
+      .describe("部分目录遍历失败时的路径和错误信息；成功时为 null 或空数组。"),
   }),
 ).describe("递归文件树响应。");
 

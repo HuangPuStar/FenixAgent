@@ -147,10 +147,17 @@ export async function remoteMkdir(machineId: string, envId: string, dirPath: str
   return result.data as { path: string };
 }
 
-/** 递归列出远程 user/ 下所有路径 */
-export async function remoteTree(machineId: string, envId: string): Promise<string[]> {
+/** 递归列出远程 workspace 下所有路径（含修改时间和遍历错误） */
+export async function remoteTree(
+  machineId: string,
+  envId: string,
+): Promise<{ paths: string[]; mtimes?: Record<string, number>; errors?: { path: string; message: string }[] }> {
   assertFileWsAvailable(machineId);
   const result = await sendFileOpAndWait(machineId, "tree", { environmentId: envId });
   if (result.status === "error") throw new Error(result.error as string);
-  return (result.data as { paths: string[] }).paths;
+  return result.data as {
+    paths: string[];
+    mtimes?: Record<string, number>;
+    errors?: { path: string; message: string }[];
+  };
 }
