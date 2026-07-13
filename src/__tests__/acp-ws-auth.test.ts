@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-describe("/acp/ws 端点认证简化", () => {
+describe("/acp/ws 端点迁移为 socket.io", () => {
   test("resolveTokenAuth 已从文件中移除", async () => {
     const fs = await import("node:fs");
     const content = fs.readFileSync(`${import.meta.dirname}/../routes/acp/index.ts`, "utf-8");
@@ -19,13 +19,12 @@ describe("/acp/ws 端点认证简化", () => {
     expect(content.includes("lookupUserById")).toBe(false);
   });
 
-  test("/acp/ws 只保留 REGISTRY_SECRET 认证", async () => {
+  test("/acp/ws Elysia WS 路由已移除（迁移为 socket.io）", async () => {
     const fs = await import("node:fs");
     const content = fs.readFileSync(`${import.meta.dirname}/../routes/acp/index.ts`, "utf-8");
-    // 验证 secret 参数检查和 4003 关闭逻辑存在
-    expect(content.includes("4003")).toBe(true);
-    expect(content.includes("REGISTRY_SECRET")).toBe(true);
-    // 验证 token-based auth 已移除
+    // 旧 Elysia WS 路由(.ws)和 WebSocket 相关代码已不存在
+    expect(content.includes(".ws(")).toBe(false);
+    // token-based auth 已移除
     expect(content.includes("resolveTokenAuth")).toBe(false);
   });
 });

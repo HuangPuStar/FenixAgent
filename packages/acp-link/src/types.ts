@@ -548,9 +548,17 @@ export interface SessionModeState {
 // ============================================================================
 
 export interface ACPSettings {
-  proxyUrl: string;
+  proxyUrl?: string;
   token?: string;
   cwd?: string;
+  /** socket.io namespace（如 "/acp"） */
+  namespace?: string;
+  /** Agent 实例 ID，作为 socket.io query 参数传递 */
+  agentId?: string;
+  /** Session ID，作为 socket.io query 参数传递 */
+  sessionId?: string;
+  /** 当前活跃组织 ID，作为 socket.io query 参数传递 */
+  activeOrganizationId?: string;
 }
 
 export const DEFAULT_SETTINGS: ACPSettings = {
