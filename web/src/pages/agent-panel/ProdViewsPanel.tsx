@@ -12,49 +12,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
-import type { ProdViewInfo, ProdViewModulesConfig } from "@/src/api/prod-views";
+import type { ProdViewInfo } from "@/src/api/prod-views";
 import { prodViewApi } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
+import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "@/src/lib/prod-view-modules";
 import { cn } from "@/src/lib/utils";
-
-/** Chat 主体模块 */
-const CHAT_MODULE_KEYS = [
-  "chatHeader",
-  "sessionSidebar",
-  "chatView",
-  "chatComposer",
-  "permissionPanel",
-  "todoPanel",
-  "contextPanel",
-  "toolCallRow",
-] as const;
-
-/** 右侧附加面板模块 */
-const PANEL_MODULE_KEYS = ["filesPanel", "sitesPanel", "tasksPanel", "viewsPanel"] as const;
-
-const ALL_MODULE_KEYS = [...CHAT_MODULE_KEYS, ...PANEL_MODULE_KEYS] as const;
-
-/** 默认：Chat 模块始终启用，附加面板默认关闭 */
-function defaultEnabledMap(): Record<string, boolean> {
-  const map: Record<string, boolean> = {};
-  for (const key of CHAT_MODULE_KEYS) {
-    map[key] = true;
-  }
-  for (const key of PANEL_MODULE_KEYS) {
-    map[key] = false;
-  }
-  return map;
-}
-
-function buildEnabledMap(cfg: ProdViewModulesConfig): Record<string, boolean> {
-  const map = defaultEnabledMap();
-  for (const key of ALL_MODULE_KEYS) {
-    const m = cfg[key];
-    if (m !== undefined) map[key] = m.enabled !== false;
-  }
-  return map;
-}
 
 interface ProdViewsPanelProps {
   agentId: string | null;
@@ -151,24 +114,17 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
     setEditingView(null);
   };
 
-  const buildModulesConfig = (): ProdViewModulesConfig => {
-    const cfg: ProdViewModulesConfig = {};
-    for (const key of ALL_MODULE_KEYS) {
-      cfg[key] = { ...editingView?.modulesConfig[key], enabled: formModules[key] };
-    }
-    return cfg;
-  };
-
   const handleSubmit = async () => {
     if (!formName.trim() || !agentId) return;
     setSubmitting(true);
     try {
+      const existingModulesConfig = editingView?.modulesConfig;
       if (isEditing) {
         await unwrap(
           prodViewApi.update(editingView!.id, {
             name: formName.trim(),
             description: formDesc.trim() || undefined,
-            modulesConfig: buildModulesConfig(),
+            modulesConfig: buildModulesConfig(existingModulesConfig, formModules),
           }),
         );
         toast.success(t("panelMode.viewsUpdateSuccess"));
@@ -178,7 +134,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
             name: formName.trim(),
             agentId,
             description: formDesc.trim() || undefined,
-            modulesConfig: buildModulesConfig(),
+            modulesConfig: buildModulesConfig(existingModulesConfig, formModules),
           }),
         );
         toast.success(t("panelMode.viewsCreateSuccess"));
