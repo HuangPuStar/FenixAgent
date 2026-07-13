@@ -6,7 +6,7 @@
 
 import { mock } from "bun:test";
 import * as actualKnowledgeBaseService from "../services/knowledge-base";
-import { getApiKeyServiceStub, getAuthApiStub } from "./stubs/auth-stub";
+import { getApiKeyServiceStub, getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
 import {
@@ -114,9 +114,17 @@ mock.module("../services/config/index", () =>
 // ── auth.api 方法名称 ──
 
 const AUTH_API_KEYS = [
+  "signUpEmail",
   "listApiKeys",
   "deleteApiKey",
   "createApiKey",
+  "addMember",
+  "getFullOrganization",
+  "updateOrganization",
+  "deleteOrganization",
+  "setActiveOrganization",
+  "removeMember",
+  "updateMemberRole",
   "listMembers",
   "listOrganizations",
   "createOrganization",
@@ -130,7 +138,7 @@ mock.module("../auth/better-auth", () => {
   return {
     auth: {
       api: apiObj,
-      handler: (_req: Request) => new Response("mocked", { status: 200 }),
+      handler: (req: Request) => getAuthHandlerStub()?.(req) ?? new Response("mocked", { status: 200 }),
     },
   };
 });

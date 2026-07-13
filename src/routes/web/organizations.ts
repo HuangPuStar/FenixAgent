@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import { auth } from "../../auth/better-auth";
 import { db } from "../../db";
@@ -17,6 +17,7 @@ import {
   UpdateMemberRoleBodySchema,
   UpdateOrganizationBodySchema,
 } from "../../schemas/organization.schema";
+import { isEmailIdentifier, normalizeChineseMainlandPhoneNumber } from "../../services/phone-number";
 
 const app = new Elysia({ name: "web-organizations" }).use(authGuardPlugin).model({
   "org-list-response": OrganizationListResponseSchema,
@@ -70,15 +71,13 @@ function normalizeDateValue(value: unknown): unknown {
   return value;
 }
 
-/**
- * 构造 API key metadata。
- * 普通页面创建的 key 必须继承当前组织和角色，才能在后续纯 API key 的 HTTP 调用里
- * 从 apikey 记录恢复出一致的组织上下文；仅靠 referenceId 只能定位“归属哪个用户”，
- * 但无法知道应该以哪个组织、哪个角色访问多租户资源。
- */
-function extractMembers(
-  res: unknown,
-): { id: string; userId: string; role: string; user?: { id: string; name: string; email: string } }[] {
+/** 统一抽取 better-auth 返回的成员列表。 */
+function extractMembers(res: unknown): {
+  id: string;
+  userId: string;
+  role: string;
+  user?: { id: string; name: string; email: string; phoneNumber?: string | null };
+}[] {
   if (Array.isArray(res)) return res;
   if (res && typeof res === "object" && "members" in res)
     return (
@@ -87,7 +86,7 @@ function extractMembers(
           id: string;
           userId: string;
           role: string;
-          user?: { id: string; name: string; email: string };
+          user?: { id: string; name: string; email: string; phoneNumber?: string | null };
         }>;
       }
     ).members;
@@ -113,6 +112,62 @@ async function handleListOrganizations(store: { user?: { id: string } }, request
   }));
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   return { success: true as const, data: normalizeDateValue(enriched) } as any;
+}
+
+async function enrichMembersWithPhoneNumber(
+  members: {
+    id: string;
+    userId: string;
+    role: string;
+    user?: { id: string; name: string; email: string; phoneNumber?: string | null };
+  }[],
+) {
+  const userIds = Array.from(
+    new Set(members.map((memberItem) => memberItem.user?.id ?? memberItem.userId).filter(Boolean)),
+  );
+  if (userIds.length === 0) return members;
+
+  const users = await db
+    .select({ id: user.id, phoneNumber: user.phoneNumber })
+    .from(user)
+    .where(inArray(user.id, userIds))
+    .execute();
+  const phoneMap = new Map(users.map((row) => [row.id, row.phoneNumber]));
+
+  return members.map((memberItem) => {
+    if (!memberItem.user) return memberItem;
+    return {
+      ...memberItem,
+      user: {
+        ...memberItem.user,
+        phoneNumber: phoneMap.get(memberItem.user.id) ?? null,
+      },
+    };
+  });
+}
+
+async function resolveMemberUserId(
+  rawIdentifier: string,
+): Promise<{ userId?: string; error?: { code: string; message: string; status: number } }> {
+  const identifier = rawIdentifier.trim();
+  if (isEmailIdentifier(identifier)) {
+    const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, identifier)).limit(1);
+    if (!foundUser) {
+      return { error: { code: "USER_NOT_FOUND", message: "该邮箱用户不存在", status: 404 } };
+    }
+    return { userId: foundUser.id };
+  }
+
+  try {
+    const phoneNumber = normalizeChineseMainlandPhoneNumber(identifier);
+    const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.phoneNumber, phoneNumber)).limit(1);
+    if (!foundUser) {
+      return { error: { code: "USER_NOT_FOUND", message: "该手机号用户不存在", status: 404 } };
+    }
+    return { userId: foundUser.id };
+  } catch {
+    return { error: { code: "USER_NOT_FOUND", message: "未找到匹配的邮箱或手机号用户", status: 404 } };
+  }
 }
 
 // ── RESTful Organization 路由 ──
@@ -153,7 +208,7 @@ app.get(
         api.getFullOrganization({ query: { organizationId: orgId }, headers: request.headers }),
         api.listMembers({ query: { organizationId: orgId }, headers: request.headers }),
       ]);
-      const memberList = extractMembers(members);
+      const memberList = await enrichMembersWithPhoneNumber(extractMembers(members));
       return {
         success: true as const,
         data: normalizeDateValue({ ...(org as Record<string, unknown>), members: memberList }),
@@ -277,7 +332,7 @@ app.get(
       query: { organizationId: params.id },
       headers: request.headers,
     });
-    const memberData = extractMembers(members);
+    const memberData = await enrichMembersWithPhoneNumber(extractMembers(members));
     // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: memberData } as any;
   },
@@ -307,21 +362,21 @@ app.post(
       return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "role required" } });
     }
     let memberUserId: string | undefined;
-    const rawId = (b.userId ?? b.email) as string | undefined;
+    const rawId = b.identifier as string | undefined;
     if (!rawId) {
       return error(400, {
         success: false,
-        error: { code: "VALIDATION_ERROR", message: "userId or email required" },
+        error: { code: "VALIDATION_ERROR", message: "identifier required" },
       });
     }
-    if (rawId.includes("@")) {
-      const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, rawId)).limit(1);
-      if (!foundUser)
-        return error(404, { success: false, error: { code: "USER_NOT_FOUND", message: "该邮箱用户不存在" } });
-      memberUserId = foundUser.id;
-    } else {
-      memberUserId = rawId;
+    const resolved = await resolveMemberUserId(rawId);
+    if (resolved.error) {
+      return error(resolved.error.status, {
+        success: false,
+        error: { code: resolved.error.code, message: resolved.error.message },
+      });
     }
+    memberUserId = resolved.userId;
     const result = await api.addMember({
       body: { userId: memberUserId, role: b.role, organizationId: params.id },
       headers: request.headers,
@@ -342,7 +397,7 @@ app.post(
     detail: {
       tags: ["Organizations"],
       summary: "添加组织成员",
-      description: "向指定组织添加新成员，支持通过 userId 或邮箱指定用户。",
+      description: "向指定组织添加新成员，支持通过邮箱或手机号指定用户。",
     },
   },
 );

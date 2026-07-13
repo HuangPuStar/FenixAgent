@@ -2,7 +2,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { CirclePlus, Eye, EyeOff, MessageSquare, ShieldCheck, Users } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { authClient } from "../lib/auth-client";
+import { authClient, signUpWithPhone } from "../lib/auth-client";
+import { type AuthMethod, getPreferredAuthMethod, setPreferredAuthMethod } from "../lib/auth-preference";
 import { encryptPassword } from "../lib/password-crypto";
 
 const brandTags = ["AI Orchestration", "Multi-Agent", "Intelligent Core"];
@@ -796,8 +797,10 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { t } = useTranslation("login");
   const [isSignUp, setIsSignUp] = useState(false);
+  const [authMethod, setAuthMethod] = useState<AuthMethod>(() => getPreferredAuthMethod());
   const [signupAllowed, setSignupAllowed] = useState(true);
   const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
@@ -818,10 +821,18 @@ export function LoginPage() {
     setConfirmPassword("");
   }, []);
 
+  const switchMethod = useCallback((nextMethod: AuthMethod) => {
+    setAuthMethod(nextMethod);
+    setPreferredAuthMethod(nextMethod);
+    setError("");
+    setConfirmPassword("");
+  }, []);
+
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
       setError("");
+      const identifier = authMethod === "phone" ? phoneNumber.trim() : email.trim();
 
       if (isSignUp && password !== confirmPassword) {
         setError(t("passwordMismatch"));
@@ -832,19 +843,39 @@ export function LoginPage() {
 
       try {
         const encPassword = await encryptPassword(password);
-        if (isSignUp) {
-          const res = await authClient.signUp.email({
-            email,
+        if (isSignUp && authMethod === "phone") {
+          const res = await signUpWithPhone({
+            phoneNumber: identifier,
             password: encPassword,
-            name: name || email.split("@")[0],
+            name: name || identifier,
           });
           if (res.error) {
             setError(res.error.message || t("signUpFailed"));
             return;
           }
+        } else if (isSignUp) {
+          const res = await authClient.signUp.email({
+            email: identifier,
+            password: encPassword,
+            name: name || identifier.split("@")[0],
+          });
+          if (res.error) {
+            setError(res.error.message || t("signUpFailed"));
+            return;
+          }
+        } else if (authMethod === "phone") {
+          const res = await authClient.signIn.phoneNumber({
+            phoneNumber: identifier,
+            password: encPassword,
+            rememberMe: rememberLogin,
+          });
+          if (res.error) {
+            setError(res.error.message || t("signInFailed"));
+            return;
+          }
         } else {
           const res = await authClient.signIn.email({
-            email,
+            email: identifier,
             password: encPassword,
           });
           if (res.error) {
@@ -859,7 +890,7 @@ export function LoginPage() {
         setLoading(false);
       }
     },
-    [confirmPassword, email, isSignUp, name, navigate, password, t],
+    [authMethod, confirmPassword, email, isSignUp, name, navigate, password, phoneNumber, rememberLogin, t],
   );
 
   return (
@@ -909,6 +940,33 @@ export function LoginPage() {
           <h1 className="auth-light-title">{isSignUp ? t("createAccountTitle") : t("welcomeBack")}</h1>
           <p className="auth-light-sub">{isSignUp ? t("createAccountSubtitle") : t("welcomeBackSubtitle")}</p>
 
+          <div className="mb-6 grid grid-cols-2 gap-2 rounded-xl bg-[#eef4fb] p-1.5">
+            <button
+              type="button"
+              onClick={() => switchMethod("email")}
+              className={[
+                "h-10 rounded-lg text-[14px] font-semibold transition",
+                authMethod === "email"
+                  ? "bg-white text-[#176cff] shadow-[0_8px_20px_rgba(30,108,255,0.12)]"
+                  : "text-[#6d7f99]",
+              ].join(" ")}
+            >
+              {t("emailTab")}
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMethod("phone")}
+              className={[
+                "h-10 rounded-lg text-[14px] font-semibold transition",
+                authMethod === "phone"
+                  ? "bg-white text-[#176cff] shadow-[0_8px_20px_rgba(30,108,255,0.12)]"
+                  : "text-[#6d7f99]",
+              ].join(" ")}
+            >
+              {t("phoneTab")}
+            </button>
+          </div>
+
           <form className="auth-light-form" onSubmit={handleSubmit}>
             {isSignUp && (
               <AuthInput
@@ -923,14 +981,20 @@ export function LoginPage() {
             )}
 
             <AuthInput
-              autoComplete="email"
-              id="auth-email"
-              label={isSignUp ? t("email") : t("account")}
-              onChange={setEmail}
-              placeholder={isSignUp ? t("enterpriseEmailPlaceholder") : t("accountPlaceholder")}
+              id={authMethod === "phone" ? "auth-phone" : "auth-email"}
+              label={authMethod === "phone" ? t("phoneNumber") : isSignUp ? t("email") : t("account")}
+              type={authMethod === "phone" ? "tel" : "email"}
+              value={authMethod === "phone" ? phoneNumber : email}
+              onChange={authMethod === "phone" ? setPhoneNumber : setEmail}
+              placeholder={
+                authMethod === "phone"
+                  ? t("phoneNumberPlaceholder")
+                  : isSignUp
+                    ? t("enterpriseEmailPlaceholder")
+                    : t("accountPlaceholder")
+              }
+              autoComplete={authMethod === "phone" ? "tel" : "email"}
               required
-              type="email"
-              value={email}
             />
 
             <AuthInput
