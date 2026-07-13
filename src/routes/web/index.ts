@@ -14,6 +14,7 @@ import webInstances from "./instances";
 import webKnowledgeBases from "./knowledge-bases";
 import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
+import webProdViews from "./prod-views";
 import webRegistry from "./registry";
 import webSessions from "./sessions";
 import webTasks from "./tasks";
@@ -50,6 +51,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webWorkflowEngine)
   .use(webWorkflowSse)
   .use(workflowRunsRoutes)
+  .use(webProdViews)
   .use(webAgentGeneration);
 
 export default webApp;
