@@ -20,6 +20,8 @@ export const ApiSystemUserSchema = z.object({
   name: z.string().describe("用户名称。"),
   email: z.string().describe("用户邮箱。"),
   emailVerified: z.boolean().describe("邮箱是否已验证。"),
+  phoneNumber: z.string().nullable().describe("用户手机号；未设置时为空。"),
+  phoneNumberVerified: z.boolean().describe("手机号是否已验证。"),
   createdAt: FlexibleDateTimeSchema.describe("创建时间。"),
   updatedAt: FlexibleDateTimeSchema.describe("更新时间。"),
 });
@@ -39,12 +41,19 @@ export const ApiSystemApiKeyIdParamsSchema = z.object({
   id: z.string().describe("API Key ID。"),
 });
 
-export const ApiSystemCreateUserBodySchema = z.object({
-  email: z.email().describe("用户邮箱。"),
-  name: z.string().min(1).describe("用户名称。"),
-  password: z.string().min(8).describe("初始密码。"),
-  emailVerified: z.boolean().optional().describe("是否标记邮箱已验证。"),
-});
+export const ApiSystemCreateUserBodySchema = z
+  .object({
+    email: z.email().optional().describe("用户邮箱；手机号用户可不传。"),
+    emailVerified: z.boolean().optional().describe("是否标记邮箱已验证。"),
+    phoneNumber: z.string().optional().describe("用户手机号；不传邮箱时会作为登录标识。"),
+    phoneNumberVerified: z.boolean().optional().describe("是否标记手机号已验证。"),
+    name: z.string().min(1).describe("用户名称。"),
+    password: z.string().min(8).describe("初始密码。"),
+  })
+  .refine((value) => !!value.email || !!value.phoneNumber, {
+    message: "email 或 phoneNumber 至少需要提供一个",
+    path: ["email"],
+  });
 
 export const ApiSystemOrganizationSchema = z.object({
   id: z.string().describe("组织 ID。"),

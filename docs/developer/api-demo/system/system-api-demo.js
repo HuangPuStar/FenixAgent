@@ -29,6 +29,10 @@ function buildConfig(options) {
   };
 }
 
+function parseBooleanOption(value) {
+  return value === "true";
+}
+
 /**
  * 打印脚本使用方式，便于对方快速照抄。
  */
@@ -36,8 +40,8 @@ function printUsage() {
   console.log(`Usage:
   bun docs/developer/api-demo/system/system-api-demo.js list-users --system-api-key <key> [--base-url <url>]
     查询用户列表
-  bun docs/developer/api-demo/system/system-api-demo.js create-user --system-api-key <key> --email <email> --name <name> --password <password> [--email-verified true] [--base-url <url>]
-    创建一个新的平台用户
+  bun docs/developer/api-demo/system/system-api-demo.js create-user --system-api-key <key> --name <name> --password <password> [--email <email>] [--phone-number <phone>] [--email-verified true] [--phone-number-verified true] [--base-url <url>]
+    创建一个新的平台用户，邮箱和手机号至少传一个
   bun docs/developer/api-demo/system/system-api-demo.js list-organizations --system-api-key <key> [--base-url <url>]
     查询组织列表
   bun docs/developer/api-demo/system/system-api-demo.js create-organization --system-api-key <key> --name <name> --slug <slug> [--owner-user-id <userId>] [--base-url <url>]
@@ -51,13 +55,17 @@ Optional args:
   --base-url
     Fenix 服务地址，默认是 http://localhost:3000
   --email
-    create-user 时使用的邮箱
+    create-user 时使用的邮箱；与 --phone-number 至少传一个
+  --phone-number
+    create-user 时使用的手机号；与 --email 至少传一个
   --name
     create-user / create-organization 时使用的名称
   --password
     create-user 时使用的密码，至少 8 位
   --email-verified
     create-user 时是否直接标记邮箱已验证，可传 true / false
+  --phone-number-verified
+    create-user 时是否直接标记手机号已验证，可传 true / false
   --slug
     create-organization 时使用的 slug
   --owner-user-id
@@ -80,17 +88,26 @@ async function listUsers() {
 
 /**
  * 创建平台用户。
- * 默认自动生成邮箱，避免多次运行 demo 时与已有数据冲突。
+ * 邮箱和手机号至少传一个；只传手机号时，服务端会自动生成临时邮箱。
  */
 async function createUser() {
   const options = parseOptions(args);
   const config = buildConfig(options);
   const api = createSystemApiClient(config);
+  const email = options.email?.trim();
+  const phoneNumber = options["phone-number"]?.trim();
+  if (!email && !phoneNumber) {
+    throw new Error("create-user 需要至少提供 --email 或 --phone-number");
+  }
   const body = {
-    email: requireValue("email", options.email),
     name: requireValue("name", options.name),
     password: requireValue("password", options.password),
-    emailVerified: options["email-verified"] === "true",
+    ...(email ? { email } : {}),
+    ...(phoneNumber ? { phoneNumber } : {}),
+    ...(options["email-verified"] !== undefined ? { emailVerified: parseBooleanOption(options["email-verified"]) } : {}),
+    ...(options["phone-number-verified"] !== undefined
+      ? { phoneNumberVerified: parseBooleanOption(options["phone-number-verified"]) }
+      : {}),
   };
 
   logSection("POST /api/system/users");

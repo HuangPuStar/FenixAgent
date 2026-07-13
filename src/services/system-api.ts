@@ -4,6 +4,7 @@ import { hashPassword } from "better-auth/crypto";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { account, apikey, member, organization, user } from "../db/schema";
+import { buildPhoneTempEmail, normalizeChineseMainlandPhoneNumber } from "./phone-number";
 
 export interface SystemApiPagination {
   page: number;
@@ -15,6 +16,8 @@ export interface SystemApiUserRecord {
   name: string;
   email: string;
   emailVerified: boolean;
+  phoneNumber: string | null;
+  phoneNumberVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,10 +46,12 @@ export interface SystemApiUserOrganizationRecord extends SystemApiOrganizationRe
 }
 
 export interface SystemApiCreateUserInput {
-  email: string;
+  email?: string;
+  emailVerified?: boolean;
+  phoneNumber?: string;
+  phoneNumberVerified?: boolean;
   name: string;
   password: string;
-  emailVerified?: boolean;
 }
 
 export interface SystemApiCreateOrganizationInput {
@@ -161,9 +166,29 @@ async function assertUserBelongsToOrganization(userId: string, organizationId: s
  * 创建用户时同步补齐 credential account 与个人组织，保持与正常注册路径一致。
  */
 export async function createUser(input: SystemApiCreateUserInput): Promise<SystemApiUserRecord> {
-  const existing = await db.select({ id: user.id }).from(user).where(eq(user.email, input.email)).limit(1);
-  if (existing.length > 0) {
-    throw new Error(`User '${input.email}' already exists`);
+  const normalizedPhoneNumber = input.phoneNumber ? normalizeChineseMainlandPhoneNumber(input.phoneNumber) : null;
+  const phoneNumberVerified = normalizedPhoneNumber ? (input.phoneNumberVerified ?? false) : false;
+  const resolvedEmail =
+    input.email?.trim() || (normalizedPhoneNumber ? buildPhoneTempEmail(normalizedPhoneNumber) : "");
+
+  if (!resolvedEmail) {
+    throw new Error("email or phoneNumber is required");
+  }
+
+  const existingByEmail = await db.select({ id: user.id }).from(user).where(eq(user.email, resolvedEmail)).limit(1);
+  if (existingByEmail.length > 0) {
+    throw new Error(`User '${resolvedEmail}' already exists`);
+  }
+
+  if (normalizedPhoneNumber) {
+    const existingByPhone = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.phoneNumber, normalizedPhoneNumber))
+      .limit(1);
+    if (existingByPhone.length > 0) {
+      throw new Error(`User '${normalizedPhoneNumber}' already exists`);
+    }
   }
 
   const now = new Date();
@@ -175,8 +200,10 @@ export async function createUser(input: SystemApiCreateUserInput): Promise<Syste
     await tx.insert(user).values({
       id: userId,
       name: input.name,
-      email: input.email,
+      email: resolvedEmail,
       emailVerified: input.emailVerified ?? false,
+      phoneNumber: normalizedPhoneNumber,
+      phoneNumberVerified,
       image: null,
       createdAt: now,
       updatedAt: now,
@@ -211,8 +238,10 @@ export async function createUser(input: SystemApiCreateUserInput): Promise<Syste
   return {
     id: userId,
     name: input.name,
-    email: input.email,
+    email: resolvedEmail,
     emailVerified: input.emailVerified ?? false,
+    phoneNumber: normalizedPhoneNumber,
+    phoneNumberVerified,
     createdAt: now,
     updatedAt: now,
   };

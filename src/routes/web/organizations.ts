@@ -361,7 +361,6 @@ app.post(
     if (!b.role) {
       return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "role required" } });
     }
-    let memberUserId: string | undefined;
     const rawId = b.identifier as string | undefined;
     if (!rawId) {
       return error(400, {
@@ -376,9 +375,14 @@ app.post(
         error: { code: resolved.error.code, message: resolved.error.message },
       });
     }
-    memberUserId = resolved.userId;
+    if (!resolved.userId) {
+      return error(404, {
+        success: false,
+        error: { code: "USER_NOT_FOUND", message: "未找到匹配的邮箱或手机号用户" },
+      });
+    }
     const result = await api.addMember({
-      body: { userId: memberUserId, role: b.role, organizationId: params.id },
+      body: { userId: resolved.userId, role: b.role, organizationId: params.id },
       headers: request.headers,
     });
     // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation

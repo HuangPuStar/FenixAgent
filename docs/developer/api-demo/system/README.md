@@ -43,9 +43,25 @@ bun docs/developer/api-demo/system/system-api-demo.js create-user \
   --base-url http://localhost:3000 \
   --email system-demo@example.com \
   --name "System Demo User" \
-  --password supersecret123 \
-  --email-verified true
+  --password supersecret123
 ```
+
+使用手机号创建用户：
+
+```bash
+bun docs/developer/api-demo/system/system-api-demo.js create-user \
+  --system-api-key 123456 \
+  --base-url http://localhost:3000 \
+  --phone-number 18826480215 \
+  --name "Phone Demo User" \
+  --password supersecret123
+```
+
+说明：
+
+- `create-user` 时，`--email` 和 `--phone-number` 至少传一个
+- 如果只传 `--phone-number`，服务端会自动生成临时邮箱
+- 如果两者都传，会优先使用传入的邮箱，同时写入手机号
 
 ## 2. 组织相关 Demo
 
