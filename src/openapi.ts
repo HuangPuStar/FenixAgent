@@ -51,6 +51,10 @@ const EXTERNAL_OPENAPI_TAGS = [
     name: "External Workflow",
     description: "面向外部系统的工作流执行接口，支持同步和异步两种模式。",
   },
+  {
+    name: "OpenAI Compatible",
+    description: "兼容 OpenAI Chat Completions 协议的 Agent 对话接口。",
+  },
 ];
 
 const WEB_OPENAPI_TAGS = [
@@ -111,6 +115,10 @@ const WEB_OPENAPI_TAGS = [
     description: "定时 HTTP 任务管理与执行日志查询。",
   },
   {
+    name: "Tasks V2",
+    description: "第二代定时任务管理接口，包括任务 CRUD、启停切换、手动触发与执行日志。",
+  },
+  {
     name: "Organizations",
     description: "组织、成员和 API Key 管理。",
   },
@@ -149,6 +157,10 @@ const WEB_OPENAPI_TAGS = [
   {
     name: "Workflow Engine",
     description: "原生 DAG 工作流执行引擎相关接口。",
+  },
+  {
+    name: "ProdView",
+    description: "ProdView 配置与加载接口，包括配置 CRUD 和视图加载能力。",
   },
 ];
 
