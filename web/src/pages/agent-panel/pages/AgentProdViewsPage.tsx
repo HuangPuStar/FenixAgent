@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -15,11 +15,13 @@ import { agentApi } from "@/src/api/agents";
 import { type ProdViewInfo, type ProdViewModulesConfig, prodViewApi } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
+import { cn } from "@/src/lib/utils";
 import type { AgentInfo } from "@/src/types/config";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
-const MODULE_KEYS = [
+/** Chat 主体模块 */
+const CHAT_MODULE_KEYS = [
   "chatHeader",
   "sessionSidebar",
   "chatView",
@@ -28,25 +30,70 @@ const MODULE_KEYS = [
   "todoPanel",
   "contextPanel",
   "toolCallRow",
-  "filesPanel",
-  "sitesPanel",
-  "tasksPanel",
-  "viewsPanel",
 ] as const;
 
-function buildEnabledMap(cfg: ProdViewModulesConfig): Record<string, boolean> {
+/** 右侧附加面板模块 */
+const PANEL_MODULE_KEYS = ["filesPanel", "sitesPanel", "tasksPanel", "viewsPanel"] as const;
+
+const ALL_MODULE_KEYS = [...CHAT_MODULE_KEYS, ...PANEL_MODULE_KEYS] as const;
+
+function defaultEnabledMap(): Record<string, boolean> {
   const map: Record<string, boolean> = {};
-  for (const key of MODULE_KEYS) {
-    const m = cfg[key];
-    map[key] = m?.enabled !== false;
+  for (const key of ALL_MODULE_KEYS) {
+    map[key] = true;
   }
   return map;
 }
 
-interface CreateForm {
-  name: string;
-  description: string;
-  agentId: string;
+function buildEnabledMap(cfg: ProdViewModulesConfig): Record<string, boolean> {
+  const map = defaultEnabledMap();
+  for (const key of ALL_MODULE_KEYS) {
+    const m = cfg[key];
+    if (m?.enabled === false) map[key] = false;
+  }
+  return map;
+}
+
+/** 推荐命名 */
+const SUGGESTED_NAMES = ["通用助手", "代码助手", "文档助手", "数据分析师", "客服助手", "翻译助手"];
+
+/** 模块配置开关区域 */
+function ModuleConfigSection({
+  enabledMap,
+  onToggle,
+}: {
+  enabledMap: Record<string, boolean>;
+  onToggle: (key: string, checked: boolean) => void;
+}) {
+  const { t } = useTranslation(NS.PROD_VIEWS);
+
+  const ModuleRow = ({ moduleKey }: { moduleKey: string }) => (
+    <div className="flex items-center justify-between rounded bg-gray-50 px-3 py-2">
+      <span className="text-sm">{t(`modules.${moduleKey}`)}</span>
+      <Switch checked={enabledMap[moduleKey]} onCheckedChange={(checked) => onToggle(moduleKey, checked)} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-text-secondary">{t("moduleChatSection")}</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {CHAT_MODULE_KEYS.map((mk) => (
+            <ModuleRow key={mk} moduleKey={mk} />
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-text-secondary">{t("modulePanelSection")}</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {PANEL_MODULE_KEYS.map((mk) => (
+            <ModuleRow key={mk} moduleKey={mk} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function AgentProdViewsPage() {
@@ -73,15 +120,6 @@ export function AgentProdViewsPage() {
     return result?.agents ?? [];
   });
 
-  // 创建对话框
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState<CreateForm>({ name: "", description: "", agentId: "" });
-  const [creating, setCreating] = useState(false);
-
-  // 配置对话框
-  const [editView, setEditView] = useState<ProdViewInfo | null>(null);
-  const [editEnabledMap, setEditEnabledMap] = useState<Record<string, boolean>>({});
-
   const copyLink = (id: string) => {
     const url = `${window.location.origin}/view/${id}`;
     navigator.clipboard.writeText(url).then(
@@ -90,50 +128,90 @@ export function AgentProdViewsPage() {
     );
   };
 
-  const handleCreate = async () => {
-    if (!createForm.name.trim() || !createForm.agentId) return;
-    setCreating(true);
+  const openView = (id: string) => {
+    window.open(`/view/${id}`, "_blank");
+  };
+
+  // ── 共用表单状态 ──
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingView, setEditingView] = useState<ProdViewInfo | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formDesc, setFormDesc] = useState("");
+  const [formAgentId, setFormAgentId] = useState("");
+  const [formModules, setFormModules] = useState<Record<string, boolean>>(defaultEnabledMap());
+  const [submitting, setSubmitting] = useState(false);
+
+  const isEditing = !!editingView;
+
+  const openCreate = () => {
+    setEditingView(null);
+    setFormName("");
+    setFormDesc("");
+    setFormAgentId("");
+    setFormModules(defaultEnabledMap());
+    setDialogOpen(true);
+  };
+
+  const openEdit = (view: ProdViewInfo) => {
+    setEditingView(view);
+    setFormName(view.name);
+    setFormDesc(view.description ?? "");
+    setFormAgentId(view.agentId);
+    setFormModules(buildEnabledMap(view.modulesConfig));
+    setDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingView(null);
+  };
+
+  const buildModulesConfig = (): ProdViewModulesConfig => {
+    const cfg: ProdViewModulesConfig = {};
+    for (const key of ALL_MODULE_KEYS) {
+      cfg[key] = { ...editingView?.modulesConfig[key], enabled: formModules[key] };
+    }
+    return cfg;
+  };
+
+  const handleSubmit = async () => {
+    if (!formName.trim()) return;
+    setSubmitting(true);
     try {
-      await unwrap(
-        prodViewApi.create({
-          name: createForm.name.trim(),
-          agentId: createForm.agentId,
-          description: createForm.description.trim() || undefined,
-        }),
-      );
-      toast.success(t("createSuccess"));
-      setCreateOpen(false);
-      setCreateForm({ name: "", description: "", agentId: "" });
+      if (isEditing) {
+        await unwrap(
+          prodViewApi.update(editingView!.id, {
+            name: formName.trim(),
+            description: formDesc.trim() || undefined,
+            modulesConfig: buildModulesConfig(),
+          }),
+        );
+        toast.success(t("updateSuccess"));
+      } else {
+        if (!formAgentId) {
+          toast.error(t("agentRequired"));
+          setSubmitting(false);
+          return;
+        }
+        await unwrap(
+          prodViewApi.create({
+            name: formName.trim(),
+            agentId: formAgentId,
+            description: formDesc.trim() || undefined,
+          }),
+        );
+        toast.success(t("createSuccess"));
+      }
+      closeDialog();
       refresh();
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
-      setCreating(false);
+      setSubmitting(false);
     }
   };
 
-  const openEdit = (view: ProdViewInfo) => {
-    setEditView(view);
-    setEditEnabledMap(buildEnabledMap(view.modulesConfig));
-  };
-
-  const handleSaveConfig = async () => {
-    if (!editView) return;
-    try {
-      const modulesConfig: ProdViewModulesConfig = {};
-      for (const key of MODULE_KEYS) {
-        modulesConfig[key] = { ...editView.modulesConfig[key], enabled: editEnabledMap[key] };
-      }
-      await unwrap(prodViewApi.update(editView.id, { modulesConfig }));
-      toast.success(t("updateSuccess"));
-      setEditView(null);
-      refresh();
-    } catch (err) {
-      toast.error((err as Error).message);
-    }
-  };
-
-  // 删除确认
+  // ── 删除确认 ──
   const [deleteTarget, setDeleteTarget] = useState<ProdViewInfo | null>(null);
 
   const handleDelete = async (id: string) => {
@@ -167,7 +245,7 @@ export function AgentProdViewsPage() {
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Button size="sm" onClick={openCreate}>
             <Plus className="mr-1 h-4 w-4" />
             {t("create")}
           </Button>
@@ -196,6 +274,9 @@ export function AgentProdViewsPage() {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0 ml-4">
+              <Button size="xs" variant="ghost" onClick={() => openView(view.id)} title={t("openView")}>
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
               <Button size="xs" variant="ghost" onClick={() => openEdit(view)}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
@@ -215,98 +296,111 @@ export function AgentProdViewsPage() {
         )}
       />
 
-      {/* 创建对话框 */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+      {/* ── 创建 / 编辑共用对话框 ── */}
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeDialog();
+        }}
+      >
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{t("createTitle")}</DialogTitle>
+            <DialogTitle>{isEditing ? `${t("editTitle")} — ${editingView?.name}` : t("createTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* 编辑时显示链接 */}
+            {isEditing && editingView && (
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <span>{t("viewLink")}:</span>
+                <code className="text-brand">{`${window.location.origin}/view/${editingView.id}`}</code>
+                <Button size="xs" variant="ghost" onClick={() => copyLink(editingView.id)}>
+                  <Copy className="h-3 w-3" />
+                </Button>
+                <Button size="xs" variant="ghost" onClick={() => openView(editingView.id)}>
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+            {/* 名称 */}
             <div className="space-y-2">
               <Label>{t("name")}</Label>
               <Input
                 placeholder={t("namePlaceholder")}
-                value={createForm.name}
-                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
               />
             </div>
+            {/* 推荐命名（仅创建时） */}
+            {!isEditing && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-normal text-text-muted">{t("suggestedNames")}</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {SUGGESTED_NAMES.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setFormName(name)}
+                      className={cn(
+                        "px-2.5 py-1 text-xs rounded-full border border-border-subtle transition-colors",
+                        formName === name
+                          ? "bg-brand text-white border-brand"
+                          : "bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-primary",
+                      )}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* 描述 */}
             <div className="space-y-2">
               <Label>{t("description")}</Label>
               <Input
                 placeholder={t("descriptionPlaceholder")}
-                value={createForm.description}
-                onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+                value={formDesc}
+                onChange={(e) => setFormDesc(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label>{t("agent")}</Label>
-              <Select value={createForm.agentId} onValueChange={(v) => setCreateForm({ ...createForm, agentId: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t("agentPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {agentOptions.map((a: AgentInfo) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {String(a.name)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Agent 选择（仅创建时） */}
+            {!isEditing && (
+              <div className="space-y-2">
+                <Label>{t("agent")}</Label>
+                <Select value={formAgentId} onValueChange={(v) => setFormAgentId(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("agentPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agentOptions.map((a: AgentInfo) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {String(a.name)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {/* 模块配置 */}
+            <div className="space-y-1">
+              <Label className="text-sm">{t("modulesConfig")}</Label>
+              <ModuleConfigSection
+                enabledMap={formModules}
+                onToggle={(key, checked) => setFormModules({ ...formModules, [key]: checked })}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+            <Button variant="outline" onClick={closeDialog}>
               {t("cancel")}
             </Button>
-            <Button onClick={handleCreate} disabled={creating || !createForm.name.trim() || !createForm.agentId}>
-              {creating ? "..." : t("save")}
+            <Button onClick={handleSubmit} disabled={submitting || !formName.trim()}>
+              {submitting ? "..." : t("save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* 配置对话框 */}
-      <Dialog open={!!editView} onOpenChange={() => setEditView(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {t("editTitle")} — {editView?.name}
-            </DialogTitle>
-          </DialogHeader>
-          {editView && (
-            <div className="space-y-4 py-4">
-              <div className="flex items-center gap-2 text-xs text-text-muted">
-                <span>{t("viewLink")}:</span>
-                <code className="text-brand">{`${window.location.origin}/view/${editView.id}`}</code>
-                <Button size="xs" variant="ghost" onClick={() => copyLink(editView.id)}>
-                  <Copy className="h-3 w-3" />
-                </Button>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-sm">{t("modulesConfig")}</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {MODULE_KEYS.map((key) => (
-                    <div key={key} className="flex items-center justify-between rounded bg-gray-50 px-3 py-2">
-                      <span className="text-sm">{t(`modules.${key}`)}</span>
-                      <Switch
-                        checked={editEnabledMap[key]}
-                        onCheckedChange={(checked) => setEditEnabledMap({ ...editEnabledMap, [key]: checked })}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditView(null)}>
-              {t("cancel")}
-            </Button>
-            <Button onClick={handleSaveConfig}>{t("save")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* 删除确认对话框 */}
+      {/* ── 删除确认 ── */}
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => {

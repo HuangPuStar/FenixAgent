@@ -187,7 +187,13 @@
     "viewsUpdateSuccess": "更新成功",
     "viewsDeleteSuccess": "删除成功",
     "viewsSave": "保存",
-    "viewsCancel": "取消"
+    "viewsCancel": "取消",
+    "viewsOpenView": "打开视图",
+    "viewsSuggestedNames": "推荐命名",
+    "viewsChatModules": "Chat 模块",
+    "viewsPanelModules": "附加面板",
+    "viewsEnabled": "已启用",
+    "viewsDisabled": "已禁用"
   },
   "siteFrame": {
     "share": "分享",

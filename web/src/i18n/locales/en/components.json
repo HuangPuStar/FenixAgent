@@ -187,7 +187,13 @@
     "viewsUpdateSuccess": "View updated",
     "viewsDeleteSuccess": "View deleted",
     "viewsSave": "Save",
-    "viewsCancel": "Cancel"
+    "viewsCancel": "Cancel",
+    "viewsOpenView": "Open View",
+    "viewsSuggestedNames": "Suggested Names",
+    "viewsChatModules": "Chat Modules",
+    "viewsPanelModules": "Additional Panels",
+    "viewsEnabled": "Enabled",
+    "viewsDisabled": "Disabled"
   },
   "siteFrame": {
     "share": "Share",

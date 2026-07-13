@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -17,7 +17,8 @@ import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
 import { cn } from "@/src/lib/utils";
 
-const MODULE_KEYS = [
+/** Chat 主体模块 */
+const CHAT_MODULE_KEYS = [
   "chatHeader",
   "sessionSidebar",
   "chatView",
@@ -26,23 +27,79 @@ const MODULE_KEYS = [
   "todoPanel",
   "contextPanel",
   "toolCallRow",
-  "filesPanel",
-  "sitesPanel",
-  "tasksPanel",
-  "viewsPanel",
 ] as const;
 
-function buildEnabledMap(cfg: ProdViewModulesConfig): Record<string, boolean> {
+/** 右侧附加面板模块 */
+const PANEL_MODULE_KEYS = ["filesPanel", "sitesPanel", "tasksPanel", "viewsPanel"] as const;
+
+const ALL_MODULE_KEYS = [...CHAT_MODULE_KEYS, ...PANEL_MODULE_KEYS] as const;
+
+/** 默认全启用 */
+function defaultEnabledMap(): Record<string, boolean> {
   const map: Record<string, boolean> = {};
-  for (const key of MODULE_KEYS) {
-    const m = cfg[key];
-    map[key] = m?.enabled !== false;
+  for (const key of ALL_MODULE_KEYS) {
+    map[key] = true;
   }
   return map;
 }
 
+function buildEnabledMap(cfg: ProdViewModulesConfig): Record<string, boolean> {
+  const map = defaultEnabledMap();
+  for (const key of ALL_MODULE_KEYS) {
+    const m = cfg[key];
+    if (m?.enabled === false) map[key] = false;
+  }
+  return map;
+}
+
+/** 推荐命名 */
+const SUGGESTED_NAMES = ["通用助手", "代码助手", "文档助手", "数据分析师", "客服助手", "翻译助手"];
+
 interface ProdViewsPanelProps {
   agentId: string | null;
+}
+
+/** 模块配置开关区域（创建 & 编辑共用） */
+function ModuleConfigSection({
+  enabledMap,
+  onToggle,
+  prodT,
+}: {
+  enabledMap: Record<string, boolean>;
+  onToggle: (key: string, checked: boolean) => void;
+  prodT: (key: string) => string;
+}) {
+  const { t } = useTranslation(NS.COMPONENTS);
+
+  const ModuleRow = ({ moduleKey }: { moduleKey: string }) => (
+    <div className="flex items-center justify-between rounded bg-gray-50 px-3 py-2">
+      <span className="text-sm">{prodT(`modules.${moduleKey}`)}</span>
+      <Switch checked={enabledMap[moduleKey]} onCheckedChange={(checked) => onToggle(moduleKey, checked)} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Chat 模块 */}
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-text-secondary">{t("panelMode.viewsChatModules")}</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {CHAT_MODULE_KEYS.map((mk) => (
+            <ModuleRow key={mk} moduleKey={mk} />
+          ))}
+        </div>
+      </div>
+      {/* 附加面板 */}
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-text-secondary">{t("panelMode.viewsPanelModules")}</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {PANEL_MODULE_KEYS.map((mk) => (
+            <ModuleRow key={mk} moduleKey={mk} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
@@ -60,67 +117,74 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
 
   const views: ProdViewInfo[] = data?.success !== false ? (data?.data ?? []) : [];
 
-  // ── 创建对话框 ──
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: "", description: "" });
-  const [creating, setCreating] = useState(false);
+  // ── 共用表单状态（创建 / 编辑共用同一个 Dialog） ──
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingView, setEditingView] = useState<ProdViewInfo | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formDesc, setFormDesc] = useState("");
+  const [formModules, setFormModules] = useState<Record<string, boolean>>(defaultEnabledMap());
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleCreate = async () => {
-    if (!createForm.name.trim() || !agentId) return;
-    setCreating(true);
-    try {
-      await unwrap(
-        prodViewApi.create({
-          name: createForm.name.trim(),
-          agentId,
-          description: createForm.description.trim() || undefined,
-        }),
-      );
-      toast.success(t("panelMode.viewsCreateSuccess"));
-      setCreateOpen(false);
-      setCreateForm({ name: "", description: "" });
-      refresh();
-    } catch (err) {
-      toast.error((err as Error).message);
-    } finally {
-      setCreating(false);
-    }
+  const isEditing = !!editingView;
+
+  const openCreate = () => {
+    setEditingView(null);
+    setFormName("");
+    setFormDesc("");
+    setFormModules(defaultEnabledMap());
+    setDialogOpen(true);
   };
-
-  // ── 编辑对话框 ──
-  const [editView, setEditView] = useState<ProdViewInfo | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "" });
-  const [editEnabledMap, setEditEnabledMap] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
 
   const openEdit = (view: ProdViewInfo) => {
-    setEditView(view);
-    setEditForm({ name: view.name, description: view.description ?? "" });
-    setEditEnabledMap(buildEnabledMap(view.modulesConfig));
+    setEditingView(view);
+    setFormName(view.name);
+    setFormDesc(view.description ?? "");
+    setFormModules(buildEnabledMap(view.modulesConfig));
+    setDialogOpen(true);
   };
 
-  const handleSaveEdit = async () => {
-    if (!editView || !editForm.name.trim()) return;
-    setSaving(true);
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingView(null);
+  };
+
+  const buildModulesConfig = (): ProdViewModulesConfig => {
+    const cfg: ProdViewModulesConfig = {};
+    for (const key of ALL_MODULE_KEYS) {
+      cfg[key] = { ...editingView?.modulesConfig[key], enabled: formModules[key] };
+    }
+    return cfg;
+  };
+
+  const handleSubmit = async () => {
+    if (!formName.trim() || !agentId) return;
+    setSubmitting(true);
     try {
-      const modulesConfig: ProdViewModulesConfig = {};
-      for (const key of MODULE_KEYS) {
-        modulesConfig[key] = { ...editView.modulesConfig[key], enabled: editEnabledMap[key] };
+      if (isEditing) {
+        await unwrap(
+          prodViewApi.update(editingView!.id, {
+            name: formName.trim(),
+            description: formDesc.trim() || undefined,
+            modulesConfig: buildModulesConfig(),
+          }),
+        );
+        toast.success(t("panelMode.viewsUpdateSuccess"));
+      } else {
+        await unwrap(
+          prodViewApi.create({
+            name: formName.trim(),
+            agentId,
+            description: formDesc.trim() || undefined,
+          }),
+        );
+        toast.success(t("panelMode.viewsCreateSuccess"));
       }
-      await unwrap(
-        prodViewApi.update(editView.id, {
-          name: editForm.name.trim(),
-          description: editForm.description.trim() || undefined,
-          modulesConfig,
-        }),
-      );
-      toast.success(t("panelMode.viewsUpdateSuccess"));
-      setEditView(null);
+      closeDialog();
       refresh();
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
@@ -163,12 +227,17 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
     );
   };
 
+  // ── 打开视图 ──
+  const openView = (id: string) => {
+    window.open(`/view/${id}`, "_blank");
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* 顶栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 flex-shrink-0">
         <span className="text-xs font-medium text-text-primary">{t("panelMode.viewsListTitle")}</span>
-        <Button size="xs" variant="ghost" onClick={() => setCreateOpen(true)} disabled={!agentId}>
+        <Button size="xs" variant="ghost" onClick={openCreate} disabled={!agentId}>
           <Plus className="size-3.5" />
         </Button>
       </div>
@@ -188,7 +257,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
       ) : views.length === 0 ? (
         <button
           type="button"
-          onClick={() => setCreateOpen(true)}
+          onClick={openCreate}
           className="flex-1 flex flex-col items-center justify-center py-8 px-4 gap-3 hover:bg-surface-2/30 transition-colors"
         >
           <Plus className="h-8 w-8 text-text-dim" />
@@ -196,154 +265,165 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
         </button>
       ) : (
         <ScrollArea className="flex-1">
-          {views.map((view) => (
-            <div
-              key={view.id}
-              className={cn(
-                "group flex items-center gap-3 px-3 py-2.5 border-b border-border/40 hover:bg-surface-2/50 transition-colors cursor-pointer",
-                !view.enabled && "opacity-50",
-              )}
-              onClick={() => openEdit(view)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") openEdit(view);
-              }}
-              role="button"
-              tabIndex={0}
-            >
-              {/* 左侧：状态圆点 + 名称 + 描述 */}
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <span
-                  className={cn("shrink-0 size-2 rounded-full", view.enabled ? "bg-emerald-500" : "bg-slate-400")}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text-primary truncate">{view.name}</p>
-                  {view.description && <p className="text-xs text-text-muted truncate">{view.description}</p>}
+          <div className="flex flex-col gap-2 p-3">
+            {views.map((view) => (
+              <div
+                key={view.id}
+                className={cn(
+                  "rounded-lg border border-border/40 bg-surface-1 p-3 transition-colors",
+                  !view.enabled && "opacity-50",
+                )}
+              >
+                {/* 头部：状态圆点 + 名称 + 启用 badge */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className={cn("shrink-0 size-2 rounded-full", view.enabled ? "bg-emerald-500" : "bg-slate-400")}
+                  />
+                  <span className="text-sm font-medium text-text-primary truncate">{view.name}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 text-[10px] px-1.5 py-px rounded-full",
+                      view.enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
+                    )}
+                  >
+                    {view.enabled ? t("panelMode.viewsEnabled") : t("panelMode.viewsDisabled")}
+                  </span>
+                </div>
+                {/* 描述 */}
+                {view.description && <p className="text-xs text-text-muted truncate mt-1">{view.description}</p>}
+                {/* 底部：操作按钮 + 开关 */}
+                <div className="flex items-center justify-between mt-2.5">
+                  <div className="flex items-center gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => openView(view.id)}
+                      title={t("panelMode.viewsOpenView")}
+                    >
+                      <ExternalLink className="size-3 mr-1" />
+                      {t("panelMode.viewsOpenView")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => copyLink(view.id)}
+                      title={t("panelMode.viewsCopyLink")}
+                    >
+                      <Copy className="size-3 mr-1" />
+                      {t("panelMode.viewsCopyLink")}
+                    </Button>
+                    <Button variant="ghost" size="xs" onClick={() => openEdit(view)} title={t("panelMode.viewsEdit")}>
+                      <Pencil className="size-3 mr-1" />
+                      {t("panelMode.viewsEdit")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-red-500 hover:text-red-600"
+                      onClick={() => setDeleteTarget(view)}
+                      title={t("panelMode.viewsDelete")}
+                    >
+                      <Trash2 className="size-3 mr-1" />
+                      {t("panelMode.viewsDelete")}
+                    </Button>
+                  </div>
+                  <Switch
+                    checked={view.enabled}
+                    onCheckedChange={() => handleToggle(view)}
+                    disabled={togglingIds.has(view.id)}
+                    size="sm"
+                  />
                 </div>
               </div>
-              {/* 右侧：hover 按钮 + 开关 */}
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    copyLink(view.id);
-                  }}
-                  title={t("panelMode.viewsCopyLink")}
-                >
-                  <Copy className="size-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-600"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteTarget(view);
-                  }}
-                  title={t("panelMode.viewsDelete")}
-                >
-                  <Trash2 className="size-3" />
-                </Button>
-                <Switch
-                  checked={view.enabled}
-                  onCheckedChange={() => handleToggle(view)}
-                  disabled={togglingIds.has(view.id)}
-                  size="sm"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </ScrollArea>
       )}
 
-      {/* ── 创建对话框 ── */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+      {/* ── 创建 / 编辑共用对话框 ── */}
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeDialog();
+        }}
+      >
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{t("panelMode.viewsCreateTitle")}</DialogTitle>
+            <DialogTitle>
+              {isEditing ? `${t("panelMode.viewsEditTitle")} — ${editingView?.name}` : t("panelMode.viewsCreateTitle")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* 编辑时显示链接 */}
+            {isEditing && editingView && (
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <span>{t("panelMode.viewsLinkLabel")}:</span>
+                <code className="text-brand">{`${window.location.origin}/view/${editingView.id}`}</code>
+                <Button size="xs" variant="ghost" onClick={() => copyLink(editingView.id)}>
+                  <Copy className="h-3 w-3" />
+                </Button>
+                <Button size="xs" variant="ghost" onClick={() => openView(editingView.id)}>
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+            {/* 名称 */}
             <div className="space-y-2">
               <Label>{t("panelMode.viewsNameLabel")}</Label>
               <Input
                 placeholder={t("panelMode.viewsNamePlaceholder")}
-                value={createForm.name}
-                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
               />
             </div>
+            {/* 推荐命名（仅创建时） */}
+            {!isEditing && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-normal text-text-muted">{t("panelMode.viewsSuggestedNames")}</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {SUGGESTED_NAMES.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setFormName(name)}
+                      className={cn(
+                        "px-2.5 py-1 text-xs rounded-full border border-border-subtle transition-colors",
+                        formName === name
+                          ? "bg-brand text-white border-brand"
+                          : "bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-primary",
+                      )}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* 描述 */}
             <div className="space-y-2">
               <Label>{t("panelMode.viewsDescLabel")}</Label>
               <Input
                 placeholder={t("panelMode.viewsDescPlaceholder")}
-                value={createForm.description}
-                onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+                value={formDesc}
+                onChange={(e) => setFormDesc(e.target.value)}
+              />
+            </div>
+            {/* 模块配置 */}
+            <div className="space-y-1">
+              <Label className="text-sm">{t("panelMode.viewsModulesLabel")}</Label>
+              <ModuleConfigSection
+                enabledMap={formModules}
+                onToggle={(key, checked) => setFormModules({ ...formModules, [key]: checked })}
+                prodT={prodT}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+            <Button variant="outline" onClick={closeDialog}>
               {t("panelMode.viewsCancel")}
             </Button>
-            <Button onClick={handleCreate} disabled={creating || !createForm.name.trim()}>
-              {creating ? "..." : t("panelMode.viewsSave")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── 编辑对话框 ── */}
-      <Dialog open={!!editView} onOpenChange={() => setEditView(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {t("panelMode.viewsEditTitle")} — {editView?.name}
-            </DialogTitle>
-          </DialogHeader>
-          {editView && (
-            <div className="space-y-4 py-4">
-              <div className="flex items-center gap-2 text-xs text-text-muted">
-                <span>{t("panelMode.viewsLinkLabel")}:</span>
-                <code className="text-brand">{`${window.location.origin}/view/${editView.id}`}</code>
-                <Button size="xs" variant="ghost" onClick={() => copyLink(editView.id)}>
-                  <Copy className="h-3 w-3" />
-                </Button>
-              </div>
-              <div className="space-y-2">
-                <Label>{t("panelMode.viewsNameLabel")}</Label>
-                <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("panelMode.viewsDescLabel")}</Label>
-                <Input
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-sm">{t("panelMode.viewsModulesLabel")}</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {MODULE_KEYS.map((key) => (
-                    <div key={key} className="flex items-center justify-between rounded bg-gray-50 px-3 py-2">
-                      <span className="text-sm">{prodT(`modules.${key}`)}</span>
-                      <Switch
-                        checked={editEnabledMap[key]}
-                        onCheckedChange={(checked) => setEditEnabledMap({ ...editEnabledMap, [key]: checked })}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditView(null)}>
-              {t("panelMode.viewsCancel")}
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={saving || !editForm.name.trim()}>
-              {saving ? "..." : t("panelMode.viewsSave")}
+            <Button onClick={handleSubmit} disabled={submitting || !formName.trim()}>
+              {submitting ? "..." : t("panelMode.viewsSave")}
             </Button>
           </DialogFooter>
         </DialogContent>
