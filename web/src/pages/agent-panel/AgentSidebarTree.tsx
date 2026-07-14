@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import {
   Bot,
@@ -12,7 +13,7 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -40,7 +41,7 @@ import {
   getAgentDisplayName,
   isAgentWritable,
 } from "../../lib/agent-resource-access";
-import { useConfigChangeListener } from "../../lib/config-events";
+import { dispatchConfigChange, useConfigChangeListener } from "../../lib/config-events";
 import type { ResourceAccess } from "../../types/config";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 
@@ -81,6 +82,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const { org } = useOrg();
   const orgId = org?.id;
+  const navigate = useNavigate();
 
   // 交互状态
   const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>({});
@@ -98,6 +100,10 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
     () => localStorage.getItem("agent-panel:show-meta-agent") === "true",
   );
 
+  // environmentId → agentConfigId 映射：用于判断当前对话页打开的环境属于哪个 agent 配置。
+  // 相比 treeNodes 每个 agent 只保留单个环境，这里覆盖全部环境，避免多环境场景漏判。
+  const envConfigMapRef = useRef<Map<string, string>>(new Map());
+
   // ---- 数据加载（带 15s 轮询）----
   const {
     data: treeNodes = [],
@@ -114,12 +120,16 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
 
       // 建立 agentConfigId → environment 映射
       const envByConfigId = new Map<string, Environment>();
+      // 同步刷新 environmentId → agentConfigId 全量映射（含同一 agent 的多个环境）
+      const envConfigMap = new Map<string, string>();
       for (const env of envs) {
         const configId = env.agentConfigId;
         if (configId) {
           envByConfigId.set(configId, env as unknown as Environment);
+          if (env.id) envConfigMap.set(env.id, configId);
         }
       }
+      envConfigMapRef.current = envConfigMap;
 
       // 构建 tree nodes
       const nodes: AgentTreeNode[] = userAgents.map((agent) => ({
@@ -288,9 +298,22 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   // ---- 删除智能体（manual useRequest）----
   const { run: runDeleteAgent, loading: deleting } = useRequest(
     async (agent: AgentConfigItem) => {
+      // 删除前判断：当前对话页打开的环境是否属于该 agent 配置。
+      // 通过 environmentId → agentConfigId 映射比对，兼容同一 agent 存在多个环境的情况。
+      const openConfigId = selectedEnvironmentId ? (envConfigMapRef.current.get(selectedEnvironmentId) ?? null) : null;
+      const deletingOpenAgent = openConfigId !== null && openConfigId === agent.id;
+
       await unwrap(agentApi.delete(agent.name));
       toast.success(t("deleteSuccess"));
+
+      // 通知其它页面（如智能体管理页）刷新列表
+      dispatchConfigChange("agents");
       await refresh();
+
+      // 若删除的正是当前对话页打开的智能体，切换到新建智能体页面
+      if (deletingOpenAgent) {
+        void navigate({ to: "/agent/home" });
+      }
     },
     {
       manual: true,

@@ -10,6 +10,7 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { groupByRecency } from "./chat/session-grouping";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 interface ACPMainProps {
   client: ACPClient;
@@ -439,51 +440,48 @@ function SidebarSessionList({
                   </div>
                 ) : (
                   <div className="flex items-center">
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
+                    <SessionTitleButton
+                      session={session}
+                      isActive={session.sessionId === activeId}
+                      onSelect={() => {
                         setActiveId(session.sessionId);
                         onSelectSession(session);
                       }}
-                      className={cn(
-                        "flex-1 flex items-center gap-2.5 px-4 py-2 text-left justify-start rounded-none min-w-0",
-                        session.sessionId === activeId
-                          ? "bg-brand/8 text-text-primary hover:bg-brand/8"
-                          : "text-text-secondary hover:bg-surface-2/60 hover:text-text-primary",
-                      )}
-                      title={session.title || session.sessionId}
-                    >
-                      <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-                      <span className="text-[13px] font-display truncate leading-snug">
-                        {session.title?.trim() ? session.title : t("acpMain.newSession")}
-                      </span>
-                    </Button>
+                    />
                     {/* 悬停时显示操作按钮 */}
                     <div className="hidden group-hover:flex items-center gap-0.5 pr-1 flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 text-text-muted hover:text-brand"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartRename(session);
-                        }}
-                        title={t("acpMain.rename")}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 text-text-muted hover:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(session.sessionId);
-                        }}
-                        title={t("acpMain.delete")}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-text-muted hover:text-brand"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartRename(session);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("acpMain.rename")}</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-text-muted hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(session.sessionId);
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("acpMain.delete")}</TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                 )}
@@ -493,6 +491,46 @@ function SidebarSessionList({
         </div>
       ))}
     </nav>
+  );
+}
+
+interface SessionTitleButtonProps {
+  session: AgentSessionInfo;
+  isActive: boolean;
+  onSelect: () => void;
+}
+
+/**
+ * SessionTitleButton —— 侧边栏会话列表中的单个会话标题按钮。
+ *
+ * 会话标题可能因宽度不足被 truncate 截断，故 hover 时统一弹出主题化 tooltip 展示完整标题。
+ * 整体 ACPMain 已被 ChatPanel 的 TooltipProvider 包裹，此处直接使用 Tooltip 即可，无需再引入 provider。
+ */
+function SessionTitleButton({ session, isActive, onSelect }: SessionTitleButtonProps) {
+  const { t } = useTranslation("components");
+  const displayTitle = session.title?.trim() ? session.title : t("acpMain.newSession");
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          onClick={onSelect}
+          className={cn(
+            "flex-1 flex items-center gap-2.5 px-4 py-2 text-left justify-start rounded-none min-w-0",
+            isActive
+              ? "bg-brand/8 text-text-primary hover:bg-brand/8"
+              : "text-text-secondary hover:bg-surface-2/60 hover:text-text-primary",
+          )}
+        >
+          <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
+          <span className="text-[13px] font-display truncate leading-snug min-w-0">{displayTitle}</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[280px] break-words">
+        {displayTitle}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
