@@ -144,7 +144,7 @@
     },
     "packages/acp-runtime-cli": {
       "name": "@fenix-agent/acp-runtime-cli",
-      "version": "0.1.3",
+      "version": "0.3.0",
       "bin": {
         "acp-runtime": "dist/bin.js",
       },
@@ -208,10 +208,6 @@
         "@fenix/logger": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
       },
-    },
-    "packages/sdk": {
-      "name": "@fenix/sdk",
-      "version": "0.1.0",
     },
     "packages/workflow-engine": {
       "name": "@fenix/workflow-engine",
@@ -536,8 +532,6 @@
     "@fenix/plugin-sdk": ["@fenix/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@fenix/remote-runtime": ["@fenix/remote-runtime@workspace:packages/remote-runtime"],
-
-    "@fenix/sdk": ["@fenix/sdk@workspace:packages/sdk"],
 
     "@fenix/workflow-engine": ["@fenix/workflow-engine@workspace:packages/workflow-engine"],
 
