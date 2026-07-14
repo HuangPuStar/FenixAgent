@@ -37,7 +37,7 @@ echo "REMOTE_APP_ID=$REMOTE_APP_ID"   # 形如 app-abcd1234
 - `type`：`pocketbase`（默认，经典模式）/ `custom`（自定义应用）。custom 类型可选 `"enable_pb": true` 同时启动托管的 PocketBase 实例（详见 Custom App 章节）
 - RCS 后端自持 platform token，不暴露给用户
 
-> **AgentSiteApp 响应字段**：`id`（RCS 内部 UUID，后续所有 L1/L2 API 都用它）/ `remoteAppId`（agent-sites 远程 id，形如 `app-xxxxxxxx`，业务前端访问用它）/ `organizationId` / `userId` / `name` / `description`（可为 `null`）/ `visibility` / `appType`（`pocketbase` | `custom`，默认 pocketbase）/ `entryFile`（custom 部署后写入入口文件名，否则 `null`）/ `activeSlot`（当前激活槽位 `a` | `b`，否则 `null`）/ `deployedAt`（最后部署时间秒级时间戳，否则 `null`）/ `createdAt` / `updatedAt`（秒级时间戳）。**务必同时存下 `id` 和 `remoteAppId`**——L1/L2 API（`/web/agent-sites/apps/{id}/...`）只认 RCS UUID，前端访问（`$USER_META_BASE_URL/{remoteAppId}/`）只认 remoteAppId。
+> **AgentSiteApp 响应字段**：`id`（RCS 内部 UUID，后续所有 L1/L2 API 都用它）/ `remoteAppId`（agent-sites 远程 id，形如 `app-xxxxxxxx`，业务前端访问用它）/ `organizationId` / `userId` / `name` / `description`（可为 `null`）/ `visibility` / `appType`（`pocketbase` | `custom`，默认 pocketbase）/ `entryFile`（custom 部署后写入入口文件名，否则 `null`）/ `activeSlot`（当前激活槽位 `a` | `b`，否则 `null`）/ `deployedAt`（最后部署时间秒级时间戳，否则 `null`）/ `createdByAgentConfigId`（创建此 site 的 agent config UUID，可能为 `null` 表示创建者已删除，此时所有绑定 agent 均可操作）/ `createdAt` / `updatedAt`（秒级时间戳）。**务必同时存下 `id` 和 `remoteAppId`**——L1/L2 API（`/web/agent-sites/apps/{id}/...`）只认 RCS UUID，前端访问（`$USER_META_BASE_URL/{remoteAppId}/`）只认 remoteAppId。
 
 ### 2. 配后端 collection
 
@@ -547,6 +547,46 @@ Deno.serve({ hostname: "127.0.0.1", port }, async (req) => {
 ```
 
 `references/card-tag.md` 有更多示例，编写卡片标签前建议一并参考。
+
+## 开发/业务智能体分权
+
+Agent Sites 的**文件/配置修改**只能由**创建该 site 的智能体**（开发智能体）执行。其他绑定的智能体（业务智能体）可以操作 PocketBase 数据（L2 API），但无权修改 site 文件。
+
+### 分权自检
+
+在执行任何 L1 写入操作（创建 site 除外）之前，必须先执行自检：
+
+1. **获取 site 详情**：`GET /web/agent-sites/apps/$APP_ID`
+2. **对比 agent config id**：
+
+```bash
+CREATOR=$(echo "$SITE_RESP" | jq -r '.data.createdByAgentConfigId')
+if [ "$CREATOR" != "null" ] && [ "$CREATOR" != "$AGENT_CONFIG_ID" ]; then
+  echo "此 site 由其他智能体创建，我无权修改网站文件。请在右侧 Sites 面板点击「溯源」按钮回到创建者智能体操作。"
+  exit 1
+fi
+```
+
+3. **如果 `createdByAgentConfigId` 为 null**（创建者已删除）：所有绑定的智能体均可自由操作。
+
+### 不受限制的操作
+
+| 操作 | 限制 |
+|------|------|
+| L2 PB 数据 CRUD（`/web/agent-sites/apps/:id/api/*`） | ❌ 不限制 |
+| 查看 site 详情/列表 | ❌ 不限制 |
+| 创建新 site | ❌ 不限制（创建时传入 `agentConfigId` 成为创建者） |
+
+### 受限制的操作（仅创建者或 `null` 兜底）
+
+| 操作 | 必须自检 |
+|------|---------|
+| 上传静态文件（`PUT /apps/:id/files/:path`） | ✅ |
+| 批量上传（`POST /apps/:id/files/bundle`） | ✅ |
+| 部署 custom app（`POST /apps/:id/deploy`） | ✅ |
+| 修改配置（`PATCH /apps/:id`） | ✅ |
+| 删除 site（`DELETE /apps/:id`） | ✅ |
+| 重签 token（`POST /apps/:id/rotate-token`） | ✅ |
 
 ## 开发约束
 
