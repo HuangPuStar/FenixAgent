@@ -203,7 +203,11 @@
     "loadingSites": "Loading agent sites...",
     "loadFailed": "Failed to load sites: {{message}}",
     "loadTimeout": "Site load timed out",
-    "loadTimeoutHint": "The site may still be loading in the background. Try reloading or open it in a new tab."
+    "loadTimeoutHint": "The site may still be loading in the background. Try reloading or open it in a new tab.",
+    "traceToCreator": "Trace to creator",
+    "traceToCreatorTooltip": "Switch to the agent that created this site",
+    "notCreator": "Not creator agent",
+    "notCreatorTooltip": "This site was created by another agent. You can operate data but cannot modify site files. Click Trace to switch to the creator agent."
   },
   "fileTree": {
     "refresh": "Refresh",
@@ -367,7 +371,8 @@
     "yesterday": "Yesterday",
     "earlier": "Earlier",
     "rename": "Rename",
-    "delete": "Delete"
+    "delete": "Delete",
+    "closeToPopover": "Close to popover"
   },
   "chatInterface": {
     "processingError": "The request could not be processed properly. Please check the Agent or model status and try again.",
@@ -383,7 +388,9 @@
     "noResults": "No matching sessions",
     "refresh": "Refresh sessions",
     "showSessions": "Show sessions panel",
-    "hideSessions": "Hide sessions panel"
+    "hideSessions": "Hide sessions panel",
+    "pinSessions": "Pin sessions panel",
+    "unpinSessions": "Unpin sessions panel"
   },
   "chatMessage": {
     "you": "You",

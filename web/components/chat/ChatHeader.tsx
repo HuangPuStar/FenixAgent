@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2, MessageSquare, PanelLeft, Plus, RefreshCw, Search } from "lucide-react";
+import { ChevronDown, Loader2, MessageSquare, Pin, Plus, RefreshCw, Search } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { retryWithBackoff } from "@/src/lib/retry";
@@ -24,6 +24,10 @@ interface ChatHeaderProps {
   onToggleSidebar?: () => void;
   /** 当前会话面板是否展开（true 显示 PanelLeftClose，false 显示 PanelLeft） */
   sidebarOpen?: boolean;
+  /** 手动控制弹窗打开状态（从外部控制弹窗打开） */
+  forceOpen?: boolean;
+  /** 弹窗状态变化回调 */
+  onPopoverChange?: (open: boolean) => void;
   className?: string;
 }
 
@@ -44,6 +48,8 @@ export function ChatHeader({
   onNewSession,
   onToggleSidebar,
   sidebarOpen = false,
+  forceOpen = false,
+  onPopoverChange,
   className,
 }: ChatHeaderProps) {
   const { t } = useTranslation("components");
@@ -51,6 +57,8 @@ export function ChatHeader({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // 钉子状态与侧边栏状态同步：侧边栏打开时即为钉住状态
+  const pinned = sidebarOpen;
 
   // 会话列表加载：supportsSessionList 未就绪时静默退出，避免 capabilities 还未到位时报错
   const loadSessions = useCallback(async () => {
@@ -113,6 +121,13 @@ export function ChatHeader({
     }
   }, [open, loadSessions]);
 
+  // 外部控制弹窗打开
+  useEffect(() => {
+    if (forceOpen) {
+      setOpen(true);
+    }
+  }, [forceOpen]);
+
   // 当前会话标题：从 sessions 中按 activeSessionId 命中；缺失则用默认文案兜底
   const activeSession = useMemo(
     () => sessions.find((s) => s.sessionId === activeSessionId) ?? null,
@@ -168,6 +183,26 @@ export function ChatHeader({
     [searchQuery],
   );
 
+  // 钉子按钮处理逻辑
+  const handlePinToggle = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (pinned) {
+        // 已钉住状态：收起侧边栏（相当于解除钉住）
+        onToggleSidebar?.();
+      } else {
+        // 未钉住状态：展开侧边栏（相当于钉住），然后关闭弹窗
+        if (!sidebarOpen) {
+          onToggleSidebar?.();
+        }
+        setOpen(false); // 关闭弹窗
+      }
+    },
+    [pinned, sidebarOpen, onToggleSidebar],
+  );
+
   return (
     <div
       className={cn(
@@ -177,27 +212,14 @@ export function ChatHeader({
         className,
       )}
     >
-      {/* 左侧：会话面板切换按钮（仅在外层启用 sidebar 时渲染，readonly / hideSidebar 场景不传 onToggleSidebar） */}
-      {onToggleSidebar && (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggleSidebar}
-          className={cn(
-            "h-8 w-8 flex-shrink-0",
-            sidebarOpen
-              ? "text-text-primary hover:bg-surface-2/60"
-              : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
-          )}
-          title={t(sidebarOpen ? "chatHeader.hideSessions" : "chatHeader.showSessions")}
-          aria-label={t(sidebarOpen ? "chatHeader.hideSessions" : "chatHeader.showSessions")}
-          aria-expanded={sidebarOpen}
-        >
-          <PanelLeft className="h-4 w-4" />
-        </Button>
-      )}
-
-      <Popover open={open} onOpenChange={setOpen}>
+      {/* 会话切换 Popover（整合历史对话和面板控制） */}
+      <Popover
+        open={open}
+        onOpenChange={(newOpen) => {
+          setOpen(newOpen);
+          onPopoverChange?.(newOpen);
+        }}
+      >
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
@@ -223,7 +245,7 @@ export function ChatHeader({
           className="w-80 p-0 overflow-hidden"
         >
           <div className="flex flex-col max-h-[60vh]">
-            {/* 顶部：搜索 + 新会话 */}
+            {/* 顶部：搜索 + 刷新 + 新建 + 钉子按钮 */}
             <div className="flex items-center gap-1.5 p-2 border-b border-border/40">
               <Search className="h-3.5 w-3.5 text-text-muted flex-shrink-0 ml-1" />
               <Input
@@ -255,6 +277,25 @@ export function ChatHeader({
                   title={t("acpMain.newSession")}
                 >
                   <Plus className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              {/* 钉子按钮：钉住/解除钉住左侧栏 */}
+              {onToggleSidebar && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handlePinToggle}
+                  className={cn(
+                    "h-7 w-7 flex-shrink-0",
+                    pinned
+                      ? "text-brand bg-brand/10 hover:bg-brand/20"
+                      : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
+                  )}
+                  title={t(pinned ? "chatHeader.unpinSessions" : "chatHeader.pinSessions")}
+                  aria-label={t(pinned ? "chatHeader.unpinSessions" : "chatHeader.pinSessions")}
+                  aria-pressed={pinned}
+                >
+                  <Pin className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>

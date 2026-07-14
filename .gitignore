@@ -49,6 +49,8 @@ data
 !.codex/prompts/**
 
 user
+!docs/user/
+!docs/user/**
 !bun.lock
 *.tar
 *.tar.gz

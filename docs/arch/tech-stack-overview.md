@@ -28,7 +28,6 @@ flowchart TB
         ROUTER["TanStack Router"]
         RADIX["Radix UI · Tailwind"]
         I18N["i18n"]
-        SDK["@fenix/sdk"]
     end
 
     subgraph BE["后端 src/"]

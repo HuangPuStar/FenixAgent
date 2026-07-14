@@ -191,7 +191,15 @@ export class ACPClient {
 
     // JSON-RPC 响应 → pending.tryResolve
     this.protocol.on("rpc_response", ({ id, result }) => {
-      this.pending.tryResolve(id, result);
+      const matched = this.pending.tryResolve(id, result);
+      // 页面刷新重连场景：disconnect 时 rejectAll 已清空 pending（包括 prompt 请求），
+      // agent 仍在运行，完成后发回的 prompt 响应到达时 tryResolve 返回 false。
+      // 此时若 result 含 stopReason（仅 prompt 响应有此字段），
+      // 仍需通知上层 promptCompleteHandler，避免 UI 永久 loading。
+      if (!matched && result && typeof result === "object" && "stopReason" in result) {
+        const typed = result as { stopReason: string; usage?: PromptUsage };
+        this.promptCompleteHandler?.(typed.stopReason, typed.usage);
+      }
     });
 
     // Protocol pong → heartbeat

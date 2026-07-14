@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { db } from "../../db";
-import { agentConfigSiteApp } from "../../db/schema";
+import { agentConfig, agentConfigSiteApp } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
@@ -51,6 +51,7 @@ function toResponse(row: AgentSiteAppRow): AgentSiteApp {
     entryFile: row.entryFile ?? null,
     activeSlot: (row.activeSlot as AgentSiteApp["activeSlot"] | undefined) ?? null,
     deployedAt: row.deployedAt ? Math.floor(row.deployedAt.getTime() / 1000) : null,
+    createdByAgentConfigId: row.createdByAgentConfigId ?? null,
     createdAt: row.createdAt ? Math.floor(new Date(row.createdAt).getTime() / 1000) : 0,
     updatedAt: row.updatedAt ? Math.floor(new Date(row.updatedAt).getTime() / 1000) : 0,
   };
@@ -77,6 +78,22 @@ async function resolveSiteApp(siteAppId: string) {
   return isUuid ? agentSiteAppRepo.getById(siteAppId) : agentSiteAppRepo.getByRemoteAppId(siteAppId);
 }
 
+/** 批量解析 createdByAgentConfigId → agent config name，附加到每个 site app 响应对象上。 */
+async function attachCreatorNames(items: AgentSiteApp[]): Promise<void> {
+  const ids = [...new Set(items.map((i) => i.createdByAgentConfigId).filter((id): id is string => !!id))];
+  if (ids.length === 0) return;
+  const rows = await db
+    .select({ id: agentConfig.id, name: agentConfig.name })
+    .from(agentConfig)
+    .where(inArray(agentConfig.id, ids));
+  const nameMap = new Map(rows.map((r) => [r.id, r.name]));
+  for (const item of items) {
+    if (item.createdByAgentConfigId) {
+      item.createdByAgentConfigName = nameMap.get(item.createdByAgentConfigId) ?? null;
+    }
+  }
+}
+
 /**
  * 构造统一的 /web 错误体，交给 Elysia `status()` 标注状态码。
  */
@@ -101,7 +118,9 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       const authCtx = store.authContext!;
       const rows = await agentSiteAppRepo.listByOrg(authCtx.organizationId);
       const visible = rows.filter((r) => canRead(r, authCtx.userId));
-      return { success: true as const, data: visible.map(toResponse) };
+      const items = visible.map(toResponse);
+      await attachCreatorNames(items);
+      return { success: true as const, data: items };
     },
     {
       sessionAuth: true,
@@ -122,7 +141,9 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!row || row.organizationId !== authCtx.organizationId || !canRead(row, authCtx.userId)) {
         return status(404, buildError("not_found", "App 不存在"));
       }
-      return { success: true as const, data: toResponse(row) };
+      const item = toResponse(row);
+      await attachCreatorNames([item]);
+      return { success: true as const, data: item };
     },
     {
       sessionAuth: true,
@@ -147,7 +168,9 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!row || row.organizationId !== authCtx.organizationId || !canRead(row, authCtx.userId)) {
         return status(404, buildError("not_found", "App 不存在"));
       }
-      return { success: true as const, data: toResponse(row) };
+      const item = toResponse(row);
+      await attachCreatorNames([item]);
+      return { success: true as const, data: item };
     },
     {
       sessionAuth: true,
@@ -189,9 +212,12 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         platformTokenId: token.token_id,
         visibility: (b.visibility as "private" | "org" | "authenticated" | "public") ?? "private",
         appType: b.type,
+        createdByAgentConfigId: b.agentConfigId ?? null,
       });
 
-      return { success: true as const, data: toResponse(row) };
+      const item = toResponse(row);
+      await attachCreatorNames([item]);
+      return { success: true as const, data: item };
     },
     {
       sessionAuth: true,
@@ -226,7 +252,9 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (b.visibility !== undefined) {
         invalidateAppCache(updated!.remoteAppId);
       }
-      return { success: true as const, data: toResponse(updated!) };
+      const item = toResponse(updated!);
+      await attachCreatorNames([item]);
+      return { success: true as const, data: item };
     },
     {
       sessionAuth: true,
@@ -464,7 +492,9 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       const ordered = siteAppIds
         .map((id) => apps.find((a) => a.id === id))
         .filter((a): a is AgentSiteAppRow => !!a && canRead(a, authCtx.userId));
-      return { success: true as const, data: ordered.map(toResponse) };
+      const items = ordered.map(toResponse);
+      await attachCreatorNames(items);
+      return { success: true as const, data: items };
     },
     {
       sessionAuth: true,
@@ -563,7 +593,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
           400,
           buildError(
             "bad_request",
-            `Custom 类型 app ${row.remoteAppId} 不支持 PocketBase API，请走业务前端 /${row.remoteAppId}/* 或 L1 deploy 接口`,
+            `Custom 类型 app ${row.remoteAppId} 不支持 PocketBase API，请走业务前端 /web/site/deploy/${row.remoteAppId}/* 或 L1 deploy 接口`,
           ),
         );
       }

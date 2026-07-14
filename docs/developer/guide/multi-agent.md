@@ -1,6 +1,6 @@
 # 多智能体协作
 
-opencode 和 Claude Code 等运行时内置了主 Agent 分派子 Agent 的能力。本章介绍如何在 RCS 中用 Markdown 文件定义自定义 Agent 团队，让不同角色的 Agent 协同完成复杂任务。
+opencode 和 Claude Code 等运行时内置了主 Agent 分派子 Agent 的能力。本章介绍如何在 FenixAgent 中用 Markdown 文件定义自定义 Agent 团队，让不同角色的 Agent 协同完成复杂任务。
 
 ## 运行时的多智能体机制
 
@@ -160,7 +160,7 @@ my-project/
 
 ## 设计你的 Agent 团队
 
-RCS 中的 Agent 完全由你自定义。以下是几种常见的团队设计模式：
+FenixAgent 中的 Agent 完全由你自定义。以下是几种常见的团队设计模式：
 
 ### 代码开发团队
 

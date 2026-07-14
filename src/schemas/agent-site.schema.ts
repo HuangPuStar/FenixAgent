@@ -14,6 +14,10 @@ export const AgentSiteAppSchema = z.object({
   entryFile: z.string().nullable().describe("当前入口文件（如 main.ts）。pocketbase 类型为 null。"),
   activeSlot: z.enum(["a", "b"]).nullable().describe("当前激活的部署槽位。pocketbase 类型为 null。"),
   deployedAt: z.number().nullable().describe("最后部署时间（秒级时间戳）。pocketbase 类型为 null。"),
+  /** 创建此 site 的 agent config id。null 表示创建者已删除，所有绑定 agent 均可操作。 */
+  createdByAgentConfigId: z.string().nullable().describe("创建此 site 的 agent config id。null 表示创建者已删除。"),
+  /** 创建此 site 的 agent config 名称。null 表示创建者已删除。 */
+  createdByAgentConfigName: z.string().nullable().optional().describe("创建者 agent config 名称（用于前端展示）。"),
   createdAt: z.number().describe("创建时间（秒级时间戳）。"),
   updatedAt: z.number().describe("更新时间（秒级时间戳）。"),
 });
@@ -45,6 +49,8 @@ export const CreateAgentSiteAppRequestSchema = z.object({
     .optional()
     .default("pocketbase")
     .describe("App 类型。custom 类型不创建 PocketBase，需后续 POST /apps/:id/deploy 部署 Deno 代码。"),
+  /** 创建此 site 的 agent config id。Agent 端从 $AGENT_CONFIG_ID 环境变量获取并传入，用于分权。 */
+  agentConfigId: z.string().optional().describe("创建者 agent config id（用于开发/业务智能体分权）。"),
 });
 
 export type CreateAgentSiteAppRequest = z.infer<typeof CreateAgentSiteAppRequestSchema>;

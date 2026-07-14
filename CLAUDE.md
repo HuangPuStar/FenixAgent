@@ -91,7 +91,6 @@ bun test web/src/__tests__/config-mcp-page.test.ts
   - `@/src` → `web/src`
   - `@/components` → `web/components`
   - `@server` → `../src`
-  - `@fenix/sdk` → `packages/sdk/src/index.ts`
 
 ## 后端速查
 

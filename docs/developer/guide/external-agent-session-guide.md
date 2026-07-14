@@ -42,7 +42,7 @@ External API 的 `GET /api/agents`、`POST /api/agents` 这一组接口，操作
 调用方真正要连接的是 instance 对应的 relay WebSocket，但通常也不需要自己管理 instance 的完整生命周期，而是通过：
 
 ```text
-POST /api/agents/:agentConfigId/instances/connect
+POST /api/agents/:agentId/instances/connect
 ```
 
 让后端自动完成：
@@ -144,7 +144,7 @@ AgentConfig -> Environment -> Instance -> ACP Session
 对调用方来说，下面这个接口是 Agent 运行时入口：
 
 ```text
-POST /api/agents/:agentConfigId/instances/connect
+POST /api/agents/:agentId/instances/connect
 ```
 
 建议把它理解成：

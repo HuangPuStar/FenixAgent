@@ -1015,6 +1015,10 @@ export const agentSiteApp = pgTable(
     entryFile: varchar("entry_file", { length: 64 }),
     activeSlot: varchar("active_slot", { length: 8 }),
     deployedAt: timestamp("deployed_at", { withTimezone: true }),
+    /** 创建此 site 的 agent_config id。ON DELETE SET NULL：创建者被删除时放空，兜底放开所有绑定 agent 的修改权限。 */
+    createdByAgentConfigId: uuid("created_by_agent_config_id").references(() => agentConfig.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

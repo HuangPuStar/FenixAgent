@@ -561,9 +561,9 @@ export const taskApi = {
 | REST 模块放 `api/` 根 | 标准 CRUD 接口 | `api/tasks.ts`、`api/skills.ts` |
 | SSE/WS 传输模块放 `acp/` | 非 REST 协议，独立管理 | `acp/client.ts`、`acp/relay-client.ts` |
 
-### 5.6 SDK 模块 → 域模块迁移映射
+### 5.6 域模块一览
 
-从 `@fenix/sdk` 类架构迁移到域模块的对照表：
+当前 API 域模块对照表：
 
 | 原 SDK 模块 | 迁移后域模块 | 接口数 | 说明 |
 |-------------|-------------|--------|------|
@@ -581,7 +581,7 @@ export const taskApi = {
 | `registry/machines` | `api/registry.ts` | 3 | — |
 | `channels` | `api/channels.ts` | 4 | — |
 
-重构期间新旧共存：新模块用 `ApiResponse<T>`（来自 `request.ts`），旧 SDK 用 `ApiResult<T>`（来自 `@fenix/sdk`），逐步替换后删除 SDK。
+当前全部域模块已迁移完成，`@fenix/sdk` 已删除。
 
 ### 5.7 组件中使用
 
@@ -630,7 +630,7 @@ const { run: saveTask, loading: saving } = useRequest(
 - **禁止**在域模块中重复定义 `request()`——统一从 `api/request.ts` import
 - **禁止**在 API 模块内调用 `toast.error`（UI 层职责，错误由组件 `onError` 处理）
 
-迁移标的：现有从 `@/src/api/sdk`（`@fenix/sdk`）导入的 29 个文件应按 5.6 映射表逐域迁移到新域模块。
+迁移已完成。`@fenix/sdk` 已删除，所有消费者已切换为域模块。
 
 ## 6. 安全规范
 
@@ -844,7 +844,7 @@ t("toast.saved", { name: item.name })  // 插值
 
 ## 附录 A：重构施工指南
 
-本附录描述从当前代码库（手动 useState + @fenix/sdk + localStorage token）迁移到目标架构的增量路径。
+本附录描述从旧架构（手动 useState + @fenix/sdk + localStorage token）迁移到目标架构的增量路径。该迁移已全部完成，`@fenix/sdk` 已删除。
 
 ### A.1 施工顺序
 
@@ -868,7 +868,7 @@ Phase 8 ─── 清理收尾          预计影响面：删除 sdk.ts
 | **5. 表单密集型** | AgentTasksPage、AgentSkillsPage、AgentMcpPage、AgentModelsPage、AgentManagementPage、AgentChannelsPage、AgentKnowledgeBasesPage | 7 页面完成 |
 | **6. 展示密集型** | AgentSitesPage、AgentSessionsPage、AgentHomePage、AgentDashboardPage | 4 页面完成 |
 | **7. 组织页面** | AgentOrganizationsPage（独立 auth/org 流程） | 完成 |
-| **8. 清理收尾** | 删除 `web/src/api/sdk.ts`，移除所有 `@fenix/sdk` import，验证 29 个消费者文件 | sdk.ts 消失 |
+| **8. 清理收尾** | 删除 `web/src/api/sdk.ts`，移除所有 `@fenix/sdk` import | sdk.ts 消失 ✅ |
 
 ### A.2 新旧共存约定
 
@@ -876,7 +876,7 @@ Phase 8 ─── 清理收尾          预计影响面：删除 sdk.ts
 
 | 层面 | 旧模式（现状） | 新模式（目标） | 过渡期共存方式 |
 |------|--------------|--------------|--------------|
-| API 响应类型 | `ApiResult<T>` (from `@fenix/sdk`) | `ApiResponse<T>` (from `api/request.ts`) | 两类型共存，新域模块用新类型，旧 SDK 引用保持旧类型 |
+| API 响应类型 | `ApiResult<T>` (from `@fenix/sdk`) | `ApiResponse<T>` (from `api/request.ts`) | 已全部迁移，`@fenix/sdk` 已删除 |
 | API 调用 | `sdk.tasks.list()` 类实例 | `taskApi.list()` 命名导出 | 新域模块与旧 SDK 并行，消费者逐文件切换 import |
 | 数据获取 | `useState(loading)` + `useEffect` + `fetch` | `useRequest(service)` | 同一组件内不混用，按 Phase 逐页面替换 |
 | 表单 | `useState(formName)` + 手写校验 | `useForm` + `zodResolver` + `FormDialog form` prop | FormDialog 兼容新旧两种模式 |

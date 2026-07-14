@@ -14,11 +14,11 @@ interface AgentSitesCardProps {
  * 由 streamdown 根据 <agent-sites agent-site-id="app-xxxx"/> 标签渲染。
  *
  * 卡片布局：上方小尺寸 iframe 实时预览 + 下方信息栏（图标 + 名称 +「查看站点」按钮）。
- * iframe 地址由前端同源路径 `/{agent-site-id}/` 拼接，不再依赖 agent 传入 url。
+ * iframe 地址由前端同源路径 `/web/site/deploy/{agent-site-id}/` 拼接，不再依赖 agent 传入 url。
  */
 export function AgentSitesCard(props: AgentSitesCardProps) {
   const agentSiteId = props["agent-site-id"];
-  const siteUrl = agentSiteId ? `/${agentSiteId}/` : null;
+  const siteUrl = agentSiteId ? `/web/site/deploy/${agentSiteId}/` : null;
   const emit = useCardEmit();
 
   const [loading, setLoading] = useState(true);

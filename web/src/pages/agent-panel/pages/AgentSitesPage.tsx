@@ -1,19 +1,32 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { useState } from "react";
+import { ExternalLink, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { EmptyState } from "@/components/config/EmptyState";
 import { FormDialog } from "@/components/config/FormDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { agentSitesApi } from "@/src/api/sites";
 import { NS } from "@/src/i18n";
-import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 interface SiteItem {
@@ -24,6 +37,10 @@ interface SiteItem {
   name: string;
   description: string | null;
   visibility: "private" | "org" | "authenticated" | "public";
+  /** 创建者 agent config id。null 表示创建者已删除，所有绑定 agent 均可操作。 */
+  createdByAgentConfigId?: string | null;
+  /** 创建者 agent config 名称（用于前端展示）。 */
+  createdByAgentConfigName?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -35,11 +52,11 @@ const VISIBILITY_LABELS: Record<string, string> = {
   public: "公开",
 };
 
-const VISIBILITY_BADGE_CLASSES: Record<string, string> = {
-  private: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  org: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  authenticated: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  public: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+const VISIBILITY_BADGE_VARIANT: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
+  private: "destructive",
+  org: "secondary",
+  authenticated: "outline",
+  public: "default",
 };
 
 function validateForm(name: string): string | null {
@@ -56,8 +73,18 @@ function formatTimestamp(ts: number): string {
   });
 }
 
+const DEFAULT_PAGE_SIZE = 20;
+
 export function AgentSitesPage() {
   const { t } = useTranslation(NS.AGENT_PANEL);
+  const navigate = useNavigate();
+
+  // 筛选 + 分页状态
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [visibilityFilter, setVisibilityFilter] = useState<"all" | "private" | "org" | "authenticated" | "public">(
+    "all",
+  );
+  const [page, setPage] = useState(1);
 
   // 数据加载
   const {
@@ -68,6 +95,20 @@ export function AgentSitesPage() {
     const raw = await unwrap(agentSitesApi.list());
     return raw as SiteItem[];
   });
+
+  // 客户端筛选
+  const filtered = useMemo(() => {
+    const q = searchKeyword.trim().toLowerCase();
+    return apps.filter((app) => {
+      if (q && !app.name.toLowerCase().includes(q) && !app.remoteAppId.toLowerCase().includes(q)) return false;
+      if (visibilityFilter !== "all" && app.visibility !== visibilityFilter) return false;
+      return true;
+    });
+  }, [apps, searchKeyword, visibilityFilter]);
+
+  // 客户端分页
+  const totalPages = Math.max(1, Math.ceil(filtered.length / DEFAULT_PAGE_SIZE));
+  const paged = filtered.slice((page - 1) * DEFAULT_PAGE_SIZE, page * DEFAULT_PAGE_SIZE);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingApp, setEditingApp] = useState<SiteItem | null>(null);
@@ -161,25 +202,36 @@ export function AgentSitesPage() {
     setDialogOpen(true);
   };
 
+  const handleNavigateToCreator = async (agentConfigId: string) => {
+    try {
+      const envList = await unwrap(envApi.list());
+      const env = Array.isArray(envList) ? envList.find((e) => e.agentConfigId === agentConfigId) : undefined;
+      if (env) {
+        void navigate({ to: "/agent/$agentId", params: { agentId: env.id } });
+      } else {
+        toast.error("该智能体暂未激活，无法跳转");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "跳转失败");
+    }
+  };
+
   const handleOpenSite = (remoteAppId: string) => {
-    window.open(`/${remoteAppId}/`, "_blank");
+    window.open(`/web/site/deploy/${remoteAppId}/`, "_blank");
   };
 
   if (loading) {
     return (
       <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-        <div className="mb-3 flex items-start justify-between gap-4">
-          <div>
-            <Skeleton className="h-[22px] w-28 rounded-md" />
-            <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
-          </div>
-          <Skeleton className="h-10 w-28 rounded-lg" />
-        </div>
-        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+        <AgentPageHeader
+          title="Agent Sites"
+          subtitle={t("sites")}
+          actions={<Skeleton className="h-9 w-28 rounded-lg" />}
+        />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-            <Skeleton key={i} className="h-20 w-full rounded-lg" />
+            <Skeleton key={i} className="h-12 w-full rounded-lg" />
           ))}
         </div>
       </div>
@@ -188,64 +240,233 @@ export function AgentSitesPage() {
 
   return (
     <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      {/* ── 标题栏 ── */}
       <AgentPageHeader
         title="Agent Sites"
         subtitle={t("sites")}
-        actions={<Button onClick={handleOpenCreate}>+ 创建 App</Button>}
+        actions={
+          <Button onClick={handleOpenCreate}>
+            <Plus className="mr-1 size-3.5" />
+            创建 App
+          </Button>
+        }
       />
-      <AgentCardList
-        items={apps}
-        cardKey={(app) => app.id}
-        searchPlaceholder="搜索 app..."
-        searchFn={(app, q) => app.name.toLowerCase().includes(q) || app.remoteAppId.toLowerCase().includes(q)}
-        emptyMessage="暂无 app，点击「+ 创建 App」开始"
-        renderCard={(app) => (
-          <div className="group rounded-lg border border-border-light bg-surface-1 px-4 py-3 transition-colors hover:border-border-active hover:shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-text-bright">{app.name}</span>
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${VISIBILITY_BADGE_CLASSES[app.visibility] ?? ""}`}
-                  >
-                    {VISIBILITY_LABELS[app.visibility] ?? app.visibility}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 mt-1.5">
-                  <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-text-muted font-mono">
-                    {app.remoteAppId}
-                  </code>
-                  {app.description && (
-                    <span className="text-xs text-text-muted truncate max-w-[300px]">{app.description}</span>
-                  )}
-                </div>
-                <div className="mt-1 text-xs text-text-dim">{formatTimestamp(app.createdAt)}</div>
-              </div>
-              <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button size="xs" variant="outline" onClick={() => handleOpenSite(app.remoteAppId)}>
-                  打开
-                </Button>
-                <Button size="xs" variant="outline" onClick={() => runRotateToken(app)}>
-                  重签 Token
-                </Button>
-                <Button size="xs" variant="outline" onClick={() => handleOpenEdit(app)}>
-                  编辑
-                </Button>
-                <Button
-                  size="xs"
-                  variant="destructive"
-                  onClick={() => {
-                    setDeleteTarget(app);
-                    setConfirmOpen(true);
-                  }}
-                >
-                  删除
-                </Button>
-              </div>
-            </div>
+
+      {/* ── 搜索 + 可见性筛选 ── */}
+      <div className="mb-4 flex items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-text-muted" />
+          <Input
+            placeholder="搜索 app..."
+            value={searchKeyword}
+            onChange={(e) => {
+              setSearchKeyword(e.target.value);
+              setPage(1);
+            }}
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+        <Tabs
+          value={visibilityFilter}
+          onValueChange={(v) => {
+            setVisibilityFilter(v as typeof visibilityFilter);
+            setPage(1);
+          }}
+        >
+          <TabsList>
+            <TabsTrigger
+              value="all"
+              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
+            >
+              全部
+            </TabsTrigger>
+            <TabsTrigger
+              value="private"
+              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
+            >
+              仅自己
+            </TabsTrigger>
+            <TabsTrigger
+              value="org"
+              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
+            >
+              组织内
+            </TabsTrigger>
+            <TabsTrigger
+              value="authenticated"
+              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
+            >
+              已登录
+            </TabsTrigger>
+            <TabsTrigger
+              value="public"
+              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
+            >
+              公开
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {/* ── 站点表格 ── */}
+      {paged.length === 0 ? (
+        searchKeyword.trim() || visibilityFilter !== "all" ? (
+          <div className="py-12 text-center text-sm text-text-muted">暂无匹配的 app</div>
+        ) : (
+          <EmptyState
+            icon={<Plus className="w-10 h-10" />}
+            title="暂无 App"
+            description={"点击「创建 App」开始"}
+            action={{ label: "创建 App", onClick: handleOpenCreate }}
+          />
+        )
+      ) : (
+        <>
+          <div className="rounded-lg border border-border/40 bg-white overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-xs">名称</TableHead>
+                  <TableHead className="text-xs w-[80px]">可见性</TableHead>
+                  <TableHead className="text-xs">remoteAppId</TableHead>
+                  <TableHead className="text-xs">创建者</TableHead>
+                  <TableHead className="text-xs w-[140px]">创建时间</TableHead>
+                  <TableHead className="text-xs w-[120px] text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paged.map((app) => (
+                  <TableRow key={app.id}>
+                    {/* 名称 + 描述 */}
+                    <TableCell>
+                      <button
+                        type="button"
+                        className="text-left cursor-pointer hover:underline"
+                        onClick={() => handleOpenEdit(app)}
+                      >
+                        <span className="text-sm font-medium text-text-bright">{app.name}</span>
+                      </button>
+                      {app.description && (
+                        <p className="text-xs text-text-muted truncate max-w-[240px]">{app.description}</p>
+                      )}
+                    </TableCell>
+
+                    {/* 可见性 */}
+                    <TableCell>
+                      <Badge
+                        variant={VISIBILITY_BADGE_VARIANT[app.visibility] ?? "outline"}
+                        className="text-[11px] h-5"
+                      >
+                        {VISIBILITY_LABELS[app.visibility] ?? app.visibility}
+                      </Badge>
+                    </TableCell>
+
+                    {/* remoteAppId */}
+                    <TableCell>
+                      <code className="text-xs text-text-secondary font-mono truncate max-w-[180px] block">
+                        {app.remoteAppId}
+                      </code>
+                    </TableCell>
+
+                    {/* 创建者 */}
+                    <TableCell>
+                      {app.createdByAgentConfigId ? (
+                        <button
+                          type="button"
+                          className="text-xs text-text-dim hover:text-primary hover:underline cursor-pointer"
+                          onClick={() => handleNavigateToCreator(app.createdByAgentConfigId!)}
+                        >
+                          {app.createdByAgentConfigName || app.createdByAgentConfigId}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-text-muted">—</span>
+                      )}
+                    </TableCell>
+
+                    {/* 创建时间 */}
+                    <TableCell>
+                      <span className="text-xs text-text-muted">{formatTimestamp(app.createdAt)}</span>
+                    </TableCell>
+
+                    {/* 操作 */}
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {/* 打开站点 */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="size-7 p-0"
+                          onClick={() => handleOpenSite(app.remoteAppId)}
+                          title="打开"
+                        >
+                          <ExternalLink className="size-3.5" />
+                        </Button>
+
+                        {/* 更多菜单 */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="size-7 p-0">
+                              <MoreHorizontal className="size-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => runRotateToken(app)}>
+                              <RefreshCw className="size-3.5" />
+                              重签 Token
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenEdit(app)}>
+                              <Pencil className="size-3.5" />
+                              编辑
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => {
+                                setDeleteTarget(app);
+                                setConfirmOpen(true);
+                              }}
+                            >
+                              <Trash2 className="size-3.5" />
+                              删除
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        )}
-      />
+
+          {/* ── 分页控件 ── */}
+          {totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                上一页
+              </Button>
+              <span className="text-xs text-text-muted">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                下一页
+              </Button>
+            </div>
+          )}
+        </>
+      )}
 
       <FormDialog
         open={dialogOpen}
