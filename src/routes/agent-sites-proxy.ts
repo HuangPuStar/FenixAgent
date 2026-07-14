@@ -115,16 +115,36 @@ function parseAppPath(pathname: string): { appId: string; subPath: string } | nu
 export const agentSitesProxyApp = new Elysia({ name: "agent-sites-proxy", prefix: "/web/site/deploy" });
 
 // /web/site/deploy/:appId（根路径，如 /web/site/deploy/app-abc123）
-agentSitesProxyApp.all("/:appId", ({ request, set, params }) => {
-  return doProxy(params.appId, "/", request, set as { status: number; headers: Record<string, string> });
-});
+agentSitesProxyApp.all(
+  "/:appId",
+  ({ request, set, params }) => {
+    return doProxy(params.appId, "/", request, set as { status: number; headers: Record<string, string> });
+  },
+  {
+    detail: {
+      hide: true,
+      summary: "Agent Sites L3 业务前端代理（根路径）",
+      description: "根据 appId 转发业务前端页面到 agent-sites 平台。",
+    },
+  },
+);
 
 // /web/site/deploy/:appId/*（子路径，如 /web/site/deploy/app-abc123/foo/bar）
 // biome-ignore lint/suspicious/noExplicitAny: Elysia 通配符 * 参数字段名为 '*'，类型系统无法表达
-agentSitesProxyApp.all("/:appId/*", ({ request, set, params }: any) => {
-  const subPath = params["*"] ? `/${params["*"]}` : "/";
-  return doProxy(params.appId, subPath, request, set as { status: number; headers: Record<string, string> });
-});
+agentSitesProxyApp.all(
+  "/:appId/*",
+  ({ request, set, params }: any) => {
+    const subPath = params["*"] ? `/${params["*"]}` : "/";
+    return doProxy(params.appId, subPath, request, set as { status: number; headers: Record<string, string> });
+  },
+  {
+    detail: {
+      hide: true,
+      summary: "Agent Sites L3 业务前端代理（子路径）",
+      description: "代理 agent-sites 业务前端的子资源（JS/CSS/图片等）请求到 agent-sites 平台。",
+    },
+  },
+);
 
 /**
  * 兼容层：兜底根路径 /app-xxx/* 访问。
@@ -133,9 +153,19 @@ agentSitesProxyApp.all("/:appId/*", ({ request, set, params }: any) => {
  */
 export const agentSitesCompatApp = new Elysia({ name: "agent-sites-proxy-compat" });
 
-agentSitesCompatApp.all("/*", async ({ request, set }) => {
-  const url = new URL(request.url);
-  const parsed = parseAppPath(url.pathname);
-  if (!parsed) return; // 非 app- 路径，留给 Elysia 最终 404
-  return doProxy(parsed.appId, parsed.subPath, request, set as { status: number; headers: Record<string, string> });
-});
+agentSitesCompatApp.all(
+  "/*",
+  async ({ request, set }) => {
+    const url = new URL(request.url);
+    const parsed = parseAppPath(url.pathname);
+    if (!parsed) return; // 非 app- 路径，留给 Elysia 最终 404
+    return doProxy(parsed.appId, parsed.subPath, request, set as { status: number; headers: Record<string, string> });
+  },
+  {
+    detail: {
+      hide: true,
+      summary: "Agent Sites 兼容层兜底代理（/app-xxx/*）",
+      description: "兜底处理 /app-xxx 格式的旧路径访问，转发到 agent-sites 平台。仅注册在所有路由之后作为最后兜底。",
+    },
+  },
+);
