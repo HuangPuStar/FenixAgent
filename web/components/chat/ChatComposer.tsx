@@ -583,16 +583,17 @@ export function ChatComposer({
 
           {/* 底部元信息条 —— flex-wrap 允许数据多时换行到第二行 */}
           <div className="chat-composer-meta flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[11px]">
-            {/* 左侧：模式 + 模型 */}
-            {availableModes && availableModes.length > 0 && onModeChange && (
+            {/* 左侧：模式 + 模型（纯展示，不提供下拉切换） */}
+            {availableModes && availableModes.length > 0 && (
               <SessionModeSelector
                 modes={availableModes}
                 currentModeId={currentModeId ?? null}
-                onModeChange={onModeChange}
+                onModeChange={onModeChange ?? (() => {})}
+                readOnly
               />
             )}
 
-            {client && <ModelSelectorPopover client={client} />}
+            {client && <ModelSelectorPopover client={client} readOnly />}
 
             {/* 中间弹簧 */}
             <div className="flex-1" />

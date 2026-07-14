@@ -9,6 +9,8 @@ interface SessionModeSelectorProps {
   modes: SessionMode[];
   currentModeId: string | null;
   onModeChange: (modeId: string) => void;
+  /** 只读模式：仅展示当前模式名，不渲染下拉与切换交互 */
+  readOnly?: boolean;
 }
 
 /**
@@ -16,13 +18,30 @@ interface SessionModeSelectorProps {
  *
  * 当 modes 为空时返回 null（不渲染任何内容），避免在无模式数据时占据布局空间。
  * 被提取为独立组件以便后续 ChatComposer 复用。
+ * readOnly 为 true 时降级为静态信息 chip（保留模式名，去掉下拉框）。
  */
-export function SessionModeSelector({ modes, currentModeId, onModeChange }: SessionModeSelectorProps) {
+export function SessionModeSelector({
+  modes,
+  currentModeId,
+  onModeChange,
+  readOnly = false,
+}: SessionModeSelectorProps) {
   const { t } = useTranslation("components");
   const [open, setOpen] = useState(false);
   const current = modes.find((m) => m.id === currentModeId) ?? modes[0];
 
   if (modes.length === 0) return null;
+
+  // 只读：静态展示当前模式名，无下拉、无 hover、不可点击
+  if (readOnly) {
+    const label = current?.name ?? t("sessionModeSelector.default");
+    return (
+      <span className="inline-flex items-center gap-1.5 h-7 px-2 text-xs text-muted-foreground" title={label}>
+        <Shield className="h-3 w-3" />
+        <span className="max-w-24 truncate">{label}</span>
+      </span>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
