@@ -7,7 +7,6 @@
       "@fenix/claude-code": ["./packages/plugin-claude-code/src/index.ts"],
       "@fenix/ccb": ["./packages/plugin-ccb/src/index.ts"],
       "@fenix/workflow-engine": ["./packages/workflow-engine/src/index.ts"],
-      "@fenix/sdk": ["./packages/sdk/src/index.ts"],
       "@fenix/remote-runtime": ["./packages/remote-runtime/src/index.ts"],
       "@fenix/logger": ["./packages/logger/src/index.ts"]
     },

@@ -1,0 +1,2 @@
+ALTER TABLE "agent_site_app" ADD COLUMN "created_by_agent_config_id" uuid;--> statement-breakpoint
+ALTER TABLE "agent_site_app" ADD CONSTRAINT "agent_site_app_created_by_agent_config_id_agent_config_id_fk" FOREIGN KEY ("created_by_agent_config_id") REFERENCES "public"."agent_config"("id") ON DELETE set null ON UPDATE no action;

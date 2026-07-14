@@ -50,7 +50,7 @@ watch(
 
     <template #doc-after>
       <div class="doc-bottom-nav" v-if="!isHome">
-        <a href="/" class="back-to-home">
+        <a href="/FenixAgent/" class="back-to-home">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           Back to Home
         </a>
@@ -62,15 +62,15 @@ watch(
         <div class="footer-inner">
           <div class="footer-top">
             <div class="footer-brand">
-              <img src="/logo.svg" alt="RCS" class="footer-logo" width="28" height="28" />
-              <span class="footer-name">Remote Control Server</span>
+              <img src="/fenix-agent-logo-mark.png" alt="FenixAgent" class="footer-logo" width="28" height="28" />
+              <span class="footer-name">Fenix Agent</span>
             </div>
             <div class="footer-links">
               <div class="footer-col">
                 <h4>Resources</h4>
-                <a href="/guide/getting-started">Getting Started</a>
-                <a href="/architecture/overview">Architecture</a>
-                <a href="/api/config">API Reference</a>
+                <a href="/FenixAgent/user/">User Guide</a>
+                <a href="/FenixAgent/arch/">Architecture</a>
+                <a href="/FenixAgent/developer/">Developer Docs</a>
               </div>
               <div class="footer-col">
                 <h4>Community</h4>

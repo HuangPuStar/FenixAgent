@@ -554,8 +554,9 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     }
 
     // 文件使用 react-file-icon 按扩展名显示不同图标
+    // ml-6 补偿文件夹 chevron 占位，保持文件图标与文件夹图标左对齐
     return (
-      <span className="flex items-center gap-1.5">
+      <span className="flex items-center gap-1.5 ml-6">
         <span className="h-4 w-4 flex-shrink-0 inline-flex items-center justify-center">
           <FileTypeIcon filename={node.label ?? ""} />
         </span>

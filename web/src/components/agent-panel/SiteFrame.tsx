@@ -1,8 +1,12 @@
+import { useNavigate } from "@tanstack/react-router";
 import { AlertCircle, ExternalLink, Globe, Loader2, RefreshCw } from "lucide-react";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { envApi } from "@/src/api/environments";
+import { unwrap } from "@/src/api/request";
 import { NS } from "../../i18n";
 import { cn } from "../../lib/utils";
 
@@ -11,6 +15,10 @@ export interface SiteFrameProps {
   remoteAppId: string;
   /** 显示名称（用于 aria-label / title） */
   name: string;
+  /** 创建此 site 的 agent config id。null 表示创建者已删除，不显示创建者。 */
+  createdByAgentConfigId?: string | null;
+  /** 创建者 agent config 名称（用于展示）。 */
+  createdByAgentConfigName?: string | null;
 }
 
 /** 加载超时阈值：超过此时长 onLoad 仍未触发则认为 site 不可达 */
@@ -21,7 +29,7 @@ type LoadState = "loading" | "loaded" | "timeout";
 /**
  * SiteFrame —— 在 ArtifactsPanel 内嵌加载一个 agent-sites 应用。
  *
- * 通过同源 `/${remoteAppId}/` 路径访问业务前端，避免跨域；iframe 加载状态由
+ * 通过同源 `/web/site/deploy/${remoteAppId}/` 路径访问业务前端，避免跨域；iframe 加载状态由
  * onLoad 回调关闭，并在外部状态切换时通过 key 重置 src 强制刷新。
  *
  * 兜底：site 不可达时浏览器对部分连接级失败不会触发 onLoad，会让用户卡在
@@ -31,8 +39,9 @@ type LoadState = "loading" | "loaded" | "timeout";
  * 设计原因：保持 agent-sites 的鉴权/cookie 链路（L3 业务前端直连 PB），
  * 不在 RCS 后端代理业务前端流量——后端只代理 L2 PB Admin API。
  */
-export function SiteFrame({ remoteAppId, name }: SiteFrameProps) {
+export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdByAgentConfigName }: SiteFrameProps) {
   const { t } = useTranslation(NS.COMPONENTS);
+  const navigate = useNavigate();
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [reloadKey, setReloadKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -40,7 +49,7 @@ export function SiteFrame({ remoteAppId, name }: SiteFrameProps) {
 
   // 同源路径，避免跨域；以 / 开头确保从 RCS 域根解析
   // 调用方切换 site 时通过 key={remoteAppId} 强制重挂载，loading 自然回到 true
-  const src = `/${remoteAppId}/`;
+  const src = `/web/site/deploy/${remoteAppId}/`;
 
   // 二维码数据 URL：组件挂载时异步生成，url 变化时重新生成
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -102,6 +111,22 @@ export function SiteFrame({ remoteAppId, name }: SiteFrameProps) {
     window.open(src, "_blank", "noopener,noreferrer");
   }, [src]);
 
+  /** 跳转到创建该 site 的 agent 的聊天页 */
+  const handleNavigateToCreator = useCallback(async () => {
+    if (!createdByAgentConfigId) return;
+    try {
+      const envList = await unwrap(envApi.list());
+      const env = Array.isArray(envList) ? envList.find((e) => e.agentConfigId === createdByAgentConfigId) : undefined;
+      if (env) {
+        void navigate({ to: "/agent/$agentId", params: { agentId: env.id } });
+      } else {
+        toast.error("该智能体暂未激活，无法跳转");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "跳转失败");
+    }
+  }, [createdByAgentConfigId, navigate]);
+
   const handleReload = useCallback(() => {
     setReloadKey((k) => k + 1);
   }, []);
@@ -119,6 +144,16 @@ export function SiteFrame({ remoteAppId, name }: SiteFrameProps) {
         <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-dim font-mono flex-shrink-0">
           {remoteAppId}
         </code>
+        {createdByAgentConfigId && (
+          <button
+            type="button"
+            className="text-[10px] text-text-dim hover:text-primary hover:underline cursor-pointer flex-shrink-0"
+            onClick={handleNavigateToCreator}
+            title={`创建者: ${createdByAgentConfigName || createdByAgentConfigId}`}
+          >
+            {createdByAgentConfigName || createdByAgentConfigId}
+          </button>
+        )}
         <Button
           variant="ghost"
           size="sm"

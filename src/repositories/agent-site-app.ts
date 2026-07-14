@@ -18,6 +18,8 @@ export interface CreateAppParams {
   visibility?: Visibility;
   /** App 类型，默认 pocketbase。custom 类型支持 deploy 接口 */
   appType?: "pocketbase" | "custom";
+  /** 创建此 site 的 agent_config id（用于开发/业务智能体分权） */
+  createdByAgentConfigId?: string | null;
 }
 
 class AgentSiteAppRepo {
@@ -34,6 +36,7 @@ class AgentSiteAppRepo {
         platformTokenId: params.platformTokenId,
         visibility: params.visibility ?? "private",
         appType: params.appType ?? "pocketbase",
+        createdByAgentConfigId: params.createdByAgentConfigId ?? null,
       })
       .returning();
     return row;

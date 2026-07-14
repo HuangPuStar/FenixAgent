@@ -231,27 +231,49 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
 
   // Handle tool call (UPSERT)
   if (update.sessionUpdate === "tool_call") {
+    // 处理 resume 回放中 CC SDK tool_use 格式：
+    // unstable_resumeSession 将 CC SDK tool_use block 整包放入 content 字段，
+    // 缺少 toolCallId/title/status，导致后续 tool_call_update 通过 findToolCallIndex 匹配失败。
+    // 此处从 content 中提取 id/name/input，补齐 ACP 标准字段。
+    let toolCallId = update.toolCallId as string | undefined;
+    let title = update.title as string | undefined;
+    let rawInput = update.rawInput as Record<string, unknown> | undefined;
+    let toolContent = update.content;
+    const nonArrayContent = toolContent as unknown as Record<string, unknown> | undefined;
+    const isCCSdkToolUse =
+      !toolCallId &&
+      nonArrayContent &&
+      !Array.isArray(nonArrayContent) &&
+      typeof nonArrayContent === "object" &&
+      nonArrayContent.type === "tool_use";
+    if (isCCSdkToolUse) {
+      toolCallId = (nonArrayContent.id as string) ?? toolCallId;
+      title = (nonArrayContent.name as string) ?? title;
+      rawInput = (nonArrayContent.input as Record<string, unknown>) ?? rawInput;
+      toolContent = undefined; // CC SDK 格式不是有效的 ACP ToolCallContent[]
+    }
+
     // ① 顶层 display（opencode 风格，可能不在 ACP ToolCallUpdate 标准类型中，需转型访问）
     const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
       | Record<string, unknown>
       | undefined;
     const display = extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay);
     // 构造临时 tool 对象用于 resolveToolCardKind
-    const tempTool = { display, rawInput: update.rawInput, rawOutput: update.rawOutput };
+    const tempTool = { display, rawInput, rawOutput: update.rawOutput };
     const kind = resolveToolCardKind(tempTool, update._meta);
     const toolCallData: ToolCallData = {
-      id: update.toolCallId,
-      title: update.title,
+      id: toolCallId ?? "",
+      title: title ?? "",
       status: mapToolStatus(update.status),
       kind,
-      content: update.content,
+      content: toolContent,
       // 条件展开避免 undefined 覆盖已有值（rawInput 可能是空对象 {}，用 != null 而非 &&）
-      ...(update.rawInput != null ? { rawInput: update.rawInput } : {}),
+      ...(rawInput != null ? { rawInput } : {}),
       ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
       ...(display && { display }),
     };
 
-    const existingIndex = findToolCallIndex(entries, update.toolCallId);
+    const existingIndex = findToolCallIndex(entries, toolCallId ?? "");
     if (existingIndex >= 0) {
       return entries.map((entry, index) => {
         if (index !== existingIndex || entry.type !== "tool_call") return entry;
@@ -270,28 +292,30 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
     const existingIndex = findToolCallIndex(entries, update.toolCallId);
 
     if (existingIndex < 0) {
-      // tool_call_update 先于 tool_call 到达时创建占位 entry，
-      // 尽可能保留 update 中已有的 rawInput/rawOutput/display，避免数据被后续 UPSERT 覆盖丢弃
+      // tool_call_update 先于 tool_call 到达，或页面刷新后前端 state 丢失：
+      // 基于 update 数据构建正常占位条目，而非硬造 error 条目。
+      // 页面刷新场景下 agent 发送的 tool_call_update 可能携带有效 status/rawOutput 等数据，
+      // 硬造 error 会导致正常完成的工具调用显示为"失败"+"未知错误"。
       const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
         | Record<string, unknown>
         | undefined;
       const fallbackDisplay = extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay);
       const tempTool = { display: fallbackDisplay, rawInput: update.rawInput, rawOutput: update.rawOutput };
       const kind = resolveToolCardKind(tempTool, update._meta);
-      const failedEntry: ToolCallEntry = {
+      const placeholder: ToolCallEntry = {
         type: "tool_call",
         toolCall: {
           id: update.toolCallId,
-          title: update.title || "Tool call not found",
-          status: "error",
+          title: update.title || "Running tool",
+          status: update.status ? mapToolStatus(update.status) : "running",
           kind,
-          content: [{ type: "content", content: { type: "text", text: "Tool call not found" } }],
+          content: update.content || [],
           ...(update.rawInput != null ? { rawInput: update.rawInput } : {}),
           ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
           ...(fallbackDisplay && { display: fallbackDisplay }),
         },
       };
-      return [...entries, failedEntry];
+      return [...entries, placeholder];
     }
 
     return entries.map((entry, index) => {
@@ -381,6 +405,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const [isLoading, setIsLoading] = useState(false);
   // 断连时记住 loading 状态，WS 重连 resume 后恢复
   const wasLoadingBeforeDisconnect = useRef(false);
+  // 追踪所有工具调用的 raw ACP status（toolCallId → status 字符串），
+  // 用于 resume 回放后判断是否有未完成的工具调用，从而决定是否恢复 loading 态
+  const toolEndStatusRef = useRef<Map<string, string>>(new Map());
   const [sessionReady, setSessionReady] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
@@ -423,6 +450,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     backendErrorRef.current = false;
     wasLoadingBeforeDisconnect.current = false;
     hasAssistantOutputRef.current = false;
+    toolEndStatusRef.current.clear();
     setPromptUsage(null);
   }, []);
 
@@ -530,6 +558,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       hasAssistantOutputRef.current = true;
     }
 
+    // 记录工具调用的 ACP 原始状态，用于 resume 回放后判断是否有未完成的工具
+    if (update.sessionUpdate === "tool_call" && update.status) {
+      toolEndStatusRef.current.set(update.toolCallId, update.status);
+    } else if (update.sessionUpdate === "tool_call_update" && update.status) {
+      toolEndStatusRef.current.set(update.toolCallId, update.status);
+    }
+
     // 拦截 todowrite 工具调用 → 更新 Todo 面板（仅顶层）
     if (update.sessionUpdate === "tool_call" && isTodoWriteToolCall(update.title, update.rawInput)) {
       const todos = parseTodosFromRawInput(update.rawInput!);
@@ -618,9 +653,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     client.setSessionLoadedHandler((sessionId) => {
       console.log("[ChatInterface] Session loaded/resumed:", sessionId);
       activateSession(sessionId, { resetEntries: false });
-      // WS 重连 resume：恢复断连前的 loading 状态（agent 可能仍在执行）
-      if (wasLoadingBeforeDisconnect.current) {
-        console.log("[ChatInterface] Restoring isLoading=true after reconnect resume");
+      // 回放后检查：如果存在未完成的工具调用（status 非终态），说明 agent 仍在执行
+      const hasUnfinishedTool = [...toolEndStatusRef.current.values()].some(
+        (status) => !["completed", "failed", "canceled", "cancelled", "rejected"].includes(status),
+      );
+      if (hasUnfinishedTool) {
+        console.log("[ChatInterface] Resume with unfinished tool call, setting isLoading=true");
+        setIsLoading(true);
+        wasLoadingBeforeDisconnect.current = false;
+      } else if (wasLoadingBeforeDisconnect.current) {
+        // WS 重连 resume：恢复断连前的 loading 状态（agent 可能仍在执行，但无工具调用可跟踪）
+        console.log("[ChatInterface] Restoring isLoading=true after reconnect resume (no tool to track)");
         setIsLoading(true);
         wasLoadingBeforeDisconnect.current = false;
       }
@@ -656,6 +699,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       // This includes stopReason="cancelled" (which is the expected response after client.cancel())
       // Note: Tool calls are already marked as "canceled" in handleCancel before this fires
       setIsLoading(false);
+
+      // 清理工具状态追踪：本轮 prompt 结束，所有工具调用状态重置
+      toolEndStatusRef.current.clear();
 
       // 存储 ACP 真实 token 用量，供 ContextPanel 优先展示
       setPromptUsage(usage ?? null);
@@ -877,6 +923,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         }
         return false;
       });
+      // 兜底清理：prompt_complete 未及时到达时避免残留的非终态工具状态
+      toolEndStatusRef.current.clear();
     }, 3000);
   }, [client]);
 

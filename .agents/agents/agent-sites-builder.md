@@ -15,6 +15,14 @@ skills:
 - `references/html-guide.md` — 前端设计规范、色彩排版、动效、常用模式
 - `references/card-tag.md` — `<agent-sites>` 卡片标签格式规则
 
+### 环境变量
+
+系统自动注入以下变量，分权自检依赖它们：
+- `$AGENT_CONFIG_ID` — 当前智能体的配置 ID（UUID）
+- `$ENVIRONMENT_ID` — 当前智能体所在的 environment ID
+
+> **重要**：`$AGENT_CONFIG_ID` 用于开发/业务分权自检。site 详情中的 `createdByAgentConfigId` 与之对比，判断当前智能体是否有权修改 site 文件。
+
 ## 工作流程
 
 ### 1. 理解需求与平台约束
@@ -39,7 +47,52 @@ skills:
 
 ### 2. 创建 App
 
-`POST /web/agent-sites/apps`，**同时**记录返回的 `id`（RCS 内部 UUID，后续 L1/L2 API 都用它）和 `remoteAppId`（形如 `app-xxxx`，业务前端访问用它）。
+`POST /web/agent-sites/apps`，**同时**记录返回的 `id`（RCS 内部 UUID，后续 L1/L2 API 都用它）和 `remoteAppId`（形如 `app-xxxx`，业务前端访问用它）。body 中必须传入 `"agentConfigId"` 为 `$AGENT_CONFIG_ID` 的值，以便记录此 site 的创建者。
+
+```bash
+RESP=$(curl -s -X POST $BASE/apps $AUTH \
+  -d "{\"name\":\"my-app\",\"visibility\":\"private\",\"agentConfigId\":\"$AGENT_CONFIG_ID\"}")
+```
+
+### 2.5 分权自检（修改已有 site 时）
+
+如果当前 site 已存在（非首次创建），在执行任何写入操作前必须自检：
+
+```bash
+# 获取 site 详情
+SITE_RESP=$(curl -s $BASE/apps/$APP_ID $AUTH)
+
+# 提取创建者
+CREATOR=$(echo "$SITE_RESP" | jq -r '.data.createdByAgentConfigId')
+
+if [ "$CREATOR" != "null" ] && [ "$CREATOR" != "$AGENT_CONFIG_ID" ]; then
+  echo ""
+  echo "⚠️ 此 site (${REMOTE_APP_ID}) 由其他智能体创建。"
+  echo "我作为业务智能体，可以操作 PocketBase 数据（CRUD），"
+  echo "但无权修改站点文件。"
+  echo ""
+  echo "要修改站点代码，请在右侧 Sites 面板点击「溯源」按钮，"
+  echo "回到创建此 site 的智能体继续操作。"
+  exit 1
+fi
+```
+
+> **注意**：`createdByAgentConfigId` 为 `null` 表示创建者智能体已被删除，此时所有绑定智能体均可自由操作。
+
+### 自查时机
+
+以下操作前必须执行分权自检：
+
+| 操作 | 必须自检 |
+|------|---------|
+| 上传静态文件 | ✅ |
+| 批量上传 tar.gz | ✅ |
+| 部署 custom app | ✅ |
+| 修改 site 配置 (PATCH) | ✅ |
+| 删除 site | ✅ |
+| 重签 token | ✅ |
+| 操作 PB 数据 (L2 API) | ❌ 不限制 |
+| 查看 site 详情/列表 | ❌ 不限制 |
 
 ### 3. 配置后端
 
@@ -168,3 +221,10 @@ custom 类型默认没有 PB 实例，L2 PB API（`/web/agent-sites/apps/:id/api
 - 按用户当前需求交付核心 MVP，额外代码可以提一句但**不写完整文件**
 - 先完成核心功能并验证通过（数据读写、页面展示、部署上线），再问用户是否需要扩展
 - 用户说"做个记账应用"，先交付最简版本：能添加记录、显示列表。不要一上来就做分类筛选、月度报表、导出 CSV
+
+### 9. 分权自检必须最先执行
+
+在修改已有 site 的任何文件或配置前，**必须**先执行分权自检（见步骤 2.5）。跳过自检直接操作文件，会导致业务智能体覆盖开发智能体的代码。
+
+**错误做法**：不检查 `createdByAgentConfigId` 就直接 PUT 文件。
+**正确做法**：先 `GET /web/agent-sites/apps/$APP_ID`，对比 `$AGENT_CONFIG_ID`，不匹配时立即终止并引导用户溯源。

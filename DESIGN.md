@@ -1256,7 +1256,6 @@ web/
 | `@/src` | `web/src/` | 页面内引用 (api/, i18n/, lib/, hooks/, types/ 等子目录也在此范围) |
 | `@/components` | `web/components/` | 组件引用 |
 | `@server` | `../src` | 后端引用 |
-| `@fenix/sdk` | `packages/sdk/src/index.ts` | SDK 引用 |
 
 ---
 

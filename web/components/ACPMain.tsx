@@ -1,4 +1,4 @@
-import { MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
+import { MessageSquare, Pencil, Pin, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { retryWithBackoff } from "@/src/lib/retry";
@@ -39,9 +39,16 @@ export function ACPMain({
   onPromptComplete,
 }: ACPMainProps) {
   const { t } = useTranslation("components");
-  // 默认 false：进入 chat 子页面时左侧会话面板默认收起，需通过 ChatHeader 上的
-  // PanelLeft 切换按钮主动打开；与 Anthropic / ChatGPT 等默认隐藏历史会话的体验对齐
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // 从 localStorage 读取侧边栏状态，默认 false（收起）
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem("acp-sidebar-open");
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [forcePopoverOpen, setForcePopoverOpen] = useState(false);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
   const chatRef = useRef<ChatInterfaceHandle>(null);
   const bootstrappedRef = useRef(false);
@@ -50,6 +57,15 @@ export function ACPMain({
   useEffect(() => {
     bootstrappedRef.current = false;
   }, [client]);
+
+  // 保存侧边栏状态到 localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("acp-sidebar-open", String(sidebarOpen));
+    } catch (error) {
+      console.warn("[ACPMain] Failed to save sidebar state:", error);
+    }
+  }, [sidebarOpen]);
 
   // Handle session selection
   // 历史会话切换由 ChatHeader popover 和 SidebarSessionList 共用：
@@ -75,6 +91,19 @@ export function ACPMain({
     },
     [client],
   );
+
+  // 关闭侧边栏并打开弹窗
+  const handleCloseSidebarAndOpenPopover = useCallback(() => {
+    setSidebarOpen(false);
+    setForcePopoverOpen(true);
+  }, []);
+
+  // 重置弹窗强制打开状态
+  const handlePopoverOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setForcePopoverOpen(false);
+    }
+  }, []);
 
   // Bootstrap: load latest session or create new one.
   useEffect(() => {
@@ -152,6 +181,8 @@ export function ACPMain({
           // hideSidebar 场景（嵌入到外部）下不提供切换按钮，避免出现"开关一个永远不显示的面板"
           onToggleSidebar={!hideSidebar ? () => setSidebarOpen((v) => !v) : undefined}
           sidebarOpen={sidebarOpen}
+          forceOpen={forcePopoverOpen}
+          onPopoverChange={handlePopoverOpenChange}
         />
       )}
 
@@ -163,24 +194,31 @@ export function ACPMain({
             className="hidden md:flex flex-col bg-surface-1 transition-all duration-200 flex-shrink-0 w-64 rounded-xl"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
-            {/* 头部：标题 + 新会话按钮（PanelLeft 切换按钮在 ChatHeader 中） */}
+            {/* 头部：标题 + 新会话按钮 + 钉子按钮 */}
             <div className="flex items-center justify-between px-3 py-4">
               <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
                 {t("acpMain.sessions")}
               </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => chatRef.current?.newSession()}
-                    className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t("acpMain.newSession")}</TooltipContent>
-              </Tooltip>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => chatRef.current?.newSession()}
+                  className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
+                  title={t("acpMain.newSession")}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCloseSidebarAndOpenPopover}
+                  className="h-7 w-7 text-text-muted hover:text-text-primary hover:bg-surface-2/60"
+                  title={t("acpMain.closeToPopover")}
+                >
+                  <Pin className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {/* 会话列表 */}

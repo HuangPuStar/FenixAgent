@@ -120,6 +120,13 @@
       "when": 1783928486879,
       "tag": "0016_add-phone-auth",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783994780630,
+      "tag": "0017_add-site-creator-agent-config-id",
+      "breakpoints": true
     }
   ]
 }

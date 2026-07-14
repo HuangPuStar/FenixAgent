@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { FilesIcon, Globe, Plus, Upload } from "lucide-react";
+import { Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
@@ -29,7 +30,6 @@ import { type SiteEntry, SiteTabsBar } from "../../components/agent-panel/SiteTa
 import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeTabs";
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
-import { cn } from "../../lib/utils";
 import { ProdViewsPanel } from "./ProdViewsPanel";
 import { TasksPanel } from "./TasksPanel";
 
@@ -131,6 +131,8 @@ export function ArtifactsPanel({
           id: item.id,
           name: item.name,
           remoteAppId: item.remoteAppId,
+          createdByAgentConfigId: item.createdByAgentConfigId ?? null,
+          createdByAgentConfigName: item.createdByAgentConfigName ?? null,
         }))
         .filter((item) => item.id && item.remoteAppId);
     },
@@ -158,7 +160,7 @@ export function ArtifactsPanel({
         setUnmountConfirm(null);
         // 乐观更新：立即剔除已解绑 site，避免 loadSites 异步延迟期间
         // 旧 tab 残留（responsiveSiteId 派生自动回退到剩余 site 或 null）
-        setSites((prev: SiteEntry[] | undefined) => (prev ?? []).filter((s) => s.id !== siteId));
+        setSites((prev) => (prev ?? []).filter((s) => s.id !== siteId));
         // 后台确认：从 DB 拉最新列表，确保最终一致性
         if (agentConfigId) loadSites(agentConfigId);
       },
@@ -298,7 +300,17 @@ export function ArtifactsPanel({
   // ── Files 模式内部状态 ─────────────────────────────────
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
-  const [fileTreeOpen, setFileTreeOpen] = useState(false);
+
+  // 文件树宽度：从 localStorage 读取记忆值，默认 200px
+  const [fileTreeWidth, setFileTreeWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("fenix:file-tree-width");
+      const parsed = saved ? Number(saved) : NaN;
+      return Number.isFinite(parsed) && parsed >= 180 && parsed <= 400 ? parsed : 200;
+    } catch {
+      return 200;
+    }
+  });
 
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{
@@ -444,13 +456,13 @@ export function ArtifactsPanel({
         availableModes={availableModes}
       />
 
-      {/* 加载中提示（紧凑模式，避免阻塞 Files 默认体验） */}
-      {sitesLoading && sites.length === 0 && (
+      {/* 加载中/错误提示仅在 Sites 模式下展示，避免在 Files/Tasks/Views 模式下干扰 */}
+      {topMode === "sites" && sitesLoading && sites.length === 0 && (
         <div className="px-3 py-1 text-[11px] text-text-dim border-b border-border/30">
           {t("siteFrame.loadingSites")}
         </div>
       )}
-      {sitesLoadError && (
+      {topMode === "sites" && sites.length > 0 && sitesLoadError && (
         <div className="px-3 py-1 text-[11px] text-text-dim border-b border-border/30">
           {t("siteFrame.loadFailed", { message: sitesLoadError.message || String(sitesLoadError) })}
         </div>
@@ -467,27 +479,31 @@ export function ArtifactsPanel({
             onCloseFile={handleCloseFile}
             onPreviewChangedFile={openFile}
           />
-          <div className="flex-1 min-h-0 min-w-0 flex">
-            <div className="flex-1 min-h-0 min-w-0 flex flex-col border-r border-solid border-border/75">
-              <PreviewTab envId={envId} filePath={activeFile} />
-            </div>
-            <div className="relative flex-shrink-0 min-h-0 h-full">
-              <button
-                type="button"
-                onClick={() => setFileTreeOpen((v) => !v)}
-                className={cn(
-                  "absolute -left-12 z-20 h-10 w-10 flex items-center justify-center rounded-lg shadow-sm transition-colors",
-                  fileTreeOpen
-                    ? "bg-surface-1 border border-border/30 text-text-primary"
-                    : "bg-surface-1 border border-border/20 text-text-muted hover:text-text-primary hover:bg-surface-2/60",
-                )}
-                title={fileTreeOpen ? t("fileTree.hideTree") : t("fileTree.showTree")}
-                aria-label={fileTreeOpen ? t("fileTree.hideTree") : t("fileTree.showTree")}
+          <div className="flex-1 min-h-0 min-w-0">
+            <ResizablePanelGroup orientation="horizontal">
+              <ResizablePanel defaultSize={100} minSize={30}>
+                <div className="h-full min-h-0 min-w-0 flex flex-col">
+                  <PreviewTab envId={envId} filePath={activeFile} />
+                </div>
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel
+                defaultSize={fileTreeWidth}
+                minSize={180}
+                maxSize={400}
+                onResize={(panelSize) => {
+                  const w = panelSize.inPixels;
+                  if (w != null && Number.isFinite(w)) {
+                    setFileTreeWidth(w);
+                    try {
+                      localStorage.setItem("fenix:file-tree-width", String(w));
+                    } catch {
+                      // localStorage 不可用时静默忽略
+                    }
+                  }
+                }}
               >
-                <FilesIcon className="h-4 w-4" />
-              </button>
-              {fileTreeOpen && (
-                <div className="w-60 h-full min-h-0 flex flex-col overflow-hidden">
+                <div className="h-full min-h-0 flex flex-col overflow-hidden">
                   <FileTreeTab
                     ref={fileTreeRef}
                     envId={envId}
@@ -495,8 +511,8 @@ export function ArtifactsPanel({
                     onReferenceFile={handleReferenceFile}
                   />
                 </div>
-              )}
-            </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </div>
         </>
       ) : topMode === "tasks" ? (
@@ -525,6 +541,7 @@ export function ArtifactsPanel({
             <SiteTabsBar
               activeSiteId={validActiveSiteId}
               sites={sites}
+              currentAgentConfigId={agentConfigId}
               onChange={handleSiteChange}
               onMountClick={handleMount}
               onUnmountClick={handleUnmountClick}
@@ -533,7 +550,13 @@ export function ArtifactsPanel({
           {/* SiteFrame：占满剩余空间，切 site 时 key 变化触发重挂载 */}
           {activeSite && (
             <div className="flex-1 min-h-0 min-w-0">
-              <SiteFrame key={activeSite.remoteAppId} remoteAppId={activeSite.remoteAppId} name={activeSite.name} />
+              <SiteFrame
+                key={activeSite.remoteAppId}
+                remoteAppId={activeSite.remoteAppId}
+                name={activeSite.name}
+                createdByAgentConfigId={activeSite.createdByAgentConfigId}
+                createdByAgentConfigName={activeSite.createdByAgentConfigName}
+              />
             </div>
           )}
         </>

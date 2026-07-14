@@ -1,10 +1,10 @@
 # 开发者指南
 
-Remote Control Server (RCS) 开发者指南，面向使用 RCS 平台构建 AI Agent 的开发者。
+FenixAgent 开发者指南，面向使用 FenixAgent 平台构建 AI Agent 的开发者。
 
 ## 你能做什么
 
-RCS 是一个 AI Agent 控制面板，帮助你构建、配置和管理智能体。作为开发者，你可以：
+FenixAgent 是一个 AI Agent 控制面板，帮助你构建、配置和管理智能体。作为开发者，你可以：
 
 - **定义 Agent 角色** — 通过系统提示词和参数配置，塑造不同职责的 Agent
 - **编写 Skill** — 用 Markdown 编写技能指令，让 Agent 学会新的工作流程
