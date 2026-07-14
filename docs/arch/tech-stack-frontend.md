@@ -66,7 +66,7 @@
 
 - **better-auth 客户端**（`web/src/lib/auth-client.ts`）：`createAuthClient` + `organizationClient` + `apiKeyClient`，导出 `useSession`/`signIn`/`signUp`/`signOut`
 - **组织上下文传递**：活跃组织 ID 存 localStorage，通过 HTTP header 注入到 `/web/*` 和 `/api/*` 请求；WebSocket relay 通过 query param 传递（因 WS 不支持自定义 header）
-- **API Client 自动认证**：`@fenix/sdk` 自动携带 Cookie（`credentials: "include"`）
+- **API Client 自动认证**：`web/src/api/request.ts` 自动携带 Cookie（`credentials: "include"`）
 
 ---
 
@@ -83,9 +83,9 @@
 
 ---
 
-## 6. API Client：@fenix/sdk
+## 6. API Client：web/src/api/request.ts
 
-前端 API 调用统一通过 `@fenix/sdk`（`packages/sdk/`），类架构 SDK，每个资源域独立 API 模块实例（`EnvironmentApi`、`SessionApi`、`ControlApi`、`InstanceApi`、`FileApi`、`KnowledgeBaseApi`、`ProviderApi`、`ModelApi`、`AgentApi`、`SkillConfigApi`、`McpApi`、`OrganizationApi`、`ApiKeyApi`、`TaskApi`、`WorkflowEngineApi`、`RegistryApi` 等），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
+前端 API 调用统一通过 `web/src/api/request.ts`，每个资源域独立 API 模块（`api/tasks.ts`、`api/skills.ts` 等），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
 
 ---
 
