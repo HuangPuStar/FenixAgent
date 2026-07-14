@@ -10,7 +10,7 @@ const AGENT_TIMEOUT_MS = 300_000; // 5 分钟
 
 const OpenAIChatParamsSchema = z
   .object({
-    agentId: z.string().min(1).describe("平台 Agent UUID"),
+    agentConfigId: z.string().min(1).describe("平台 Agent 配置 ID。"),
   })
   .describe("OpenAI Chat 路径参数。");
 
@@ -19,10 +19,10 @@ const app = new Elysia({ name: "openai-chat", prefix: "/api" }).use(authGuardPlu
 });
 
 app.post(
-  "/agents/:agentId/v1/chat/completions",
+  "/agents/:agentConfigId/v1/chat/completions",
   async ({ params, body, request, store, error }: any) => {
     const authCtx = store.authContext as AuthContext;
-    const agentId = params.agentId as string;
+    const agentConfigId = params.agentConfigId as string;
 
     // 解析请求体（只取最后一条 user 消息）
     const req = body as Record<string, unknown>;
@@ -38,7 +38,7 @@ app.post(
 
     // 读取 X-Session-Id header（会话恢复）
     const sessionId = (request.headers as Headers).get("x-session-id") ?? undefined;
-    log(`[openai] Request: agentId=${agentId} stream=${isStream} sessionId=${sessionId ?? "none"}`);
+    log(`[openai] Request: agentConfigId=${agentConfigId} stream=${isStream} sessionId=${sessionId ?? "none"}`);
 
     // 连接 Agent，创建 PromptTurn
     let turn: Awaited<ReturnType<typeof openAgentSession>>["turn"] | null = null;
@@ -46,7 +46,7 @@ app.post(
     try {
       const result = await openAgentSession({
         userId: authCtx.userId,
-        agentConfigId: agentId,
+        agentConfigId,
         organizationId: authCtx.organizationId,
         sessionId,
       });
@@ -56,7 +56,7 @@ app.post(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("not found") || msg.includes("不存在") || msg.includes("Environment not found")) {
-        const errResp = buildOpenAIError(404, `Agent ${agentId} not found`, "invalid_request_error");
+        const errResp = buildOpenAIError(404, `Agent ${agentConfigId} not found`, "invalid_request_error");
         return error(errResp.status, errResp.body);
       }
       const errResp = buildOpenAIError(500, `Failed to start agent: ${msg}`, "server_error");
@@ -77,7 +77,7 @@ app.post(
           async start(controller) {
             const encoder = new TextEncoder();
             try {
-              for await (const chunk of mapToSSEChunks(turn.events(), agentId, abortController.signal)) {
+              for await (const chunk of mapToSSEChunks(turn.events(), agentConfigId, abortController.signal)) {
                 controller.enqueue(encoder.encode(chunk));
               }
             } catch (e) {
@@ -125,7 +125,7 @@ app.post(
             timeoutPromise,
           ]);
 
-          const response = mapToNonStreamingResponse(events as any, agentId);
+          const response = mapToNonStreamingResponse(events as any, agentConfigId);
           log(
             `[openai] Non-streaming response: finish_reason=${response.choices[0].finish_reason} events=${events.length}`,
           );
