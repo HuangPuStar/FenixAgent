@@ -1,6 +1,6 @@
 {
   "name": "@konghayao/opencode-hindsight",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Hindsight memory plugin for OpenCode — persistent long-term memory for your AI coding agent",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -8,7 +8,7 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
+      "import": "./dist/opencode-wrapper.js",
       "require": "./dist/index.cjs"
     }
   },

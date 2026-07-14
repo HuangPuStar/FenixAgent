@@ -22,7 +22,7 @@ describe("workspace-fs tree utilities", () => {
 
   // listPathsRecursive 递归路径列表
   test("listPathsRecursive returns all user/ paths", async () => {
-    const entries = await listPathsRecursive(baseDir);
+    const { entries } = await listPathsRecursive(baseDir);
     const paths = entries.map((e) => e.path);
     expect(paths).toContain("user/a.txt");
     expect(paths).toContain("user/sub/b.txt");
@@ -33,7 +33,7 @@ describe("workspace-fs tree utilities", () => {
 
   // listPathsRecursive 目录以 / 结尾
   test("listPathsRecursive directories end with /", async () => {
-    const entries = await listPathsRecursive(baseDir);
+    const { entries } = await listPathsRecursive(baseDir);
     const paths = entries.map((e) => e.path);
     expect(paths).toContain("user/");
     expect(paths).toContain("user/sub/");
@@ -43,7 +43,7 @@ describe("workspace-fs tree utilities", () => {
   // listPathsRecursive 空 workspace 目录返回空数组
   test("listPathsRecursive returns empty for empty workspace dir", async () => {
     const emptyDir = await mkdtemp(join(tmpdir(), "ws-fs-empty-"));
-    const paths = await listPathsRecursive(emptyDir);
+    const { entries: paths } = await listPathsRecursive(emptyDir);
     expect(paths).toEqual([]);
     await rm(emptyDir, { recursive: true, force: true });
   });
@@ -125,28 +125,28 @@ describe("workspace-fs blacklist filtering", () => {
 
   // listPathsRecursive 过滤 node_modules 目录
   test("listPathsRecursive filters out node_modules", async () => {
-    const entries = await listPathsRecursive(blacklistDir);
+    const { entries } = await listPathsRecursive(blacklistDir);
     const paths = entries.map((e) => e.path);
     expect(paths.some((p) => p.includes("node_modules"))).toBe(false);
   });
 
   // listPathsRecursive 过滤 .git 目录
   test("listPathsRecursive filters out .git", async () => {
-    const entries = await listPathsRecursive(blacklistDir);
+    const { entries } = await listPathsRecursive(blacklistDir);
     const paths = entries.map((e) => e.path);
     expect(paths.some((p) => p.includes(".git"))).toBe(false);
   });
 
   // listPathsRecursive 过滤 dist 目录
   test("listPathsRecursive filters out dist", async () => {
-    const entries = await listPathsRecursive(blacklistDir);
+    const { entries } = await listPathsRecursive(blacklistDir);
     const paths = entries.map((e) => e.path);
     expect(paths.some((p) => p.includes("dist"))).toBe(false);
   });
 
   // listPathsRecursive 仍返回非黑名单路径
   test("listPathsRecursive still returns non-blacklisted paths", async () => {
-    const entries = await listPathsRecursive(blacklistDir);
+    const { entries } = await listPathsRecursive(blacklistDir);
     const paths = entries.map((e) => e.path);
     expect(paths).toContain("user/");
     expect(paths).toContain("user/src/");

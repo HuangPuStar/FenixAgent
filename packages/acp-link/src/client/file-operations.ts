@@ -344,10 +344,15 @@ async function opMkdir(workspace: string, params: Record<string, unknown>): Prom
   return { path: params.path as string };
 }
 
-async function opTree(workspace: string, params: Record<string, unknown>): Promise<{ paths: string[] }> {
+async function opTree(
+  workspace: string,
+  params: Record<string, unknown>,
+): Promise<{ paths: string[]; mtimes?: Record<string, number>; errors?: { path: string; message: string }[] }> {
   const rawPath = (params.path as string) || "";
   const rootDir = resolveAndValidate(workspace, rawPath) ?? workspace;
   const paths: string[] = [];
+  const mtimes: Record<string, number> = {};
+  const errors: { path: string; message: string }[] = [];
 
   async function walk(dir: string): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true });
@@ -360,18 +365,32 @@ async function opTree(workspace: string, params: Record<string, unknown>): Promi
       paths.push(entry.isDirectory() ? `${relPath}/` : relPath);
 
       if (entry.isDirectory()) {
-        await walk(fullPath);
+        try {
+          await walk(fullPath);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          errors.push({ path: relPath, message });
+        }
+      } else {
+        try {
+          const info = await stat(fullPath);
+          mtimes[relPath] = info.mtimeMs;
+        } catch {
+          // Skip mtime for unreadable files, path is still included
+        }
       }
     }
   }
 
   try {
     await walk(rootDir);
-  } catch {
-    // dir may not exist yet
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push({ path: relative(workspace, rootDir) || ".", message });
+    return { paths, mtimes, errors: errors.length > 0 ? errors : undefined };
   }
 
-  return { paths };
+  return { paths, mtimes, errors: errors.length > 0 ? errors : undefined };
 }
 
 // ============================================================================
