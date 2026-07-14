@@ -19,7 +19,7 @@ import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } f
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
-import agentSitesProxyApp from "./routes/agent-sites-proxy";
+import { agentSitesCompatApp, agentSitesProxyApp } from "./routes/agent-sites-proxy";
 import apiAgentsRoutes from "./routes/api/agents";
 import apiInstanceRoutes from "./routes/api/instances";
 import apiKnowledgeBaseRoutes from "./routes/api/knowledge-bases";
@@ -200,7 +200,9 @@ const app = new Elysia()
   // MCP routes
   .use(knowledgeMcpRoutes)
   // ACP protocol routes
-  .use(acpRoutes);
+  .use(acpRoutes)
+  // Agent Sites 兼容层（兜底 /app-xxx/* 绝对路径访问，必须注册在最后）
+  .use(agentSitesCompatApp);
 
 const port = config.port;
 const host = config.host;

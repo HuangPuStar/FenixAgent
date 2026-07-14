@@ -98,19 +98,44 @@ async function doProxy(
   return proxyToAgentSites(appId, subPath, request);
 }
 
+/**
+ * 从 URL pathname 中提取 appId 和剩余路径。
+ * 匹配 /app-xxxxxxxx 或 /app-xxxxxxxx/foo/bar
+ */
+function parseAppPath(pathname: string): { appId: string; subPath: string } | null {
+  if (!pathname.startsWith("/app-")) return null;
+  const appIdEnd = pathname.indexOf("/", 1);
+  const appId = appIdEnd === -1 ? pathname.slice(1) : pathname.slice(1, appIdEnd);
+  if (!APP_ID_RE.test(appId)) return null;
+  const subPath = appIdEnd === -1 ? "/" : pathname.slice(appIdEnd);
+  return { appId, subPath };
+}
+
 /** Agent Sites L3 业务前端代理，挂载在 /web/site/deploy 前缀下 */
-const app = new Elysia({ name: "agent-sites-proxy", prefix: "/web/site/deploy" });
+export const agentSitesProxyApp = new Elysia({ name: "agent-sites-proxy", prefix: "/web/site/deploy" });
 
 // /web/site/deploy/:appId（根路径，如 /web/site/deploy/app-abc123）
-app.all("/:appId", ({ request, set, params }) => {
+agentSitesProxyApp.all("/:appId", ({ request, set, params }) => {
   return doProxy(params.appId, "/", request, set as { status: number; headers: Record<string, string> });
 });
 
 // /web/site/deploy/:appId/*（子路径，如 /web/site/deploy/app-abc123/foo/bar）
 // biome-ignore lint/suspicious/noExplicitAny: Elysia 通配符 * 参数字段名为 '*'，类型系统无法表达
-app.all("/:appId/*", ({ request, set, params }: any) => {
+agentSitesProxyApp.all("/:appId/*", ({ request, set, params }: any) => {
   const subPath = params["*"] ? `/${params["*"]}` : "/";
   return doProxy(params.appId, subPath, request, set as { status: number; headers: Record<string, string> });
 });
 
-export default app;
+/**
+ * 兼容层：兜底根路径 /app-xxx/* 访问。
+ * 部署站点内部使用绝对路径（如 /app-e1895c18/api/...）时，由本路由拦截并转发。
+ * 必须注册在所有其他具体路由之后，作为最后兜底。非 /app- 前缀的路径直接 return 不做处理。
+ */
+export const agentSitesCompatApp = new Elysia({ name: "agent-sites-proxy-compat" });
+
+agentSitesCompatApp.all("/*", async ({ request, set }) => {
+  const url = new URL(request.url);
+  const parsed = parseAppPath(url.pathname);
+  if (!parsed) return; // 非 app- 路径，留给 Elysia 最终 404
+  return doProxy(parsed.appId, parsed.subPath, request, set as { status: number; headers: Record<string, string> });
+});
