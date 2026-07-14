@@ -78,7 +78,7 @@ bun instance-connect-demo.js
 
 这个脚本会调用：
 
-- `POST /api/agents/:agentConfigId/instances/connect`
+- `POST /api/agents/:agentId/instances/connect`
 
 并输出：
 

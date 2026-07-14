@@ -35,12 +35,12 @@ const app = new Elysia({ name: "api-instances", prefix: "/api" }).use(authGuardP
 });
 
 app.post(
-  "/agents/:agentConfigId/instances/connect",
+  "/agents/:agentId/instances/connect",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, body, error }: any) => {
     const authCtx = store.authContext as AuthContext;
     try {
-      return await connectAgentInstance(authCtx, params.agentConfigId, body as ApiInstanceConnectBody);
+      return await connectAgentInstance(authCtx, params.agentId, body as ApiInstanceConnectBody);
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);

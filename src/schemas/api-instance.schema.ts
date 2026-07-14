@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 
 export const ApiInstanceAgentConfigParamsSchema = z
   .object({
-    agentConfigId: z.string().min(1).describe("Agent 配置 ID。"),
+    agentId: z.string().min(1).describe("Agent 配置 ID。"),
   })
   .describe("Agent Instance 连接路径参数。");
 
