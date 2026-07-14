@@ -16,6 +16,8 @@ export const AgentSiteAppSchema = z.object({
   deployedAt: z.number().nullable().describe("最后部署时间（秒级时间戳）。pocketbase 类型为 null。"),
   /** 创建此 site 的 agent config id。null 表示创建者已删除，所有绑定 agent 均可操作。 */
   createdByAgentConfigId: z.string().nullable().describe("创建此 site 的 agent config id。null 表示创建者已删除。"),
+  /** 创建此 site 的 agent config 名称。null 表示创建者已删除。 */
+  createdByAgentConfigName: z.string().nullable().optional().describe("创建者 agent config 名称（用于前端展示）。"),
   createdAt: z.number().describe("创建时间（秒级时间戳）。"),
   updatedAt: z.number().describe("更新时间（秒级时间戳）。"),
 });

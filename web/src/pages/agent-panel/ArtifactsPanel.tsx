@@ -132,6 +132,7 @@ export function ArtifactsPanel({
           name: item.name,
           remoteAppId: item.remoteAppId,
           createdByAgentConfigId: item.createdByAgentConfigId ?? null,
+          createdByAgentConfigName: item.createdByAgentConfigName ?? null,
         }))
         .filter((item) => item.id && item.remoteAppId);
     },
@@ -549,7 +550,13 @@ export function ArtifactsPanel({
           {/* SiteFrame：占满剩余空间，切 site 时 key 变化触发重挂载 */}
           {activeSite && (
             <div className="flex-1 min-h-0 min-w-0">
-              <SiteFrame key={activeSite.remoteAppId} remoteAppId={activeSite.remoteAppId} name={activeSite.name} />
+              <SiteFrame
+                key={activeSite.remoteAppId}
+                remoteAppId={activeSite.remoteAppId}
+                name={activeSite.name}
+                createdByAgentConfigId={activeSite.createdByAgentConfigId}
+                createdByAgentConfigName={activeSite.createdByAgentConfigName}
+              />
             </div>
           )}
         </>

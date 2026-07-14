@@ -18,6 +18,8 @@ export interface SiteApp {
   visibility: "private" | "org" | "authenticated" | "public";
   /** Site 创建者 agent config id。null 表示创建者已删除，所有绑定 agent 均可操作。 */
   createdByAgentConfigId: string | null;
+  /** 创建者 agent config 名称（用于前端展示）。 */
+  createdByAgentConfigName?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -27,6 +29,8 @@ export interface SiteCreateBody {
   name: string;
   description?: string;
   visibility?: "private" | "org" | "authenticated" | "public";
+  /** 创建者 agent config id。Agent 端通过 $AGENT_CONFIG_ID 环境变量传入，用于分权。控制台用户创建时不传。 */
+  agentConfigId?: string;
 }
 
 /** 更新站点应用请求体（部分字段可选） */

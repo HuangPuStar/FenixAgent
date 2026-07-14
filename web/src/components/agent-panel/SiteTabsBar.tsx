@@ -11,6 +11,8 @@ export interface SiteEntry {
   remoteAppId: string;
   /** 创建此 site 的 agent config id。null 表示创建者已删除。 */
   createdByAgentConfigId?: string | null;
+  /** 创建此 site 的 agent config 名称（用于展示）。 */
+  createdByAgentConfigName?: string | null;
 }
 
 interface SiteTabsBarProps {
