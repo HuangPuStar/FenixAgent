@@ -20,8 +20,8 @@
   --rcs-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, SFMono-Regular, monospace;
   --rcs-sans:
     system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --rcs-sidebar-w: 220px;
-  --rcs-outline-w: 200px;
+  --rcs-sidebar-w: 200px;
+  --rcs-outline-w: 180px;
 
   /* VitePress overrides */
   --vp-c-brand-1: var(--rcs-brand);
@@ -105,13 +105,13 @@ body {
 
 .VPSidebar {
   width: var(--vp-sidebar-width);
-  padding: 8px 0 16px;
+  padding: 4px 0 8px;
   border-right: 1px solid var(--rcs-border);
 }
 
 #VPSidebarNav {
-  padding-left: 10px;
-  padding-top: 10px;
+  padding-left: 6px;
+  padding-top: 4px;
 }
 
 .VPSidebar .cur-section {
@@ -120,28 +120,28 @@ body {
 
 /* group label */
 .VPSidebarGroup .group-text {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   color: var(--rcs-text-3);
-  padding: 16px 20px 6px;
-  margin: 0 8px;
+  padding: 10px 16px 2px;
+  margin: 0 4px;
 }
 
 .VPSidebarGroup .group-items {
-  padding-bottom: 2px;
+  padding-bottom: 0;
 }
 
 /* each sidebar item */
 .VPSidebarItem {
-  padding: 1px 0;
+  padding: 0;
 }
 
 .VPSidebarItem .item {
-  padding: 6px 12px 6px 16px;
-  border-radius: 6px;
-  margin: 0 8px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 5px;
+  margin: 0 4px;
   transition:
     background 0.15s ease,
     color 0.15s ease;
@@ -150,11 +150,6 @@ body {
 .VPSidebarItem .item:hover {
   background: var(--rcs-bg-mute);
 }
-
-/* active state — stronger tint */
-/* .VPSidebarItem.is-active > .item {
-  background: rgba(22, 119, 255, 0.1);
-} */
 
 /* left indicator bar */
 .VPSidebarItem.is-active > .item > .indicator {
@@ -165,9 +160,10 @@ body {
 
 /* item text — default */
 .VPSidebarItem .text {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 450;
   color: var(--rcs-text-2);
+  line-height: 1.4;
   transition: color 0.15s ease;
 }
 
@@ -183,17 +179,14 @@ body {
 
 /* nested items (level-1) — slight indent */
 .VPSidebarItem .items {
-  margin-left: 4px;
+  margin-left: 2px;
 }
 
-.VPSidebarItem .items .VPSidebarItem .item {
-  padding-left: 28px;
-}
 
 /* sidebar footer separator (GitHub link area) */
 .VPSidebar .sidebar-footer {
-  margin-top: 8px;
-  padding-top: 12px;
+  margin-top: 4px;
+  padding-top: 8px;
   border-top: 1px solid var(--rcs-border);
 }
 
@@ -210,13 +203,13 @@ body {
 /* -- Page Title (h1) -- */
 
 .vp-doc > div > h1 {
-  font-size: 36px;
+  font-size: 28px;
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.2;
-  padding-bottom: 16px;
+  padding-bottom: 12px;
   margin-top: 0;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   border-bottom: 1px solid var(--rcs-border);
   color: var(--rcs-text);
 }
@@ -224,42 +217,42 @@ body {
 /* -- Headings -- */
 
 .vp-doc h2 {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.35;
-  margin-top: 24px;
-  margin-bottom: 12px;
-  padding-bottom: 6px;
+  margin-top: 28px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
   border-top: none;
   border-bottom: 1px solid var(--rcs-border);
   color: var(--rcs-text);
 }
 
 .vp-doc h3 {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.4;
   margin-top: 20px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: var(--rcs-text);
 }
 
 .vp-doc h4 {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  margin-top: 16px;
-  margin-bottom: 6px;
+  margin-top: 14px;
+  margin-bottom: 4px;
 }
 
 /* -- Paragraphs -- */
 
 .vp-doc p {
-  font-size: 15.5px;
-  line-height: 1.8;
+  font-size: 14px;
+  line-height: 1.7;
   color: var(--rcs-text-2);
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 /* -- Links -- */
@@ -318,24 +311,24 @@ body {
 
 .vp-doc div[class*="language-"] code {
   font-family: var(--rcs-mono);
-  font-size: 13.5px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 /* -- Lists -- */
 
 .vp-doc ul,
 .vp-doc ol {
-  padding-left: 24px;
-  margin-bottom: 20px;
+  padding-left: 22px;
+  margin-bottom: 16px;
 }
 
 .vp-doc li {
-  font-size: 15.5px;
-  line-height: 1.75;
+  font-size: 14px;
+  line-height: 1.65;
   color: var(--rcs-text-2);
-  margin-bottom: 6px;
-  padding-left: 4px;
+  margin-bottom: 4px;
+  padding-left: 2px;
 }
 
 .vp-doc li::marker {
@@ -344,21 +337,21 @@ body {
 
 .vp-doc li > ul,
 .vp-doc li > ol {
-  margin-top: 6px;
-  margin-bottom: 6px;
+  margin-top: 4px;
+  margin-bottom: 4px;
 }
 
 /* -- Blockquotes -- */
 
 .vp-doc blockquote {
-  margin: 24px 0;
-  padding: 16px 20px;
+  margin: 20px 0;
+  padding: 12px 18px;
   border-left: 3px solid var(--rcs-brand);
   background: var(--rcs-brand-glow);
   border-radius: 0 10px 10px 0;
   color: var(--rcs-text-2);
-  font-size: 15px;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .vp-doc blockquote p {
@@ -370,12 +363,12 @@ body {
 .vp-doc table {
   display: table;
   width: 100%;
-  margin: 24px 0;
+  margin: 20px 0;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--rcs-border);
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .vp-doc thead,
@@ -386,20 +379,20 @@ body {
 .vp-doc table th {
   background: var(--rcs-bg-mute);
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--rcs-text-3);
-  padding: 10px 16px;
+  padding: 8px 14px;
   text-align: left;
   border-bottom: 1px solid var(--rcs-border);
 }
 
 .vp-doc table td {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--rcs-border);
   color: var(--rcs-text-2);
-  line-height: 1.6;
+  line-height: 1.5;
   vertical-align: top;
 }
 
@@ -414,12 +407,12 @@ body {
 /* -- Custom Blocks (tip/warning/danger/info) -- */
 
 .vp-doc .custom-block {
-  margin: 24px 0;
-  padding: 16px 20px;
+  margin: 20px 0;
+  padding: 12px 18px;
   border-radius: 10px;
   border: 1px solid;
-  font-size: 14.5px;
-  line-height: 1.7;
+  font-size: 13.5px;
+  line-height: 1.6;
 }
 
 .vp-doc .custom-block .custom-block-title {
@@ -1035,7 +1028,7 @@ body {
   }
 
   .vp-doc > div > h1 {
-    font-size: 28px;
+    font-size: 24px;
   }
 }
 
@@ -1057,7 +1050,7 @@ body {
 
   .vp-doc p,
   .vp-doc li {
-    font-size: 15px;
+    font-size: 13.5px;
   }
 }
 

@@ -3,8 +3,11 @@ layout: page
 ---
 
 <script setup>
-import { useRouter } from 'vitepress'
+import { onMounted } from 'vue'
+import { useRouter, withBase } from 'vitepress'
 
-const router = useRouter()
-router.go('/arch/tech-stack-overview')
+onMounted(() => {
+  const router = useRouter()
+  router.go(withBase('/arch/tech-stack-overview'))
+})
 </script>

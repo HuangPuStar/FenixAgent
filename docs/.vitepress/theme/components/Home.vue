@@ -39,10 +39,10 @@ const _features = [
 ];
 
 const _stack = [
-  { name: "Hono", color: "#e3602b" },
+  { name: "Elysia", color: "#a855f7" },
   { name: "Bun", color: "#fbf0df" },
   { name: "React", color: "#61dafb" },
-  { name: "SQLite", color: "#003b57" },
+  { name: "PostgreSQL", color: "#4169e1" },
   { name: "WebSocket", color: "#a855f7" },
   { name: "SSE", color: "#22c55e" },
 ];
@@ -54,16 +54,15 @@ const _stack = [
     <section class="hero">
       <div class="hero-inner">
         <div class="hero-content">
-          <div class="hero-badge">Open Source</div>
+          <div class="hero-badge">ACP Agent Platform</div>
           <h1 class="hero-title">
-            Remote Control<br />
-            <span class="hero-title-accent">Server</span>
+            Fenix<span class="hero-title-accent">Agent</span>
           </h1>
           <p class="hero-desc">
-            基于 Hono + Bun 的 AI Agent 控制面板。通过 ACP 协议远程管理 Agent 生命周期、实时监控会话事件、动态配置运行参数。
+            基于 Elysia + Bun 的 AI Agent 智能控制平台。通过 ACP 协议远程管理 Agent 生命周期、实时监控会话事件、动态配置运行参数。
           </p>
           <div class="hero-actions">
-            <a href="/guide/getting-started" class="btn-primary">
+            <a href="/FenixAgent/user/" class="btn-primary">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
               快速开始
             </a>
@@ -79,7 +78,7 @@ const _stack = [
               <span class="terminal-dot red"></span>
               <span class="terminal-dot yellow"></span>
               <span class="terminal-dot green"></span>
-              <span class="terminal-title">rcs — acp-link</span>
+              <span class="terminal-title">fenix-agent — acp-link</span>
             </div>
             <div class="terminal-body">
               <div class="term-line"><span class="term-prompt">$</span> bun run dev</div>
@@ -144,9 +143,9 @@ const _stack = [
         <h2>开始使用</h2>
         <p>几行命令即可启动你的 Agent 控制面板</p>
         <div class="cta-code">
-          <code>git clone &lt;repo&gt; && bun install && bun run dev</code>
+          <code>git clone https://github.com/konghayao/remote-control-server && bun install && bun run dev</code>
         </div>
-        <a href="/guide/getting-started" class="btn-primary">阅读文档</a>
+        <a href="/FenixAgent/user/" class="btn-primary">阅读文档</a>
       </div>
     </section>
   </div>

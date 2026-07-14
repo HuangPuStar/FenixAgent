@@ -3,7 +3,7 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   base: "/FenixAgent/",
   title: "FenixAgent",
-  description: "Fenix Agent 控制面板 — AI Agent 任务控制中心",
+  description: "Fenix Agent — AI Agent 智能控制平台",
   lang: "zh-CN",
   markdown: {
     theme: {
@@ -12,7 +12,8 @@ export default defineConfig({
     },
   },
   head: [
-    ["link", { rel: "icon", type: "image/svg+xml", href: "/FenixAgent/logo.svg" }],
+    ["link", { rel: "icon", type: "image/png", href: "/FenixAgent/fenix-agent-logo-mark.png" }],
+    ["link", { rel: "apple-touch-icon", href: "/FenixAgent/fenix-agent-logo-mark.png" }],
     ["meta", { name: "theme-color", content: "#1677ff" }],
     ["meta", { name: "og:type", content: "website" }],
     ["meta", { name: "og:locale", content: "zh_CN" }],
@@ -21,7 +22,7 @@ export default defineConfig({
   lastUpdated: true,
   ignoreDeadLinks: true,
   themeConfig: {
-    logo: "/logo.svg",
+    logo: "/fenix-agent-logo-mark.png",
     siteTitle: "FenixAgent",
     nav: [
       { text: "用户文档", link: "/user/" },
@@ -72,6 +73,15 @@ export default defineConfig({
             { text: "多智能体协作", link: "/developer/guide/multi-agent" },
             { text: "MCP 工具集成", link: "/developer/guide/mcp-integration" },
             { text: "知识库", link: "/developer/guide/knowledge-base" },
+          ],
+        },
+        {
+          text: "架构参考",
+          items: [
+            { text: "Agent 引擎架构", link: "/developer/arch/agent-engine-architecture" },
+            { text: "Agent Sites 架构", link: "/developer/arch/agent-sites-architecture" },
+            { text: "Workflow 架构", link: "/developer/arch/workflow-architecture" },
+            { text: "Remote Machine Registry", link: "/developer/arch/remote-machine-registry" },
           ],
         },
       ],
