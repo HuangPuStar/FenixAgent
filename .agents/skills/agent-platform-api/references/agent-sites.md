@@ -25,7 +25,7 @@ AUTH="-H 'Authorization: Bearer $USER_META_API_KEY' -H 'Content-Type: applicatio
 
 ```bash
 RESP=$(curl -s -X POST $BASE/apps $AUTH \
-  -d '{"name":"my-app","visibility":"private"}')
+  -d "{\"name\":\"my-app\",\"visibility\":\"private\",\"agentConfigId\":\"$AGENT_CONFIG_ID\"}")
 APP_ID=$(echo "$RESP" | jq -r '.data.id')
 REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
 echo "APP_ID=$APP_ID"
@@ -35,6 +35,7 @@ echo "REMOTE_APP_ID=$REMOTE_APP_ID"   # 形如 app-abcd1234
 - `name` 只允许 `[a-z0-9-]`、长度 1..32；中文/大写/空格/下划线会被 400 拒绝
 - `visibility`：`private`（仅创建者）/ `org`（组织内）/ `authenticated`（已登录）/ `public`（公开）。默认 `private`。**agent 硬性规则：用户未明确要求公开/组织可见时，必须传 `"private"`，不得省略 visibility 字段，不得擅自改为 public。**
 - `type`：`pocketbase`（默认，经典模式）/ `custom`（自定义应用）。custom 类型可选 `"enable_pb": true` 同时启动托管的 PocketBase 实例（详见 Custom App 章节）
+- **`agentConfigId`**（string，可选）：创建此 site 的 agent config id。**agent 创建时一律从 `$AGENT_CONFIG_ID` 环境变量读取并传入**，用于后续分权校验。不传则 `createdByAgentConfigId` 为 `null`，表示无创建者——所有绑定 agent 均可自由操作文件（但缺少溯源能力）。
 - RCS 后端自持 platform token，不暴露给用户
 
 > **AgentSiteApp 响应字段**：`id`（RCS 内部 UUID，后续所有 L1/L2 API 都用它）/ `remoteAppId`（agent-sites 远程 id，形如 `app-xxxxxxxx`，业务前端访问用它）/ `organizationId` / `userId` / `name` / `description`（可为 `null`）/ `visibility` / `appType`（`pocketbase` | `custom`，默认 pocketbase）/ `entryFile`（custom 部署后写入入口文件名，否则 `null`）/ `activeSlot`（当前激活槽位 `a` | `b`，否则 `null`）/ `deployedAt`（最后部署时间秒级时间戳，否则 `null`）/ `createdByAgentConfigId`（创建此 site 的 agent config UUID，可能为 `null` 表示创建者已删除，此时所有绑定 agent 均可操作）/ `createdAt` / `updatedAt`（秒级时间戳）。**务必同时存下 `id` 和 `remoteAppId`**——L1/L2 API（`/web/agent-sites/apps/{id}/...`）只认 RCS UUID，前端访问（`$USER_META_BASE_URL/{remoteAppId}/`）只认 remoteAppId。
@@ -306,7 +307,7 @@ input.addEventListener('keydown', e => {
 
 ```bash
 RESP=$(curl -s -X POST $BASE/apps $AUTH \
-  -d '{"name":"my-deno-app","type":"custom","visibility":"private"}')
+  -d "{\"name\":\"my-deno-app\",\"type\":\"custom\",\"visibility\":\"private\",\"agentConfigId\":\"$AGENT_CONFIG_ID\"}")
 APP_ID=$(echo "$RESP" | jq -r '.data.id')
 REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
 ```
@@ -449,7 +450,7 @@ try {
 
 ```bash
 RESP=$(curl -s -X POST $BASE/apps $AUTH \
-  -d '{"name":"my-app","type":"custom","enable_pb":true,"visibility":"private"}')
+  -d "{\"name\":\"my-app\",\"type\":\"custom\",\"enable_pb\":true,\"visibility\":\"private\",\"agentConfigId\":\"$AGENT_CONFIG_ID\"}")
 APP_ID=$(echo "$RESP" | jq -r '.data.id')
 REMOTE_APP_ID=$(echo "$RESP" | jq -r '.data.remoteAppId')
 ```

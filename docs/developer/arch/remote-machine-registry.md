@@ -2,7 +2,7 @@
 
 ## 概述
 
-远程机器注册是 FenixAgent 分布式执行体系的基础设施。机器注册采用**预注册 + 激活**模式：组织管理员先在 RCS 中创建机器记录（status=pending），获取固定的 machine id 和初始化命令，再下发给机器管理员执行。`acp-runtime` CLI 使用预分配的 `RCS_MACHINE_ID` 连接 RCS，服务端验证后激活记录。
+远程机器注册是 FenixAgent 分布式执行体系的基础设施。机器注册采用**预注册 + 激活**模式：组织管理员先在 FenixAgent 中创建机器记录（status=pending），获取固定的 machine id 和初始化命令，再下发给机器管理员执行。`acp-runtime` CLI 使用预分配的 `RCS_MACHINE_ID` 连接 FenixAgent，服务端验证后激活记录。
 
 **核心机制**：管理员预创建 → 客户端携带 `machine_id` 凭证注册 → 服务端验证（pending→online）→ 注册到 core runtime 节点表，后续所有 Agent 实例可通过该节点远程执行。
 
@@ -77,8 +77,8 @@ sequenceDiagram
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|:---:|--------|------|
-| `RCS_URL` | ✅ | — | RCS 主服务器 WS 地址，如 `ws://rcs:3000` |
-| `RCS_SECRET` | ✅ | — | 共享密钥，必须与 RCS `REGISTRY_SECRET` 一致 |
+| `RCS_URL` | ✅ | — | FenixAgent 主服务器 WS 地址，如 `ws://rcs:3000` |
+| `RCS_SECRET` | ✅ | — | 共享密钥，必须与 FenixAgent `REGISTRY_SECRET` 一致 |
 | `RCS_TENANT_ID` | ❌ | — | 组织 ID，决定 machine 归属。不设置则 `organizationId=NULL`，机器**全局可见** |
 | `RCS_MACHINE_ID` | ❌ | — | 固定 machine id，如 `mach_sandbox_01`。不设置则服务端自动分配 |
 | `RCS_MACHINE_NAME` | ❌ | — | 显示名称，不传使用 hostname |
@@ -90,7 +90,7 @@ sequenceDiagram
 ### 1.2 启动流程
 
 ```
-bin.ts 读取 env → 健康检查(RCS 可达) → startServer(ServerConfig) → createAcpClient()
+bin.ts 读取 env → 健康检查(FenixAgent 可达) → startServer(ServerConfig) → createAcpClient()
 ```
 
 关键代码位置：`packages/acp-runtime-cli/src/bin.ts:113-130`

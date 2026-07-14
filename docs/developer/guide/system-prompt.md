@@ -1,6 +1,6 @@
 # 系统提示词
 
-系统提示词是塑造 Agent 行为最重要的手段。本章介绍 RCS 中所有能注入 Agent 行为的指令入口，以及如何编写有效的提示词。
+系统提示词是塑造 Agent 行为最重要的手段。本章介绍 FenixAgent 中所有能注入 Agent 行为的指令入口，以及如何编写有效的提示词。
 
 ## 指令注入的三层结构
 
@@ -76,7 +76,7 @@ my-project/
 
 ### 指令文件命名
 
-不同 Agent 运行时识别的指令文件名可能不同。RCS 当前主要使用 opencode 运行时，识别 `CLAUDE.md`。如果你的 Agent 兼容 Claude Code，也是 `CLAUDE.md`。
+不同 Agent 运行时识别的指令文件名可能不同。FenixAgent 当前主要使用 opencode 运行时，识别 `CLAUDE.md`。如果你的 Agent 兼容 Claude Code，也是 `CLAUDE.md`。
 
 | 运行时 | 指令文件名 |
 |--------|-----------|
@@ -85,7 +85,7 @@ my-project/
 
 ## Agent 系统提示词
 
-在 RCS 控制台的 Agent 配置中，`prompt` 字段是 Agent 的核心系统提示词。它定义了 Agent 的角色、能力和行为边界。
+在 FenixAgent 控制台的 Agent 配置中，`prompt` 字段是 Agent 的核心系统提示词。它定义了 Agent 的角色、能力和行为边界。
 
 ### prompt 的定位
 

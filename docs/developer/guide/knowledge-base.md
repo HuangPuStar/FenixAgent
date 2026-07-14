@@ -17,7 +17,7 @@
 
 ## 创建知识库
 
-在 RCS 控制台的知识库页面，点击"新建知识库"，填写名称、Slug 和描述。
+在 FenixAgent 控制台的知识库页面，点击"新建知识库"，填写名称、Slug 和描述。
 
 ## 资源管理
 
@@ -26,7 +26,7 @@
 ### 上传方式
 
 - **文件上传** — 直接上传文件（支持 txt、md、pdf 等格式）
-- **URL 导入** — 提供一个 URL，RCS 自动抓取内容
+- **URL 导入** — 提供一个 URL，FenixAgent 自动抓取内容
 
 ### 资源状态
 
@@ -40,7 +40,7 @@
 
 ## Agent 绑定
 
-在 Agent MD 文件的 frontmatter 中通过 `knowledge` 字段关联知识库。一个 Agent 可以关联多个知识库。关联后，Agent 启动时 RCS 会自动注入一个知识库 MCP Server，Agent 可以调用它来检索知识。
+在 Agent MD 文件的 frontmatter 中通过 `knowledge` 字段关联知识库。一个 Agent 可以关联多个知识库。关联后，Agent 启动时 FenixAgent 会自动注入一个知识库 MCP Server，Agent 可以调用它来检索知识。
 
 ## 检索策略
 
@@ -61,12 +61,12 @@ Agent 绑定知识库时，可以设置检索策略来控制检索行为：
 
 ## 运行时注入原理
 
-Agent 启动时，RCS 会自动注入一个知识库 MCP Server：
+Agent 启动时，FenixAgent 会自动注入一个知识库 MCP Server：
 
 ```
 Agent MD 文件中的 knowledge 字段
     ↓
-RCS 生成知识库 MCP Server 配置
+FenixAgent 生成知识库 MCP Server 配置
     ↓
 注入到 AgentLaunchSpec.mcpServers 中
     ↓

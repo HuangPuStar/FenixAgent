@@ -533,9 +533,9 @@ createCoreRuntime({
 
 ### 5.3 acp-runtime — 远程节点的启动入口
 
-`@fenix-agent/acp-runtime-cli`（CLI 命称 `acp-runtime`）是**整个远程执行体系的关键组件**。它是一个可独立部署的 CLI 工具，作用是把任何一台机器变成 RCS 的分布式计算节点。
+`@fenix-agent/acp-runtime-cli`（CLI 命称 `acp-runtime`）是**整个远程执行体系的关键组件**。它是一个可独立部署的 CLI 工具，作用是把任何一台机器变成 FenixAgent 的分布式计算节点。
 
-**核心能力**：封装了 `agent CLI 启动` + `acp-link bridge` + `RCS 主服务注册` 三步，一条命令完成远程节点接入：
+**核心能力**：封装了 `agent CLI 启动` + `acp-link bridge` + `FenixAgent 主服务注册` 三步，一条命令完成远程节点接入：
 
 ```
 acp-runtime <agent-command> [agent-args...]
@@ -558,7 +558,7 @@ sequenceDiagram
     ACPWS->>Core: registerRemoteNode(machineId, ws, entry, engineTypes)
     Core-->>ACPWS: node 已注册 (mode=remote, status=online)
 
-    Note over RT,Agent: ② 实例派发（RCS 侧触发 launchInstance）
+    Note over RT,Agent: ② 实例派发（FenixAgent 侧触发 launchInstance）
     Core->>Core: runtimeResolver → node.mode=remote
     Core->>RemoteRT: createRemoteRuntime(transport=WsRemoteTransport)
     Core->>RemoteRT: prepareEnvironment(launchSpec)
@@ -579,7 +579,7 @@ sequenceDiagram
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `RCS_URL` | 是 | RCS 主服务器 WS 地址，如 `ws://localhost:3000` |
+| `RCS_URL` | 是 | FenixAgent 主服务器 WS 地址，如 `ws://localhost:3000` |
 | `RCS_SECRET` | 是 | 客户端鉴权 secret |
 | `RCS_TENANT_ID` | 是 | 注册机器的组织 ID |
 | `AGENT_TYPE` | 否 | 引擎类型，默认 `"opencode"`，可选 `"opencode"` / `"ccb"` / `"claude-code"` |
@@ -588,8 +588,8 @@ sequenceDiagram
 
 **acp-runtime 在引擎体系中的位置**：
 
-- **本地模式**：RCS 主服务通过 `EnginePlugin` → `AcpServer` 直接管理子进程，acp-runtime 不参与
-- **远程模式**：acp-runtime 替代了 `EnginePlugin` 在远程机器上的角色——它接收 RCS 派发的启动指令，在本机 spawn Agent CLI 并建立 stdio ↔ WS 桥接
+- **本地模式**：FenixAgent 主服务通过 `EnginePlugin` → `AcpServer` 直接管理子进程，acp-runtime 不参与
+- **远程模式**：acp-runtime 替代了 `EnginePlugin` 在远程机器上的角色——它接收 FenixAgent 派发的启动指令，在本机 spawn Agent CLI 并建立 stdio ↔ WS 桥接
 - **引擎无关**：acp-runtime 本身不绑定特定引擎，`<agent-command>` 参数决定了实际启动哪个 CLI
 
 **与 peri 迁移的关系**：
@@ -678,7 +678,7 @@ erDiagram
 
 ### 8.1 Machine 模式 — 通过 acp-runtime 实现分布式
 
-`acp-runtime` 将 Agent 执行下沉到独立容器/机器。RCS 主服务承担调度角色，实际 Agent 子进程在远端运行：
+`acp-runtime` 将 Agent 执行下沉到独立容器/机器。FenixAgent 主服务承担调度角色，实际 Agent 子进程在远端运行：
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -700,7 +700,7 @@ erDiagram
 └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
-每个 Machine 容器通过 `acp-runtime` 启动后自动注册，RCS 按 `engineType` 将实例派发到支持对应引擎的节点。**acp-runtime 是远程执行模式的统一入口，与具体引擎解耦**。
+每个 Machine 容器通过 `acp-runtime` 启动后自动注册，FenixAgent 按 `engineType` 将实例派发到支持对应引擎的节点。**acp-runtime 是远程执行模式的统一入口，与具体引擎解耦**。
 
 Machine 启动时的典型配置：
 
@@ -731,7 +731,7 @@ CMD ["acp-runtime", "peri", "acp"]
 
 ### 9.1 两种部署拓扑对比
 
-当前默认是**本地模式**：RCS 主服务容器同时承担调度和 Agent 执行角色。全量远程模式将执行职责剥离到独立 Machine 容器。
+当前默认是**本地模式**：FenixAgent 主服务容器同时承担调度和 Agent 执行角色。全量远程模式将执行职责剥离到独立 Machine 容器。
 
 ```
 ┌─── 本地模式（当前默认）───┐        ┌─── 全量远程模式（目标）───┐
@@ -771,14 +771,14 @@ docker build -f docker/machine/Dockerfile -t fenix-machine .
 docker build -f docker/sandbox-peri/Dockerfile -t fenix-peri-sandbox .
 ```
 
-#### 步骤 2：启动 Machine 并注册到 RCS
+#### 步骤 2：启动 Machine 并注册到 FenixAgent
 
 Machine 容器的核心环境变量：
 
 | 变量 | 说明 | 示例 |
 |------|------|------|
-| `RCS_URL` | RCS 主服务 WS 地址 | `ws://rcs:3000` |
-| `RCS_SECRET` | 注册鉴权 secret（需与 RCS `REGISTRY_SECRET` 一致） | `340b6908-...` |
+| `RCS_URL` | FenixAgent 主服务 WS 地址 | `ws://rcs:3000` |
+| `RCS_SECRET` | 注册鉴权 secret（需与 FenixAgent `REGISTRY_SECRET` 一致） | `340b6908-...` |
 | `RCS_TENANT_ID` | 组织 ID，决定 machine 归属 | `sbFAPs2nyyL0ZNx...` |
 | `RCS_MACHINE_NAME` | 机器显示名称（可选） | `peri-node-01` |
 | `AGENT_TYPE` | 引擎类型 | `peri` / `opencode` / `ccb` |
@@ -802,7 +802,7 @@ RCS_TENANT_ID=<your-org-id> docker compose -f docker/sandbox-peri/docker-compose
 
 #### 步骤 3：验证 Machine 注册成功
 
-在 RCS 主服务日志中确认：
+在 FenixAgent 主服务日志中确认：
 
 ```
 [MACHINE-REGISTER] Machine registered: id=mach_xxx agent=peri isNew=true
@@ -840,7 +840,7 @@ machineId = "mach_xxx" → 实例落在对应 Machine 节点（远程模式）
 
 重新进入 Environment，确认实例在远程 Machine 上启动：
 
-1. RCS 日志中出现 `launchInstance(engineType=xxx, nodeId=mach_xxx)` 而非 `nodeId=local-default`
+1. FenixAgent 日志中出现 `launchInstance(engineType=xxx, nodeId=mach_xxx)` 而非 `nodeId=local-default`
 2. Machine 容器日志中出现 `acp-runtime` 收到的 `prepare / start` 指令
 3. Agent 对话功能正常，文件操作正常（远程 file-ws 通道）
 
@@ -886,7 +886,7 @@ nodes: [
 
 1. **workspace 路径**：远程 Machine 的工作区路径结构与本地一致（`{cwd}/{orgId}/{userId}/{envId}`），但 `cwd` 由 Machine 容器的启动目录决定
 2. **文件操作**：远程模式下文件读写走 `file-ws` 通道，需确保 Machine 容器上的文件传输通道正常
-3. **skill / MCP**：配置由 RCS 主服务在 `prepareEnvironment` 阶段通过 WS 下发到 Machine，无需在 Machine 上预装
+3. **skill / MCP**：配置由 FenixAgent 主服务在 `prepareEnvironment` 阶段通过 WS 下发到 Machine，无需在 Machine 上预装
 4. **模型 API Key**：Agent 的模型密钥随 `LaunchSpec` 下发到 Machine 环境变量，不存储在 Machine 镜像中
 5. **多 Machine 调度**：不同 Agent 可以绑定不同 Machine，支持按引擎类型、组织、标签做调度隔离
 6. **监控**：Machine 心跳超时 3 倍 interval 后触发断连清理，需确保 `REGISTRY_SECRET` 和网络稳定
