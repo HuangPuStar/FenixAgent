@@ -203,7 +203,11 @@
     "loadingSites": "加载 Agent 绑定的站点...",
     "loadFailed": "加载站点失败：{{message}}",
     "loadTimeout": "站点加载超时",
-    "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开"
+    "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开",
+    "traceToCreator": "溯源",
+    "traceToCreatorTooltip": "切换到创建此站点的智能体",
+    "notCreator": "非创建者智能体",
+    "notCreatorTooltip": "此站点由其他智能体创建，你只能操作数据，无法修改站点文件。点击溯源切换到创建者智能体。"
   },
   "fileTree": {
     "refresh": "刷新",

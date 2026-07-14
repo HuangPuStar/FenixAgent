@@ -16,6 +16,8 @@ export interface SiteApp {
   name: string;
   description: string | null;
   visibility: "private" | "org" | "authenticated" | "public";
+  /** Site 创建者 agent config id。null 表示创建者已删除，所有绑定 agent 均可操作。 */
+  createdByAgentConfigId: string | null;
   createdAt: number;
   updatedAt: number;
 }
