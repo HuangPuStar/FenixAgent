@@ -1,6 +1,6 @@
 import Elysia from "elysia";
 import type { AuthContext } from "../plugins/auth";
-import { authenticateRequest, authGuardPlugin } from "../plugins/auth";
+import { authenticateRequest } from "../plugins/auth";
 import type { Visibility } from "../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../repositories/agent-site-app";
 import { isAgentSitesConfigured, proxyToAgentSites } from "../services/agent-sites";
@@ -58,32 +58,21 @@ function checkVisibility(
 }
 
 /**
- * 从 URL pathname 中提取 appId 和剩余路径。
- * 匹配 /app-xxxxxxxx 或 /app-xxxxxxxx/foo/bar
+ * 核心代理逻辑：校验 appId、检查 visibility 权限、转发到 agent-sites。
+ * 返回 undefined 表示当前路由不处理（留给其他路由）。
  */
-function parseAppPath(pathname: string): { appId: string; subPath: string } | null {
-  if (!pathname.startsWith("/app-")) return null;
-  const appIdEnd = pathname.indexOf("/", 1);
-  const appId = appIdEnd === -1 ? pathname.slice(1) : pathname.slice(1, appIdEnd);
-  if (!APP_ID_RE.test(appId)) return null;
-  const subPath = appIdEnd === -1 ? "/" : pathname.slice(appIdEnd);
-  return { appId, subPath };
-}
-
-const app = new Elysia({ name: "agent-sites-proxy" }).use(authGuardPlugin);
-
-// 业务前端：/{appId} 和 /{appId}/* 统一用一个 ALL catch-all 处理
-// 使用 * 通配符避免 memoirist 对 :param* 参数名的冲突
-app.all("/*", async ({ request, store: _store, set }) => {
-  const url = new URL(request.url);
-  const parsed = parseAppPath(url.pathname);
-  if (!parsed) return; // 不是 agent-sites app，留给其他路由
+async function doProxy(
+  appId: string,
+  subPath: string,
+  request: Request,
+  set: { status: number; headers: Record<string, string> },
+) {
+  if (!APP_ID_RE.test(appId)) return;
   if (!isAgentSitesConfigured()) return;
 
-  const slim = await getAppByRemoteId(parsed.appId);
-  if (!slim) return; // 不在 RCS DB 中 → Elysia 继续匹配其他路由
+  const slim = await getAppByRemoteId(appId);
+  if (!slim) return;
 
-  // public 可见性无需认证，其余需要通过 authenticateRequest 获取用户身份
   let authCtx: AuthContext | null = null;
   if (slim.visibility !== "public") {
     const authResult = await authenticateRequest(request);
@@ -98,7 +87,6 @@ app.all("/*", async ({ request, store: _store, set }) => {
       };
       return "";
     }
-    // 有身份但无权限 → 跳转到无权限页面
     if (reject.status === 403) {
       set.status = 302;
       set.headers = { location: "/ctrl/no-access" };
@@ -107,7 +95,22 @@ app.all("/*", async ({ request, store: _store, set }) => {
     set.status = reject.status;
     return reject.body;
   }
-  return proxyToAgentSites(parsed.appId, parsed.subPath, request);
+  return proxyToAgentSites(appId, subPath, request);
+}
+
+/** Agent Sites L3 业务前端代理，挂载在 /web/site/deploy 前缀下 */
+const app = new Elysia({ name: "agent-sites-proxy", prefix: "/web/site/deploy" });
+
+// /web/site/deploy/:appId（根路径，如 /web/site/deploy/app-abc123）
+app.all("/:appId", ({ request, set, params }) => {
+  return doProxy(params.appId, "/", request, set as { status: number; headers: Record<string, string> });
+});
+
+// /web/site/deploy/:appId/*（子路径，如 /web/site/deploy/app-abc123/foo/bar）
+// biome-ignore lint/suspicious/noExplicitAny: Elysia 通配符 * 参数字段名为 '*'，类型系统无法表达
+app.all("/:appId/*", ({ request, set, params }: any) => {
+  const subPath = params["*"] ? `/${params["*"]}` : "/";
+  return doProxy(params.appId, subPath, request, set as { status: number; headers: Record<string, string> });
 });
 
 export default app;

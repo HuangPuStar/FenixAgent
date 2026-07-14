@@ -21,7 +21,7 @@ type LoadState = "loading" | "loaded" | "timeout";
 /**
  * SiteFrame —— 在 ArtifactsPanel 内嵌加载一个 agent-sites 应用。
  *
- * 通过同源 `/${remoteAppId}/` 路径访问业务前端，避免跨域；iframe 加载状态由
+ * 通过同源 `/web/site/deploy/${remoteAppId}/` 路径访问业务前端，避免跨域；iframe 加载状态由
  * onLoad 回调关闭，并在外部状态切换时通过 key 重置 src 强制刷新。
  *
  * 兜底：site 不可达时浏览器对部分连接级失败不会触发 onLoad，会让用户卡在
@@ -40,7 +40,7 @@ export function SiteFrame({ remoteAppId, name }: SiteFrameProps) {
 
   // 同源路径，避免跨域；以 / 开头确保从 RCS 域根解析
   // 调用方切换 site 时通过 key={remoteAppId} 强制重挂载，loading 自然回到 true
-  const src = `/${remoteAppId}/`;
+  const src = `/web/site/deploy/${remoteAppId}/`;
 
   // 二维码数据 URL：组件挂载时异步生成，url 变化时重新生成
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);

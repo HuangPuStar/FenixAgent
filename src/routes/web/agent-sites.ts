@@ -563,7 +563,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
           400,
           buildError(
             "bad_request",
-            `Custom 类型 app ${row.remoteAppId} 不支持 PocketBase API，请走业务前端 /${row.remoteAppId}/* 或 L1 deploy 接口`,
+            `Custom 类型 app ${row.remoteAppId} 不支持 PocketBase API，请走业务前端 /web/site/deploy/${row.remoteAppId}/* 或 L1 deploy 接口`,
           ),
         );
       }

@@ -181,7 +181,7 @@ const app = new Elysia()
   .use(webApp)
   // Token-protected skill archive download for plugins/runtimes
   .use(skillDownloadRoutes)
-  // Agent Sites L3 business frontend proxy (/{appId}/* prefix)
+  // Agent Sites L3 business frontend proxy (/web/site/deploy/:appId/* prefix)
   .use(agentSitesProxyApp)
   // External API routes
   .use(apiAgentsRoutes)

@@ -162,7 +162,7 @@ export function AgentSitesPage() {
   };
 
   const handleOpenSite = (remoteAppId: string) => {
-    window.open(`/${remoteAppId}/`, "_blank");
+    window.open(`/web/site/deploy/${remoteAppId}/`, "_blank");
   };
 
   if (loading) {
