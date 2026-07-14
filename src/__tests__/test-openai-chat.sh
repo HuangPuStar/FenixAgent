@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 测试 OpenAI Chat API 兼容端点
 # 用法: bash test-openai-chat.sh <base_url> <api_key> <agent_config_id>
-#   agent_config_id: agent_config 表的主键，URL 路径 /api/agents/:agentId/v1/chat/completions 中的占位参数
+#   agent_config_id: agent_config 表的主键，URL 路径 /api/agents/:agentConfigId/v1/chat/completions 中的占位参数
 
 set -uo pipefail
 
@@ -52,7 +52,7 @@ assert_status() {
 
 echo "============================================"
 echo "  OpenAI Chat API 测试"
-echo "  URL:  $BASE_URL/api/agents/:agentId/v1/chat/completions"
+echo "  URL:  $BASE_URL/api/agents/:agentConfigId/v1/chat/completions"
 echo "============================================"
 echo ""
 

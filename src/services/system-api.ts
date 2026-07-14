@@ -61,6 +61,13 @@ export interface SystemApiCreateOrganizationInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface SystemApiResetUserPasswordInput {
+  userId?: string;
+  email?: string;
+  phoneNumber?: string;
+  password: string;
+}
+
 export interface SystemApiAddOrganizationMemberInput {
   organizationId: string;
   userId: string;
@@ -94,6 +101,10 @@ export interface SystemApiUserApiKeyListItem extends Omit<SystemApiUserApiKeyRes
 
 export interface SystemApiDeleteResult {
   deleted: true;
+}
+
+export interface SystemApiUpdateResult {
+  updated: true;
 }
 
 const API_KEY_START_LENGTH = 6;
@@ -160,6 +171,36 @@ async function assertUserBelongsToOrganization(userId: string, organizationId: s
   if (rows.length === 0) {
     throw new Error(`User '${userId}' is not a member of organization '${organizationId}'`);
   }
+}
+
+async function resolveUserIdForPasswordReset(input: SystemApiResetUserPasswordInput) {
+  if (input.userId) {
+    await assertUserExists(input.userId);
+    return input.userId;
+  }
+
+  if (input.email) {
+    const rows = await db.select({ id: user.id }).from(user).where(eq(user.email, input.email.trim())).limit(1);
+    if (rows.length === 0) {
+      throw new Error(`User '${input.email}' not found`);
+    }
+    return rows[0].id;
+  }
+
+  if (input.phoneNumber) {
+    const normalizedPhoneNumber = normalizeChineseMainlandPhoneNumber(input.phoneNumber);
+    const rows = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.phoneNumber, normalizedPhoneNumber))
+      .limit(1);
+    if (rows.length === 0) {
+      throw new Error(`User '${normalizedPhoneNumber}' not found`);
+    }
+    return rows[0].id;
+  }
+
+  throw new Error("userId, email or phoneNumber is required");
 }
 
 /**
@@ -350,6 +391,28 @@ export async function deleteUser(userId: string): Promise<SystemApiDeleteResult>
   });
 
   return { deleted: true };
+}
+
+/**
+ * 重置指定用户的 credential 密码。
+ */
+export async function resetUserPassword(input: SystemApiResetUserPasswordInput): Promise<SystemApiUpdateResult> {
+  const userId = await resolveUserIdForPasswordReset(input);
+  const hashedPassword = await hashPassword(input.password);
+  const rows = await db
+    .update(account)
+    .set({
+      password: hashedPassword,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
+    .returning({ id: account.id });
+
+  if (rows.length === 0) {
+    throw new Error(`User '${userId}' credential account not found`);
+  }
+
+  return { updated: true };
 }
 
 /**

@@ -11,6 +11,7 @@ interface SystemApiStubs {
   listUserOrganizations: StubFn;
   createUser: StubFn;
   deleteUser: StubFn;
+  resetUserPassword: StubFn;
   listOrganizations: StubFn;
   getOrganizationById: StubFn;
   createOrganization: StubFn;

@@ -55,6 +55,31 @@ export const ApiSystemCreateUserBodySchema = z
     path: ["email"],
   });
 
+export const ApiSystemResetUserPasswordBodySchema = z
+  .object({
+    userId: z.string().optional().describe("用户 ID。"),
+    email: z.email().optional().describe("用户邮箱。"),
+    phoneNumber: z.string().optional().describe("用户手机号。"),
+    password: z.string().min(8).describe("新的登录密码。"),
+  })
+  .superRefine((value, ctx) => {
+    const identifiers = [value.userId, value.email, value.phoneNumber].filter(Boolean);
+    if (identifiers.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "userId、email 或 phoneNumber 至少需要提供一个",
+        path: ["userId"],
+      });
+    }
+    if (identifiers.length > 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "userId、email 和 phoneNumber 只能提供一个",
+        path: ["userId"],
+      });
+    }
+  });
+
 export const ApiSystemOrganizationSchema = z.object({
   id: z.string().describe("组织 ID。"),
   name: z.string().describe("组织名称。"),
@@ -150,8 +175,13 @@ export const ApiSystemDeleteResponseSchema = z.object({
   deleted: z.literal(true).describe("删除操作已执行。"),
 });
 
+export const ApiSystemUpdateResponseSchema = z.object({
+  updated: z.literal(true).describe("更新操作已执行。"),
+});
+
 export type ApiSystemPaginationQuery = z.infer<typeof ApiSystemPaginationQuerySchema>;
 export type ApiSystemCreateUserBody = z.infer<typeof ApiSystemCreateUserBodySchema>;
+export type ApiSystemResetUserPasswordBody = z.infer<typeof ApiSystemResetUserPasswordBodySchema>;
 export type ApiSystemCreateOrganizationBody = z.infer<typeof ApiSystemCreateOrganizationBodySchema>;
 export type ApiSystemAddOrganizationMemberBody = z.infer<typeof ApiSystemAddOrganizationMemberBodySchema>;
 export type ApiSystemCreateApiKeyBody = z.infer<typeof ApiSystemCreateApiKeyBodySchema>;

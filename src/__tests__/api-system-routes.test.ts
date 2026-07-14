@@ -64,6 +64,7 @@ describe("API System Routes", () => {
         updatedAt: new Date("2026-06-17T00:00:00.000Z"),
       }),
       deleteUser: async () => ({ deleted: true }),
+      resetUserPassword: async () => ({ updated: true }),
       listOrganizations: async () => [],
       getOrganizationById: async () => null,
       createOrganization: async () => ({
@@ -383,6 +384,96 @@ describe("API System Routes", () => {
 
     expect(res.status).toBe(200);
     expect(json).toEqual({ deleted: true });
+  });
+
+  // 系统级密码重置接口应支持通过邮箱重置密码。
+  test("POST /api/system/users/reset-password resets user password by email", async () => {
+    stubSystemApi({
+      resetUserPassword: async () => ({ updated: true }),
+    } as never);
+
+    const res = await request("/api/system/users/reset-password", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer sys-key-1",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: "system@example.com",
+        password: "new-super-secret",
+      }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ updated: true });
+  });
+
+  // 系统级密码重置接口在手机号找不到用户时应返回 404。
+  test("POST /api/system/users/reset-password returns 404 when phone user is missing", async () => {
+    stubSystemApi({
+      resetUserPassword: async () => {
+        throw new Error("User '18800000000' not found");
+      },
+    } as never);
+
+    const res = await request("/api/system/users/reset-password", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer sys-key-1",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        phoneNumber: "18800000000",
+        password: "new-super-secret",
+      }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json).toEqual({
+      error: {
+        code: "NOT_FOUND",
+        message: "User '18800000000' not found",
+      },
+    });
+  });
+
+  // 系统级密码重置接口要求 userId、email、phoneNumber 三选一。
+  test("POST /api/system/users/reset-password rejects multiple identifiers", async () => {
+    const res = await request("/api/system/users/reset-password", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer sys-key-1",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: "user-1",
+        email: "system@example.com",
+        password: "new-super-secret",
+      }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(json).toEqual({
+      type: "validation",
+      on: "body",
+      property: "userId",
+      message: "userId、email 和 phoneNumber 只能提供一个",
+      found: {
+        userId: "user-1",
+        email: "system@example.com",
+        password: "new-super-secret",
+      },
+      errors: [
+        {
+          code: "custom",
+          message: "userId、email 和 phoneNumber 只能提供一个",
+          path: ["userId"],
+        },
+      ],
+    });
   });
 
   // 系统级删除组织接口应返回稳定删除结果。

@@ -161,6 +161,7 @@ const SYSTEM_API_KEYS = [
   "listUserOrganizations",
   "createUser",
   "deleteUser",
+  "resetUserPassword",
   "listOrganizations",
   "getOrganizationById",
   "createOrganization",
