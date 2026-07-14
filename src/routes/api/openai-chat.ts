@@ -10,7 +10,7 @@ const AGENT_TIMEOUT_MS = 300_000; // 5 分钟
 
 const OpenAIChatParamsSchema = z
   .object({
-    agentConfigId: z.string().min(1).describe("平台 Agent 配置 ID。"),
+    agentId: z.string().min(1).describe("平台 Agent 配置 ID。"),
   })
   .describe("OpenAI Chat 路径参数。");
 
@@ -19,10 +19,10 @@ const app = new Elysia({ name: "openai-chat", prefix: "/api" }).use(authGuardPlu
 });
 
 app.post(
-  "/agents/:agentConfigId/v1/chat/completions",
+  "/agents/:agentId/v1/chat/completions",
   async ({ params, body, request, store, error }: any) => {
     const authCtx = store.authContext as AuthContext;
-    const agentConfigId = params.agentConfigId as string;
+    const agentConfigId = params.agentId as string;
 
     // 解析请求体（只取最后一条 user 消息）
     const req = body as Record<string, unknown>;
