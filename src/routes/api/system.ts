@@ -20,6 +20,9 @@ import {
   ApiSystemOrganizationMemberSchema,
   type ApiSystemPaginationQuery,
   ApiSystemPaginationQuerySchema,
+  type ApiSystemResetUserPasswordBody,
+  ApiSystemResetUserPasswordBodySchema,
+  ApiSystemUpdateResponseSchema,
   ApiSystemUserIdParamsSchema,
   ApiSystemUserListResponseSchema,
   ApiSystemUserOrganizationListResponseSchema,
@@ -103,6 +106,7 @@ const app = new Elysia({ name: "api-system", prefix: "/api/system" }).use(system
   "api-system-user-id-params": ApiSystemUserIdParamsSchema,
   "api-system-apikey-id-params": ApiSystemApiKeyIdParamsSchema,
   "api-system-create-user-body": ApiSystemCreateUserBodySchema,
+  "api-system-reset-user-password-body": ApiSystemResetUserPasswordBodySchema,
   "api-system-user": ApiSystemUserSchema,
   "api-system-user-list-response": ApiSystemUserListResponseSchema,
   "api-system-user-organization-list-response": ApiSystemUserOrganizationListResponseSchema,
@@ -116,6 +120,7 @@ const app = new Elysia({ name: "api-system", prefix: "/api/system" }).use(system
   "api-system-api-key-result": ApiSystemApiKeyResultSchema,
   "api-system-api-key-list-response": ApiSystemApiKeyListResponseSchema,
   "api-system-delete-response": ApiSystemDeleteResponseSchema,
+  "api-system-update-response": ApiSystemUpdateResponseSchema,
 });
 
 app.get(
@@ -173,6 +178,35 @@ app.delete(
       tags: ["System User"],
       summary: "删除用户",
       description: "系统级接口，删除指定用户，并清理其直接归属的用户 API key。",
+    },
+  },
+);
+
+app.post(
+  "/users/reset-password",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia response schema + custom macro 下类型推断不稳定
+  async ({ body, error }: any) => {
+    try {
+      return await systemApi.resetUserPassword(body as ApiSystemResetUserPasswordBody);
+    } catch (err) {
+      const mapped = mapSystemApiError(err);
+      return error(mapped.status, mapped.body);
+    }
+  },
+  {
+    systemApiKeyAuth: true,
+    body: "api-system-reset-user-password-body",
+    response: {
+      200: "api-system-update-response",
+      400: ApiSystemErrorResponseSchema,
+      401: ApiSystemErrorResponseSchema,
+      404: ApiSystemErrorResponseSchema,
+      500: ApiSystemErrorResponseSchema,
+    },
+    detail: {
+      tags: ["System User"],
+      summary: "重置用户密码",
+      description: "系统级接口，按 userId、email 或 phoneNumber 重置 credential 登录密码。",
     },
   },
 );
