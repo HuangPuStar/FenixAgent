@@ -53,19 +53,19 @@ describe("ChatHeader", () => {
     expect(html).not.toContain("lucide-panel-left");
   });
 
-  // 提供 onToggleSidebar 时渲染 PanelLeft 切换按钮，并用 sidebarOpen 决定 aria-expanded
-  test("renders sidebar toggle when onToggleSidebar provided", async () => {
+  // 提供 onToggleSidebar 时在 Popover 内部渲染钉子按钮，SSR 时不显示
+  test("does not throw when onToggleSidebar provided", async () => {
     const { ChatHeader } = await import("../../components/chat/ChatHeader");
-    const html = ReactDOMServer.renderToString(
-      <ChatHeader
-        client={mockClient}
-        activeSessionId={null}
-        onSelectSession={() => {}}
-        onToggleSidebar={() => {}}
-        sidebarOpen={true}
-      />,
-    );
-    expect(html).toContain("lucide-panel-left");
-    expect(html).toContain('aria-expanded="true"');
+    expect(() => {
+      ReactDOMServer.renderToString(
+        <ChatHeader
+          client={mockClient}
+          activeSessionId={null}
+          onSelectSession={() => {}}
+          onToggleSidebar={() => {}}
+          sidebarOpen={true}
+        />,
+      );
+    }).not.toThrow();
   });
 });

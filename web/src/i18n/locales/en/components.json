@@ -367,7 +367,8 @@
     "yesterday": "Yesterday",
     "earlier": "Earlier",
     "rename": "Rename",
-    "delete": "Delete"
+    "delete": "Delete",
+    "closeToPopover": "Close to popover"
   },
   "chatInterface": {
     "processingError": "The request could not be processed properly. Please check the Agent or model status and try again.",
@@ -383,7 +384,9 @@
     "noResults": "No matching sessions",
     "refresh": "Refresh sessions",
     "showSessions": "Show sessions panel",
-    "hideSessions": "Hide sessions panel"
+    "hideSessions": "Hide sessions panel",
+    "pinSessions": "Pin sessions panel",
+    "unpinSessions": "Unpin sessions panel"
   },
   "chatMessage": {
     "you": "You",

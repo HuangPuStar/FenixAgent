@@ -367,7 +367,8 @@
     "yesterday": "昨天",
     "earlier": "更早",
     "rename": "重命名",
-    "delete": "删除"
+    "delete": "删除",
+    "closeToPopover": "收起至弹窗"
   },
   "chatInterface": {
     "processingError": "请求未能正常处理，请检查 Agent 或大模型状态后重试",
@@ -383,7 +384,9 @@
     "noResults": "没有匹配的会话",
     "refresh": "刷新会话列表",
     "showSessions": "展开会话面板",
-    "hideSessions": "收起会话面板"
+    "hideSessions": "收起会话面板",
+    "pinSessions": "钉住会话面板",
+    "unpinSessions": "解除钉住"
   },
   "chatMessage": {
     "you": "你",
