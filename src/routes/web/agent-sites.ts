@@ -51,6 +51,7 @@ function toResponse(row: AgentSiteAppRow): AgentSiteApp {
     entryFile: row.entryFile ?? null,
     activeSlot: (row.activeSlot as AgentSiteApp["activeSlot"] | undefined) ?? null,
     deployedAt: row.deployedAt ? Math.floor(row.deployedAt.getTime() / 1000) : null,
+    createdByAgentConfigId: row.createdByAgentConfigId ?? null,
     createdAt: row.createdAt ? Math.floor(new Date(row.createdAt).getTime() / 1000) : 0,
     updatedAt: row.updatedAt ? Math.floor(new Date(row.updatedAt).getTime() / 1000) : 0,
   };
@@ -189,6 +190,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         platformTokenId: token.token_id,
         visibility: (b.visibility as "private" | "org" | "authenticated" | "public") ?? "private",
         appType: b.type,
+        createdByAgentConfigId: b.agentConfigId ?? null,
       });
 
       return { success: true as const, data: toResponse(row) };
