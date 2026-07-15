@@ -5,9 +5,11 @@ import { useTranslation } from "react-i18next";
 import { unwrap } from "@/src/api/request";
 import { type RunSummary, workflowEngineApi } from "../../../api/workflow-engine";
 import { DAG_STATUS_CFG, relativeTime } from "../utils";
+import { useWorkflowPaths } from "../WorkflowPathContext";
 
 export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (runId: string) => void }) {
   const { t } = useTranslation("workflows");
+  const { runsPath } = useWorkflowPaths();
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -188,7 +190,7 @@ export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSel
       >
         {runs.length > 0 && <span>{t("runs.total_records", { count: runs.length })}</span>}
         <Link
-          to="/agent/workflow"
+          to={runsPath}
           search={{ tab: "runs" }}
           style={{
             display: "inline-flex",

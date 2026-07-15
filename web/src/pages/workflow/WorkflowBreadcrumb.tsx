@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useWorkflowPaths } from "./WorkflowPathContext";
 
 interface WorkflowBreadcrumbProps {
   workflowId: string;
@@ -10,11 +11,12 @@ interface WorkflowBreadcrumbProps {
 
 export function WorkflowBreadcrumb({ workflowName, children }: WorkflowBreadcrumbProps) {
   const { t } = useTranslation("workflows");
+  const { listPath } = useWorkflowPaths();
 
   return (
     <div className="flex items-center gap-2 px-4 h-9 border-b border-border-subtle bg-[#f4f7fb] dark:bg-[#1a1d23] flex-shrink-0">
       <Link
-        to="/agent/workflow"
+        to={listPath}
         className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
       >
         <ArrowLeft size={13} />

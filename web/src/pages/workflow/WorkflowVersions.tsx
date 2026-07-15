@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { AlertTriangle, Clock, Inbox, RefreshCw, RotateCcw, Star } from "lucide-react";
 import { useState } from "react";
@@ -16,7 +15,7 @@ interface WorkflowVersionsProps {
   onEditWorkflow: (workflowId: string) => void;
 }
 
-export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
+export function WorkflowVersions({ workflowId, onEditWorkflow }: WorkflowVersionsProps) {
   const { t } = useTranslation("workflows");
   const [viewingVersion, setViewingVersion] = useState<number | null>(null);
   const [viewingYaml, setViewingYaml] = useState<string | null>(null);
@@ -123,13 +122,13 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
             >
               <RefreshCw size={13} className="mr-1" /> {t("versions.refresh")}
             </Button>
-            <Link
-              to="/agent/workflow/$id/edit"
-              params={{ id: workflowId }}
+            <button
+              type="button"
+              onClick={() => onEditWorkflow(workflowId)}
               className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
             >
               {t("page.breadcrumb_edit")}
-            </Link>
+            </button>
           </>
         }
       />
