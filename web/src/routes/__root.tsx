@@ -29,7 +29,7 @@ function RootComponent() {
 
   if (isPending) {
     return (
-      <ThemeProvider defaultTheme="system">
+      <ThemeProvider defaultTheme="light">
         <div className="flex h-screen flex-col items-center justify-center gap-4">
           <div className="h-10 w-10 rounded-full border-2 border-brand border-t-transparent animate-spin" />
           <p className="text-sm text-text-muted">{t("connecting")}</p>
@@ -44,14 +44,14 @@ function RootComponent() {
 
   if (!session) {
     return (
-      <ThemeProvider defaultTheme="system">
+      <ThemeProvider defaultTheme="light">
         <Outlet />
       </ThemeProvider>
     );
   }
 
   return (
-    <ThemeProvider defaultTheme="system">
+    <ThemeProvider defaultTheme="light">
       <OrgProvider>
         <Outlet />
         <Toaster richColors closeButton position="top-right" />

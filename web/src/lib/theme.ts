@@ -50,11 +50,9 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children, defaultTheme = "system" }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(() => getStoredTheme() || defaultTheme);
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() => {
-    const stored = getStoredTheme() || defaultTheme;
-    return stored === "system" ? getSystemTheme() : stored;
-  });
+  // 暂时强制浅色模式：深色模式支持尚不完善，忽略 localStorage 及系统偏好
+  const [theme, setThemeState] = useState<Theme>("light");
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
 
   const setTheme = useCallback((newTheme: Theme) => {
     setThemeState(newTheme);
