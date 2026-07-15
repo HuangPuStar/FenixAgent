@@ -410,7 +410,7 @@ export const scheduledTaskV2 = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    orgIdx: index("idx_scheduled_task_v2_org_id").on(table.organizationId),
+    userOrgIdx: index("idx_scheduled_task_v2_user_org").on(table.userId, table.organizationId),
     agentIdx: index("idx_scheduled_task_v2_agent_id").on(table.agentId),
   }),
 );

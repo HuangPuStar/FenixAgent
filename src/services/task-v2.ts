@@ -110,11 +110,12 @@ function validateTaskInput(data: Partial<CreateTaskV2Input>, isUpdate = false): 
 }
 
 // ── CRUD ──
+// 权限模型：用户 + 组织双重隔离，所有操作按 userId AND organizationId 过滤
 
 export async function createTaskV2(
+  userId: string,
   organizationId: string,
   data: CreateTaskV2Input,
-  userId?: string,
 ): Promise<ServiceResult<TaskV2Response>> {
   const validationError = validateTaskInput(data);
   if (validationError) return { success: false, error: { code: "VALIDATION_ERROR", message: validationError } };
@@ -125,7 +126,7 @@ export async function createTaskV2(
 
   const insertData: ScheduledTaskV2Insert = {
     id,
-    userId: userId ?? organizationId,
+    userId,
     organizationId,
     name: data.name.trim(),
     description: data.description?.trim() ?? null,
@@ -157,6 +158,7 @@ export async function createTaskV2(
 }
 
 export async function listTasksV2(
+  userId: string,
   organizationId: string,
   page = 1,
   pageSize = 20,
@@ -164,7 +166,8 @@ export async function listTasksV2(
 ): Promise<ServiceSuccess<{ items: TaskV2Response[]; total: number; page: number; pageSize: number }>> {
   const safePage = Math.max(1, Math.floor(page));
   const safePageSize = Math.min(100, Math.max(1, Math.floor(pageSize)));
-  const { rows, total } = await scheduledTaskV2Repo.listByOrganizationPaged(
+  const { rows, total } = await scheduledTaskV2Repo.listByUserAndOrgPaged(
+    userId,
     organizationId,
     safePage,
     safePageSize,
@@ -176,18 +179,23 @@ export async function listTasksV2(
   };
 }
 
-export async function getTaskV2(organizationId: string, taskId: string): Promise<ServiceResult<TaskV2Response>> {
-  const row = await scheduledTaskV2Repo.getByOrgAndId(organizationId, taskId);
+export async function getTaskV2(
+  userId: string,
+  organizationId: string,
+  taskId: string,
+): Promise<ServiceResult<TaskV2Response>> {
+  const row = await scheduledTaskV2Repo.getByUserAndOrgAndId(userId, organizationId, taskId);
   if (!row) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   return { success: true, data: sanitizeTask(row) };
 }
 
 export async function updateTaskV2(
+  userId: string,
   organizationId: string,
   taskId: string,
   data: UpdateTaskV2Input,
 ): Promise<ServiceResult<TaskV2Response>> {
-  const existing = await scheduledTaskV2Repo.getByOrgAndId(organizationId, taskId);
+  const existing = await scheduledTaskV2Repo.getByUserAndOrgAndId(userId, organizationId, taskId);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   // type 不可修改
@@ -226,8 +234,12 @@ export async function updateTaskV2(
   return { success: true, data: result };
 }
 
-export async function deleteTaskV2(organizationId: string, taskId: string): Promise<ServiceResult<undefined>> {
-  const deleted = await scheduledTaskV2Repo.deleteByOrgAndId(organizationId, taskId);
+export async function deleteTaskV2(
+  userId: string,
+  organizationId: string,
+  taskId: string,
+): Promise<ServiceResult<undefined>> {
+  const deleted = await scheduledTaskV2Repo.deleteByUserAndOrgAndId(userId, organizationId, taskId);
   if (!deleted) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   schedulerService.unschedule(taskId);
@@ -235,10 +247,11 @@ export async function deleteTaskV2(organizationId: string, taskId: string): Prom
 }
 
 export async function toggleTaskV2(
+  userId: string,
   organizationId: string,
   taskId: string,
 ): Promise<ServiceResult<{ id: string; enabled: boolean }>> {
-  const existing = await scheduledTaskV2Repo.getByOrgAndId(organizationId, taskId);
+  const existing = await scheduledTaskV2Repo.getByUserAndOrgAndId(userId, organizationId, taskId);
   if (!existing) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   const newEnabled = !existing.enabled;
@@ -254,8 +267,12 @@ export async function toggleTaskV2(
   return { success: true, data: { id: taskId, enabled: newEnabled } };
 }
 
-export async function triggerTaskV2(organizationId: string, taskId: string): Promise<ServiceResult<TaskExecOutput>> {
-  const task = await scheduledTaskV2Repo.getByOrgAndId(organizationId, taskId);
+export async function triggerTaskV2(
+  userId: string,
+  organizationId: string,
+  taskId: string,
+): Promise<ServiceResult<TaskExecOutput>> {
+  const task = await scheduledTaskV2Repo.getByUserAndOrgAndId(userId, organizationId, taskId);
   if (!task) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
 
   const output = await schedulerService.execute(taskId, "manual");
@@ -290,8 +307,12 @@ export async function listExecutionLogsV2(
   };
 }
 
-export async function clearExecutionLogsV2(organizationId: string, taskId: string): Promise<ServiceResult<undefined>> {
-  const task = await scheduledTaskV2Repo.getByOrgAndId(organizationId, taskId);
+export async function clearExecutionLogsV2(
+  userId: string,
+  organizationId: string,
+  taskId: string,
+): Promise<ServiceResult<undefined>> {
+  const task = await scheduledTaskV2Repo.getByUserAndOrgAndId(userId, organizationId, taskId);
   if (!task) return { success: false, error: { code: "NOT_FOUND", message: "任务不存在" } };
   await taskExecutionLogRepo.deleteByTask(taskId);
   return { success: true, data: undefined };

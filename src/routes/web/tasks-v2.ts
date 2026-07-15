@@ -69,7 +69,11 @@ app.get(
     const keyword = q.keyword || undefined;
     const type = q.type || undefined;
     const agentId = q.agentId || undefined;
-    return await listTasksV2(authCtx.organizationId, page, pageSize, { keyword, type, agentId });
+    return await listTasksV2(authCtx.userId, authCtx.organizationId, page, pageSize, {
+      keyword,
+      type,
+      agentId,
+    });
   },
   {
     sessionAuth: true,
@@ -78,7 +82,7 @@ app.get(
       tags: ["Tasks V2"],
       summary: "获取任务列表",
       description:
-        "分页返回当前组织下的定时任务列表，支持按名称 keyword、类型 type 和 agentId 筛选。page/pageSize 默认 1/20。",
+        "分页返回当前用户在当前组织下的定时任务列表，支持按名称 keyword、类型 type 和 agentId 筛选。page/pageSize 默认 1/20。",
     },
   },
 );
@@ -89,7 +93,7 @@ app.post(
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
     const payload = body as CreateTaskV2Request;
-    const result = await createTaskV2(authCtx.organizationId, payload as unknown as CreateTaskV2Input, authCtx.userId);
+    const result = await createTaskV2(authCtx.userId, authCtx.organizationId, payload as unknown as CreateTaskV2Input);
 
     if (!result.success) {
       const err = result.error!;
@@ -116,7 +120,7 @@ app.get(
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
-      const result = await getTaskV2(authCtx.organizationId, params.id);
+      const result = await getTaskV2(authCtx.userId, authCtx.organizationId, params.id);
       if (!result.success)
         return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
       return result;
@@ -137,6 +141,7 @@ app.put(
     const payload = body as UpdateTaskV2Request;
     return safeTaskOp(async () => {
       const result = await updateTaskV2(
+        authCtx.userId,
         authCtx.organizationId,
         params.id,
         payload as unknown as Record<string, unknown>,
@@ -168,7 +173,7 @@ app.delete(
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     try {
-      const result = await deleteTaskV2(authCtx.organizationId, params.id);
+      const result = await deleteTaskV2(authCtx.userId, authCtx.organizationId, params.id);
       if (!result.success)
         return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
       return { success: true, data: null };
@@ -194,7 +199,7 @@ app.post(
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
-      const result = await toggleTaskV2(authCtx.organizationId, params.id);
+      const result = await toggleTaskV2(authCtx.userId, authCtx.organizationId, params.id);
       if (!result.success)
         return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
       return result;
@@ -213,7 +218,7 @@ app.post(
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
-      const result = await triggerTaskV2(authCtx.organizationId, params.id);
+      const result = await triggerTaskV2(authCtx.userId, authCtx.organizationId, params.id);
       if (!result.success)
         return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
       return result;
@@ -232,7 +237,7 @@ app.get(
   async ({ store, params, query, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
-      const taskResult = await getTaskV2(authCtx.organizationId, params.id);
+      const taskResult = await getTaskV2(authCtx.userId, authCtx.organizationId, params.id);
       if (!taskResult.success)
         return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
 
@@ -255,10 +260,10 @@ app.delete(
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
-      const taskResult = await getTaskV2(authCtx.organizationId, params.id);
+      const taskResult = await getTaskV2(authCtx.userId, authCtx.organizationId, params.id);
       if (!taskResult.success)
         return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
-      const result = await clearExecutionLogsV2(authCtx.organizationId, params.id);
+      const result = await clearExecutionLogsV2(authCtx.userId, authCtx.organizationId, params.id);
       if (!result.success) return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
       return { success: true, data: null };
     }, error);
