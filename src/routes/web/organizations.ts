@@ -7,6 +7,7 @@ import { authGuardPlugin } from "../../plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
 import {
   AddMemberBodySchema,
+  CreateOrganizationBodySchema,
   MemberListResponseSchema,
   MemberMutateResponseSchema,
   OrganizationDeleteResponseSchema,
@@ -232,6 +233,38 @@ app.get(
       tags: ["Organizations"],
       summary: "获取组织详情",
       description: "返回指定组织的详细信息；当请求的组织为当前活跃组织时，额外包含成员列表。",
+    },
+  },
+);
+
+// POST /web/organizations → 创建组织
+app.post(
+  "/organizations",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ body, request }: any) => {
+    const b = body as { name: string; slug: string; description?: string };
+    const metadata: Record<string, unknown> = {};
+    if (b.description) metadata.description = b.description;
+    const org = await api.createOrganization({
+      body: { name: b.name, slug: b.slug, metadata },
+      headers: request.headers,
+    });
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+    return { success: true as const, data: normalizeDateValue(org) } as any;
+  },
+  {
+    sessionAuth: true,
+    body: CreateOrganizationBodySchema,
+    response: {
+      200: OrganizationMutateResponseSchema,
+      400: WebErrSchema,
+      403: WebErrSchema,
+      500: WebErrSchema,
+    },
+    detail: {
+      tags: ["Organizations"],
+      summary: "创建组织",
+      description: "创建新的组织，创建者自动成为 owner。",
     },
   },
 );
