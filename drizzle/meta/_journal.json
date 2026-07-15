@@ -127,6 +127,13 @@
       "when": 1783994780630,
       "tag": "0017_add-site-creator-agent-config-id",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784107549653,
+      "tag": "0018_change_scheduled_task_v2_index_to_user_org_composite",
+      "breakpoints": true
     }
   ]
 }
