@@ -38,9 +38,11 @@ import {
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
+
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { unwrap } from "@/src/api/request";
+import { dumpContext, pushContext } from "@/src/lib/context-queue";
 import { useContextQueue } from "@/src/lib/use-context-queue";
 import { type CustomToolItem, customToolsApi, type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import {
@@ -165,6 +167,33 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
 
   useContextQueue("workflow-editor-context", editorContextText);
 
+  // 检测 iframe 嵌入模式，向父窗口推送 workflow 上下文（供外部 Chat 如 demo 页面使用）
+  const isInIframe = typeof window !== "undefined" && window.self !== window.top;
+  useEffect(() => {
+    if (!isInIframe) return;
+    console.log("[wf-editor] running in iframe, will postMessage context to parent");
+    const send = () => {
+      const ctx = dumpContext();
+      const payload = {
+        scenePrompt: scenePrompt ?? "",
+        workflowId: workflowId ?? "",
+        selectedNode: selectedNodeInfo ?? null,
+        contextQueue: Object.entries(ctx).map(([k, v]) => `${k}: ${v}`),
+        timestamp: Date.now(),
+      };
+      console.log("[wf-editor] postMessage workflow:context", {
+        workflowId: payload.workflowId,
+        scenePromptLen: payload.scenePrompt.length,
+        selectedNode: payload.selectedNode?.id,
+        contextQueueLen: payload.contextQueue.length,
+      });
+      window.parent.postMessage({ type: "workflow:context", payload }, "*");
+    };
+    send();
+    const timer = setInterval(send, 3000);
+    return () => clearInterval(timer);
+  }, [isInIframe, scenePrompt, workflowId, selectedNodeInfo]);
+
   // 运行完成后画布自动退出只读模式（runSnapshot 顶层已有，无需等 useWorkflowRun）
   const isRunDone = runSnapshot?.dag_status
     ? ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(runSnapshot.dag_status)
@@ -201,6 +230,21 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     setYamlOpen,
     readOnly: forceReadOnly || previewVersion !== null,
   });
+
+  // 将画布状态推入 Context Queue（事件驱动，变更时自动刷新）
+  useEffect(() => {
+    if (!workflowId) return;
+    const nodeList = nodes.map((n) => `${n.type ?? "?"}:${n.id.slice(0, 8)}`).join(", ");
+    const lines = ["[Workflow State]"];
+    lines.push(`- 节点: ${nodes.length} 个 [${nodeList || "(无)"}]`);
+    lines.push(`- 连线: ${edges.length} 条`);
+    if (runSnapshot?.dag_status) {
+      lines.push(`- 运行: ${runSnapshot.dag_status} (runId: ${(activeRunId ?? "").slice(0, 8)})`);
+    }
+    if (hasUnsavedChanges) lines.push("- ⚠️ 有未保存的更改");
+    if (saveStatus) lines.push(`- 保存: ${saveStatus}`);
+    pushContext("workflow-state", lines.join("\n"));
+  }, [workflowId, nodes, edges, runSnapshot, activeRunId, hasUnsavedChanges, saveStatus]);
 
   // ── Canvas hook ──
   const {
@@ -609,6 +653,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         contextKey={contextKey}
         onPromptComplete={handleRefreshDraft}
       />
+
       <div className="flex-1 relative overflow-hidden">
         {previewVersion !== null && (
           <div
