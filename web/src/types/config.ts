@@ -188,6 +188,7 @@ export interface ModelEntry {
   outputLimit: number | null;
   providerResourceAccess?: ResourceAccess;
   providerResourceKey?: string;
+  modalities?: unknown;
 }
 
 export interface ModelConfig {

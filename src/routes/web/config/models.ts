@@ -32,26 +32,6 @@ function configErrorStatus(code: string | undefined): 400 | 403 | 404 | 409 | 50
   }
 }
 
-/** 可用模型缓存（按 organizationId 隔离） */
-const cachedAvailableByOrg = new Map<
-  string,
-  {
-    models: Array<{
-      id: string;
-      modelId: string;
-      displayName: string;
-      provider: string;
-      providerDisplayName: string;
-      contextLimit: number | null;
-      outputLimit: number | null;
-      providerResourceAccess?: import("../../../services/config/types").ResourceAccess;
-      providerResourceKey?: string;
-    }>;
-    updatedAt: number;
-  }
->();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
-
 type ModelEntry = {
   id: string;
   modelId: string;
@@ -62,7 +42,18 @@ type ModelEntry = {
   outputLimit: number | null;
   providerResourceAccess?: import("../../../services/config/types").ResourceAccess;
   providerResourceKey?: string;
+  modalities?: unknown;
 };
+
+/** 可用模型缓存（按 organizationId 隔离） */
+const cachedAvailableByOrg = new Map<
+  string,
+  {
+    models: ModelEntry[];
+    updatedAt: number;
+  }
+>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
 
 async function buildAvailableList(ctx: AuthContext): Promise<ModelEntry[]> {
   const providers = await configPg.listProviders(ctx);
@@ -88,6 +79,7 @@ async function buildAvailableList(ctx: AuthContext): Promise<ModelEntry[]> {
         outputLimit: limit?.output ?? null,
         providerResourceAccess: inheritedAccess,
         providerResourceKey,
+        modalities: m.modalities ?? undefined,
       });
     }
   }
