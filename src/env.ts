@@ -48,6 +48,7 @@ const envSchema = z.object({
 
   // ── 可选：Hindsight 记忆 MCP ──
   HINDSIGHT_MCP_URL: z.string().optional(),
+  HINDSIGHT_API_TOKEN: z.string().optional(),
 
   // ── 可选：Agent Sites 代理 ──
   AGENT_SITES_BASE_URL: z.string().optional(),

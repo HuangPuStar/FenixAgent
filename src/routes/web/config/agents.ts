@@ -14,6 +14,7 @@ import {
 } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import * as agentMemoryConfigRepo from "../../../repositories/agent-memory-config";
 import { WebErrSchema } from "../../../schemas/common.schema";
 import {
   AgentMutationBodySchema,
@@ -34,6 +35,7 @@ import {
   listAgentKnowledgeBindingsById,
   syncAgentKnowledgeBindingsById,
 } from "../../../services/agent-knowledge";
+import { isAgentMemoryEnabled } from "../../../services/agent-memory";
 import { loadAgentTemplates } from "../../../services/agent-templates";
 import {
   AGENT_SETTABLE_FIELDS,
@@ -267,6 +269,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     knowledge: normalizeKnowledgeConfig(knowledge ?? null),
     machineId: agent.machineId ?? null,
     engineType: normalizeEngineType((agent as unknown as Record<string, unknown>).engineType),
+    enableMemory: await isAgentMemoryEnabled(agent.id),
     skillIds,
     mcpIds,
     siteAppIds,
@@ -279,6 +282,10 @@ async function handleGet(ctx: AuthContext, name: string) {
 async function handleSet(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
+
+  // 提取 enableMemory（非 agent_config 列，不在白名单中处理）
+  const enableMemory: boolean | undefined = typeof data.enableMemory === "boolean" ? data.enableMemory : undefined;
+  delete data.enableMemory;
 
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
@@ -311,6 +318,9 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   }
 
   await configPg.updateAgentConfig(ctx, name, updateData, { publicReadable });
+  if (enableMemory !== undefined) {
+    await agentMemoryConfigRepo.setEnabled(existing.id, enableMemory);
+  }
   const updatedAgent = await configPg.getAgentConfig(ctx, name);
   if (updatedAgent) {
     await syncAgentKnowledgeBindingsById(
@@ -368,6 +378,10 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
       "Invalid agent name: must be 1-64 characters (letters, numbers, spaces, single hyphens)",
     );
   }
+  // 提取 enableMemory（非 agent_config 列，不在白名单中处理）
+  const enableMemory: boolean | undefined = typeof data.enableMemory === "boolean" ? data.enableMemory : undefined;
+  delete data.enableMemory;
+
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
@@ -406,7 +420,10 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   const existing = await configPg.getAgentConfig(ctx, name);
   if (existing) return configError("ALREADY_EXISTS", `Agent '${name}' already exists`);
 
-  await configPg.createAgentConfig(ctx, name, filtered, { publicReadable });
+  const createdId = await configPg.createAgentConfig(ctx, name, filtered, { publicReadable });
+  if (enableMemory !== undefined) {
+    await agentMemoryConfigRepo.setEnabled(createdId, enableMemory);
+  }
   const createdAgent = await configPg.getAgentConfig(ctx, name);
   if (createdAgent) {
     await syncAgentKnowledgeBindingsById(

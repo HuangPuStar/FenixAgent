@@ -14,6 +14,7 @@ export interface CcbRuntimeConfig {
   model?: string;
   modelType?: string;
   poorMode?: boolean;
+  enabledPlugins?: Record<string, boolean>;
   permissions?: {
     allow?: string[];
     deny?: string[];
@@ -126,6 +127,12 @@ export function buildCcbRuntimeConfig(
 
   // 开启轻量模式，减少 token 消耗
   config.poorMode = true;
+
+  // Hindsight 插件：检测 launchSpec.env 中的 HINDSIGHT_* 变量
+  // 这些变量由 launch-spec-builder 在检测到"记忆开启"时注入
+  if (launchSpec.env?.HINDSIGHT_API_URL) {
+    config.enabledPlugins = { "hindsight-memory@hindsight": true };
+  }
 
   return config;
 }

@@ -134,6 +134,13 @@
       "when": 1784107549653,
       "tag": "0018_change_scheduled_task_v2_index_to_user_org_composite",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784189388727,
+      "tag": "0019_add-agent-memory-config",
+      "breakpoints": true
     }
   ]
 }
