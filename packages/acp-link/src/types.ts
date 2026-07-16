@@ -517,10 +517,20 @@ export interface RenameSessionResponse {
 // Model Selection Types
 // ============================================================================
 
+/** 模型输入/输出模态。兼容后端 ModelModalities 类型。 */
+export type ModelModalities =
+  | {
+      input?: ("text" | "image")[];
+      output?: ("text" | "image")[];
+    }
+  | string[];
+
 export interface ModelInfo {
   modelId: string;
   name: string;
   description?: string | null;
+  /** 模型支持的输入/输出模态（text, image 等） */
+  modalities?: ModelModalities | null;
 }
 
 export interface SessionModelState {
