@@ -23,7 +23,6 @@ import {
   startPromptTurn,
 } from "../agent-chat-service";
 import { ensureRunning } from "../instance";
-import { resolveWorkspacePath } from "../workspace-resolver";
 
 const logger = createLogger("wf-agent-chat");
 
@@ -282,7 +281,6 @@ class AgentChatTransport implements Transport {
     const chatSession = createAgentSession({
       relayHandle: handle,
       instanceId: instance.id,
-      workspacePath: resolveWorkspacePath(this.organizationId, envRow.userId ?? "system", envRow.id),
       // 不传 stopInstance：ensureRunning 的实例不随单次执行销毁
     });
 

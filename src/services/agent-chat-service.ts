@@ -6,7 +6,6 @@ import { environment } from "../db/schema";
 import { connectAgentRelay } from "../transport/relay/relay-handler";
 import { createWebEnvironment } from "./environment-web";
 import { spawnInstanceFromEnvironment, stopInstance } from "./instance";
-import { resolveWorkspacePath } from "./workspace-resolver";
 
 // ── 类型 ──
 
@@ -15,8 +14,6 @@ export interface AgentSession {
   relayHandle: EngineRelayHandle;
   /** 实例 ID */
   instanceId: string;
-  /** Workspace 路径（用于注入 cwd） */
-  workspacePath?: string;
   /** 释放资源（关闭 relay handle + stop instance） */
   dispose(): Promise<void>;
 }
@@ -47,14 +44,12 @@ export interface PromptTurn {
 export function createAgentSession(config: {
   relayHandle: EngineRelayHandle;
   instanceId: string;
-  workspacePath?: string;
   /** stop instance 函数，dispose 时调用（可选；不传则仅关闭 relay handle） */
   stopInstance?: () => Promise<void>;
 }): AgentSession {
   return {
     relayHandle: config.relayHandle,
     instanceId: config.instanceId,
-    workspacePath: config.workspacePath,
     dispose: async () => {
       try {
         config.relayHandle.close(1000, "request complete");
@@ -171,10 +166,6 @@ export async function startPromptTurn(
     };
     if (options.sessionId) {
       (rpcMsg.params as Record<string, unknown>).sessionId = options.sessionId;
-    }
-    // 注入 cwd
-    if (session.workspacePath) {
-      (rpcMsg.params as Record<string, unknown>).cwd = session.workspacePath;
     }
 
     const full = session.relayHandle as EngineRelayHandle & {
@@ -313,7 +304,6 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
   const session = createAgentSession({
     relayHandle: handle,
     instanceId: instance.id,
-    workspacePath: resolveWorkspacePath(input.organizationId, input.userId, instance.environmentId ?? environmentId),
     stopInstance: async () => {
       await stopInstance(instance.id, input.organizationId);
     },
