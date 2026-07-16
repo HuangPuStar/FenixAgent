@@ -185,8 +185,9 @@ export async function startPromptTurn(
 
     const unsub = full.onMessage?.((msg) => {
       const isRawJsonRpc = (msg as unknown as Record<string, unknown>).jsonrpc === "2.0";
-      const isWrappedJsonRpc = ((msg as any).payload as Record<string, unknown> | undefined)?.jsonrpc === "2.0";
-      const rpcSource = isRawJsonRpc ? msg : isWrappedJsonRpc ? (msg as any).payload : null;
+      const msgPayload = (msg as unknown as Record<string, unknown>).payload as Record<string, unknown> | undefined;
+      const isWrappedJsonRpc = msgPayload?.jsonrpc === "2.0";
+      const rpcSource = isRawJsonRpc ? msg : isWrappedJsonRpc ? msgPayload : null;
       if (!rpcSource) return;
       const rpc = rpcSource as unknown as {
         id?: number;

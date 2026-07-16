@@ -61,6 +61,7 @@ async function safeTaskOp<T>(
 // ── GET /tasks/v2 ──
 app.get(
   "/tasks/v2",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, query }: any) => {
     const authCtx = store.authContext!;
     const q = query as Record<string, string | undefined>;
@@ -90,6 +91,7 @@ app.get(
 // ── POST /tasks/v2 ──
 app.post(
   "/tasks/v2",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, body, error }: any) => {
     const authCtx = store.authContext!;
     const payload = body as CreateTaskV2Request;
@@ -117,6 +119,7 @@ app.post(
 // ── GET /tasks/v2/:id ──
 app.get(
   "/tasks/v2/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
@@ -136,6 +139,7 @@ app.get(
 // ── PUT /tasks/v2/:id ──
 app.put(
   "/tasks/v2/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, params, body, error }: any) => {
     const authCtx = store.authContext!;
     const payload = body as UpdateTaskV2Request;
@@ -170,6 +174,7 @@ app.put(
 // ── DELETE /tasks/v2/:id ──
 app.delete(
   "/tasks/v2/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     try {
@@ -196,6 +201,7 @@ app.delete(
 // ── POST /tasks/v2/:id/toggle ──
 app.post(
   "/tasks/v2/:id/toggle",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
@@ -215,6 +221,7 @@ app.post(
 // ── POST /tasks/v2/:id/trigger ──
 app.post(
   "/tasks/v2/:id/trigger",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
@@ -234,6 +241,7 @@ app.post(
 // ── GET /tasks/v2/:id/logs ──
 app.get(
   "/tasks/v2/:id/logs",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, params, query, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {
@@ -257,6 +265,7 @@ app.get(
 // ── DELETE /tasks/v2/:id/logs ──
 app.delete(
   "/tasks/v2/:id/logs",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
     return safeTaskOp(async () => {

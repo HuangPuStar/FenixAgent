@@ -42,7 +42,7 @@ export const OrganizationDetailSchema = OrganizationInfoSchema.extend({
 }).passthrough();
 
 /** 通用成功响应 */
-const ActionSuccessSchema = z
+const _ActionSuccessSchema = z
   .object({
     success: z.literal(true).describe("接口调用成功。"),
   })

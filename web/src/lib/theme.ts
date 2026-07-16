@@ -17,7 +17,7 @@ function getSystemTheme(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function getStoredTheme(): Theme {
+function _getStoredTheme(): Theme {
   if (typeof window === "undefined") return "system";
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -49,7 +49,7 @@ interface ThemeProviderProps {
   defaultTheme?: Theme;
 }
 
-export function ThemeProvider({ children, defaultTheme = "system" }: ThemeProviderProps) {
+export function ThemeProvider({ children, defaultTheme: _defaultTheme = "system" }: ThemeProviderProps) {
   // 暂时强制浅色模式：深色模式支持尚不完善，忽略 localStorage 及系统偏好
   const [theme, setThemeState] = useState<Theme>("light");
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");

@@ -26,7 +26,7 @@ import { MountSiteDialog } from "../../components/agent-panel/MountSiteDialog";
 import { PreviewTab } from "../../components/agent-panel/PreviewTab";
 import { normalizeToUserPath } from "../../components/agent-panel/preview/utils";
 import { SiteFrame } from "../../components/agent-panel/SiteFrame";
-import { type SiteEntry, SiteTabsBar } from "../../components/agent-panel/SiteTabsBar";
+import { SiteTabsBar } from "../../components/agent-panel/SiteTabsBar";
 import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeTabs";
 import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";

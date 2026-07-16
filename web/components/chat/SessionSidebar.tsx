@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, MessageSquare, Plus } from "lucide-react";
+import { ChevronLeft, MessageSquare, Plus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionListItem } from "../../src/lib/types";

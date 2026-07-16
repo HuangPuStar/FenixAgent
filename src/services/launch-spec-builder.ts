@@ -490,7 +490,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
   // Phase 3: 产出最终 launchSpec，此时所有关键资源都已经完成严格校验。
   // 调用 agent-memory service 判断是否启用 Hindsight（不查 extra.plugin）
   let processedExtra = (agentConfig.extra as Record<string, unknown> | null | undefined) ?? null;
-  let ccbHindsightEnv: Record<string, string> = {};
+  const ccbHindsightEnv: Record<string, string> = {};
 
   const enableMemory = await shouldEnableAgentMemory(agentConfig.id);
   if (enableMemory) {

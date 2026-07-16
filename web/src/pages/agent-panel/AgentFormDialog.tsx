@@ -159,7 +159,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
   // 下拉选项 state（由 loadFormData 填充）
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
-  const [availableModels, setAvailableModels] = useState<ModelEntry[]>([]);
+  const [_availableModels, setAvailableModels] = useState<ModelEntry[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
   const [skillOptions, setSkillOptions] = useState<SkillOptionView[]>([]);
   const [mcpOptions, setMcpOptions] = useState<AgentMcpOption[]>([]);
