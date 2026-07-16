@@ -8,20 +8,20 @@ const { normalizeToUserPath } = await import("../components/agent-panel/preview/
 // 用 env_*/ 分隔符切分即可提取 workspace 相对路径，不依赖 server 上下文。
 // =============================================================================
 
-describe("normalizeToUserPath — 相对路径补 user/ 前缀", () => {
-  // 纯相对路径：统一补 user/ 前缀
-  test("纯相对路径补 user/ 前缀", () => {
-    expect(normalizeToUserPath("src/foo.ts")).toBe("user/src/foo.ts");
+describe("normalizeToUserPath — 纯相对路径保持不变", () => {
+  // 纯相对路径：不加 user/ 前缀，agent 的 cwd 即 workspace 根
+  test("纯相对路径保持原样", () => {
+    expect(normalizeToUserPath("src/foo.ts")).toBe("src/foo.ts");
   });
 
   // 多层目录的相对路径
-  test("多层相对路径补 user/ 前缀", () => {
-    expect(normalizeToUserPath("a/b/c/d.txt")).toBe("user/a/b/c/d.txt");
+  test("多层相对路径保持原样", () => {
+    expect(normalizeToUserPath("a/b/c/d.txt")).toBe("a/b/c/d.txt");
   });
 
   // 仅文件名
-  test("仅文件名也补 user/ 前缀", () => {
-    expect(normalizeToUserPath("README.md")).toBe("user/README.md");
+  test("仅文件名保持原样", () => {
+    expect(normalizeToUserPath("README.md")).toBe("README.md");
   });
 });
 
@@ -80,8 +80,8 @@ describe("normalizeToUserPath — 边界场景", () => {
     expect(normalizeToUserPath("")).toBe("user/");
   });
 
-  // 带尾斜杠的相对路径去除尾斜杠后补前缀
-  test("带尾斜杠的相对路径去除尾斜杠后补前缀", () => {
-    expect(normalizeToUserPath("src/")).toBe("user/src");
+  // 带尾斜杠的相对路径去除尾斜杠后保持原样
+  test("带尾斜杠的相对路径去除尾斜杠后保持原样", () => {
+    expect(normalizeToUserPath("src/")).toBe("src");
   });
 });
