@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import type { AgentLaunchSpec, McpServerConfig } from "@fenix/plugin-sdk";
 
 export interface InstalledSkillReference {
@@ -106,6 +107,27 @@ export function buildOpencodeRuntimeConfig(
   launchSpec: AgentLaunchSpec,
   _installedSkills: InstalledSkillReference[],
 ): OpencodeRuntimeConfig {
+  // [DEBUG] 写入 /tmp 以便排查
+  try {
+    writeFileSync(
+      "/tmp/multimodal-debug.json",
+      JSON.stringify(
+        {
+          enableMultimodal: launchSpec.agent?.extra?.enableMultimodal,
+          rawModalities: launchSpec.model.modalities ?? null,
+          agentExtraKeys: launchSpec.agent?.extra ? Object.keys(launchSpec.agent.extra) : [],
+          modelProvider: launchSpec.model.provider,
+          modelName: launchSpec.model.model,
+          timestamp: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+  } catch {
+    /* 静默 */
+  }
+
   const providerId = launchSpec.model.provider;
   const modelId = launchSpec.model.modelName ?? launchSpec.model.model;
   const agentName = launchSpec.agent.name;
