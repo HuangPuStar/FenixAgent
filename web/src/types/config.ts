@@ -241,6 +241,7 @@ export interface AgentDetail {
     siteApps?: Array<{ id: string; label: string; remoteAppId: string | null }>;
   };
   resourceAccess?: ResourceAccess;
+  enableMemory?: boolean;
 }
 
 // --- Skills ---

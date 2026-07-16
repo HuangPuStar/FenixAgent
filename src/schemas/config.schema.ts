@@ -364,6 +364,7 @@ export const AgentDetailSchema = z
     machineId: z.string().nullable().optional().describe("绑定的机器 ID；未设置时为 null。"),
     relatedResources: AgentRelatedResourceViewSchema.optional().describe("关联资源的展示视图。"),
     resourceAccess: AgentResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
+    enableMemory: z.boolean().optional().describe("是否为该 Agent 启用了 Hindsight 记忆功能。"),
   })
   .describe("Agent 详情。");
 
