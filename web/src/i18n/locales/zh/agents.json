@@ -109,10 +109,6 @@
     "enableTitle": "智能体记忆",
     "enableDescription": "启用跨会话记忆能力"
   },
-  "modalities": {
-    "enableTitle": "启用图片输入",
-    "enableDescription": "允许 Agent 接收图片作为输入（要求模型支持多模态）"
-  },
   "resource": {
     "publicDescription": "允许其他团队读取此智能体",
     "sharedSourceTitle": "共享智能体",

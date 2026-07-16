@@ -109,10 +109,6 @@
     "enableTitle": "Agent Memory",
     "enableDescription": "Enable agent memory across conversations"
   },
-  "modalities": {
-    "enableTitle": "Enable Image Input",
-    "enableDescription": "Allow Agent to receive images as input (requires multimodal model)"
-  },
   "resource": {
     "publicDescription": "Allow other teams to read this agent",
     "sharedSourceTitle": "Shared agent",

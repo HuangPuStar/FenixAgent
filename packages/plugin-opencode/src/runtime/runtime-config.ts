@@ -1,4 +1,3 @@
-import { writeFileSync } from "node:fs";
 import type { AgentLaunchSpec, McpServerConfig } from "@fenix/plugin-sdk";
 
 export interface InstalledSkillReference {
@@ -107,27 +106,6 @@ export function buildOpencodeRuntimeConfig(
   launchSpec: AgentLaunchSpec,
   _installedSkills: InstalledSkillReference[],
 ): OpencodeRuntimeConfig {
-  // [DEBUG] 写入 /tmp 以便排查
-  try {
-    writeFileSync(
-      "/tmp/multimodal-debug.json",
-      JSON.stringify(
-        {
-          enableMultimodal: launchSpec.agent?.extra?.enableMultimodal,
-          rawModalities: launchSpec.model.modalities ?? null,
-          agentExtraKeys: launchSpec.agent?.extra ? Object.keys(launchSpec.agent.extra) : [],
-          modelProvider: launchSpec.model.provider,
-          modelName: launchSpec.model.model,
-          timestamp: new Date().toISOString(),
-        },
-        null,
-        2,
-      ),
-    );
-  } catch {
-    /* 静默 */
-  }
-
   const providerId = launchSpec.model.provider;
   const modelId = launchSpec.model.modelName ?? launchSpec.model.model;
   const agentName = launchSpec.agent.name;
@@ -151,7 +129,6 @@ export function buildOpencodeRuntimeConfig(
             const modelEntry: OpencodeProviderModelConfig = {
               name: launchSpec.model.model,
             };
-            const enableMultimodal = launchSpec.agent?.extra?.enableMultimodal === true;
             const rawModalities = launchSpec.model.modalities;
             // 仅当 modalities 是对象格式（非数组）且 input 包含 "image" 时才认为支持图片
             const modelHasImage =
@@ -160,7 +137,7 @@ export function buildOpencodeRuntimeConfig(
               !Array.isArray(rawModalities) &&
               (rawModalities as { input?: string[] }).input?.includes("image");
 
-            if (enableMultimodal && modelHasImage) {
+            if (modelHasImage) {
               modelEntry.modalities = rawModalities as { input?: ("text" | "image")[]; output?: ("text" | "image")[] };
             } else {
               modelEntry.modalities = { input: ["text"], output: ["text"] };

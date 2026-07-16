@@ -205,7 +205,6 @@ interface LoadedFormData {
     mcpIds: string[];
     siteAppIds: string[];
     enableMemory: boolean;
-    enableMultimodal: boolean;
     extra: unknown | null;
   };
 }
@@ -254,7 +253,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
   const [hindsightEnabled, setHindsightEnabled] = useState(false);
   const [formEnableMemory, setFormEnableMemory] = useState(false);
-  const [formEnableMultimodal, setFormEnableMultimodal] = useState(false);
   const [formExtra, setFormExtra] = useState("");
 
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
@@ -305,7 +303,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setRelatedResources(undefined);
     setSelectedTemplateId(null);
     setFormEnableMemory(false);
-    setFormEnableMultimodal(false);
     setFormExtra("");
     setSkillsExpanded(false);
     setMcpsExpanded(false);
@@ -438,7 +435,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             mcpIds: Array.isArray(d.mcpIds) ? (d.mcpIds as string[]) : [],
             siteAppIds: Array.isArray(d.siteAppIds) ? (d.siteAppIds as string[]) : [],
             enableMemory: enableMemoryVal,
-            enableMultimodal: Boolean((d.extra as Record<string, unknown> | null)?.enableMultimodal),
             extra: d.extra ?? null,
           },
         };
@@ -531,7 +527,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormMcpIds(es.mcpIds);
           setFormSiteAppIds(es.siteAppIds);
           setFormEnableMemory(es.enableMemory);
-          setFormEnableMultimodal(es.enableMultimodal);
           setFormExtra(es.extra ? JSON.stringify(es.extra, null, 2) : "");
         } else if (!isEdit) {
           // 创建模式：预选第一个模型
@@ -677,16 +672,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           publicReadable: formPublicReadable,
         };
         const editExtra = buildExtraPayload(formExtra, formEnableMemory);
-        if (formEnableMultimodal) {
-          if (editExtra) {
-            editExtra.enableMultimodal = true;
-            data.extra = editExtra;
-          } else {
-            data.extra = { enableMultimodal: true };
-          }
-        } else {
-          data.extra = editExtra ?? null;
-        }
+        data.extra = editExtra ?? null;
 
         await unwrap(agentApi.set(agentName!, data));
         toast.success(t("save.successUpdate"));
@@ -714,14 +700,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           publicReadable: formPublicReadable,
         };
         const createExtra = buildExtraPayload(formExtra, formEnableMemory);
-        if (formEnableMultimodal) {
-          if (createExtra) {
-            createExtra.enableMultimodal = true;
-            createPayload.extra = createExtra;
-          } else {
-            createPayload.extra = { enableMultimodal: true };
-          }
-        } else if (createExtra) {
+        if (createExtra) {
           createPayload.extra = createExtra;
         }
         await unwrap(agentApi.create(name, createPayload));
@@ -798,12 +777,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const title = isEdit ? (readOnlyAgent ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle");
   const confirmLabel = formSaving ? "..." : isEdit ? t("actions.save") : t("dialog.createConfirm");
   const selectedModelLabel = effectiveModelOptions.find((option) => option.value === formModel)?.label;
-  const selectedModel = availableModels.find((m) => m.id === formModel);
-  const selectedModelHasImage =
-    selectedModel?.modalities != null &&
-    typeof selectedModel.modalities === "object" &&
-    !Array.isArray(selectedModel.modalities) &&
-    (selectedModel.modalities as { input?: string[] }).input?.includes("image");
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -913,19 +886,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                       </SelectContent>
                     </Select>
                   </div>
-                  {selectedModelHasImage && (
-                    <label className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm">
-                      <div>
-                        <p className="font-medium text-text-bright">{t("modalities.enableTitle")}</p>
-                        <p className="text-xs text-text-muted">{t("modalities.enableDescription")}</p>
-                      </div>
-                      <Switch
-                        checked={formEnableMultimodal}
-                        disabled={readOnlyAgent}
-                        onCheckedChange={setFormEnableMultimodal}
-                      />
-                    </label>
-                  )}
                   <div>
                     <Label>{t("form.prompt")}</Label>
                     <Textarea
