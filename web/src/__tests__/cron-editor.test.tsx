@@ -17,7 +17,7 @@ mock.module("@/src/i18n", () => ({
   NS: { TASKS_V2: "tasksV2" },
 }));
 
-const { describeCron, PRESETS } = await import("../pages/agent-panel/components/CronEditor");
+const { describeCron } = await import("../pages/agent-panel/components/CronEditor");
 
 afterEach(() => {
   mock.restore();

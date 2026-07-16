@@ -20,13 +20,11 @@ describe("createAgentSession", () => {
     const session = createAgentSession({
       relayHandle: handle,
       instanceId: "inst-test",
-      workspacePath: "/ws/test",
       stopInstance: async () => {
         _stopped = true;
       },
     });
     expect(session.instanceId).toBe("inst-test");
-    expect(session.workspacePath).toBe("/ws/test");
     expect(session.relayHandle).toBe(handle);
   });
 

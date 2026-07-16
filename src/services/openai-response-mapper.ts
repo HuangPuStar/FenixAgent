@@ -22,20 +22,6 @@ export interface SessionUpdateEvent {
   size?: number;
 }
 
-/** JSON-RPC 消息 */
-interface JsonRpcMessage {
-  jsonrpc: "2.0";
-  id?: number;
-  method?: string;
-  params?: {
-    sessionId?: string;
-    update?: SessionUpdateEvent;
-  };
-  result?: {
-    stopReason?: string;
-  };
-}
-
 // ── 统一 JSON-RPC 提取 ──
 
 /**

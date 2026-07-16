@@ -8,6 +8,7 @@ import { db } from "../db";
 import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "../db/schema";
 import { AppError } from "../errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
+import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "./agent-memory";
 import { composeAgentSystemPrompt } from "./agent-system-prompt";
 import type { AgentConfigDetailWithAccess } from "./config";
 import { resolveApiKey } from "./config-utils";
@@ -118,6 +119,7 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Pro
     // opencode / ccb 引擎用 modelName 作为运行时模型标识（如 ANTHROPIC_MODEL 环境变量）。
     // 数据库 model.modelId 即用户配置的模型名（如 deepseek-v4-flash），直接透传。
     modelName: matchedModel.modelId,
+    modalities: matchedModel.modalities ?? undefined,
   };
 }
 
@@ -164,6 +166,7 @@ async function resolveFirstReadableModelConfig(input: {
       apiKey: resolveApiKey(providerRow.apiKey) ?? "",
       model: firstModel.modelId,
       modelName: firstModel.modelId,
+      modalities: firstModel.modalities ?? undefined,
     };
   }
 
@@ -485,10 +488,13 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
   const finalPrompt = composeAgentSystemPrompt(config.agentSystemPrompt, agentConfig.name, agentConfig.prompt);
 
   // Phase 3: 产出最终 launchSpec，此时所有关键资源都已经完成严格校验。
-  // 处理 extra.plugin：对 Hindsight 条目注入服务端动态配置
+  // 调用 agent-memory service 判断是否启用 Hindsight（不查 extra.plugin）
   let processedExtra = (agentConfig.extra as Record<string, unknown> | null | undefined) ?? null;
-  if (processedExtra && Array.isArray(processedExtra.plugin)) {
-    const hindsightUrl = process.env.HINDSIGHT_MCP_URL;
+  const ccbHindsightEnv: Record<string, string> = {};
+
+  const enableMemory = await shouldEnableAgentMemory(agentConfig.id);
+  if (enableMemory) {
+    const hindsightUrl = process.env.HINDSIGHT_MCP_URL; // shouldEnableAgentMemory 已确保非空
     if (hindsightUrl) {
       let bankId: string | null = null;
       try {
@@ -502,30 +508,44 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
         logError(`[launch-spec-builder] failed to resolve memberId for Hindsight bankId: ${String(err)}`);
       }
 
-      const injectedPlugin = (processedExtra.plugin as Array<[string, Record<string, unknown>]>).map(
-        ([name, config]) => {
-          if (name === "@konghayao/opencode-hindsight") {
-            return [
-              name,
-              {
-                ...config,
-                hindsightApiUrl: hindsightUrl,
-                ...(bankId ? { bankId } : {}),
-              },
-            ] as [string, Record<string, unknown>];
-          }
-          return [name, config] as [string, Record<string, unknown>];
+      // OpenCode 路径：动态构建 plugin 列表（过滤掉旧 extra 中的 hindsight 条目，用动态构造的替换）
+      const existingPlugins: Array<[string, Record<string, unknown>]> = (
+        Array.isArray(processedExtra?.plugin)
+          ? (processedExtra.plugin as Array<[string, unknown]>).filter(
+              ([name]) => name !== "@konghayao/opencode-hindsight",
+            )
+          : []
+      ) as Array<[string, Record<string, unknown>]>;
+
+      existingPlugins.push([
+        "@konghayao/opencode-hindsight",
+        {
+          ...HINDSIGHT_PLUGIN_DEFAULTS,
+          hindsightApiUrl: hindsightUrl,
+          ...(bankId ? { bankId } : {}),
         },
-      );
-      processedExtra = { ...processedExtra, plugin: injectedPlugin };
+      ]);
+
+      processedExtra = { ...(processedExtra ?? {}), plugin: existingPlugins };
+
+      // CCB 路径：注入 Hindsight 环境变量到 launchSpec.env
+      ccbHindsightEnv.HINDSIGHT_API_URL = hindsightUrl;
+      ccbHindsightEnv.HINDSIGHT_LLM_PROVIDER = "claude-code";
+      if (bankId) ccbHindsightEnv.HINDSIGHT_BANK_ID = bankId;
+      const apiToken = process.env.HINDSIGHT_API_TOKEN;
+      if (apiToken) ccbHindsightEnv.HINDSIGHT_API_TOKEN = apiToken;
     }
   }
+
+  // 合并 extraEnv 和 CCB Hindsight 环境变量（调用方显式传入的同名变量优先）
+  const extraEnv = input.extraEnv ?? {};
+  const launchEnv = { ...ccbHindsightEnv, ...extraEnv };
 
   return {
     organizationId,
     userId,
     ...(environmentId ? { environmentId } : {}),
-    env: input.extraEnv ?? {},
+    env: launchEnv,
     agent: {
       name: agentConfig.name,
       prompt: finalPrompt,

@@ -7,6 +7,10 @@ export interface InstalledSkillReference {
 
 export interface OpencodeProviderModelConfig {
   name: string;
+  modalities?: {
+    input?: ("text" | "image")[];
+    output?: ("text" | "image")[];
+  };
 }
 
 export interface OpencodeProviderConfig {
@@ -121,9 +125,25 @@ export function buildOpencodeRuntimeConfig(
           setCacheKey: true,
         },
         models: {
-          [modelId]: {
-            name: launchSpec.model.model,
-          },
+          [modelId]: (() => {
+            const modelEntry: OpencodeProviderModelConfig = {
+              name: launchSpec.model.model,
+            };
+            const rawModalities = launchSpec.model.modalities;
+            // 仅当 modalities 是对象格式（非数组）且 input 包含 "image" 时才认为支持图片
+            const modelHasImage =
+              rawModalities != null &&
+              typeof rawModalities === "object" &&
+              !Array.isArray(rawModalities) &&
+              (rawModalities as { input?: string[] }).input?.includes("image");
+
+            if (modelHasImage) {
+              modelEntry.modalities = rawModalities as { input?: ("text" | "image")[]; output?: ("text" | "image")[] };
+            } else {
+              modelEntry.modalities = { input: ["text"], output: ["text"] };
+            }
+            return modelEntry;
+          })(),
         },
       },
     },

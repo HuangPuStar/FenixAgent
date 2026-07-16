@@ -130,9 +130,9 @@ agentSitesProxyApp.all(
 );
 
 // /web/site/deploy/:appId/*（子路径，如 /web/site/deploy/app-abc123/foo/bar）
-// biome-ignore lint/suspicious/noExplicitAny: Elysia 通配符 * 参数字段名为 '*'，类型系统无法表达
 agentSitesProxyApp.all(
   "/:appId/*",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 通配符 * 参数字段名为 '*'，类型系统无法表达
   ({ request, set, params }: any) => {
     const subPath = params["*"] ? `/${params["*"]}` : "/";
     return doProxy(params.appId, subPath, request, set as { status: number; headers: Record<string, string> });

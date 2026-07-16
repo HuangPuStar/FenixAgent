@@ -561,6 +561,18 @@ export const agentConfig = pgTable(
   }),
 );
 
+// Agent 记忆配置（独立表，承载记忆开关状态，为后续扩展预留）
+export const agentMemoryConfig = pgTable("agent_memory_config", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentConfigId: uuid("agent_config_id")
+    .notNull()
+    .unique()
+    .references(() => agentConfig.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // MCP 服务器
 export const mcpServer = pgTable(
   "mcp_server",

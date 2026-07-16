@@ -76,6 +76,7 @@ services:
 
       # Hindsight 记忆服务
       HINDSIGHT_MCP_URL: http://hindsight:9999
+      HINDSIGHT_API_TOKEN: ${HINDSIGHT_API_TOKEN:-}
 
       # 知识库（需额外启动 RagFlow）
       RAGFLOW_API_URL: ${RAGFLOW_API_URL}

@@ -314,6 +314,7 @@ export interface AgentConfigRowWithAccess {
   extra?: AgentExtraConfig | null;
   createdAt: Date;
   updatedAt: Date;
+  enableMemory?: boolean;
   resourceAccess: ResourceAccess;
 }
 

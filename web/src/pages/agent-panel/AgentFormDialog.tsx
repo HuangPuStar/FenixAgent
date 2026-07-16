@@ -115,65 +115,6 @@ export function mapModelOptions(available: ModelEntry[]): { value: string; label
   });
 }
 
-const HINDSIGHT_PLUGIN_NAME = "@konghayao/opencode-hindsight";
-const HINDSIGHT_DEFAULT_CONFIG: Record<string, unknown> = {
-  autoRecall: true,
-  autoRetain: true,
-  recallBudget: "mid",
-  recallTags: [],
-  recallTagsMatch: "any",
-  retainTags: [],
-  retainEveryNTurns: 3,
-  debug: false,
-};
-
-function hasHindsightPlugin(extra: unknown): boolean {
-  if (!extra || typeof extra !== "object") return false;
-  const plugins = (extra as Record<string, unknown>).plugin;
-  return Array.isArray(plugins) && plugins.some((e) => Array.isArray(e) && e[0] === HINDSIGHT_PLUGIN_NAME);
-}
-
-function syncExtraJson(rawJson: string, enableMemory: boolean): string {
-  let extra: Record<string, unknown> = {};
-  if (rawJson.trim()) {
-    try {
-      extra = JSON.parse(rawJson);
-    } catch {
-      return rawJson;
-    }
-  }
-
-  if (enableMemory) {
-    const plugins = (
-      Array.isArray(extra.plugin)
-        ? (extra.plugin as unknown[]).filter((e) => !Array.isArray(e) || e[0] !== HINDSIGHT_PLUGIN_NAME)
-        : []
-    ) as Array<[string, unknown]>;
-    extra = { ...extra, plugin: [...plugins, [HINDSIGHT_PLUGIN_NAME, HINDSIGHT_DEFAULT_CONFIG]] };
-  } else if (Array.isArray(extra.plugin)) {
-    const plugins = (extra.plugin as unknown[]).filter((e) => !Array.isArray(e) || e[0] !== HINDSIGHT_PLUGIN_NAME);
-    if (plugins.length === 0) {
-      const { plugin: _, ...rest } = extra;
-      extra = rest;
-    } else {
-      extra = { ...extra, plugin: plugins };
-    }
-  }
-
-  return Object.keys(extra).length > 0 ? JSON.stringify(extra, null, 2) : "";
-}
-
-function buildExtraPayload(rawJson: string, enableMemory: boolean): Record<string, unknown> | undefined {
-  const synced = syncExtraJson(rawJson, enableMemory);
-  if (!synced) return undefined;
-  try {
-    const parsed = JSON.parse(synced);
-    return Object.keys(parsed as Record<string, unknown>).length > 0 ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** 加载表单所有下拉/选项数据及编辑态回显 */
 interface LoadedFormData {
   machineOptions: Array<{ id: string; agentName: string; hostname: string; name: string | null; status: string }>;
@@ -218,6 +159,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
   // 下拉选项 state（由 loadFormData 填充）
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
+  const [_availableModels, setAvailableModels] = useState<ModelEntry[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseInfo[]>([]);
   const [skillOptions, setSkillOptions] = useState<SkillOptionView[]>([]);
   const [mcpOptions, setMcpOptions] = useState<AgentMcpOption[]>([]);
@@ -366,12 +308,13 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         ]);
 
         const d = agentDetail as unknown as Record<string, unknown>;
-        const enableMemoryVal = hasHindsightPlugin(d.extra);
+        const enableMemoryVal = Boolean(d.enableMemory);
 
         // 模型选项
-        const modelOptionsVal = Array.isArray(modelData.available)
-          ? mapModelOptions(modelData.available as ModelEntry[])
-          : [];
+        const modelOptionsVal = Array.isArray(modelData.available) ? (modelData.available as ModelEntry[]) : [];
+        if (modelOptionsVal.length > 0) {
+          setAvailableModels(modelOptionsVal);
+        }
 
         // 知识库选项
         const knowledgeOptionsVal = Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : [];
@@ -410,7 +353,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           machineOptions: machineOptionsVal,
           siteOptions: siteOptionsVal,
           hindsightEnabled: hindsightEnabledVal,
-          modelOptions: modelOptionsVal,
+          modelOptions: mapModelOptions(modelOptionsVal),
           knowledgeOptions: knowledgeOptionsVal,
           skillOptions: skillOptionsVal,
           mcpOptions: mcpOptionsVal,
@@ -450,6 +393,11 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       }
 
       const modelData = await unwrap(modelApi.get());
+      if (Array.isArray(modelData.available)) {
+        const entries = modelData.available as unknown as ModelEntry[];
+        setAvailableModels(entries);
+        setModelOptions(mapModelOptions(entries));
+      }
       const modelOptionsVal = Array.isArray(modelData.available)
         ? mapModelOptions(modelData.available as ModelEntry[])
         : [];
@@ -664,8 +612,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
         };
-        const editExtra = buildExtraPayload(formExtra, formEnableMemory);
-        data.extra = editExtra ?? null;
+        data.extra = formExtra.trim() ? JSON.parse(formExtra) : null;
+        data.enableMemory = formEnableMemory;
 
         await unwrap(agentApi.set(agentName!, data));
         toast.success(t("save.successUpdate"));
@@ -692,8 +640,10 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           machineId: formMachineId === "local" ? null : formMachineId,
           publicReadable: formPublicReadable,
         };
-        const createExtra = buildExtraPayload(formExtra, formEnableMemory);
-        if (createExtra) createPayload.extra = createExtra;
+        if (formExtra.trim()) {
+          createPayload.extra = JSON.parse(formExtra);
+        }
+        createPayload.enableMemory = formEnableMemory;
         await unwrap(agentApi.create(name, createPayload));
         onOpenChange(false);
         onSuccess?.();
@@ -1211,7 +1161,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                         disabled={readOnlyAgent}
                         onCheckedChange={(checked) => {
                           setFormEnableMemory(checked);
-                          setFormExtra(syncExtraJson(formExtra, checked));
                         }}
                       />
                     </label>

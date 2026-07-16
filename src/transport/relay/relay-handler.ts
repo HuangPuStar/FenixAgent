@@ -317,8 +317,9 @@ export async function handleRelayMessage(
       entry.outboundBuffer.push(parsed);
       return;
     }
-    // 本地 agent：注入 workspace cwd（远程 agent 由 AcpDispatcher 处理）
-    if (isJsonRpc && entry.workspacePath) {
+    // 只在本地 agent 注入 workspace cwd；远程 agent 由远程机器自己管理 workspace
+    const isRemote = getAgentMachineCache().has(entry.agentId);
+    if (isJsonRpc && entry.workspacePath && !isRemote) {
       const method = parsed.method as string | undefined;
       if (
         method === "session/new" ||

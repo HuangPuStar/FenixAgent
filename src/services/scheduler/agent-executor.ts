@@ -19,7 +19,8 @@ function extractPlainText(events: Array<{ type: string; payload?: unknown }>): s
     if (!payload) continue;
 
     // JSON-RPC result 中的 stopReason → 结束信号，不参与文本提取
-    if (payload.jsonrpc === "2.0" && (payload as any).result?.stopReason) continue;
+    if (payload.jsonrpc === "2.0" && (payload as unknown as { result?: { stopReason?: unknown } }).result?.stopReason)
+      continue;
 
     // session/update 通知
     if (payload.method === "session/update") {
@@ -72,7 +73,8 @@ export const agentExecutor: TaskExecutor = {
             events.push(ev as unknown as { type: string; payload?: unknown });
             const raw = ev as unknown as Record<string, unknown>;
             const rpc = raw.jsonrpc === "2.0" ? raw : (ev.payload as Record<string, unknown> | undefined);
-            if (rpc?.jsonrpc === "2.0" && (rpc as any).result?.stopReason) break;
+            if (rpc?.jsonrpc === "2.0" && (rpc as unknown as { result?: { stopReason?: unknown } }).result?.stopReason)
+              break;
           }
         })(),
         timeoutPromise,

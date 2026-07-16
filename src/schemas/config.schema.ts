@@ -214,6 +214,9 @@ export const ModelEntrySchema = z.object({
   providerDisplayName: z.string(),
   contextLimit: z.number().nullable(),
   outputLimit: z.number().nullable(),
+  providerResourceAccess: z.unknown().optional(),
+  providerResourceKey: z.string().optional(),
+  modalities: z.unknown().nullable().optional(),
 });
 
 export const ModelConfigSchema = z.object({

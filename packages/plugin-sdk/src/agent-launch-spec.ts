@@ -25,6 +25,7 @@ export interface ModelConfig {
   apiKey: string;
   model: string;
   modelName?: string;
+  modalities?: { input?: ("text" | "image")[]; output?: ("text" | "image")[] } | string[];
 }
 
 /**

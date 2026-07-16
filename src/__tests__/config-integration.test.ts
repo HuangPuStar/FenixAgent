@@ -238,12 +238,15 @@ describe("Config Route Integration", () => {
       listAgentSiteAppIds: async () => [],
     });
     stubDb({
-      select: () => ({
-        from: () => ({
-          where: async () => [],
-          limit: async () => [],
-        }),
-      }),
+      select: () => {
+        const chainable = {
+          where: () => chainable,
+          limit: () => chainable,
+          // biome-ignore lint/suspicious/noThenProperty: 链式查询 mock 需要 thenable 支持 await
+          then: (resolve: (v: unknown[]) => void) => resolve([]),
+        };
+        return { from: () => chainable };
+      },
     });
 
     const res = await request("/web/config/agents?name=org-source%2Fagc-external", { method: "GET" });

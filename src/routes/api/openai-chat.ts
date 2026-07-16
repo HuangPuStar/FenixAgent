@@ -20,6 +20,7 @@ const app = new Elysia({ name: "openai-chat", prefix: "/api" }).use(authGuardPlu
 
 app.post(
   "/agents/:agentId/v1/chat/completions",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
   async ({ params, body, request, store, error }: any) => {
     const authCtx = store.authContext as AuthContext;
     const agentConfigId = params.agentId as string;
@@ -119,13 +120,17 @@ app.post(
                 // 兼容两种格式检测完成信号
                 const asRaw = ev as unknown as Record<string, unknown>;
                 const rpc = asRaw.jsonrpc === "2.0" ? asRaw : (ev.payload as Record<string, unknown> | undefined);
-                if (rpc?.jsonrpc === "2.0" && (rpc as any).result?.stopReason) break;
+                if (
+                  rpc?.jsonrpc === "2.0" &&
+                  (rpc as unknown as { result?: { stopReason?: unknown } }).result?.stopReason
+                )
+                  break;
               }
             })(),
             timeoutPromise,
           ]);
 
-          const response = mapToNonStreamingResponse(events as any, agentConfigId);
+          const response = mapToNonStreamingResponse(events, agentConfigId);
           log(
             `[openai] Non-streaming response: finish_reason=${response.choices[0].finish_reason} events=${events.length}`,
           );
