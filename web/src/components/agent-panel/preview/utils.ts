@@ -141,23 +141,27 @@ export function buildPreviewUrl(envId: string, filePath: string): string {
 }
 
 /**
- * 把 Agent 工具调用上报的任意格式路径规范化为「相对 user/ 的路径」（带 user/ 前缀），
- * 与后端 `isUserPath` 校验保持一致。
+ * 把 Agent 工具调用上报的任意格式路径规范化为 workspace 相对路径，
+ * 与后端文件树 API 返回的路径格式保持一致。
+ *
+ * Agent 的 cwd 即 workspace 根目录，上报的 path 已经是相对于 workspace 的路径，
+ * 无需额外添加 `user/` 前缀。后端 `resolveWorkspacePath` 会自行处理路径解析。
  *
  * Agent 上报的 path 可能是：
- * 1. 相对路径（`src/foo.ts`）—— Agent 工作目录为 workspace 时常见
- * 2. 已带 user/ 前缀的相对路径（`user/src/foo.ts`）
- * 3. workspace 绝对路径含 /user/ 段（`/workspaces/{org}/{user}/{env}/user/src/foo.ts`）
- * 4. workspace 绝对路径不含 /user/ 段（`/workspaces/{org}/{user}/{env}/src/foo.ts`）
+ * 1. workspace 相对路径（`src/foo.ts`、`user/foo.txt`）——直接返回
+ * 2. workspace 绝对路径含 /user/ 段（`/workspaces/{org}/{user}/{env}/user/src/foo.ts`）
+ * 3. workspace 绝对路径不含 /user/ 段（`/workspaces/{org}/{user}/{env}/src/foo.ts`）
+ * 4. 空串 —— 兜底为 `user/`
  *
  * 规范化策略：
  * - 已带 `user/` 前缀的路径：直接保持原样
+ * - 空字符串、纯粹 "user" / "user/"：统一为 `user/`
  * - 绝对路径命中 env_* 段：取其后部分作为 workspace 相对路径，
  *   保留原始 user/ 或非 user/ 前缀状态，不额外添加前缀
  * - 绝对路径无 env_* 段：原样返回让 server 兜底
- * - 纯相对路径：统一加 `user/` 前缀（兼容前导 `/`，如 `/src/foo.ts`）
+ * - 纯相对路径：直接返回（agent 工作目录即 workspace 根，路径已正确）
  *
- * 这样可与文件树 tree API 返回的路径格式（`user/foo/bar.html`）对齐，
+ * 这样可与文件树 tree API 返回的路径格式对齐，
  * 同一文件不会因为路径来源不同而出现两个 tab。
  */
 export function normalizeToUserPath(rawPath: string): string {
@@ -183,9 +187,8 @@ export function normalizeToUserPath(rawPath: string): string {
     return trimmed;
   }
 
-  // 纯相对路径分支：统一加 user/ 前缀（兼容前导 /，如 /src/foo.ts）
-  const stripped = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
-  return `user/${stripped}`;
+  // 纯相对路径：直接返回（agent 工作目录即 workspace 根，路径已正确）
+  return trimmed;
 }
 
 export function formatFileSize(bytes: number): string {

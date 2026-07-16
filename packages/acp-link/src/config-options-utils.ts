@@ -5,7 +5,7 @@
  * `models` 字段已移除，改用统一的 configOptions 机制承载模型列表和当前选择。
  * 本函数负责将 configOptions 格式转换为内部使用的 SessionModelState 格式。
  */
-import type { SessionModelState, SessionModeState } from "./types.js";
+import type { ModelModalities, SessionModelState, SessionModeState } from "./types.js";
 
 export function extractModelState(
   configOptions: Array<Record<string, unknown>> | null | undefined,
@@ -24,6 +24,7 @@ export function extractModelState(
       modelId: String(o.value ?? ""),
       name: String(o.name ?? ""),
       description: (o.description as string) ?? null,
+      modalities: (o.modalities as ModelModalities) ?? null,
     })),
   };
 }
