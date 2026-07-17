@@ -1,2 +1,2 @@
 [test]
-preload = ["./src/test-utils/setup-mocks.ts"]
+preload = ["./src/test-utils/setup-globals.ts", "./src/test-utils/setup-mocks.ts"]

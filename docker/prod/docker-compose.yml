@@ -4,6 +4,7 @@
 #
 # 包含以下服务：
 #   - postgres      PostgreSQL 16
+#   - litellm       LiteLLM AI 网关（用量追踪 + 预算控制）
 #   - rcs           FenixAgent 主服务器（ghcr.io 远程镜像）
 #   - sandbox       远程执行沙箱（固定 machine id，全局可见）
 #   - hindsight     AI 记忆服务
@@ -33,11 +34,33 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # 自动创建 litellm 数据库
+      - ../litellm/init-db.sh:/docker-entrypoint-initdb.d/init-litellm-db.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rcs"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - internal
+
+  # ── LiteLLM AI 网关 ──────────────────────────────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://rcs:rcs@postgres:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      STORE_MODEL_IN_DB: "True"
+      SERVER_ROOT_PATH: "/litellm"
+      UI_USERNAME: ${LITELLM_UI_USERNAME:-admin}
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD}
     networks:
       - internal
 
@@ -48,6 +71,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      litellm:
+        condition: service_started
       hindsight:
         condition: service_started
     ports:
@@ -85,6 +110,10 @@ services:
       # OpenCode 行为
       OPENCODE_DISABLE_AUTOUPDATE: "1"
       OPENCODE_DISABLE_TELEMETRY: "1"
+
+      # LiteLLM AI 网关
+      RCS_SECRET_LITELLM_ADMIN_KEY: ${LITELLM_MASTER_KEY}
+      RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY}
 
       # 系统级默认 fallback：agent config 未绑定 machine 时路由到 sandbox
       RCS_DEFAULT_MACHINE_ID: mach_sandbox_01

@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
 
 // 显式 mock react-i18next，避免其他测试文件的 mock.module 残留影响 SSR 渲染
@@ -7,6 +7,10 @@ mock.module("react-i18next", () => ({
     t: (key: string) => key,
   }),
 }));
+
+afterEach(() => {
+  mock.restore();
+});
 
 describe("FilePickerPanel", () => {
   test("exports FilePickerPanel as a function", async () => {

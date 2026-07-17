@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 mock.module("react-i18next", () => ({
@@ -19,6 +19,10 @@ mock.module("react-i18next", () => ({
 mock.module("../../src/i18n", () => ({
   NS: { COMPONENTS: "components" },
 }));
+
+afterEach(() => {
+  mock.restore();
+});
 
 // 模块导出完整性
 describe("Tree component exports", () => {

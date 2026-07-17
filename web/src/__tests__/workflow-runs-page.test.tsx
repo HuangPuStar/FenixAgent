@@ -1,10 +1,21 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+// 设置最小 DOM 环境（react-dom/client 在 CI CJS 构建下模块加载时需要 window）
+const win = new Window();
+const g = globalThis as Record<string, unknown>;
+if (!g.window) g.window = win;
+if (!g.document) g.document = win.document;
+if (!g.navigator) g.navigator = win.navigator;
+// happy-dom select 元素 SSR 需要 window.SyntaxError
+if (!(win as unknown as Record<string, unknown>).SyntaxError) {
+  (win as unknown as Record<string, unknown>).SyntaxError = SyntaxError;
+}
 
 // ── 本地翻译表 ──
 const MOCK_TRANSLATIONS: Record<string, string> = {
@@ -63,6 +74,11 @@ mock.module("sonner", () => ({
   },
 }));
 
+// 清理模块 mock，避免跨测试文件污染
+afterEach(() => {
+  mock.restore();
+});
+
 import type { RunSummary } from "../api/workflow-engine";
 
 // ── 构造 RunSummary 工厂 ──
@@ -80,7 +96,6 @@ function makeRun(overrides: Partial<RunSummary> = {}) {
 }
 
 // ── happy-dom 环境 ──
-let win: Window;
 let mockFetchResponse: { items: unknown[]; total: number; page: number; pageSize: number };
 let mockFetchError: string | null = null;
 let fetchCalls: Array<{ url: string; method: string }> = [];
@@ -124,16 +139,11 @@ function setupFetchMock() {
   };
 }
 
-beforeAll(() => {
-  win = new Window();
-  const g = globalThis as Record<string, unknown>;
-  if (!g.window) g.window = win;
-  if (!g.document) g.document = win.document;
-  if (!g.navigator) g.navigator = win.navigator;
-  // happy-dom select 元素 SSR 需要 window.SyntaxError
-  if (!(win as unknown as Record<string, unknown>).SyntaxError) {
-    (win as unknown as Record<string, unknown>).SyntaxError = SyntaxError;
-  }
+// 清理 happy-dom 全局污染，避免影响后续测试文件
+afterAll(() => {
+  if (g.window === win) delete g.window;
+  if (g.document === win.document) delete g.document;
+  if (g.navigator === (win as unknown as Record<string, unknown>).navigator) delete g.navigator;
 });
 
 beforeEach(() => {
@@ -175,7 +185,7 @@ describe("WorkflowRuns 页面", () => {
     restoreFetch = setupFetchMock();
   });
 
-  afterAll(() => {
+  afterEach(() => {
     if (restoreFetch) restoreFetch();
   });
 
