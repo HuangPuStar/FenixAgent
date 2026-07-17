@@ -1,63 +1,61 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+// 显式 mock react-i18next，避免 CI 环境模块解析不稳定导致 I18nextProvider 找不到
 import { createElement } from "react";
 import ReactDOMServer from "react-dom/server";
-import { I18nextProvider } from "react-i18next";
-import { OutputsEditor } from "../pages/workflow/components/OutputsEditor";
-import { ParamsEditor } from "../pages/workflow/components/ParamsEditor";
+
+mock.module("react-i18next", () => ({
+  I18nextProvider: ({ children }: { children: React.ReactNode }) => createElement("div", null, children),
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { language: "zh" },
+  }),
+  initReactI18next: { type: "3rdParty", init: () => {} },
+  Trans: ({ children }: { children: React.ReactNode }) => children,
+}));
 
 // import.meta.dirname = web/src/__tests__
 const webSrc = join(import.meta.dirname, "..");
 const readSrc = (rel: string) => readFileSync(join(webSrc, rel), "utf-8");
 
-// 用动态 import 避免 i18n 模块级副作用阻塞测试加载
-const i18nPromise = import("../i18n");
-
 describe("OutputsEditor", () => {
   // 组件导出是函数
-  test("exports OutputsEditor as a function", () => {
+  test("exports OutputsEditor as a function", async () => {
+    const { OutputsEditor } = await import("../pages/workflow/components/OutputsEditor");
     expect(typeof OutputsEditor).toBe("function");
   });
 
-  // 在 i18n provider 下能渲染不抛错
+  // 在 mock i18n 下能渲染不抛错
   test("renders without throwing with minimal props", async () => {
-    const { default: i18n } = await i18nPromise;
+    const { OutputsEditor } = await import("../pages/workflow/components/OutputsEditor");
     expect(() => {
       ReactDOMServer.renderToString(
-        createElement(
-          I18nextProvider,
-          { i18n },
-          createElement(OutputsEditor, {
-            value: undefined,
-            onChange: () => {},
-            readOnly: false,
-            keyPlaceholder: "key",
-            patternPlaceholder: "pattern",
-            addLabel: "Add",
-          }),
-        ),
+        createElement(OutputsEditor, {
+          value: undefined,
+          onChange: () => {},
+          readOnly: false,
+          keyPlaceholder: "key",
+          patternPlaceholder: "pattern",
+          addLabel: "Add",
+        }),
       );
     }).not.toThrow();
   });
 
   // 已有 entry 也能渲染
   test("renders with existing value without throwing", async () => {
-    const { default: i18n } = await i18nPromise;
+    const { OutputsEditor } = await import("../pages/workflow/components/OutputsEditor");
     expect(() => {
       ReactDOMServer.renderToString(
-        createElement(
-          I18nextProvider,
-          { i18n },
-          createElement(OutputsEditor, {
-            value: { foo: { pattern: "/tmp/x", type: "file" } },
-            onChange: () => {},
-            readOnly: false,
-            keyPlaceholder: "key",
-            patternPlaceholder: "pattern",
-            addLabel: "Add",
-          }),
-        ),
+        createElement(OutputsEditor, {
+          value: { foo: { pattern: "/tmp/x", type: "file" } },
+          onChange: () => {},
+          readOnly: false,
+          keyPlaceholder: "key",
+          patternPlaceholder: "pattern",
+          addLabel: "Add",
+        }),
       );
     }).not.toThrow();
   });
@@ -75,27 +73,24 @@ describe("OutputsEditor", () => {
 
 describe("ParamsEditor", () => {
   // 组件导出是函数
-  test("exports ParamsEditor as a function", () => {
+  test("exports ParamsEditor as a function", async () => {
+    const { ParamsEditor } = await import("../pages/workflow/components/ParamsEditor");
     expect(typeof ParamsEditor).toBe("function");
   });
 
-  // 在 i18n provider 下能渲染不抛错（无 default 值）
+  // 在 mock i18n 下能渲染不抛错（无 default 值）
   test("renders without throwing with minimal props", async () => {
-    const { default: i18n } = await i18nPromise;
+    const { ParamsEditor } = await import("../pages/workflow/components/ParamsEditor");
     expect(() => {
       ReactDOMServer.renderToString(
-        createElement(
-          I18nextProvider,
-          { i18n },
-          createElement(ParamsEditor, {
-            value: undefined,
-            onChange: () => {},
-            readOnly: false,
-            namePlaceholder: "name",
-            defaultPlaceholder: "default",
-            addLabel: "Add",
-          }),
-        ),
+        createElement(ParamsEditor, {
+          value: undefined,
+          onChange: () => {},
+          readOnly: false,
+          namePlaceholder: "name",
+          defaultPlaceholder: "default",
+          addLabel: "Add",
+        }),
       );
     }).not.toThrow();
   });
