@@ -4,6 +4,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -14,7 +15,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-export const providerProtocolEnum = pgEnum("provider_protocol", ["openai", "anthropic"]);
+export const providerProtocolEnum = pgEnum("provider_protocol", ["openai", "anthropic", "litellm"]);
 export const resourcePermissionTypeEnum = pgEnum("resource_permission_type", [
   "provider",
   "skill",
@@ -558,6 +559,36 @@ export const agentConfig = pgTable(
   },
   (table) => ({
     orgNameIdx: uniqueIndex("idx_agent_config_org_name").on(table.organizationId, table.name),
+  }),
+);
+
+// ── LiteLLM Key 映射表 ────────────────────────────────────────────────────
+
+export const agentLitellmKey = pgTable(
+  "agent_litellm_key",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    agentConfigId: uuid("agent_config_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    litellmOrgId: text("litellm_org_id").notNull(),
+    litellmUserId: text("litellm_user_id").notNull(),
+    litellmKeyId: text("litellm_key_id").notNull(),
+    litellmKey: text("litellm_key").notNull(),
+    litellmAgentId: text("litellm_agent_id").notNull(),
+    keyAlias: varchar("key_alias", { length: 255 }),
+    maxBudget: numeric("max_budget", { precision: 12, scale: 6 }),
+    budgetDuration: varchar("budget_duration", { length: 20 }).default("30d"),
+    tags: jsonb("tags").default([]),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userAgentIdx: uniqueIndex("idx_agent_litellm_key_user_agent").on(table.userId, table.agentConfigId),
+    orgAgentIdx: index("idx_agent_litellm_key_org_agent").on(table.organizationId, table.agentConfigId),
+    userIdx: index("idx_agent_litellm_key_user").on(table.userId),
+    keyIdx: index("idx_agent_litellm_key_lkey").on(table.litellmKeyId),
   }),
 );
 

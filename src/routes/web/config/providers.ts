@@ -194,7 +194,10 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   });
 }
 
-function normalizeProviderBaseUrl(baseUrl: string | null | undefined, protocol: "openai" | "anthropic"): string {
+function normalizeProviderBaseUrl(
+  baseUrl: string | null | undefined,
+  protocol: "openai" | "anthropic" | "litellm",
+): string {
   const fallback = protocol === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com";
   return (baseUrl || fallback).replace(/\/+$/, "");
 }
@@ -391,7 +394,7 @@ async function testProviderModelMessage(
 async function handleFetchModels(
   ctx: AuthContext,
   name: string,
-  inline?: { apiKey?: string; baseURL?: string; protocol?: "openai" | "anthropic" },
+  inline?: { apiKey?: string; baseURL?: string; protocol?: "openai" | "anthropic" | "litellm" },
 ) {
   let apiKey: string;
   let baseURL: string;

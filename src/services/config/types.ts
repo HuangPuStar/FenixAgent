@@ -92,7 +92,7 @@ export type ProviderExtraOptions = Record<string, unknown>;
 /** Data shape accepted by upsertProvider */
 export interface ProviderUpsertData {
   displayName?: string | null;
-  protocol?: "openai" | "anthropic";
+  protocol?: "openai" | "anthropic" | "litellm";
   baseUrl?: string | null;
   apiKey?: string | null;
   extraOptions?: ProviderExtraOptions | null;
