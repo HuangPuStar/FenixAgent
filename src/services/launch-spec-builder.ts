@@ -5,13 +5,23 @@ import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugi
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { config, getBaseUrl } from "../config";
 import { db } from "../db";
-import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "../db/schema";
+import {
+  agentConfigMcp,
+  agentConfigSkill,
+  agentLitellmKey,
+  mcpServer,
+  member,
+  model,
+  provider,
+  skill,
+} from "../db/schema";
 import { AppError } from "../errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "./agent-memory";
 import { composeAgentSystemPrompt } from "./agent-system-prompt";
 import type { AgentConfigDetailWithAccess } from "./config";
 import { resolveApiKey } from "./config-utils";
+import { addLitellmMember, generateLitellmKey } from "./litellm";
 import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
@@ -66,11 +76,131 @@ function toLaunchModelProtocol(
   providerName: string,
   agentConfigId: string,
 ): LaunchModelProtocol {
+  // LiteLLM 的 API 是 OpenAI 兼容格式，映射为 "openai"
+  if (protocol === "litellm") return "openai";
   if (protocol === "openai" || protocol === "anthropic") return protocol;
   throwInvalidConfig(
     `AgentConfig '${agentConfigId}' references provider '${providerName}' with unsupported protocol`,
     `[launch-spec-builder] unsupported provider protocol for agentConfig='${agentConfigId}', provider='${providerName}', protocol='${protocol ?? ""}'`,
   );
+}
+
+/** 默认 Key 预算上限（USD） */
+function getDefaultMaxBudget(): number {
+  return parseFloat(process.env.RCS_LITELLM_DEFAULT_MAX_BUDGET || "50");
+}
+
+/**
+ * 确保 LiteLLM Organization 中存在该用户的成员记录。
+ * 通过 agent_litellm_key 表反查已有记录避免重复创建。
+ */
+async function ensureLitellmMember(userId: string, organizationId: string, litellmOrgId: string): Promise<string> {
+  const existingMember = await db
+    .select({ litellmUserId: agentLitellmKey.litellmUserId })
+    .from(agentLitellmKey)
+    .where(
+      and(
+        eq(agentLitellmKey.organizationId, organizationId),
+        eq(agentLitellmKey.userId, userId),
+        eq(agentLitellmKey.enabled, true),
+      ),
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  if (existingMember) return existingMember.litellmUserId;
+
+  const result = await addLitellmMember(litellmOrgId, userId, "user");
+  return result.member_id;
+}
+
+/**
+ * 确保 (用户, 智能体) 组合存在对应的 LiteLLM API Key。
+ * 若已存在则直接返回明文 Key，否则懒创建。
+ * 使用 INSERT + 唯一索引处理并发竞态。
+ */
+async function ensureLitellmKey(
+  userId: string,
+  agentConfig: { id: string; name: string; organizationId: string },
+  matchedModel: { modelId: string },
+  matchedProvider: {
+    id: string;
+    name: string;
+    baseUrl: string | null;
+    extraOptions: Record<string, unknown> | null;
+  },
+): Promise<string> {
+  // 查询已有 Key
+  const existing = await db
+    .select({
+      litellmKey: agentLitellmKey.litellmKey,
+    })
+    .from(agentLitellmKey)
+    .where(
+      and(
+        eq(agentLitellmKey.userId, userId),
+        eq(agentLitellmKey.agentConfigId, agentConfig.id),
+        eq(agentLitellmKey.enabled, true),
+      ),
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  if (existing) return existing.litellmKey;
+
+  const litellmOrgId = (matchedProvider.extraOptions as any)?.litellmOrgId as string;
+  if (!litellmOrgId) {
+    throw new Error(`Provider '${matchedProvider.name}' 缺少 litellmOrgId，请确认 LiteLLM Organization 已创建`);
+  }
+
+  const memberId = await ensureLitellmMember(userId, agentConfig.organizationId, litellmOrgId);
+
+  const keyAlias = `RCS:${agentConfig.name}`;
+  const keyResult = await generateLitellmKey({
+    user_id: memberId,
+    agent_id: agentConfig.id,
+    organization_id: litellmOrgId,
+    key_alias: keyAlias,
+    metadata: {
+      rcs_user_id: userId,
+      rcs_agent_config_id: agentConfig.id,
+      rcs_org_id: agentConfig.organizationId,
+    },
+    tags: [`org:${agentConfig.organizationId}`, `agent:${agentConfig.id}`, `user:${userId}`],
+    max_budget: getDefaultMaxBudget(),
+    budget_duration: "30d",
+    models: [matchedModel.modelId],
+  });
+
+  // INSERT with ON CONFLICT DO NOTHING for concurrency safety
+  await db
+    .insert(agentLitellmKey)
+    .values({
+      userId,
+      agentConfigId: agentConfig.id,
+      organizationId: agentConfig.organizationId,
+      litellmOrgId,
+      litellmUserId: memberId,
+      litellmKeyId: keyResult.key_id ?? keyResult.token ?? keyResult.key,
+      litellmKey: keyResult.key,
+      litellmAgentId: agentConfig.id,
+      keyAlias,
+      tags: [`org:${agentConfig.organizationId}`, `agent:${agentConfig.id}`, `user:${userId}`],
+    })
+    .onConflictDoNothing();
+
+  // Re-SELECT to handle concurrent race (winner takes all)
+  const final = await db
+    .select({ litellmKey: agentLitellmKey.litellmKey })
+    .from(agentLitellmKey)
+    .where(and(eq(agentLitellmKey.userId, userId), eq(agentLitellmKey.agentConfigId, agentConfig.id)))
+    .limit(1);
+
+  if (!final[0]) {
+    throw new Error(`LiteLLM Key 创建失败: (user=${userId}, agent=${agentConfig.id})`);
+  }
+
+  return final[0].litellmKey;
 }
 
 /** 运行时只认正式的 modelId 外键；未指定时回退到当前组织第一个可用模型。 */
