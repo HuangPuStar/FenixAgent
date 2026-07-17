@@ -1,8 +1,8 @@
 # 开发环境 — 只启动周围基础设施，本地用 bun run dev 跑 RCS
 # Usage: docker compose up -d
 
-include:
-    - ./docker/ragflow/docker-compose.yml
+# include:
+#     - ./docker/ragflow/docker-compose.yml
 
 services:
 
@@ -17,11 +17,31 @@ services:
             - "5432:5432"
         volumes:
             - postgres-data:/var/lib/postgresql/data
+            # 自动创建 litellm 数据库
+            - ./docker/litellm/init-db.sh:/docker-entrypoint-initdb.d/init-litellm-db.sh:ro
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U rcs"]
             interval: 5s
             timeout: 5s
             retries: 5
+
+    # ── LiteLLM AI 网关 ────────────────────────────────────────────────────
+    litellm:
+        image: ghcr.io/berriai/litellm:main-stable
+        restart: unless-stopped
+        depends_on:
+            postgres:
+                condition: service_healthy
+        ports:
+            - "4000:4000"
+        environment:
+            DATABASE_URL: postgresql://rcs:rcs@postgres:5432/litellm
+            LITELLM_MASTER_KEY: sk-litellm-admin-dev-key
+            LITELLM_SALT_KEY: sk-litellm-salt-dev-key
+            STORE_MODEL_IN_DB: "True"
+            SERVER_ROOT_PATH: "/litellm"
+            UI_USERNAME: admin
+            UI_PASSWORD: admin
 
 volumes:
     postgres-data:

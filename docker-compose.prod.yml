@@ -11,6 +11,8 @@ services:
         depends_on:
             postgres:
                 condition: service_healthy
+            litellm:
+                condition: service_started
         ports:
             - "3001:3000"
         environment:
@@ -30,6 +32,9 @@ services:
             APP_LOGO_PATH: ${APP_LOGO_PATH:-}
             OPENCODE_DISABLE_AUTOUPDATE: "1"
             OPENCODE_DISABLE_TELEMETRY: "1"
+            # LiteLLM AI 网关
+            RCS_SECRET_LITELLM_ADMIN_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-admin-dev-key}
+            RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY:-}
             # 使用 RAG 功能需要额外启动 RAGFLOW 并添加如下环境变量
             # RAGFLOW_API_URL: "http://ragflow:9380"
             # RAGFLOW_API_KEY: "${RAGFLOW_API_KEY:-}"
