@@ -1,16 +1,17 @@
+import { config } from "../config";
 import { environmentRepo } from "../repositories";
 import { isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-handler";
 import { getAgentConfigById } from "./config/agent-config";
 
 /**
  * 判断 environment 是否绑定了远程 machine。
- * 返回 machineId 或 null。
+ * 优先级：agent config 绑定 > 系统默认 fallback > null（本地）
  */
 export async function getRemoteMachineId(envId: string): Promise<string | null> {
   const env = await environmentRepo.getById(envId);
   if (!env?.agentConfigId) return null;
   const agentCfg = await getAgentConfigById(env.agentConfigId);
-  return agentCfg?.machineId ?? null;
+  return agentCfg?.machineId ?? config.defaultMachineId ?? null;
 }
 
 /**
