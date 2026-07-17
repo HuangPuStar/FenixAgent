@@ -204,7 +204,10 @@ async function ensureLitellmKey(
 }
 
 /** 运行时只认正式的 modelId 外键；未指定时回退到当前组织第一个可用模型。 */
-async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Promise<ModelConfig> {
+async function resolveModelConfig(
+  agentConfig: AgentConfigDetailWithAccess,
+  callingUserId?: string,
+): Promise<ModelConfig> {
   if (!agentConfig.modelId) {
     log(
       `[launch-spec-builder] agentConfig '${agentConfig.id}' has no modelId, falling back to first available model in org '${agentConfig.organizationId}'`,
@@ -240,6 +243,37 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Pro
   log(
     `[launch-spec-builder] resolveModelConfig: resolved modelId='${agentConfig.modelId}' to provider='${matchedProvider.organizationId}/${matchedProvider.id}', model='${matchedModel.modelId}'`,
   );
+
+  // LiteLLM 分支：替换 apiKey 为 (用户, 智能体) 专用 Key
+  if (matchedProvider.protocol === "litellm") {
+    const userId = callingUserId ?? agentConfig.userId ?? agentConfig.organizationId;
+    const apiKey = await ensureLitellmKey(
+      userId,
+      {
+        id: agentConfig.id,
+        name: agentConfig.name,
+        organizationId: agentConfig.organizationId,
+      },
+      { modelId: matchedModel.modelId },
+      {
+        id: matchedProvider.id,
+        name: matchedProvider.name,
+        baseUrl: matchedProvider.baseUrl,
+        extraOptions: matchedProvider.extraOptions as Record<string, unknown> | null,
+      },
+    );
+
+    return {
+      provider: matchedProvider.name,
+      protocol: "openai", // LiteLLM → OpenAI 兼容
+      baseUrl: matchedProvider.baseUrl || "",
+      apiKey,
+      model: matchedModel.modelId,
+      modelName: matchedModel.modelId,
+      modalities: matchedModel.modalities ?? undefined,
+    };
+  }
+
   return {
     provider: matchedProvider.name,
     protocol: toLaunchModelProtocol(matchedProvider.protocol, matchedProvider.name, agentConfig.id),
@@ -566,7 +600,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
 
   // Phase 1: 先并行拿到构造 launchSpec 的原始资源，确保错误尽早暴露。
   const [model, skillRows, rawMcpServers, knowledgeBindings] = await Promise.all([
-    resolveModelConfig(agentConfig),
+    resolveModelConfig(agentConfig, input.userId),
     loadAgentSkills(agentConfig),
     loadAgentMcpServers(agentConfig),
     listAgentKnowledgeBindingsById(agentConfig.id),
