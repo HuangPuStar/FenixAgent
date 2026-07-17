@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Elysia from "elysia";
@@ -8,9 +8,18 @@ import webBranding from "../routes/web/branding";
 describe("web branding routes", () => {
   const originalEnv = { ...process.env };
   const app = new Elysia().use(webBranding);
+  const tempDirs: string[] = [];
 
   afterEach(() => {
     process.env = { ...originalEnv } as NodeJS.ProcessEnv;
+    for (const dir of tempDirs) {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // 忽略清理错误
+      }
+    }
+    tempDirs.length = 0;
   });
 
   test("GET /branding 返回默认品牌配置", async () => {
@@ -38,6 +47,7 @@ describe("web branding routes", () => {
 
   test("GET /branding/logo 返回本地 logo 文件", async () => {
     const dir = mkdtempSync(join(tmpdir(), "branding-route-"));
+    tempDirs.push(dir);
     const logoPath = join(dir, "logo.svg");
     const logoContent = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`;
     writeFileSync(logoPath, logoContent);

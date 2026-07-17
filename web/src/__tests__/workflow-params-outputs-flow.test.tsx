@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // 显式 mock react-i18next，避免 CI 环境模块解析不稳定导致 I18nextProvider 找不到
@@ -14,6 +14,10 @@ mock.module("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => {} },
   Trans: ({ children }: { children: React.ReactNode }) => children,
 }));
+
+afterEach(() => {
+  mock.restore();
+});
 
 // import.meta.dirname = web/src/__tests__
 const webSrc = join(import.meta.dirname, "..");

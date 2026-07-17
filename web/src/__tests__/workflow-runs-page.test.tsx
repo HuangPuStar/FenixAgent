@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -62,6 +62,11 @@ mock.module("sonner", () => ({
     success: () => {},
   },
 }));
+
+// 清理模块 mock，避免跨测试文件污染
+afterEach(() => {
+  mock.restore();
+});
 
 import type { RunSummary } from "../api/workflow-engine";
 
@@ -136,6 +141,14 @@ beforeAll(() => {
   }
 });
 
+// 清理 happy-dom 全局污染，避免影响后续测试文件
+afterAll(() => {
+  const g = globalThis as Record<string, unknown>;
+  if (g.window === win) delete g.window;
+  if (g.document === win.document) delete g.document;
+  if (g.navigator === (win as unknown as Record<string, unknown>).navigator) delete g.navigator;
+});
+
 beforeEach(() => {
   fetchCalls = [];
   mockFetchError = null;
@@ -175,7 +188,7 @@ describe("WorkflowRuns 页面", () => {
     restoreFetch = setupFetchMock();
   });
 
-  afterAll(() => {
+  afterEach(() => {
     if (restoreFetch) restoreFetch();
   });
 
