@@ -89,6 +89,18 @@ try {
 await initCustomToolsRegistry();
 startupLog.info("Custom tools registry initialized");
 
+// Initialize LiteLLM client if configured
+import { initLitellmClient } from "./services/litellm";
+
+const litellmAdminKey = process.env.RCS_SECRET_LITELLM_ADMIN_KEY;
+if (litellmAdminKey) {
+  initLitellmClient({
+    adminKey: litellmAdminKey,
+    baseUrl: "http://litellm:4000",
+  });
+  startupLog.info("LiteLLM client initialized");
+}
+
 // Initialize Hermes client if configured
 // biome-ignore lint/suspicious/noExplicitAny: config channels shape is dynamic
 const hermesUrl = process.env.HERMES_URL ?? (config as any).channels?.hermesUrl;

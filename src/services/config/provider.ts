@@ -192,6 +192,33 @@ export async function upsertProvider(
     await setPublicRead(ctx, "provider", ctx.organizationId, row.id, options.publicReadable);
   }
 
+  // LiteLLM 协议：首次创建时同步创建 LiteLLM Organization
+  if (data.protocol === "litellm") {
+    const existingExtra = (data.extraOptions ?? {}) as Record<string, unknown>;
+    if (!existingExtra.litellmOrgId) {
+      try {
+        const { createLitellmOrg } = await import("../litellm");
+        const orgAlias = `${ctx.organizationId}__${name}`;
+        const litellmOrg = await createLitellmOrg(orgAlias);
+        // Update extraOptions with litellmOrgId
+        await db
+          .update(provider)
+          .set({
+            extraOptions: {
+              ...existingExtra,
+              litellmOrgId: litellmOrg.organization_id,
+              litellmOrgCreatedAt: new Date().toISOString(),
+            },
+            updatedAt: new Date(),
+          } as any)
+          .where(eq(provider.id, row.id));
+      } catch (err) {
+        console.error("[LiteLLM] 创建 Organization 失败:", err);
+        // LiteLLM Organization 创建失败不阻塞 Provider 创建
+      }
+    }
+  }
+
   return row.id;
 }
 
