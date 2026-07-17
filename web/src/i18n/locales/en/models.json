@@ -12,7 +12,8 @@
   "unknownError": "Unknown error",
   "protocolOptions": {
     "openai": "OpenAI Compatible",
-    "anthropic": "Anthropic"
+    "anthropic": "Anthropic",
+    "litellm": "LiteLLM"
   },
   "columns": {
     "id": "ID",

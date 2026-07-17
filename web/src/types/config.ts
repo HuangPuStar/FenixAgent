@@ -146,7 +146,7 @@ export interface OpenCodeConfig {
 export interface ProviderInfo {
   id: string;
   name: string;
-  protocol: "openai" | "anthropic";
+  protocol: "openai" | "anthropic" | "litellm";
   keyHint: string | null;
   baseURL: string | null;
   modelCount: number;
@@ -168,7 +168,7 @@ export interface ProviderModel {
 export interface ProviderDetail {
   id: string;
   name: string;
-  protocol: "openai" | "anthropic";
+  protocol: "openai" | "anthropic" | "litellm";
   keyHint: string | null;
   baseURL: string | null;
   models: ProviderModel[];

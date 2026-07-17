@@ -12,7 +12,8 @@
   "unknownError": "未知错误",
   "protocolOptions": {
     "openai": "OpenAI 兼容",
-    "anthropic": "Anthropic"
+    "anthropic": "Anthropic",
+    "litellm": "LiteLLM"
   },
   "columns": {
     "id": "ID",

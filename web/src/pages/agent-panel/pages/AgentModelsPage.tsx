@@ -37,6 +37,7 @@ type ModelTestResult = {
 const PROTOCOL_OPTIONS = [
   { id: "openai", labelKey: "protocolOptions.openai" },
   { id: "anthropic", labelKey: "protocolOptions.anthropic" },
+  { id: "litellm", labelKey: "protocolOptions.litellm" },
 ];
 
 const INPUT_MODALITY_OPTIONS = ["text", "image", "audio", "video", "pdf"] as const;
@@ -126,7 +127,7 @@ export function AgentModelsPage() {
   const [formName, setFormName] = useState("");
   const [formApiKey, setFormApiKey] = useState("");
   const [formBaseURL, setFormBaseURL] = useState("");
-  const [formProtocol, setFormProtocol] = useState<"openai" | "anthropic">("openai");
+  const [formProtocol, setFormProtocol] = useState<"openai" | "anthropic" | "litellm">("openai");
   const [formDisplayName, setFormDisplayName] = useState("");
   const editingReadOnly = editingProvider ? !canWriteProvider(editingProvider) : false;
 
@@ -1015,7 +1016,7 @@ export function AgentModelsPage() {
             <label className="text-sm font-medium text-text-primary">{t("form.protocol")}</label>
             <Select
               value={formProtocol}
-              onValueChange={(value) => setFormProtocol(value as "openai" | "anthropic")}
+              onValueChange={(value) => setFormProtocol(value as "openai" | "anthropic" | "litellm")}
               disabled={editingReadOnly}
             >
               <SelectTrigger className="mt-1">

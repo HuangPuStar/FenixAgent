@@ -39,11 +39,11 @@ export function buildProviderPublicReadablePayload(publicReadable: boolean): Rec
 export function buildProviderInlineTestPayload(input: {
   apiKey: string;
   baseURL: string;
-  protocol: "openai" | "anthropic";
+  protocol: "openai" | "anthropic" | "litellm";
 }): {
   apiKey?: string;
   baseURL?: string;
-  protocol: "openai" | "anthropic";
+  protocol: "openai" | "anthropic" | "litellm";
 } {
   return {
     apiKey: input.apiKey.trim() ? input.apiKey : undefined,
