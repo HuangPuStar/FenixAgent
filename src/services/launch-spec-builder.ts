@@ -148,14 +148,16 @@ async function ensureLitellmKey(
 
   if (existing) return existing.litellmKey;
 
-  const litellmOrgId = (matchedProvider.extraOptions as any)?.litellmOrgId as string;
+  const litellmOrgId = (matchedProvider.extraOptions as Record<string, unknown> | undefined)?.litellmOrgId as
+    | string
+    | undefined;
   if (!litellmOrgId) {
     throw new Error(`Provider '${matchedProvider.name}' 缺少 litellmOrgId，请确认 LiteLLM Organization 已创建`);
   }
 
   const memberId = await ensureLitellmMember(userId, agentConfig.organizationId, litellmOrgId);
 
-  const keyAlias = `RCS:${agentConfig.name}`;
+  const keyAlias = `RCS:${userId.slice(0, 8)}:${agentConfig.name}`;
   const keyResult = await generateLitellmKey({
     user_id: memberId,
     agent_id: agentConfig.id,
@@ -316,6 +318,14 @@ async function resolveFirstReadableModelConfig(input: {
     if (!firstModel) {
       log(
         `[launch-spec-builder] resolveFirstReadableModelConfig: skip provider without model org='${providerRow.organizationId}', provider='${providerRow.id}'`,
+      );
+      continue;
+    }
+
+    // Skip LiteLLM providers — they require per-user Key generation
+    if (providerRow.protocol === "litellm") {
+      log(
+        `[launch-spec-builder] resolveFirstReadableModelConfig: skip LiteLLM provider org='${providerRow.organizationId}', provider='${providerRow.id}'`,
       );
       continue;
     }

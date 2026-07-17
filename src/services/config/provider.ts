@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { model, provider } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
+import { createLitellmOrg } from "../litellm";
 import {
   assertInternalWritable,
   canReadResource,
@@ -197,7 +198,6 @@ export async function upsertProvider(
     const existingExtra = (data.extraOptions ?? {}) as Record<string, unknown>;
     if (!existingExtra.litellmOrgId) {
       try {
-        const { createLitellmOrg } = await import("../litellm");
         const orgAlias = `${ctx.organizationId}__${name}`;
         const litellmOrg = await createLitellmOrg(orgAlias);
         // Update extraOptions with litellmOrgId

@@ -94,15 +94,16 @@ import { initLitellmClient, startOrphanKeyCleanup, stopOrphanKeyCleanup } from "
 
 const litellmAdminKey = process.env.RCS_SECRET_LITELLM_ADMIN_KEY;
 if (litellmAdminKey) {
+  const baseUrl = process.env.RCS_LITELLM_BASE_URL || "http://litellm:4000";
   initLitellmClient({
     adminKey: litellmAdminKey,
-    baseUrl: "http://litellm:4000",
+    baseUrl,
   });
   startupLog.info("LiteLLM client initialized");
-}
 
-// LiteLLM 孤儿 Key 定时清理（每小时）
-startOrphanKeyCleanup();
+  // LiteLLM 孤儿 Key 定时清理（每小时）
+  startOrphanKeyCleanup();
+}
 
 // Initialize Hermes client if configured
 // biome-ignore lint/suspicious/noExplicitAny: config channels shape is dynamic
