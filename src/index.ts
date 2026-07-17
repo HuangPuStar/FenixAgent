@@ -90,7 +90,7 @@ await initCustomToolsRegistry();
 startupLog.info("Custom tools registry initialized");
 
 // Initialize LiteLLM client if configured
-import { initLitellmClient } from "./services/litellm";
+import { initLitellmClient, startOrphanKeyCleanup, stopOrphanKeyCleanup } from "./services/litellm";
 
 const litellmAdminKey = process.env.RCS_SECRET_LITELLM_ADMIN_KEY;
 if (litellmAdminKey) {
@@ -100,6 +100,9 @@ if (litellmAdminKey) {
   });
   startupLog.info("LiteLLM client initialized");
 }
+
+// LiteLLM 孤儿 Key 定时清理（每小时）
+startOrphanKeyCleanup();
 
 // Initialize Hermes client if configured
 // biome-ignore lint/suspicious/noExplicitAny: config channels shape is dynamic
@@ -234,6 +237,7 @@ async function gracefulShutdown(signal: string) {
   const hermesClient = getHermesClient();
   await hermesClient?.stop();
   stopAcpIdleMonitor();
+  stopOrphanKeyCleanup();
   closeAllRelayConnections();
   closeAllAcpConnections();
   closeAllFileWsConnections();
