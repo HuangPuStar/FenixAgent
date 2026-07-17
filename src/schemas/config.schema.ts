@@ -50,7 +50,7 @@ export const ConfigBodySchema = z
     type: z.enum(["local", "remote", "disabled"]).optional().describe("MCP 服务类型。"),
     apiKey: z.string().optional().describe("inline provider 测试时使用的 API Key。"),
     baseURL: z.string().optional().describe("inline provider 测试时使用的 Base URL。"),
-    protocol: z.enum(["openai", "anthropic"]).optional().describe("Provider 协议类型。"),
+    protocol: z.enum(["openai", "anthropic", "litellm"]).optional().describe("Provider 协议类型。"),
   })
   .describe("Config 路由通用请求体。");
 
@@ -59,7 +59,7 @@ export const ConfigBodySchema = z
 export const ProviderInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
-  protocol: z.enum(["openai", "anthropic"]),
+  protocol: z.enum(["openai", "anthropic", "litellm"]),
   keyHint: z.string().nullable(),
   baseURL: z.string().nullable(),
   modelCount: z.number(),
@@ -69,7 +69,7 @@ export const ProviderDetailSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    protocol: z.enum(["openai", "anthropic"]),
+    protocol: z.enum(["openai", "anthropic", "litellm"]),
     keyHint: z.string().nullable(),
     baseURL: z.string().nullable(),
     options: z.record(z.string(), z.unknown()),
@@ -94,7 +94,7 @@ export const ProviderDetailSchema = z
 export const CreateProviderBodySchema = z
   .object({
     name: z.string().min(1).describe("Provider 名称。"),
-    protocol: z.enum(["openai", "anthropic"]).optional().describe("Provider 协议类型。"),
+    protocol: z.enum(["openai", "anthropic", "litellm"]).optional().describe("Provider 协议类型。"),
     apiKey: z.string().optional().describe("Provider API Key。"),
     baseURL: z.string().optional().describe("Provider Base URL。"),
     displayName: z.string().optional().describe("Provider 展示名称。"),
@@ -108,7 +108,7 @@ export const CreateProviderBodySchema = z
 /** PUT /config/providers/:name — 更新已有 Provider 请求体 */
 export const UpdateProviderBodySchema = z
   .object({
-    protocol: z.enum(["openai", "anthropic"]).optional().describe("Provider 协议类型。"),
+    protocol: z.enum(["openai", "anthropic", "litellm"]).optional().describe("Provider 协议类型。"),
     apiKey: z.string().optional().describe("Provider API Key。"),
     baseURL: z.string().optional().describe("Provider Base URL。"),
     displayName: z.string().optional().describe("Provider 展示名称。"),
@@ -124,7 +124,7 @@ export const ProviderFetchModelsBodySchema = z
   .object({
     apiKey: z.string().optional().describe("内联测试用的 API Key。"),
     baseURL: z.string().optional().describe("内联测试用的 Base URL。"),
-    protocol: z.enum(["openai", "anthropic"]).optional().describe("内联测试用的协议类型。"),
+    protocol: z.enum(["openai", "anthropic", "litellm"]).optional().describe("内联测试用的协议类型。"),
   })
   .describe("Provider 模型列表获取请求体。");
 
@@ -177,7 +177,7 @@ export const ProviderSaveResponseSchema = WebOkSchema(
   z.object({
     id: z.string().describe("Provider 名称。"),
     name: z.string().nullable().describe("Provider 展示名称。"),
-    protocol: z.enum(["openai", "anthropic"]).describe("Provider 协议类型。"),
+    protocol: z.enum(["openai", "anthropic", "litellm"]).describe("Provider 协议类型。"),
     keyHint: z.string().nullable().describe("API Key 提示信息。"),
   }),
 ).describe("Provider 创建 / 更新响应。");
