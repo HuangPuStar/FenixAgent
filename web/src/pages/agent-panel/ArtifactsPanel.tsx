@@ -14,7 +14,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
@@ -312,14 +311,12 @@ export function ArtifactsPanel({
     }
   });
 
+  // ── 拖拽上传 ─────────────────────────────────────────
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{
-    active: boolean;
-    percent: number;
-    fileName: string;
-  }>({ active: false, percent: 0, fileName: "" });
   const dragCounterRef = useRef(0);
   const fileTreeRef = useRef<FileTreeTabHandle>(null);
+  // 非 Files 模式下拖入文件时暂存，等模式切换 → FileTreeTab 挂载 → useEffect 触发上传
+  const pendingUploadRef = useRef<File[]>([]);
 
   const openFile = useCallback((path: string) => {
     setOpenFiles((prev) => {
@@ -376,6 +373,7 @@ export function ArtifactsPanel({
     );
   }, []);
 
+  // ── 拖拽：整个面板区域的 dragEnter/Over/Leave 只控制遮罩显隐 ──
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCounterRef.current++;
@@ -398,8 +396,9 @@ export function ArtifactsPanel({
     }
   }, []);
 
+  // ── 拖拽：释放文件时触发上传 ──
   const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
+    (e: React.DragEvent) => {
       e.preventDefault();
       dragCounterRef.current = 0;
       setIsDragging(false);
@@ -407,26 +406,29 @@ export function ArtifactsPanel({
       const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length === 0) return;
 
-      // 无论当前在 Files 还是 Sites 模式，拖入文件都先切回 Files：
-      // 否则文件树 popover 还未挂载，fileTreeRef.current 为 null 导致上传静默失败
       userPickedSiteRef.current = false;
       setPendingDiffCount(0);
-      setTopMode("files");
-      setUploadProgress({ active: true, percent: 0, fileName: files[0].name });
 
-      try {
-        await fileTreeRef.current?.uploadFiles(files, (percent) => {
-          setUploadProgress((prev) => ({ ...prev, percent }));
-        });
-        toast.success(t("fileTree.uploadSuccess", { count: files.length }));
-      } catch {
-        toast.error(t("fileTree.uploadFailed"));
-      } finally {
-        setUploadProgress({ active: false, percent: 0, fileName: "" });
+      if (topMode === "files") {
+        // 已在 Files 模式：FileTreeTab 已挂载，直接上传
+        fileTreeRef.current?.uploadFiles(files);
+      } else {
+        // 非 Files 模式：暂存文件，切到 Files 后由 useEffect 触发上传
+        pendingUploadRef.current = files;
+        setTopMode("files");
       }
     },
-    [t],
+    [topMode],
   );
+
+  // 非 Files 模式下拖入文件 → 切到 Files 后，等 FileTreeTab 挂载完成再上传
+  useEffect(() => {
+    if (topMode === "files" && pendingUploadRef.current.length > 0) {
+      const files = pendingUploadRef.current;
+      pendingUploadRef.current = [];
+      fileTreeRef.current?.uploadFiles(files);
+    }
+  }, [topMode]);
 
   const isFilesMode = topMode === "files";
 
@@ -440,8 +442,6 @@ export function ArtifactsPanel({
     <div
       className="relative flex h-full min-w-0 flex-col bg-surface-1 rounded-xl border border-border/75"
       style={{ boxShadow: "var(--shadow-card)" }}
-      // 拖拽 handler 始终绑定：Sites 模式下用户拖入文件也能自动切回 Files 并上传，
-      // 否则浏览器会把文件交给 iframe 触发其内部导航（drop handler 内部会 setTopMode）
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -562,28 +562,12 @@ export function ArtifactsPanel({
         </>
       )}
 
-      {(isDragging || uploadProgress.active) && (
+      {/* 拖拽上传遮罩：拖入文件时覆盖整个面板 */}
+      {isDragging && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-lg bg-background/80 backdrop-blur-sm">
-          {uploadProgress.active ? (
-            <>
-              <Upload className="h-8 w-8 mb-3 text-brand animate-pulse" />
-              <p className="text-sm text-text-primary mb-2">
-                {t("fileTree.uploadingFile", { name: uploadProgress.fileName })}
-              </p>
-              <div className="w-48">
-                <Progress value={uploadProgress.percent} className="h-1.5" />
-              </div>
-              <p className="text-xs text-text-muted mt-1">
-                {t("fileTree.uploadingProgress", { percent: uploadProgress.percent })}
-              </p>
-            </>
-          ) : (
-            <>
-              <Upload className="h-10 w-10 mb-3 text-brand" />
-              <p className="text-sm font-medium text-text-primary mb-1">{t("fileTree.dropToUpload")}</p>
-              <p className="text-xs text-text-muted">{t("fileTree.uploadTo", { path: "user/" })}</p>
-            </>
-          )}
+          <Upload className="h-10 w-10 mb-3 text-brand" />
+          <p className="text-sm font-medium text-text-primary mb-1">{t("fileTree.dropToUpload")}</p>
+          <p className="text-xs text-text-muted">{t("fileTree.uploadTo", { path: "user/" })}</p>
         </div>
       )}
 
