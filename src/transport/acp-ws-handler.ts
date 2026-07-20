@@ -127,12 +127,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   }
 
   const agentName = (msg.agent_name as string) || "unknown";
-  const name = (msg.name as string) || null;
-  const machineInfo = msg.machine_info as Record<string, unknown> | undefined;
-  const labels = Array.isArray(msg.labels) ? (msg.labels as string[]) : [];
-  const heartbeatIntervalMs = typeof msg.heartbeat_interval_ms === "number" ? msg.heartbeat_interval_ms : 30000;
   const tenantId = (msg.tenant_id as string) || null;
-  const userId = (msg.user_id as string) || null;
   const supportedEngineTypes = Array.isArray(msg.supported_engine_types)
     ? (msg.supported_engine_types as { type: string; cliPath?: string }[])
     : [{ type: "opencode" }];
@@ -143,13 +138,8 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
 
   try {
     const result = await registerMachine({
-      name,
       agentName,
-      machineInfo: machineInfo ?? null,
-      labels,
-      heartbeatIntervalMs,
       tenantId,
-      userId,
       nodeId,
       machineId: specifiedMachineId,
     });
@@ -176,10 +166,11 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
 
     // 启动心跳超时检测：远程服务直接关闭时 TCP 不会发 FIN，
     // 依赖心跳超时触发完整断连清理（包括关闭前端 relay WS）
+    const HEARTBEAT_INTERVAL_MS = 30000;
     logger.info(
-      `[MACHINE-REGISTER] Starting heartbeat for machineId=${result.id} interval=${heartbeatIntervalMs}ms timeout=${heartbeatIntervalMs * 3}ms`,
+      `[MACHINE-REGISTER] Starting heartbeat for machineId=${result.id} interval=${HEARTBEAT_INTERVAL_MS}ms timeout=${HEARTBEAT_INTERVAL_MS * 3}ms`,
     );
-    startHeartbeat(result.id, heartbeatIntervalMs, () => {
+    startHeartbeat(result.id, HEARTBEAT_INTERVAL_MS, () => {
       logger.info(`[MACHINE-HEARTBEAT] Timeout triggered for machineId=${result.id}`);
       triggerMachineDisconnect(wsId, result.id, "heartbeat timeout");
     });

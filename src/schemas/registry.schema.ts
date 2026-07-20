@@ -79,6 +79,13 @@ export const CreateMachineSchema = z.object({
   agentName: z.string().min(1).max(64).default("opencode").describe("引擎名称"),
 });
 
+/** 更新机器请求 */
+export const UpdateMachineSchema = z.object({
+  name: z.string().min(1).max(64).optional().describe("机器显示名称"),
+  labels: z.array(z.string()).optional().describe("标签列表"),
+  agentName: z.string().min(1).max(64).optional().describe("引擎名称"),
+});
+
 /** 创建机器响应 */
 export const CreateMachineResponseSchema = z.object({
   id: z.string().describe("分配的 machine id"),
@@ -99,3 +106,4 @@ export type MachineQuery = z.infer<typeof MachineQuerySchema>;
 export type EventQuery = z.infer<typeof EventQuerySchema>;
 export type CreateMachine = z.infer<typeof CreateMachineSchema>;
 export type CreateMachineResponse = z.infer<typeof CreateMachineResponseSchema>;
+export type UpdateMachineInput = z.infer<typeof UpdateMachineSchema>;

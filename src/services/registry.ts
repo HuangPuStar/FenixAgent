@@ -152,20 +152,25 @@ export async function createMachine(
   return { id, name: params.name, status: "pending", initCommand };
 }
 
+/**
+ * Machine 注册连接处理器。
+ *
+ * 仅负责运行时状态激活/重连（status、lastHeartbeatAt、updatedAt），
+ * **不写入任何元数据字段**（name、labels、machineInfo 等）。
+ * machine 必须在管理面通过 `POST /web/registry/machines` 预创建后才能连接，
+ * 未预创建的连接将被拒绝（不再支持自动注册）。
+ *
+ * @param params.machineId - 客户端指定的 machine ID（优先），对应管理面预创建记录
+ * @param params.nodeId - 客户端持久化的 node_id（去重用），用于未指定 machineId 时的回退匹配
+ * @param params.agentName - 引擎名称，用于 bindAgentConfigs 自动匹配
+ * @param params.tenantId - 组织 ID，用于 bindAgentConfigs 范围限定
+ */
 export async function registerMachine(params: {
-  name: string | null;
   agentName: string;
-  machineInfo: Record<string, unknown> | null;
-  labels: string[];
-  heartbeatIntervalMs: number;
   tenantId: string | null;
-  userId: string | null;
-  /** 客户端持久化的 node_id，用于精确去重（避免 IP/MAC 变化导致重复注册） */
   nodeId?: string | null;
-  /** 客户端指定的 machine id（可选），有值时跳过 ID 生成和去重，直接用该 ID */
   machineId?: string | null;
 }): Promise<{ id: string; isNew: boolean }> {
-  const hostname = params.machineInfo?.hostname as string | undefined;
   let existingId: string | null = null;
 
   // ── 客户端指定 machineId 分支：验证预创建记录并激活 ──
@@ -191,17 +196,11 @@ export async function registerMachine(params: {
     const isFirstRegistration = existing[0].status === "pending";
     const eventType = isFirstRegistration ? "register" : "reconnect";
 
-    // pending 或 offline → 激活为 online，同步更新字段
+    // pending 或 offline → 激活为 online
     await db
       .update(machine)
       .set({
         status: "online",
-        organizationId: params.tenantId ?? null,
-        userId: params.userId ?? null,
-        machineInfo: params.machineInfo,
-        labels: params.labels,
-        name: params.name,
-        heartbeatIntervalMs: params.heartbeatIntervalMs,
         lastHeartbeatAt: now,
         updatedAt: now,
       })
@@ -211,7 +210,7 @@ export async function registerMachine(params: {
       id: genId("evt"),
       machineId: params.machineId,
       type: eventType,
-      detail: { machine_info: params.machineInfo, labels: params.labels },
+      detail: {},
     });
 
     await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
@@ -225,16 +224,6 @@ export async function registerMachine(params: {
     existingId = byNodeId[0]?.id ?? null;
   }
 
-  // 优先级 2：fallback 按 hostname + agentName 查找（兼容旧客户端或 node_id 丢失）
-  if (!existingId && hostname) {
-    const byHostname = await db
-      .select({ id: machine.id })
-      .from(machine)
-      .where(and(eq(machine.agentName, params.agentName), sql`${machine.machineInfo}->>'hostname' = ${hostname}`))
-      .limit(1);
-    existingId = byHostname[0]?.id ?? null;
-  }
-
   const now = new Date();
 
   // ── 已存在的机器重连：更新状态，写 reconnect 事件 ──
@@ -243,10 +232,6 @@ export async function registerMachine(params: {
       .update(machine)
       .set({
         status: "online",
-        machineInfo: params.machineInfo,
-        labels: params.labels,
-        name: params.name,
-        heartbeatIntervalMs: params.heartbeatIntervalMs,
         lastHeartbeatAt: now,
         updatedAt: now,
       })
@@ -257,40 +242,14 @@ export async function registerMachine(params: {
       id: genId("evt"),
       machineId: existingId,
       type: "reconnect",
-      detail: { machine_info: params.machineInfo, labels: params.labels },
+      detail: {},
     });
 
     await bindAgentConfigs(existingId, params.agentName, params.tenantId);
     return { id: existingId, isNew: false };
   }
 
-  // ── 新机器首次注册：生成随机 ID，写 register 事件 ──
-  const id = genId("mach");
-  await db.insert(machine).values({
-    id,
-    organizationId: params.tenantId ?? null,
-    userId: params.userId ?? null,
-    agentName: params.agentName,
-    name: params.name,
-    status: "online",
-    machineInfo: params.machineInfo,
-    labels: params.labels,
-    heartbeatIntervalMs: params.heartbeatIntervalMs,
-    lastHeartbeatAt: now,
-    registeredAt: now,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  await db.insert(registryEvent).values({
-    id: genId("evt"),
-    machineId: id,
-    type: "register",
-    detail: { machine_info: params.machineInfo, labels: params.labels },
-  });
-
-  await bindAgentConfigs(id, params.agentName, params.tenantId);
-  return { id, isNew: true };
+  throw new Error("machine not found, please create it first in your organization's admin panel");
 }
 
 export async function disconnectMachine(machineId: string, reason: string): Promise<void> {
@@ -317,6 +276,36 @@ export async function markHeartbeatTimeout(machineId: string): Promise<void> {
 
 export async function updateHeartbeat(machineId: string): Promise<void> {
   await db.update(machine).set({ lastHeartbeatAt: new Date(), updatedAt: new Date() }).where(eq(machine.id, machineId));
+}
+
+/**
+ * 由管理面调用，更新机器的名称、标签和引擎类型。
+ * 仅允许组织管理员操作，校验组织归属。
+ */
+export async function updateMachine(
+  ctx: AuthContext,
+  id: string,
+  params: { name?: string; labels?: string[]; agentName?: string },
+): Promise<typeof machine.$inferSelect> {
+  const rows = await db
+    .select()
+    .from(machine)
+    .where(and(eq(machine.id, id), or(isNull(machine.organizationId), eq(machine.organizationId, ctx.organizationId))))
+    .limit(1);
+
+  if (rows.length === 0) {
+    throw new Error(`machine '${id}' not found`);
+  }
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (params.name !== undefined) updates.name = params.name;
+  if (params.labels !== undefined) updates.labels = params.labels;
+  if (params.agentName !== undefined) updates.agentName = params.agentName;
+
+  await db.update(machine).set(updates).where(eq(machine.id, id));
+
+  const updated = await db.select().from(machine).where(eq(machine.id, id)).limit(1);
+  return updated[0];
 }
 
 /** 按 agentName 匹配 agentConfig 并绑定 machineId */
