@@ -37,7 +37,8 @@
     "loadFailed": "加载文件失败",
     "uploadFailed": "上传失败",
     "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
-    "uploadTooLarge": "上传失败：文件大小超过 100MB 限制"
+    "uploadTooLarge": "上传失败：文件大小超过 100MB 限制",
+    "totalTooLarge": "文件总量 {{total}} 超过了单次上传 {{max}} 限制，请分批次上传"
   },
   "identity": {
     "title": "身份标识",
