@@ -29,14 +29,14 @@ describe("WSTransport", () => {
 
   // 测试 send 在未连接时抛错
   test("send — throws when not connected", () => {
-    expect(() => transport.send("hello")).toThrow("WebSocket not connected");
+    expect(() => transport.send("hello")).toThrow("Socket not connected");
   });
 
-  // 测试 close 与 disconnect 的区别
-  test("close vs disconnect — close allows reconnect, disconnect prevents it", () => {
-    // close() 方法存在且可调用
-    expect(typeof transport.close).toBe("function");
-    // disconnect() 方法存在且可调用
+  // 测试 disconnect 方法存在且可调用
+  test("disconnect — method exists and is callable", () => {
     expect(typeof transport.disconnect).toBe("function");
+    // 不连接直接 disconnect 不应报错
+    expect(() => transport.disconnect()).not.toThrow();
+    expect(transport.state).toBe("disconnected");
   });
 });

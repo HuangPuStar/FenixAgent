@@ -259,7 +259,7 @@ export function ACPConnect({
   );
 
   // Format URL for display
-  const displayUrl = settings.proxyUrl.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+  const displayUrl = (settings.proxyUrl ?? "").replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
 
   // Get status label
   const statusLabels: Record<ConnectionState, string> = {

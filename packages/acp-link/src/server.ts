@@ -8,6 +8,7 @@ import { createCcbHandler } from "@fenix/ccb";
 import { createClaudeCodeHandler } from "@fenix/claude-code";
 import { createOpencodeHandler } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { io, type Socket } from "socket.io-client";
 import { handleFileOp } from "./client/file-operations.js";
 import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
@@ -226,21 +227,17 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   initRegistry(cwd).catch((err) => {
     console.error("[acp-client] Failed to load workspace registry:", err);
   });
-  const url = `${config.rcsUrl}/acp/ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
-  let ws: WebSocket | null = null;
-  let fileWs: WebSocket | null = null;
-  let fileWsHeartbeat: ReturnType<typeof setInterval> | null = null;
+  let machineSocket: Socket | null = null;
+  let fileSocket: Socket | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  let reconnectAttempt = 0;
-  const MAX_RECONNECT_MS = 30_000;
   let manualClose = false;
   // 持久化的 node_id，首次注册后由服务器分配，后续重连携带以精确匹配
   let cachedNodeId: string | null = null;
 
   function setupSessionCallbacks(): void {
     sessionMgr.on("session_data", (sessionId: string, payload: unknown) => {
-      if (ws && ws.readyState === 1) {
-        ws.send(
+      if (machineSocket?.connected) {
+        machineSocket.send(
           JSON.stringify({
             type: "session_data",
             session_id: sessionId,
@@ -250,8 +247,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       }
     });
     sessionMgr.on("session_ended", (sessionId: string, exitCode: number) => {
-      if (ws && ws.readyState === 1) {
-        ws.send(
+      if (machineSocket?.connected) {
+        machineSocket.send(
           JSON.stringify({
             type: "session_ended",
             session_id: sessionId,
@@ -261,8 +258,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       }
     });
     sessionMgr.on("session_error", (sessionId: string, error: string) => {
-      if (ws && ws.readyState === 1) {
-        ws.send(
+      if (machineSocket?.connected) {
+        machineSocket.send(
           JSON.stringify({
             type: "session_error",
             session_id: sessionId,
@@ -275,149 +272,133 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
   setupSessionCallbacks();
 
+  function connectFileWs(machineId: string): void {
+    // 关闭已有的 file-ws 连接（防止重注册时泄漏）
+    if (fileSocket) {
+      fileSocket.removeAllListeners();
+      fileSocket.disconnect();
+      fileSocket = null;
+    }
+
+    fileSocket = io(`${config.rcsUrl}/file`, {
+      query: { secret: config.rcsSecret ?? "", machine_id: machineId },
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+    });
+
+    fileSocket.on("connect", () => {
+      console.log("[acp-client] file-ws connected, registering...");
+      fileSocket!.send(JSON.stringify({ type: "register", machine_id: machineId }));
+    });
+
+    fileSocket.on("message", async (raw: string) => {
+      try {
+        const fmsg = JSON.parse(raw);
+        if (fmsg.type === "file_op") {
+          const result = await handleFileOp(fmsg);
+          if (fileSocket?.connected) {
+            fileSocket.send(JSON.stringify(result));
+          }
+        }
+      } catch {
+        // ignore
+      }
+    });
+
+    fileSocket.on("disconnect", (reason) => {
+      console.log(`[acp-client] file-ws disconnected: ${reason}`);
+      fileSocket = null;
+    });
+  }
+
   function connect(): void {
     if (manualClose) return;
-    ws = new WebSocket(url);
 
-    ws.onopen = () => {
-      reconnectAttempt = 0;
-      ws!.send(JSON.stringify(buildRegisterMessage(config, cachedNodeId)));
+    machineSocket = io(`${config.rcsUrl}/machine`, {
+      query: { secret: config.rcsSecret ?? "" },
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+    });
+
+    machineSocket.on("connect", () => {
+      console.log("[acp-client] connected to /machine namespace");
+      machineSocket!.send(JSON.stringify(buildRegisterMessage(config, cachedNodeId)));
 
       // 重连后：为所有存活的子进程发送 session_resumed
       for (const sessionId of sessionMgr.getAliveSessionIds()) {
-        ws!.send(
+        machineSocket!.send(
           JSON.stringify({
             type: "session_resumed",
             session_id: sessionId,
           }),
         );
       }
-    };
+    });
 
-    ws.onmessage = async (event) => {
+    machineSocket.on("connect_error", (err) => {
+      console.error("[acp-client] connect error:", err.message);
+      if (err.message === "unauthorized") {
+        manualClose = true;
+        machineSocket?.disconnect();
+      }
+    });
+
+    machineSocket.on("message", async (raw: string) => {
       try {
-        const msg = JSON.parse(event.data as string);
+        const msg = JSON.parse(raw);
         // ── ACP 调试日志 ──
-        if (msg.type !== "heartbeat" && msg.type !== "keep_alive") {
+        if (msg.type !== "heartbeat") {
           console.log("[acp-client] ← RCS:", JSON.stringify(msg).slice(0, 500));
         }
         switch (msg.type) {
           case "registered": {
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
-            // 持久化服务器分配的 machine_id 作为 node_id，后续重连精确匹配
             if (msg.machine_id && msg.machine_id !== cachedNodeId) {
               cachedNodeId = msg.machine_id;
               saveNodeId(cwd, msg.machine_id).catch(() => {});
             }
+            // 启动应用层心跳：服务端 registry-heartbeat 依赖此消息判断机器存活
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
             heartbeatTimer = setInterval(() => {
-              if (ws && ws.readyState === 1) {
-                ws.send(JSON.stringify({ type: "heartbeat" }));
+              if (machineSocket?.connected) {
+                machineSocket.send(JSON.stringify({ type: "heartbeat" }));
               }
             }, 30000);
-
-            // Establish file-ws connection
-            // Close existing file-ws before creating a new one (prevents leak on re-register)
-            if (fileWs) {
-              try {
-                fileWs.close();
-              } catch {
-                /* ignore */
-              }
-              fileWs = null;
-            }
-            if (fileWsHeartbeat) {
-              clearInterval(fileWsHeartbeat);
-              fileWsHeartbeat = null;
-            }
-            const fileWsUrl = `${config.rcsUrl}/acp/file-ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
-            const connectFileWs = () => {
-              if (manualClose) return;
-              fileWs = new WebSocket(fileWsUrl);
-              fileWs.onopen = () => {
-                console.log("[acp-client] file-ws connected, registering...");
-                if (fileWs && fileWs.readyState === 1) {
-                  fileWs.send(
-                    JSON.stringify({
-                      type: "register",
-                      machine_id: msg.machine_id,
-                    }),
-                  );
-                }
-                fileWsHeartbeat = setInterval(() => {
-                  if (fileWs && fileWs.readyState === 1) {
-                    fileWs.send(
-                      JSON.stringify({
-                        type: "keep_alive",
-                      }),
-                    );
-                  }
-                }, 30000);
-              };
-              fileWs.onmessage = async (event) => {
-                try {
-                  const fmsg = JSON.parse(event.data as string);
-                  if (fmsg.type === "file_op") {
-                    const result = await handleFileOp(fmsg);
-                    if (fileWs && fileWs.readyState === 1) {
-                      fileWs.send(JSON.stringify(result));
-                    }
-                  }
-                } catch {
-                  // ignore
-                }
-              };
-              fileWs.onclose = () => {
-                if (fileWsHeartbeat) {
-                  clearInterval(fileWsHeartbeat);
-                  fileWsHeartbeat = null;
-                }
-                fileWs = null;
-                // 不自动重连 file-ws，由主 WS 的 registered 回调统一管理
-              };
-              fileWs.onerror = () => {
-                // onclose will handle
-              };
-            };
-            connectFileWs();
+            // 连接 file-ws
+            connectFileWs(msg.machine_id);
             break;
           }
           case "session_start": {
             const sessionId = msg.session_id as string;
             const launchSpec = msg.launch_spec;
 
-            // 旧 SessionManager 路径（向后兼容）
             if (launchSpec) {
               console.log(`[acp-client] session_start with launch_spec for ${sessionId}`);
               if (msg.agent_prompt) {
                 sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
               }
               sessionMgr.startSession(sessionId, launchSpec as Record<string, unknown>).then((result) => {
-                if (ws && ws.readyState === 1) {
+                if (machineSocket?.connected) {
                   if (result === "started") {
                     const caps = sessionMgr.getCapabilities?.() ?? {};
-                    ws.send(
+                    machineSocket.send(
                       JSON.stringify({
                         type: "session_started",
                         session_id: sessionId,
-                        payload: {
-                          capabilities: caps,
-                        },
+                        payload: { capabilities: caps },
                       }),
                     );
                   } else if (result === "queued") {
-                    ws.send(
-                      JSON.stringify({
-                        type: "session_queued",
-                        session_id: sessionId,
-                      }),
-                    );
+                    machineSocket.send(JSON.stringify({ type: "session_queued", session_id: sessionId }));
                   } else {
-                    ws.send(
-                      JSON.stringify({
-                        type: "session_error",
-                        session_id: sessionId,
-                        error: "spawn failed",
-                      }),
+                    machineSocket.send(
+                      JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }),
                     );
                   }
                 }
@@ -428,32 +409,21 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 sessionMgr.setSystemPrompt?.(msg.agent_prompt as string);
               }
               sessionMgr.startSession(sessionId).then((result) => {
-                if (ws && ws.readyState === 1) {
+                if (machineSocket?.connected) {
                   if (result === "started") {
                     const caps = sessionMgr.getCapabilities?.() ?? {};
-                    ws.send(
+                    machineSocket.send(
                       JSON.stringify({
                         type: "session_started",
                         session_id: sessionId,
-                        payload: {
-                          capabilities: caps,
-                        },
+                        payload: { capabilities: caps },
                       }),
                     );
                   } else if (result === "queued") {
-                    ws.send(
-                      JSON.stringify({
-                        type: "session_queued",
-                        session_id: sessionId,
-                      }),
-                    );
+                    machineSocket.send(JSON.stringify({ type: "session_queued", session_id: sessionId }));
                   } else {
-                    ws.send(
-                      JSON.stringify({
-                        type: "session_error",
-                        session_id: sessionId,
-                        error: "spawn failed",
-                      }),
+                    machineSocket.send(
+                      JSON.stringify({ type: "session_error", session_id: sessionId, error: "spawn failed" }),
                     );
                   }
                 }
@@ -485,9 +455,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const launchSpec = msg.launch_spec as AgentLaunchSpec;
             const engineType = msg.engine_type as string | undefined;
             try {
-              // InstanceManager 支持多引擎，传入 engine_type 即可切换引擎
               await instanceMgr.prepare(instId, launchSpec, engineType);
-              ws!.send(
+              machineSocket!.send(
                 JSON.stringify({
                   type: "prepare_result",
                   request_id: msg.request_id,
@@ -496,7 +465,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 }),
               );
             } catch (err) {
-              ws!.send(
+              machineSocket!.send(
                 JSON.stringify({
                   type: "prepare_result",
                   request_id: msg.request_id,
@@ -511,22 +480,16 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
           case "start": {
             const instId = msg.instance_id as string;
             try {
-              // start 统一走 InstanceManager（稳定路径）
               const relaySend = (msgObj: unknown) => {
-                if (ws && ws.readyState === 1) {
+                if (machineSocket?.connected) {
                   const sessId = instanceMgr.getSessionId(instId) ?? instId;
-                  ws.send(
-                    JSON.stringify({
-                      type: "relay",
-                      instance_id: instId,
-                      session_id: sessId,
-                      payload: msgObj,
-                    }),
+                  machineSocket.send(
+                    JSON.stringify({ type: "relay", instance_id: instId, session_id: sessId, payload: msgObj }),
                   );
                 }
               };
               const result = await instanceMgr.start(instId, relaySend);
-              ws!.send(
+              machineSocket!.send(
                 JSON.stringify({
                   type: "start_result",
                   request_id: msg.request_id,
@@ -536,7 +499,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 }),
               );
             } catch (err) {
-              ws!.send(
+              machineSocket!.send(
                 JSON.stringify({
                   type: "start_result",
                   request_id: msg.request_id,
@@ -552,16 +515,11 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const instId = msg.instance_id as string;
             try {
               await instanceMgr.stop(instId);
-              ws!.send(
-                JSON.stringify({
-                  type: "stop_result",
-                  request_id: msg.request_id,
-                  instance_id: instId,
-                  status: "ok",
-                }),
+              machineSocket!.send(
+                JSON.stringify({ type: "stop_result", request_id: msg.request_id, instance_id: instId, status: "ok" }),
               );
             } catch (err) {
-              ws!.send(
+              machineSocket!.send(
                 JSON.stringify({
                   type: "stop_result",
                   request_id: msg.request_id,
@@ -577,11 +535,9 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const instId = msg.instance_id as string;
             const sessId = msg.session_id as string;
             const relayPayload = msg.payload;
-            // 回写前端 session_id 到实例 state，使 relaySend 回传时使用正确的会话标识
             if (sessId) {
               instanceMgr.setSessionId(instId, sessId);
             }
-            // ── ACP 调试日志 ──
             console.log("[acp-client] relay → dispatcher:", JSON.stringify(relayPayload).slice(0, 500));
             if (instanceMgr.hasInstance(instId)) {
               const dispatcher = instanceMgr.getDispatcher(instId);
@@ -589,7 +545,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 try {
                   await dispatcher.handleMessage(relayPayload);
                 } catch (err) {
-                  ws!.send(
+                  machineSocket!.send(
                     JSON.stringify({
                       type: "relay",
                       instance_id: instId,
@@ -612,34 +568,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       } catch {
         // ignore parse errors
       }
-    };
+    });
 
-    ws.onclose = (event) => {
-      if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
+    machineSocket.on("disconnect", (reason) => {
       if (manualClose) return;
-
-      // 提供有意义的断连原因提示
-      if (event.code === 4003) {
-        console.error(
-          `[acp-client] 认证失败: ${event.reason || "secret 不匹配"}，请检查 RCS_SECRET 与服务端 REGISTRY_SECRET 是否一致`,
-        );
-        manualClose = true;
-        return;
-      }
-
-      // 指数退避重连（不断连不杀子进程）
-      const delay = Math.min(1000 * 2 ** reconnectAttempt, MAX_RECONNECT_MS);
-      reconnectAttempt++;
-      console.log(`[acp-client] disconnected, reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
-      setTimeout(connect, delay);
-    };
-
-    ws.onerror = () => {
-      // ws.onclose 会触发
-    };
+      console.log(`[acp-client] /machine disconnected: ${reason}, socket.io will auto-reconnect`);
+    });
   }
 
   // 先加载持久化的 node_id，完成后建立连接（确保首次注册即带上 node_id）
@@ -656,10 +590,11 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     close: () => {
       manualClose = true;
       if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (fileWsHeartbeat) clearInterval(fileWsHeartbeat);
-      fileWs?.close();
+      fileSocket?.removeAllListeners();
+      fileSocket?.disconnect();
+      machineSocket?.removeAllListeners();
+      machineSocket?.disconnect();
       sessionMgr.stopAll();
-      ws?.close();
     },
   };
 }

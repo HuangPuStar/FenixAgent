@@ -58,7 +58,9 @@ export function handleAcpWsOpen(
   if (boundEnvId) {
     logger.debug(`Local acp-link connection opened: wsId=${wsId} boundEnvId=${boundEnvId}`);
     import("../services/environment-acp").then(({ handleAcpConnect }) => {
-      handleAcpConnect(boundEnvId).catch(() => {});
+      handleAcpConnect(boundEnvId).catch((err) => {
+        logError("[AcpWsOpen] handleAcpConnect error:", err);
+      });
     });
 
     const keepalive = setInterval(() => {
@@ -155,6 +157,16 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     });
 
     entry.machineId = result.id;
+
+    // 同步到 TransportStore（跨节点可见）
+    import("../transport/store/factory").then(({ getTransportStore }) => {
+      getTransportStore()
+        .setMachineSocket(result.id, entry.wsId)
+        .catch((err) => {
+          logError("[MachineRegister] setMachineSocket error:", err);
+        });
+    });
+
     logger.debug(`Machine registered: id=${result.id} agent=${agentName} isNew=${result.isNew}`);
 
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
@@ -354,9 +366,21 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
   logger.info(`[MACHINE-CLEANUP] Starting full cleanup for machineId=${machineId} reason=${reason ?? "unknown"}`);
 
   // 无其他活跃连接，执行完整断连清理
-  handleMachineDisconnect(entry, reason).catch(() => {});
+  handleMachineDisconnect(entry, reason).catch((err) => {
+    logError("[MachineCleanup] handleMachineDisconnect error:", err);
+  });
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
+
+  // 清理 TransportStore
+  import("../transport/store/factory").then(({ getTransportStore }) => {
+    getTransportStore()
+      .delMachineSocket(machineId)
+      .catch((err) => {
+        logError("[MachineCleanup] delMachineSocket error:", err);
+      });
+  });
+
   // 清理 RCS registry 中对应 machineId 的孤儿 supplement
   import("../services/instance-registry").then(({ globalInstanceRegistry }) => {
     const facade = getCoreRuntime();
@@ -519,7 +543,9 @@ export function closeAllAcpConnections(): void {
         entry.ws.close(1001, "server_shutdown");
       }
       if (entry.isMachine && entry.machineId) {
-        disconnectMachine(entry.machineId, "server_shutdown").catch(() => {});
+        disconnectMachine(entry.machineId, "server_shutdown").catch((err) => {
+          logError("[closeAllAcp] disconnectMachine error:", err);
+        });
       }
     } catch {
       // ignore errors during shutdown

@@ -13,6 +13,8 @@ services:
                 condition: service_healthy
             litellm:
                 condition: service_started
+            redis:
+                condition: service_healthy
         ports:
             - "3001:3000"
         environment:
@@ -35,6 +37,7 @@ services:
             # LiteLLM AI 网关
             RCS_SECRET_LITELLM_ADMIN_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-admin-dev-key}
             RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY:-}
+            RCS_REDIS_URL: redis://redis:6379
             # 使用 RAG 功能需要额外启动 RAGFLOW 并添加如下环境变量
             # RAGFLOW_API_URL: "http://ragflow:9380"
             # RAGFLOW_API_KEY: "${RAGFLOW_API_KEY:-}"
@@ -59,6 +62,20 @@ services:
             retries: 3
             start_period: 20s
 
+    redis:
+        image: redis:7-alpine
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis_data:/data
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 3
+
 volumes:
     rcs-opencode-config:
     rcs-opencode-data:
+    redis_data:
