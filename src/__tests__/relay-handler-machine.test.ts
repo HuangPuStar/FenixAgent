@@ -56,7 +56,7 @@ describe("handleRelayOpen — single machine relay path", () => {
     expect(msgs.length).toBeGreaterThan(0);
     const errorMsg = JSON.parse(msgs[0]);
     expect(errorMsg.type).toBe("error");
-    expect(ws.close as ReturnType<typeof mock>).toHaveBeenCalled();
+    // socket.io 不通过 close 传递错误，改为发送 error 事件后保持连接
   });
 
   test("agentConfig 无 machineId 返回错误并关闭 WS", async () => {
@@ -77,7 +77,7 @@ describe("handleRelayOpen — single machine relay path", () => {
     const msgs = ws._messages as string[];
     const errorMsg = JSON.parse(msgs[0]);
     expect(errorMsg.type).toBe("error");
-    expect(ws.close as ReturnType<typeof mock>).toHaveBeenCalled();
+    // socket.io 不通过 close 传递错误，改为发送 error 事件后保持连接
   });
 
   test("machine 离线返回错误并关闭 WS", async () => {
@@ -98,7 +98,8 @@ describe("handleRelayOpen — single machine relay path", () => {
     const msgs = ws._messages as string[];
     const errorMsg = JSON.parse(msgs[0]);
     expect(errorMsg.type).toBe("error");
-    expect(ws.close as ReturnType<typeof mock>).toHaveBeenCalled();
+    // socket.io 不通过 close 传递错误——临时故障保持连接，由前端决定重试；
+    // 只有 auth 级别永久错误才 disconnect
   });
 });
 

@@ -16,6 +16,18 @@ export class RelayConnectionManager {
       if (existing.relayUnsub) existing.relayUnsub();
     }
     this.connections.set(wsId, entry);
+
+    // 同步到 TransportStore（跨节点可见）
+    if (entry.instanceId) {
+      const instanceId = entry.instanceId;
+      import("../store/factory").then(({ getTransportStore }) => {
+        getTransportStore()
+          .setRelaySocket(instanceId, wsId)
+          .catch((err) => {
+            logError("[RelayConnManager] setRelaySocket error:", err);
+          });
+      });
+    }
   }
 
   get(wsId: string): RelayConnectionEntry | undefined {
@@ -29,6 +41,18 @@ export class RelayConnectionManager {
     if (entry.unsub) entry.unsub();
     if (entry.relayUnsub) entry.relayUnsub();
     this.connections.delete(wsId);
+
+    // 清理 TransportStore
+    if (entry?.instanceId) {
+      const instanceId = entry.instanceId;
+      import("../store/factory").then(({ getTransportStore }) => {
+        getTransportStore()
+          .delRelaySocket(instanceId)
+          .catch((err) => {
+            logError("[RelayConnManager] delRelaySocket error:", err);
+          });
+      });
+    }
   }
 
   findByInstance(instanceId: string): ManagedConnection | undefined {

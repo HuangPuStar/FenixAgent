@@ -38,8 +38,6 @@ export async function connectAgentRelay(instanceId: string, sessionId: string): 
 
 const manager = new RelayConnectionManager();
 
-const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
-
 /** relay 设置期间（openLocalRelay 尚未完成）缓存前端消息 */
 const pendingRelayMessages = new Map<string, Array<Record<string, unknown>>>();
 
@@ -70,7 +68,6 @@ export async function handleRelayOpen(
   if (!env) {
     pendingRelayMessages.delete(relayWsId);
     sendToRelayWs(ws, { type: "error", payload: { message: "Environment not found" } });
-    ws.close(4004, "environment not found");
     return;
   }
 
@@ -118,7 +115,6 @@ async function openLocalRelay(
       return;
     }
     sendToRelayWs(ws, { type: "error", payload: { message: `Failed to start local instance: ${msg}` } });
-    ws.close(1011, "spawn failed");
     return;
   }
 
@@ -148,25 +144,15 @@ async function openLocalRelay(
     const msg = err instanceof Error ? err.message : String(err);
     logError("Failed to connect instance relay:", err);
     sendToRelayWs(ws, { type: "error", payload: { message: `Relay connect failed: ${msg}` } });
-    ws.close(1011, "relay connect failed");
     return;
   }
 
   // 3. 所有异步工作完成，一次性创建完整 entry 并加入 manager
-  const relayKeepalive = setInterval(() => {
-    const entry = manager.get(relayWsId);
-    if (entry?.ws.readyState !== 1) {
-      clearInterval(relayKeepalive);
-      return;
-    }
-    sendToRelayWs(entry.ws, { type: "keep_alive" });
-  }, RELAY_KEEPALIVE_INTERVAL_MS);
-
   const entry: RelayConnectionEntry = {
     agentId,
     userId,
     unsub: null,
-    keepalive: relayKeepalive,
+    keepalive: null,
     ws,
     openTime: Date.now(),
     instanceId,
@@ -204,7 +190,6 @@ async function openLocalRelay(
           type: "error",
           payload: { message: "Agent connection lost" },
         });
-        ws.close(1011, "relay handle closed");
         return;
       }
       if (entry.instanceId && typeof msgType === "string" && msgType !== "status") {
@@ -347,7 +332,6 @@ export async function handleRelayMessage(
     } catch (err) {
       logError("relay handle send error:", err);
       sendToRelayWs(ws, { type: "error", payload: { message: "Agent connection error" } });
-      ws.close(1011, "relay send failed");
     }
     return;
   }

@@ -1,4 +1,5 @@
 import { error as logError } from "@fenix/logger";
+import { NODE_ID } from "./store/node-id";
 
 export interface SessionEvent {
   id: string;
@@ -48,6 +49,19 @@ export class EventBus {
         logError(`[EventBus] subscriber error:`, err);
       }
     }
+
+    // 跨节点广播：通过 TransportStore Pub/Sub 发送到其他 RCS 节点
+    // 消息携带 _nodeId 用于去重：接收节点跳过自己发出的消息
+    try {
+      import("./store/factory").then(({ getTransportStore }) => {
+        getTransportStore()
+          .publish("eventbus", JSON.stringify({ _nodeId: NODE_ID, ...full }))
+          .catch((err) => logError("[EventBus] cross-node publish error:", err));
+      });
+    } catch {
+      // TransportStore 未初始化时忽略（测试环境）
+    }
+
     return full;
   }
 
@@ -59,6 +73,30 @@ export class EventBus {
     const idx = this.events.findIndex((e) => e.seqNum > seqNum);
     if (idx === -1) return [];
     return this.events.slice(idx);
+  }
+
+  /**
+   * 注入跨节点到来的事件，仅触发本地 subscriber，不再次跨节点广播。
+   * 用于解决 EventBus 双重投递问题：跨节点 subscribe 消费端调用此方法将远程事件回灌到本地，
+   * 避免 publish → 再次广播 → 无限循环。
+   */
+  inject(event: SessionEvent): void {
+    if (this.closed) return;
+    this.events.push(event);
+    // Evict oldest events when exceeding limit
+    if (this.events.length > MAX_EVENTS_PER_BUS) {
+      this.events = this.events.slice(-Math.floor(MAX_EVENTS_PER_BUS / 2));
+    }
+    if (event.seqNum > this.seqNum) {
+      this.seqNum = event.seqNum;
+    }
+    for (const cb of this.subscribers) {
+      try {
+        cb(event);
+      } catch (err) {
+        logError(`[EventBus] subscriber error:`, err);
+      }
+    }
   }
 
   close() {

@@ -104,16 +104,15 @@ describe("ACPState", () => {
     expect(state.connectionState).toBe("disconnected");
   });
 
-  // 测试 auth failure (code 4001) 检测
-  test("transport error with code 4001 → auth failure error message", () => {
+  // 测试 error 状态（detail 已不再由 SocketIOTransport 传递）
+  test("transport error → default error message", () => {
     const events: any[] = [];
     state.on("connectionStateChange", (e) => events.push(e));
 
-    // 模拟 auth failure close event
-    const fakeCloseEvent = { code: 4001, reason: "Unauthorized" } as CloseEvent;
-    (transport as any).setState("error", fakeCloseEvent);
+    // 模拟 transport error（SocketIOTransport 不再传递 CloseEvent detail）
+    (transport as any).setState("error");
 
-    expect(events[events.length - 1].error).toBe("登录已过期");
+    expect(events[events.length - 1].error).toBe("连接已断开，请刷新页面重试");
   });
 
   // 测试 bind 返回 cleanup 函数

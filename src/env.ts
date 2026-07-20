@@ -85,7 +85,7 @@ const envSchema = z.object({
   RCS_CCB_ARGS: z.string().default("--acp"),
 
   // ── 可选：Redis 缓存 ──
-  RCS_REDIS_URL: z.string().optional(),
+  RCS_REDIS_URL: z.string().url().optional(),
   RCS_REDIS_PASSWORD: z.string().optional(),
   RCS_REDIS_CLUSTER: z.string().optional(),
 

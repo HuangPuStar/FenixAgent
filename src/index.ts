@@ -49,6 +49,10 @@ import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
+import { registerNamespaces } from "./transport/socketio-namespaces";
+import { initSocketIOServer } from "./transport/socketio-server";
+import { closeTransportStore, connectTransportStore, getTransportStore } from "./transport/store/factory";
+import { NODE_ID } from "./transport/store/node-id";
 
 await initDb();
 startupLog.info("Database initialized");
@@ -211,9 +215,111 @@ startupLog.info(`Listening on ${host}:${port} (baseUrl: ${config.baseUrl || `htt
 
 export type App = typeof app;
 
-// app.listen() 设置 app.server（WebSocket 升级需要），同时 export default
-// 供 Eden Treaty treaty<App>() 做类型推断
-app.listen({ port, hostname: host });
+// 初始化 TransportStore（Redis 连接等）
+await connectTransportStore();
+
+// 初始化 socket.io server（先创建，不加 HTTP server，稍后 attach 到 node:http Server）
+const io = initSocketIOServer(undefined);
+
+// 用 node:http.createServer() 替代 Bun.serve()：
+// engine.io/socket.io 需要 Node.js http.Server 的事件模型（.on("request"/"upgrade"/"close")），
+// Bun.serve() 返回的 Server 不完全兼容。
+// node:http.createServer() 在 Bun 中会创建一个 Bun 兼容的 HTTP Server。
+import { createServer } from "node:http";
+
+const httpServer = createServer(async (req, res) => {
+  const url = req.url ?? "/";
+
+  // 将 Node.js IncomingMessage 转换为 Web Request 交给 Elysia
+  let body: string | null = null;
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(chunk as Buffer);
+    }
+    body = Buffer.concat(chunks).toString();
+  }
+
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value !== undefined) {
+      if (Array.isArray(value)) {
+        for (const v of value) headers.append(key, v);
+      } else {
+        headers.set(key, value as string);
+      }
+    }
+  }
+
+  const webReq = new Request(`http://${req.headers.host ?? "localhost"}${url}`, {
+    method: req.method ?? "GET",
+    headers,
+    body: body,
+  });
+
+  const webRes = await app.fetch(webReq);
+  // biome-ignore lint/suspicious/noExplicitAny: Node.js res.writeHead type
+  const resHeaders: Record<string, string> = {};
+  webRes.headers.forEach((value, key) => {
+    resHeaders[key] = value;
+  });
+  res.writeHead(webRes.status, resHeaders);
+  // 对二进制响应（zip、图片等）使用 arrayBuffer，避免 text() 的 UTF-8 编解码损坏数据
+  const ct = webRes.headers.get("content-type") ?? "";
+  if (
+    ct.startsWith("application/zip") ||
+    ct.startsWith("application/octet-stream") ||
+    ct.startsWith("image/") ||
+    ct.startsWith("audio/") ||
+    ct.startsWith("video/")
+  ) {
+    res.end(Buffer.from(await webRes.arrayBuffer()));
+  } else {
+    const resBody = await webRes.text();
+    res.end(resBody);
+  }
+});
+
+// 将 socket.io attach 到 node:http Server
+io.attach(httpServer as any);
+
+// 手动设置 app.server 供 Eden Treaty 等使用
+(app as unknown as Record<string, unknown>).server = httpServer;
+
+httpServer.listen(port, host, () => {
+  startupLog.info(`Listening on ${host}:${port} (baseUrl: ${config.baseUrl || `http://localhost:${port}`})`);
+});
+// 将 io 实例挂载到全局供后续 namespace 注册使用
+(globalThis as Record<string, unknown>).__socketio = io;
+registerNamespaces(io);
+startupLog.info("socket.io server attached with namespaces");
+
+// 跨节点 EventBus 订阅：将其他节点的 SessionEvent 回灌到本地 EventBus
+// 订阅 "eventbus" 频道，解析消息后跳过本节点发出的事件（避免双重投递）
+getTransportStore()
+  .subscribe("eventbus", (message) => {
+    try {
+      const raw: Record<string, unknown> = JSON.parse(message);
+      if (raw._nodeId === NODE_ID) return; // 跳过自己发出的消息
+      // 回灌到本地 EventBus（使用 inject 避免再次跨节点广播）
+      import("./transport/event-bus").then(({ getEventBus }) => {
+        const bus = getEventBus(raw.sessionId as string);
+        bus.inject({
+          id: raw.id as string,
+          sessionId: raw.sessionId as string,
+          type: raw.type as string,
+          payload: raw.payload,
+          direction: raw.direction as "inbound" | "outbound",
+          seqNum: (raw.seqNum as number) ?? 0,
+          createdAt: (raw.createdAt as number) ?? Date.now(),
+        });
+      });
+    } catch {
+      // 解析失败，静默忽略
+    }
+  })
+  .catch((err) => startupLog.warn("Cross-node EventBus subscribe failed:", err));
+
 export default app;
 
 // Graceful shutdown
@@ -225,6 +331,13 @@ async function gracefulShutdown(signal: string) {
   closeAllRelayConnections();
   closeAllAcpConnections();
   closeAllFileWsConnections();
+  try {
+    io.close();
+    await closeTransportStore();
+    startupLog.info("socket.io server and TransportStore closed");
+  } catch (err) {
+    startupLog.error("Error closing socket.io server:", err);
+  }
   await stopAllInstances();
   stopScheduler();
   schedulerService.stop();

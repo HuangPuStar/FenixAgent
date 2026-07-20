@@ -24,7 +24,7 @@ import type {
 import { ACPPending } from "./pending.js";
 import { ACPProtocol } from "./protocol.js";
 import { ACPState } from "./state.js";
-import { WSTransport } from "./transport.js";
+import { SocketIOTransport } from "./transport.js";
 
 /**
  * Error thrown when disconnect() is called while a connection is in progress.
@@ -59,7 +59,7 @@ export type SessionSwitchingHandler = (sessionId: string) => void;
  * 公开 API 保持向后兼容（setXxxHandler + getter），内部通过子模块解耦。
  */
 export class ACPClient {
-  private readonly transport: WSTransport;
+  private readonly transport: SocketIOTransport;
   private readonly protocol: ACPProtocol;
   readonly state: ACPState;
   private readonly pending: ACPPending;
@@ -69,14 +69,6 @@ export class ACPClient {
   private connectResolve: (() => void) | null = null;
   private connectReject: ((error: Error) => void) | null = null;
   private connecting = false;
-
-  // Heartbeat
-  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  private heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
-  private missedPongs = 0;
-  private static readonly HEARTBEAT_INTERVAL_MS = 60_000;
-  private static readonly PONG_TIMEOUT_MS = 60_000;
-  private static readonly MAX_MISSED_PONGS = 3;
 
   // Backward-compatible handlers
   private connectionStateHandlers = new Set<ConnectionStateHandler>();
@@ -137,7 +129,7 @@ export class ACPClient {
   }
 
   constructor(settings: ACPSettings) {
-    this.transport = new WSTransport();
+    this.transport = new SocketIOTransport();
     this.protocol = new ACPProtocol();
     this.state = new ACPState();
     this.pending = new ACPPending();
@@ -156,10 +148,9 @@ export class ACPClient {
     // State subscribes to transport + protocol
     this.state.bind(this.transport, this.protocol);
 
-    // Protocol status → connect promise + heartbeat
+    // Protocol status → connect promise resolution
     this.protocol.on("status", (payload) => {
       if (payload.connected) {
-        this.startHeartbeat();
         if (this.connecting) {
           this.connecting = false;
           this.connectResolve?.();
@@ -169,8 +160,6 @@ export class ACPClient {
           // Reconnect completed — resend pending
           this.resendPending();
         }
-      } else {
-        this.stopHeartbeat();
       }
     });
 
@@ -199,15 +188,6 @@ export class ACPClient {
       if (!matched && result && typeof result === "object" && "stopReason" in result) {
         const typed = result as { stopReason: string; usage?: PromptUsage };
         this.promptCompleteHandler?.(typed.stopReason, typed.usage);
-      }
-    });
-
-    // Protocol pong → heartbeat
-    this.protocol.on("pong", () => {
-      this.missedPongs = 0;
-      if (this.heartbeatTimeout) {
-        clearTimeout(this.heartbeatTimeout);
-        this.heartbeatTimeout = null;
       }
     });
 
@@ -278,12 +258,12 @@ export class ACPClient {
   async connect(): Promise<void> {
     this.disconnect();
 
-    let wsUrl = this.settings.proxyUrl;
-    if (this.settings.token) {
-      const url = new URL(wsUrl);
-      url.searchParams.set("token", this.settings.token);
-      wsUrl = url.toString();
-    }
+    const ns = this.settings.namespace ?? "/acp";
+    const query: Record<string, string> = {};
+    if (this.settings.agentId) query.agentId = this.settings.agentId;
+    if (this.settings.sessionId) query.sessionId = this.settings.sessionId;
+    if (this.settings.activeOrganizationId) query.activeOrganizationId = this.settings.activeOrganizationId;
+    if (this.settings.token) query.token = this.settings.token;
 
     this.connecting = true;
 
@@ -292,7 +272,7 @@ export class ACPClient {
       this.connectReject = reject;
 
       try {
-        this.transport.connect(wsUrl);
+        this.transport.connect(ns, query);
         // ACP handshake is sent by setupWiring's transport "state: connected" listener
       } catch (error) {
         this.connecting = false;
@@ -310,7 +290,6 @@ export class ACPClient {
       this.connectResolve = null;
       this.connectReject = null;
     }
-    this.stopHeartbeat();
     this.pending.rejectAll(new Error("Disconnected"));
     this.state.reset();
     this.transport.disconnect();
@@ -558,47 +537,8 @@ export class ACPClient {
   }
 
   // ==========================================================================
-  // Heartbeat (ACP-level ping/pong, lives in orchestration layer)
+  // Heartbeat — handled by socket.io internals
   // ==========================================================================
-
-  private startHeartbeat(): void {
-    this.stopHeartbeat();
-    this.missedPongs = 0;
-
-    this.heartbeatInterval = setInterval(() => {
-      if (this.transport.state !== "connected") {
-        this.stopHeartbeat();
-        return;
-      }
-
-      try {
-        this.transport.send(JSON.stringify({ type: "ping" }));
-      } catch {
-        this.stopHeartbeat();
-        return;
-      }
-
-      this.heartbeatTimeout = setTimeout(() => {
-        this.missedPongs++;
-        if (this.missedPongs >= ACPClient.MAX_MISSED_PONGS) {
-          console.warn(`[ACPClient] Server unresponsive (${this.missedPongs} missed pongs), closing`);
-          this.stopHeartbeat();
-          this.transport.close();
-        }
-      }, ACPClient.PONG_TIMEOUT_MS);
-    }, ACPClient.HEARTBEAT_INTERVAL_MS);
-  }
-
-  private stopHeartbeat(): void {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
-    if (this.heartbeatTimeout) {
-      clearTimeout(this.heartbeatTimeout);
-      this.heartbeatTimeout = null;
-    }
-  }
 
   // ==========================================================================
   // Internal helpers

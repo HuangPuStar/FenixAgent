@@ -153,6 +153,127 @@ describe("EventBus", () => {
       expect(bus.getLastSeqNum()).toBe(5001);
     });
   });
+
+  describe("inject", () => {
+    // inject 触发本地 subscriber 但不再次发布
+    test("inject 触发本地 subscriber 但不再次发布", () => {
+      const received: unknown[] = [];
+      bus.subscribe((e) => received.push(e));
+      const injectedEvent = {
+        id: "remote-e1",
+        sessionId: "s1",
+        type: "remote",
+        payload: { from: "node-2" },
+        direction: "outbound" as const,
+        seqNum: 42,
+        createdAt: Date.now() - 1000,
+      };
+      bus.inject(injectedEvent);
+      expect(received).toHaveLength(1);
+      expect((received[0] as any).seqNum).toBe(42);
+      expect((received[0] as any).id).toBe("remote-e1");
+    });
+
+    // inject 将 seqNum 同步到注入事件的值（当更大时）
+    test("inject 同步 seqNum 到较大值", () => {
+      // 先本地发布 seqNum = 1
+      bus.publish({ id: "local", sessionId: "s1", type: "user", payload: {}, direction: "outbound" });
+      expect(bus.getLastSeqNum()).toBe(1);
+
+      // 注入一个 seqNum = 100 的远端事件
+      bus.inject({
+        id: "remote-big",
+        sessionId: "s1",
+        type: "remote",
+        payload: {},
+        direction: "inbound",
+        seqNum: 100,
+        createdAt: Date.now(),
+      });
+      expect(bus.getLastSeqNum()).toBe(100);
+    });
+
+    // inject 不更新 seqNum（当注入事件 seqNum 更小时）
+    test("inject 较小 seqNum 时 seqNum 不变", () => {
+      bus.publish({ id: "local", sessionId: "s1", type: "user", payload: {}, direction: "outbound" });
+      bus.publish({ id: "local2", sessionId: "s1", type: "user", payload: {}, direction: "outbound" });
+      expect(bus.getLastSeqNum()).toBe(2);
+
+      bus.inject({
+        id: "old",
+        sessionId: "s1",
+        type: "remote",
+        payload: {},
+        direction: "inbound",
+        seqNum: 1,
+        createdAt: Date.now(),
+      });
+      expect(bus.getLastSeqNum()).toBe(2);
+    });
+
+    // inject 到已关闭 bus 时被忽略
+    test("inject 到已关闭 bus 被忽略", () => {
+      bus.close();
+      bus.inject({
+        id: "e1",
+        sessionId: "s1",
+        type: "remote",
+        payload: {},
+        direction: "inbound",
+        seqNum: 1,
+        createdAt: Date.now(),
+      });
+      expect(bus.getLastSeqNum()).toBe(0);
+    });
+
+    // inject 事件在 eviction 范围内
+    test("inject 触发 eviction 后新事件可见", () => {
+      // 用 publish 先填满到 5000
+      for (let i = 1; i <= 5000; i++) {
+        bus.publish({ id: `e${i}`, sessionId: "s1", type: "user", payload: {}, direction: "outbound" });
+      }
+      // 再 inject 一个事件（seqNum = 5001）
+      bus.inject({
+        id: "injected-after-full",
+        sessionId: "s1",
+        type: "remote",
+        payload: {},
+        direction: "inbound",
+        seqNum: 5001,
+        createdAt: Date.now(),
+      });
+      // 最新注入的事件应该可见
+      const recent = bus.getEventsSince(5000);
+      expect(recent).toHaveLength(1);
+      expect(recent[0].id).toBe("injected-after-full");
+    });
+  });
+
+  describe("event eviction 边界", () => {
+    // 驱逐后 seqNum 连续性保持
+    test("驱逐后 getEventsSince 返回的事件 seqNum 连续", () => {
+      for (let i = 1; i <= 5001; i++) {
+        bus.publish({ id: `e${i}`, sessionId: "s1", type: "user", payload: {}, direction: "outbound" });
+      }
+      const events = bus.getEventsSince(0);
+      // 驱逐后保留约 2500 条事件
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.length).toBeLessThan(5001);
+      // seqNum 应保持单调递增
+      for (let i = 1; i < events.length; i++) {
+        expect(events[i].seqNum).toBeGreaterThan(events[i - 1].seqNum);
+      }
+    });
+
+    // 精确 5000 条时不驱逐
+    test("精确 5000 条时所有事件可查询", () => {
+      for (let i = 1; i <= 5000; i++) {
+        bus.publish({ id: `e${i}`, sessionId: "s1", type: "user", payload: {}, direction: "outbound" });
+      }
+      const all = bus.getEventsSince(0);
+      expect(all).toHaveLength(5000);
+    });
+  });
 });
 
 describe("EventBus registry", () => {
