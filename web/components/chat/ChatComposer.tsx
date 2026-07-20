@@ -280,6 +280,22 @@ export function ChatComposer({
     // 非图片：上传到 user/ 文件夹并添加为附件引用
     if (otherFiles.length > 0) {
       try {
+        // 客户端提前校验单文件 + 总量，避免触发服务端 413
+        const maxSize = 100 * 1024 * 1024;
+        for (const file of otherFiles) {
+          if (file.size > maxSize) {
+            console.warn(`[ChatComposer] ${file.name} 超过 100MB 限制，已跳过`);
+            return;
+          }
+        }
+        const totalSize = otherFiles.reduce((sum, f) => sum + f.size, 0);
+        if (totalSize > maxSize) {
+          console.warn(
+            `[ChatComposer] 文件总量 ${(totalSize / (1024 * 1024)).toFixed(1)} MB 超过 100MB 限制，请分批次上传`,
+          );
+          return;
+        }
+
         const formData = new FormData();
         for (const file of otherFiles) {
           formData.append("files", file);

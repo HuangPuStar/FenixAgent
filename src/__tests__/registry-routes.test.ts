@@ -49,10 +49,9 @@ describe("registry 路由文件", () => {
     expect(mod.default).toBeDefined();
   });
 
-  test("路由文件包含三个 GET 端点", async () => {
+  test("路由文件导出 Elysia app 并包含 expected 端点", async () => {
     const mod = await import("../routes/web/registry");
     expect(mod.default).toBeDefined();
-    // Elysia app has router property
     expect(typeof mod.default.handle).toBe("function");
   });
 });

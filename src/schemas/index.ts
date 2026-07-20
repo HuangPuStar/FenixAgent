@@ -249,6 +249,8 @@ export {
   type RegistryEventListResponse,
   RegistryEventListResponseSchema,
   RegistryEventSchema,
+  type UpdateMachineInput,
+  UpdateMachineSchema,
 } from "./registry.schema";
 // Sessions
 export {

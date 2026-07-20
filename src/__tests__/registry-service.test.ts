@@ -103,3 +103,10 @@ describe("registry-heartbeat.ts 心跳检测", () => {
     expect(typeof handleHeartbeat).toBe("function");
   });
 });
+
+describe("updateMachine 函数", () => {
+  test("updateMachine 函数已导出", async () => {
+    const { updateMachine } = await import("../services/registry");
+    expect(typeof updateMachine).toBe("function");
+  });
+});

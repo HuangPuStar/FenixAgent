@@ -100,11 +100,11 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      const files = e.target.files;
+      const files = Array.from(e.target.files);
 
       // 客户端提前校验单文件大小
       const maxSize = 100 * 1024 * 1024;
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         if (file.size > maxSize) {
           setUploadError(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
           if (fileInputRef.current) fileInputRef.current.value = "";
@@ -112,8 +112,20 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
         }
       }
 
+      // 校验总上传量，超过 100MB 全局限制时给出明确提示
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > maxSize) {
+        const sizeStr =
+          totalSize > 1024 * 1024 * 1024
+            ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
+            : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
+        setUploadError(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
       const formData = new FormData();
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         formData.append("files", file);
       }
       runUpload(formData);

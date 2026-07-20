@@ -254,6 +254,7 @@ const REGISTRY_KEYS = [
   "markHeartbeatTimeout",
   "updateHeartbeat",
   "resetAllMachinesOffline",
+  "updateMachine",
 ] as const;
 mock.module("../services/registry", () => createLazyMock(REGISTRY_KEYS, (name) => registryRegistry.get(name) as AnyFn));
 

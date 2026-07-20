@@ -37,7 +37,8 @@
     "loadFailed": "Failed to load files",
     "uploadFailed": "Upload failed",
     "fileTooLarge": "{{name}} is too large (max {{max}})",
-    "uploadTooLarge": "Upload failed: file size exceeds the 100MB limit"
+    "uploadTooLarge": "Upload failed: file size exceeds the 100MB limit",
+    "totalTooLarge": "Total file size {{total}} exceeds the {{max}} single upload limit, please upload in multiple batches"
   },
   "identity": {
     "title": "Identity",

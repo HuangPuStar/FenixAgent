@@ -210,6 +210,18 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       uploadFiles: async (files: File[], onProgress?: (percent: number) => void) => {
         if (!envId || files.length === 0) return;
 
+        // 客户端补齐总上传量校验（外部直接调 ref 方法时也需要）
+        const maxSize = 100 * 1024 * 1024;
+        const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+        if (totalSize > maxSize) {
+          const sizeStr =
+            totalSize > 1024 * 1024 * 1024
+              ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
+              : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
+          toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+          return;
+        }
+
         const targetDir = selectedDir || "";
         const formData = new FormData();
         for (const file of files) {
@@ -243,7 +255,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         refreshTree();
       },
     }),
-    [envId, selectedDir, refreshTree],
+    [envId, selectedDir, refreshTree, t],
   );
 
   // 从缓存的 ParsedNode 树中查找指定路径的子节点
@@ -375,6 +387,17 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         }
       }
 
+      // 校验总上传量
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > maxSize) {
+        const sizeStr =
+          totalSize > 1024 * 1024 * 1024
+            ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
+            : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
+        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+        return;
+      }
+
       const formData = new FormData();
       for (const file of files) {
         formData.append("files", file);
@@ -400,11 +423,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      const files = e.target.files;
+      const files = Array.from(e.target.files);
 
       // 客户端提前校验单文件大小
       const maxSize = 100 * 1024 * 1024;
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         if (file.size > maxSize) {
           toast.error(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
           if (fileInputRef.current) fileInputRef.current.value = "";
@@ -412,8 +435,20 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         }
       }
 
+      // 校验总上传量
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > maxSize) {
+        const sizeStr =
+          totalSize > 1024 * 1024 * 1024
+            ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
+            : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
+        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
       const formData = new FormData();
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         formData.append("files", file);
       }
       runUpload(formData, selectedDir);
@@ -428,11 +463,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         if (folderInputRef.current) folderInputRef.current.value = "";
         return;
       }
-      const files = e.target.files;
+      const files = Array.from(e.target.files);
 
       // 客户端提前校验单文件大小
       const maxSize = 100 * 1024 * 1024;
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         if (file.size > maxSize) {
           toast.error(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
           if (folderInputRef.current) folderInputRef.current.value = "";
@@ -440,10 +475,22 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         }
       }
 
+      // 校验总上传量（文件夹上传最容易触发总量超限）
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > maxSize) {
+        const sizeStr =
+          totalSize > 1024 * 1024 * 1024
+            ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
+            : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
+        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+        if (folderInputRef.current) folderInputRef.current.value = "";
+        return;
+      }
+
       // webkitRelativePath 保留了文件夹的相对路径结构
       const relativePaths = Array.from(files).map((f) => f.webkitRelativePath || f.name);
       const formData = new FormData();
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         formData.append("files", file);
       }
       formData.append("relativePaths", JSON.stringify(relativePaths));
