@@ -73,6 +73,7 @@ describe("environment-preparer", () => {
 
       expect(parsed.$schema).toBe("https://opencode.ai/config.json");
       expect(parsed.default_agent).toBe("general");
+      expect(parsed.enabled_providers).toEqual(["openai"]);
       expect(parsed.agent.general.prompt).toBe("You are helpful");
       expect(parsed.agent.general.model).toBe("openai/gpt-4.1");
       expect(parsed.model).toBe("openai/gpt-4.1");

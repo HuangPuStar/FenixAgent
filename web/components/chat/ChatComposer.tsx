@@ -593,7 +593,7 @@ export function ChatComposer({
               />
             )}
 
-            {client && <ModelSelectorPopover client={client} readOnly />}
+            {client && <ModelSelectorPopover client={client} />}
 
             {/* 中间弹簧 */}
             <div className="flex-1" />

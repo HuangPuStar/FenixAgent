@@ -54,6 +54,7 @@ export interface OpencodeRuntimeConfig {
   $schema: string;
   autoupdate: boolean;
   default_agent: string;
+  enabled_providers: string[];
   provider: Record<string, OpencodeProviderConfig>;
   model: string;
   agent: Record<string, OpencodeAgentConfig>;
@@ -116,6 +117,7 @@ export function buildOpencodeRuntimeConfig(
     // 禁止 opencode 自动更新，避免新版本在未验证前引入兼容性问题。
     autoupdate: false,
     default_agent: agentName,
+    enabled_providers: [providerId],
     provider: {
       [providerId]: {
         npm: toProviderPackage(launchSpec.model.protocol),

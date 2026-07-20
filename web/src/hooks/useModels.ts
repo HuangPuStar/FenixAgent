@@ -23,16 +23,6 @@ export function useModels(client: ACPClient): UseModelsResult {
     const handler = (state: SessionModelState | null) => {
       setModelState(state);
       setIsLoading(false);
-      if (state && state.availableModels.length > 0) {
-        const saved = localStorage.getItem("acp_model_id");
-        if (saved && saved !== state.currentModelId && state.availableModels.some((m) => m.modelId === saved)) {
-          try {
-            client.setSessionModel(saved);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
     };
 
     client.state.on("modelStateChange", handler);
@@ -45,10 +35,17 @@ export function useModels(client: ACPClient): UseModelsResult {
 
   const currentModelId = modelState?.currentModelId ?? null;
 
-  const currentModel = useMemo(
-    () => availableModels.find((m) => m.modelId === currentModelId) ?? null,
-    [availableModels, currentModelId],
-  );
+  // 先尝试在 availableModels 中查找；若未找到（如服务端返回的 currentModelId
+  // 不在配置的模型列表中），构造一个使用 modelId 作为展示名的兜底对象，
+  // 确保 UI 始终能显示当前模型标识，而不是空白。
+  const currentModel = useMemo((): ModelInfo | null => {
+    if (!currentModelId) return null;
+    const found = availableModels.find((m) => m.modelId === currentModelId) ?? null;
+    if (found) return found;
+    // 兜底：模型不在列表中时，用 currentModelId 作为 name
+    console.warn("[useModels] model not found in availableModels, using fallback name:", currentModelId);
+    return { modelId: currentModelId, name: currentModelId };
+  }, [availableModels, currentModelId]);
 
   const setModel = useCallback(
     async (modelId: string) => {
@@ -56,7 +53,6 @@ export function useModels(client: ACPClient): UseModelsResult {
       setIsLoading(true);
       try {
         await client.setSessionModel(modelId);
-        localStorage.setItem("acp_model_id", modelId);
       } catch (error) {
         setIsLoading(false);
         throw error;
