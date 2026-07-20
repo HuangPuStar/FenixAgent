@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { finalizeRunningToolCalls } from "../lib/chat-finalize-tools";
 import type { ThreadEntry, ToolCallEntry } from "../lib/types";
-
-const { finalizeRunningToolCalls } = await import("../../components/ChatInterface");
 
 // 构造工具调用条目，便于在测试中复用
 function makeToolCall(id: string, status: ToolCallEntry["toolCall"]["status"]): ToolCallEntry {

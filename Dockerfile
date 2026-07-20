@@ -1,3 +1,5 @@
+FROM ghcr.io/astral-sh/uv:latest AS uv
+
 FROM oven/bun:1 AS base
 WORKDIR /app
 
@@ -30,6 +32,8 @@ CMD ["bun", "migrate.js"]
 
 FROM oven/bun:1 AS runtime
 WORKDIR /app
+
+COPY --from=uv /uv /uvx /usr/local/bin/
 
 ENV NODE_ENV=production
 ENV TZ=Asia/Shanghai

@@ -13,6 +13,7 @@ import type {
 } from "../src/acp/types";
 import { useCommands } from "../src/hooks/useCommands";
 import { useModes } from "../src/hooks/useModes";
+import { finalizeRunningToolCalls } from "../src/lib/chat-finalize-tools";
 import { flushContext, isVisibleContentBlock } from "../src/lib/context-queue";
 import { computeStats, type TokenStats } from "../src/lib/token-stats";
 import type {
@@ -112,48 +113,6 @@ function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
 
 // 终态集合 — 已处于终态的工具调用不接受服务器状态覆盖
 const TERMINAL_STATUSES = new Set<ToolCallStatus>(["canceled", "rejected"]);
-
-/**
- * 一轮 prompt 结束时的兜底：把仍为 running 的 tool_call 标记为 complete。
- *
- * 远程 agent（如 claude --acp）有时不在工具执行完成时推送
- * status="completed" 的 session/update，导致 tool_call 永久卡在 running，
- * UI 一直转圈。这里在 prompt_complete 时统一兜底，让 UI 终止 loading。
- *
- * 处理范围：
- * - 顶层与 subEntries 中的所有 tool_call 都递归处理
- * - 只改 status==="running" 的条目；其他状态（含 waiting_for_confirmation、
- *   canceled、rejected、error、complete）保持不动
- * - 没有任何 running 工具时返回原数组引用，避免无意义重渲染
- */
-export function finalizeRunningToolCalls(entries: ThreadEntry[]): ThreadEntry[] {
-  let changed = false;
-
-  const mapEntry = (entry: ThreadEntry): ThreadEntry => {
-    if (entry.type !== "tool_call") return entry;
-
-    let nextToolCall = entry.toolCall;
-    if (entry.toolCall.status === "running") {
-      changed = true;
-      nextToolCall = { ...entry.toolCall, status: "complete" as ToolCallStatus };
-    }
-
-    // 递归处理子 agent 嵌套条目
-    if (entry.toolCall.subEntries && entry.toolCall.subEntries.length > 0) {
-      const nextSubEntries = entry.toolCall.subEntries.map(mapEntry);
-      // 仅在本次递归改动了子层、或顶层状态变化时才生成新对象
-      if (nextSubEntries !== entry.toolCall.subEntries || nextToolCall !== entry.toolCall) {
-        return { type: "tool_call", toolCall: { ...nextToolCall, subEntries: nextSubEntries } };
-      }
-      return entry;
-    }
-
-    return nextToolCall === entry.toolCall ? entry : { type: "tool_call", toolCall: nextToolCall };
-  };
-
-  const next = entries.map(mapEntry);
-  return changed ? next : entries;
-}
 
 // =============================================================================
 // 纯函数：将 SessionUpdate 应用到 entries 数组，返回新数组
