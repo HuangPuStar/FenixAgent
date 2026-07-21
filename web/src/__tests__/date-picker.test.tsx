@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
 import { DatePicker } from "../../components/ui/date-picker";
 
@@ -12,6 +12,10 @@ mock.module("react-i18next", () => ({
     },
   }),
 }));
+
+afterEach(() => {
+  mock.restore();
+});
 
 describe("DatePicker", () => {
   test("renders with default placeholder when no value", () => {

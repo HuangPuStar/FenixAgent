@@ -101,3 +101,10 @@ describe("REGISTRY_SECRET 环境变量", () => {
     }
   });
 });
+
+describe("registry schema 文件导出", () => {
+  test("UpdateMachineSchema 已导出", async () => {
+    const { UpdateMachineSchema } = await import("../schemas/registry.schema");
+    expect(UpdateMachineSchema).toBeDefined();
+  });
+});

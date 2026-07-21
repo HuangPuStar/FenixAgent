@@ -28,16 +28,31 @@ app.post(
       const result = await generateAgentConfig(authCtx, body.prompt as string);
       return configSuccess(result);
     } catch (err) {
-      if (err instanceof Error) {
-        if (err.message === "NOT_CONFIGURED") {
-          return error(503, configError("NOT_CONFIGURED", "Agent generation model is not configured"));
-        }
-        if (err.message === "PARSE_ERROR") {
-          return error(422, configError("PARSE_ERROR", "Failed to parse AI response"));
-        }
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      if (errMsg === "NOT_CONFIGURED") {
+        return error(503, configError("NOT_CONFIGURED", "Agent generation model is not configured"));
       }
+      if (errMsg === "PARSE_ERROR") {
+        return error(422, configError("PARSE_ERROR", "Failed to parse AI response"));
+      }
+
+      // OpenAI SDK 错误：区分错误码，暴露可诊断的错误信息
+      const openaiMatch = errMsg.match(/^OPENAI_(AUTH_ERROR|RATE_LIMIT|CONNECTION_ERROR|API_ERROR): (.+)/);
+      if (openaiMatch) {
+        const [, errorType, detail] = openaiMatch;
+        const statusMap: Record<string, number> = {
+          AUTH_ERROR: 502,
+          RATE_LIMIT: 429,
+          CONNECTION_ERROR: 502,
+          API_ERROR: 502,
+        };
+        console.error(`[agent-generation] OpenAI ${errorType}:`, detail);
+        return error(statusMap[errorType] ?? 500, configError(errorType, detail));
+      }
+
       console.error("[agent-generation] LLM call failed:", err);
-      return error(500, configError("LLM_ERROR", "Failed to generate agent configuration"));
+      return error(500, configError("LLM_ERROR", `Failed to generate agent configuration: ${errMsg}`));
     }
   },
   {

@@ -10,8 +10,9 @@ import {
   MachineListResponseSchema,
   MachineQuerySchema,
   RegistryEventListResponseSchema,
+  UpdateMachineSchema,
 } from "../../schemas/registry.schema";
-import { createMachine, getMachine, listEvents, listMachines } from "../../services/registry";
+import { createMachine, getMachine, listEvents, listMachines, updateMachine } from "../../services/registry";
 
 const logger = createLogger("registry");
 
@@ -58,6 +59,7 @@ const app = new Elysia({ name: "web-registry" }).use(authGuardPlugin).model({
   "machine-detail-response": MachineDetailResponseSchema,
   "machine-query": MachineQuerySchema,
   "registry-event-list-response": RegistryEventListResponseSchema,
+  "update-machine-body": UpdateMachineSchema,
 });
 
 app.post(
@@ -176,6 +178,40 @@ app.get(
       tags: ["Registry"],
       summary: "获取机器详情",
       description: "根据机器 ID 返回单台机器的完整信息及最近事件。",
+    },
+  },
+);
+
+app.patch(
+  "/registry/machines/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 body/response 组合下类型推断不稳定
+  async ({ store, params, body, status }: any) => {
+    const authCtx = store.authContext!;
+    const { name, labels, agentName } = body as { name?: string; labels?: string[]; agentName?: string };
+    try {
+      const result = await updateMachine(authCtx, params.id, { name, labels, agentName });
+      return { success: true, data: serializeMachine(result) };
+    } catch (err: unknown) {
+      logger.error("Failed to update machine", err);
+      const msg = internalErrorMessage(err);
+      if (msg.includes("not found")) {
+        return status(404, { success: false, error: { code: "NOT_FOUND", message: msg } });
+      }
+      return status(500, { success: false, error: { code: "INTERNAL_ERROR", message: msg } });
+    }
+  },
+  {
+    sessionAuth: true,
+    body: UpdateMachineSchema,
+    response: {
+      200: "machine-detail-response",
+      404: WebErrSchema,
+      500: WebErrSchema,
+    },
+    detail: {
+      tags: ["Registry"],
+      summary: "更新机器",
+      description: "更新机器名称、标签和引擎类型。仅限组织管理员操作。",
     },
   },
 );

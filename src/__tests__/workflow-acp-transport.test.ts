@@ -34,6 +34,7 @@ async function simulateExecute(
   } = {},
 ): Promise<void> {
   let innerUnsub: (() => void) | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -55,6 +56,7 @@ async function simulateExecute(
 
         if (type === "prompt_complete" || type === "error") {
           // 清理并完成
+          if (timeoutId !== null) clearTimeout(timeoutId);
           (innerUnsub as (() => void) | null)?.();
           innerUnsub = null;
           resolve();
@@ -80,14 +82,15 @@ async function simulateExecute(
       }
 
       // 设置超时（10s 足够测试用）
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         (innerUnsub as (() => void) | null)?.();
         innerUnsub = null;
         reject(new Error("超时"));
       }, 10_000);
     });
   } finally {
-    // 安全网：确保任何路径都清理订阅
+    // 安全网：确保任何路径都清理订阅和定时器
+    if (timeoutId !== null) clearTimeout(timeoutId);
     (innerUnsub as (() => void) | null)?.();
   }
 }

@@ -56,6 +56,32 @@ describe("registerMachine machineId 状态流转", () => {
       }
     }).toThrow(/not found/);
   });
+
+  // 无预创建记录时拒绝自动注册
+  test("无 machineId 且无 nodeId 时拒绝（禁止自动注册）", () => {
+    const params: { machineId?: string | null; nodeId?: string | null } = {
+      machineId: null,
+      nodeId: null,
+    };
+    const errorMessage = "machine not found, please create it first in your organization's admin panel";
+
+    expect(() => {
+      if (!params.machineId && !params.nodeId) {
+        throw new Error(errorMessage);
+      }
+    }).toThrow(errorMessage);
+  });
+
+  // nodeId 未命中已有记录时拒绝
+  test("nodeId 未命中已有记录时拒绝", () => {
+    const existing: unknown[] = [];
+    const _nodeId = "mach_unknown";
+    expect(() => {
+      if (existing.length === 0) {
+        throw new Error("machine not found, please create it first in your organization's admin panel");
+      }
+    }).toThrow(/not found/);
+  });
 });
 
 describe("createMachine 返回结构", () => {

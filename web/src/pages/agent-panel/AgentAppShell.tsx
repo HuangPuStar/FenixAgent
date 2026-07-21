@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePanelRef } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { envApi } from "@/src/api/environments";
+import { unwrap } from "@/src/api/request";
+import { dispatchConfigChange } from "../../lib/config-events";
 import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
 import { ArtifactsPanel } from "./ArtifactsPanel";
@@ -60,6 +63,37 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
   const handleNavigate = useCallback(
     (pageId: string) => {
       void navigate({ to: `/agent/${pageId}` as never });
+    },
+    [navigate],
+  );
+
+  // 新建智能体成功后，自动查找/创建环境并导航到聊天页
+  const handleCreateSuccess = useCallback(
+    async (agentConfigId?: string) => {
+      if (!agentConfigId) return;
+      try {
+        const envList = await unwrap(envApi.list());
+        const existingEnv = (Array.isArray(envList) ? envList : []).find((e) => e.agentConfigId === agentConfigId);
+        if (existingEnv) {
+          void navigate({ to: "/agent/$agentId", params: { agentId: existingEnv.id } });
+          dispatchConfigChange("agents");
+          return;
+        }
+        const newEnv = await unwrap(
+          envApi.create({
+            name: `env-${agentConfigId.slice(0, 8)}`,
+            agentConfigId,
+            autoStart: true,
+          }),
+        );
+        const envId = newEnv?.id;
+        if (envId) {
+          void navigate({ to: "/agent/$agentId", params: { agentId: envId } });
+          dispatchConfigChange("agents");
+        }
+      } catch (e) {
+        console.error("创建智能体后导航失败:", e);
+      }
     },
     [navigate],
   );
@@ -133,7 +167,12 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
           </ResizablePanelGroup>
         </div>
       </div>
-      <AgentFormDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} mode="create" />
+      <AgentFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        mode="create"
+        onSuccess={handleCreateSuccess}
+      />
     </div>
   );
 }

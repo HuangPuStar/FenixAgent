@@ -49,14 +49,35 @@ ${skillList || "（暂无可用技能）"}
   // 使用标准 OpenAI SDK 环境变量：OPENAI_API_KEY、OPENAI_BASE_URL
   const client = new OpenAI();
 
-  const response = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL!,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: prompt },
-    ],
-    response_format: { type: "json_object" },
-  });
+  let response: OpenAI.Chat.Completions.ChatCompletion;
+  try {
+    response = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL!,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
+      ],
+      response_format: { type: "json_object" },
+    });
+  } catch (err: unknown) {
+    // 细分 OpenAI SDK 错误类型，提供可诊断的错误信息
+    const e = err as Record<string, unknown>;
+    const statusCode = e.status as number | undefined;
+    const apiMessage =
+      (e.error as { message?: string } | undefined)?.message ?? (e.message as string | undefined) ?? String(err);
+
+    if (statusCode === 401 || statusCode === 403) {
+      throw new Error(`OPENAI_AUTH_ERROR: ${apiMessage}`);
+    }
+    if (statusCode === 429) {
+      throw new Error(`OPENAI_RATE_LIMIT: ${apiMessage}`);
+    }
+    if (e.name === "APIConnectionError") {
+      throw new Error(`OPENAI_CONNECTION_ERROR: ${apiMessage}`);
+    }
+    // 可能是不支持 response_format json_object 的模型
+    throw new Error(`OPENAI_API_ERROR: ${apiMessage}`);
+  }
 
   const content = response.choices[0]?.message?.content;
   if (!content) {

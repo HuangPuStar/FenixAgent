@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import i18n from "i18next";
-import { initReactI18next } from "react-i18next";
 import { narrate } from "@/components/chat/narrators";
 import zhToolNarrator from "@/src/i18n/locales/zh/toolNarrator.json";
 import type { ToolCallData } from "@/src/lib/types";
@@ -16,7 +15,8 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 // 初始化测试用 i18n 实例（绑定到 toolNarrator 命名空间，使用中文 JSON）
-i18n.use(initReactI18next).init({
+// 不使用 initReactI18next —— 测试不依赖 React context，直接用 i18next 原生 API 即可
+i18n.init({
   resources: { zh: { toolNarrator: zhToolNarrator } },
   lng: "zh",
   ns: ["toolNarrator"],

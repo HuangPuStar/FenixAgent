@@ -64,7 +64,7 @@ interface AgentFormDialogProps {
   onOpenChange: (open: boolean) => void;
   mode: "create" | "edit";
   defaultName?: string;
-  onSuccess?: () => void;
+  onSuccess?: (agentConfigId?: string) => void;
   agentName?: string;
 }
 
@@ -644,9 +644,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           createPayload.extra = JSON.parse(formExtra);
         }
         createPayload.enableMemory = formEnableMemory;
-        await unwrap(agentApi.create(name, createPayload));
+        const result = await unwrap(agentApi.create(name, createPayload));
         onOpenChange(false);
-        onSuccess?.();
+        onSuccess?.(result.id);
         dispatchConfigChange("agents");
       }
     },
