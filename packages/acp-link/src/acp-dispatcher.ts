@@ -314,6 +314,17 @@ export class AcpDispatcher {
       return;
     }
     try {
+      // 校验 modelId 是否在 availableModels 中
+      const availableIds = this.state.modelState.availableModels.map((m) => m.modelId);
+      if (!availableIds.includes(params.modelId)) {
+        console.warn(
+          `[acp-dispatcher] setSessionModel: modelId "${params.modelId}" not in availableModels, ` +
+            `rejecting. Available: ${availableIds.join(", ")}`,
+        );
+        this.send(createErrorResponse(id, -32602, `Model "${params.modelId}" is not available`));
+        return;
+      }
+
       await this.state.connection.setSessionConfigOption?.({
         sessionId: this.state.sessionId,
         configId: "model",

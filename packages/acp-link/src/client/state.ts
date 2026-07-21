@@ -147,17 +147,13 @@ export class ACPState extends EventEmitter<StateEvents> {
     };
 
     const onModelChanged = ({ modelId }: { modelId: string }) => {
-      if (this._modelState) {
-        this._modelState = { ...this._modelState, currentModelId: modelId };
-        this.emit("modelStateChange", this._modelState);
-      }
+      // 通过统一校验路径更新，避免接受不在 availableModels 中的非法 modelId
+      this.updateCurrentModel(modelId);
     };
 
     const onModeChanged = ({ modeId }: { modeId: string }) => {
-      if (this._modeState) {
-        this._modeState = { ...this._modeState, currentModeId: modeId };
-        this.emit("modeStateChange", this._modeState);
-      }
+      // 通过统一校验路径更新，避免接受不在 availableModes 中的非法 modeId
+      this.updateCurrentMode(modeId);
     };
 
     protocol.on("status", onStatus);
@@ -198,20 +194,32 @@ export class ACPState extends EventEmitter<StateEvents> {
     this.setModeState(payload.modes ?? null);
   }
 
-  /** 更新当前 model 并发射 modelStateChange 事件 */
+  /** 更新当前 model 并发射 modelStateChange 事件。若 modelId 不在 availableModels 中则拒绝更新并打印警告。 */
   updateCurrentModel(modelId: string): void {
-    if (this._modelState) {
-      this._modelState = { ...this._modelState, currentModelId: modelId };
-      this.emit("modelStateChange", this._modelState);
+    if (!this._modelState) return;
+
+    const availableIds = this._modelState.availableModels.map((m) => m.modelId);
+    if (!availableIds.includes(modelId)) {
+      console.warn(`[ACPState] updateCurrentModel: modelId "${modelId}" not in availableModels, skipping`);
+      return;
     }
+
+    this._modelState = { ...this._modelState, currentModelId: modelId };
+    this.emit("modelStateChange", this._modelState);
   }
 
-  /** 更新当前 mode 并发射 modeStateChange 事件 */
+  /** 更新当前 mode 并发射 modeStateChange 事件。若 modeId 不在 availableModes 中则拒绝更新并打印警告。 */
   updateCurrentMode(modeId: string): void {
-    if (this._modeState) {
-      this._modeState = { ...this._modeState, currentModeId: modeId };
-      this.emit("modeStateChange", this._modeState);
+    if (!this._modeState) return;
+
+    const availableIds = this._modeState.availableModes.map((m) => m.id);
+    if (!availableIds.includes(modeId)) {
+      console.warn(`[ACPState] updateCurrentMode: modeId "${modeId}" not in availableModes, skipping`);
+      return;
     }
+
+    this._modeState = { ...this._modeState, currentModeId: modeId };
+    this.emit("modeStateChange", this._modeState);
   }
 
   /** 断开所有订阅，重置状态 */
