@@ -40,3 +40,8 @@ export async function litellmRequest<T>(method: string, path: string, body?: unk
 
   return response.json() as Promise<T>;
 }
+
+/** 检查 LiteLLM 客户端是否已通过 initLitellmClient() 初始化 */
+export function isLitellmConfigured(): boolean {
+  return !!(_adminKey && _baseUrl);
+}

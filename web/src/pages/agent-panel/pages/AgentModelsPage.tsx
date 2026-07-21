@@ -1,6 +1,6 @@
 import { useRequest } from "ahooks";
 import { CheckCircle2, LoaderCircle, Plus, Search, X, XCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -33,12 +33,6 @@ type ModelTestResult = {
   content?: string;
   error?: string;
 };
-
-const PROTOCOL_OPTIONS = [
-  { id: "openai", labelKey: "protocolOptions.openai" },
-  { id: "anthropic", labelKey: "protocolOptions.anthropic" },
-  { id: "litellm", labelKey: "protocolOptions.litellm" },
-];
 
 const INPUT_MODALITY_OPTIONS = ["text", "image", "audio", "video", "pdf"] as const;
 const OUTPUT_MODALITY_OPTIONS = ["text", "image"] as const;
@@ -155,7 +149,7 @@ export function AgentModelsPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [deleteModelConfirm, setDeleteModelConfirm] = useState<{ providerId: string; modelId: string } | null>(null);
 
-  const getProtocolLabel = (opt: (typeof PROTOCOL_OPTIONS)[number]) => t(opt.labelKey);
+  const getProtocolLabel = (opt: { id: string; labelKey: string }) => t(opt.labelKey);
   const isProviderFetchHint = (error: TestDialogError) =>
     getErrorDataRecord(error.data).hint === "configure_model_then_test_model";
 
@@ -212,7 +206,12 @@ export function AgentModelsPage() {
   // Provider 保存：走 PUT upsert，新建同名由 handleSave 前置拦截
   const { run: runSave, loading: saving } = useRequest(
     async (name: string, data: Record<string, unknown>, selectedModels: Set<string>) => {
-      await unwrap(providerApi.set(name, data as Record<string, unknown>));
+      // unwrap 解包后得到 data 对象，其中可能包含 warning 字段
+      const setResult = await unwrap(providerApi.set(name, data as Record<string, unknown>));
+      const warning = (setResult as unknown as Record<string, unknown>)?.warning as string | undefined;
+      if (warning) {
+        toast.warning(warning);
+      }
       let modelsAdded = false;
       for (const modelId of selectedModels) {
         try {
@@ -406,6 +405,38 @@ export function AgentModelsPage() {
     },
   );
 
+  // 查询 LiteLLM 是否可用
+  const { data: litellmStatus } = useRequest(
+    async () => {
+      try {
+        const res = await providerApi.getLitellmStatus();
+        return res.success ? (res.data as unknown as { configured: boolean; available: boolean }) : null;
+      } catch {
+        return null;
+      }
+    },
+    { cacheKey: "litellm-status" },
+  );
+
+  // LiteLLM 可用时动态加入协议选项
+  const protocolOptions = useMemo(() => {
+    const base = [
+      { id: "openai" as const, labelKey: "protocolOptions.openai" },
+      { id: "anthropic" as const, labelKey: "protocolOptions.anthropic" },
+    ];
+    if (litellmStatus?.configured) {
+      return [...base, { id: "litellm" as const, labelKey: "protocolOptions.litellm" }];
+    }
+    return base;
+  }, [litellmStatus]);
+
+  // 如果 LiteLLM 未配置但当前选中的是 litellm，重置为 openai
+  useEffect(() => {
+    if (litellmStatus && !litellmStatus.configured && formProtocol === "litellm") {
+      setFormProtocol("openai");
+    }
+  }, [litellmStatus, formProtocol]);
+
   const handleOpenCreate = () => {
     setEditingProvider(null);
     setFormName("");
@@ -439,8 +470,8 @@ export function AgentModelsPage() {
       return;
     }
     const data: Record<string, unknown> = {};
-    if (formApiKey) data.apiKey = formApiKey;
-    if (formBaseURL) data.baseURL = formBaseURL;
+    if (formApiKey && formProtocol !== "litellm") data.apiKey = formApiKey;
+    if (formBaseURL && formProtocol !== "litellm") data.baseURL = formBaseURL;
     data.protocol = formProtocol;
     if (formDisplayName) data.name = formDisplayName;
     runSave(formName, data, formSelectedModels);
@@ -1023,7 +1054,7 @@ export function AgentModelsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {PROTOCOL_OPTIONS.map((opt) => (
+                {protocolOptions.map((opt) => (
                   <SelectItem key={opt.id} value={opt.id}>
                     {getProtocolLabel(opt)}
                   </SelectItem>
@@ -1031,33 +1062,37 @@ export function AgentModelsPage() {
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <label className="text-sm font-medium text-text-primary">{t("form.apiKey")}</label>
-            <Input
-              type="password"
-              value={formApiKey}
-              onChange={(e) => setFormApiKey(e.target.value)}
-              onBlur={() => {
-                if (formName.trim() && formApiKey.trim()) handleFetchModels();
-              }}
-              disabled={editingReadOnly}
-              placeholder={editingProvider ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyCreatePlaceholder")}
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-text-primary">{t("form.baseUrl")}</label>
-            <Input
-              value={formBaseURL}
-              onChange={(e) => setFormBaseURL(e.target.value)}
-              onBlur={() => {
-                if (formName.trim() && formBaseURL.trim()) handleFetchModels();
-              }}
-              disabled={editingReadOnly}
-              placeholder={t("form.baseUrlPlaceholder")}
-              className="mt-1"
-            />
-          </div>
+          {formProtocol !== "litellm" && (
+            <div>
+              <label className="text-sm font-medium text-text-primary">{t("form.apiKey")}</label>
+              <Input
+                type="password"
+                value={formApiKey}
+                onChange={(e) => setFormApiKey(e.target.value)}
+                onBlur={() => {
+                  if (formName.trim() && formApiKey.trim()) handleFetchModels();
+                }}
+                disabled={editingReadOnly}
+                placeholder={editingProvider ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyCreatePlaceholder")}
+                className="mt-1"
+              />
+            </div>
+          )}
+          {formProtocol !== "litellm" && (
+            <div>
+              <label className="text-sm font-medium text-text-primary">{t("form.baseUrl")}</label>
+              <Input
+                value={formBaseURL}
+                onChange={(e) => setFormBaseURL(e.target.value)}
+                onBlur={() => {
+                  if (formName.trim() && formBaseURL.trim()) handleFetchModels();
+                }}
+                disabled={editingReadOnly}
+                placeholder={t("form.baseUrlPlaceholder")}
+                className="mt-1"
+              />
+            </div>
+          )}
 
           {/* 模型列表获取与勾选 */}
           <div className="border-t border-border pt-3">

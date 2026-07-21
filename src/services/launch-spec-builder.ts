@@ -21,7 +21,8 @@ import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "./agent-memo
 import { composeAgentSystemPrompt } from "./agent-system-prompt";
 import type { AgentConfigDetailWithAccess } from "./config";
 import { resolveApiKey } from "./config-utils";
-import { addLitellmMember, generateLitellmKey } from "./litellm";
+import type { GenerateKeyResult } from "./litellm";
+import { addLitellmMember, createLitellmUser, generateLitellmKey, getLitellmClient } from "./litellm";
 import { getGlobalSkillsDir } from "./skill";
 import { buildSkillDownloadUrl } from "./skill-download-token";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
@@ -110,8 +111,10 @@ async function ensureLitellmMember(userId: string, organizationId: string, litel
 
   if (existingMember) return existingMember.litellmUserId;
 
-  const result = await addLitellmMember(litellmOrgId, userId, "user");
-  return result.member_id;
+  // 先在 LiteLLM 中创建用户，再添加为组织成员
+  await createLitellmUser({ userId });
+  const memberId = await addLitellmMember(litellmOrgId, userId, "internal_user");
+  return memberId;
 }
 
 /**
@@ -157,22 +160,51 @@ async function ensureLitellmKey(
 
   const memberId = await ensureLitellmMember(userId, agentConfig.organizationId, litellmOrgId);
 
+  // 防御：memberId 必须存在
+  if (!memberId) {
+    throw new AppError("LITELLM_MEMBER_FAILED", "LiteLLM 成员添加成功但未返回 member_id，请重试");
+  }
+
   const keyAlias = `RCS:${userId.slice(0, 8)}:${agentConfig.name}`;
-  const keyResult = await generateLitellmKey({
-    user_id: memberId,
-    agent_id: agentConfig.id,
-    organization_id: litellmOrgId,
-    key_alias: keyAlias,
-    metadata: {
-      rcs_user_id: userId,
-      rcs_agent_config_id: agentConfig.id,
-      rcs_org_id: agentConfig.organizationId,
-    },
-    tags: [`org:${agentConfig.organizationId}`, `agent:${agentConfig.id}`, `user:${userId}`],
-    max_budget: getDefaultMaxBudget(),
-    budget_duration: "30d",
-    models: [matchedModel.modelId],
-  });
+  let keyResult: GenerateKeyResult;
+  try {
+    keyResult = await generateLitellmKey({
+      user_id: memberId,
+      agent_id: agentConfig.id,
+      organization_id: litellmOrgId,
+      key_alias: keyAlias,
+      metadata: {
+        rcs_user_id: userId,
+        rcs_agent_config_id: agentConfig.id,
+        rcs_org_id: agentConfig.organizationId,
+      },
+      max_budget: getDefaultMaxBudget(),
+      budget_duration: "30d",
+      models: [matchedModel.modelId],
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // LiteLLM Key alias 冲突（上次创建成功但 DB 写入失败），用新 alias 重试
+    if (message.includes("already exists") || message.includes("400") || message.includes("key_alias")) {
+      const retryAlias = `${keyAlias}-${Math.random().toString(36).slice(2, 8)}`;
+      keyResult = await generateLitellmKey({
+        user_id: memberId,
+        agent_id: agentConfig.id,
+        organization_id: litellmOrgId,
+        key_alias: retryAlias,
+        metadata: {
+          rcs_user_id: userId,
+          rcs_agent_config_id: agentConfig.id,
+          rcs_org_id: agentConfig.organizationId,
+        },
+        max_budget: getDefaultMaxBudget(),
+        budget_duration: "30d",
+        models: [matchedModel.modelId],
+      });
+    } else {
+      throw err;
+    }
+  }
 
   // INSERT with ON CONFLICT DO NOTHING for concurrency safety
   await db
@@ -189,7 +221,9 @@ async function ensureLitellmKey(
       keyAlias,
       tags: [`org:${agentConfig.organizationId}`, `agent:${agentConfig.id}`, `user:${userId}`],
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing({
+      target: [agentLitellmKey.userId, agentLitellmKey.agentConfigId],
+    });
 
   // Re-SELECT to handle concurrent race (winner takes all)
   const final = await db
@@ -265,10 +299,13 @@ async function resolveModelConfig(
       },
     );
 
+    // LiteLLM 的 baseUrl 来自环境变量，不在 DB 中存储
+    const litellmBaseUrl = getLitellmClient().baseUrl.replace(/\/+$/, "");
+
     return {
       provider: matchedProvider.name,
       protocol: "openai", // LiteLLM → OpenAI 兼容
-      baseUrl: matchedProvider.baseUrl || "",
+      baseUrl: litellmBaseUrl,
       apiKey,
       model: matchedModel.modelId,
       modelName: matchedModel.modelId,

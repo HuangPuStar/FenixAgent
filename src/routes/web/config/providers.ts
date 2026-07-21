@@ -26,6 +26,7 @@ import {
 import * as configPg from "../../../services/config/index";
 import { buildModelData } from "../../../services/config/provider";
 import { configError, configSuccess, resolveApiKey, toKeyHint } from "../../../services/config-utils";
+import { getLitellmClient, isLitellmConfigured } from "../../../services/litellm";
 import { invalidateAvailableCache } from "./models";
 
 /** 包裹 Elysia handler，将内部抛出的 AppError 转换为统一错误响应 */
@@ -133,8 +134,12 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   const apiKey = data.apiKey as string | undefined;
   const baseUrl = data.baseURL as string | undefined;
   const rawProtocol = data.protocol;
-  const protocol =
-    rawProtocol === "anthropic" || rawProtocol === "openai" ? rawProtocol : (existing?.protocol ?? "openai");
+  const VALID_PROTOCOLS = ["anthropic", "openai", "litellm"] as const;
+  const protocol = (
+    typeof rawProtocol === "string" && (VALID_PROTOCOLS as readonly string[]).includes(rawProtocol)
+      ? rawProtocol
+      : (existing?.protocol ?? "openai")
+  ) as "openai" | "anthropic" | "litellm";
   // 用 !== undefined 而非 ?? 链，避免 existing.displayName 为 null 时被 ?? undefined 吞掉
   const displayName =
     (data.name as string | undefined) !== undefined ? (data.name as string) : (existing?.displayName ?? null);
@@ -156,7 +161,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     }
   }
 
-  await configPg.upsertProvider(
+  const upsertResult = await configPg.upsertProvider(
     ctx,
     name,
     {
@@ -191,6 +196,9 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     name: displayName,
     protocol,
     keyHint: toKeyHint(apiKey ?? existing?.apiKey),
+    warning: upsertResult.litellmOrgCreated
+      ? undefined
+      : "LiteLLM Organization 创建失败，智能体运行时可能受限。请检查 LiteLLM 服务是否正常运行。",
   });
 }
 
@@ -330,8 +338,22 @@ async function testProviderModelMessage(
   modelId: string,
   signal: AbortSignal,
 ) {
-  const apiKey = resolveApiKey(provider.apiKey) ?? "";
-  const baseUrl = normalizeProviderBaseUrl(provider.baseUrl, provider.protocol);
+  let apiKey = resolveApiKey(provider.apiKey) ?? "";
+  let baseUrl = normalizeProviderBaseUrl(provider.baseUrl, provider.protocol);
+
+  // LiteLLM 协议：凭证来自后端环境变量，不在 DB 中存储
+  if (provider.protocol === "litellm") {
+    if (!isLitellmConfigured()) {
+      return configTestError("CONFIG_TEST_REQUEST_FAILED", {
+        target: "provider",
+        protocol: "litellm",
+        message: "LiteLLM 服务未配置，请设置 RCS_SECRET_LITELLM_ADMIN_KEY 环境变量",
+      });
+    }
+    const litellm = getLitellmClient();
+    apiKey = litellm.adminKey;
+    baseUrl = litellm.baseUrl.replace(/\/+$/, "");
+  }
 
   if (provider.protocol === "anthropic") {
     const res = await fetch(`${withVersionedBaseUrl(baseUrl)}/messages`, {
@@ -403,13 +425,29 @@ async function handleFetchModels(
   if (inline?.apiKey || inline?.baseURL) {
     apiKey = inline.apiKey ?? "";
     baseURL = normalizeProviderBaseUrl(inline.baseURL, inline.protocol ?? "openai");
-    protocol = inline.protocol === "anthropic" ? "anthropic" : "openai";
+    protocol = inline.protocol === "anthropic" ? "anthropic" : inline.protocol === "litellm" ? "litellm" : "openai";
   } else {
     const p = await configPg.assertProviderInternalWritable(ctx, name);
     if (!p) return configError("NOT_FOUND", `Provider '${name}' not found`);
-    apiKey = resolveApiKey(p.apiKey) ?? "";
-    baseURL = normalizeProviderBaseUrl(p.baseUrl, p.protocol);
-    protocol = p.protocol;
+
+    // LiteLLM 协议：凭证来自后端环境变量，不在 DB 中存储
+    if (p.protocol === "litellm") {
+      if (!isLitellmConfigured()) {
+        return configTestError("CONFIG_TEST_REQUEST_FAILED", {
+          target: "provider",
+          protocol: "litellm",
+          message: "LiteLLM 服务未配置，请设置 RCS_SECRET_LITELLM_ADMIN_KEY 环境变量",
+        });
+      }
+      const litellm = getLitellmClient();
+      apiKey = litellm.adminKey;
+      baseURL = litellm.baseUrl.replace(/\/+$/, "");
+      protocol = p.protocol;
+    } else {
+      apiKey = resolveApiKey(p.apiKey) ?? "";
+      baseURL = normalizeProviderBaseUrl(p.baseUrl, p.protocol);
+      protocol = p.protocol;
+    }
   }
 
   try {
@@ -720,7 +758,14 @@ app.post(
     const result: unknown = await handleFetchModels(authCtx, name, {
       apiKey: inline?.apiKey,
       baseURL: inline?.baseURL,
-      protocol: inline?.protocol === "anthropic" ? "anthropic" : inline?.protocol === "openai" ? "openai" : undefined,
+      protocol:
+        inline?.protocol === "anthropic"
+          ? "anthropic"
+          : inline?.protocol === "openai"
+            ? "openai"
+            : inline?.protocol === "litellm"
+              ? "litellm"
+              : undefined,
     });
     if (result && typeof result === "object" && "success" in result && result.success === false) {
       return status(configErrorStatus((result as { error?: { code?: string } }).error?.code), result);

@@ -1,5 +1,5 @@
 export { cleanOrphanLitellmKeys, startOrphanKeyCleanup, stopOrphanKeyCleanup } from "./cleanup";
-export { initLitellmClient } from "./client";
+export { getLitellmClient, initLitellmClient, isLitellmConfigured } from "./client";
 export { getEncryptionKey, pgpEncryptExpr } from "./crypto";
 export type { GenerateKeyParams, GenerateKeyResult, KeyInfo } from "./key";
 export { deleteLitellmKeys, generateLitellmKey, getLitellmKeyInfo } from "./key";
@@ -9,3 +9,5 @@ export { createLitellmOrg, getLitellmOrg } from "./organization";
 export { revokeAllKeysForAgent, revokeLitellmKeyForUserAgent, revokeLitellmKeysForUserInOrg } from "./revoke";
 export type { SpendLogEntry, SpendLogsResponse } from "./spend";
 export { getSpendByTags, getSpendLogs } from "./spend";
+export type { CreateLitellmUserParams, LitellmUser } from "./user";
+export { createLitellmUser } from "./user";

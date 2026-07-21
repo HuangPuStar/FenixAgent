@@ -241,9 +241,9 @@ describe("config provider resource access", () => {
     });
 
     const { upsertProvider } = await import("../services/config/provider");
-    const id = await upsertProvider(ctx, "openai", { protocol: "openai" }, { publicReadable: true });
+    const result = await upsertProvider(ctx, "openai", { protocol: "openai" }, { publicReadable: true });
 
-    expect(id).toBe("provider_created");
+    expect(result.id).toBe("provider_created");
     expect(capturedGrant).toEqual({
       organizationId: "org_current",
       resourceType: "provider",

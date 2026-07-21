@@ -20,6 +20,7 @@ import type {
   ProviderSetOptions,
   ProviderUpsertData,
   ResourceAccess,
+  UpsertProviderResult,
 } from "./types";
 
 // ────────────────────────────────────────────
@@ -165,7 +166,7 @@ export async function upsertProvider(
   name: string,
   data: ProviderUpsertData,
   options: ProviderSetOptions = {},
-) {
+): Promise<UpsertProviderResult> {
   const set = {
     displayName: data.displayName,
     protocol: data.protocol,
@@ -210,16 +211,21 @@ export async function upsertProvider(
               litellmOrgCreatedAt: new Date().toISOString(),
             },
             updatedAt: new Date(),
+            // biome-ignore lint/suspicious/noExplicitAny: jsonb column type is inferred as unknown by Drizzle ORM
           } as any)
           .where(eq(provider.id, row.id));
       } catch (err) {
         console.error("[LiteLLM] 创建 Organization 失败:", err);
-        // LiteLLM Organization 创建失败不阻塞 Provider 创建
+        return {
+          id: row.id,
+          litellmOrgCreated: false,
+          litellmOrgError: err instanceof Error ? err.message : String(err),
+        };
       }
     }
   }
 
-  return row.id;
+  return { id: row.id, litellmOrgCreated: true };
 }
 
 export async function updateProviderById(

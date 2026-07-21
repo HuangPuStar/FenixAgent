@@ -331,3 +331,10 @@ export interface AgentConfigDetailWithAccess extends AgentConfigRowWithAccess {
 /** Supported engine type identifiers */
 export const ENGINE_TYPES = ["opencode", "ccb", "claude-code"] as const;
 export type EngineType = (typeof ENGINE_TYPES)[number];
+
+/** upsertProvider 返回类型 */
+export interface UpsertProviderResult {
+  id: string;
+  litellmOrgCreated: boolean;
+  litellmOrgError?: string;
+}

@@ -14,9 +14,9 @@
 |------|------|------|
 | ID | 唯一标识符，创建后不可改 | `openai` |
 | 显示名称 | 界面显示的名称 | `OpenAI` |
-| 协议 | SDK 协议类型 | OpenAI 兼容 / Anthropic / DeepSeek |
+| 协议 | SDK 协议类型 | OpenAI 兼容 / Anthropic / LiteLLM |
 | API Key | 服务商密钥 | `sk-xxxx...` |
-| Base URL | API 地址（可选） | `https://api.openai.com/v1` |
+| Base URL | API 地址（LiteLLM 协议无需填写） | `https://api.openai.com/v1` |
 
 **常用服务商配置**：
 
@@ -25,7 +25,64 @@
 | OpenAI | OpenAI 兼容 | `https://api.openai.com/v1` |
 | Anthropic (Claude) | Anthropic | `https://api.anthropic.com/v1` |
 | 阿里云百炼 | OpenAI 兼容 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | DeepSeek | — |
+| 通过 LiteLLM 代理 | LiteLLM | 系统自动配置 |
+
+## LiteLLM 协议
+
+> 前提：管理员已配置 LiteLLM 服务。如果协议下拉菜单里没有「LiteLLM」选项，说明系统尚未启用，请联系管理员开通。
+
+### 第 1 步：创建 LiteLLM 服务商
+
+```
+侧边栏 → 大模型配置 → 新建服务商
+```
+
+弹出表单后：
+
+| 字段 | 填什么 | 说明 |
+|------|--------|------|
+| ID | 起个名字，如 `my-litellm` | 和 OpenAI 服务商一样，创建后不可改 |
+| 显示名称 | 可选，界面上显示的别名 | 不填就用 ID |
+| 协议 | 下拉选 **LiteLLM** | 选完后 Base URL 输入框会自动隐藏，无需你填 |
+| API Key | 管理员给你的 LiteLLM Key | 用于网关认证 |
+
+填完点保存即可。
+
+**背后发生了什么（你无需关心）：**
+
+- 系统自动在 LiteLLM 里创建一个组织，对应你当前的团队
+- 如果 LiteLLM 服务暂时连不上，会弹一条黄色提示：*"LiteLLM Organization 创建失败，智能体运行时可能受限。请检查 LiteLLM 服务是否正常运行。"* ——不影响服务商本身创建成功，等服务恢复后系统会自动重试
+
+### 第 2 步：添加模型
+
+服务商创建完后，在同一页面的表单里：
+
+```
+点击"获取模型列表" → 勾选你要用的模型（如 gpt-4o-mini、claude-sonnet-4-20250514） → 保存
+```
+
+### 第 3 步：智能体绑定模型
+
+```
+侧边栏 → 智能体管理 → 新建智能体（或编辑已有）
+```
+
+在模型选择下拉中，找到第 1 步创建的服务商下的模型，选中即可。
+
+### 第 4 步：运行
+
+像平常一样运行智能体。系统会在后台自动：
+
+1. 为你和这个智能体生成一个独立的 LiteLLM API Key
+2. 所有模型调用经过 LiteLLM 网关，用量和费用自动记录
+
+**作为纯界面用户，你全程只需要干三件事：建服务商 → 加模型 → 选模型。其余一切自动。**
+
+### 注意事项
+
+- **不要修改 LiteLLM 服务商的协议类型**：改为其他协议后，之前自动配置的 Key 映射会失效。
+- **API Key 安全边界**：LiteLLM 的 API Key 用于网关认证，不要与直连 OpenAI 的 Key 混用。
+- **Base URL 为什么不用填**：LiteLLM 的网关地址由管理员在后台统一配置，用户无需关心。
 
 ## 测试连接
 
@@ -104,3 +161,11 @@
 ### 模型配置错了怎么办？
 
 直接点击模型卡片上的 **编辑** 按钮修改，或点击 **删除** 移除。
+
+### LiteLLM 协议和 OpenAI 兼容有什么区别？
+
+OpenAI 兼容是直连模型服务商的 API；LiteLLM 是通过统一网关代理调用。对你来说，操作上唯一区别就是 Base URL 不用填，其余完全一样。背后的好处是系统自动管理 Key、记录用量、控制预算。
+
+### 为什么 LiteLLM 协议下没有 Base URL 输入框？
+
+因为 LiteLLM 的网关地址由管理员在后台统一配置了，你不需要关心它是什么。这是为了减少你的填写负担，也避免配错。

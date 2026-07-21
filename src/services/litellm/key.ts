@@ -6,7 +6,7 @@ export interface GenerateKeyParams {
   organization_id: string;
   key_alias: string;
   metadata?: Record<string, string>;
-  tags: string[];
+  tags?: string[];
   max_budget: number;
   budget_duration: string;
   models: string[];
@@ -20,17 +20,21 @@ export interface GenerateKeyResult {
 }
 
 export async function generateLitellmKey(params: GenerateKeyParams): Promise<GenerateKeyResult> {
-  return litellmRequest<GenerateKeyResult>("POST", "/key/generate", {
+  const body: Record<string, unknown> = {
     user_id: params.user_id,
     agent_id: params.agent_id,
     organization_id: params.organization_id,
     key_alias: params.key_alias,
     metadata: params.metadata ?? {},
-    tags: params.tags,
     max_budget: params.max_budget,
     budget_duration: params.budget_duration,
     models: params.models,
-  });
+  };
+  // tags 是 LiteLLM 企业版功能，社区版不可用
+  if (params.tags && params.tags.length > 0) {
+    body.tags = params.tags;
+  }
+  return litellmRequest<GenerateKeyResult>("POST", "/key/generate", body);
 }
 
 export interface KeyInfo {

@@ -144,4 +144,7 @@ export const providerApi = {
       method: "DELETE",
       ...withName(name),
     }),
+
+  /** 查询 LiteLLM 服务可用状态 */
+  getLitellmStatus: () => request<{ configured: boolean; available: boolean }>("/web/config/litellm/status"),
 };
