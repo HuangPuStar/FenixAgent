@@ -26,6 +26,7 @@ import { Route as AgentPanelOrganizationsRouteImport } from "./routes/agent/_pan
 import { Route as AgentPanelModelsRouteImport } from "./routes/agent/_panel/models"
 import { Route as AgentPanelMemoriesRouteImport } from "./routes/agent/_panel/memories"
 import { Route as AgentPanelMcpRouteImport } from "./routes/agent/_panel/mcp"
+import { Route as AgentPanelLitellmUsageRouteImport } from "./routes/agent/_panel/litellm-usage"
 import { Route as AgentPanelKnowledgeBasesRouteImport } from "./routes/agent/_panel/knowledge-bases"
 import { Route as AgentPanelHomeRouteImport } from "./routes/agent/_panel/home"
 import { Route as AgentPanelDashboardRouteImport } from "./routes/agent/_panel/dashboard"
@@ -123,6 +124,11 @@ const AgentPanelMcpRoute = AgentPanelMcpRouteImport.update({
   path: "/mcp",
   getParentRoute: () => AgentPanelRoute,
 } as any)
+const AgentPanelLitellmUsageRoute = AgentPanelLitellmUsageRouteImport.update({
+  id: "/litellm-usage",
+  path: "/litellm-usage",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
 const AgentPanelKnowledgeBasesRoute =
   AgentPanelKnowledgeBasesRouteImport.update({
     id: "/knowledge-bases",
@@ -197,6 +203,7 @@ export interface FileRoutesByFullPath {
   "/agent/dashboard": typeof AgentPanelDashboardRoute
   "/agent/home": typeof AgentPanelHomeRoute
   "/agent/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/litellm-usage": typeof AgentPanelLitellmUsageRoute
   "/agent/mcp": typeof AgentPanelMcpRoute
   "/agent/memories": typeof AgentPanelMemoriesRoute
   "/agent/models": typeof AgentPanelModelsRoute
@@ -226,6 +233,7 @@ export interface FileRoutesByTo {
   "/agent/dashboard": typeof AgentPanelDashboardRoute
   "/agent/home": typeof AgentPanelHomeRoute
   "/agent/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/litellm-usage": typeof AgentPanelLitellmUsageRoute
   "/agent/mcp": typeof AgentPanelMcpRoute
   "/agent/memories": typeof AgentPanelMemoriesRoute
   "/agent/models": typeof AgentPanelModelsRoute
@@ -257,6 +265,7 @@ export interface FileRoutesById {
   "/agent/_panel/dashboard": typeof AgentPanelDashboardRoute
   "/agent/_panel/home": typeof AgentPanelHomeRoute
   "/agent/_panel/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/_panel/litellm-usage": typeof AgentPanelLitellmUsageRoute
   "/agent/_panel/mcp": typeof AgentPanelMcpRoute
   "/agent/_panel/memories": typeof AgentPanelMemoriesRoute
   "/agent/_panel/models": typeof AgentPanelModelsRoute
@@ -289,6 +298,7 @@ export interface FileRouteTypes {
     | "/agent/dashboard"
     | "/agent/home"
     | "/agent/knowledge-bases"
+    | "/agent/litellm-usage"
     | "/agent/mcp"
     | "/agent/memories"
     | "/agent/models"
@@ -318,6 +328,7 @@ export interface FileRouteTypes {
     | "/agent/dashboard"
     | "/agent/home"
     | "/agent/knowledge-bases"
+    | "/agent/litellm-usage"
     | "/agent/mcp"
     | "/agent/memories"
     | "/agent/models"
@@ -348,6 +359,7 @@ export interface FileRouteTypes {
     | "/agent/_panel/dashboard"
     | "/agent/_panel/home"
     | "/agent/_panel/knowledge-bases"
+    | "/agent/_panel/litellm-usage"
     | "/agent/_panel/mcp"
     | "/agent/_panel/memories"
     | "/agent/_panel/models"
@@ -496,6 +508,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AgentPanelMcpRouteImport
       parentRoute: typeof AgentPanelRoute
     }
+    "/agent/_panel/litellm-usage": {
+      id: "/agent/_panel/litellm-usage"
+      path: "/litellm-usage"
+      fullPath: "/agent/litellm-usage"
+      preLoaderRoute: typeof AgentPanelLitellmUsageRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
     "/agent/_panel/knowledge-bases": {
       id: "/agent/_panel/knowledge-bases"
       path: "/knowledge-bases"
@@ -583,6 +602,7 @@ interface AgentPanelRouteChildren {
   AgentPanelDashboardRoute: typeof AgentPanelDashboardRoute
   AgentPanelHomeRoute: typeof AgentPanelHomeRoute
   AgentPanelKnowledgeBasesRoute: typeof AgentPanelKnowledgeBasesRoute
+  AgentPanelLitellmUsageRoute: typeof AgentPanelLitellmUsageRoute
   AgentPanelMcpRoute: typeof AgentPanelMcpRoute
   AgentPanelMemoriesRoute: typeof AgentPanelMemoriesRoute
   AgentPanelModelsRoute: typeof AgentPanelModelsRoute
@@ -607,6 +627,7 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelDashboardRoute: AgentPanelDashboardRoute,
   AgentPanelHomeRoute: AgentPanelHomeRoute,
   AgentPanelKnowledgeBasesRoute: AgentPanelKnowledgeBasesRoute,
+  AgentPanelLitellmUsageRoute: AgentPanelLitellmUsageRoute,
   AgentPanelMcpRoute: AgentPanelMcpRoute,
   AgentPanelMemoriesRoute: AgentPanelMemoriesRoute,
   AgentPanelModelsRoute: AgentPanelModelsRoute,

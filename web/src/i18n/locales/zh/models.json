@@ -152,5 +152,35 @@
       "success": "模型 {{id}} 测试成功：{{content}}",
       "error": "模型 {{id}} 测试失败: {{message}}"
     }
+  },
+  "usage": {
+    "title": "我的用量",
+    "subtitle": "个人 API 调用量与费用统计（数据来源：LiteLLM）",
+    "dialogTitle": "用量报表 — {{provider}}",
+    "dialogDesc": "按智能体聚合的 API 调用量与费用统计（数据来源：LiteLLM）",
+    "loadError": "获取用量数据失败: {{message}}",
+    "period": "统计周期",
+    "days": "天",
+    "totalSpend": "总费用 (USD)",
+    "totalTokens": "总 Token 数",
+    "totalRequests": "总请求数",
+    "agentUsage": "智能体用量",
+    "modelUsage": "模型用量",
+    "tokenNA": "聚合模式不统计",
+    "colDate": "日期",
+    "colAgent": "智能体",
+    "colModel": "模型",
+    "colTokens": "Token 数",
+    "colCost": "费用 (USD)",
+    "colRequests": "请求数",
+    "empty": "所选周期内暂无用量数据",
+    "promptTokens": "输入 Token",
+    "completionTokens": "输出 Token",
+    "cacheReadInputTokens": "缓存读取 Token",
+    "cacheCreationInputTokens": "缓存写入 Token",
+    "chartSpendPerDay": "每日费用",
+    "chartTokensPerDay": "每日 Token",
+    "chartRequestsPerDay": "每日请求数",
+    "chartCacheMetrics": "Prompt 缓存"
   }
 }

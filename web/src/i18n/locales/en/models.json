@@ -152,5 +152,35 @@
       "success": "Model {{id}} test succeeded: {{content}}",
       "error": "Model {{id}} test failed: {{message}}"
     }
+  },
+  "usage": {
+    "title": "My Usage",
+    "subtitle": "Personal API call volume and cost statistics (data source: LiteLLM)",
+    "dialogTitle": "Usage Report — {{provider}}",
+    "dialogDesc": "API call volume and cost statistics aggregated by agent (data source: LiteLLM)",
+    "loadError": "Failed to fetch usage data: {{message}}",
+    "period": "Period",
+    "days": "days",
+    "totalSpend": "Total Cost (USD)",
+    "totalTokens": "Total Tokens",
+    "totalRequests": "Total Requests",
+    "agentUsage": "Agent Usage",
+    "modelUsage": "Model Usage",
+    "tokenNA": "N/A in aggregate mode",
+    "colDate": "Date",
+    "colAgent": "Agent",
+    "colModel": "Model",
+    "colTokens": "Tokens",
+    "colCost": "Cost (USD)",
+    "colRequests": "Requests",
+    "empty": "No usage data for the selected period",
+    "promptTokens": "Prompt Tokens",
+    "completionTokens": "Completion Tokens",
+    "cacheReadInputTokens": "Cache Read Tokens",
+    "cacheCreationInputTokens": "Cache Write Tokens",
+    "chartSpendPerDay": "Spend per Day",
+    "chartTokensPerDay": "Tokens per Day",
+    "chartRequestsPerDay": "Requests per Day",
+    "chartCacheMetrics": "Prompt Caching"
   }
 }

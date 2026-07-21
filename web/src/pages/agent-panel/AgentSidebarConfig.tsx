@@ -1,5 +1,19 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, Bot, Brain, Clock, Cpu, Globe, KeyRound, Plug, Plus, Settings, Users, Workflow } from "lucide-react";
+import {
+  BarChart3,
+  BookOpen,
+  Bot,
+  Brain,
+  Clock,
+  Cpu,
+  Globe,
+  KeyRound,
+  Plug,
+  Plus,
+  Settings,
+  Users,
+  Workflow,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 
@@ -31,6 +45,7 @@ function useNavGroups(): NavGroup[] {
       label: t("navGroupConfig"),
       items: [
         { id: "models", labelKey: "agentPanel:models", icon: Cpu },
+        { id: "litellm-usage", labelKey: "models:usage.title", icon: BarChart3 },
         { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
         { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
         { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },

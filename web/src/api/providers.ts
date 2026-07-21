@@ -147,4 +147,41 @@ export const providerApi = {
 
   /** 查询 LiteLLM 服务可用状态 */
   getLitellmStatus: () => request<{ configured: boolean; available: boolean }>("/web/config/litellm/status"),
+
+  /** 查询 LiteLLM 用量报表（按 agent 聚合） */
+  getLitellmUsage: (days = 7) =>
+    request<UsageReport>("/web/config/litellm/usage", { method: "GET", query: { days: String(days) } }),
 };
+
+/** LiteLLM 用量报表类型（与后端 UsageReport 对齐） */
+export interface UsageReportEntry {
+  date: string;
+  agentName: string;
+  model: string;
+  spend: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  apiRequests: number;
+}
+
+/** 按天聚合的时序数据，供图表渲染 */
+export interface DailySummary {
+  date: string;
+  spend: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  apiRequests: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+}
+
+export interface UsageReport {
+  entries: UsageReportEntry[];
+  dailySummary: DailySummary[];
+  totalSpend: number;
+  totalTokens: number;
+  totalRequests: number;
+  periodDays: number;
+}
