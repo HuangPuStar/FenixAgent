@@ -1136,6 +1136,18 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
     try {
       const modelId = params.modelId as string;
+
+      // 校验 modelId 是否在 availableModels 中
+      const availableIds = state.modelState!.availableModels.map((m) => m.modelId);
+      if (!availableIds.includes(modelId)) {
+        console.warn(
+          `[acp-server] setSessionModel: modelId "${modelId}" not in availableModels, ` +
+            `rejecting. Available: ${availableIds.join(", ")}`,
+        );
+        sendMsg(ws, createErrorResponse(id, -32602, `Model "${modelId}" is not available`));
+        return;
+      }
+
       console.log("setting model, sessionId:", state.sessionId, "modelId:", modelId);
       await state.connection.setSessionConfigOption?.({
         sessionId: state.sessionId,

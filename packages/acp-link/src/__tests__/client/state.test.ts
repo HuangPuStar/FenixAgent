@@ -76,16 +76,37 @@ describe("ACPState", () => {
     expect(state.availableCommands).toEqual(cmds);
   });
 
-  // 测试 protocol model_changed
+  // 测试 protocol model_changed（合法 modelId）
   test("protocol model_changed → updates currentModelId in modelState", () => {
-    // 先设置 modelState
-    const models = { availableModels: [{ modelId: "gpt-4", name: "GPT-4" }], currentModelId: "gpt-4" };
+    // 先设置 modelState，availableModels 包含两个模型
+    const models = {
+      availableModels: [
+        { modelId: "gpt-4", name: "GPT-4" },
+        { modelId: "claude-3", name: "Claude 3" },
+      ],
+      currentModelId: "gpt-4",
+    };
     protocol.emit("session_created", { sessionId: "ses_1", models });
 
-    // 再触发 model_changed
+    // 再触发 model_changed 为合法模型
     protocol.emit("model_changed", { modelId: "claude-3" });
 
     expect(state.modelState?.currentModelId).toBe("claude-3");
+  });
+
+  // 测试非法 model_changed 应被拒绝
+  test("protocol model_changed → rejects invalid modelId not in availableModels", () => {
+    const models = {
+      availableModels: [{ modelId: "gpt-4", name: "GPT-4" }],
+      currentModelId: "gpt-4",
+    };
+    protocol.emit("session_created", { sessionId: "ses_1", models });
+
+    // 触发 model_changed 为不在 availableModels 中的模型
+    protocol.emit("model_changed", { modelId: "unknown-model" });
+
+    // currentModelId 应保持不变
+    expect(state.modelState?.currentModelId).toBe("gpt-4");
   });
 
   // 测试 reset 清空所有状态

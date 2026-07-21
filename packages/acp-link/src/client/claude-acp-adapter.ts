@@ -505,6 +505,13 @@ export function createClaudeAcpConnection(
 
     async unstable_setSessionModel(params: Record<string, unknown>) {
       const newModel = ((params as Record<string, unknown>).modelId as string) ?? effectiveModel;
+      const availableIds = buildAvailableModels().map((m) => m.modelId);
+      if (!availableIds.includes(newModel)) {
+        console.warn(
+          `[claude-acp-adapter] unstable_setSessionModel: model "${newModel}" not in available models, ignoring`,
+        );
+        return;
+      }
       currentModel = newModel;
     },
 
