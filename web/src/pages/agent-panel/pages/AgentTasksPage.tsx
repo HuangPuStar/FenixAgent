@@ -172,13 +172,21 @@ export function AgentTasksPage() {
 
   // ── 筛选 + 分页状态 ──
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "http" | "agent">("all");
   const [page, setPage] = useState(1);
 
-  // 筛选条件变化时回到第一页
+  // 搜索防抖：输入即时更新 UI，API 请求 300ms 后触发
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKeyword(searchKeyword), 300);
+    return () => clearTimeout(timer);
+  }, [searchKeyword]);
+
+  // 筛选条件或搜索词变化时，重置到第 1 页
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 筛选/搜索变化时需重置页码，但 effect 体只用 setPage
   useEffect(() => {
     setPage(1);
-  }, []);
+  }, [debouncedKeyword, typeFilter]);
 
   // ── 数据加载（服务端分页） ──
   const {
@@ -187,13 +195,13 @@ export function AgentTasksPage() {
     refresh,
   } = useRequest(
     async () => {
-      const keyword = searchKeyword.trim() || undefined;
+      const keyword = debouncedKeyword.trim() || undefined;
       const type = typeFilter !== "all" ? typeFilter : undefined;
       const result = await unwrap(taskV2Api.list({ page, pageSize: DEFAULT_PAGE_SIZE, keyword, type }));
       return result as unknown as PaginatedResponse<TaskV2Info>;
     },
     {
-      refreshDeps: [page, searchKeyword, typeFilter],
+      refreshDeps: [page, debouncedKeyword, typeFilter],
       onError: (err: Error) => {
         console.error("task list load failed", err);
         toast.error(err.message);
@@ -397,7 +405,9 @@ export function AgentTasksPage() {
   }, []);
 
   // ── 加载态 ──
-  if (loading) {
+  // 仅初次加载时展示全屏骨架屏，后续搜索/筛选触发的 loading 保留下方 UI 避免输入框失焦
+  const initialLoadDone = useRef(false);
+  if (!initialLoadDone.current && loading) {
     return (
       <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
         <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
@@ -409,6 +419,10 @@ export function AgentTasksPage() {
         </div>
       </div>
     );
+  }
+  // 首次加载完成后标记，后续 loading 不再替换整棵树
+  if (!initialLoadDone.current && !loading) {
+    initialLoadDone.current = true;
   }
 
   return (
@@ -429,11 +443,10 @@ export function AgentTasksPage() {
       <div className="mb-4 flex items-center gap-3">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-text-muted" />
-          <Input
+          <TaskSearchInput
             placeholder={t("filter.searchPlaceholder")}
             value={searchKeyword}
-            onChange={(e) => setSearchKeyword(e.target.value)}
-            className="h-8 pl-8 text-xs"
+            onChange={setSearchKeyword}
           />
         </div>
         <Tabs value={typeFilter} onValueChange={(v) => setTypeFilter(v as "all" | "http" | "agent")}>
@@ -585,6 +598,48 @@ export function AgentTasksPage() {
         onConfirm={() => logTask && runClearLogs(logTask.id)}
       />
     </div>
+  );
+}
+
+// ── 搜索输入（IME 安全）：composing 期间使用独立 value 避免 React 受控值覆盖 IME 中间文字 ──
+
+function TaskSearchInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  const [isComposing, setIsComposing] = useState(false);
+  const [composingValue, setComposingValue] = useState("");
+
+  return (
+    <Input
+      placeholder={placeholder}
+      value={isComposing ? composingValue : value}
+      className="h-8 pl-8 text-xs"
+      onCompositionStart={() => {
+        setIsComposing(true);
+        setComposingValue(value);
+      }}
+      onCompositionUpdate={(e) => {
+        setComposingValue((e.target as HTMLInputElement).value);
+      }}
+      onCompositionEnd={(e) => {
+        setIsComposing(false);
+        setComposingValue("");
+        onChange((e.target as HTMLInputElement).value);
+      }}
+      onChange={(e) => {
+        if (isComposing) {
+          setComposingValue(e.target.value);
+        } else {
+          onChange(e.target.value);
+        }
+      }}
+    />
   );
 }
 
