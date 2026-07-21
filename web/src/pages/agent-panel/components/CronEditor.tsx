@@ -92,6 +92,10 @@ export function CronEditor({ value, onChange, error }: CronEditorProps) {
   const { t } = useTranslation(NS.TASKS_V2);
   const [editingCustom, setEditingCustom] = useState(false);
 
+  // IME 安全：composing 期间使用独立 value 避免受控值覆盖 IME 中间文字
+  const [isComposing, setIsComposing] = useState(false);
+  const [composingValue, setComposingValue] = useState("");
+
   const presetKeys = Object.keys(PRESETS);
   const matchedKey = Object.entries(PRESETS).find(([, v]) => v === value.trim())?.[0];
   const isPreset = matchedKey != null;
@@ -158,10 +162,27 @@ export function CronEditor({ value, onChange, error }: CronEditorProps) {
           <div className="flex items-center gap-1.5 flex-1">
             <span className="text-[11px] text-text-muted shrink-0 font-mono">cron:</span>
             <Input
-              value={value}
-              onChange={(e) => {
-                onChange(e.target.value);
+              value={isComposing ? composingValue : value}
+              onCompositionStart={() => {
+                setIsComposing(true);
+                setComposingValue(value);
+              }}
+              onCompositionUpdate={(e) => {
+                setComposingValue((e.target as HTMLInputElement).value);
+              }}
+              onCompositionEnd={(e) => {
+                setIsComposing(false);
+                setComposingValue("");
+                onChange((e.target as HTMLInputElement).value);
                 setEditingCustom(true);
+              }}
+              onChange={(e) => {
+                if (isComposing) {
+                  setComposingValue(e.target.value);
+                } else {
+                  onChange(e.target.value);
+                  setEditingCustom(true);
+                }
               }}
               placeholder="0 * * * *"
               className={`h-7 flex-1 font-mono text-xs ${error ? "border-destructive" : ""}`}
