@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { XLDialog, XLDialogContent, XLDialogHeader, XLDialogTitle } from "@/components/ui/dialog-xl";
 import type { VerticalModel } from "./VerticalModelsPage";
 
 interface VerticalModelDetailDialogProps {
@@ -10,36 +10,47 @@ interface VerticalModelDetailDialogProps {
 
 export function VerticalModelDetailDialog({ model, open, onClose }: VerticalModelDetailDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[680px] max-h-[85vh] overflow-auto">
-        {/* 头部 */}
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-md bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-lg flex-shrink-0">
-              {model.emoji}
+    <XLDialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <XLDialogContent className="p-0">
+        {/* 顶部信息区 */}
+        <div className="p-6 pb-4">
+          <XLDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-xl flex-shrink-0">
+                {model.emoji}
+              </div>
+              <div className="flex-1 min-w-0">
+                <XLDialogTitle className="flex items-center gap-2">
+                  {model.name}
+                  <Badge
+                    variant="outline"
+                    className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] px-1.5 py-0 h-auto"
+                  >
+                    已落地
+                  </Badge>
+                </XLDialogTitle>
+                <p className="text-xs text-text-secondary mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span className="font-mono bg-surface-1 px-1.5 py-px rounded">{model.baseModel}</span>
+                  <span>{model.modelType}</span>
+                  <span className="mx-0.5">·</span>
+                  <span>{model.enterprise}</span>
+                </p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <DialogTitle className="text-base font-bold flex items-center gap-2">
-                {model.name}
-                <Badge
-                  variant="outline"
-                  className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] px-1.5 py-0 h-auto"
-                >
-                  已落地
-                </Badge>
-              </DialogTitle>
-              <p className="text-xs text-text-secondary mt-0.5 flex items-center gap-1.5 flex-wrap">
-                <span className="font-mono bg-surface-1 px-1.5 py-px rounded">{model.baseModel}</span>
-                <span>{model.modelType}</span>
-                <span className="mx-0.5">·</span>
-                <span>{model.enterprise}</span>
-              </p>
+          </XLDialogHeader>
+        </div>
+
+        {/* 图片展示区 */}
+        {model.image && (
+          <div className="px-6 pb-4">
+            <div className="rounded-lg border bg-surface-0 overflow-hidden">
+              <img src={model.image} alt={model.name} className="w-full h-auto max-h-[320px] object-contain" />
             </div>
           </div>
-        </DialogHeader>
+        )}
 
         {/* 内容两栏 */}
-        <div className="flex gap-5 mt-4">
+        <div className="flex gap-6 px-6 pb-6 overflow-auto">
           {/* 左栏 */}
           <div className="flex-[1.2] min-w-0">
             <h4 className="text-xs font-bold text-text-primary mb-1.5">模型简介</h4>
@@ -47,12 +58,12 @@ export function VerticalModelDetailDialog({ model, open, onClose }: VerticalMode
 
             {model.capabilities.length > 0 && (
               <>
-                <h4 className="text-xs font-bold text-text-primary mb-2">检测能力</h4>
+                <h4 className="text-xs font-bold text-text-primary mb-2">核心能力</h4>
                 <div className="grid grid-cols-2 gap-1">
                   {model.capabilities.map((c) => (
                     <div key={c} className="flex items-center gap-1.5 text-xs text-text-secondary">
-                      <span className="text-green-500 text-xs">✓</span>
-                      {c}
+                      <span className="text-green-500 text-xs flex-shrink-0">✓</span>
+                      <span className="truncate">{c}</span>
                     </div>
                   ))}
                 </div>
@@ -101,7 +112,7 @@ export function VerticalModelDetailDialog({ model, open, onClose }: VerticalMode
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </XLDialogContent>
+    </XLDialog>
   );
 }

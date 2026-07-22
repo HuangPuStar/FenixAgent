@@ -1,7 +1,7 @@
 import { Copy } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { XLDialog, XLDialogContent, XLDialogHeader, XLDialogTitle } from "@/components/ui/dialog-xl";
 import type { Algorithm } from "./AlgorithmsPage";
 
 interface AlgorithmDetailDialogProps {
@@ -20,16 +20,16 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[680px] max-h-[85vh] overflow-auto">
+    <XLDialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <XLDialogContent className="max-w-[680px] max-h-[85vh] overflow-auto">
         {/* 头部 */}
-        <DialogHeader>
+        <XLDialogHeader>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-md bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-lg flex-shrink-0">
               {algorithm.emoji}
             </div>
             <div className="flex-1 min-w-0">
-              <DialogTitle className="text-base font-bold">{algorithm.name}</DialogTitle>
+              <XLDialogTitle className="text-base font-bold">{algorithm.name}</XLDialogTitle>
               <p className="text-xs text-text-secondary mt-0.5">{algorithm.categories.join(" · ")}</p>
             </div>
             <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs flex-shrink-0" onClick={handleCopy}>
@@ -37,7 +37,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
               {copied ? "已复制" : "复制代码"}
             </Button>
           </div>
-        </DialogHeader>
+        </XLDialogHeader>
 
         {/* 内容两栏 */}
         <div className="flex gap-5 mt-4">
@@ -90,7 +90,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
             </pre>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </XLDialogContent>
+    </XLDialog>
   );
 }

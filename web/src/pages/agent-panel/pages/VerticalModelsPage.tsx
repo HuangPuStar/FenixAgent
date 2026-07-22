@@ -9,6 +9,7 @@ interface VerticalModel {
   id: string;
   name: string;
   emoji: string;
+  image?: string;
   baseModel: string;
   modelType: string;
   enterprise: string;
@@ -24,6 +25,7 @@ const ALL_MODELS: VerticalModel[] = [
     id: "wind-logistics",
     name: "风机物流运输合规性检测模型",
     emoji: "🚛",
+    image: "/brand/models/wind-logistics.jpeg",
     baseModel: "Qwen3-VL-2B",
     modelType: "多模态视觉模型",
     enterprise: "金风科技",
@@ -41,6 +43,7 @@ const ALL_MODELS: VerticalModel[] = [
     id: "ppe-detection",
     name: "人员PPE检测模型",
     emoji: "🦺",
+    image: "/brand/models/ppe-detection.jpeg",
     baseModel: "Qwen3-VL-8B-Instruct",
     modelType: "多模态视觉模型",
     enterprise: "金风科技",
@@ -59,6 +62,7 @@ const ALL_MODELS: VerticalModel[] = [
     id: "wind-assembly",
     name: "风机装配质量检测模型",
     emoji: "⚙️",
+    image: "/brand/models/wind-assembly.png",
     baseModel: "Qwen3-VL-32B",
     modelType: "多模态 + 知识库增强",
     enterprise: "金风科技",
@@ -76,6 +80,7 @@ const ALL_MODELS: VerticalModel[] = [
     id: "power-dispatch",
     name: "电力抢修智能调度模型",
     emoji: "⚡",
+    image: "/brand/models/power-dispatch.png",
     baseModel: "Qwen3-4B",
     modelType: "文本模型",
     enterprise: "南方电网",
