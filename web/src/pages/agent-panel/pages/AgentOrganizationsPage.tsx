@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { Copy, Monitor, Plus, RefreshCw, Shield, ShieldCheck, Trash2, User, UserPlus } from "lucide-react";
+import { Check, Copy, Monitor, Plus, RefreshCw, Shield, ShieldCheck, Trash2, User, UserPlus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -15,10 +15,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { orgApi } from "@/src/api/organizations";
+import { type OrgMemberCandidate, orgApi } from "@/src/api/organizations";
 import { type MachineRecord, registryApi } from "@/src/api/registry";
 import { unwrap } from "@/src/api/request";
 import { useOrg } from "../../../contexts/OrgContext";
@@ -69,7 +70,9 @@ export function AgentOrganizationsPage() {
   const [formDesc, setFormDesc] = useState("");
 
   const [addMemberOpen, setAddMemberOpen] = useState(false);
-  const [addMemberEmail, setAddMemberEmail] = useState("");
+  const [addMemberKeyword, setAddMemberKeyword] = useState("");
+  const [debouncedAddMemberKeyword, setDebouncedAddMemberKeyword] = useState("");
+  const [selectedCandidates, setSelectedCandidates] = useState<OrgMemberCandidate[]>([]);
   const [addMemberRole, setAddMemberRole] = useState("member");
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -141,6 +144,14 @@ export function AgentOrganizationsPage() {
     }
   }, [selectedOrgId, currentOrg]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedAddMemberKeyword(addMemberKeyword.trim());
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [addMemberKeyword]);
+
   const selectedOrgRole = myOrgs.find((o) => o.id === selectedOrgId)?.role;
   const canManage = selectedOrgRole === "owner" || selectedOrgRole === "admin";
   const isOwner = selectedOrgRole === "owner";
@@ -205,15 +216,25 @@ export function AgentOrganizationsPage() {
   );
 
   // 添加成员
+  const { data: memberCandidates = [], loading: memberCandidatesLoading } = useRequest(
+    () => unwrap(orgApi.searchMemberCandidates(selectedOrgId!, debouncedAddMemberKeyword)),
+    {
+      ready: addMemberOpen && !!selectedOrgId && debouncedAddMemberKeyword.length >= 3,
+      refreshDeps: [addMemberOpen, selectedOrgId, debouncedAddMemberKeyword],
+    },
+  );
+
   const { run: runAddMember, loading: addMemberLoading } = useRequest(
-    (identifier: string, role: string) =>
-      unwrap(orgApi.addMember(selectedOrgId!, { identifier: identifier.trim(), role })),
+    (candidates: OrgMemberCandidate[], role: string) =>
+      unwrap(orgApi.addMember(selectedOrgId!, { userIds: candidates.map((candidate) => candidate.id), role })),
     {
       manual: true,
       onSuccess: () => {
         toast.success(t("toast.inviteSent"));
         setAddMemberOpen(false);
-        setAddMemberEmail("");
+        setAddMemberKeyword("");
+        setDebouncedAddMemberKeyword("");
+        setSelectedCandidates([]);
         refreshDetail();
       },
       onError: (err) => {
@@ -299,6 +320,7 @@ export function AgentOrganizationsPage() {
   }, [selectedOrgId, detail, defaultEngineType, defaultMachineId, refreshDetail, t]);
 
   const members = (detail?.members ?? []) as unknown as OrgMember[];
+  const showCandidateResults = debouncedAddMemberKeyword.length >= 3;
 
   return (
     <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
@@ -441,10 +463,8 @@ export function AgentOrganizationsPage() {
                           <span className="text-sm font-medium text-text-bright">{m.user?.name || m.userId}</span>
                           <RoleBadge role={m.role} />
                         </div>
-                        {m.user?.phoneNumber ? (
-                          <p className="text-xs text-text-dim mt-0.5">{m.user.phoneNumber}</p>
-                        ) : null}
-                        <p className="text-xs text-text-dim mt-0.5">{m.user?.email}</p>
+                        <p className="text-xs text-text-dim mt-0.5">{m.user?.email || "-"}</p>
+                        <p className="text-xs text-text-dim mt-0.5">{m.user?.phoneNumber || "-"}</p>
                       </div>
                       <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         {isOwner && m.role !== "owner" && (
@@ -727,13 +747,97 @@ export function AgentOrganizationsPage() {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div>
-              <label className="text-sm font-medium text-text-primary">{t("inviteDialog.email")}</label>
-              <Input
-                className="mt-1"
-                value={addMemberEmail}
-                onChange={(e) => setAddMemberEmail(e.target.value)}
-                placeholder={t("inviteDialog.emailPlaceholder")}
-              />
+              <label className="text-sm font-medium text-text-primary">{t("inviteDialog.searchLabel")}</label>
+              <div className="mt-1 overflow-hidden rounded-md border border-input">
+                <Command shouldFilter={false}>
+                  {selectedCandidates.length > 0 ? (
+                    <div className="border-b border-border-light px-3 py-2">
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCandidates.map((candidate) => (
+                          <div
+                            key={candidate.id}
+                            className="inline-flex max-w-full items-center gap-2 rounded-full border border-border-light bg-surface-1 px-3 py-1 text-sm text-text-primary"
+                          >
+                            <span className="truncate font-medium">{candidate.name}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedCandidates((prev) => prev.filter((item) => item.id !== candidate.id))
+                              }
+                              className="shrink-0 rounded-full p-0.5 text-text-dim transition-colors hover:bg-surface-hover hover:text-text-primary"
+                              aria-label={t("inviteDialog.removeSelected")}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <CommandInput
+                    value={addMemberKeyword}
+                    onValueChange={setAddMemberKeyword}
+                    placeholder={
+                      selectedCandidates.length > 0
+                        ? t("inviteDialog.searchMorePlaceholder")
+                        : t("inviteDialog.searchPlaceholder")
+                    }
+                  />
+                  <CommandList className="max-h-56">
+                    {debouncedAddMemberKeyword.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-text-dim">{t("inviteDialog.searchHint")}</div>
+                    ) : null}
+                    {debouncedAddMemberKeyword.length > 0 && debouncedAddMemberKeyword.length < 3 ? (
+                      <div className="px-3 py-4 text-sm text-text-dim">{t("inviteDialog.searchMinChars")}</div>
+                    ) : null}
+                    {showCandidateResults ? (
+                      <CommandEmpty>
+                        {memberCandidatesLoading ? t("inviteDialog.searching") : t("inviteDialog.empty")}
+                      </CommandEmpty>
+                    ) : null}
+                    {memberCandidates.length > 0 ? (
+                      <CommandGroup>
+                        {memberCandidates.map((candidate) => {
+                          const alreadySelected = selectedCandidates.some((item) => item.id === candidate.id);
+                          const disabled = candidate.isMember || alreadySelected;
+
+                          return (
+                            <CommandItem
+                              key={candidate.id}
+                              value={candidate.id}
+                              disabled={disabled}
+                              onSelect={() => {
+                                if (disabled) return;
+                                setSelectedCandidates((prev) => [...prev, candidate]);
+                                setAddMemberKeyword("");
+                                setDebouncedAddMemberKeyword("");
+                              }}
+                              className="items-start gap-3 py-2"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate text-sm font-medium text-text-primary">
+                                    {candidate.name}
+                                  </span>
+                                  {candidate.isMember ? (
+                                    <Badge variant="outline">{t("inviteDialog.alreadyMember")}</Badge>
+                                  ) : null}
+                                  {alreadySelected ? (
+                                    <Badge variant="outline">{t("inviteDialog.alreadySelected")}</Badge>
+                                  ) : null}
+                                </div>
+                                <p className="truncate text-xs text-text-dim mt-0.5">{candidate.email}</p>
+                                <p className="truncate text-xs text-text-dim mt-0.5">{candidate.phoneNumber || "-"}</p>
+                              </div>
+                              {alreadySelected ? <Check className="mt-0.5 w-4 h-4 text-brand" /> : null}
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    ) : null}
+                  </CommandList>
+                </Command>
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-text-primary">{t("inviteDialog.role")}</label>
@@ -753,9 +857,9 @@ export function AgentOrganizationsPage() {
             </Button>
             <Button
               onClick={() => {
-                if (addMemberEmail.trim()) runAddMember(addMemberEmail, addMemberRole);
+                if (selectedCandidates.length > 0) runAddMember(selectedCandidates, addMemberRole);
               }}
-              disabled={addMemberLoading || !addMemberEmail.trim()}
+              disabled={addMemberLoading || selectedCandidates.length === 0}
             >
               {addMemberLoading ? t("inviteDialog.inviting") : t("inviteDialog.invite")}
             </Button>

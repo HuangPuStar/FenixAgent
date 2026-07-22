@@ -106,7 +106,7 @@ export function logError({
 }: {
   request: Request;
   error: unknown;
-  set: { status?: number | string };
+  set: { status?: number | string; headers: Record<string, string | number> };
 }) {
   // biome-ignore lint/suspicious/noExplicitAny: custom request property
   const start = (request as any).__startTime as number | undefined;
@@ -115,6 +115,9 @@ export function logError({
   const ms = start != null ? performance.now() - start : -1;
   const status = typeof set.status === "number" ? set.status : 500;
   const url = new URL(request.url);
+  if (id) {
+    set.headers["X-Request-Id"] = id;
+  }
 
   // Elysia schema 校验失败 — ValidationError.message 默认是 ZodError 完整序列化 JSON
   // （含 unionErrors 所有分支的 issues），直接打印会刷屏。

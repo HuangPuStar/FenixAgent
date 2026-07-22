@@ -14,6 +14,11 @@ export const OrganizationUserSchema = z.object({
   phoneNumber: z.string().nullable().optional().describe("用户手机号；未设置时为空。"),
 });
 
+/** 组织成员搜索候选项 */
+export const OrganizationMemberCandidateSchema = OrganizationUserSchema.extend({
+  isMember: z.boolean().describe("该用户是否已在当前组织中。"),
+});
+
 /** 组织成员信息 */
 export const OrganizationMemberSchema = z.object({
   id: z.string().describe("成员记录 ID。"),
@@ -86,7 +91,12 @@ export const UpdateOrganizationBodySchema = z.object({
 /** 添加成员 REST 请求体 */
 export const AddMemberBodySchema = z.object({
   role: z.string().describe("成员角色。"),
-  identifier: z.string().describe("要添加的成员标识；支持邮箱或手机号。"),
+  userIds: z.array(z.string()).min(1).describe("要批量添加的用户 ID 列表。"),
+});
+
+/** 搜索组织成员候选项请求 query */
+export const SearchMemberCandidatesQuerySchema = z.object({
+  keyword: z.string().optional().describe("搜索关键字，支持姓名、邮箱或手机号。"),
 });
 
 /** 更新成员角色 REST 请求体 */
@@ -145,8 +155,13 @@ export const MemberListResponseSchema = WebOkSchema(
 
 /** 成员变更响应 */
 export const MemberMutateResponseSchema = WebOkSchema(
-  OrganizationMemberSchema.passthrough().describe("成员变更结果。"),
+  OrganizationMemberSchema.array().describe("批量成员变更结果。"),
 ).describe("成员变更成功响应。");
+
+/** 成员候选列表响应 */
+export const MemberCandidateListResponseSchema = WebOkSchema(
+  OrganizationMemberCandidateSchema.array().describe("组织成员搜索候选项列表。"),
+).describe("成员候选列表成功响应。");
 
 /** API Key 列表响应 */
 export const ApiKeyListResponseSchema = WebOkSchema(ApiKeyInfoSchema.array().describe("API Key 列表。")).describe(
@@ -171,4 +186,5 @@ export const ApiKeyVoidResponseSchema = WebOkSchema(z.null().describe("无业务
 export type OrganizationInfo = z.infer<typeof OrganizationInfoSchema>;
 export type OrganizationDetail = z.infer<typeof OrganizationDetailSchema>;
 export type OrganizationMember = z.infer<typeof OrganizationMemberSchema>;
+export type OrganizationMemberCandidate = z.infer<typeof OrganizationMemberCandidateSchema>;
 export type ApiKeyInfo = z.infer<typeof ApiKeyInfoSchema>;

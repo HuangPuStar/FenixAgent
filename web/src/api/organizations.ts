@@ -37,6 +37,15 @@ export interface OrgMember {
   user?: { id: string; name: string; email: string; phoneNumber?: string | null };
 }
 
+/** 组织成员搜索候选项 */
+export interface OrgMemberCandidate {
+  id: string;
+  name: string;
+  email: string;
+  phoneNumber?: string | null;
+  isMember: boolean;
+}
+
 /** 组织详情（含成员列表） */
 export interface OrgDetail extends OrgInfo {
   members?: OrgMember[];
@@ -56,7 +65,7 @@ export type UpdateOrgBody = Partial<CreateOrgBody>;
 
 /** 添加成员请求体 */
 export interface AddMemberBody {
-  identifier: string;
+  userIds?: string[];
   role: string;
 }
 
@@ -115,12 +124,20 @@ export const orgApi = {
       params: { id: orgId },
     }),
 
+  /** 搜索指定组织可添加的成员候选项 */
+  searchMemberCandidates: (orgId: string, keyword: string) =>
+    request<OrgMemberCandidate[]>("/web/organizations/:id/member-candidates", {
+      method: "GET",
+      params: { id: orgId },
+      query: { keyword },
+    }),
+
   /** 向指定组织添加新成员（支持邮箱或手机号） */
   addMember: (orgId: string, body: AddMemberBody) =>
-    request<OrgMember>("/web/organizations/:id/members", {
+    request<OrgMember[]>("/web/organizations/:id/members", {
       method: "POST",
       params: { id: orgId },
-      body: { identifier: body.identifier, role: body.role },
+      body: { userIds: body.userIds, role: body.role },
     }),
 
   /** 从指定组织中移除成员 */

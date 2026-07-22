@@ -1,24 +1,32 @@
-import { eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
+import type * as z from "zod/v4";
 import { auth } from "../../auth/better-auth";
-import { db } from "../../db";
-import { member, user } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
 import {
   AddMemberBodySchema,
   CreateOrganizationBodySchema,
+  MemberCandidateListResponseSchema,
   MemberListResponseSchema,
   MemberMutateResponseSchema,
   OrganizationDeleteResponseSchema,
+  type OrganizationDetail,
   OrganizationGetResponseSchema,
+  type OrganizationInfo,
   OrganizationListResponseSchema,
+  type OrganizationMember,
   OrganizationMutateResponseSchema,
   OrganizationVoidResponseSchema,
+  SearchMemberCandidatesQuerySchema,
   UpdateMemberRoleBodySchema,
   UpdateOrganizationBodySchema,
 } from "../../schemas/organization.schema";
-import { isEmailIdentifier, normalizeChineseMainlandPhoneNumber } from "../../services/phone-number";
+import {
+  addOrganizationMembers,
+  enrichMembersWithPhoneNumbers,
+  enrichOrganizationsWithRoles,
+  searchAvailableOrganizationMemberCandidates,
+} from "../../services/web-organization-service";
 
 const app = new Elysia({ name: "web-organizations" }).use(authGuardPlugin).model({
   "org-list-response": OrganizationListResponseSchema,
@@ -27,22 +35,48 @@ const app = new Elysia({ name: "web-organizations" }).use(authGuardPlugin).model
   "org-delete-response": OrganizationDeleteResponseSchema,
   "org-void-response": OrganizationVoidResponseSchema,
   "member-list-response": MemberListResponseSchema,
+  "member-candidate-list-response": MemberCandidateListResponseSchema,
   "member-mutate-response": MemberMutateResponseSchema,
 });
 
+type BetterAuthMember = {
+  id: string;
+  userId: string;
+  role: string;
+  organizationId?: string;
+  createdAt?: string | number | Date;
+  user?: { id: string; name: string; email: string; phoneNumber?: string | null; image?: string | null };
+};
+
+type BetterAuthMemberListResponse = BetterAuthMember[] | { members: BetterAuthMember[] };
+
+type BetterAuthOrganization = {
+  id: string;
+  name: string;
+  slug: string;
+  logo?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string | number | Date;
+  members?: BetterAuthMember[];
+  [key: string]: unknown;
+};
+
 // 窄化 better-auth API 类型，仅暴露本文件使用的方法
 interface OrgApi {
-  listOrganizations: (opts: { headers: Headers }) => Promise<unknown>;
-  getFullOrganization: (opts: { query: { organizationId: string }; headers: Headers }) => Promise<unknown>;
-  listMembers: (opts: { query: { organizationId: string }; headers: Headers }) => Promise<unknown>;
+  listOrganizations: (opts: { headers: Headers }) => Promise<BetterAuthOrganization[]>;
+  getFullOrganization: (opts: {
+    query: { organizationId: string };
+    headers: Headers;
+  }) => Promise<BetterAuthOrganization>;
+  listMembers: (opts: { query: { organizationId: string }; headers: Headers }) => Promise<BetterAuthMemberListResponse>;
   createOrganization: (opts: {
     body: { name: string; slug: string; metadata?: Record<string, unknown> };
     headers: Headers;
-  }) => Promise<unknown>;
+  }) => Promise<BetterAuthOrganization>;
   updateOrganization: (opts: {
     body: { data: Record<string, unknown>; organizationId: string };
     headers: Headers;
-  }) => Promise<unknown>;
+  }) => Promise<BetterAuthOrganization>;
   deleteOrganization: (opts: { body: { organizationId: string }; headers: Headers }) => Promise<void>;
   setActiveOrganization: (opts: { body: { organizationId: string }; headers: Headers }) => Promise<void>;
   removeMember: (opts: {
@@ -52,7 +86,7 @@ interface OrgApi {
   addMember: (opts: {
     body: { userId: string; role: string; organizationId: string };
     headers: Headers;
-  }) => Promise<unknown>;
+  }) => Promise<BetterAuthMember>;
   updateMemberRole: (opts: {
     body: { memberId: string; organizationId?: string; role: string };
     headers: Headers;
@@ -61,15 +95,57 @@ interface OrgApi {
 
 const api = auth.api as unknown as OrgApi;
 
-function normalizeDateValue(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map(normalizeDateValue);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, normalizeDateValue(nested)]),
-    );
-  }
-  return value;
+type AuthStore = {
+  user?: { id: string } | null;
+  authContext?: { organizationId?: string } | null;
+};
+
+type OrganizationListResponse = z.infer<typeof OrganizationListResponseSchema>;
+type OrganizationGetResponse = z.infer<typeof OrganizationGetResponseSchema>;
+type OrganizationMutateResponse = z.infer<typeof OrganizationMutateResponseSchema>;
+type OrganizationDeleteResponse = z.infer<typeof OrganizationDeleteResponseSchema>;
+type OrganizationVoidResponse = z.infer<typeof OrganizationVoidResponseSchema>;
+type MemberListResponse = z.infer<typeof MemberListResponseSchema>;
+type MemberCandidateListResponse = z.infer<typeof MemberCandidateListResponseSchema>;
+type MemberMutateResponse = z.infer<typeof MemberMutateResponseSchema>;
+
+function toFlexibleDateTime(value: string | number | Date): string | number {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function serializeMember(member: BetterAuthMember): OrganizationMember {
+  return {
+    id: member.id,
+    userId: member.userId,
+    role: member.role,
+    organizationId: member.organizationId,
+    user: member.user
+      ? {
+          id: member.user.id,
+          name: member.user.name,
+          email: member.user.email,
+          phoneNumber: member.user.phoneNumber ?? null,
+        }
+      : undefined,
+  };
+}
+
+function serializeOrganizationInfo(organization: BetterAuthOrganization & { role?: string }): OrganizationInfo {
+  return {
+    ...organization,
+    createdAt: toFlexibleDateTime(organization.createdAt),
+    role: organization.role,
+  };
+}
+
+function serializeOrganizationDetail(
+  organization: BetterAuthOrganization,
+  members: BetterAuthMember[],
+): OrganizationDetail {
+  return {
+    ...serializeOrganizationInfo(organization),
+    members: members.map(serializeMember),
+  };
 }
 
 /** 统一抽取 better-auth 返回的成员列表。 */
@@ -95,80 +171,19 @@ function extractMembers(res: unknown): {
 }
 
 // 共享的 list organizations 逻辑（REST 路由复用）
-async function handleListOrganizations(store: { user?: { id: string } }, request: { headers: Headers }) {
+async function handleListOrganizations(
+  store: { user?: { id: string } | null },
+  request: Request,
+): Promise<OrganizationListResponse> {
   const orgs = await api.listOrganizations({ headers: request.headers });
   if (!Array.isArray(orgs) || orgs.length === 0) {
-    return { success: true as const, data: [] as unknown[] };
+    return { success: true as const, data: [] } satisfies OrganizationListResponse;
   }
   const userId = store.user?.id;
-  const memberships = await db
-    .select({ organizationId: member.organizationId, role: member.role })
-    .from(member)
-    .where(eq(member.userId, userId as string))
-    .execute();
-  const roleMap = new Map(memberships.map((m) => [m.organizationId, m.role]));
-  const enriched = orgs.map((o: Record<string, unknown>) => ({
-    ...o,
-    role: roleMap.get(o.id as string) ?? "member",
-  }));
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  return { success: true as const, data: normalizeDateValue(enriched) } as any;
-}
-
-async function enrichMembersWithPhoneNumber(
-  members: {
-    id: string;
-    userId: string;
-    role: string;
-    user?: { id: string; name: string; email: string; phoneNumber?: string | null };
-  }[],
-) {
-  const userIds = Array.from(
-    new Set(members.map((memberItem) => memberItem.user?.id ?? memberItem.userId).filter(Boolean)),
-  );
-  if (userIds.length === 0) return members;
-
-  const users = await db
-    .select({ id: user.id, phoneNumber: user.phoneNumber })
-    .from(user)
-    .where(inArray(user.id, userIds))
-    .execute();
-  const phoneMap = new Map(users.map((row) => [row.id, row.phoneNumber]));
-
-  return members.map((memberItem) => {
-    if (!memberItem.user) return memberItem;
-    return {
-      ...memberItem,
-      user: {
-        ...memberItem.user,
-        phoneNumber: phoneMap.get(memberItem.user.id) ?? null,
-      },
-    };
-  });
-}
-
-async function resolveMemberUserId(
-  rawIdentifier: string,
-): Promise<{ userId?: string; error?: { code: string; message: string; status: number } }> {
-  const identifier = rawIdentifier.trim();
-  if (isEmailIdentifier(identifier)) {
-    const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, identifier)).limit(1);
-    if (!foundUser) {
-      return { error: { code: "USER_NOT_FOUND", message: "该邮箱用户不存在", status: 404 } };
-    }
-    return { userId: foundUser.id };
-  }
-
-  try {
-    const phoneNumber = normalizeChineseMainlandPhoneNumber(identifier);
-    const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.phoneNumber, phoneNumber)).limit(1);
-    if (!foundUser) {
-      return { error: { code: "USER_NOT_FOUND", message: "该手机号用户不存在", status: 404 } };
-    }
-    return { userId: foundUser.id };
-  } catch {
-    return { error: { code: "USER_NOT_FOUND", message: "未找到匹配的邮箱或手机号用户", status: 404 } };
-  }
+  const enriched = userId
+    ? await enrichOrganizationsWithRoles(userId, orgs)
+    : orgs.map((org) => ({ ...org, role: "member" }));
+  return { success: true as const, data: enriched.map(serializeOrganizationInfo) } satisfies OrganizationListResponse;
 }
 
 // ── RESTful Organization 路由 ──
@@ -176,10 +191,8 @@ async function resolveMemberUserId(
 // GET /web/organizations → 获取组织列表
 app.get(
   "/organizations",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, request }: any) => {
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return handleListOrganizations(store, request) as any;
+  async ({ request, store }) => {
+    return handleListOrganizations(store as AuthStore, request);
   },
   {
     sessionAuth: true,
@@ -199,26 +212,24 @@ app.get(
 // GET /web/organizations/:id → 获取组织详情（当前组织时含成员列表）
 app.get(
   "/organizations/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ store, params, request }: any) => {
+  async ({ params, request, store }) => {
+    const authStore = store as AuthStore;
     const orgId = params.id;
-    const authCtx = store.authContext;
+    const authCtx = authStore.authContext;
     const isCurrentOrg = authCtx?.organizationId === orgId;
     if (isCurrentOrg) {
       const [org, members] = await Promise.all([
         api.getFullOrganization({ query: { organizationId: orgId }, headers: request.headers }),
         api.listMembers({ query: { organizationId: orgId }, headers: request.headers }),
       ]);
-      const memberList = await enrichMembersWithPhoneNumber(extractMembers(members));
+      const memberList = await enrichMembersWithPhoneNumbers(extractMembers(members));
       return {
         success: true as const,
-        data: normalizeDateValue({ ...(org as Record<string, unknown>), members: memberList }),
-        // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-      } as any;
+        data: serializeOrganizationDetail(org, memberList),
+      } satisfies OrganizationGetResponse;
     }
     const org = await api.getFullOrganization({ query: { organizationId: orgId }, headers: request.headers });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: normalizeDateValue(org) } as any;
+    return { success: true as const, data: serializeOrganizationInfo(org) } satisfies OrganizationGetResponse;
   },
   {
     sessionAuth: true,
@@ -240,17 +251,15 @@ app.get(
 // POST /web/organizations → 创建组织
 app.post(
   "/organizations",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ body, request }: any) => {
-    const b = body as { name: string; slug: string; description?: string };
+  async ({ body, request }) => {
+    const b = body;
     const metadata: Record<string, unknown> = {};
     if (b.description) metadata.description = b.description;
     const org = await api.createOrganization({
       body: { name: b.name, slug: b.slug, metadata },
       headers: request.headers,
     });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: normalizeDateValue(org) } as any;
+    return { success: true as const, data: serializeOrganizationInfo(org) } satisfies OrganizationMutateResponse;
   },
   {
     sessionAuth: true,
@@ -272,8 +281,7 @@ app.post(
 // PUT /web/organizations/:id → 更新组织
 app.put(
   "/organizations/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, body, request }: any) => {
+  async ({ body, params, request }) => {
     const b = body ?? {};
     const updateData: Record<string, unknown> = b.data ?? {};
     if (!b.data) {
@@ -284,8 +292,7 @@ app.put(
       body: { data: updateData, organizationId: params.id },
       headers: request.headers,
     });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: normalizeDateValue(org) } as any;
+    return { success: true as const, data: serializeOrganizationInfo(org) } satisfies OrganizationMutateResponse;
   },
   {
     sessionAuth: true,
@@ -308,11 +315,9 @@ app.put(
 // DELETE /web/organizations/:id → 删除组织
 app.delete(
   "/organizations/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, request }: any) => {
+  async ({ params, request }) => {
     await api.deleteOrganization({ body: { organizationId: params.id }, headers: request.headers });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: { deleted: true as const } } as any;
+    return { success: true as const, data: { deleted: true as const } } satisfies OrganizationDeleteResponse;
   },
   {
     sessionAuth: true,
@@ -334,11 +339,9 @@ app.delete(
 // POST /web/organizations/:id/set-active → 设置活跃组织
 app.post(
   "/organizations/:id/set-active",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, request }: any) => {
+  async ({ params, request }) => {
     await api.setActiveOrganization({ body: { organizationId: params.id }, headers: request.headers });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: null } as any;
+    return { success: true as const, data: null } satisfies OrganizationVoidResponse;
   },
   {
     sessionAuth: true,
@@ -359,15 +362,13 @@ app.post(
 // GET /web/organizations/:id/members → 获取成员列表
 app.get(
   "/organizations/:id/members",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, request }: any) => {
+  async ({ params, request }) => {
     const members = await api.listMembers({
       query: { organizationId: params.id },
       headers: request.headers,
     });
-    const memberData = await enrichMembersWithPhoneNumber(extractMembers(members));
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: memberData } as any;
+    const memberData = await enrichMembersWithPhoneNumbers(extractMembers(members));
+    return { success: true as const, data: memberData.map(serializeMember) } satisfies MemberListResponse;
   },
   {
     sessionAuth: true,
@@ -385,41 +386,45 @@ app.get(
   },
 );
 
+// GET /web/organizations/:id/member-candidates → 搜索可添加成员候选项
+app.get(
+  "/organizations/:id/member-candidates",
+  async ({ params, query }) => {
+    const keyword = String(query?.keyword ?? "").trim();
+    if (!keyword) {
+      return { success: true as const, data: [] } satisfies MemberCandidateListResponse;
+    }
+    const candidates = await searchAvailableOrganizationMemberCandidates(params.id, keyword);
+
+    return { success: true as const, data: candidates } satisfies MemberCandidateListResponse;
+  },
+  {
+    sessionAuth: true,
+    query: SearchMemberCandidatesQuerySchema,
+    response: {
+      200: MemberCandidateListResponseSchema,
+      400: WebErrSchema,
+      403: WebErrSchema,
+      500: WebErrSchema,
+    },
+    detail: {
+      tags: ["Organizations"],
+      summary: "搜索组织成员候选项",
+      description: "按姓名、邮箱或手机号搜索全站用户，并标记其是否已在当前组织中。",
+    },
+  },
+);
+
 // POST /web/organizations/:id/members → 添加成员
 app.post(
   "/organizations/:id/members",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, body, error, request }: any) => {
-    const b = body ?? {};
-    if (!b.role) {
-      return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "role required" } });
-    }
-    const rawId = b.identifier as string | undefined;
-    if (!rawId) {
-      return error(400, {
-        success: false,
-        error: { code: "VALIDATION_ERROR", message: "identifier required" },
-      });
-    }
-    const resolved = await resolveMemberUserId(rawId);
-    if (resolved.error) {
-      return error(resolved.error.status, {
-        success: false,
-        error: { code: resolved.error.code, message: resolved.error.message },
-      });
-    }
-    if (!resolved.userId) {
-      return error(404, {
-        success: false,
-        error: { code: "USER_NOT_FOUND", message: "未找到匹配的邮箱或手机号用户" },
-      });
-    }
-    const result = await api.addMember({
-      body: { userId: resolved.userId, role: b.role, organizationId: params.id },
-      headers: request.headers,
-    });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: normalizeDateValue(result) } as any;
+  async ({ body, params, request }) => {
+    const directUserIds = body.userIds.map((userId) => userId.trim()).filter(Boolean);
+    const result = await addOrganizationMembers(params.id, directUserIds, body.role, request.headers);
+    return {
+      success: true as const,
+      data: result.map(serializeMember),
+    } satisfies MemberMutateResponse;
   },
   {
     sessionAuth: true,
@@ -442,14 +447,12 @@ app.post(
 // DELETE /web/organizations/:id/members/:memberId → 移除成员
 app.delete(
   "/organizations/:id/members/:memberId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, request }: any) => {
+  async ({ params, request }) => {
     await api.removeMember({
       body: { memberIdOrEmail: params.memberId, organizationId: params.id },
       headers: request.headers,
     });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: null } as any;
+    return { success: true as const, data: null } satisfies OrganizationVoidResponse;
   },
   {
     sessionAuth: true,
@@ -471,18 +474,12 @@ app.delete(
 // PUT /web/organizations/:id/members/:memberId → 更新成员角色
 app.put(
   "/organizations/:id/members/:memberId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-  async ({ params, body, error, request }: any) => {
-    const b = body ?? {};
-    if (!b.role) {
-      return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "role required" } });
-    }
+  async ({ body, params, request }) => {
     await api.updateMemberRole({
-      body: { memberId: params.memberId, organizationId: params.id, role: b.role },
+      body: { memberId: params.memberId, organizationId: params.id, role: body.role },
       headers: request.headers,
     });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: null } as any;
+    return { success: true as const, data: null } satisfies OrganizationVoidResponse;
   },
   {
     sessionAuth: true,
