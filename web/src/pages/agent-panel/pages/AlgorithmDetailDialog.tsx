@@ -21,7 +21,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
 
   return (
     <XLDialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <XLDialogContent className="max-w-[680px] max-h-[85vh] overflow-auto">
+      <XLDialogContent className="p-6 max-w-[680px] max-h-[85vh] overflow-auto">
         {/* 头部 */}
         <XLDialogHeader>
           <div className="flex items-center gap-3">

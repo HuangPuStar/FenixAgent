@@ -1,9 +1,9 @@
+import { Search } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { NS } from "@/src/i18n";
-import { VerticalModelDetailDialog } from "./VerticalModelDetailDialog";
 
 interface VerticalModel {
   id: string;
@@ -98,7 +98,16 @@ const ALL_MODELS: VerticalModel[] = [
 
 export function VerticalModelsPage() {
   const { t } = useTranslation(NS.AGENT_PANEL);
-  const [selectedModel, setSelectedModel] = useState<VerticalModel | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filtered = ALL_MODELS.filter(
+    (m) =>
+      !search ||
+      m.name.includes(search) ||
+      m.description.includes(search) ||
+      m.tags.some((tag) => tag.includes(search)) ||
+      m.scenes.some((s) => s.includes(search)),
+  );
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto">
@@ -107,55 +116,96 @@ export function VerticalModelsPage() {
         <p className="mt-1.5 text-sm text-text-secondary">{t("verticalModelsSubtitle")}</p>
       </div>
 
-      <div className="px-8 py-5 grid grid-cols-3 gap-4">
-        {ALL_MODELS.map((model) => (
-          <div
-            key={model.id}
-            className="flex flex-col gap-3 rounded-lg border bg-card p-4 hover:border-brand-light hover:shadow-sm transition-all"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center flex-shrink-0 text-base">
-                {model.emoji}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1 flex-wrap">
-                  <span className="text-sm font-bold text-text-primary leading-tight">{model.name}</span>
-                  <Badge
-                    variant="outline"
-                    className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] px-1.5 py-0 h-auto"
-                  >
-                    已落地
-                  </Badge>
+      {/* 搜索栏 */}
+      <div className="px-8 pt-5 pb-2">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-text-muted" />
+          <Input
+            className="pl-9"
+            placeholder="搜索模型名称、描述、标签、场景..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="px-8 py-4 flex flex-col gap-4">
+        {filtered.map((model) => (
+          <div key={model.id} className="rounded-lg border bg-card p-5">
+            <div className="flex gap-6">
+              {/* 左栏 — 头部 + 简介 + 能力 + 场景 */}
+              <div className="flex-[1.2] min-w-0">
+                {/* 头部 */}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center flex-shrink-0 text-xl">
+                    {model.emoji}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-base font-bold text-text-primary">{model.name}</span>
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-50 text-amber-700 border-amber-200 text-xs px-1.5 py-0 h-auto"
+                      >
+                        已落地
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-text-secondary mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono bg-surface-1 px-1.5 py-px rounded text-xs">{model.baseModel}</span>
+                      <span>{model.modelType}</span>
+                      <span className="mx-0.5">·</span>
+                      <span>{model.enterprise}</span>
+                    </p>
+                  </div>
                 </div>
-                <span className="text-[10px] text-text-muted font-mono bg-surface-1 px-1.5 py-px rounded mt-1 inline-block">
-                  {model.baseModel}
-                </span>
+
+                <h4 className="text-sm font-bold text-text-primary mt-4 mb-2">模型简介</h4>
+                <p className="text-sm text-text-secondary leading-relaxed mb-5">{model.description}</p>
+
+                {model.capabilities.length > 0 && (
+                  <>
+                    <h4 className="text-sm font-bold text-text-primary mb-2">核心能力</h4>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {model.capabilities.map((c) => (
+                        <div key={c} className="flex items-center gap-1.5 text-sm text-text-secondary">
+                          <span className="text-green-500 flex-shrink-0">✓</span>
+                          <span className="truncate">{c}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {model.scenes.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-bold text-text-primary mb-2">适用场景</h4>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {model.scenes.map((s) => (
+                        <span key={s} className="text-sm text-text-secondary bg-surface-1 px-2.5 py-1 rounded">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-            <p className="text-xs text-text-secondary leading-relaxed line-clamp-3 flex-1">{model.description}</p>
-            <div className="flex items-center gap-1.5 mt-auto">
-              <span className="text-[10px] text-text-muted bg-surface-0 px-1.5 py-0.5 rounded">{model.enterprise}</span>
-              <div className="flex-1" />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-auto p-0 text-xs text-brand font-medium hover:bg-transparent hover:text-brand/80"
-                onClick={() => setSelectedModel(model)}
-              >
-                查看详情
-              </Button>
+
+              {/* 右栏 — 图片 */}
+              <div className="flex-[0.8] min-w-0">
+                {model.image && (
+                  <div className="rounded-lg border bg-surface-0 overflow-hidden">
+                    <img
+                      src={`${import.meta.env.BASE_URL}${model.image.replace(/^\//, "")}`}
+                      alt={model.name}
+                      className="w-full h-auto object-contain"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
       </div>
-
-      {selectedModel && (
-        <VerticalModelDetailDialog
-          model={selectedModel}
-          open={!!selectedModel}
-          onClose={() => setSelectedModel(null)}
-        />
-      )}
     </div>
   );
 }
