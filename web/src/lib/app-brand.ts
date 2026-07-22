@@ -1,6 +1,6 @@
 import { brandingApi } from "@/src/api/branding";
 
-const DEFAULT_APP_NAME = "Fenix Agent";
+const DEFAULT_APP_NAME = "Fenix AOS";
 const DEFAULT_LOGO_PATH = "/ctrl/brand/fenix-agent-logo-mark.png";
 
 interface AppBrand {

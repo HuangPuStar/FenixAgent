@@ -1048,7 +1048,7 @@ export function LoginPage() {
           )}
         </div>
 
-        <p className="auth-light-footer">© 2026 Fenix Agent. All rights reserved.</p>
+        <p className="auth-light-footer">© 2026 Fenix AOS. All rights reserved.</p>
       </main>
     </div>
   );
