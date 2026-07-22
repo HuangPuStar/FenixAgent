@@ -1,7 +1,13 @@
 import Elysia, { ValidationError } from "elysia";
 import { AppError } from "../errors";
 
-export const errorPlugin = new Elysia({ name: "error-handler" }).onError(({ error, set, code }) => {
+export const errorPlugin = new Elysia({ name: "error-handler" }).onError(({ error, set, code, request }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: custom request property injected by logger derive hook
+  const requestId = (request as any).__requestId as string | undefined;
+  if (requestId) {
+    set.headers["X-Request-Id"] = requestId;
+  }
+
   // 自定义错误类优先 — Service 层抛出的 AppError 子类
   if (error instanceof AppError) {
     set.status = error.statusCode;
