@@ -105,7 +105,7 @@
     "triggered": "Task triggered",
     "logsCleared": "Logs cleared",
     "saveFailed": "Save failed",
-    "triggerResult": "Execution {{status}}, took {{duration}}s"
+    "triggerResult": "Execution {{status}}, took {{duration}}ms"
   },
   "error": {
     "invalidHeaders": "Headers is not valid JSON",

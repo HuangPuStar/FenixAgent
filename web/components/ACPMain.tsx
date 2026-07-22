@@ -1,6 +1,7 @@
 import { MessageSquare, Pencil, Pin, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { retryWithBackoff } from "@/src/lib/retry";
 import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
@@ -75,6 +76,11 @@ export function ACPMain({
   // 这里只是把当前选中 id 暴露给 header / sidebar。）
   const handleSelectSession = useCallback(
     async (session: AgentSessionInfo) => {
+      // ChatInterface 正在等待 agent 响应时，阻止切换历史会话以避免状态混乱
+      if (chatRef.current?.isLoading) {
+        toast.warning(t("acpMain.chatBusy"));
+        return;
+      }
       try {
         if (client.supportsLoadSession) {
           await client.loadSession({ sessionId: session.sessionId, cwd: session.cwd });
@@ -89,7 +95,7 @@ export function ACPMain({
         console.error("Failed to load/resume session:", error);
       }
     },
-    [client],
+    [client, t],
   );
 
   // 关闭侧边栏并打开弹窗

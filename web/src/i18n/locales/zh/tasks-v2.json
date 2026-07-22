@@ -105,7 +105,7 @@
     "triggered": "任务已手动触发",
     "logsCleared": "日志已清空",
     "saveFailed": "保存失败",
-    "triggerResult": "执行{{status}}，耗时 {{duration}}s"
+    "triggerResult": "执行{{status}}，耗时 {{duration}}ms"
   },
   "error": {
     "invalidHeaders": "Headers 不是有效的 JSON 格式",

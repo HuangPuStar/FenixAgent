@@ -330,14 +330,22 @@ export function AgentTasksPage() {
       manual: true,
       onSuccess: (result) => {
         const r = result as { status?: string; duration?: number; resultSummary?: string };
-        toast.success(t("toast.triggerResult", { status: r.status ?? "—", duration: r.duration ?? 0 }));
+        const msg = t("toast.triggerResult", { status: r.status ?? "—", duration: r.duration ?? 0 });
+        if (r.status === "success") {
+          toast.success(msg);
+        } else if (r.status === "timeout") {
+          toast.warning(msg);
+        } else {
+          toast.error(msg);
+        }
         refresh();
       },
       onError: (err: Error) => {
         console.error("trigger task failed", err);
         toast.error(err.message);
       },
-      onFinally: (_, params) => {
+      // ahooks v3 onFinally 签名: (params, data, error)，第一个参数是输入参数
+      onFinally: (params) => {
         const id = (Array.isArray(params) ? params[0] : params) as string;
         setTriggeredTasks((prev) => {
           const next = new Set(prev);

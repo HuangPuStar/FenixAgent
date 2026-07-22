@@ -373,7 +373,8 @@
     "earlier": "Earlier",
     "rename": "Rename",
     "delete": "Delete",
-    "closeToPopover": "Close to popover"
+    "closeToPopover": "Close to popover",
+    "chatBusy": "Please wait for the current conversation to finish before switching"
   },
   "chatInterface": {
     "processingError": "The request could not be processed properly. Please check the Agent or model status and try again.",
