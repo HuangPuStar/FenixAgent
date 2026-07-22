@@ -129,6 +129,10 @@ function generateApiKeyString(prefix = "rcs_") {
   return `${prefix}${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`;
 }
 
+function normalizeApiKeyName(name: string): string {
+  return name.trim();
+}
+
 /**
  * better-auth 的 apikey.metadata 当前以字符串列存储。
  * 系统接口需要给外部返回结构化 metadata，因此这里做一次容错解析。
@@ -549,6 +553,20 @@ export async function createUserApiKey(input: SystemApiCreateUserApiKeyInput): P
   await assertOrganizationExists(input.organizationId);
   await assertUserBelongsToOrganization(input.userId, input.organizationId);
 
+  const normalizedName = normalizeApiKeyName(input.name);
+  if (!normalizedName) {
+    throw new Error("API key name is required");
+  }
+
+  const existingApiKeys = await db
+    .select({ id: apikey.id, name: apikey.name })
+    .from(apikey)
+    .where(eq(apikey.referenceId, input.userId));
+  const duplicatedName = existingApiKeys.some((apiKey) => normalizeApiKeyName(apiKey.name ?? "") === normalizedName);
+  if (duplicatedName) {
+    throw new Error(`API key name '${normalizedName}' already exists for user '${input.userId}'`);
+  }
+
   const fullKey = generateApiKeyString("rcs_");
   const now = new Date();
   const expiresAt = input.expiresIn ? new Date(now.getTime() + input.expiresIn * 1000) : null;
@@ -562,7 +580,7 @@ export async function createUserApiKey(input: SystemApiCreateUserApiKeyInput): P
   await db.insert(apikey).values({
     id: keyId,
     configId: "default",
-    name: input.name,
+    name: normalizedName,
     start: keyStart,
     referenceId: input.userId,
     prefix: "rcs_",
@@ -586,7 +604,7 @@ export async function createUserApiKey(input: SystemApiCreateUserApiKeyInput): P
 
   return {
     id: keyId,
-    name: input.name,
+    name: normalizedName,
     prefix: "rcs_",
     key: fullKey,
     start: keyStart,

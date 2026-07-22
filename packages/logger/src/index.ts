@@ -4,6 +4,7 @@
  * 功能：
  *   - 控制台输出（pretty 着色 / JSON，由 LOG_FORMAT 控制）
  *   - 文件按天滚动（始终开启，同步写入，兼容 Bun）
+ *   - error 及以上级别额外写入独立错误日志文件
  *   - 请求级上下文自动注入（AsyncLocalStorage，等价 Java MDC）
  *   - LOG_LEVEL / LOG_FORMAT / LOG_DIR 环境变量配置
  *
@@ -109,7 +110,7 @@ const usePretty = logFormat !== "json";
  * 直接用 appendFileSync 同步写入，每次写入前检查日期，
  * 日期变更自动切换到新文件。
  *
- * 文件命名：{logDir}/rcs.{yyyy-MM-dd}.log
+ * 文件命名：{logDir}/{prefix}.{yyyy-MM-dd}.log
  * 等价 Java 的 TimeBasedRollingPolicy。
  */
 class DailyRollingFileStream extends Writable {
@@ -173,9 +174,18 @@ class DailyRollingFileStream extends Writable {
 // LOG_DIR  控制文件目录（默认 logs）
 
 function buildPinoInstance() {
+  const options = {
+    level: logLevel,
+    timestamp: pino.stdTimeFunctions.isoTime,
+    formatters: {
+      level: (label: string) => ({ level: label }),
+      bindings: () => ({}),
+    },
+  } satisfies Parameters<typeof pino>[0];
+
   // 测试环境：静默
   if (isTest) {
-    return pino({ level: logLevel, timestamp: pino.stdTimeFunctions.isoTime });
+    return pino(options);
   }
 
   // biome-ignore lint/suspicious/noExplicitAny: pino.multistream 接受任意 Writable 流
@@ -188,7 +198,7 @@ function buildPinoInstance() {
         colorize: true,
         translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
         ignore: "pid,hostname",
-        messageFormat: "[{name}] {msg}",
+        messageFormat: "[{module}] {msg}",
       }),
     );
   } else {
@@ -196,8 +206,12 @@ function buildPinoInstance() {
   }
 
   streams.push(new DailyRollingFileStream(logDir, "rcs"));
+  streams.push({
+    level: "error",
+    stream: new DailyRollingFileStream(logDir, "rcs.err"),
+  });
 
-  return pino({ level: logLevel, timestamp: pino.stdTimeFunctions.isoTime }, pino.multistream(streams));
+  return pino(options, pino.multistream(streams));
 }
 
 const pinoInstance = buildPinoInstance();
@@ -255,7 +269,7 @@ function argsToMsg(args: unknown[]): [string, Record<string, unknown>?] {
 }
 
 export function createLogger(module: string): Logger {
-  const child = pinoInstance.child({ name: module });
+  const child = pinoInstance.child({ module });
 
   const makeEntry = (
     level: StructuredLogEntry["level"],

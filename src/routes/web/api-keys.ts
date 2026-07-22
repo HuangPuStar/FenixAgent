@@ -36,6 +36,26 @@ interface OrgApi {
 
 const api = auth.api as unknown as OrgApi;
 
+interface ApiKeyListResult {
+  apiKeys?: unknown[];
+}
+
+interface ApiKeyRecord {
+  name?: unknown;
+}
+
+function extractApiKeys(result: unknown): ApiKeyRecord[] {
+  if (Array.isArray(result)) return result as ApiKeyRecord[];
+  if (result && typeof result === "object" && Array.isArray((result as ApiKeyListResult).apiKeys)) {
+    return (result as ApiKeyListResult).apiKeys as ApiKeyRecord[];
+  }
+  return [];
+}
+
+function normalizeApiKeyName(name: unknown): string {
+  return typeof name === "string" ? name.trim() : "";
+}
+
 function normalizeDateValue(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(normalizeDateValue);
@@ -103,7 +123,10 @@ app.post(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ store, body, error, request }: any) => {
     const b = body ?? {};
-    if (!b.name) return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name required" } });
+    const normalizedName = normalizeApiKeyName(b.name);
+    if (!normalizedName) {
+      return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name required" } });
+    }
     const authContext = store.authContext;
     if (!authContext) {
       return error(403, {
@@ -111,9 +134,17 @@ app.post(
         error: { code: "FORBIDDEN", message: "No organization context" },
       });
     }
+    const existingApiKeys = extractApiKeys(await api.listApiKeys({ headers: request.headers }));
+    const duplicatedName = existingApiKeys.some((apiKey) => normalizeApiKeyName(apiKey.name) === normalizedName);
+    if (duplicatedName) {
+      return error(400, {
+        success: false,
+        error: { code: "DUPLICATE_API_KEY_NAME", message: "API key name already exists" },
+      });
+    }
     const result = await api.createApiKey({
       body: {
-        name: b.name,
+        name: normalizedName,
         prefix: "rcs_",
         expiresIn: b.expiresAt ? Math.ceil((new Date(b.expiresAt).getTime() - Date.now()) / 1000) : null,
         metadata: buildApiKeyMetadata(b.metadata, authContext),

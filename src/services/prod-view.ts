@@ -1,7 +1,7 @@
 import type { AuthContext } from "../plugins/auth";
-import { environmentRepo } from "../repositories/environment";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
+import { createWebEnvironment } from "./environment";
 
 /** 创建 ProdView 记录 */
 export async function createProdView(ctx: AuthContext, input: CreateProdViewInput) {
@@ -60,8 +60,15 @@ export async function loadProdView(ctx: AuthContext, id: string) {
   // 解析 agentConfigId → environmentId（relay 连接需要 env_xxx 格式）
   let environmentId: string | null = null;
   if (row.agentId) {
-    const env = await environmentRepo.findByAgentConfigId(ctx.organizationId, row.agentId);
-    environmentId = env?.id ?? null;
+    const viewerEnv = await createWebEnvironment({
+      name: `env-${row.agentId.slice(0, 8)}`,
+      description: row.description ?? undefined,
+      agentConfigId: row.agentId,
+      autoStart: true,
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+    });
+    environmentId = viewerEnv.id;
   }
 
   return {

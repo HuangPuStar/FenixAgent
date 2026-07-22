@@ -11,6 +11,7 @@
  * 而是导出函数直接挂到主 app。
  */
 
+import { extname } from "node:path";
 import { createLogger, requestAls } from "@fenix/logger";
 import { ValidationError } from "elysia";
 
@@ -31,6 +32,25 @@ function isPollingPath(pathname: string): boolean {
 
 function nextRequestId(): string {
   return crypto.randomUUID();
+}
+
+function isNotFoundLikeError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "NotFoundError" || "status" in error || "code" in error;
+}
+
+/**
+ * `/ctrl/*` 的前端深链会先被静态文件层尝试命中文件，再由 SPA fallback 接管。
+ * 这类无扩展名路径的 404 属于可恢复流程，不应作为 error 日志输出。
+ */
+export function isRecoverableCtrlSpa404(request: Request, error: unknown, status: number): boolean {
+  if (status !== 404 || !isNotFoundLikeError(error)) return false;
+
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith("/ctrl/")) return false;
+  if (extname(url.pathname)) return false;
+
+  return true;
 }
 
 // ─── 日志钩子函数 ───────────────────────────────────────
@@ -117,6 +137,11 @@ export function logError({
   const url = new URL(request.url);
   if (id) {
     set.headers["X-Request-Id"] = id;
+  }
+
+  if (isRecoverableCtrlSpa404(request, err, status)) {
+    logger.info(`${request.method} ${url.pathname} ${status} ${ms.toFixed(2)}ms [${id ?? "n/a"}] SPA_FALLBACK`);
+    return;
   }
 
   // Elysia schema 校验失败 — ValidationError.message 默认是 ZodError 完整序列化 JSON
