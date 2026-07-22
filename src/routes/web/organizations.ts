@@ -1,13 +1,11 @@
-import { eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import { auth } from "../../auth/better-auth";
-import { db } from "../../db";
-import { member, user } from "../../db/schema";
 import { authGuardPlugin } from "../../plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
 import {
   AddMemberBodySchema,
   CreateOrganizationBodySchema,
+  MemberCandidateListResponseSchema,
   MemberListResponseSchema,
   MemberMutateResponseSchema,
   OrganizationDeleteResponseSchema,
@@ -15,10 +13,16 @@ import {
   OrganizationListResponseSchema,
   OrganizationMutateResponseSchema,
   OrganizationVoidResponseSchema,
+  SearchMemberCandidatesQuerySchema,
   UpdateMemberRoleBodySchema,
   UpdateOrganizationBodySchema,
 } from "../../schemas/organization.schema";
-import { isEmailIdentifier, normalizeChineseMainlandPhoneNumber } from "../../services/phone-number";
+import {
+  addOrganizationMembers,
+  enrichMembersWithPhoneNumbers,
+  enrichOrganizationsWithRoles,
+  searchAvailableOrganizationMemberCandidates,
+} from "../../services/web-organization-service";
 
 const app = new Elysia({ name: "web-organizations" }).use(authGuardPlugin).model({
   "org-list-response": OrganizationListResponseSchema,
@@ -27,6 +31,7 @@ const app = new Elysia({ name: "web-organizations" }).use(authGuardPlugin).model
   "org-delete-response": OrganizationDeleteResponseSchema,
   "org-void-response": OrganizationVoidResponseSchema,
   "member-list-response": MemberListResponseSchema,
+  "member-candidate-list-response": MemberCandidateListResponseSchema,
   "member-mutate-response": MemberMutateResponseSchema,
 });
 
@@ -101,74 +106,9 @@ async function handleListOrganizations(store: { user?: { id: string } }, request
     return { success: true as const, data: [] as unknown[] };
   }
   const userId = store.user?.id;
-  const memberships = await db
-    .select({ organizationId: member.organizationId, role: member.role })
-    .from(member)
-    .where(eq(member.userId, userId as string))
-    .execute();
-  const roleMap = new Map(memberships.map((m) => [m.organizationId, m.role]));
-  const enriched = orgs.map((o: Record<string, unknown>) => ({
-    ...o,
-    role: roleMap.get(o.id as string) ?? "member",
-  }));
+  const enriched = await enrichOrganizationsWithRoles(userId as string, orgs as Array<Record<string, unknown>>);
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   return { success: true as const, data: normalizeDateValue(enriched) } as any;
-}
-
-async function enrichMembersWithPhoneNumber(
-  members: {
-    id: string;
-    userId: string;
-    role: string;
-    user?: { id: string; name: string; email: string; phoneNumber?: string | null };
-  }[],
-) {
-  const userIds = Array.from(
-    new Set(members.map((memberItem) => memberItem.user?.id ?? memberItem.userId).filter(Boolean)),
-  );
-  if (userIds.length === 0) return members;
-
-  const users = await db
-    .select({ id: user.id, phoneNumber: user.phoneNumber })
-    .from(user)
-    .where(inArray(user.id, userIds))
-    .execute();
-  const phoneMap = new Map(users.map((row) => [row.id, row.phoneNumber]));
-
-  return members.map((memberItem) => {
-    if (!memberItem.user) return memberItem;
-    return {
-      ...memberItem,
-      user: {
-        ...memberItem.user,
-        phoneNumber: phoneMap.get(memberItem.user.id) ?? null,
-      },
-    };
-  });
-}
-
-async function resolveMemberUserId(
-  rawIdentifier: string,
-): Promise<{ userId?: string; error?: { code: string; message: string; status: number } }> {
-  const identifier = rawIdentifier.trim();
-  if (isEmailIdentifier(identifier)) {
-    const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, identifier)).limit(1);
-    if (!foundUser) {
-      return { error: { code: "USER_NOT_FOUND", message: "该邮箱用户不存在", status: 404 } };
-    }
-    return { userId: foundUser.id };
-  }
-
-  try {
-    const phoneNumber = normalizeChineseMainlandPhoneNumber(identifier);
-    const [foundUser] = await db.select({ id: user.id }).from(user).where(eq(user.phoneNumber, phoneNumber)).limit(1);
-    if (!foundUser) {
-      return { error: { code: "USER_NOT_FOUND", message: "该手机号用户不存在", status: 404 } };
-    }
-    return { userId: foundUser.id };
-  } catch {
-    return { error: { code: "USER_NOT_FOUND", message: "未找到匹配的邮箱或手机号用户", status: 404 } };
-  }
 }
 
 // ── RESTful Organization 路由 ──
@@ -209,7 +149,7 @@ app.get(
         api.getFullOrganization({ query: { organizationId: orgId }, headers: request.headers }),
         api.listMembers({ query: { organizationId: orgId }, headers: request.headers }),
       ]);
-      const memberList = await enrichMembersWithPhoneNumber(extractMembers(members));
+      const memberList = await enrichMembersWithPhoneNumbers(extractMembers(members));
       return {
         success: true as const,
         data: normalizeDateValue({ ...(org as Record<string, unknown>), members: memberList }),
@@ -365,7 +305,7 @@ app.get(
       query: { organizationId: params.id },
       headers: request.headers,
     });
-    const memberData = await enrichMembersWithPhoneNumber(extractMembers(members));
+    const memberData = await enrichMembersWithPhoneNumbers(extractMembers(members));
     // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
     return { success: true as const, data: memberData } as any;
   },
@@ -385,6 +325,38 @@ app.get(
   },
 );
 
+// GET /web/organizations/:id/member-candidates → 搜索可添加成员候选项
+app.get(
+  "/organizations/:id/member-candidates",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+  async ({ params, query }: any) => {
+    const keyword = String(query?.keyword ?? "").trim();
+    if (!keyword) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+      return { success: true as const, data: [] } as any;
+    }
+    const candidates = await searchAvailableOrganizationMemberCandidates(params.id, keyword);
+
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+    return { success: true as const, data: candidates } as any;
+  },
+  {
+    sessionAuth: true,
+    query: SearchMemberCandidatesQuerySchema,
+    response: {
+      200: MemberCandidateListResponseSchema,
+      400: WebErrSchema,
+      403: WebErrSchema,
+      500: WebErrSchema,
+    },
+    detail: {
+      tags: ["Organizations"],
+      summary: "搜索组织成员候选项",
+      description: "按姓名、邮箱或手机号搜索全站用户，并标记其是否已在当前组织中。",
+    },
+  },
+);
+
 // POST /web/organizations/:id/members → 添加成员
 app.post(
   "/organizations/:id/members",
@@ -394,32 +366,20 @@ app.post(
     if (!b.role) {
       return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "role required" } });
     }
-    const rawId = b.identifier as string | undefined;
-    if (!rawId) {
+    const directUserIds = Array.isArray(b.userIds)
+      ? b.userIds.map((item: unknown) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)
+      : [];
+    if (directUserIds.length === 0) {
       return error(400, {
         success: false,
-        error: { code: "VALIDATION_ERROR", message: "identifier required" },
+        error: { code: "VALIDATION_ERROR", message: "userIds required" },
       });
     }
-    const resolved = await resolveMemberUserId(rawId);
-    if (resolved.error) {
-      return error(resolved.error.status, {
-        success: false,
-        error: { code: resolved.error.code, message: resolved.error.message },
-      });
-    }
-    if (!resolved.userId) {
-      return error(404, {
-        success: false,
-        error: { code: "USER_NOT_FOUND", message: "未找到匹配的邮箱或手机号用户" },
-      });
-    }
-    const result = await api.addMember({
-      body: { userId: resolved.userId, role: b.role, organizationId: params.id },
-      headers: request.headers,
-    });
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return { success: true as const, data: normalizeDateValue(result) } as any;
+    const result = await addOrganizationMembers(params.id, directUserIds, b.role, request.headers);
+    return {
+      success: true as const,
+      data: normalizeDateValue(result),
+    };
   },
   {
     sessionAuth: true,
