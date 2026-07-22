@@ -374,6 +374,39 @@ describe("API System Routes", () => {
     });
   });
 
+  // 代用户创建 API Key 时，重名应返回冲突错误，避免同一用户名下出现无法区分的 key。
+  test("POST /api/system/api-keys rejects duplicate names", async () => {
+    stubSystemApi({
+      createUserApiKey: async () => {
+        throw new Error("API key name 'automation' already exists for user 'user-1'");
+      },
+    });
+
+    const res = await request("/api/system/api-keys", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer sys-key-1",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: "user-1",
+        organizationId: "org-1",
+        role: "admin",
+        name: "automation",
+        expiresIn: null,
+      }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json).toEqual({
+      error: {
+        code: "CONFLICT",
+        message: "API key name 'automation' already exists for user 'user-1'",
+      },
+    });
+  });
+
   // 系统级删除用户接口应返回稳定删除结果。
   test("DELETE /api/system/users/:id deletes user", async () => {
     const res = await request("/api/system/users/user-1", {

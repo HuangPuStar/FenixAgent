@@ -31,6 +31,7 @@
   "toast": {
     "loadFailed": "Failed to load API Keys",
     "createFailed": "Failed to create API Key",
+    "duplicateName": "Creation failed: an API Key with this name already exists. Please choose a different name.",
     "created": "API Key created",
     "copied": "Copied",
     "copyFailed": "Copy failed, please select and copy manually",

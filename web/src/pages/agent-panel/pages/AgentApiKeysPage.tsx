@@ -12,6 +12,7 @@ import { apiKeyApi } from "@/src/api/api-keys";
 import { unwrap } from "@/src/api/request";
 import { AgentCardList } from "../shared/AgentCardList";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
+import { getApiKeyCreateErrorMessage } from "./agent-api-keys-utils";
 
 interface ApiKeyInfo {
   id: string;
@@ -83,7 +84,7 @@ export function AgentApiKeysPage() {
       },
       onError: (err) => {
         console.error(err);
-        toast.error(t("toast.createFailed"));
+        toast.error(getApiKeyCreateErrorMessage(err, t));
       },
     },
   );
