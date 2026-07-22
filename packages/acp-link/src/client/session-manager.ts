@@ -339,9 +339,9 @@ export class SessionManager {
             // 通过 session/update 通知转发 rename 给 agent
             if (this.sharedConnection) {
               const conn = this.sharedConnection as unknown as {
-                connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
+                connection: { sendNotification: (m: string, p: Record<string, unknown>) => void };
               };
-              await conn.connection.agent.notify("session/update", {
+              conn.connection.sendNotification("session/update", {
                 sessionId: targetSid,
                 update: { sessionUpdate: "session_info_update", title },
               });
@@ -522,9 +522,9 @@ export class SessionManager {
             // 通过 session/update 通知转发 rename 给 agent
             if (this.sharedConnection) {
               const conn = this.sharedConnection as unknown as {
-                connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
+                connection: { sendNotification: (m: string, p: Record<string, unknown>) => void };
               };
-              await conn.connection.agent.notify("session/update", {
+              conn.connection.sendNotification("session/update", {
                 sessionId: targetSid,
                 update: { sessionUpdate: "session_info_update", title },
               });

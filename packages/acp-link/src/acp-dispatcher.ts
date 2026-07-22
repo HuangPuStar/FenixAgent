@@ -163,18 +163,12 @@ export class AcpDispatcher {
       }
     }
 
-    if (!this.state.connection) return;
-
-    try {
-      // 通过 ClientSideConnection 的底层 connection.agent.notify 转发通知给 agent
-      // session/update 通知的 params 会原样传递给 agent
-      const conn = this.state.connection as unknown as {
-        connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
-      };
-      await conn.connection.agent.notify(method, params);
-    } catch (error) {
-      console.warn("[acp-dispatcher] Failed to forward notification:", method, String(error));
-    }
+    // 将通知以原始 JSON-RPC 形式直接写入 agent 进程
+    this.send({
+      jsonrpc: "2.0",
+      method,
+      params,
+    });
   }
 
   private async handleTransportMessage(msg: Record<string, unknown>): Promise<void> {
@@ -525,14 +519,16 @@ export class AcpDispatcher {
       // 本地缓存标题（agent 可能不支持 session_info_update，因此需本地维护）
       this.state.titleOverrides.set(params.sessionId, params.title);
 
-      // 通过 session/update 通知转发 rename 给 agent
-      const conn = this.state.connection as unknown as {
-        connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
-      };
-      await conn.connection.agent.notify("session/update", {
-        sessionId: params.sessionId,
-        update: { sessionUpdate: "session_info_update", title: params.title },
+      // 通知以原始 JSON-RPC 形式写入 agent 进程
+      this.send({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: params.sessionId,
+          update: { sessionUpdate: "session_info_update", title: params.title },
+        },
       });
+
       this.send(createSuccessResponse(id, { sessionId: params.sessionId, title: params.title }));
     } catch (error) {
       this.send(createErrorResponse(id, -32603, `Failed to rename session: ${(error as Error).message}`));
