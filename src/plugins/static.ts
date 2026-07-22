@@ -43,21 +43,6 @@ export const ctrlStaticPlugin = new Elysia({ name: "ctrl-static" })
       },
     },
   )
-  // /ctrl/:sessionId/user/* → redirect to file preview API (for iframe embedding)
-  .get(
-    "/ctrl/:sessionId/user/:filePath",
-    ({ params, redirect }) => {
-      return redirect(`/web/sessions/${params.sessionId}/user/${params.filePath}?preview=true`);
-    },
-    {
-      detail: {
-        hide: true,
-        summary: "控制台文件预览跳转",
-        description:
-          "将 `/ctrl/:sessionId/user/:filePath` 形式的控制台预览地址重定向到实际的文件预览 API，用于 iframe 等前端预览场景。该接口属于控制台内部跳转能力，默认不在公开文档中展示。",
-      },
-    },
-  )
   // SPA fallback：前端是客户端路由。刷新 `/ctrl/*` 深层路径（如 `/ctrl/agent/home`）时，
   // @elysiajs/static 找不到对应文件会抛 404，这里回退到 index.html 让前端路由接管。
   //

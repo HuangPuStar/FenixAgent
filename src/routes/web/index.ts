@@ -5,7 +5,6 @@ import webApiKeys from "./api-keys";
 import webBranding from "./branding";
 import webChannels from "./channels";
 import webConfig from "./config";
-import webControl from "./control";
 import webEnvironments from "./environments";
 import webFiles from "./files";
 import webFs from "./fs";
@@ -16,7 +15,6 @@ import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
 import webProdViews from "./prod-views";
 import webRegistry from "./registry";
-import webSessions from "./sessions";
 import webTasks from "./tasks";
 import webTasksV2 from "./tasks-v2";
 import webUserFile from "./user-file";
@@ -32,7 +30,6 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webAgentSites)
   .use(webChannels)
   .use(webConfig)
-  .use(webControl)
   .use(webFiles)
   .use(webFs)
   .use(webInstances)
@@ -40,7 +37,6 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webKnowledgeBases)
   .use(webMetaAgent)
   .use(webOrganizations)
-  .use(webSessions)
   .use(webTasks)
   .use(webTasksV2)
   .use(webUserFile)

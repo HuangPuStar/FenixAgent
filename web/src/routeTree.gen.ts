@@ -21,7 +21,6 @@ import { Route as AgentPanelViewsRouteImport } from "./routes/agent/_panel/views
 import { Route as AgentPanelTasksRouteImport } from "./routes/agent/_panel/tasks"
 import { Route as AgentPanelSkillsRouteImport } from "./routes/agent/_panel/skills"
 import { Route as AgentPanelSitesRouteImport } from "./routes/agent/_panel/sites"
-import { Route as AgentPanelSessionsRouteImport } from "./routes/agent/_panel/sessions"
 import { Route as AgentPanelOrganizationsRouteImport } from "./routes/agent/_panel/organizations"
 import { Route as AgentPanelModelsRouteImport } from "./routes/agent/_panel/models"
 import { Route as AgentPanelMemoriesRouteImport } from "./routes/agent/_panel/memories"
@@ -96,11 +95,6 @@ const AgentPanelSkillsRoute = AgentPanelSkillsRouteImport.update({
 const AgentPanelSitesRoute = AgentPanelSitesRouteImport.update({
   id: "/sites",
   path: "/sites",
-  getParentRoute: () => AgentPanelRoute,
-} as any)
-const AgentPanelSessionsRoute = AgentPanelSessionsRouteImport.update({
-  id: "/sessions",
-  path: "/sessions",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelOrganizationsRoute = AgentPanelOrganizationsRouteImport.update({
@@ -201,7 +195,6 @@ export interface FileRoutesByFullPath {
   "/agent/memories": typeof AgentPanelMemoriesRoute
   "/agent/models": typeof AgentPanelModelsRoute
   "/agent/organizations": typeof AgentPanelOrganizationsRoute
-  "/agent/sessions": typeof AgentPanelSessionsRoute
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
@@ -230,7 +223,6 @@ export interface FileRoutesByTo {
   "/agent/memories": typeof AgentPanelMemoriesRoute
   "/agent/models": typeof AgentPanelModelsRoute
   "/agent/organizations": typeof AgentPanelOrganizationsRoute
-  "/agent/sessions": typeof AgentPanelSessionsRoute
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
@@ -261,7 +253,6 @@ export interface FileRoutesById {
   "/agent/_panel/memories": typeof AgentPanelMemoriesRoute
   "/agent/_panel/models": typeof AgentPanelModelsRoute
   "/agent/_panel/organizations": typeof AgentPanelOrganizationsRoute
-  "/agent/_panel/sessions": typeof AgentPanelSessionsRoute
   "/agent/_panel/sites": typeof AgentPanelSitesRoute
   "/agent/_panel/skills": typeof AgentPanelSkillsRoute
   "/agent/_panel/tasks": typeof AgentPanelTasksRoute
@@ -293,7 +284,6 @@ export interface FileRouteTypes {
     | "/agent/memories"
     | "/agent/models"
     | "/agent/organizations"
-    | "/agent/sessions"
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
@@ -322,7 +312,6 @@ export interface FileRouteTypes {
     | "/agent/memories"
     | "/agent/models"
     | "/agent/organizations"
-    | "/agent/sessions"
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
@@ -352,7 +341,6 @@ export interface FileRouteTypes {
     | "/agent/_panel/memories"
     | "/agent/_panel/models"
     | "/agent/_panel/organizations"
-    | "/agent/_panel/sessions"
     | "/agent/_panel/sites"
     | "/agent/_panel/skills"
     | "/agent/_panel/tasks"
@@ -459,13 +447,6 @@ declare module "@tanstack/react-router" {
       path: "/sites"
       fullPath: "/agent/sites"
       preLoaderRoute: typeof AgentPanelSitesRouteImport
-      parentRoute: typeof AgentPanelRoute
-    }
-    "/agent/_panel/sessions": {
-      id: "/agent/_panel/sessions"
-      path: "/sessions"
-      fullPath: "/agent/sessions"
-      preLoaderRoute: typeof AgentPanelSessionsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
     "/agent/_panel/organizations": {
@@ -587,7 +568,6 @@ interface AgentPanelRouteChildren {
   AgentPanelMemoriesRoute: typeof AgentPanelMemoriesRoute
   AgentPanelModelsRoute: typeof AgentPanelModelsRoute
   AgentPanelOrganizationsRoute: typeof AgentPanelOrganizationsRoute
-  AgentPanelSessionsRoute: typeof AgentPanelSessionsRoute
   AgentPanelSitesRoute: typeof AgentPanelSitesRoute
   AgentPanelSkillsRoute: typeof AgentPanelSkillsRoute
   AgentPanelTasksRoute: typeof AgentPanelTasksRoute
@@ -611,7 +591,6 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelMemoriesRoute: AgentPanelMemoriesRoute,
   AgentPanelModelsRoute: AgentPanelModelsRoute,
   AgentPanelOrganizationsRoute: AgentPanelOrganizationsRoute,
-  AgentPanelSessionsRoute: AgentPanelSessionsRoute,
   AgentPanelSitesRoute: AgentPanelSitesRoute,
   AgentPanelSkillsRoute: AgentPanelSkillsRoute,
   AgentPanelTasksRoute: AgentPanelTasksRoute,

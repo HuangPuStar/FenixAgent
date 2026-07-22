@@ -53,65 +53,6 @@ beforeEach(() => {
 };
 
 // =============================================================================
-// Session SDK — 通过新 API 模块调用测试
-// =============================================================================
-
-describe("session SDK functions", () => {
-  // 测试获取 session 详情发送 GET 请求（RESTful 路径参数模式）
-  test("sessionApi.get — GET /web/sessions/:id", async () => {
-    fetchMock.responseData = { id: "sess_1", title: "test" };
-    const { sessionApi } = await import("../api/sessions");
-    await sessionApi.get({ sessionId: "sess_1" });
-    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1");
-    expect(fetchMock.lastOpts.method).toBe("GET");
-    expect(fetchMock.lastOpts.body).toBeUndefined();
-  });
-
-  // 测试获取 session 历史发送 GET 请求（RESTful 路径参数模式）
-  test("sessionApi.history — GET /web/sessions/:id/history", async () => {
-    fetchMock.responseData = { events: [] };
-    const { sessionApi } = await import("../api/sessions");
-    await sessionApi.history({ sessionId: "sess_1" });
-    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/history");
-    expect(fetchMock.lastOpts.method).toBe("GET");
-  });
-
-  // 测试发送事件使用 RESTful 路径参数，sessionId 在 URL 中
-  test("controlApi.sendEvent — POST /web/sessions/:id/events", async () => {
-    fetchMock.responseData = { status: "ok" };
-    const { controlApi } = await import("../api/sessions");
-    await controlApi.sendEvent({ sessionId: "sess_1" }, { type: "user", content: "hello" });
-    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/events");
-    expect(fetchMock.lastOpts.method).toBe("POST");
-    expect(JSON.parse(fetchMock.lastOpts.body as string)).toEqual({
-      type: "user",
-      content: "hello",
-    });
-  });
-
-  // 测试发送控制命令使用 RESTful 路径参数
-  test("controlApi.control — POST /web/sessions/:id/control", async () => {
-    fetchMock.responseData = { status: "ok" };
-    const { controlApi } = await import("../api/sessions");
-    await controlApi.control({ sessionId: "sess_1" }, { type: "resume" });
-    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/control");
-    expect(fetchMock.lastOpts.method).toBe("POST");
-    expect(JSON.parse(fetchMock.lastOpts.body as string)).toEqual({ type: "resume" });
-  });
-
-  // 测试中断命令使用 RESTful 路径参数，无 body
-  test("controlApi.interrupt — POST /web/sessions/:id/interrupt", async () => {
-    fetchMock.responseData = { success: true, data: null };
-    const { controlApi } = await import("../api/sessions");
-    await controlApi.interrupt({ sessionId: "sess_1" });
-    expect(fetchMock.lastUrl).toContain("/web/sessions/sess_1/interrupt");
-    expect(fetchMock.lastOpts.method).toBe("POST");
-    // interrupt 无 body
-    expect(fetchMock.lastOpts.body).toBeUndefined();
-  });
-});
-
-// =============================================================================
 // File SDK functions
 // =============================================================================
 
@@ -168,8 +109,8 @@ describe("error handling", () => {
   test("SDK returns error object on non-ok response", async () => {
     fetchMock.response = { ok: false, status: 401, statusText: "Unauthorized" };
     fetchMock.responseData = { success: false, error: { code: "UNAUTHORIZED", message: "Not authenticated" } };
-    const { sessionApi } = await import("../api/sessions");
-    const { data, error } = await sessionApi.get({ sessionId: "sess-1" });
+    const { envApi } = await import("../api/environments");
+    const { data, error } = await envApi.get({ id: "env-1" });
     expect(error).not.toBeNull();
     expect(data).toBeUndefined();
   });
@@ -178,8 +119,8 @@ describe("error handling", () => {
   test("SDK returns SERVER_ERROR on 500 response", async () => {
     fetchMock.response = { ok: false, status: 500, statusText: "Internal Server Error" };
     fetchMock.responseData = {};
-    const { sessionApi } = await import("../api/sessions");
-    const { error } = await sessionApi.list();
+    const { envApi } = await import("../api/environments");
+    const { error } = await envApi.list();
     expect(error).not.toBeNull();
     expect(error?.code).toBe("SERVER_ERROR");
   });
