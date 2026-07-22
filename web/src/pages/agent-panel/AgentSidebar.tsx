@@ -64,7 +64,7 @@ export const AgentSidebar = memo(function AgentSidebar({
       {/* 品牌区 */}
       <Link
         to="/agent/home"
-        aria-label="Fenix Agent"
+        aria-label="Fenix AOS"
         className={[
           "agent-sidebar-brand",
           "flex items-center gap-2.5 px-4",
@@ -186,7 +186,10 @@ function FenixSidebarLogo() {
         alt=""
         aria-hidden="true"
       />
-      <span className="fenix-sidebar-logo-text">Fenix Agent</span>
+      <span className="fenix-sidebar-logo-text">
+        <span className="fenix-sidebar-logo-main">Fenix AOS</span>
+        <span className="fenix-sidebar-logo-sub">凤凰Agent操作系统</span>
+      </span>
     </span>
   );
 }

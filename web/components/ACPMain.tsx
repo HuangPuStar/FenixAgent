@@ -284,15 +284,19 @@ function SidebarSessionList({
     setEditTitle(session.title ?? "");
   };
   const handleSaveRename = useCallback(
-    (sessionId: string) => {
+    async (sessionId: string) => {
       const title = editTitle.trim();
       if (!title) return;
-      // 由于 ACP 协议不支持 renameSession，仅更新本地状态
-      setSessions((prev) => prev.map((s) => (s.sessionId === sessionId ? { ...s, title } : s)));
+      try {
+        client.renameSession({ sessionId, title });
+        setSessions((prev) => prev.map((s) => (s.sessionId === sessionId ? { ...s, title } : s)));
+      } catch (err) {
+        toast.error(`重命名失败: ${(err as Error).message}`);
+      }
       setEditingId(null);
       setEditTitle("");
     },
-    [editTitle],
+    [editTitle, client],
   );
   const handleCancelRename = () => {
     setEditingId(null);
@@ -304,13 +308,12 @@ function SidebarSessionList({
     async (sessionId: string) => {
       try {
         await client.deleteSession({ sessionId });
+        setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+        if (activeId === sessionId) {
+          setActiveId(null);
+        }
       } catch (err) {
-        console.warn("[SidebarSessionList] deleteSession through ACP failed:", err);
-      }
-      // 无论 agent 是否响应，都从本地列表移除
-      setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
-      if (activeId === sessionId) {
-        setActiveId(null);
+        toast.error(`删除失败: ${(err as Error).message}`);
       }
     },
     [client, activeId],
@@ -445,7 +448,12 @@ function SidebarSessionList({
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex items-center">
+                  <div
+                    className={cn(
+                      "flex items-center",
+                      session.sessionId === activeId ? "bg-brand/8" : "hover:bg-surface-2/60",
+                    )}
+                  >
                     <SessionTitleButton
                       session={session}
                       isActive={session.sessionId === activeId}
@@ -525,8 +533,8 @@ function SessionTitleButton({ session, isActive, onSelect }: SessionTitleButtonP
           className={cn(
             "flex-1 flex items-center gap-2.5 px-4 py-2 text-left justify-start rounded-none min-w-0",
             isActive
-              ? "bg-brand/8 text-text-primary hover:bg-brand/8"
-              : "text-text-secondary hover:bg-surface-2/60 hover:text-text-primary",
+              ? "text-text-primary hover:bg-transparent"
+              : "text-text-secondary hover:text-text-primary hover:bg-transparent",
           )}
         >
           <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />

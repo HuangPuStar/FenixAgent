@@ -145,7 +145,7 @@
   width: 100%;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 10px;
 }
 
 .fenix-sidebar-logo-mark {
@@ -160,13 +160,28 @@
 
 .fenix-sidebar-logo-text {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   color: rgba(255, 255, 255, 0.96);
-  font-size: 18px;
-  font-weight: 800;
   line-height: 1;
-  letter-spacing: 0.08em;
   text-shadow: 0 5px 18px rgba(3, 32, 110, 0.28);
+}
+
+.fenix-sidebar-logo-main {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   white-space: nowrap;
+  margin-bottom: 3px;
+}
+
+.fenix-sidebar-logo-sub {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  opacity: 0.72;
 }
 
 .agent-sidebar-brand-text {

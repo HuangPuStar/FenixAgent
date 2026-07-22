@@ -1,6 +1,7 @@
-import { ChevronDown, Loader2, MessageSquare, Pin, Plus, RefreshCw, Search } from "lucide-react";
+import { ChevronDown, Loader2, MessageSquare, Pencil, Pin, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { retryWithBackoff } from "@/src/lib/retry";
 import type { ACPClient } from "../../src/acp/client";
 import type { AgentSessionInfo } from "../../src/acp/types";
@@ -59,6 +60,9 @@ export function ChatHeader({
   const [searchQuery, setSearchQuery] = useState("");
   // 钉子状态与侧边栏状态同步：侧边栏打开时即为钉住状态
   const pinned = sidebarOpen;
+  // 内联重命名状态
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
 
   // 会话列表加载：supportsSessionList 未就绪时静默退出，避免 capabilities 还未到位时报错
   const loadSessions = useCallback(async () => {
@@ -203,6 +207,44 @@ export function ChatHeader({
     [pinned, sidebarOpen, onToggleSidebar],
   );
 
+  // 重命名处理
+  const handleStartRename = (session: AgentSessionInfo) => {
+    setEditingId(session.sessionId);
+    setEditTitle(session.title ?? "");
+  };
+  const handleSaveRename = useCallback(
+    async (sessionId: string) => {
+      const title = editTitle.trim();
+      if (!title) return;
+      try {
+        client.renameSession({ sessionId, title });
+        setSessions((prev) => prev.map((s) => (s.sessionId === sessionId ? { ...s, title } : s)));
+      } catch (err) {
+        toast.error(`重命名失败: ${(err as Error).message}`);
+      }
+      setEditingId(null);
+      setEditTitle("");
+    },
+    [editTitle, client],
+  );
+  const handleCancelRename = () => {
+    setEditingId(null);
+    setEditTitle("");
+  };
+
+  // 删除处理
+  const handleDelete = useCallback(
+    async (sessionId: string) => {
+      try {
+        await client.deleteSession({ sessionId });
+        setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+      } catch (err) {
+        toast.error(`删除失败: ${(err as Error).message}`);
+      }
+    },
+    [client],
+  );
+
   return (
     <div
       className={cn(
@@ -325,25 +367,85 @@ export function ChatHeader({
                   </div>
                   {group.sessions.map((session) => {
                     const isActive = session.sessionId === activeSessionId;
+                    const isEditing = editingId === session.sessionId;
+
+                    // 内联重命名模式
+                    if (isEditing) {
+                      return (
+                        <div key={session.sessionId} className="flex items-center gap-1 px-4 py-1.5">
+                          <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50 text-text-muted" />
+                          <input
+                            className="flex-1 text-[13px] font-display bg-transparent border-b border-brand text-text-primary outline-none px-1 py-0.5"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveRename(session.sessionId);
+                              if (e.key === "Escape") handleCancelRename();
+                            }}
+                            onBlur={() => handleSaveRename(session.sessionId)}
+                          />
+                          <button
+                            type="button"
+                            className="flex-shrink-0 p-1 text-text-muted hover:text-text-primary rounded"
+                            onClick={handleCancelRename}
+                            aria-label="取消"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    }
+
                     return (
-                      <Button
+                      <div
                         key={session.sessionId}
-                        variant="ghost"
-                        onClick={() => handleSelect(session)}
-                        className={cn(
-                          "w-full flex items-center gap-2 px-4 py-2 text-left justify-start rounded-none",
-                          isActive
-                            ? "bg-brand/8 text-text-primary hover:bg-brand/8"
-                            : "text-text-secondary hover:bg-surface-2/60 hover:text-text-primary",
-                        )}
-                        title={session.title || session.sessionId}
+                        className={cn("group flex items-center", isActive ? "bg-brand/8" : "hover:bg-surface-2/60")}
                       >
-                        <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-                        <span className="text-[13px] font-display truncate leading-snug flex-1 min-w-0">
-                          {session.title?.trim() ? session.title : t("acpMain.newSession")}
-                        </span>
-                        {isActive && <span className="h-1.5 w-1.5 rounded-full bg-brand flex-shrink-0" aria-hidden />}
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSelect(session)}
+                          className={cn(
+                            "flex-1 flex items-center gap-2 px-4 py-2 text-left justify-start rounded-none",
+                            isActive
+                              ? "text-text-primary hover:bg-transparent"
+                              : "text-text-secondary hover:text-text-primary hover:bg-transparent",
+                          )}
+                          title={session.title || session.sessionId}
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
+                          <span className="text-[13px] font-display truncate leading-snug flex-1 min-w-0">
+                            {session.title?.trim() ? session.title : t("acpMain.newSession")}
+                          </span>
+                          {isActive && <span className="h-1.5 w-1.5 rounded-full bg-brand flex-shrink-0" aria-hidden />}
+                        </Button>
+                        {/* 悬停时显示操作按钮 */}
+                        <div className="hidden group-hover:flex items-center gap-0.5 pr-1 flex-shrink-0">
+                          <button
+                            type="button"
+                            className="h-6 w-6 p-0 flex items-center justify-center rounded text-text-muted hover:text-brand"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartRename(session);
+                            }}
+                            aria-label={t("acpMain.rename")}
+                            title={t("acpMain.rename")}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            className="h-6 w-6 p-0 flex items-center justify-center rounded text-text-muted hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(session.sessionId);
+                            }}
+                            aria-label={t("acpMain.delete")}
+                            title={t("acpMain.delete")}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
