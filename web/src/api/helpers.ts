@@ -4,12 +4,6 @@
  * 从 client.ts 迁移出的纯工具函数，不依赖 Eden Treaty。
  */
 
-// ── SSE 辅助函数 ──
-
-export function createSessionEventSource(sessionId: string): EventSource {
-  return new EventSource(`/web/sessions/${sessionId}/events`, { withCredentials: true });
-}
-
 // ── UUID 存储辅助函数 ──
 
 const UUID_KEY = "rcs_uuid";

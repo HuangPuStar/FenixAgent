@@ -79,10 +79,6 @@ const WEB_OPENAPI_TAGS = [
     description: "MCP 服务配置管理，包括服务增删改查、启停、测试和工具检查。",
   },
   {
-    name: "Sessions",
-    description: "会话管理与事件历史查询。",
-  },
-  {
     name: "Environments",
     description: "Agent 运行环境管理。",
   },
