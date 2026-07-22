@@ -1,5 +1,20 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, Bot, Brain, Clock, Cpu, Globe, KeyRound, Plug, Plus, Settings, Users, Workflow } from "lucide-react";
+import {
+  Binary,
+  BookOpen,
+  Bot,
+  Brain,
+  Clock,
+  Cpu,
+  Globe,
+  KeyRound,
+  Layers,
+  Plug,
+  Plus,
+  Settings,
+  Users,
+  Workflow,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 
@@ -31,11 +46,13 @@ function useNavGroups(): NavGroup[] {
       label: t("navGroupConfig"),
       items: [
         { id: "models", labelKey: "agentPanel:models", icon: Cpu },
+        { id: "vertical-models", labelKey: "agentPanel:verticalModels", icon: Layers },
+        { id: "algorithms", labelKey: "agentPanel:algorithms", icon: Binary },
         { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
-        { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
         { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
         { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
         { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
+        { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
         { id: "sites", labelKey: "agentPanel:sites", icon: Globe },
         { id: "organizations", labelKey: "sidebar:organizations", icon: Users },
         { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },

@@ -18,6 +18,7 @@ import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
 import { Route as AgentPanelIndexRouteImport } from "./routes/agent/_panel/index"
 import { Route as AgentPanelWorkflowRouteImport } from "./routes/agent/_panel/workflow"
 import { Route as AgentPanelViewsRouteImport } from "./routes/agent/_panel/views"
+import { Route as AgentPanelVerticalModelsRouteImport } from "./routes/agent/_panel/vertical-models"
 import { Route as AgentPanelTasksRouteImport } from "./routes/agent/_panel/tasks"
 import { Route as AgentPanelSkillsRouteImport } from "./routes/agent/_panel/skills"
 import { Route as AgentPanelSitesRouteImport } from "./routes/agent/_panel/sites"
@@ -31,6 +32,7 @@ import { Route as AgentPanelHomeRouteImport } from "./routes/agent/_panel/home"
 import { Route as AgentPanelDashboardRouteImport } from "./routes/agent/_panel/dashboard"
 import { Route as AgentPanelChannelsRouteImport } from "./routes/agent/_panel/channels"
 import { Route as AgentPanelApikeysRouteImport } from "./routes/agent/_panel/apikeys"
+import { Route as AgentPanelAlgorithmsRouteImport } from "./routes/agent/_panel/algorithms"
 import { Route as AgentPanelAgentsRouteImport } from "./routes/agent/_panel/agents"
 import { Route as AgentAgentIdSessionIdRouteImport } from "./routes/agent/$agentId_.$sessionId"
 import { Route as AgentPanelChatAgentIdRouteImport } from "./routes/agent/_panel/chat.$agentId"
@@ -83,6 +85,12 @@ const AgentPanelViewsRoute = AgentPanelViewsRouteImport.update({
   path: "/views",
   getParentRoute: () => AgentPanelRoute,
 } as any)
+const AgentPanelVerticalModelsRoute =
+  AgentPanelVerticalModelsRouteImport.update({
+    id: "/vertical-models",
+    path: "/vertical-models",
+    getParentRoute: () => AgentPanelRoute,
+  } as any)
 const AgentPanelTasksRoute = AgentPanelTasksRouteImport.update({
   id: "/tasks",
   path: "/tasks",
@@ -149,6 +157,11 @@ const AgentPanelApikeysRoute = AgentPanelApikeysRouteImport.update({
   path: "/apikeys",
   getParentRoute: () => AgentPanelRoute,
 } as any)
+const AgentPanelAlgorithmsRoute = AgentPanelAlgorithmsRouteImport.update({
+  id: "/algorithms",
+  path: "/algorithms",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
 const AgentPanelAgentsRoute = AgentPanelAgentsRouteImport.update({
   id: "/agents",
   path: "/agents",
@@ -192,6 +205,7 @@ export interface FileRoutesByFullPath {
   "/view/$prodViewId": typeof ViewProdViewIdRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
+  "/agent/algorithms": typeof AgentPanelAlgorithmsRoute
   "/agent/apikeys": typeof AgentPanelApikeysRoute
   "/agent/channels": typeof AgentPanelChannelsRoute
   "/agent/dashboard": typeof AgentPanelDashboardRoute
@@ -205,6 +219,7 @@ export interface FileRoutesByFullPath {
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/views": typeof AgentPanelViewsRoute
   "/agent/workflow": typeof AgentPanelWorkflowRoute
   "/agent/": typeof AgentPanelIndexRoute
@@ -221,6 +236,7 @@ export interface FileRoutesByTo {
   "/view/$prodViewId": typeof ViewProdViewIdRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
+  "/agent/algorithms": typeof AgentPanelAlgorithmsRoute
   "/agent/apikeys": typeof AgentPanelApikeysRoute
   "/agent/channels": typeof AgentPanelChannelsRoute
   "/agent/dashboard": typeof AgentPanelDashboardRoute
@@ -234,6 +250,7 @@ export interface FileRoutesByTo {
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/views": typeof AgentPanelViewsRoute
   "/agent/workflow": typeof AgentPanelWorkflowRoute
   "/agent": typeof AgentPanelIndexRoute
@@ -252,6 +269,7 @@ export interface FileRoutesById {
   "/view/$prodViewId": typeof ViewProdViewIdRoute
   "/agent/$agentId_/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/_panel/agents": typeof AgentPanelAgentsRoute
+  "/agent/_panel/algorithms": typeof AgentPanelAlgorithmsRoute
   "/agent/_panel/apikeys": typeof AgentPanelApikeysRoute
   "/agent/_panel/channels": typeof AgentPanelChannelsRoute
   "/agent/_panel/dashboard": typeof AgentPanelDashboardRoute
@@ -265,6 +283,7 @@ export interface FileRoutesById {
   "/agent/_panel/sites": typeof AgentPanelSitesRoute
   "/agent/_panel/skills": typeof AgentPanelSkillsRoute
   "/agent/_panel/tasks": typeof AgentPanelTasksRoute
+  "/agent/_panel/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/_panel/views": typeof AgentPanelViewsRoute
   "/agent/_panel/workflow": typeof AgentPanelWorkflowRoute
   "/agent/_panel/": typeof AgentPanelIndexRoute
@@ -284,6 +303,7 @@ export interface FileRouteTypes {
     | "/view/$prodViewId"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
+    | "/agent/algorithms"
     | "/agent/apikeys"
     | "/agent/channels"
     | "/agent/dashboard"
@@ -297,6 +317,7 @@ export interface FileRouteTypes {
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
+    | "/agent/vertical-models"
     | "/agent/views"
     | "/agent/workflow"
     | "/agent/"
@@ -313,6 +334,7 @@ export interface FileRouteTypes {
     | "/view/$prodViewId"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
+    | "/agent/algorithms"
     | "/agent/apikeys"
     | "/agent/channels"
     | "/agent/dashboard"
@@ -326,6 +348,7 @@ export interface FileRouteTypes {
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
+    | "/agent/vertical-models"
     | "/agent/views"
     | "/agent/workflow"
     | "/agent"
@@ -343,6 +366,7 @@ export interface FileRouteTypes {
     | "/view/$prodViewId"
     | "/agent/$agentId_/$sessionId"
     | "/agent/_panel/agents"
+    | "/agent/_panel/algorithms"
     | "/agent/_panel/apikeys"
     | "/agent/_panel/channels"
     | "/agent/_panel/dashboard"
@@ -356,6 +380,7 @@ export interface FileRouteTypes {
     | "/agent/_panel/sites"
     | "/agent/_panel/skills"
     | "/agent/_panel/tasks"
+    | "/agent/_panel/vertical-models"
     | "/agent/_panel/views"
     | "/agent/_panel/workflow"
     | "/agent/_panel/"
@@ -438,6 +463,13 @@ declare module "@tanstack/react-router" {
       path: "/views"
       fullPath: "/agent/views"
       preLoaderRoute: typeof AgentPanelViewsRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
+    "/agent/_panel/vertical-models": {
+      id: "/agent/_panel/vertical-models"
+      path: "/vertical-models"
+      fullPath: "/agent/vertical-models"
+      preLoaderRoute: typeof AgentPanelVerticalModelsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
     "/agent/_panel/tasks": {
@@ -531,6 +563,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AgentPanelApikeysRouteImport
       parentRoute: typeof AgentPanelRoute
     }
+    "/agent/_panel/algorithms": {
+      id: "/agent/_panel/algorithms"
+      path: "/algorithms"
+      fullPath: "/agent/algorithms"
+      preLoaderRoute: typeof AgentPanelAlgorithmsRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
     "/agent/_panel/agents": {
       id: "/agent/_panel/agents"
       path: "/agents"
@@ -578,6 +617,7 @@ declare module "@tanstack/react-router" {
 
 interface AgentPanelRouteChildren {
   AgentPanelAgentsRoute: typeof AgentPanelAgentsRoute
+  AgentPanelAlgorithmsRoute: typeof AgentPanelAlgorithmsRoute
   AgentPanelApikeysRoute: typeof AgentPanelApikeysRoute
   AgentPanelChannelsRoute: typeof AgentPanelChannelsRoute
   AgentPanelDashboardRoute: typeof AgentPanelDashboardRoute
@@ -591,6 +631,7 @@ interface AgentPanelRouteChildren {
   AgentPanelSitesRoute: typeof AgentPanelSitesRoute
   AgentPanelSkillsRoute: typeof AgentPanelSkillsRoute
   AgentPanelTasksRoute: typeof AgentPanelTasksRoute
+  AgentPanelVerticalModelsRoute: typeof AgentPanelVerticalModelsRoute
   AgentPanelViewsRoute: typeof AgentPanelViewsRoute
   AgentPanelWorkflowRoute: typeof AgentPanelWorkflowRoute
   AgentPanelIndexRoute: typeof AgentPanelIndexRoute
@@ -602,6 +643,7 @@ interface AgentPanelRouteChildren {
 
 const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelAgentsRoute: AgentPanelAgentsRoute,
+  AgentPanelAlgorithmsRoute: AgentPanelAlgorithmsRoute,
   AgentPanelApikeysRoute: AgentPanelApikeysRoute,
   AgentPanelChannelsRoute: AgentPanelChannelsRoute,
   AgentPanelDashboardRoute: AgentPanelDashboardRoute,
@@ -615,6 +657,7 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelSitesRoute: AgentPanelSitesRoute,
   AgentPanelSkillsRoute: AgentPanelSkillsRoute,
   AgentPanelTasksRoute: AgentPanelTasksRoute,
+  AgentPanelVerticalModelsRoute: AgentPanelVerticalModelsRoute,
   AgentPanelViewsRoute: AgentPanelViewsRoute,
   AgentPanelWorkflowRoute: AgentPanelWorkflowRoute,
   AgentPanelIndexRoute: AgentPanelIndexRoute,
