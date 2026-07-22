@@ -28,27 +28,42 @@ export const httpExecutor: TaskExecutor = {
     }
 
     const timeoutMs = (task.timeoutSeconds ?? 30) * 1000;
-    const response = await fetch(def.url, {
-      method,
-      headers,
-      body: method === "GET" ? undefined : (def.body ?? undefined),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
 
-    const responseText = await response.text().catch(() => "");
-    const duration = Date.now() - startTime;
-    const status = response.ok ? "success" : "failed";
-    const resultSummary =
-      responseText.length > 2000 ? responseText.slice(0, 2000) : responseText || `HTTP ${response.status}`;
+    try {
+      const response = await fetch(def.url, {
+        method,
+        headers,
+        body: method === "GET" ? undefined : (def.body ?? undefined),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
 
-    if (response.ok) {
-      return { status, duration, resultSummary };
+      const responseText = await response.text().catch(() => "");
+      const duration = Date.now() - startTime;
+      const status = response.ok ? "success" : "failed";
+      const resultSummary =
+        responseText.length > 2000 ? responseText.slice(0, 2000) : responseText || `HTTP ${response.status}`;
+
+      if (response.ok) {
+        return { status, duration, resultSummary };
+      }
+      return {
+        status,
+        duration,
+        resultSummary,
+        error: responseText ? `HTTP ${response.status}: ${responseText.slice(0, 500)}` : `HTTP ${response.status}`,
+      };
+    } catch (err) {
+      // AbortSignal.timeout 触发时会抛出 DOMException，name 为 "TimeoutError"（Bun/Node.js 运行时）
+      const isTimeout = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+      const msg = err instanceof Error ? err.message : String(err);
+      const duration = Date.now() - startTime;
+
+      return {
+        status: isTimeout ? "timeout" : "failed",
+        duration,
+        error: msg,
+        resultSummary: msg.slice(0, 2000),
+      };
     }
-    return {
-      status,
-      duration,
-      resultSummary,
-      error: responseText ? `HTTP ${response.status}: ${responseText.slice(0, 500)}` : `HTTP ${response.status}`,
-    };
   },
 };

@@ -109,6 +109,10 @@ export function CronEditor({ value, onChange, error }: CronEditorProps) {
 
   const handleCustomClick = () => {
     setEditingCustom(true);
+    // 清空 cron 值以使预设标签取消高亮，同时让用户从空白开始输入
+    if (isPreset) {
+      onChange("");
+    }
   };
 
   return (

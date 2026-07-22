@@ -337,7 +337,8 @@ export function AgentTasksPage() {
         console.error("trigger task failed", err);
         toast.error(err.message);
       },
-      onFinally: (_, params) => {
+      // ahooks v3 onFinally 签名: (params, data, error)，第一个参数是输入参数
+      onFinally: (params) => {
         const id = (Array.isArray(params) ? params[0] : params) as string;
         setTriggeredTasks((prev) => {
           const next = new Set(prev);
