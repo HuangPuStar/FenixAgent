@@ -10,7 +10,7 @@ interface OrgApi {
   addMember: (opts: {
     body: { userId: string; role: string; organizationId: string };
     headers: Headers;
-  }) => Promise<unknown>;
+  }) => Promise<MemberLike>;
 }
 
 const api = auth.api as unknown as OrgApi;
@@ -25,8 +25,11 @@ type MemberLike = {
 /**
  * 为组织列表补齐当前用户的角色信息。
  */
-export async function enrichOrganizationsWithRoles(userId: string, organizations: Array<Record<string, unknown>>) {
-  if (organizations.length === 0) return organizations;
+export async function enrichOrganizationsWithRoles<T extends { id: string }>(
+  userId: string,
+  organizations: T[],
+): Promise<Array<T & { role: string }>> {
+  if (organizations.length === 0) return [];
 
   const memberships = await findMembershipRolesByUserId(userId);
   const roleMap = new Map(memberships.map((membership) => [membership.organizationId, membership.role]));
