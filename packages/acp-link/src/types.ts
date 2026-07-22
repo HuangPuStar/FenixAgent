@@ -362,6 +362,15 @@ export interface AvailableCommandsUpdate {
   availableCommands: AvailableCommand[];
 }
 
+/** session_info_update 通知（ACP RFD，通过 session/update 双向发送）。
+ *  客户端可通过此通知更新会话标题等信息，agent 在下次 session/list 时反映新的 title。 */
+export interface SessionInfoUpdate {
+  sessionUpdate: "session_info_update";
+  title?: string | null;
+  updatedAt?: string | null;
+  _meta?: Record<string, unknown> | null;
+}
+
 export type SessionUpdate =
   | AgentMessageChunkUpdate
   | ToolCallUpdate
@@ -369,7 +378,8 @@ export type SessionUpdate =
   | AgentThoughtChunkUpdate
   | PlanUpdate
   | UserMessageChunkUpdate
-  | AvailableCommandsUpdate;
+  | AvailableCommandsUpdate
+  | SessionInfoUpdate;
 
 // ============================================================================
 // Sub-Agent Helpers

@@ -448,10 +448,21 @@ export class ACPClient {
     return this.sendJsonRpcAndWait<{ deleted: boolean; sessionId: string }>(req, 30_000);
   }
 
-  renameSession(_request: RenameSessionRequest): void {
-    // ACP SDK 不支持 renameSession，此方法通过 REST API 完成。
-    // 前端应直接调用 PATCH /web/session/:id。
-    console.warn("[ACPClient] renameSession is not supported by ACP protocol; use REST API instead");
+  renameSession(request: RenameSessionRequest): void {
+    // 通过 session/update 通知（ACP RFD session_info_update）发送重命名请求。
+    // 这是 ACP 协议的标准 rename 方式：客户端发送 session/update 通知（无 id），
+    // agent 接收后在 session/list 中反映新的 title。
+    this.sendRaw({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: request.sessionId,
+        update: {
+          sessionUpdate: "session_info_update",
+          title: request.title,
+        },
+      },
+    });
   }
 
   // ==========================================================================

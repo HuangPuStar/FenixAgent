@@ -32,6 +32,8 @@ export interface AcpSessionState {
     availableModes: Array<{ id: string; name: string; description?: string | null }>;
     currentModeId: string;
   } | null;
+  /** 会话标题本地覆盖缓存。agent 可能不支持 session_info_update，因此需本地维护 */
+  titleOverrides: Map<string, string | null>;
 }
 
 export function createAcpSessionState(): AcpSessionState {
@@ -43,6 +45,7 @@ export function createAcpSessionState(): AcpSessionState {
     promptCapabilities: null,
     modelState: null,
     modeState: null,
+    titleOverrides: new Map(),
   };
 }
 
@@ -109,6 +112,13 @@ export class AcpDispatcher {
       return;
     }
 
+    // 处理 JSON-RPC 通知（有 method 但无 id），如 session/update
+    if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id === undefined) {
+      console.log("[acp-dispatcher] ← notification:", JSON.stringify(raw).slice(0, 500));
+      await this.handleNotification(msg as unknown as { method: string; params: Record<string, unknown> });
+      return;
+    }
+
     // 处理来自前端的 JSON-RPC 响应（如 permission_response）
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.result && msg.id !== undefined) {
       const respId = msg.id as string;
@@ -135,6 +145,35 @@ export class AcpDispatcher {
         }
       }
       return;
+    }
+  }
+
+  private async handleNotification(msg: { method: string; params: Record<string, unknown> }): Promise<void> {
+    const { method, params } = msg;
+
+    // 处理 session_info_update：本地缓存标题（agent 可能不支持此通知）
+    if (method === ACP_METHOD.SESSION_UPDATE) {
+      const sessionId = params.sessionId as string | undefined;
+      const update = params.update as Record<string, unknown> | undefined;
+      if (sessionId && update?.sessionUpdate === "session_info_update") {
+        const title = update.title as string | null | undefined;
+        if (title !== undefined) {
+          this.state.titleOverrides.set(sessionId, title);
+        }
+      }
+    }
+
+    if (!this.state.connection) return;
+
+    try {
+      // 通过 ClientSideConnection 的底层 connection.agent.notify 转发通知给 agent
+      // session/update 通知的 params 会原样传递给 agent
+      const conn = this.state.connection as unknown as {
+        connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
+      };
+      await conn.connection.agent.notify(method, params);
+    } catch (error) {
+      console.warn("[acp-dispatcher] Failed to forward notification:", method, String(error));
     }
   }
 
@@ -373,8 +412,16 @@ export class AcpDispatcher {
         cursor: params.cursor,
       });
       const MAX_SESSIONS = 20;
+      // 应用本地标题覆盖（agent 可能不支持 session_info_update）
+      const withOverrides = result.sessions.map((s: acp.SessionInfo) => {
+        const override = this.state.titleOverrides.get(s.sessionId);
+        if (override !== undefined) {
+          return { ...s, title: override };
+        }
+        return s;
+      });
       // 过滤掉标题为空或以 "New session" 开头的会话
-      const filtered = result.sessions.filter(
+      const filtered = withOverrides.filter(
         (s: acp.SessionInfo) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
       );
       const sessions = filtered.slice(0, MAX_SESSIONS);
@@ -469,9 +516,26 @@ export class AcpDispatcher {
     }
   }
 
-  private async handleRenameSession(id: number | string, _params: { sessionId: string; title: string }): Promise<void> {
-    // ACP SDK 不支持 renameSession，返回不支持错误。
-    // 重命名操作应通过 RCS REST API PATCH /web/session/:id 完成。
-    this.send(createErrorResponse(id, -32601, "renameSession is not supported by ACP protocol; use REST API instead"));
+  private async handleRenameSession(id: number | string, params: { sessionId: string; title: string }): Promise<void> {
+    if (!this.state.connection) {
+      this.send(createErrorResponse(id, -32000, "Not connected to agent"));
+      return;
+    }
+    try {
+      // 本地缓存标题（agent 可能不支持 session_info_update，因此需本地维护）
+      this.state.titleOverrides.set(params.sessionId, params.title);
+
+      // 通过 session/update 通知转发 rename 给 agent
+      const conn = this.state.connection as unknown as {
+        connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
+      };
+      await conn.connection.agent.notify("session/update", {
+        sessionId: params.sessionId,
+        update: { sessionUpdate: "session_info_update", title: params.title },
+      });
+      this.send(createSuccessResponse(id, { sessionId: params.sessionId, title: params.title }));
+    } catch (error) {
+      this.send(createErrorResponse(id, -32603, `Failed to rename session: ${(error as Error).message}`));
+    }
   }
 }

@@ -106,6 +106,8 @@ interface ClientState {
     currentModeId: string;
   } | null;
   isAlive: boolean;
+  /** 会话标题本地覆盖缓存。agent 可能不支持 session_info_update，因此需本地维护 */
+  titleOverrides: Map<string, string | null>;
 }
 
 // Heartbeat interval for WebSocket ping/pong (30 seconds)
@@ -781,6 +783,71 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     }
   }
 
+  // --- session/update 通知处理 ---
+
+  /** 处理从 WS 客户端发来的 JSON-RPC 通知（无 id），如 session/update */
+  async function handleNotification(
+    ws: AcpWs,
+    msg: { method: string; params: Record<string, unknown> },
+  ): Promise<void> {
+    const state = clients.get(ws);
+    if (!state) return;
+
+    // 处理 session_info_update：本地缓存标题
+    if (msg.method === ACP_METHOD.SESSION_UPDATE) {
+      const sessionId = msg.params.sessionId as string | undefined;
+      const update = msg.params.update as Record<string, unknown> | undefined;
+      if (sessionId && update?.sessionUpdate === "session_info_update") {
+        const title = update.title as string | null | undefined;
+        if (title !== undefined) {
+          state.titleOverrides.set(sessionId, title);
+        }
+      }
+    }
+
+    // 转发通知给 agent
+    if (state.connection) {
+      try {
+        const conn = state.connection as unknown as {
+          connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
+        };
+        await conn.connection.agent.notify(msg.method, msg.params);
+      } catch (error) {
+        console.warn("[acp-server] Failed to forward notification:", msg.method, String(error));
+      }
+    }
+  }
+
+  // --- session/rename 请求处理 ---
+
+  async function handleRenameSession(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
+    const state = clients.get(ws);
+    if (!state?.connection) {
+      sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
+      return;
+    }
+
+    const sessionId = params.sessionId as string;
+    const title = (params.title as string) ?? "";
+
+    try {
+      // 本地缓存标题（agent 可能不支持 session_info_update，因此需本地维护）
+      state.titleOverrides.set(sessionId, title);
+
+      // 通过 session/update 通知转发 rename 给 agent
+      const conn = state.connection as unknown as {
+        connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
+      };
+      await conn.connection.agent.notify("session/update", {
+        sessionId,
+        update: { sessionUpdate: "session_info_update", title },
+      });
+      sendMsg(ws, createSuccessResponse(id, { sessionId, title }));
+    } catch (error) {
+      sendMsg(ws, createErrorResponse(id, -32603, `Failed to rename session: ${(error as Error).message}`));
+    }
+  }
+
   // --- Agent lifecycle handlers ---
 
   async function handleConnect(ws: AcpWs): Promise<void> {
@@ -941,8 +1008,16 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       const MAX_SESSIONS = 20;
+      // 应用本地标题覆盖（agent 可能不支持 session_info_update）
+      const withOverrides = result.sessions.map((s: acp.SessionInfo) => {
+        const override = state.titleOverrides.get(s.sessionId);
+        if (override !== undefined) {
+          return { ...s, title: override };
+        }
+        return s;
+      });
       // 过滤掉标题为空或以 "New session" 开头的会话（与 acp-dispatcher/session-manager 保持一致）
-      const filtered = result.sessions.filter(
+      const filtered = withOverrides.filter(
         (s: acp.SessionInfo) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
       );
       const sessions = filtered.slice(0, MAX_SESSIONS);
@@ -1249,9 +1324,18 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         case ACP_METHOD.SESSION_RESUME:
           await handleResumeSession(ws, id, p);
           break;
+        case ACP_METHOD.SESSION_RENAME:
+          await handleRenameSession(ws, id, p);
+          break;
         default:
           sendMsg(ws, createErrorResponse(id, -32601, `Method not found: ${method}`));
       }
+      return;
+    }
+
+    // JSON-RPC 通知（有 method 但无 id），如 session/update
+    if (isJsonRpcMessage(msg) && msg.method && msg.id === undefined) {
+      await handleNotification(ws, msg as { method: string; params: Record<string, unknown> });
       return;
     }
 
@@ -1282,6 +1366,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         modelState: null,
         modeState: null,
         isAlive: true,
+        titleOverrides: new Map(),
       };
       clients.set(ws, state);
     },
