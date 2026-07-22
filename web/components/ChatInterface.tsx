@@ -342,6 +342,8 @@ function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpda
 
 export interface ChatInterfaceHandle {
   newSession: () => void;
+  /** 当前是否正在等待 agent 响应（prompt 已发送、尚未收到 prompt_complete） */
+  isLoading: boolean;
 }
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
@@ -833,8 +835,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     ref,
     () => ({
       newSession: handleNewSession,
+      isLoading,
     }),
-    [handleNewSession],
+    [handleNewSession, isLoading],
   );
 
   // Cancel handler - matches Zed's cancel() logic in acp_thread.rs

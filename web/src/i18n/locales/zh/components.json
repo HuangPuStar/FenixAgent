@@ -373,7 +373,8 @@
     "earlier": "更早",
     "rename": "重命名",
     "delete": "删除",
-    "closeToPopover": "收起至弹窗"
+    "closeToPopover": "收起至弹窗",
+    "chatBusy": "请等待当前对话完成后再切换会话"
   },
   "chatInterface": {
     "processingError": "请求未能正常处理，请检查 Agent 或大模型状态后重试",
