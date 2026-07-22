@@ -175,7 +175,7 @@ async function openLocalRelay(
     sessionId,
     outboundBuffer: [],
     sessionStarted: true,
-    workspacePath: resolveWorkspacePath(_env.organizationId ?? userId, userId, _env.id),
+    workspacePath: resolveWorkspacePath(_env.organizationId ?? userId, _env.userId ?? userId, _env.id),
   };
   manager.add(relayWsId, entry);
   if (instanceId) {
