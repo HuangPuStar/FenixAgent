@@ -330,7 +330,14 @@ export function AgentTasksPage() {
       manual: true,
       onSuccess: (result) => {
         const r = result as { status?: string; duration?: number; resultSummary?: string };
-        toast.success(t("toast.triggerResult", { status: r.status ?? "—", duration: r.duration ?? 0 }));
+        const msg = t("toast.triggerResult", { status: r.status ?? "—", duration: r.duration ?? 0 });
+        if (r.status === "success") {
+          toast.success(msg);
+        } else if (r.status === "timeout") {
+          toast.warning(msg);
+        } else {
+          toast.error(msg);
+        }
         refresh();
       },
       onError: (err: Error) => {
