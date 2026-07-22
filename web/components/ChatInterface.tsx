@@ -2,6 +2,7 @@ import { getParentToolUseId } from "acp-link/types";
 import imageCompression from "browser-image-compression";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import type { ACPClient } from "../src/acp/client";
 import type {
   ContentBlock,
@@ -807,10 +808,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const handleNewSession = useCallback(() => {
     console.log("[ChatInterface] Creating new session...");
 
-    // Reference: Zed's set_server_state() calls close_all_sessions() before setting new state
-    // Cancel any ongoing request before creating new session
+    // 正在等待 agent 响应时，阻止新建会话以避免状态混乱
     if (isLoading) {
-      client.cancel();
+      toast.warning(t("acpMain.chatBusy"));
+      return;
     }
 
     // 1. Clear all entries (like Zed's set_server_state which creates new view)
@@ -820,7 +821,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // 3. Create new session (like Zed's initial_state -> connection.new_session())
     // The session_created handler will set sessionReady=true when ready
     requestCreateSession();
-  }, [isLoading, resetThreadState, requestCreateSession, client.cancel]);
+  }, [isLoading, resetThreadState, requestCreateSession, t]);
 
   // 当 contextKey 变化时自动开始新会话（仅在 contextKey 有值且发生变化时触发）
   const contextKeyRef = useRef(contextKey);
