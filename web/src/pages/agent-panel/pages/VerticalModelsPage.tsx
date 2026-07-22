@@ -129,9 +129,9 @@ export function VerticalModelsPage() {
         </div>
       </div>
 
-      <div className="px-8 py-4 flex flex-col gap-4">
+      <div className="px-8 py-4 flex flex-col gap-4 items-center">
         {filtered.map((model) => (
-          <div key={model.id} className="rounded-lg border bg-card p-5">
+          <div key={model.id} className="rounded-lg border bg-card p-5 max-w-5xl w-full">
             <div className="flex gap-6">
               {/* 左栏 — 头部 + 简介 + 能力 + 场景 */}
               <div className="flex-[1.2] min-w-0">
