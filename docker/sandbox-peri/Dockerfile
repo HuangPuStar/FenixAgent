@@ -20,7 +20,9 @@ RUN rm -rf /var/lib/apt/lists/*
 # 安装 Claude Code (CCB) 和 ACP Runtime CLI
 RUN npm install -g  @fenix-agent/acp-runtime-cli
 
-RUN curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
+# 整个 peri（binary + 版本管理 + 配置）安装到 /opt/.peri-binary
+RUN export PERI_INSTALL_DIR=/opt/.peri-binary && curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
+ENV PATH="/opt/.peri-binary:$PATH"
 
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
