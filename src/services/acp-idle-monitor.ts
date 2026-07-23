@@ -57,7 +57,7 @@ export function listInstanceActivitySnapshots(now = Date.now(), organizationId?:
   const instances = runtime.listInstances();
   const results: InstanceActivityInfo[] = [];
   for (const snapshot of instances) {
-    if (snapshot.status === "stopped" || snapshot.status === "stopping" || snapshot.status === "error") continue;
+    if (snapshot.status === "stopped" || snapshot.status === "stopping") continue;
     const supplement = globalInstanceRegistry.get(snapshot.instanceId);
     if (!supplement) continue;
     if (organizationId && supplement.organizationId !== organizationId) continue;
