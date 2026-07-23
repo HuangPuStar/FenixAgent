@@ -453,6 +453,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           const es = data.editState;
           setCurrentAgentId(es.agentId);
           setDisplayAgentName(es.displayName);
+          setFormName(es.displayName);
           setFormModel(es.modelId);
           setFormPrompt(es.prompt);
           setFormDescription(es.description);
@@ -482,12 +483,18 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   );
 
   const validateForm = useCallback((): boolean => {
-    if (!isEdit) {
-      const name = formName.trim();
-      if (!isValidAgentNameInput(name)) {
+    // 创建模式总是验证名称；编辑模式下只在改名时验证
+    const name = formName.trim();
+    if (name) {
+      const isNameChanged = isEdit ? name !== displayAgentName : true;
+      if (isNameChanged && !isValidAgentNameInput(name)) {
         toast.error(t("form.nameValidationError"));
         return false;
       }
+    }
+    if (!isEdit && !name) {
+      toast.error(t("form.nameValidationError"));
+      return false;
     }
     const knowledgeMaxResults = parseInt(formKnowledgeMaxResults, 10);
     if (Number.isNaN(knowledgeMaxResults) || knowledgeMaxResults < 1 || knowledgeMaxResults > 20) {
@@ -503,11 +510,11 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       }
     }
     return true;
-  }, [isEdit, formName, formKnowledgeMaxResults, formExtra, t]);
+  }, [isEdit, formName, formKnowledgeMaxResults, formExtra, t, displayAgentName]);
 
-  const agentIdentityName = agentName ?? formName ?? "agent";
+  const agentIdentityName = formName || agentName || "agent";
   const readOnlyAgent = isEdit && !isAgentWritable({ name: agentIdentityName, resourceAccess: formResourceAccess });
-  const agentNameForDisplay = isEdit ? displayAgentName || agentName || "" : formName;
+  const agentNameForDisplay = formName || displayAgentName || "";
   const effectiveModelOptions =
     formModel && relatedResources?.modelLabel && !modelOptions.some((option) => option.value === formModel)
       ? [...modelOptions, { value: formModel, label: relatedResources.modelLabel }]
@@ -614,6 +621,11 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         };
         data.extra = formExtra.trim() ? JSON.parse(formExtra) : null;
         data.enableMemory = formEnableMemory;
+
+        // 改名支持：仅在名称确实变更时传 name
+        if (formName.trim() && formName.trim() !== displayAgentName) {
+          data.name = formName.trim();
+        }
 
         await unwrap(agentApi.set(agentName!, data));
         toast.success(t("save.successUpdate"));
@@ -770,17 +782,13 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                 <div className="space-y-4">
                   <div>
                     <Label>{t("form.name")}</Label>
-                    {isEdit ? (
-                      <Input value={agentNameForDisplay} disabled className="mt-1" />
-                    ) : (
-                      <Input
-                        value={formName}
-                        onChange={(e) => setFormName(e.target.value)}
-                        placeholder={t("form.namePlaceholder")}
-                        className="mt-1"
-                        disabled={readOnlyAgent}
-                      />
-                    )}
+                    <Input
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      placeholder={t("form.namePlaceholder")}
+                      className="mt-1"
+                      disabled={readOnlyAgent}
+                    />
                   </div>
                   {isEdit && currentAgentId && (
                     <div>

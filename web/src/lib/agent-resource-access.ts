@@ -11,7 +11,7 @@ export function getAgentOptionValue(agent: AgentResourceLike) {
 }
 
 export function getAgentConfigLookupKey(agent: AgentResourceLike) {
-  return agent.resourceAccess?.resourceKey ?? agent.name;
+  return agent.resourceAccess?.resourceKey ?? agent.id ?? agent.name;
 }
 
 export function getAgentDisplayName(agent: AgentResourceLike) {

@@ -303,7 +303,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
       const openConfigId = selectedEnvironmentId ? (envConfigMapRef.current.get(selectedEnvironmentId) ?? null) : null;
       const deletingOpenAgent = openConfigId !== null && openConfigId === agent.id;
 
-      await unwrap(agentApi.delete(agent.name));
+      await unwrap(agentApi.delete(agent.id));
       toast.success(t("deleteSuccess"));
 
       // 通知其它页面（如智能体管理页）刷新列表

@@ -6,7 +6,17 @@ describe("buildSetFromData 字段映射", () => {
   // AGENT_SETTABLE_FIELDS 包含所有可写字段
   test("AGENT_SETTABLE_FIELDS 覆盖所有已知字段", () => {
     // 当前白名单字段（steps/mode/permission/variant/temperature/topP/top_p/disable/hidden/color 等已迁移到 extra JSONB）
-    const fields = ["model", "modelId", "prompt", "description", "extra", "machineId", "knowledge", "engineType"];
+    const fields = [
+      "model",
+      "modelId",
+      "prompt",
+      "description",
+      "extra",
+      "machineId",
+      "knowledge",
+      "engineType",
+      "name",
+    ];
     for (const f of fields) {
       expect((AGENT_SETTABLE_FIELDS as readonly string[]).includes(f)).toBe(true);
     }
@@ -26,8 +36,8 @@ describe("buildSetFromData 字段映射", () => {
     expect(validateAgentData({ knowledge: { knowledgeBaseIds: ["kb1"] } })).toBeNull();
   });
 
-  // 所有字段均在 settable 列表中
+  // 所有字段均在 settable 列表中（当前 9 个：model, modelId, prompt, description, extra, machineId, knowledge, engineType, name）
   test("AGENT_SETTABLE_FIELDS 数量稳定", () => {
-    expect(AGENT_SETTABLE_FIELDS.length).toBe(8);
+    expect(AGENT_SETTABLE_FIELDS.length).toBe(9);
   });
 });

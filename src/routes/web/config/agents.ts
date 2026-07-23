@@ -247,9 +247,9 @@ async function handleList(ctx: AuthContext) {
 }
 
 /** 读取单个 agent 详情，保留原接口返回结构以兼容现有前端状态。 */
-async function handleGet(ctx: AuthContext, name: string) {
-  const agent = await configPg.getAgentConfig(ctx, name);
-  if (!agent) return configNotFound(`Agent '${name}' not found`);
+async function handleGet(ctx: AuthContext, lookupKey: string) {
+  const agent = await configPg.getAgentConfig(ctx, lookupKey);
+  if (!agent) return configNotFound(`Agent '${lookupKey}' not found`);
 
   const skillIds = await configPg.listAgentSkillIds(agent.id);
   const mcpIds = await configPg.listAgentMcpIds(agent.id);
@@ -278,8 +278,8 @@ async function handleGet(ctx: AuthContext, name: string) {
   });
 }
 
-/** 更新 agent 配置，并同步 knowledge / skills / MCP 等关联资源。 */
-async function handleSet(ctx: AuthContext, name: string, data: Record<string, unknown>) {
+/** 更新 agent 配置，并同步 knowledge / skills / MCP 等关联资源。支持改名。 */
+async function handleSet(ctx: AuthContext, lookupKey: string, data: Record<string, unknown>) {
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
 
@@ -289,7 +289,11 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
 
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
-  // 白名单过滤
+  // 提取 name 单独处理（改名需要额外验证：格式、冲突、已内置不可改等）
+  const newName = typeof data.name === "string" && data.name.trim().length > 0 ? data.name.trim() : undefined;
+  delete data.name;
+
+  // 白名单过滤（name 已单独提取，其余字段走白名单）
   const filtered: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     if (AGENT_SETTABLE_FIELDS.includes(key as (typeof AGENT_SETTABLE_FIELDS)[number])) {
@@ -297,17 +301,36 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     }
   }
 
-  // 检查 agent 是否存在且当前组织可写
+  // 检查 agent 是否存在且当前组织可写（支持 name / resourceKey / UUID 查找）
   let existing: Awaited<ReturnType<typeof configPg.assertAgentConfigInternalWritable>> | null = null;
   try {
-    existing = await configPg.assertAgentConfigInternalWritable(ctx, name);
+    existing = await configPg.assertAgentConfigInternalWritable(ctx, lookupKey);
   } catch (error_) {
     if (error_ instanceof AppError && error_.code === "FORBIDDEN") {
       return configError("FORBIDDEN", error_.message);
     }
     throw error_;
   }
-  if (!existing) return configNotFound(`Agent '${name}' not found`);
+  if (!existing) return configNotFound(`Agent '${lookupKey}' not found`);
+
+  // 改名额外验证：内置 agent 不允许改名，新名称必须合法且不冲突
+  if (newName && newName !== existing.name) {
+    if (isBuiltInAgent(existing.name)) {
+      return configError("FORBIDDEN", "Cannot rename built-in agent");
+    }
+    if (!isValidResourceName(newName)) {
+      return configValidationError(
+        "Invalid agent name: must be 1-64 characters (letters, numbers, spaces, single hyphens)",
+      );
+    }
+    // 检查同组织内名称是否已被占用
+    const conflict = await configPg.getAgentConfig(ctx, newName);
+    if (conflict && conflict.id !== existing.id) {
+      return configError("ALREADY_EXISTS", `Agent '${newName}' already exists`);
+    }
+    filtered.name = newName;
+  }
+
   const updateData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(filtered)) {
     if (key === "knowledge" && value == null) {
@@ -317,11 +340,13 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     }
   }
 
-  await configPg.updateAgentConfig(ctx, name, updateData, { publicReadable });
+  await configPg.updateAgentConfig(ctx, lookupKey, updateData, { publicReadable });
   if (enableMemory !== undefined) {
     await agentMemoryConfigRepo.setEnabled(existing.id, enableMemory);
   }
-  const updatedAgent = await configPg.getAgentConfig(ctx, name);
+
+  // 改名后优先用 id 查找（name 可能已变更）
+  const updatedAgent = await configPg.getAgentConfig(ctx, existing.id);
   if (updatedAgent) {
     await syncAgentKnowledgeBindingsById(
       ctx.organizationId,
@@ -344,7 +369,13 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     }
   }
 
-  return configSuccess({ name, ...filtered, resourceAccess: updatedAgent?.resourceAccess });
+  const resolvedName = newName ?? updatedAgent?.name ?? existing.name;
+  return configSuccess({
+    name: resolvedName,
+    id: existing.id,
+    ...filtered,
+    resourceAccess: updatedAgent?.resourceAccess,
+  });
 }
 
 /** UUID 格式正则 */
@@ -451,22 +482,22 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
 }
 
 /** 删除 agent，内置 agent 永远不可删除。 */
-async function handleDelete(ctx: AuthContext, name: string) {
-  if (isBuiltInAgent(name)) {
-    return configError("FORBIDDEN", `Cannot delete built-in agent '${name}'`);
+async function handleDelete(ctx: AuthContext, lookupKey: string) {
+  if (isBuiltInAgent(lookupKey)) {
+    return configError("FORBIDDEN", `Cannot delete built-in agent '${lookupKey}'`);
   }
   let existing: Awaited<ReturnType<typeof configPg.assertAgentConfigInternalWritable>> | null = null;
   try {
-    existing = await configPg.assertAgentConfigInternalWritable(ctx, name);
+    existing = await configPg.assertAgentConfigInternalWritable(ctx, lookupKey);
   } catch (error_) {
     if (error_ instanceof AppError && error_.code === "FORBIDDEN") {
       return configError("FORBIDDEN", error_.message);
     }
     throw error_;
   }
-  if (!existing) return configNotFound(`Agent '${name}' not found`);
-  const deleted = await configPg.deleteAgentConfig(ctx, name);
-  if (!deleted) return configNotFound(`Agent '${name}' not found`);
+  if (!existing) return configNotFound(`Agent '${lookupKey}' not found`);
+  const deleted = await configPg.deleteAgentConfig(ctx, lookupKey);
+  if (!deleted) return configNotFound(`Agent '${lookupKey}' not found`);
   return configSuccess(null);
 }
 
@@ -590,9 +621,10 @@ app.get(
   "/config/agents",
   async ({ store, query, status }) => {
     const authCtx = store.authContext!;
-    const name = typeof query?.name === "string" ? query.name : undefined;
+    const lookupKey =
+      typeof query?.id === "string" ? query.id : typeof query?.name === "string" ? query.name : undefined;
     try {
-      const result = (name ? await handleGet(authCtx, name) : await handleList(authCtx)) as
+      const result = (lookupKey ? await handleGet(authCtx, lookupKey) : await handleList(authCtx)) as
         | z.infer<typeof GetAgentResponseSchema>
         | WebErrorBody;
       const err = resolveConfigRouteError<400 | 403 | 404>(result);
@@ -606,7 +638,10 @@ app.get(
   },
   {
     sessionAuth: true,
-    query: "agent-name-query",
+    query: z.object({
+      name: AgentNameQuerySchema.shape.name,
+      id: z.string().min(1).optional().describe("Agent 配置 ID。"),
+    }),
     response: {
       200: GetAgentResponseSchema,
       400: WebErrSchema,
@@ -618,13 +653,20 @@ app.get(
       tags: ["AgentConfig"],
       summary: "获取 Agent 列表或详情",
       description:
-        "不带 `name` 查询参数时返回当前可见的 Agent 列表；带 `name` 时返回指定 Agent 的完整详情，包括 skill、MCP 和知识库关联信息。",
+        "不带查询参数时返回当前可见的 Agent 列表；带 `name` 或 `id` 时返回指定 Agent 的完整详情（推荐用 `id`）。",
       parameters: [
         {
           name: "name",
           in: "query",
           required: false,
           description: "Agent 名称或共享资源键；传入后接口切换为详情查询模式。",
+          schema: { type: "string" },
+        },
+        {
+          name: "id",
+          in: "query",
+          required: false,
+          description: "Agent 配置 ID；传入后接口切换为详情查询模式（推荐）。",
           schema: { type: "string" },
         },
       ],
@@ -674,12 +716,13 @@ app.put(
   "/config/agents",
   async ({ store, query, body, status }) => {
     const authCtx = store.authContext!;
-    const name = typeof query?.name === "string" ? query.name : undefined;
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
+    const lookupKey =
+      typeof query?.name === "string" ? query.name : typeof query?.id === "string" ? query.id : undefined;
+    if (!lookupKey) {
+      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' or 'id' field"));
     }
     try {
-      const result = await handleSet(authCtx, name, toRecord(body?.data));
+      const result = await handleSet(authCtx, lookupKey, toRecord(body?.data));
       const err = resolveConfigRouteError<400 | 403 | 404 | 409>(result);
       if (err) return status(err.code, err.body);
       return result;
@@ -691,7 +734,10 @@ app.put(
   },
   {
     sessionAuth: true,
-    query: z.object({ name: AgentNameQuerySchema.shape.name }),
+    query: z.object({
+      name: AgentNameQuerySchema.shape.name,
+      id: z.string().min(1).optional().describe("Agent 配置 ID。"),
+    }),
     body: "agent-update-body",
     response: {
       200: "agent-update-response",
@@ -705,13 +751,20 @@ app.put(
       tags: ["AgentConfig"],
       summary: "更新 Agent 配置",
       description:
-        "更新指定 Agent 的可变更字段，并在保存后同步知识库、Skill 与 MCP 关联；仅当前组织可写的 Agent 允许修改。",
+        "更新指定 Agent 的可变更字段（支持改名），并在保存后同步知识库、Skill 与 MCP 关联；仅当前组织可写的 Agent 允许修改。",
       parameters: [
         {
           name: "name",
           in: "query",
-          required: true,
-          description: "待更新的 Agent 名称或共享资源键。",
+          required: false,
+          description: "待更新的 Agent 名称或共享资源键（与 id 二选一）。",
+          schema: { type: "string" },
+        },
+        {
+          name: "id",
+          in: "query",
+          required: false,
+          description: "待更新的 Agent 配置 ID（与 name 二选一，推荐使用）。",
           schema: { type: "string" },
         },
       ],
@@ -723,12 +776,13 @@ app.delete(
   "/config/agents",
   async ({ store, query, status }) => {
     const authCtx = store.authContext!;
-    const name = typeof query?.name === "string" ? query.name : undefined;
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
+    const lookupKey =
+      typeof query?.name === "string" ? query.name : typeof query?.id === "string" ? query.id : undefined;
+    if (!lookupKey) {
+      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' or 'id' field"));
     }
     try {
-      const result = await handleDelete(authCtx, name);
+      const result = await handleDelete(authCtx, lookupKey);
       const err = resolveConfigRouteError<400 | 403 | 404>(result);
       if (err) return status(err.code, err.body);
       return result;
@@ -740,7 +794,10 @@ app.delete(
   },
   {
     sessionAuth: true,
-    query: z.object({ name: AgentNameQuerySchema.shape.name }),
+    query: z.object({
+      name: AgentNameQuerySchema.shape.name,
+      id: z.string().min(1).optional().describe("Agent 配置 ID。"),
+    }),
     response: {
       200: "agent-delete-response",
       400: WebErrSchema,
@@ -756,8 +813,15 @@ app.delete(
         {
           name: "name",
           in: "query",
-          required: true,
-          description: "待删除的 Agent 名称或共享资源键。",
+          required: false,
+          description: "待删除的 Agent 名称或共享资源键（与 id 二选一）。",
+          schema: { type: "string" },
+        },
+        {
+          name: "id",
+          in: "query",
+          required: false,
+          description: "待删除的 Agent 配置 ID（与 name 二选一，推荐使用）。",
           schema: { type: "string" },
         },
       ],

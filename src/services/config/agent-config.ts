@@ -27,7 +27,11 @@ const AGENT_SETTABLE_FIELDS = [
   "machineId",
   "knowledge",
   "engineType",
+  "name",
 ] as const;
+
+/** UUID 格式正则 */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 前端字段名 → Drizzle 列名映射（路由层已做映射，此处为防御性兜底） */
 const FIELD_ALIAS: Record<string, string> = { top_p: "topP" };
@@ -89,6 +93,21 @@ export async function getAgentConfig(
     return getAgentConfigByResourceKey(ctx, nameOrResourceKey);
   }
 
+  // 也尝试按裸 UUID 查找（内部 agent 或共享 agent）
+  if (UUID_RE.test(nameOrResourceKey)) {
+    const byId = await getAgentConfigById(nameOrResourceKey);
+    if (byId) {
+      // 跨组织 agent 需要权限校验
+      if (byId.organizationId !== ctx.organizationId) {
+        const readable = await canReadResource(ctx, "agent_config", byId.id, byId.organizationId);
+        if (!readable) return null;
+      }
+      const [decorated] = await decorateResourceAccess(ctx, "agent_config", [byId]);
+      return decorated as unknown as AgentConfigDetailWithAccess;
+    }
+    // 查不到就继续走 name 查找（UUID 字符串理论上也可能是 name）
+  }
+
   const rows = await db
     .select()
     .from(agentConfig)
@@ -144,8 +163,11 @@ function buildSetFromData(data: Record<string, unknown>): Partial<typeof agentCo
   const set: Partial<typeof agentConfig.$inferInsert> = { updatedAt: new Date() };
   for (const field of AGENT_SETTABLE_FIELDS) {
     if (data[field] !== undefined) {
+      const value = data[field];
+      // name 为可更新字段，跳过空字符串以避免 NOT NULL 违规
+      if (field === "name" && (typeof value !== "string" || value.trim().length === 0)) continue;
       const drizzleKey = FIELD_ALIAS[field] ?? field;
-      (set as Record<string, unknown>)[drizzleKey] = data[field] ?? null;
+      (set as Record<string, unknown>)[drizzleKey] = value ?? null;
     }
   }
   return set;
