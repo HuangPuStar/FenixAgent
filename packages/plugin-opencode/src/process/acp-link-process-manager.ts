@@ -1,4 +1,4 @@
-import { type AcpServerHandle, createAcpServer } from "../../../acp-link/src/server";
+import { type AcpServerHandle, createAcpServer } from "acp-link";
 import { resolveExecutable } from "./executable";
 
 const DEFAULT_HOST = "127.0.0.1";

@@ -67,9 +67,6 @@ RUN printf '[global]\nindex-url = %s\ntrusted-host = %s\n' \
 
 
 RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
-RUN bun install -g acp-link --registry=https://registry.npmmirror.com
-RUN bun install -g acpx --registry=https://registry.npmmirror.com
-RUN bun install -g peri-cli --registry=https://registry.npmmirror.com
 RUN bun install -g @konghayao/opencode-hindsight@0.1.1 --registry=https://registry.npmmirror.com
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 

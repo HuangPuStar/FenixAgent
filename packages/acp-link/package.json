@@ -14,9 +14,29 @@
       "import": "./src/server.ts",
       "types": "./src/server.ts"
     },
+    "./acp-dispatcher": {
+      "import": "./src/acp-dispatcher.ts",
+      "types": "./src/acp-dispatcher.ts"
+    },
     "./client": {
       "import": "./src/client/index.ts",
       "types": "./src/client/index.ts"
+    },
+    "./client/acp-spawn-helper": {
+      "import": "./src/client/acp-spawn-helper.ts",
+      "types": "./src/client/acp-spawn-helper.ts"
+    },
+    "./client/claude-acp-adapter": {
+      "import": "./src/client/claude-acp-adapter.ts",
+      "types": "./src/client/claude-acp-adapter.ts"
+    },
+    "./client/instance-manager": {
+      "import": "./src/client/instance-manager.ts",
+      "types": "./src/client/instance-manager.ts"
+    },
+    "./client/resolve-executable": {
+      "import": "./src/client/resolve-executable.ts",
+      "types": "./src/client/resolve-executable.ts"
     },
     "./types": {
       "import": "./src/types.ts",

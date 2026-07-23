@@ -12,7 +12,7 @@
   "dependencies": {
     "@fenix/core": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
-    "acp-link": "^1.1.0"
+    "acp-link": "workspace:*"
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --format esm",

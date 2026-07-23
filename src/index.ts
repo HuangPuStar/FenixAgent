@@ -5,7 +5,6 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
-import { execSync } from "node:child_process";
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
 import { db, initDb, client as pgClient } from "./db";
@@ -102,13 +101,6 @@ if (ragflowHealth.ok) {
   console.log(`[startup] ${ragflowHealth.message}`);
 } else {
   console.warn(`[startup] RagFlow health check failed: ${ragflowHealth.message}`);
-}
-
-// Kill stale acp-link processes from previous runs
-try {
-  execSync("pkill -f 'acp-link' || true", { stdio: "ignore" });
-} catch {
-  // pkill not available or no matching processes — ignore
 }
 
 // 定期巡检：将无活跃 WS 连接的 machine 标为 offline（处理服务重启、网络分区等场景）
