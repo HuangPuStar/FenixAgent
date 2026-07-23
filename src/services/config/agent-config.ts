@@ -12,22 +12,12 @@ import {
   setPublicRead,
 } from "../resource-permission";
 import type { AgentConfigDetailWithAccess, AgentConfigRowWithAccess } from "./types";
-import { ENGINE_TYPES, type EngineType } from "./types";
 
 // ────────────────────────────────────────────
 // Agent Config 操作
 // ────────────────────────────────────────────
 
-const AGENT_SETTABLE_FIELDS = [
-  "model",
-  "modelId",
-  "prompt",
-  "description",
-  "extra",
-  "machineId",
-  "knowledge",
-  "engineType",
-] as const;
+const AGENT_SETTABLE_FIELDS = ["model", "modelId", "prompt", "description", "extra", "machineId", "knowledge"] as const;
 
 /** 前端字段名 → Drizzle 列名映射（路由层已做映射，此处为防御性兜底） */
 const FIELD_ALIAS: Record<string, string> = { top_p: "topP" };
@@ -279,12 +269,6 @@ export function validateAgentData(data: Record<string, unknown>): string | null 
   if (data.knowledge !== undefined) {
     const error = validateKnowledgeConfig(data.knowledge);
     if (error) return error;
-  }
-
-  if (data.engineType !== undefined && data.engineType !== null) {
-    if (typeof data.engineType !== "string" || !ENGINE_TYPES.includes(data.engineType as EngineType)) {
-      return "INVALID_ENGINE_TYPE";
-    }
   }
 
   return null;

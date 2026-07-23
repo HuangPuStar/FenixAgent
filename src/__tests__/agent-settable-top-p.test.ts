@@ -6,8 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { AGENT_SETTABLE_FIELDS } from "../services/config/agent-config";
 
 describe("AGENT_SETTABLE_FIELDS 白名单", () => {
-  test("AGENT_SETTABLE_FIELDS 包含 engineType 和 extra", () => {
-    expect(AGENT_SETTABLE_FIELDS).toContain("engineType");
+  test("AGENT_SETTABLE_FIELDS 包含 extra", () => {
     expect(AGENT_SETTABLE_FIELDS).toContain("extra");
   });
 });

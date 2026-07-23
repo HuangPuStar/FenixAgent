@@ -213,7 +213,6 @@ export interface AgentInfo {
   machineId?: string | null;
   knowledgeBaseCount: number;
   skillLabels?: Array<{ id: string; label: string }>;
-  engineType?: string | null;
   resourceAccess?: ResourceAccess;
 }
 
@@ -231,7 +230,6 @@ export interface AgentDetail {
   mcpIds?: string[];
   siteAppIds?: string[];
   machineId?: string | null;
-  engineType?: string | null;
   relatedResources?: {
     modelLabel?: string | null;
     machineLabel?: string | null;

@@ -72,10 +72,6 @@ interface AgentResourceDisplayInput {
   };
 }
 
-function normalizeEngineType(value: unknown): string {
-  return typeof value === "string" && value.length > 0 ? value : "opencode";
-}
-
 async function buildAgentRelatedResourceView(
   agent: AgentResourceDisplayInput,
   skillIds: string[],
@@ -236,7 +232,6 @@ async function handleList(ctx: AuthContext) {
         modelLabel: relatedResources.modelLabel,
         description: a.description ?? null,
         machineId: a.machineId ?? null,
-        engineType: normalizeEngineType((a as unknown as Record<string, unknown>).engineType),
         knowledgeBaseCount: (await listAgentKnowledgeBindingsById(a.id)).length,
         skillLabels: relatedResources.skills,
         resourceAccess: a.resourceAccess,
@@ -268,7 +263,6 @@ async function handleGet(ctx: AuthContext, name: string) {
     extra: agent.extra ?? null,
     knowledge: normalizeKnowledgeConfig(knowledge ?? null),
     machineId: agent.machineId ?? null,
-    engineType: normalizeEngineType((agent as unknown as Record<string, unknown>).engineType),
     enableMemory: await isAgentMemoryEnabled(agent.id),
     skillIds,
     mcpIds,
@@ -386,8 +380,8 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   if (validation) return configValidationError(validation);
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
-  // 从组织 metadata 读取默认引擎设置
-  if (!data.engineType || !data.machineId) {
+  // 从组织 metadata 读取默认机器设置
+  if (!data.machineId) {
     try {
       const [org] = await db
         .select({ metadata: organization.metadata })
@@ -395,11 +389,8 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
         .where(eq(organization.id, ctx.organizationId))
         .limit(1);
       const defEngine = (org?.metadata as Record<string, unknown> | null)?.defaultEngine as
-        | { engineType?: string; machineId?: string }
+        | { machineId?: string }
         | undefined;
-      if (defEngine?.engineType && !data.engineType) {
-        data.engineType = defEngine.engineType;
-      }
       if (defEngine?.machineId !== undefined && !data.machineId) {
         data.machineId = defEngine.machineId || null;
       }

@@ -6,8 +6,8 @@ import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 export interface LaunchInstanceRequest {
   /** 目标实例 ID。 */
   instanceId: string;
-  /** 需要调用的 engine 类型。 */
-  engineType: string;
+  /** 需要调用的 engine 类型。local 执行时由上层传入，remote 时不传。 */
+  engineType?: string;
   /** 需要调度到的 node ID。 */
   nodeId: string;
   /** 传入 engine prepare 阶段的启动配置。 */
