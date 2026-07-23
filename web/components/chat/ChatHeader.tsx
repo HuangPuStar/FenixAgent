@@ -2,9 +2,9 @@ import { ChevronDown, Loader2, MessageSquare, Pencil, Pin, Plus, RefreshCw, Sear
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { retryWithBackoff } from "@/src/lib/retry";
 import type { ACPClient } from "../../src/acp/client";
 import type { AgentSessionInfo } from "../../src/acp/types";
+import { useSessions } from "../../src/hooks/useSessions";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -54,8 +54,7 @@ export function ChatHeader({
   className,
 }: ChatHeaderProps) {
   const { t } = useTranslation("components");
-  const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { sessions, loading, refresh, mutate } = useSessions();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   // 钉子状态与侧边栏状态同步：侧边栏打开时即为钉住状态
@@ -64,66 +63,12 @@ export function ChatHeader({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
-  // 会话列表加载：supportsSessionList 未就绪时静默退出，避免 capabilities 还未到位时报错
-  const loadSessions = useCallback(async () => {
-    if (!client.supportsSessionList) return;
-    setLoading(true);
-    try {
-      const response = await client.listSessions();
-      setSessions(Array.isArray(response?.sessions) ? response.sessions : []);
-    } catch (err) {
-      // 拉取失败保留旧列表，仅记录日志；上层会通过 connectionState 重连后重试
-      console.warn("[ChatHeader] Failed to load sessions:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [client]);
-
-  // 初次连接 / capabilities 就绪后立即加载
-  useEffect(() => {
-    if (client.getState() === "connected") {
-      loadSessions();
-    }
-  }, [client, loadSessions]);
-
-  // capabilitiesChange：ACP 协议能力可能在连接后才广播，需在此触发首次加载
-  useEffect(() => {
-    const onCaps = () => {
-      if (client.supportsSessionList) {
-        loadSessions();
-      }
-    };
-    client.state.on("capabilitiesChange", onCaps);
-    return () => client.state.off("capabilitiesChange", onCaps);
-  }, [client, loadSessions]);
-
-  // 重连后自动重试加载（带退避，防止反复失败）
-  useEffect(() => {
-    const handler = (state: string) => {
-      if (state === "connected") {
-        retryWithBackoff(() => loadSessions(), {
-          maxAttempts: 2,
-          baseDelayMs: 300,
-          maxDelayMs: 1000,
-        }).catch(() => {});
-      }
-    };
-    client.setConnectionStateHandler(handler);
-    return () => client.removeConnectionStateHandler(handler);
-  }, [client, loadSessions]);
-
-  // 周期性刷新，让 popover 内的 updatedAt / 新会话保持新鲜
-  useEffect(() => {
-    const interval = setInterval(loadSessions, 30_000);
-    return () => clearInterval(interval);
-  }, [loadSessions]);
-
   // popover 打开时主动刷新一次，避免停留在 30s 间隔之外的数据
   useEffect(() => {
     if (open) {
-      loadSessions();
+      refresh();
     }
-  }, [open, loadSessions]);
+  }, [open, refresh]);
 
   // 外部控制弹窗打开
   useEffect(() => {
@@ -217,15 +162,18 @@ export function ChatHeader({
       const title = editTitle.trim();
       if (!title) return;
       try {
+        // 乐观更新：本地立即修改标题
+        mutate(sessions.map((s) => (s.sessionId === sessionId ? { ...s, title } : s)));
         client.renameSession({ sessionId, title });
-        setSessions((prev) => prev.map((s) => (s.sessionId === sessionId ? { ...s, title } : s)));
+        // 从服务端拉取最新数据以同步
+        refresh();
       } catch (err) {
         toast.error(`重命名失败: ${(err as Error).message}`);
       }
       setEditingId(null);
       setEditTitle("");
     },
-    [editTitle, client],
+    [editTitle, client, sessions, mutate, refresh],
   );
   const handleCancelRename = () => {
     setEditingId(null);
@@ -236,13 +184,15 @@ export function ChatHeader({
   const handleDelete = useCallback(
     async (sessionId: string) => {
       try {
+        // 乐观更新：本地立即移除
+        mutate(sessions.filter((s) => s.sessionId !== sessionId));
         await client.deleteSession({ sessionId });
-        setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+        refresh(); // 从服务端同步
       } catch (err) {
         toast.error(`删除失败: ${(err as Error).message}`);
       }
     },
-    [client],
+    [client, sessions, mutate, refresh],
   );
 
   return (
@@ -303,7 +253,7 @@ export function ChatHeader({
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={loadSessions}
+                  onClick={refresh}
                   className="h-7 w-7 text-text-muted hover:text-text-primary flex-shrink-0"
                   title={t("chatHeader.refresh")}
                 >

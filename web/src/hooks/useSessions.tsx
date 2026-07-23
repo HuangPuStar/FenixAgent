@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ACPClient } from "../acp/client";
 import type { AgentSessionInfo } from "../acp/types";
 
