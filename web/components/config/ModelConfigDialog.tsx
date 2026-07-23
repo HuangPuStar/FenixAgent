@@ -9,8 +9,9 @@ import { modelApi } from "@/src/api/models";
 import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
 import { dispatchConfigChange } from "@/src/lib/config-events";
-import type { ModelConfig, ModelEntry } from "@/src/types/config";
 import { buildModelOptions } from "@/src/lib/model-config-utils";
+import type { ModelConfig, ModelEntry } from "@/src/types/config";
+
 export { buildModelOptions };
 
 /** Server response shape returned after updating the current model config. */

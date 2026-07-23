@@ -395,7 +395,7 @@ describe("InstanceOrchestrator", () => {
 
   // local 执行不传 engineType 时从 node.engineTypes[0] 自动取
   test("local node auto-selects engineType from node declaration", async () => {
-    const { orchestrator, store } = createTestContext({
+    const { orchestrator, store: _store } = createTestContext({
       pluginOptions: { engineType: "ccb" },
       nodeEngineTypes: ["ccb"],
     });
